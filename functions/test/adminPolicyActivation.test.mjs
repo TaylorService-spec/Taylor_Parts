@@ -118,6 +118,45 @@ async function standUpTaylor() {
  * written had the tenant existed when they ran. It grants nothing that is not already this Role's
  * in nonprod, it adds no capability, and it touches no migration.
  */
+/**
+ * WORKFLOW AUTHORING is a capability (workflowDefinition.*), never the Role name and never a
+ * migration grant (migrationChainSafety). In a real tenant it arrives through Administration -- and,
+ * since Pass 8, never from a principal to a Role it holds (workflowControlPlane*.test.mjs prove that
+ * path). This fixture writes the grants the way grantAdministrationReads does, so these proofs stay
+ * about definition editing and immutability.
+ */
+async function grantWorkflowAuthoring() {
+  const r = repo();
+  const tenantId = (await resolvePrincipalContext(r, { externalSubject: ADMIN_SUBJECT })).tenantId;
+  const capabilities = await r.listCapabilities();
+  const adminRole = (await r.listRoles(tenantId)).find((x) => x.key === "admin");
+  await r.transact({ tenantId, uid: OPERATOR }, async (tx) => {
+    for (const actionKey of ["create", "edit", "version", "bindRole", "publish"]) {
+      const capability = capabilities.find((c) => c.key === `workflowDefinition.${actionKey}`);
+      await tx.grantRoleCapability({ roleId: adminRole.id, capabilityId: capability.id, grantedBy: OPERATOR, grantedAt: new Date().toISOString() });
+    }
+  });
+}
+
+/**
+ * Make a stored DRAFT publishable: every bound Role holds its action's capability (a binding never
+ * grants, so publish validation refuses BINDING_WITHOUT_CAPABILITY otherwise). Fixture grants only.
+ */
+async function grantBindingCapabilities(r, tenantId, versionId) {
+  const [actions, bindings, catalog] = await Promise.all([
+    r.listWorkflowActions(tenantId, versionId), r.listWorkflowRoleBindings(tenantId, versionId), r.listCapabilities(),
+  ]);
+  const held = new Set((await r.listRoleCapabilities(tenantId)).map((g) => `${g.roleId}/${g.capabilityId}`));
+  await r.transact({ tenantId, uid: OPERATOR }, async (tx) => {
+    for (const b of bindings) {
+      const capability = catalog.find((c) => c.key === actions.find((a) => a.key === b.actionKey)?.capabilityKey);
+      if (!capability || held.has(`${b.roleId}/${capability.id}`)) continue;
+      held.add(`${b.roleId}/${capability.id}`);
+      await tx.grantRoleCapability({ roleId: b.roleId, capabilityId: capability.id, grantedBy: OPERATOR, grantedAt: new Date().toISOString() });
+    }
+  });
+}
+
 async function grantAdministrationReads(r, tenantId, actorUid) {
   const capabilities = await r.listCapabilities();
   const roles = await r.listRoles(tenantId);
@@ -870,6 +909,7 @@ test("WORKFLOWS: the seeded versions are DRAFT, and nothing routes through them"
 
 test("WORKFLOWS: a draft edit persists as a new version, and Role bindings persist", { skip: SKIP }, async () => {
   const { repo: r, tenant } = await standUpTaylor();
+  await grantWorkflowAuthoring();
   const workflows = await r.listWorkflows(tenant.id);
   const parts = workflows.find((w) => w.key === "partsPurchasing");
   const versions = await r.listWorkflowVersions(tenant.id, parts.id);
@@ -910,8 +950,13 @@ test("WORKFLOWS: a draft edit persists as a new version, and Role bindings persi
 test("WORKFLOWS: a published version is IMMUTABLE", { skip: SKIP }, async () => {
   const { repo: r, tenant } = await standUpTaylor();
   const workflows = await r.listWorkflows(tenant.id);
-  const parts = workflows.find((w) => w.key === "partsPurchasing");
-  const versions = await r.listWorkflowVersions(tenant.id, parts.id);
+  // The Work Order seed: every one of its action capabilities is in the PostgreSQL catalog. (The
+  // Parts / Purchasing actions' reorder.request.* keys mostly are NOT -- that family is still
+  // enforced in Firestore Rules -- so its draft is refused ACTION_WITHOUT_CAPABILITY at publish.)
+  const workOrder = workflows.find((w) => w.key === "workOrder");
+  const versions = await r.listWorkflowVersions(tenant.id, workOrder.id);
+  await grantWorkflowAuthoring();
+  await grantBindingCapabilities(r, tenant.id, versions[0].id);
 
   const published = await executeAdminOperation({ repo: r }, asAdmin("publishWorkflowVersion", {
     versionId: versions[0].id, reason: "proving immutability",
@@ -927,7 +972,7 @@ test("WORKFLOWS: a published version is IMMUTABLE", { skip: SKIP }, async () => 
   assert.match(edit.message, /cannot be edited|published/i);
 
   const binding = await executeAdminOperation({ repo: r }, asAdmin("setWorkflowRoleBinding", {
-    versionId: versions[0].id, actionKey: "approve", roleId: (await r.listRoles(tenant.id))[0].id,
+    versionId: versions[0].id, actionKey: "MarkReady", roleId: (await r.listRoles(tenant.id))[0].id,
   }));
   assert.equal(binding.ok, false, "and neither are its bindings");
 });

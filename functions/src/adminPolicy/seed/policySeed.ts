@@ -176,6 +176,9 @@ export async function seedTenantPolicy(
   const existingObjects = new Map((await repo.listObjects(tenantId)).map((o) => [o.key, o]));
   const existingRoles = new Map((await repo.listRoles(tenantId)).map((r) => [r.key, r]));
   const existingWorkflows = new Map((await repo.listWorkflows(tenantId)).map((w) => [w.key, w]));
+  // A seeded action carries its capability only when the catalog has it; otherwise none is stored
+  // (never invented) and the draft cannot be published until it is bound (ACTION_WITHOUT_CAPABILITY).
+  const catalogKeys = new Set((await repo.listCapabilities()).map((c) => c.key));
 
   const missingRoleKeys = new Set<string>();
 
@@ -290,6 +293,8 @@ export async function seedTenantPolicy(
           workflowVersionId: version.id, key: action.key, label: action.label,
           fromStepKey: action.from, toStepKey: action.to,
           requiresOwnAssignment: action.requiresOwnAssignment === true,
+          guardKind: action.requiresOwnAssignment === true ? "RECORD_ASSIGNMENT" : null,
+          capabilityKey: action.capabilityId && catalogKeys.has(action.capabilityId) ? action.capabilityId : null,
         });
         created.workflowActions += 1;
         for (const roleKey of action.roleKeys) {

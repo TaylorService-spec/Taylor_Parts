@@ -53,7 +53,6 @@ import {
   revokeObjectActionFromPrincipal,
   setGrantCondition,
   retireGrantCondition,
-  publishWorkflowVersion,
   PolicyValidationError,
   AdministrationRefusal,
 } from "./policyCommands";
@@ -61,16 +60,16 @@ import { CONDITIONABLE_GRANTS, CONDITION_OPERATIONAL_SCOPE_TYPES, forbiddenPair 
 import type { AuditEventFilter } from "./policyRepository";
 import { GOVERNED_QUALIFICATION_CODES } from "../eosOps/contextualAuthorization";
 import {
-  createWorkflowDraft,
-  createWorkflowVersion,
-  setWorkflowRoleBinding,
-  updateWorkflowDefinition,
-} from "./workflowCommands";
+  dispatchWorkflowOperation,
+  WORKFLOW_MUTATION_OPERATIONS,
+  WORKFLOW_READ_OPERATIONS,
+  type WorkflowOperation,
+} from "./workflowAdminApi";
+import { WorkflowRefusal } from "./workflowAdministration";
 import { AdministrationDeniedError } from "./administrationAuthority";
 import { requireSecurityAdministrationCapability } from "./administrationCapabilityGate";
 import { ADMINISTRATION_SURFACE_READ_CAPABILITY } from "./administrationSurfaceAuthority";
 import type { AdministrationSurface } from "./administrationSurfaceAuthority";
-import { loadWorkflowVersionDefinition } from "./workflowEngine";
 import {
   actionsForObject,
   effectiveCapabilities,
@@ -116,6 +115,14 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "getPrincipalEffectiveAccess",
   "listWorkflows",
   "readWorkflowVersion",
+  // ── the workflow control plane (2026-09-26; workflowAdminApi.ts) ──
+  // Validation results (every code), the instances pinned to a version, and one workflow's audit
+  // history -- all behind workflowDefinition.read. The responsibilities read is an Employee read
+  // (admin.principalAccess.read): bindings on held Roles INTERSECTED with effective authority.
+  "validateWorkflowVersion",
+  "listWorkflowInstances",
+  "readWorkflowHistory",
+  "listPrincipalWorkflowResponsibilities",
   "readPolicyAuditHistory",
   // ── the Administration control plane (2026-09-26) ──
   // Security Role detail: holders + every Object action with its grant SOURCE and condition.
@@ -161,6 +168,13 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   "updateWorkflowDefinition",
   "setWorkflowRoleBinding",
   "publishWorkflowVersion",
+  // ── the workflow control plane (2026-09-26) ── capability-gated (workflowDefinition.publish),
+  // each ONE audit event: the active-version pointer, retirement, and in-flight instance governance.
+  "activateWorkflowVersion",
+  "retireWorkflowVersion",
+  "startWorkflowInstance",
+  "adoptRecordsIntoWorkflowVersion",
+  "migrateWorkflowInstances",
 ] as const);
 
 export type AdminReadOperation = (typeof ADMIN_READ_OPERATIONS)[number];
@@ -174,6 +188,9 @@ export const isAdminOperation = (name: unknown): name is AdminOperation =>
   typeof name === "string" && (READS.has(name) || MUTATIONS.has(name));
 
 export const isMutation = (name: AdminOperation): boolean => MUTATIONS.has(name);
+
+const WORKFLOW_OPERATIONS = new Set<string>([...WORKFLOW_READ_OPERATIONS, ...WORKFLOW_MUTATION_OPERATIONS]);
+const isWorkflowOperation = (name: AdminOperation): name is AdminOperation & WorkflowOperation => WORKFLOW_OPERATIONS.has(name);
 
 // ════════════════════ the read authority ════════════════════
 //
@@ -216,6 +233,11 @@ const READ_OPERATION_SURFACE: Readonly<Record<AdminReadOperation, Administration
   getPrincipalEffectiveAccess: "users",
   listWorkflows: "workflows",
   readWorkflowVersion: "workflows",
+  validateWorkflowVersion: "workflows",
+  listWorkflowInstances: "workflows",
+  readWorkflowHistory: "workflows",
+  // An Employee's workflow responsibilities: the same authority as explainEffectiveAccess.
+  listPrincipalWorkflowResponsibilities: "users",
   readPolicyAuditHistory: "auditLogs",
   getSecurityRoleDetail: "rolesPermissions",
   getObjectActionGrantMatrix: "objects",
@@ -318,19 +340,8 @@ export interface RolePolicyView {
   readonly fieldOverrides: readonly RoleFieldPermissionOverrideRecord[];
 }
 
-export interface WorkflowVersionView {
-  readonly workflow: WorkflowRecord;
-  readonly version: WorkflowVersionRecord;
-  readonly steps: readonly { key: string; label: string; initial: boolean; terminal: boolean }[];
-  readonly actions: readonly {
-    key: string;
-    label: string;
-    from: string;
-    to: string;
-    requiresOwnAssignment: boolean;
-    roleKeys: readonly string[];
-  }[];
-}
+/** Re-exported: the workflow read shape now lives with the workflow API (workflowAdminApi.ts). */
+export type { WorkflowVersionView } from "./workflowAdminApi";
 
 // ════════════════════ the dispatcher ════════════════════
 
@@ -399,7 +410,9 @@ export async function executeAdminOperation<T = unknown>(
     if (!isMutation(operation)) await requireAdminReadAuthority(repo, actor, operation);
     const data = operation === "explainEffectiveAccess"
       ? await explain(deps, actor, input)
-      : await dispatch(repo, actor, operation, input, reason);
+      : isWorkflowOperation(operation)
+        ? await dispatchWorkflowOperation(deps, actor, operation, input, reason)
+        : await dispatch(repo, actor, operation, input, reason);
     return { ok: true, operation, tenantId: context.tenantId, data: data as T };
   } catch (err) {
     return fail(operation, classify(err), messageFor(err));
@@ -647,21 +660,6 @@ async function dispatch(
       };
     }
 
-    case "listWorkflows": {
-      const workflows = await repo.listWorkflows(actor.tenantId);
-      const withVersions = [];
-      for (const workflow of workflows) {
-        withVersions.push({
-          workflow,
-          versions: await repo.listWorkflowVersions(actor.tenantId, workflow.id),
-        });
-      }
-      return withVersions;
-    }
-
-    case "readWorkflowVersion":
-      return readWorkflowVersion(repo, actor, requireString(input.versionId, "versionId"));
-
     case "readPolicyAuditHistory": {
       const limit = clampLimit(input.limit);
       const filter = auditFilterFrom(input);
@@ -860,47 +858,24 @@ async function dispatch(
         reason,
       });
 
+    // Workflow operations are dispatched by workflowAdminApi before this switch is reached.
+    case "listWorkflows":
+    case "readWorkflowVersion":
+    case "validateWorkflowVersion":
+    case "listWorkflowInstances":
+    case "readWorkflowHistory":
+    case "listPrincipalWorkflowResponsibilities":
     case "createWorkflowDraft":
-      return createWorkflowDraft(repo, actor, {
-        key: requireString(input.key, "key"),
-        name: requireString(input.name, "name"),
-        description: optionalString(input.description),
-        objectKey: requireString(input.objectKey, "objectKey"),
-        definition: input.definition as never,
-        reason,
-      });
-
     case "createWorkflowVersion":
-      return createWorkflowVersion(repo, actor, {
-        workflowId: requireString(input.workflowId, "workflowId"),
-        copyFromVersionId: optionalString(input.copyFromVersionId),
-        definition: input.definition as never,
-        reason,
-      });
-
     case "updateWorkflowDefinition":
-      return updateWorkflowDefinition(repo, actor, {
-        versionId: requireString(input.versionId, "versionId"),
-        definition: input.definition as never,
-        reason,
-      });
-
     case "setWorkflowRoleBinding":
-      return setWorkflowRoleBinding(repo, actor, {
-        versionId: requireString(input.versionId, "versionId"),
-        actionKey: requireString(input.actionKey, "actionKey"),
-        roleId: requireString(input.roleId, "roleId"),
-        reason,
-      });
-
     case "publishWorkflowVersion":
-      // ONLY IF THE PUBLICATION RULES ARE SATISFIED. The command validates the definition
-      // structurally and refuses otherwise; nothing here weakens that, and publication still does
-      // not reroute any execution.
-      return publishWorkflowVersion(repo, actor, {
-        versionId: requireString(input.versionId, "versionId"),
-        reason,
-      });
+    case "activateWorkflowVersion":
+    case "retireWorkflowVersion":
+    case "startWorkflowInstance":
+    case "adoptRecordsIntoWorkflowVersion":
+    case "migrateWorkflowInstances":
+      throw new Error(`${operation} is a workflow operation`);
 
     default: {
       // Exhaustiveness: adding an operation to the list without handling it fails to compile,
@@ -909,47 +884,6 @@ async function dispatch(
       throw new Error(`unhandled operation ${String(never)}`);
     }
   }
-}
-
-/**
- * Read one workflow version with its definition, resolved to Role KEYS.
- *
- * Keys rather than ids, because an administrator reads Role keys and an id in a UI is a value
- * somebody eventually starts copying into application code.
- */
-async function readWorkflowVersion(
-  repo: PolicyRepository,
-  actor: AdminActor,
-  versionId: string,
-): Promise<WorkflowVersionView> {
-  for (const workflow of await repo.listWorkflows(actor.tenantId)) {
-    for (const version of await repo.listWorkflowVersions(actor.tenantId, workflow.id)) {
-      if (version.id !== versionId) continue;
-      const definition = await loadWorkflowVersionDefinition(repo, actor.tenantId, versionId);
-      const roles = await repo.listRoles(actor.tenantId);
-      const keyById = new Map(roles.map((r) => [r.id, r.key]));
-      return {
-        workflow,
-        version,
-        steps: definition.steps.map((s) => ({
-          key: s.key, label: s.label, initial: s.initial, terminal: s.terminal,
-        })),
-        actions: definition.actions.map((a) => ({
-          key: a.key,
-          label: a.label,
-          from: a.fromStepKey,
-          to: a.toStepKey,
-          requiresOwnAssignment: a.requiresOwnAssignment,
-          roleKeys: definition.bindings
-            .filter((b) => b.actionKey === a.key)
-            .map((b) => keyById.get(b.roleId))
-            .filter((k): k is string => typeof k === "string")
-            .sort(),
-        })),
-      };
-    }
-  }
-  throw new NotFound("workflow version not found");
 }
 
 /** Rename or re-describe a Role. Its key and its permissions are not touched here. */
@@ -1183,6 +1117,8 @@ function classify(err: unknown): AdminApiFailureCode {
   // -- never a 404 and never a 500, so a caller cannot tell "you may not" from "it is not there".
   if (err instanceof AdminReadDeniedError) return "FORBIDDEN";
   if (err instanceof NotFound) return "NOT_FOUND";
+  // A governed workflow refusal names its own category (workflowAdministration.ts).
+  if (err instanceof WorkflowRefusal) return err.category;
   // A governed refusal about the STATE the change would produce -- a system invariant, a condition
   // that would widen, the last administration path -- is a CONFLICT with what is there, not a
   // malformed request. A missing reason or an unloadable condition stays INVALID_INPUT.

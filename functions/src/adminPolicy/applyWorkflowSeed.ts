@@ -8,7 +8,8 @@
 // how any record moves: routing execution through these definitions is a later, separately
 // authorized step. The first job is to prove the definition is faithful.
 import { PolicyValidationError } from "./policyCommands";
-import { requireAdministrationAuthority } from "./administrationAuthority";
+import { requireWorkflowAdministrationCapability } from "./workflowAdministration";
+import { isSupersededCapabilityDescription } from "./workflowValidation";
 import { loadWorkflowVersionDefinition, validateWorkflowVersion } from "./workflowEngine";
 import type { AdminActor } from "./policyCommands";
 import type { PolicyRepository } from "./policyRepository";
@@ -23,6 +24,8 @@ export interface AppliedSeed {
   readonly bindingCount: number;
   /** Role keys the seed binds that do not exist in this tenant, so nothing is silently dropped. */
   readonly missingRoleKeys: readonly string[];
+  /** Capability keys the seed names that the catalog lacks (or marks SUPERSEDED). Stored as none. */
+  readonly unknownCapabilityKeys: readonly string[];
 }
 
 /**
@@ -37,19 +40,29 @@ export async function applyWorkflowSeed(
   actor: AdminActor,
   seed: SeedWorkflow,
 ): Promise<AppliedSeed> {
-  requireAdministrationAuthority(actor.heldRoleKeys, "editWorkflowDefinition");
+  const existing = (await repo.listWorkflows(actor.tenantId)).find((w) => w.key === seed.key) ?? null;
+  // A new workflow is a CREATE; another version of an existing one is a VERSION. Capability, never
+  // a Role name.
+  await requireWorkflowAdministrationCapability(repo, actor, existing ? "createWorkflowVersion" : "applyWorkflowSeed");
 
-  const roles = await repo.listRoles(actor.tenantId);
+  const [roles, catalog] = await Promise.all([repo.listRoles(actor.tenantId), repo.listCapabilities()]);
   const roleIdByKey = new Map(roles.map((r) => [r.key, r.id]));
   const missingRoleKeys = [
     ...new Set(seed.actions.flatMap((a) => a.roleKeys).filter((k) => !roleIdByKey.has(k))),
   ];
-
-  const existing = (await repo.listWorkflows(actor.tenantId)).find((w) => w.key === seed.key) ?? null;
+  const knownCapabilityKeys = new Set(
+    catalog.filter((c) => !isSupersededCapabilityDescription(c.description)).map((c) => c.key));
+  const unknownCapabilityKeys = [
+    ...new Set(seed.actions.map((a) => a.capabilityId ?? null)
+      .filter((k): k is string => typeof k === "string" && !knownCapabilityKeys.has(k))),
+  ];
   const priorVersions = existing ? await repo.listWorkflowVersions(actor.tenantId, existing.id) : [];
   const nextVersion = priorVersions.reduce((max, v) => Math.max(max, v.version), 0) + 1;
 
   const applied = await repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // Pass 8 serialization: the tenant's governance lock, the same one every Administration grant,
+    // revoke and assignment command takes -- so a workflow change and an authority change never interleave.
+    await tx.beginAdministrationCommand();
     const workflow = existing ?? (await tx.createWorkflow({
       key: seed.key,
       name: seed.name,
@@ -85,6 +98,8 @@ export async function applyWorkflowSeed(
         fromStepKey: a.from,
         toStepKey: a.to,
         requiresOwnAssignment: a.requiresOwnAssignment === true,
+        guardKind: a.requiresOwnAssignment === true ? "RECORD_ASSIGNMENT" : null,
+        capabilityKey: a.capabilityId && knownCapabilityKeys.has(a.capabilityId) ? a.capabilityId : null,
       });
       for (const key of a.roleKeys) {
         const roleId = roleIdByKey.get(key);
@@ -102,7 +117,7 @@ export async function applyWorkflowSeed(
       occurredAt: new Date().toISOString(),
       reason: `seed "${seed.key}" v${nextVersion}`,
       before: null,
-      after: { workflowKey: seed.key, version: nextVersion, missingRoleKeys },
+      after: { workflowId: workflow.id, workflowKey: seed.key, versionId: version.id, version: nextVersion, missingRoleKeys, unknownCapabilityKeys },
     });
 
     return {
@@ -112,6 +127,7 @@ export async function applyWorkflowSeed(
       actionCount: seed.actions.length,
       bindingCount,
       missingRoleKeys,
+      unknownCapabilityKeys,
     };
   });
 

@@ -23,9 +23,26 @@ import {
   workflowActionsAlsoInCred,
 } from "../src/access/objectPermissionMap.js";
 import { findGovernableObject, governedVerbs } from "../src/access/policyObjectRegistry.js";
-import { SEED_WORKFLOW_FAMILIES } from "../src/domain/adminWorkflowView.js";
 
-const REORDER_FAMILY = SEED_WORKFLOW_FAMILIES.find((f) => f.key === "partsPurchasing");
+// THE SEED IS READ FROM THE SERVER'S OWN SOURCE. The client no longer carries a copy of any workflow
+// definition (Administration > Workflows reads the tenant's stored versions from the EOS API), so the
+// separation is proved against functions/src/adminPolicy/workflowSeeds.ts directly. Parsing the
+// declared action literals is enough: each action is one `{ key: ..., from: ..., to: ..., ... }` line.
+const SEED_SOURCE = readFileSync("../functions/src/adminPolicy/workflowSeeds.ts", "utf8");
+function seedFamily(constName) {
+  const start = SEED_SOURCE.indexOf(`export const ${constName}: SeedWorkflow`);
+  assert.ok(start >= 0, `the seed declares ${constName}`);
+  const end = SEED_SOURCE.indexOf("export const", start + 1);
+  const block = SEED_SOURCE.slice(start, end < 0 ? undefined : end);
+  const field = (line, name) => line.match(new RegExp(`${name}: "([^"]*)"`))?.[1] ?? null;
+  const actions = [...block.matchAll(/^\s*\{ key: "[^"]+", label: "[^"]*", from: .*$/gm)].map(([line]) => ({
+    key: field(line, "key"), from: field(line, "from"), to: field(line, "to"), capabilityId: field(line, "capabilityId"),
+  }));
+  return { key: field(block, "key"), objectKey: field(block, "objectKey"), actions };
+}
+const REORDER_FAMILY = seedFamily("PARTS_PURCHASING_WORKFLOW");
+const SEED_FAMILIES = ["PARTS_PURCHASING_WORKFLOW", "WORK_ORDER_WORKFLOW", "OPPORTUNITY_WORKFLOW",
+  "SALES_AGREEMENT_WORKFLOW", "SALES_ORDER_WORKFLOW"].map(seedFamily);
 
 /** Every capability id the CRUD matrix attributes to one object, across all four verbs. */
 function credIdsFor(objectName) {
@@ -117,18 +134,21 @@ test("markReceived left the Receiving row, and inventory.stock.receive stayed", 
 test("every workflow-action capability is bound to a real action in the definition", () => {
   // A list of banned ids that named something no workflow performs would be a ban with no subject.
   const boundIds = new Set(
-    SEED_WORKFLOW_FAMILIES.flatMap((f) => f.actions.map((a) => a.capabilityId)).filter(Boolean),
+    SEED_FAMILIES.flatMap((f) => f.actions.map((a) => a.capabilityId)).filter(Boolean),
   );
   for (const id of WORKFLOW_ACTION_CAPABILITIES) {
     assert.ok(boundIds.has(id), `${id} is banned from CRED but bound to no workflow action`);
   }
 });
 
-test("every capability an action names is declared a workflow action", () => {
-  // And the converse, so the two lists are exactly each other rather than merely overlapping.
-  for (const family of SEED_WORKFLOW_FAMILIES) {
+test("every reorder.* capability an action names is declared a workflow action", () => {
+  // And the converse, so the two lists are exactly each other rather than merely overlapping. SCOPED
+  // to the reorder.* family this ruling is about: the Work Order and Sales actions now name the
+  // capability their PostgreSQL command path checks (workOrder.transition, salesOrder.write, ...),
+  // which are Object capabilities outside the reorder CRUD matrix this separation governs.
+  for (const family of SEED_FAMILIES) {
     for (const action of family.actions) {
-      if (!action.capabilityId) continue;
+      if (!action.capabilityId || !action.capabilityId.startsWith("reorder.")) continue;
       assert.ok(
         WORKFLOW_ACTION_CAPABILITIES.includes(action.capabilityId),
         `${family.key}.${action.key} names ${action.capabilityId}, which is not declared a workflow action`,
@@ -172,19 +192,12 @@ test("the Parts / Purchasing workflow governs the REORDER REQUEST", () => {
   assert.ok(findGovernableObject(REORDER_FAMILY.objectKey), "and that object exists");
 });
 
-test("the seed and the client mirror agree about every capability binding", () => {
-  // Two packages, no shared build. The mirror is only safe while something compares them.
-  const source = readFileSync("../functions/src/adminPolicy/workflowSeeds.ts", "utf8");
-  for (const family of SEED_WORKFLOW_FAMILIES) {
-    for (const action of family.actions) {
-      if (!action.capabilityId) continue;
-      assert.ok(
-        source.includes(`capabilityId: "${action.capabilityId}"`),
-        `${family.key}.${action.key}: the seed must declare ${action.capabilityId}`,
-      );
-    }
-  }
-  assert.ok(source.includes('objectKey: "reorderRequest"'), "and the seed governs the same record");
+test("the parsed seed is not vacuous: every Parts / Purchasing action and its capability was read", () => {
+  // There is no client mirror any more -- so the check that replaces the mirror comparison is that
+  // the parser above actually read the seed, rather than returning nothing and passing everything.
+  assert.equal(REORDER_FAMILY.actions.length, 11);
+  assert.ok(REORDER_FAMILY.actions.every((a) => a.capabilityId), "every reorder action names its capability");
+  assert.ok(SEED_SOURCE.includes('objectKey: "reorderRequest"'), "and the seed governs the reorder request");
 });
 
 test("postPurchasingUpdate is modelled as the SELF-TRANSITION it measurably is", () => {

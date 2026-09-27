@@ -90,6 +90,13 @@ const CANONICAL_MAP = Object.freeze({
   explainEffectiveAccess: PRINCIPAL_ACCESS_READ,
   // The condition vocabulary the server enforces: part of the security policy model.
   listSupportedConditionKinds: SECURITY_POLICY_READ,
+  // The workflow control plane (2026-09-26): validation results, pinned instances and one
+  // workflow's history under the ONE workflow read; an Employee's derived workflow
+  // responsibilities under the principal-access read, like explainEffectiveAccess. No new key.
+  validateWorkflowVersion: WORKFLOW_READ,
+  listWorkflowInstances: WORKFLOW_READ,
+  readWorkflowHistory: WORKFLOW_READ,
+  listPrincipalWorkflowResponsibilities: PRINCIPAL_ACCESS_READ,
 });
 
 const operationsRequiring = (capability) =>
@@ -109,8 +116,8 @@ const INPUT_FOR = Object.freeze({
 
 // ════════════════════ A. THE MAP IS CLOSED — no database needed ════════════════════
 
-test("A: eighteen reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
-  assert.equal(ADMIN_READ_OPERATIONS.length, 18, "the read list changed size without this map changing");
+test("A: twenty-two reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
+  assert.equal(ADMIN_READ_OPERATIONS.length, 22, "the read list changed size without this map changing");
   assert.deepEqual([...ADMIN_READ_OPERATIONS].sort(), Object.keys(CANONICAL_MAP).sort(),
     "a read exists that the canonical map does not name, or the other way round");
   for (const operation of ADMIN_READ_OPERATIONS) {
@@ -175,7 +182,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   const migrations = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"));
   // 51 -> 52: the Administration control plane (1762646400000) -- schema, one WRITE capability and
   // its parity grants. It registers no READ key, which is what the rest of this test proves.
-  assert.equal(migrations.length, 52, "a migration was added or removed by the read enforcement");
+  // 52 -> 53: the workflow control plane (1762732800000) -- workflow schema and triggers only. It
+  // registers no capability and writes no grant.
+  assert.equal(migrations.length, 53, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,
@@ -377,7 +386,8 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
 
   await t.test("C: without admin.principalAccess.read, the three principal reads are refused", async () => {
     assert.deepEqual(operationsRequiring(PRINCIPAL_ACCESS_READ),
-      ["explainEffectiveAccess", "getPrincipalEffectiveAccess", "listPrincipalRoleAssignments", "listTenantPrincipals"]);
+      ["explainEffectiveAccess", "getPrincipalEffectiveAccess", "listPrincipalRoleAssignments",
+        "listPrincipalWorkflowResponsibilities", "listTenantPrincipals"]);
     // THE READER HOLDS admin.securityPolicy.read AND IS STILL REFUSED. One Administration read is
     // not a key to the others; if it were, the four capabilities would be one capability.
     for (const subject of [reader.subject, bare.subject]) {
@@ -411,7 +421,8 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
   // ════════════════════ E. workflowDefinition.read ════════════════════
 
   await t.test("E: the workflow reads are refused without workflowDefinition.read", async () => {
-    assert.deepEqual(operationsRequiring(WORKFLOW_READ), ["listWorkflows", "readWorkflowVersion"]);
+    assert.deepEqual(operationsRequiring(WORKFLOW_READ),
+      ["listWorkflowInstances", "listWorkflows", "readWorkflowHistory", "readWorkflowVersion", "validateWorkflowVersion"]);
     await assertRefused(bare.subject, "listWorkflows", WORKFLOW_READ);
     await assertRefused(reader.subject, "listWorkflows", WORKFLOW_READ);
     // REFUSED BEFORE THE INPUT IS EVEN PARSED. A bogus versionId still answers FORBIDDEN rather
@@ -478,7 +489,9 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
       // explainEffectiveAccess needs the server-composed evaluator, absent here: the GATE admitted the
       // caller (not FORBIDDEN) and the read then refuses as uncomposed. Its answer is proved in
       // effectiveAccessExplanationPostgres.
-      if (operation === "explainEffectiveAccess") { assert.notEqual(result.code, "FORBIDDEN", operation); continue; }
+      if (operation === "explainEffectiveAccess" || operation === "listPrincipalWorkflowResponsibilities") {
+        assert.notEqual(result.code, "FORBIDDEN", operation); continue;
+      }
       assert.equal(result.ok, true,
         `${operation} ignored a direct principal_capabilities grant: ${result.ok ? "" : result.message}`);
     }
@@ -543,17 +556,20 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
       },
     );
 
+    const firstWorkflow = (await repo.listWorkflows(tenant.id))[0];
+    const firstVersionId = (await repo.listWorkflowVersions(tenant.id, firstWorkflow.id))[0].id;
     for (const operation of ADMIN_READ_OPERATIONS) {
       const input = operation === "readRolePolicy" ? { roleId: (await repo.listRoles(tenant.id))[0].id }
-        : operation === "listPrincipalRoleAssignments" || operation === "getPrincipalEffectiveAccess" || operation === "explainEffectiveAccess"
+        : ["listPrincipalRoleAssignments", "getPrincipalEffectiveAccess", "explainEffectiveAccess",
+          "listPrincipalWorkflowResponsibilities"].includes(operation)
           ? { principalId: adminContext.uid }
-          : operation === "readWorkflowVersion"
-            ? { versionId: (await repo.listWorkflowVersions(tenant.id,
-              (await repo.listWorkflows(tenant.id))[0].id))[0].id }
-            : undefined;
+          : ["readWorkflowVersion", "validateWorkflowVersion", "listWorkflowInstances"].includes(operation)
+            ? { versionId: firstVersionId }
+            : operation === "readWorkflowHistory" ? { workflowId: firstWorkflow.id }
+              : undefined;
 
       const allowed = await post(ADMIN_SUBJECT, operation, input);
-      if (operation === "explainEffectiveAccess") {
+      if (operation === "explainEffectiveAccess" || operation === "listPrincipalWorkflowResponsibilities") {
         // The gate admits the holder; the read then needs the server-composed evaluator, which this
         // transport fixture does not compose (proved end to end in effectiveAccessExplanationPostgres).
         assert.notEqual(allowed.status, 403, `${operation} as a holder: ${allowed.body}`);

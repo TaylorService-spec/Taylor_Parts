@@ -460,7 +460,7 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         if (t.workflows.some((w) => w.tenantId === tenantId && w.key === input.key)) {
           throw new PolicyStoreError(`workflow key "${input.key}" already exists`);
         }
-        const row: WorkflowRecord = { ...input, id: this.nextId(), tenantId, ...this.stamp(actor) };
+        const row: WorkflowRecord = { ...input, activeVersionId: null, id: this.nextId(), tenantId, ...this.stamp(actor) };
         t.workflows.push(row);
         return row;
       },
@@ -481,7 +481,16 @@ export class InMemoryPolicyRepository implements PolicyRepository {
 
       createWorkflowAction: async (input) => {
         assertDraft(requireOwned(t.workflowVersions, input.workflowVersionId, "workflow version"));
-        const row: WorkflowActionRecord = { ...input, id: this.nextId(), tenantId, ...this.stamp(actor) };
+        // Mirrors migration 1762732800000: the legacy flag and the guard are one fact.
+        const guardKind = input.guardKind ?? (input.requiresOwnAssignment ? "RECORD_ASSIGNMENT" : null);
+        if (guardKind !== null && guardKind !== "RECORD_ASSIGNMENT") {
+          throw new PolicyStoreError(`unknown workflow guard "${String(guardKind)}"`);
+        }
+        const row: WorkflowActionRecord = {
+          ...input, capabilityKey: input.capabilityKey ?? null, guardKind,
+          requiresOwnAssignment: guardKind === "RECORD_ASSIGNMENT",
+          id: this.nextId(), tenantId, ...this.stamp(actor),
+        };
         t.workflowActions.push(row);
         return row;
       },
@@ -489,7 +498,11 @@ export class InMemoryPolicyRepository implements PolicyRepository {
       createWorkflowRoleBinding: async (input) => {
         assertDraft(requireOwned(t.workflowVersions, input.workflowVersionId, "workflow version"));
         requireOwned(t.roles, input.roleId, "role");
-        const row: WorkflowRoleBindingRecord = { ...input, id: this.nextId(), tenantId, ...this.stamp(actor) };
+        const bindingKind = input.bindingKind ?? "SECURITY_ROLE";
+        if (bindingKind !== "SECURITY_ROLE" && bindingKind !== "FUNCTIONAL_ROLE") {
+          throw new PolicyStoreError(`unknown binding kind "${String(bindingKind)}"`);
+        }
+        const row: WorkflowRoleBindingRecord = { ...input, bindingKind, id: this.nextId(), tenantId, ...this.stamp(actor) };
         t.workflowRoleBindings.push(row);
         return row;
       },
@@ -504,7 +517,10 @@ export class InMemoryPolicyRepository implements PolicyRepository {
       },
 
       createWorkflowInstance: async (input) => {
-        requireOwned(t.workflowVersions, input.workflowVersionId, "workflow version");
+        assertPublished(requireOwned(t.workflowVersions, input.workflowVersionId, "workflow version"));
+        if (t.workflowInstances.some((i) => i.tenantId === tenantId && i.objectKey === input.objectKey && i.recordId === input.recordId)) {
+          throw new PolicyStoreError(`duplicate key: record "${input.recordId}" already has a workflow instance`);
+        }
         const row: WorkflowInstanceRecord = { ...input, id: this.nextId(), tenantId, ...this.stamp(actor) };
         t.workflowInstances.push(row);
         return row;
@@ -518,7 +534,44 @@ export class InMemoryPolicyRepository implements PolicyRepository {
       },
 
       appendWorkflowInstanceEvent: async (input) => {
-        t.workflowInstanceEvents.push({ ...input, id: this.nextId(), tenantId });
+        const eventKind = input.eventKind ?? "TRANSITION";
+        if ((eventKind === "ADOPT" || eventKind === "MIGRATE") && !input.auditEventId) {
+          throw new PolicyStoreError("an administrative instance event must name its audit event");
+        }
+        t.workflowInstanceEvents.push({ ...input, eventKind, id: this.nextId(), tenantId });
+      },
+
+      setWorkflowActiveVersion: async (workflowId, versionId) => {
+        const workflow = requireOwned(t.workflows, workflowId, "workflow");
+        if (versionId !== null) {
+          const version = requireOwned(t.workflowVersions, versionId, "workflow version");
+          if (version.workflowId !== workflowId) throw new PolicyStoreError("the active version must belong to this workflow");
+          if (version.status !== "PUBLISHED") {
+            throw new PolicyStoreError(`WORKFLOW_ACTIVE_VERSION_NOT_PUBLISHED: the active version must be PUBLISHED (it is ${version.status})`);
+          }
+        }
+        return replace(t.workflows, { ...workflow, activeVersionId: versionId, updatedBy: actor.uid, updatedAt: this.now() });
+      },
+
+      retireWorkflowVersion: async (versionId) => {
+        const current = requireOwned(t.workflowVersions, versionId, "workflow version");
+        if (current.status === "RETIRED") {
+          throw new PolicyStoreError("WORKFLOW_INVALID_LIFECYCLE: RETIRED -> RETIRED is not a workflow version transition");
+        }
+        if (t.workflows.some((w) => w.tenantId === tenantId && w.activeVersionId === versionId)) {
+          throw new PolicyStoreError("WORKFLOW_VERSION_ACTIVE: the active version cannot be retired");
+        }
+        const pinned = t.workflowInstances.filter((i) => i.tenantId === tenantId && i.workflowVersionId === versionId).length;
+        if (pinned > 0) throw new PolicyStoreError(`WORKFLOW_VERSION_PINNED: ${pinned} live instance(s) are pinned to this version`);
+        return replace(t.workflowVersions, { ...current, status: "RETIRED" as const, updatedBy: actor.uid, updatedAt: this.now() });
+      },
+
+      repinWorkflowInstance: async (instanceId, versionId, stepKey) => {
+        const current = requireOwned(t.workflowInstances, instanceId, "workflow instance");
+        assertPublished(requireOwned(t.workflowVersions, versionId, "workflow version"));
+        return replace(t.workflowInstances, {
+          ...current, workflowVersionId: versionId, currentStepKey: stepKey, updatedBy: actor.uid, updatedAt: this.now(),
+        });
       },
 
       // ── Administration decisions and grant conditions ──
@@ -742,6 +795,15 @@ export class InMemoryPolicyRepository implements PolicyRepository {
     return this.mine(this.tables.workflowInstances, tenantId)
       .find((i) => i.objectKey === objectKey && i.recordId === recordId) ?? null;
   }
+  async getWorkflowInstanceById(tenantId: TenantId, instanceId: string) {
+    return this.mine(this.tables.workflowInstances, tenantId).find((i) => i.id === instanceId) ?? null;
+  }
+  async listWorkflowInstances(tenantId: TenantId, versionId: string) {
+    return this.mine(this.tables.workflowInstances, tenantId).filter((i) => i.workflowVersionId === versionId);
+  }
+  async listWorkflowInstanceEvents(tenantId: TenantId, instanceId: string) {
+    return this.mine(this.tables.workflowInstanceEvents, tenantId).filter((e) => e.instanceId === instanceId);
+  }
   async listAuditEvents(tenantId: TenantId, limit: number) {
     return this.mine(this.tables.audit, tenantId).slice(-limit);
   }
@@ -783,6 +845,12 @@ export class InMemoryPolicyRepository implements PolicyRepository {
  * reinterpret an in-flight v1 instance" is a property of the data, and a second writer that skipped
  * the service would otherwise break it silently.
  */
+function assertPublished(version: WorkflowVersionRecord): void {
+  if (version.status !== "PUBLISHED") {
+    throw new PolicyStoreError(`WORKFLOW_INSTANCE_VERSION_NOT_PUBLISHED: an instance may only pin a PUBLISHED version (it is ${version.status})`);
+  }
+}
+
 function assertDraft(version: WorkflowVersionRecord): void {
   if (version.status !== "DRAFT") {
     throw new PolicyStoreError(`workflow version ${version.version} is ${version.status} and cannot be edited`);

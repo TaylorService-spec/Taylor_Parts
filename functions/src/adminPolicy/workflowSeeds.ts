@@ -84,8 +84,19 @@ export interface SeedAction {
    * two together so a capability can never have two homes.
    *
    * Null where no capability governs the action yet. That is honest rather than a gap to fill with
-   * a guess: the Work Order and Sales transitions have no capability ids of their own today, and
-   * inventing some would be manufacturing authority.
+   * a guess, and such an action cannot be published (ACTION_WITHOUT_CAPABILITY).
+   *
+   * WORKFLOW CONTROL PLANE (2026-09-26). The Work Order and Sales actions now name the capability
+   * their PostgreSQL command path ACTUALLY checks -- measured, not minted:
+   *   Work Order   workOrderLifecycle.ts TRANSITION_MATRIX: workOrder.transition, and
+   *                workOrder.lifecycle.dispatch / .cancel / .complete on the effect edges
+   *   Opportunity  opportunityCommandService.ts: transition -> opportunity.write; closeAsWon also
+   *                requires opportunity.createSalesOrder, the narrower key, which `win` names
+   *   Agreement    salesAgreementCommandService.ts: accept -> salesAgreement.accept. There is NO
+   *                decline command, so `decline` stays null
+   *   Sales Order  salesOrderCommandService.ts: transition -> salesOrder.write
+   * A binding never grants: publish validation reports every bound Role that does not hold the
+   * key (BINDING_WITHOUT_CAPABILITY) -- e.g. operationsManager on the three Sales Order actions.
    */
   readonly capabilityId?: string | null;
 }
@@ -177,26 +188,26 @@ export const WORK_ORDER_WORKFLOW: SeedWorkflow = Object.freeze({
     { key: "CANCELLED", label: "Cancelled", terminal: true },
   ]),
   actions: Object.freeze([
-    { key: "MarkReady", label: "Mark ready", from: "CREATED", to: "READY_TO_DISPATCH", roleKeys: ["admin", "dispatcher"] },
-    { key: "Schedule", label: "Schedule", from: "READY_TO_DISPATCH", to: "SCHEDULED", roleKeys: ["admin", "dispatcher"] },
-    { key: "Unschedule", label: "Unschedule", from: "SCHEDULED", to: "READY_TO_DISPATCH", roleKeys: ["admin", "dispatcher"] },
-    { key: "Dispatch", label: "Dispatch", from: "SCHEDULED", to: "DISPATCHED", roleKeys: ["admin", "dispatcher"] },
-    { key: "Accept", label: "Accept", from: "DISPATCHED", to: "ACCEPTED", requiresOwnAssignment: true, roleKeys: ["technician"] },
-    { key: "Travel", label: "Travel", from: "ACCEPTED", to: "EN_ROUTE", requiresOwnAssignment: true, roleKeys: ["technician"] },
-    { key: "Arrive", label: "Arrive", from: "EN_ROUTE", to: "ARRIVED", requiresOwnAssignment: true, roleKeys: ["technician"] },
-    { key: "WorkStart", label: "Start work", from: "ARRIVED", to: "WORK_IN_PROGRESS", requiresOwnAssignment: true, roleKeys: ["technician"] },
-    { key: "Complete", label: "Complete", from: "WORK_IN_PROGRESS", to: "COMPLETED", requiresOwnAssignment: true, roleKeys: ["technician"] },
-    { key: "Close", label: "Close", from: "COMPLETED", to: "CLOSED", roleKeys: ["admin", "dispatcher"] },
+    { key: "MarkReady", label: "Mark ready", from: "CREATED", to: "READY_TO_DISPATCH", capabilityId: "workOrder.transition", roleKeys: ["admin", "dispatcher"] },
+    { key: "Schedule", label: "Schedule", from: "READY_TO_DISPATCH", to: "SCHEDULED", capabilityId: "workOrder.transition", roleKeys: ["admin", "dispatcher"] },
+    { key: "Unschedule", label: "Unschedule", from: "SCHEDULED", to: "READY_TO_DISPATCH", capabilityId: "workOrder.transition", roleKeys: ["admin", "dispatcher"] },
+    { key: "Dispatch", label: "Dispatch", from: "SCHEDULED", to: "DISPATCHED", capabilityId: "workOrder.lifecycle.dispatch", roleKeys: ["admin", "dispatcher"] },
+    { key: "Accept", label: "Accept", from: "DISPATCHED", to: "ACCEPTED", requiresOwnAssignment: true, capabilityId: "workOrder.transition", roleKeys: ["technician"] },
+    { key: "Travel", label: "Travel", from: "ACCEPTED", to: "EN_ROUTE", requiresOwnAssignment: true, capabilityId: "workOrder.transition", roleKeys: ["technician"] },
+    { key: "Arrive", label: "Arrive", from: "EN_ROUTE", to: "ARRIVED", requiresOwnAssignment: true, capabilityId: "workOrder.transition", roleKeys: ["technician"] },
+    { key: "WorkStart", label: "Start work", from: "ARRIVED", to: "WORK_IN_PROGRESS", requiresOwnAssignment: true, capabilityId: "workOrder.transition", roleKeys: ["technician"] },
+    { key: "Complete", label: "Complete", from: "WORK_IN_PROGRESS", to: "COMPLETED", requiresOwnAssignment: true, capabilityId: "workOrder.lifecycle.complete", roleKeys: ["technician"] },
+    { key: "Close", label: "Close", from: "COMPLETED", to: "CLOSED", capabilityId: "workOrder.transition", roleKeys: ["admin", "dispatcher"] },
     // Cancel is available from every non-terminal status in the measured table. One action per
     // origin, because an action names one `from` -- the same shape the Parts cancels take.
-    { key: "CancelFromCreated", label: "Cancel", from: "CREATED", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-    { key: "CancelFromReady", label: "Cancel", from: "READY_TO_DISPATCH", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-    { key: "CancelFromScheduled", label: "Cancel", from: "SCHEDULED", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-    { key: "CancelFromDispatched", label: "Cancel", from: "DISPATCHED", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-    { key: "CancelFromAccepted", label: "Cancel", from: "ACCEPTED", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-    { key: "CancelFromEnRoute", label: "Cancel", from: "EN_ROUTE", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-    { key: "CancelFromArrived", label: "Cancel", from: "ARRIVED", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-    { key: "CancelFromWorkInProgress", label: "Cancel", from: "WORK_IN_PROGRESS", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
+    { key: "CancelFromCreated", label: "Cancel", from: "CREATED", to: "CANCELLED", capabilityId: "workOrder.lifecycle.cancel", roleKeys: ["admin", "dispatcher"] },
+    { key: "CancelFromReady", label: "Cancel", from: "READY_TO_DISPATCH", to: "CANCELLED", capabilityId: "workOrder.lifecycle.cancel", roleKeys: ["admin", "dispatcher"] },
+    { key: "CancelFromScheduled", label: "Cancel", from: "SCHEDULED", to: "CANCELLED", capabilityId: "workOrder.lifecycle.cancel", roleKeys: ["admin", "dispatcher"] },
+    { key: "CancelFromDispatched", label: "Cancel", from: "DISPATCHED", to: "CANCELLED", capabilityId: "workOrder.lifecycle.cancel", roleKeys: ["admin", "dispatcher"] },
+    { key: "CancelFromAccepted", label: "Cancel", from: "ACCEPTED", to: "CANCELLED", capabilityId: "workOrder.lifecycle.cancel", roleKeys: ["admin", "dispatcher"] },
+    { key: "CancelFromEnRoute", label: "Cancel", from: "EN_ROUTE", to: "CANCELLED", capabilityId: "workOrder.lifecycle.cancel", roleKeys: ["admin", "dispatcher"] },
+    { key: "CancelFromArrived", label: "Cancel", from: "ARRIVED", to: "CANCELLED", capabilityId: "workOrder.lifecycle.cancel", roleKeys: ["admin", "dispatcher"] },
+    { key: "CancelFromWorkInProgress", label: "Cancel", from: "WORK_IN_PROGRESS", to: "CANCELLED", capabilityId: "workOrder.lifecycle.cancel", roleKeys: ["admin", "dispatcher"] },
   ]),
 });
 
@@ -223,19 +234,19 @@ export const OPPORTUNITY_WORKFLOW: SeedWorkflow = Object.freeze({
     { key: "LOST", label: "Lost", terminal: true },
   ]),
   actions: Object.freeze([
-    { key: "advanceToQualifying", label: "Advance to Qualifying", from: "IDENTIFIED", to: "QUALIFYING", roleKeys: ["admin", "salesperson", "salesManager"] },
-    { key: "advanceToSolution", label: "Advance to Solution", from: "QUALIFYING", to: "SOLUTION", roleKeys: ["admin", "salesperson", "salesManager"] },
-    { key: "advanceToQuoting", label: "Advance to Quoting", from: "SOLUTION", to: "QUOTING", roleKeys: ["admin", "salesperson", "salesManager"] },
-    { key: "advanceToCustomerReview", label: "Advance to Customer Review", from: "QUOTING", to: "CUSTOMER_REVIEW", roleKeys: ["admin", "salesperson", "salesManager"] },
-    { key: "advanceToDecision", label: "Advance to Decision", from: "CUSTOMER_REVIEW", to: "DECISION", roleKeys: ["admin", "salesperson", "salesManager"] },
-    { key: "win", label: "Mark won", from: "DECISION", to: "WON", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "advanceToQualifying", label: "Advance to Qualifying", from: "IDENTIFIED", to: "QUALIFYING", capabilityId: "opportunity.write", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "advanceToSolution", label: "Advance to Solution", from: "QUALIFYING", to: "SOLUTION", capabilityId: "opportunity.write", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "advanceToQuoting", label: "Advance to Quoting", from: "SOLUTION", to: "QUOTING", capabilityId: "opportunity.write", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "advanceToCustomerReview", label: "Advance to Customer Review", from: "QUOTING", to: "CUSTOMER_REVIEW", capabilityId: "opportunity.write", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "advanceToDecision", label: "Advance to Decision", from: "CUSTOMER_REVIEW", to: "DECISION", capabilityId: "opportunity.write", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "win", label: "Mark won", from: "DECISION", to: "WON", capabilityId: "opportunity.createSalesOrder", roleKeys: ["admin", "salesperson", "salesManager"] },
     // LOST from ANY open stage -- one action per origin, as measured.
-    { key: "loseFromIdentified", label: "Mark lost", from: "IDENTIFIED", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
-    { key: "loseFromQualifying", label: "Mark lost", from: "QUALIFYING", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
-    { key: "loseFromSolution", label: "Mark lost", from: "SOLUTION", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
-    { key: "loseFromQuoting", label: "Mark lost", from: "QUOTING", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
-    { key: "loseFromCustomerReview", label: "Mark lost", from: "CUSTOMER_REVIEW", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
-    { key: "loseFromDecision", label: "Mark lost", from: "DECISION", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "loseFromIdentified", label: "Mark lost", from: "IDENTIFIED", to: "LOST", capabilityId: "opportunity.write", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "loseFromQualifying", label: "Mark lost", from: "QUALIFYING", to: "LOST", capabilityId: "opportunity.write", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "loseFromSolution", label: "Mark lost", from: "SOLUTION", to: "LOST", capabilityId: "opportunity.write", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "loseFromQuoting", label: "Mark lost", from: "QUOTING", to: "LOST", capabilityId: "opportunity.write", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "loseFromCustomerReview", label: "Mark lost", from: "CUSTOMER_REVIEW", to: "LOST", capabilityId: "opportunity.write", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "loseFromDecision", label: "Mark lost", from: "DECISION", to: "LOST", capabilityId: "opportunity.write", roleKeys: ["admin", "salesperson", "salesManager"] },
   ]),
 });
 
@@ -251,7 +262,7 @@ export const SALES_AGREEMENT_WORKFLOW: SeedWorkflow = Object.freeze({
     { key: "DECLINED", label: "Declined", terminal: true },
   ]),
   actions: Object.freeze([
-    { key: "accept", label: "Record customer acceptance", from: "DRAFT", to: "ACCEPTED", roleKeys: ["admin", "salesperson", "salesManager"] },
+    { key: "accept", label: "Record customer acceptance", from: "DRAFT", to: "ACCEPTED", capabilityId: "salesAgreement.accept", roleKeys: ["admin", "salesperson", "salesManager"] },
     { key: "decline", label: "Record customer decline", from: "DRAFT", to: "DECLINED", roleKeys: ["admin", "salesperson", "salesManager"] },
   ]),
 });
@@ -270,11 +281,11 @@ export const SALES_ORDER_WORKFLOW: SeedWorkflow = Object.freeze({
     { key: "CANCELLED", label: "Cancelled", terminal: true },
   ]),
   actions: Object.freeze([
-    { key: "beginFulfillment", label: "Begin fulfilment", from: "CONFIRMED", to: "IN_FULFILLMENT", roleKeys: ["admin", "operationsManager", "salesManager"] },
-    { key: "markFulfilled", label: "Mark fulfilled", from: "IN_FULFILLMENT", to: "FULFILLED", roleKeys: ["admin", "operationsManager"] },
-    { key: "close", label: "Close", from: "FULFILLED", to: "CLOSED", roleKeys: ["admin", "operationsManager", "salesManager"] },
-    { key: "cancelFromConfirmed", label: "Cancel", from: "CONFIRMED", to: "CANCELLED", roleKeys: ["admin", "salesManager"] },
-    { key: "cancelFromFulfillment", label: "Cancel", from: "IN_FULFILLMENT", to: "CANCELLED", roleKeys: ["admin", "salesManager"] },
+    { key: "beginFulfillment", label: "Begin fulfilment", from: "CONFIRMED", to: "IN_FULFILLMENT", capabilityId: "salesOrder.write", roleKeys: ["admin", "operationsManager", "salesManager"] },
+    { key: "markFulfilled", label: "Mark fulfilled", from: "IN_FULFILLMENT", to: "FULFILLED", capabilityId: "salesOrder.write", roleKeys: ["admin", "operationsManager"] },
+    { key: "close", label: "Close", from: "FULFILLED", to: "CLOSED", capabilityId: "salesOrder.write", roleKeys: ["admin", "operationsManager", "salesManager"] },
+    { key: "cancelFromConfirmed", label: "Cancel", from: "CONFIRMED", to: "CANCELLED", capabilityId: "salesOrder.write", roleKeys: ["admin", "salesManager"] },
+    { key: "cancelFromFulfillment", label: "Cancel", from: "IN_FULFILLMENT", to: "CANCELLED", capabilityId: "salesOrder.write", roleKeys: ["admin", "salesManager"] },
   ]),
 });
 

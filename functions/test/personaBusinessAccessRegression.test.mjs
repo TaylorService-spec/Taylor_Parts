@@ -255,7 +255,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // everything below WAS re-measured against the integrated chain before this number was moved.
   // 52: + the Administration control plane (1762646400000): one capability (admin.securityPolicy.write)
   // granted to admin only. Re-measured below: admin's set grows by exactly that key; no other persona moves.
-  assert.equal(files.length, 52, "the migration chain moved; re-measure before trusting anything below");
+  // 53: + the workflow control plane (1762732800000): workflow schema and triggers only -- no
+  // capability, no grant, so no persona's set moves.
+  assert.equal(files.length, 53, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -1034,7 +1036,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     const capsBefore = await capabilitiesForRoleKeys(pool, TENANT, ["reportViewer"]);
     assert.deepEqual([...capsBefore].sort(), ["reportDefinition.read"]);
 
-    await setWorkflowRoleBinding(repo, { tenantId: TENANT, uid: ACTOR, heldRoleKeys: ["admin"] },
+    // Workflow administration is the workflowDefinition.bindRole CAPABILITY now (workflow control
+    // plane), never the Role name. No Role holds it in this chain (asserted above), so the fixture
+    // actor carries the server-resolved capability set directly, as the trusted API would.
+    await setWorkflowRoleBinding(repo, { tenantId: TENANT, uid: ACTOR, heldRoleKeys: ["admin"],
+      capabilities: new Set(["workflowDefinition.bindRole"]) },
       { versionId: version.id, actionKey: "MarkReady", roleId: reportViewer.id, reason: "never-widens proof" });
 
     // THE BINDING IS LIVE -- so this test is not vacuous, and the widening it fails to cause is real.

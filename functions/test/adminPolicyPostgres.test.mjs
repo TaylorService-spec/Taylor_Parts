@@ -604,9 +604,12 @@ test("a PUBLISHED row must record who published it and when", { skip: SKIP }, as
 test("one live workflow per business record", { skip: SKIP }, async () => {
   await reset();
   const r = repo();
+  // An instance may only pin a PUBLISHED version (migration 1762732800000), so publish first.
   const version = await r.transact(actorFor(TENANT_A), async (tx) => {
     const wf = await tx.createWorkflow({ key: "wf", name: "WF", description: null, objectKey: "workOrder", origin: "SYSTEM" });
-    return tx.createWorkflowVersion({ workflowId: wf.id, version: 1, status: "DRAFT", publishedAt: null, publishedBy: null });
+    const v = await tx.createWorkflowVersion({ workflowId: wf.id, version: 1, status: "DRAFT", publishedAt: null, publishedBy: null });
+    await tx.createWorkflowStep({ workflowVersionId: v.id, key: "A", label: "A", initial: true, terminal: false });
+    return tx.publishWorkflowVersion(v.id);
   });
   await r.transact(actorFor(TENANT_A), (tx) =>
     tx.createWorkflowInstance({ workflowVersionId: version.id, objectKey: "workOrder", recordId: "wo-1", currentStepKey: "A" }));

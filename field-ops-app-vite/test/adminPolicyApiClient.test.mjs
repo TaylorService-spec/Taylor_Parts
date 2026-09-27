@@ -30,6 +30,8 @@ const READS = [
   "getSecurityRoleDetail", "getObjectActionGrantMatrix", "listRoleCapabilityDecisionHistory",
   // Effective access explained by the runtime evaluator, and the governed condition vocabulary (server lane CP-S).
   "explainEffectiveAccess", "listSupportedConditionKinds",
+  // The workflow control plane (2026-09-26).
+  "validateWorkflowVersion", "listWorkflowInstances", "readWorkflowHistory", "listPrincipalWorkflowResponsibilities",
 ];
 const MUTATIONS = [
   // Object DISPLAY metadata only -- no key edit, no delete, no generic patch. Added with the
@@ -46,6 +48,9 @@ const MUTATIONS = [
   "setGrantCondition", "retireGrantCondition",
   "createWorkflowDraft", "createWorkflowVersion", "updateWorkflowDefinition", "setWorkflowRoleBinding",
   "publishWorkflowVersion",
+  // The workflow control plane (2026-09-26).
+  "activateWorkflowVersion", "retireWorkflowVersion", "startWorkflowInstance",
+  "adoptRecordsIntoWorkflowVersion", "migrateWorkflowInstances",
 ];
 
 // ============================ the client mirrors the server ============================

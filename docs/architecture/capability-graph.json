@@ -571,6 +571,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/assistant/assistantStarters.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/workOrderLifecycle.ts"
@@ -582,7 +583,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -713,6 +714,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/opportunity/opportunityCallables.ts"
         ],
@@ -722,7 +724,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/opportunityCapabilityAccess.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 4,
         "evidence": "EXPORTED"
       },
@@ -789,6 +791,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/opportunity/createSalesOrderFromOpportunity.ts"
         ],
@@ -797,7 +800,7 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 3,
         "evidence": "EXPORTED"
       },
@@ -883,6 +886,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/eosCommercial/commands/salesAgreementCommandService.ts",
           "functions/src/salesAgreement/salesAgreementCallables.ts"
@@ -893,7 +897,7 @@
           "field-ops-app-vite/src/access/policyObjectRegistry.js",
           "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -995,6 +999,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/salesOrder/salesOrderCallables.ts"
         ],
@@ -1004,7 +1009,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/salesOrderCapabilityAccess.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 4,
         "evidence": "EXPORTED"
       },
@@ -1628,11 +1633,10 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/domain/adminWorkflowView.js"
+          "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 7,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1660,11 +1664,10 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/domain/adminWorkflowView.js"
+          "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1692,11 +1695,10 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/domain/adminWorkflowView.js"
+          "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1725,11 +1727,10 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/domain/adminWorkflowView.js"
+          "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 6,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1755,11 +1756,10 @@
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/domain/adminWorkflowView.js"
+          "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 4,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1787,11 +1787,10 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/domain/adminWorkflowView.js"
+          "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1819,11 +1818,10 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/domain/adminWorkflowView.js"
+          "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1851,11 +1849,10 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/domain/adminWorkflowView.js"
+          "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1947,11 +1944,10 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/domain/adminWorkflowView.js"
+          "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

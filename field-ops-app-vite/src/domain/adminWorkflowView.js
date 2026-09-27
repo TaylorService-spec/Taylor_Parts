@@ -1,259 +1,184 @@
-// Administration → Workflows — the PURE view model.
+// Administration → Workflows — the PURE view model, over what the SERVER returned.
 //
-// ════════════════════ WHERE THE DEFINITIONS COME FROM ════════════════════
+// ════════════════════ NO CLIENT COPY OF ANY DEFINITION ════════════════════
 //
-// These are the SAME five workflow families the policy seed writes
-// (functions/src/adminPolicy/workflowSeeds.ts), measured from the code that runs today: the reorder
-// status machine, the work-order transition table, and the three Sales lifecycles.
-//
-// They are MIRRORED here rather than imported, for the reason every other cross-package contract in
-// this repository is mirrored -- functions/ and field-ops-app-vite/ are separate packages with no
-// shared build. `adminWorkflowView.test.mjs` pins the two together by comparing this file's shapes
-// against the seed's own, so a divergence fails rather than showing an administrator a workflow the
-// platform would not seed.
+// This file used to carry a second, client-side copy of the five seeded workflow families and render
+// it as if it were the tenant's configuration. It no longer does: every workflow, version, step,
+// action, binding, guard and validation finding shown in Administration comes from the EOS API
+// (listWorkflows, readWorkflowVersion, validateWorkflowVersion, ...), and the seeds live only in
+// functions/src/adminPolicy/workflowSeeds.ts, which the server applies.
 //
 // ════════════════════ WHAT THIS COMPUTES ════════════════════
 //
-// Presentation only: which actions leave a state, how many Roles are bound, whether a version is a
-// draft. It decides no authorization and evaluates no transition -- the workflow ENGINE
-// (functions/src/adminPolicy/workflowEngine.ts) does that, server-side, from stored state.
+// Presentation only: which actions leave a state, how a version's lifecycle reads, which lifecycle
+// buttons are worth OFFERING, and the editable shape of a draft. It decides no authorization and
+// evaluates no transition. Offering a button is not permission -- the server re-checks the
+// capability and the lifecycle on every request, and its refusal is shown verbatim.
 
-/** A state a record can occupy. `initial` is where instances start; `terminal` accepts no action. */
-/** An action moves a record from exactly one state to one other, and names who may do it. */
-
-export const SEED_WORKFLOW_FAMILIES = Object.freeze([
-  Object.freeze({
-    key: "partsPurchasing",
-    name: "Parts / Purchasing",
-    description:
-      "The reorder request lifecycle, from a raised request through review, assignment, purchasing and receipt.",
-    // THE REORDER REQUEST, not the purchase order. Its states ARE REORDER_REQUEST_STATUS and an
-    // instance moves a reorder request; the purchase order is a record this workflow CREATES along
-    // the way (recordPurchaseOrder) and later voids. Two canonical Objects, one workflow over the
-    // first of them -- naming the second here was the same conflation the CRUD matrix had.
-    objectKey: "reorderRequest",
-    version: 1,
-    status: "DRAFT",
-    steps: Object.freeze([
-      { key: "PENDING_REVIEW", label: "Pending review", initial: true },
-      { key: "READY_FOR_PARTS_MANAGER", label: "Ready for Parts Manager" },
-      { key: "ASSIGNED_TO_PARTS_ASSOCIATE", label: "Assigned to Parts Associate" },
-      { key: "PURCHASING_IN_PROGRESS", label: "Purchasing in progress" },
-      { key: "ORDERED", label: "Ordered" },
-      { key: "RECEIVED", label: "Received", terminal: true },
-      { key: "REJECTED", label: "Rejected", terminal: true },
-      { key: "CANCELLED", label: "Cancelled", terminal: true },
-      { key: "VOIDED", label: "Voided", terminal: true },
-    ]),
-    actions: Object.freeze([
-      { key: "approve", label: "Approve", from: "PENDING_REVIEW", to: "READY_FOR_PARTS_MANAGER", capabilityId: "reorder.request.approve", roleKeys: ["admin", "dispatcher", "partsManager"] },
-      { key: "reject", label: "Reject", from: "PENDING_REVIEW", to: "REJECTED", capabilityId: "reorder.request.reject", roleKeys: ["admin", "dispatcher", "partsManager"] },
-      { key: "assign", label: "Assign", from: "READY_FOR_PARTS_MANAGER", to: "ASSIGNED_TO_PARTS_ASSOCIATE", capabilityId: "reorder.request.assign", roleKeys: ["admin", "partsManager"] },
-      { key: "startPurchasing", label: "Start purchasing", from: "ASSIGNED_TO_PARTS_ASSOCIATE", to: "PURCHASING_IN_PROGRESS", requiresOwnAssignment: true, capabilityId: "reorder.request.startPurchasing", roleKeys: ["admin", "partsAssociate"] },
-      // A self-transition: progress is recorded without moving the record. Still an action.
-      { key: "postPurchasingUpdate", label: "Post purchasing progress", from: "PURCHASING_IN_PROGRESS", to: "PURCHASING_IN_PROGRESS", capabilityId: "reorder.request.postPurchasingUpdate", roleKeys: ["admin", "partsAssociate", "partsManager"] },
-      { key: "recordPurchaseOrder", label: "Record purchase order", from: "PURCHASING_IN_PROGRESS", to: "ORDERED", capabilityId: "reorder.request.recordPurchaseOrder", roleKeys: ["admin", "partsAssociate", "partsManager"] },
-      { key: "markReceived", label: "Mark received", from: "ORDERED", to: "RECEIVED", capabilityId: "reorder.request.markReceived", roleKeys: ["admin", "partsAssociate", "partsManager"] },
-      { key: "voidPurchaseOrder", label: "Void purchase order", from: "ORDERED", to: "VOIDED", capabilityId: "reorder.purchaseOrder.void", roleKeys: ["admin", "partsManager"] },
-      { key: "cancelFromReady", label: "Cancel", from: "READY_FOR_PARTS_MANAGER", to: "CANCELLED", capabilityId: "reorder.request.cancel", roleKeys: ["admin", "partsManager"] },
-      { key: "cancelFromAssigned", label: "Cancel", from: "ASSIGNED_TO_PARTS_ASSOCIATE", to: "CANCELLED", capabilityId: "reorder.request.cancel", roleKeys: ["admin", "partsManager"] },
-      { key: "cancelFromPurchasing", label: "Cancel", from: "PURCHASING_IN_PROGRESS", to: "CANCELLED", capabilityId: "reorder.request.cancel", roleKeys: ["admin", "partsManager"] },
-    ]),
-  }),
-
-  Object.freeze({
-    key: "workOrder",
-    name: "Technician / Work Order",
-    description: "The work order lifecycle from creation through dispatch, technician execution and close.",
-    objectKey: "workOrder",
-    version: 1,
-    status: "DRAFT",
-    steps: Object.freeze([
-      { key: "CREATED", label: "Created", initial: true },
-      { key: "READY_TO_DISPATCH", label: "Ready to dispatch" },
-      { key: "SCHEDULED", label: "Scheduled" },
-      { key: "DISPATCHED", label: "Dispatched" },
-      { key: "ACCEPTED", label: "Accepted" },
-      { key: "EN_ROUTE", label: "En route" },
-      { key: "ARRIVED", label: "Arrived" },
-      { key: "WORK_IN_PROGRESS", label: "Work in progress" },
-      { key: "COMPLETED", label: "Completed" },
-      { key: "CLOSED", label: "Closed", terminal: true },
-      { key: "CANCELLED", label: "Cancelled", terminal: true },
-    ]),
-    actions: Object.freeze([
-      { key: "MarkReady", label: "Mark ready", from: "CREATED", to: "READY_TO_DISPATCH", roleKeys: ["admin", "dispatcher"] },
-      { key: "Schedule", label: "Schedule", from: "READY_TO_DISPATCH", to: "SCHEDULED", roleKeys: ["admin", "dispatcher"] },
-      { key: "Unschedule", label: "Unschedule", from: "SCHEDULED", to: "READY_TO_DISPATCH", roleKeys: ["admin", "dispatcher"] },
-      { key: "Dispatch", label: "Dispatch", from: "SCHEDULED", to: "DISPATCHED", roleKeys: ["admin", "dispatcher"] },
-      { key: "Accept", label: "Accept", from: "DISPATCHED", to: "ACCEPTED", requiresOwnAssignment: true, roleKeys: ["technician"] },
-      { key: "Travel", label: "Travel", from: "ACCEPTED", to: "EN_ROUTE", requiresOwnAssignment: true, roleKeys: ["technician"] },
-      { key: "Arrive", label: "Arrive", from: "EN_ROUTE", to: "ARRIVED", requiresOwnAssignment: true, roleKeys: ["technician"] },
-      { key: "WorkStart", label: "Start work", from: "ARRIVED", to: "WORK_IN_PROGRESS", requiresOwnAssignment: true, roleKeys: ["technician"] },
-      { key: "Complete", label: "Complete", from: "WORK_IN_PROGRESS", to: "COMPLETED", requiresOwnAssignment: true, roleKeys: ["technician"] },
-      { key: "Close", label: "Close", from: "COMPLETED", to: "CLOSED", roleKeys: ["admin", "dispatcher"] },
-      { key: "CancelFromCreated", label: "Cancel", from: "CREATED", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-      { key: "CancelFromReady", label: "Cancel", from: "READY_TO_DISPATCH", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-      { key: "CancelFromScheduled", label: "Cancel", from: "SCHEDULED", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-      { key: "CancelFromDispatched", label: "Cancel", from: "DISPATCHED", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-      { key: "CancelFromAccepted", label: "Cancel", from: "ACCEPTED", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-      { key: "CancelFromEnRoute", label: "Cancel", from: "EN_ROUTE", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-      { key: "CancelFromArrived", label: "Cancel", from: "ARRIVED", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-      { key: "CancelFromWorkInProgress", label: "Cancel", from: "WORK_IN_PROGRESS", to: "CANCELLED", roleKeys: ["admin", "dispatcher"] },
-    ]),
-  }),
-
-  // ── SALES: THREE MACHINES, chained by events rather than transitions ──
-  Object.freeze({
-    key: "salesOpportunity",
-    name: "Sales — Opportunity",
-    description: "Pre-commitment sales lifecycle. Creates no inventory movement, work order or invoice.",
-    objectKey: "opportunity",
-    version: 1,
-    status: "DRAFT",
-    steps: Object.freeze([
-      { key: "IDENTIFIED", label: "Identified", initial: true },
-      { key: "QUALIFYING", label: "Qualifying" },
-      { key: "SOLUTION", label: "Solution" },
-      { key: "QUOTING", label: "Quoting" },
-      { key: "CUSTOMER_REVIEW", label: "Customer review" },
-      { key: "DECISION", label: "Decision" },
-      { key: "WON", label: "Won", terminal: true },
-      { key: "LOST", label: "Lost", terminal: true },
-    ]),
-    actions: Object.freeze([
-      { key: "advanceToQualifying", label: "Advance to Qualifying", from: "IDENTIFIED", to: "QUALIFYING", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "advanceToSolution", label: "Advance to Solution", from: "QUALIFYING", to: "SOLUTION", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "advanceToQuoting", label: "Advance to Quoting", from: "SOLUTION", to: "QUOTING", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "advanceToCustomerReview", label: "Advance to Customer Review", from: "QUOTING", to: "CUSTOMER_REVIEW", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "advanceToDecision", label: "Advance to Decision", from: "CUSTOMER_REVIEW", to: "DECISION", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "win", label: "Mark won", from: "DECISION", to: "WON", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "loseFromIdentified", label: "Mark lost", from: "IDENTIFIED", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "loseFromQualifying", label: "Mark lost", from: "QUALIFYING", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "loseFromSolution", label: "Mark lost", from: "SOLUTION", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "loseFromQuoting", label: "Mark lost", from: "QUOTING", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "loseFromCustomerReview", label: "Mark lost", from: "CUSTOMER_REVIEW", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "loseFromDecision", label: "Mark lost", from: "DECISION", to: "LOST", roleKeys: ["admin", "salesperson", "salesManager"] },
-    ]),
-  }),
-
-  Object.freeze({
-    key: "salesAgreement",
-    name: "Sales — Agreement",
-    description: "The quote / agreement a customer accepts or declines.",
-    objectKey: "salesAgreement",
-    version: 1,
-    status: "DRAFT",
-    steps: Object.freeze([
-      { key: "DRAFT", label: "Draft", initial: true },
-      { key: "ACCEPTED", label: "Accepted", terminal: true },
-      { key: "DECLINED", label: "Declined", terminal: true },
-    ]),
-    actions: Object.freeze([
-      { key: "accept", label: "Record customer acceptance", from: "DRAFT", to: "ACCEPTED", roleKeys: ["admin", "salesperson", "salesManager"] },
-      { key: "decline", label: "Record customer decline", from: "DRAFT", to: "DECLINED", roleKeys: ["admin", "salesperson", "salesManager"] },
-    ]),
-  }),
-
-  Object.freeze({
-    key: "salesOrder",
-    name: "Sales — Order",
-    description: "The committed order, from confirmation through fulfilment to close.",
-    objectKey: "salesOrder",
-    version: 1,
-    status: "DRAFT",
-    steps: Object.freeze([
-      { key: "CONFIRMED", label: "Confirmed", initial: true },
-      { key: "IN_FULFILLMENT", label: "In fulfilment" },
-      { key: "FULFILLED", label: "Fulfilled" },
-      { key: "CLOSED", label: "Closed", terminal: true },
-      { key: "CANCELLED", label: "Cancelled", terminal: true },
-    ]),
-    actions: Object.freeze([
-      { key: "beginFulfillment", label: "Begin fulfilment", from: "CONFIRMED", to: "IN_FULFILLMENT", roleKeys: ["admin", "operationsManager", "salesManager"] },
-      { key: "markFulfilled", label: "Mark fulfilled", from: "IN_FULFILLMENT", to: "FULFILLED", roleKeys: ["admin", "operationsManager"] },
-      { key: "close", label: "Close", from: "FULFILLED", to: "CLOSED", roleKeys: ["admin", "operationsManager", "salesManager"] },
-      { key: "cancelFromConfirmed", label: "Cancel", from: "CONFIRMED", to: "CANCELLED", roleKeys: ["admin", "salesManager"] },
-      { key: "cancelFromFulfillment", label: "Cancel", from: "IN_FULFILLMENT", to: "CANCELLED", roleKeys: ["admin", "salesManager"] },
-    ]),
-  }),
+/** The closed guard list the server accepts (workflow_actions.guard_kind). Offered, never authored. */
+export const WORKFLOW_GUARD_OPTIONS = Object.freeze([
+  Object.freeze({ value: "", label: "No guard" }),
+  Object.freeze({ value: "RECORD_ASSIGNMENT", label: "Record assignment (the assigned Employee only)" }),
 ]);
 
+/** One entry of listWorkflows, summarised for the list. Unknown shapes yield null, never a guess. */
+export function summarizeWorkflow(entry) {
+  const workflow = entry?.workflow;
+  if (!workflow || typeof workflow.id !== "string") return null;
+  const versions = Array.isArray(entry.versions) ? [...entry.versions].sort((a, b) => a.version - b.version) : [];
+  const active = versions.find((v) => v.id === workflow.activeVersionId) ?? null;
+  return Object.freeze({
+    id: workflow.id,
+    key: workflow.key,
+    name: workflow.name ?? workflow.key,
+    description: workflow.description ?? null,
+    objectKey: workflow.objectKey ?? null,
+    activeVersionId: workflow.activeVersionId ?? null,
+    activeVersion: active ? active.version : null,
+    versions: Object.freeze(versions.map((v) => Object.freeze({
+      id: v.id,
+      version: v.version,
+      status: v.status,
+      active: v.id === workflow.activeVersionId,
+      publishedAt: v.publishedAt ?? null,
+    }))),
+    counts: Object.freeze({
+      draft: versions.filter((v) => v.status === "DRAFT").length,
+      published: versions.filter((v) => v.status === "PUBLISHED").length,
+      retired: versions.filter((v) => v.status === "RETIRED").length,
+    }),
+  });
+}
+
+/** How a version's lifecycle reads, in words the screen shows. */
+export function lifecycleLabel(version) {
+  if (!version) return "Unknown";
+  if (version.status === "PUBLISHED") return version.active ? "Published · ACTIVE" : "Published · not active";
+  if (version.status === "DRAFT") return "Draft";
+  if (version.status === "RETIRED") return "Retired";
+  return String(version.status);
+}
+
 /**
- * One family's version, with each state told which actions leave it.
- *
- * The outgoing list is DERIVED from the actions rather than declared on the step, so a state and
- * its transitions cannot disagree -- the two would be one fact written twice.
+ * The lifecycle actions worth OFFERING for one version. The server decides; this only avoids drawing
+ * a button whose answer is certainly a lifecycle refusal.
  */
-export function buildWorkflowVersionView(family) {
-  if (!family) return null;
-  const steps = (family.steps ?? []).map((step) => ({
-    key: step.key,
-    label: step.label,
-    initial: step.initial === true,
-    terminal: step.terminal === true,
-    outgoing: (family.actions ?? [])
-      .filter((a) => a.from === step.key)
-      .map((a) => a.label),
+export function lifecycleActions(version) {
+  if (!version) return Object.freeze([]);
+  const out = [];
+  if (version.status === "DRAFT") out.push("publish", "retire");
+  if (version.status === "PUBLISHED" && !version.active) out.push("activate", "retire");
+  // Every version -- retired ones included -- can be the starting point of a new DRAFT.
+  out.push("newVersion");
+  return Object.freeze(out);
+}
+
+/** readWorkflowVersion's payload, with each state told which actions leave it. */
+export function buildWorkflowVersionView(view) {
+  if (!view || !Array.isArray(view.steps) || !Array.isArray(view.actions)) return null;
+  const actions = view.actions.map((a) => Object.freeze({
+    key: a.key,
+    label: a.label,
+    from: a.from,
+    to: a.to,
+    capabilityKey: a.capabilityKey ?? null,
+    guardKind: a.guardKind ?? (a.requiresOwnAssignment ? "RECORD_ASSIGNMENT" : null),
+    roleKeys: Object.freeze([...(a.roleKeys ?? [])]),
+    bindings: Object.freeze((a.bindings ?? (a.roleKeys ?? []).map((roleKey) => ({ roleKey, bindingKind: "SECURITY_ROLE" })))
+      .map((b) => Object.freeze({ roleKey: b.roleKey, bindingKind: b.bindingKind ?? "SECURITY_ROLE" }))),
   }));
-
   return Object.freeze({
-    version: family.version,
-    status: family.status,
-    steps: Object.freeze(steps),
-    actions: Object.freeze(
-      (family.actions ?? []).map((a) =>
-        Object.freeze({
-          key: a.key,
-          label: a.label,
-          from: a.from,
-          to: a.to,
-          requiresOwnAssignment: a.requiresOwnAssignment === true,
-          // The enforcement id this action IS, for the surface that wants to show lineage. Null
-          // where no capability governs the action yet -- honest rather than invented.
-          capabilityId: a.capabilityId ?? null,
-          roleKeys: Object.freeze([...(a.roleKeys ?? [])]),
-        }),
-      ),
-    ),
-    bindingCount: (family.actions ?? []).reduce((n, a) => n + (a.roleKeys?.length ?? 0), 0),
+    workflow: view.workflow ?? null,
+    version: view.version ?? null,
+    active: view.active === true,
+    steps: Object.freeze(view.steps.map((s) => Object.freeze({
+      key: s.key,
+      label: s.label,
+      initial: s.initial === true,
+      terminal: s.terminal === true,
+      outgoing: Object.freeze(actions.filter((a) => a.from === s.key).map((a) => a.label)),
+    }))),
+    actions: Object.freeze(actions),
+    bindingCount: actions.reduce((n, a) => n + a.bindings.length, 0),
   });
 }
 
-/** Counts for the family selector. */
-export function summarizeWorkflowFamily(family) {
-  return Object.freeze({
-    key: family?.key ?? null,
-    stepCount: family?.steps?.length ?? 0,
-    actionCount: family?.actions?.length ?? 0,
-    terminalCount: (family?.steps ?? []).filter((s) => s.terminal).length,
-    // A published family would route records. None does yet, and the screen says so rather than
-    // letting a reader assume from the absence of a badge.
-    published: family?.status === "PUBLISHED",
-  });
+// ════════════════════ the draft editor's shape ════════════════════
+
+/** A version view -> the editable definition updateWorkflowDefinition / createWorkflowVersion accept. */
+export function editableDefinition(view) {
+  const v = view && Array.isArray(view.steps) ? view : { steps: [], actions: [] };
+  return {
+    steps: v.steps.map((s) => ({ key: s.key, label: s.label, initial: s.initial === true, terminal: s.terminal === true })),
+    actions: (v.actions ?? []).map((a) => ({
+      key: a.key,
+      label: a.label,
+      from: a.from,
+      to: a.to,
+      capabilityKey: a.capabilityKey ?? "",
+      guardKind: a.guardKind ?? "",
+      roleKeys: (a.roleKeys ?? []).join(", "),
+    })),
+  };
 }
 
-/** Every Role key any family binds — the set an administrator would need to exist. */
-export const workflowBoundRoleKeys = () =>
-  Object.freeze([
-    ...new Set(SEED_WORKFLOW_FAMILIES.flatMap((f) => f.actions.flatMap((a) => a.roleKeys))),
-  ].sort());
+const splitKeys = (text) => String(text ?? "").split(/[\s,]+/).map((k) => k.trim()).filter(Boolean);
+
+/**
+ * The editable form -> the definition the server receives. Blank capability and guard become null;
+ * nothing is validated here -- validateWorkflowVersion and publish are the server's.
+ */
+export function definitionForServer(editable) {
+  return {
+    steps: (editable?.steps ?? []).map((s) => ({
+      key: String(s.key ?? "").trim(),
+      label: String(s.label ?? "").trim(),
+      initial: s.initial === true,
+      terminal: s.terminal === true,
+    })),
+    actions: (editable?.actions ?? []).map((a) => {
+      const guardKind = String(a.guardKind ?? "").trim();
+      const capabilityKey = String(a.capabilityKey ?? "").trim();
+      return {
+        key: String(a.key ?? "").trim(),
+        label: String(a.label ?? "").trim(),
+        from: String(a.from ?? "").trim(),
+        to: String(a.to ?? "").trim(),
+        capabilityKey: capabilityKey.length > 0 ? capabilityKey : null,
+        guardKind: guardKind.length > 0 ? guardKind : null,
+        requiresOwnAssignment: guardKind === "RECORD_ASSIGNMENT",
+        roleKeys: splitKeys(a.roleKeys),
+      };
+    }),
+  };
+}
+
+export const blankStep = () => ({ key: "", label: "", initial: false, terminal: false });
+export const blankAction = () => ({ key: "", label: "", from: "", to: "", capabilityKey: "", guardKind: "", roleKeys: "" });
+
+/** validateWorkflowVersion's result, grouped for display. Unknown shapes yield null. */
+export function validationSummary(result) {
+  if (!result || !Array.isArray(result.errors) || !Array.isArray(result.warnings)) return null;
+  const byCode = (items) => {
+    const groups = new Map();
+    for (const i of items) groups.set(i.code, [...(groups.get(i.code) ?? []), i]);
+    return [...groups.entries()].map(([code, list]) => Object.freeze({ code, items: Object.freeze(list) }));
+  };
+  return Object.freeze({
+    valid: result.valid === true && result.errors.length === 0,
+    errors: Object.freeze(byCode(result.errors)),
+    warnings: Object.freeze(byCode(result.warnings)),
+    errorCount: result.errors.length,
+    warningCount: result.warnings.length,
+  });
+}
 
 // ════════════════════ BUSINESS AREAS vs STATE MACHINES ════════════════════
 //
-// Owner terminology (2026-09-08). Administration presents:
-//
-//   3 BUSINESS WORKFLOW AREAS      Parts / Purchasing, Technician / Work Order, Sales
-//   5 VERSIONED STATE MACHINES     the five families above
-//
-// The IMPLEMENTATION is unchanged and must stay unchanged: Sales is three separate machines --
-// Opportunity, Agreement, Order -- chained by events rather than transitions. A won opportunity
-// CREATES an agreement; there is no edge from WON to DRAFT. Flattening them into one invented
-// machine would draw transitions no code performs, which is precisely what this grouping must not
-// become.
-//
-// So an AREA is a presentation grouping over machines. It has no state, no transition and no Role
-// binding of its own, and nothing resolves authority against it.
+// Owner terminology (2026-09-08). Administration presents three business workflow AREAS over the
+// versioned state machines the server holds. An area is a presentation grouping keyed by the
+// machine's workflow key: it has no state, no transition and no binding, and nothing resolves
+// authority against it. A workflow no area names is shown under "Other" rather than hidden.
 
 export const WORKFLOW_AREAS = Object.freeze([
   Object.freeze({
@@ -277,23 +202,22 @@ export const WORKFLOW_AREAS = Object.freeze([
   }),
 ]);
 
-/** The machines in one area, in the order the area declares them. */
-export function machinesInArea(areaKey) {
-  const area = WORKFLOW_AREAS.find((a) => a.key === areaKey);
-  if (!area) return [];
-  return area.machineKeys
-    .map((key) => SEED_WORKFLOW_FAMILIES.find((f) => f.key === key))
-    .filter(Boolean);
-}
-
-/** Which area a machine belongs to, or null. Every machine belongs to exactly one. */
+/** Which area a workflow key belongs to, or null. */
 export function areaForMachine(machineKey) {
   return WORKFLOW_AREAS.find((a) => a.machineKeys.includes(machineKey)) ?? null;
 }
 
-/** The two numbers the Administration surface reports, so it never has to count them inline. */
-export const workflowTerminologyCounts = () =>
-  Object.freeze({
-    areas: WORKFLOW_AREAS.length,
-    stateMachines: SEED_WORKFLOW_FAMILIES.length,
-  });
+/** Summaries grouped by area, in area order, with an "Other" group for anything unnamed. */
+export function groupWorkflowsByArea(summaries) {
+  const list = (summaries ?? []).filter(Boolean);
+  const groups = WORKFLOW_AREAS.map((area) => ({
+    key: area.key,
+    name: area.name,
+    description: area.description,
+    workflows: area.machineKeys.map((k) => list.find((w) => w.key === k)).filter(Boolean),
+  })).filter((g) => g.workflows.length > 0);
+  const named = new Set(WORKFLOW_AREAS.flatMap((a) => a.machineKeys));
+  const other = list.filter((w) => !named.has(w.key));
+  if (other.length > 0) groups.push({ key: "other", name: "Other", description: "Workflows no business area names.", workflows: other });
+  return groups;
+}

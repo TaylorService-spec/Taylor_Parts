@@ -55,6 +55,12 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "getPrincipalEffectiveAccess",
   "listWorkflows",
   "readWorkflowVersion",
+  // The workflow control plane (2026-09-26): validation results, pinned instances, one workflow's
+  // history (workflowDefinition.read) and an Employee's derived workflow responsibilities.
+  "validateWorkflowVersion",
+  "listWorkflowInstances",
+  "readWorkflowHistory",
+  "listPrincipalWorkflowResponsibilities",
   "readPolicyAuditHistory",
   // The Administration control plane (server lane CP-S, 2026-09-26). NAMED SO THE CLOSED LIST KEEPS
   // MIRRORING THE SERVER; the client lane builds the screens. Contract:
@@ -94,6 +100,12 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   "updateWorkflowDefinition",
   "setWorkflowRoleBinding",
   "publishWorkflowVersion",
+  // The workflow control plane (2026-09-26): each gated by a workflowDefinition.* capability, audited.
+  "activateWorkflowVersion",
+  "retireWorkflowVersion",
+  "startWorkflowInstance",
+  "adoptRecordsIntoWorkflowVersion",
+  "migrateWorkflowInstances",
 ]);
 
 const ALL_OPERATIONS = new Set([...ADMIN_READ_OPERATIONS, ...ADMIN_MUTATION_OPERATIONS]);

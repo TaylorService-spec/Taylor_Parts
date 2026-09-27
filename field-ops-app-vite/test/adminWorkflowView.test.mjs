@@ -1,211 +1,125 @@
-// Administration → Workflows — the view model, and its MIRROR PARITY with the seed.
+// Administration → Workflows — the PURE view model over the SERVER's answers.
 //
-// The definitions are mirrored across two packages that share no build, which is this repository's
-// established pattern and also its most-repeated defect: two copies of one fact, drifting. So the
-// first test here reads the SEED's own source and compares it, structure for structure. A
-// divergence fails rather than showing an administrator a workflow the platform would not seed.
+// The screen no longer carries a client copy of the seeded workflow definitions: every workflow,
+// version, binding and validation finding comes from the EOS API. What is proved here is that the
+// view model reads the server's shapes faithfully, offers only lifecycle actions that are not certain
+// refusals, round-trips a draft into exactly the definition the server accepts, and that NO copy of
+// the seed has crept back into the client.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import {
-  SEED_WORKFLOW_FAMILIES,
-  buildWorkflowVersionView,
-  summarizeWorkflowFamily,
-  workflowBoundRoleKeys,
+import * as view from "../src/domain/adminWorkflowView.js";
+
+const {
   WORKFLOW_AREAS,
+  WORKFLOW_GUARD_OPTIONS,
   areaForMachine,
-  machinesInArea,
-  workflowTerminologyCounts,
-} from "../src/domain/adminWorkflowView.js";
+  buildWorkflowVersionView,
+  definitionForServer,
+  editableDefinition,
+  groupWorkflowsByArea,
+  lifecycleActions,
+  lifecycleLabel,
+  summarizeWorkflow,
+  validationSummary,
+} = view;
 
-const SEED_SOURCE = "../functions/src/adminPolicy/workflowSeeds.ts";
+// listWorkflows / readWorkflowVersion / validateWorkflowVersion, as the server shapes them.
+const LIST_ENTRY = {
+  workflow: { id: "wf-so", key: "salesOrder", name: "Sales — Order", description: "d", objectKey: "salesOrder", activeVersionId: "v2" },
+  versions: [
+    { id: "v2", version: 2, status: "PUBLISHED", publishedAt: "2026-09-26T00:00:00Z" },
+    { id: "v1", version: 1, status: "RETIRED", publishedAt: "2026-09-25T00:00:00Z" },
+    { id: "v3", version: 3, status: "DRAFT", publishedAt: null },
+  ],
+};
+const VERSION_VIEW = {
+  workflow: LIST_ENTRY.workflow,
+  version: { id: "v3", version: 3, status: "DRAFT" },
+  active: false,
+  steps: [
+    { key: "CONFIRMED", label: "Confirmed", initial: true, terminal: false },
+    { key: "CLOSED", label: "Closed", initial: false, terminal: true },
+  ],
+  actions: [
+    { key: "close", label: "Close", from: "CONFIRMED", to: "CLOSED", requiresOwnAssignment: false,
+      capabilityKey: "salesOrder.write", guardKind: null, roleKeys: ["admin", "salesManager"],
+      bindings: [{ roleKey: "admin", bindingKind: "SECURITY_ROLE" }, { roleKey: "salesManager", bindingKind: "SECURITY_ROLE" }] },
+  ],
+};
 
-// ============================ mirror parity ============================
-
-test("every family mirrors the seed's steps and actions exactly", () => {
-  const source = readFileSync(SEED_SOURCE, "utf8");
-
-  for (const family of SEED_WORKFLOW_FAMILIES) {
-    // The seed declares each family as an object literal with the same key. Parsing it properly
-    // would mean importing TypeScript; comparing the DECLARED IDENTIFIERS is enough to catch a
-    // step or action added on one side and not the other, which is the drift that matters.
-    assert.ok(source.includes(`key: "${family.key}"`), `the seed declares ${family.key}`);
-
-    for (const step of family.steps) {
-      assert.ok(
-        source.includes(`{ key: "${step.key}", label: "${step.label}"`),
-        `${family.key}: the seed declares step ${step.key} with the same label`,
-      );
-    }
-    for (const action of family.actions) {
-      assert.ok(
-        source.includes(`key: "${action.key}", label: "${action.label}", from: "${action.from}", to: "${action.to}"`),
-        `${family.key}: the seed declares action ${action.key} with the same from/to`,
-      );
-    }
+test("NO client copy of any workflow definition remains", () => {
+  assert.equal("SEED_WORKFLOW_FAMILIES" in view, false, "the duplicate seed export is gone");
+  const source = readFileSync("src/domain/adminWorkflowView.js", "utf8");
+  for (const seeded of ["PENDING_REVIEW", "READY_TO_DISPATCH", "IN_FULFILLMENT", "CUSTOMER_REVIEW", "roleKeys: ["]) {
+    assert.equal(source.includes(seeded), false, `the client still carries seed data (${seeded})`);
   }
+  const screen = readFileSync("src/modules/administration/AdminWorkflows.jsx", "utf8");
+  assert.equal(screen.includes("SEED_WORKFLOW_FAMILIES"), false);
+  assert.match(screen, /api\.listWorkflows\(\)/, "the list is read from the server");
 });
 
-test("the seed declares no family this screen would not show", () => {
-  const source = readFileSync(SEED_SOURCE, "utf8");
-  // Every `key:` at the family level in the seed is one of ours. Anchored on the exported constant
-  // names so an action key never counts as a family.
-  const seedFamilies = [...source.matchAll(/export const (\w+_WORKFLOW): SeedWorkflow/g)].map((m) => m[1]);
-  assert.equal(
-    seedFamilies.length, SEED_WORKFLOW_FAMILIES.length,
-    `the seed exports ${seedFamilies.length} families and the screen mirrors ${SEED_WORKFLOW_FAMILIES.length}`,
-  );
+test("summarizeWorkflow reads the active pointer and the lifecycle counts", () => {
+  const s = summarizeWorkflow(LIST_ENTRY);
+  assert.equal(s.activeVersion, 2);
+  assert.deepEqual(s.versions.map((v) => `${v.version}:${v.status}:${v.active}`), ["1:RETIRED:false", "2:PUBLISHED:true", "3:DRAFT:false"]);
+  assert.deepEqual({ ...s.counts }, { draft: 1, published: 1, retired: 1 });
+  assert.equal(summarizeWorkflow({}), null, "an unreadable entry is null, not a guess");
 });
 
-// ============================ shape ============================
-
-test("SALES IS THREE MACHINES, and they stay separate", () => {
-  // Opportunity, Agreement and Order are chained by events -- a won opportunity CREATES an
-  // agreement -- so one combined machine would draw transitions no code performs.
-  const sales = SEED_WORKFLOW_FAMILIES.filter((f) => f.key.startsWith("sales")).map((f) => f.key).sort();
-  assert.deepEqual(sales, ["salesAgreement", "salesOpportunity", "salesOrder"]);
-
-  // And no action crosses between them.
-  for (const family of SEED_WORKFLOW_FAMILIES) {
-    const stepKeys = new Set(family.steps.map((s) => s.key));
-    for (const action of family.actions) {
-      assert.ok(stepKeys.has(action.from), `${family.key}: ${action.key} comes from its own machine`);
-      assert.ok(stepKeys.has(action.to), `${family.key}: ${action.key} goes to its own machine`);
-    }
-  }
+test("lifecycle labels and the lifecycle actions worth offering", () => {
+  assert.equal(lifecycleLabel({ status: "PUBLISHED", active: true }), "Published · ACTIVE");
+  assert.equal(lifecycleLabel({ status: "PUBLISHED", active: false }), "Published · not active");
+  assert.deepEqual([...lifecycleActions({ status: "DRAFT" })], ["publish", "retire", "newVersion"]);
+  assert.deepEqual([...lifecycleActions({ status: "PUBLISHED", active: true })], ["newVersion"], "the ACTIVE version cannot be retired");
+  assert.deepEqual([...lifecycleActions({ status: "PUBLISHED", active: false })], ["activate", "retire", "newVersion"]);
+  assert.deepEqual([...lifecycleActions({ status: "RETIRED" })], ["newVersion"]);
 });
 
-test("every family has exactly one initial state and at least one terminal", () => {
-  for (const family of SEED_WORKFLOW_FAMILIES) {
-    const initial = family.steps.filter((s) => s.initial === true);
-    assert.equal(initial.length, 1, `${family.key}: one place to start`);
-    assert.ok(family.steps.some((s) => s.terminal === true), `${family.key}: something ends`);
-    for (const step of family.steps) {
-      assert.notEqual(step.initial === true && step.terminal === true, true, `${family.key}: ${step.key}`);
-    }
-  }
+test("buildWorkflowVersionView carries capability, guard and binding kind, and derives outgoing actions", () => {
+  const v = buildWorkflowVersionView(VERSION_VIEW);
+  assert.deepEqual(v.steps.map((s) => [s.key, [...s.outgoing]]), [["CONFIRMED", ["Close"]], ["CLOSED", []]]);
+  assert.equal(v.actions[0].capabilityKey, "salesOrder.write");
+  assert.deepEqual(v.actions[0].bindings.map((b) => b.bindingKind), ["SECURITY_ROLE", "SECURITY_ROLE"]);
+  assert.equal(v.bindingCount, 2);
+  assert.equal(buildWorkflowVersionView({}), null);
 });
 
-test("no action leaves a terminal state", () => {
-  for (const family of SEED_WORKFLOW_FAMILIES) {
-    const terminal = new Set(family.steps.filter((s) => s.terminal).map((s) => s.key));
-    for (const action of family.actions) {
-      assert.equal(terminal.has(action.from), false, `${family.key}: ${action.key} leaves a terminal state`);
-    }
-  }
+test("a draft round-trips into exactly the definition the server accepts", () => {
+  const editable = editableDefinition(VERSION_VIEW);
+  assert.equal(editable.actions[0].roleKeys, "admin, salesManager");
+  editable.actions[0].guardKind = "RECORD_ASSIGNMENT";
+  editable.actions[0].roleKeys = "admin,  salesManager ,technician";
+  editable.actions.push({ key: "x", label: "X", from: "CONFIRMED", to: "CLOSED", capabilityKey: "  ", guardKind: "", roleKeys: "" });
+  const def = definitionForServer(editable);
+  assert.deepEqual(def.actions[0], {
+    key: "close", label: "Close", from: "CONFIRMED", to: "CLOSED", capabilityKey: "salesOrder.write",
+    guardKind: "RECORD_ASSIGNMENT", requiresOwnAssignment: true, roleKeys: ["admin", "salesManager", "technician"],
+  });
+  assert.deepEqual([def.actions[1].capabilityKey, def.actions[1].guardKind, def.actions[1].roleKeys], [null, null, []],
+    "blank is none -- the server reports ACTION_WITHOUT_CAPABILITY, the browser does not decide");
+  assert.deepEqual(WORKFLOW_GUARD_OPTIONS.map((o) => o.value), ["", "RECORD_ASSIGNMENT"], "the server's closed guard list");
 });
 
-test("every action names at least one Role", () => {
-  // An action nobody may perform is not a definition error in the engine -- a version may be drafted
-  // before its Roles exist -- but a SEEDED family binding nothing would be a workflow that silently
-  // cannot run, which is worth failing on here.
-  for (const family of SEED_WORKFLOW_FAMILIES) {
-    for (const action of family.actions) {
-      assert.ok(action.roleKeys.length > 0, `${family.key}: ${action.key} binds nobody`);
-    }
-  }
+test("validation results are grouped by code, errors before warnings, verbatim", () => {
+  const s = validationSummary({
+    valid: false,
+    errors: [
+      { code: "BINDING_WITHOUT_CAPABILITY", message: "a" }, { code: "BINDING_WITHOUT_CAPABILITY", message: "b" },
+      { code: "NO_TERMINAL_STATE", message: "c" },
+    ],
+    warnings: [{ code: "CAPABILITY_HOLDER_NOT_BOUND", message: "d" }],
+  });
+  assert.equal(s.valid, false);
+  assert.deepEqual(s.errors.map((g) => [g.code, g.items.length]), [["BINDING_WITHOUT_CAPABILITY", 2], ["NO_TERMINAL_STATE", 1]]);
+  assert.equal(s.warningCount, 1);
+  assert.equal(validationSummary({}), null);
 });
 
-// ============================ the view ============================
-
-test("each state is told which actions leave it, derived rather than declared", () => {
-  const view = buildWorkflowVersionView(SEED_WORKFLOW_FAMILIES.find((f) => f.key === "workOrder"));
-  const scheduled = view.steps.find((s) => s.key === "SCHEDULED");
-  assert.deepEqual([...scheduled.outgoing].sort(), ["Cancel", "Dispatch", "Unschedule"].sort());
-
-  const closed = view.steps.find((s) => s.key === "CLOSED");
-  assert.deepEqual(closed.outgoing, [], "a terminal state has none, and that is its definition");
-  assert.equal(closed.terminal, true);
-});
-
-test("the five own-assignment actions are marked", () => {
-  const view = buildWorkflowVersionView(SEED_WORKFLOW_FAMILIES.find((f) => f.key === "workOrder"));
-  const own = view.actions.filter((a) => a.requiresOwnAssignment).map((a) => a.key).sort();
-  assert.deepEqual(own, ["Accept", "Arrive", "Complete", "Travel", "WorkStart"]);
-});
-
-test("every seeded version is a DRAFT — a definition routes nothing", () => {
-  for (const family of SEED_WORKFLOW_FAMILIES) {
-    const view = buildWorkflowVersionView(family);
-    assert.equal(view.status, "DRAFT", `${family.key} is a draft`);
-    assert.equal(view.version, 1);
-    assert.equal(summarizeWorkflowFamily(family).published, false);
-  }
-});
-
-test("binding counts add up", () => {
-  const view = buildWorkflowVersionView(SEED_WORKFLOW_FAMILIES.find((f) => f.key === "salesAgreement"));
-  assert.equal(view.bindingCount, view.actions.reduce((n, a) => n + a.roleKeys.length, 0));
-  assert.equal(view.bindingCount, 6, "two actions, three Roles each");
-});
-
-test("a missing family is handled rather than thrown at", () => {
-  assert.equal(buildWorkflowVersionView(null), null);
-  assert.equal(buildWorkflowVersionView(undefined), null);
-});
-
-test("the bound Role keys are the set an administrator would need", () => {
-  const keys = workflowBoundRoleKeys();
-  assert.deepEqual(keys, [...keys].sort(), "sorted, so the list is stable to read");
-  for (const expected of ["admin", "dispatcher", "technician", "partsManager", "partsAssociate",
-    "salesperson", "salesManager", "operationsManager"]) {
-    assert.ok(keys.includes(expected), `${expected} is bound somewhere`);
-  }
-});
-
-// ============================ areas over machines ============================
-
-test("THREE business areas over FIVE state machines", () => {
-  // The Owner's terminology. The counts are pinned because the whole point of the grouping is that
-  // it does NOT change the machine count -- if collapsing Sales ever reduced it, that is the
-  // invented-machine failure this grouping exists to avoid.
-  assert.deepEqual(workflowTerminologyCounts(), { areas: 3, stateMachines: 5 });
+test("THREE business areas group the server's machines; an unnamed workflow is shown, not hidden", () => {
   assert.equal(WORKFLOW_AREAS.length, 3);
-  assert.equal(SEED_WORKFLOW_FAMILIES.length, 5);
-});
-
-test("every machine belongs to exactly one area, and every area to real machines", () => {
-  const claimed = WORKFLOW_AREAS.flatMap((a) => a.machineKeys);
-  assert.equal(new Set(claimed).size, claimed.length, "no machine is claimed twice");
-  assert.deepEqual([...claimed].sort(), SEED_WORKFLOW_FAMILIES.map((f) => f.key).sort(), "and none is orphaned");
-
-  for (const area of WORKFLOW_AREAS) {
-    assert.equal(machinesInArea(area.key).length, area.machineKeys.length, `${area.key} resolves all its machines`);
-  }
-  for (const family of SEED_WORKFLOW_FAMILIES) {
-    assert.ok(areaForMachine(family.key), `${family.key} has an area`);
-  }
-});
-
-test("SALES IS ONE AREA OVER THREE MACHINES — not one machine", () => {
-  const sales = WORKFLOW_AREAS.find((a) => a.key === "sales");
-  assert.deepEqual([...sales.machineKeys], ["salesOpportunity", "salesAgreement", "salesOrder"]);
-  assert.equal(machinesInArea("sales").length, 3);
-
-  // And they remain SEPARATE machines: no action in one names a step in another.
-  const stepsByMachine = new Map(machinesInArea("sales").map((f) => [f.key, new Set(f.steps.map((s) => s.key))]));
-  for (const family of machinesInArea("sales")) {
-    for (const action of family.actions) {
-      assert.ok(stepsByMachine.get(family.key).has(action.from), `${family.key}: ${action.key} stays in its machine`);
-      assert.ok(stepsByMachine.get(family.key).has(action.to), `${family.key}: ${action.key} stays in its machine`);
-    }
-  }
-});
-
-test("an AREA carries no states, transitions or Role bindings of its own", () => {
-  // It is a presentation grouping. Giving it any of those would make it a fourth thing authority
-  // could be resolved against, which is exactly what must not happen.
-  for (const area of WORKFLOW_AREAS) {
-    assert.deepEqual(Object.keys(area).sort(), ["description", "key", "machineKeys", "name"]);
-  }
-});
-
-test("the single-machine areas are single, and say so by their machine count", () => {
-  assert.equal(machinesInArea("partsPurchasing").length, 1);
-  assert.equal(machinesInArea("workOrder").length, 1);
-});
-
-test("an unknown area or machine is answered, not thrown at", () => {
-  assert.deepEqual(machinesInArea("nosuchthing"), []);
-  assert.equal(areaForMachine("nosuchthing"), null);
+  assert.deepEqual([...areaForMachine("salesOrder").machineKeys], ["salesOpportunity", "salesAgreement", "salesOrder"],
+    "Sales is one AREA over three machines, not one machine");
+  const groups = groupWorkflowsByArea([summarizeWorkflow(LIST_ENTRY), summarizeWorkflow({ ...LIST_ENTRY, workflow: { ...LIST_ENTRY.workflow, id: "wf-x", key: "custom" } })]);
+  assert.deepEqual(groups.map((g) => [g.key, g.workflows.map((w) => w.key)]), [["sales", ["salesOrder"]], ["other", ["custom"]]]);
 });

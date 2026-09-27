@@ -312,6 +312,7 @@ const toWorkflow = (r: Record<string, unknown>): WorkflowRecord => ({
   description: (r.description as string | null) ?? null,
   objectKey: (r.object_key as string | null) ?? null,
   origin: r.origin as WorkflowRecord["origin"],
+  activeVersionId: (r.active_version_id as string | null | undefined) ?? null,
   ...provenance(r),
 });
 
@@ -346,6 +347,8 @@ const toAction = (r: Record<string, unknown>): WorkflowActionRecord => ({
   fromStepKey: String(r.from_step_key),
   toStepKey: String(r.to_step_key),
   requiresOwnAssignment: r.requires_own_assignment === true,
+  capabilityKey: (r.capability_key as string | null | undefined) ?? null,
+  guardKind: (r.guard_kind as WorkflowActionRecord["guardKind"] | undefined) ?? null,
   ...provenance(r),
 });
 
@@ -355,7 +358,25 @@ const toBinding = (r: Record<string, unknown>): WorkflowRoleBindingRecord => ({
   workflowVersionId: String(r.workflow_version_id),
   actionKey: String(r.action_key),
   roleId: String(r.role_id),
+  bindingKind: (r.binding_kind as WorkflowRoleBindingRecord["bindingKind"] | undefined) ?? "SECURITY_ROLE",
   ...provenance(r),
+});
+
+const toInstanceEvent = (r: Record<string, unknown>): WorkflowInstanceEventRecord => ({
+  id: String(r.id),
+  tenantId: String(r.tenant_id),
+  instanceId: String(r.instance_id),
+  actionKey: String(r.action_key),
+  fromStepKey: String(r.from_step_key),
+  toStepKey: String(r.to_step_key),
+  actorUid: String(r.actor_uid),
+  occurredAt: iso(r.occurred_at),
+  reason: (r.reason as string | null) ?? null,
+  eventKind: (r.event_kind as WorkflowInstanceEventRecord["eventKind"] | undefined) ?? "TRANSITION",
+  actorPrincipalId: (r.actor_principal_id as string | null | undefined) ?? null,
+  fromVersionId: (r.from_version_id as string | null | undefined) ?? null,
+  toVersionId: (r.to_version_id as string | null | undefined) ?? null,
+  auditEventId: (r.audit_event_id as string | null | undefined) ?? null,
 });
 
 const toInstance = (r: Record<string, unknown>): WorkflowInstanceRecord => ({
@@ -616,6 +637,30 @@ export class PostgresPolicyRepository implements PolicyRepository {
     );
   }
 
+  getWorkflowInstanceById(tenantId: TenantId, instanceId: string) {
+    return this.one(
+      `SELECT * FROM ${SCHEMA}.workflow_instances WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, instanceId],
+      toInstance,
+    );
+  }
+
+  listWorkflowInstances(tenantId: TenantId, versionId: string) {
+    return this.many(
+      `SELECT * FROM ${SCHEMA}.workflow_instances WHERE tenant_id = $1 AND workflow_version_id = $2 ORDER BY object_key, record_id`,
+      [tenantId, versionId],
+      toInstance,
+    );
+  }
+
+  listWorkflowInstanceEvents(tenantId: TenantId, instanceId: string) {
+    return this.many(
+      `SELECT * FROM ${SCHEMA}.workflow_instance_events WHERE tenant_id = $1 AND instance_id = $2 ORDER BY occurred_at, id`,
+      [tenantId, instanceId],
+      toInstanceEvent,
+    );
+  }
+
   getWorkflowInstance(tenantId: TenantId, objectKey: string, recordId: string) {
     return this.one(
       `SELECT * FROM ${SCHEMA}.workflow_instances WHERE tenant_id = $1 AND object_key = $2 AND record_id = $3`,
@@ -718,6 +763,31 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       throw new PolicyStoreError(`workflow version ${row.version} is ${row.status} and cannot be edited`);
     }
     return row;
+  };
+
+  /** Whether migration 1762732800000 has run on this database. Asked once per transaction. */
+  let controlPlaneColumns: Promise<boolean> | null = null;
+  const workflowActionsHaveControlPlaneColumns = (): Promise<boolean> => {
+    controlPlaneColumns ??= q.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'workflow_actions' AND column_name = 'capability_key'`,
+      [SCHEMA],
+    ).then((r) => r.rows.length > 0);
+    return controlPlaneColumns;
+  };
+
+  /** A workflow trigger refusal (RAISE ... 'WORKFLOW_...') or a unique violation is a store refusal. */
+  const workflowGuarded = async <T>(run: () => Promise<T>): Promise<T> => {
+    try {
+      return await run();
+    } catch (err) {
+      const e = err as { code?: string; message?: string };
+      if (e?.code === "P0001" && typeof e.message === "string" && e.message.startsWith("WORKFLOW_")) {
+        throw new PolicyStoreError(e.message);
+      }
+      if (e?.code === "23505") throw new PolicyStoreError("duplicate key: that workflow row already exists");
+      throw err;
+    }
   };
 
   /** Postgres raises 23505 on a unique violation; the domain says so in words. */
@@ -1176,12 +1246,30 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
 
     async createWorkflowAction(input: NewRecord<WorkflowActionRecord>) {
       await assertDraftVersion(input.workflowVersionId);
+      // The legacy flag and the guard are one fact (CHECK workflow_actions_guard_agrees_with_legacy_flag,
+      // and the workflow_actions_guard_sync trigger derives the guard from the flag).
+      const guardKind = input.guardKind ?? (input.requiresOwnAssignment ? "RECORD_ASSIGNMENT" : null);
+      // THE SEED BOUNDARY. The canonical seed is replayed against a chain migrated only up to
+      // 1761523200000 (roleCapabilityAuthorityBaseline), where capability_key does not exist yet. That
+      // schema cannot carry a capability, so none is written; the draft then cannot be published
+      // (ACTION_WITHOUT_CAPABILITY) until an administrator binds one on a new version.
+      if (!(await workflowActionsHaveControlPlaneColumns())) {
+        const { rows } = await q.query(
+          `INSERT INTO ${SCHEMA}.workflow_actions (id, tenant_id, workflow_version_id, key, label,
+             from_step_key, to_step_key, requires_own_assignment, created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+          [newId(), tenantId, input.workflowVersionId, input.key, input.label, input.fromStepKey,
+            input.toStepKey, guardKind === "RECORD_ASSIGNMENT", ...stamp()],
+        );
+        return toAction(rows[0]);
+      }
       const { rows } = await q.query(
         `INSERT INTO ${SCHEMA}.workflow_actions (id, tenant_id, workflow_version_id, key, label,
-           from_step_key, to_step_key, requires_own_assignment, created_by, created_at, updated_by, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+           from_step_key, to_step_key, requires_own_assignment, capability_key, guard_kind,
+           created_by, created_at, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
         [newId(), tenantId, input.workflowVersionId, input.key, input.label, input.fromStepKey,
-          input.toStepKey, input.requiresOwnAssignment, ...stamp()],
+          input.toStepKey, guardKind === "RECORD_ASSIGNMENT", input.capabilityKey ?? null, guardKind, ...stamp()],
       );
       return toAction(rows[0]);
     },
@@ -1190,10 +1278,17 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       await assertDraftVersion(input.workflowVersionId);
       await requireOwned("roles", input.roleId, "role");
       const { rows } = await q.query(
-        `INSERT INTO ${SCHEMA}.workflow_role_bindings (id, tenant_id, workflow_version_id, action_key,
-           role_id, created_by, created_at, updated_by, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-        [newId(), tenantId, input.workflowVersionId, input.actionKey, input.roleId, ...stamp()],
+        // binding_kind is written only when it is not the column default, so the seed-boundary replay
+        // (a schema before 1762732800000) still writes the Security Role bindings it always did.
+        input.bindingKind && input.bindingKind !== "SECURITY_ROLE"
+          ? `INSERT INTO ${SCHEMA}.workflow_role_bindings (id, tenant_id, workflow_version_id, action_key,
+               role_id, created_by, created_at, updated_by, updated_at, binding_kind)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`
+          : `INSERT INTO ${SCHEMA}.workflow_role_bindings (id, tenant_id, workflow_version_id, action_key,
+               role_id, created_by, created_at, updated_by, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [newId(), tenantId, input.workflowVersionId, input.actionKey, input.roleId, ...stamp(),
+          ...(input.bindingKind && input.bindingKind !== "SECURITY_ROLE" ? [input.bindingKind] : [])],
       );
       return toBinding(rows[0]);
     },
@@ -1212,12 +1307,12 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
 
     async createWorkflowInstance(input: NewRecord<WorkflowInstanceRecord>) {
       await requireOwned("workflow_versions", input.workflowVersionId, "workflow version");
-      const { rows } = await q.query(
+      const { rows } = await workflowGuarded(() => q.query(
         `INSERT INTO ${SCHEMA}.workflow_instances (id, tenant_id, workflow_version_id, object_key,
            record_id, current_step_key, created_by, created_at, updated_by, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
         [newId(), tenantId, input.workflowVersionId, input.objectKey, input.recordId, input.currentStepKey, ...stamp()],
-      );
+      ));
       return toInstance(rows[0]);
     },
 
@@ -1234,11 +1329,50 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
     async appendWorkflowInstanceEvent(input: Omit<WorkflowInstanceEventRecord, "id" | "tenantId">) {
       await q.query(
         `INSERT INTO ${SCHEMA}.workflow_instance_events (id, tenant_id, instance_id, action_key,
-           from_step_key, to_step_key, actor_uid, occurred_at, reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+           from_step_key, to_step_key, actor_uid, occurred_at, reason, event_kind, actor_principal_id,
+           from_version_id, to_version_id, audit_event_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [newId(), tenantId, input.instanceId, input.actionKey, input.fromStepKey, input.toStepKey,
-          input.actorUid, input.occurredAt, input.reason],
+          input.actorUid, input.occurredAt, input.reason, input.eventKind ?? "TRANSITION",
+          input.actorPrincipalId ?? null, input.fromVersionId ?? null, input.toVersionId ?? null,
+          input.auditEventId ?? null],
       );
+    },
+
+    // ── workflow control plane (migration 1762732800000) ──
+    // Every guard below is ALSO a database trigger; a trigger refusal is surfaced as a store refusal
+    // (CONFLICT at the API) rather than an opaque internal error.
+    async setWorkflowActiveVersion(workflowId: string, versionId: string | null) {
+      await requireOwned("workflows", workflowId, "workflow");
+      if (versionId !== null) await requireOwned("workflow_versions", versionId, "workflow version");
+      const { rows } = await workflowGuarded(() => q.query(
+        `UPDATE ${SCHEMA}.workflows SET active_version_id = $1, updated_by = $2, updated_at = $3
+          WHERE id = $4 AND tenant_id = $5 RETURNING *`,
+        [versionId, actor.uid, nowIso(), workflowId, tenantId],
+      ));
+      return toWorkflow(rows[0]);
+    },
+
+    async retireWorkflowVersion(versionId: string) {
+      await requireOwned("workflow_versions", versionId, "workflow version");
+      const { rows } = await workflowGuarded(() => q.query(
+        `UPDATE ${SCHEMA}.workflow_versions SET status = 'RETIRED', updated_by = $1, updated_at = $2
+          WHERE id = $3 AND tenant_id = $4 RETURNING *`,
+        [actor.uid, nowIso(), versionId, tenantId],
+      ));
+      return toWorkflowVersion(rows[0]);
+    },
+
+    async repinWorkflowInstance(instanceId: string, versionId: string, stepKey: string) {
+      await requireOwned("workflow_instances", instanceId, "workflow instance");
+      await requireOwned("workflow_versions", versionId, "workflow version");
+      const { rows } = await workflowGuarded(() => q.query(
+        `UPDATE ${SCHEMA}.workflow_instances
+            SET workflow_version_id = $1, current_step_key = $2, updated_by = $3, updated_at = $4
+          WHERE id = $5 AND tenant_id = $6 RETURNING *`,
+        [versionId, stepKey, actor.uid, nowIso(), instanceId, tenantId],
+      ));
+      return toInstance(rows[0]);
     },
 
     // ── Administration decisions and grant conditions (migration 1762646400000) ──
