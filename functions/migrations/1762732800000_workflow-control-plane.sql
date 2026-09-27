@@ -231,7 +231,9 @@ CREATE INDEX workflow_instances_by_version ON workflow_instances (tenant_id, wor
 SET search_path = eos_policy, public;
 
 -- GUARDED. Published lifecycle facts, active pointers and administrative instance events are
--- recorded policy; a rollback does not get to erase them.
+-- recorded policy; a rollback does not get to erase them. A DRAFT is not yet recorded policy: its
+-- rows are editable by definition and a canonical-seed draft is replayed from the seed, so capability
+-- bindings and non-Security-Role bindings on a DRAFT version do not block the reversal.
 DO $$
 DECLARE
     v_n INT;
@@ -244,11 +246,13 @@ BEGIN
     IF v_n > 0 THEN
         RAISE EXCEPTION 'WORKFLOW_CONTROL_PLANE: refuses to reverse -- % governed instance event(s) exist', v_n;
     END IF;
-    SELECT count(*) INTO v_n FROM workflow_actions WHERE capability_key IS NOT NULL;
+    SELECT count(*) INTO v_n FROM workflow_actions a JOIN workflow_versions v ON v.id = a.workflow_version_id
+     WHERE a.capability_key IS NOT NULL AND v.status <> 'DRAFT';
     IF v_n > 0 THEN
         RAISE EXCEPTION 'WORKFLOW_CONTROL_PLANE: refuses to reverse -- % workflow action(s) are bound to a capability', v_n;
     END IF;
-    SELECT count(*) INTO v_n FROM workflow_role_bindings WHERE binding_kind <> 'SECURITY_ROLE';
+    SELECT count(*) INTO v_n FROM workflow_role_bindings b JOIN workflow_versions v ON v.id = b.workflow_version_id
+     WHERE b.binding_kind <> 'SECURITY_ROLE' AND v.status <> 'DRAFT';
     IF v_n > 0 THEN
         RAISE EXCEPTION 'WORKFLOW_CONTROL_PLANE: refuses to reverse -- % non-Security-Role binding(s) exist', v_n;
     END IF;
