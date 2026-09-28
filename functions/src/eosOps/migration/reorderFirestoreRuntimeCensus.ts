@@ -212,6 +212,14 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
     classification: "MIGRATION_EVIDENCE", consumer: "the parity matrix names the source collection", occurrences: 1 }),
   e({ path: "functions/src/eosOps/migration/reorderObjectMigrationCopy.ts", object: "REORDER_REQUEST",
     classification: "MIGRATION_EVIDENCE", consumer: "the COPY executor names the source collection", occurrences: 1 }),
+  // The EOS_REORDER_SNAPSHOT format read by the Render-shell cutover CLI (scripts/reorderCutover.js). It names the three
+  // legacy collections as the keys of an exported FILE; it loads no Firebase module and reads no Firestore.
+  e({ path: "functions/src/eosOps/migration/reorderSnapshot.ts", object: "REORDER_REQUEST",
+    classification: "MIGRATION_EVIDENCE", consumer: "the snapshot format names the source collection it carries", occurrences: 5 }),
+  e({ path: "functions/src/eosOps/migration/reorderSnapshot.ts", object: "PURCHASE_ORDER",
+    classification: "MIGRATION_EVIDENCE", consumer: "the snapshot format names the source collection it carries", occurrences: 2 }),
+  e({ path: "functions/src/eosOps/migration/reorderSnapshot.ts", object: "PURCHASE_ORDER_VOID",
+    classification: "MIGRATION_EVIDENCE", consumer: "the snapshot format names the source collection it carries", occurrences: 2 }),
   e({ path: "functions/src/eosOps/migration/assignedToUserIdCensus.ts", object: "REORDER_REQUEST",
     classification: "MIGRATION_EVIDENCE", consumer: "the assignee census names the collection", occurrences: 1 }),
   e({ path: "functions/src/eosOps/migration/purchasingMigrationMapping.ts", object: "REORDER_REQUEST",

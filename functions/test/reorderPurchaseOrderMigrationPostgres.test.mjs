@@ -61,6 +61,7 @@ const voidDoc = (id, over = {}) => ({
     operatingCompanyId: "taylor",
     reason: "supplier could not fulfil",
     voidedBy: UID_BUYER,
+    voidedAt: 1758000900000,
     ...over,
   },
 });
@@ -300,6 +301,8 @@ test("legacy Reorder purchase order copy: completeness, resolved identity, all-o
     assert.equal(rows[0].part_id, "PART-LEGACY-1");
     assert.equal(rows[0].reason, "supplier could not fulfil");
     assert.equal(rows[0].voided_by, buyer);
+    // The void's OWN instant, not the copy time (reorderFieldParityMatrix: voidedAt -> voided_at).
+    assert.equal(new Date(rows[0].voided_at).toISOString(), new Date(1758000900000).toISOString());
   });
 
   await t.test("a void with no purchase order records nothing, and is refused", async () => {

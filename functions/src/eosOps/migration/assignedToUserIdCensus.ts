@@ -155,6 +155,12 @@ export const ASSIGNED_TO_USER_ID_CENSUS: readonly CensusEntry[] = Object.freeze(
     occurrences: 3, status: "NOT_STARTED",
   }),
   e({
+    path: "functions/src/eosOps/migration/reorderSnapshot.ts", object: "REORDER", classification: "MIGRATION_EVIDENCE",
+    consumer: "the snapshot mapper: carries the raw legacy field from an exported Reorder document into the "
+      + "assignment classifier's source row, unresolved -- the classifier decides",
+    occurrences: 4, status: "NOT_STARTED",
+  }),
+  e({
     path: "functions/src/eosOps/migration/reorderAssignmentMigrationCopy.ts", object: "REORDER", classification: "MIGRATION_EVIDENCE",
     consumer: "the DRY RUN / COPY / VERIFY executor: gathers the source uids for resolution and records the legacy "
       + "field as the copy's audit reason",

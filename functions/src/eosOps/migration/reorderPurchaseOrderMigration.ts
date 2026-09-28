@@ -338,6 +338,7 @@ export function planReorderPurchaseOrderMigration(input: {
         operatingCompanyKey: companyKey,
         partId: mapped.row.partId,
         reason: mapped.row.reason,
+        voidedAt: mapped.row.voidedAt,
         voidedByPrincipalId: actor.principalId,
       }),
       refusalCode: null,

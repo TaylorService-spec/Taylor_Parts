@@ -255,8 +255,9 @@ export async function copyPurchaseOrdersOnce(
         `INSERT INTO eos_ops.purchase_order_voids
            (purchase_order_id, tenant_id, operating_company_key, part_id, reason, voided_by, voided_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        // voided_at is the LEGACY void instant, not the copy time (reorderFieldParityMatrix: voidedAt).
         [row.purchaseOrderId, input.tenantId, row.operatingCompanyKey, row.partId, row.reason,
-          row.voidedByPrincipalId, at],
+          row.voidedByPrincipalId, row.voidedAt],
       );
       insertedVoids += 1;
     }
