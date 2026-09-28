@@ -180,7 +180,7 @@ export async function assignWorkOrderToEmployee(
 
     // THE ACCOUNT PREDICATE: work is assigned only to an Employee with an ACTIVE governed login. It is
     // the third of the three governed assignability predicates (lifecycle, qualification, account --
-    // eosWorkforce/reads/assignableEmployeeReads.ts), and Reorder assignment enforces it at its own
+    // the governed assignable-Employee read, assignableEmployeeReads.ts), and Reorder assignment enforces it at its own
     // command boundary for the same reason this one does: a picker is discovery, not enforcement.
     // Without it a caller holding the capability could assign a job to an Employee who can never sign
     // in to accept it -- RECORD_ASSIGNMENT would then refuse the technician with EMPLOYEE_LINK_REQUIRED
