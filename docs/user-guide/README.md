@@ -26,9 +26,11 @@ what you're trying to do, in plain language, matching the app's actual on-screen
   kind of import does, what it refuses and why, and what it will never do. Sandbox only.
 - [Set up warehouse racking](./administration/set-up-warehouse-racking.md) — describing a
   warehouse's aisles, bays and positions once and creating all of its bins in one pass.
-- [Manage users](./administration/manage-employees.md)
-- [See who can do what](./administration/see-who-can-do-what.md)
-- [See what a role can do](./administration/see-what-a-role-can-do.md)
+- [Administration: Policy and Access](../training/administration-policy-and-access.md) — the canonical
+  Administration guide: Security Roles on the Employee record, Object Security, Effective Access, Direct
+  Exceptions, Functional Roles, workflows, the protected Owner and the Owner's Administrator staffing.
+- [Manage users](./administration/manage-employees.md) — finding people and keeping their Employee details
+  correct.
 - [Integrations](./administration/integrations-guide.md)
 
 More guides will be added here as they're written. If a guide references a screen or control that
