@@ -29,6 +29,7 @@ on:
       - "field-ops-app-vite/test/availableEquipmentCatalogView.test.mjs"
       - "field-ops-app-vite/test/availableEquipmentLocationDisplay.test.jsx"
       - "field-ops-app-vite/test/locationDisplayProjection.test.mjs"
+      - "field-ops-app-vite/test/locationDisplayReadChunking.test.mjs"
       - "field-ops-app-vite/test/equipmentWorkspace.test.jsx"
       - ".github/workflows/available-equipment-governed-read-tests.yml"
   push:
@@ -49,6 +50,7 @@ on:
       - "field-ops-app-vite/test/availableEquipmentCatalogView.test.mjs"
       - "field-ops-app-vite/test/availableEquipmentLocationDisplay.test.jsx"
       - "field-ops-app-vite/test/locationDisplayProjection.test.mjs"
+      - "field-ops-app-vite/test/locationDisplayReadChunking.test.mjs"
       - "field-ops-app-vite/test/equipmentWorkspace.test.jsx"
       - ".github/workflows/available-equipment-governed-read-tests.yml"
   workflow_dispatch:
@@ -83,7 +85,7 @@ jobs:
         run: npm install
         working-directory: field-ops-app-vite
       - name: Pure domain mapper + catalog view + location-display tests (node:test)
-        run: node test/availableEquipmentGovernedProjection.test.mjs && node test/availableEquipmentCatalogView.test.mjs && node test/locationDisplayProjection.test.mjs
+        run: node test/availableEquipmentGovernedProjection.test.mjs && node test/availableEquipmentCatalogView.test.mjs && node test/locationDisplayProjection.test.mjs && node --test test/locationDisplayReadChunking.test.mjs
         working-directory: field-ops-app-vite
       - name: Governed-read render regression + location-display regression + EquipmentWorkspace tab coverage (vitest + jsdom)
         run: npx vitest run test/availableEquipmentGovernedRead.test.jsx test/availableEquipmentLocationDisplay.test.jsx test/equipmentWorkspace.test.jsx

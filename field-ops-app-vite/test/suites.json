@@ -418,6 +418,10 @@
       "runner": "node"
     },
     {
+      "file": "test/locationDisplayReadChunking.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/locationSubscription.test.mjs",
       "runner": "node"
     },
