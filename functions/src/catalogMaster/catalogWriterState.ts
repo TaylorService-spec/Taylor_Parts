@@ -48,7 +48,9 @@ export interface CatalogWriterAuthority {
 // FREEZE (Controller ruling 2026-09-28, activation window step 2): OPEN/INACTIVE -> FROZEN/INACTIVE, the declared FREEZE
 // transition. PostgreSQL stays INACTIVE -- and the Render Catalog transport therefore refuses (assertPostgresCatalogActive)
 // -- until the verified COPY and the separate ACTIVATE_POSTGRES change (window step 18).
-export const CATALOG_WRITER_AUTHORITY: CatalogWriterAuthority = Object.freeze({ firestore: "FROZEN", postgres: "INACTIVE" });
+// ACTIVATE_POSTGRES (Controller ruling 2026-09-28, activation window step 18): FROZEN/INACTIVE -> FROZEN/ACTIVE, taken only
+// after the Catalog COPY is verified. The Render Catalog transport answers from here on; Firestore stays FROZEN.
+export const CATALOG_WRITER_AUTHORITY: CatalogWriterAuthority = Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" });
 
 export const CATALOG_WRITER_TRANSITIONS = Object.freeze([
   Object.freeze({ name: "FREEZE", from: Object.freeze({ firestore: "OPEN", postgres: "INACTIVE" }), to: Object.freeze({ firestore: "FROZEN", postgres: "INACTIVE" }) }),

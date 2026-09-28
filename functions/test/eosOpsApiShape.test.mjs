@@ -146,17 +146,21 @@ test("firestore.rules was not changed by this tranche's file set -- eos_ops touc
 });
 
 // ════════════════ the PostgreSQL Reorder activation boundary (Controller ruling 2026-09-28, window step 19) ════════════════
-test("until REORDER_POSTGRES_ACTIVE, EVERY Reorder operation refuses before any identity or database work", async () => {
+test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true opens it; false refuses before any work", async () => {
   const { executeOperation } = await import("../lib/eosOps/eosOpsHttp.js");
   const { REORDER_POSTGRES_ACTIVE } = await import("../lib/eosOps/reorderLifecycleCommands.js");
-  assert.equal(REORDER_POSTGRES_ACTIVE, false, "the integration package ships the Reorder authority INACTIVE");
+  assert.equal(REORDER_POSTGRES_ACTIVE, true, "the activation package opens the PostgreSQL Reorder authority");
   const untouchable = new Proxy({}, { get: () => { throw new Error("DEPS_TOUCHED"); } });
   const reorderOps = [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].filter((o) => !/^resolveMy/.test(o));
   assert.equal(reorderOps.length, 15);
   for (const operation of reorderOps) {
-    const r = await executeOperation({ reader: untouchable, pool: untouchable },
+    const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },
       { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });
     assert.deepEqual([r.ok, r.code], [false, "PRECONDITION_FAILED"], operation);
+    // Committed (active): the gate passes and the operation proceeds to identity resolution.
+    const open = await executeOperation({ reader: untouchable, pool: untouchable },
+      { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} }).catch((e) => e);
+    assert.notEqual(open && open.code, "PRECONDITION_FAILED", `${operation} must pass the gate once active`);
     assert.match(r.message, /not active yet/);
   }
   // The two principal-context resolvers are not Reorder operations: they are not behind this boundary.

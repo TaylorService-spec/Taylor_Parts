@@ -494,9 +494,8 @@ test("PostgreSQL Receiving: one transaction, the whole business closure or none 
 
   // ════════════════════════════ THE ACTIVATION BOUNDARY ════════════════════════════
 
-  await t.test("markReorderReceived still answers while receiving is inert, and delegates to the shared closeout", async () => {
-    assert.equal(lifecycle.RECEIVING_POSTGRES_ACTIVE, false,
-      "the PostgreSQL receipt is built but the cutover is not active");
+  await t.test("receiving is ACTIVE (window step 19, Owner ruling R2): the closeout belongs to the receipt, through ONE function", async () => {
+    assert.equal(lifecycle.RECEIVING_POSTGRES_ACTIVE, true, "the activation package activates PostgreSQL receiving");
     const id = await chain({ quantity: 1 });
     await q(`INSERT INTO eos_ops.reorder_request_assignments
                (id, tenant_id, reorder_request_id, assigned_employee_id, assigned_by_principal_id, state)
