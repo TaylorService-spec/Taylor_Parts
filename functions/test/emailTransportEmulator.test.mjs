@@ -34,9 +34,13 @@ import { ProviderTransportError } from "../lib/inboundWork/providerTransport.js"
 import { createInMemoryVault, forgetAccessToken } from "../lib/inboundWork/providerCredentialVault.js";
 import { createInMemoryAttachmentStore } from "../lib/inboundWork/attachmentCustody.js";
 import { SANDBOX_RECORDS } from "../scripts/fixtures/inboundWorkFixtures.mjs";
+import { installGovernedFixtureAccess } from "./support/governedFixtureAccess.mjs";
 
 admin.initializeApp({ projectId: "eos-platform-sandbox" });
 const db = admin.firestore();
+// Pass 11 Fix Wave 1: in the governed sandbox project the runtime asks Administration; the fixture's Security
+// Roles answer it through the pinned baseline (test/support/governedFixtureAccess.mjs), never through Firestore roles.
+installGovernedFixtureAccess(db);
 
 const CONNECTION_ID = "tx-conn-m365";
 const MAILBOX_ID = "tx-mb-warranty";

@@ -474,6 +474,11 @@ on:
       - "functions/test/administrationControlPlanePostgres.test.mjs"
       - "functions/src/eosOps/effectiveAccessExplanation.ts"
       - "functions/test/effectiveAccessExplanationPostgres.test.mjs"
+      # PASS 11 FIX WAVE 1: the Firebase runtime's read authority answers from PostgreSQL Administration.
+      - "functions/src/access/governedRuntimeAuthority.ts"
+      - "functions/src/access/effectiveAccessFeed.ts"
+      - "functions/test/governedRuntimeAuthority.test.mjs"
+      - "functions/test/governedRuntimeAuthorityPostgres.test.mjs"
       - "functions/test/administrationControlPlaneSecurityPostgres.test.mjs"
       # LANE SC (2026-09-26): Security Role ASSIGNMENT SCOPE runtime -- scope-qualified holdings, business-context
       # admission, assignRole scope validation, listSupportedAssignmentScopes, the scoped Employee directory reads.
@@ -885,6 +890,11 @@ on:
       - "functions/test/administrationControlPlanePostgres.test.mjs"
       - "functions/src/eosOps/effectiveAccessExplanation.ts"
       - "functions/test/effectiveAccessExplanationPostgres.test.mjs"
+      # PASS 11 FIX WAVE 1: the Firebase runtime's read authority answers from PostgreSQL Administration.
+      - "functions/src/access/governedRuntimeAuthority.ts"
+      - "functions/src/access/effectiveAccessFeed.ts"
+      - "functions/test/governedRuntimeAuthority.test.mjs"
+      - "functions/test/governedRuntimeAuthorityPostgres.test.mjs"
       - "functions/test/administrationControlPlaneSecurityPostgres.test.mjs"
       # LANE SC (2026-09-26): Security Role ASSIGNMENT SCOPE runtime -- scope-qualified holdings, business-context
       # admission, assignRole scope validation, listSupportedAssignmentScopes, the scoped Employee directory reads.

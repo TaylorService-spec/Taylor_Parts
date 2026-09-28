@@ -41,6 +41,12 @@ import { resolveRuntimeCapabilityOverrides } from "./environmentCapabilityOverri
 import { isValidAccessVersionValue } from "./compactClaims";
 import { buildOperationalRoleActiveResolverFromEmployeeId } from "./operationalRoleContext";
 import type { Role } from "../types/access";
+import { findPermission } from "./permissionCatalog";
+import {
+  defaultGovernedAccessResolver,
+  isGovernedRuntimeAuthorityActive,
+  type GovernedAccessResolver,
+} from "./governedRuntimeAuthority";
 
 export class InvalidInputError extends Error {}
 export class MalformedAccessDataError extends Error {}
@@ -91,6 +97,10 @@ export interface ResolveEffectiveAccessOptions {
   // production behavior can be altered through this option (it does
   // not exist on the callable's own request contract at all).
   roles?: Readonly<Record<string, Role>>;
+  // Injectable for tests ONLY -- defaults to the PostgreSQL resolver over the shared policy pool. WHETHER governed
+  // authority applies is never an option: it is derived from the runtime's own project identity
+  // (isGovernedRuntimeAuthorityActive), so no caller can switch a governed environment back to Firestore roles.
+  governed?: GovernedAccessResolver;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -173,6 +183,25 @@ export async function resolveEffectiveAccess(
   // GCLOUD_PROJECT path (a sandbox projectId), never via a caller override.
   const activationOverrides = resolveRuntimeCapabilityOverrides();
 
+  // ════════════ GOVERNED RUNTIME AUTHORITY (Pass 11 Fix Wave 1) ════════════
+  // In an environment that declares it, every capability Administration GOVERNS (a key in eos_policy.capabilities)
+  // is decided by PostgreSQL alone: the caller's flat governed set -- Role grants plus unexpired direct exceptions,
+  // with conditioned and scoped holdings withheld, because this feed answers capability-level questions and has no
+  // record to evaluate a condition against (a conditioned grant must never read as an unconditional one here).
+  // The legacy catalog's activation state stays a DOMAIN PREREQUISITE (a held system stays held), never a grant.
+  // Keys Administration does not govern yet stay on the legacy resolution below, unchanged -- recorded as the
+  // remaining Firebase dependency, not silently widened or narrowed.
+  const governedActive = isGovernedRuntimeAuthorityActive();
+  const governed = governedActive
+    ? await (options.governed ?? defaultGovernedAccessResolver())(input.principalUid)
+    : null;
+  if (governed && governed.status !== "RESOLVED") {
+    // Fail closed: an unresolvable caller holds nothing, governed or legacy. No fallback to Firestore roles.
+    const denied: Record<string, boolean> = {};
+    for (const permissionId of new Set(input.permissionIds)) denied[permissionId] = false;
+    return { accessVersion: 0, decisions: denied };
+  }
+
   const [userSnap, assignmentsSnap] = await Promise.all([
     db.collection(USERS_COLLECTION).doc(input.principalUid).get(),
     db
@@ -231,6 +260,11 @@ export async function resolveEffectiveAccess(
 
   const decisions: Record<string, boolean> = {};
   for (const permissionId of new Set(input.permissionIds)) {
+    if (governed && governed.status === "RESOLVED" && governed.governedKeys.has(permissionId)) {
+      decisions[permissionId] =
+        governed.actor.capabilities.has(permissionId) && governedDomainPrerequisite(permissionId, activationOverrides);
+      continue;
+    }
     decisions[permissionId] =
       resolveEffectivePermission({
         permissionId,
@@ -243,4 +277,16 @@ export async function resolveEffectiveAccess(
   }
 
   return { accessVersion, decisions };
+}
+
+/**
+ * The legacy catalog's activation flag, kept as a DOMAIN PREREQUISITE for a governed key: a capability the catalog
+ * declares `active: false` (a held write path, a dormant domain) stays refused unless this environment's activation
+ * overrides switch it on -- exactly as before. It never GRANTS: a key the catalog does not list at all (one only
+ * Administration registered, e.g. workOrder.record.read) has no legacy prerequisite and is decided by the grant alone.
+ */
+export function governedDomainPrerequisite(permissionId: string, activationOverrides: ReadonlySet<string>): boolean {
+  const legacy = findPermission(permissionId);
+  if (!legacy) return true;
+  return legacy.active !== false || activationOverrides.has(permissionId);
 }

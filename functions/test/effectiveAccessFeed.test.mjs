@@ -27,6 +27,7 @@ import {
   MAX_PERMISSION_IDS,
 } from "../lib/access/effectiveAccessFeed.js";
 import { __resetRuntimeCapabilityOverridesCacheForTest } from "../lib/access/environmentCapabilityOverrides.js";
+import { installGovernedFixtureAccess } from "./support/governedFixtureAccess.mjs";
 
 // --- Per-environment activation override regressions (spec 2026-08-14) ---
 // These use a FAKE db (like the backend-outage test) so they exercise the feed's
@@ -92,6 +93,9 @@ const PROJECT_ID = "taylor-parts";
 const SANDBOX_PROJECT = "eos-platform-sandbox";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
+// Pass 11 Fix Wave 1: in the governed sandbox project the runtime asks Administration; the fixture's Security
+// Roles answer it through the pinned baseline (test/support/governedFixtureAccess.mjs), never through Firestore roles.
+installGovernedFixtureAccess(db);
 
 let passed = 0;
 let failed = 0;

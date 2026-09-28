@@ -6,8 +6,12 @@ process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "12
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import admin from "firebase-admin";
+import { installGovernedFixtureAccess } from "./support/governedFixtureAccess.mjs";
 admin.initializeApp({ projectId: "taylor-parts" });
 const db = admin.firestore();
+// Pass 11 Fix Wave 1: in the governed sandbox project the runtime asks Administration; the fixture's Security
+// Roles answer it through the pinned baseline (test/support/governedFixtureAccess.mjs), never through Firestore roles.
+installGovernedFixtureAccess(db);
 const { Timestamp } = admin.firestore;
 
 const CALL = await import("../lib/cycleCount/cycleCountSheetCallables.js");

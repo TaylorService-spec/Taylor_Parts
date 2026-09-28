@@ -49,9 +49,13 @@ import {
   FIXTURE_TO_DECLINE,
   FIXTURE_GMAIL_SERVICE,
 } from "../scripts/fixtures/inboundWorkFixtures.mjs";
+import { installGovernedFixtureAccess } from "./support/governedFixtureAccess.mjs";
 
 admin.initializeApp({ projectId: "eos-platform-sandbox" });
 const db = admin.firestore();
+// Pass 11 Fix Wave 1: in the governed sandbox project the runtime asks Administration; the fixture's Security
+// Roles answer it through the pinned baseline (test/support/governedFixtureAccess.mjs), never through Firestore roles.
+installGovernedFixtureAccess(db);
 const SYSTEM_ACTOR = "sbx-intake-system";
 const REVIEWER = "sbx-reviewer-uid";
 const OUTSIDER = "sbx-outsider-uid";

@@ -50,6 +50,7 @@ import {
   IdempotencyKeyConflictError,
   IdempotencyKeyAlreadyDeniedError,
 } from "../lib/access/trustedWriterCommands.js";
+import { installGovernedFixtureAccess } from "./support/governedFixtureAccess.mjs";
 
 // 2C.6C (DECISIONS #167): Reporting is ENVIRONMENT-ACTIVATED -- report.* is registered
 // `active: false` so production is fail-closed, and the sandbox override set is what makes it
@@ -63,6 +64,9 @@ process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
 const PROJECT_ID = "taylor-parts";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
+// Pass 11 Fix Wave 1: in the governed sandbox project the runtime asks Administration; the fixture's Security
+// Roles answer it through the pinned baseline (test/support/governedFixtureAccess.mjs), never through Firestore roles.
+installGovernedFixtureAccess(db);
 const auth = admin.auth();
 
 let passed = 0;
