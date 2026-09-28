@@ -19,6 +19,7 @@ import { IdempotencyConflictError, MalformedStoredRecordError, InvalidReceivingE
 import { listEligibleReceivingLocationOptions, ReceivingLocationOptionsError } from "../warehouseGovernance/receivingLocationOptionsService.js";
 import { resolveReceivePermissionThroughTxn, resolveReceivePartThroughTxn, resolveReceivePartOutsideTxn, stageReceiveAuditEvent } from "./receivingCallableWiring.js";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed.js";
+import { isSafeDocumentIdSegment } from "./receivingLocationResolver.js";
 import {
   readPurchaseOrderProgress,
   listReceivablePurchaseOrders,
@@ -123,9 +124,14 @@ export function mapReceiveError(err: unknown): HttpsError {
       : err.code === "SOURCE_NOT_RECEIVABLE" ? "failed-precondition"
       : err.code === "DESTINATION_INVALID" ? "failed-precondition"
       : err.code === "PART_INVALID" ? "failed-precondition"
+      // A serial already registered to ANOTHER receipt is a governed business refusal (the scanned
+      // unit is not new stock), not a server fault: it must reach the operator as a conflict they can
+      // act on, never as a retryable "temporarily unavailable".
+      : err.code === "SERIAL_IDENTITY_CONFLICT" ? "failed-precondition"
       : "internal"; // RECEIVING_INTEGRITY / unknown -> internal
     const message =
-      code === "permission-denied" ? "You are not authorized to receive stock."
+      err.code === "SERIAL_IDENTITY_CONFLICT" ? "A serial number in this receipt is already registered to another receipt."
+      : code === "permission-denied" ? "You are not authorized to receive stock."
       : code === "not-found" ? "The referenced source could not be found."
       : code === "failed-precondition" ? "The receipt is not currently permitted for the referenced source, destination, or part."
       : "The receipt could not be completed.";
@@ -230,14 +236,26 @@ export const listReceivingLocationOptionsCallable = onCall(REGION, (request) => 
 // Gated on `inventory.stock.receive`: no new capability, and the people who may take a receipt are
 // exactly the people who need to see what is left on it. READ-ONLY — no transaction, no write, no
 // lifecycle change. The command re-derives inside its own transaction and remains the authority.
+/**
+ * The progress read's request contract: `purchaseOrderId` must be a single, safe Firestore document id
+ * segment. Anything else is the caller's malformed input and is refused as invalid-argument BEFORE a
+ * Firestore reference is built -- an id such as "a/b" would otherwise reach `doc()`, throw a raw path
+ * error and surface as a 500 (`internal`), which is a server fault it is not.
+ */
+export function validatePurchaseOrderProgressRequest(data: unknown): string {
+  const id = isPlainObject(data) ? data.purchaseOrderId : undefined;
+  if (!isSafeDocumentIdSegment(id)) throw invalidArg("purchaseOrderId is invalid.");
+  return id;
+}
+
 export const getPurchaseOrderReceivingProgressCallable = onCall(REGION, async (request) => {
   const actorId = requireAuth(request);
   await requireReceiveCapability(actorId);
-  const data = (request.data ?? {}) as Record<string, unknown>;
+  const purchaseOrderId = validatePurchaseOrderProgressRequest(request.data);
   try {
     return await readPurchaseOrderProgress(
       getFirestore(),
-      String(data.purchaseOrderId ?? ""),
+      purchaseOrderId,
       async (partId: string) => {
         const resolved = await resolveReceivePartOutsideTxn(getFirestore(), partId);
         return resolved === null ? null : resolved.trackingMode;
