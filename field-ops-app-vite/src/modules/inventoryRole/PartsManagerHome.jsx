@@ -85,8 +85,9 @@ export default function PartsManagerHome({ accessVersion, title = "Parts Manager
   const context = (
     <ContextBand
       items={[
-        { key: "queue", label: "Queue", value: queue.length },
-        { key: "oversight", label: "Assigned", value: oversight.length },
+        // Unknown is not zero: a loading or failed read renders "—", never a measured-looking 0.
+        { key: "queue", label: "Queue", value: queueLoading || queueError ? null : queue.length },
+        { key: "oversight", label: "Assigned", value: oversightLoading || oversightError ? null : oversight.length },
       ]}
     />
   );

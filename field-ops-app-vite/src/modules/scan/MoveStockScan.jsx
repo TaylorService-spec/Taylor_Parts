@@ -53,7 +53,7 @@ const RESULT_TEXT = Object.freeze({
   [LINE_RESULT.PENDING]: "Sending…",
 });
 
-function LocationPicker({ title, which, endpoint, warehouse, allowTruck, trucks, onWarehouse, onBinScan, onTruck, onClear, busy, scanInputDeps }) {
+function LocationPicker({ title, which, endpoint, warehouse, allowTruck, trucks, truckRead = "ok", onWarehouse, onBinScan, onTruck, onClear, busy, scanInputDeps }) {
   return (
     <section className="fo-receiving-session__section" aria-label={title}>
       <h3 className="fo-receiving-session__kicker">{title}</h3>
@@ -74,6 +74,12 @@ function LocationPicker({ title, which, endpoint, warehouse, allowTruck, trucks,
             disabled={!warehouse || busy}
             deps={scanInputDeps}
           />
+          {/* A truck read that failed is not "no trucks": the option would otherwise just vanish. */}
+          {allowTruck && truckRead !== "ok" && (
+            <p className="fo-muted" role="status">
+              {truckRead === "denied" ? "You are not authorized to see trucks, so a truck cannot be chosen here." : "Trucks could not be loaded, so a truck cannot be chosen right now."}
+            </p>
+          )}
           {allowTruck && trucks.length > 0 && (
             <label className="fo-muted">
               Or a truck{" "}
@@ -112,6 +118,7 @@ export default function MoveStockScan({ deps }) {
   const [warehouseRead, setWarehouseRead] = useState("loading");
   const [warehouseId, setWarehouseId] = useState("");
   const [trucks, setTrucks] = useState([]);
+  const [truckRead, setTruckRead] = useState("ok");
   const [source, setSource] = useState(null);
   const [destination, setDestination] = useState(null);
   const [queue, setQueue] = useState(createQueue());
@@ -137,7 +144,9 @@ export default function MoveStockScan({ deps }) {
       .then((rows) => { if (live) { setWarehouses(rows ?? []); setWarehouseRead("ok"); } })
       .catch((err) => { if (live) setWarehouseRead(err?.code === "permission-denied" ? "denied" : "failed"); });
     if (canSendToTruck && loadTrucks) {
-      Promise.resolve().then(() => loadTrucks()).then((rows) => { if (live) setTrucks(rows ?? []); }).catch(() => {});
+      Promise.resolve().then(() => loadTrucks())
+        .then((rows) => { if (live) { setTrucks(rows ?? []); setTruckRead("ok"); } })
+        .catch((err) => { if (live) setTruckRead(err?.code === "permission-denied" ? "denied" : "failed"); });
     }
     return () => { live = false; };
   }, [loadWarehouses, loadTrucks, canSendToTruck]);
@@ -298,7 +307,7 @@ export default function MoveStockScan({ deps }) {
         onBinScan={scanLocation(setSource)} onClear={() => setSource(null)} />
 
       <LocationPicker title="Moving to" which="destination" endpoint={destination} warehouse={warehouse}
-        allowTruck={canSendToTruck} trucks={trucks} busy={busy} scanInputDeps={deps?.scanInputDeps}
+        allowTruck={canSendToTruck} trucks={trucks} truckRead={truckRead} busy={busy} scanInputDeps={deps?.scanInputDeps}
         onWarehouse={() => warehouse && setDestination(warehouseEndpoint(warehouse))}
         onBinScan={scanLocation(setDestination)}
         onTruck={(id) => { const t = trucks.find((x) => x.locationId === id); if (t) setDestination({ type: MOVE_ENDPOINT.MOBILE, locationId: t.locationId, custodyWarehouseId: null, label: t.label }); }}

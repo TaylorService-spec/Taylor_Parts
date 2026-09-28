@@ -261,11 +261,15 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
     count: cat === "ALL" ? catalogRows.length : catalogRows.filter((part) => part.category === cat).length,
   }));
 
+  // UNKNOWN IS NOT ZERO. While a read is loading, refused or failed its rows are forced to [], and a
+  // count over [] would state "0" as if it had been measured. `null` renders as "—" in ContextBand.
+  const ledgerKnown = !loading && !error;
+  const catalogKnown = !catalog.loading && !catalog.blocked;
   const context = (
     <ContextBand
       items={[
-        { key: "catalog", label: "Catalog", value: catalogRows.length },
-        { key: "needsPlanning", label: "Needs Planning", value: needsPlanningEntries.length },
+        { key: "catalog", label: "Catalog", value: catalogKnown ? catalogRows.length : null },
+        { key: "needsPlanning", label: "Needs Planning", value: ledgerKnown ? needsPlanningEntries.length : null },
       ]}
     />
   );
@@ -364,9 +368,14 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
                           <td>{part.name}</td>
                           <td className="fo-muted">{part.sku}</td>
                           <td className="fo-muted">{part.category}</td>
-                          <td>{health ? health.stock.availableStock : `${part.warehouseQty} (baseline)`}</td>
+                          {/* The ledger is the only source of "available" and of "activity": while it is
+                              loading or has failed, neither is known, so neither a static baseline
+                              quantity nor "No ledger activity" may be stated. */}
+                          <td>{!ledgerKnown ? "—" : health ? health.stock.availableStock : `${part.warehouseQty} (baseline)`}</td>
                           <td>
-                            {!health ? (
+                            {!ledgerKnown ? (
+                              <span className="fo-muted">{loading ? "Loading activity…" : "Activity unavailable"}</span>
+                            ) : !health ? (
                               <span className="fo-muted">No ledger activity</span>
                             ) : health.recommendation.urgency ? (
                               <StatusPill tone={inventoryUrgencyTone(health.recommendation.urgency)} label={health.recommendation.urgency} />

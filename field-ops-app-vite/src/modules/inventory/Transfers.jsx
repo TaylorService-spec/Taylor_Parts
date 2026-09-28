@@ -71,7 +71,7 @@ export default function Transfers({ accessVersion }) {
     () => (Array.isArray(read.warehouses) ? read.warehouses : []).map((w) => ({ id: w.id, label: w.name || w.id })),
     [read.warehouses],
   );
-  const [truckLocations, setTruckLocations] = useState({ loading: true, options: [] });
+  const [truckLocations, setTruckLocations] = useState({ loading: true, failed: false, options: [] });
   useEffect(() => {
     let cancelled = false;
     fetchMobileLocationDocs()
@@ -80,10 +80,11 @@ export default function Transfers({ accessVersion }) {
         const options = docs
           .filter((d) => d?.data?.active !== false)
           .map((d) => ({ id: d.docId, label: d.data?.displayLabel || d.docId }));
-        setTruckLocations({ loading: false, options });
+        setTruckLocations({ loading: false, failed: false, options });
       })
       .catch(() => {
-        if (!cancelled) setTruckLocations({ loading: false, options: [] });
+        // A failed read is FAILED, not an empty fleet -- the form says so next to the Truck select.
+        if (!cancelled) setTruckLocations({ loading: false, failed: true, options: [] });
       });
     return () => {
       cancelled = true;
@@ -166,6 +167,7 @@ export default function Transfers({ accessVersion }) {
         <TransferOrderForm
           warehouseOptions={warehouseOptions}
           truckOptions={truckLocations.options}
+          truckOptionsStatus={truckLocations.loading ? "loading" : truckLocations.failed ? "failed" : "ready"}
           submitting={busyId === "create"}
           onCancel={() => setShowForm(false)}
           onSubmit={async (draft) => {
