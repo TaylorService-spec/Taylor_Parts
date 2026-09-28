@@ -238,6 +238,30 @@ test("the service persona matrix over the governed Work Order authority", { skip
       { workOrderId: "wo-leave-2", employeeId: "emp-tech-leave", source: "SCHEDULE" }), /only an ACTIVE Employee/);
   });
 
+  // ── the ALLOWED non-effect edges: characterised, pending a decision ──
+  await t.test("CHARACTERISATION (DQ-L2-A): every workOrder.transition holder may CLOSE / MARK READY any Work Order", async () => {
+    // Legacy ACTION_PERMISSIONS (the live Firebase runtime) restricts MarkReady and Close to admin and
+    // dispatcher. The PG matrix gates both with the general workOrder.transition, which the baseline grants
+    // to technician, partsAssociate, shopAssociate, generalManager, owner and operationsManager too -- and
+    // declares no record predicate on it. So an UNASSIGNED technician closes somebody else's job. Pinned
+    // here so the decision's consequence is measured; if DQ-L2-A narrows it, this case flips to a refusal.
+    await workOrder("wo-done", "WORK_IN_PROGRESS");
+    await q(`UPDATE eos_ops.work_orders SET status='COMPLETED', completed_at=now() WHERE id='wo-done'`);
+    await workOrder("wo-new", "CREATED");
+    const unassignedTech = PERSONA.techAssigned; // assigned to nothing now (reassigned away above)
+    const closed = await lifecycle.transitionWorkOrder({ pool }, actor(unassignedTech),
+      { workOrderId: "wo-done", expectedStatus: "COMPLETED", toStatus: "CLOSED" });
+    assert.equal(closed.toStatus, "CLOSED");
+    const ready = await lifecycle.transitionWorkOrder({ pool }, actor(PERSONA.partsAssociate),
+      { workOrderId: "wo-new", expectedStatus: "CREATED", toStatus: "READY_TO_DISPATCH" });
+    assert.equal(ready.toStatus, "READY_TO_DISPATCH");
+    // officeManager does NOT hold workOrder.transition in the baseline, so it is refused.
+    await workOrder("wo-new-2", "CREATED");
+    await assert.rejects(lifecycle.transitionWorkOrder({ pool }, actor(PERSONA.officeManager),
+      { workOrderId: "wo-new-2", expectedStatus: "CREATED", toStatus: "READY_TO_DISPATCH" }),
+    (e) => { assert.equal(e.code, "CAPABILITY_MISSING"); return true; });
+  });
+
   // ── the PostgreSQL edges that exist today ──
   await t.test("LIFECYCLE: no persona can reach an effect-bearing or deferred edge through PostgreSQL today", async () => {
     await q(`UPDATE eos_ops.work_orders SET status='WORK_IN_PROGRESS' WHERE id='wo-a'`);
