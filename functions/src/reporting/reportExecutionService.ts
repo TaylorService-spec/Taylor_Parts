@@ -1037,7 +1037,10 @@ export async function runReportDefinition(
       ? "empty"
       : droppedColumnLabels.length > 0
         ? "partially-authorized"
-        : truncated || widened
+        // A join that did not complete leaves a requested related column unset on the affected rows
+        // (or, for a related-field filter, drops them). Rows came back, but not the whole answer:
+        // it is never plain "results" with completeness "proven-complete" beside it.
+        : truncated || widened || joinIncomplete
           ? "truncated-widened"
           : "results";
 

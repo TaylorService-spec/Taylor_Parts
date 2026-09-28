@@ -135,6 +135,13 @@ function truncationNote(outcome) {
   return `${parts.join(" ")} This result isn't complete.`;
 }
 
+/** The sentence for related columns whose join did not complete, or null. Labels only, never ids. */
+function incompleteJoinNote(outcome) {
+  const labels = safeLabels(outcome?.incompleteJoinLabels);
+  if (labels.length === 0) return null;
+  return `Some related ${labels.join(", ")} details couldn't be included, so those columns aren't complete — a blank there doesn't mean the value is empty.`;
+}
+
 export function describeRunOutcome(outcome) {
   const kind = outcome && KINDS.has(outcome.kind) ? outcome.kind : "failure";
   switch (kind) {
@@ -256,6 +263,8 @@ export function describeRunOutcome(outcome) {
       // fixture (or a future payload) that states completeness "bounded-page" while
       // leaving `truncated` unset would otherwise lose the population cut entirely.
       if (outcome.truncated || populationWasCut(outcome)) notes.push(truncationNote(outcome));
+      const joinNote = incompleteJoinNote(outcome);
+      if (joinNote) notes.push(joinNote);
       if (notes.length === 0) notes.push("Some parts of this report weren't available to you and were left out.");
       return d("partially-authorized", "warning", "status", "Showing what you can view", null, notes);
     }
@@ -267,6 +276,8 @@ export function describeRunOutcome(outcome) {
       const notes = [];
       if (outcome.widened) notes.push("Some filters weren't applied, so this result is wider than the saved report.");
       if (outcome.truncated || populationWasCut(outcome)) notes.push(truncationNote(outcome));
+      const joinNote = incompleteJoinNote(outcome);
+      if (joinNote) notes.push(joinNote);
       if (notes.length === 0) notes.push("This result was adjusted to stay within limits.");
       return d("truncated-widened", "warning", "status", "Partial result", null, notes);
     }

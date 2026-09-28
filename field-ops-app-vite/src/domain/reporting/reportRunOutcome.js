@@ -9,6 +9,8 @@
 // (SUBSET, not equality: see CLIENT_RECOGNIZED_KINDS below and the Owner ruling recorded there.)
 // A malformed response or an unexpected error NEVER throws and NEVER surfaces a raw code/path.
 
+import { getReportObject } from "./reportCatalog.js";
+
 export const REPORT_RUN_UNAVAILABLE_REASON = "report-engine-unavailable";
 
 // The kinds this client can accept OFF THE WIRE, and the COMPATIBILITY CONTRACT
@@ -179,6 +181,22 @@ export function reportRunIncompleteScan() {
 
 // Map a successful callable payload (D-FN RunReportOutcome) to the client outcome. A response of
 // an unknown/absent kind fails closed to a safe failure state rather than rendering garbage.
+function joinLabels(...lists) {
+  const ids = new Set();
+  for (const l of lists) if (Array.isArray(l)) for (const id of l) if (typeof id === "string" && id) ids.add(id);
+  // Only ids the catalog knows are named; an unknown id is still COUNTED (as "related records") so
+  // an incompleteness never disappears just because this build cannot label it.
+  const labels = [];
+  let unknown = 0;
+  for (const id of ids) {
+    const o = getReportObject(id);
+    if (o && typeof o.label === "string") labels.push(o.label);
+    else unknown += 1;
+  }
+  if (unknown > 0) labels.push("related records");
+  return Object.freeze(labels);
+}
+
 export function mapServiceOutcome(data) {
   // FAIL CLOSED, and fail HONESTLY (RPT-COMPAT). A payload this build cannot
   // interpret -- an unrecognised kind from a newer server, or a malformed/absent
@@ -213,6 +231,10 @@ export function mapServiceOutcome(data) {
     // UI-safe labels only; never the audit-facing raw field ids (droppedFieldIds/-PredicateFieldIds).
     droppedColumnLabels: safeStringArray(data.droppedColumnLabels),
     droppedPredicateCount: Number.isInteger(data.droppedPredicateCount) ? data.droppedPredicateCount : 0,
+    // Related objects whose join did not complete (refused outright, or company-bound-dropped after
+    // the read). Carried as CATALOG LABELS, never raw ids, so a renderer can say which related
+    // columns are incomplete instead of showing their gaps as unset values.
+    incompleteJoinLabels: joinLabels(data.refusedJoinObjectIds, data.incompleteJoinObjectIds),
   });
 }
 

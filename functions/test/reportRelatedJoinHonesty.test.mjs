@@ -316,3 +316,17 @@ test("cross-company: an ENTIRE company's base rows still never cross -- the boun
   assert.deepEqual(t.outcome.rows.map((r) => r["location.name"]), ["L1"]);
   assert.deepEqual(v.outcome.rows.map((r) => r["location.name"]), ["L2"]);
 });
+
+// ===========================================================================
+// (E) ROWS CAME BACK, BUT THE JOIN DID NOT COMPLETE. The absence gate above only
+// covers zero rows; with rows present the ladder used to answer plain "results"
+// beside completeness "proven-complete", and the client dropped both join lists.
+// Unreachable through today's catalog (see header), so pinned at the ladder.
+// ===========================================================================
+
+test("E-wiring: join incompleteness demotes a non-empty result out of plain 'results'", () => {
+  const ladder = SERVICE_SRC.slice(SERVICE_SRC.indexOf("const kind: RunReportOutcomeKind"));
+  const head = ladder.slice(0, ladder.indexOf(": \"results\";"));
+  assert.match(head, /truncated \|\| widened \|\| joinIncomplete\s*\n?\s*\?\s*"truncated-widened"/,
+    "a result whose join did not complete must rank as truncated-widened, never plain results");
+});

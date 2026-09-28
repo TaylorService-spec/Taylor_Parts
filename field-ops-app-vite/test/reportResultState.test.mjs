@@ -360,4 +360,20 @@ ok("partially-authorized + a group cut names the group bound too", () => {
   assert.ok(d.notes.some((n) => /too many groups/.test(n)), JSON.stringify(d.notes));
 });
 
+
+ok("an incomplete related join is carried as CATALOG LABELS and named in the note -- never raw ids", () => {
+  const out = wire({ incompleteJoinObjectIds: ["location"], refusedJoinObjectIds: ["no-such-object"] });
+  assert.deepEqual([...out.incompleteJoinLabels].sort(), ["Location", "related records"].sort());
+  const d = describeRunOutcome(out);
+  const note = d.notes.find((n) => /couldn't be included/.test(n));
+  assert.ok(note, JSON.stringify(d.notes));
+  assert.match(note, /Location/);
+  assert.ok(!/no-such-object/.test(note), "a raw id never reaches the copy");
+});
+
+ok("a complete join adds no join note", () => {
+  const d = describeRunOutcome(wire({ incompleteJoinObjectIds: [], refusedJoinObjectIds: [] }));
+  assert.ok(!d.notes.some((n) => /couldn't be included/.test(n)));
+});
+
 console.log(`\n${passed} passed`);
