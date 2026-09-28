@@ -48,7 +48,10 @@ import {
   PART_SELECT,
   partFromRow,
 } from "./catalogRows";
-import type { CanonicalCatalog, CatalogFinding } from "./catalogSnapshot";
+import type { CanonicalCatalog, CatalogFinding, CanonicalPartAliasRecord } from "./catalogSnapshot";
+import { PART_ALIAS_DIGEST_FIELDS } from "./catalogSnapshot";
+import { ALIAS_SELECT, INSERT_ALIAS_SQL, aliasFromRow, insertAliasValues } from "./postgresPartAliasWriter";
+import { deriveAliasDocId } from "../partMaster/partAliasIdentity";
 
 type Db = Pick<PoolClient, "query">;
 
@@ -68,10 +71,31 @@ export async function partMasterSchemaPresent(db: Db): Promise<boolean> {
   return rows[0].n === 3;
 }
 
-async function tenantRows(db: Db, tenantId: string, withParts: boolean) {
+async function tenantRows(db: Db, tenantId: string, withParts: boolean, withAliases: boolean) {
   const models = (await db.query(`${EQUIPMENT_MODEL_SELECT} WHERE tenant_id = $1 ORDER BY id`, [tenantId])).rows.map(equipmentModelFromRow);
   const parts = withParts ? (await db.query(`${PART_SELECT} WHERE tenant_id = $1 ORDER BY id`, [tenantId])).rows.map(partFromRow) : [];
-  return { models, parts };
+  const partAliases = withAliases
+    ? (await db.query(`${ALIAS_SELECT} WHERE tenant_id = $1 ORDER BY id`, [tenantId])).rows.map(aliasToCanonicalSnapshotRecord)
+    : [];
+  return { models, parts, partAliases };
+}
+
+/** The target row, in the SNAPSHOT's shape, so drift is compared field-for-field against the source. */
+function aliasToCanonicalSnapshotRecord(row: Record<string, unknown>): CanonicalPartAliasRecord {
+  const a = aliasFromRow(row);
+  return Object.freeze({
+    id: a.aliasId, partId: a.partId, aliasType: a.aliasType, originalValue: a.originalValue,
+    normalizedValue: a.normalizedValue, status: a.status, source: a.source,
+    manufacturerId: a.manufacturerId, effectiveFrom: a.effectiveFrom, effectiveTo: a.effectiveTo,
+    version: a.version, createdAt: a.createdAt, updatedAt: a.updatedAt, deactivatedAt: a.deactivatedAt,
+  });
+}
+
+/** Is the alias authority present in this database? */
+export async function partAliasSchemaPresent(db: Db): Promise<boolean> {
+  const { rows } = await db.query(
+    `SELECT to_regclass('eos_ops.part_aliases') IS NOT NULL AS present`);
+  return rows[0].present === true;
 }
 
 interface KindPlan<T> { insert: T[]; unchanged: number; drift: { id: string; fields: string[] }[]; unknown: string[] }
@@ -96,6 +120,7 @@ export interface CopyReport {
   readonly canonicalDigest: string;
   readonly equipmentModels: { readonly inserted: number; readonly unchanged: number };
   readonly parts: { readonly inserted: number; readonly unchanged: number };
+  readonly partAliases: { readonly inserted: number; readonly unchanged: number };
   readonly cutoverPrincipalId: string;
   readonly certificationExcluded: { readonly count: number; readonly records: readonly CatalogFinding[] };
 }
@@ -125,24 +150,60 @@ export async function copyCatalog(
     if (catalog.parts.length > 0 && !partSchema) {
       throw new CatalogCutoverError("PART_TARGET_SCHEMA_ABSENT", "eos_ops.parts lacks the Part Master columns: migrations 026 and 027 must be applied first");
     }
-    const target = await tenantRows(client, tenantId, partSchema);
+    const aliasSchema = await partAliasSchemaPresent(client);
+    if (catalog.partAliases.length > 0 && !aliasSchema) {
+      throw new CatalogCutoverError("PART_ALIAS_TARGET_SCHEMA_ABSENT",
+        "eos_ops.part_aliases is absent: the catalog alias migration must be applied first");
+    }
+    const target = await tenantRows(client, tenantId, partSchema, aliasSchema);
     const models = plan(catalog.equipmentModels, target.models, EQUIPMENT_MODEL_FIELDS);
     const parts = plan(catalog.parts, target.parts, PART_FIELDS);
-    const drift = [...models.drift.map((d) => ({ kind: "equipment_model", ...d })), ...parts.drift.map((d) => ({ kind: "part", ...d }))];
+    const aliases = plan(catalog.partAliases, target.partAliases, PART_ALIAS_DIGEST_FIELDS);
+    const drift = [
+      ...models.drift.map((d) => ({ kind: "equipment_model", ...d })),
+      ...parts.drift.map((d) => ({ kind: "part", ...d })),
+      ...aliases.drift.map((d) => ({ kind: "part_alias", ...d })),
+    ];
     if (drift.length > 0) throw new CatalogCutoverError("DRIFT_DETECTED", `${drift.length} source records differ from the copied records; nothing was written`, drift);
-    const unknown = [...models.unknown.map((id) => ({ kind: "equipment_model", id })), ...parts.unknown.map((id) => ({ kind: "part", id }))];
+    const unknown = [
+      ...models.unknown.map((id) => ({ kind: "equipment_model", id })),
+      ...parts.unknown.map((id) => ({ kind: "part", id })),
+      ...aliases.unknown.map((id) => ({ kind: "part_alias", id })),
+    ];
     if (unknown.length > 0) throw new CatalogCutoverError("TARGET_HAS_UNKNOWN_RECORDS", `${unknown.length} tenant records are not in the snapshot; nothing was written`, unknown);
 
+    // ORDER IS THE FOREIGN KEY. Equipment Models, then Parts, then the aliases that name them --
+    // each row's reference resolves at the moment it is written rather than at the end of the
+    // transaction, so a broken chain fails on the row that broke it.
     for (const m of models.insert) await client.query(INSERT_EQUIPMENT_MODEL_SQL, insertEquipmentModelValues(tenantId, m as CanonicalEquipmentModel, actor, actor));
     for (const p of parts.insert) await client.query(INSERT_PART_SQL, insertPartValues(tenantId, p as CanonicalPart, actor, actor));
+    for (const a of aliases.insert) {
+      const rec = a as CanonicalPartAliasRecord;
+      await client.query(INSERT_ALIAS_SQL, insertAliasValues(tenantId, {
+        aliasId: rec.id, partId: rec.partId, aliasType: rec.aliasType as never,
+        originalValue: rec.originalValue, normalizedValue: rec.normalizedValue,
+        status: rec.status as never, source: rec.source, manufacturerId: rec.manufacturerId,
+        effectiveFrom: rec.effectiveFrom, effectiveTo: rec.effectiveTo,
+        version: rec.version,
+        // MIGRATED, and its actors are NULL. The legacy Firestore uid is not a Principal and is never
+        // written to a business column; it survives only as the migration provenance evidence the
+        // census returns. Substituting the cutover Principal would attribute a stranger's record to
+        // whoever ran the import.
+        provenance: "MIGRATED",
+        createdAt: rec.createdAt, createdBy: null,
+        updatedAt: rec.updatedAt, updatedBy: null,
+        deactivatedAt: rec.deactivatedAt, deactivatedBy: null,
+      }));
+    }
 
-    const inserted = models.insert.length + parts.insert.length;
+    const inserted = models.insert.length + parts.insert.length + aliases.insert.length;
     const report: CopyReport = {
       outcome: inserted > 0 ? "COPIED" : "NO_CHANGES",
       tenantId,
       canonicalDigest: input.canonicalDigest,
       equipmentModels: { inserted: models.insert.length, unchanged: models.unchanged },
       parts: { inserted: parts.insert.length, unchanged: parts.unchanged },
+      partAliases: { inserted: aliases.insert.length, unchanged: aliases.unchanged },
       cutoverPrincipalId: actor,
       certificationExcluded: { count: excluded.length, records: excluded },
     };
@@ -151,7 +212,8 @@ export async function copyCatalog(
         `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at)
          VALUES ($1, $2, 'catalog.cutover.copy', $3, 'catalog_snapshot', $4, NULL, $5, $6)`,
         [`audit_${randomUUID()}`, tenantId, actor, input.canonicalDigest, JSON.stringify({
-          equipmentModels: report.equipmentModels, parts: report.parts, certificationExcluded: excluded.length,
+          equipmentModels: report.equipmentModels, parts: report.parts, partAliases: report.partAliases,
+          certificationExcluded: excluded.length,
         }), input.now ?? new Date()],
       );
     }
@@ -191,12 +253,20 @@ async function verdicts(db: Db, tenantId: string, refs: readonly { kind: "PART" 
 export interface VerifyReport {
   readonly reconciled: boolean;
   readonly tenantId: string;
-  readonly counts: { readonly equipmentModels: { source: number; target: number }; readonly parts: { source: number; target: number } };
+  readonly counts: {
+    readonly equipmentModels: { source: number; target: number };
+    readonly parts: { source: number; target: number };
+    readonly partAliases: { source: number; target: number };
+  };
   readonly identity: { readonly missingInTarget: readonly string[]; readonly extraInTarget: readonly string[] };
-  readonly sampled: { readonly equipmentModels: number; readonly parts: number };
+  readonly sampled: { readonly equipmentModels: number; readonly parts: number; readonly partAliases: number };
   readonly fieldMismatches: readonly { kind: string; id: string; fields: string[] }[];
   readonly duplicateIdentities: readonly { kind: string; id: string }[];
   readonly danglingEquipmentModelReferences: readonly string[];
+  /** Aliases in the target whose Part is not. Must be empty: an identifier resolving to nothing. */
+  readonly danglingAliasPartReferences: readonly string[];
+  /** Aliases whose stored id disagrees with the identity their own value normalizes to. */
+  readonly aliasIdentityDisagreements: readonly string[];
   readonly verdictChecks: readonly { kind: string; ref: string; tenant: string; expected: CatalogVerdict; actual: CatalogVerdict }[];
   readonly certificationExcluded: { readonly count: number; readonly records: readonly CatalogFinding[] };
   /** Excluded Certification fixture ids found in the target. Must be empty. */
@@ -224,12 +294,22 @@ export async function verifyCatalog(
   await client.query("BEGIN READ ONLY");
   try {
     const partSchema = await partMasterSchemaPresent(client);
-    const target = await tenantRows(client, tenantId, partSchema);
+    const aliasSchema = await partAliasSchemaPresent(client);
+    const target = await tenantRows(client, tenantId, partSchema, aliasSchema);
     const idsOf = (rows: readonly { id: string }[]) => new Set(rows.map((r) => r.id));
     const sModels = idsOf(catalog.equipmentModels), tModels = idsOf(target.models);
     const sParts = idsOf(catalog.parts), tParts = idsOf(target.parts);
-    const missing = [...[...sModels].filter((id) => !tModels.has(id)).map((id) => `equipment_model:${id}`), ...[...sParts].filter((id) => !tParts.has(id)).map((id) => `part:${id}`)];
-    const extra = [...[...tModels].filter((id) => !sModels.has(id)).map((id) => `equipment_model:${id}`), ...[...tParts].filter((id) => !sParts.has(id)).map((id) => `part:${id}`)];
+    const sAliases = idsOf(catalog.partAliases), tAliases = idsOf(target.partAliases);
+    const missing = [
+      ...[...sModels].filter((id) => !tModels.has(id)).map((id) => `equipment_model:${id}`),
+      ...[...sParts].filter((id) => !tParts.has(id)).map((id) => `part:${id}`),
+      ...[...sAliases].filter((id) => !tAliases.has(id)).map((id) => `part_alias:${id}`),
+    ];
+    const extra = [
+      ...[...tModels].filter((id) => !sModels.has(id)).map((id) => `equipment_model:${id}`),
+      ...[...tParts].filter((id) => !sParts.has(id)).map((id) => `part:${id}`),
+      ...[...tAliases].filter((id) => !sAliases.has(id)).map((id) => `part_alias:${id}`),
+    ];
 
     const mismatches: { kind: string; id: string; fields: string[] }[] = [];
     const targetModel = new Map(target.models.map((m) => [m.id, m]));
@@ -246,6 +326,33 @@ export async function verifyCatalog(
       const fields = differingFields(PART_FIELDS, sourcePart.get(id)!, targetPart.get(id)!);
       if (fields.length > 0) mismatches.push({ kind: "part", id, fields });
     }
+    const targetAlias = new Map(target.partAliases.map((a) => [a.id, a]));
+    const sourceAlias = new Map(catalog.partAliases.map((a) => [a.id, a]));
+    const aliasSample = sampleIds([...sAliases].filter((id) => tAliases.has(id)), input.sample);
+    for (const id of aliasSample) {
+      const fields = differingFields(PART_ALIAS_DIGEST_FIELDS, sourceAlias.get(id)!, targetAlias.get(id)!);
+      if (fields.length > 0) mismatches.push({ kind: "part_alias", id, fields });
+    }
+
+    // NORMALIZATION AGREEMENT, re-derived in the target. A stored id that disagrees with what its own
+    // value normalizes to is an identifier that would never be found by the lookup it exists for.
+    const aliasIdentityDisagreements = target.partAliases
+      .filter((a) => {
+        const derived = deriveAliasDocId(a.aliasType as never, a.originalValue, (a.manufacturerId ?? undefined) as never);
+        return derived === null || derived.docId !== a.id || derived.normalizedValue !== a.normalizedValue;
+      })
+      .map((a) => a.id).sort();
+    const danglingAliasPartReferences = aliasSchema && partSchema
+      ? (await client.query(
+        `SELECT a.id FROM eos_ops.part_aliases a LEFT JOIN eos_ops.parts p
+           ON p.tenant_id = a.tenant_id AND p.id = a.part_id
+          WHERE a.tenant_id = $1 AND p.id IS NULL ORDER BY a.id`, [tenantId])).rows.map((r) => String(r.id))
+      : [];
+    const dupAliases = aliasSchema
+      ? (await client.query(
+        `SELECT id FROM eos_ops.part_aliases WHERE tenant_id = $1
+          GROUP BY id HAVING count(*) > 1`, [tenantId])).rows
+      : [];
 
     const dupModels = (await client.query(`SELECT id FROM eos_ops.equipment_models WHERE tenant_id = $1 GROUP BY id HAVING count(*) > 1`, [tenantId])).rows;
     const dupParts = partSchema ? (await client.query(`SELECT id FROM eos_ops.parts WHERE tenant_id = $1 GROUP BY id HAVING count(*) > 1`, [tenantId])).rows : [];
@@ -279,21 +386,28 @@ export async function verifyCatalog(
     await client.query("COMMIT");
 
     const fixturesInTarget = excluded
-      .filter((x) => (x.kind === "part" ? tParts.has(x.id) : tModels.has(x.id)))
+      .filter((x) => (x.kind === "part" ? tParts.has(x.id) : x.kind === "part_alias" ? tAliases.has(x.id) : tModels.has(x.id)))
       .map((x) => `${x.kind}:${x.id}`);
-    const duplicateIdentities = [...dupModels.map((r) => ({ kind: "equipment_model", id: String(r.id) })), ...dupParts.map((r) => ({ kind: "part", id: String(r.id) }))];
+    const duplicateIdentities = [
+      ...dupModels.map((r) => ({ kind: "equipment_model", id: String(r.id) })),
+      ...dupParts.map((r) => ({ kind: "part", id: String(r.id) })),
+      ...dupAliases.map((r) => ({ kind: "part_alias", id: String(r.id) })),
+    ];
     const report: VerifyReport = {
       reconciled: false,
       tenantId,
       counts: {
         equipmentModels: { source: catalog.equipmentModels.length, target: target.models.length },
         parts: { source: catalog.parts.length, target: target.parts.length },
+        partAliases: { source: catalog.partAliases.length, target: target.partAliases.length },
       },
       identity: { missingInTarget: missing, extraInTarget: extra },
-      sampled: { equipmentModels: modelSample.length, parts: partSample.length },
+      sampled: { equipmentModels: modelSample.length, parts: partSample.length, partAliases: aliasSample.length },
       fieldMismatches: mismatches,
       duplicateIdentities,
       danglingEquipmentModelReferences: dangling,
+      danglingAliasPartReferences,
+      aliasIdentityDisagreements,
       verdictChecks,
       certificationExcluded: { count: excluded.length, records: excluded },
       certificationFixturesInTarget: fixturesInTarget,
@@ -301,9 +415,11 @@ export async function verifyCatalog(
     const reconciled =
       report.counts.equipmentModels.source === report.counts.equipmentModels.target &&
       report.counts.parts.source === report.counts.parts.target &&
+      report.counts.partAliases.source === report.counts.partAliases.target &&
       missing.length === 0 && extra.length === 0 && mismatches.length === 0 && duplicateIdentities.length === 0 &&
-      dangling.length === 0 && verdictChecks.every((c) => c.expected === c.actual) && fixturesInTarget.length === 0 &&
-      (catalog.parts.length === 0 || partSchema);
+      dangling.length === 0 && danglingAliasPartReferences.length === 0 && aliasIdentityDisagreements.length === 0 &&
+      verdictChecks.every((c) => c.expected === c.actual) && fixturesInTarget.length === 0 &&
+      (catalog.parts.length === 0 || partSchema) && (catalog.partAliases.length === 0 || aliasSchema);
     return { ...report, reconciled };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);

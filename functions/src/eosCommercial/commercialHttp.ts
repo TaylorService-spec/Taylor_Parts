@@ -19,8 +19,11 @@
 // checks against membership and never adopts; a tenant, principal, capability or identity field in the JSON body is
 // refused.
 //
-// The deployed composition supplies no catalog authority, so any command that validates a PART or EQUIPMENT_MODEL
-// reference refuses CATALOG_AUTHORITY_UNAVAILABLE until a governed PostgreSQL catalog exists.
+// The deployed composition NOW supplies the governed PostgreSQL catalog authority
+// (eosApi/server.ts composes createPostgresCatalogReferenceAuthority once and shares it), so a command
+// that validates a PART or EQUIPMENT_MODEL reference resolves it against eos_ops inside its OWN
+// transaction. CATALOG_AUTHORITY_UNAVAILABLE remains reachable and remains correct: a composition
+// that omits the authority must still refuse rather than skip the check.
 import type { Pool } from "pg";
 import { capabilitiesWithoutUnevaluatedConditions, resolveOperationalContext } from "../eosOps/capabilityAuthority";
 import { postgresGrantConditionProvider } from "../eosOps/entitledActionAuthority";

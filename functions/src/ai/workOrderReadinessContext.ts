@@ -25,6 +25,7 @@ import {
 } from "../inventory/partBalanceReadService";
 import { readPartBalances } from "../inventory/partBalanceBatchReadService";
 import { buildFirestorePartRepository } from "../partMaster/partMasterRepository";
+import { assertFirestoreCatalogReadCurrent, FirestoreCatalogNotCurrentError } from "../catalogMaster/catalogWriterState.js";
 import { isSerialTracked } from "../partMaster/controlTypeTrackingMode";
 import type { PartId } from "../partMaster/types";
 import { openWorkOrderReserved } from "../fulfillment/fulfillmentAvailability";
@@ -292,6 +293,11 @@ function realDependencies(db: Firestore): WorkOrderReadinessContextDependencies 
       return decisions;
     },
     loadBalances: async (partIds) => {
+      // CATALOG CUTOVER (Owner ruling, Lane 2). Readiness is a PROJECTION: its absence changes no business
+      // truth, so once PostgreSQL owns the catalog this reports unavailable rather than shaping balances
+      // from a frozen controlType. A readiness screen quietly built on last month's tracking modes is the
+      // stale read that looks exactly like a correct one.
+      assertFirestoreCatalogReadCurrent("ai.workOrderReadiness.controlType");
       const repository = buildFirestorePartRepository(db);
       const stored = await Promise.all(partIds.map((id) => repository.getById(null, id as PartId)));
       const serialTrackedByPartId = new Map<string, boolean>(
@@ -329,6 +335,10 @@ export const getWorkOrderReadinessContext = onCall({ region: "us-central1" }, as
     );
   } catch (err) {
     if (err instanceof HttpsError) throw err;
+    // UNAVAILABLE, not "internal": a governed migration state must be distinguishable from a crash.
+    if (err instanceof FirestoreCatalogNotCurrentError) {
+      throw new HttpsError("failed-precondition", "Work Order readiness is unavailable: the catalog authority has moved to PostgreSQL.", { code: err.code });
+    }
     if (err instanceof AIError && err.code === "AI_CAPABILITY_DENIED") {
       throw new HttpsError("permission-denied", "You are not authorized to read this Work Order.");
     }

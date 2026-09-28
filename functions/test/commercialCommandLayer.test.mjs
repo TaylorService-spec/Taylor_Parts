@@ -44,14 +44,26 @@ test("(42) no Firebase: no command module imports it, and loading every one reso
 });
 
 test("the only runtime entry point to the command layer is the C4 Commercial transport", () => {
-  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(COMMANDS) && /eosCommercial\/commands\//.test(readFileSync(f, "utf8")));
+  // IMPORTS, not mentions. A module that NAMES `eosCommercial/commands/...` in a string -- the
+  // Catalog activation ledger names it as the replacement authority for a Firestore consumer -- has
+  // not reached the command layer and cannot call it. The rule is about reachability; matching prose
+  // would make the ledger unable to say what it is for.
+  const importsCommands = (f) =>
+    [...strip(readFileSync(f, "utf8")).matchAll(/(?:from\s+|import\s*\(\s*)["']([^"']+)["']/g)]
+      .some((m) => /eosCommercial\/commands\//.test(m[1]));
+  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(COMMANDS) && importsCommands(f));
   assert.deepEqual(importers.map(rel), [], "a module outside the Commercial layer imports the command layer");
-  const direct = walk(SRC, [".ts"]).filter((f) => !f.startsWith(join(SRC, "eosCommercial")) && /CommandService|commercialCommandKernel/.test(strip(readFileSync(f, "utf8"))));
+  const direct = walk(SRC, [".ts"]).filter((f) => !f.startsWith(join(SRC, "eosCommercial"))
+    && [...strip(readFileSync(f, "utf8")).matchAll(/(?:from\s+|import\s*\(\s*)["']([^"']+)["']/g)]
+      .some((m) => /CommandService|commercialCommandKernel/.test(m[1])));
   assert.deepEqual(direct.map(rel), [], "a runtime module reaches Commercial commands without the transport");
   for (const surface of ["index.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts"]) {
     assert.doesNotMatch(strip(readFileSync(join(SRC, surface), "utf8")), /eosCommercial|CommandService|commercialCommandKernel/, `${surface} reaches Commercial commands`);
   }
   const server = strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8"));
+  // The server reaches Commercial through its TRANSPORT and nothing else. Composing the catalog
+  // authority did not change that: the authority is a separate module the server hands to the
+  // transport, never a second door into the command layer.
   assert.deepEqual([...server.matchAll(/from "([^"]*eosCommercial[^"]*)"/g)].map((m) => m[1]), ["../eosCommercial/commercialHttp"]);
 });
 
