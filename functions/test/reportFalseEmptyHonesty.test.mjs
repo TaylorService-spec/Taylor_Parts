@@ -370,3 +370,26 @@ test("LATENT: no catalog field exists on a join-refused object, so a refused joi
       "every row. Decide the outcome before shipping it.",
   );
 });
+
+// ---------------------------------------------------------------------------
+// A malformed definitionId is refused BEFORE the run, never after the scan.
+// An empty string used to survive to the audit writer, which refused the empty
+// targetId after documents had been read -> `internal` -> the client's
+// "nothing was read", false on that path.
+// ---------------------------------------------------------------------------
+test("definitionId shape: empty, blank, path-like and overlong ids are refused; Firestore-style ids pass", async () => {
+  const { DEFINITION_ID_SHAPE } = await import("../lib/reporting/runReportDefinitionCallable.js");
+  for (const bad of ["", " ", "a/b", "x".repeat(129), "id with space"]) {
+    assert.equal(DEFINITION_ID_SHAPE.test(bad), false, `"${bad}" must be refused`);
+  }
+  for (const good of ["abc", "Z9", "aB3dE5fG7hJ9kL1mN3pQ", "adhoc_draft-1", "x".repeat(128)]) {
+    assert.equal(DEFINITION_ID_SHAPE.test(good), true, `"${good}" must pass`);
+  }
+});
+
+test("the definitionId shape check runs before runReportDefinition is called", () => {
+  const src = readFileSync(CALLABLE_SRC, "utf8");
+  const check = src.indexOf("DEFINITION_ID_SHAPE.test(data.definitionId)");
+  const run = src.indexOf("await runReportDefinition(");
+  assert.ok(check > 0 && run > 0 && check < run, "the shape refusal must precede the run");
+});

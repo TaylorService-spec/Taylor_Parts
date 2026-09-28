@@ -59,6 +59,8 @@ import {
   UnprovenAbsenceError,
 } from "./reportExecutionService";
 
+export const DEFINITION_ID_SHAPE = /^[A-Za-z0-9_-]{1,128}$/;
+
 export const runReportDefinitionCallable = onCall({ region: "us-central1" }, async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Must be signed in.");
@@ -70,6 +72,13 @@ export const runReportDefinitionCallable = onCall({ region: "us-central1" }, asy
   }
   if (data.definitionId !== undefined && typeof data.definitionId !== "string") {
     throw new HttpsError("invalid-argument", "definitionId must be a string when present.");
+  }
+  // The id becomes the run's audit targetId. An EMPTY string used to survive (`??` keeps ""), the
+  // audit writer then refused the empty targetId AFTER the scan had run, and the callable answered
+  // `internal` -- which the client renders as "nothing was read", false on that path. Shape is
+  // checked here, before anything is read: a Firestore-style id, bounded.
+  if (typeof data.definitionId === "string" && !DEFINITION_ID_SHAPE.test(data.definitionId)) {
+    throw new HttpsError("invalid-argument", "definitionId must be 1-128 characters of letters, digits, '-' or '_'.");
   }
 
   try {
