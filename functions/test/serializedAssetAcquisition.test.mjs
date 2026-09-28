@@ -302,3 +302,23 @@ test("MUTATION: dropping the receipt-provenance guard would erase real purchasin
   assert.equal(replayed.outcome, "replayed",
     "without the guard the command proceeds against a unit that was genuinely purchased");
 });
+
+test("REPLAY before gates: a retry after the location is retired or the part deactivated still replays; a new unit does not", async () => {
+  const { db } = makeDb();
+  await acquireSerializedAsset(req(), deps(db));
+  const retiredLoc = await acquireSerializedAsset(req(), deps(db, { resolveLocationActive: async () => false }));
+  assert.equal(retiredLoc.outcome, "replayed");
+  const inactivePart = await acquireSerializedAsset(req(), deps(db, { resolvePart: async () => ({ partId: PART, trackingMode: "SERIAL", active: false }) }));
+  assert.equal(inactivePart.outcome, "replayed");
+  const err = await failed(() => acquireSerializedAsset(req({ serialNo: "SN-NEW-1", idempotencyKey: "acq-new" }), deps(db, { resolveLocationActive: async () => false })));
+  assert.equal(err.code, "LOCATION_INVALID");
+});
+
+test("the same request id with a DIFFERENT provenance note is a conflict, not a replay", async () => {
+  const { db } = makeDb();
+  await acquireSerializedAsset(req({ provenanceNote: "from the legacy register" }), deps(db));
+  const err = await failed(() => acquireSerializedAsset(req({ provenanceNote: "something else" }), deps(db)));
+  assert.equal(err.code, "ALREADY_EXISTS_CONFLICT");
+  const again = await acquireSerializedAsset(req({ provenanceNote: "from the legacy register" }), deps(db));
+  assert.equal(again.outcome, "replayed");
+});
