@@ -291,6 +291,22 @@ test("native Work Order authority", { skip: SKIP, concurrency: 1 }, async (t) =>
     assert.equal((await lifecycle.readTransitionHistory(pool, TENANT, wo.workOrderId)).length, 2, "and no history was written");
   });
 
+  await t.test("UNSCHEDULE fails closed: ND-18 makes it a reasoned act that clears the placement", async () => {
+    const wo = await make();
+    await q(`UPDATE eos_ops.work_orders SET status='SCHEDULED', scheduled_start=now(), scheduled_end=now() + interval '1 hour'
+              WHERE id=$1`, [wo.workOrderId]);
+    const edge = lifecycle.transitionRuleFor("SCHEDULED", "READY_TO_DISPATCH");
+    assert.equal(edge.disposition, "NOT_YET_IMPLEMENTED");
+    assert.match(edge.dependsOn, /ND-18/);
+    for (const note of [undefined, "customer asked to move it"]) {
+      await assert.rejects(() => lifecycle.transitionWorkOrder(deps, actor(), {
+        workOrderId: wo.workOrderId, expectedStatus: "SCHEDULED", toStatus: "READY_TO_DISPATCH", note,
+      }), (e) => { assert.equal(e.code, "TRANSITION_AUTHORITY_UNAVAILABLE"); return true; }, String(note));
+    }
+    const { rows } = await q(`SELECT status::text AS s, scheduled_start IS NOT NULL AS placed FROM eos_ops.work_orders WHERE id=$1`, [wo.workOrderId]);
+    assert.deepEqual([rows[0].s, rows[0].placed], ["SCHEDULED", true], "nothing moved, and no half-cleared placement");
+  });
+
   await t.test("cancellation fails closed because the RELEASE effect is not composed", async () => {
     const wo = await make();
     await assert.rejects(() => lifecycle.transitionWorkOrder(deps, actor({ capabilities: new Set([lifecycle.WORK_ORDER_LIFECYCLE_CANCEL]) }), {

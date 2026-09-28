@@ -91,12 +91,20 @@ const rule = (
 export const TRANSITION_MATRIX: readonly TransitionRule[] = Object.freeze([
   // ── implemented: no dependent authority is missing and no inventory effect is owed ──
   rule("CREATED", "READY_TO_DISPATCH", "markReadyToDispatch", "ALLOWED", WORK_ORDER_TRANSITION, null),
-  rule("SCHEDULED", "READY_TO_DISPATCH", "unschedule", "ALLOWED", WORK_ORDER_TRANSITION, null),
   rule("COMPLETED", "CLOSED", "close", "ALLOWED", WORK_ORDER_TRANSITION, null),
 
   // ── scheduling ──
   rule("READY_TO_DISPATCH", "SCHEDULED", "schedule", "NOT_YET_IMPLEMENTED", WORK_ORDER_TRANSITION,
     "the scheduling authority: a SCHEDULED Work Order asserts a time and an assignee, and neither is established here"),
+  // UNSCHEDULE IS THE INVERSE OF SCHEDULE, and it is deferred with it. Owner ruling ND-18 (2026-08-27)
+  // makes un-scheduling a REASONED act: a stated reason is required, the technician and window being
+  // given up are recorded, and the placement is CLEARED so a job back in the Ready queue is
+  // indistinguishable from one never scheduled (transitionWorkOrder.ts's Unschedule branch). A bare
+  // status flip here would do none of the three -- no reason, no record, and scheduled_start /
+  // scheduled_end left set on a READY_TO_DISPATCH row, the H20 defect in PostgreSQL form.
+  rule("SCHEDULED", "READY_TO_DISPATCH", "unschedule", "NOT_YET_IMPLEMENTED", WORK_ORDER_TRANSITION,
+    "the scheduling authority: ND-18 requires a stated reason, a record of the technician and window given up, "
+    + "and clearing the placement (scheduled_start / scheduled_end and the open assignment); none is composed here"),
 
   // ── inventory effects (inventoryService.ts STATE_TRIGGERS) ──
   rule("SCHEDULED", "DISPATCHED", "dispatch", "NOT_YET_IMPLEMENTED", WORK_ORDER_LIFECYCLE_DISPATCH,
