@@ -29,13 +29,12 @@
 // is genuinely EMPTY in nonprod, so "no rows" is a state the screen must be able to state honestly
 // without it ever being able to mean "we could not ask".
 //
-// ════════════════════ READS ONLY ════════════════════
+// ════════════════════ READS AND COMMANDS ════════════════════
 //
-// The closed list below is the server's READ_RUNNERS, mirrored so a typo fails here rather than as a
-// 404. The C2 MUTATION runners are deliberately absent: Sales Agreement writes already have a
-// client (services/salesAgreementCommandClient.js, over the Firebase command callables), and a
-// second write path to the same object through a different transport is how two surfaces start
-// disagreeing about what was committed. Nothing in this lane writes anything.
+// The closed lists below mirror the server's READ_RUNNERS and MUTATION_RUNNERS, so a typo fails here rather than as a
+// 404. Since the Pass 11 Retail Sales cutover this is the ONE browser route for Opportunity, Sales Agreement and Sales
+// Order reads AND commands (services/opportunityCommandClient.js, salesAgreementCommandClient.js,
+// salesOrderCommandClient.js call it); the Firebase commercial write callables are retired.
 // ════════════════════ THE AUTH SEAM IS IMPORTED LAZILY ════════════════════
 //
 // `services/adminPolicyApiClient.js` imports `firebase/firebase.js` at module scope, which reads the
@@ -72,8 +71,8 @@ export const isCommercialReadOperation = (name) =>
  * Mirrors functions/src/eosCommercial/commercialHttp.ts MUTATION_RUNNERS (Pass 11 Retail Sales journey).
  *
  * The Opportunity and Sales Order commands moved from the Firebase callables to the governed PostgreSQL Commercial
- * transport, so the browser now reaches them here -- ONE write path per object. Sales Agreement writes stay on their
- * existing client (services/salesAgreementCommandClient.js) and are not reached through this list by any caller.
+ * transport, so the browser now reaches them here -- ONE write path per object, Sales Agreement included
+ * (services/salesAgreementCommandClient.js).
  * Every command carries its own idempotencyKey; the server refuses a tenant, principal or capability in the input.
  */
 export const COMMERCIAL_MUTATION_OPERATIONS = Object.freeze([
