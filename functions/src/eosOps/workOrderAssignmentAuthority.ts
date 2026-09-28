@@ -178,6 +178,23 @@ export async function assignWorkOrderToEmployee(
       refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED", "only an ACTIVE Employee may be assigned work");
     }
 
+    // THE ACCOUNT PREDICATE: work is assigned only to an Employee with an ACTIVE governed login. It is
+    // the third of the three governed assignability predicates (lifecycle, qualification, account --
+    // eosWorkforce/reads/assignableEmployeeReads.ts), and Reorder assignment enforces it at its own
+    // command boundary for the same reason this one does: a picker is discovery, not enforcement.
+    // Without it a caller holding the capability could assign a job to an Employee who can never sign
+    // in to accept it -- RECORD_ASSIGNMENT would then refuse the technician with EMPLOYEE_LINK_REQUIRED
+    // forever, and the job would sit on a schedule nobody can act on. A REVOKED link is not a login.
+    const linked = await client.query(
+      `SELECT 1 FROM eos_policy.employee_principal_links
+        WHERE tenant_id = $1 AND employee_id = $2 AND status = 'active'`,
+      [actor.tenantId, employeeId],
+    );
+    if (linked.rows.length === 0) {
+      refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
+        "the Employee has no active governed login and cannot be assigned work");
+    }
+
     // THE QUALIFICATION, ENFORCED BY THE COMMAND. Not by the picker: a picker is a discovery
     // experience, and leaving the check there would make a client the only enforcement, so a caller
     // holding the capability could submit any ACTIVE Employee.

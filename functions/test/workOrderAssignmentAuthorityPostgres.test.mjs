@@ -63,9 +63,22 @@ test("Work Order assignment names an EMPLOYEE, never a technician id and never a
 
   await employee("e-alice"); await link("e-alice", pAlice); await qualify("e-alice");
   await employee("e-bob");   await link("e-bob", pBob);     await qualify("e-bob");
-  await employee("e-unqualified"); // ACTIVE and linked to nobody in particular, but no qualification
-  await employee("e-warehouse"); await qualify("e-warehouse", "WAREHOUSE_OPERATIONS");
-  await employee("e-onleave", "ON_LEAVE"); await qualify("e-onleave");
+  const pUnqualified = await principal("t1", "uid-unqualified");
+  const pWarehouse = await principal("t1", "uid-warehouse");
+  const pOnLeave = await principal("t1", "uid-onleave");
+  const pContractor = await principal("t1", "uid-contractor");
+  const pRevoked = await principal("t1", "uid-revoked");
+  // Every refusal fixture below is otherwise assignable in every OTHER predicate, so each proves the one
+  // predicate it names rather than tripping over a different one first.
+  await employee("e-unqualified"); await link("e-unqualified", pUnqualified); // ACTIVE and linked, but no qualification
+  await employee("e-warehouse"); await link("e-warehouse", pWarehouse); await qualify("e-warehouse", "WAREHOUSE_OPERATIONS");
+  await employee("e-onleave", "ON_LEAVE"); await link("e-onleave", pOnLeave); await qualify("e-onleave");
+  await employee("e-contractor", "CONTRACTOR"); await link("e-contractor", pContractor); await qualify("e-contractor");
+  // ACTIVE and qualified, but no login at all -- and one whose only login was REVOKED.
+  await employee("e-nologin"); await qualify("e-nologin");
+  await employee("e-revoked"); await qualify("e-revoked");
+  await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+           VALUES ('epl-revoked', 't1', $1, 'e-revoked', 'taylor', 'OPERATOR_ASSERTED', 'f', 'test', 'revoked')`, [pRevoked]);
   await employee("e-t2", "ACTIVE", "t2");
 
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by)
@@ -109,6 +122,19 @@ test("Work Order assignment names an EMPLOYEE, never a technician id and never a
   await t.test("an inactive Employee is not assignable, whatever they are qualified for", async () => {
     await assert.rejects(assign({ workOrderId: "wo-1", employeeId: "e-onleave" }),
       /only an ACTIVE Employee/);
+    // ACTIVE ALONE is the declared assignability policy (assignableEmployeeReads.ts); widening it to
+    // CONTRACTOR is a business decision, not something this command infers.
+    await assert.rejects(assign({ workOrderId: "wo-1", employeeId: "e-contractor" }),
+      /only an ACTIVE Employee/);
+  });
+
+  await t.test("THE ACCOUNT PREDICATE: no active governed login, no assignment -- a revoked link is not a login", async () => {
+    await assert.rejects(assign({ workOrderId: "wo-1", employeeId: "e-nologin" }),
+      /no active governed login/);
+    await assert.rejects(assign({ workOrderId: "wo-1", employeeId: "e-revoked" }),
+      /no active governed login/);
+    const { rows } = await q(`SELECT count(*)::int n FROM eos_ops.work_order_assignments WHERE work_order_id='wo-1'`);
+    assert.equal(rows[0].n, 0, "a refused assignment wrote nothing");
   });
 
   await t.test("the tenant boundary cannot be named across", async () => {
