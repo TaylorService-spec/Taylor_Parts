@@ -23,6 +23,15 @@ service cloud.firestore {
       return isSignedIn() && (userRole() == "admin" || userRole() == "dispatcher");
     }
 
+    // THE REORDER SOURCE WRITE FREEZE -- the browser half (Controller ruling 2026-09-28, activation window step 2).
+    // functions/src/reorderRequest/reorderSourceFreeze.ts REORDER_SOURCE_FROZEN stops the trusted callables; this stops
+    // the only two BROWSER write arms the legacy Reorder source still has (reorder_requests update, and the
+    // reorder_purchase_order_voids create). Every other arm on the three collections was already `if false`. The legacy
+    // expressions are kept intact behind this guard, so the declared rollback is flipping this function alone.
+    function reorderSourceFrozen() {
+      return true;
+    }
+
     // Account Commercial Profile -- PR 2 (docs/specifications/
     // account-commercial-profile-and-financial-forecast-horizons.md).
     // The GOVERNED Commercial Profile fields (paymentTerms/taxStatus) are
@@ -760,7 +769,8 @@ service cloud.firestore {
       // Architecture Review pass per this project's standing
       // finding-classification discipline, not decided unilaterally as
       // final.
-      allow update: if
+      allow update: if !reorderSourceFrozen() && (
+
         ( ( isAdminOrDispatcher() // Approve/Reject -- unchanged, admin/dispatcher only
             && resource.data.status == "PENDING_REVIEW"
             && ((request.resource.data.status == "READY_FOR_PARTS_MANAGER"
@@ -998,7 +1008,8 @@ service cloud.firestore {
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty
         && request.resource.data.requestedBy == resource.data.requestedBy
-        && request.resource.data.createdAt == resource.data.createdAt;
+        && request.resource.data.createdAt == resource.data.createdAt
+      );
       allow delete: if false;
     }
 
@@ -1105,7 +1116,8 @@ service cloud.firestore {
       // confirmed by omission. PARTS_ASSOCIATE never gains Void, per
       // the Specification's Architecture Review decision (restated in
       // the reorder_requests VOIDED branch's own comment above).
-      allow create: if isAdminOrDispatcher()
+      allow create: if !reorderSourceFrozen() && (
+        isAdminOrDispatcher()
         && request.auth.uid == get(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.assignedToUserId
         && get(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.status == "ORDERED"
         && exists(/databases/$(database)/documents/reorder_purchase_orders/$(reorderPurchaseOrderId))
@@ -1125,7 +1137,8 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.status == "VOIDED"
         && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.voidedBy == request.auth.uid
         && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.voidedAt == request.resource.data.createdAt
-        && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.voidReason == request.resource.data.reason;
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.voidReason == request.resource.data.reason
+      );
       allow update, delete: if false;
     }
 

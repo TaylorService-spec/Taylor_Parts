@@ -113,6 +113,20 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
       "client field-ops-app-vite/src/services/partMasterCommandClient.js (changeStatus)",
     ]),
   }),
+  // THE JOB-LEVEL PART IMPORT WRITER. `part.create` above already guards every individual row, because
+  // Data Import calls the governed createPart rather than writing Parts itself. This id exists because a
+  // per-row guard is the wrong SHAPE for an import: a frozen catalog would let an administrator approve a
+  // 400-row Parts job, claim it, and then fail all 400 rows one at a time, which reads as a broken import
+  // rather than as "this runtime no longer writes Parts". The CRM cutover already settled this shape for
+  // `account.import` (crm/crmWriterState.ts); Catalog follows it rather than inventing a second one.
+  "part.import": Object.freeze({
+    module: "functions/src/dataImport/dataImportCallables.ts",
+    entry: "executeDataImportCallable (entityType PARTS), refused before the job is claimed and before any row is written",
+    reachedFrom: Object.freeze([
+      "callable executeDataImport (functions/src/index.ts -> dataImportCallables.ts) with a staged PARTS job",
+      "client field-ops-app-vite/src/services/access/dataImportClient.js (executeDataImport)",
+    ]),
+  }),
   "equipmentModel.import": Object.freeze({
     module: "functions/src/equipmentCompatibility/commands.ts",
     entry: "runEquipmentCompatibilityCommand (action importEquipmentModel)",

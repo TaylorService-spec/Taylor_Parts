@@ -235,6 +235,10 @@ test("every legacy writer calls the guard with its own id, before anything else 
     assert.ok(accept.includes(c.gateLine), `acceptForExecution must carry: ${c.gateLine}`);
   }
   assert.ok(accept.indexOf("assertFirestoreCatalogWriterOpen") < accept.indexOf("resolvePermission"), "the guard precedes capability resolution");
+  // The JOB-level gate: present verbatim in its module (its ordering against the claim is catalogPartImportFreeze's proof).
+  for (const c of LEGACY_CATALOG_MASTER_COMMANDS.filter((x) => x.form === "JOB_GATE")) {
+    assert.ok(readFileSync(c.module, "utf8").includes(c.gateLine), `${c.module} must carry: ${c.gateLine}`);
+  }
   // EVERY action of this orchestrator is gated. The compatibility actions are IN this freeze by Owner
   // ruling: `equipment_part_compatibility` is persisted, versioned, company-neutral reference data keyed
   // on two catalog identities, and `importCompatibilitySource` can itself stage an update to the

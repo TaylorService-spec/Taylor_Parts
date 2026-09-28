@@ -95,3 +95,20 @@ test("nothing else in the repository invents its own freeze", () => {
   walk(SRC);
   assert.deepEqual(declarers, ["reorderRequest/reorderSourceFreeze.ts"]);
 });
+
+test("a frozen Reorder source is a governed failed-precondition at BOTH legacy callable boundaries -- never internal", async () => {
+  const { mapReceiveError } = await import("../lib/inventoryReceiving/receivingCallables.js");
+  const { mapCommandError } = await import("../lib/reorderRequest/reorderCallables.js");
+  for (const [map, writer, noun] of [
+    [mapReceiveError, "receiveInventoryStockLegacyReorder", /receipt is no longer written here/],
+    [mapCommandError, "createReorderRequest", /Reorder requests are no longer written here/],
+    [mapCommandError, "recordReorderPurchaseOrder", /Reorder requests are no longer written here/],
+  ]) {
+    const mapped = map(new freeze.ReorderSourceFrozenError(writer));
+    assert.equal(mapped.code, "failed-precondition", `${writer} must not surface as internal`);
+    assert.match(mapped.message, /legacy Reorder source is frozen/);
+    assert.match(mapped.message, noun);
+    assert.doesNotMatch(mapped.message, /could not be completed|command failed/i);
+    assert.equal(mapped.details && mapped.details.code, "REORDER_SOURCE_FROZEN");
+  }
+});
