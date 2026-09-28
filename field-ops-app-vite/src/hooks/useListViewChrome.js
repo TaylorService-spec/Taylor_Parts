@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { collection, getCountFromServer, query, where, limit as fsLimit } from "firebase/firestore";
+import { db } from "../firebase/firebase";
 import { selectableSavedViews } from "../metadata/listViewSummary.js";
 import { buildQueryDescriptor } from "../metadata/listRuntime.js";
 import { makeCriterion } from "../metadata/listUrlState.js";
@@ -28,22 +30,17 @@ import { makeCriterion } from "../metadata/listUrlState.js";
 
 const COUNT_CEILING = 10000;
 
-// ════════════════════ AN INJECTED COUNT, AND WHY THE FIRESTORE ONE IS LOADED LAZILY ════════════════════
+// ════════════════════ AN INJECTED COUNT ════════════════════
 //
 // An object whose collection has moved off Firestore (the Part Master, onto the Render Catalog API)
 // passes `options.count(descriptor)` and is counted by ITS authority over the same descriptor its
-// list executes. For such a screen this hook must not reach Firestore at all -- not as a fallback,
-// and not as a module its read path loads -- so the Firestore aggregate below is imported only on the
-// branch that uses it. Every other object is counted exactly as before.
+// list executes; the Firestore aggregate below is then never CALLED for it -- not as a fallback, not
+// at all. Every other object is counted exactly as before.
 //
-// The dynamic import is not concealment: scripts/firebaseExitGuard.mjs matches `import("...")` the
-// same as a static import, so this file stays on the Firebase exit baseline until the last Firestore
-// list moves.
+// The Firestore imports stay STATIC and visible. This hook still serves Firestore-backed lists, so the
+// dependency is real until the last of them moves; loading it lazily would only hide it from the
+// shim-boundary scan, and a dependency is architectural, not a matter of when a module loads.
 async function firestoreCount(entity, descriptor) {
-  const [{ collection, getCountFromServer, query, where, limit: fsLimit }, { db }] = await Promise.all([
-    import("firebase/firestore"),
-    import("../firebase/firebase"),
-  ]);
   let q = query(collection(db, entity.collection));
   for (const f of descriptor.filters ?? []) {
     const op = f.operator === "IN" ? "in" : f.operator === "ARRAY_CONTAINS" ? "array-contains" : "==";

@@ -133,6 +133,10 @@ test("NOTHING in the client tries Render and then falls back to Firestore", () =
 const IMPORT_RE = /(?:^|[\s;])(?:import|export)\s[^'"]*?from\s*["']([^"']+)["']|^\s*import\s*["']([^"']+)["']/gm;
 const DYNAMIC_IMPORT_RE = /\bimport\(\s*["']([^"']+)["']\s*\)/g;
 const IDENTITY_SEAM = "services/adminPolicyApiClient.js";
+// SECOND SANCTIONED STOP: the generic list chrome, which still counts every Firestore-backed list and so still
+// imports Firestore, statically and visibly. PartMasterList injects its own count, so that code is never CALLED for
+// the Part Master -- proven by the assertions below rather than by hiding the import.
+const LIST_CHROME = "hooks/useListViewChrome.js";
 function resolveLocal(from, spec) {
   for (const ext of ["", ".js", ".jsx", ".ts", ".tsx", "/index.js", "/index.jsx"]) {
     const p = resolve(dirname(from), spec + ext);
@@ -149,7 +153,7 @@ function staticImportGraph(entry) {
     const f = stack.pop();
     if (seen.has(f)) continue;
     seen.add(f);
-    if (rel(f) === IDENTITY_SEAM) continue;
+    if (rel(f) === IDENTITY_SEAM || rel(f) === LIST_CHROME) continue;
     const src = strip(readFileSync(f, "utf8"));
     for (const m of src.matchAll(IMPORT_RE)) {
       const spec = m[1] ?? m[2];
@@ -172,6 +176,12 @@ test("PartMasterList's read path loads NOTHING from Firebase and no Firestore li
     assert.equal(/(^|\/)firebase\/firebase(\.js)?$/.test(m), false, `${m}: the Firebase app module must not be loaded`);
     assert.notEqual(m, "metadata/firestoreListSource.js", "the Firestore list source must not be loaded");
   }
+  // The list chrome's Firestore count is bypassed: PartMasterList injects the Catalog count, and the chrome
+  // consults an injected count exclusively.
+  const screen = code("modules/inventory/PartMasterList.jsx");
+  assert.match(screen, /const CHROME_OPTIONS = Object\.freeze\(\{ count: countPartMaster \}\)/, "PartMasterList must inject its own count");
+  const chrome = code(LIST_CHROME);
+  assert.match(chrome, /injectedCount/, "the chrome must honour an injected count");
   // The identity seam is reached only by the Catalog client, for the token.
   const catalogClient = code("services/catalogApiClient.js");
   assert.match(catalogClient, /import \{ currentIdToken, policyApiBaseUrl \} from "\.\/adminPolicyApiClient\.js"/);
@@ -184,13 +194,12 @@ test("the Part Master page and total reach the Render Catalog API, with no Fires
   }
   assert.ok(page.includes("searchPartsInServerOrder"), "the page is a governed searchParts call");
   assert.ok(page.includes("countParts"), "the total is a governed countParts call");
-  // The screen injects the Catalog count; the Firestore aggregate in useListViewChrome is loaded only on
-  // the branch that is NOT given one, so it is neither loaded nor run for this screen.
+  // The screen injects the Catalog count; the Firestore aggregate in useListViewChrome runs only on the branch that is
+  // NOT given one, so it never runs for this screen. Its import stays static and visible (see LIST_CHROME above).
   const screen = code("modules/inventory/PartMasterList.jsx");
   assert.match(screen, /count: countPartMaster/);
   assert.match(screen, /useListViewChrome\(partIndexList, partEntity, criteria, apply, CHROME_OPTIONS\)/);
   const chrome = code("hooks/useListViewChrome.js");
-  assert.equal(/^\s*import\s[^;]*["']firebase\//m.test(chrome), false, "no STATIC Firebase import in the shared chrome hook");
   assert.match(chrome, /injectedCount \? await injectedCount\(descriptor\) : await firestoreCount\(entity, descriptor\)/,
     "an injected count is the ONLY count consulted -- no Firestore fallback when it fails");
   // A refusal is the screen's DENIED state, from the Catalog client's own vocabulary.

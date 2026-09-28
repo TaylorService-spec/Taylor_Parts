@@ -27,11 +27,16 @@ const h = vi.hoisted(() => ({
   firebaseLoaded: [],
 }));
 
-// TRIPWIRES, not fakes. If anything on this screen's path so much as LOADS a Firestore or Firebase
-// app module, the factory runs and records it -- and the suite fails below. The screen must render
-// every state (rows, empty, denied, unavailable, count) without either being loaded.
-vi.mock("firebase/firestore", () => { h.firebaseLoaded.push("firebase/firestore"); return {}; });
-vi.mock("../src/firebase/firebase", () => { h.firebaseLoaded.push("firebase/firebase"); return {}; });
+// TRIPWIRES, not fakes. The shared list chrome (hooks/useListViewChrome.js) still IMPORTS Firestore statically,
+// because it counts every Firestore-backed list and a dependency is not hidden by loading it lazily. What this
+// screen must never do is USE it: every Firestore function the chrome imports records its call here, and the
+// Firestore list source records being loaded at all -- the suite fails below on either. The screen must render every
+// state (rows, empty, denied, unavailable, count) without one Firestore call.
+vi.mock("firebase/firestore", () => {
+  const trip = (name) => (...args) => { h.firebaseLoaded.push(`firebase/firestore.${name}`); throw new Error(`Firestore ${name} called`); };
+  return { collection: trip("collection"), getCountFromServer: trip("getCountFromServer"), query: trip("query"), where: trip("where"), limit: trip("limit") };
+});
+vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("../src/metadata/firestoreListSource.js", () => { h.firebaseLoaded.push("firestoreListSource"); return {}; });
 
 // THE RENDER CATALOG TRANSPORT, and nothing else. `call(operation, input)` is the exact seam every
