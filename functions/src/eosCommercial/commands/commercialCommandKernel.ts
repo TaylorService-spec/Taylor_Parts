@@ -208,6 +208,14 @@ export async function runCommercialCommand<R extends object>(
   requiredCapabilities: readonly string[],
   idempotencyKey: unknown,
   body: (client: PoolClient, now: Date) => Promise<CommercialCommandOutcome<R>>,
+  /**
+   * The record the caller's input NAMES (e.g. the Opportunity an edit targets), for commands that act on an existing
+   * record. A committed receipt for the same key is a replay ONLY of a command on that same record: the replay identity
+   * is (tenant, principal, operation, key), so without this a key reused on a DIFFERENT record would return the first
+   * record's result as "replayed" and apply nothing -- the false replay the retired Firestore path closed by scoping its
+   * replay id to the record. Refused IDEMPOTENCY_KEY_REUSED instead.
+   */
+  replayTarget?: { readonly family: CommercialFamily; readonly id: unknown },
 ): Promise<CommercialReplayable<R>> {
   if (!actor || typeof actor.tenantId !== "string" || actor.tenantId.trim() === "" || typeof actor.principalId !== "string" || actor.principalId.trim() === "") {
     throw new CommercialCommandError("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved tenant and principal are required");
@@ -234,12 +242,16 @@ export async function runCommercialCommand<R extends object>(
     await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
       `commercial-command|${actor.tenantId}|${actor.principalId}|${operation}|${keyHash}`,
     ]);
-    const prior = await client.query<{ result: R }>(
-      `SELECT result FROM eos_commercial.command_receipts
+    const prior = await client.query<{ result: R; target_family: string | null; target_id: string | null }>(
+      `SELECT result, target_family, target_id FROM eos_commercial.command_receipts
         WHERE tenant_id = $1 AND principal_id = $2 AND operation = $3 AND idempotency_key_hash = $4`,
       [actor.tenantId, actor.principalId, operation, keyHash],
     );
     if (prior.rows.length === 1) {
+      const receipt = prior.rows[0];
+      if (replayTarget && (receipt.target_family !== replayTarget.family || receipt.target_id !== replayTarget.id)) {
+        fail("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "this idempotency key was already used for a different record; use a new key for a new action");
+      }
       await client.query("COMMIT");
       return { ...prior.rows[0].result, replayed: true };
     }

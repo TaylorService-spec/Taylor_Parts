@@ -137,7 +137,7 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
       result: { opportunityId: current.id, changed: changes.map((c) => c.field), editVersion: (expected as number) + 1, ownershipHandoffId },
       target: target(current.id),
     };
-  });
+  }, { family: "opportunity", id: input?.opportunityId });
 }
 
 export function transitionOpportunity(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
@@ -159,7 +159,7 @@ export function transitionOpportunity(deps: CommercialCommandDeps, actor: Commer
       result: { opportunityId: current.id, stage: patch.stage, outcome: patch.outcome, editVersion: current.editVersion + 1 },
       target: target(current.id),
     };
-  });
+  }, { family: "opportunity", id: input?.opportunityId });
 }
 
 /** `now` is the command's governed instant -- the same one the transition patch was built with. No second clock read. */
@@ -203,5 +203,5 @@ export function closeOpportunityAsWon(deps: CommercialCommandDeps, actor: Commer
         },
         target: target(opportunity.id),
       };
-    });
+    }, { family: "opportunity", id: input?.opportunityId });
 }

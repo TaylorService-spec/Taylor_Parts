@@ -185,5 +185,5 @@ export function transitionSalesOrder(deps: CommercialCommandDeps, actor: Commerc
         [actor.tenantId, order.id, patch.state, actor.principalId],
       );
       return { result: { salesOrderId: order.id, state: patch.state }, target: { family: "salesOrder" as const, id: order.id } };
-    });
+    }, { family: "salesOrder", id: input?.salesOrderId });
 }

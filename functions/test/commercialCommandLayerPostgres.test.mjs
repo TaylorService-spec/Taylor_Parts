@@ -359,6 +359,23 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     assert.equal(raw.rows[0].n, 0, "the raw idempotency key was persisted");
   });
 
+  await t.test("(36b) a key reused on a DIFFERENT record is refused, never a false replay of the first record's result", async () => {
+    const a = await newOpportunity({ lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] });
+    const b = await newOpportunity({ lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] });
+    const k = key();
+    const first = await opp.transitionOpportunity(deps, ACTOR, { idempotencyKey: k, opportunityId: a.opportunityId, toStage: "QUALIFYING" });
+    assert.equal(first.replayed, false);
+    // The SAME record replays (the retry the key exists for).
+    assert.equal((await opp.transitionOpportunity(deps, ACTOR, { idempotencyKey: k, opportunityId: a.opportunityId, toStage: "QUALIFYING" })).replayed, true);
+    // A DIFFERENT record with the same key: refused, and B does not move.
+    await assert.rejects(opp.transitionOpportunity(deps, ACTOR, { idempotencyKey: k, opportunityId: b.opportunityId, toStage: "QUALIFYING" }), code("IDEMPOTENCY_KEY_REUSED"));
+    const ku = key();
+    await opp.updateOpportunity(deps, ACTOR, { idempotencyKey: ku, opportunityId: a.opportunityId, expectedEditVersion: 2, need: "a" });
+    await assert.rejects(opp.updateOpportunity(deps, ACTOR, { idempotencyKey: ku, opportunityId: b.opportunityId, expectedEditVersion: 1, need: "b" }), code("IDEMPOTENCY_KEY_REUSED"));
+    const rowB = (await q(`SELECT stage::text, need, edit_version FROM eos_commercial.opportunities WHERE id=$1`, [b.opportunityId])).rows[0];
+    assert.deepEqual(rowB, { stage: "IDENTIFIED", need: "Walk-in freezer", edit_version: "1" });
+  });
+
   await t.test("(34) concurrent same-key submissions create exactly one record; the rest replay it", async () => {
     const input = { idempotencyKey: key(), accountId: "acct-1", salesChannel: "STRATEGIC_ACCOUNTS", lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] };
     const results = await Promise.all(Array.from({ length: 12 }, () => opp.createOpportunity(deps, ACTOR, input)));

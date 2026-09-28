@@ -134,7 +134,7 @@ export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: Co
       );
       if (patch.lines) await replaceAgreementLines(db, actor.tenantId, current.id, agreementLineRows(patch.lines as AgreementRow["lines"]));
       return { result: { salesAgreementId: current.id, changed }, target: target(current.id) };
-    });
+    }, { family: "salesAgreement", id: input?.salesAgreementId });
 }
 
 export function acceptSalesAgreement(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
@@ -157,5 +157,5 @@ export function acceptSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
         result: { salesAgreementId: current.id, state: "ACCEPTED", acceptedAt: accepted.rows[0].accepted_at.toISOString(), acceptedBy: actor.principalId },
         target: target(current.id),
       };
-    });
+    }, { family: "salesAgreement", id: input?.salesAgreementId });
 }
