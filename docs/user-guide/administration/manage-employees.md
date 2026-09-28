@@ -1,17 +1,23 @@
 # Find and manage users
 
-**What this lets you do:** Look up anyone in your company, see their profile and access at a glance,
-open their record, and — where your account is authorised — correct their details.
+**What this lets you do:** Look up anyone in your company, open their Employee record, and — where your account
+is authorised — correct their details.
 
-**Who can do it:** Admins and dispatchers. (Technicians do not see the Administration area.)
+**Who can do it:** People whose Security Roles give them `Administration ▸ Users`. By default the Administrator,
+the Owner and the General Manager can **read** Employee records; only the Administrator and the Owner can **edit**
+them. (A Dispatcher or Technician does not see the Administration area.)
 
-> **Employees and Users are now one screen.** Administration used to have two people destinations.
-> There is one now, called **Users**, and it shows the same people the Employees screen showed. Old
-> links to `/administration` or `/administration/employees` still work — they take you to Users.
+> **Access is administered on the same record.** Security Roles, Effective Access, Direct Exceptions and the
+> other access sections of an Employee record are covered in the canonical Administration guide:
+> [Administration: Policy and Access](../../training/administration-policy-and-access.md). This page covers
+> finding people and keeping their Employee details correct.
+
+> **Employees and Users are one screen.** Old links to `/administration` or `/administration/employees` take you
+> to Users.
 
 ## Before you start
 
-- Sign in with an admin or dispatcher account.
+- Sign in with an account that can open `Administration ▸ Users` (see above).
 - Know roughly who you are looking for. The list is sorted by name.
 
 ## Find someone
@@ -19,85 +25,78 @@ open their record, and — where your account is authorised — correct their de
 1. In the top navigation, open **Administration**, then choose **Users**.
 2. Scan the table. Each row shows:
    - **Name** — the person's name.
+   - **Employee ID** — your own employee number, or *Not recorded*.
    - **Employment Status** — Active, On Leave, Inactive, Terminated, Retired or Contractor.
-   - **Operational Roles** — what they are eligible to do operationally, such as Technician or
-     Parts Manager. This is *not* their security role.
-   - **EOS Account** — **Account linked** if they have an EOS sign-in, **No account** if they do not.
-     It says whether an account EXISTS, not whether it is switched on.
-   - **Security Role** — Admin, Dispatcher or Technician.
+   - **Job Title** — descriptive only; a job title grants no permission and sets no role.
+   - **Operating Company** — the company the person works for.
 3. If the list is long, select **Load more** at the bottom to fetch the next page.
+4. **N Employees have no Job Role** above the table counts people without a Job Role; **Show Employees without a
+   Job Role** lists them.
 
 ## Open someone's record
 
-Select the person's **name**, or anywhere on their row, or the **View** button. Their record opens
-**read-only** — nothing becomes editable just because you clicked.
+Select **View** (or the person's name). The record opens **read-only** — nothing becomes editable just because you
+opened it. It shows, in order:
 
-The record answers, in order:
-
-- **Identity & contact** — first, middle, last and preferred name, their Employee ID, work email,
-  work and mobile phone, and address.
-- **Employment** — employment status, job title, operating company, hire and separation dates, and
-  their **Manager**. The manager's name is a link: select it to jump to that person's own record.
-- **Operational assignment** — the operational roles they hold.
-- **EOS access & security** — whether they have an EOS account, their security role, and the
-  administrative actions.
-- **Change History** — at the bottom. See below.
+- **Identity & contact** — first, middle, last and preferred name, Employee ID, work email, work and mobile phone,
+  and address.
+- **Employment & business context** — employment status, job title, operating company, hire and separation
+  dates, and **Manager** (a link to that person's record).
+- **Job Role** — the person's business position, with its history. *It does not change access.*
+- **Security Roles**, **Work Eligibility**, **Operational Scope**, **Functional Roles**, **User Access**,
+  **Direct Exceptions**, **Effective Access** and **Workflow responsibilities** — the person's access and
+  responsibilities, administered as described in the
+  [Administration guide](../../training/administration-policy-and-access.md).
+- **Change History** — governed changes to the Employee record (see below), followed by **Legacy Change
+  History**, the pre-cutover record kept for reference, and **Access Audit History** — Security Role and
+  direct-grant events for this person.
 
 Anything the record does not have says so — "Not recorded" — rather than showing a blank.
 
 ## Change someone's details
 
 1. Open their record.
-2. Select **Edit User** (or use **Edit** directly from the list, which opens the same form).
-3. Change what you need. You can edit names, Employee ID, contact details, address, job title,
-   manager, operating company, hire and separation dates, employment status and operational roles.
+2. Select **Edit Employee** (or use **Edit** directly from the list, which opens the same form).
+3. Change what you need: display, preferred, first, middle and last name; Employee ID; work email; work and mobile
+   phone; address; **Job Title**; **Manager**; **Hire Date** and **Separation Date**.
 4. Select **Save**, or **Cancel** to discard everything you typed.
 
-Only the fields you actually changed are sent. Each change is recorded separately in Change History.
+Employment Status and Operating Company are **not edited on this form** yet. Security Roles, Job Role, Work
+Eligibility and Operational Scope are changed in their own sections of the record, each with its own reason — not
+here. Recording a separation date does not change Employment Status or disable the person's EOS account.
 
 ## Read the Change History
 
-Every record ends with **Change History** — what changed, when, from what, to what, and who did it.
-It shows the recorded, audited history; it is not assembled from what happens to be on your screen.
+**Change History** is the governed audit of changes to the Employee record — what changed, when, from what, to
+what, who did it, and the reason.
 
-- Newest changes are at the top.
-- **Field** filters to one kind of change ("Job Title", "EOS Access Status"). The options come from
-  what this person's history actually contains, so you will not see a filter that matches nothing.
-- **Changed by** filters to one person, and **From** / **To** limit it to a date range. Both ends of
-  the range are included.
-- Select any column heading to sort by it. The first select sorts ascending, the next descending.
+- **Field** filters to one kind of change (for example "Manager"). The options come from what this person's
+  history actually contains.
+- **Changed by** filters to one person, and **From** / **To** limit it to a date range.
+- Select a column heading to sort by it.
+
+Manager and Job Role names are shown as they are named today, not as they were named at the time of the change.
 
 ## Tips and common problems
 
-- **"Employment Status" and EOS account status are different things, on purpose.** Marking someone
-  Terminated does *not* switch their EOS account off, and disabling an account does *not* change
-  their employment record. Each is its own deliberate action.
-- **Operational roles are not access.** Adding "Parts Manager" makes someone eligible for that kind
-  of work. It does not change what they are permitted to do — that is their security role.
-- **You cannot change a security role here.** The Security Role shown on a user's record is a copy
-  of their sign-in role, kept for reference. Changing it is done through Roles & Permissions.
-- **"Account status: Not available."** Whether an EOS account is switched on or off is held by the
-  sign-in system, and this screen has no way to read it for another person. It says so rather than
-  guessing.
-- **Enable Account / Disable Account are locked, with a padlock.** Hover or focus the button to read
-  why. These need a governed access grant that is not issued in any environment yet.
-- **Send password reset is not showing.** It appears only for accounts authorised to initiate one.
-  When it is available, a reset email is *requested* — the person then sets their own new password
-  from it. You never see their password, a reset link, or a code; this screen does not confirm that
-  the email arrived; and a routine reset does not sign them out.
-- **"Change history unavailable."** The trusted history service is not deployed and verified yet.
-  That is not the same as "nothing has ever changed", and the screen deliberately does not claim it.
-- **Employee ID is blank for some people.** That field is your own employee number, and nobody was
-  given one automatically. Fill it in when you edit the record.
-- **"That Employee ID is already assigned to another employee."** Employee IDs are unique — one
-  number belongs to one person, and upper and lower case count as the same number. Pick a different
-  one, or clear it from whoever holds it first, and it becomes available again.
-- **The Employee ID box rejects what you typed.** Use up to 32 letters, digits, dots, underscores or
-  hyphens, starting with a letter or digit. No spaces and no slashes.
-- **No "New user" button.** Adding a person to EOS links them to a sign-in account, which an
-  administrator does through the onboarding procedure rather than from this screen.
+- **Employment status and EOS access are different things, on purpose.** Marking someone Terminated does *not*
+  switch their EOS account off, and disabling an account does *not* change their employment record.
+- **A Job Role is not access, and neither is Work Eligibility or Operational Scope.** What a person may do comes
+  from their Security Roles — see the [Administration guide](../../training/administration-policy-and-access.md)
+  and the person's **Effective Access**.
+- **Security Roles are changed on the Employee record**, in its **Security Roles** section, with a required reason
+  — not on the Users list and not in Roles & Permissions.
+- **Employee ID is blank for some people.** That field is your own employee number, and nobody was given one
+  automatically. Fill it in when you edit the record.
+- **"That Employee ID is already held by another Employee. Choose a different one."** Employee IDs are unique —
+  one number belongs to one person, and upper and lower case count as the same number. Pick a different one, or
+  clear it from whoever holds it first.
+- **The Employee ID box rejects what you typed.** Use up to 32 letters, digits, dots, underscores or hyphens,
+  starting with a letter or digit. No spaces and no slashes.
+- **No "New user" button.** Adding a person to EOS links them to a sign-in account, which is done through the
+  onboarding procedure rather than from this screen.
 
 ## Related
 
-- [See who can do what](./see-who-can-do-what.md)
-- [See what a role can do](./see-what-a-role-can-do.md)
+- [Administration: Policy and Access](../../training/administration-policy-and-access.md) — Security Roles, Object
+  Security, Effective Access, Direct Exceptions, Functional Roles, workflows and the protected Owner.

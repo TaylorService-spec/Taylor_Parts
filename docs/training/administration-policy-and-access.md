@@ -1,395 +1,410 @@
 # Administration: Policy and Access — EOS User Guide
 
-**Audience:** Taylor EOS Administrator (all parts) · Owner and General Manager (Part 3, assigning Roles)
-**Applies to:** `Administration ▸ Roles & Permissions`, `Administration ▸ Objects`, `Administration ▸ Users` (the **Stored role assignments** panel), `Administration ▸ Workflows`
-**Training represents:** frontend `0c733704` · EOS API `44f423c9`
-**Effective date:** 2026-09-10
+**Audience:** Owner · Administrator · a delegated security administrator who holds the governed assignment authority
+**Applies to:** `Administration ▸ Users` (the Employee record), `Administration ▸ Objects` (Object Security), `Administration ▸ Roles & Permissions`, `Administration ▸ Permission Preview`, `Administration ▸ Workflows`, `Administration ▸ Users ▸ Functional Roles`, `Administration ▸ Audit Logs`
+**Training represents:** client `62e08988` (Vercel) · EOS API `62e08988` (Render)
+**Effective date:** 2026-09-27
 **Environment:** non-production — `https://verenwardeos.vercel.app`, tenant `taylor-nonprod`
 **Owner:** Verenward product training
 
 ## What this guide helps you do
 
-As the Taylor EOS Administrator for Taylor Freezer of Arizona, you decide **what each Role may do** and
-**who holds which Role**. This guide covers the four Administration screens where that is configured:
+You administer **who may do what** in EOS for Taylor Freezer of Arizona. Everything in this guide is done in
+EOS Administration. You never need source code, a database tool or a developer to make a normal access change,
+and nothing here involves Firebase.
 
-- **Roles & Permissions** — create a Role, and set what it may Create, Read, Edit and Delete on each
-  kind of record, down to individual fields.
-- **Objects** — rename the kinds of records EOS works with, and add fields of your own.
-- **Users** — give a person a Role, or take one away.
-- **Workflows** — see the business processes EOS knows about. This screen is read-only today.
+Every change you make is decided by the EOS server, recorded with **your name, the time and the reason you
+give**, and takes effect on the next request. If the server refuses a change, EOS shows you the server's own
+refusal, word for word (see [Refusals and anti-lockout](#refusals-and-anti-lockout)).
 
-Grid choices save the moment you make them; forms save when you press their **Save** button. Every
-change is recorded with your name and the time, and survives a reload, a sign-out and a restart of the
-service.
+### I need to… → go here
 
-> **Read this before you start.** In this release, the settings on these screens are EOS's **stored
-> access policy**, and today they control **who may change that policy** — nothing more yet. The rest
-> of EOS — Work Orders, Inventory, Purchasing, Sales and every other area — still decides what people
-> can do from the **existing access model**: the *Security Role* shown in the Users directory, and the
-> access your onboarding set up. Each area moves onto this stored policy as it is cut over, one at a
-> time. **Until an area is cut over, changing a Role here does not change what anyone can do in that
-> area.** Nothing in this guide describes a screen you do not have.
+| I need to… | Go here |
+|---|---|
+| give a person a Security Role, or take one away | `Administration ▸ Users` → open the person → **Security Roles** |
+| set a person's Job Role, Work Eligibility or Operational Scope | `Administration ▸ Users` → open the person → **Job Role** / **Work Eligibility** / **Operational Scope** |
+| change what a Security Role may do to a kind of record | `Administration ▸ Objects` → **By object** → choose the Object (**Object Security**) |
+| see a Security Role's holders, actions and decision history | `Administration ▸ Roles & Permissions` → choose the Security Role |
+| find out **why** a person can (or can't) do something | the person's **Effective Access** section, or `Administration ▸ Permission Preview` |
+| give one person a single extra action as an exception | the person's **Direct Exceptions** section |
+| see a person's workflow responsibilities | the person's **Workflow responsibilities** section |
+| look at the Functional Role catalog | `Administration ▸ Users ▸ Functional Roles` |
+| review workflow definitions and their validation | `Administration ▸ Workflows` |
+| see who changed access, when and why | the person's **Access Audit History**, or a Security Role's **Decision history** |
+| staff (or remove) the Administrator — **Owner only** | `Administration ▸ Users` → open the other person → **Security Roles** |
+
+![Administration Overview](images/administration/01-administration-overview.png)
 
 ## Before you start
 
-### Who may do what
+### The words this guide uses — they are different things
 
-EOS separates *what a Role may do* from *who holds it*, on purpose:
+| Term | What it is | What it is **not** |
+|---|---|---|
+| **Employee** | The business / personnel record: name, Employee ID, employment status, job title, manager, operating company. | Not a login and not a permission. |
+| **Principal** | The **security identity** EOS authorizes when someone signs in. An Employee is linked to one Principal (**User Access**). | Not the Employee record. |
+| **Job Role** | The Employee's **business position** — for example *Retail Sales* or *National Accounts Sales* (two distinct Job Roles). | A Job Role grants **no** access and assigns **no** Security Role. |
+| **Security Role** | **Authority**: a governed bundle of Object actions (capabilities). A person may hold several; their authority is what those Roles carry together. | Not a Job Role, and never inferred from one. |
+| **Functional Role** | **Responsibility**: an operational/workflow responsibility a person holds. A workflow may *require* one. | Grants **nothing** — no capability, no access. |
+| **Work Eligibility** | Whether the Employee is qualified for a kind of work (e.g. `SERVICE_TECHNICIAN`). | Not access. |
+| **Operational Scope** | Where the Employee operationally works (a Warehouse or a Reorder Queue). | Not access by itself. |
+| **Direct Exception** | One extra Object action given to **one Principal**, outside every Security Role, as a governed exception. | Not a substitute for sound Security Role design. |
+| **Owner · Accountable · Assignee · Approver** | Distinct business relationships to a record or decision, used by the areas that manage those records. | None of them is a Security Role, and holding one does not imply another. |
 
-| To do this | You need to hold |
-|---|---|
-| Create or change a Role, its permissions, Objects or Fields | **Administrator** |
-| Give someone a Role, or remove one | **Owner**, **General Manager** or **Administrator** |
-| Look at any of these screens | membership of your company's EOS workspace |
+A Security Role answers **"may this person perform this action at all?"** It is not the whole answer. A
+**condition** on a grant (for example "only Work Orders assigned to this Employee"), a **scope** on an assignment
+(for example "Company: Taylor"), Work Eligibility and Operational Scope can each narrow *where* otherwise-valid
+authority applies. **Effective Access** shows the combined answer.
 
-Assigning people is a staffing decision; changing what a Role can do is an authority decision. Someone
-who may do the first may not automatically do the second.
+### Who may do what in Administration
 
-If you try a change you do not have the Role for, EOS refuses it and says so — for example
-`not authorized to perform "editRoleDefinition"`. That is the answer, not a fault.
+| To do this | You need (held through a Security Role) | Who holds it today |
+|---|---|---|
+| read Object Security, Security Roles, Permission Preview | `admin.securityPolicy.read` | Administrator, Owner |
+| change what a Security Role may do (grant, revoke, condition) and create/edit Roles; grant Direct Exceptions | `admin.securityPolicy.write` | **Administrator only** |
+| give or remove a person's Security Roles | `admin.roleAssignment.write` | Administrator, Owner |
+| staff or remove the **Administrator** for another person | `admin.administratorRole.assign` | **Owner only** |
+| set Job Role / Work Eligibility / Operational Scope | `admin.employeeJobRole.write` · `admin.employeeWorkEligibility.write` · `admin.employeeOperationalScope.write` | Administrator, Owner |
+| change a person's Functional Roles or the Functional Role catalog | `admin.employeeFunctionalRole.write` | **nobody yet** (see limitations) |
+| edit or publish workflow definitions | `workflowDefinition.edit` · `.publish` · … | **nobody yet** (see limitations) |
+
+**A General Manager does not administer roles.** Neither the General Manager Job Role nor the General Manager
+Security Role carries `admin.roleAssignment.write`. Role administration is only ever a capability granted
+through Administration, never something a title or Job Role implies.
 
 ### You must be set up in EOS first
 
-A person appears on these screens only once they have been **provisioned** into EOS — a Verenward
-onboarding step, not something done from a screen. There is no "New user" button, and that is
-deliberate. If you sign in and a panel says `this identity is not known to EOS`, your sign-in worked
-but your EOS set-up has not been done yet; raise it through the support path below.
+A person appears under `Administration ▸ Users` when their Employee record exists, and can sign in when their
+**User Access** is linked. Creating a person is an onboarding procedure, not a button on these screens.
 
-### How every screen is laid out
+## Normal workflow
 
-Roles & Permissions and Objects each show two things, one above the other:
+### 1. Give a person a Security Role (the Employee record)
 
-1. **Your company's stored configuration** — headed *"this tenant's stored policy"* or *"this tenant's
-   stored configuration"*. This is what you change.
-2. **Source model** — *"platform reference, not configuration"*, collapsed behind **Show the measured
-   model**. It describes what the software does today. It is there to compare against and cannot be
-   edited.
+The **Employee record is the one place** where a person's Security Roles are given or removed.
 
-The counters at the top of Roles & Permissions (*Can actually do*, *Granted but inert* …) and the
-**By role / By object** buttons on Objects belong to that reference model, not to your configuration.
+1. Open `Administration ▸ Users` and select **View** (or the person's name).
+2. Scroll to **Security Roles**. It lists the Roles the person holds, with **Scope**, **Scope value** and
+   **Effective from**.
+3. Under **Assign a Security Role**, choose the Role.
+4. If the Role can be limited to a scope, a **Scope** picker appears. Choose **All (global)** or a governed value
+   (for example **Company**). Values come only from EOS's governed list — there is no free-text scope. A scope type
+   the Role cannot use is shown as *not available for this Role*, with the server's reason.
+5. Type the **Reason (required, recorded in the audit trail)**. **Assign Security Role** stays disabled until you do.
+6. Select **Assign Security Role**. The table re-reads from the server.
 
-If a panel says **not configured**, this environment has no EOS policy service connected and there is
-nothing to change. Contact support.
+![Employee Security Roles](images/administration/06-employee-security-roles.png)
 
----
+**Why a reason is required.** The reason is the business record of *why authority changed* — for later
+review, for accountability, and for anyone investigating an access question months from now. Write what a
+colleague would need to understand the change ("Covering parts desk during Kai's leave"), not a ticket number
+alone. A request/correlation ID is provenance that EOS records automatically; it is **not** a reason, and the
+server refuses a role change that has only one.
 
-# Part 1 — Roles & Permissions
+### 2. Remove a person's Security Role
 
-Open **Administration ▸ Roles & Permissions**. In the **Roles & permissions** panel you will see one
-button per Role. A Role marked **· protected** (Administrator, Owner) is part of the platform's own
-safety net. Protected means three things: no other Role can be created with its key; the last person
-holding an administering Role cannot have it removed (see *Warnings*); and the power to administer comes
-from holding the Role itself, not from its grid. It does **not** lock the grid — you can change a
-protected Role's permissions like any other, and doing so never removes its ability to administer EOS.
+1. Open the person → **Security Roles**.
+2. Select **Remove** on the exact assignment, give the reason, and select **Confirm removal**.
 
-## Step 1 — Choose a Role
+Removal names one exact assignment; if the person holds the same Role at two scopes, only the one you chose ends.
 
-Click the Role's button. Its permission grid opens underneath. Until you pick one the panel says
-*"Choose a role to configure what it may do."*
+### 3. Set Job Role, Work Eligibility and Operational Scope
 
-## Step 2 — Read the grid
+On the same Employee record:
 
-The grid lists **every kind of record** (in EOS these are called *Objects* — Customers, Work Orders,
-Parts, Purchase Orders and so on), one per row, with four columns:
+- **Job Role** — *Business function — does not change access.* Select **Assign Job Role**, choose from the
+  company's active Job Role catalog, optionally add a reason (**Reason (optional)** — kept in the Job Role
+  history), and **Save Job Role**.
+- **Work Eligibility** — *Qualification for a kind of work — not access.* Choose a **Qualification** (for
+  example `PARTS_OPERATIONS`), give the reason, and **Assign**; **End** ends a current one.
+- **Operational Scope** — *Where the Employee operationally works — not access.* Choose a **Scope type**
+  (**Warehouse** or **Reorder Queue**) and a governed target, give the reason, and **Assign**.
 
-| Column | Means the Role may… |
+![Job Role](images/administration/23-employee-job-role.png)
+![Work Eligibility and Operational Scope](images/administration/07-employee-work-eligibility-scope.png)
+
+### 4. Change what a Security Role may do (Object Security)
+
+Object Security is where governed Object authority is configured.
+
+1. Open `Administration ▸ Objects` → **By object** → choose an **Object** (for example **Work Orders (7 actions)**).
+2. Each **governed action** is listed with its label, kind and capability key — for example **Create Work
+   Order · CREATE · `workOrder.create`**, **View Work Orders · READ · `workOrder.record.read`**, **Cancel Work
+   Order · BUSINESS_ACTION**. Objects expose business actions, not a generic Create/Read/Edit/Delete grid.
+3. Each row is a Security Role holding that action, with its **State** (for example **System default · Held**)
+   and its **Administer** controls: **Revoke**, **Set condition**.
+4. To give the action to another Role, select **Grant to another Security Role**, choose the **Security Role**,
+   optionally a condition, type the **Reason**, and select **Confirm grant**.
+
+![Object Security — Work Orders](images/administration/02-object-security-work-orders.png)
+![Grant to another Security Role](images/administration/03-object-security-grant-form.png)
+
+**Conditions** narrow a grant to some records. The **Condition** picker starts at **No condition —
+unconditioned grant** and lists each condition by its code. Only conditions the server can enforce are
+selectable, and today they apply to **View Work Orders** (`workOrder.record.read`):
+
+| Condition (as shown) | Meaning |
 |---|---|
-| **Create** | make new records of this kind |
-| **Read** | see them |
-| **Edit** | change them |
-| **Delete** | remove them |
+| `RECORD_ASSIGNMENT` (relation `ASSIGNED_EMPLOYEE`) | only Work Orders assigned to the Employee |
+| `WORK_ELIGIBILITY` | only while the Employee holds the chosen qualification |
+| `OPERATIONAL_SCOPE` | only within the Employee's chosen Warehouse / Reorder Queue scope |
 
-A **—** instead of a checkbox means that action does not exist for that kind of record, so it can never
-be granted to anyone. Hover over it and EOS says so: *"No capability governs this verb — it cannot be
-granted to anyone."* In this release **Delete is "—" for every Object.**
+`SELF`, `TEAM`, `BUSINESS_UNIT` and `COMPANY` appear **disabled**, each followed by the server's reason (for
+example *no evaluator: there is no team / reportsTo edge to evaluate*); a condition that does not apply to the
+chosen action is disabled as *not applicable to this capability*. An Administration capability can never be
+conditioned. **Company** is instead an
+*assignment scope* (step 1, "Scope"), used today for Employee record reads.
 
-## Step 3 — Change what the Role may do on an Object
+**Retire condition** removes a condition. EOS refuses it while the grant is still held, because retiring it
+would widen the grant to every record — revoke the grant first.
 
-Tick or untick the checkbox. **It saves immediately** — there is no Save button for the grid. The grid
-re-reads itself from EOS a moment later; what you see after that is what is stored.
+### 5. Review a Security Role (Roles & Permissions)
 
-## Step 4 — Go down to individual fields
+1. Open `Administration ▸ Roles & Permissions` and choose a Security Role (protected Roles are marked
+   **· protected**).
+2. The detail shows **Holders**, **Objects & actions** (expand an Object to administer its actions for this
+   Role), and **Decision history** — every grant and revoke recorded for the Role, with reason, actor and whether
+   it is current.
 
-Click **▸** next to an Object's name. Its fields open beneath it, each with its own Create / Read / Edit
-/ Delete cells.
+![Security Roles](images/administration/04-security-roles-list.png)
+![Security Role detail](images/administration/05-security-role-detail.png)
+![Decision history](images/administration/18-security-role-decision-history.png)
 
-A field cell is not a checkbox. It is a choice of three:
+The lower half of the page ("*Below: what the code does today…*") is a **read-only reference** drawn from the
+platform's built-in access contracts. It is not where permissions are configured and does not show changes made
+in Object Security. A holder without a display name is shown as **Unnamed Principal**.
 
-| Choose | Which means |
-|---|---|
-| **Inherit** | no opinion — the field follows whatever the Object row says |
-| **Allow** | allow this field explicitly |
-| **Deny** | deny this field explicitly |
+### 6. Answer "why can this person do this?" (Effective Access)
 
-Next to the choice, EOS shows what that adds up to:
+Open the person → **Effective Access** — *the server evaluator's explanation*. It is the authoritative answer
+and uses the same evaluator EOS uses at run time.
 
-| You see | It means |
-|---|---|
-| **Inherited · Allow** | no setting on this field; the Object allows it |
-| **Inherited · Deny** | no setting on this field; the Object denies it |
-| **Allow** | you allowed this field explicitly |
-| **Deny** | you denied this field explicitly |
+- The summary shows **Security Roles that grant**, **Work Eligibility**, **Operational Scope**, **Capabilities**
+  and **Surfaces**.
+- **Employee facts — not a permission source** lists facts such as Functional Roles that grant nothing.
+- **Excluded assignment** lists assignments that do not count, with the reason (for example
+  **INACTIVE — Inactive assignment**: a Role the person held historically but no longer does).
+- The table lists every Object action with its **Result** (for example **Allowed — ALLOWED** or **Denied —
+  CAPABILITY_MISSING**), its **Source** (the Security Role and scope, or **DIRECT EXCEPTION**), and any
+  condition. Use **Filter** to find an action.
 
-The difference between *Inherited · Deny* and *Deny* matters. An inherited answer changes when you change
-the Object row. An explicit Deny stays denied whatever you later do to the Object.
+![Effective Access](images/administration/09-employee-effective-access.png)
 
-Like the grid, a field choice **saves immediately**. Choosing **Inherit** does not store a "no" — it
-removes your setting, so the field goes back to following the Object.
+`Administration ▸ Permission Preview` gives the same security-grant view for any Principal, including one with no
+Employee record. It shows Security Roles and Object actions only; Work Eligibility, Operational Scope and
+record-level checks are evaluated separately.
 
-### Allow · blocked by object
+![Permission Preview](images/administration/16-permission-preview.png)
 
-A field can never open up an Object the Role cannot use. If you **Allow** a field but the Object row
-itself denies that action, the cell reads **Allow · blocked by object**: your setting is kept, but it
-grants nothing until the Object row allows the action too. EOS shows this rather than hiding it, so you
-can see why a field is still out of reach.
+### 7. Direct Exceptions
 
-## Step 5 — Create a Role
+A Direct Exception grants **one Object action to one Principal**, outside every Security Role. Use it for a
+genuine, documented exception — never as the normal way to build someone's authority; if several people need
+the same thing, change a Security Role instead.
 
-1. Click **Create a role**.
-2. **Key** — the Role's permanent internal name, for example `regionalManager`. It must start with a
-   lower-case letter and contain only letters, digits or underscore. **It cannot be changed later.**
-3. **Name** — what people will see, for example *Regional Manager*.
-4. **Description** — optional, what the Role is for.
-5. Click **Create role**.
+1. Open the person → **Direct Exceptions** → **Grant a direct exception**.
+2. Choose the **Object** and **Action**.
+3. **Expires (optional; must be in the future)** — leave it empty for no expiry, or set a future date and time.
+4. Type the **Reason (required, recorded in the audit trail)** and select **Grant direct exception**.
 
-The new Role starts with no permissions. Give it permissions in the grid (Steps 3 and 4), then give it
-to people (Part 3).
+A Direct Exception carries **no scope** and may carry only a supported condition. It is enforced everywhere a
+Role grant is, and shows in Effective Access as **DIRECT EXCEPTION**. **Revoke** ends it (with a reason).
 
-You cannot create a Role with the key `admin` or `owner`; those belong to the platform.
+![Direct Exceptions](images/administration/10-employee-direct-exceptions.png)
 
-## Step 6 — Rename or re-describe a Role
+### 8. Functional Roles
 
-1. Choose the Role, then click **Edit role details**.
-2. Change **Name** and/or **Description**.
-3. Click **Save role** — or **Cancel** to leave it unchanged.
+A Functional Role is a **responsibility**, never authority. The catalog is at `Administration ▸ Users ▸
+Functional Roles`; a person's Functional Roles are on their record under **Functional Roles**. A workflow action
+may *require* a Functional Role **in addition to** a Security Role that holds the action's capability — it can
+only narrow who may act, never grant.
 
-The form tells you: *"The key … is identity and cannot change."* That is why there is no Key box.
+![Functional Roles catalog](images/administration/13-functional-roles-catalog.png)
+![Employee Functional Roles](images/administration/08-employee-functional-roles.png)
 
----
+### 9. Workflows
 
-# Part 2 — Objects and Fields
+`Administration ▸ Workflows` lists the workflow definitions by business area (Parts / Purchasing, Technician /
+Work Order, Sales). A workflow governs **business actions** — not data access.
 
-Open **Administration ▸ Objects**. The **Objects** panel lists every kind of record with its **Key**,
-**Origin** and whether it is **Deletable**.
+- Each workflow has **versions**: **Draft → Published (ACTIVE) → Retired**. A published version never changes;
+  records already running stay on the version they started on. Editing a draft saves the next draft version.
+- A version shows its **States**, and its **Actions, capabilities and bindings**: each action names the
+  capability it *is*; a bound Security Role performs it only while it also holds that capability (and passes the
+  guard). **A binding never grants.**
+- **Validation** explains why a version cannot be published — for example **Error ACTION_WITHOUT_CAPABILITY**
+  (*action "close" names no capability, so nothing could authorize it*).
+- The lifecycle controls are **Publish (becomes ACTIVE)**, **Retire** and **New draft from this version**, each
+  with a required reason.
 
-## Rename an Object
+![Workflows](images/administration/14-workflow-administration.png)
+![Workflow version and validation](images/administration/15-workflow-version-validation.png)
 
-1. Click **▸** next to the Object.
-2. Click **Edit object details**.
-3. Change **Label**, **Plural label** and/or **Description**.
-4. Click **Save object**.
+**Current state — read this.** Three different things are easy to confuse:
 
-That is all an Object's settings you can change. The form says why: *"What the object is CALLED is
-yours. Its key …, its origin and whether it supports Delete are not."* Renaming changes what EOS calls
-the Object on this screen; it does not change the data.
+1. **The capability exists** — `workflowDefinition.edit`, `.publish`, `.version`, `.create`, `.bindRole` are
+   defined.
+2. **Nobody currently holds it** — no Security Role holds any of them; only `workflowDefinition.read`
+   (Administrator, Owner) is held. The Workflow Administrator is **unstaffed**, so the lifecycle controls are
+   refused by the server today.
+3. **No workflow is active** — all five workflows have one **Draft** version and **no active version**.
 
-## Look at an Object's fields
+Staffing a Workflow Administrator is a governed decision — escalate it; do not work around it.
 
-Expand the Object. Its fields are listed with **Field**, **Key**, **Type**, **Origin**, **Required**,
-**Sensitivity** and **Lifecycle**.
+### 10. Workflow responsibilities
 
-- **SYSTEM** fields belong to EOS. They show **protected** and have no Edit button. Hover and EOS says
-  *"A system field's definition is protected."* You still decide who may Create / Read / Edit them —
-  that is done in Roles & Permissions, Step 4.
-- **CUSTOM** fields are yours. They have an **Edit** button.
+On the person's record, **Workflow responsibilities** lists the actions in **ACTIVE** workflow versions this
+Employee may perform — bound through a Security Role they hold, narrowed by any required Functional Role, and
+allowed by the server evaluator. It is derived, never granted per person: to change it, change the Security Role,
+Functional Role, workflow binding or Role grant named in **Change it in**. A responsibility is not authority by
+itself. With no active workflow today it reads *No active workflow action is currently this Employee's
+responsibility.*
 
-## Add a custom field
+![Workflow responsibilities](images/administration/11-employee-workflow-responsibilities.png)
 
-In the expanded Object, use **Add a custom field**:
+### 11. Staff the Administrator (Owner only)
 
-1. **Key** — permanent internal name, for example `loyaltyTier`. Starts with a lower-case letter;
-   letters, digits or underscore only.
-2. **Label** — what people see, for example *Loyalty Tier*.
-3. **Type** — STRING, TEXT, NUMBER, BOOLEAN, DATE, TIMESTAMP, ENUM, ENUM_SET, REFERENCE, ADDRESS or
-   MONEY.
-   - **ENUM** and **ENUM_SET** need **Allowed values (comma separated)**, for example
-     `GOLD, SILVER, BRONZE`. An ENUM with no values is refused.
-   - **REFERENCE** needs **References object key** — the key of the Object it points at, for example
-     `account`.
-4. **Sensitivity** — NORMAL, INTERNAL, CONFIDENTIAL or RESTRICTED.
-5. Tick **Required**, **Searchable**, **Sortable**, **Reportable** as needed.
-6. **Description** — optional.
-7. Click **Create field**.
+The **Owner** can give the protected **Administrator (compatibility)** Security Role to **another** person, and
+remove it from another person, using `admin.administratorRole.assign`.
 
-**Key and Type cannot be changed after the field is created.** Choose them carefully.
+1. Signed in as the Owner, open the **other** person's record → **Security Roles**.
+2. Choose **Administrator (compatibility)**. Scope stays **All (global)** — scoped choices are shown *not
+   available for this Role*.
+3. Type the reason and **Assign Security Role**. To remove it, use **Remove** on that assignment with a reason.
 
-## Change a custom field
+![Owner staffing the Administrator](images/administration/19-owner-administrator-staffing.png)
 
-1. Click **Edit** on the field's row.
-2. Change any of **Label**, **Description**, **Sensitivity**, **Lifecycle**, **Required**,
-   **Searchable**, **Sortable**, **Reportable**.
-3. Click **Save field**.
+What this does **not** do:
 
-The form says: *"The key … and the type … are not editable."* There is no box for either.
+- The Owner cannot give the Administrator Role to **themselves**.
+- It gives the Owner **no** `admin.securityPolicy.write` — the Owner still cannot change what Roles may do.
+- It works **only** for the designated Administrator Role, only **globally** — never another Role carrying
+  security-policy authority, never a scoped Administrator.
+- The **Administrator does not hold** `admin.administratorRole.assign`.
+- Anti-lockout still applies (see below).
 
-**Retiring a field.** EOS has no way to delete a field. Set **Lifecycle** to **RETIRED** and save to mark
-one as no longer in use. In this release that is a label and nothing more: a RETIRED field stays listed
-on Objects with *RETIRED* in its **Lifecycle** column, still appears in the Roles & Permissions grid, and
-can be set back to **DRAFT** or **ACTIVE** at any time. It is not hidden, and no data is removed.
+### 12. The protected Owner
 
----
+The **Owner** Security Role is protected. **Ordinary Administration cannot appoint, remove, replace or transfer
+an Owner** — not the Administrator, not the Owner, not anyone holding role-assignment or security-policy authority.
+The Owner Role may appear in Role lists and a **Remove** button may appear on an Owner's own assignment; the server
+refuses those changes. A tenant's first Owner is established by governed system provisioning, never from these
+screens. **Owner succession or transfer is not available in this release** — escalate it.
 
-# Part 3 — Giving people Roles
-
-Open **Administration ▸ Users**. The page has two parts, and they are different things:
-
-| Part of the page | What it is |
-|---|---|
-| **The Users directory** (the table at the top) | Employee profiles. Its **Security Role** column is the *existing* access role (admin, dispatcher, technician …) — the one that still controls day-to-day access in the areas not yet cut over. |
-| **Stored role assignments · policy store** (the panel below) | EOS Role assignments — what this guide is about. |
-
-Changing one does not change the other.
-
-## Give someone a Role
-
-1. In **Stored role assignments**, click the person's button under **Select a principal**. If they
-   have no display name, the button shows their sign-in identifier.
-2. Their current Roles appear: **Role**, **Scope**, **Status**.
-3. Under **Add role**, open **Choose a role…** and pick the Role. **The list only offers Roles the
-   person does not already hold** — a Role they have cannot be given twice.
-4. Click **Add role**.
-
-Roles **add up**: a person with two Roles may do everything either Role allows. There is no "primary"
-Role. Roles given from this panel apply company-wide (**Scope** *global*).
-
-## Take a Role away
-
-Click **Remove** on the row with **Status** *active*.
-
-The row stays in the list with **Status** *disabled*: EOS keeps the history of who held what. To give
-the Role back later, add it again — EOS creates a new assignment; the old one stays as history.
-
----
-
-# Part 4 — Workflows
-
-**Administration ▸ Workflows** shows the business processes EOS knows about and which Roles act in
-them. Under **Stored workflow definitions** you can open each workflow's versions and read its steps
-and actions.
-
-This screen is **read-only**. All five workflows are shown as **Draft**, and there is nothing to start,
-publish or change from here. The processes themselves — Work Orders, reorder requests, sales — keep
-running exactly as they do today; these Draft definitions describe them and do not route any work.
-
----
+![The protected Owner assignment](images/administration/20-owner-protected-owner-role.png)
 
 ## What EOS does automatically
 
-- **Every change is recorded** — who made it, when, what it was before and after. A save that changes
-  nothing (for example, pressing Save without editing) is not recorded as a change.
-- **Nothing is lost on reload or restart.** Your settings are stored centrally, not in your browser.
-- **Access is recalculated for the people affected.** When you change a Role, EOS marks everyone holding
-  it as needing their access re-read.
-- **A field setting can never open a closed Object** (*Allow · blocked by object*).
-- **The last administrator is protected.** EOS will not let the company end up with nobody able to
-  administer it.
+- **Audits every change** with the actor, time, before/after and your reason; request IDs are added as provenance.
+- **Re-reads after every change** — a screen never shows a value the server refused.
+- **Decides authority at run time** with the same evaluator Effective Access shows.
+- **Protects against lockout**: it will not let a change leave the tenant with nobody able to administer security,
+  assign roles, or recover Administrator staffing, and never leaves it without an Owner.
+- **Keeps history**: an ended assignment stays visible (for example as **Excluded assignment · INACTIVE**).
+
+![Excluded (inactive) assignment in Effective Access](images/administration/21-owner-effective-access-excluded.png)
 
 ## Warnings and exceptions
 
-What you might see, and what it means:
+### Refusals and anti-lockout
 
-| Message | Meaning |
-|---|---|
-| `not authorized to perform "…"` | your Role does not allow this change — see *Who may do what* |
-| `this is the last active administering assignment -- revoking it would leave the tenant unadministrable` | you tried to remove the only remaining Administrator or Owner assignment. Give the Role to someone else first |
-| `"admin" is a protected system role key` (or `"owner"`) | those keys belong to the platform |
-| `role key must start with a lower-case letter and contain only letters, digits or underscore` | fix the Key — the same rule applies to field keys |
-| `an ENUM field needs allowed values -- an enum of nothing can hold nothing` | add **Allowed values** |
-| `a REFERENCE field must say which object it points at` | fill in **References object key** |
-| `a SYSTEM field's definition is protected …` | SYSTEM fields cannot be edited; set who may use them in Roles & Permissions instead |
-| `nothing to update` | the save named nothing that can change |
-| `that principal is not an active member of this tenant` | that person is not set up in your company's EOS workspace |
-| `this identity is not known to EOS` | you are signed in but not yet provisioned in EOS |
+EOS shows a refusal as **`<category>: <server message>`**, verbatim. The ones an administrator is most likely to
+meet:
 
-**On a phone or small tablet** these screens work, but the permission grid is wider than the screen:
-**swipe the grid itself sideways** to reach the Read, Edit and Delete columns. After a change, the grid
-scrolls back to the left.
+| You will see | What it means | What to do |
+|---|---|---|
+| `FORBIDDEN: not authorized: "admin.securityPolicy.write" is required` (or `"admin.roleAssignment.write"`) | You do not hold the authority for this change. | Ask someone who does; escalate if nobody should. |
+| `INVALID_INPUT: REASON_REQUIRED: assigning a Security Role requires a reason` (or `removing a Security Role…`) | No business reason was stated. The screen normally prevents this; other clients get this refusal. | Give a real reason. |
+| `FORBIDDEN: SELF_ADMINISTRATION: a principal may not assign a Role to itself` | Nobody changes their own authority. | Another administrator must do it. |
+| `FORBIDDEN: PROTECTED_OWNER_MEMBERSHIP: the protected Owner is not appointed through ordinary role administration (admin.roleAssignment.write, admin.securityPolicy.write and admin.administratorRole.assign are all insufficient); Owner succession is a separate governed lifecycle operation` (or `…not removed through…`) | Owner membership is protected. | **Escalate** — Owner succession is not an Administration task. |
+| `CONFLICT: LAST_PROTECTED_OWNER: this is the tenant's last active protected Owner assignment; no ordinary role-assignment command may leave a tenant without an Owner` | Removing this would leave no Owner. | Nothing to do; this is intended. |
+| `FORBIDDEN: PRIVILEGE_ESCALATION: assigning admin concerns admin.securityPolicy.write, which the acting principal does not hold (admin.administratorRole.assign admits only the designated Administrator Role, globally, for another principal)` | The Owner tried to staff a Role other than the Administrator, or a scoped Administrator. | Staff the Administrator Role, globally, for another person. |
+| `CONFLICT: WOULD_REMOVE_LAST_ADMINISTRATION_PATH: no principal the gate would admit would still hold admin.administratorRole.assign; the tenant would become unadministrable` (or `…admin.securityPolicy.write`, `…admin.roleAssignment.write`) | The change would remove the last holder of an administration or Administrator-recovery authority. | Add another holder first, or leave it; escalate if unsure. |
+| `INVALID_INPUT: this is the last active administering assignment -- revoking it would leave the tenant unadministrable` | Removing the last protected administering assignment. | Staff another Administrator first. |
+| `INVALID_INPUT: SCOPE_VALUE_INVALID: '<value>' is not a governed Company of this tenant (…)` | A scope value outside EOS's governed list. | Pick a value from the picker. |
+| `INVALID_INPUT: SCOPE_AMBIGUOUS_ADMINISTRATION: …` | A Role carrying Administration authority cannot be assigned or granted at a scope. | Assign it globally, or use a different Role. |
+| `CONFLICT: CONDITION_RETIREMENT_WOULD_WIDEN: …retiring its condition would widen it to every record -- revoke the grant first` | Retiring a condition while the grant is held would widen it. | Revoke the grant first. |
+| `CONFLICT: SYSTEM_INVARIANT: owner may never hold …` | A system rule forbids that pairing. | Nothing to change; this is intended. |
+| `INVALID_INPUT: expiresAt must be in the future` | A Direct Exception expiry in the past. | Leave expiry empty or choose a future time. |
 
-**Saving Role details closes any Object you had expanded** in the grid. Expand it again to carry on.
+### Other things to know
 
-**There is no delete** for Roles, custom fields or Objects in this release. A Role you no longer need
-can be left with no permissions and no holders — it then grants nothing. A custom field can be
-**RETIRED**.
-
-## Safe administration practices
-
-- **Make one change at a time, then reload to confirm it.** Grid choices save the moment you make them
-  and there is no Undo — reversing a change is a second change, and both are recorded.
-- **Remember a Role is shared.** Changing a Role changes it for everyone who holds it. To give one
-  person more, give them another Role rather than widening a Role others hold.
-- **Prefer Inherit. Use an explicit Deny only on purpose** — it stays denied even if you later open the
-  Object, which is easy to forget.
-- **Keep more than one person able to administer EOS.** EOS stops you removing the last administering
-  assignment, but it cannot help if the only administrator is unavailable.
-- **Retire rather than repurpose.** A field's Key and Type are permanent; if a field is wrong, create a
-  new one and retire the old one rather than giving the old one a new meaning.
-- **Name temporary Roles clearly, and clear them afterwards** — remove their holders and untick their
-  permissions. A Role cannot be deleted, but one with no holders and no permissions grants nothing.
-- **Never** change access by sharing a login, acting on someone else's behalf, or working around a
-  refusal.
+- A Role **offered in a list is not a promise** it can be assigned — the server decides and says so.
+- **Security Role and Job Role are separate on purpose.** Changing a Job Role never changes access, and
+  assigning a Security Role never sets a Job Role.
 
 ## If something looks wrong
 
-**A person can still (or still cannot) do something in Work Orders, Inventory, Purchasing or another
-area after you changed their Role here.** In this release that is expected — see *Read this before you
-start*. Those areas still follow the existing access model. Do not try to force it by changing the
-Security Role or anything else yourself; raise it through the support path.
+1. Open the person's **Effective Access** and read the action's **Result** and **Source** — it is the
+   authoritative answer.
+2. Check their **Security Roles** (and scope), **Work Eligibility**, **Operational Scope** and any **Direct
+   Exceptions**.
+3. Check the grant in **Object Security**, and the Role's **Decision history**.
+4. Read the person's **Access Audit History** for who changed what, when and why.
 
-**A setting does not look the way you left it.** Reload the page. What appears after a reload is what
-EOS has stored. If it still looks wrong, note the Role, Object, field and what you expected, and raise it.
+![Access Audit History](images/administration/12-employee-access-audit-history.png)
 
-**A field is Allowed but still out of reach.** Check its Object row — you will see
-**Allow · blocked by object**. Allow the action on the Object row too.
+`Administration ▸ Audit Logs` does not yet show a consolidated tenant-wide list; it points to these two views.
 
-## Support and escalation
+![Audit Logs](images/administration/17-audit-logs.png)
 
-1. Your **Taylor EOS Administrator** first — most of this is configuration.
-2. Anything the administrator cannot resolve goes to **Verenward** through the agreed support path.
+### Support and escalation
 
-*(The formal support and escalation procedure — severity, response commitments, the bug-versus-request
-boundary — is still being established under Customer 1 gate `C1-SUPPORT-01`. Until it is agreed, use the
-route your administrator gives you.)*
+1. Your **Taylor EOS Administrator** first — most questions are configuration.
+2. Owner succession, staffing a Workflow Administrator, and anything the administrator cannot resolve go to
+   **Verenward** through the agreed support path.
+
+*(The formal support procedure — severity, response commitments, the bug-versus-request boundary — is being
+established under Customer 1 gate `C1-SUPPORT-01`. Until it is agreed, use the route your administrator gives you.)*
 
 ## Administrator notes
 
-**Self-service for the Taylor EOS Administrator:** creating and renaming Roles; setting Object and field
-permissions; renaming Objects; creating, changing and retiring custom fields; giving and removing Roles.
+**Self-service in Administration:** assigning and removing Security Roles (Employee record); Job Role, Work
+Eligibility and Operational Scope; Object Security grants, revokes and conditions; creating and editing Security
+Roles; Direct Exceptions; the Owner's Administrator staffing.
 
-**Verenward responsibilities, not screens:**
+**Not self-service — governed decisions to escalate:** Owner succession or transfer; establishing a tenant's first
+Owner; staffing a Workflow Administrator and publishing workflows; granting Functional Role administration.
 
-- setting a person up in EOS (provisioning) so they appear under **Select a principal**;
-- the protected Administrator and Owner Roles, and the last-administrator safeguard;
-- moving each business area onto the stored policy (cut-over), and publishing any workflow;
-- deleting Roles, fields or Objects — not available in this release.
+The Users directory (`Administration ▸ Users`) lists Employees; there is no separate role-assignment panel on it.
+
+![Users directory](images/administration/22-users-directory.png)
 
 ## Changes in this release
 
-- **New:** EOS's stored access policy — Roles & Permissions, Objects and the **Stored role
-  assignments** panel on Users are now editable and saved centrally.
-- **New:** field-level permissions with **Inherit / Allow / Deny**, and the **Allow · blocked by
-  object** indicator.
-- **New:** custom Roles and custom fields.
-- **Not yet in effect:** the stored policy does not yet decide access in Work Orders, Inventory,
-  Purchasing, Sales or any other business area; those follow the existing access model until each is
-  cut over.
-- **Known limitations:** no delete for Roles, fields or Objects; Workflows are read-only and all five
-  are Draft; on a phone the grid returns to its left edge after each change.
+- **Object Security** is where Security Role authority is configured, per governed business action, with
+  conditions — replacing the retired Create/Read/Edit/Delete permission grid.
+- **The Employee record** is the one place to give or remove a person's Security Roles, with governed scope
+  pickers and a **required business reason**. The earlier role panel on the Users page no longer exists.
+- **Effective Access**, **Direct Exceptions**, **Functional Roles**, **Workflow responsibilities** and **Access
+  Audit History** are on the Employee record.
+- **Workflow Administration** shows versioned definitions with validation (read-only in practice until a Workflow
+  Administrator is staffed).
+- **The Owner can staff the Administrator** for another person; the Owner Role itself is protected.
+- A person without a display name is shown as **Unnamed Principal**.
+- **Known limitations:**
+  - the Workflow Administrator is unstaffed — nobody holds `workflowDefinition.edit/publish/…`, and no workflow
+    is active;
+  - nobody holds `admin.employeeFunctionalRole.write`, so Functional Roles can be viewed but not changed yet;
+  - Owner succession / transfer is not implemented; Owner membership cannot be changed through Administration;
+  - `Audit Logs` has no consolidated tenant-wide list yet (use Access Audit History and Decision history);
+  - supported conditions apply only to **View Work Orders**; `SELF`, `TEAM`, `BUSINESS_UNIT` and `COMPANY` are
+    not supported conditions; the **Sales Channel** scope has no values configured yet;
+  - on a narrow (phone) screen the Security Role **Holders** table scrolls sideways within its box.
 
 ## Verification receipt
 
-- Training checked against deployed release/SHA: frontend `0c733704` (`/version.json` → `0c73370`) and
-  EOS API `44f423c9` (Render `dep-dah7vr3bc2fs73fivgqg`). The policy code these screens use is unchanged
-  since the technical acceptance, whose record is `docs/architecture/eos-real-nonprod-activation.md`.
-- Workflow exercised/visually verified: every step in Parts 1–3 was performed through the deployed UI
-  during browser acceptance on 2026-09-10 at 375 / 1024 / 1440 px — Owner-driven input, Claude-measured
-  requests, responses and reloads (acceptance record §15). Labels, button text, messages and the
-  who-may-do-what rules were checked against the source at `0c733704`. The claim that the stored policy
-  does not yet govern business areas was checked in source: nothing outside the Administration screens
-  and the EOS API reads it.
-- Screenshots current where used: not applicable — no screenshots.
-- Known sandbox-only or future behavior present in guide: `NO` — undeployed items (business-area
-  cut-over, workflow publishing, deletion, the pending workspace-label change) are named only as not
-  available.
+- Training checked against deployed release/SHA: client `62e08988` (Vercel) and EOS API `62e08988`
+  (Render `dep-dasr0uvf3r2c73b811hg`).
+- Workflow exercised/visually verified: every screen, label, button and required/optional field in this guide
+  was read from the deployed nonprod site as the Administrator and the Owner on 2026-09-27, read-only (no
+  configuration changed to produce this guide). Capability holders, the condition/scope vocabulary and refusal
+  wording were checked against the deployed server. The Security Role assignment, reason, protected-Owner and
+  Administrator-staffing behavior was verified live during Pass 10 acceptance (PRs #1993–#1997).
+- Screenshots current where used: yes — captured from the deployed nonprod site; internal identifiers redacted
+  and no credentials shown.
+- Known sandbox-only or future behavior present in guide: `NO` — Owner succession, a staffed Workflow
+  Administrator, active workflows and a consolidated audit list are named only as not available.
 - Training status: `COMPLETE`
 
 ## Deployment close record
@@ -397,28 +412,35 @@ permissions; renaming Objects; creating, changing and retiring custom fields; gi
 The training-impact record required by `docs/training/README.md`.
 
 ```text
-DEPLOYMENT:            EOS stored access policy — non-production (verenwardeos.vercel.app,
-                       tenant taylor-nonprod)
-AFFECTED ROLES:        Taylor EOS Administrator; Owner and General Manager (Role assignment only)
-AFFECTED WORKFLOWS:    Role and permission configuration; Object and field configuration;
-                       Role assignment and removal; viewing Workflow definitions (read-only)
-TRAINING GUIDES:       docs/training/administration-policy-and-access.md
-TRAINING REPRESENTS:   frontend 0c733704 · EOS API 44f423c9
-EFFECTIVE DATE:        2026-09-10
-MATERIAL CHANGES:      Roles, Object/field permissions, Objects, custom fields and Role
-                       assignments are now configured and stored centrally in EOS
-NEW USER ACTIONS:      create/rename Roles; set Object and Inherit/Allow/Deny field permissions;
-                       rename Objects; create, change and retire custom fields; give and remove Roles
-ACCESS BEHAVIOR:       the stored policy governs who may change the policy. It does NOT yet decide
-                       access in Work Orders, Inventory, Purchasing, Sales or any other business
-                       area; those follow the existing Security Role model until each is cut over
-LIMITATIONS:           no delete for Roles, fields or Objects; RETIRED is a label only; Workflows
-                       read-only, all five Draft; on a phone the grid returns to its left edge after
-                       each change; saving Role details collapses an expanded Object
+DEPLOYMENT:            Pass 10 — EOS Administration control plane (non-production, verenwardeos.vercel.app,
+                       tenant taylor-nonprod); PRs #1983–#1997
+AFFECTED ROLES:        Owner; Administrator; delegated security administrator (holders of
+                       admin.roleAssignment.write); General Manager (no role administration by default)
+AFFECTED WORKFLOWS:    Security Role assignment/removal (Employee record); Object Security grants, revokes
+                       and conditions; Security Role review; Effective Access; Direct Exceptions; Job Role,
+                       Work Eligibility and Operational Scope; Functional Roles (view); Workflow
+                       administration (view/validation); workflow responsibilities; Owner staffing of the
+                       Administrator; audit review
+TRAINING GUIDES:       docs/training/administration-policy-and-access.md;
+                       docs/user-guide/administration/manage-employees.md (security/access sections);
+                       superseded: docs/user-guide/administration/see-what-a-role-can-do.md,
+                       docs/user-guide/administration/see-who-can-do-what.md
+TRAINING REPRESENTS:   client 62e08988 · EOS API 62e08988 (Render dep-dasr0uvf3r2c73b811hg)
+EFFECTIVE DATE:        2026-09-27
+MATERIAL CHANGES:      Object Security replaces the retired C/R/E/D grid; the Employee record is the only
+                       Security Role assignment surface and requires a stated business reason; protected
+                       Owner; Owner staffs the Administrator (admin.administratorRole.assign)
+NEW USER ACTIONS:      grant/revoke/condition Object actions; assign/remove Security Roles with scope and
+                       reason; Direct Exceptions (expiry optional); Owner staffs/removes the Administrator
+ACCESS BEHAVIOR:       enforced by the governed EOS server evaluator; Effective Access shows the same answer;
+                       anti-lockout and protected-Owner refusals are server-enforced
+LIMITATIONS:           Workflow Administrator unstaffed, no active workflow; Functional Role changes not yet
+                       available; Owner succession not implemented; no consolidated Audit Logs list; conditions
+                       only on View Work Orders; Sales Channel scope has no values; Holders table scrolls on
+                       phones
 SUPPORT:               Taylor EOS Administrator → Verenward (formal procedure pending C1-SUPPORT-01)
 TRAINING:              COMPLETE
-VERIFIED:              2026-09-10 — Parts 1–3 performed through the deployed UI at 375 / 1024 /
-                       1440 during browser acceptance; labels, messages and authority rules checked
-                       against the source at 0c733704
+VERIFIED:              2026-09-27 — deployed nonprod read-only walkthrough as Administrator and Owner at
+                       62e08988; screenshots in docs/training/images/administration/
 DEPLOYMENT STATE:      TECHNICALLY ACCEPTED — becomes CLOSED when the Owner merges this guide
 ```

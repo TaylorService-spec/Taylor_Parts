@@ -82,6 +82,13 @@ Expected stable guide families include, as applicable:
 
 A role guide may link to shared workflow modules when reuse is truthful, but an employee should not need to reconstruct their job from a collection of engineering release notes.
 
+### Current guides
+
+- **Taylor EOS Administrator / Owner** — [Administration: Policy and Access](administration-policy-and-access.md)
+  (canonical Administration guide: Security Roles on the Employee record, Object Security, Effective Access,
+  Direct Exceptions, Functional Roles, workflows, the protected Owner). Supersedes
+  `docs/user-guide/administration/see-what-a-role-can-do.md` and `see-who-can-do-what.md`.
+
 ## Day-1 Customer 1 gate
 
 Before Taylor production dependency is authorized:
