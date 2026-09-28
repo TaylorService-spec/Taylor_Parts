@@ -125,10 +125,12 @@ test.after(async () => {
       " eos_commercial.sales_agreements, eos_commercial.opportunities",
     );
     await query("DELETE FROM eos_crm.accounts WHERE tenant_id = $1", [TENANT]);
-    // This suite runs on the SHARED database (no scratch DB), so the governed key bindings it established for its own
+    // This suite runs on the SHARED database (no scratch DB), so the governed company links and key bindings it established for its own
     // tenant must go too: a later suite that peels migrations down (employeePrincipalLink, cash application, equipment
     // custody) meets migration 1760486400000's refuse-never-destroy guard on any binding left behind.
     await query("DELETE FROM eos_policy.tenant_operating_company_keys WHERE tenant_id = $1", [TENANT]);
+    // ...and the company links bindOperatingCompany recorded for it (migration 1759968000000 refuses to reverse over any).
+    await query("DELETE FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1", [TENANT]);
   }
   if (pool) await pool.end();
 });
