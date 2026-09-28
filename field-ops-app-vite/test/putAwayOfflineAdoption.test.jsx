@@ -176,17 +176,22 @@ describe("when the phone cannot keep it", () => {
 // ═══════════════════════════════════════════ the replay argument
 
 describe("a retry lands on the same placement", () => {
-  it("the queued intent carries a DERIVED idempotency key", async () => {
+  it("the queued intent replays the ONLINE attempt's own request under the ONLINE attempt's key", async () => {
     // The whole safety argument rests on this: `plc_<key>` means a replay lands on the same document
-    // rather than recording a second stow. The key is the intent id, so a reload cannot change it.
+    // rather than recording a second stow. The attempt that failed may have committed with only its
+    // response lost, so the replay must carry THAT attempt's key -- a different key (the intent id,
+    // as this once asserted) would record the stow a second time. And it must be THAT attempt's
+    // request: a differently-shaped payload is refused by recordPutAway at sync.
     setOnline(true);
-    const { runtime } = mount({ recordPutAway: vi.fn().mockRejectedValue(offline()) });
+    const recordPutAway = vi.fn().mockRejectedValue(offline());
+    const { runtime } = mount({ recordPutAway });
     await stowOneItem();
 
+    const attempted = recordPutAway.mock.calls[0][0];
     const intent = runtime.enqueued[0];
     expect(typeof intent.payload.idempotencyKey).toBe("string");
-    expect(intent.payload.idempotencyKey).toBe(intent.intentId);
-    expect(intent.payload.destinationBinId).toBeTruthy();
+    expect(intent.payload.idempotencyKey).toBe(attempted.idempotencyKey);
+    expect(intent.payload).toEqual(attempted);
   });
 });
 

@@ -79,7 +79,12 @@ describe("put-away, through the real form", () => {
     expect(recordPutAway, "a device that knows it is offline does not attempt").not.toHaveBeenCalled();
     expect(rt.enqueued).toHaveLength(1);
     expect(rt.enqueued[0].type).toBe(WAREHOUSE_INTENT.PUT_AWAY);
-    expect(rt.enqueued[0].payload.destinationBinId).toBeTruthy();
+    // The queued payload IS the put-away command's own request -- the shape recordPutAway validates
+    // (warehouseId + binCode + partId + quantity), under the stow's own key -- never a second,
+    // differently-shaped "offline payload" the server would refuse at sync.
+    const { idempotencyKey, ...queuedRequest } = rt.enqueued[0].payload;
+    expect(queuedRequest).toEqual({ warehouseId: "WH-1", binCode: "A-14", partId: "PRT-1001", quantity: 1 });
+    expect(typeof idempotencyKey).toBe("string");
     // The words that must appear, and the one that must not.
     expect(document.body.textContent).toMatch(/has not reached the server/i);
     expect(document.body.textContent).not.toMatch(/✓ Recorded/);

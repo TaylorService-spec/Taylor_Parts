@@ -110,24 +110,45 @@ const deviceClaim = (offline, at) => (offline ? at : null);
  * request shape, and because the structured-object standard says an attribute stays addressable all
  * the way through.
  */
-function warehouseIntent({ type, scopeId, principalUid, payload, captureKey, references = null, dependsOn = [], at = 0, offline = false }) {
+function warehouseIntent({ type, scopeId, principalUid, payload, request = null, keyed = true, captureKey, references = null, dependsOn = [], at = 0, offline = false }) {
+  // THE QUEUED PAYLOAD IS THE REQUEST THE SCREEN WOULD HAVE SENT. A screen that has already built
+  // its online command request passes it as `request`, and that exact request is what a replay
+  // sends. A second, differently-shaped "offline payload" is a second request contract nobody
+  // validates: the server refuses it as invalid-argument at sync, so every queued act was lost.
+  const body = isPlainRequest(request) ? stripKey(request) : payload;
   const built = makeWarehouseEnvelope({
-    type, scope: scopeId, principalUid, payload, captureKey, dependsOn,
+    type, scope: scopeId, principalUid, payload: body, captureKey, dependsOn,
     createdAtLocal: at,
     deviceReportedAtMillis: deviceClaim(offline, at),
     describe: WAREHOUSE_INTENT_LABEL[type] ?? type,
     extra: references,
   });
   if (!built.valid) return built;
-  // The idempotency key IS the intent id. Every warehouse command derives its document id from the
-  // key it is given, so the same act lands on the same record however many times it is sent.
+  // A command whose contract carries NO idempotency key (a cycle-count line submit: its replay
+  // safety is the line's own state -- the same count replays, a different one is refused) must not
+  // be sent one: its exact-keys validator refuses the unknown field.
+  if (!keyed) return built;
+  // ONE ACT, ONE KEY. Every keyed warehouse command derives its document id from the key it is
+  // given, so the key a replay carries must be the key the ONLINE attempt carried: an attempt whose
+  // response was lost may already have committed, and replaying it under a different key would
+  // apply it a second time. So the request's own key wins; the intent id is the key only for a
+  // capture that has no online request behind it.
+  const onlineKey = isPlainRequest(request) && isNonBlankKey(request.idempotencyKey) ? request.idempotencyKey : null;
   return {
     valid: true,
     value: Object.freeze({
       ...built.value,
-      payload: Object.freeze({ ...built.value.payload, idempotencyKey: built.value.intentId }),
+      payload: Object.freeze({ ...built.value.payload, idempotencyKey: onlineKey ?? built.value.intentId }),
     }),
   };
+}
+
+const isPlainRequest = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+const isNonBlankKey = (v) => typeof v === "string" && v.trim() !== "";
+/** The request without its key: the envelope fingerprints the ACT, and the key is re-attached above. */
+function stripKey(request) {
+  const { idempotencyKey: _ignored, ...rest } = request;
+  return rest;
 }
 
 // ============================ CAPTURE ============================
@@ -141,11 +162,11 @@ function warehouseIntent({ type, scopeId, principalUid, payload, captureKey, ref
  */
 export function captureReceive({
   principalUid, sourceId, partId, quantity = null, serialNumbers = null,
-  destinationId = null, captureKey, at = 0, offline = false,
+  destinationId = null, request = null, captureKey, at = 0, offline = false,
 }) {
   return warehouseIntent({
     type: WAREHOUSE_INTENT.INVENTORY_RECEIVE,
-    scopeId: sourceId, principalUid, captureKey, at, offline,
+    scopeId: sourceId, principalUid, captureKey, at, offline, request,
     payload: {
       sourceId, partId,
       ...(Array.isArray(serialNumbers) && serialNumbers.length > 0
@@ -169,12 +190,12 @@ export function captureReceive({
  */
 export function capturePutAway({
   principalUid, partId = null, serialNo = null, destinationBinId,
-  quantity = null, dependsOnIntentId = null, captureKey, at = 0, offline = false,
+  quantity = null, dependsOnIntentId = null, request = null, captureKey, at = 0, offline = false,
 }) {
   if (!partId && !serialNo) return { valid: false, reason: "item_identity_required" };
   return warehouseIntent({
     type: WAREHOUSE_INTENT.PUT_AWAY,
-    scopeId: destinationBinId, principalUid, captureKey, at, offline,
+    scopeId: destinationBinId, principalUid, captureKey, at, offline, request,
     dependsOn: dependsOnIntentId ? [{ intentId: dependsOnIntentId, required: true }] : [],
     payload: { partId, serialNo, destinationBinId, quantity },
     references: { Part: partId, Serial: serialNo, Destination: destinationBinId, Quantity: quantity },
@@ -190,11 +211,11 @@ export function capturePutAway({
  */
 export function capturePickStage({
   principalUid, workOrderId, partId, pickedQuantity, stagingBinId,
-  serialNumbers = null, captureKey, at = 0, offline = false,
+  serialNumbers = null, request = null, captureKey, at = 0, offline = false,
 }) {
   return warehouseIntent({
     type: WAREHOUSE_INTENT.PICK_STAGE,
-    scopeId: stagingBinId, principalUid, captureKey, at, offline,
+    scopeId: stagingBinId, principalUid, captureKey, at, offline, request,
     payload: {
       workOrderId, partId, destinationBinId: stagingBinId,
       quantity: pickedQuantity,
@@ -266,6 +287,8 @@ export function captureCycleCountSubmit({
   return warehouseIntent({
     type: WAREHOUSE_INTENT.CYCLE_COUNT_SUBMIT,
     scopeId: `${sheetId}/${partId}`, principalUid, captureKey, at, offline,
+    // submitCycleCountLine's contract is exactly these keys, with NO idempotency key (see warehouseIntent).
+    keyed: false,
     payload: {
       sheetId, partId,
       ...(Array.isArray(countedSerialNumbers) ? { countedSerialNumbers: [...countedSerialNumbers] } : { countedQuantity }),
@@ -285,11 +308,11 @@ export function captureCycleCountSubmit({
  */
 export function captureReturnIntake({
   principalUid, sourceId, partId, quantity = null, serialNo = null,
-  condition = null, notes = null, captureKey, at = 0, offline = false,
+  condition = null, notes = null, request = null, captureKey, at = 0, offline = false,
 }) {
   return warehouseIntent({
     type: WAREHOUSE_INTENT.RETURN_INTAKE,
-    scopeId: sourceId, principalUid, captureKey, at, offline,
+    scopeId: sourceId, principalUid, captureKey, at, offline, request,
     payload: {
       sourceId, partId, quantity, serialNo,
       ...(condition ? { condition } : {}),

@@ -20,7 +20,7 @@ import {
 import { warehouseConflictCard, warehousePendingCard } from "../src/offline/warehouseSyncPresentation.js";
 import { enqueueIntent, readyIntents, summarizeQueue, markSynced } from "../src/offline/intentQueue.js";
 import { runSyncPass, drainQueue, PASS_OUTCOME, hasUnsyncedWork } from "../src/offline/syncExecutor.js";
-import { applyFailure } from "../src/offline/syncFailureClassification.js";
+import { applyFailure, classifyFailure, FAILURE_CLASS } from "../src/offline/syncFailureClassification.js";
 import { createIntentStore, localStorageAdapter } from "../src/offline/localIntentStore.js";
 import { STORE_NAMESPACE } from "../src/offline/localIntentStore.js";
 
@@ -67,9 +67,40 @@ describe("offline capture is an observation, never inventory state", () => {
     }
   });
 
-  test("the idempotency key IS the intent id, on every type", () => {
-    for (const built of [RECEIVE(), PUTAWAY(), DISPATCH(), RECEIVE_T(), COUNT(), RETURN()]) {
+  test("with no online request behind it, a keyed capture's idempotency key IS the intent id", () => {
+    for (const built of [RECEIVE(), PUTAWAY(), DISPATCH(), RECEIVE_T(), RETURN()]) {
       assert.equal(built.value.payload.idempotencyKey, built.value.intentId);
+    }
+  });
+
+  test("a cycle-count submit carries NO idempotency key -- submitCycleCountLine's exact contract refuses one", () => {
+    // Its replay safety is the LINE's state (same count replays, a different count is refused), and
+    // the callable's exact-keys validator rejects any unknown field: a key here refused every queued count.
+    const payload = COUNT().value.payload;
+    assert.deepEqual(Object.keys(payload).sort(), ["countedQuantity", "partId", "sheetId"]);
+    const serial = captureCycleCountSubmit({ ...base, sheetId: "ccs_9", partId: "S-1", countedSerialNumbers: ["A"], captureKey: "cs" });
+    assert.deepEqual(Object.keys(serial.value.payload).sort(), ["countedSerialNumbers", "partId", "sheetId"]);
+  });
+
+  test("ONE ACT, ONE KEY: a capture made from the screen's online request replays THAT request under ITS key", () => {
+    // The online attempt may have committed with its response lost. Replaying it under a different key
+    // would apply it twice; replaying a differently-shaped payload is refused at sync.
+    const cases = [
+      [capturePutAway, { partId: "TS-4410", destinationBinId: "A-14", quantity: 4 },
+        { warehouseId: "WH-1", binCode: "A-14", partId: "TS-4410", quantity: 4, idempotencyKey: "stow-1" }],
+      [capturePickStage, { workOrderId: "WO-1", partId: "P", pickedQuantity: 2, stagingBinId: "STG-1" },
+        { warehouseId: "WH-1", binCode: "STG-1", partId: "P", quantity: 2, pickedForWorkOrderId: "WO-1", idempotencyKey: "pick-1__P" }],
+      [captureReturnIntake, { sourceId: "CUSTOMER", partId: "P", quantity: 1, condition: "DAMAGED" },
+        { partId: "P", source: "CUSTOMER", condition: "DAMAGED", quantity: 1, reason: "bent", idempotencyKey: "ret-1" }],
+      [captureReceive, { sourceId: "PO-1", partId: "P", quantity: 3, destinationId: "wh-main" },
+        { source: { type: "PURCHASE_ORDER", purchaseOrderId: "PO-1" }, receivingLocation: { type: "WAREHOUSE", locationId: "wh-main" },
+          lines: [{ lineId: "L1", partId: "P", receivedQuantity: 1 }, { lineId: "L2", partId: "Q", receivedQuantity: 2 }], idempotencyKey: "rcv-1" }],
+    ];
+    for (const [capture, args, request] of cases) {
+      const built = capture({ ...base, ...args, request, captureKey: request.idempotencyKey });
+      assert.ok(built.valid, capture.name);
+      assert.deepEqual(built.value.payload, request, `${capture.name}: the queued payload is exactly the online request`);
+      assert.equal(built.value.payload.idempotencyKey, request.idempotencyKey, `${capture.name}: the online key survives`);
     }
   });
 
@@ -594,5 +625,20 @@ describe("a warehouse conflict is an object, not a sentence", () => {
     // recorded" on a quantity-tracked part is noise pretending to be information.
     const card = warehousePendingCard(RECEIVE().value);
     assert.ok(!card.fields.some((f) => f.label === "Serial"));
+  });
+});
+
+describe("structured business codes (Transfer / Cycle Count send details as { code })", () => {
+  test("a structured IDEMPOTENCY_CONFLICT stops for a person instead of retrying on backoff", () => {
+    // submitCycleCountLine maps IDEMPOTENCY_CONFLICT to already-exists with details { code }. Read
+    // only as a string, the detail was invisible and already-exists fell through to RETRYABLE.
+    assert.equal(classifyFailure({ code: "functions/already-exists", details: { code: "IDEMPOTENCY_CONFLICT" } }), FAILURE_CLASS.NEEDS_ATTENTION);
+    assert.equal(classifyFailure({ code: "failed-precondition", details: { code: "IDEMPOTENCY_CONFLICT" } }), FAILURE_CLASS.NEEDS_ATTENTION);
+  });
+  test("the string shape is unchanged, and an object without a string code falls back to the transport code", () => {
+    assert.equal(classifyFailure({ code: "failed-precondition", details: "IDEMPOTENCY_CONFLICT" }), FAILURE_CLASS.NEEDS_ATTENTION);
+    assert.equal(classifyFailure({ code: "failed-precondition", details: { code: 7 } }), FAILURE_CLASS.CONFLICT);
+    assert.equal(classifyFailure({ code: "unavailable", details: {} }), FAILURE_CLASS.RETRYABLE);
+    assert.equal(classifyFailure({ code: "permission-denied", details: ["IDEMPOTENCY_CONFLICT"] }), FAILURE_CLASS.REFUSED);
   });
 });

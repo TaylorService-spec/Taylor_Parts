@@ -149,6 +149,8 @@ export default function PickScan({ deps }) {
           partId: line.partId,
           pickedQuantity: state.quantity,
           stagingBinId: stagingBin?.binId ?? stagingBin?.code ?? request.destinationBinId,
+          // The replay sends EXACTLY what the online attempt sent, under the same key.
+          request,
           captureKey: `${pickKey.current}__${line.partId}`,
           at: Date.now(),
           offline: wasOffline,

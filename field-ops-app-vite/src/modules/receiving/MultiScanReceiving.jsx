@@ -286,6 +286,9 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           quantity: lines.reduce((n, l) => n + (typeof l.quantity === "number" ? l.quantity : 0), 0) || null,
           serialNumbers: lines.flatMap((l) => (Array.isArray(l.serialNumbers) ? l.serialNumbers : [])),
           destinationId: locationId,
+          // The replay sends EXACTLY what the online attempt sent -- every line, under the same key --
+          // never a one-line summary of a multi-line receipt.
+          request,
           captureKey: idempotencyKeyRef.current,
           at: Date.now(),
           offline: wasOffline,

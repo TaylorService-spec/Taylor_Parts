@@ -188,6 +188,8 @@ export default function PutAwayScan({ deps }) {
           serialNo: payload.serialNo ?? null,
           destinationBinId: bin?.binId ?? bin?.code ?? payload.destinationBinId,
           quantity: payload.quantity ?? null,
+          // The replay sends EXACTLY what the online attempt sent, under the same key.
+          request: payload,
           captureKey: stowKey.current,
           at: Date.now(),
           offline: wasOffline,
