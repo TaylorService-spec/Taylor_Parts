@@ -205,6 +205,10 @@ export function mapServiceOutcome(data) {
     // the renderer resolves null conservatively from the truncation flags instead.
     completeness: SCAN_COMPLETENESS_SET.has(data.completeness) ? data.completeness : null,
     scanTruncated: data.scanTruncated === true,
+    // WHICH non-population bound fired. `null` = the server did not say (an older server): the
+    // renderer then keeps its generic wording and never guesses a bound.
+    rowCapTruncated: typeof data.rowCapTruncated === "boolean" ? data.rowCapTruncated : null,
+    groupCardinalityTruncated: typeof data.groupCardinalityTruncated === "boolean" ? data.groupCardinalityTruncated : null,
     widened: data.widened === true,
     // UI-safe labels only; never the audit-facing raw field ids (droppedFieldIds/-PredicateFieldIds).
     droppedColumnLabels: safeStringArray(data.droppedColumnLabels),

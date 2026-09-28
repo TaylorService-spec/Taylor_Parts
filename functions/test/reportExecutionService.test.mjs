@@ -704,6 +704,10 @@ async function main() {
     assert.equal(outcome.truncated, true);
     assert.equal(outcome.rowCount, 3);
     assert.equal(outcome.rowCap, 3);
+    // WHICH bound fired is stated: the row cap, and only the row cap.
+    assert.equal(outcome.rowCapTruncated, true);
+    assert.equal(outcome.groupCardinalityTruncated, false);
+    assert.equal(outcome.scanTruncated, false);
   });
 
   // --- Group cardinality cap ---
@@ -737,6 +741,11 @@ async function main() {
     );
     assert.equal(outcome.truncated, true);
     assert.ok(outcome.aggregates.length <= 2);
+    // The GROUP bound fired -- not the row cap. The client used to say "Showing the first 10,000
+    // rows" here, over a result of two groups.
+    assert.equal(outcome.groupCardinalityTruncated, true);
+    assert.equal(outcome.rowCapTruncated, false);
+    assert.equal(outcome.scanTruncated, false);
   });
 
   // --- Truncation honesty: an aggregate over a truncated scan is REFUSED
@@ -777,6 +786,8 @@ async function main() {
       { roles: TEST_ROLES, maxScanDocs: 1 },
     );
     assert.equal(outcome.truncated, true, "a bounded LIST is allowed -- only a bounded TOTAL is refused");
+    assert.equal(outcome.scanTruncated, true, "the SCAN bound fired: the population was cut");
+    assert.equal(outcome.rowCapTruncated, false, "the row list itself was not capped");
   });
 
   // --- Cross-principal isolation (no caching) ---
@@ -849,6 +860,33 @@ async function main() {
       { roles: TEST_ROLES },
     );
     assert.deepEqual(desc.rows.map((r) => r["customer.name"]), [`${marker}-Charlie`, `${marker}-Bravo`, `${marker}-Alpha`]);
+  });
+
+  await check("a SORT on a field the runner can't read is DROPPED and REPORTED (widened), never silently ignored", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "partialCustomer"); // createdAt is NOT granted (and is sortable)
+    const marker = uid("mk");
+    await seedCustomers([
+      { name: `${marker}-Charlie`, status: "Active", createdAt: now },
+      { name: `${marker}-Alpha`, status: "Inactive", createdAt: now },
+    ]);
+    const outcome = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "customer",
+          fields: ["customer.name"],
+          filters: [{ fieldId: "customer.name", op: "startsWith", value: marker }],
+          sort: [{ fieldId: "customer.createdAt", direction: "desc" }],
+        },
+      },
+      { roles: TEST_ROLES },
+    );
+    assert.equal(outcome.rowCount, 2);
+    assert.equal(outcome.widened, true, "the result is not ordered as the definition asked -- say so");
+    assert.deepEqual(outcome.droppedPredicateFieldIds, ["customer.createdAt"]);
+    assert.equal(outcome.droppedPredicateCount, 1);
+    assert.equal(outcome.kind, "truncated-widened", "never plain 'results' for a run that ignored part of its definition");
   });
 
   // --- Relationship-field filter/group/aggregate execution (review round 1 fix) ---

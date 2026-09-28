@@ -104,6 +104,37 @@ function populationWasCut(outcome) {
   return populationVerdict(outcome) === "bounded";
 }
 
+/**
+ * The truncation sentence, naming the bound that ACTUALLY fired.
+ *
+ * `truncated` is an OR of three bounds. Printing "Showing the first <rowCap> rows" for all three was
+ * false twice over: a group-cardinality cut drops whole GROUPS (the row count is nowhere near the
+ * cap), and a scan cut drops part of the POPULATION before any filter ran (the rows shown are not
+ * "the first N" of anything). The server now states each bound; when it does not (an older
+ * server, or a fixture), the generic sentence below is kept -- a bound is never guessed.
+ */
+function truncationNote(outcome) {
+  const cap = Number.isInteger(outcome.rowCap) ? outcome.rowCap : null;
+  const stated = typeof outcome.rowCapTruncated === "boolean" || typeof outcome.groupCardinalityTruncated === "boolean";
+  if (!stated) {
+    return cap
+      ? `Showing the first ${cap.toLocaleString()} rows — this result was cut off and isn't complete.`
+      : "This result was cut off and isn't complete.";
+  }
+  const parts = [];
+  if (populationWasCut(outcome)) {
+    parts.push("There were more records than one run can check, so these rows come from part of the data only.");
+  }
+  if (outcome.groupCardinalityTruncated === true) {
+    parts.push("There were too many groups to show them all, so some groups are left out.");
+  }
+  if (outcome.rowCapTruncated === true) {
+    parts.push(cap ? `Only the first ${cap.toLocaleString()} rows are shown.` : "Not every row is shown.");
+  }
+  if (parts.length === 0) return "This result was cut off and isn't complete.";
+  return `${parts.join(" ")} This result isn't complete.`;
+}
+
 export function describeRunOutcome(outcome) {
   const kind = outcome && KINDS.has(outcome.kind) ? outcome.kind : "failure";
   switch (kind) {
@@ -224,12 +255,7 @@ export function describeRunOutcome(outcome) {
       // RPT-CLIENT: the ORTHOGONAL axis, not only the coarse `truncated` OR. A
       // fixture (or a future payload) that states completeness "bounded-page" while
       // leaving `truncated` unset would otherwise lose the population cut entirely.
-      if (outcome.truncated || populationWasCut(outcome)) {
-        const cap = Number.isInteger(outcome.rowCap) ? outcome.rowCap : null;
-        notes.push(cap
-          ? `Showing the first ${cap.toLocaleString()} rows — this result was cut off and isn't complete.`
-          : "This result was cut off and isn't complete.");
-      }
+      if (outcome.truncated || populationWasCut(outcome)) notes.push(truncationNote(outcome));
       if (notes.length === 0) notes.push("Some parts of this report weren't available to you and were left out.");
       return d("partially-authorized", "warning", "status", "Showing what you can view", null, notes);
     }
@@ -240,12 +266,7 @@ export function describeRunOutcome(outcome) {
     case "truncated-widened": {
       const notes = [];
       if (outcome.widened) notes.push("Some filters weren't applied, so this result is wider than the saved report.");
-      if (outcome.truncated || populationWasCut(outcome)) {
-        const cap = Number.isInteger(outcome.rowCap) ? outcome.rowCap : null;
-        notes.push(cap
-          ? `Showing the first ${cap.toLocaleString()} rows — this result was cut off and isn't complete.`
-          : "This result was cut off and isn't complete.");
-      }
+      if (outcome.truncated || populationWasCut(outcome)) notes.push(truncationNote(outcome));
       if (notes.length === 0) notes.push("This result was adjusted to stay within limits.");
       return d("truncated-widened", "warning", "status", "Partial result", null, notes);
     }

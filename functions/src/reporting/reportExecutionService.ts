@@ -326,6 +326,12 @@ export interface RunReportOutcome {
   // the population verdict directly, on every outcome, independent of `kind`.
   completeness: ScanCompleteness;
   scanTruncated: boolean;
+  // WHICH of the other two bounds fired, stated rather than left inside `truncated`. The client used
+  // to print "Showing the first <rowCap> rows" for ANY truncation -- including a group-cardinality cut
+  // (whole groups missing, far fewer rows than the cap) and a scan cut (the population, not the row
+  // list, was cut). Each bound now has its own flag so the note names the one that actually fired.
+  rowCapTruncated: boolean;
+  groupCardinalityTruncated: boolean;
   widened: boolean;
   // UI-safe labels (never a raw field id, matching reportResultState.js's
   // own safeLabels() convention on the client) for columns dropped from
@@ -690,6 +696,8 @@ export async function runReportDefinition(
       // overwrites the other.
       completeness: "not-attempted",
       scanTruncated: false,
+      rowCapTruncated: false,
+      groupCardinalityTruncated: false,
       widened: false,
       droppedColumnLabels: [],
       droppedFieldIds: [],
@@ -787,6 +795,12 @@ export async function runReportDefinition(
   const activeSort = ((def.sort as Array<{ fieldId: string; direction: "asc" | "desc" }> | undefined) ?? []).filter(
     (s) => authorizedFieldIds.has(s.fieldId),
   );
+  // A dropped SORT is a dropped predicate too (ADR-007 sec2.4 names sort alongside filter/group/
+  // aggregate). It used to vanish silently: the run came back as plain "results" in scan order, and
+  // under a row cap "the first N rows" were not the first N the definition asked for.
+  const droppedSortFieldIds = ((def.sort as Array<{ fieldId: string }> | undefined) ?? [])
+    .filter((s) => !authorizedFieldIds.has(s.fieldId))
+    .map((s) => s.fieldId);
 
   const activeAggregates = ((def.aggregates as Array<{ fieldId?: string; fn: string }> | undefined) ?? []).filter(
     (a) => isFieldlessAggregate(a.fn) || (typeof a.fieldId === "string" && authorizedFieldIds.has(a.fieldId)),
@@ -796,7 +810,7 @@ export async function runReportDefinition(
     .map((a) => a.fieldId as string);
 
   const droppedPredicateFieldIds = Array.from(
-    new Set([...droppedFilterFieldIds, ...droppedGroupByFieldIds, ...droppedAggregateFieldIds]),
+    new Set([...droppedFilterFieldIds, ...droppedGroupByFieldIds, ...droppedSortFieldIds, ...droppedAggregateFieldIds]),
   );
   const widened = droppedPredicateFieldIds.length > 0;
 
@@ -1037,6 +1051,8 @@ export async function runReportDefinition(
     truncated,
     completeness: scanTruncated ? "bounded-page" : "proven-complete",
     scanTruncated,
+    rowCapTruncated,
+    groupCardinalityTruncated,
     widened,
     droppedColumnLabels,
     droppedFieldIds: finalDroppedFieldIds,

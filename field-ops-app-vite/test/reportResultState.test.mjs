@@ -313,4 +313,51 @@ ok("the kind vocabulary is CLASSIFIED -- wire kinds and client-origin states, di
   }
 });
 
+
+// ---------------------------------------------------------------------------
+// THE TRUNCATION NOTE NAMES THE BOUND THAT FIRED. `truncated` is an OR of three bounds; the note
+// used to print "Showing the first <rowCap> rows" for all of them.
+// ---------------------------------------------------------------------------
+const wire = (over) => mapServiceOutcome({
+  kind: "truncated-widened", rows: [{ a: 1 }], rowCount: 2, rowCap: 10000, truncated: true,
+  completeness: "proven-complete", scanTruncated: false, widened: false,
+  droppedColumnLabels: [], droppedPredicateCount: 0, ...over,
+});
+
+ok("a GROUP-cardinality cut never claims 'the first 10,000 rows' over a two-group result", () => {
+  const d = describeRunOutcome(wire({ groupCardinalityTruncated: true, rowCapTruncated: false }));
+  assert.equal(d.notes.length, 1);
+  assert.match(d.notes[0], /too many groups/);
+  assert.ok(!/10,000/.test(d.notes[0]), d.notes[0]);
+  assert.match(d.notes[0], /isn't complete/);
+});
+
+ok("a SCAN cut says the population was cut, not that the first N rows are shown", () => {
+  const d = describeRunOutcome(wire({
+    completeness: "bounded-page", scanTruncated: true, rowCapTruncated: false, groupCardinalityTruncated: false,
+  }));
+  assert.match(d.notes[0], /part of the data/);
+  assert.ok(!/first/.test(d.notes[0]), d.notes[0]);
+});
+
+ok("a ROW-cap cut names the cap", () => {
+  const d = describeRunOutcome(wire({ rowCapTruncated: true, groupCardinalityTruncated: false }));
+  assert.match(d.notes[0], /first 10,000 rows/);
+});
+
+ok("a server that does not state the bound keeps the generic sentence (a bound is never guessed)", () => {
+  const out = wire({});
+  assert.equal(out.rowCapTruncated, null);
+  assert.equal(out.groupCardinalityTruncated, null);
+  const d = describeRunOutcome(out);
+  assert.match(d.notes[0], /cut off and isn't complete/);
+});
+
+ok("partially-authorized + a group cut names the group bound too", () => {
+  const d = describeRunOutcome(wire({
+    kind: "partially-authorized", droppedColumnLabels: ["Tax status"], groupCardinalityTruncated: true, rowCapTruncated: false,
+  }));
+  assert.ok(d.notes.some((n) => /too many groups/.test(n)), JSON.stringify(d.notes));
+});
+
 console.log(`\n${passed} passed`);
