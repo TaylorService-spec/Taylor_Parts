@@ -283,8 +283,41 @@ const clientFiles = () => walk(CLIENT_SRC, [".js", ".jsx", ".ts", ".tsx"]);
 
 /** The ONE client module permitted to name the governed Commercial transport. */
 const COMMERCIAL_TRANSPORT_CLIENT = "field-ops-app-vite/src/services/commercialApiClient.js";
-/** The ONE module permitted to import it: the Sales Agreements index hook. */
-const APPROVED_TRANSPORT_IMPORTERS = ["field-ops-app-vite/src/hooks/useSalesAgreementIndex.js"];
+/**
+ * The modules permitted to import it. PASS 11 RETAIL SALES (Controller-authorized cutover) added the Opportunity, Sales
+ * Order and Sales Agreement read + command clients and the two list sources that route to the governed transport --
+ * each named, none by pattern.
+ */
+const APPROVED_TRANSPORT_IMPORTERS = [
+  "field-ops-app-vite/src/access/opportunitySource.js",
+  "field-ops-app-vite/src/hooks/useSalesAgreementIndex.js",
+  "field-ops-app-vite/src/metadata/callableListSource.js",
+  "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js",
+  "field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js",
+  "field-ops-app-vite/src/services/opportunityCommandClient.js",
+  "field-ops-app-vite/src/services/opportunityReadCallableClient.js",
+  "field-ops-app-vite/src/services/salesAgreementCommandClient.js",
+  "field-ops-app-vite/src/services/salesOrderCommandClient.js",
+  "field-ops-app-vite/src/services/salesOrderReadCallableClient.js",
+];
+/** The ONLY client modules that may send a Commercial COMMAND (each through the transport client). */
+const APPROVED_COMMAND_CLIENTS = [
+  "field-ops-app-vite/src/services/opportunityCommandClient.js",
+  "field-ops-app-vite/src/services/salesAgreementCommandClient.js",
+  "field-ops-app-vite/src/services/salesOrderCommandClient.js",
+];
+/** Pure-EOS Commercial clients: no Firebase import at all (callableListSource / salesAgreementCommandClient keep
+ *  unrelated legacy callables -- the manufacturer catalog, invoice AR, the product-reference picker). */
+const PURE_EOS_COMMERCIAL_CLIENTS = [
+  "field-ops-app-vite/src/access/opportunitySource.js",
+  "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js",
+  "field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js",
+  "field-ops-app-vite/src/services/commercialEosAdapters.js",
+  "field-ops-app-vite/src/services/opportunityCommandClient.js",
+  "field-ops-app-vite/src/services/opportunityReadCallableClient.js",
+  "field-ops-app-vite/src/services/salesOrderCommandClient.js",
+  "field-ops-app-vite/src/services/salesOrderReadCallableClient.js",
+];
 /** The ONE screen permitted to consume that hook. */
 const APPROVED_HOOK_CONSUMERS = ["field-ops-app-vite/src/modules/sales/SalesAgreementsList.jsx"];
 /** The approved path end to end, for the shape checks below. */
@@ -310,12 +343,12 @@ const namesCommercialTransport = (file) => {
     || importsModule(source, /commercialHttp(\.[jt]s)?$/);
 };
 
-test("(21a) exactly the approved Sales Agreements read path reaches the governed Commercial transport", () => {
+test("(21a) exactly the approved Commercial client modules reach the governed Commercial transport", () => {
   const naming = clientFiles().filter(namesCommercialTransport).map(rel);
   assert.deepEqual(naming, [COMMERCIAL_TRANSPORT_CLIENT], "a client module other than the approved transport client names the Commercial transport");
 
   const importers = clientFiles().filter((f) => importsModule(readFileSync(f, "utf8"), /commercialApiClient(\.js)?$/)).map(rel);
-  assert.deepEqual(importers, APPROVED_TRANSPORT_IMPORTERS, "a client module other than the Sales Agreements index hook imports the Commercial transport client");
+  assert.deepEqual(importers.sort(), [...APPROVED_TRANSPORT_IMPORTERS].sort(), "an unapproved client module imports the Commercial transport client");
 
   const consumers = clientFiles().filter((f) => importsModule(readFileSync(f, "utf8"), /useSalesAgreementIndex(\.js)?$/)).map(rel);
   assert.deepEqual(consumers, APPROVED_HOOK_CONSUMERS, "a client module other than the Sales Agreements list consumes the governed index hook");
@@ -324,24 +357,26 @@ test("(21a) exactly the approved Sales Agreements read path reaches the governed
   assert.ok(namesCommercialTransport(join(REPO, COMMERCIAL_TRANSPORT_CLIENT)), "the anchored scan stopped recognising the transport client and would now pass for the wrong reason");
 });
 
-test("(21b) the browser's Commercial path is READS ONLY: no Commercial write transport exists", async () => {
+test("(21b) the browser's Commercial path is exactly the server's closed lists, commands only from the approved clients", async () => {
   const client = await import(pathToFileURL(join(REPO, COMMERCIAL_TRANSPORT_CLIENT)).href);
-  // The closed list is exactly the server's READ_RUNNERS -- no more, and no C2 mutation.
+  // The closed lists are exactly the server's READ_RUNNERS and MUTATION_RUNNERS -- no more.
   assert.deepEqual([...client.COMMERCIAL_READ_OPERATIONS].sort(), [...EXPECTED_READS].sort(), "the client's read list drifted from the transport's READ_RUNNERS");
-  for (const mutation of EXPECTED_MUTATIONS) {
-    assert.equal(client.isCommercialReadOperation(mutation), false, `${mutation} is callable from the browser`);
-  }
-  // EXECUTABLE, not textual: a write is refused before any network transport is touched.
-  const attempted = await client.callCommercialApi("createSalesAgreement", {
+  assert.deepEqual([...client.COMMERCIAL_MUTATION_OPERATIONS].sort(), [...EXPECTED_MUTATIONS].sort(), "the client's command list drifted from the transport's MUTATION_RUNNERS");
+  for (const mutation of EXPECTED_MUTATIONS) assert.equal(client.isCommercialReadOperation(mutation), false, `${mutation} reads as a read`);
+  // EXECUTABLE: an operation the server does not list is refused before any network transport is touched.
+  const attempted = await client.callCommercialApi("deleteOpportunity", {
     baseUrl: "http://eos.invalid", getIdToken: async () => "t",
-    fetchImpl: () => { throw new Error("the browser reached the network for a Commercial write"); },
+    fetchImpl: () => { throw new Error("the browser reached the network for an unlisted Commercial operation"); },
   });
-  assert.deepEqual([attempted.ok, attempted.code], [false, "UNKNOWN_OPERATION"], "a C2 mutation left the browser through the Commercial transport");
-  // And no module on the approved path spells one, so the list cannot be widened quietly.
-  for (const file of APPROVED_READ_PATH) {
-    const code = stripComments(readFileSync(join(REPO, file), "utf8"));
+  assert.deepEqual([attempted.ok, attempted.code], [false, "UNKNOWN_OPERATION"]);
+  // Commands are SPELLED only by the approved command clients (and mirrored by the transport client).
+  for (const file of clientFiles()) {
+    const r = rel(file);
+    if (r === COMMERCIAL_TRANSPORT_CLIENT || APPROVED_COMMAND_CLIENTS.includes(r)) continue;
+    if (!importsModule(readFileSync(file, "utf8"), /commercialApiClient(\.js)?$/)) continue;
+    const code = stripComments(readFileSync(file, "utf8"));
     for (const mutation of EXPECTED_MUTATIONS) {
-      assert.doesNotMatch(code, new RegExp(`\\b${mutation}\\b`), `${file} names the C2 mutation ${mutation}`);
+      assert.doesNotMatch(code, new RegExp(`["'\`]${mutation}["'\`]`), `${r} sends the Commercial command ${mutation} outside the approved command clients`);
     }
   }
 });
@@ -350,7 +385,7 @@ test("(21c) the approved path opens no Firestore Commercial read and no Firebase
   // The Firestore clause reuses Lane AO's shared fence rather than a fifth bare-string variant: a
   // collection name is only evidence of Firestore when a Firestore-shaped receiver is handed it.
   const COMMERCIAL_COLLECTIONS = ["sales_agreements", "salesAgreements", "opportunities", "salesOrders", "sales_orders", "customers"];
-  for (const file of APPROVED_READ_PATH) {
+  for (const file of [...APPROVED_READ_PATH, ...PURE_EOS_COMMERCIAL_CLIENTS]) {
     const code = stripComments(readFileSync(join(REPO, file), "utf8"));
     assert.equal(opaqueFirestoreAccess(code), false, `${file} holds a Firestore accessor`);
     for (const collection of COMMERCIAL_COLLECTIONS) {

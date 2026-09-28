@@ -3,6 +3,7 @@
 // Its OWN database, migrated by the normal runner. Every command runs through the real kernel: capability and
 // membership authority, one transaction, number allocation, lines, ownership and accountability history, and the
 // idempotency receipt. Failures are forced with temporary triggers so rollback is observed, not assumed.
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -72,6 +73,10 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
 
   // ── the world ──
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  // t1 binds Taylor to a DELIBERATELY DIFFERENT key: every write below must store the bound key, and every read must map it
+  // back to the company id -- proof that nothing assumes operatingCompanyKey == operatingCompanyId.
+  await bindOperatingCompany(q, "t1", "taylor", "taylor-ops-t1");
+  await bindOperatingCompany(q, "t2", "taylor"); // governed key binding, explicit (never inferred from the id)
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, owner_employee_id, created_by, updated_by) VALUES
     ('acct-1','t1','Retail Customer','ACTIVE','e-retail','x','x'), ('acct-ownerless','t1','No Owner','ACTIVE',NULL,'x','x'), ('acct-t2','t2','Other Tenant','ACTIVE',NULL,'x','x')`);
   await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES
@@ -113,6 +118,17 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     assert.equal(await count("opportunity_lines", "opportunity_id=$1", [o1.opportunityId]), 2);
     assert.equal(await count("accountability_handoffs", "opportunity_id=$1 AND action='ESTABLISHMENT' AND source='DERIVED_FROM_RECORD_OWNER'", [o1.opportunityId]), 1);
     assert.equal(await count("command_receipts", "target_id=$1 AND operation='opportunity.create'", [o1.opportunityId]), 1);
+  });
+
+  await t.test("OPERATING COMPANY: the stored key is the governed binding's; reads return the company; an unkeyed company refuses", async () => {
+    const created = await newOpportunity();
+    const id = created.result?.opportunityId ?? created.opportunityId;
+    assert.equal((await q(`SELECT operating_company_key FROM eos_commercial.opportunities WHERE id=$1`, [id])).rows[0].operating_company_key, "taylor-ops-t1");
+    // Ventana is an authorized company with NO key binding: refused, never stored as key "ventana".
+    await assert.rejects(newOpportunity({ operatingCompanyId: "ventana" }), (e) => e.code === "OPERATING_COMPANY_KEY_NOT_BOUND");
+    const { lockOpportunity } = require("../lib/eosCommercial/commands/commercialRecordStore.js");
+    const row = await lockOpportunity(pool, "t1", id);
+    assert.equal(row.operatingCompanyId, "taylor", "the read maps the stored key back to the governed company");
   });
 
   await t.test("(2) an incomplete create refuses and writes nothing", async () => {
@@ -245,7 +261,7 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     const opportunity = (await q(`SELECT outcome::text, closed_at IS NOT NULL AS closed FROM eos_commercial.opportunities WHERE id=$1`, [o1.opportunityId])).rows[0];
     assert.deepEqual(opportunity, { outcome: "WON", closed: true });
     const order = (await q(`SELECT state::text, opportunity_id, sales_agreement_id, owner_employee_id, credited_salesperson_employee_id, customer_po, notes, accountable_employee_id, operating_company_key FROM eos_commercial.sales_orders WHERE id=$1`, [won.salesOrderId])).rows[0];
-    assert.deepEqual(order, { state: "CONFIRMED", opportunity_id: o1.opportunityId, sales_agreement_id: a1.salesAgreementId, owner_employee_id: "e-national", credited_salesperson_employee_id: "e-gm", customer_po: "PO-77", notes: null, accountable_employee_id: "e-national", operating_company_key: "taylor" });
+    assert.deepEqual(order, { state: "CONFIRMED", opportunity_id: o1.opportunityId, sales_agreement_id: a1.salesAgreementId, owner_employee_id: "e-national", credited_salesperson_employee_id: "e-gm", customer_po: "PO-77", notes: null, accountable_employee_id: "e-national", operating_company_key: "taylor-ops-t1" });
     assert.equal(await count("sales_order_lines", "sales_order_id=$1", [won.salesOrderId]), 1);
     assert.equal(await count("accountability_handoffs", "sales_order_id=$1 AND action='ESTABLISHMENT'", [won.salesOrderId]), 1);
     assert.equal((await q(`SELECT state::text FROM eos_commercial.sales_agreements WHERE id=$1`, [a1.salesAgreementId])).rows[0].state, "ACCEPTED", "the Agreement is only read");

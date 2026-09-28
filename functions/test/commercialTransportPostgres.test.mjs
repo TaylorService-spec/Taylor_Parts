@@ -4,6 +4,7 @@
 // request handler: bearer -> injected verifier -> resolveOperationalContext (Principal, membership, Role assignment,
 // role_capabilities) -> Commercial actor -> C2 command / C3 read -> HTTP response. Roles and grants below exist ONLY in
 // these disposable databases.
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -138,6 +139,8 @@ test("Commercial transport end to end over the real policy and Commercial author
   const withCatalog = { ...bare, catalog }; // TEST-ONLY governed catalog authority
 
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  await bindOperatingCompany(q, "t1", "taylor"); // governed key binding, explicit (never inferred from the id)
+  await bindOperatingCompany(q, "t2", "taylor"); // governed key binding, explicit (never inferred from the id)
   assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.role_capabilities`)).rows[0].n, 0, "the migrated database already carried grants");
   const actorFor = (tenantId) => ({ tenantId, uid: "uid-fixture-admin" });
   const makeActor = async (tenantId, subject, keys) => {

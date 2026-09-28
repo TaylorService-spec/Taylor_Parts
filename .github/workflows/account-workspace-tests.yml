@@ -36,6 +36,9 @@ on:
       - "field-ops-app-vite/src/domain/contactImport.js"
       - "field-ops-app-vite/src/hooks/useCrmRead.js"
       - "field-ops-app-vite/test/crmClientCutover.test.jsx"
+      - "field-ops-app-vite/test/commercialEosCutover.test.jsx"
+      - "field-ops-app-vite/src/services/commercialEosAdapters.js"
+      - "field-ops-app-vite/src/services/commercialApiClient.js"
       - "field-ops-app-vite/src/hooks/useAccountAr.js"
       - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
@@ -76,6 +79,9 @@ on:
       - "field-ops-app-vite/src/domain/contactImport.js"
       - "field-ops-app-vite/src/hooks/useCrmRead.js"
       - "field-ops-app-vite/test/crmClientCutover.test.jsx"
+      - "field-ops-app-vite/test/commercialEosCutover.test.jsx"
+      - "field-ops-app-vite/src/services/commercialEosAdapters.js"
+      - "field-ops-app-vite/src/services/commercialApiClient.js"
       - "field-ops-app-vite/src/hooks/useAccountAr.js"
       - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
@@ -161,6 +167,12 @@ jobs:
       # CRM cutover: writers, reads and the Customers list source use the EOS API CRM route only -- no Firestore, no fallback.
       - name: CRM client cutover (EOS API only)
         run: npx vitest run test/crmClientCutover.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Pass 11 Retail Sales: Opportunity / Sales Agreement / Sales Order reads and commands use the EOS Commercial API
+      # only -- no Firebase callable, the held downstream boundary refused, the client lists mirroring the server's.
+      - name: Commercial client cutover (EOS API only)
+        run: npx vitest run test/commercialEosCutover.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Lint

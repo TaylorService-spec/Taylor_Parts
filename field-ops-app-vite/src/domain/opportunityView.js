@@ -70,6 +70,8 @@ export function opportunityView({ loading = false, errorStatus = null, result = 
     salesAgreementId: str(o.salesAgreementId),
     createdAtMillis: num(o.createdAtMillis),
     updatedAtMillis: num(o.updatedAtMillis),
+    // The governed edit's concurrency token (eos_commercial edit_version): an edit applies only against the version read.
+    editVersion: num(o.editVersion),
     closedAtMillis: num(o.closedAtMillis),
   };
 }

@@ -180,12 +180,12 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
         outcome={sectionSave.outcome?.sectionId === id ? sectionSave.outcome : null}
         directory={directory}
         onSave={async (sectionId, draft) => {
-          // THE GOVERNED, VERSION-CHECKED SAVE. `view.updatedAtMillis` is the token the caller must
+          // THE GOVERNED, VERSION-CHECKED SAVE. `view.editVersion` (eos_commercial edit_version) is the token the caller must
           // prove it loaded; the command rejects anything else. The section closes only on a save
           // that actually happened, and the page then RE-READS rather than patching locally — a
           // locally-invented version token would fail the next save with a conflict nobody could
           // explain.
-          const result = await sectionSave.saveSection(sectionId, draft, view.updatedAtMillis);
+          const result = await sectionSave.saveSection(sectionId, draft, view.editVersion);
           if (result?.kind === "applied" || result?.kind === "replayed") {
             setEditingSection(null);
             refetch();

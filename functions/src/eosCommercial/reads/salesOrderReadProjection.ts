@@ -43,7 +43,10 @@ export interface SalesOrderSummaryProjection extends SalesOrderPricingProjection
   readonly owner: CommercialPersonReference;
   readonly accountablePerson: CommercialPersonReference | null;
   readonly creditedSalesperson: CommercialPersonReference | null;
+  /** The governed operating company, resolved from the stored key through the ACTIVE binding; null when unbound. */
   readonly operatingCompanyId: string | null;
+  /** The stored operating company KEY (a different vocabulary from the company id). */
+  readonly operatingCompanyKey: string | null;
   readonly state: string;
   readonly salesChannel: string;
   readonly currency: string;
@@ -77,7 +80,8 @@ export function salesOrderPricingOf(lines: readonly { extendedMinor: number | nu
 }
 
 const SUMMARY_COLUMNS = `s.id, s.sales_order_number, s.opportunity_id, s.sales_agreement_id, s.account_id, acc.name AS account_name,
-  s.operating_company_key, s.state::text AS state, s.sales_channel::text AS sales_channel, s.currency, s.booked_at, s.created_at, s.updated_at,
+  s.operating_company_key, (SELECT k.operating_company_id FROM eos_policy.tenant_operating_company_keys k
+  WHERE k.tenant_id = s.tenant_id AND k.operating_company_key = s.operating_company_key AND k.status = 'ACTIVE') AS operating_company_id, s.state::text AS state, s.sales_channel::text AS sales_channel, s.currency, s.booked_at, s.created_at, s.updated_at,
   s.owner_employee_id, EXISTS (SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = s.tenant_id AND e.id = s.owner_employee_id) AS owner_resolved,
   s.accountable_employee_id, EXISTS (SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = s.tenant_id AND e.id = s.accountable_employee_id) AS accountable_resolved,
   s.credited_salesperson_employee_id, EXISTS (SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = s.tenant_id AND e.id = s.credited_salesperson_employee_id) AS credited_resolved`;
@@ -110,7 +114,7 @@ function summaryOf(r: Row, lines: readonly SalesOrderLineProjection[]): SalesOrd
     owner: personOf(r.owner_employee_id, r.owner_resolved)!,
     accountablePerson: personOf(r.accountable_employee_id, r.accountable_resolved),
     creditedSalesperson: personOf(r.credited_salesperson_employee_id, r.credited_resolved),
-    operatingCompanyId: r.operating_company_key, state: r.state, salesChannel: r.sales_channel, currency: r.currency,
+    operatingCompanyId: r.operating_company_id, operatingCompanyKey: r.operating_company_key, state: r.state, salesChannel: r.sales_channel, currency: r.currency,
     bookedAt: isoOf(r.booked_at)!, createdAt: isoOf(r.created_at)!, updatedAt: isoOf(r.updated_at)!,
     ...salesOrderPricingOf(lines), lines,
   };

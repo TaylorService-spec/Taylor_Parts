@@ -23,6 +23,7 @@
 //
 // The claims below are STRUCTURAL on purpose. "The writers will remember to supply an owner" is not
 // a property; "the database refuses a row without one" is.
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -71,6 +72,8 @@ async function prepare() {
     "INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1) ON CONFLICT DO NOTHING",
     [TENANT],
   );
+  // Taylor's governed operating company key binding, as nonprod holds it (explicit, never inferred).
+  await bindOperatingCompany(query, TENANT, "taylor");
   // Migration 022 (wave C1) keys every NEW commercial row to a PostgreSQL Account in the same tenant.
   await query(
     `INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by)
@@ -242,9 +245,10 @@ test("an Opportunity may be company-unresolved, exactly as its command allows", 
 
 test("the schema stores a governed company key without knowing which companies exist", { skip: SKIP }, async () => {
   await prepare();
-  // The column is opaque TEXT: the AUTHORITY layer decides `taylor | ventana`, and it does --
-  // the repository's pure builder refuses an ungoverned id before the INSERT is ever issued.
-  const order = await createCommercialRecord(repoPool(), TENANT, ACTOR, {
+  // The column holds an operating company KEY. The AUTHORITY layer decides the company (`taylor | ventana`); the key is
+  // reached ONLY through the governed ACTIVE binding, never by assuming id == key. Ventana is authorized-but-unkeyed in
+  // nonprod, so without a binding the write REFUSES rather than inventing key "ventana".
+  const ventanaOrder = () => createCommercialRecord(repoPool(), TENANT, ACTOR, {
     kind: "SALES_ORDER",
     recordNumber: `SO-2026-${uniq()}`,
     accountId: "acct-1",
@@ -252,7 +256,12 @@ test("the schema stores a governed company key without knowing which companies e
     createdBy: "emp-rudy",
     operatingCompanyId: "ventana",
   });
-  assert.equal(order.operatingCompanyKey, "ventana");
+  await assert.rejects(ventanaOrder(), (err) => err.code === "OPERATING_COMPANY_KEY_NOT_BOUND");
+  // With a governed binding to a DELIBERATELY DIFFERENT key (disposable test tenant only), the stored key is the bound
+  // key -- proof the writer resolves through the binding and not through the literal company id.
+  await bindOperatingCompany(query, TENANT, "ventana", "ventana-ops-proof");
+  const order = await ventanaOrder();
+  assert.equal(order.operatingCompanyKey, "ventana-ops-proof");
 
   await assert.rejects(
     createCommercialRecord(repoPool(), TENANT, ACTOR, {

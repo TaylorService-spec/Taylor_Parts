@@ -984,7 +984,7 @@ test("classification is a strict SUPERSET: every file the specifier matcher alon
     SERVER_PROBE).has("server.firebase_admin_firestore"));
 });
 
-test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 354 " +
+test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 347 " +
   "guarded entries across four populated categories, nothing lost and nothing reclassified", () => {
   const scanResults = scan(REPO_ROOT);
   const baseline = loadCommittedBaseline(REPO_ROOT);
@@ -994,7 +994,8 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // (was 55 + 55 + 183 + 72 = 365). 184 -> 183 earlier: the Firestore policy parity harness was deleted with its
     // baseline entry by the role-assignment census (shrink-only; never grown).
     "frontend.firestore_client": 45,
-    "frontend.firebase_functions_client": 54,
+    // Pass 11 Retail Sales: the 7 Opportunity / Sales Order read + command clients moved to the EOS Commercial API.
+    "frontend.firebase_functions_client": 47,
     "server.firebase_admin_firestore": 183,
     "server.firebase_functions_server": 72,
   };
@@ -1007,5 +1008,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 354);
+  assert.equal(total, 347);
 });
