@@ -40,6 +40,8 @@ on:
       - "field-ops-app-vite/src/domain/financialFactsView.js"
       - "field-ops-app-vite/src/domain/companyAttribution.js"
       - "field-ops-app-vite/src/hooks/useFinancialFacts.js"
+      # The dashboard firm tiles consume the same read; financialFactsView.test.mjs pins them.
+      - "field-ops-app-vite/src/modules/dashboard/MyDashboard.jsx"
       - "field-ops-app-vite/src/services/financeReadCallableClient.js"
       - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
       - "functions/scripts/financialReviewFixtures.mjs"
@@ -66,6 +68,8 @@ on:
       - "field-ops-app-vite/src/domain/financialFactsView.js"
       - "field-ops-app-vite/src/domain/companyAttribution.js"
       - "field-ops-app-vite/src/hooks/useFinancialFacts.js"
+      # The dashboard firm tiles consume the same read; financialFactsView.test.mjs pins them.
+      - "field-ops-app-vite/src/modules/dashboard/MyDashboard.jsx"
       - "field-ops-app-vite/src/services/financeReadCallableClient.js"
       - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
       - "functions/scripts/financialReviewFixtures.mjs"

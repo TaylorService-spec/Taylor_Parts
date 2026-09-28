@@ -72,6 +72,7 @@ import { workOrderStatusLabel } from "../../domain/workOrderStatus.js";
 import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { formatMoneyDisplay } from "../../domain/moneyDisplay.js";
 import { resolveReportingPeriod, reportingDayIso, TAYLOR_VENTANA_REPORTING_CALENDAR } from "../../domain/reportingPeriod.js";
 import {
   workOrdersByStatus as projectWorkOrdersByStatus,
@@ -951,9 +952,19 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                 const field = m.key === "firmBilled" ? "billedByCurrency" : "collectedByCurrency";
                 const ready = !finance.loading && !finance.errorStatus && finance.result?.status === "ready";
                 const companies = ready ? finance.result.byCompany ?? [] : null;
+                // DENIED IS NOT "COULD NOT BE READ". The module composes on the client's reach
+                // projection; the server can still refuse (e.g. a held scope that binds to nobody).
+                // That refusal is a permission fact and is said as one.
+                const denied = !finance.loading && finance.errorStatus === "denied";
                 return (
                   <ModuleFrame key={m.key} label={m.label}>
-                    {companies === null ? (
+                    {denied ? (
+                      <HonestState
+                        state={HONEST_STATE.DENIED}
+                        subject={m.label}
+                        detail="The server refused this figure for your governed financial visibility. That is a permission fact, not an absence of records."
+                      />
+                    ) : companies === null ? (
                       <HonestState
                         state={HONEST_STATE.UNAVAILABLE}
                         subject={m.label}
@@ -971,7 +982,9 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                             Object.entries(row[field] ?? {}).map(([currency, minor]) => (
                               <CompactMetric
                                 key={`${row.key}-${currency}`}
-                                value={`${(minor / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`}
+                                // The ONE money formatter: exponent per currency (money.js), never a hard-coded /100
+                                // that renders a JPY amount a hundred times too small.
+                                value={formatMoneyDisplay(minor, currency)}
                                 label={`${row.key} — ${m.label.toLowerCase()}`}
                               />
                             )),
@@ -984,6 +997,11 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                               policy that does not either. Both would be arithmetic the platform has
                               not authorized, performed in a browser. */}
                           Month to date on the company reporting calendar, shown per company and per currency. Not combined.
+                          {/* INVOICE-ANCHORED, said on the tile (the Overview already says it): the
+                              period filters by invoice ISSUE date, so Collected is cash applied to the
+                              invoices issued this month -- a payment this month against last month's
+                              invoice is not in it. Unlabelled, this reads as "cash received this month". */}
+                          {" "}Both figures follow invoices issued this month: Collected is cash applied to those invoices, not all cash received this month.
                         </p>
                       </>
                     )}

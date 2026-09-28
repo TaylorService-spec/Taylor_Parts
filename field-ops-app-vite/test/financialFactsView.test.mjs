@@ -718,3 +718,25 @@ test("A′: every Financials page renders the state's own detail — none indexe
     assert.ok(!/accountSelector/.test(src), `${page} carries no narrowing advice`);
   }
 });
+
+// ════════ The dashboard's firm finance tiles (MyDashboard.jsx) — the other consumer of this read ════════
+// A render harness for MyDashboard would need every dashboard feed; these source pins hold the three
+// tile invariants instead, and the workflow path filter lists MyDashboard.jsx so an edit there runs them.
+test("dashboard firm tiles: money goes through the one formatter, never a hard-coded /100", () => {
+  const src = readFileSync(new URL("../src/modules/dashboard/MyDashboard.jsx", import.meta.url), "utf8");
+  assert.ok(!/minor\s*\/\s*100/.test(src), "a hard-coded /100 renders non-2-decimal currencies wrong");
+  assert.match(src, /formatMoneyDisplay\(minor, currency\)/);
+});
+
+test("dashboard firm tiles: a server DENIAL is rendered as DENIED, not as 'could not be read'", () => {
+  const src = readFileSync(new URL("../src/modules/dashboard/MyDashboard.jsx", import.meta.url), "utf8");
+  const tile = src.slice(src.indexOf('m.key === "firmBilled"'), src.indexOf('m.key === "myGoals"'));
+  assert.match(tile, /finance\.errorStatus === "denied"/);
+  assert.match(tile, /HONEST_STATE\.DENIED/);
+});
+
+test("dashboard firm tiles: Collected is disclosed as invoice-anchored, not cash received in the month", () => {
+  const src = readFileSync(new URL("../src/modules/dashboard/MyDashboard.jsx", import.meta.url), "utf8");
+  const tile = src.slice(src.indexOf('m.key === "firmBilled"'), src.indexOf('m.key === "myGoals"'));
+  assert.match(tile, /not all cash received this month/);
+});
