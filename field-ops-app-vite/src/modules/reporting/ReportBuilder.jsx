@@ -50,6 +50,11 @@ const OBJECTS = availableObjects();
 export default function ReportBuilder({ runReportFn = runReport, savedReportServiceImpl = savedReportService }) {
   const [def, setDef] = useState(() => createReportDefinition(null));
   const [outcome, setOutcome] = useState({ kind: "idle" });
+  // THE DEFINITION THE SHOWN OUTCOME BELONGS TO. Every builder edit produces a NEW definition object
+  // (reportBuilderModel.js is immutable), so reference inequality is exactly "edited since it ran".
+  // Without this, a result stayed on screen under a filter/field/sort it was never run with -- the
+  // old rows read as the answer to the new question, and rowColumns() mixed old rows with new columns.
+  const [ranDef, setRanDef] = useState(null);
   const [running, setRunning] = useState(false);
   const [searchParams] = useSearchParams();
   const openId = searchParams.get("open");
@@ -70,12 +75,15 @@ export default function ReportBuilder({ runReportFn = runReport, savedReportServ
   };
 
   const onRun = async () => {
+    const ran = def;
     setRunning(true);
+    setRanDef(ran);
     setOutcome({ kind: "loading" });
-    const result = await runReportFn(def);
+    const result = await runReportFn(ran);
     setOutcome(result);
     setRunning(false);
   };
+  const stale = outcome.kind !== "idle" && outcome.kind !== "loading" && ranDef !== def;
 
   // Hydrate from a saved report when the route carries ?open=<id> (SavedReports.jsx's "Open").
   // Re-fetches via the trusted get() callable (never trusts a stale list-row embed) and runs the
@@ -206,7 +214,7 @@ export default function ReportBuilder({ runReportFn = runReport, savedReportServ
               Run report
             </Button>
 
-            <ResultArea outcome={outcome} def={def} />
+            <ResultArea outcome={stale ? { kind: "idle" } : outcome} def={ranDef ?? def} stale={stale} />
           </>
         )}
       </div>
@@ -473,7 +481,17 @@ function SortBy({ def, selected, setDef }) {
   );
 }
 
-function ResultArea({ outcome, def }) {
+function ResultArea({ outcome, def, stale = false }) {
+  if (stale) {
+    // The previous result answered a DIFFERENT definition. It is not shown -- not dimmed, not kept
+    // "for reference" -- because rows under a filter they were never filtered by read as its answer.
+    return (
+      <div className="fo-state" role="status">
+        <p className="fo-state-title">Report changed since it last ran</p>
+        <p className="fo-muted fo-state-message">The previous result no longer matches this report, so it isn't shown. Run the report again to see results.</p>
+      </div>
+    );
+  }
   if (!outcome || outcome.kind === "idle") {
     const d = describeRunOutcome({ kind: "idle" });
     return <div className="fo-state" role={d.role}><p className="fo-state-title">{d.title}</p><p className="fo-muted fo-state-message">{d.message}</p></div>;

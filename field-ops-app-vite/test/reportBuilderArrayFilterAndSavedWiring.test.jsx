@@ -235,3 +235,42 @@ describe("SavedReports — Open navigates to the builder (Fix 2)", () => {
     expect(screen.getByRole("button", { name: /open broken report/i })).toBeTruthy();
   });
 });
+
+describe("ReportBuilder — a result never outlives the definition it answered", () => {
+  const resultsFor = (name) => ({
+    ok: true, kind: "results", rows: [{ "customer.name": name }], aggregates: null, rowCount: 1, rowCap: 10000,
+    truncated: false, completeness: "proven-complete", scanTruncated: false, widened: false,
+    droppedColumnLabels: [], droppedPredicateCount: 0,
+  });
+
+  it("editing the definition after a run hides the old rows and says the report changed", async () => {
+    const runReportFn = vi.fn().mockResolvedValue(resultsFor("Acme Stale Row"));
+    withRouter(<ReportBuilder runReportFn={runReportFn} savedReportServiceImpl={{ get: vi.fn(), create: vi.fn() }} />);
+
+    pickObjectAndField("customer", "Name");
+    fireEvent.click(screen.getByRole("button", { name: /run report/i }));
+    expect(await screen.findByText("Acme Stale Row")).toBeTruthy();
+
+    // Any edit -- here, adding a second field -- makes the shown result the answer to a question
+    // that is no longer on screen.
+    fireEvent.click(baseFieldsFieldset().getByRole("checkbox", { name: "Status" }));
+    expect(screen.queryByText("Acme Stale Row")).toBeNull();
+    expect(screen.getByText(/Report changed since it last ran/)).toBeTruthy();
+
+    // Running again shows the new answer.
+    runReportFn.mockResolvedValue(resultsFor("Fresh Row"));
+    fireEvent.click(screen.getByRole("button", { name: /run report/i }));
+    expect(await screen.findByText("Fresh Row")).toBeTruthy();
+    expect(screen.queryByText(/Report changed since it last ran/)).toBeNull();
+  });
+
+  it("the run receives exactly the definition on screen when Run was pressed", async () => {
+    const runReportFn = vi.fn().mockResolvedValue(resultsFor("x"));
+    withRouter(<ReportBuilder runReportFn={runReportFn} savedReportServiceImpl={{ get: vi.fn(), create: vi.fn() }} />);
+    pickObjectAndField("customer", "Name");
+    fireEvent.click(screen.getByRole("button", { name: /run report/i }));
+    await screen.findByText("x");
+    expect(runReportFn).toHaveBeenCalledTimes(1);
+    expect(runReportFn.mock.calls[0][0].fields).toEqual(["customer.name"]);
+  });
+});
