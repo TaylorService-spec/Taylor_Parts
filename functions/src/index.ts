@@ -54,12 +54,13 @@ export {
 } from "./reorderRequest/reorderCallables";
 // Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability
 // `opportunity.read` registered active:false (REGISTER != GRANT).
-export { listOpportunityContext, listOpportunitiesForAccount } from "./opportunity/opportunityReadService";
+// PASS 11 RETAIL SALES: listOpportunityContext / listOpportunitiesForAccount RETIRED -- the client reads the governed PostgreSQL
+// Commercial transport (listOpportunities). Frozen Firestore records are untouched.
 // The PER-ID Opportunity read (North Star family 4). Same governed capability as the two list reads
 // above -- `opportunity.read` -- because the authorization question is identical and only the query
 // shape differs; no Rules change, no new capability. It is what gives an Opportunity a URL.
 // EXPORT != DEPLOY.
-export { getOpportunityContext } from "./opportunity/opportunityReadService";
+// PASS 11 RETAIL SALES: getOpportunityContext RETIRED (EOS getOpportunityDetail owns it).
 // P1.3 -- governed, human-invoked WON -> Create Sales Order action (decision #3: no Firestore trigger).
 // EXPORT != DEPLOY; capability `opportunity.createSalesOrder` registered active:false (REGISTER != GRANT).
 // PASS 11 RETAIL SALES: createSalesOrderFromOpportunity RETIRED (EOS createSalesOrderFromOpportunity owns it).
@@ -68,12 +69,13 @@ export { getOpportunityContext } from "./opportunity/opportunityReadService";
 // PASS 11 RETAIL SALES: closeOpportunityAsWon RETIRED (EOS closeOpportunityAsWon owns it).
 // Sales Order trusted read projection. EXPORT != DEPLOY; capability `salesOrder.read` registered
 // active:false (REGISTER != GRANT). Owner-ratified 2026-08-15 (see permissionCatalog.ts's entry).
-export { getSalesOrderContext, listSalesOrdersForAccount, listSalesOrderIndex } from "./salesOrder/salesOrderReadService";
+// PASS 11 RETAIL SALES: getSalesOrderContext / listSalesOrdersForAccount / listSalesOrderIndex RETIRED (EOS getSalesOrderDetail /
+// listSalesOrders own them).
 // Sales Agreement (Slice 4) -- the commercial commitment. Three write verbs and two reads; no
 // generic update, and nothing that can amend an ACCEPTED agreement. EXPORT != DEPLOY: these are
 // registered active:false and deny for everyone until a separate grant + per-environment activation.
 // PASS 11 RETAIL SALES: createSalesAgreement / updateSalesAgreementDraft / acceptSalesAgreement RETIRED (EOS owns them).
-export { getSalesAgreementContext, getSalesAgreementForOpportunity } from "./salesAgreement/salesAgreementReadService";
+// PASS 11 RETAIL SALES: getSalesAgreementContext / getSalesAgreementForOpportunity RETIRED (EOS getSalesAgreementDetail owns them).
 // The product picker read. Serves BOTH the Part typeahead and the Equipment Model picker, behind
 // the existing inventory.catalog.read authority -- no new capability, no widened Firestore Rules.
 export { searchProductReferences } from "./salesAgreement/productReferenceSearchService";

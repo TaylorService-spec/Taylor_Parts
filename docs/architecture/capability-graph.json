@@ -17,7 +17,7 @@
     "catalogInactive": 151,
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
-    "callableExports": 43,
+    "callableExports": 39,
     "destinations": 95,
     "destinationsHidden": 19,
     "guides": 0,
@@ -739,9 +739,7 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [
-          "listOpportunityContext",
-          "listOpportunitiesForAccount",
-          "getOpportunityContext"
+          "searchProductReferences"
         ],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
@@ -762,10 +760,11 @@
           "field-ops-app-vite/src/metadata/definitions/account.js",
           "field-ops-app-vite/src/metadata/definitions/accountPage.js",
           "field-ops-app-vite/src/metadata/definitions/opportunity.js",
-          "field-ops-app-vite/src/metadata/uxMigrationManifest.js"
+          "field-ops-app-vite/src/metadata/uxMigrationManifest.js",
+          "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx"
         ],
         "serverReferenceCount": 8,
-        "clientReferenceCount": 9,
+        "clientReferenceCount": 10,
         "evidence": "EXPORTED"
       },
       "environmentActivation": {
@@ -783,9 +782,7 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [
-          "getSalesOrderContext",
-          "listSalesOrdersForAccount",
-          "listSalesOrderIndex"
+          "searchProductReferences"
         ],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
@@ -797,10 +794,11 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/objectPermissionMap.js"
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/access/opportunityCapabilityAccess.js"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "EXPORTED"
       },
       "environmentActivation": {
@@ -951,9 +949,7 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [
-          "getSalesOrderContext",
-          "listSalesOrdersForAccount",
-          "listSalesOrderIndex"
+          "searchProductReferences"
         ],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
@@ -973,10 +969,11 @@
           "field-ops-app-vite/src/metadata/definitions/account.js",
           "field-ops-app-vite/src/metadata/definitions/accountPage.js",
           "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
+          "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx",
           "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
         ],
         "serverReferenceCount": 7,
-        "clientReferenceCount": 9,
+        "clientReferenceCount": 10,
         "evidence": "EXPORTED"
       },
       "environmentActivation": {
@@ -4803,54 +4800,16 @@
     },
     {
       "names": [
-        "listOpportunityContext",
-        "listOpportunitiesForAccount"
-      ],
-      "module": "./opportunity/opportunityReadService",
-      "capabilityHints": [
-        "opportunity.read"
-      ],
-      "comment": "Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability `opportunity.read` registered active:false (REGISTER != GRANT)."
-    },
-    {
-      "names": [
-        "getOpportunityContext"
-      ],
-      "module": "./opportunity/opportunityReadService",
-      "capabilityHints": [
-        "opportunity.read"
-      ],
-      "comment": "The PER-ID Opportunity read (North Star family 4). Same governed capability as the two list reads above -- `opportunity.read` -- because the authorization question is identical and only the query shape differs; no Rules change, no new capability. It is what gives an Opportunity a URL. EXPORT != DEPL"
-    },
-    {
-      "names": [
-        "getSalesOrderContext",
-        "listSalesOrdersForAccount",
-        "listSalesOrderIndex"
-      ],
-      "module": "./salesOrder/salesOrderReadService",
-      "capabilityHints": [
-        "opportunity.createSalesOrder",
-        "salesOrder.read"
-      ],
-      "comment": "P1.3 -- governed, human-invoked WON -> Create Sales Order action (decision #3: no Firestore trigger). EXPORT != DEPLOY; capability `opportunity.createSalesOrder` registered active:false (REGISTER != GRANT). PASS 11 RETAIL SALES: createSalesOrderFromOpportunity RETIRED (EOS createSalesOrderFromOpport"
-    },
-    {
-      "names": [
-        "getSalesAgreementContext",
-        "getSalesAgreementForOpportunity"
-      ],
-      "module": "./salesAgreement/salesAgreementReadService",
-      "capabilityHints": [],
-      "comment": "Sales Agreement (Slice 4) -- the commercial commitment. Three write verbs and two reads; no generic update, and nothing that can amend an ACCEPTED agreement. EXPORT != DEPLOY: these are registered active:false and deny for everyone until a separate grant + per-environment activation. PASS 11 RETAIL "
-    },
-    {
-      "names": [
         "searchProductReferences"
       ],
       "module": "./salesAgreement/productReferenceSearchService",
-      "capabilityHints": [],
-      "comment": "The product picker read. Serves BOTH the Part typeahead and the Equipment Model picker, behind the existing inventory.catalog.read authority -- no new capability, no widened Firestore Rules."
+      "capabilityHints": [
+        "opportunity.read",
+        "opportunity.read",
+        "opportunity.createSalesOrder",
+        "salesOrder.read"
+      ],
+      "comment": "Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability `opportunity.read` registered active:false (REGISTER != GRANT). PASS 11 RETAIL SALES: listOpportunityContext / listOpportunitiesForAccount RETIRED -- the client reads the governed PostgreSQL Comm"
     },
     {
       "names": [
