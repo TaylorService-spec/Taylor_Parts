@@ -28,7 +28,7 @@ import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { Firestore, Transaction, DocumentReference } from "firebase-admin/firestore";
 import { createHash } from "node:crypto";
 import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION, TRANSFER_ORDERS_COLLECTION } from "../constants/collections.js";
-import { stageOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
+import { stageOperationalMovement, operationalMovementDocId } from "../inventoryLedger/operationalMovementRepository.js";
 import { classifyLedgerDoc, deserializeOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
 import { serializedAssetDocId } from "../serializedAsset/serializedAssetRegistration.js";
 import {
@@ -350,7 +350,9 @@ export async function dispatchTransferOrder(request: unknown, deps: TransferComm
     };
     const outcomes = [];
     for (const ev of ledgerEvents) {
-      outcomes.push(await stageOperationalMovement(bufferedStore, ev, { partId: part.partId, trackingMode: part.trackingMode }, { now }));
+      // A retry of a COMMITTED dispatch replays against the ORIGINAL act: its own actor and instant.
+      const replayEv = alreadyDispatched ? await asCommittedMovement(bufferedStore, ev) : ev;
+      outcomes.push(await stageOperationalMovement(bufferedStore, replayEv, { partId: part.partId, trackingMode: part.trackingMode }, { now }));
     }
     const ledgerEventIds = outcomes.map((o) => o.docId);
 
@@ -440,7 +442,11 @@ export async function receiveTransferOrder(request: unknown, deps: TransferComma
     };
     const outcomes = [];
     for (const ev of ledgerEvents) {
-      outcomes.push(await stageOperationalMovement(bufferedStore, ev, { partId: part.partId, trackingMode: part.trackingMode }, { now }));
+      // A retry of a COMMITTED receipt replays against the ORIGINAL act. Rebuilding it with THIS
+      // attempt's clock (occurredAt = now) and actor changed the ledger fingerprint, so every genuine
+      // retry of a completed receive was refused as an idempotency conflict -- by its own success.
+      const replayEv = alreadyReceived ? await asCommittedMovement(bufferedStore, ev) : ev;
+      outcomes.push(await stageOperationalMovement(bufferedStore, replayEv, { partId: part.partId, trackingMode: part.trackingMode }, { now }));
     }
     const ledgerEventIds = outcomes.map((o) => o.docId);
 
@@ -490,6 +496,24 @@ export async function receiveTransferOrder(request: unknown, deps: TransferComma
     }
     return { outcome: "applied", transferOrderId, ledgerEventIds };
   });
+}
+
+/**
+ * For the replay of an already-transitioned transfer: the expected movement, carrying the actor and
+ * occurredAt the COMMITTED row recorded -- the only two fields that legitimately differ between the
+ * original attempt and a retry (who pressed retry, and when). Every other field is still compared by
+ * the ledger's fingerprint, so a stored row that disagrees on part, location, quantity or serial still
+ * conflicts. A missing row is returned unchanged (the ledger then reports it as not replayed -> the
+ * caller's integrity refusal); a malformed row fails closed in deserializeOperationalMovement.
+ */
+async function asCommittedMovement<T extends { idempotencyKey: string; actor: unknown; occurredAt: number }>(
+  store: { read(docId: string): Promise<Record<string, unknown> | null> },
+  ev: T,
+): Promise<T> {
+  const existing = await store.read(operationalMovementDocId(ev.idempotencyKey));
+  if (existing === null) return ev;
+  const stored = deserializeOperationalMovement(existing);
+  return { ...ev, actor: stored.value.actor, occurredAt: stored.value.occurredAt };
 }
 
 // =====================================================================================================
