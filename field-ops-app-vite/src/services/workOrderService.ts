@@ -50,11 +50,21 @@ interface TransitionWorkOrderExtra {
   // H20 fix (dispatch reassignment): required only when Dispatch's assignedTechId differs from the Work
   // Order's current scheduledTechId. See functions/src/transitionWorkOrder.ts's TransitionWorkOrderInput.
   reassignReason?: string;
+  // ND-18: required for "Unschedule" and valid for nothing else (server-enforced).
+  unscheduleReason?: string;
+}
+
+// ND-24: the server returns placement warnings (never refusals) on a successful Schedule. Mirrors
+// functions/src/scheduling/types.ts's SchedulingWarning; empty for every other action.
+interface SchedulingWarning {
+  code: "OUTSIDE_WORKING_HOURS" | "NO_WORKING_AVAILABILITY_RECORDED";
+  detail: string;
 }
 
 interface TransitionWorkOrderResult {
   id: string;
   status: string;
+  warnings?: SchedulingWarning[];
 }
 
 const transitionWorkOrderCallable = httpsCallable<
