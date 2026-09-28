@@ -56,7 +56,10 @@ export type ReorderSourceWriter = (typeof REORDER_SOURCE_WRITERS)[number];
  * Flipping it to true is the freeze itself, and it must be accompanied by the Rules arms that stop
  * the browser -- neither half is sufficient alone.
  */
-export const REORDER_SOURCE_FROZEN = false;
+// FLIPPED TO TRUE by the coordinated Catalog + Reorder activation window (Controller ruling 2026-09-28, step 2), together
+// with the firestore.rules arms that stop the browser (reorder_requests update, reorder_purchase_order_voids create).
+// Carried by the integration package as well, so no later Functions deploy from main can silently re-open the source.
+export const REORDER_SOURCE_FROZEN = true;
 
 export class ReorderSourceFrozenError extends Error {
   readonly code = "REORDER_SOURCE_FROZEN";

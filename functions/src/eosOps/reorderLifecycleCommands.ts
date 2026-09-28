@@ -449,6 +449,17 @@ export async function postPurchasingUpdate(
  */
 export const RECEIVING_POSTGRES_ACTIVE = false;
 
+/**
+ * THE POSTGRESQL REORDER AUTHORITY'S ACTIVATION BOUNDARY (Controller ruling 2026-09-28, activation window step 19).
+ *
+ * FALSE until the Reorder COPY is verified and the ruled Administration grants are applied. While false, the Render
+ * operations transport refuses every Reorder read and command (eosOpsHttp.ts), so no governed Reorder can be written
+ * between the integration deploy and the verified COPY -- a native row there would be a population the snapshot does
+ * not contain. A code constant, like RECEIVING_POSTGRES_ACTIVE and the Catalog writer state: activation is a reviewed,
+ * tested, deployed change, never a runtime setting.
+ */
+export const REORDER_POSTGRES_ACTIVE = false;
+
 export interface ReorderCloseoutInput {
   readonly tenantId: string;
   /** The EOS Principal performing the ACTION. For a receipt this is the receiver, not the assignee. */
@@ -635,8 +646,8 @@ export async function recordReorderPurchaseOrder(
   }
 
   // ASSIGNEE ONLY (Controller ruling 4): recording the purchase order placed for a Reorder Request belongs to the Employee
-  // it is assigned to -- capability AND the governed record assignment. Same pattern, and the same stated limitation, as
-  // the void below: the repository owns its own transaction, so the check precedes it.
+  // it is assigned to -- capability AND the governed record assignment. The repository owns its own transaction, so the
+  // check precedes it. (The void is deliberately different: a management exception authorized by scope, not assignment.)
   if (!(await isCallerTheAssignedEmployee(deps.pool, actor.tenantId, actor.principalId, i.reorderRequestId as string))) {
     refuse("NOT_THE_ASSIGNEE", "FORBIDDEN", "only the Employee the Reorder Request is assigned to may record its purchase order");
   }
@@ -693,10 +704,19 @@ export async function voidReorderPurchaseOrder(
   const reason: string = maybe as string;
   const reorderRequestId = i.reorderRequestId as string;
 
-  const isAssignee = await isCallerTheAssignedEmployee(deps.pool, actor.tenantId, actor.principalId, reorderRequestId);
-  if (!isAssignee) {
-    refuse("NOT_THE_ASSIGNEE", "FORBIDDEN",
-      "only the Employee the Reorder Request is assigned to may void its purchase order");
+  // A MANAGEMENT EXCEPTION, NOT AN ASSIGNEE ACTION (Controller ruling 2026-09-28). The void is authorized by
+  // reorder.purchaseOrder.void (above) and by governed company scope: the caller's Employee must hold the
+  // REORDER_QUEUE Operational Scope for the Purchase Order's own operating company. Being the purchasing assignee
+  // neither grants nor is required for it. The lifecycle state (ORDERED only), the stated reason, the single void
+  // and the audit event are the repository's, in its one transaction. A Purchase Order this caller cannot reach and
+  // one that does not exist are refused identically, so the command is no existence oracle.
+  const { rows: poRows } = await deps.pool.query(
+    `SELECT operating_company_key FROM eos_ops.purchase_orders WHERE tenant_id = $1 AND id = $2`,
+    [actor.tenantId, reorderRequestId]);
+  const reachKeys = await queueReachKeys(deps.pool, actor);
+  if (poRows.length === 0 || !reachKeys.includes(String(poRows[0].operating_company_key))) {
+    refuse("OUTSIDE_VOID_REACH", "FORBIDDEN",
+      "voiding requires the REORDER_QUEUE Operational Scope for this Purchase Order's operating company");
   }
   const run = deps.voidPurchaseOrder
     ?? (await import("./purchasingRepository.js")).voidPurchaseOrder;

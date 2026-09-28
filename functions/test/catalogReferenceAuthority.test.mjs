@@ -127,11 +127,12 @@ test("ORDERING CONSTRAINT: while eos_ops.parts is empty, these commands are wire
   // COPY is the gate: until it runs, a composed authority answers NOT_FOUND for every real product, so
   // Install and Consumption would refuse every genuine Part. The Owner's coordinated activation window
   // puts the Catalog COPY/VERIFY before any dependent runtime activation, and this asserts the repository
-  // still reflects that -- the Firestore catalog writer is OPEN and PostgreSQL is INACTIVE.
+  // still reflects that -- PostgreSQL is INACTIVE. (The Firestore writer is FROZEN from window step 2: the freeze
+  // precedes the snapshot, and PostgreSQL activates only after the COPY is verified.)
   const state = readFileSync(join(FUNCTIONS_DIR, "src/catalogMaster/catalogWriterState.ts"), "utf8");
   const committed = /CATALOG_WRITER_AUTHORITY[^=]*=\s*Object\.freeze\(\{\s*firestore:\s*"(\w+)",\s*postgres:\s*"(\w+)"/.exec(state);
   assert.ok(committed, "the committed catalog writer state must remain readable");
-  assert.deepEqual([committed[1], committed[2]], ["OPEN", "INACTIVE"],
+  assert.deepEqual([committed[1], committed[2]], ["FROZEN", "INACTIVE"],
     "PostgreSQL catalog was activated without this constraint being re-reasoned");
 });
 

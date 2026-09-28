@@ -45,7 +45,10 @@ export interface CatalogWriterAuthority {
 }
 
 /** THE COMMITTED STATE. Change only through an allowed transition, with the authorization §5 requires. */
-export const CATALOG_WRITER_AUTHORITY: CatalogWriterAuthority = Object.freeze({ firestore: "OPEN", postgres: "INACTIVE" });
+// FREEZE (Controller ruling 2026-09-28, activation window step 2): OPEN/INACTIVE -> FROZEN/INACTIVE, the declared FREEZE
+// transition. PostgreSQL stays INACTIVE -- and the Render Catalog transport therefore refuses (assertPostgresCatalogActive)
+// -- until the verified COPY and the separate ACTIVATE_POSTGRES change (window step 18).
+export const CATALOG_WRITER_AUTHORITY: CatalogWriterAuthority = Object.freeze({ firestore: "FROZEN", postgres: "INACTIVE" });
 
 export const CATALOG_WRITER_TRANSITIONS = Object.freeze([
   Object.freeze({ name: "FREEZE", from: Object.freeze({ firestore: "OPEN", postgres: "INACTIVE" }), to: Object.freeze({ firestore: "FROZEN", postgres: "INACTIVE" }) }),
@@ -416,4 +419,23 @@ export function assertFirestoreCatalogReadCurrent(
   }
   assertCatalogWriterAuthorityCoherent(authority);
   if (authority.postgres === "ACTIVE") throw new FirestoreCatalogNotCurrentError(reader);
+}
+
+// ════════════════════ the PostgreSQL side: the Render Catalog transport is gated too ════════════════════
+//
+// The Firestore guards above stop the LEGACY writers. This is the other half: until the ACTIVATE_POSTGRES transition is
+// committed, the Render Catalog transport refuses every operation, so no PostgreSQL Catalog write can land between the
+// integration deploy and the verified COPY (a write there would make the COPY refuse a tenant row the snapshot does not
+// contain). Mirrors crm/crmWriterState.ts assertPostgresCrmWriterActive -- the same boundary, the same shape.
+export class PostgresCatalogWriterInactiveError extends Error {
+  readonly code = "POSTGRES_CATALOG_INACTIVE";
+  constructor(readonly writer: string) {
+    super(`the PostgreSQL Catalog authority is not active yet (${writer}); the Catalog cutover has not activated it`);
+    this.name = "PostgresCatalogWriterInactiveError";
+  }
+}
+
+export function assertPostgresCatalogActive(writer: string, authority: CatalogWriterAuthority = CATALOG_WRITER_AUTHORITY): void {
+  assertCatalogWriterAuthorityCoherent(authority);
+  if (authority.postgres !== "ACTIVE") throw new PostgresCatalogWriterInactiveError(writer);
 }

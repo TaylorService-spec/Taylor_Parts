@@ -10,7 +10,7 @@
 //     requires only the fence helpers at module scope.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -127,18 +127,26 @@ test("purchasing: orders and voids as documents, and every Reorder's back-link e
   assert.equal(p.requestBackLinks.has("rr-3"), true, "a Reorder without a back-link is still a SOURCE Reorder");
 });
 
-test("instants: epoch milliseconds are what the object classifier accepts; an encoded Timestamp is refused, never converted", () => {
+test("instants: epoch milliseconds pass as stored; the exporter's exact Timestamp tag decodes; a malformed tag is refused", () => {
   const good = { partId: "PART-1", recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL", requestedQty: 1, status: "PENDING_REVIEW",
     requestedBy: "uid-a", createdAt: 1700000000000, warehouseId: "wh-1", operatingCompanyId: "taylor" };
   const view = { tenantId: "t1", byUid: new Map(), warehouseCompany: new Map([["wh-1", "k"]]), companyKeyByCompanyId: new Map([["taylor", "k"]]), existingReorderIds: new Set() };
   const s = snap.parseReorderSnapshot(snapshotOf({ requests: [
     { id: "rr-ms", data: good },
-    { id: "rr-ts", data: { ...good, createdAt: { $timestamp: { seconds: 1700000000, nanoseconds: 0 } } } },
+    { id: "rr-ts", data: { ...good, createdAt: { $timestamp: { seconds: 1700000000, nanoseconds: 123456789 } } } },
+    { id: "rr-bad", data: { ...good, createdAt: { $timestamp: { seconds: "1700000000", nanoseconds: 0 } } } },
   ] }));
-  const plan = objectPlan.planReorderObjectMigration(snap.toReorderObjectSource(s), view);
+  const source = snap.toReorderObjectSource(s);
+  // The tag decodes to the instant it denotes, at the millisecond the legacy writers stored.
+  assert.equal(source.find((d) => d.id === "rr-ts").data.createdAt, new Date(1700000000123).toISOString());
+  const plan = objectPlan.planReorderObjectMigration(source, view);
   assert.equal(plan.rows.find((r) => r.reorderRequestId === "rr-ms").disposition, "MIGRATABLE");
-  assert.equal(plan.rows.find((r) => r.reorderRequestId === "rr-ts").refusalCode, "INVALID_INSTANT");
-  assert.deepEqual({ ...snap.censusReorderSnapshot(s).encodedTimestampFields }, { "reorder_requests.createdAt": 1 });
+  assert.equal(plan.rows.find((r) => r.reorderRequestId === "rr-ts").disposition, "MIGRATABLE");
+  // A tag that is not exactly the exporter's shape is passed through, and the classifier refuses it -- never guessed.
+  assert.equal(plan.rows.find((r) => r.reorderRequestId === "rr-bad").refusalCode, "INVALID_INSTANT");
+  assert.deepEqual({ ...snap.censusReorderSnapshot(s).encodedTimestampFields }, { "reorder_requests.createdAt": 2 });
+  // The snapshot itself is never mutated by decoding.
+  assert.deepEqual(s.collections.reorder_requests.find((d) => d.id === "rr-ts").data.createdAt, { $timestamp: { seconds: 1700000000, nanoseconds: 123456789 } });
 });
 
 test("the purchasing mapper output is accepted by the existing purchase-order classifier as-is", () => {
@@ -218,4 +226,54 @@ test("assignment instants: a valid legacy assignedAt becomes effective_from; abs
   for (const r of plan.rows) assert.equal(r.disposition, by["rr-1"].disposition);
   assert.equal(by["rr-1"].disposition, "EXACT_EMPLOYEE_ASSIGNMENT");
   assert.equal(plan.copyable.length, 3, "a missing or malformed instant never blocks the assignment");
+});
+
+// ════════════════════ FIREBASE_EXIT_MIGRATION_ONLY: the Reorder snapshot exporter (Controller ruling 2026-09-28) ════════════════════
+
+const EXPORTER = "scripts/exportReorderSnapshot.js";
+
+test("the Reorder exporter is marked migration-only and allowlists EXACTLY the three authorized collections", () => {
+  const ex = require("../scripts/exportReorderSnapshot.js");
+  assert.equal(ex.FIREBASE_EXIT_MIGRATION_ONLY, "FIREBASE_EXIT_MIGRATION_ONLY");
+  assert.match(readFileSync(EXPORTER, "utf8").split("\n")[0], /^\/\/ FIREBASE_EXIT_MIGRATION_ONLY$/);
+  assert.deepEqual([...ex.SOURCE_COLLECTIONS], ["reorder_requests", "reorder_purchase_orders", "reorder_purchase_order_voids"]);
+  // Exactly the collections the snapshot format carries -- the exporter cannot read what the CLI cannot consume.
+  assert.deepEqual([...ex.SOURCE_COLLECTIONS].sort(), [...snap.REORDER_SNAPSHOT_COLLECTIONS].sort());
+  for (const other of ["parts", "users", "reorderRequests", "inventory_actions", "accounts", ""]) {
+    assert.throws(() => ex.assertAllowlisted(other), /not an allowlisted Reorder source collection/);
+  }
+});
+
+test("the Reorder exporter only READS: one collection().get() through the allowlist, no write verb, exclusive files", () => {
+  const code = readFileSync(EXPORTER, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(code, /\.(set|add|update|delete|create|commit|batch|runTransaction|bulkWriter|recursiveDelete)\s*\(/);
+  assert.deepEqual([...code.matchAll(/\bdb\.(\w+)\(/g)].map((m) => m[1]), ["collection"]);
+  assert.deepEqual([...code.matchAll(/\bdb\.collection\((.*?)\)\.get\(/g)].map((m) => m[1]), ["assertAllowlisted(name)"]);
+  // The SAME encoder and exclusive writer as the catalog export -- the pattern, not a second framework.
+  assert.match(code, /const \{ encodeValue, writeSnapshotFiles \} = require\("\.\/exportCatalogSnapshot\.js"\)/);
+  // firebase-admin is required only inside main(), after the fence.
+  const topLevel = code.split("async function main")[0];
+  assert.doesNotMatch(topLevel, /firebase-admin/);
+  assert.match(code, /"EOS_REORDER_SNAPSHOT"/);
+});
+
+test("STRUCTURAL: nothing at runtime can reach the Reorder exporter, and the copy tool never loads it", () => {
+  const root = resolve("..");
+  const walk = (dir) => readdirSync(dir).flatMap((f) => {
+    if (f === "node_modules" || f === ".git" || f === "lib" || f === "dist") return [];
+    const p = join(dir, f);
+    return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx|js|jsx|mjs|cjs|json)$/.test(f) ? [p] : [];
+  });
+  const offenders = ["functions/src", "field-ops-app-vite/src", "integrations"]
+    .flatMap((d) => walk(join(root, d))).filter((f) => /exportReorderSnapshot/.test(readFileSync(f, "utf8")));
+  assert.deepEqual(offenders, []);
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  assert.doesNotMatch(JSON.stringify({ main: pkg.main, exports: pkg.exports ?? null, bin: pkg.bin ?? null, scripts: pkg.scripts }), /exportReorderSnapshot/);
+  for (const wf of readdirSync(join(root, ".github", "workflows"))) {
+    const text = readFileSync(join(root, ".github", "workflows", wf), "utf8");
+    for (const line of text.split("\n").filter((l) => /exportReorderSnapshot/.test(l))) {
+      assert.match(line.trim(), /^- "functions\/scripts\/exportReorderSnapshot\.js"$/, `${wf} may name the exporter only as a path filter`);
+    }
+  }
+  assert.doesNotMatch(readFileSync("scripts/reorderCutover.js", "utf8"), /exportReorderSnapshot|firebase-admin/);
 });

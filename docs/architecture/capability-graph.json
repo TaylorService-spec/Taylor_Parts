@@ -1955,6 +1955,7 @@
           "functions/src/access/parityFixtures.ts",
           "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
+          "functions/src/eosOps/purchasingRepository.ts",
           "functions/src/eosOps/reorderLifecycleCommands.ts"
         ],
         "clientReferences": [
@@ -1962,10 +1963,11 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts"
+          "field-ops-app-vite/src/access/parityFixtures.ts",
+          "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
         ],
-        "serverReferenceCount": 7,
-        "clientReferenceCount": 5,
+        "serverReferenceCount": 8,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

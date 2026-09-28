@@ -485,6 +485,13 @@ export async function voidPurchaseOrder(
         WHERE tenant_id = $1 AND id = $2`,
       [tenantId, purchaseOrderId, actorPrincipalId],
     );
+    // THE AUDIT, in the same transaction as the void: a management exception is answerable for who, why and when.
+    await client.query(
+      `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
+       VALUES ($1, $2, 'reorder.purchaseOrder.void', $3, 'purchase_order', $4, $5::jsonb, $6::jsonb, now(), $7)`,
+      [`audit_${randomUUID()}`, tenantId, actorPrincipalId, purchaseOrderId,
+        JSON.stringify({ status: PO_VOIDABLE_STATUS }), JSON.stringify({ status: "VOIDED", operatingCompanyKey: companyKey }), reason],
+    );
 
     await client.query("COMMIT");
     return {

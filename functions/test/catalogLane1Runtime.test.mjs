@@ -203,3 +203,21 @@ test("DATA_IMPORT: it does NOT bypass the Part authority, and has no Render runt
       `${transport} must not have grown a Data Import operation in this lane`);
   }
 });
+
+// ════════════════ the PostgreSQL Catalog activation boundary (Controller ruling 2026-09-28, window step 18) ════════════════
+test("until the ACTIVATE_POSTGRES transition, the Catalog transport refuses every operation before any database work", async () => {
+  const { executeCatalogOperation, CATALOG_READ_OPERATIONS, CATALOG_MUTATION_OPERATIONS } = await import("../lib/catalogMaster/catalogHttp.js");
+  const writerState = await import("../lib/catalogMaster/catalogWriterState.js");
+  assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "INACTIVE");
+  const untouchable = new Proxy({}, { get: () => { throw new Error("DEPS_TOUCHED"); } });
+  for (const operation of [...CATALOG_READ_OPERATIONS, ...CATALOG_MUTATION_OPERATIONS]) {
+    const r = await executeCatalogOperation({ reader: untouchable, pool: untouchable },
+      { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });
+    assert.deepEqual([r.ok, r.code], [false, "PRECONDITION_FAILED"], operation);
+    assert.match(r.message, /not active yet/);
+  }
+  // ACTIVE is what opens it: with the transition injected, the gate passes and identity resolution is reached.
+  const r = await executeCatalogOperation({ reader: untouchable, pool: untouchable, writerAuthority: { firestore: "FROZEN", postgres: "ACTIVE" } },
+    { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation: "readPart", input: {} }).catch((e) => e);
+  assert.match(String(r && (r.message ?? r)), /DEPS_TOUCHED|could not be completed/);
+});

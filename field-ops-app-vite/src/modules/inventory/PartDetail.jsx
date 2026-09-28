@@ -236,21 +236,15 @@ function CancelReorderRequestAction({ request, onCancelled }) {
   );
 }
 
-// Void is available only at ORDERED, only to the current assignee
-// (isAdminOrDispatcher() AND request.auth.uid == assignedToUserId --
-// BOTH required, per the Specification's corrected Authorization
-// section). Client-side checks assignee identity only, same posture
-// as every assignee-restricted action on this object
-// (ReorderRequestStartPurchasing, ReorderRequestMarkReceived) --
-// firestore.rules enforces both conditions server-side.
-function VoidPurchaseOrderAction({ request, onVoided }) {
+// Void is available only at ORDERED, and it is a MANAGEMENT EXCEPTION action (Controller ruling 2026-09-28): it is
+// offered to a holder of reorder.purchaseOrder.void, NOT to the purchasing assignee as such. The governed command
+// decides the rest -- the Purchase Order's operating-company REORDER_QUEUE scope, the ORDERED state and a stated
+// reason -- and a refusal is rendered, never recomputed here.
+function VoidPurchaseOrderAction({ request, onVoided, hasCapability }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
-  // read resolves the caller to an Employee through an active employee_principal_link and compares
-  // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
-  const isAssignee = request.isAssignee === true;
-  if (!isAssignee) return null; // assignee-only UI restriction preserved (Rules enforce it too)
+  const canVoid = typeof hasCapability === "function" && hasCapability("reorder.purchaseOrder.void") === true;
+  if (!canVoid) return null;
 
   return (
     <div className="disp-board-toolbar">
@@ -857,7 +851,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
 // realtime, via hooks/useReorderPurchaseOrders.js. Read-only: no
 // further action on the Purchase Order exists this sprint
 // (reassignment/receiving/etc. are all explicitly out of scope).
-function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
+function ReorderRequestOrdered({ request, employeeDirectory, onVoided, hasCapability }) {
   const { data: purchaseOrder, loading, error: purchaseOrderError } = usePurchaseOrderForReorderRequest(request.id);
 
   return (
@@ -914,7 +908,7 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
         <p className="fo-muted">Purchase Order details unavailable.</p>
       )}
 
-      <VoidPurchaseOrderAction request={request} onVoided={onVoided} />
+      <VoidPurchaseOrderAction request={request} onVoided={onVoided} hasCapability={hasCapability} />
     </div>
   );
 }
@@ -1533,7 +1527,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         </>
       ) : reorderRequest.status === REORDER_REQUEST_STATUS.ORDERED ? (
         <>
-          <ReorderRequestOrdered request={reorderRequest} employeeDirectory={employeeDirectory} onVoided={refreshReorderRequest} />
+          <ReorderRequestOrdered request={reorderRequest} employeeDirectory={employeeDirectory} onVoided={refreshReorderRequest} hasCapability={hasCapability} />
           <ReorderRequestMarkReceived request={reorderRequest} onReceived={refreshReorderRequest} />
         </>
       ) : reorderRequest.status === REORDER_REQUEST_STATUS.RECEIVED ? (

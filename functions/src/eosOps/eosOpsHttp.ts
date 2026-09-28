@@ -25,7 +25,7 @@ import {
   startPurchasingOnReorder, postPurchasingUpdate, markReorderReceived, cancelReorderRequest,
   readReorderQueue, readMyAssignedReorders, readReorderRequest, readMyReorderHistory,
   listReorderWarehouseOptions,
-  recordReorderPurchaseOrder, voidReorderPurchaseOrder, type ReorderActor,
+  recordReorderPurchaseOrder, voidReorderPurchaseOrder, REORDER_POSTGRES_ACTIVE, type ReorderActor,
 } from "./reorderLifecycleCommands.js";
 import { ReorderAssignmentError, assignReorderRequestToEmployee } from "./reorderAssignmentAuthority.js";
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
@@ -130,7 +130,16 @@ export const isOperationsOperation = (name: unknown): name is OperationsOperatio
 export interface OperationsApiDeps {
   readonly reader: PolicyReader;
   readonly pool: Pool;
+  /** The committed REORDER_POSTGRES_ACTIVE unless a test states the state it exercises. */
+  readonly reorderPostgresActive?: boolean;
 }
+
+/** Every operation of the PostgreSQL Reorder authority: all but the two principal-context resolvers. */
+const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
+  "readReorderQueue", "readMyAssignedReorders", "readReorderRequest", "readMyReorderHistory", "listReorderWarehouseOptions",
+  "createReorderRequest", "reviewReorderRequest", "assignReorderRequest", "startPurchasingOnReorder", "postPurchasingUpdate",
+  "markReorderReceived", "cancelReorderRequest", "recordReorderPurchaseOrder", "voidReorderPurchaseOrder", "receiveReorderStock",
+]);
 
 export type OperationsApiFailureCode =
   | "UNKNOWN_OPERATION"
@@ -163,6 +172,12 @@ export async function executeOperation(
     readonly input?: Record<string, unknown>;
   },
 ): Promise<OperationsApiResult> {
+  // THE ACTIVATION BOUNDARY, before any identity work: until the PostgreSQL Reorder authority is activated, none of its
+  // operations answers. The capability and experience resolvers are not Reorder operations and are unaffected.
+  if (REORDER_AUTHORITY_OPERATIONS.has(request.operation) && !(deps.reorderPostgresActive ?? REORDER_POSTGRES_ACTIVE)) {
+    return { ok: false, operation: request.operation, code: "PRECONDITION_FAILED",
+      message: "the PostgreSQL Reorder authority is not active yet; the Reorder cutover has not activated it" };
+  }
   try {
     // ONE resolution for every Reorder operation: the caller's EOS Principal, tenant and the
     // capabilities the Role catalog grants them. `principalContext.uid` IS the EOS principal id --

@@ -570,6 +570,23 @@ for (const [label, args, pattern] of [
   });
 }
 
+// scripts/exportReorderSnapshot.js: the Reorder extension of the migration-only exception (Controller ruling
+// 2026-09-28). Same fence, same order: every refusal happens before firebase-admin is resolved.
+const EXPORT_REORDER = "scripts/exportReorderSnapshot.js";
+for (const [label, args, pattern] of [
+  ["no project", ["--out", "/nonexistent/x.json"], /--projectId is required/],
+  ["production, even confirmed", ["--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--out", "/nonexistent/x.json"], /is production/],
+  ["frozen Certification world", ["--projectId", "eos-platform-certification", "--out", "/nonexistent/x.json"], /frozen/],
+  ["undeclared project", ["--projectId", "someone-elses-project", "--out", "/nonexistent/x.json"], /not a Firebase project declared/],
+  ["no out file", ["--projectId", "eos-platform-sandbox"], /--out <file> is required/],
+]) {
+  test(`reorder snapshot export: refuses (${label}) before firebase-admin loads`, () => {
+    const res = runCli(EXPORT_REORDER, args);
+    const out = assertRefusedBeforeAnySdk(res, `reorder snapshot export, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
 // ============================ COMMERCIAL C5 ============================
 //
 // scripts/commercialC5.js writes eos_commercial (copy) and scripts/exportCommercialSnapshot.js reads a Firebase project

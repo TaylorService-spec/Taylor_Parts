@@ -115,7 +115,9 @@ export const LEGACY_TRANSITIONS: readonly LegacyTransition[] = Object.freeze([
   }),
   t({
     from: "ORDERED", to: "VOIDED", governedBy: "voidReorderPurchaseOrder", assigneeOnly: true,
-    note: "the void, written as an append-only record that never touches the purchase order.",
+    note: "the void, written as an append-only record that never touches the purchase order. `assigneeOnly` "
+      + "records the LEGACY Rules arm. The governed void is a MANAGEMENT EXCEPTION (Controller ruling 2026-09-28): "
+      + "reorder.purchaseOrder.void plus the Purchase Order company's REORDER_QUEUE scope, never the assignment.",
   }),
   t({
     from: "READY_FOR_PARTS_MANAGER", to: "CANCELLED", governedBy: "cancelReorderRequest", assigneeOnly: false,

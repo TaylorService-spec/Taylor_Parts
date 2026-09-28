@@ -18,10 +18,12 @@ const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l
 
 const freeze = await import("../lib/reorderRequest/reorderSourceFreeze.js");
 
-test("the freeze is BUILT and INERT -- every legacy writer still answers today", () => {
-  assert.equal(freeze.REORDER_SOURCE_FROZEN, false,
-    "the copy has not been run against the real source, so the source is not frozen");
-  assert.doesNotThrow(() => freeze.assertReorderSourceWritable("createReorderRequest"));
+test("the freeze is ON -- every legacy Reorder source writer refuses, naming the cutover (window step 2)", () => {
+  assert.equal(freeze.REORDER_SOURCE_FROZEN, true,
+    "the coordinated activation window freezes the source before the snapshot export");
+  for (const writer of freeze.REORDER_SOURCE_WRITERS) {
+    assert.throws(() => freeze.assertReorderSourceWritable(writer), (e) => e.code === "REORDER_SOURCE_FROZEN");
+  }
 });
 
 test("the writer list is the closed set of legacy Reorder SOURCE writers", () => {

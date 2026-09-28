@@ -115,17 +115,54 @@ test("registration without grants; no legacy holder is imported", { skip: SKIP, 
     assert.equal(await heldCount(), 0);
   });
 
-  await t.test("Administration is the way in, and the reconcile then agrees rather than disputes", async () => {
-    const granted = await executeAdminOperation({ repo }, {
-      caller: { externalSubject: "admin-rr", identityProvider: "firebase" }, operation: "grantObjectActionToRole",
-      input: { objectKey: "reorderRequest", actionKey: "approve", roleKey: "dispatcher", reason: "Administration grant" },
-      requestId: "r-grant",
-    });
-    assert.equal(granted.ok, true, JSON.stringify(granted));
-    assert.equal(await heldCount(), 1);
-    const report = await reconcileInventoryCapabilityGrants(pool, { tenantId: tenant.id, apply: false, actor: OP, capabilityKeys: KEYS, roleKeys: ["dispatcher"] });
-    const cell = report.rows.find((r) => r.capabilityKey === "reorder.request.approve");
-    assert.equal(cell.status, "ALREADY_GRANTED");
-    assert.equal(report.proposedAdditions, 0, "the other seven stay Administration-only");
+  // THE RULED CONFIGURATION (Controller ruling "CATALOG + REORDER ACTIVATION -- GO", 2026-09-28), applied the way the
+  // window applies it: through the CURRENT Administration command, one grant at a time. Never a migration.
+  const RULED = Object.freeze([
+    ["partsManager", "reorderRequest", "read"], ["partsManager", "reorderRequest", "approve"],
+    ["partsManager", "reorderRequest", "reject"], ["partsManager", "reorderRequest", "cancel"],
+    ["partsManager", "purchaseOrder", "void"],
+    ["partsAssociate", "reorderRequest", "read"], ["partsAssociate", "reorderRequest", "startPurchasing"],
+    ["partsAssociate", "reorderRequest", "postPurchasingUpdate"], ["partsAssociate", "reorderRequest", "recordPurchaseOrder"],
+    ["partsAssociate", "reorderRequest", "markReceived"],
+  ]);
+  const cells = async () => (await q(
+    `SELECT r.key role, c.key cap FROM eos_policy.role_capabilities rc
+       JOIN eos_policy.roles r ON r.id = rc.role_id JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+      WHERE rc.tenant_id = $1 AND (c.key = ANY($2) OR c.key = 'reorder.request.read') ORDER BY 1, 2`,
+    [tenant.id, KEYS])).rows.map((x) => `${x.role}/${x.cap}`);
+
+  await t.test("the RULED Administration grants apply through Administration, and yield exactly the ruled cells", async () => {
+    const before = await cells();
+    for (const [roleKey, objectKey, actionKey] of RULED) {
+      const r = await executeAdminOperation({ repo }, {
+        caller: { externalSubject: "admin-rr", identityProvider: "firebase" }, operation: "grantObjectActionToRole",
+        input: { objectKey, actionKey, roleKey, reason: "Controller ruling 2026-09-28: ruled Reorder lifecycle grant" },
+        requestId: `r-${roleKey}-${actionKey}`,
+      });
+      // An already-held read is fine (it may be a pre-existing default); every other result must be a grant.
+      assert.ok(r.ok === true || (actionKey === "read" && /already/i.test(JSON.stringify(r))), `${roleKey} ${objectKey}.${actionKey}: ${JSON.stringify(r)}`);
+    }
+    const after = await cells();
+    const newlyHeldAmongTheEight = after.filter((c) => KEYS.some((k) => c.endsWith(`/${k}`))).sort();
+    assert.deepEqual(newlyHeldAmongTheEight, [
+      "partsAssociate/reorder.request.markReceived", "partsAssociate/reorder.request.postPurchasingUpdate",
+      "partsAssociate/reorder.request.recordPurchaseOrder", "partsAssociate/reorder.request.startPurchasing",
+      "partsManager/reorder.purchaseOrder.void", "partsManager/reorder.request.approve",
+      "partsManager/reorder.request.cancel", "partsManager/reorder.request.reject",
+    ], "exactly the eight ruled cells of the eight lifecycle keys, and no other holder");
+    for (const role of ["partsManager", "partsAssociate"]) assert.ok(after.includes(`${role}/reorder.request.read`), `${role} reads`);
+    // Void is the Parts Manager's management exception: NOT the Associate's, and NOT Owner's by legacy inheritance.
+    assert.equal(after.some((c) => c === "partsAssociate/reorder.purchaseOrder.void" || c.startsWith("owner/")), false);
+    // Nothing else moved: every cell present before is still present.
+    for (const c of before) assert.ok(after.includes(c), `${c} was removed`);
+  });
+
+  await t.test("after the ruled grants, a catalog reconcile still imports nothing and disputes nothing", async () => {
+    const heldBefore = await heldCount();
+    const report = await reconcileInventoryCapabilityGrants(pool, { tenantId: tenant.id, apply: true, actor: OP, capabilityKeys: KEYS });
+    assert.equal(report.appliedAdditions, 0);
+    assert.equal(await heldCount(), heldBefore);
+    const pmApprove = report.rows.find((r) => r.roleKey === "partsManager" && r.capabilityKey === "reorder.request.approve");
+    if (pmApprove) assert.equal(pmApprove.status, "ALREADY_GRANTED");
   });
 });

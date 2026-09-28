@@ -261,6 +261,42 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     await assert.rejects(life.cancelReorderRequest(deps, actor(pManager), { reorderRequestId: rr, cancellationReason: "too late" }), /is voided instead/);
   });
 
+  await t.test("VOID is a MANAGEMENT EXCEPTION: capability + the PO company's queue scope, never the assignment", async () => {
+    // A real Purchase Order, through the governed commands: review -> assign Alice -> start -> record.
+    const v = (await create()).reorderRequestId;
+    await life.reviewReorderRequest(deps, actor(pManager), { reorderRequestId: v, decision: "APPROVED" });
+    await authority.assignReorderRequestToEmployee(deps, actor(pManager), { reorderRequestId: v, employeeId: "e-alice" });
+    await life.startPurchasingOnReorder(deps, actor(pAlice), { reorderRequestId: v });
+    const recorded = await life.recordReorderPurchaseOrder(deps, actor(pAlice), {
+      reorderRequestId: v, supplierName: "Acme", externalPoNumber: "PO-V1", orderedQuantity: 4, orderedDate: "2026-03-01" });
+    assert.equal(recorded.status, "ORDERED");
+    const voidOf = (who, caps, voidReason = "supplier discontinued the part") =>
+      life.voidReorderPurchaseOrder(deps, actor(who, caps), { reorderRequestId: v, voidReason });
+
+    // The purchasing ASSIGNEE, holding every capability but no queue scope: refused. Assignment is not void authority.
+    await assert.rejects(voidOf(pAlice, [...ALL, life.REORDER_PO_VOID]), /REORDER_QUEUE Operational Scope for this Purchase Order/);
+    // Scope for a DIFFERENT company's queue: refused.
+    await assert.rejects(voidOf(pBob, [...ALL, life.REORDER_PO_VOID]), /REORDER_QUEUE Operational Scope for this Purchase Order/);
+    // The right scope without the capability: refused before anything else.
+    await assert.rejects(voidOf(pManager, ALL), /requires reorder\.purchaseOrder\.void/);
+    // A Purchase Order that does not exist is refused exactly like one out of reach.
+    await assert.rejects(life.voidReorderPurchaseOrder(deps, actor(pManager, [life.REORDER_PO_VOID]), { reorderRequestId: "rr-nope", voidReason: "x" }),
+      /REORDER_QUEUE Operational Scope for this Purchase Order/);
+    // A reason is required.
+    await assert.rejects(voidOf(pManager, [life.REORDER_PO_VOID], "   "), /voidReason must be a trimmed, non-empty string/);
+
+    // The Parts Manager -- NOT the assignee -- with the capability and the company's queue scope: voids.
+    const done = await voidOf(pManager, [life.REORDER_PO_VOID]);
+    assert.deepEqual([done.status, done.voidedBy], ["VOIDED", pManager]);
+    assert.equal((await q(`SELECT status::text s FROM eos_ops.reorder_requests WHERE id=$1`, [v])).rows[0].s, "VOIDED");
+    const audit = (await q(`SELECT actor_uid, reason, target_kind FROM eos_policy.audit_events
+                             WHERE action = 'reorder.purchaseOrder.void' AND target_id = $1`, [v])).rows;
+    assert.deepEqual(audit, [{ actor_uid: pManager, reason: "supplier discontinued the part", target_kind: "purchase_order" }]);
+    // Valid lifecycle state only: a second void (the request is now VOIDED) is refused, and still audited once.
+    await assert.rejects(voidOf(pManager, [life.REORDER_PO_VOID]));
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.purchase_order_voids WHERE purchase_order_id=$1`, [v])).rows[0].n, 1);
+  });
+
   await t.test("'my assigned work' is scoped by EMPLOYEE, not by a Firebase uid", async () => {
     const mine = await life.readMyAssignedReorders(deps, actor(pAlice));
     assert.ok(mine.some((x) => x.reorderRequestId === rr), "Alice holds the assignment");

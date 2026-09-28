@@ -144,3 +144,25 @@ test("firestore.rules was not changed by this tranche's file set -- eos_ops touc
   const source = readdirSync("src/eosOps").join(",");
   assert.doesNotMatch(source, /firestore\.rules/);
 });
+
+// ════════════════ the PostgreSQL Reorder activation boundary (Controller ruling 2026-09-28, window step 19) ════════════════
+test("until REORDER_POSTGRES_ACTIVE, EVERY Reorder operation refuses before any identity or database work", async () => {
+  const { executeOperation } = await import("../lib/eosOps/eosOpsHttp.js");
+  const { REORDER_POSTGRES_ACTIVE } = await import("../lib/eosOps/reorderLifecycleCommands.js");
+  assert.equal(REORDER_POSTGRES_ACTIVE, false, "the integration package ships the Reorder authority INACTIVE");
+  const untouchable = new Proxy({}, { get: () => { throw new Error("DEPS_TOUCHED"); } });
+  const reorderOps = [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].filter((o) => !/^resolveMy/.test(o));
+  assert.equal(reorderOps.length, 15);
+  for (const operation of reorderOps) {
+    const r = await executeOperation({ reader: untouchable, pool: untouchable },
+      { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });
+    assert.deepEqual([r.ok, r.code], [false, "PRECONDITION_FAILED"], operation);
+    assert.match(r.message, /not active yet/);
+  }
+  // The two principal-context resolvers are not Reorder operations: they are not behind this boundary.
+  for (const operation of ["resolveMyCapabilities", "resolveMyExperienceContext"]) {
+    const r = await executeOperation({ reader: untouchable, pool: untouchable },
+      { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation }).catch((e) => e);
+    assert.notEqual(r && r.code, "PRECONDITION_FAILED", `${operation} must not be gated by the Reorder activation`);
+  }
+});

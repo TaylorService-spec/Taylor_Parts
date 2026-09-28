@@ -27,6 +27,9 @@ import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
 import { CatalogMasterError, type CatalogActorContext } from "./catalogMasterKernel.js";
+import {
+  CATALOG_WRITER_AUTHORITY, PostgresCatalogWriterInactiveError, assertPostgresCatalogActive, type CatalogWriterAuthority,
+} from "./catalogWriterState.js";
 import { createPart, updatePart, changePartStatus } from "./postgresPartMasterWriter.js";
 import {
   createPartAlias, deactivatePartAlias, reactivatePartAlias,
@@ -73,6 +76,8 @@ export type CatalogApiFailureCode =
 export interface CatalogApiDeps {
   readonly reader: PolicyReader;
   readonly pool: Pool;
+  /** The committed CATALOG_WRITER_AUTHORITY unless a test states the state it exercises. */
+  readonly writerAuthority?: CatalogWriterAuthority;
 }
 
 export type CatalogApiResult =
@@ -114,6 +119,9 @@ export async function executeCatalogOperation(
 ): Promise<CatalogApiResult> {
   const input = request.input ?? {};
   try {
+    // FIRST ACT: the PostgreSQL Catalog authority must be ACTIVE (the activation window's step 18). Before that, the
+    // transport answers nothing -- not a read of a not-yet-copied catalogue, and certainly not a write.
+    assertPostgresCatalogActive(`catalog.transport.${request.operation}`, deps.writerAuthority ?? CATALOG_WRITER_AUTHORITY);
     const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
       identityProvider: request.caller.identityProvider,
       externalSubject: request.caller.externalSubject,
@@ -191,6 +199,9 @@ export async function executeCatalogOperation(
         return { ok: false, operation: request.operation, code: "UNKNOWN_OPERATION", message: "no such Catalog operation" };
     }
   } catch (err) {
+    if (err instanceof PostgresCatalogWriterInactiveError) {
+      return { ok: false, operation: request.operation, code: "PRECONDITION_FAILED", message: err.message };
+    }
     if (err instanceof PrincipalContextError) {
       return { ok: false, operation: request.operation, code: "FORBIDDEN", message: err.refusal };
     }

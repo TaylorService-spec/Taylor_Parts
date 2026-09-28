@@ -33,10 +33,12 @@
 // classifier (reorderObjectMigration.ts#instant) accepts a positive safe-integer epoch-millisecond number or an ISO
 // `yyyy-mm-ddT...` string and REFUSES anything else with INVALID_INSTANT.
 //
-// A Firestore Timestamp, if an exporter meets one, is encoded as the catalog snapshot encodes it:
-// { "$timestamp": { "seconds": <int>, "nanoseconds": <int> } }. THIS MODULE DOES NOT CONVERT IT. It passes through
-// to the classifier unchanged, so a Timestamp on a field the classifier reads is REFUSED (INVALID_INSTANT) and never
-// guessed at; the census reports how many such values each field carries so the operator sees it before copying.
+// A Firestore Timestamp is encoded by the migration-only Reorder exporter (which reuses the catalog snapshot's
+// encoder) as { "$timestamp": { "seconds": <int>, "nanoseconds": <int> } }. The mappers DECODE exactly that tag, on a
+// top-level field, to the ISO instant it denotes (millisecond precision -- the legacy writers stored milliseconds, so
+// only sub-millisecond digits a Timestamp might carry are dropped). Any other shape is passed through unchanged and the
+// classifier refuses it (INVALID_INSTANT) -- nothing is guessed. The census still reports how many encoded values each
+// field carried, so the operator sees them before copying.
 // Purchase-order dates (`orderedDate`, `expectedArrivalDate`) are ISO calendar-day STRINGS in Firestore and are
 // read by purchasingMigrationMapping.ts#isoCalendarDay, which refuses every other shape.
 //
@@ -178,9 +180,24 @@ export function parseReorderSnapshot(json: unknown): ReorderSnapshot {
 // The mappers. Shapes only -- each returns exactly the source input its copy module already takes.
 // ---------------------------------------------------------------------------------------------
 
+/** `{ $timestamp: { seconds, nanoseconds } }` with integer parts in range -> the ISO instant; anything else -> as-is. */
+function decodeTimestampTag(v: unknown): unknown {
+  if (!isPlain(v) || Object.keys(v).length !== 1 || !isPlain(v.$timestamp)) return v;
+  const t = v.$timestamp as Record<string, unknown>;
+  const seconds = t.seconds; const nanos = t.nanoseconds;
+  if (Object.keys(t).length !== 2 || !Number.isSafeInteger(seconds) || !Number.isSafeInteger(nanos)) return v;
+  if ((nanos as number) < 0 || (nanos as number) > 999_999_999 || (seconds as number) <= 0) return v;
+  return new Date((seconds as number) * 1000 + Math.floor((nanos as number) / 1_000_000)).toISOString();
+}
+
+/** A document's top-level fields with every encoded Timestamp decoded. Never mutates the snapshot. */
+function decoded(data: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(data).map(([k, v]) => [k, decodeTimestampTag(v)]));
+}
+
 /** reorderObjectMigration.ts LegacyReorderDocument[] */
 export function toReorderObjectSource(snapshot: ReorderSnapshot): LegacyReorderDocument[] {
-  return snapshot.collections.reorder_requests.map((d) => ({ id: d.id, data: d.data }));
+  return snapshot.collections.reorder_requests.map((d) => ({ id: d.id, data: decoded(d.data) }));
 }
 
 /** reorderAssignmentMigration.ts LegacyReorderAssignment[] -- one per Reorder that states an assignee. */
@@ -191,15 +208,15 @@ export function toReorderAssignmentSource(snapshot: ReorderSnapshot): LegacyReor
       reorderRequestId: d.id,
       assignedToUserId: d.data.assignedToUserId,
       assignedBy: d.data.assignedBy === undefined ? null : d.data.assignedBy,
-      assignedAt: d.data.assignedAt === undefined ? null : d.data.assignedAt,
+      assignedAt: d.data.assignedAt === undefined ? null : decodeTimestampTag(d.data.assignedAt),
     }));
 }
 
 /** reorderPurchaseOrderMigrationCopy.ts PurchasingMigrationSource */
 export function toPurchasingSource(snapshot: ReorderSnapshot): PurchasingMigrationSource {
   return {
-    purchaseOrders: snapshot.collections.reorder_purchase_orders.map((d) => ({ id: d.id, data: d.data })),
-    voids: snapshot.collections.reorder_purchase_order_voids.map((d) => ({ id: d.id, data: d.data })),
+    purchaseOrders: snapshot.collections.reorder_purchase_orders.map((d) => ({ id: d.id, data: decoded(d.data) })),
+    voids: snapshot.collections.reorder_purchase_order_voids.map((d) => ({ id: d.id, data: decoded(d.data) })),
     // Every source Reorder is present in the map (SOURCE_REORDER_REQUEST_ABSENT depends on it), carrying its
     // back-link exactly as stated -- including `undefined` when the field is absent.
     requestBackLinks: new Map(snapshot.collections.reorder_requests.map((d) => [d.id, d.data.purchaseOrderId])),
@@ -218,7 +235,7 @@ export interface ReorderSnapshotCensus {
   readonly statusDistribution: Readonly<Record<string, number>>;
   /** How many Reorders state an assignee (the assignment stage's source rows). */
   readonly statedAssignments: number;
-  /** `collection.field` -> count of Firestore-Timestamp-encoded values, which the classifiers refuse. */
+  /** `collection.field` -> count of Firestore-Timestamp-encoded values (decoded to instants by the mappers). */
   readonly encodedTimestampFields: Readonly<Record<string, number>>;
 }
 

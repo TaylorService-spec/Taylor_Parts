@@ -166,10 +166,14 @@ test("STRUCTURAL: no runtime code can import the exporter -- not src, not the cl
 
 const st = (firestore, postgres) => ({ firestore, postgres });
 
-test("the committed catalog writer state is OPEN/INACTIVE: legacy writers authoritative, PostgreSQL writers not active", () => {
-  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("OPEN", "INACTIVE"));
+test("the committed catalog writer state is FROZEN/INACTIVE: the legacy writers refuse, PostgreSQL writers not yet active", () => {
+  // Activation window step 2 (Controller ruling 2026-09-28): the FREEZE transition, taken before the snapshot export.
+  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("FROZEN", "INACTIVE"));
+  assert.equal(writerState.assertCatalogWriterTransition(st("OPEN", "INACTIVE"), writerState.CATALOG_WRITER_AUTHORITY), "FREEZE");
   assert.doesNotThrow(() => writerState.assertCatalogWriterAuthorityCoherent(writerState.CATALOG_WRITER_AUTHORITY));
-  for (const id of Object.keys(writerState.FIRESTORE_CATALOG_WRITERS)) assert.doesNotThrow(() => writerState.assertFirestoreCatalogWriterOpen(id));
+  for (const id of Object.keys(writerState.FIRESTORE_CATALOG_WRITERS)) {
+    assert.throws(() => writerState.assertFirestoreCatalogWriterOpen(id), (e) => e.code === "FIRESTORE_CATALOG_WRITER_FROZEN");
+  }
 });
 
 test("never two authoritative writer sets: OPEN/ACTIVE and RETIRED/INACTIVE are incoherent", () => {
