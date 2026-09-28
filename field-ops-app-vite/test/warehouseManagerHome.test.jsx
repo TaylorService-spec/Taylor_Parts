@@ -8,7 +8,7 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, act } from "@testing-library/react";
 
 // --- mock the Firebase-touching seams + heavy child + shrink the static catalog to a matchable fixture ---
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
 vi.mock("../src/hooks/useInventoryLedger", () => ({ useInventoryLedger: () => ({ healthEntries: [], loading: false, error: null }) }));
 vi.mock("../src/hooks/useInventoryActions", () => ({ useInventoryActionsForPart: () => ({ data: [], loading: false }) }));
@@ -22,7 +22,7 @@ vi.mock("../src/data/partsCatalog", () => ({
   getCatalogItem: (id) => ({ "TST-9001": { name: "Static Name A" }, "TST-9002": { name: "Static Name B" } }[id]),
 }));
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import WarehouseManagerHome from "../src/modules/inventoryRole/WarehouseManagerHome.jsx";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -34,18 +34,18 @@ const canonicalMatching = [
 
 describe("WarehouseManagerHome — canonical Parts Catalog cutover", () => {
   it("renders canonical names as PRIMARY (not the static names) when the canonical read succeeds", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: canonicalMatching });
+    searchParts.mockResolvedValue({ ok: true, parts: canonicalMatching });
     render(<WarehouseManagerHome />);
     await screen.findByText("Canonical Name A");
     expect(screen.getByText("Canonical Name B")).toBeTruthy();
     // static names must NOT be the rendered identity
     expect(screen.queryByText("Static Name A")).toBeNull();
     expect(screen.getByText(/2 parts in catalog/)).toBeTruthy();
-    expect(fetchPartMasterList).toHaveBeenCalledTimes(1);
+    expect(searchParts).toHaveBeenCalledTimes(1);
   });
 
   it("FAILS CLOSED on a permission-denied canonical read: blocked banner, never the static catalog", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: false, code: "permission-denied" });
+    searchParts.mockResolvedValue({ ok: false, code: "FORBIDDEN", message: "forbidden" });
     render(<WarehouseManagerHome />);
     await screen.findByText(/catalog is unavailable right now/i);
     expect(screen.queryByText("Static Name A")).toBeNull();
@@ -54,7 +54,7 @@ describe("WarehouseManagerHome — canonical Parts Catalog cutover", () => {
   });
 
   it("FAILS CLOSED on an unavailable canonical read: blocked banner, no static fallback", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: false, code: "unavailable" });
+    searchParts.mockResolvedValue({ ok: false, code: "UNAVAILABLE", message: "unavailable" });
     render(<WarehouseManagerHome />);
     await screen.findByText(/catalog is unavailable right now/i);
     expect(screen.queryByText("Static Name A")).toBeNull();
@@ -62,7 +62,7 @@ describe("WarehouseManagerHome — canonical Parts Catalog cutover", () => {
 
   it("FAILS CLOSED when the canonical read returns invalid documents: blocked banner, neither canonical nor static rows", async () => {
     // invalid overlaps an approved static-only-excluded sku would-be — must still block, never render.
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: canonicalMatching, invalid: [{ partId: "TST-9001", invalid: true }] });
+    searchParts.mockResolvedValue({ ok: true, parts: canonicalMatching, invalid: [{ partId: "TST-9001", invalid: true }] });
     render(<WarehouseManagerHome />);
     await screen.findByText(/catalog is unavailable right now/i);
     expect(screen.queryByText("Canonical Name A")).toBeNull();
@@ -72,7 +72,7 @@ describe("WarehouseManagerHome — canonical Parts Catalog cutover", () => {
 
   it("shows a loading state while the canonical read is in flight (no static shown)", async () => {
     let resolve;
-    fetchPartMasterList.mockReturnValue(new Promise((r) => { resolve = r; }));
+    searchParts.mockReturnValue(new Promise((r) => { resolve = r; }));
     render(<WarehouseManagerHome />);
     expect(screen.getAllByText(/Loading canonical parts/i).length).toBeGreaterThan(0);
     expect(screen.queryByText("Static Name A")).toBeNull();

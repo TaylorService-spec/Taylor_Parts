@@ -325,7 +325,9 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
       const granted = held.has(capability);
       const precedence = defaultWriterMayInsert(decisions, roleKey, capability);
       const status = granted ? "GRANTED"
-        : !precedence.allowed ? (precedence.source === "ADMIN_REVOKED" ? "ADMIN_REVOKED" : "SYSTEM_INVARIANT")
+        // ADMINISTRATION_ONLY: no system default exists (ADMINISTRATION_GRANT_ONLY_CAPABILITIES); absence is not drift.
+        : !precedence.allowed ? (precedence.source === "ADMIN_REVOKED" ? "ADMIN_REVOKED"
+          : precedence.source === "NONE" ? "ADMINISTRATION_ONLY" : "SYSTEM_INVARIANT")
         : "MISSING_GRANT";
       grantRows.push({ role: roleKey, expectedCapability: capability, liveGrant: granted, status });
     }

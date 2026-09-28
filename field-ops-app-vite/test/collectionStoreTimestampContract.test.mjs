@@ -113,7 +113,12 @@ test("every shared-writer store was found", () => {
   // down by the number actually removed -- never re-raised to paper over a later disappearance.
   // FLOOR LOWERED 5 -> 2 (CRM cutover): accounts, contacts and locations are no longer Firestore stores; their writes go
   // to the governed PostgreSQL CRM authority through the EOS API.
-  assert.ok(stores.length >= 2, `expected the known stores, found ${stores.length}`);
+  // FLOOR LOWERED 2 -> 1 (Catalog + Reorder activation candidate): the CRM floor of 2 still counted reorderRequestsStore,
+  // which the Reorder Domain Cutover (5 -> 4 above) removed on its own lineage. Integrated, the only remaining store is
+  // equipmentStore -- asserted by name so the floor cannot be satisfied by some other store appearing.
+  assert.ok(stores.length >= 1, `expected the known stores, found ${stores.length}`);
+  assert.ok(stores.some((s) => s.file === "domain/equipmentRepository.js"), "equipmentStore is the remaining shared-writer store");
+  assert.equal(stores.some((s) => s.collection === "reorderRequests" || /reorder/i.test(s.file)), false, "a retired Reorder Firestore store is back");
   assert.equal(stores.some((s) => ["accounts", "contacts", "locations"].includes(s.collection)), false, "a retired CRM Firestore store is back");
   assert.ok(stores.every((s) => s.collection), `a store's collection could not be resolved: ${JSON.stringify(stores.filter((s) => !s.collection))}`);
 });

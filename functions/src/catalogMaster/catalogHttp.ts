@@ -32,7 +32,7 @@ import {
   createPartAlias, deactivatePartAlias, reactivatePartAlias,
   listPartAliases, probePartAlias, resolveScannedPartIdentifier,
 } from "./postgresPartAliasWriter.js";
-import { readPart, readPartsByIds, searchParts, countParts } from "./postgresCatalogReads.js";
+import { readPart, readPartsByIds, searchParts, countParts, type PartSearchFilters } from "./postgresCatalogReads.js";
 
 /** Reads: bounded by construction. Nothing here can return the whole catalogue. */
 export const CATALOG_READ_OPERATIONS = Object.freeze([
@@ -80,6 +80,24 @@ export type CatalogApiResult =
   | { readonly ok: false; readonly operation: string; readonly code: CatalogApiFailureCode; readonly message: string };
 
 /**
+ * The governed search filters a caller may state -- the SAME set for a page and for its count.
+ *
+ * Only the named keys are carried, so nothing else a body happens to contain reaches the query; their
+ * VALUES are validated by postgresCatalogReads, which refuses anything outside the governed enums.
+ */
+function searchFilters(input: Record<string, unknown>): PartSearchFilters {
+  return {
+    query: input.query as never,
+    status: input.status as never,
+    statuses: input.statuses as never,
+    stockingClass: input.stockingClass as never,
+    stockingClasses: input.stockingClasses as never,
+    controlType: input.controlType as never,
+    wholeUnit: input.wholeUnit as never,
+  };
+}
+
+/**
  * Execute one named Catalog operation.
  *
  * The actor is resolved ONCE per request, the same way every other EOS operation resolves one, and
@@ -122,16 +140,17 @@ export async function executeCatalogOperation(
       case "readPartsByIds":
         return ok(await withClient((c) => readPartsByIds(c, actor.tenantId, Array.isArray(input.partIds) ? input.partIds as string[] : [])));
       case "searchParts":
+        // PASSED THROUGH, NOT FILTERED BY TYPE HERE. The read validates every value against the
+        // governed vocabulary and REFUSES what it does not recognise; dropping a malformed filter at
+        // the transport would answer a narrower question with a broader list and say nothing.
         return ok(await withClient((c) => searchParts(c, actor.tenantId, {
-          query: typeof input.query === "string" ? input.query : undefined,
-          status: typeof input.status === "string" ? input.status : undefined,
-          controlType: typeof input.controlType === "string" ? input.controlType : undefined,
-          wholeUnit: typeof input.wholeUnit === "boolean" ? input.wholeUnit : undefined,
+          ...searchFilters(input),
           limit: typeof input.limit === "number" ? input.limit : undefined,
-          cursor: typeof input.cursor === "string" ? input.cursor : null,
+          cursor: input.cursor as never,
+          sort: input.sort as never,
         })));
       case "countParts":
-        return ok(await withClient((c) => countParts(c, actor.tenantId)));
+        return ok(await withClient((c) => countParts(c, actor.tenantId, searchFilters(input))));
       case "listPartAliases":
         return ok(await withClient((c) => listPartAliases(c, actor.tenantId, str(input.partId))));
       case "probePartAlias":

@@ -8,7 +8,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [{ sku: "TST-9001", name: "STATIC-CATALOG-NAME-A", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }],
   getCatalogItem: () => undefined,
@@ -56,7 +56,7 @@ vi.mock("../src/shared/partMaster/PartWriteModal.jsx", () => ({
   default: (props) => { captured.push(props); return <div data-testid="part-write-modal">{props.mode}</div>; },
 }));
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import PartsList from "../src/modules/inventory/PartsList.jsx";
 import PartDetail from "../src/modules/inventory/PartDetail.jsx";
 
@@ -66,7 +66,7 @@ const READY = { ok: true, parts: [{ partId: "TST-9001", internalPartNumber: "TST
 
 describe("PartsList -- New Part entry point", () => {
   it("no modal mounted until 'New Part' is clicked; clicking opens mode='create'", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<PartsList accessVersion={1} />);
     expect(screen.queryByTestId("part-write-modal")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /new part/i }));
@@ -80,7 +80,7 @@ describe("PartDetail -- Edit/Status entry points", () => {
   // ("Edit part" / "Change status"); the commands, the modal modes and the part they act on are
   // unchanged, which is what this test is actually for.
   it("Edit part and Change status buttons open the modal in the matching mode, for THIS part", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<PartDetail />);
     await screen.findByRole("button", { name: /^edit part$/i });
 
@@ -96,7 +96,7 @@ describe("PartDetail -- Edit/Status entry points", () => {
   });
 
   it("shows the resolved Manufacturer NAME (via the trusted catalog read), not the opaque manufacturerId", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<PartDetail />);
     // findAllByText, not findByText: P1v2 states the manufacturer TWICE by design (Owner ruling,
     // 2026-08-31) — once in the identity line for recognition, once in the Part information band's
@@ -108,7 +108,7 @@ describe("PartDetail -- Edit/Status entry points", () => {
   });
 
   it("no Edit/Status buttons when the canonical read cannot resolve this part (BLOCKED)", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: READY.parts, invalid: [{ partId: "TST-9001", secretField: "x", invalid: true }] });
+    searchParts.mockResolvedValue({ ok: true, parts: READY.parts, invalid: [{ partId: "TST-9001", secretField: "x", invalid: true }] });
     render(<PartDetail />);
     await screen.findByText(/could not be verified against the canonical source/i);
     expect(screen.queryByRole("button", { name: /edit part details/i })).toBeNull();

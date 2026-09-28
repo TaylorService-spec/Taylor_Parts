@@ -14,7 +14,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [{ sku: "TST-9001", name: "Static Name", category: "Valves", unit: "each", cost: 2480, price: 3999, reorderThreshold: 2, warehouseQty: 38 }],
   getCatalogItem: () => undefined,
@@ -57,7 +57,7 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useParams: () => ({ partId: "TST-9001" }), useSearchParams: () => [new URLSearchParams(), () => {}], Link: ({ children }) => <a href="#x">{children}</a> };
 });
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import PartDetail from "../src/modules/inventory/PartDetail.jsx";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); ledger.transactions = []; ledger.healthEntries = []; });
@@ -88,7 +88,7 @@ function canonical(over = {}) {
 }
 
 async function renderRecord(over = {}) {
-  fetchPartMasterList.mockResolvedValue({ ok: true, parts: [canonical(over)], invalid: [] });
+  searchParts.mockResolvedValue({ ok: true, parts: [canonical(over)], invalid: [] });
   render(<PartDetail />);
   await screen.findByRole("heading", { level: 1 });
 }
@@ -313,12 +313,12 @@ describe("the composition rules", () => {
 
 describe("four honest states, four different sentences", () => {
   const cases = [
-    ["permission-denied", { ok: false, code: "permission-denied" }, /do not have access to the canonical Parts catalog/i],
-    ["unavailable", { ok: false, code: "unavailable" }, /currently unavailable/i],
+    ["permission-denied", { ok: false, code: "FORBIDDEN", message: "forbidden" }, /do not have access to the canonical Parts catalog/i],
+    ["unavailable", { ok: false, code: "UNAVAILABLE", message: "unavailable" }, /currently unavailable/i],
   ];
   for (const [name, read, sentence] of cases) {
     it(`a ${name} read blocks the record with its own sentence`, async () => {
-      fetchPartMasterList.mockResolvedValue(read);
+      searchParts.mockResolvedValue(read);
       render(<PartDetail />);
       await screen.findByText(sentence);
       expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
@@ -326,7 +326,7 @@ describe("four honest states, four different sentences", () => {
   }
 
   it("a readable catalogue with no such id is NOT FOUND — a different sentence from any block", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: [], invalid: [] });
+    searchParts.mockResolvedValue({ ok: true, parts: [], invalid: [] });
     render(<PartDetail />);
     const msg = await screen.findByText(/No part is recorded under/i);
     expect(msg.textContent).toContain("The catalogue was read successfully");

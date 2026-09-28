@@ -229,6 +229,7 @@ on:
       - "functions/test/reorderObjectSchemaParityPostgres.test.mjs"
       - "functions/test/reorderObjectMigrationPostgres.test.mjs"
       - "functions/test/reorderLifecyclePostgres.test.mjs"
+      - "functions/test/reorderLifecycleAuthorityRegistrationPostgres.test.mjs"
       - "functions/test/reorderFieldParityMatrix.test.mjs"
       - "functions/test/reorderFirestoreRetirementGate.test.mjs"
       - "functions/src/eosOps/migration/reorderObjectMigration.ts"
@@ -310,6 +311,7 @@ on:
       - "functions/scripts/exportCatalogSnapshot.js"
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
+      - "functions/test/catalogPartSearchPostgres.test.mjs"
       # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside
       # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
       # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.
@@ -772,6 +774,7 @@ on:
       - "functions/test/reorderObjectSchemaParityPostgres.test.mjs"
       - "functions/test/reorderObjectMigrationPostgres.test.mjs"
       - "functions/test/reorderLifecyclePostgres.test.mjs"
+      - "functions/test/reorderLifecycleAuthorityRegistrationPostgres.test.mjs"
       - "functions/test/reorderFieldParityMatrix.test.mjs"
       - "functions/test/reorderFirestoreRetirementGate.test.mjs"
       - "functions/src/eosOps/migration/reorderObjectMigration.ts"
@@ -853,6 +856,7 @@ on:
       - "functions/scripts/exportCatalogSnapshot.js"
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
+      - "functions/test/catalogPartSearchPostgres.test.mjs"
       # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside
       # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
       # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.

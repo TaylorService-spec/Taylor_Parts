@@ -7,7 +7,7 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, cleanup, act, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [{ sku: "TST-9001", name: "STATIC-CATALOG-NAME-A", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }],
   getCatalogItem: () => undefined,
@@ -27,7 +27,7 @@ vi.mock("../src/access/compatibilityRoles", () => ({ COMPATIBILITY_ROLES: {} }))
 const captured = [];
 vi.mock("../src/shared/ui/NotificationPanel", () => ({ default: ({ resolveName }) => { captured.push(resolveName); return null; } }));
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import NotificationControl from "../src/shared/ui/NotificationControl.jsx";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); captured.length = 0; perm.canSee = true; });
@@ -38,24 +38,24 @@ const renderHeader = (accessVersion) => render(<MemoryRouter><NotificationContro
 
 describe("NotificationControl + NotificationPanel (OD-3)", () => {
   it("authorized (canSeeReorderRequests): ONE canonical read; the resolveName passed to NotificationPanel is canonical", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     renderHeader(1);
     await waitFor(() => expect(latest("TST-9001")).toBe("CANONICAL-NAME-A"));
-    expect(fetchPartMasterList).toHaveBeenCalledTimes(1);        // exactly one shared read
+    expect(searchParts).toHaveBeenCalledTimes(1);        // exactly one shared read
     expect(latest("TST-0000-ABSENT")).toBe("TST-0000-ABSENT");   // absent -> raw partId
   });
 
   it("unauthorized / non-notification role (canSeeReorderRequests=false): ZERO canonical reads", async () => {
     perm.canSee = false;                                         // technician / no reorder-queue read access
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     renderHeader(1);
     await act(async () => {});                                   // let any effects flush
-    expect(fetchPartMasterList).toHaveBeenCalledTimes(0);        // NO canonical parts read issued
+    expect(searchParts).toHaveBeenCalledTimes(0);        // NO canonical parts read issued
     expect(captured).toHaveLength(0);                            // NotificationPanel not mounted either
   });
 
   it("permission-denied canonical read: the resolver fails closed to the raw partId (never static)", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: false, code: "permission-denied" });
+    searchParts.mockResolvedValue({ ok: false, code: "FORBIDDEN", message: "forbidden" });
     renderHeader(1);
     // resolver is available synchronously; after the denied read settles it stays partId
     await act(async () => {});
@@ -64,7 +64,7 @@ describe("NotificationControl + NotificationPanel (OD-3)", () => {
 
   it("accessVersion change invalidates the resolver synchronously; stale old-boundary completion is dropped", async () => {
     const deferreds = [];
-    fetchPartMasterList.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
+    searchParts.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
     const { rerender } = render(<MemoryRouter><NotificationControl accessVersion={1} /></MemoryRouter>);
     expect(deferreds).toHaveLength(1);                            // read #1 pending
     rerender(<MemoryRouter><NotificationControl accessVersion={2} /></MemoryRouter>);

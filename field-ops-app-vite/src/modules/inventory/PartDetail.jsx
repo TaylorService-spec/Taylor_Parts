@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
-import { searchParts } from "../../services/partMasterQueries";
+import { readPartsForView, isCatalogReadRefused } from "../../services/partMasterQueries";
 import UsedInEquipmentSection from "./UsedInEquipmentSection";
 import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
 import { canViewCompatibility } from "../../domain/equipmentCompatibilitySection.js";
@@ -1324,21 +1324,21 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   const [canonicalRefreshToken, setCanonicalRefreshToken] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    // The FULL catalogue, and this page is one of the reasons the shared reader stayed that way: it
-    // composes one part plus its relationships through a composer that expects the whole set, so a
-    // first page would truncate a detail screen and look like missing data rather than like paging.
-    // Recorded in PART_CATALOGUE_WHOLE_COLLECTION_READ alongside the other five.
-    searchParts({ limit: 100 }).then((result) => {
+    // THE EXACT PART, never a page. This page says "not found" when the composed rows lack the route's Part, so it
+    // must read that Part by id: from a first page, any Part beyond it would read as missing. The composer accounts
+    // for whatever canonical rows it is given, so one row composes exactly as it did inside the whole set.
+    // Recorded in PART_CATALOGUE_WHOLE_COLLECTION_READ_RETIRED.
+    readPartsForView([partId]).then((result) => {
       if (cancelled) return;
       // Pass `invalid` through so the shared composer fails closed on any malformed canonical document
       // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
       if (result.ok) setCanonicalRead({ status: "OK", rows: result.parts, invalid: result.invalid });
-      else setCanonicalRead({ status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" });
+      else setCanonicalRead({ status: isCatalogReadRefused(result.code) ? "PERMISSION_DENIED" : "UNAVAILABLE" });
     });
     return () => {
       cancelled = true;
     };
-  }, [canonicalRefreshToken]);
+  }, [canonicalRefreshToken, partId]);
   const canonicalLoading = canonicalRead === null;
 
   // Governed detail composition (pure). While the read is in flight we pass a

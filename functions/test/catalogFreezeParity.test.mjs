@@ -100,8 +100,13 @@ const INVOCATIONS = Object.freeze([
 
 test("the freeze parity suite exercises EXACTLY the registered catalog writer set", () => {
   const exercised = INVOCATIONS.map((i) => i.writerId);
-  assert.deepEqual(exercised.slice().sort(), Object.keys(writerState.FIRESTORE_CATALOG_WRITERS).sort());
-  assert.deepEqual(exercised.slice().sort(), LEGACY_CATALOG_MASTER_COMMANDS.flatMap((c) => c.writerIds).sort());
+  // The JOB_GATE writer (part.import) is a job-level refusal inside a callable, not a command body this suite can
+  // invoke with stub deps; its behavioural proof is catalogLane2Readiness.test.mjs. It is named here so the census
+  // still closes over the WHOLE registry.
+  const jobGated = LEGACY_CATALOG_MASTER_COMMANDS.filter((c) => c.form === "JOB_GATE").flatMap((c) => c.writerIds);
+  assert.deepEqual(jobGated, ["part.import"]);
+  assert.deepEqual([...exercised, ...jobGated].sort(), Object.keys(writerState.FIRESTORE_CATALOG_WRITERS).sort());
+  assert.deepEqual([...exercised, ...jobGated].sort(), LEGACY_CATALOG_MASTER_COMMANDS.flatMap((c) => c.writerIds).sort());
   assert.equal(exercised.length, 23);
 });
 

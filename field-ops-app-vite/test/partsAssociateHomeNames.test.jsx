@@ -8,7 +8,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [{ sku: "TST-9001", name: "STATIC-CATALOG-NAME-A", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }],
   getCatalogItem: () => undefined,
@@ -30,7 +30,7 @@ vi.mock("../src/domain/inventoryReorderRequests", () => ({
 vi.mock("../src/domain/reorderPurchaseOrders", () => ({ recordPurchaseOrder: vi.fn() }));
 vi.mock("../src/shared/ui/WorkspaceHeader", () => ({ default: () => null }));
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import PartsAssociateHome from "../src/modules/inventoryRole/PartsAssociateHome.jsx";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -40,7 +40,7 @@ const canonicalOK = [{ partId: "TST-9001", name: "CANONICAL-NAME-A", category: "
 
 describe("PartsAssociateHome (OD-3) -- canonical name resolution, fail-closed", () => {
   it("READY: canonical name shown; static name NOT shown; no unavailable notice", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: canonicalOK, invalid: [] });
+    searchParts.mockResolvedValue({ ok: true, parts: canonicalOK, invalid: [] });
     render(<PartsAssociateHome />);
     await screen.findByText("CANONICAL-NAME-A");
     expect(screen.queryByText("STATIC-CATALOG-NAME-A")).toBeNull();
@@ -48,7 +48,7 @@ describe("PartsAssociateHome (OD-3) -- canonical name resolution, fail-closed", 
   });
 
   it("invalid canonical documents: names degrade to raw partId, Waiting table still renders, notice shown, no raw invalid leak, no static name", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: canonicalOK, invalid: [{ partId: "TST-9001", secretField: "raw-invalid-value" }] });
+    searchParts.mockResolvedValue({ ok: true, parts: canonicalOK, invalid: [{ partId: "TST-9001", secretField: "raw-invalid-value" }] });
     render(<PartsAssociateHome />);
     await screen.findByText(NOTICE);
     // operational table preserved: the waiting row + its View action still render
@@ -61,7 +61,7 @@ describe("PartsAssociateHome (OD-3) -- canonical name resolution, fail-closed", 
   });
 
   it("unavailable canonical read: names degrade to raw partId, table renders, notice shown", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: false, code: "unavailable" });
+    searchParts.mockResolvedValue({ ok: false, code: "UNAVAILABLE", message: "unavailable" });
     render(<PartsAssociateHome />);
     await screen.findByText(NOTICE);
     expect(screen.getByText("TST-9001")).toBeTruthy();

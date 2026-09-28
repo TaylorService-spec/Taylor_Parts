@@ -32,7 +32,7 @@ async function withClient(url, fn) {
 const CAPS = [
   "reorder.request.create.manual", "reorder.request.approve", "reorder.request.reject",
   "reorder.request.assign", "reorder.request.startPurchasing",
-  "reorder.request.recordPurchaseOrder", "reorder.request.read.queue",
+  "reorder.request.recordPurchaseOrder", "reorder.request.read",
 ];
 
 test("the Reorder scenario builds through the GOVERNED PostgreSQL commands, and stops receiving-ready", { skip: SKIP, concurrency: 1 }, async (t) => {
@@ -94,12 +94,13 @@ test("the Reorder scenario builds through the GOVERNED PostgreSQL commands, and 
     [`epl_${randomUUID()}`, associateId, employeeId]);
 
   // WORK ELIGIBILITY, not a Security Role and not a Job Role. The governed assignment command
-  // requires the Employee to currently hold WAREHOUSE_OPERATIONS, and that rule is exactly why the
+  // requires the Employee to currently hold PARTS_OPERATIONS (Owner ruling: Reorder assignment is Parts work;
+  // reorderAssignmentAuthority.ts REORDER_ASSIGNMENT_QUALIFICATION), and that rule is exactly why the
   // scenario is worth building through the commands: a fixture that inserted rows directly would
   // have silently produced an assignment no person could have made.
   await q(`INSERT INTO eos_workforce.employee_work_eligibility
              (id, tenant_id, employee_id, qualification_code, effective_from, assigned_by, reason)
-           VALUES ($1,'t1',$2,'WAREHOUSE_OPERATIONS', now(), 'fixture', 'scenario fixture setup')`,
+           VALUES ($1,'t1',$2,'PARTS_OPERATIONS', now(), 'fixture', 'scenario fixture setup')`,
     [`ewe_${randomUUID()}`, employeeId]);
 
   const actor = (principalId) => ({ tenantId: "t1", principalId, capabilities: new Set(CAPS) });

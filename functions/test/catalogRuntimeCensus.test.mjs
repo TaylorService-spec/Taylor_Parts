@@ -181,3 +181,16 @@ test("the Render Catalog transport reaches no Firebase package", async () => {
     assert.equal(src.includes(banned), false, `the Render Catalog transport must not reach ${banned}`);
   }
 });
+
+test("the Part Master administration screen is censused as the LIVE Render consumer it is", () => {
+  // It was DEAD here while it read Firestore two hops away (partMasterPageQuery -> firestoreListSource,
+  // and useListViewChrome's getCountFromServer) -- a name census cannot see a generic reader. The
+  // classification now follows its real read path, and that path is checked to be Render-only.
+  const entry = C.CATALOG_RUNTIME_CENSUS.find((c) => c.path === "field-ops-app-vite/src/modules/inventory/PartMasterList.jsx");
+  assert.equal(entry?.classification, "RENDER_RUNTIME");
+  const pageQuery = strip(readFileSync(join(REPO, "field-ops-app-vite/src/services/partMasterPageQuery.js"), "utf8"));
+  for (const banned of ["firestoreListSource", "firebase/", "getCountFromServer"]) {
+    assert.equal(pageQuery.includes(banned), false, `the Part Master read path must not reach ${banned}`);
+  }
+  assert.ok(pageQuery.includes("./partMasterQueries.js"), "it reads through the governed Catalog seam");
+});

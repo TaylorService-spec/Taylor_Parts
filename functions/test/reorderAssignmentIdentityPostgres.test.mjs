@@ -81,7 +81,7 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
      VALUES ($1, $2, 'sample-co', 'PART-1', $3, $4, 1, $5, $5, 'NATIVE', 'BELOW_MIN', 'MANUAL')`,
     [id, tenant, tenant === "t1" ? "wh-1" : "wh-2", status,
       tenant === "t1" ? assigneePrincipal : t2Principal]);
-  for (const id of ["rr-1", "rr-legacy", "rr-native", "rr-q", "rr-q2", "rr-x"]) await reorder(id);
+  for (const id of ["rr-1", "rr-legacy", "rr-native", "rr-q", "rr-q2", "rr-x", "rr-wh", "rr-wh2"]) await reorder(id);
   await reorder("rr-foreign", "t2");
   await employee("e-assignee");  await link("e-assignee", assigneePrincipal);
   await employee("e-other");     await link("e-other", otherPrincipal);

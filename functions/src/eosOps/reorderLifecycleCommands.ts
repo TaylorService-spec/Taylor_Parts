@@ -23,6 +23,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { isCallerTheAssignedEmployee } from "./reorderAssignmentAuthority.js";
+import { postgresPrincipalDimensionReader } from "./contextualAuthorization.js";
 import { NATIVE_REORDER_PROVENANCE } from "./purchasingRepository.js";
 import { deriveReorderCurrentOwner } from "./migration/reorderObjectMigration.js";
 
@@ -34,8 +35,11 @@ export const REORDER_START_PURCHASING = "reorder.request.startPurchasing";
 export const REORDER_POST_UPDATE = "reorder.request.postPurchasingUpdate";
 export const REORDER_MARK_RECEIVED = "reorder.request.markReceived";
 export const REORDER_CANCEL = "reorder.request.cancel";
-export const REORDER_READ_QUEUE = "reorder.request.read.queue";
-export const REORDER_READ_OWN = "reorder.request.read.own";
+// READ (Controller ruling 6, 2026-09-28): ONE current capability, reorder.request.read, whose REACH is decided by the
+// governed context -- the REORDER_QUEUE Operational Scope reaches the shared queue, an active record assignment
+// reaches the caller's own requests. #1961's separate read.queue / read.own keys are not recreated.
+export const REORDER_READ = "reorder.request.read";
+export const REORDER_QUEUE_SCOPE = "REORDER_QUEUE";
 /** Already registered by migration 1760140800000's sibling catalog; a void is the PO's business. */
 export const REORDER_PO_VOID = "reorder.purchaseOrder.void";
 /** Also already in the Role catalog; recording the PO is what moves a Reorder to ORDERED. */
@@ -155,6 +159,29 @@ async function requireAssignee(
     refuse("NOT_THE_ASSIGNEE", "FORBIDDEN",
       "this action belongs to the Employee the Reorder Request is assigned to");
   }
+}
+
+/**
+ * The QUEUE reach of reorder.request.read: the operating-company keys whose REORDER_QUEUE Operational Scope the caller's
+ * Employee currently holds. The scope is COMPANY-KEYED (migration 1761696000000: "a queue is always some company's
+ * queue"), so reach is a set of keys, never a yes/no -- a scope for one company never reaches another's queue. Read
+ * through the governed dimension reader (eosOps/contextualAuthorization.ts), the one module that knows the scope table.
+ * A caller with no linked Employee reaches no queue.
+ */
+async function queueReachKeys(db: Pick<PoolClient, "query">, actor: ReorderActor): Promise<readonly string[]> {
+  const reader = postgresPrincipalDimensionReader(db);
+  const employeeId = await reader.linkedEmployeeId(actor.tenantId, actor.principalId);
+  if (employeeId === null) return [];
+  return (await reader.listOperationalScopes(actor.tenantId, employeeId))
+    .filter((x) => x.scopeType === REORDER_QUEUE_SCOPE).map((x) => x.scopeId);
+}
+
+async function requireQueueReach(db: Pick<PoolClient, "query">, actor: ReorderActor): Promise<readonly string[]> {
+  const keys = await queueReachKeys(db, actor);
+  if (keys.length === 0) {
+    refuse("OUTSIDE_OPERATIONAL_SCOPE", "FORBIDDEN", "reading the Reorder queue requires the REORDER_QUEUE Operational Scope");
+  }
+  return keys;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -607,6 +634,12 @@ export async function recordReorderPurchaseOrder(
     refuse("PRICE_INVALID", "INVALID_INPUT", "currency must be a three-letter code");
   }
 
+  // ASSIGNEE ONLY (Controller ruling 4): recording the purchase order placed for a Reorder Request belongs to the Employee
+  // it is assigned to -- capability AND the governed record assignment. Same pattern, and the same stated limitation, as
+  // the void below: the repository owns its own transaction, so the check precedes it.
+  if (!(await isCallerTheAssignedEmployee(deps.pool, actor.tenantId, actor.principalId, i.reorderRequestId as string))) {
+    refuse("NOT_THE_ASSIGNEE", "FORBIDDEN", "only the Employee the Reorder Request is assigned to may record its purchase order");
+  }
   const run = deps.recordPurchaseOrder ?? (await import("./purchasingRepository.js")).recordPurchaseOrder;
   const record = await run(deps.pool, actor.tenantId, actor.principalId, i.reorderRequestId as string, {
     supplierName: supplierName as string, externalPoNumber: externalPoNumber as string,
@@ -741,7 +774,7 @@ const QUEUE_SELECT = `
          r.purchasing_started_at, r.purchasing_notes, r.vendor_contacted,
          r.expected_availability_date, r.last_purchasing_update_at,
          r.cancelled_at, r.cancellation_reason, r.received_at,
-         a.assigned_employee_id, a.assigned_by_principal_id
+         r.operating_company_key, a.assigned_employee_id, a.assigned_by_principal_id
     FROM eos_ops.reorder_requests r
     LEFT JOIN eos_ops.reorder_request_assignments a
       ON a.tenant_id = r.tenant_id AND a.reorder_request_id = r.id AND a.effective_to IS NULL`;
@@ -802,7 +835,8 @@ async function callerEmployee(pool: Pool, tenantId: string, principalId: string)
 }
 
 /**
- * The queue. Requires the queue capability, which is a different question from "my work".
+ * The queue. Requires reorder.request.read with the QUEUE reach -- a different question from "my work" -- and returns
+ * only the companies whose REORDER_QUEUE scope the caller holds.
  *
  * The filters replace the Firestore `where()` clauses the client used to build for itself --
  * by status, by several statuses, and by part. They NARROW a read the caller may already perform,
@@ -811,7 +845,8 @@ async function callerEmployee(pool: Pool, tenantId: string, principalId: string)
 export async function readReorderQueue(
   deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown> = {},
 ): Promise<readonly ReorderQueueItem[]> {
-  requireActor(actor, REORDER_READ_QUEUE);
+  requireActor(actor, REORDER_READ);
+  const reachKeys = await requireQueueReach(deps.pool, actor);
   const i = acceptOnly(input, ["statuses", "partId", "limit", "beforeCreatedAt", "beforeId"]);
 
   let statuses: string[] | null = null;
@@ -851,9 +886,10 @@ export async function readReorderQueue(
           AND ($3::text IS NULL OR r.part_id = $3)
           AND ($5::timestamptz IS NULL
                OR (r.created_at, r.id) < ($5::timestamptz, $6::text))
+          AND r.operating_company_key = ANY($7::text[])
         ORDER BY r.created_at DESC, r.id DESC
         LIMIT COALESCE($4::int, 500)`,
-      [actor.tenantId, statuses, i.partId ?? null, limit, beforeCreatedAt, beforeId]),
+      [actor.tenantId, statuses, i.partId ?? null, limit, beforeCreatedAt, beforeId, reachKeys]),
     callerEmployee(deps.pool, actor.tenantId, actor.principalId),
   ]);
   return Object.freeze(rows.map((r) => toItem(r, deriveReorderCurrentOwner(String(r.status)), mine)));
@@ -863,14 +899,22 @@ export async function readReorderQueue(
 export async function readReorderRequest(
   deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>,
 ): Promise<ReorderQueueItem | null> {
-  requireActor(actor, REORDER_READ_QUEUE);
+  requireActor(actor, REORDER_READ);
   const i = acceptOnly(input, ["reorderRequestId"]);
   if (!ID_SHAPE(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
-  const [{ rows }, mine] = await Promise.all([
+  const [{ rows }, mine, reachKeys] = await Promise.all([
     deps.pool.query(`${QUEUE_SELECT} WHERE r.tenant_id = $1 AND r.id = $2`, [actor.tenantId, i.reorderRequestId]),
     callerEmployee(deps.pool, actor.tenantId, actor.principalId),
+    queueReachKeys(deps.pool, actor),
   ]);
   const row = rows[0];
+  // Two governed paths to one record: the queue scope for ITS company, or an active assignment of THIS record to the
+  // caller. Neither -> refused, and refused identically whether or not the record exists, so the read is no oracle.
+  const inQueueReach = row !== undefined && reachKeys.includes(String(row.operating_company_key));
+  if (!inQueueReach
+      && !(await isCallerTheAssignedEmployee(deps.pool, actor.tenantId, actor.principalId, i.reorderRequestId as string))) {
+    refuse("OUTSIDE_READ_REACH", "FORBIDDEN", "this Reorder Request is neither in the caller's queue reach nor assigned to them");
+  }
   return row ? toItem(row, deriveReorderCurrentOwner(String(row.status)), mine) : null;
 }
 
@@ -932,21 +976,23 @@ export async function listReorderWarehouseOptions(
  * `where("reviewedBy","==",uid)` and `where("assignedBy","==",uid)`, so a caller named the identity
  * whose history it wanted. Here the caller names nothing: the scope is the caller's own Principal.
  *
- * It requires the QUEUE capability rather than read.own, and that is deliberate -- a holder of
- * read.queue may already read every one of these rows, so narrowing to their own actions grants
- * nothing new. Reusing read.own would have stretched "assigned to me" to mean "acted on by me".
+ * It requires the QUEUE reach (reorder.request.read + REORDER_QUEUE scope) rather than the OWN reach, and that is
+ * deliberate -- a caller with queue reach may already read every one of these rows, so narrowing to their own actions
+ * grants nothing new. The own reach would have stretched "assigned to me" to mean "acted on by me".
  */
 export async function readMyReorderHistory(
   deps: { readonly pool: Pool }, actor: ReorderActor,
 ): Promise<readonly ReorderQueueItem[]> {
-  requireActor(actor, REORDER_READ_QUEUE);
+  requireActor(actor, REORDER_READ);
+  const reachKeys = await requireQueueReach(deps.pool, actor);
   const [{ rows }, mine] = await Promise.all([
     deps.pool.query(
       `${QUEUE_SELECT}
         WHERE r.tenant_id = $1
           AND (r.reviewed_by_principal_id = $2 OR a.assigned_by_principal_id = $2)
+          AND r.operating_company_key = ANY($3::text[])
         ORDER BY r.created_at DESC, r.id`,
-      [actor.tenantId, actor.principalId]),
+      [actor.tenantId, actor.principalId, reachKeys]),
     callerEmployee(deps.pool, actor.tenantId, actor.principalId),
   ]);
   return Object.freeze(rows.map((r) => toItem(r, deriveReorderCurrentOwner(String(r.status)), mine)));
@@ -964,7 +1010,8 @@ export async function readMyReorderHistory(
 export async function readMyAssignedReorders(
   deps: { readonly pool: Pool }, actor: ReorderActor,
 ): Promise<readonly ReorderQueueItem[]> {
-  requireActor(actor, REORDER_READ_OWN);
+  // The OWN reach: this read returns only records actively assigned to the caller's Employee (below).
+  requireActor(actor, REORDER_READ);
   const { rows } = await deps.pool.query(
     `${QUEUE_SELECT}
       JOIN eos_policy.employee_principal_links l

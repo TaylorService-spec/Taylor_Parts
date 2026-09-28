@@ -30,7 +30,7 @@ async function withClient(url, fn) {
 const ALL = new Set([
   life.REORDER_CREATE_MANUAL, life.REORDER_CREATE_SYSTEM, life.REORDER_APPROVE, life.REORDER_REJECT,
   life.REORDER_START_PURCHASING, life.REORDER_POST_UPDATE, life.REORDER_MARK_RECEIVED,
-  life.REORDER_CANCEL, life.REORDER_READ_QUEUE, life.REORDER_READ_OWN, authority.REORDER_REQUEST_ASSIGN,
+  life.REORDER_CANCEL, life.REORDER_READ, life.REORDER_RECORD_PO, authority.REORDER_REQUEST_ASSIGN,
 ]);
 
 test("the governed Reorder lifecycle: capability first, then the assignee narrows it", { skip: SKIP, concurrency: 1 }, async (t) => {
@@ -68,9 +68,11 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
      VALUES ($1, 't1', $2, $3, 'taylor', 'OPERATOR_ASSERTED', 'f', 'test', 'active')`, [`epl-${++n}`, principalId, employeeId]);
   const qualify = (employeeId) => q(
     `INSERT INTO eos_workforce.employee_work_eligibility (id, tenant_id, employee_id, qualification_code, effective_from, assigned_by)
-     VALUES ($1, 't1', $2, 'WAREHOUSE_OPERATIONS', now(), 'fixture')`, [`ewe-${employeeId}`, employeeId]);
+     VALUES ($1, 't1', $2, $3, now(), 'fixture')`, [`ewe-${employeeId}`, employeeId, authority.REORDER_ASSIGNMENT_QUALIFICATION]);
   await employee("e-alice"); await link("e-alice", pAlice); await qualify("e-alice");
   await employee("e-bob");   await link("e-bob", pBob);     await qualify("e-bob");
+  // The manager's queue REACH is the governed REORDER_QUEUE Operational Scope (ruling 6), not a capability of its own.
+  await employee("e-manager"); await link("e-manager", pManager);
 
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
            VALUES ('wh-1','t1','sample-co','WH','Sampleton','ACTIVE','NATIVE','f','f'),
@@ -84,6 +86,17 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
   await q(`INSERT INTO eos_policy.tenant_operating_company_keys
              (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
            VALUES ('t1','taylor','sample-co','ACTIVE','NATIVE','fixture','f','f')`);
+  // The manager's QUEUE reach: the REORDER_QUEUE scope for company key sample-co. Bob holds the scope for a DIFFERENT
+  // bound company's queue -- which must never reach sample-co's requests.
+  await q(`INSERT INTO eos_policy.tenant_operating_companies
+             (tenant_id, operating_company_id, status, source, established_by, updated_by)
+           VALUES ('t1','other','ACTIVE','fixture','f','f')`);
+  await q(`INSERT INTO eos_policy.tenant_operating_company_keys
+             (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+           VALUES ('t1','other','other-co','ACTIVE','NATIVE','fixture','f','f')`);
+  await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+           VALUES ('os-queue-m', 't1', 'e-manager', 'REORDER_QUEUE', 'sample-co', now(), 'fixture'),
+                  ('os-queue-b', 't1', 'e-bob', 'REORDER_QUEUE', 'other-co', now(), 'fixture')`);
   // A warehouse whose key nobody governs. Creating against it must refuse.
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
            VALUES ('wh-ungoverned','t1','not-a-bound-key','WH3','Sampleton','ACTIVE','NATIVE','f','f')`);
@@ -130,8 +143,10 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     await assert.rejects(life.createGovernedReorderRequest(deps, none, {
       partId: "P", warehouseId: "wh-1", requestedQuantity: 1, recommendationStatus: "B", quantitySource: "M",
     }), /requires reorder\.request\.create\.manual/);
-    await assert.rejects(life.readReorderQueue(deps, none), /requires reorder\.request\.read\.queue/);
-    await assert.rejects(life.readMyAssignedReorders(deps, none), /requires reorder\.request\.read\.own/);
+    await assert.rejects(life.readReorderQueue(deps, none), /requires reorder\.request\.read\b/);
+    await assert.rejects(life.readMyAssignedReorders(deps, none), /requires reorder\.request\.read\b/);
+    await assert.rejects(life.recordReorderPurchaseOrder(deps, none, { reorderRequestId: "x" }),
+      /requires reorder\.request\.recordPurchaseOrder/);
   });
 
   // ════════════════ the assignee seam ════════════════
@@ -171,6 +186,20 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
       /belongs to the Employee/);
     const r = await life.startPurchasingOnReorder(deps, actor(pAlice), { reorderRequestId: rr, purchasingNotes: "ringing round" });
     assert.equal(r.status, "PURCHASING_IN_PROGRESS");
+  });
+
+  await t.test("recording the purchase order is the ASSIGNEE's, even for a caller holding every capability", async () => {
+    const po = { reorderRequestId: rr, supplierName: "Acme", externalPoNumber: "PO-1", orderedQuantity: 4, orderedDate: "2026-03-01" };
+    await assert.rejects(life.recordReorderPurchaseOrder(deps, actor(pBob), po), /assigned to may record its purchase order/);
+    await assert.rejects(life.recordReorderPurchaseOrder(deps, actor(pUnlinked), po), /assigned to may record/);
+    await assert.rejects(life.recordReorderPurchaseOrder(deps, actor(pManager), po), /assigned to may record/,
+      "the queue scope is READ reach; it conveys no purchasing action");
+    // The assignee passes the authority gate; the stub stands in for the repository's own transaction.
+    let reached = 0;
+    const r = await life.recordReorderPurchaseOrder({ pool, recordPurchaseOrder: async () => { reached++; return { id: "po-stub", reorderRequestId: rr, status: "ORDERED" }; } },
+      actor(pAlice), po);
+    assert.equal(reached, 1);
+    assert.equal(r.reorderRequestId, rr);
   });
 
   await t.test("the assignee predicate NARROWS a capability; it never grants one", async () => {
@@ -240,6 +269,26 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     // An unlinked Principal is not an Employee and therefore has no assigned work. Not an error --
     // the honest empty answer.
     assert.deepEqual(await life.readMyAssignedReorders(deps, actor(pUnlinked)), []);
+  });
+
+  await t.test("read REACH: queue scope reaches the queue; an assignment reaches only that record", async () => {
+    // Alice holds reorder.request.read but NOT the REORDER_QUEUE scope: no queue, no history.
+    await assert.rejects(life.readReorderQueue(deps, actor(pAlice)), /REORDER_QUEUE Operational Scope/);
+    await assert.rejects(life.readMyReorderHistory(deps, actor(pAlice)), /REORDER_QUEUE Operational Scope/);
+    // ...but she reaches the one record assigned to her,
+    assert.equal((await life.readReorderRequest(deps, actor(pAlice), { reorderRequestId: rr })).reorderRequestId, rr);
+    // and not one that is not.
+    const unassigned = (await create()).reorderRequestId;
+    await assert.rejects(life.readReorderRequest(deps, actor(pAlice), { reorderRequestId: unassigned }), /neither in the caller's queue reach nor assigned/);
+    // The queue scope reaches any record in the queue.
+    assert.equal((await life.readReorderRequest(deps, actor(pManager), { reorderRequestId: unassigned })).reorderRequestId, unassigned);
+    // The scope is COMPANY-keyed: Bob's queue scope for other-co reaches none of sample-co's requests.
+    assert.deepEqual(await life.readReorderQueue(deps, actor(pBob)), []);
+    await assert.rejects(life.readReorderRequest(deps, actor(pBob), { reorderRequestId: unassigned }), /neither in the caller's queue reach/);
+    // A missing record is refused the same way as an unreachable one: the read is no existence oracle.
+    await assert.rejects(life.readReorderRequest(deps, actor(pAlice), { reorderRequestId: "rr-does-not-exist" }), /neither in the caller's queue reach/);
+    // Scope without the capability is nothing.
+    await assert.rejects(life.readReorderQueue(deps, actor(pManager, [])), /requires reorder\.request\.read\b/);
   });
 
   await t.test("the queue is a different question from 'my work', and derives the owner", async () => {

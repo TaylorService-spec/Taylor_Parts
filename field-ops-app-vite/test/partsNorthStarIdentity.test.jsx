@@ -10,7 +10,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [{ sku: "TST-9001", name: "Static Name", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }],
   getCatalogItem: () => undefined,
@@ -73,7 +73,7 @@ vi.mock("react-router-dom", async (orig) => {
   };
 });
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import PartsList from "../src/modules/inventory/PartsList.jsx";
 import PartDetail from "../src/modules/inventory/PartDetail.jsx";
 
@@ -108,7 +108,7 @@ function partCell() {
 
 describe("ND-26 — the Parts workspace stops printing the document id under 'Part Number'", () => {
   it("the Part Number cell holds internalPartNumber, not the document key", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: [CANONICAL], invalid: [] });
+    searchParts.mockResolvedValue({ ok: true, parts: [CANONICAL], invalid: [] });
     render(<PartsList />);
     // A SUBSTRING MATCHER, because P1v2 folded the manufacturer into this line (Owner ruling 6/W7:
     // the Manufacturer column read "Not recorded" on 25 of 25 rows and spent 194px doing it). The
@@ -134,7 +134,7 @@ describe("ND-26 — the Parts workspace stops printing the document id under 'Pa
     }));
     vi.resetModules();
     const { default: FreshPartsList } = await import("../src/modules/inventory/PartsList.jsx");
-    const { fetchPartMasterList: freshFetch } = await import("../src/services/partMasterQueries");
+    const { searchParts: freshFetch } = await import("../src/services/partMasterQueries");
     freshFetch.mockResolvedValue({ ok: true, parts: [], invalid: [] });
 
     render(<FreshPartsList />);
@@ -150,7 +150,7 @@ describe("the two values that never arrived", () => {
   it("the Manufacturer row renders, and resolves the id to the governed NAME", async () => {
     // It could not render at all before: the row was gated on canonicalPart?.manufacturerId, a key
     // the projection did not carry, whose stored name is primaryManufacturerId anyway.
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: [CANONICAL], invalid: [] });
+    searchParts.mockResolvedValue({ ok: true, parts: [CANONICAL], invalid: [] });
     render(<PartDetail />);
     // findAllByText: P1v2 states the manufacturer in BOTH the identity line and the Part information
     // band, which the Owner ruled intentional on 2026-08-31 — recognition and master-data summary
@@ -167,7 +167,7 @@ describe("the two values that never arrived", () => {
   it("the identifiers section is labelled with the Part Number, not the document id", async () => {
     // The prop was canonicalPart?.partNumber — a name the projection has never used — so the
     // section's own `partNumber || partId` fallback silently labelled it with the key.
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: [CANONICAL], invalid: [] });
+    searchParts.mockResolvedValue({ ok: true, parts: [CANONICAL], invalid: [] });
     render(<PartDetail />);
     const label = await screen.findByTestId("identifiers-label");
     expect(label.textContent).toBe("X49463-3");

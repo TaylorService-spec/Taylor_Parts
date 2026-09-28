@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
-import { searchParts } from "../../services/partMasterQueries";
+import { searchParts, isCatalogReadRefused } from "../../services/partMasterQueries";
 import { buildWarehouseCatalog, catalogCategories, filterCatalogRowsByCategory } from "../../domain/warehouseManagerCatalogView";
 import { partNamesBoundaryKey, selectCanonicalReadForKey, canonicalNameBySku } from "../../domain/partsCatalogView";
 import { useAuth } from "../../auth/AuthContext";
@@ -161,7 +161,7 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
       // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
       const read = result.ok
         ? { status: "OK", rows: result.parts, invalid: result.invalid }
-        : { status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" };
+        : { status: isCatalogReadRefused(result.code) ? "PERMISSION_DENIED" : "UNAVAILABLE" };
       setStored({ key: currentKey, read });
     });
     return () => {

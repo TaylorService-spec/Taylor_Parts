@@ -8,7 +8,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [{ sku: "TST-9001", name: "STATIC-CATALOG-NAME-A", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }],
   getCatalogItem: () => undefined,
@@ -71,7 +71,7 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useSearchParams: () => [new URLSearchParams(), () => {}], Link: ({ children }) => children };
 });
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import PartsList from "../src/modules/inventory/PartsList.jsx";
 import ManagerQueuePanel from "../src/shared/reorder/ManagerQueuePanel.jsx";
 
@@ -81,7 +81,7 @@ const READY = { ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-A"
 
 describe("Parts -> WORK (PartsList.jsx) is actionable via the shared queue components", () => {
   it("Parts Manager Queue: an Assign button is present (not just a link) and invokes the SAME governed assignReorderRequest()", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<PartsList accessVersion={1} />);
     const assignButton = await screen.findByRole("button", { name: /assign canonical-name-a/i });
     fireEvent.click(assignButton);
@@ -90,7 +90,7 @@ describe("Parts -> WORK (PartsList.jsx) is actionable via the shared queue compo
   });
 
   it("My Work: a View button opens the shared AssignedRequestDetail (not a bare link)", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<PartsList accessVersion={1} />);
     const viewButton = await screen.findByRole("button", { name: /view canonical-name-a/i });
     fireEvent.click(viewButton);
@@ -98,7 +98,7 @@ describe("Parts -> WORK (PartsList.jsx) is actionable via the shared queue compo
   });
 
   it("no queue item disappears: the manager-queue row and the my-work row both still render their part name", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<PartsList accessVersion={1} />);
     const names = await screen.findAllByText("CANONICAL-NAME-A");
     // At least the catalog row + manager-queue card + my-work card each render the name.

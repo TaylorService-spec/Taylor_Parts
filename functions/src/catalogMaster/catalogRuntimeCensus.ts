@@ -101,6 +101,15 @@ export const CATALOG_RUNTIME_CENSUS: readonly CatalogCensusEntry[] = Object.free
   e({ path: "field-ops-app-vite/src/modules/inventory/PartsList.jsx", object: "PART",
     classification: "DEAD",
     consumer: "a navigation comment, a search-provider key and a singular/plural label; its catalogue read moved to searchParts" }),
+  // THE ROUTED PART MASTER ADMINISTRATION SCREEN. It was censused DEAD because its own file names
+  // `parts` only as a label -- but its page read went through partMasterPageQuery ->
+  // firestoreListSource.fetchPage and its total through useListViewChrome's getCountFromServer, i.e.
+  // it READ FIRESTORE two hops away while its writes already went to PostgreSQL. A Part created here
+  // after activation would never have appeared in its own list. Both reads now reach the Render
+  // Catalog API (searchParts with a keyset sort, countParts over the same filters), with no fallback.
+  e({ path: "field-ops-app-vite/src/modules/inventory/PartMasterList.jsx", object: "PART",
+    classification: "RENDER_RUNTIME",
+    consumer: "the Part Master administration list: page via partMasterPageQuery -> searchParts, total via countParts; no Firestore on its read path" }),
 
   // ══════════ SERVER: the Firestore Catalog authority ══════════
   //
@@ -162,8 +171,6 @@ export const CATALOG_RUNTIME_CENSUS: readonly CatalogCensusEntry[] = Object.free
     consumer: "the navigation destination key for the Parts screen" }),
   e({ path: "field-ops-app-vite/src/modules/dashboard/MyDashboard.jsx", object: "PART", classification: "DEAD",
     consumer: "a View in Parts link target, resolved as a route key" }),
-  e({ path: "field-ops-app-vite/src/modules/inventory/PartMasterList.jsx", object: "PART", classification: "DEAD",
-    consumer: "a refusal label and a singular/plural count label" }),
   e({ path: "field-ops-app-vite/src/modules/inventory/TruckFleetCard.jsx", object: "PART", classification: "DEAD",
     consumer: "a metric tile key on the truck card; no catalogue is read" }),
   e({ path: "field-ops-app-vite/src/modules/inventory/mobile/MobileInventorySections.jsx", object: "PART",

@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, getCountFromServer, query, where, limit as fsLimit } from "firebase/firestore";
-import { db } from "../firebase/firebase";
 import { selectableSavedViews } from "../metadata/listViewSummary.js";
 import { buildQueryDescriptor } from "../metadata/listRuntime.js";
 import { makeCriterion } from "../metadata/listUrlState.js";
@@ -30,13 +28,45 @@ import { makeCriterion } from "../metadata/listUrlState.js";
 
 const COUNT_CEILING = 10000;
 
+// ════════════════════ AN INJECTED COUNT, AND WHY THE FIRESTORE ONE IS LOADED LAZILY ════════════════════
+//
+// An object whose collection has moved off Firestore (the Part Master, onto the Render Catalog API)
+// passes `options.count(descriptor)` and is counted by ITS authority over the same descriptor its
+// list executes. For such a screen this hook must not reach Firestore at all -- not as a fallback,
+// and not as a module its read path loads -- so the Firestore aggregate below is imported only on the
+// branch that uses it. Every other object is counted exactly as before.
+//
+// The dynamic import is not concealment: scripts/firebaseExitGuard.mjs matches `import("...")` the
+// same as a static import, so this file stays on the Firebase exit baseline until the last Firestore
+// list moves.
+async function firestoreCount(entity, descriptor) {
+  const [{ collection, getCountFromServer, query, where, limit: fsLimit }, { db }] = await Promise.all([
+    import("firebase/firestore"),
+    import("../firebase/firebase"),
+  ]);
+  let q = query(collection(db, entity.collection));
+  for (const f of descriptor.filters ?? []) {
+    const op = f.operator === "IN" ? "in" : f.operator === "ARRAY_CONTAINS" ? "array-contains" : "==";
+    q = query(q, where(f.fieldId, op, f.value));
+  }
+  // Bounded like every other read here. A count over an unbounded collection is still a scan
+  // on the server's side of the wire.
+  q = query(q, fsLimit(COUNT_CEILING));
+  const snap = await getCountFromServer(q);
+  return snap.data().count;
+}
+
 /**
  * @param def     ListViewDefinition — supplies savedViews and the collection to count
  * @param entity  EntityDefinition — supplies the collection name and field types
  * @param criteria current URL-backed criteria
  * @param apply   the criteria setter from useListCriteria
+ * @param options.count optional `(descriptor) => Promise<number|null>`: the object's OWN count
+ *                authority. When given, it is the only count consulted -- a failure is null, and no
+ *                other source is tried.
  */
-export function useListViewChrome(def, entity, criteria, apply) {
+export function useListViewChrome(def, entity, criteria, apply, options = {}) {
+  const injectedCount = typeof options?.count === "function" ? options.count : null;
   const views = useMemo(() => selectableSavedViews(def), [def]);
 
   // WHICH VIEW IS ACTIVE IS DERIVED, never held beside the criteria. Holding it separately is how
@@ -83,8 +113,9 @@ export function useListViewChrome(def, entity, criteria, apply) {
 
     // Only CLIENT_DIRECT entities can be counted from here. A CALLABLE entity reads through a
     // trusted function, and issuing a client-direct aggregate against its deny-all collection
-    // would fail every time — so it reports no count rather than a permission error.
-    if (entity?.readVia !== "CLIENT_DIRECT" || !entity?.collection) return undefined;
+    // would fail every time — so it reports no count rather than a permission error. An injected
+    // count is the object's own authority and is not subject to that Firestore-shaped rule.
+    if (!injectedCount && (entity?.readVia !== "CLIENT_DIRECT" || !entity?.collection)) return undefined;
 
     const { descriptor, errors } = buildQueryDescriptor(def, entity, {
       filters: criteria?.filters ?? [],
@@ -96,16 +127,9 @@ export function useListViewChrome(def, entity, criteria, apply) {
 
     (async () => {
       try {
-        let q = query(collection(db, entity.collection));
-        for (const f of descriptor.filters ?? []) {
-          const op = f.operator === "IN" ? "in" : f.operator === "ARRAY_CONTAINS" ? "array-contains" : "==";
-          q = query(q, where(f.fieldId, op, f.value));
-        }
-        // Bounded like every other read here. A count over an unbounded collection is still a scan
-        // on the server's side of the wire.
-        q = query(q, fsLimit(COUNT_CEILING));
-        const snap = await getCountFromServer(q);
-        if (!cancelled) setTotal(snap.data().count);
+        const n = injectedCount ? await injectedCount(descriptor) : await firestoreCount(entity, descriptor);
+        // Anything but a real non-negative integer is "no count", never a guess.
+        if (!cancelled) setTotal(Number.isSafeInteger(n) && n >= 0 ? n : null);
       } catch {
         // Denied, offline, or unsupported. NULL, never 0 — see the header comment.
         if (!cancelled) setTotal(null);
@@ -114,7 +138,7 @@ export function useListViewChrome(def, entity, criteria, apply) {
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [def, entity, filterKey]);
+  }, [def, entity, filterKey, injectedCount]);
 
   return { activeViewId, selectView, total, views };
 }

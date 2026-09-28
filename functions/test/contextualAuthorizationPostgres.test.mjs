@@ -74,9 +74,9 @@ test("scope is not stored on either grant table -- structurally, not by conventi
            VALUES ('lnk-1',$1,'prn-tech','emp-tech','taylor','OPERATOR_ASSERTED','active','fixture','test fixture'),
                   ('lnk-2',$1,'prn-other','emp-other','taylor','OPERATOR_ASSERTED','active','fixture','test fixture')`, [T]);
   await q(`INSERT INTO eos_ops.reorder_requests
-             (id,tenant_id,operating_company_key,part_id,warehouse_id,status,requested_quantity,requested_by,updated_by)
-           VALUES ('ro-mine',$1,'taylor','p1','w1','PENDING_REVIEW',1,'fixture','fixture'),
-                  ('ro-theirs',$1,'taylor','p1','w1','PENDING_REVIEW',1,'fixture','fixture')`, [T]);
+             (id,tenant_id,operating_company_key,part_id,warehouse_id,status,requested_quantity,requested_by,updated_by,provenance)
+           VALUES ('ro-mine',$1,'taylor','p1','w1','PENDING_REVIEW',1,(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$1),(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$1),'NATIVE'),
+                  ('ro-theirs',$1,'taylor','p1','w1','PENDING_REVIEW',1,(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$1),(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$1),'NATIVE')`, [T]);
   await q(`INSERT INTO eos_ops.reorder_request_assignments
              (id,tenant_id,reorder_request_id,assigned_employee_id,effective_from,provenance,assigned_by_principal_id)
            VALUES ('a1',$1,'ro-mine','emp-tech',now(),'NATIVE','prn-admin'),
@@ -121,8 +121,8 @@ test("scope is not stored on either grant table -- structurally, not by conventi
     // A SEPARATE record, because the store keeps assignment history append-only and refuses to
     // un-end one -- which is itself the right behaviour and worth not fighting.
     await q(`INSERT INTO eos_ops.reorder_requests
-               (id,tenant_id,operating_company_key,part_id,warehouse_id,status,requested_quantity,requested_by,updated_by)
-             VALUES ('ro-handed',$1,'taylor','p1','w1','PENDING_REVIEW',1,'fixture','fixture')`, [T]);
+               (id,tenant_id,operating_company_key,part_id,warehouse_id,status,requested_quantity,requested_by,updated_by,provenance)
+             VALUES ('ro-handed',$1,'taylor','p1','w1','PENDING_REVIEW',1,(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$1),(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$1),'NATIVE')`, [T]);
     await q(`INSERT INTO eos_ops.reorder_request_assignments
                (id,tenant_id,reorder_request_id,assigned_employee_id,effective_from,provenance,assigned_by_principal_id,
                 effective_to,ended_at,ended_by_principal_id,reason)

@@ -117,3 +117,83 @@ test("NOTHING in the client tries Render and then falls back to Firestore", () =
     assert.equal(suspicious, false, `${rel(f)} appears to fall back to another authority on failure`);
   }
 });
+
+// ═══════════════════ THE PART MASTER ADMINISTRATION SCREEN'S READ PATH ═══════════════════
+//
+// PartMasterList.jsx passed "ZERO client modules read a Catalog collection from Firestore" above for
+// the whole life of its Firestore read, because the read was GENERIC: the screen handed a metadata
+// descriptor to metadata/firestoreListSource, and counted through useListViewChrome's
+// getCountFromServer, and neither file names `parts`. A name-matching census cannot see that. So this
+// walks the screen's actual IMPORT GRAPH.
+//
+// ONE SANCTIONED STOP: services/adminPolicyApiClient.js, the shared identity seam every Render client
+// takes its bearer token from (transitional Firebase AUTH identity, IDENTITY_ONLY in the Firebase exit
+// guard). It is where the walk ends, and the test pins that catalogApiClient reaches it for the token
+// and nothing else.
+const IMPORT_RE = /(?:^|[\s;])(?:import|export)\s[^'"]*?from\s*["']([^"']+)["']|^\s*import\s*["']([^"']+)["']/gm;
+const DYNAMIC_IMPORT_RE = /\bimport\(\s*["']([^"']+)["']\s*\)/g;
+const IDENTITY_SEAM = "services/adminPolicyApiClient.js";
+function resolveLocal(from, spec) {
+  for (const ext of ["", ".js", ".jsx", ".ts", ".tsx", "/index.js", "/index.jsx"]) {
+    const p = resolve(dirname(from), spec + ext);
+    try { if (statSync(p).isFile()) return p; } catch { /* next */ }
+  }
+  return null;
+}
+/** Every module the screen LOADS (static imports), and every package specifier any of them imports. */
+function staticImportGraph(entry) {
+  const seen = new Set();
+  const packages = [];
+  const stack = [join(SRC, entry)];
+  while (stack.length) {
+    const f = stack.pop();
+    if (seen.has(f)) continue;
+    seen.add(f);
+    if (rel(f) === IDENTITY_SEAM) continue;
+    const src = strip(readFileSync(f, "utf8"));
+    for (const m of src.matchAll(IMPORT_RE)) {
+      const spec = m[1] ?? m[2];
+      if (spec.startsWith(".")) { const r = resolveLocal(f, spec); if (r) stack.push(r); }
+      else packages.push({ from: rel(f), spec });
+    }
+  }
+  return { modules: [...seen].map(rel).sort(), packages };
+}
+
+test("PartMasterList's read path loads NOTHING from Firebase and no Firestore list source", () => {
+  const { modules, packages } = staticImportGraph("modules/inventory/PartMasterList.jsx");
+  // The read path is really on the graph -- this is not a vacuous walk.
+  for (const m of ["services/partMasterPageQuery.js", "services/partMasterQueries.js", "services/catalogApiClient.js", "hooks/useListViewChrome.js"]) {
+    assert.ok(modules.includes(m), `${m} should be on PartMasterList's import graph`);
+  }
+  const firebase = packages.filter((p) => /(^|\/)firebase(\/|$)|^firebase/.test(p.spec));
+  assert.deepEqual(firebase, [], "no module PartMasterList loads may import a Firebase package");
+  for (const m of modules) {
+    assert.equal(/(^|\/)firebase\/firebase(\.js)?$/.test(m), false, `${m}: the Firebase app module must not be loaded`);
+    assert.notEqual(m, "metadata/firestoreListSource.js", "the Firestore list source must not be loaded");
+  }
+  // The identity seam is reached only by the Catalog client, for the token.
+  const catalogClient = code("services/catalogApiClient.js");
+  assert.match(catalogClient, /import \{ currentIdToken, policyApiBaseUrl \} from "\.\/adminPolicyApiClient\.js"/);
+});
+
+test("the Part Master page and total reach the Render Catalog API, with no Firestore anywhere in the seam", () => {
+  const page = code("services/partMasterPageQuery.js");
+  for (const banned of ["firebase", "firestoreListSource", "getDocs", "getCountFromServer", "collection(", "fetchPage("]) {
+    assert.equal(page.includes(banned), false, `partMasterPageQuery must not reach ${banned}`);
+  }
+  assert.ok(page.includes("searchPartsInServerOrder"), "the page is a governed searchParts call");
+  assert.ok(page.includes("countParts"), "the total is a governed countParts call");
+  // The screen injects the Catalog count; the Firestore aggregate in useListViewChrome is loaded only on
+  // the branch that is NOT given one, so it is neither loaded nor run for this screen.
+  const screen = code("modules/inventory/PartMasterList.jsx");
+  assert.match(screen, /count: countPartMaster/);
+  assert.match(screen, /useListViewChrome\(partIndexList, partEntity, criteria, apply, CHROME_OPTIONS\)/);
+  const chrome = code("hooks/useListViewChrome.js");
+  assert.equal(/^\s*import\s[^;]*["']firebase\//m.test(chrome), false, "no STATIC Firebase import in the shared chrome hook");
+  assert.match(chrome, /injectedCount \? await injectedCount\(descriptor\) : await firestoreCount\(entity, descriptor\)/,
+    "an injected count is the ONLY count consulted -- no Firestore fallback when it fails");
+  // A refusal is the screen's DENIED state, from the Catalog client's own vocabulary.
+  assert.match(screen, /isPartMasterReadDenied\(result\.code\) \? "denied" : "error"/);
+  assert.equal(screen.includes('"permission-denied"'), false, "the Catalog client never returns Firestore's permission-denied");
+});

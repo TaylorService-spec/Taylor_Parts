@@ -15,6 +15,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -56,6 +57,9 @@ test("Commercial resolves Catalog references through the REAL PostgreSQL authori
   const bare = { pool };
 
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  // The commercial writers resolve operating_company_key only through the governed binding -- never key = id.
+  await bindOperatingCompany(q, "t1", "taylor", "taylor-ops-t1");
+  await bindOperatingCompany(q, "t2", "taylor", "taylor-ops-t2");
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, owner_employee_id, created_by, updated_by)
            VALUES ('acct-1','t1','Retail Customer','ACTIVE','e-retail','x','x')`);
   await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id)

@@ -18,6 +18,9 @@
 //   FUNCTION_BODY  the guard is the literal first statement of `fn`'s body.
 //   ACTION_GATE    the guard is an `if (action === "...")` line inside the command's accept step, which
 //                  must still precede capability resolution (asserted separately).
+//   JOB_GATE       the guard is an `if (staged.entityType === "...")` line in a JOB-level execution entry, which must
+//                  precede the job claim and every row write. Its ordering and FROZEN refusal are proven in
+//                  catalogLane2Readiness.test.mjs; the lists here keep it inside the closed writer set.
 
 export const LEGACY_CATALOG_MASTER_COMMANDS = Object.freeze([
   // ── Part (the copy scope) ───────────────────────────────────────────────────────────────────────
@@ -142,6 +145,12 @@ export const LEGACY_CATALOG_MASTER_COMMANDS = Object.freeze([
     family: "equipmentCompatibilitySource", form: "ACTION_GATE", module: "src/equipmentCompatibility/commands.ts", fn: "acceptForExecution",
     writerIds: Object.freeze(["equipmentCompatibilitySource.import"]),
     gateLine: 'if (action === "importCompatibilitySource") assertFirestoreCatalogWriterOpen("equipmentCompatibilitySource.import");',
+  }),
+  // ── Data Import (the job-level Part import writer, catalogWriterState.ts `part.import`) ──────────
+  Object.freeze({
+    family: "part", form: "JOB_GATE", module: "src/dataImport/dataImportCallables.ts", fn: "executeDataImportCallable",
+    writerIds: Object.freeze(["part.import"]),
+    gateLine: 'if (staged.entityType === "PARTS") assertFirestoreCatalogWriterOpen("part.import");',
   }),
 ]);
 

@@ -80,7 +80,10 @@ const PRN = {
 };
 const PRN_WORKFORCE_ADMIN = "prn-workforce-admin";
 const PRN_REORDER_ASSIGNER = "prn-reorder-assigner";
-const RR = "rr_f7090a49-f1b1-40cf-8bde-c7d9a69574af";      // RR-2026-000901, the ORDERED nonprod row
+// RR-2026-000901 is ORDERED in nonprod. Under the governed lifecycle an ORDERED Reorder is not assignable (the legacy
+// Assign arm fired only from READY_FOR_PARTS_MANAGER, and #1961 preserves it), so this throwaway database seeds the same
+// identity in the status assignment requires. The id is kept; the status is the precondition, not the record.
+const RR = "rr_f7090a49-f1b1-40cf-8bde-c7d9a69574af";
 const RR_OTHER = "rr_ab54d29e-ab43-4792-9e7f-4c8b9fc771ae";
 
 const REORDER_READ = "reorder.request.read";
@@ -155,9 +158,9 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
       [`lnk-${eid}`, T, PRN[eid], eid]);
     }
     await q(`INSERT INTO eos_ops.reorder_requests
-               (id,tenant_id,operating_company_key,part_id,warehouse_id,status,requested_quantity,requested_by,updated_by)
-             VALUES ($1,$3,$4,'p1','w1','ORDERED',1,'fixture','fixture'),
-                    ($2,$3,$4,'p1','w1','ORDERED',1,'fixture','fixture')`,
+               (id,tenant_id,operating_company_key,part_id,warehouse_id,status,requested_quantity,requested_by,updated_by,provenance)
+             VALUES ($1,$3,$4,'p1','w1','READY_FOR_PARTS_MANAGER',1,(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$3),(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$3),'NATIVE'),
+                    ($2,$3,$4,'p1','w1','READY_FOR_PARTS_MANAGER',1,(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$3),(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$3),'NATIVE')`,
     [RR, RR_OTHER, T, OPERATING_COMPANY_KEY]);
 
     // ──────────────── AC6: the governed writer, carrying PER-STEP reasons ────────────────
@@ -352,6 +355,11 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
 
     // ──────────────── AC2: Parts Manager is the oversight positive ────────────────
     await t.test("AC2: Parts Manager may be assigned, and the prior assignment is ENDED not duplicated", async () => {
+      // Assignment fires only from READY_FOR_PARTS_MANAGER (the governed lifecycle precondition #1961 preserves from the
+      // legacy Assign arm), and AC5's assignment moved RR past it. The handoff this proves is the one a legacy
+      // assignment COPY produces -- a governed assignment present while the Reorder still awaits assignment -- so it
+      // is reached the same way: by putting RR back in that status.
+      await q(`UPDATE eos_ops.reorder_requests SET status='READY_FOR_PARTS_MANAGER' WHERE id=$1`, [RR]);
       const result = await reorderAssignment.assignReorderRequestToEmployee(
         { pool }, actorWith(PRN_REORDER_ASSIGNER, caps(reorderAssignment.REORDER_REQUEST_ASSIGN)),
         { reorderRequestId: RR, employeeId: PARTS_MANAGER,

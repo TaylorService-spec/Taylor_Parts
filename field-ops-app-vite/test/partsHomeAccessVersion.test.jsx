@@ -8,7 +8,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, act } from "@testing-library/react";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [
     { sku: "TST-9001", name: "STATIC-CATALOG-NAME-A", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 },
@@ -45,7 +45,7 @@ vi.mock("../src/shared/assignment/EmployeeAssignmentPicker", () => ({ default: (
 vi.mock("../src/shared/ui/WorkspaceHeader", () => ({ default: () => null }));
 vi.mock("../src/modules/inventory/PartsList", () => ({ formatAssignmentAge: () => "1d", default: () => null }));
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import PartsManagerHome from "../src/modules/inventoryRole/PartsManagerHome.jsx";
 import PartsAssociateHome from "../src/modules/inventoryRole/PartsAssociateHome.jsx";
 
@@ -57,7 +57,7 @@ const READY_A = { ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-
 // A queue of deferred promises so we control resolution order across accessVersion changes.
 function installDeferredFetch() {
   const deferreds = [];
-  fetchPartMasterList.mockImplementation(() => {
+  searchParts.mockImplementation(() => {
     let resolve;
     const p = new Promise((r) => { resolve = r; });
     deferreds.push({ resolve });
@@ -84,7 +84,7 @@ describe.each([
     expect(screen.getByText("TST-9001")).toBeTruthy(); // operational table + raw partId preserved
 
     // Denied replacement read -> raw partIds + bounded notice.
-    await act(async () => { deferreds[1].resolve({ ok: false, code: "permission-denied" }); });
+    await act(async () => { deferreds[1].resolve({ ok: false, code: "FORBIDDEN", message: "forbidden" }); });
     await screen.findByText(NOTICE);
     expect(screen.queryByText("CANONICAL-NAME-A")).toBeNull();
     expect(screen.getByText("TST-9001")).toBeTruthy();

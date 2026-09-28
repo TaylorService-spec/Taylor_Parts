@@ -375,8 +375,8 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
              (id,tenant_id,employee_id,scope_type,scope_id,effective_from,assigned_by)
            VALUES ('os-purchasing',$1,$2,'REORDER_QUEUE',$3,now(),'fixture')`, [T, emp("purchasing"), COMPANY_KEY]);
   await q(`INSERT INTO eos_ops.reorder_requests
-             (id,tenant_id,operating_company_key,part_id,warehouse_id,status,requested_quantity,requested_by,updated_by)
-           VALUES ($1,$2,$3,'p1','AB-WH','PENDING_REVIEW',1,'fixture','fixture')`, [REORDER_RECORD, T, COMPANY_KEY]);
+             (id,tenant_id,operating_company_key,part_id,warehouse_id,status,requested_quantity,requested_by,updated_by,provenance)
+           VALUES ($1,$2,$3,'p1','AB-WH','PENDING_REVIEW',1,(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$2),(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$2),'NATIVE')`, [REORDER_RECORD, T, COMPANY_KEY]);
   await q(`INSERT INTO eos_ops.reorder_request_assignments
              (id,tenant_id,reorder_request_id,assigned_employee_id,effective_from,provenance,assigned_by_principal_id)
            VALUES ('a-ab',$1,$2,$3,now(),'NATIVE',$4)`, [T, REORDER_RECORD, emp("tech-eligible"), prn("purchasing")]);

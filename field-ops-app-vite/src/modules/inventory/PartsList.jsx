@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
-import { searchParts } from "../../services/partMasterQueries";
+import { searchParts, isCatalogReadRefused } from "../../services/partMasterQueries";
 import { buildPartsCatalogRows, canonicalNameBySku, partNamesBoundaryKey, selectCanonicalReadForKey, isCatalogBlocked, partCatalogRoute } from "../../domain/partsCatalogView";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import {
@@ -420,7 +420,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
       const read = result.ok
         ? { status: "OK", rows: result.parts, invalid: result.invalid }
-        : { status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" };
+        : { status: isCatalogReadRefused(result.code) ? "PERMISSION_DENIED" : "UNAVAILABLE" };
       setStored({ key: currentKey, read });
     });
     return () => {
