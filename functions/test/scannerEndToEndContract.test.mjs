@@ -49,7 +49,7 @@ const { receiveInventoryStock, UnauthorizedReceivingError } = await import("../l
 const { createBin, renameBin, setBinStatus, resolveBinCode, resolveBinToken, BINS_COLLECTION, BIN_CODE_CLAIMS_COLLECTION } =
   await import("../lib/inventoryLocation/binCommands.js");
 const { deriveBinId, deriveBinClaimId } = await import("../lib/inventoryLocation/binRegistry.js");
-const { recordPutAway, PlacementUnauthorizedError, PlacementBinError, BIN_PLACEMENTS_COLLECTION } = await import("../lib/inventoryLocation/putAwayCommand.js");
+const { recordPutAway, PlacementUnauthorizedError, PlacementBinError, PlacementIdempotencyConflictError, BIN_PLACEMENTS_COLLECTION } = await import("../lib/inventoryLocation/putAwayCommand.js");
 const {
   createTransferOrder, dispatchTransferOrder, receiveTransferOrder,
   InsufficientStockError, UnauthorizedTransferError,
@@ -520,6 +520,38 @@ await check("NEGATIVE 10 — replaying any stage is idempotent, not doubled", as
   await recordPutAway({ warehouseId, binCode: "D01-002", partId, quantity: 6, idempotencyKey: placementKey }, deps);
   const placements = await db.collection(BIN_PLACEMENTS_COLLECTION).where("partId", "==", partId).get();
   assert.equal(placements.size, 1, "a replayed put-away records one placement, not two");
+});
+
+await check("PUT-AWAY REPLAY — decided before current-state gates; one key is one stow", async () => {
+  const partId = uid("PRT");
+  const warehouseId = uid("wh"); await seedWarehouse(warehouseId);
+  const { deps } = makeDeps(uid("a"), ALL_SCANNER_GRANTS());
+  const made = await createBin({ warehouseId, area: "PARTS_ROOM", aisle: "Q", bay: 1, position: 1, idempotencyKey: uid("idem") }, deps);
+  await createBin({ warehouseId, area: "PARTS_ROOM", aisle: "Q", bay: 1, position: 2, idempotencyKey: uid("idem") }, deps);
+  const key = uid("idem");
+  const first = await recordPutAway({ warehouseId, binCode: "Q01-001", partId, quantity: 4, idempotencyKey: key }, deps);
+  assert.equal(first.outcome, "recorded");
+
+  // Same key, different quantity / bin / pick -> CONFLICT, and nothing written.
+  for (const variant of [
+    { binCode: "Q01-001", quantity: 5 },
+    { binCode: "Q01-002", quantity: 4 },
+    { binCode: "Q01-001", quantity: 4, pickedForWorkOrderId: "WO-1" },
+  ]) {
+    await assert.rejects(recordPutAway({ warehouseId, partId, idempotencyKey: key, ...variant }, deps),
+      (e) => e instanceof PlacementIdempotencyConflictError, JSON.stringify(variant));
+  }
+
+  // The bin is retired AFTER the stow committed: a genuine retry (lost response) still replays.
+  await setBinStatus({ binId: made.binId }, "INACTIVE", deps);
+  const retry = await recordPutAway({ warehouseId, binCode: "Q01-001", partId, quantity: 4, idempotencyKey: key }, deps);
+  assert.equal(retry.outcome, "replayed");
+  assert.equal(retry.binCode, "Q01-001");
+  // A NEW stow into the retired bin is still refused.
+  await assert.rejects(recordPutAway({ warehouseId, binCode: "Q01-001", partId, quantity: 1, idempotencyKey: uid("idem") }, deps),
+    (e) => e instanceof PlacementBinError);
+  const placements = await db.collection(BIN_PLACEMENTS_COLLECTION).where("partId", "==", partId).get();
+  assert.equal(placements.size, 1);
 });
 
 // ═══════════════════════════════ BIN-P1 — stable identity, against the real store ═══════════════
