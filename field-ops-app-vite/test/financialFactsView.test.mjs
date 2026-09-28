@@ -740,3 +740,8 @@ test("dashboard firm tiles: Collected is disclosed as invoice-anchored, not cash
   const tile = src.slice(src.indexOf('m.key === "firmBilled"'), src.indexOf('m.key === "myGoals"'));
   assert.match(tile, /not all cash received this month/);
 });
+
+test("Customer Financials asks for INVOICE facts only -- the tenant-wide payment reads it never uses cannot withhold its figures", () => {
+  const src = readFileSync(new URL("../src/modules/financials/FinancialsCustomerFinancials.jsx", import.meta.url), "utf8");
+  assert.match(src, /useFinancialFacts\(\s*\{\s*accountId: selected\?\.id \?\? null, factTypes: \["INVOICE"\] \}/);
+});

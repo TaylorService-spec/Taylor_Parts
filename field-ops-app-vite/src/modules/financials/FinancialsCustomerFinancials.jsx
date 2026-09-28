@@ -45,7 +45,15 @@ export default function FinancialsCustomerFinancials() {
   // server intersects it with this principal's FIN-004 reach, so choosing a customer you cannot see
   // returns nothing rather than their figures. The read is issued only once a customer is chosen —
   // an unfiltered account read on an empty search would be a whole-book query nobody asked for.
-  const facts = useFinancialFacts({ accountId: selected?.id ?? null }, { enabled: Boolean(selected) });
+  //
+  // INVOICE ONLY. Every figure here is the server's invoice summary. Asking for payment facts too
+  // read the payment-application and receipt collections TENANT-WIDE (they cannot be narrowed by
+  // account), so once the tenant held more records than that bound this page went UNAVAILABLE for
+  // every customer — withholding figures it never needed those reads to state.
+  const facts = useFinancialFacts(
+    { accountId: selected?.id ?? null, factTypes: ["INVOICE"] },
+    { enabled: Boolean(selected) },
+  );
   const { state: factsState, result: factsResult, detail: factsDetail } = financialFactsState(facts);
   const factsAnswered = factsState === FACTS_STATE.READY || factsState === FACTS_STATE.EMPTY;
   const summary = factsAnswered ? (factsResult?.summary ?? {}) : {};
