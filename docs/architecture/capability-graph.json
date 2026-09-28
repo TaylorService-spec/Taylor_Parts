@@ -17,7 +17,7 @@
     "catalogInactive": 151,
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
-    "callableExports": 48,
+    "callableExports": 43,
     "destinations": 95,
     "destinationsHidden": 19,
     "guides": 0,
@@ -30,8 +30,8 @@
     "ok": true
   },
   "implementationEvidence": {
-    "EXPORTED": 21,
-    "SERVER_REFERENCED": 127,
+    "EXPORTED": 20,
+    "SERVER_REFERENCED": 128,
     "NO_IMPLEMENTATION_EVIDENCE": 3
   },
   "guideStatuses": {},
@@ -706,11 +706,7 @@
       "description": "Create or advance a Sales Opportunity (lifecycle transition) via the governed opportunity command. Pre-commitment only; does not create Work Orders, inventory movement, or invoices.",
       "catalogActive": false,
       "implementation": {
-        "exportedCallables": [
-          "createOpportunity",
-          "transitionOpportunity",
-          "updateOpportunity"
-        ],
+        "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
@@ -726,7 +722,7 @@
         ],
         "serverReferenceCount": 5,
         "clientReferenceCount": 4,
-        "evidence": "EXPORTED"
+        "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
         "eligible": true,
@@ -787,7 +783,9 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [
-          "createSalesOrderFromOpportunity"
+          "getSalesOrderContext",
+          "listSalesOrdersForAccount",
+          "listSalesOrderIndex"
         ],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
@@ -996,8 +994,7 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [
-          "createSalesOrder",
-          "transitionSalesOrder"
+          "allocateSalesOrder"
         ],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
@@ -4806,18 +4803,6 @@
     },
     {
       "names": [
-        "createOpportunity",
-        "transitionOpportunity",
-        "updateOpportunity"
-      ],
-      "module": "./opportunity/opportunityCallables",
-      "capabilityHints": [
-        "opportunity.write"
-      ],
-      "comment": "Sales Opportunity governed write callables (Cycle 3). EXPORT != DEPLOY, REGISTER != GRANT: exported for build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing runs in production until a separate deploy + Owner grant."
-    },
-    {
-      "names": [
         "listOpportunityContext",
         "listOpportunitiesForAccount"
       ],
@@ -4839,43 +4824,16 @@
     },
     {
       "names": [
-        "createSalesOrderFromOpportunity"
-      ],
-      "module": "./opportunity/createSalesOrderFromOpportunity",
-      "capabilityHints": [
-        "opportunity.createSalesOrder"
-      ],
-      "comment": "P1.3 -- governed, human-invoked WON -> Create Sales Order action (decision #3: no Firestore trigger). EXPORT != DEPLOY; capability `opportunity.createSalesOrder` registered active:false (REGISTER != GRANT)."
-    },
-    {
-      "names": [
-        "closeOpportunityAsWon"
-      ],
-      "module": "./opportunity/closeOpportunityAsWon",
-      "capabilityHints": [],
-      "comment": "The ATOMIC Won action. Closes the Opportunity as WON and creates its Sales Order in ONE transaction, so a Won Opportunity can never exist without its order. EXPORT != DEPLOY."
-    },
-    {
-      "names": [
         "getSalesOrderContext",
         "listSalesOrdersForAccount",
         "listSalesOrderIndex"
       ],
       "module": "./salesOrder/salesOrderReadService",
       "capabilityHints": [
+        "opportunity.createSalesOrder",
         "salesOrder.read"
       ],
-      "comment": "Sales Order trusted read projection. EXPORT != DEPLOY; capability `salesOrder.read` registered active:false (REGISTER != GRANT). Owner-ratified 2026-08-15 (see permissionCatalog.ts's entry)."
-    },
-    {
-      "names": [
-        "createSalesAgreement",
-        "updateSalesAgreementDraft",
-        "acceptSalesAgreement"
-      ],
-      "module": "./salesAgreement/salesAgreementCallables",
-      "capabilityHints": [],
-      "comment": "Sales Agreement (Slice 4) -- the commercial commitment. Three write verbs and two reads; no generic update, and nothing that can amend an ACCEPTED agreement. EXPORT != DEPLOY: these are registered active:false and deny for everyone until a separate grant + per-environment activation."
+      "comment": "P1.3 -- governed, human-invoked WON -> Create Sales Order action (decision #3: no Firestore trigger). EXPORT != DEPLOY; capability `opportunity.createSalesOrder` registered active:false (REGISTER != GRANT). PASS 11 RETAIL SALES: createSalesOrderFromOpportunity RETIRED (EOS createSalesOrderFromOpport"
     },
     {
       "names": [
@@ -4884,7 +4842,7 @@
       ],
       "module": "./salesAgreement/salesAgreementReadService",
       "capabilityHints": [],
-      "comment": null
+      "comment": "Sales Agreement (Slice 4) -- the commercial commitment. Three write verbs and two reads; no generic update, and nothing that can amend an ACCEPTED agreement. EXPORT != DEPLOY: these are registered active:false and deny for everyone until a separate grant + per-environment activation. PASS 11 RETAIL "
     },
     {
       "names": [
@@ -4934,24 +4892,14 @@
     },
     {
       "names": [
-        "createSalesOrder",
-        "transitionSalesOrder"
-      ],
-      "module": "./salesOrder/salesOrderCallables",
-      "capabilityHints": [
-        "salesOrder.write"
-      ],
-      "comment": "Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered active:false (REGISTER != GRANT)."
-    },
-    {
-      "names": [
         "allocateSalesOrder"
       ],
       "module": "./fulfillment/allocateSalesOrder",
       "capabilityHints": [
+        "salesOrder.write",
         "salesOrder.fulfill"
       ],
-      "comment": "Fulfillment allocation (Cycle 5 live). EXPORT != DEPLOY; capability `salesOrder.fulfill` active:false."
+      "comment": "Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered active:false (REGISTER != GRANT). PASS 11 RETAIL SALES: createSalesOrder / transitionSalesOrder RETIRED (EOS owns them). Fulfillment allocation (Cycle 5 live). EXPORT != DEPLOY; capability `sal"
     },
     {
       "names": [

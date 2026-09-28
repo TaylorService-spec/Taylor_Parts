@@ -446,7 +446,14 @@ test("(22) C4 leaves Firebase callables as the legacy runtime and does not wire 
   for (const [, names, from] of index.matchAll(/export\s*\{([^}]*)\}\s*from\s*"([^"]+)"/g)) {
     for (const name of names.split(",").map((n) => n.trim()).filter(Boolean)) exported.set(name, from);
   }
-  for (const [name, from] of LEGACY_COMMERCIAL_CALLABLES) assert.equal(exported.get(name), from, `legacy callable ${name} is no longer exported from ${from}`);
+  // PASS 11 RETAIL SALES: the Commercial WRITERS EOS now owns are RETIRED from the Firebase runtime -- they must never be
+  // exported again (the frozen Firestore commercial records they wrote must not change). The legacy READ callables stay.
+  const RETIRED_WRITERS = new Set(["createOpportunity", "transitionOpportunity", "updateOpportunity", "createSalesOrderFromOpportunity",
+    "closeOpportunityAsWon", "createSalesAgreement", "updateSalesAgreementDraft", "acceptSalesAgreement", "createSalesOrder", "transitionSalesOrder"]);
+  for (const [name, from] of LEGACY_COMMERCIAL_CALLABLES) {
+    if (RETIRED_WRITERS.has(name)) assert.equal(exported.has(name), false, `retired Commercial writer ${name} is exported again`);
+    else assert.equal(exported.get(name), from, `legacy read callable ${name} is no longer exported from ${from}`);
+  }
   // Functions never reach the PostgreSQL Commercial layer: no import of the transport, C2 commands or C3 reads.
   assert.doesNotMatch(index, /eosCommercial|commercialHttp|CommandService|commercialCommandKernel|ReadProjection|commercialReadKernel/);
   const functionsRuntime = walk(SRC, [".ts"]).filter((f) => /firebase-functions|onCall\(|onRequest\(/.test(strip(readFileSync(f, "utf8"))));
