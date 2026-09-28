@@ -65,6 +65,8 @@ export type ReturnSource = (typeof RETURN_SOURCES)[number];
 
 export class ReturnInvalidError extends Error {}
 export class ReturnUnauthorizedError extends Error {}
+/** The idempotency key was already used for a DIFFERENT return (another part, source, condition, quantity, serials or reason). */
+export class ReturnIdempotencyConflictError extends Error {}
 
 export interface ReturnIntakeDeps {
   readonly db: Firestore;
@@ -176,13 +178,29 @@ export async function recordReturnIntake(request: unknown, deps: ReturnIntakeDep
     const serialNumbers = req.serialNumbers ?? [];
 
     if (existing.exists) {
+      // ONE KEY, ONE RETURN. A replay is only a replay of THE SAME intake: answering "replayed" to a
+      // different part / quantity / serial set under a used key would report an intake that never
+      // happened. The answer is built from the STORED record, never echoed from this request.
+      const d = existing.data() ?? {};
+      const storedSerials = Array.isArray(d.serialNumbers) ? d.serialNumbers : null;
+      const same = d.idempotencyKey === req.idempotencyKey
+        && d.partId === req.partId
+        && d.source === req.source
+        && (d.sourceReference ?? null) === req.sourceReference
+        && d.condition === req.condition
+        && (d.reason ?? null) === req.reason
+        && (d.quantity ?? null) === (serialNumbers.length > 0 ? null : (req.quantity ?? 0))
+        && storedSerials !== null
+        && storedSerials.length === serialNumbers.length
+        && storedSerials.every((sn: unknown, i: number) => sn === serialNumbers[i]);
+      if (!same) throw new ReturnIdempotencyConflictError("different_return");
       return {
         outcome: "replayed" as const,
         returnId,
-        partId: req.partId,
+        partId: d.partId as string,
         state: "AWAITING_DISPOSITION" as const,
-        quantity: serialNumbers.length > 0 ? null : (req.quantity ?? 0),
-        serialNumbers,
+        quantity: (d.quantity ?? null) as number | null,
+        serialNumbers: storedSerials as string[],
       };
     }
 

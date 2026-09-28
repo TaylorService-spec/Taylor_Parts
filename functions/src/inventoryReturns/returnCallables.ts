@@ -15,6 +15,7 @@ import {
   ReturnInvalidError,
   ReturnUnauthorizedError,
   RETURN_INTAKE_CAPABILITY,
+  ReturnIdempotencyConflictError,
 } from "./returnIntakeCommand.js";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed.js";
 
@@ -46,6 +47,9 @@ export const recordReturnIntakeCallable = onCall(REGION, async (request) => {
   } catch (err) {
     if (err instanceof ReturnUnauthorizedError) {
       throw new HttpsError("permission-denied", "You are not authorized to take returns in.", "DENIED");
+    }
+    if (err instanceof ReturnIdempotencyConflictError) {
+      throw new HttpsError("already-exists", "That request id was already used for a different return.", "IDEMPOTENCY_CONFLICT");
     }
     if (err instanceof ReturnInvalidError) {
       throw new HttpsError("invalid-argument", "That return could not be accepted.", err.message || "INVALID");

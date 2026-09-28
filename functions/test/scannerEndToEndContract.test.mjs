@@ -56,7 +56,7 @@ const {
 } = await import("../lib/inventoryTransfer/transferOrderCommand.js");
 const { makeResolveTransferLocationActive } = await import("../lib/inventoryTransfer/transferLocationResolver.js");
 const { createCycleCount, submitCycleCount } = await import("../lib/cycleCount/cycleCountCommand.js");
-const { recordReturnIntake, RETURNS_COLLECTION, ReturnInvalidError } = await import("../lib/inventoryReturns/returnIntakeCommand.js");
+const { recordReturnIntake, RETURNS_COLLECTION, ReturnInvalidError, ReturnIdempotencyConflictError } = await import("../lib/inventoryReturns/returnIntakeCommand.js");
 const { probeNoneStockPresentAtLocation } = await import("../lib/inventoryLedger/mobileLocationPresenceProbe.js");
 
 // ---- runner --------------------------------------------------------------------------------------
@@ -334,6 +334,20 @@ await check("RETURN INTAKE: something comes back, and nothing becomes sellable",
   // DECISIONS #118. Two returned units must NOT appear as five on the shelf.
   const afterReturn = await balance(partId);
   assert.equal(afterReturn.onHand.value, 3, "A RETURN NEVER AUTO-RESTORES SELLABLE STOCK");
+});
+
+await check("RETURN INTAKE REPLAY: the same intake replays from the STORED record; a different one under the key conflicts", async () => {
+  const { deps } = makeDeps(uid("returns-desk"), ALL_SCANNER_GRANTS());
+  const partId = uid("PRT");
+  const req = { partId, source: "WORK_ORDER", sourceReference: "WO-9", condition: "OPENED", quantity: 2, idempotencyKey: uid("idem") };
+  const first = await recordReturnIntake(req, deps);
+  const again = await recordReturnIntake(req, deps);
+  assert.equal(first.outcome, "recorded"); assert.equal(again.outcome, "replayed");
+  assert.equal(again.returnId, first.returnId); assert.equal(again.quantity, 2);
+  for (const variant of [{ quantity: 3 }, { partId: uid("PRT") }, { condition: "DAMAGED" }, { reason: "bent" }]) {
+    await assert.rejects(recordReturnIntake({ ...req, ...variant }, deps), (e) => e instanceof ReturnIdempotencyConflictError, JSON.stringify(variant));
+  }
+  assert.equal((await db.collection(RETURNS_COLLECTION).where("idempotencyKey", "==", req.idempotencyKey).get()).size, 1);
 });
 
 // =================================================================================================
