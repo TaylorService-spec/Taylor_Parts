@@ -55,6 +55,9 @@ export default function SavedReports({ hasCapability = () => false, accessVersio
 
   const [status, setStatus] = useState(LIST_STATUS.LOADING);
   const [reports, setReports] = useState([]);
+  // Records the server returned that this build could not read (malformed/unknown shape). Counted,
+  // never silently dropped: "No saved reports" over records that exist is a false empty.
+  const [unreadable, setUnreadable] = useState(0);
   const [busy, setBusy] = useState(false);          // a mutation is in flight
   const [actionError, setActionError] = useState(null); // { kind, message } from a mutation
   const [successMsg, setSuccessMsg] = useState(null);
@@ -68,7 +71,17 @@ export default function SavedReports({ hasCapability = () => false, accessVersio
     setActionError(null);
     try {
       const data = await service.list();
-      setReports(normalizeList(data));
+      // A payload that is not a list is not an answer about your reports (version skew, a proxy
+      // page): it is UNAVAILABLE, never "No saved reports".
+      if (!Array.isArray(data)) {
+        setReports([]);
+        setUnreadable(0);
+        setStatus(LIST_STATUS.UNAVAILABLE);
+        return;
+      }
+      const normalized = normalizeList(data);
+      setReports(normalized);
+      setUnreadable(data.length - normalized.length);
       setStatus(LIST_STATUS.READY);
     } catch (err) {
       setReports([]);
@@ -141,7 +154,7 @@ export default function SavedReports({ hasCapability = () => false, accessVersio
         )}
 
         <ListArea
-          status={status} reports={reports} busy={busy} can={can}
+          status={status} reports={reports} unreadable={unreadable} busy={busy} can={can}
           onRetry={load} onOpen={onOpen}
           renamingId={renamingId} renameText={renameText} setRenameText={setRenameText}
           startRename={startRename} commitRename={commitRename} cancelRename={() => setRenamingId(null)}
@@ -156,7 +169,7 @@ export default function SavedReports({ hasCapability = () => false, accessVersio
 }
 
 function ListArea(props) {
-  const { status, reports, onRetry } = props;
+  const { status, reports, onRetry, unreadable = 0 } = props;
   if (status === LIST_STATUS.LOADING) return <LoadingState>Loading your saved reports…</LoadingState>;
   if (status === LIST_STATUS.DENIED) {
     return <FailureState title="Saved reports aren't available" message="You don't have access to saved reports." />;
@@ -173,13 +186,22 @@ function ListArea(props) {
       </div>
     );
   }
+  const unreadableNote = unreadable > 0 ? (
+    <p className="fo-warning" role="status">
+      {unreadable} saved report{unreadable === 1 ? "" : "s"} couldn't be shown because this version of the app can't read {unreadable === 1 ? "it" : "them"}. Reload the app to see {unreadable === 1 ? "it" : "them"}.
+    </p>
+  ) : null;
   if (reports.length === 0) {
+    if (unreadableNote) return unreadableNote;
     return <EmptyState title="No saved reports" message="Create a saved report to see it listed here." />;
   }
   return (
-    <ul className="fo-saved-report-list" aria-label="Your saved reports">
-      {reports.map((report) => <SavedReportRow key={report.id} report={report} {...props} />)}
-    </ul>
+    <>
+      {unreadableNote}
+      <ul className="fo-saved-report-list" aria-label="Your saved reports">
+        {reports.map((report) => <SavedReportRow key={report.id} report={report} {...props} />)}
+      </ul>
+    </>
   );
 }
 

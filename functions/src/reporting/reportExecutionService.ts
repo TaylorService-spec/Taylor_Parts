@@ -1166,20 +1166,25 @@ function aggregateResultKey(agg: { fieldId?: string; fn: string }): string {
   return isFieldlessAggregate(agg.fn) ? agg.fn : `${agg.fn}(${agg.fieldId})`;
 }
 
-function computeAggregate(rows: Array<Record<string, unknown>>, objectId: string, agg: { fieldId?: string; fn: string }): number {
+// UNKNOWN IS NOT ZERO. sum/avg/min/max over a group with NO numeric value is null (the client
+// renders "—"), not 0: a zero average or a zero maximum is a claim about values that were never
+// recorded. `count`/`countRows` are real counts and stay numeric. An unresolvable field or an
+// unknown fn is likewise null rather than a fabricated 0.
+export function computeAggregate(rows: Array<Record<string, unknown>>, objectId: string, agg: { fieldId?: string; fn: string }): number | null {
   if (isFieldlessAggregate(agg.fn)) return rows.length; // countRows: bounded by the runner's own authorized/filtered row set
   const field = getReportField(agg.fieldId as string);
-  if (!field) return 0;
+  if (!field) return null;
   const values = rows
     .map((doc) => getFieldValue(doc, objectId, field))
     .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  if (agg.fn === "count") return values.length;
+  if (values.length === 0) return null;
   switch (agg.fn) {
-    case "count": return values.length;
     case "sum": return values.reduce((a, b) => a + b, 0);
-    case "avg": return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-    case "min": return values.length > 0 ? Math.min(...values) : 0;
-    case "max": return values.length > 0 ? Math.max(...values) : 0;
-    default: return 0;
+    case "avg": return values.reduce((a, b) => a + b, 0) / values.length;
+    case "min": return Math.min(...values);
+    case "max": return Math.max(...values);
+    default: return null;
   }
 }
 

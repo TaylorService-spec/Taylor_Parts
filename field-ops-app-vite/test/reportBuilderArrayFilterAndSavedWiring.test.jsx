@@ -274,3 +274,28 @@ describe("ReportBuilder — a result never outlives the definition it answered",
     expect(runReportFn.mock.calls[0][0].fields).toEqual(["customer.name"]);
   });
 });
+
+describe("SavedReports — a list it cannot read is never 'No saved reports'", () => {
+  const renderWith = (service) => render(
+    <MemoryRouter initialEntries={["/reporting/saved"]}>
+      <SavedReports hasCapability={() => true} service={service} />
+    </MemoryRouter>,
+  );
+
+  it("a non-list payload is UNAVAILABLE, not an empty list", async () => {
+    renderWith({ list: vi.fn().mockResolvedValue({ unexpected: "shape" }) });
+    expect(await screen.findByText(/Couldn't load saved reports/)).toBeTruthy();
+    expect(screen.queryByText("No saved reports")).toBeNull();
+  });
+
+  it("records this build cannot read are counted, never silently dropped into an empty state", async () => {
+    renderWith({ list: vi.fn().mockResolvedValue([{ id: 7, name: null }, { nope: true }]) });
+    expect(await screen.findByText(/2 saved reports couldn't be shown/)).toBeTruthy();
+    expect(screen.queryByText("No saved reports")).toBeNull();
+  });
+
+  it("a genuinely empty list still says so", async () => {
+    renderWith({ list: vi.fn().mockResolvedValue([]) });
+    expect(await screen.findByText("No saved reports")).toBeTruthy();
+  });
+});

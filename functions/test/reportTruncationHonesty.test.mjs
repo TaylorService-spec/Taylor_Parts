@@ -165,3 +165,19 @@ test("the callable maps the refusal to resource-exhausted, not to a success or a
     "a refused aggregate must surface as its own code, distinguishable from invalid-argument and internal",
   );
 });
+
+// ---------------------------------------------------------------------------
+// UNKNOWN IS NOT ZERO: an aggregate with no numeric value to aggregate is null.
+// ---------------------------------------------------------------------------
+test("sum/avg/min/max over no numeric value (or an unresolvable field) is null, never a fabricated 0", async () => {
+  const { computeAggregate } = await import("../lib/reporting/reportExecutionService.js");
+  const rows = [{}, {}];
+  for (const fn of ["sum", "avg", "min", "max"]) {
+    assert.equal(computeAggregate(rows, "customer", { fn, fieldId: "customer.noSuchField" }), null, fn);
+  }
+  assert.equal(computeAggregate(rows, "customer", { fn: "countRows" }), 2, "countRows is a real count");
+  const src = readFileSync(SERVICE_SRC, "utf8");
+  const body = src.slice(src.indexOf("export function computeAggregate("), src.indexOf("// ENG-E AXIS 3 -- the one-hop join"));
+  assert.match(body, /if \(values\.length === 0\) return null;/, "an empty value set must short-circuit to null");
+  assert.ok(!/: 0;\s*\n\s*}/.test(body) && !/return 0;/.test(body), "no aggregate branch may return a literal 0");
+});
