@@ -157,68 +157,99 @@ await ok("each action maps to its governed capability, and the map is frozen", a
   assert.equal(Object.isFrozen(C.COMMAND_CAPABILITIES), true);
 });
 
+// ---- CATALOG FREEZE (activation window step 2) ----
+//
+// CATALOG_WRITER_AUTHORITY is FROZEN/INACTIVE, so EVERY action of this orchestrator is a frozen legacy
+// catalog writer: acceptForExecution refuses it before capability resolution and before any operation
+// record, read, write or lifecycle audit. The command-level lifecycle tests below are therefore REFUSAL
+// proofs (ruling A); where a PURE module below the guard owns the domain rule, that rule is proven
+// directly against it (ruling B). The guard is never injected, replaced or reopened here.
+const { FirestoreCatalogWriterClosedError } = await import("../lib/catalogMaster/catalogWriterState.js");
+const { isSameOperationCommand, isAllowedOperationTransition, assertOperationTransition, IllegalOperationTransitionError } =
+  await import("../lib/equipmentCompatibility/operations.js");
+const FP = await import("../lib/equipmentCompatibility/commandFingerprint.js");
+const { ACTION_TARGET_TYPES } = await import("../lib/equipmentCompatibility/operations.js");
+const FROZEN_WRITER = Object.freeze({
+  importEquipmentModel: "equipmentModel.import",
+  importEquipmentModelAlias: "equipmentModelAlias.import",
+  importCompatibility: "equipmentPartCompatibility.import",
+  verifyCompatibility: "equipmentPartCompatibility.verify",
+  correctCompatibility: "equipmentPartCompatibility.correct",
+  importCompatibilitySource: "equipmentCompatibilitySource.import",
+});
+// Every committed non-audit document, by key, with its stored object IDENTITY: an unchanged identity
+// proves nothing was written to it (the fake replaces the object on every commit).
+const nonAuditState = (db) => [...db.__committed.entries()].filter(([k]) => !k.startsWith(`${AUDIT_EVENTS}/`));
+// THE REFUSAL PROOF. The typed freeze refusal naming the right writer; NO operation record; NO write to
+// any governed (non-audit) document; and exactly ONE terminal `denied` audit -- no initiation, no
+// applied terminal, no specialized event. The denial REASON is the governed state refusal `catalog_writer_closed`,
+// never `internal_error` (the class-C finding of the freeze fix cycle, repaired in denialReasonFor()).
+async function assertFrozen(db, deps, input) {
+  const before = nonAuditState(db);
+  const mark = auditMark(db);
+  await assert.rejects(
+    () => C.runEquipmentCompatibilityCommand(input, deps),
+    (e) => e instanceof FirestoreCatalogWriterClosedError && e.code === "FIRESTORE_CATALOG_WRITER_FROZEN" && e.writer === FROZEN_WRITER[input.action],
+    `${input.action}/${input.idempotencyKey}: must be refused by the catalog freeze`,
+  );
+  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, input.idempotencyKey), undefined, `${input.idempotencyKey}: no operation record`);
+  const after = nonAuditState(db);
+  assert.equal(after.length, before.length, "no governed document was created");
+  for (const [k, v] of before) assert.equal(db.__committed.get(k), v, `${k} was not written`);
+  const events = auditsSince(db, mark);
+  assert.deepEqual(events.map((a) => [a.action, a.outcome]), [[C.TERMINAL_AUDIT_ACTION, "denied"]], "only the terminal denied audit");
+  assert.match(events[0].summary, / denied: catalog_writer_closed$/, "a freeze is audited as a state refusal, never as an internal error");
+}
+const cmd = (over = {}) => ({ actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-abcdefgh", payload: model(), expectedVersion: null, ...over });
+const fingerprintOf = (action, targetId, payload) => FP.buildCommandFingerprint({ action, targetType: ACTION_TARGET_TYPES[action], targetId, payload, serialSchemes: SCHEMES });
+
 // ---- two-transaction lifecycle ----
 await ok("TX1 records initiation durably BEFORE any mutation; TX2 mutates and terminates", async () => {
+  // Ruling A: importEquipmentModel is a frozen catalog writer -- refused before TX1, nothing initiated or mutated.
   const db = fakeDb();
   const { deps } = makeDeps(db);
-  const mark = auditMark(db);
-  const result = await run(deps);
-  assert.deepEqual(result, { status: "applied", targetId: MODEL_ID, resultVersion: 1, replayed: false });
-  assert.equal(db.__transactions(), 2, "exactly two transactions");
-  const op = db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-abcdefgh");
-  assert.equal(op.status, "applied");
-  assert.equal(op.resultVersion, 1);
-  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID).equipmentModelId, MODEL_ID);
-  // Two distinct audit events, initiation first.
-  assert.deepEqual(auditsSince(db, mark).map((a) => [a.action, a.outcome]), [
-    [C.INITIATION_AUDIT_ACTION, "applied"],
-    [C.TERMINAL_AUDIT_ACTION, "applied"],
-  ]);
+  await assertFrozen(db, deps, cmd());
+  assert.equal(db.__transactions(), 1, "only the denial-audit transaction ran: no TX1, no TX2");
+  // Ruling B: the operation state machine (initiation precedes any terminal state) is pure.
+  assert.equal(isAllowedOperationTransition(null, "initiated"), true);
+  assert.equal(isAllowedOperationTransition(null, "applied"), false, "nothing can be applied without a durable initiation");
+  assert.equal(isAllowedOperationTransition(null, "denied"), false);
 });
 await ok("a crash between TX1 and TX2 leaves a resumable initiation and no mutation", async () => {
+  // Ruling A: the frozen command never reaches TX1, so a TX2 crash cannot even be staged; nothing is written.
   const db = fakeDb();
   const { deps } = makeDeps(db);
-  // Simulate the crash by failing the SECOND transaction.
   const original = db.runTransaction.bind(db);
   let calls = 0;
   db.runTransaction = async (fn) => { calls += 1; if (calls === 2) throw new Error("crash after TX1"); return original(fn); };
-  const mark = auditMark(db);
-  await assert.rejects(() => run(deps), /crash after TX1/);
-  const op = db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-abcdefgh");
-  assert.equal(op.status, "initiated", "initiation is durable");
-  assert.equal(op.terminalAt, null);
-  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID), undefined, "no mutation happened");
-  assert.deepEqual(auditsSince(db, mark).map((a) => a.action), [C.INITIATION_AUDIT_ACTION]);
-  // The retry RESUMES the same initiation instead of creating a second one.
+  await assertFrozen(db, deps, cmd());
   db.runTransaction = original;
-  const { deps: deps2 } = makeDeps(db);
-  const mark2 = auditMark(db);
-  const result = await run(deps2);
-  assert.equal(result.status, "applied");
-  assert.equal(result.replayed, true, "reported as a resumed command");
-  assert.deepEqual(auditsSince(db, mark2).map((a) => a.action), [C.TERMINAL_AUDIT_ACTION], "no duplicate initiation audit");
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-abcdefgh").status, "applied");
+  assert.equal(calls, 1, "no second transaction was ever attempted");
+  // Ruling B: an initiated operation is resumable to exactly one terminal state (pure state machine).
+  assert.equal(isAllowedOperationTransition("initiated", "applied"), true);
+  assert.equal(isAllowedOperationTransition("initiated", "denied"), true);
+  assert.equal(isAllowedOperationTransition("initiated", "initiated"), false, "a resume never creates a second initiation");
 });
 await ok("a replay after TX2 reads the terminal record and mutates nothing", async () => {
+  // Ruling A: both the original and the replay are refused by the freeze; neither writes anything.
   const db = fakeDb();
   const { deps } = makeDeps(db);
-  await run(deps);
-  const before = { ...db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID) };
+  await assertFrozen(db, deps, cmd());
   const { deps: deps2 } = makeDeps(db);
-  const mark = auditMark(db);
-  const replay = await run(deps2);
-  assert.deepEqual(replay, { status: "applied", targetId: MODEL_ID, resultVersion: 1, replayed: true });
-  assert.deepEqual(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID), before, "record untouched");
-  assert.deepEqual(auditsSince(db, mark), [], "an exact replay writes no new audit event");
-  assert.equal(db.__transactions(), 3, "replay costs one transaction, not two");
+  await assertFrozen(db, deps2, cmd());
+  // Ruling B: a terminal operation never moves again (pure state machine).
+  for (const [from, to] of [["applied", "applied"], ["applied", "denied"], ["denied", "applied"], ["denied", "denied"]]) {
+    assert.equal(isAllowedOperationTransition(from, to), false, `${from} -> ${to}`);
+    assert.throws(() => assertOperationTransition(from, to), IllegalOperationTransitionError);
+  }
 });
 
 // ---- idempotency ----
 await ok("a reused key with a DIFFERENT command fails closed and changes nothing", async () => {
+  // Ruling A: the original and every reused-key variant are refused by the freeze with no operation record.
   const db = fakeDb();
   const { deps } = makeDeps(db);
-  await run(deps);
-  const opBefore = { ...db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-abcdefgh") };
+  await assertFrozen(db, deps, cmd());
   const variants = [
     { payload: model({ displayName: "Different" }) },      // different payload -> different fingerprint
     { actorUid: "actor-2" },                                // different actor
@@ -226,212 +257,186 @@ await ok("a reused key with a DIFFERENT command fails closed and changes nothing
   ];
   for (const over of variants) {
     const { deps: d } = makeDeps(db);
-    const mark = auditMark(db);
-    await assert.rejects(() => run(d, over), E.IdempotencyConflictError, JSON.stringify(over));
-    assert.deepEqual(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-abcdefgh"), opBefore, "operation untouched");
-    assert.deepEqual(auditsSince(db, mark), [], "a conflict writes no audit for an already-accepted key");
+    await assertFrozen(db, d, cmd(over));
   }
+  // Ruling B: the reused-key comparison is the pure isSameOperationCommand over the fingerprinted binding.
+  const bind = (o = {}) => ({
+    actorUid: "actor-1", action: "importEquipmentModel", targetType: "equipment_models", targetId: MODEL_ID, expectedVersion: null,
+    commandFingerprint: fingerprintOf("importEquipmentModel", MODEL_ID, model()), ...o,
+  });
+  assert.equal(isSameOperationCommand(bind(), bind()), true, "an exact reuse is the same command");
+  assert.equal(isSameOperationCommand(bind(), bind({ commandFingerprint: fingerprintOf("importEquipmentModel", MODEL_ID, model({ displayName: "Different" })) })), false, "different payload");
+  assert.equal(isSameOperationCommand(bind(), bind({ actorUid: "actor-2" })), false, "different actor");
+  assert.equal(isSameOperationCommand(bind(), bind({ expectedVersion: 1 })), false, "different expected version");
 });
 
 // ---- pre-acceptance denial ----
 await ok("an unauthorized actor produces NO operation record, only a terminal denied audit", async () => {
+  // Ruling A: the freeze gate precedes capability resolution -- refused FROZEN, and the resolver is never consulted.
   const db = fakeDb();
-  const { deps } = makeDeps(db, { grant: false });
-  const mark = auditMark(db);
-  await assert.rejects(() => run(deps), E.UnauthorizedActorError);
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-abcdefgh"), undefined);
-  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID), undefined);
-  const denied = auditsSince(db, mark);
-  assert.deepEqual(denied.map((a) => [a.action, a.outcome]), [[C.TERMINAL_AUDIT_ACTION, "denied"]]);
-  assert.equal(denied[0].summary, `importEquipmentModel denied: ${C.DENIAL_REASONS.UNAUTHORIZED}`, "stable sanitized reason");
+  let resolved = 0;
+  const { deps } = makeDeps(db, { grant: () => { resolved += 1; return false; } });
+  await assertFrozen(db, deps, cmd());
+  assert.equal(resolved, 0, "the freeze refuses before any capability is resolved");
 });
 await ok("a resolver that THROWS denies rather than approves", async () => {
+  // Ruling A: frozen before the resolver is reached, so a throwing resolver cannot run at all.
   const db = fakeDb();
-  const { deps } = makeDeps(db, { grant: () => { throw new Error("resolver exploded"); } });
-  await assert.rejects(() => run(deps), E.UnauthorizedActorError);
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-abcdefgh"), undefined);
+  let resolved = 0;
+  const { deps } = makeDeps(db, { grant: () => { resolved += 1; throw new Error("resolver exploded"); } });
+  await assertFrozen(db, deps, cmd());
+  assert.equal(resolved, 0);
 });
 await ok("malformed input is refused before acceptance, with no operation record", async () => {
   const db = fakeDb();
-  const bad = [
-    [{ actorUid: "" }, E.InvalidInputError],
-    [{ action: "nope" }, E.InvalidInputError],
-    [{ idempotencyKey: "short" }, E.InvalidInputError],
-    [{ expectedVersion: -1 }, E.InvalidInputError],
-    [{ payload: { ...model(), status: "BOGUS" } }, Error],       // fingerprint contract refuses it
-    [{ payload: { ...model(), futureField: "x" } }, Error],
-  ];
-  for (const [over, kind] of bad) {
+  // Refused BEFORE the freeze gate (the action must be known before it can be gated): unchanged.
+  for (const [over, kind] of [[{ actorUid: "" }, E.InvalidInputError], [{ action: "nope" }, E.InvalidInputError]]) {
     const { deps } = makeDeps(db);
     const mark = auditMark(db);
     await assert.rejects(() => run(deps, over), kind, JSON.stringify(over));
     assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-abcdefgh"), undefined);
     const events = auditsSince(db, mark);
     assert.deepEqual(events.map((a) => a.outcome), ["denied"]);
-    assert.match(events[0].summary, /denied: (invalid_input|internal_error)$/, "no raw exception text");
+    assert.match(events[0].summary, /denied: (invalid_input|catalog_writer_closed)$/, "no raw exception text, and never internal_error");
+  }
+  // Ruling A: a known action is refused FROZEN before its key, version or payload are even examined.
+  for (const over of [
+    { idempotencyKey: "short" }, { expectedVersion: -1 },
+    { payload: { ...model(), status: "BOGUS" } }, { payload: { ...model(), futureField: "x" } },
+  ]) {
+    const { deps } = makeDeps(db);
+    await assertFrozen(db, deps, cmd(over));
+  }
+  // Ruling B: the payload refusals belong to the pure fingerprint contract, which still refuses them.
+  for (const payload of [{ ...model(), status: "BOGUS" }, { ...model(), futureField: "x" }]) {
+    assert.throws(() => fingerprintOf("importEquipmentModel", MODEL_ID, payload), Error, JSON.stringify(payload));
   }
 });
 await ok("the actor is server-derived: no payload field can change who is recorded", async () => {
+  // Ruling A: both commands are refused FROZEN; no operation record (and so no recorded actor) exists.
   const db = fakeDb();
   const { deps } = makeDeps(db);
-  // actorUid lives on the command input, not the payload; an actorUid inside the payload is an unknown
-  // governed field and is refused outright.
-  await assert.rejects(() => run(deps, { payload: { ...model(), actorUid: "attacker" } }), Error);
+  await assertFrozen(db, deps, cmd({ payload: { ...model(), actorUid: "attacker" } }));
   const { deps: d2 } = makeDeps(db);
-  await run(d2, { actorUid: "actor-9", idempotencyKey: "key-server-uid" });
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-server-uid").actorUid, "actor-9");
+  await assertFrozen(db, d2, cmd({ actorUid: "actor-9", idempotencyKey: "key-server-uid" }));
+  // Ruling B: an actorUid inside the payload is an unknown governed field to the pure fingerprint contract.
+  assert.throws(() => fingerprintOf("importEquipmentModel", MODEL_ID, { ...model(), actorUid: "attacker" }), Error);
 });
 
 // ---- expected version ----
 await ok("expected-version concurrency is enforced on the record's OWN version", async () => {
+  // Ruling A: every version variant is refused FROZEN; the seeded model is untouched.
   const db = fakeDb();
   seedModel(db);
-  // expectedVersion null against an existing record is a conflict, not an overwrite.
-  const { deps } = makeDeps(db);
-  const mark = auditMark(db);
-  const denied = await run(deps, { idempotencyKey: "key-null-vs-exists" });
-  assert.equal(denied.status, "denied");
-  assert.equal(denied.reason, C.DENIAL_REASONS.VERSION_CONFLICT, "a STABLE code, not a raw message");
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-null-vs-exists").status, "denied");
-  assert.deepEqual(auditsSince(db, mark).map((a) => [a.action, a.outcome]), [[C.INITIATION_AUDIT_ACTION, "applied"], [C.TERMINAL_AUDIT_ACTION, "denied"]]);
-  assert.equal(auditsSince(db, mark)[1].summary, `importEquipmentModel denied: ${C.DENIAL_REASONS.VERSION_CONFLICT}`);
-  // A stale expected version is refused.
-  const { deps: d2 } = makeDeps(db);
-  const stale = await run(d2, { idempotencyKey: "key-stale-ver", expectedVersion: 5, payload: model({ version: 6 }) });
-  assert.equal(stale.status, "denied");
-  assert.equal(stale.reason, C.DENIAL_REASONS.VERSION_CONFLICT);
-  // The matching version applies.
-  const { deps: d3 } = makeDeps(db);
-  const applied = await run(d3, { idempotencyKey: "key-good-ver", expectedVersion: 1, payload: model({ version: 2, displayName: "Taylor C713 II" }) });
-  assert.deepEqual(applied, { status: "applied", targetId: MODEL_ID, resultVersion: 2, replayed: false });
-  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID).version, 2);
+  for (const over of [
+    { idempotencyKey: "key-null-vs-exists" },
+    { idempotencyKey: "key-stale-ver", expectedVersion: 5, payload: model({ version: 6 }) },
+    { idempotencyKey: "key-good-ver", expectedVersion: 1, payload: model({ version: 2, displayName: "Taylor C713 II" }) },
+  ]) {
+    const { deps } = makeDeps(db);
+    await assertFrozen(db, deps, cmd(over));
+  }
+  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID).version, 1);
 });
 
 // ---- referential integrity ----
 await ok("an alias cannot create or imply a model", async () => {
+  // Ruling A: alias import is a frozen writer, with or without its model present; no alias, no model.
   const db = fakeDb();
-  const { deps } = makeDeps(db);
   const alias = aliasOf();
-  const denied = await C.runEquipmentCompatibilityCommand({
-    actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-alias-noref", payload: alias,
-  }, deps);
-  assert.equal(denied.status, "denied");
-  assert.equal(denied.reason, C.DENIAL_REASONS.REFERENTIAL_INTEGRITY);
-  assert.equal(db.__raw(EQUIPMENT_MODEL_ALIASES_COLLECTION, alias.aliasKey), undefined, "no alias was created");
-  // With the model present it applies.
+  const { deps } = makeDeps(db);
+  await assertFrozen(db, deps, { actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-alias-noref", payload: alias });
   seedModel(db);
   const { deps: d2 } = makeDeps(db);
-  const applied = await C.runEquipmentCompatibilityCommand({
-    actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-alias-ok", payload: alias,
-  }, d2);
-  assert.equal(applied.status, "applied");
-  assert.equal(db.__raw(EQUIPMENT_MODEL_ALIASES_COLLECTION, alias.aliasKey).equipmentModelId, MODEL_ID);
+  await assertFrozen(db, d2, { actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-alias-ok", payload: alias });
+  assert.equal(db.__raw(EQUIPMENT_MODEL_ALIASES_COLLECTION, alias.aliasKey), undefined, "no alias was created");
 });
 await ok("an alias already owned by another model fails closed for review", async () => {
+  // Ruling A: both alias imports are refused FROZEN; no alias ownership is written.
   const db = fakeDb();
   seedModel(db);
   db.__seed(EQUIPMENT_MODELS_COLLECTION, "TAYLOR--C825", M.modelToFirestore({ model: model({ modelNumber: "C825", equipmentModelId: "TAYLOR--C825" }), ...META }));
-  const { deps } = makeDeps(db);
   const alias = aliasOf();
-  await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-alias-own", payload: alias }, deps);
+  const { deps } = makeDeps(db);
+  await assertFrozen(db, deps, { actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-alias-own", payload: alias });
   const { deps: d2 } = makeDeps(db);
-  const conflicting = await C.runEquipmentCompatibilityCommand({
-    actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-alias-conflict",
-    payload: aliasOf({ equipmentModelId: "TAYLOR--C825" }),
-  }, d2);
-  assert.equal(conflicting.status, "denied");
-  assert.equal(conflicting.reason, C.DENIAL_REASONS.REFERENTIAL_INTEGRITY);
-  assert.equal(db.__raw(EQUIPMENT_MODEL_ALIASES_COLLECTION, alias.aliasKey).equipmentModelId, MODEL_ID, "owner unchanged");
+  await assertFrozen(db, d2, { actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-alias-conflict", payload: aliasOf({ equipmentModelId: "TAYLOR--C825" }) });
+  // Ruling B: one alias key owned by two models is a conflict to the pure D1 detector.
+  const rawAlias = (equipmentModelId) => ({ aliasType: "SOURCE_MODEL", manufacturerId: "Taylor", rawValue: "C-713", equipmentModelId });
+  const conflicts = D1.detectModelAliasConflicts([rawAlias(MODEL_ID), rawAlias("TAYLOR--C825")]);
+  assert.deepEqual(conflicts.invalid, []);
+  assert.deepEqual(conflicts.conflicts, [{ aliasKey: alias.aliasKey, equipmentModelIds: ["TAYLOR--C713", "TAYLOR--C825"] }]);
 });
 await ok("evidence cannot create the relationship it cites, and is immutable once written", async () => {
+  // Ruling A: evidence import is refused FROZEN with and without its relationship, and on a re-key.
   const db = fakeDb();
   seedModel(db);
   const compat = compatOf();
   const source = sourceOf(compat.compatibilityId);
   const { deps } = makeDeps(db);
-  const orphan = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-src-orphan", payload: source }, deps);
-  assert.equal(orphan.status, "denied");
-  assert.equal(orphan.reason, C.DENIAL_REASONS.REFERENTIAL_INTEGRITY);
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, source.sourceId), undefined);
+  await assertFrozen(db, deps, { actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-src-orphan", payload: source });
   seedCompat(db, compat);
-  const { deps: d2 } = makeDeps(db);
-  assert.equal((await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-src-ok", payload: source }, d2)).status, "applied");
-  // A second, differently-keyed command for the same sourceId is refused: evidence is immutable.
-  const { deps: d3 } = makeDeps(db);
-  const again = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-src-again", payload: source }, d3);
-  assert.equal(again.status, "denied");
-  assert.equal(again.reason, C.DENIAL_REASONS.ALREADY_EXISTS);
+  for (const key of ["key-src-ok", "key-src-again"]) {
+    const { deps: d } = makeDeps(db);
+    await assertFrozen(db, d, { actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: key, payload: source });
+  }
+  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, source.sourceId), undefined);
 });
 await ok("a compatibility relationship requires its equipment model", async () => {
+  // Ruling A: compatibility import is a frozen writer; no relationship is written.
   const db = fakeDb();
   const compat = compatOf();
   const { deps } = makeDeps(db);
-  const denied = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibility", idempotencyKey: "key-cmp-noref", payload: compat }, deps);
-  assert.equal(denied.status, "denied");
-  assert.equal(denied.reason, C.DENIAL_REASONS.REFERENTIAL_INTEGRITY);
+  await assertFrozen(db, deps, { actorUid: "actor-1", action: "importCompatibility", idempotencyKey: "key-cmp-noref", payload: compat });
   assert.equal(db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId), undefined);
 });
 
 // ---- verify / correct ----
 await ok("verification bumps the record version and never auto-creates", async () => {
+  // Ruling A: verification is a frozen writer, against a missing and an existing relationship alike.
   const db = fakeDb();
   seedModel(db);
   const compat = compatOf();
+  const verify = (key) => ({ actorUid: "actor-1", action: "verifyCompatibility", idempotencyKey: key, payload: { compatibilityId: compat.compatibilityId, verificationStatus: "VERIFIED" }, expectedVersion: 1 });
   const { deps } = makeDeps(db);
-  const missing = await C.runEquipmentCompatibilityCommand({
-    actorUid: "actor-1", action: "verifyCompatibility", idempotencyKey: "key-verify-missing",
-    payload: { compatibilityId: compat.compatibilityId, verificationStatus: "VERIFIED" }, expectedVersion: 1,
-  }, deps);
-  assert.equal(missing.status, "denied");
-  assert.equal(missing.reason, C.DENIAL_REASONS.NOT_FOUND);
+  await assertFrozen(db, deps, verify("key-verify-missing"));
   seedCompat(db, compat);
   const { deps: d2 } = makeDeps(db);
-  const applied = await C.runEquipmentCompatibilityCommand({
-    actorUid: "actor-1", action: "verifyCompatibility", idempotencyKey: "key-verify-ok",
-    payload: { compatibilityId: compat.compatibilityId, verificationStatus: "VERIFIED" }, expectedVersion: 1,
-  }, d2);
-  assert.deepEqual(applied, { status: "applied", targetId: compat.compatibilityId, resultVersion: 2, replayed: false });
+  await assertFrozen(db, d2, verify("key-verify-ok"));
   const stored = db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId);
-  assert.equal(stored.verificationStatus, "VERIFIED");
-  assert.equal(stored.version, 2);
+  assert.equal(stored.verificationStatus, "UNVERIFIED");
+  assert.equal(stored.version, 1);
 });
 await ok("a correction requires an existing relationship", async () => {
+  // Ruling A: correction is a frozen writer, against a missing and an existing relationship alike.
   const db = fakeDb();
   seedModel(db);
   const compat = compatOf();
+  const correct = (key) => ({ actorUid: "actor-1", action: "correctCompatibility", idempotencyKey: key, payload: compatOf({ version: 2, notes: "corrected" }), expectedVersion: 1 });
   const { deps } = makeDeps(db);
-  const missing = await C.runEquipmentCompatibilityCommand({
-    actorUid: "actor-1", action: "correctCompatibility", idempotencyKey: "key-correct-missing",
-    payload: compatOf({ version: 2, notes: "corrected" }), expectedVersion: 1,
-  }, deps);
-  assert.equal(missing.status, "denied");
+  await assertFrozen(db, deps, correct("key-correct-missing"));
   seedCompat(db, compat);
   const { deps: d2 } = makeDeps(db);
-  const applied = await C.runEquipmentCompatibilityCommand({
-    actorUid: "actor-1", action: "correctCompatibility", idempotencyKey: "key-correct-ok",
-    payload: compatOf({ version: 2, notes: "corrected" }), expectedVersion: 1,
-  }, d2);
-  assert.equal(applied.status, "applied");
-  assert.equal(db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).notes, "corrected");
+  await assertFrozen(db, d2, correct("key-correct-ok"));
+  assert.equal(db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).notes, null);
 });
 
 // ---- audit pairing + atomicity ----
 await ok("audit persistence is create-only and ATOMIC with its transaction", async () => {
+  // Ruling A: the frozen command stages exactly one terminal denied audit, and nothing else.
   const db = fakeDb();
   const { deps } = makeDeps(db);
   const mark = auditMark(db);
-  await run(deps, { idempotencyKey: "key-audit-pair" });
+  await assertFrozen(db, deps, cmd({ idempotencyKey: "key-audit-pair" }));
   const events = auditsSince(db, mark);
-  assert.equal(events.length, 2);
-  assert.deepEqual(events.map((a) => a.action), [C.INITIATION_AUDIT_ACTION, C.TERMINAL_AUDIT_ACTION]);
-  assert.equal(events[0].targetId, MODEL_ID);
-  assert.equal(events[1].targetType, "equipment_models");
+  assert.equal(events.length, 1);
+  assert.equal(events[0].targetType, "equipment_models");
   for (const a of events) {
     assert.ok(a.summary.length <= 500, "summary is bounded");
     assert.equal(typeof a.actorUid, "string");
     assert.ok(a.at instanceof Timestamp, "audit carries a governed timestamp");
   }
-  // CREATE-ONLY: re-staging an EXISTING audit id fails at commit rather than overwriting.
+  // Ruling B: CREATE-ONLY is unchanged -- re-staging the EXISTING (denial) audit id fails at commit rather than overwriting.
   const existingAuditId = [...db.__committed.keys()].find((k) => k.startsWith(`${AUDIT_EVENTS}/`)).split("/")[1];
   await assert.rejects(() => db.runTransaction(async (txn) => {
     txn.create(db.collection(AUDIT_EVENTS).doc(existingAuditId), { rewritten: true });
@@ -439,20 +444,25 @@ await ok("audit persistence is create-only and ATOMIC with its transaction", asy
   assert.notEqual(db.__raw(AUDIT_EVENTS, existingAuditId).rewritten, true, "the existing event is untouched");
 });
 await ok("a rolled-back TX1 leaves NO audit event and no operation", async () => {
+  // Ruling A: the only transaction a frozen command runs is its denial-audit one; rolling THAT back
+  // surfaces the rollback and commits nothing at all -- no audit, no operation, no mutation.
   const db = fakeDb();
   const { deps } = makeDeps(db);
   const mark = auditMark(db);
   const original = db.runTransaction.bind(db);
-  db.runTransaction = async (fn) => original(async (txn) => { await fn(txn); throw new Error("TX1 rolled back"); });
+  let calls = 0;
+  db.runTransaction = async (fn) => original(async (txn) => { calls += 1; await fn(txn); throw new Error("TX1 rolled back"); });
   await assert.rejects(() => run(deps, { idempotencyKey: "key-tx1-rollback" }), /TX1 rolled back/);
   db.runTransaction = original;
-  assert.deepEqual(auditsSince(db, mark), [], "the initiation audit rolled back with its transaction");
+  assert.equal(calls, 1, "only the denial-audit transaction was attempted");
+  assert.deepEqual(auditsSince(db, mark), [], "the denial audit rolled back with its transaction");
   assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-tx1-rollback"), undefined);
+  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID), undefined);
 });
 await ok("a rolled-back TX2 leaves the initiation intact and NO terminal audit or mutation", async () => {
+  // Ruling A: frozen before TX1, so there is no TX2 to roll back and no initiation to leave behind.
   const db = fakeDb();
   const { deps } = makeDeps(db);
-  const mark = auditMark(db);
   const original = db.runTransaction.bind(db);
   let calls = 0;
   db.runTransaction = async (fn) => original(async (txn) => {
@@ -460,44 +470,33 @@ await ok("a rolled-back TX2 leaves the initiation intact and NO terminal audit o
     if ((calls += 1) === 2) throw new Error("TX2 rolled back");
     return r;
   });
-  await assert.rejects(() => run(deps, { idempotencyKey: "key-tx2-rollback" }), /TX2 rolled back/);
+  await assertFrozen(db, deps, cmd({ idempotencyKey: "key-tx2-rollback" }));
   db.runTransaction = original;
-  assert.deepEqual(auditsSince(db, mark).map((a) => a.action), [C.INITIATION_AUDIT_ACTION], "only TX1 committed");
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-tx2-rollback").status, "initiated");
-  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID), undefined, "no mutation committed");
+  assert.equal(calls, 1);
 });
 await ok("verification and correction each emit their SPECIALIZED event alongside the terminal one", async () => {
+  // Ruling A: both are refused FROZEN -- no specialized event, only the terminal denied audit each.
   const db = fakeDb();
   seedModel(db);
   const compat = compatOf();
   seedCompat(db, compat);
   const { deps } = makeDeps(db);
-  let mark = auditMark(db);
-  await C.runEquipmentCompatibilityCommand({
+  await assertFrozen(db, deps, {
     actorUid: "actor-1", action: "verifyCompatibility", idempotencyKey: "key-verify-audit",
     payload: { compatibilityId: compat.compatibilityId, verificationStatus: "VERIFIED" }, expectedVersion: 1,
-  }, deps);
-  assert.deepEqual(auditsSince(db, mark).map((a) => a.action), [
-    C.INITIATION_AUDIT_ACTION, C.TERMINAL_AUDIT_ACTION, "equipmentCompatibilityVerification",
-  ]);
+  });
   const { deps: d2 } = makeDeps(db);
-  mark = auditMark(db);
-  await C.runEquipmentCompatibilityCommand({
+  await assertFrozen(db, d2, {
     actorUid: "actor-1", action: "correctCompatibility", idempotencyKey: "key-correct-audit",
     payload: compatOf({ version: 3, notes: "corrected" }), expectedVersion: 2,
-  }, d2);
-  assert.deepEqual(auditsSince(db, mark).map((a) => a.action), [
-    C.INITIATION_AUDIT_ACTION, C.TERMINAL_AUDIT_ACTION, "equipmentCompatibilityCorrection",
-  ]);
+  });
 });
 // ---- conflict surfacing is decided by the GOVERNED D2 analyzer, not by the incoming record ----
-const importSource = async (db, source, key) => {
+// Ruling A for every import below (frozen, relationship untouched); Ruling B: the conflict rule itself is
+// the PURE analyzeCompatibilityEvidence the command delegates to, so it is proven against it directly.
+const importSourceFrozen = async (db, source, key) => {
   const { deps } = makeDeps(db);
-  const mark = auditMark(db);
-  const result = await C.runEquipmentCompatibilityCommand({
-    actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: key, payload: source,
-  }, deps);
-  return { result, events: auditsSince(db, mark) };
+  await assertFrozen(db, deps, { actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: key, payload: source });
 };
 const statusOf = (db, compat) => db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).verificationStatus;
 const freshWithCompat = (verificationStatus = "UNVERIFIED") => {
@@ -508,129 +507,96 @@ const freshWithCompat = (verificationStatus = "UNVERIFIED") => {
   return { db, compat };
 };
 const claim = (compat, observedClaim, fp) => sourceOf(compat.compatibilityId, { observedClaim, contentFingerprint: fp.repeat(64) });
+const analyze = (compat, records) => D2.analyzeCompatibilityEvidence(records, { expectedCompatibilityId: compat.compatibilityId });
 
 await ok("CONTRADICTS as the first and only evidence is NOT a conflict", async () => {
   const { db, compat } = freshWithCompat();
-  const { result, events } = await importSource(db, claim(compat, "CONTRADICTS", "a"), "key-only-contradicts");
-  assert.equal(result.status, "applied");
-  assert.equal(statusOf(db, compat), "UNVERIFIED", "no support-vs-contradiction, so no CONFLICT");
-  assert.equal(events.some((e) => e.action === "equipmentCompatibilityConflict"), false);
+  await importSourceFrozen(db, claim(compat, "CONTRADICTS", "a"), "key-only-contradicts");
+  assert.equal(statusOf(db, compat), "UNVERIFIED");
+  const a = analyze(compat, [claim(compat, "CONTRADICTS", "a")]);
+  assert.equal(a.hasConflict, false, "no support-vs-contradiction, so no CONFLICT");
+  assert.equal(a.recommendedStatus, "CONTRADICTED");
+  assert.deepEqual(a.invalid, []);
 });
 await ok("SUPPORTS then CONTRADICTS is a conflict", async () => {
   const { db, compat } = freshWithCompat();
-  await importSource(db, claim(compat, "SUPPORTS", "a"), "key-s-then-c-1");
-  assert.equal(statusOf(db, compat), "UNVERIFIED", "supporting evidence never auto-verifies");
-  const { events } = await importSource(db, claim(compat, "CONTRADICTS", "b"), "key-s-then-c-2");
-  assert.equal(statusOf(db, compat), "CONFLICT");
-  assert.equal(events.filter((e) => e.action === "equipmentCompatibilityConflict").length, 1);
+  await importSourceFrozen(db, claim(compat, "SUPPORTS", "a"), "key-s-then-c-1");
+  await importSourceFrozen(db, claim(compat, "CONTRADICTS", "b"), "key-s-then-c-2");
+  assert.equal(statusOf(db, compat), "UNVERIFIED");
+  assert.equal(analyze(compat, [claim(compat, "SUPPORTS", "a")]).hasConflict, false, "supporting evidence alone is no conflict");
+  const both = analyze(compat, [claim(compat, "SUPPORTS", "a"), claim(compat, "CONTRADICTS", "b")]);
+  assert.equal(both.hasConflict, true);
+  assert.equal(both.recommendedStatus, "CONFLICT");
 });
 await ok("CONTRADICTS then SUPPORTS reaches the SAME conflict result (order-independent)", async () => {
   const { db, compat } = freshWithCompat();
-  await importSource(db, claim(compat, "CONTRADICTS", "a"), "key-c-then-s-1");
-  assert.equal(statusOf(db, compat), "UNVERIFIED", "still only one side of the evidence");
-  const { events } = await importSource(db, claim(compat, "SUPPORTS", "b"), "key-c-then-s-2");
-  assert.equal(statusOf(db, compat), "CONFLICT", "the SUPPORTS arrival is what completes the conflict");
-  assert.equal(events.filter((e) => e.action === "equipmentCompatibilityConflict").length, 1);
+  await importSourceFrozen(db, claim(compat, "CONTRADICTS", "a"), "key-c-then-s-1");
+  await importSourceFrozen(db, claim(compat, "SUPPORTS", "b"), "key-c-then-s-2");
+  assert.equal(statusOf(db, compat), "UNVERIFIED");
+  assert.equal(analyze(compat, [claim(compat, "CONTRADICTS", "a")]).hasConflict, false, "still only one side of the evidence");
+  const cs = analyze(compat, [claim(compat, "CONTRADICTS", "a"), claim(compat, "SUPPORTS", "b")]);
+  const sc = analyze(compat, [claim(compat, "SUPPORTS", "b"), claim(compat, "CONTRADICTS", "a")]);
+  assert.equal(cs.hasConflict, true, "the SUPPORTS arrival is what completes the conflict");
+  assert.deepEqual(cs, sc, "order-independent");
 });
 await ok("INCONCLUSIVE evidence never creates a conflict, in any combination", async () => {
   const { db, compat } = freshWithCompat();
-  await importSource(db, claim(compat, "INCONCLUSIVE", "a"), "key-inc-1");
+  await importSourceFrozen(db, claim(compat, "INCONCLUSIVE", "a"), "key-inc-1");
+  await importSourceFrozen(db, claim(compat, "INCONCLUSIVE", "b"), "key-inc-2");
+  await importSourceFrozen(db, claim(compat, "SUPPORTS", "c"), "key-inc-3");
   assert.equal(statusOf(db, compat), "UNVERIFIED");
-  await importSource(db, claim(compat, "INCONCLUSIVE", "b"), "key-inc-2");
-  assert.equal(statusOf(db, compat), "UNVERIFIED");
-  const { events } = await importSource(db, claim(compat, "SUPPORTS", "c"), "key-inc-3");
-  assert.equal(statusOf(db, compat), "UNVERIFIED", "support + inconclusive is not a conflict");
-  assert.equal(events.some((e) => e.action === "equipmentCompatibilityConflict"), false);
+  assert.equal(analyze(compat, [claim(compat, "INCONCLUSIVE", "a")]).hasConflict, false);
+  assert.equal(analyze(compat, [claim(compat, "INCONCLUSIVE", "a"), claim(compat, "INCONCLUSIVE", "b")]).hasConflict, false);
+  assert.equal(analyze(compat, [claim(compat, "INCONCLUSIVE", "a"), claim(compat, "INCONCLUSIVE", "b"), claim(compat, "SUPPORTS", "c")]).hasConflict, false, "support + inconclusive is not a conflict");
 });
 await ok("multiple supporting and contradicting sources still resolve to one conflict transition", async () => {
   const { db, compat } = freshWithCompat();
-  await importSource(db, claim(compat, "SUPPORTS", "a"), "key-multi-1");
-  await importSource(db, claim(compat, "SUPPORTS", "b"), "key-multi-2");
-  const first = await importSource(db, claim(compat, "CONTRADICTS", "c"), "key-multi-3");
-  assert.equal(statusOf(db, compat), "CONFLICT");
-  assert.equal(first.events.filter((e) => e.action === "equipmentCompatibilityConflict").length, 1);
-  const versionAfterFirst = db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).version;
-  // Already CONFLICT: further contradicting evidence is recorded, but there is no second transition.
-  const second = await importSource(db, claim(compat, "CONTRADICTS", "d"), "key-multi-4");
-  assert.equal(second.result.status, "applied");
-  assert.equal(second.events.some((e) => e.action === "equipmentCompatibilityConflict"), false, "no duplicate event");
-  assert.equal(db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).version, versionAfterFirst, "no duplicate transition");
+  for (const [c, fp, key] of [["SUPPORTS", "a", "key-multi-1"], ["SUPPORTS", "b", "key-multi-2"], ["CONTRADICTS", "c", "key-multi-3"], ["CONTRADICTS", "d", "key-multi-4"]]) {
+    await importSourceFrozen(db, claim(compat, c, fp), key);
+  }
+  assert.equal(statusOf(db, compat), "UNVERIFIED");
+  assert.equal(db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).version, 1);
+  const many = analyze(compat, [claim(compat, "SUPPORTS", "a"), claim(compat, "SUPPORTS", "b"), claim(compat, "CONTRADICTS", "c"), claim(compat, "CONTRADICTS", "d")]);
+  assert.equal(many.hasConflict, true);
+  assert.equal(many.supporting.length, 2);
+  assert.equal(many.contradicting.length, 2);
 });
 await ok("malformed stored evidence fails closed: no source, no mutation, no audit committed", async () => {
   const { db, compat } = freshWithCompat();
-  await importSource(db, claim(compat, "SUPPORTS", "a"), "key-mal-1");
-  // Corrupt a stored evidence document that the analysis must read.
-  const badId = [...db.__committed.keys()].find((k) => k.startsWith(`${EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION}/`)).split("/")[1];
-  db.__seed(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, badId, { ...db.__raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, badId), observedClaim: "MAYBE" });
   const incoming = claim(compat, "CONTRADICTS", "b");
-  const { deps } = makeDeps(db);
-  const mark = auditMark(db);
-  const statusBefore = statusOf(db, compat);
-  await assert.rejects(
-    () => C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-mal-2", payload: incoming }, deps),
-    (e) => e.constructor.name === "MalformedStoredRecordError",
-    "malformed stored evidence must fail closed"
-  );
+  await importSourceFrozen(db, incoming, "key-mal-2");
   assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, incoming.sourceId), undefined, "no new evidence");
-  assert.equal(statusOf(db, compat), statusBefore, "no relationship mutation");
-  assert.deepEqual(auditsSince(db, mark).map((a) => a.action), [C.INITIATION_AUDIT_ACTION], "TX2 committed nothing");
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-mal-2").status, "initiated", "resumable, not terminal");
+  // The command fails closed whenever the analyzer reports ANY invalid record; that verdict is pure.
+  const a = analyze(compat, [{ ...claim(compat, "SUPPORTS", "a"), observedClaim: "MAYBE" }, incoming]);
+  assert.equal(a.invalid.length, 1, "malformed stored evidence is reported, never silently analyzed");
 });
 // ---- ITEM K: importCompatibilitySource's conflict-analysis read must be BOUNDED, not unbounded ----
 await ok("importCompatibilitySource's conflict-analysis read is bounded to .limit(cap+1), never an unbounded .where() scan", async () => {
+  // Ruling A: frozen before TX2, so the conflict-analysis query is never issued at all.
   const { db, compat } = freshWithCompat();
-  await importSource(db, claim(compat, "SUPPORTS", "a"), "key-bound-seed");
-  await C.runEquipmentCompatibilityCommand({
-    actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-bound-probe",
-    payload: claim(compat, "SUPPORTS", "b"),
-  }, makeDeps(db).deps);
-  const calls = db.__limitCalls().filter((c) => c.c === EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION);
-  assert.ok(calls.length >= 1, "the write-time conflict-analysis read goes through a limited query");
-  for (const c of calls) assert.equal(c.n, RS.MAX_EVIDENCE_PER_RELATIONSHIP + 1);
+  await importSourceFrozen(db, claim(compat, "SUPPORTS", "a"), "key-bound-seed");
+  await importSourceFrozen(db, claim(compat, "SUPPORTS", "b"), "key-bound-probe");
+  assert.deepEqual(db.__limitCalls().filter((c) => c.c === EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION), [], "no evidence read happened");
 });
 await ok("importCompatibilitySource FAILS CLOSED with a governed denial once a relationship's STORED evidence already exceeds the cap, rather than reading it unboundedly", async () => {
-  // This is the exact condition ITEM K describes: the evidence set for one relationship has grown past
-  // the governed per-relationship bound (however that happened -- the bound is what matters going
-  // forward, not how the set got there), so seed it directly rather than depending on the sequencing of
-  // prior imports (whose OWN reads only ever see what existed strictly before them).
+  // Ruling A: even over the cap, the import is refused FROZEN first; the stored evidence set is untouched.
   const { db, compat } = freshWithCompat();
   for (let i = 0; i < RS.MAX_EVIDENCE_PER_RELATIONSHIP + 1; i++) {
     const s = sourceOf(compat.compatibilityId, { contentFingerprint: `${i}`.padStart(64, "0") });
     db.__seed(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, s.sourceId, CR.sourceToFirestore({ source: s, ...META }));
   }
-  const storedCount = [...db.__committed.keys()].filter((k) => k.startsWith(`${EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION}/`)).length;
-  assert.equal(storedCount, RS.MAX_EVIDENCE_PER_RELATIONSHIP + 1, "the relationship already has one more than the governed cap");
-  // The next import's conflict-analysis read must be a CLEAR GOVERNED DENIAL -- not a hang, not a
-  // silent unbounded read, and (per the immutable/create-only evidence contract) not a mutation.
-  const mark = auditMark(db);
   const oneMore = sourceOf(compat.compatibilityId, { contentFingerprint: `${RS.MAX_EVIDENCE_PER_RELATIONSHIP + 1}`.padStart(64, "0") });
-  const denied = await C.runEquipmentCompatibilityCommand({
-    actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-cap-overflow", payload: oneMore,
-  }, makeDeps(db).deps);
-  assert.equal(denied.status, "denied");
-  assert.equal(denied.reason, C.DENIAL_REASONS.EVIDENCE_LIMIT_EXCEEDED, "a stable, governed reason code");
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, oneMore.sourceId), undefined, "no new evidence written");
+  await importSourceFrozen(db, oneMore, "key-cap-overflow");
   assert.equal(
     [...db.__committed.keys()].filter((k) => k.startsWith(`${EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION}/`)).length,
-    storedCount,
+    RS.MAX_EVIDENCE_PER_RELATIONSHIP + 1,
     "the evidence set did not grow"
   );
-  assert.deepEqual(auditsSince(db, mark).map((a) => [a.action, a.outcome]), [
-    [C.INITIATION_AUDIT_ACTION, "applied"],
-    [C.TERMINAL_AUDIT_ACTION, "denied"],
-  ]);
-  assert.equal(auditsSince(db, mark)[1].summary, `importCompatibilitySource denied: ${C.DENIAL_REASONS.EVIDENCE_LIMIT_EXCEEDED}`);
-  // The operation itself is a governed terminal denial, resumable-idempotent like any other denial. A
-  // RETRY of this same command therefore keeps failing the same governed way (this is the "every future
-  // import fails, forever" bug ITEM K describes) rather than eventually timing out unbounded.
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-cap-overflow").status, "denied");
 });
 await ok("a rolled-back TX2 with the evidence query commits neither evidence nor conflict", async () => {
+  // Ruling A: frozen before TX1; with the TX2 rollback injected, nothing is committed and the retry is frozen too.
   const { db, compat } = freshWithCompat();
-  await importSource(db, claim(compat, "SUPPORTS", "a"), "key-roll-1");
   const incoming = claim(compat, "CONTRADICTS", "b");
-  const { deps } = makeDeps(db);
-  const mark = auditMark(db);
   const original = db.runTransaction.bind(db);
   let calls = 0;
   db.runTransaction = async (fn) => original(async (txn) => {
@@ -638,30 +604,23 @@ await ok("a rolled-back TX2 with the evidence query commits neither evidence nor
     if ((calls += 1) === 2) throw new Error("TX2 rolled back");
     return r;
   });
-  await assert.rejects(
-    () => C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-roll-2", payload: incoming }, deps),
-    /TX2 rolled back/
-  );
+  await importSourceFrozen(db, incoming, "key-roll-2");
   db.runTransaction = original;
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, incoming.sourceId), undefined);
+  await importSourceFrozen(db, incoming, "key-roll-2");
   assert.equal(statusOf(db, compat), "UNVERIFIED");
-  assert.deepEqual(auditsSince(db, mark).map((a) => a.action), [C.INITIATION_AUDIT_ACTION]);
-  // The retry RESUMES and now applies the conflict exactly once.
-  const { deps: d2 } = makeDeps(db);
-  const retry = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-roll-2", payload: incoming }, d2);
-  assert.equal(retry.status, "applied");
-  assert.equal(statusOf(db, compat), "CONFLICT");
 });
 await ok("the evidence query is bounded to its own relationship", async () => {
   const { db, compat } = freshWithCompat();
   const other = compatOf({ partId: "TST-2002" });
   seedCompat(db, other);
-  await importSource(db, claim(other, "SUPPORTS", "a"), "key-other-1");
-  // Supporting evidence on a DIFFERENT relationship must not complete a conflict here.
-  const { events } = await importSource(db, claim(compat, "CONTRADICTS", "b"), "key-bounded-1");
+  await importSourceFrozen(db, claim(other, "SUPPORTS", "a"), "key-other-1");
+  await importSourceFrozen(db, claim(compat, "CONTRADICTS", "b"), "key-bounded-1");
   assert.equal(statusOf(db, compat), "UNVERIFIED");
   assert.equal(statusOf(db, other), "UNVERIFIED");
-  assert.equal(events.some((e) => e.action === "equipmentCompatibilityConflict"), false);
+  // Supporting evidence on a DIFFERENT relationship is excluded (as a mismatch) and cannot complete a conflict here.
+  const a = analyze(compat, [claim(other, "SUPPORTS", "a"), claim(compat, "CONTRADICTS", "b")]);
+  assert.equal(a.hasConflict, false);
+  assert.deepEqual(a.invalid, [{ index: 0, reason: "compatibility_id_mismatch" }]);
 });
 
 // ---- hostile command envelopes ----
@@ -720,258 +679,115 @@ await ok("a hostile envelope field is read at most once", async () => {
 //
 // The invariant: the record that is PERSISTED is exactly the record that was FINGERPRINTED. A caller
 // that keeps a reference to its payload (or its serialSchemes registry) and mutates it after acceptance
-// must not be able to change what is written, at ANY window -- while resolvePermission is pending,
-// between fingerprinting and TX1, between TX1 and TX2, or between transaction retries.
-const FP = await import("../lib/equipmentCompatibility/commandFingerprint.js");
+// must not be able to change what is written, at ANY window.
+//
+// Ruling A: every command below is refused FROZEN before any window opens (resolvePermission is never
+// entered, no transaction runs), so nothing is written for a mutation to reach. Ruling B: the invariant
+// itself lives in the PURE FP.prepareCommand, which detaches the payload and registry ONCE; mutating the
+// caller's objects afterwards must not change the prepared value or its fingerprint.
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
-const { ACTION_TARGET_TYPES } = await import("../lib/equipmentCompatibility/operations.js");
 
-// Mutate at a chosen boundary and assert the stored document still matches the ORIGINAL command.
-async function assertMutationCannotLand({ action, payload, expectedVersion = null, collection, docId, seed, mutate, when, key }) {
+async function assertMutationCannotLand({ action, payload, expectedVersion = null, docId, seed, mutate, key }) {
   const db = fakeDb();
   if (seed) seed(db);
   const original = structuredClone(payload);
-  const expectedFingerprint = FP.buildCommandFingerprint({
-    action, targetType: ACTION_TARGET_TYPES[action], targetId: docId, payload: original, serialSchemes: SCHEMES,
-  });
   const registry = structuredClone(SCHEMES);
-  let mutated = false;
-  const fire = () => { if (!mutated) { mutate(payload, registry); mutated = true; } };
-
+  // A: the command is refused; a permission resolver that would open the pending window is never called.
   const { deps } = makeDeps(db);
   deps.serialSchemes = registry;
-  // The pending-permission window is driven by a CONTROLLABLE deferred, so the mutation provably lands
-  // while resolvePermission is still unresolved -- not merely "somewhere inside an async function".
-  let entered = null, gate = null;
-  if (when === "resolvePermission") {
-    entered = deferred();
-    gate = deferred();
-    deps.resolvePermission = () => { entered.resolve(); return gate.promise.then(() => true); };
-  }
-
-  const originalRunTransaction = db.runTransaction.bind(db);
-  let txCount = 0;
-  if (when === "betweenTransactions") {
-    db.runTransaction = async (fn) => { const r = await originalRunTransaction(fn); if ((txCount += 1) === 1) fire(); return r; };
-  } else if (when === "betweenRetries") {
-    // Model a retry: the first TX2 attempt is rolled back, the payload is mutated, then it is retried.
-    db.runTransaction = async (fn) => {
-      txCount += 1;
-      if (txCount === 2) {
-        try { await originalRunTransaction(async (txn) => { await fn(txn); throw new Error("retry"); }); } catch { /* rolled back */ }
-        fire();
-      }
-      return originalRunTransaction(fn);
-    };
-  }
-
-  const running = C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action, idempotencyKey: key, payload, expectedVersion }, deps);
-  if (when === "resolvePermission") {
-    await entered.promise;   // resolvePermission has been entered and is still pending
-    fire();                  // the caller mutates its retained payload and registry NOW
-    gate.resolve();          // only then does the capability resolve
-  }
-  const result = await running;
-  db.runTransaction = originalRunTransaction;
-  assert.equal(result.status, "applied", `${key}: command applied`);
-
-  const stored = db.__raw(collection, docId);
-  assert.ok(stored, `${key}: the ORIGINAL target document was written`);
-  const op = db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, key);
-  // NO EXEMPTIONS: whichever window the mutation used, the ORIGINAL submitted command is what must have
-  // been fingerprinted and stored.
-  assert.equal(op.commandFingerprint, expectedFingerprint, `${key}: fingerprint is the original command`);
-  assert.equal(mutated, true, `${key}: the mutation actually fired`);
-  // Whatever was fingerprinted, the persisted record must reproduce that exact fingerprint.
-  const rebuilt = FP.buildCommandFingerprint({
-    action, targetType: ACTION_TARGET_TYPES[action], targetId: docId,
-    payload: rebuildGovernedValue(action, stored), serialSchemes: SCHEMES,
-  });
-  assert.equal(rebuilt, op.commandFingerprint, `${key}: the persisted record reproduces the operation fingerprint`);
-  return { db, stored, op };
-}
-
-// Reconstruct the governed value from a stored document (drops the repository audit envelope).
-function rebuildGovernedValue(action, stored) {
-  const drop = new Set(["createdAt", "createdBy", "updatedAt", "updatedBy"]);
-  const value = {};
-  for (const [k, v] of Object.entries(stored)) {
-    if (drop.has(k)) continue;
-    value[k] = (v !== null && typeof v === "object" && !(v instanceof Timestamp)) ? { ...v } : v;
-  }
-  if (action === "importEquipmentModelAlias") return value;
-  return value;
+  let entered = false;
+  deps.resolvePermission = () => { entered = true; return deferred().promise; };
+  await assertFrozen(db, deps, { actorUid: "actor-1", action, idempotencyKey: key, payload, expectedVersion });
+  assert.equal(entered, false, `${key}: the permission window never opened`);
+  // B: prepare, then mutate the caller's retained payload and registry.
+  const prepared = FP.prepareCommand({ action, targetType: ACTION_TARGET_TYPES[action], targetId: docId, payload, serialSchemes: registry });
+  const valueBefore = structuredClone(prepared.value);
+  mutate(payload, registry);
+  assert.deepEqual(structuredClone(prepared.value), valueBefore, `${key}: the prepared value is detached from the caller's payload`);
+  assert.equal(prepared.fingerprint, fingerprintOf(action, docId, original), `${key}: the fingerprint is the ORIGINAL command's`);
+  return { prepared };
 }
 
 await ok("a payload mutated AFTER acceptance cannot reach storage, at every window", async () => {
-  const windows = ["resolvePermission", "betweenTransactions", "betweenRetries"];
   const cases = [
-    ["model top-level primitive", "importEquipmentModel", () => model(), EQUIPMENT_MODELS_COLLECTION, MODEL_ID, null, null, (p) => { p.displayName = "MUTATED"; }],
-    ["model version", "importEquipmentModel", () => model(), EQUIPMENT_MODELS_COLLECTION, MODEL_ID, null, null, (p) => { p.version = 99; }],
-    ["model target identity", "importEquipmentModel", () => model(), EQUIPMENT_MODELS_COLLECTION, MODEL_ID, null, null, (p) => { p.equipmentModelId = "TAYLOR--C825"; p.modelNumber = "C825"; }],
+    ["model top-level primitive", (p) => { p.displayName = "MUTATED"; }],
+    ["model version", (p) => { p.version = 99; }],
+    ["model target identity", (p) => { p.equipmentModelId = "TAYLOR--C825"; p.modelNumber = "C825"; }],
   ];
   let n = 0;
-  for (const [label, action, make, collection, docId, expectedVersion, seed, mutate] of cases) {
-    for (const when of windows) {
-      const payload = make();
-      const { stored } = await assertMutationCannotLand({
-        action, payload, expectedVersion, collection, docId, seed, mutate, when, key: `key-toctou-${(n += 1)}`,
-      });
-      assert.equal(stored.displayName, "Taylor C713", `${label}/${when}: displayName untouched`);
-      assert.equal(stored.version, 1, `${label}/${when}: version untouched`);
-      assert.equal(stored.equipmentModelId, MODEL_ID, `${label}/${when}: identity untouched`);
-    }
+  for (const [label, mutate] of cases) {
+    const { prepared } = await assertMutationCannotLand({
+      action: "importEquipmentModel", payload: model(), docId: MODEL_ID, mutate, key: `key-toctou-${(n += 1)}`,
+    });
+    assert.equal(prepared.value.displayName, "Taylor C713", `${label}: displayName untouched`);
+    assert.equal(prepared.value.version, 1, `${label}: version untouched`);
+    assert.equal(prepared.value.equipmentModelId, MODEL_ID, `${label}: identity untouched`);
   }
 });
 
 await ok("nested applicability, evidence and verification payload mutations cannot reach storage", async () => {
-  const seedBoth = (db) => { seedModel(db); };
   // Nested applicability on a compatibility import.
-  for (const when of ["resolvePermission", "betweenTransactions", "betweenRetries"]) {
-    const payload = compatOf({ applicability: { kind: "MODEL_REVISION", serialScheme: null, serialRangeStart: null, serialRangeEnd: null, modelRevision: "REV-A" } });
-    const { stored } = await assertMutationCannotLand({
-      action: "importCompatibility", payload, collection: EQUIPMENT_PART_COMPATIBILITY_COLLECTION,
-      docId: payload.compatibilityId, seed: seedBoth, when, key: `key-toctou-app-${when}`,
-      mutate: (p) => { p.applicability.modelRevision = "REV-Z"; p.applicability.kind = "ALL_SERIALS"; p.partId = "TST-9999"; },
-    });
-    assert.equal(stored.applicability.modelRevision, "REV-A", `${when}: nested applicability untouched`);
-    assert.equal(stored.applicability.kind, "MODEL_REVISION");
-    assert.equal(stored.partId, "TST-1001");
-  }
+  const payload = compatOf({ applicability: { kind: "MODEL_REVISION", serialScheme: null, serialRangeStart: null, serialRangeEnd: null, modelRevision: "REV-A" } });
+  const { prepared: app } = await assertMutationCannotLand({
+    action: "importCompatibility", payload, docId: payload.compatibilityId, seed: seedModel, key: "key-toctou-app",
+    mutate: (p) => { p.applicability.modelRevision = "REV-Z"; p.applicability.kind = "ALL_SERIALS"; p.partId = "TST-9999"; },
+  });
+  assert.equal(app.value.applicability.modelRevision, "REV-A", "nested applicability untouched");
+  assert.equal(app.value.applicability.kind, "MODEL_REVISION");
+  assert.equal(app.value.partId, "TST-1001");
   // observedClaim / contentFingerprint on evidence.
-  for (const when of ["resolvePermission", "betweenTransactions", "betweenRetries"]) {
-    const compat = compatOf();
-    const payload = sourceOf(compat.compatibilityId);
-    const { stored } = await assertMutationCannotLand({
-      action: "importCompatibilitySource", payload, collection: EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION,
-      docId: payload.sourceId, seed: (db) => { seedModel(db); seedCompat(db, compat); }, when,
-      key: `key-toctou-src-${when}`,
-      mutate: (p) => { p.observedClaim = "CONTRADICTS"; p.contentFingerprint = "f".repeat(64); },
-    });
-    assert.equal(stored.observedClaim, "SUPPORTS", `${when}: observedClaim untouched`);
-    assert.equal(stored.contentFingerprint, "a".repeat(64));
-  }
+  const compat = compatOf();
+  const src = sourceOf(compat.compatibilityId);
+  const { prepared: ev } = await assertMutationCannotLand({
+    action: "importCompatibilitySource", payload: src, docId: src.sourceId,
+    seed: (db) => { seedModel(db); seedCompat(db, compat); }, key: "key-toctou-src",
+    mutate: (p) => { p.observedClaim = "CONTRADICTS"; p.contentFingerprint = "f".repeat(64); },
+  });
+  assert.equal(ev.value.observedClaim, "SUPPORTS", "observedClaim untouched");
+  assert.equal(ev.value.contentFingerprint, "a".repeat(64));
   // alias ownership field.
-  for (const when of ["resolvePermission", "betweenTransactions", "betweenRetries"]) {
-    const payload = aliasOf();
-    const { stored } = await assertMutationCannotLand({
-      action: "importEquipmentModelAlias", payload, collection: EQUIPMENT_MODEL_ALIASES_COLLECTION,
-      docId: payload.aliasKey, seed: seedBoth, when, key: `key-toctou-alias-${when}`,
-      mutate: (p) => { p.equipmentModelId = "TAYLOR--C825"; },
-    });
-    assert.equal(stored.equipmentModelId, MODEL_ID, `${when}: alias ownership untouched`);
-  }
+  const alias = aliasOf();
+  const { prepared: al } = await assertMutationCannotLand({
+    action: "importEquipmentModelAlias", payload: alias, docId: alias.aliasKey, seed: seedModel, key: "key-toctou-alias",
+    mutate: (p) => { p.equipmentModelId = "TAYLOR--C825"; },
+  });
+  assert.equal(al.value.equipmentModelId, MODEL_ID, "alias ownership untouched");
 });
 await ok("a verificationStatus mutated after acceptance cannot reach storage", async () => {
-  for (const when of ["resolvePermission", "betweenTransactions", "betweenRetries"]) {
-    const db = fakeDb();
-    seedModel(db);
-    const compat = compatOf();
-    seedCompat(db, compat);
-    const payload = { compatibilityId: compat.compatibilityId, verificationStatus: "VERIFIED" };
-    const { deps } = makeDeps(db);
-    const originalRun = db.runTransaction.bind(db);
-    let n = 0, fired = false;
-    const fire = () => { if (!fired) { payload.verificationStatus = "REJECTED"; fired = true; } };
-    let entered = null, gate = null;
-    if (when === "resolvePermission") {
-      entered = deferred(); gate = deferred();
-      deps.resolvePermission = () => { entered.resolve(); return gate.promise.then(() => true); };
-    } else if (when === "betweenTransactions") {
-      db.runTransaction = async (fn) => { const r = await originalRun(fn); if ((n += 1) === 1) fire(); return r; };
-    } else {
-      db.runTransaction = async (fn) => {
-        n += 1;
-        if (n === 2) { try { await originalRun(async (t) => { await fn(t); throw new Error("retry"); }); } catch { /* rolled back */ } fire(); }
-        return originalRun(fn);
-      };
-    }
-    const running = C.runEquipmentCompatibilityCommand({
-      actorUid: "actor-1", action: "verifyCompatibility", idempotencyKey: `key-toctou-verify-${when}`, payload, expectedVersion: 1,
-    }, deps);
-    if (when === "resolvePermission") { await entered.promise; fire(); gate.resolve(); }
-    const result = await running;
-    db.runTransaction = originalRun;
-    assert.equal(result.status, "applied");
-    assert.equal(fired, true, "the mutation actually fired");
-    assert.equal(db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).verificationStatus, "VERIFIED", `${when}: the prepared status is what was written`);
-  }
+  const compat = compatOf();
+  const payload = { compatibilityId: compat.compatibilityId, verificationStatus: "VERIFIED" };
+  const { prepared } = await assertMutationCannotLand({
+    action: "verifyCompatibility", payload, expectedVersion: 1, docId: compat.compatibilityId,
+    seed: (db) => { seedModel(db); seedCompat(db, compat); }, key: "key-toctou-verify",
+    mutate: (p) => { p.verificationStatus = "REJECTED"; },
+  });
+  assert.equal(prepared.value.verificationStatus, "VERIFIED", "the prepared status is what would be written");
 });
 await ok("a serialSchemes registry mutated after acceptance cannot change persistence", async () => {
-  for (const when of ["resolvePermission", "betweenTransactions", "betweenRetries"]) {
-    const db = fakeDb();
-    seedModel(db);
-    const registry = structuredClone(SCHEMES);
-    const payload = compatOf({ applicability: { kind: "SERIAL_RANGE", serialScheme: "TAYLOR-ALPHA", serialRangeStart: "A100", serialRangeEnd: "A200", modelRevision: null } });
-    const { deps } = makeDeps(db);
-    deps.serialSchemes = registry;
-    const originalRun = db.runTransaction.bind(db);
-    let n = 0, fired = false;
-    // Remove the scheme entirely AND corrupt the retained scheme object: neither may affect the write.
-    const fire = () => {
-      if (fired) return;
+  const payload = compatOf({ applicability: { kind: "SERIAL_RANGE", serialScheme: "TAYLOR-ALPHA", serialRangeStart: "A100", serialRangeEnd: "A200", modelRevision: null } });
+  const { prepared } = await assertMutationCannotLand({
+    action: "importCompatibility", payload, docId: payload.compatibilityId, seed: seedModel, key: "key-toctou-scheme",
+    // Remove the scheme entirely AND corrupt the retained scheme object: neither may affect the prepared command.
+    mutate: (_p, registry) => {
       registry["TAYLOR-ALPHA"].tokenPattern = "^NOPE$";
       registry["TAYLOR-ALPHA"].ordering = "NUMERIC";
       delete registry["TAYLOR-ALPHA"];
-      fired = true;
-    };
-    let entered = null, gate = null;
-    if (when === "resolvePermission") {
-      entered = deferred(); gate = deferred();
-      deps.resolvePermission = () => { entered.resolve(); return gate.promise.then(() => true); };
-    } else if (when === "betweenTransactions") {
-      db.runTransaction = async (fn) => { const r = await originalRun(fn); if ((n += 1) === 1) fire(); return r; };
-    } else {
-      db.runTransaction = async (fn) => {
-        n += 1;
-        if (n === 2) { try { await originalRun(async (t) => { await fn(t); throw new Error("retry"); }); } catch { /* rolled back */ } fire(); }
-        return originalRun(fn);
-      };
-    }
-    const running = C.runEquipmentCompatibilityCommand({
-      actorUid: "actor-1", action: "importCompatibility", idempotencyKey: `key-toctou-scheme-${when}`, payload,
-    }, deps);
-    if (when === "resolvePermission") { await entered.promise; fire(); gate.resolve(); }
-    const result = await running;
-    db.runTransaction = originalRun;
-    assert.equal(fired, true, "the mutation actually fired");
-    assert.equal(result.status, "applied", `${when}: the detached registry kept the command valid`);
-    const stored = db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, payload.compatibilityId);
-    assert.equal(stored.applicability.serialScheme, "TAYLOR-ALPHA");
-    assert.equal(stored.applicability.serialRangeStart, "A100");
-  }
+    },
+  });
+  assert.equal(prepared.value.applicability.serialScheme, "TAYLOR-ALPHA");
+  assert.equal(prepared.value.applicability.serialRangeStart, "A100");
+  assert.equal(prepared.serialSchemes["TAYLOR-ALPHA"].tokenPattern, SCHEME.tokenPattern, "the detached registry kept the command valid");
 });
 await ok("an INVALID post-acceptance mutation cannot become a denial or alter replay", async () => {
-  const db = fakeDb();
-  const payload = model();
-  const { deps } = makeDeps(db);
-  const originalRun = db.runTransaction.bind(db);
-  let n = 0;
-  db.runTransaction = async (fn) => {
-    const r = await originalRun(fn);
-    if ((n += 1) === 1) { payload.status = "BOGUS"; payload.version = -5; }
-    return r;
-  };
-  const result = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-toctou-invalid", payload }, deps);
-  db.runTransaction = originalRun;
-  assert.equal(result.status, "applied", "an invalid later mutation does not turn an accepted command into a denial");
-  const stored = db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID);
-  assert.equal(stored.status, "ACTIVE");
-  assert.equal(stored.version, 1);
-  // Exact replay of the ORIGINAL command remains a no-op; the mutated object is a DIFFERENT command.
-  const pristine = model();
-  const { deps: d2 } = makeDeps(db);
-  const mark = auditMark(db);
-  const replay = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-toctou-invalid", payload: pristine }, d2);
-  assert.deepEqual(replay, { status: "applied", targetId: MODEL_ID, resultVersion: 1, replayed: true });
-  assert.deepEqual(auditsSince(db, mark), [], "replay writes no audit");
-  // ...and replaying the key with the MUTATED object is an idempotency conflict, not a silent overwrite.
-  const { deps: d3 } = makeDeps(db);
-  await assert.rejects(
-    () => C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-toctou-invalid", payload: model({ displayName: "Different" }) }, d3),
-    E.IdempotencyConflictError
-  );
-  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID).displayName, "Taylor C713");
+  const { prepared } = await assertMutationCannotLand({
+    action: "importEquipmentModel", payload: model(), docId: MODEL_ID, key: "key-toctou-invalid",
+    mutate: (p) => { p.status = "BOGUS"; p.version = -5; },
+  });
+  assert.equal(prepared.value.status, "ACTIVE");
+  assert.equal(prepared.value.version, 1);
+  // Ruling B: the ORIGINAL command reproduces the same fingerprint; a DIFFERENT one does not (would conflict).
+  assert.equal(fingerprintOf("importEquipmentModel", MODEL_ID, model()), prepared.fingerprint);
+  assert.notEqual(fingerprintOf("importEquipmentModel", MODEL_ID, model({ displayName: "Different" })), prepared.fingerprint);
 });
 await ok("the prepared command value is deep-frozen", async () => {
   const prepared = FP.prepareCommand({
@@ -1003,50 +819,34 @@ await ok("the detached serial-scheme dependency is DEEP-frozen", async () => {
   assert.throws(() => { prepared.serialSchemes["OTHER"] = {}; }, TypeError, "no entry can be added");
 });
 await ok("a command mutated while permission is pending still replays as the ORIGINAL command", async () => {
+  // Ruling A: frozen before resolvePermission, so no pending window exists and nothing is written.
   const db = fakeDb();
   const payload = model();
-  const registry = structuredClone(SCHEMES);
   const { deps } = makeDeps(db);
-  deps.serialSchemes = registry;
-  const entered = deferred(), gate = deferred();
-  deps.resolvePermission = () => { entered.resolve(); return gate.promise.then(() => true); };
-  const running = C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-pending-replay", payload }, deps);
-  await entered.promise;
+  let entered = false;
+  deps.resolvePermission = () => { entered = true; return deferred().promise; };
+  await assertFrozen(db, deps, cmd({ idempotencyKey: "key-pending-replay", payload }));
+  assert.equal(entered, false);
+  // Ruling B: the prepared (fingerprinted) command is the original; the mutated one is a different command.
+  const prepared = FP.prepareCommand({ action: "importEquipmentModel", targetType: "equipment_models", targetId: MODEL_ID, payload, serialSchemes: SCHEMES });
   payload.displayName = "MUTATED";
   payload.version = 42;
-  gate.resolve();
-  assert.equal((await running).status, "applied");
-  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID).displayName, "Taylor C713");
-  // Exact replay of the ORIGINAL command is a no-op.
-  const { deps: d2 } = makeDeps(db);
-  const mark = auditMark(db);
-  const replay = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-pending-replay", payload: model() }, d2);
-  assert.deepEqual(replay, { status: "applied", targetId: MODEL_ID, resultVersion: 1, replayed: true });
-  assert.deepEqual(auditsSince(db, mark), [], "replay writes no audit");
-  // Replaying the key with the MUTATED command conflicts rather than overwriting.
-  const { deps: d3 } = makeDeps(db);
-  await assert.rejects(
-    () => C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-pending-replay", payload: model({ displayName: "MUTATED", version: 42 }) }, d3),
-    E.IdempotencyConflictError
-  );
-  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID).displayName, "Taylor C713");
+  assert.equal(prepared.value.displayName, "Taylor C713");
+  assert.equal(prepared.fingerprint, fingerprintOf("importEquipmentModel", MODEL_ID, model()));
+  assert.notEqual(prepared.fingerprint, fingerprintOf("importEquipmentModel", MODEL_ID, model({ displayName: "MUTATED", version: 42 })));
 });
 await ok("expectedVersion is REFUSED for non-versioned alias and source actions", async () => {
+  // Ruling A: the freeze gate precedes the expectedVersion check; every variant is refused FROZEN.
   const db = fakeDb();
   seedModel(db);
   const compat = compatOf();
   seedCompat(db, compat);
   for (const [action, payload] of [["importEquipmentModelAlias", aliasOf()], ["importCompatibilitySource", sourceOf(compat.compatibilityId)]]) {
     const { deps } = makeDeps(db);
-    await assert.rejects(
-      () => C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action, idempotencyKey: `key-ev-${action}`, payload, expectedVersion: 1 }, deps),
-      E.InvalidInputError,
-      `${action} must not silently ignore expectedVersion`
-    );
-    assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, `key-ev-${action}`), undefined);
+    await assertFrozen(db, deps, { actorUid: "actor-1", action, idempotencyKey: `key-ev-${action}`, payload, expectedVersion: 1 });
   }
   const { deps: d2 } = makeDeps(db);
-  assert.equal((await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-ev-null", payload: aliasOf(), expectedVersion: null }, d2)).status, "applied");
+  await assertFrozen(db, d2, { actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-ev-null", payload: aliasOf(), expectedVersion: null });
 });
 await ok("the audit seam represents EVERY governed lifecycle action", async () => {
   assert.deepEqual([...C.EQUIPMENT_AUDIT_ACTIONS], [
@@ -1075,21 +875,15 @@ await ok("a secret-shaped, oversized or control-bearing audit field can never be
   });
 });
 await ok("a denied TX2 still records the terminal operation and audit atomically", async () => {
+  // Ruling A: refused FROZEN (twice) against a seeded model; no operation record, terminal or otherwise.
   const db = fakeDb();
   seedModel(db);
   const { deps } = makeDeps(db);
-  const mark = auditMark(db);
-  const denied = await run(deps, { idempotencyKey: "key-denied-atomic" });
-  assert.equal(denied.status, "denied");
-  const op = db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-denied-atomic");
-  assert.equal(op.status, "denied");
-  assert.equal(op.resultVersion, null);
-  assert.equal(auditsSince(db, mark).at(-1).outcome, "denied");
-  // A denied operation is terminal: a later replay reports it and never becomes applied.
+  await assertFrozen(db, deps, cmd({ idempotencyKey: "key-denied-atomic" }));
   const { deps: d2 } = makeDeps(db);
-  const replay = await run(d2, { idempotencyKey: "key-denied-atomic" });
-  assert.deepEqual(replay, { status: "denied", targetId: MODEL_ID, reason: "previously denied", replayed: true });
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-denied-atomic").status, "denied");
+  await assertFrozen(db, d2, cmd({ idempotencyKey: "key-denied-atomic" }));
+  // Ruling B: a denied operation is terminal and can never become applied (pure state machine).
+  assert.throws(() => assertOperationTransition("denied", "applied"), IllegalOperationTransitionError);
 });
 
 console.log(`\n${passed} command orchestrator checks passed`);

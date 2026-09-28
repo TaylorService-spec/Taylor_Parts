@@ -324,6 +324,7 @@ on:
       # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
       # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.
       - "functions/test/catalogFreezeParity.test.mjs"
+      - "functions/test/catalogPartImportFreeze.test.mjs"
       - "functions/test/support/legacyCatalogMasterCommands.mjs"
       # The supplier and work-order halves of the catalog authority, same lane, previously unfiltered.
       - "functions/test/supplierCatalogAuthority.test.mjs"
@@ -877,6 +878,7 @@ on:
       # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
       # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.
       - "functions/test/catalogFreezeParity.test.mjs"
+      - "functions/test/catalogPartImportFreeze.test.mjs"
       - "functions/test/support/legacyCatalogMasterCommands.mjs"
       # The supplier and work-order halves of the catalog authority, same lane, previously unfiltered.
       - "functions/test/supplierCatalogAuthority.test.mjs"

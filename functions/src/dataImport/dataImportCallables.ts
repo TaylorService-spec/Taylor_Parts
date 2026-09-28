@@ -222,7 +222,7 @@ async function requireCapability(db: Firestore, actorUid: string, capability: st
   }
 }
 
-function mapError(err: unknown): HttpsError {
+export function mapError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
   // Intake failures are the ONE class surfaced with their own message: they describe the
   // caller's own file ("row 4 has 7 values, the header has 6") and are useless generically.

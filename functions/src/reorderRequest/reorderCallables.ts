@@ -32,7 +32,7 @@ import { auditEventDocRef, stageAuditEventWithId } from "../access/auditEventWri
 import { makeResolveWarehouseLocationActive } from "../inventoryReceiving/receivingLocationResolver";
 import { validateGovernedWarehouse } from "../warehouseGovernance/governedWarehouseValidation";
 import { resolveOperatingCompany } from "../ownership/operatingCompanyAuthority";
-import { assertReorderSourceWritable } from "./reorderSourceFreeze";
+import { assertReorderSourceWritable, ReorderSourceFrozenError } from "./reorderSourceFreeze";
 import {
   loadReorderWarehouseAuthority,
   reorderWarehouseOptionLabel,
@@ -75,8 +75,13 @@ async function requireCapability(uid: string, capabilityId: string): Promise<voi
   if (!allowed) throw new HttpsError("permission-denied", `You are not authorized: ${capabilityId}`);
 }
 
-function mapCommandError(err: unknown): HttpsError {
+export function mapCommandError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
+  // THE REORDER SOURCE FREEZE is a governed state refusal, never an internal fault (same convention as the catalog freeze).
+  if (err instanceof ReorderSourceFrozenError) {
+    return new HttpsError("failed-precondition",
+      "The legacy Reorder source is frozen for the PostgreSQL cutover; Reorder requests are no longer written here.", { code: err.code });
+  }
   if (err instanceof ReorderCommandError) {
     // R-17: an out-of-scope warehouse is an AUTHORIZATION answer, not a malformed payload, and must
     // reach the caller as one -- otherwise a UI would invite them to "fix" the field and try again.
