@@ -202,6 +202,7 @@ on:
       - "functions/src/eosCommercial/commercialHttp.ts"
       - "functions/test/commercialTransport.test.mjs"
       - "functions/test/commercialTransportPostgres.test.mjs"
+      - "functions/test/commercialPersonaJourneyPostgres.test.mjs"
       # EMPLOYEE RUNTIME READS: the governed PostgreSQL Workforce transport (test:adminPolicy / test:adminPolicyPostgres).
       - "functions/src/eosWorkforce/**"
       - "functions/test/employeeRuntimeReads.test.mjs"
@@ -725,6 +726,7 @@ on:
       - "functions/src/eosCommercial/commercialHttp.ts"
       - "functions/test/commercialTransport.test.mjs"
       - "functions/test/commercialTransportPostgres.test.mjs"
+      - "functions/test/commercialPersonaJourneyPostgres.test.mjs"
       # EMPLOYEE RUNTIME READS: the governed PostgreSQL Workforce transport (test:adminPolicy / test:adminPolicyPostgres).
       - "functions/src/eosWorkforce/**"
       - "functions/test/employeeRuntimeReads.test.mjs"
