@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { readPartsForView, isCatalogReadRefused } from "../../services/partMasterQueries";
+import { REORDER_PURCHASE_ORDER_VOID_GATE } from "../../access/shellCapabilityGates.js";
 import UsedInEquipmentSection from "./UsedInEquipmentSection";
 import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
 import { canViewCompatibility } from "../../domain/equipmentCompatibilitySection.js";
@@ -243,7 +244,7 @@ function CancelReorderRequestAction({ request, onCancelled }) {
 function VoidPurchaseOrderAction({ request, onVoided, hasCapability }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const canVoid = typeof hasCapability === "function" && hasCapability("reorder.purchaseOrder.void") === true;
+  const canVoid = typeof hasCapability === "function" && hasCapability(REORDER_PURCHASE_ORDER_VOID_GATE.void) === true;
   if (!canVoid) return null;
 
   return (

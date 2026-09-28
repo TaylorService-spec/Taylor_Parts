@@ -67,9 +67,11 @@ ok("requests the report ids PLUS the governed surface ids -- a closed, declared 
     "report.definition.create", "report.definition.delete", "report.definition.duplicate",
     "report.definition.read", "report.definition.rename",
   ]);
-  // The five surfaces the union added beyond the four original groups: Warehouse Racking's manage
-  // id, Move stock's relocate id, both Financial Policy ids, and the compatibility view id.
-  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length + DASHBOARD_MODULE_CAPABILITY_IDS.length + 5);
+  // The six surfaces the union added beyond the four original groups: Warehouse Racking's manage
+  // id, Move stock's relocate id, both Financial Policy ids, the compatibility view id, and (Controller ruling
+  // 2026-09-28) the Reorder purchase-order void -- a management exception offered on its capability.
+  assert.ok(REPORT_CAPABILITY_REQUEST.includes("reorder.purchaseOrder.void"));
+  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length + DASHBOARD_MODULE_CAPABILITY_IDS.length + 6);
   // No duplicates: a repeated id would be a silent sign two concerns had drifted into one list.
   assert.equal(new Set(REPORT_CAPABILITY_REQUEST).size, REPORT_CAPABILITY_REQUEST.length);
 });
