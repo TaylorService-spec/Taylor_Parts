@@ -27,6 +27,7 @@ import {
 const require = createRequire(import.meta.url);
 const { capabilitiesForRoleKeys } = require("../lib/eosOps/capabilityAuthority.js");
 const { grantedSurfaceKeys } = require("../lib/eosOps/experienceAuthority.js");
+const { ADMIN_READ_CAPABILITY } = require("../lib/adminPolicy/adminPolicyApi.js");
 
 const MANIFEST = JSON.parse(readFileSync(path.join(FUNCTIONS_DIR, "scripts", "fixtures", "personaAuthorityDimensions.v1.json"), "utf8"));
 const PERSONAS = MANIFEST.personas;
@@ -163,6 +164,24 @@ test("persona runtime matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
       if (has(k, c) !== want) violations.push(`${k} ${want ? "lacks" : "holds"} ${c}`);
     }
     assert.deepEqual(violations, []);
+  });
+
+  await t.test("F: Administration's read gate (its OWN evaluator) agrees with the runtime for every persona x read", async () => {
+    // adminPolicyApi.requireAdminReadAuthority decides through resolvePrincipalEffectiveAccess -- a second evaluator
+    // over the same tables. The gate runs BEFORE input validation, so 403 <=> the gate refused.
+    const disagreements = [];
+    let cells = 0;
+    for (const key of Object.keys(PERSONAS)) {
+      for (const [op, capability] of Object.entries(ADMIN_READ_CAPABILITY)) {
+        cells += 1;
+        const r = await call(transports.administration, op, { token: actors[key].token, input: {} });
+        const gateAllowed = r.status !== 403;
+        const runtimeAllows = capability !== null && grid[key].has(capability);
+        if (gateAllowed !== runtimeAllows) disagreements.push(`${key} ${op} (${capability}): gate ${r.status} ${r.code}, runtime ${runtimeAllows}`);
+      }
+    }
+    t.diagnostic(`ADMIN READ GATE CELLS ${cells}`);
+    assert.deepEqual(disagreements, []);
   });
 
   // ════════════════════ E. LIFECYCLE NEGATIVES ════════════════════
