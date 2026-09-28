@@ -11,6 +11,7 @@ import { isOpportunityEditable } from "../../domain/opportunitySectionSave.js";
 import { opportunityWriteReadiness } from "../../access/opportunityWriteReadiness.js";
 import { UNRESOLVED_REFERENCE_LABEL } from "../../metadata/referenceResolution.js";
 import { SALES_AGREEMENT_READ_CAPABILITY } from "../../access/salesAgreementCapabilityAccess.js";
+import { OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY, WON_REQUIRES_CREATE_SALES_ORDER_REASON } from "../../access/opportunityCapabilityAccess.js";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
 import OpportunityLifecycleControl from "./OpportunityLifecycleControl.jsx";
@@ -326,6 +327,7 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
             transitions={transitions}
             onChanged={refetch}
             slot="actions"
+            wonDisabledReason={hasCapability(OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY) === true ? undefined : WON_REQUIRES_CREATE_SALES_ORDER_REASON}
           />
         }
       />

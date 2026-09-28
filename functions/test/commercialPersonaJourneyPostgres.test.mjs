@@ -96,6 +96,8 @@ const OPERATIONS = Object.freeze({
   getSalesOrderDetail: [["salesOrder.read"], () => ({ salesOrderId: "sor-missing" })],
   listSalesOrders: [["salesOrder.read"], () => ({})],
   getAccountCommercialProjection: [["opportunity.read", "salesAgreement.read", "salesOrder.read"], () => ({ accountId: "acct-missing" })],
+  // The caller's own capabilities: any active member may ask about itself.
+  readMyCommercialCapabilities: [[], () => ({})],
 });
 
 // ════════════════════ PART 1 -- no database ════════════════════
@@ -226,6 +228,36 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     }
     assert.equal(cells, Object.keys(COMMERCIAL_HOLDINGS).length * Object.keys(OPERATIONS).length);
     assert.equal((await q(`SELECT count(*)::int n FROM eos_commercial.command_receipts`)).rows[0].n, 0, "a refused or failed command left a receipt");
+  });
+
+  await t.test("OFFER == AUTHORITY: every persona's readMyCommercialCapabilities is exactly what the commands will accept", async () => {
+    for (const [persona, holdings] of Object.entries(COMMERCIAL_HOLDINGS)) {
+      const answer = ok(await call(personas[persona], "readMyCommercialCapabilities"), persona);
+      assert.deepEqual([...answer.capabilities].sort(), [...holdings].sort(), `${persona}: the offer disagrees with the authority`);
+      assert.deepEqual(answer.channelScopedReads, [], `${persona} holds no channel-scoped read`);
+      assert.deepEqual(Object.keys(answer).sort(), ["capabilities", "channelScopedReads"], "the answer discloses nothing else");
+    }
+    // A salesManager holding its Role ONLY at salesChannel=RETAIL: the reads are offered (the reads filter to RETAIL), no
+    // write is -- a scope-qualified holding never authorizes a Commercial write.
+    await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by)
+             VALUES ($1,'RETAIL','ACTIVE','fixture','fixture','fixture')`, [TENANT]);
+    const scopedSubject = "uid-scoped-retail-manager";
+    const scopedPrincipal = await repo.transact(actorFor(TENANT), async (tx) => {
+      const principal = await tx.createPrincipal({ externalSubject: scopedSubject, identityProvider: "firebase" });
+      await tx.createTenantMembership(principal.id);
+      const accessVersion = await tx.bumpAccessVersion(principal.id);
+      await tx.createAssignment({ principalId: principal.id, roleId: await roleFor(TENANT, "salesManager"), scopeType: "salesChannel", scopeValue: "RETAIL", status: "active", grantedBy: "fixture", grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion });
+      return principal.id;
+    });
+    TOKENS.set(`tok-${scopedSubject}`, scopedSubject);
+    const scoped = { persona: "scoped", principalId: scopedPrincipal, token: `tok-${scopedSubject}` };
+    const scopedAnswer = ok(await call(scoped, "readMyCommercialCapabilities"), "scoped");
+    assert.deepEqual(scopedAnswer, { capabilities: [], channelScopedReads: ["opportunity.read", "salesAgreement.read", "salesOrder.read"] });
+    ok(await call(scoped, "listOpportunities"), "the offered read is served");
+    refused(await call(scoped, "createOpportunity", OPERATIONS.createOpportunity[1]()), 403, "CAPABILITY_REQUIRED", "scoped write");
+
+    refused(await call(retailA, "readMyCommercialCapabilities", { principalId: "someone-else" }), 400, "AUTHORITY_FIELD_NOT_ACCEPTED", "selector");
+    refused(await call(retailA, "readMyCommercialCapabilities", { employeeId: "e-retail-b" }), 400, "FIELD_NOT_ACCEPTED", "any input");
   });
 
   // ════════════════════ THE RETAIL SALES JOURNEY, performed by retail-sales-a ════════════════════

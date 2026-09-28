@@ -60,6 +60,8 @@ export const COMMERCIAL_READ_OPERATIONS = Object.freeze([
   "listOpportunities",
   "listSalesAgreements",
   "listSalesOrders",
+  // The caller's own Commercial capabilities -- which controls to OFFER (hooks/useCommercialCapabilities.js).
+  "readMyCommercialCapabilities",
 ]);
 
 const READ_OPERATION_SET = new Set(COMMERCIAL_READ_OPERATIONS);

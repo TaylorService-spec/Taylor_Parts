@@ -19,6 +19,9 @@ export {
 } from "./reportCapabilityAccess.js";
 
 export const OPPORTUNITY_WRITE_CAPABILITY = "opportunity.write";
+// Mark Won creates the Sales Order in the same transaction; the server requires this capability too.
+export const OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY = "opportunity.createSalesOrder";
+export const WON_REQUIRES_CREATE_SALES_ORDER_REASON = "Marking this Won creates its Sales Order, which you are not authorized to create.";
 import { SALES_AGREEMENT_CAPABILITY_REQUEST } from "./salesAgreementCapabilityAccess.js";
 
 // The capability the trusted feed is asked to decide, in ONE request. Kept as a list (mirroring
@@ -33,5 +36,7 @@ import { SALES_AGREEMENT_CAPABILITY_REQUEST } from "./salesAgreementCapabilityAc
 // feed hook for the same surface would double the round trips to answer one question.
 export const OPPORTUNITY_CAPABILITY_REQUEST = Object.freeze([
   OPPORTUNITY_WRITE_CAPABILITY,
+  // Mark Won also creates the Sales Order (Pass 11: offered from hooks/useCommercialCapabilities, PostgreSQL).
+  OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY,
   ...SALES_AGREEMENT_CAPABILITY_REQUEST,
 ]);

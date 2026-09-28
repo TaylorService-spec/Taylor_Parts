@@ -37,6 +37,7 @@ import { getAccountCommercialProjection } from "./reads/accountCommercialProject
 import { getOpportunityDetail, listOpportunities } from "./reads/opportunityReadProjection";
 import { getSalesAgreementDetail, listSalesAgreements } from "./reads/salesAgreementReadProjection";
 import { getSalesOrderDetail, listSalesOrders } from "./reads/salesOrderReadProjection";
+import { readMyCommercialCapabilities } from "./myCommercialCapabilities";
 
 export interface VerifiedIdentity {
   readonly externalSubject: string;
@@ -76,6 +77,8 @@ const READ_RUNNERS = Object.freeze({
   getSalesOrderDetail: read(getSalesOrderDetail),
   listSalesOrders: read(listSalesOrders),
   getAccountCommercialProjection: read(getAccountCommercialProjection),
+  // Which Commercial controls the caller may be OFFERED -- its own PostgreSQL capabilities, never anyone else's.
+  readMyCommercialCapabilities: read(readMyCommercialCapabilities),
 } as const);
 
 const MUTATION_RUNNERS = Object.freeze({
@@ -103,10 +106,11 @@ export const isCommercialOperation = (name: unknown): name is CommercialOperatio
   typeof name === "string" && Object.prototype.hasOwnProperty.call(RUNNERS, name);
 
 /**
- * The ONLY operations whose `input` may be omitted: the unfiltered list reads, whose C3 signatures take an optional input.
- * Every detail read, the Account projection and every mutation requires `input` to be present as an object.
+ * The ONLY operations whose `input` may be omitted: the unfiltered list reads, whose C3 signatures take an optional input,
+ * and the caller's own capability read, which takes none. Every detail read, the Account projection and every mutation
+ * requires `input` to be present as an object.
  */
-export const COMMERCIAL_OPTIONAL_INPUT_OPERATIONS: readonly CommercialReadOperation[] = Object.freeze(["listOpportunities", "listSalesAgreements", "listSalesOrders"]);
+export const COMMERCIAL_OPTIONAL_INPUT_OPERATIONS: readonly CommercialReadOperation[] = Object.freeze(["listOpportunities", "listSalesAgreements", "listSalesOrders", "readMyCommercialCapabilities"]);
 const OPTIONAL_INPUT = new Set<string>(COMMERCIAL_OPTIONAL_INPUT_OPERATIONS);
 
 /** Fields that would state authority. Authority comes from the verified subject and PostgreSQL, never from the body. */

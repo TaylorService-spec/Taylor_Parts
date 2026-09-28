@@ -572,11 +572,12 @@ describe("Opportunity P1v2 — the connected mount threads what it resolves", ()
   );
 
   it("passes hasCapability to OpportunityDetail, not just resolves it", () => {
-    // FOUND LIVE: the mount called useOpportunityCapabilities and never passed the result on, so
+    // FOUND LIVE: the mount called its capability hook and never passed the result on, so
     // the page used its fail-closed default and the Sales Agreement card rendered
     // "aren't enabled in this environment yet" on every record -- while those capabilities ARE
     // activated for platform-sandbox. Create could never appear either.
-    expect(MOUNT).toMatch(/useOpportunityCapabilities/);
+    // Pass 11: the hook is the PostgreSQL Commercial offer (hooks/useCommercialCapabilities), not the Firebase feed.
+    expect(MOUNT).toMatch(/useCommercialCapabilities/);
     expect(MOUNT, "hasCapability is resolved but never threaded").toMatch(/hasCapability=\{hasCapability\}/);
   });
 

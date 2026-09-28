@@ -58,10 +58,11 @@ const SalesOrdersList = lazy(() => import("./modules/sales/SalesOrdersList.jsx")
 // Commercial transport, capability-scoped on the existing salesAgreement.read -- no new capability.
 const SalesAgreementsList = lazy(() => import("./modules/sales/SalesAgreementsList.jsx"));
 import { governedOpportunitySource } from "./access/opportunitySource.js";
-import { useOpportunityCapabilities } from "./access/useOpportunityCapabilities.js";
+// Pass 11 Retail Sales: the Commercial screens are OFFERED controls from PostgreSQL (the authority that authorizes them),
+// not from the Firebase effective-access feed.
+import { useCommercialCapabilities } from "./hooks/useCommercialCapabilities.js";
 import { OPPORTUNITY_WRITE_CAPABILITY } from "./access/opportunityCapabilityAccess.js";
 import { opportunityWriteReadiness } from "./access/opportunityWriteReadiness.js";
-import { useSalesOrderCapabilities } from "./access/useSalesOrderCapabilities.js";
 const EquipmentWorkspace = lazy(() => import("./modules/equipment/EquipmentWorkspace"));
 const EquipmentDetail = lazy(() => import("./modules/equipment/EquipmentDetail"));
 const AccountDetail = lazy(() => import("./modules/accounts/AccountDetail"));
@@ -288,8 +289,8 @@ function TruckInventoryConnected({ accessVersion, role }) {
   );
 }
 
-// Sales Wave 7 -- connects the REAL trusted write-capability signal (access/useOpportunityCapabilities,
-// the resolveEffectiveAccessCallable feed requested for opportunity.write) to SalesWorkspace's injected
+// Sales Wave 7 -- connects the REAL write-capability signal (Pass 11: hooks/useCommercialCapabilities, the caller's
+// PostgreSQL Commercial capabilities -- formerly the Firebase resolveEffectiveAccessCallable feed) to SalesWorkspace's injected
 // `readiness` prop. This is the fix for the known defect where SalesWorkspace called
 // opportunityWriteReadiness() with NO args at its own default (always fail-closed regardless of the real
 // grant): the seam function itself stays pure and still defaults to fail-closed for any caller that does
@@ -297,7 +298,7 @@ function TruckInventoryConnected({ accessVersion, role }) {
 // feeds the seam real deps. There is no separate client signal for "is the callable deployed" (mirrors
 // services/salesOrderCommandClient.js's posture once its capability went live) -- the SAME live capability
 // decision is used for both `capabilityGranted` and `commandDeployed`, since server-side authorization
-// (resolveEffectiveAccess) is re-checked on every call regardless, and a genuinely undeployed/unreachable
+// (PostgreSQL, the same capabilities) is re-checked on every call regardless, and a genuinely undeployed/unreachable
 // callable still surfaces honestly through the write hooks' own denied/unavailable/error mapping
 // (domain/opportunityCommandOutcome.js) rather than through a fabricated second static flag.
 /**
@@ -353,7 +354,7 @@ function CrashTrailRecorder() {
 // capability at all, and asking for one would imply a read this page never performs.
 function OpportunityListConnected() {
   const { user } = useAuth();
-  const { hasCapability } = useOpportunityCapabilities(user);
+  const { hasCapability } = useCommercialCapabilities(user);
   const granted = hasCapability(OPPORTUNITY_WRITE_CAPABILITY);
   const readiness = opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted });
   // The viewer's uid is threaded so "My opportunities" can resolve WHO is looking, from the
@@ -368,17 +369,17 @@ function OpportunityListConnected() {
 // (salesManager, accountingManager, financeManager) saw fully enabled action buttons and only learned
 // they were unauthorized after confirming and hitting the server's denial. This is the one production
 // call site that feeds SalesOrderDetail's `hasCapability` prop the REAL trusted
-// resolveEffectiveAccessCallable decision (access/useSalesOrderCapabilities) -- mirrors
+// PostgreSQL Commercial capability decision (hooks/useCommercialCapabilities) -- mirrors
 // OpportunityWorkspaceConnected above exactly. Every unit/component test still gets the fail-closed
 // default (no `hasCapability` injected).
 // The Opportunity record page's production mount. It takes the SAME readiness value
 // OpportunityWorkspaceConnected feeds the workspace -- derived from the real trusted
-// resolveEffectiveAccessCallable decision for opportunity.write -- so the record page and the
+// PostgreSQL decision for opportunity.write (hooks/useCommercialCapabilities) -- so the record page and the
 // pipeline pane can never disagree about whether a governed transition is offerable. Every
 // unit/component test still gets the fail-closed default (no `readiness` injected).
 function OpportunityDetailConnected() {
   const { user } = useAuth();
-  const { hasCapability } = useOpportunityCapabilities(user);
+  const { hasCapability } = useCommercialCapabilities(user);
   const granted = hasCapability(OPPORTUNITY_WRITE_CAPABILITY);
   // `hasCapability` MUST be threaded, not merely resolved.
   //
@@ -407,7 +408,7 @@ function OpportunityDetailConnected() {
 
 function SalesOrderDetailConnected() {
   const { user } = useAuth();
-  const { hasCapability } = useSalesOrderCapabilities(user);
+  const { hasCapability } = useCommercialCapabilities(user);
   return <SalesOrderDetail hasCapability={hasCapability} />;
 }
 
@@ -417,7 +418,7 @@ function SalesOrderDetailConnected() {
 // the EDIT beside it. hasCapability is fail-closed: the page reads nothing without salesAgreement.read.
 function SalesAgreementDetailConnected() {
   const { user } = useAuth();
-  const { hasCapability } = useOpportunityCapabilities(user);
+  const { hasCapability } = useCommercialCapabilities(user);
   return <SalesAgreementDetail hasCapability={hasCapability} />;
 }
 
@@ -455,7 +456,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // (or production, where activation is off) gets the seam's honest denied/unavailable state,
   // never fabricated data. Wave 7: the write path (create + lifecycle transitions) is now wired through
   // OpportunityWorkspaceConnected, which feeds SalesWorkspace's readiness seam the real
-  // resolveEffectiveAccessCallable decision for opportunity.write instead of a hardcoded fail-closed value.
+  // PostgreSQL decision for opportunity.write (hooks/useCommercialCapabilities) instead of a hardcoded fail-closed value.
   if (domain.key === "customers" && item.key === "opportunities") {
     return <OpportunityListConnected />;
   }
