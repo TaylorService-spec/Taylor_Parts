@@ -171,6 +171,14 @@ export interface PaymentApplicationReportRead {
   currency: string | null;
   appliedAmountMinor: number;
   appliedAtMillis: number | null;
+  /**
+   * The number of the AUTHORIZED invoice this application settles, projected here because a
+   * payments-only request (factTypes without INVOICE) returns no invoice rows to join against —
+   * the Payments page's "Applied to" read "—" for every receipt. Null only when the invoice has
+   * no number. Visibility is unchanged: an application is returned only when its invoice is
+   * authorized, so its number is already a visible fact.
+   */
+  invoiceNumber: string | null;
 }
 
 export interface FinancialFactsResult {
@@ -393,11 +401,13 @@ export async function readFinancialFacts(
     // March against an invoice issued in February is still a March payment, and narrowing the
     // authorizing set by the invoice period would hide it from a March payments view.
     const authorizedInvoiceIds = new Set<string>();
+    const authorizedInvoiceNumbers = new Map<string, string | null>();
     for (const d of visibleDocs) {
       const raw = d.data() ?? {};
       const dims = invoiceReportDimensions(raw);
       const read: InvoiceReportRead = { ...projectInvoiceAr(d.id, raw, now), ...dims };
       authorizedInvoiceIds.add(read.invoiceId);
+      authorizedInvoiceNumbers.set(read.invoiceId, nonEmpty(read.invoiceNumber) ? read.invoiceNumber : null);
       if (!matchesRequestedFilters(read, filters)) continue;
       invoices.push(read);
     }
@@ -433,6 +443,7 @@ export async function readFinancialFacts(
           currency: nonEmpty(x.currency) ? x.currency : null,
           appliedAmountMinor: nn(x.appliedAmountMinor),
           appliedAtMillis: typeof x.appliedAtMillis === "number" ? x.appliedAtMillis : null,
+          invoiceNumber: nonEmpty(x.invoiceId) ? authorizedInvoiceNumbers.get(x.invoiceId) ?? null : null,
         };
       })
       // An application is judged by ITS OWN recorded date, and by the same company narrowing the

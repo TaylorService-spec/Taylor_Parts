@@ -693,3 +693,21 @@ test("55. the file header records the temporary repair, its replacement and the 
   assert.match(src, /DELETION CONDITION/);
   assert.match(src, /zero `listFinancialFacts` callers remain \(static census AND runtime census\)/);
 });
+
+// ═══════════════ Applications carry their AUTHORIZED invoice's number ═══════════════
+// The Payments page requests PAYMENT_RECEIPT + PAYMENT_APPLICATION only, so `invoices` is empty and
+// the page had nothing to join an invoice number against: "Applied to" read "—" on every receipt.
+
+test("a payments-only request still names each application's invoice (by its authorized number)", async () => {
+  const r = await readFinancialFacts(db, CONSOLIDATED, { factTypes: ["PAYMENT_RECEIPT", "PAYMENT_APPLICATION"] }, 50);
+  assert.equal(r.completeness.status, "COMPLETE");
+  assert.deepEqual(r.invoices, [], "precondition: no invoice rows were requested");
+  const byApp = Object.fromEntries(r.applications.map((a) => [a.applicationId, a.invoiceNumber]));
+  assert.deepEqual(byApp, { "app-1": "INV-C", "app-2": "INV-B" });
+});
+
+test("an application's invoice number is never projected for an invoice outside reach", async () => {
+  const r = await readFinancialFacts(db, TAYLOR_ONLY, { factTypes: ["PAYMENT_APPLICATION"] }, 50);
+  // inv-b is ventana: its application is not returned at all, so its number cannot surface.
+  assert.deepEqual(r.applications.map((a) => [a.applicationId, a.invoiceNumber]), [["app-1", "INV-C"]]);
+});

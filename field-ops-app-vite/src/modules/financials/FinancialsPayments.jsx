@@ -66,11 +66,15 @@ export default function FinancialsPayments() {
         ? payments.filter((p) => p.amountMinor === p.appliedMinor)
         : payments;
 
-  // Applications carry invoiceId; the invoice list carries the NUMBER. Joining them is
-  // presentation over one governed response, not a second derivation.
+  // The server projects each application's invoice NUMBER (this page requests no INVOICE rows, so
+  // there was nothing to join against and every "Applied to" read "—"). A server older than this
+  // bundle sends none; the join over any invoice rows present is kept as that fallback.
   const applications = useMemo(() => {
     const byId = new Map((result?.invoices ?? []).map((i) => [i.invoiceId, i]));
-    return (result?.applications ?? []).map((a) => ({ ...a, invoiceNumber: byId.get(a.invoiceId)?.invoiceNumber ?? null }));
+    return (result?.applications ?? []).map((a) => ({
+      ...a,
+      invoiceNumber: a.invoiceNumber ?? byId.get(a.invoiceId)?.invoiceNumber ?? null,
+    }));
   }, [result]);
   const names = useAccountNames(rows.map((r) => r.accountId).filter(Boolean));
 
