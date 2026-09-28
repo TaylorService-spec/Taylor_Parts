@@ -14,7 +14,7 @@
 // deployment/production-data change of any kind; this test grants
 // capabilities ONLY via the service's own test-only `options.roles`
 // injection seam, never by mutating the real Role catalogs.
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
+process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
