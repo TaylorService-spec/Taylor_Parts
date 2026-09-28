@@ -183,7 +183,7 @@
     "test:capabilityGraphDrift": "node --test test/capabilityGraphDrift.test.mjs",
     "test:legacyAuthorizationSurface": "npm run build && node --test test/legacyAuthorizationSurface.test.mjs",
     "test:governanceGuards": "npm run test:workflowSelfPushFence && npm run test:d2Handoff && npm run test:capabilityGraphDrift && npm run test:legacyAuthorizationSurface",
-    "test:platformQa": "npm run build && node --test --test-concurrency=1 test/platformQaTransportContractPostgres.test.mjs test/platformQaPersonaRuntimeMatrixPostgres.test.mjs test/platformQaOperatingCompanyBindingPostgres.test.mjs test/platformQaScopedAssignmentPostgres.test.mjs test/platformQaAuditCompletenessPostgres.test.mjs test/platformQaEosApiFirebaseFootprint.test.mjs test/platformQaMalformedInputPostgres.test.mjs"
+    "test:platformQa": "npm run build && node --test --test-concurrency=1 test/platformQaTransportContractPostgres.test.mjs test/platformQaPersonaRuntimeMatrixPostgres.test.mjs test/platformQaOperatingCompanyBindingPostgres.test.mjs test/platformQaScopedAssignmentPostgres.test.mjs test/platformQaAuditCompletenessPostgres.test.mjs test/platformQaEosApiFirebaseFootprint.test.mjs test/platformQaMalformedInputPostgres.test.mjs test/platformQaEmployeeReferencePostgres.test.mjs"
   },
   "dependencies": {
     "@google-cloud/secret-manager": "^7.0.0",
