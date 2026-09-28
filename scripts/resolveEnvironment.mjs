@@ -77,6 +77,10 @@ export const READINESS_KEYS = Object.freeze([
   // environment that omits it is a build error rather than a silent default-to-enabled; it is false
   // in every environment today. See field-ops-app-vite/src/config/navigationAuthorityReadiness.js.
   'EOS_NAVIGATION_AUTHORITY_READY',
+  // PASS 11 FIX WAVE 1. Whether client list reads of the Rules-gated collections go through the governed
+  // readGovernedRecords callable (PostgreSQL Administration authority) instead of direct Firestore. True only where
+  // the Functions runtime declares governedRuntimeAuthority; an environment that omits it is a build error.
+  'GOVERNED_RECORD_READ_READY',
 ]);
 
 // Per-environment capability activation (per-environment-capability-activation-

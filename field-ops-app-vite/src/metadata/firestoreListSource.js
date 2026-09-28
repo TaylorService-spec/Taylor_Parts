@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { interpretPage } from "./listRuntime.js";
+import { governedSurfaceFor, readGovernedPage } from "../services/governedRecordReadClient.js";
 
 // Executes a query descriptor against Firestore. The ONLY place the metadata list runtime
 // touches a database.
@@ -70,6 +71,21 @@ export function toConstraints(descriptor, cursorDoc = null) {
  * cursors are documents rather than values.
  */
 export async function fetchPage(descriptor, { cursorDoc = null } = {}) {
+  // PASS 11 FIX WAVE 1. In a governed environment a Rules-gated collection is read through the governed callable,
+  // which authorizes every row from PostgreSQL Administration. Same descriptor, same page shape; the cursor is the
+  // last returned row's id, resumed server-side. No fallback to the direct read below.
+  const surface = governedSurfaceFor(descriptor.collection);
+  if (surface) {
+    const { rows } = await readGovernedPage(surface, {
+      filters: descriptor.filters ?? [],
+      sort: descriptor.sort ?? [],
+      limit: descriptor.limit,
+      afterId: cursorDoc?.id ?? null,
+    });
+    const page = interpretPage(descriptor, rows);
+    const last = page.hasMore && page.rows.length ? page.rows[page.rows.length - 1] : null;
+    return { ...page, nextCursorDoc: last ? { id: last.id } : null };
+  }
   const snap = await getDocs(query(collection(db, descriptor.collection), ...toConstraints(descriptor, cursorDoc)));
   const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   const page = interpretPage(descriptor, docs);

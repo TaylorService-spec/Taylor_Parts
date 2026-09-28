@@ -54,6 +54,7 @@ export {
 // Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability
 // `opportunity.read` registered active:false (REGISTER != GRANT).
 export { listOpportunityContext, listOpportunitiesForAccount } from "./opportunity/opportunityReadService";
+export { readGovernedRecordsCallable as readGovernedRecords } from "./access/governedRecordRead";
 // The PER-ID Opportunity read (North Star family 4). Same governed capability as the two list reads
 // above -- `opportunity.read` -- because the authorization question is identical and only the query
 // shape differs; no Rules change, no new capability. It is what gives an Opportunity a URL.

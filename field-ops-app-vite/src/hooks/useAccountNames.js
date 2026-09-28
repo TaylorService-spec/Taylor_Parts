@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { governedSurfaceFor, readGovernedPage } from "../services/governedRecordReadClient.js";
 import { collection, getDocs, query, where, documentId } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { ACCOUNTS_COLLECTION } from "../domain/constants";
@@ -79,7 +80,14 @@ export function useAccountNamesWithStatus(accountIds) {
       const map = new Map();
       let status = ACCOUNT_NAMES_STATUS.READY;
       try {
+        const surface = governedSurfaceFor(ACCOUNTS_COLLECTION);
         for (const idChunk of chunk(ids, 10)) {
+          if (surface) {
+            // PASS 11 FIX WAVE 1: governed read; a denial keeps its permission-denied code for the DENIED branch.
+            const page = await readGovernedPage(surface, { filters: [{ fieldId: "__name__", operator: "IN", value: idChunk }], limit: idChunk.length });
+            for (const row of page.rows) if (typeof row.name === "string" && row.name) map.set(row.id, row.name);
+            continue;
+          }
           const snap = await getDocs(
             query(collection(db, ACCOUNTS_COLLECTION), where(documentId(), "in", idChunk))
           );

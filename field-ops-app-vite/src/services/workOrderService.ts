@@ -8,6 +8,7 @@
 // role-scoped), mirroring firebase/collectionStore.js's existing read
 // patterns for fieldops_jobs/fieldops_technicians.
 import { httpsCallable } from "firebase/functions";
+import { governedSurfaceFor, readGovernedAll } from "./governedRecordReadClient.js";
 import { collection, doc, getDoc, limit, onSnapshot, query, where, type Unsubscribe } from "firebase/firestore";
 import { db, functions } from "../firebase/firebase";
 import { WORK_ORDERS_COLLECTION } from "../domain/constants";
@@ -82,6 +83,9 @@ export async function getWorkOrder(id: string): Promise<WorkOrder | null> {
 // index, see firestore.indexes.json's commit note) -- not implemented
 // here since this pass only wires the admin/dispatcher-facing Control
 // Tower view.
+/** Governed board refresh interval. A read, not a subscription: governed reads are authorized per request. */
+export const GOVERNED_BOARD_REFRESH_MS = 30_000;
+
 export function subscribeToWorkOrders(
   onChange: (workOrders: WorkOrder[]) => void,
   onError?: (err: Error) => void
@@ -90,6 +94,26 @@ export function subscribeToWorkOrders(
   // collection listener, and firestore.rules only lets a technician read Work
   // Orders assigned to them. Without it the denial was swallowed and the
   // surface span forever on "Loading work orders...".
+  // PASS 11 FIX WAVE 1: in a governed environment the board reads through the governed callable (PostgreSQL
+  // Administration authority: capability, condition, record assignment) on a bounded refresh interval instead of a
+  // Rules-gated live listener. Same callbacks, same row shape; a denial reaches onError exactly as before.
+  const surface = governedSurfaceFor(WORK_ORDERS_COLLECTION);
+  if (surface) {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      try {
+        const { rows } = await readGovernedAll(surface);
+        if (!stopped) onChange(rows as WorkOrder[]);
+      } catch (err) {
+        if (!stopped) onError?.(err as Error);
+        return; // a denial or outage is not retried in a loop; the surface shows it.
+      }
+      if (!stopped) timer = setTimeout(tick, GOVERNED_BOARD_REFRESH_MS);
+    };
+    void tick();
+    return () => { stopped = true; if (timer) clearTimeout(timer); };
+  }
   return onSnapshot(collection(db, WORK_ORDERS_COLLECTION), (snap) => {
     onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkOrder)));
   }, (err) => { onError?.(err as Error); });

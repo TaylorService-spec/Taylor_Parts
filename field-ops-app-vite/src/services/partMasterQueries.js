@@ -16,6 +16,7 @@
 // Mounting a filter UI over an unbounded fetch would ship the fetch-all anti-pattern with a nicer
 // front end. Making this shared reader bounded so a list got paging for free would be worse.
 import { collection, getDocs, query } from "firebase/firestore";
+import { governedSurfaceFor, readGovernedAll } from "./governedRecordReadClient.js";
 import { db } from "../firebase/firebase";
 import { toPartListView } from "../domain/partMasterView";
 
@@ -50,6 +51,12 @@ const PARTS_COLLECTION = "parts";
  */
 export async function fetchPartMasterList() {
   try {
+    // PASS 11 FIX WAVE 1: governed environment -> the governed read (PostgreSQL Administration authority).
+    const surface = governedSurfaceFor(PARTS_COLLECTION);
+    if (surface) {
+      const { docs } = await readGovernedAll(surface);
+      return { ok: true, ...toPartListView(docs.map((d) => ({ id: d.id, data: d.data }))) };
+    }
     const snap = await getDocs(query(collection(db, PARTS_COLLECTION)));
     return { ok: true, ...toPartListView(snap.docs.map((d) => ({ id: d.id, data: d.data() }))) };
   } catch (err) {

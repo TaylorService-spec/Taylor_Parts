@@ -6,6 +6,9 @@
 // it only reads what an admin/dispatcher is allowed to see.
 import { collection, getDocs, query, where, documentId, orderBy, limit, Timestamp } from "firebase/firestore";
 import { db } from "../firebase/firebase";
+// PASS 11 FIX WAVE 1: in a governed environment the Rules-gated collections below are read through the governed
+// callable (PostgreSQL Administration authority). Same returned shapes; no fallback to the direct read.
+import { governedSurfaceFor, readGovernedAll, readGovernedPage } from "./governedRecordReadClient.js";
 import {
   REORDER_REQUESTS_COLLECTION as LIVE_REORDER_REQUESTS_COLLECTION,
   REORDER_REQUEST_STATUS,
@@ -83,6 +86,8 @@ export interface RawPurchaseOrder {
 }
 
 async function listCollection<T>(name: string): Promise<T[]> {
+  const surface = governedSurfaceFor(name);
+  if (surface) return (await readGovernedAll(surface)).rows as T[];
   const snap = await getDocs(collection(db, name));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
 }
@@ -117,6 +122,11 @@ export async function listCollectionPage<T>(
 ): Promise<{ items: T[]; truncated: boolean }> {
   // cap + 1: the extra row is the truncation probe, matching the convention the trusted
   // read callables and the metadata list runtime already use.
+  const surface = governedSurfaceFor(name);
+  if (surface) {
+    const page = await readGovernedPage(surface, { sort: [{ fieldId: orderByField, direction: "ASC" }], limit: cap });
+    return { items: page.rows as T[], truncated: page.truncated };
+  }
   const snap = await getDocs(query(collection(db, name), orderBy(orderByField), limit(cap + 1)));
   const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
   const truncated = docs.length > cap;
@@ -138,7 +148,12 @@ export interface TransferOrderDoc {
   docId: string;
   data: Record<string, unknown>;
 }
+const toTransferOrderDoc = (doc: { id: string; data: Record<string, unknown> }): TransferOrderDoc =>
+  ({ docId: doc.id, data: doc.data });
+
 export const fetchTransferOrderDocs = async (): Promise<TransferOrderDoc[]> => {
+  const surface = governedSurfaceFor(TRANSFER_ORDERS_COLLECTION);
+  if (surface) return (await readGovernedAll(surface)).docs.map(toTransferOrderDoc);
   const snap = await getDocs(collection(db, TRANSFER_ORDERS_COLLECTION));
   return snap.docs.map((d) => ({ docId: d.id, data: d.data() as Record<string, unknown> }));
 };
@@ -160,6 +175,11 @@ export const fetchTransferOrderDocs = async (): Promise<TransferOrderDoc[]> => {
 export const fetchTransferOrderDocsPage = async (
   { cap = LIST_READ_CAP }: { cap?: number } = {},
 ): Promise<{ items: TransferOrderDoc[]; truncated: boolean }> => {
+  const surface = governedSurfaceFor(TRANSFER_ORDERS_COLLECTION);
+  if (surface) {
+    const page = await readGovernedPage(surface, { sort: [{ fieldId: "__name__", direction: "ASC" }], limit: cap });
+    return { items: page.docs.map(toTransferOrderDoc), truncated: page.truncated };
+  }
   const snap = await getDocs(
     query(collection(db, TRANSFER_ORDERS_COLLECTION), orderBy(documentId()), limit(cap + 1)),
   );
@@ -233,6 +253,24 @@ export interface ProcurementPurchaseOrderRow {
 }
 
 export const fetchProcurementPurchaseOrders = async (): Promise<ProcurementPurchaseOrderRow[]> => {
+  const requestSurface = governedSurfaceFor(LIVE_REORDER_REQUESTS_COLLECTION);
+  const poSurface = governedSurfaceFor(LIVE_REORDER_PURCHASE_ORDERS_COLLECTION);
+  if (requestSurface && poSurface) {
+    const requests = (await readGovernedAll(requestSurface, {
+      filters: [{ fieldId: "status", operator: "IN", value: [...PROCUREMENT_PO_REQUEST_STATUSES] }],
+    })).rows as (Record<string, unknown> & { id: string })[];
+    const purchaseOrdersById: Record<string, Record<string, unknown>> = {};
+    for (const idChunk of chunkIds(requests.map((r) => r.id), 10)) {
+      if (idChunk.length === 0) continue;
+      const page = await readGovernedPage(poSurface, { filters: [{ fieldId: "__name__", operator: "IN", value: idChunk }], limit: idChunk.length });
+      for (const row of page.rows as (Record<string, unknown> & { id: string })[]) purchaseOrdersById[row.id] = row;
+    }
+    const view = buildPurchaseOrdersView({
+      requestsRead: { data: requests, loading: false, error: null },
+      purchaseOrdersRead: { purchaseOrdersById, loading: false, error: null },
+    });
+    return view.rows as ProcurementPurchaseOrderRow[];
+  }
   const requestsSnap = await getDocs(
     query(collection(db, LIVE_REORDER_REQUESTS_COLLECTION), where("status", "in", PROCUREMENT_PO_REQUEST_STATUSES))
   );

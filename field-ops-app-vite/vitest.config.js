@@ -28,6 +28,8 @@ export default defineConfig({
     }),
     __APP_READINESS__: JSON.stringify({
       RECEIVING_TRANSPORT_READY: false,
+      // Pass 11 Fix Wave 1: the test environment has no governed callable; list reads stay on their direct source.
+      GOVERNED_RECORD_READ_READY: false,
       // Every readiness key the app reads must appear here, false by default. A key that is merely
       // ABSENT resolves to undefined, which is falsy and so happens to fail closed -- but only by
       // accident, and a test asserting the not-ready branch would then be asserting a coincidence.

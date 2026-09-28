@@ -103,7 +103,8 @@
         "PART_MASTER_WRITE_READY": false,
         "MANUFACTURER_WRITE_READY": false,
         "TRUSTED_COMPLETION_ENABLED": true,
-        "EOS_NAVIGATION_AUTHORITY_READY": false
+        "EOS_NAVIGATION_AUTHORITY_READY": false,
+        "GOVERNED_RECORD_READ_READY": false
       },
       "surfaces": [],
       "notes": "Firebase identity is null by design: the emulator path is opt-in via ?emulator=1 and DEV-gated, and must never carry a real project identity."
@@ -145,7 +146,8 @@
         "PART_MASTER_WRITE_READY": true,
         "MANUFACTURER_WRITE_READY": false,
         "TRUSTED_COMPLETION_ENABLED": true,
-        "EOS_NAVIGATION_AUTHORITY_READY": true
+        "EOS_NAVIGATION_AUTHORITY_READY": true,
+        "GOVERNED_RECORD_READ_READY": true
       },
       "capabilityActivationOverrides": [
         "opportunity.write",
@@ -292,7 +294,8 @@
         "PART_MASTER_WRITE_READY": false,
         "MANUFACTURER_WRITE_READY": false,
         "TRUSTED_COMPLETION_ENABLED": false,
-        "EOS_NAVIGATION_AUTHORITY_READY": false
+        "EOS_NAVIGATION_AUTHORITY_READY": false,
+        "GOVERNED_RECORD_READ_READY": false
       },
       "capabilityActivationOverrides": [
         "inventory.cycleCount.create",
@@ -323,7 +326,8 @@
         "PART_MASTER_WRITE_READY": false,
         "MANUFACTURER_WRITE_READY": false,
         "TRUSTED_COMPLETION_ENABLED": true,
-        "EOS_NAVIGATION_AUTHORITY_READY": false
+        "EOS_NAVIGATION_AUTHORITY_READY": false,
+        "GOVERNED_RECORD_READ_READY": false
       },
       "surfaces": [],
       "notes": "NOT PROVISIONED. Initially expected to share infrastructure with platform-sandbox as a distinct logical role; the forcing condition for a physical split is concurrency (an RC under review while sandbox rebuilds)."
@@ -357,7 +361,8 @@
         "PART_MASTER_WRITE_READY": false,
         "MANUFACTURER_WRITE_READY": false,
         "TRUSTED_COMPLETION_ENABLED": true,
-        "EOS_NAVIGATION_AUTHORITY_READY": false
+        "EOS_NAVIGATION_AUTHORITY_READY": false,
+        "GOVERNED_RECORD_READ_READY": false
       },
       "surfaces": [
         {

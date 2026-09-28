@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { governedSurfaceFor, readGovernedPage } from "../services/governedRecordReadClient.js";
 import { collection, getDocs, query, where, documentId } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { PURCHASE_ORDERS_COLLECTION } from "../domain/constants";
@@ -45,7 +46,14 @@ export function usePurchaseOrdersByIds(reorderRequestIds) {
     (async () => {
       const map = {};
       try {
+        const surface = governedSurfaceFor(PURCHASE_ORDERS_COLLECTION);
         for (const idChunk of chunk(ids, 10)) {
+          if (surface) {
+            // PASS 11 FIX WAVE 1: governed read; same map shape, failures surface exactly as a denied read did.
+            const page = await readGovernedPage(surface, { filters: [{ fieldId: "__name__", operator: "IN", value: idChunk }], limit: idChunk.length });
+            for (const row of page.rows) map[row.id] = row;
+            continue;
+          }
           const snap = await getDocs(
             query(collection(db, PURCHASE_ORDERS_COLLECTION), where(documentId(), "in", idChunk))
           );

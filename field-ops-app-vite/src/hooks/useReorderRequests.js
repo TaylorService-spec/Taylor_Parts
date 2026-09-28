@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { governedSurfaceFor, readGovernedAll } from "../services/governedRecordReadClient.js";
 import { collection, doc, getDocs, limit, onSnapshot, orderBy, query, startAfter, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS } from "../domain/constants";
@@ -255,6 +256,16 @@ export function useReorderRequestsByStatuses(statuses, enabled = true) {
     }
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
+    // PASS 11 FIX WAVE 1: in a governed environment this is a one-shot governed read (PostgreSQL Administration
+    // authority, conditions per record) rather than a Rules-gated live subscription. Same state shape and error codes.
+    const surface = governedSurfaceFor(REORDER_REQUESTS_COLLECTION);
+    if (surface) {
+      let cancelled = false;
+      readGovernedAll(surface, { filters: [{ fieldId: "status", operator: "IN", value: [...statuses] }] })
+        .then(({ rows }) => { if (!cancelled) setState({ data: rows, loading: false, error: null }); })
+        .catch((err) => { if (!cancelled) setState({ data: [], loading: false, error: err?.code ?? "unknown" }); });
+      return () => { cancelled = true; };
+    }
     const q = query(reorderRequestsRef, where("status", "in", statuses));
     const unsubscribe = onSnapshot(
       q,

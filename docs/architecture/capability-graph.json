@@ -17,7 +17,7 @@
     "catalogInactive": 151,
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
-    "callableExports": 48,
+    "callableExports": 49,
     "destinations": 95,
     "destinationsHidden": 19,
     "guides": 0,
@@ -402,6 +402,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedRecordRead.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
           "functions/src/account/accountPortfolioSummary.ts",
@@ -421,7 +422,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
-        "serverReferenceCount": 11,
+        "serverReferenceCount": 12,
         "clientReferenceCount": 7,
         "evidence": "EXPORTED"
       },
@@ -1874,6 +1875,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedRecordRead.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
           "functions/src/assistant/assistantStarters.ts",
@@ -1887,7 +1889,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1996,6 +1998,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedRecordRead.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
           "functions/src/eosOps/experienceAuthority.ts"
@@ -2007,7 +2010,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2085,6 +2088,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedRecordRead.ts",
           "functions/src/eosOps/experienceAuthority.ts"
         ],
         "clientReferences": [
@@ -2092,7 +2096,7 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/policyObjectRegistry.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2137,6 +2141,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedRecordRead.ts",
           "functions/src/eosOps/experienceAuthority.ts"
         ],
         "clientReferences": [
@@ -2144,7 +2149,7 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3577,6 +3582,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedRecordRead.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/partMaster/manufacturerReadService.ts",
           "functions/src/partMaster/partAliasCallables.ts",
@@ -3588,7 +3594,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4826,6 +4832,14 @@
         "opportunity.read"
       ],
       "comment": "Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability `opportunity.read` registered active:false (REGISTER != GRANT)."
+    },
+    {
+      "names": [
+        "readGovernedRecordsCallable as readGovernedRecords"
+      ],
+      "module": "./access/governedRecordRead",
+      "capabilityHints": [],
+      "comment": null
     },
     {
       "names": [

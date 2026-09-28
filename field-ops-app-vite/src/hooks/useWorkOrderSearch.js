@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { governedSurfaceFor, readGovernedPage } from "../services/governedRecordReadClient.js";
 import { collection, getDocs, limit as fsLimit, orderBy, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { WORK_ORDERS_COLLECTION } from "../domain/constants";
@@ -36,6 +37,21 @@ export function useWorkOrderSearch(term, { cap = WORK_ORDER_SEARCH_CAP } = {}) {
 
     const timer = setTimeout(async () => {
       try {
+        // PASS 11 FIX WAVE 1: governed environment -> the same prefix query through the governed read.
+        const surface = governedSurfaceFor(shape.collection);
+        if (surface) {
+          const page = await readGovernedPage(surface, {
+            filters: [
+              { fieldId: shape.fieldPath, operator: "GREATER_OR_EQUAL", value: shape.start },
+              { fieldId: shape.fieldPath, operator: "LESS_OR_EQUAL", value: shape.end },
+            ],
+            sort: [{ fieldId: shape.fieldPath, direction: "ASC" }],
+            limit: shape.limit,
+          });
+          if (token !== requestRef.current) return;
+          setRaw({ docs: page.rows, loading: false, error: null });
+          return;
+        }
         const q = query(
           collection(db, shape.collection),
           where(shape.fieldPath, ">=", shape.start),
