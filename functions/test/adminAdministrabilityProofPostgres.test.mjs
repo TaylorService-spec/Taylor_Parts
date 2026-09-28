@@ -33,6 +33,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -141,6 +142,9 @@ test("administrability: workflow responsibility is changed by Administration alo
     await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
              VALUES ($1,$2,'ACTIVE','fixture','fixture','fixture')`, [TENANT, company]);
   }
+  // Taylor's governed KEY binding (the nonprod shape: Ventana stays unkeyed). Commercial writes store the bound key and
+  // refuse an unkeyed company, so the fixture states the binding P2(e)'s Opportunities rely on.
+  await bindOperatingCompany(q, TENANT, "taylor");
   const boot = await bootstrapAdministrator(repo, { tenantId: TENANT, externalSubject: ADMIN_SUBJECT, performedBy: OPERATOR, reason: "initial administrator" });
 
   const deps = { repo, explainEffectiveAccess: (tenantId, principalId) => explainEffectiveAccess(repo, pool, { tenantId, principalId }) };

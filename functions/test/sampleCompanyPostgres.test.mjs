@@ -18,6 +18,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -1223,6 +1224,9 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     let armed;
     try {
       await client.query("BEGIN");
+      // The governed company -> KEY binding a Commercial write resolves (nonprod holds it; this fixture does not).
+      // Inside the same rolled-back transaction, so it too leaves nothing behind.
+      await bindOperatingCompany((text, values) => client.query(text, values), tenantId, MANIFEST.company.operatingCompanyId);
       await createCommercialRecord(client, tenantId, "lane-r-fail-closed-probe", {
         kind: victim.kind, recordNumber: victim.number, accountId: victim.account, ownerEmployeeId: ownerId,
         operatingCompanyId: MANIFEST.company.operatingCompanyId, createdBy: "lane-r-fail-closed-probe",
