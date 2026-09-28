@@ -380,6 +380,27 @@ async function main() {
     assert.equal(events[0].outcome, "applied");
   });
 
+  await check("a name that merely LOOKS secret-like saves and renames (no permanent internal), and no name enters the audit text", async () => {
+    const actorUid = await seedActor();
+    await grantRole(actorUid, "fullDefinitionAccess");
+    // The audit writer refuses summaries matching SECRET_LIKE_PATTERN. When the NAME was
+    // interpolated into the summary, this ordinary report title threw on every attempt.
+    const record = await createSavedDefinition(
+      { actorUid, name: "password: q3 review", definition: VALID_DEFINITION },
+      { roles: TEST_ROLES },
+    );
+    assert.equal(record.name, "password: q3 review");
+    await renameSavedDefinition({ actorUid, definitionId: record.id, name: "Token: bearer abcdefghijklmnop" }, { roles: TEST_ROLES });
+    const created = await countAuditEventsFor(record.id, "createReportDefinition");
+    const renamed = await countAuditEventsFor(record.id, "renameReportDefinition");
+    assert.equal(created.length, 1);
+    assert.equal(renamed.length, 1);
+    for (const e of [...created, ...renamed]) {
+      assert.ok(!/password|bearer|q3 review/i.test(e.summary), `user free text leaked into the audit summary: ${e.summary}`);
+      assert.ok(e.summary.includes(record.id), "the summary names the definition by id");
+    }
+  });
+
   await check("owner can duplicate their own saved definition into a NEW document they own", async () => {
     const actorUid = await seedActor();
     await grantRole(actorUid, "fullDefinitionAccess");

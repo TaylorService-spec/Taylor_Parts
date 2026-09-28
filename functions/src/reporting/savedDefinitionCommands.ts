@@ -348,7 +348,10 @@ export async function createSavedDefinition(
       targetId: ref.id,
       objectId,
       outcome: "applied",
-      summary: `Saved report definition "${params.name}" created for object "${objectId}".`,
+      // The definition ID, never the user's free-text NAME: a name is not audit data (it is on the
+      // record), and a name that merely looks secret-like ("password: q3") made the audit writer's
+      // SECRET_LIKE_PATTERN guard throw -- a permanent `internal` for that name on every retry.
+      summary: `Saved report definition "${ref.id}" created for object "${objectId}".`,
     }, db);
     if (options.__simulateFailureAfterStage) {
       throw options.__simulateFailureAfterStage;
@@ -456,7 +459,8 @@ export async function renameSavedDefinition(
       targetId: ref.id,
       objectId,
       outcome: "applied",
-      summary: `Saved report definition "${ref.id}" renamed to "${params.name}".`,
+      // ID only -- see createSavedDefinition: the new name lives on the record, not in the audit text.
+      summary: `Saved report definition "${ref.id}" renamed.`,
     }, db);
     if (options.__simulateFailureAfterStage) {
       throw options.__simulateFailureAfterStage;
