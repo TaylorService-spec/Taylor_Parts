@@ -13,6 +13,7 @@ on:
   pull_request:
     paths:
       - "functions/src/adminPolicy/**"
+      - "functions/src/eosApi/**"
       - "functions/src/eosOps/**"
       - "functions/src/eosCommercial/**"
       - "functions/src/eosCrm/**"
@@ -31,6 +32,7 @@ on:
     branches: [main]
     paths:
       - "functions/src/adminPolicy/**"
+      - "functions/src/eosApi/**"
       - "functions/src/eosOps/**"
       - "functions/src/eosCommercial/**"
       - "functions/src/eosCrm/**"
