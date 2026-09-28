@@ -20,6 +20,15 @@
 import { resolveOperationalContext } from "./capabilityAuthority";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { resolveExperienceContext } from "./experienceAuthority";
+import {
+  ReorderLifecycleError, createGovernedReorderRequest, reviewReorderRequest,
+  startPurchasingOnReorder, postPurchasingUpdate, markReorderReceived, cancelReorderRequest,
+  readReorderQueue, readMyAssignedReorders, readReorderRequest, readMyReorderHistory,
+  listReorderWarehouseOptions,
+  recordReorderPurchaseOrder, voidReorderPurchaseOrder, type ReorderActor,
+} from "./reorderLifecycleCommands.js";
+import { ReorderAssignmentError, assignReorderRequestToEmployee } from "./reorderAssignmentAuthority.js";
+import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import type { Pool } from "pg";
@@ -45,24 +54,78 @@ export type TokenVerifier = (bearerToken: string) => Promise<VerifiedIdentity>;
 export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "resolveMyCapabilities",
   "resolveMyExperienceContext",
+  // THE REORDER READS. `readMyAssignedReorders` is the seam this cutover closes: the legacy client
+  // asked Firestore `where(assignedToUserId == user.uid)`, and this asks the governed Employee
+  // assignment instead. Reading the queue is a different question from reading your own work, so
+  // they are different capabilities and different operations.
+  "readReorderQueue",
+  "readMyAssignedReorders",
+  "readReorderRequest",
+  "readMyReorderHistory",
+  "listReorderWarehouseOptions",
 ] as const);
 export type OperationsReadOperation = (typeof OPERATIONS_READ_OPERATIONS)[number];
 
 /**
- * Which route serves which operation. A closed map, not a prefix match: asking for the experience
- * context at the inventory path is a 404, so neither route can quietly grow the other's surface.
+ * THE REORDER LIFECYCLE, as a closed list.
+ *
+ * Composing a route does not activate anything: each command refuses unless the caller holds the
+ * capability the Role catalog already governs, and the three assignee-scoped commands refuse again
+ * unless the caller resolves to the assigned Employee.
  */
-export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsReadOperation, string>> = Object.freeze({
+export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
+  "createReorderRequest",
+  "reviewReorderRequest",
+  "assignReorderRequest",
+  "startPurchasingOnReorder",
+  "postPurchasingUpdate",
+  "markReorderReceived",
+  "cancelReorderRequest",
+  "recordReorderPurchaseOrder",
+  "voidReorderPurchaseOrder",
+  // RECEIVING, dispatched EXPLICITLY BY SOURCE TYPE (Owner Ruling R1). This operation owns
+  // REORDER_PURCHASE_ORDER receipts and refuses every other source type outright. The canonical
+  // PURCHASE_ORDER continues to be received by its existing authority until its own cutover, and
+  // neither path ever falls back to the other: a receipt lands against the authority the caller
+  // named, or it is refused.
+  "receiveReorderStock",
+] as const);
+export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
+
+export type OperationsOperation = OperationsReadOperation | OperationsMutationOperation;
+
+/**
+ * Which route serves which operation. A closed map, not a prefix match: asking for the experience
+ * context at the inventory path is a 404, so neither route can quietly grow the other's surface. The Reorder
+ * reads, commands and Receiving are served on /operations/inventory (the Reorder domain cutover, #1961).
+ */
+export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation, string>> = Object.freeze({
   resolveMyCapabilities: "/operations/inventory",
   resolveMyExperienceContext: "/operations/experience",
+  readReorderQueue: "/operations/inventory",
+  readMyAssignedReorders: "/operations/inventory",
+  readReorderRequest: "/operations/inventory",
+  readMyReorderHistory: "/operations/inventory",
+  listReorderWarehouseOptions: "/operations/inventory",
+  createReorderRequest: "/operations/inventory",
+  reviewReorderRequest: "/operations/inventory",
+  assignReorderRequest: "/operations/inventory",
+  startPurchasingOnReorder: "/operations/inventory",
+  postPurchasingUpdate: "/operations/inventory",
+  markReorderReceived: "/operations/inventory",
+  cancelReorderRequest: "/operations/inventory",
+  recordReorderPurchaseOrder: "/operations/inventory",
+  voidReorderPurchaseOrder: "/operations/inventory",
+  receiveReorderStock: "/operations/inventory",
 });
 
 export const OPERATIONS_ROUTES: readonly string[] =
   Object.freeze([...new Set(Object.values(OPERATIONS_ROUTE_BY_OPERATION))].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
-export const isOperationsOperation = (name: unknown): name is OperationsReadOperation =>
-  typeof name === "string" && READS.has(name);
+const MUTATIONS = new Set<string>(OPERATIONS_MUTATION_OPERATIONS);
+export const isOperationsOperation = (name: unknown): name is OperationsOperation =>
+  typeof name === "string" && (READS.has(name) || MUTATIONS.has(name));
 
 export interface OperationsApiDeps {
   readonly reader: PolicyReader;
@@ -74,10 +137,13 @@ export type OperationsApiFailureCode =
   | "UNAUTHENTICATED"
   | "FORBIDDEN"
   | "INVALID_INPUT"
+  | "NOT_FOUND"
+  | "PRECONDITION_FAILED"
+  | "CONFLICT"
   | "INTERNAL";
 
 export type OperationsApiResult =
-  | { readonly ok: true; readonly operation: OperationsReadOperation; readonly result: unknown }
+  | { readonly ok: true; readonly operation: OperationsOperation; readonly result: unknown }
   | { readonly ok: false; readonly operation: string; readonly code: OperationsApiFailureCode; readonly message: string };
 
 /**
@@ -92,10 +158,33 @@ export async function executeOperation(
   deps: OperationsApiDeps,
   request: {
     readonly caller: { readonly externalSubject: string; readonly identityProvider: string; readonly requestedTenantId: string | null };
-    readonly operation: OperationsReadOperation;
+    readonly operation: OperationsOperation;
+    /** Command input. Reads ignore it; every command validates it and accepts no extra field. */
+    readonly input?: Record<string, unknown>;
   },
 ): Promise<OperationsApiResult> {
   try {
+    // ONE resolution for every Reorder operation: the caller's EOS Principal, tenant and the
+    // capabilities the Role catalog grants them. `principalContext.uid` IS the EOS principal id --
+    // every downstream record identifies the actor by it, and no Firebase uid reaches these commands.
+    const reorderActor = async (): Promise<{ actor: ReorderActor; pool: Pool }> => {
+      const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
+        identityProvider: request.caller.identityProvider,
+        externalSubject: request.caller.externalSubject,
+        requestedTenantId: request.caller.requestedTenantId,
+      });
+      return {
+        pool: deps.pool,
+        actor: {
+          tenantId: ctx.principalContext.tenantId,
+          principalId: ctx.principalContext.uid,
+          capabilities: new Set(ctx.capabilities),
+        },
+      };
+    };
+    const ok = (result: unknown): OperationsApiResult =>
+      ({ ok: true, operation: request.operation, result });
+
     switch (request.operation) {
       case "resolveMyCapabilities": {
         // Conditions from PostgreSQL -- the source Administration writes. Lazy: this read never asks
@@ -127,12 +216,81 @@ export async function executeOperation(
         });
         return { ok: true, operation: "resolveMyExperienceContext", result: context };
       }
+      case "readReorderQueue": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readReorderQueue({ pool }, actor, request.input ?? {}));
+      }
+      case "readReorderRequest": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readReorderRequest({ pool }, actor, request.input ?? {}));
+      }
+      case "readMyReorderHistory": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readMyReorderHistory({ pool }, actor));
+      }
+      case "listReorderWarehouseOptions": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listReorderWarehouseOptions({ pool }, actor));
+      }
+      case "readMyAssignedReorders": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readMyAssignedReorders({ pool }, actor));
+      }
+      case "createReorderRequest": {
+        const { actor, pool } = await reorderActor();
+        return ok(await createGovernedReorderRequest({ pool }, actor, request.input ?? {}));
+      }
+      case "reviewReorderRequest": {
+        const { actor, pool } = await reorderActor();
+        return ok(await reviewReorderRequest({ pool }, actor, request.input ?? {}));
+      }
+      case "assignReorderRequest": {
+        const { actor, pool } = await reorderActor();
+        return ok(await assignReorderRequestToEmployee({ pool }, actor, request.input ?? {}));
+      }
+      case "startPurchasingOnReorder": {
+        const { actor, pool } = await reorderActor();
+        return ok(await startPurchasingOnReorder({ pool }, actor, request.input ?? {}));
+      }
+      case "postPurchasingUpdate": {
+        const { actor, pool } = await reorderActor();
+        return ok(await postPurchasingUpdate({ pool }, actor, request.input ?? {}));
+      }
+      case "markReorderReceived": {
+        const { actor, pool } = await reorderActor();
+        return ok(await markReorderReceived({ pool }, actor, request.input ?? {}));
+      }
+      case "cancelReorderRequest": {
+        const { actor, pool } = await reorderActor();
+        return ok(await cancelReorderRequest({ pool }, actor, request.input ?? {}));
+      }
+      case "recordReorderPurchaseOrder": {
+        const { actor, pool } = await reorderActor();
+        return ok(await recordReorderPurchaseOrder({ pool }, actor, request.input ?? {}));
+      }
+      case "voidReorderPurchaseOrder": {
+        const { actor, pool } = await reorderActor();
+        return ok(await voidReorderPurchaseOrder({ pool }, actor, request.input ?? {}));
+      }
+      case "receiveReorderStock": {
+        // The SAME resolved Principal context every other operation uses. The receipt's actor is an
+        // EOS Principal holding inventory.stock.receive -- never a Firebase uid, and never the
+        // Employee the purchasing work happens to be assigned to.
+        const { actor, pool } = await reorderActor();
+        return ok(await receiveReorderStock({ pool }, actor, request.input ?? {}));
+      }
       default:
         return { ok: false, operation: request.operation, code: "UNKNOWN_OPERATION", message: "no such Operations operation" };
     }
   } catch (err) {
     if (err instanceof PrincipalContextError) {
       return { ok: false, operation: request.operation, code: "FORBIDDEN", message: err.refusal };
+    }
+    // A governed refusal is the ANSWER, not a failure: the caller is told which rule refused them,
+    // with the command's own category preserved rather than flattened to 500.
+    if (err instanceof ReorderLifecycleError || err instanceof ReorderAssignmentError || err instanceof ReceiveStockError) {
+      const code: OperationsApiFailureCode = err.category === "FAILED" ? "INTERNAL" : err.category;
+      return { ok: false, operation: request.operation, code, message: err.message };
     }
     // eslint-disable-next-line no-console -- same posture as adminPolicyHttp.ts's unhandled-error log
     console.error("[eosOpsHttp] unhandled", err);
@@ -164,6 +322,9 @@ const STATUS_BY_CODE: Readonly<Record<OperationsApiFailureCode, number>> = Objec
   UNAUTHENTICATED: 401,
   FORBIDDEN: 403,
   INVALID_INPUT: 400,
+  NOT_FOUND: 404,
+  PRECONDITION_FAILED: 409,
+  CONFLICT: 409,
   INTERNAL: 500,
 });
 
@@ -248,6 +409,9 @@ export async function handleOperationsRequest(
       requestedTenantId: singleHeader(header(request, "x-eos-tenant")),
     },
     operation,
+    input: payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)
+      ? payload.input as Record<string, unknown>
+      : {},
   });
 
   if (result.ok) return json(200, result, origin);

@@ -246,7 +246,10 @@ function CancelReorderRequestAction({ request, onCancelled }) {
 function VoidPurchaseOrderAction({ request, onVoided }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const isAssignee = user?.uid === request.assignedToUserId;
+  // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
+  // read resolves the caller to an Employee through an active employee_principal_link and compares
+  // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
+  const isAssignee = request.isAssignee === true;
   if (!isAssignee) return null; // assignee-only UI restriction preserved (Rules enforce it too)
 
   return (
@@ -260,7 +263,10 @@ function VoidPurchaseOrderAction({ request, onVoided }) {
           requireReason
           reasonLabel="Reason"
           onConfirm={async (reason) => {
-            await voidPurchaseOrder(request.id, { reason });
+            // The governed command returns a refusal as a value; throwing it keeps ConfirmDialog's
+            // existing mapError path, which renders safe categorized copy rather than a raw string.
+            const res = await voidPurchaseOrder(request.id, { reason });
+            if (!res?.ok) throw new Error(res?.message ?? "the void was refused");
             setOpen(false);
             onVoided();
           }}
@@ -394,14 +400,16 @@ function ReorderRequestReview({ request, onReviewed }) {
 // transition and is not added here -- flagged as a known,
 // intentional gap, not fixed in this correction.
 function ReorderRequestAssignment({ request, onAssigned }) {
+  // THE PICKER ALREADY CHOSE AN EMPLOYEE. It then derived that Employee's Firebase uid and submitted
+  // THAT -- so a correct choice became a uid on the way to the database. The Employee id is what the
+  // governed assignment authority names, so it is simply what gets submitted now, and the uid is not
+  // read at all.
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
-  const [assignedToUserId, setAssignedToUserId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
   function handleEmployeeSelect(employee) {
     setSelectedEmployeeId(employee.employeeId);
-    setAssignedToUserId(employee.userId);
   }
 
   async function handleAssign(e) {
@@ -409,7 +417,14 @@ function ReorderRequestAssignment({ request, onAssigned }) {
     setSubmitting(true);
     setError(null);
     try {
-      await assignReorderRequest(request.id, { assignedToUserId });
+      // The governed command returns a refusal as a VALUE, so a "you may not assign this" answer is
+      // rendered rather than thrown away as a generic failure.
+      const res = await assignReorderRequest(request.id, { employeeId: selectedEmployeeId });
+      if (!res?.ok) {
+        setError(res?.message ?? workflowActionErrorMessage(new Error("assignment refused")));
+        setSubmitting(false);
+        return;
+      }
       onAssigned();
     } catch (err) {
       // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
@@ -456,7 +471,7 @@ function ReorderRequestAssignment({ request, onAssigned }) {
           placeholder="Search employees by name..."
         />
         <div className="disp-board-toolbar">
-          <Button type="submit" variant="primary" disabled={submitting || !assignedToUserId}>
+          <Button type="submit" variant="primary" disabled={submitting || !selectedEmployeeId}>
             Assign
           </Button>
         </div>
@@ -478,7 +493,10 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
   const { user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const isAssignee = user?.uid === request.assignedToUserId;
+  // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
+  // read resolves the caller to an Employee through an active employee_principal_link and compares
+  // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
+  const isAssignee = request.isAssignee === true;
 
   async function handleStart() {
     setSubmitting(true);
@@ -500,7 +518,7 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
         <tbody>
           <tr>
             <td>Assigned to</td>
-            <td>{resolveActorDisplayName(request.assignedToUserId, employeeDirectory)}</td>
+            <td>{resolveActorDisplayName(request.assignedEmployeeId, employeeDirectory)}</td>
           </tr>
           <tr>
             <td>Assigned</td>
@@ -553,7 +571,10 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
 // updatePurchasingProgress().
 function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory }) {
   const { user } = useAuth();
-  const isAssignee = user?.uid === request.assignedToUserId;
+  // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
+  // read resolves the caller to an Employee through an active employee_principal_link and compares
+  // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
+  const isAssignee = request.isAssignee === true;
   const [purchasingNotes, setPurchasingNotes] = useState(request.purchasingNotes ?? "");
   const [vendorContacted, setVendorContacted] = useState(!!request.vendorContacted);
   const [expectedAvailabilityDate, setExpectedAvailabilityDate] = useState(request.expectedAvailabilityDate ?? "");
@@ -582,7 +603,7 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
         <tbody>
           <tr>
             <td>Assigned to</td>
-            <td>{resolveActorDisplayName(request.assignedToUserId, employeeDirectory)}</td>
+            <td>{resolveActorDisplayName(request.assignedEmployeeId, employeeDirectory)}</td>
           </tr>
           <tr>
             <td>Purchasing started</td>
@@ -674,7 +695,10 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
 // Firestore transaction.
 function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion }) {
   const { user } = useAuth();
-  const isAssignee = user?.uid === request.assignedToUserId;
+  // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
+  // read resolves the caller to an Employee through an active employee_principal_link and compares
+  // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
+  const isAssignee = request.isAssignee === true;
   // Governed supplier SELECTION (admin/dispatcher PO path): the supplier comes from the ONE governed
   // Supplier read model, not free text. `selectedSupplier` holds the chosen governed ENTITY; only its
   // NAME is persisted for now (existing supplierName schema), and the entity-based state keeps the future
@@ -908,7 +932,10 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
 // real stock remains a separate backlog item.
 function ReorderRequestMarkReceived({ request, onReceived }) {
   const { user } = useAuth();
-  const isAssignee = user?.uid === request.assignedToUserId;
+  // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
+  // read resolves the caller to an Employee through an active employee_principal_link and compares
+  // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
+  const isAssignee = request.isAssignee === true;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -1134,10 +1161,10 @@ function ReorderRequestDecision({ request, employeeDirectory }) {
               <td>{request.currentOwner}</td>
             </tr>
           )}
-          {request.assignedToUserId && (
+          {request.assignedEmployeeId && (
             <tr>
               <td>Assigned to</td>
-              <td>{resolveActorDisplayName(request.assignedToUserId, employeeDirectory)}</td>
+              <td>{resolveActorDisplayName(request.assignedEmployeeId, employeeDirectory)}</td>
             </tr>
           )}
           {request.assignedAt && (

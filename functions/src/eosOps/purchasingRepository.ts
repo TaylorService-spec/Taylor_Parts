@@ -91,6 +91,15 @@ export type TransferOrderStatus = (typeof TRANSFER_ORDER_STATUSES)[number];
  * command core and this one may not import it), so the constant is named identically and a test
  * pins the two equal rather than leaving the duplication unguarded.
  */
+/**
+ * A Reorder raised through this command, as opposed to one copied from the legacy Firestore object.
+ *
+ * The distinction is not decoration: a MIGRATED row may legitimately have no known requester, and
+ * the constraint that keeps the native guarantee intact is keyed on this value.
+ */
+export const NATIVE_REORDER_PROVENANCE = "NATIVE";
+export const MIGRATED_REORDER_PROVENANCE = "MIGRATED";
+
 export const PO_RECORDABLE_STATUS: ReorderRequestStatus = "PURCHASING_IN_PROGRESS";
 
 /** The ONLY state a purchase order may be voided from. VOIDED is reachable from ORDERED and nowhere else. */
@@ -136,10 +145,28 @@ export interface CreateReorderRequestRow {
   readonly reorderRequestNumber?: string | null;
 }
 
+/**
+ * Low-level INSERT of a Reorder Request row.
+ *
+ * ════════════════════ THIS IS NOT THE LIVE REORDER SEMANTICS ════════════════════
+ *
+ * `createGovernedReorderRequest` (reorderLifecycleCommands.ts) is. It is the command that checks the
+ * capability, reads the operating company FROM the governed warehouse rather than accepting one, and
+ * refuses an inactive or foreign warehouse. NONE of that is here, and none of it should be inferred
+ * from here.
+ *
+ * This function exists for the sample-company seed, which builds a world from repository primitives
+ * rather than by calling commands it has no capability context for. It is QUARANTINED to that role:
+ * it defines no business rule, and a second caller wanting "create a Reorder" wants the command.
+ *
+ * `requestedByPrincipalId` IS AN EOS PRINCIPAL. It was previously named `actorId` and the seed passed
+ * an operator token into it, which is how a uid-shaped string came to sit in a governed identity
+ * column. The name states the requirement and the foreign key enforces it.
+ */
 export async function createReorderRequest(
   pool: Pool,
   tenantId: string,
-  actorId: string,
+  requestedByPrincipalId: string,
   operatingCompanyKey: OperatingCompanyKey,
   row: CreateReorderRequestRow,
 ): Promise<ReorderRequestRecord> {
@@ -148,15 +175,17 @@ export async function createReorderRequest(
   const companyKey = requireOperatingCompanyKey(operatingCompanyKey);
   const id = newId("rr");
   await pool.query(
+    // `provenance` is STATED, never defaulted -- migration 035 drops the column default precisely so
+    // that a row raised through this command cannot be mistaken for one lifted out of Firestore.
     `INSERT INTO ${SCHEMA}.reorder_requests
        (id, tenant_id, operating_company_key, part_id, warehouse_id, status,
         requested_quantity, recommended_quantity, work_order_id, reorder_request_number,
-        requested_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)`,
+        requested_by, updated_by, provenance)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, '${NATIVE_REORDER_PROVENANCE}')`,
     [
       id, tenantId, companyKey, row.partId, row.warehouseId, row.status,
       row.requestedQuantity, row.recommendedQuantity ?? null, row.workOrderId ?? null,
-      row.reorderRequestNumber ?? null, actorId,
+      row.reorderRequestNumber ?? null, requestedByPrincipalId,
     ],
   );
   return {
@@ -251,10 +280,14 @@ export interface RecordPurchaseOrderInput {
  * PO_ALREADY_EXISTS. The last one is also the schema's (the primary key), and is checked here so the
  * caller gets the domain reason rather than a unique-violation.
  */
+/**
+ * `actorPrincipalId` IS AN EOS PRINCIPAL. It lands in `purchase_orders.created_by` and in the
+ * request's `updated_by`, and migration 039 constrains both to a member of this tenant.
+ */
 export async function recordPurchaseOrder(
   pool: Pool,
   tenantId: string,
-  actorId: string,
+  actorPrincipalId: string,
   reorderRequestId: string,
   input: RecordPurchaseOrderInput,
 ): Promise<PurchaseOrderRecord> {
@@ -304,14 +337,14 @@ export async function recordPurchaseOrder(
         reorderRequestId, tenantId, companyKey, request.part_id,
         input.supplierName, input.externalPoNumber, input.orderedQuantity,
         input.orderedDate, input.expectedArrivalDate ?? null,
-        priced, currency, input.priceAuthorityVersion ?? null, actorId,
+        priced, currency, input.priceAuthorityVersion ?? null, actorPrincipalId,
       ],
     );
     await client.query(
       `UPDATE ${SCHEMA}.reorder_requests
           SET status = 'ORDERED', updated_by = $3, updated_at = now()
         WHERE tenant_id = $1 AND id = $2`,
-      [tenantId, reorderRequestId, actorId],
+      [tenantId, reorderRequestId, actorPrincipalId],
     );
 
     await client.query("COMMIT");
@@ -392,10 +425,14 @@ export interface PurchaseOrderVoidRecord {
  * transaction — not supplied, and not re-derived — so a void can never attribute itself to a company
  * or a part the purchase order it voids did not carry.
  */
+/**
+ * `actorPrincipalId` IS AN EOS PRINCIPAL. It lands in `purchase_order_voids.voided_by` and in the
+ * request's `updated_by`, and migration 039 constrains both to a member of this tenant.
+ */
 export async function voidPurchaseOrder(
   pool: Pool,
   tenantId: string,
-  actorId: string,
+  actorPrincipalId: string,
   purchaseOrderId: string,
   reason: string,
 ): Promise<PurchaseOrderVoidRecord> {
@@ -440,13 +477,13 @@ export async function voidPurchaseOrder(
       `INSERT INTO ${SCHEMA}.purchase_order_voids
          (purchase_order_id, tenant_id, operating_company_key, part_id, reason, voided_by)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [purchaseOrderId, tenantId, companyKey, source.part_id, reason, actorId],
+      [purchaseOrderId, tenantId, companyKey, source.part_id, reason, actorPrincipalId],
     );
     await client.query(
       `UPDATE ${SCHEMA}.reorder_requests
           SET status = 'VOIDED', updated_by = $3, updated_at = now()
         WHERE tenant_id = $1 AND id = $2`,
-      [tenantId, purchaseOrderId, actorId],
+      [tenantId, purchaseOrderId, actorPrincipalId],
     );
 
     await client.query("COMMIT");
@@ -456,7 +493,7 @@ export async function voidPurchaseOrder(
       operatingCompanyKey: companyKey,
       partId: source.part_id,
       reason,
-      voidedBy: actorId,
+      voidedBy: actorPrincipalId,
     };
   } catch (err) {
     await rollbackQuietly(client);
@@ -503,6 +540,15 @@ export interface CreateReceivingOrderRow {
   readonly sourceKind: ReceivingSourceKind;
   readonly purchaseOrderId: string;
   /**
+   * The receipt's governed BUSINESS EVENT time -- when the goods arrived.
+   *
+   * REQUIRED, and deliberately not defaulted to `now()`. The instant a row was written is not the
+   * instant stock arrived, and the inventory movement, the acquisition-cost evidence and the Reorder
+   * closeout all have to carry the SAME instant as this receipt. A column default would hand each of
+   * them a different clock reading and call the disagreement a fact.
+   */
+  readonly receivedAt: Date;
+  /**
    * LEGACY ONLY. Omitted — not blank-filled — for a canonical purchase order, which has no reorder
    * request; the schema refuses the wrong combination in both directions. For the legacy chain it is
    * supplied by the caller AND checked here against the purchase order id, so the identity equation
@@ -518,6 +564,7 @@ export interface CreateReceivingOrderRow {
 
 export interface ReceivingOrderRecord {
   readonly id: string;
+  readonly receivedAt: Date;
   readonly tenantId: string;
   readonly operatingCompanyKey: OperatingCompanyKey;
   readonly sourceKind: ReceivingSourceKind;
@@ -536,16 +583,51 @@ export interface ReceivingOrderRecord {
  * quantities attributed to no receipt. Neither is a legal intermediate state, so neither is
  * reachable: both writes commit together or not at all.
  */
-export async function createReceivingOrder(
-  pool: Pool,
+export interface ReceivingOrderInsert extends CreateReceivingOrderRow {
+  /**
+   * The receipt's identity, SUPPLIED rather than generated.
+   *
+   * The governed command derives it from the caller's idempotency key so a retry resolves to the
+   * same receipt. Generating one here would make every retry a new receipt.
+   */
+  readonly id: string;
+  /**
+   * The fingerprint of the request this receipt was built from, when the writer has one.
+   *
+   * It is what distinguishes a REPLAY from a CONFLICT on a repeated idempotency key. A receipt
+   * written without it cannot prove payload equality, so the governed command refuses to replay
+   * against one -- which is the fail-closed answer, not a missing feature.
+   */
+  readonly requestFingerprint?: string | null;
+}
+
+/**
+ * Write a receiving order and its lines INSIDE the caller's transaction.
+ *
+ * The caller owns BEGIN and COMMIT. That is the whole point: a receipt is only one of the effects a
+ * receiving transaction commits -- the inventory movement, the serialized custody, the
+ * acquisition-cost evidence and the Reorder closeout are the others -- and a writer that opened its
+ * own transaction could commit the receipt while those rolled back.
+ *
+ * An order without its lines is a receipt that received nothing, and lines without their order are
+ * quantities attributed to no receipt. Neither is a legal intermediate state.
+ */
+export async function insertReceivingOrder(
+  client: PoolClient,
   tenantId: string,
   actorId: string,
   operatingCompanyKey: OperatingCompanyKey,
-  row: CreateReceivingOrderRow,
+  row: ReceivingOrderInsert,
 ): Promise<ReceivingOrderRecord> {
   const companyKey = requireOperatingCompanyKey(operatingCompanyKey);
   if (!Array.isArray(row.lines) || row.lines.length === 0) {
     throw new PurchasingRepositoryError("RECEIPT_NO_LINES", "a receiving order records at least one line");
+  }
+  if (!(row.receivedAt instanceof Date) || Number.isNaN(row.receivedAt.getTime())) {
+    throw new PurchasingRepositoryError(
+      "RECEIVED_AT_REQUIRED",
+      "a receipt states when the goods arrived; it is never inferred from when the row was written",
+    );
   }
   const legacy = row.sourceKind === "REORDER_PURCHASE_ORDER";
   const reorderRequestId = row.reorderRequestId ?? null;
@@ -564,44 +646,35 @@ export async function createReceivingOrder(
     );
   }
 
-  const id = newId("rcv");
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  await client.query(
+    `INSERT INTO ${SCHEMA}.receiving_orders
+       (id, tenant_id, operating_company_key, source_kind, source_purchase_order_id,
+        source_reorder_request_id, receiving_location_type, receiving_location_id,
+        status, receiving_order_number, idempotency_key, request_fingerprint, received_at,
+        created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)`,
+    [
+      row.id, tenantId, companyKey, row.sourceKind, row.purchaseOrderId, reorderRequestId,
+      row.receivingLocation.type, row.receivingLocation.id, row.status,
+      row.receivingOrderNumber ?? null, row.idempotencyKey, row.requestFingerprint ?? null,
+      row.receivedAt, actorId,
+    ],
+  );
+  for (const line of row.lines) {
     await client.query(
-      `INSERT INTO ${SCHEMA}.receiving_orders
-         (id, tenant_id, operating_company_key, source_kind, source_purchase_order_id,
-          source_reorder_request_id, receiving_location_type, receiving_location_id,
-          status, receiving_order_number, idempotency_key, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)`,
+      `INSERT INTO ${SCHEMA}.receiving_order_lines
+         (id, tenant_id, receiving_order_id, line_id, part_id, tracking_mode,
+          expected_quantity, received_quantity, serial_numbers)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
-        id, tenantId, companyKey, row.sourceKind, row.purchaseOrderId, reorderRequestId,
-        row.receivingLocation.type, row.receivingLocation.id, row.status,
-        row.receivingOrderNumber ?? null, row.idempotencyKey, actorId,
+        newId("rcvl"), tenantId, row.id, line.lineId, line.partId, line.trackingMode,
+        line.expectedQuantity, line.receivedQuantity, [...(line.serialNumbers ?? [])],
       ],
     );
-    for (const line of row.lines) {
-      await client.query(
-        `INSERT INTO ${SCHEMA}.receiving_order_lines
-           (id, tenant_id, receiving_order_id, line_id, part_id, tracking_mode,
-            expected_quantity, received_quantity, serial_numbers)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [
-          newId("rcvl"), tenantId, id, line.lineId, line.partId, line.trackingMode,
-          line.expectedQuantity, line.receivedQuantity, [...(line.serialNumbers ?? [])],
-        ],
-      );
-    }
-    await client.query("COMMIT");
-  } catch (err) {
-    await rollbackQuietly(client);
-    throw err;
-  } finally {
-    client.release();
   }
 
   return {
-    id,
+    id: row.id,
     tenantId,
     operatingCompanyKey: companyKey,
     sourceKind: row.sourceKind,
@@ -610,8 +683,40 @@ export async function createReceivingOrder(
     receivingLocation: row.receivingLocation,
     status: row.status,
     receivingOrderNumber: row.receivingOrderNumber ?? null,
+    receivedAt: row.receivedAt,
     lines: row.lines,
   };
+}
+
+/**
+ * Create a receiving order and its lines — ONE transaction.
+ *
+ * The pool-scoped wrapper around `insertReceivingOrder`, for a caller that has no other effects to
+ * commit alongside the receipt. It generates the receipt id and supplies no request fingerprint, so
+ * a receipt written this way cannot later be REPLAYED -- the governed receiving command derives both
+ * and does not come through here.
+ */
+export async function createReceivingOrder(
+  pool: Pool,
+  tenantId: string,
+  actorId: string,
+  operatingCompanyKey: OperatingCompanyKey,
+  row: CreateReceivingOrderRow,
+): Promise<ReceivingOrderRecord> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const record = await insertReceivingOrder(client, tenantId, actorId, operatingCompanyKey, {
+      ...row, id: newId("rcv"),
+    });
+    await client.query("COMMIT");
+    return record;
+  } catch (err) {
+    await rollbackQuietly(client);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export interface ReceivedByLine {

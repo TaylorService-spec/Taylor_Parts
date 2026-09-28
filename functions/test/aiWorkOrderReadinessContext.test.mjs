@@ -85,7 +85,11 @@ function deps(overrides = {}) {
   return value;
 }
 
-test("dispatcher context joins governed balance, this-WO reservation and procurement evidence", async () => {
+// OWNER RULING A: the procurement SOURCE is retired from this runtime. The Reorder object moved to
+// governed PostgreSQL and Firebase Functions has no access to it -- and is not getting a pool or a
+// cross-runtime call. So this projection no longer answers the procurement dimension at all, and
+// says so rather than reporting the false NONE a vanished source would otherwise produce.
+test("dispatcher context joins governed balance and this-WO reservation; procurement is UNAVAILABLE", async () => {
   const d = deps();
   const result = await assembleWorkOrderReadinessContext(
     { principalUid: "user-1", workOrderId: "raw-wo-id" },
@@ -96,7 +100,9 @@ test("dispatcher context joins governed balance, this-WO reservation and procure
   assert.deepEqual(result.capabilities, {
     warehouse: true,
     truckInventory: false,
-    purchasing: true,
+    // FALSE because this runtime cannot answer, not because the dispatcher may not ask. The
+    // limitations below say which, and the caller's own authority is reported separately.
+    purchasing: false,
     requestReorder: true,
   });
   assert.equal(result.plannedParts.length, 2);
@@ -108,15 +114,21 @@ test("dispatcher context joins governed balance, this-WO reservation and procure
     reservedForJob: 0,
     warehouse: { status: "KNOWN", available: 5 },
     truck: { status: "UNAVAILABLE" },
-    procurement: { status: "NONE" },
+    // NOT "NONE". A part with a PENDING reorder and a part with none now read identically here,
+    // which is exactly why the status must say "nobody here can tell you" instead of "there is none".
+    procurement: { status: "UNAVAILABLE" },
   });
   assert.equal(result.plannedParts[1].reservedForJob, 1);
   assert.deepEqual(result.plannedParts[1].warehouse, { status: "KNOWN", available: 0 });
-  assert.deepEqual(result.plannedParts[1].procurement, { status: "PENDING" });
-  assert.deepEqual(result.limitations, ["TRUCK_INVENTORY_UNAVAILABLE"]);
+  // This part HAS a pending reorder in the fixture. It still reads UNAVAILABLE, because the
+  // evidence is no longer reachable from this runtime -- the fixture proves the source is genuinely
+  // not consulted rather than merely absent.
+  assert.deepEqual(result.plannedParts[1].procurement, { status: "UNAVAILABLE" });
+  assert.deepEqual(result.limitations, ["PROCUREMENT_SOURCE_UNAVAILABLE", "TRUCK_INVENTORY_UNAVAILABLE"]);
   assert.equal(d.calls.balances, 1);
   assert.equal(d.calls.reservations, 1);
-  assert.equal(d.calls.reorders, 1);
+  // NEVER LOADED. The retired source is not read and then discarded; it is not read.
+  assert.equal(d.calls.reorders, 0);
 });
 
 test("inventory balance denial does not read balance or reservation sources and returns unavailable warehouse", async () => {
@@ -150,8 +162,13 @@ test("technician own-WO read does not widen procurement or reorder authority", a
   assert.equal(result.capabilities.purchasing, false);
   assert.equal(result.capabilities.requestReorder, false);
   assert.equal(d.calls.reorders, 0);
-  assert.deepEqual(result.plannedParts[1].procurement, { status: "NONE" });
+  assert.deepEqual(result.plannedParts[1].procurement, { status: "UNAVAILABLE" });
+  // BOTH limitations, and they are different facts: this caller may not read procurement, AND this
+  // runtime has no procurement source. Reporting only the second would hide a real authorization
+  // answer behind an infrastructure one, and a later reader could mistake the technician for
+  // someone who would have been shown procurement if only the source existed.
   assert.ok(result.limitations.includes("PROCUREMENT_READ_NOT_AUTHORIZED"));
+  assert.ok(result.limitations.includes("PROCUREMENT_SOURCE_UNAVAILABLE"));
 });
 
 test("technician cannot assemble another technician's Work Order", async () => {

@@ -984,7 +984,7 @@ test("classification is a strict SUPERSET: every file the specifier matcher alon
     SERVER_PROBE).has("server.firebase_admin_firestore"));
 });
 
-test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 347 " +
+test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 338 " +
   "guarded entries across four populated categories, nothing lost and nothing reclassified", () => {
   const scanResults = scan(REPO_ROOT);
   const baseline = loadCommittedBaseline(REPO_ROOT);
@@ -993,9 +993,12 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // portfolio-summary callable client moved to the EOS API (PostgreSQL CRM) -- the baseline SHRANK by 11
     // (was 55 + 55 + 183 + 72 = 365). 184 -> 183 earlier: the Firestore policy parity harness was deleted with its
     // baseline entry by the role-assignment census (shrink-only; never grown).
-    "frontend.firestore_client": 45,
+    // Catalog + Reorder activation candidate: the Part Master client cutover (catalog/part-master-cutover) and the
+    // Reorder domain cutover (#1961) move their Firestore readers to the EOS API -- 45 -> 39 (shrink-only).
+    "frontend.firestore_client": 39,
     // Pass 11 Retail Sales: the 7 Opportunity / Sales Order read + command clients moved to the EOS Commercial API.
-    "frontend.firebase_functions_client": 47,
+    // ... and their callable transports (Part / alias command clients, the Reorder callable client) -- 47 -> 44.
+    "frontend.firebase_functions_client": 44,
     "server.firebase_admin_firestore": 183,
     "server.firebase_functions_server": 72,
   };
@@ -1008,5 +1011,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 347);
+  assert.equal(total, 338);
 });

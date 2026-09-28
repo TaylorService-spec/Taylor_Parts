@@ -32,6 +32,7 @@ import { auditEventDocRef, stageAuditEventWithId } from "../access/auditEventWri
 import { makeResolveWarehouseLocationActive } from "../inventoryReceiving/receivingLocationResolver";
 import { validateGovernedWarehouse } from "../warehouseGovernance/governedWarehouseValidation";
 import { resolveOperatingCompany } from "../ownership/operatingCompanyAuthority";
+import { assertReorderSourceWritable } from "./reorderSourceFreeze";
 import {
   loadReorderWarehouseAuthority,
   reorderWarehouseOptionLabel,
@@ -127,6 +128,9 @@ export async function persistCreatedReorderRequest(
   // silently unscoped create.
   authority: ReorderWarehouseAuthority,
 ): Promise<{ success: true; replayed: boolean; reorderRequestId: string; operatingCompanyId: string }> {
+  // THE CUTOVER GATE. Checked before anything is read or staged, so a frozen source refuses without
+  // first taking locks or building a document it will not write.
+  assertReorderSourceWritable("createReorderRequest");
   const aid = mkAuditId("createReorderRequest", actorUid, input.idempotencyKey);
   const auditRef = auditEventDocRef(aid);
 
@@ -246,6 +250,9 @@ export async function persistRecordedReorderPurchaseOrder(
   actorUid: string,
   nowMillis: number,
 ): Promise<{ success: true; replayed: boolean; purchaseOrderId: string; operatingCompanyId: string }> {
+  // THE CUTOVER GATE. This writer creates the Reorder Purchase Order AND moves the Reorder to
+  // ORDERED -- two of the objects being copied -- so it is frozen with them.
+  assertReorderSourceWritable("recordReorderPurchaseOrder");
   const requestId = String(input.reorderRequestId ?? "").trim();
   const aid = mkAuditId("recordReorderPurchaseOrder", actorUid, input.idempotencyKey);
   const auditRef = auditEventDocRef(aid);

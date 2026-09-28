@@ -12,22 +12,32 @@ import {
   OPERATIONS_READ_OPERATIONS,
   OPERATIONS_ROUTES,
   OPERATIONS_ROUTE_BY_OPERATION,
+  OPERATIONS_MUTATION_OPERATIONS,
   isOperationsOperation,
   handleOperationsRequest,
 } from "../lib/eosOps/eosOpsHttp.js";
 
-// The list is CLOSED, not frozen at one. `resolveMyExperienceContext` joined it when the client
-// gained an EOS source for navigation; both entries are non-mutating reads of the CALLER's own
-// context, which is the property this assertion is really protecting. A mutation named here, or a
-// third read added without a route, still fails.
-test("the Operations read list is closed and every entry is a named, routed, non-mutating read", () => {
-  assert.deepEqual(OPERATIONS_READ_OPERATIONS, ["resolveMyCapabilities", "resolveMyExperienceContext"]);
-  assert.equal(isOperationsOperation("resolveMyCapabilities"), true);
-  assert.equal(isOperationsOperation("resolveMyExperienceContext"), true);
+// BOTH LISTS ARE CLOSED. `resolveMyExperienceContext` joined the reads when the client gained an EOS source for navigation;
+// the Reorder domain cutover (#1961) added its reads, its lifecycle commands and the governed Reorder receipt. A
+// mutation named as a read, an operation without a route, or anything not named here still fails.
+test("both Operations lists are closed, every entry is routed, and they name exactly what the transport serves", () => {
+  assert.deepEqual(OPERATIONS_READ_OPERATIONS,
+    ["resolveMyCapabilities", "resolveMyExperienceContext", "readReorderQueue", "readMyAssignedReorders",
+      "readReorderRequest", "readMyReorderHistory", "listReorderWarehouseOptions"]);
+  assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
+    "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
+    "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
+    "recordReorderPurchaseOrder", "voidReorderPurchaseOrder", "receiveReorderStock",
+  ]);
+  for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
+    assert.equal(isOperationsOperation(name), true, name);
+  }
   assert.equal(isOperationsOperation("mutateAnything"), false);
   assert.equal(isOperationsOperation("runSQL"), false);
+  const reads = new Set(OPERATIONS_READ_OPERATIONS);
+  assert.ok(!OPERATIONS_MUTATION_OPERATIONS.some((m) => reads.has(m)), "an operation is a read or a mutation, never both");
   // Every operation has exactly one route, and every route is named by an operation.
-  assert.deepEqual(Object.keys(OPERATIONS_ROUTE_BY_OPERATION).sort(), [...OPERATIONS_READ_OPERATIONS].sort());
+  assert.deepEqual(Object.keys(OPERATIONS_ROUTE_BY_OPERATION).sort(), [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].sort());
   assert.deepEqual(OPERATIONS_ROUTES, ["/operations/experience", "/operations/inventory"]);
 });
 

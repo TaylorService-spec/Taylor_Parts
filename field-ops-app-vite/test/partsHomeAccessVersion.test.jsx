@@ -27,7 +27,7 @@ vi.mock("../src/hooks/useReorderRequests", () => {
     useReorderRequestsByStatuses: () => ({ data: [], loading: false, error: null }),
     useReviewedRequestsHistory: () => ({ data: [], loading: false, error: null }),
     // PartsAssociateHome
-    useReorderRequestsAssignedTo: (uid, status) =>
+    useMyAssignedReorderRequests: (status) =>
       status === "ASSIGNED_TO_PARTS_ASSOCIATE" ? ({ data: row, loading: false }) : ({ data: [], loading: false }),
     useReorderRequestById: () => ({ data: null, loading: false }),
   };
