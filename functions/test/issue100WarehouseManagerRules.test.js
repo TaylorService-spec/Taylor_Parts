@@ -26,14 +26,14 @@
 // touches the live "taylor-parts" project.
 "use strict";
 
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
+process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
+process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
 
 const admin = require("firebase-admin");
 
 const PROJECT_ID = "taylor-parts";
-const FIRESTORE_HOST = "http://127.0.0.1:8080";
-const AUTH_HOST = "http://127.0.0.1:9099";
+const FIRESTORE_HOST = `http://${process.env.FIRESTORE_EMULATOR_HOST}`;
+const AUTH_HOST = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`;
 const DOC_BASE = `${FIRESTORE_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 
 admin.initializeApp({ projectId: PROJECT_ID });
