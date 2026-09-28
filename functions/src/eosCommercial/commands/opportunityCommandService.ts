@@ -83,8 +83,18 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
     const { idempotencyKey: _k, expectedEditVersion: _v, ownershipHandoff, ...fields } = input;
     // The builder's own version comparison is satisfied here on purpose: the governing check is the SQL predicate below,
     // evaluated against the locked row, so there is exactly one place a stale write is refused.
+    //
+    // The builder decides what CHANGED by comparing each supplied field against the CURRENT value, so it must be handed
+    // every editable field's stored value. Handing it only the lifecycle made every supplied field compare against
+    // `undefined`: an unchanged owner was staged as a handoff and refused HANDOFF_IS_NO_OP, an unchanged value bumped
+    // the version as a "change", and a CLEARED field (null vs the missing current) read as no change and was dropped.
     const { patch, changes } = buildUpdateOpportunity(
-      { stage: current.stage as never, outcome: current.outcome as never, lines: current.lines, updatedAtMillis: expected as number },
+      {
+        stage: current.stage as never, outcome: current.outcome as never, lines: current.lines, updatedAtMillis: expected as number,
+        accountId: current.accountId, ownerEmployeeId: current.ownerEmployeeId, creditedSalespersonId: current.creditedSalespersonId,
+        salesChannel: current.salesChannel, need: current.need, expectedValue: current.expectedValue,
+        expectedCloseAt: current.expectedCloseAtMillis, nextAction: current.nextAction,
+      } as never,
       { ...(fields as Record<string, unknown>), expectedUpdatedAtMillis: expected } as never,
       { actorUid: actor.principalId, nowMillis: now.getTime() },
     );

@@ -187,6 +187,23 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     assert.equal(await count("command_receipts", "operation='opportunity.update' AND result->>'editVersion' = '4'"), 0);
   });
 
+  await t.test("(16b) a SECTION save compares against the stored values: unchanged fields are not changes, an unchanged owner is not a handoff, a cleared field clears", async () => {
+    // The Sales workspace saves a whole section draft, so unchanged fields ride along with the edited one.
+    const o = await newOpportunity({ nextAction: undefined });
+    const same = { salesChannel: "RETAIL", ownerEmployeeId: "e-retail", need: "Walk-in freezer", expectedValue: 18500.5, expectedCloseAt: Date.parse("2026-11-01T00:00:00Z") };
+    const handoffsBefore = await count("ownership_handoffs", "opportunity_id=$1", [o.opportunityId]);
+    const edited = await opp.updateOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, ...same, nextAction: "Call back" });
+    assert.deepEqual(edited.changed, ["nextAction"], "only the field that moved is a change");
+    assert.equal(edited.ownershipHandoffId, null, "an unchanged owner is not a handoff");
+    assert.equal(await count("ownership_handoffs", "opportunity_id=$1", [o.opportunityId]), handoffsBefore);
+    await assert.rejects(opp.updateOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 2, ...same }), code("NO_CHANGES"),
+      "re-saving the stored values is not an edit and does not bump the version");
+    const cleared = await opp.updateOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 2, need: null, expectedValue: null, expectedCloseAt: null, nextAction: null });
+    assert.deepEqual(cleared.changed.sort(), ["expectedCloseAt", "expectedValue", "need", "nextAction"]);
+    const row = (await q(`SELECT need, expected_value, expected_close_at, next_action, edit_version FROM eos_commercial.opportunities WHERE id=$1`, [o.opportunityId])).rows[0];
+    assert.deepEqual(row, { need: null, expected_value: null, expected_close_at: null, next_action: null, edit_version: "3" }, "a cleared field is stored cleared");
+  });
+
   await t.test("(17)(18) a transition bumps the version; an illegal transition refuses", async () => {
     const res = await opp.transitionOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o1.opportunityId, toStage: "QUALIFYING" });
     assert.deepEqual([res.stage, res.editVersion], ["QUALIFYING", 4]);
