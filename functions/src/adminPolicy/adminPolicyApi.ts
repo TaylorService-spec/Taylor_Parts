@@ -888,18 +888,23 @@ async function dispatch(
       // caller that bypasses this dispatcher gets the same answer. They were briefly checked here
       // as well; two spellings of one rule is how the two eventually disagree. Migration 003 makes
       // the membership half unrepresentable at the database as well.
+      // HUMAN ADMINISTRATION (Pass 10 ruling): the reason must be STATED by the administrator; the request id alone
+      // is not a reason (it stays provenance, appended to a stated one). Decided by the command after its gate.
       return assignRole(repo, actor, {
         principalId: requireString(input.principalId, "principalId"),
         roleId: requireString(input.roleId, "roleId"),
         scopeType: optionalString(input.scopeType) ?? undefined,
         scopeValue: optionalString(input.scopeValue),
-        reason,
+        reason: optionalString(input.reason) ? reason : null,
+        requireStatedReason: true,
       });
 
     case "revokeRole":
+      // HUMAN ADMINISTRATION (Pass 10 ruling): as assignRole -- a stated reason, never the request id alone.
       return revokeRole(repo, actor, {
         assignmentId: requireString(input.assignmentId, "assignmentId"),
-        reason,
+        reason: optionalString(input.reason) ? reason : null,
+        requireStatedReason: true,
       });
 
     // Workflow operations are dispatched by workflowAdminApi before this switch is reached.

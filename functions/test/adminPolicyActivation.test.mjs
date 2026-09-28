@@ -186,6 +186,7 @@ async function grant(r, subject, roleKey) {
   const principal = await r.getPrincipalBySubject("firebase", subject);
   const result = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
     principalId: principal.id, roleId: role.id,
+    reason: "TEST: governed fixture assignment",
   }));
   assert.equal(result.ok, true, `assigning ${roleKey}: ${result.ok ? "" : result.message}`);
   return result.data;
@@ -553,7 +554,7 @@ test("USERS: Admin appoints Administrators; Owner staffs the Administrator (R1);
   // bootstrap seeds the first Administrator, and the ordinary path is proven to refuse it.
   const ownerPrincipal = await r.getPrincipalBySubject("firebase", OWNER_SUBJECT);
   const ownerRole = roles.find((x) => x.key === "owner");
-  const ownerByAdmin = await executeAdminOperation({ repo: r }, asAdmin("assignRole", { principalId: ownerPrincipal.id, roleId: ownerRole.id }));
+  const ownerByAdmin = await executeAdminOperation({ repo: r }, asAdmin("assignRole", { principalId: ownerPrincipal.id, roleId: ownerRole.id, reason: "TEST: governed fixture assignment" }));
   assert.deepEqual([ownerByAdmin.ok, ownerByAdmin.code], [false, "FORBIDDEN"], JSON.stringify(ownerByAdmin));
   await seedProtectedOwner(r, { tenantId: tenant.id, principalId: ownerPrincipal.id });
   await grant(r, GM_SUBJECT, "generalManager");
@@ -643,6 +644,7 @@ test("INTEGRITY: a principal who is a member of ANOTHER tenant cannot be assigne
     // Through the API: refused as invalid input.
     const viaApi = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
       principalId: stranger.principal.id, roleId: roles[0].id,
+      reason: "TEST: governed fixture assignment",
     }));
     assert.equal(viaApi.ok, false);
     assert.equal(viaApi.code, "INVALID_INPUT");
@@ -681,6 +683,7 @@ test("INTEGRITY: a valid tenant member IS assignable, and the bootstrap still su
     const roles = await r.listRoles(tenant.id);
     const result = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
       principalId: others.plain.id, roleId: roles.find((x) => x.key === "technician").id,
+      reason: "TEST: governed fixture assignment",
     }));
     assert.equal(result.ok, true, result.ok ? "" : result.message);
     assert.equal(result.data.principalId, others.plain.id);
@@ -723,6 +726,7 @@ test("IDEMPOTENT: assigning the same Role at the same scope twice returns the SA
 
     const first = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
       principalId: others.plain.id, roleId: technician.id,
+      reason: "TEST: governed fixture assignment",
     }));
     assert.equal(first.ok, true, first.ok ? "" : first.message);
     const versionAfterFirst = (await r.getAccessVersion(tenant.id, others.plain.id)).accessVersion;
@@ -730,6 +734,7 @@ test("IDEMPOTENT: assigning the same Role at the same scope twice returns the SA
 
     const second = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
       principalId: others.plain.id, roleId: technician.id,
+      reason: "TEST: governed fixture assignment",
     }));
     assert.equal(second.ok, true, "the second call succeeds");
     assert.equal(second.data.id, first.data.id, "and returns the EXISTING canonical row");
@@ -763,9 +768,11 @@ test("ADDITIVE STILL: a different Role, and the same Role at a different scope, 
 
     const a = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
       principalId: others.plain.id, roleId: technician.id,
+      reason: "TEST: governed fixture assignment",
     }));
     const b = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
       principalId: others.plain.id, roleId: salesperson.id,
+      reason: "TEST: governed fixture assignment",
     }));
     // Lane SC: an assignment scope must be one the runtime decides, naming a governed value, on a Role that carries a
     // capability evaluable at that scope ('location' is refused SCOPE_TYPE_UNSUPPORTED). operatingCompany + an
@@ -780,6 +787,7 @@ test("ADDITIVE STILL: a different Role, and the same Role at a different scope, 
     const c = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
       principalId: others.plain.id, roleId: technician.id,
       scopeType: "operatingCompany", scopeValue: "taylor",
+      reason: "TEST: governed fixture assignment",
     }));
 
     for (const [name, result] of [["technician", a], ["salesperson", b], ["technician@taylor", c]]) {
@@ -799,6 +807,7 @@ test("THE DATABASE REFUSES A DUPLICATE TOO, and a revoked one does not block a r
 
     const first = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
       principalId: others.plain.id, roleId: technician.id,
+      reason: "TEST: governed fixture assignment",
     }));
 
     // Straight at the store, bypassing the command's idempotence: the partial unique index refuses.
@@ -815,11 +824,13 @@ test("THE DATABASE REFUSES A DUPLICATE TOO, and a revoked one does not block a r
     // status = 'active' precisely so history never blocks a later decision.
     const revoked = await executeAdminOperation({ repo: r }, asAdmin("revokeRole", {
       assignmentId: first.data.id,
+      reason: "TEST: governed fixture removal",
     }));
     assert.equal(revoked.ok, true, revoked.ok ? "" : revoked.message);
 
     const again = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
       principalId: others.plain.id, roleId: technician.id,
+      reason: "TEST: governed fixture assignment",
     }));
     assert.equal(again.ok, true, again.ok ? "" : again.message);
     assert.notEqual(again.data.id, first.data.id, "a new assignment, not the revoked one revived");
@@ -839,6 +850,7 @@ test("USERS: a principal with no assignment authority cannot assign", { skip: SK
   const owner = await r.getPrincipalBySubject("firebase", OWNER_SUBJECT);
   const refused = await executeAdminOperation({ repo: r }, asSubject(PLAIN_SUBJECT, "assignRole", {
     principalId: owner.id, roleId: roles.find((x) => x.key === "admin").id,
+    reason: "TEST: governed fixture assignment",
   }));
   assert.equal(refused.ok, false);
   assert.equal(refused.code, "FORBIDDEN");
@@ -865,6 +877,7 @@ test("USERS: assignments are ADDITIVE, and revocation is exact", { skip: SKIP },
 
   const revoked = await executeAdminOperation({ repo: r }, asAdmin("revokeRole", {
     assignmentId: first.id,
+    reason: "TEST: governed fixture removal",
   }));
   assert.equal(revoked.ok, true, revoked.ok ? "" : revoked.message);
 
@@ -890,6 +903,7 @@ test("USERS: a Role cannot be assigned to somebody who is not a member of the te
   const roles = await r.listRoles(tenant.id);
   const refused = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
     principalId: stranger.principal.id, roleId: roles.find((x) => x.key === "technician").id,
+    reason: "TEST: governed fixture assignment",
   }));
 
   // This is the boundary check migration 002 chose instead of a foreign key, and it is proved here
@@ -907,6 +921,7 @@ test("USERS: the LAST administering assignment cannot be revoked", { skip: SKIP 
   // would have counted zero administrators and allowed it.
   const refused = await executeAdminOperation({ repo: r }, asAdmin("revokeRole", {
     assignmentId: admin.assignmentId,
+    reason: "TEST: governed fixture removal",
   }));
   assert.equal(refused.ok, false, "the platform may not be left unadministrable");
   assert.match(refused.message, /last active administering assignment/i);
