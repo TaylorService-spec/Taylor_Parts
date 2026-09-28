@@ -184,6 +184,31 @@ test("persona runtime matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
     assert.deepEqual(disagreements, []);
   });
 
+  await t.test("G: no transport refuses a capability the runtime says the persona HOLDS (every op x every persona)", async () => {
+    // Each kernel's CAPABILITY_REQUIRED refusal names the key it wanted. If that key is in the persona's runtime set,
+    // the kernel decided with something other than the runtime resolution -- a second answer to one question.
+    const contradictions = [];
+    const named = new Set();
+    let cells = 0;
+    for (const key of Object.keys(PERSONAS)) {
+      for (const [name, tr] of Object.entries(transports)) {
+        if (name === "administration") continue; // F covers it with the declared map
+        for (const op of tr.operations) {
+          cells += 1;
+          const r = await call(tr, op, { token: actors[key].token, input: {} });
+          if (r.status !== 403) continue;
+          const wanted = [...String(r.body.message ?? "").matchAll(/\b([a-z][A-Za-z]*(?:\.[a-z][A-Za-z]*)+)\b/g)].map((m) => m[1])
+            .filter((k) => allCaps.has(k) || /^(admin|employee|customer|opportunity|salesAgreement|salesOrder|workOrder|inventory|reorder|audit|workflowDefinition)\./.test(k));
+          wanted.forEach((k) => named.add(k));
+          const held = wanted.filter((k) => grid[key].has(k));
+          if (held.length > 0 && wanted.every((k) => grid[key].has(k))) contradictions.push(`${key} ${name}.${op}: ${r.code} naming ${held.join(",")} which the runtime grants`);
+        }
+      }
+    }
+    t.diagnostic(`TRANSPORT GATE CELLS ${cells}; capability keys named by refusals: ${named.size}`);
+    assert.deepEqual(contradictions, EXPECTED_GATE_CONTRADICTIONS);
+  });
+
   // ════════════════════ E. LIFECYCLE NEGATIVES ════════════════════
   // Fresh clones of the SERVICE TECHNICIAN persona, so each negative changes exactly one fact.
   const tech = PERSONAS["service-technician-a"];
@@ -253,3 +278,6 @@ test("persona runtime matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
       "TERMINATED now changes runtime access -- update the L5-F06 pin and its ledger entry");
   });
 });
+
+// Filled from the measured run; each entry is classified in the L5 ledger.
+const EXPECTED_GATE_CONTRADICTIONS = [];
