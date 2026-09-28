@@ -276,6 +276,20 @@ await check("duplicate dispatch (retry after apply) -> replayed, no second TRANS
   assert.equal(await countAt("inventory_transactions", "sourceObject.id", created.transferOrderId), 1);
 });
 
+await check("retry of a COMMITTED create after the part is retired -> replayed; a NEW create of it is refused", async () => {
+  const origin = WH(); const destination = WH();
+  await seedWarehouse(origin.locationId); await seedWarehouse(destination.locationId);
+  const partId = nextId("part");
+  await seedNoneOnHand(partId, origin, 10);
+  const { deps, parts } = makeDeps();
+  const req = { partId, quantity: 2, origin, destination, idempotencyKey: nextId("idem") };
+  const first = await createTransferOrder(req, deps);
+  parts.set(partId, { partId, trackingMode: "NONE", active: false });
+  const again = await createTransferOrder(req, deps);
+  assert.equal(first.outcome, "applied"); assert.equal(again.outcome, "replayed");
+  await assert.rejects(createTransferOrder({ ...req, idempotencyKey: nextId("idem") }, deps), (e) => e.code === "PART_INVALID");
+});
+
 await check("retry of a COMMITTED receive by another user, later -> replayed (not refused by its own success)", async () => {
   const origin = WH(); const destination = WH();
   await seedWarehouse(origin.locationId); await seedWarehouse(destination.locationId);

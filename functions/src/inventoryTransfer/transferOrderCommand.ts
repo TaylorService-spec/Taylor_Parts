@@ -176,8 +176,9 @@ export async function createTransferOrder(request: unknown, deps: TransferComman
     if (!isPlainObject(request) || !str(request.partId)) throw new TransferPartInvalidError("partId missing");
     const part = await deps.resolvePart(txn, request.partId as string);
     if (part === null) throw new TransferPartInvalidError("part not found");
-    if (part.active !== true) throw new TransferPartInvalidError("part is not active");
     if (part.partId !== request.partId) throw new TransferPartInvalidError("resolved part identity incoherent");
+    // `part.active` gates a NEW transfer only -- checked after the idempotency read below, so a
+    // committed create whose response was lost still replays after the part is retired.
 
     // ---- 3. structural + shape validation, bound to the authoritative Part ----
     const authority = { part: { partId: part.partId, trackingMode: part.trackingMode } };
@@ -207,6 +208,7 @@ export async function createTransferOrder(request: unknown, deps: TransferComman
       if (storedRecomputed !== fingerprint) throw new TransferIdempotencyConflictError();
       return { outcome: "replayed", transferOrderId, fingerprint };
     }
+    if (part.active !== true) throw new TransferPartInvalidError("part is not active");
 
     // ---- 4. origin / destination must be ACTIVE governed locations ----
     if (!(await deps.resolveLocationActive(txn, value.origin))) throw new OriginInvalidError("origin is not an active governed location");
