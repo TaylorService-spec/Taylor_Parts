@@ -153,8 +153,15 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
 
   const assertNoLeak = (body) => assert.doesNotMatch(JSON.stringify(body), /hunter2|10\.0\.0\.7|syntax error|relation|password|eos_workforce|SELECT/i);
 
-  await t.test("EMP-RT-07: every one of the six lifecycle statuses resolves through the governed link, TERMINATED and RETIRED included", async () => {
-    for (const s of LIFECYCLE) {
+  await t.test("EMP-RT-07: an ACCESS-ELIGIBLE status (ACTIVE, CONTRACTOR) resolves through the governed link; every other status is refused before the read", async () => {
+    // REWRITTEN (Controller DQ-007, 2026-09-28). This case used to pin that all six statuses -- TERMINATED and RETIRED
+    // included -- read their own profile. Employment status is now the access-eligibility authority: ON_LEAVE,
+    // INACTIVE, TERMINATED and RETIRED resolve to NO principal context, so the read is refused 403 before it runs.
+    for (const s of LIFECYCLE.filter((x) => !["ACTIVE", "CONTRACTOR"].includes(x))) {
+      const res = await call(selves[s], "readMyEmployeeProfile");
+      assert.deepEqual([res.status, res.body.code, res.body.message], [403, "FORBIDDEN", "EMPLOYEE_NOT_ACCESS_ELIGIBLE"], s);
+    }
+    for (const s of ["ACTIVE", "CONTRACTOR"]) {
       const res = await call(selves[s], "readMyEmployeeProfile");
       assert.equal(res.status, 200, JSON.stringify(res.body));
       const r = res.body.result;
@@ -183,18 +190,21 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
     const unlinked = await call(trap, "readMyEmployeeProfile");
     assert.deepEqual([unlinked.status, unlinked.body.code], [404, "EMPLOYEE_PRINCIPAL_LINK_NOT_FOUND"], "an Employee resolved by subject or Principal id");
     await link(trap, "e-contractor-trap-target", "t1", "revoked");
-    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ('e-linked-for-trap','t1','ON_LEAVE','taylor')`);
+    // CONTRACTOR (was ON_LEAVE before DQ-007): the case proves link-only matching, so the Employee must be access-eligible.
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ('e-linked-for-trap','t1','CONTRACTOR','taylor')`);
     await link(trap, "e-linked-for-trap");
     const linked = await call(trap, "readMyEmployeeProfile");
     assert.equal(linked.status, 200, JSON.stringify(linked.body));
     assert.equal(linked.body.result.employee.employeeId, "e-linked-for-trap");
   });
 
-  await t.test("EMP-RT-07: a link whose Employee belongs to another tenant refuses 412; a link held in another tenant does not answer here", async () => {
+  await t.test("EMP-RT-07: a link whose Employee belongs to another tenant refuses (fail closed at principal resolution); a link held in another tenant does not answer here", async () => {
     const cross = await makeActor("t1", "firebase-uid-cross-link");
     await link(cross, "e-t2");
     const r = await call(cross, "readMyEmployeeProfile");
-    assert.deepEqual([r.status, r.body.code], [412, "EMPLOYEE_PRINCIPAL_LINK_UNRESOLVED"]);
+    // Was 412 EMPLOYEE_PRINCIPAL_LINK_UNRESOLVED from the read; since DQ-007 an active link whose Employee does not
+    // resolve in the tenant refuses the whole Principal context first.
+    assert.deepEqual([r.status, r.body.code, r.body.message], [403, "FORBIDDEN", "EMPLOYEE_NOT_ACCESS_ELIGIBLE"]);
 
     const dual = await makeActor("t1", "firebase-uid-dual-tenant");
     await repo.transact(fixtureActor("t2"), (tx) => tx.createTenantMembership(dual.principalId));
@@ -431,7 +441,9 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
     await link(twoLinks, "e-inactive");
     await link(twoLinks, "e-owner-a");
     const r = await call(twoLinks, "readMyEmployeeProfile");
-    assert.deepEqual([r.status, r.body.code], [409, "EMPLOYEE_PRINCIPAL_LINK_AMBIGUOUS"]);
+    // Since DQ-007 principal resolution observes the two active links first and fails closed (403) -- it never picks
+    // one to decide eligibility on. The two-Principals-on-one-Employee case below still reaches the read's own 409.
+    assert.deepEqual([r.status, r.body.code, r.body.message], [403, "FORBIDDEN", "EMPLOYEE_NOT_ACCESS_ELIGIBLE"]);
     const second = await makeActor("t1", "firebase-uid-second-on-active");
     await link(second, "e-acct-b");
     const third = await makeActor("t1", "firebase-uid-third-on-active");

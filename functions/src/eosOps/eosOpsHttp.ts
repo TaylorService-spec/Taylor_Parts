@@ -18,6 +18,7 @@
 // There is deliberately no `POST /sql`, no `mutate(table, id, patch)`, no Firestore proxy, and no
 // route that takes a table name.
 import { resolveOperationalContext } from "./capabilityAuthority";
+import { containsNulCharacter, NUL_CHARACTER_REFUSAL } from "../adminPolicy/requestText";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { resolveExperienceContext } from "./experienceAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
@@ -221,6 +222,10 @@ export async function handleOperationsRequest(
     payload = parseBody(request.body);
   } catch {
     return json(400, { ok: false, code: "INVALID_INPUT", message: "body must be a JSON object" }, origin);
+  }
+  // U+0000 is refused at the envelope, before identity or any query (requestText.ts; Controller XLF-002).
+  if (containsNulCharacter(payload)) {
+    return json(400, { ok: false, operation: typeof payload.operation === "string" ? payload.operation : "", code: "INVALID_INPUT", message: NUL_CHARACTER_REFUSAL }, origin);
   }
 
   const operation = payload.operation;

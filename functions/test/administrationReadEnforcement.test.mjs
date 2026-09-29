@@ -601,15 +601,18 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
     }
   });
 
-  await t.test("I: an unauthenticated caller is still 401, never 403", async () => {
-    // The two refusals stay distinguishable. Collapsing them would make an expired token look like
-    // a permissions problem, and every support conversation about it would start in the wrong place.
+  await t.test("I: an unauthenticated caller is still 401; a verified subject EOS does not know is 403 with its own message", async () => {
+    // No token / an unverifiable token is AUTHENTICATION: 401. A VERIFIED subject with no EOS Principal is an
+    // AUTHORITY fact and is 403 FORBIDDEN, as on the Operations, Commercial, CRM and Workforce transports (Controller
+    // XLF-003, 2026-09-28). The two stay distinguishable by status AND message: an expired token never looks like a
+    // provisioning problem.
     const noToken = await handleAdminRequest(
       { repo, verifyToken: async () => { throw new Error("nope"); } },
       { method: "POST", url: "/admin/policy", headers: {}, body: JSON.stringify({ operation: "listObjects" }) },
     );
     assert.equal(noToken.status, 401);
     const stranger = await call("firebase-uid-nobody-at-all", "listObjects");
-    assert.equal(stranger.code, "UNAUTHENTICATED", "EOS does not know this identity");
+    assert.equal(stranger.code, "FORBIDDEN", "a verified identity EOS does not know is refused as authority");
+    assert.equal(stranger.message, "this identity is not known to EOS");
   });
 });

@@ -21,6 +21,7 @@
 // The verifier returns a SUBJECT and nothing else that matters. No claim it carries is read as
 // authority: not a custom claim, not a role, not a tenant. Those come from the policy database.
 import { executeAdminOperation, isAdminOperation, isMutation } from "./adminPolicyApi";
+import { containsNulCharacter, NUL_CHARACTER_REFUSAL } from "./requestText";
 import type { AdminApiDeps, AdminApiFailureCode, AdminApiResult } from "./adminPolicyApi";
 
 /** What the identity provider proved. A verifier that cannot prove it throws. */
@@ -139,6 +140,10 @@ export async function handleAdminRequest(
     payload = parseBody(request.body);
   } catch {
     return json(400, { ok: false, code: "INVALID_INPUT", message: "body must be a JSON object" }, origin);
+  }
+  // U+0000 is refused at the envelope, before identity or any query (requestText.ts; Controller XLF-002).
+  if (containsNulCharacter(payload)) {
+    return json(400, { ok: false, operation: typeof payload.operation === "string" ? payload.operation : "", code: "INVALID_INPUT", message: NUL_CHARACTER_REFUSAL }, origin);
   }
 
   const operation = payload.operation;

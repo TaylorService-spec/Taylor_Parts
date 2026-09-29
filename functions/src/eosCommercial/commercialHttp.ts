@@ -22,6 +22,7 @@
 // The deployed composition supplies no catalog authority, so any command that validates a PART or EQUIPMENT_MODEL
 // reference refuses CATALOG_AUTHORITY_UNAVAILABLE until a governed PostgreSQL catalog exists.
 import type { Pool } from "pg";
+import { containsNulCharacter, NUL_CHARACTER_REFUSAL } from "../adminPolicy/requestText";
 import { capabilitiesWithoutUnevaluatedConditions, resolveOperationalContext } from "../eosOps/capabilityAuthority";
 import { postgresGrantConditionProvider } from "../eosOps/entitledActionAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
@@ -245,6 +246,10 @@ export async function handleCommercialRequest(options: CommercialHttpOptions, re
     envelope = parseEnvelope(request.body);
   } catch {
     return failure(400, "", "INVALID_INPUT", "body must be a JSON object", origin);
+  }
+  // U+0000 is refused at the envelope, before identity or any query (adminPolicy/requestText.ts; Controller XLF-002).
+  if (containsNulCharacter(envelope)) {
+    return failure(400, typeof envelope.operation === "string" ? envelope.operation : "", "INVALID_INPUT", NUL_CHARACTER_REFUSAL, origin);
   }
   const extra = Object.keys(envelope).filter((k) => k !== "operation" && k !== "input");
   if (extra.length > 0) return failure(400, String(envelope.operation ?? ""), "INVALID_INPUT", "the envelope accepts only operation and input", origin);

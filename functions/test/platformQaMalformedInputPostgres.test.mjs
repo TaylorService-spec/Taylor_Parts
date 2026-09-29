@@ -93,39 +93,18 @@ test("malformed input matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
       }
     }
   }
-  // Every recorded 5xx must be the NUL root cause -- a 5xx from any other hostile value is a NEW defect.
-  assert.deepEqual(fiveHundreds.filter((f) => !/=nul: /.test(f)), [], "a hostile value other than U+0000 produced a 5xx");
+  // And the NUL cells are the governed refusal specifically, not merely "some 4xx".
+  for (const [tr, op, valid] of CASES) {
+    const field = Object.keys(valid()).find((f) => f !== "idempotencyKey");
+    const r = await call(transports[tr], op, { token: actor.token, input: { ...valid(), [field]: HOSTILE.nul } });
+    assert.deepEqual([r.status, r.code], [400, "INVALID_INPUT"], `${tr}.${op} ${field}=nul`);
+  }
   t.diagnostic(`MALFORMED CELLS ${cells}; 5xx ${fiveHundreds.length}\n${fiveHundreds.join("\n")}`);
   assert.deepEqual(fiveHundreds, EXPECTED_5XX);
 });
 
-// Measured 2026-09-28 at main 1d0745c6: 756 cells, 20 answer 5xx, and EVERY ONE is the same root cause -- a NUL
-// character (U+0000) in a string field reaches PostgreSQL, which refuses it (SQLSTATE 22021 "invalid byte sequence for
-// encoding UTF8: 0x00"), and no transport or kernel translator names 22021, so it surfaces as 500 *_FAILED / INTERNAL --
-// and once (Commercial ownerEmployeeId) as 503 EMPLOYEE_AUTHORITY_UNAVAILABLE, which a client reads as an OUTAGE.
-// L5 ledger XLF-L5-05 (P3): the fix is one input rule at each transport envelope (refuse U+0000 as INVALID_INPUT) or
-// 22021 -> INVALID_INPUT in each translator; the files are frozen/other-lane, so it is recorded, not fixed here.
-// Every other hostile value (null, numbers, booleans, arrays, objects, empty, whitespace, 20 000 chars, SQL, path,
-// bidi/emoji) is a governed 4xx or an honest 2xx on all 23 operations.
-const EXPECTED_5XX = [
-  "crm.createAccount name=nul: 500 CRM_COMMAND_FAILED",
-  "crm.updateAccount notes=nul: 500 CRM_COMMAND_FAILED",
-  "crm.createContact name=nul: 500 CRM_COMMAND_FAILED",
-  "crm.updateContact phone=nul: 500 CRM_COMMAND_FAILED",
-  "crm.updateAccountLocation accessNotes=nul: 500 CRM_COMMAND_FAILED",
-  "crm.listAccounts nameStartsWith=nul: 500 CRM_READ_FAILED",
-  "commercial.createOpportunity accountId=nul: 500 COMMAND_FAILED",
-  "commercial.createOpportunity need=nul: 500 COMMAND_FAILED",
-  "commercial.updateOpportunity opportunityId=nul: 500 COMMAND_FAILED",
-  "commercial.updateOpportunity need=nul: 500 COMMAND_FAILED",
-  "commercial.createSalesOrder accountId=nul: 500 COMMAND_FAILED",
-  "commercial.createSalesOrder ownerEmployeeId=nul: 503 EMPLOYEE_AUTHORITY_UNAVAILABLE",
-  "commercial.getOpportunityDetail opportunityId=nul: 500 READ_FAILED",
-  "workforce.readEmployee employeeId=nul: 500 READ_FAILED",
-  "workforce.changeEmploymentStatus employeeId=nul: 500 COMMAND_FAILED",
-  "workforce.assignEmployeeWorkEligibility employeeId=nul: 500 COMMAND_FAILED",
-  "administration.createRole name=nul: 500 INTERNAL",
-  "administration.createRole reason=nul: 500 INTERNAL",
-  "administration.listPrincipalRoleAssignments principalId=nul: 500 INTERNAL",
-  "administration.explainEffectiveAccess principalId=nul: 500 INTERNAL",
-];
+// XLF-L5-05 FIXED 2026-09-28 (Controller XLF-002). At main 1d0745c6, 20 of these 756 cells answered 5xx -- every one
+// a U+0000 reaching PostgreSQL (SQLSTATE 22021) unnamed by any translator (500 *_FAILED / INTERNAL, and once 503
+// EMPLOYEE_AUTHORITY_UNAVAILABLE). Every transport now refuses U+0000 at the envelope (adminPolicy/requestText.ts)
+// with 400 INVALID_INPUT before identity or any query. Zero 5xx is the governed answer.
+const EXPECTED_5XX = [];

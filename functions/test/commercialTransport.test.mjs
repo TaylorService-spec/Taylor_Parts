@@ -45,6 +45,8 @@ const EXPECTED_MUTATIONS = ["createOpportunity", "updateOpportunity", "transitio
 function fakeWorld({ capabilities = ALL_CAPS, clientQuery } = {}) {
   const lookups = [];
   const reader = {
+    // No Employee link in this fake world: the DQ-007 employment-eligibility gate has nothing to refuse.
+    async getLinkedEmployeeAccessFact() { return null; },
     async getPrincipalBySubject(provider, subject) {
       lookups.push({ provider, subject });
       return provider === "firebase" && subject === "subj-alice" ? { id: "p-eos-alice", status: "active" } : null;

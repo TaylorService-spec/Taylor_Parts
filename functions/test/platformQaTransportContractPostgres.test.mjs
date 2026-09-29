@@ -208,8 +208,7 @@ const EXPECTED_FINDINGS = [
   // L5-F03 (P4): Administration + Operations silently IGNORE an authority-bearing body field; Commercial/CRM/Workforce
   // refuse it 400 AUTHORITY_FIELD_NOT_ACCEPTED. Neither reads it, so no widening -- a posture difference only.
   "STATUS_DIVERGENCE||authority field in the body|",
-  // L5-F02 (P3, XLF): a verified subject with no EOS Principal is 401 on /admin/policy and 403 on the other four.
-  "STATUS_DIVERGENCE||verified subject, no EOS Principal|",
+  // (XLF-L5-01 FIXED 2026-09-28, Controller XLF-003: a verified subject with no EOS Principal is 403 on all five.)
   // L5-F04 (P4): listPrincipalRoleAssignments answers 200 {assignments: []} for a Principal id outside the caller's
   // tenant (and for a nonexistent one) where every sibling principal read answers 404. Same answer for real and fake:
   // no disclosure, only an inconsistent NOT_FOUND contract.
@@ -242,11 +241,11 @@ test("an UNREACHABLE policy database: every transport answers the same, and neve
   assert.deepEqual(grid, EXPECTED_OUTAGE_GRID);
 });
 
-// Measured 2026-09-28 at main 1d0745c6. L5-F05 (P3, XLF adminPolicy): Administration's outage escapes the pure handler
-// and is answered by the node adapter's last-resort catch WITHOUT the CORS header, so the browser reports a network
-// failure (client UNREACHABLE) where the four sibling transports deliver a readable 500 INTERNAL. None answers 503.
+// XLF-L5-02 FIXED 2026-09-28 (Controller XLF-004): Administration used to throw past its pure handler, so the node
+// adapter's last-resort 500 carried no CORS header (a browser read it as a network failure). It now answers a readable
+// 500 INTERNAL with CORS like the four siblings. None answers 503 (KNOWN_LIMITATION, uniform).
 const EXPECTED_OUTAGE_GRID = {
-  administration: "500 INTERNAL cors=NO",
+  administration: "500 INTERNAL cors=yes",
   operations: "500 INTERNAL cors=yes",
   commercial: "500 INTERNAL cors=yes",
   crm: "500 INTERNAL cors=yes",

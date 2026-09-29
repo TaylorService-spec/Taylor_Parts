@@ -1608,13 +1608,15 @@ test("AQ: LAZY conditional entitlement -- the Owner's order, counted", { skip: S
     // 1. AN ORDINARY REQUEST whose gate sites never reach the entitled decision. 2 -> 1.
     const ordinary = (await request(bothRoles)).resolved;
     assert.equal(ordinary.capabilitySet + ordinary.grantProvenance, 1, "BEFORE 2 role_capabilities reads, AFTER 1");
-    assert.equal(ordinary.total, 11, "BEFORE 12 queries, AFTER 11");
+    // +1 everywhere below (Controller DQ-007, 2026-09-28): principal resolution reads the linked Employee's access
+    // fact ONCE (getLinkedEmployeeAccessFact) before any Role is read. One indexed read per request, never per ask.
+    assert.equal(ordinary.total, 12, "BEFORE 12 queries, AFTER 11, +1 employment-eligibility read = 12");
 
     // 2. AN UNCONDITIONAL CAPABILITY, decided. The provenance read MOVED to the ask; it did not
     //    multiply. A request that does ask still costs exactly what it cost before.
     const u = await request(adminUser);
     await composition.authorizeResolvedOperationalAction(pgReader, u.ctx, { capabilityKey: PRINCIPAL_ACCESS_READ });
-    assert.equal(u.m.snap().total, 12, "BEFORE 12 queries, AFTER 12 -- the work moved, it did not grow");
+    assert.equal(u.m.snap().total, 13, "BEFORE 12 queries, AFTER 12 -- the work moved, it did not grow (+1 DQ-007)");
     assert.equal(u.m.snap().grantProvenance, 1);
     assert.equal(u.m.snap().conditionCatalog, 0);
 
@@ -1627,7 +1629,7 @@ test("AQ: LAZY conditional entitlement -- the Owner's order, counted", { skip: S
     assert.equal(c.resolved.conditionCatalog, 1, "the withheld-cell guard must still read the relation here");
     // 13 -> 14 (Pass 8 D1): a principal whose Role a condition names pays ONE provenance read at
     // resolution, so a conditioned-only key never reaches the flat set.
-    assert.equal(c.resolved.total, 14, "BEFORE 23 queries, AFTER 14");
+    assert.equal(c.resolved.total, 15, "BEFORE 23 queries, AFTER 14 (+1 DQ-007)");
     c.m.reset();
     const [state, reader] = countingReader(pgReader);
     const d = await composition.authorizeResolvedOperationalAction(reader, c.ctx, { capabilityKey: PRINCIPAL_ACCESS_READ });

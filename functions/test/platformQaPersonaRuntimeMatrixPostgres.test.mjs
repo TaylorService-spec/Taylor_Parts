@@ -221,14 +221,102 @@ test("persona runtime matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
   };
   const lifecycle = {};
 
-  await t.test("E1: TERMINATED Employee (through the governed changeEmploymentStatus command) -- measured", async () => {
-    const a = await provision("service-technician-a", tech, "-term");
-    const before = await probeAll(a);
-    const r = await call(transports.workforce, "changeEmploymentStatus", { token: adminActor.token,
-      input: { employeeId: a.employeeId, employmentStatus: "TERMINATED", reason: "l5 lifecycle probe" } });
-    assert.equal(r.status, 200, JSON.stringify(r.body));
-    const after = await probeAll(a);
-    lifecycle.TERMINATED = { before, after };
+  // E1 -- EMPLOYMENT ACCESS ELIGIBILITY (Controller DQ-007, 2026-09-28): ACTIVE and CONTRACTOR only. Rewritten from the
+  // L5-F06 characterisation that pinned the OLD behaviour (a TERMINATED technician kept everything).
+  //
+  // Three personas whose authority differs in kind -- a field technician (Employee-derived surfaces), a retail
+  // salesperson (commercial writes), and the administrator (Administration) -- are cloned once per employment status
+  // and asked EVERY operation of all five transports. An ineligible status must answer 403 FORBIDDEN on every one, with
+  // no surface and no commercial write; an eligible status must answer exactly as the ACTIVE baseline does.
+  const STATUSES = ["ACTIVE", "CONTRACTOR", "ON_LEAVE", "INACTIVE", "TERMINATED", "RETIRED"];
+  const ELIGIBLE = new Set(["ACTIVE", "CONTRACTOR"]);
+  const LIFECYCLE_PERSONAS = ["service-technician-a", "retail-sales-a", "administrator"];
+  const fingerprint = async (actor) => {
+    const out = {};
+    for (const [name, tr] of Object.entries(transports)) {
+      for (const op of tr.operations) {
+        const r = await call(tr, op, { token: actor.token, input: {} });
+        out[`${name}.${op}`] = `${r.status} ${r.code}`;
+      }
+    }
+    return out;
+  };
+  const eligibilityGrid = {};
+  await t.test("E1: employment status x persona x every operation of all five transports", async () => {
+    const violations = [];
+    for (const key of LIFECYCLE_PERSONAS) {
+      const baseline = await fingerprint(actors[key]);
+      eligibilityGrid[key] = {};
+      for (const status of STATUSES) {
+        const a = await provision(key, PERSONAS[key], `-st-${status.toLowerCase()}`);
+        const r = await call(transports.workforce, "changeEmploymentStatus", { token: adminActor.token,
+          input: { employeeId: a.employeeId, employmentStatus: status, reason: "l5 employment access probe" } });
+        assert.ok(r.status === 200, `set ${status}: ${JSON.stringify(r.body)}`);
+        const got = await fingerprint(a);
+        const cells = Object.entries(got);
+        if (ELIGIBLE.has(status)) {
+          const diffs = cells.filter(([op, v]) => v !== baseline[op] && !/^(workforce\.readMyEmployeeProfile)$/.test(op));
+          if (diffs.length > 0) violations.push(`${key} ${status} (eligible) differs from ACTIVE on ${diffs.map(([op, v]) => `${op}=${v} vs ${baseline[op]}`).join("; ")}`);
+          eligibilityGrid[key][status] = `unchanged (${cells.filter(([, v]) => /^2/.test(v)).length} ops answer 2xx)`;
+        } else {
+          const open = cells.filter(([, v]) => !/^403 FORBIDDEN$/.test(v) && !/^404 UNKNOWN_OPERATION$/.test(v));
+          if (open.length > 0) violations.push(`${key} ${status} (ineligible) not refused on ${open.map(([op, v]) => `${op}=${v}`).join("; ")}`);
+          eligibilityGrid[key][status] = `refused on ${cells.length - open.length}/${cells.length} ops`;
+        }
+      }
+    }
+    t.diagnostic(`EMPLOYMENT ACCESS GRID ${JSON.stringify(eligibilityGrid, null, 1)}`);
+    assert.deepEqual(violations, []);
+  });
+
+  await t.test("E1b: the refusal names the governed reason, deletes nothing, and restoring ACTIVE restores access", async () => {
+    const a = await provision("retail-sales-a", PERSONAS["retail-sales-a"], "-restore");
+    const assignmentsBefore = (await pool.query(`SELECT id, status FROM eos_policy.user_role_assignments WHERE tenant_id=$1 AND principal_id=$2 ORDER BY id`, [TENANT, a.principalId])).rows;
+    const before = await runtimeCaps(a);
+    await call(transports.workforce, "changeEmploymentStatus", { token: adminActor.token, input: { employeeId: a.employeeId, employmentStatus: "TERMINATED", reason: "l5" } });
+    const refused = await call(transports.operations, "resolveMyCapabilities", { token: a.token });
+    assert.deepEqual([refused.status, refused.code], [403, "FORBIDDEN"]);
+    assert.equal(refused.body.message, "EMPLOYEE_NOT_ACCESS_ELIGIBLE");
+    const adminView = await call(transports.administration, "listRoles", { token: a.token, input: {} });
+    assert.match(adminView.body.message, /not eligible for access/);
+    // A commercial WRITE specifically (the ruling names it): refused before any command runs.
+    const write = await call(transports.commercial, "createOpportunity", { token: a.token, input: { idempotencyKey: `l5-${randomUUID()}` } });
+    assert.deepEqual([write.status, write.code], [403, "FORBIDDEN"]);
+    // Nothing deleted, nothing rewritten.
+    const assignmentsAfter = (await pool.query(`SELECT id, status FROM eos_policy.user_role_assignments WHERE tenant_id=$1 AND principal_id=$2 ORDER BY id`, [TENANT, a.principalId])).rows;
+    assert.deepEqual(assignmentsAfter, assignmentsBefore);
+    // The Administration explanation reports "no effective access", not a server fault.
+    const explained = await call(transports.administration, "explainEffectiveAccess", { token: adminActor.token, input: { principalId: a.principalId } });
+    assert.deepEqual([explained.status, explained.code], [404, "NOT_FOUND"]);
+    await call(transports.workforce, "changeEmploymentStatus", { token: adminActor.token, input: { employeeId: a.employeeId, employmentStatus: "ACTIVE", reason: "l5" } });
+    assert.deepEqual(await runtimeCaps(a), before, "restoring ACTIVE did not restore exactly the prior access");
+  });
+
+  await t.test("E1c: an ACTIVE link to an Employee that does not resolve in the tenant fails closed", async () => {
+    const a = await makeActor(ctx, TENANT, "l5-persona-dangling-link", []);
+    await assignRoleKeys(ctx, TENANT, a.principalId, ["technician"]);
+    await pool.query(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason)
+                      VALUES ($1,$2,$3,'e-l5-nowhere',$4,'OPERATOR_ASSERTED','l5','l5 fixture')`, [`epl-${randomUUID()}`, TENANT, a.principalId, OPCO]);
+    const r = await call(transports.operations, "resolveMyCapabilities", { token: a.token });
+    assert.deepEqual([r.status, r.body.message], [403, "EMPLOYEE_NOT_ACCESS_ELIGIBLE"]);
+  });
+
+  await t.test("E1e: the OPERATOR entry point (resolveEmployeeAdministrationActor) applies the same rule", async () => {
+    const { resolveEmployeeAdministrationActor } = require("../lib/eosWorkforce/commands/employeeAdministrationAuthority.js");
+    const a = await provision("administrator", PERSONAS.administrator, "-operator");
+    const ok = await resolveEmployeeAdministrationActor(pool, { tenantId: TENANT, principalId: a.principalId });
+    assert.ok(ok.capabilities.size > 0);
+    await call(transports.workforce, "changeEmploymentStatus", { token: adminActor.token, input: { employeeId: a.employeeId, employmentStatus: "INACTIVE", reason: "l5" } });
+    await assert.rejects(resolveEmployeeAdministrationActor(pool, { tenantId: TENANT, principalId: a.principalId }),
+      (err) => err.code === "ADMINISTRATOR_NOT_ACCESS_ELIGIBLE");
+  });
+
+  await t.test("E1d: a Principal with NO Employee link (service / administrative) is unaffected", async () => {
+    const a = await makeActor(ctx, TENANT, "l5-persona-unlinked-service", []);
+    await assignRoleKeys(ctx, TENANT, a.principalId, ["technician"]);
+    const r = await call(transports.operations, "resolveMyCapabilities", { token: a.token });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.result.capabilities, [...await capabilitiesForRoleKeys(pool, TENANT, ["technician"])].sort());
   });
 
   await t.test("E2: Principal link REVOKED -- Employee dimensions must drop, Role capabilities are Principal-level", async () => {
@@ -268,14 +356,8 @@ test("persona runtime matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
     assert.ok(audit >= 1, "the revocation left no audit event");
   });
 
-  await t.test("E-RESULT: the lifecycle outcomes, pinned", () => {
+  await t.test("E-RESULT: the lifecycle outcomes", () => {
     t.diagnostic(`LIFECYCLE ${JSON.stringify(lifecycle, null, 1)}`);
-    // L5-F06 (DECISION CANDIDATE): a TERMINATED Employee's Principal keeps EVERY Security Role capability and every
-    // Employee-derived surface through the EOS API. Nothing in the runtime path (capabilityAuthority,
-    // contextualAuthorization, experienceAuthority) reads eos_workforce.employees.employment_status. Pinned as measured
-    // so the day a ruled status gate lands, this assertion moves deliberately.
-    assert.deepEqual(lifecycle.TERMINATED.after, lifecycle.TERMINATED.before,
-      "TERMINATED now changes runtime access -- update the L5-F06 pin and its ledger entry");
   });
 });
 
