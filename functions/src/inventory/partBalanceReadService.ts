@@ -63,6 +63,7 @@ import { sumLedgerEligibleOnHand, openWorkOrderReserved } from "../fulfillment/f
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed.js";
 import { isSerialTracked } from "../partMaster/controlTypeTrackingMode.js";
 import { buildFirestorePartRepository } from "../partMaster/partMasterRepository.js";
+import { assertFirestoreCatalogReadCurrent, FirestoreCatalogNotCurrentError } from "../catalogMaster/catalogWriterState.js";
 import type { PartId } from "../partMaster/types.js";
 
 export const INVENTORY_BALANCE_READ_CAPABILITY = "inventory.balance.read";
@@ -416,6 +417,18 @@ export const getPartBalanceCallable = onCall({ region: "us-central1" }, async (r
   // FAIL CLOSED ON AN UNKNOWN PART. A part nobody can resolve is not assumed quantity-tracked --
   // assuming would reintroduce the confident zero by a different route.
   try {
+    // CATALOG CUTOVER (Owner ruling, Lane 2). This read's ONE catalog fact is `controlType`, and it decides
+    // the SHAPE of the answer -- quantity or serials. Once PostgreSQL is the catalog authority, the frozen
+    // Firestore copy can no longer answer it, and this runtime cannot reach PostgreSQL without the
+    // forbidden bridge. So the balance becomes explicitly UNAVAILABLE rather than being computed from a
+    // stale controlType.
+    //
+    // THE FAILURE THIS PREVENTS IS THE ONE THIS SERVICE ALREADY EXISTS TO PREVENT. The comment below
+    // records PRT-2001 answering `{ state: "KNOWN", value: 0 }` for a shelf holding two serialized units,
+    // because the CALLER supplied `serialTracked`. A stale controlType is the same defect with a different
+    // source: a confident number, of the wrong kind, that nobody can tell is wrong. Refusing is worse to
+    // use and honest; there is no stale-read compatibility period.
+    assertFirestoreCatalogReadCurrent("inventory.partBalance.controlType");
     const db = getFirestore();
     const stored = await buildFirestorePartRepository(db).getById(null, partId as PartId);
     if (stored === null) {
@@ -427,6 +440,11 @@ export const getPartBalanceCallable = onCall({ region: "us-central1" }, async (r
     if (err instanceof HttpsError) throw err;
     if (err instanceof PartBalanceLedgerUnreadableError) {
       throw new HttpsError("failed-precondition", "This part's balance is unavailable: a ledger record for it cannot be read.", { code: "LEDGER_ROW_UNREADABLE" });
+    }
+    // UNAVAILABLE, said plainly, with its own stable code. Folding this into "internal" would make a
+    // governed migration state indistinguishable from a crash, and a caller could not tell a person why.
+    if (err instanceof FirestoreCatalogNotCurrentError) {
+      throw new HttpsError("failed-precondition", "The part balance is unavailable: the catalog authority has moved to PostgreSQL.", { code: err.code });
     }
     console.error("[getPartBalance] read failed", err);
     throw new HttpsError("internal", "The request could not be completed.");

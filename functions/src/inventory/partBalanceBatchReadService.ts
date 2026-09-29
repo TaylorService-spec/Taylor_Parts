@@ -53,6 +53,7 @@ import {
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed.js";
 import { isSerialTracked } from "../partMaster/controlTypeTrackingMode.js";
 import { buildFirestorePartRepository } from "../partMaster/partMasterRepository.js";
+import { assertFirestoreCatalogReadCurrent, FirestoreCatalogNotCurrentError } from "../catalogMaster/catalogWriterState.js";
 import type { PartId } from "../partMaster/types.js";
 import {
   INVENTORY_BALANCE_READ_CAPABILITY,
@@ -249,6 +250,18 @@ export const getPartBalancesCallable = onCall({ region: "us-central1" }, async (
   }
 
   try {
+    // CATALOG CUTOVER (Owner ruling, Lane 2). This read's ONE catalog fact is `controlType`, and it decides
+    // the SHAPE of the answer -- quantity or serials. Once PostgreSQL is the catalog authority, the frozen
+    // Firestore copy can no longer answer it, and this runtime cannot reach PostgreSQL without the
+    // forbidden bridge. So the balance becomes explicitly UNAVAILABLE rather than being computed from a
+    // stale controlType.
+    //
+    // THE FAILURE THIS PREVENTS IS THE ONE THIS SERVICE ALREADY EXISTS TO PREVENT. The comment below
+    // records PRT-2001 answering `{ state: "KNOWN", value: 0 }` for a shelf holding two serialized units,
+    // because the CALLER supplied `serialTracked`. A stale controlType is the same defect with a different
+    // source: a confident number, of the wrong kind, that nobody can tell is wrong. Refusing is worse to
+    // use and honest; there is no stale-read compatibility period.
+    assertFirestoreCatalogReadCurrent("inventory.partBalance.controlType");
     const db = getFirestore();
     const repository = buildFirestorePartRepository(db);
     const stored = await Promise.all(partIds.map((id) => repository.getById(null, id as PartId)));
@@ -274,6 +287,11 @@ export const getPartBalancesCallable = onCall({ region: "us-central1" }, async (
     };
   } catch (err) {
     if (err instanceof HttpsError) throw err;
+    // Same stable code as the single read: one migration state, one answer, whether one part was asked
+    // about or forty.
+    if (err instanceof FirestoreCatalogNotCurrentError) {
+      throw new HttpsError("failed-precondition", "Part balances are unavailable: the catalog authority has moved to PostgreSQL.", { code: err.code });
+    }
     console.error("[getPartBalances] read failed", err);
     throw new HttpsError("internal", "The request could not be completed.");
   }

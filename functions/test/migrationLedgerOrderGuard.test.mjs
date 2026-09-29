@@ -165,13 +165,17 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // tenant sales channel activation, a sixth EXPLAINED pending migration; the ledger model is not extended.
 // 56 -> 57 runnable: migration 1763078400000, the Administrator staffing capability (Owner ruling R1) -- APPENDED
 // after the direct-exception cell lock, a seventh EXPLAINED pending migration; the ledger model is not extended.
-// 57 -> 58 runnable: migration 1764115200000, the MOBILE location -> warehouse scope binding (Controller ruling
-// DQ-024, lane L3) -- APPENDED after the Administrator staffing capability, an eighth EXPLAINED pending migration;
+// 57 -> 63 runnable: the Catalog + Reorder integration candidate (PR #2000) -- six migrations APPENDED after the
+// Administrator staffing capability (catalog part alias authority, reorder object schema parity, reorder lifecycle
+// capability registration, reorder requester is a Principal, reorder actor identity normalization, receiving business
+// time / number / acquisition cost). Each id is above every applied one, so each is an EXPLAINED pending migration;
 // the ledger model is not extended.
-// 58 -> 59 runnable: migration 1764118800000, the truck scope binding capability (Controller ruling DQ-029, lane L3)
-// -- APPENDED after the scope binding table, a ninth EXPLAINED pending migration; the ledger model is not extended.
-const RUNNABLE_MIGRATION_COUNT = 59;
-const TRACKED_MIGRATION_COUNT = 60; // the 59 runnable + the one deferred file
+// 63 -> 64 runnable: migration 1764115200000, the MOBILE location -> warehouse scope binding (Controller ruling
+// DQ-024, lane L3) -- APPENDED after the receiving migration, an EXPLAINED pending migration.
+// 64 -> 65 runnable: migration 1764118800000, the truck scope binding capability (Controller ruling DQ-029, lane L3)
+// -- APPENDED after the scope binding table, an EXPLAINED pending migration; the ledger model is not extended.
+const RUNNABLE_MIGRATION_COUNT = 65;
+const TRACKED_MIGRATION_COUNT = 66; // the 65 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -180,6 +184,12 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762905600000_tenant-sales-channel-scope",
   "1762992000000_direct-exception-cell-lock",
   "1763078400000_administrator-staffing-capability",
+  "1763164800000_catalog-part-alias-authority",
+  "1763251200000_reorder-object-schema-parity",
+  "1763337600000_reorder-lifecycle-capability-registration",
+  "1763424000000_reorder-requester-is-a-principal",
+  "1763510400000_reorder-actor-identity-normalization",
+  "1763596800000_receiving-business-time-number-and-acquisition-cost",
   "1764115200000_mobile-location-scope-binding",
   "1764118800000_mobile-location-scope-binding-capability",
 ]);
@@ -354,12 +364,9 @@ test("a BACK-DATED pending migration is REPORTED -- the hazard --no-check-order 
 });
 
 test("a properly APPENDED pending migration is explained, and is not reported", () => {
-  // A far-future id, so the hypothetical stays APPENDED however many real migrations land after this line
-  // was written (it was 1763164800000 until migration 1764115200000 made that id back-dated).
-  const appended = "1799999999999_a-migration-appended-after-the-chain";
-  const repo = [...repoMigrations(), appended].sort();
+  const repo = [...repoMigrations(), "1899999999999_a-migration-appended-after-the-chain"].sort();
   const { pending, unexplainedPending } = analyseLedger(repo, NONPROD_LEDGER);
-  assert.deepEqual(pending, [...PENDING_AT_MEASUREMENT, appended]);
+  assert.deepEqual(pending, [...PENDING_AT_MEASUREMENT, "1899999999999_a-migration-appended-after-the-chain"]);
   assert.deepEqual(unexplainedPending, [], "new work at the end of the chain is normal and must not fire the guard");
 });
 

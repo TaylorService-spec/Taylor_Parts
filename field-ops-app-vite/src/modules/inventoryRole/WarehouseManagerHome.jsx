@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
-import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { searchParts, isCatalogReadRefused } from "../../services/partMasterQueries";
 import { buildWarehouseCatalog, catalogCategories, filterCatalogRowsByCategory } from "../../domain/warehouseManagerCatalogView";
 import { partNamesBoundaryKey, selectCanonicalReadForKey, canonicalNameBySku } from "../../domain/partsCatalogView";
 import { useAuth } from "../../auth/AuthContext";
@@ -33,7 +33,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // Parts Catalog source (INV-CONVERGENCE-E cutover): this surface reads the LIVE
 // canonical `parts` Part Master as its PRIMARY identity/metadata source, via the
 // SAME canonical-first composition PartsList (C1) and PartDetail (C2) use
-// (services/partMasterQueries.fetchPartMasterList -> domain/warehouseManagerCatalogView
+// (services/partMasterQueries.searchParts -> domain/warehouseManagerCatalogView
 // -> the shared domain/partsCatalogView.buildPartsCatalogRows). The static
 // PARTS_CATALOG remains ONLY the governed STATIC_FALLBACK input to that
 // composition -- NOT a parallel source of truth, and it is NOT retired here.
@@ -143,7 +143,7 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
   const unavailableSet = new Set(unavailablePartIds);
 
   // INV-CONVERGENCE-E cutover -- live canonical `parts` read (one-shot, the same
-  // fetchPartMasterList PartsList/PartDetail use; no new query surface). Stored TAGGED with
+  // searchParts PartsList/PartDetail use; no new query surface). Stored TAGGED with
   // the (uid, accessVersion) boundary key it was produced under; `null` read until the first
   // resolve. Mapped to the canonicalRead status contract the shared buildPartsCatalogRows()
   // consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
@@ -160,13 +160,13 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
     const token = ++tokenRef.current;
     let cancelled = false;
     setStored({ key: currentKey, read: null });
-    fetchPartMasterList().then((result) => {
+    searchParts({ limit: 100 }).then((result) => {
       if (cancelled || token !== tokenRef.current) return;
       // Pass `invalid` through so the shared composer fails closed on any malformed canonical document
       // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
       const read = result.ok
         ? { status: "OK", rows: result.parts, invalid: result.invalid }
-        : { status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" };
+        : { status: isCatalogReadRefused(result.code) ? "PERMISSION_DENIED" : "UNAVAILABLE" };
       setStored({ key: currentKey, read });
     });
     return () => {

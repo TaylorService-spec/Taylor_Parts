@@ -46,10 +46,10 @@ export function useOpportunitySectionSave(opportunityId, deps) {
   const clearOutcome = useCallback(() => setOutcome(null), []);
 
   const saveSection = useCallback(
-    async (sectionId, draft, expectedUpdatedAtMillis) => {
+    async (sectionId, draft, expectedEditVersion) => {
       const built = buildSectionSaveInput({
         opportunityId,
-        expectedUpdatedAtMillis,
+        expectedEditVersion,
         idempotencyKey: keysRef.current[sectionId] ?? (keysRef.current[sectionId] = newIdempotencyKey()),
         draft,
       });

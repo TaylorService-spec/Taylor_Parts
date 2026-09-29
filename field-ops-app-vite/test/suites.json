@@ -70,6 +70,10 @@
       "runner": "node"
     },
     {
+      "file": "test/administrationPortalNav.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/appHeaderBase.test.mjs",
       "runner": "node"
     },
@@ -99,6 +103,10 @@
     },
     {
       "file": "test/capabilityRequestCoverage.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/catalogClientCutover.test.mjs",
       "runner": "node --test"
     },
     {
@@ -170,12 +178,12 @@
       "runner": "node"
     },
     {
-      "file": "test/cycleCountsBackOrdersNavHidden.test.mjs",
-      "runner": "node"
-    },
-    {
       "file": "test/cycleCountScanSession.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/cycleCountsBackOrdersNavHidden.test.mjs",
+      "runner": "node"
     },
     {
       "file": "test/dashboardComposition.test.mjs",
@@ -250,11 +258,11 @@
       "runner": "node --test"
     },
     {
-      "file": "test/employeeProfileDomain.test.mjs",
+      "file": "test/employeeChangeHistoryDomain.test.mjs",
       "runner": "node --test"
     },
     {
-      "file": "test/employeeChangeHistoryDomain.test.mjs",
+      "file": "test/employeeProfileDomain.test.mjs",
       "runner": "node --test"
     },
     {
@@ -350,16 +358,16 @@
       "runner": "node"
     },
     {
+      "file": "test/financialSummaryView.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/financialsNavStructure.test.mjs",
       "runner": "node --test"
     },
     {
       "file": "test/financialsSurface.test.mjs",
       "runner": "node --test"
-    },
-    {
-      "file": "test/financialSummaryView.test.mjs",
-      "runner": "node"
     },
     {
       "file": "test/formPrimitives.test.mjs",
@@ -686,6 +694,10 @@
       "runner": "node"
     },
     {
+      "file": "test/partTrackingMode.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/partsAttentionProjection.test.mjs",
       "runner": "node"
     },
@@ -730,10 +742,6 @@
       "runner": "node"
     },
     {
-      "file": "test/partTrackingMode.test.mjs",
-      "runner": "node"
-    },
-    {
       "file": "test/passwordRecovery.test.mjs",
       "runner": "node"
     },
@@ -754,11 +762,11 @@
       "runner": "node"
     },
     {
-      "file": "test/pickerSource.test.mjs",
+      "file": "test/pickSession.test.mjs",
       "runner": "node --test"
     },
     {
-      "file": "test/pickSession.test.mjs",
+      "file": "test/pickerSource.test.mjs",
       "runner": "node --test"
     },
     {
@@ -858,10 +866,6 @@
       "runner": "node"
     },
     {
-      "file": "test/reportingPlaceholderCopy.test.mjs",
-      "runner": "node"
-    },
-    {
       "file": "test/reportNavAccess.test.mjs",
       "runner": "node"
     },
@@ -883,6 +887,10 @@
     },
     {
       "file": "test/reportRunOutcome.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportingPlaceholderCopy.test.mjs",
       "runner": "node"
     },
     {
@@ -970,12 +978,12 @@
       "runner": "node --test"
     },
     {
-      "file": "test/scannedIdentity.test.mjs",
-      "runner": "node"
-    },
-    {
       "file": "test/scanWorkflows.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/scannedIdentity.test.mjs",
+      "runner": "node"
     },
     {
       "file": "test/schedulingWorkspace.test.mjs",
@@ -1078,11 +1086,11 @@
       "runner": "node"
     },
     {
-      "file": "test/transferOrdersViewModel.test.mjs",
+      "file": "test/transferOrderView.test.mjs",
       "runner": "node"
     },
     {
-      "file": "test/transferOrderView.test.mjs",
+      "file": "test/transferOrdersViewModel.test.mjs",
       "runner": "node"
     },
     {
@@ -1150,18 +1158,6 @@
       "runner": "node"
     },
     {
-      "file": "test/workflowActionError.test.mjs",
-      "runner": "node"
-    },
-    {
-      "file": "test/workflowActionOrder.test.mjs",
-      "runner": "node"
-    },
-    {
-      "file": "test/workflowSyntax.test.mjs",
-      "runner": "node"
-    },
-    {
       "file": "test/workOrderAttentionProjection.test.mjs",
       "runner": "node"
     },
@@ -1203,6 +1199,18 @@
     },
     {
       "file": "test/workOrderWorkflowMirrorContract.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workflowActionError.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workflowActionOrder.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/workflowSyntax.test.mjs",
       "runner": "node"
     }
   ]

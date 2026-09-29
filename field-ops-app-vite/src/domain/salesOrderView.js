@@ -111,6 +111,9 @@ export function salesOrderView({ loading = false, errorStatus = null, result = n
     notes: so.notes,
     lines,
     allLinesFulfilled: lines.length > 0 && lines.every((l) => l.fullyFulfilled),
+    // False for a governed (PostgreSQL) Sales Order: allocation, fulfillment, billing and service Work Order lineage are
+    // the held downstream boundary (Owner ruling D2) and are not tracked -- the screen must not offer those actions.
+    downstreamTracked: so.downstreamTracked !== false,
     serviceWorkOrderIds: Array.isArray(so.serviceWorkOrderIds) ? so.serviceWorkOrderIds : [],
     // THE SAME LINEAGE, CARRYING A READABLE REFERENCE.
     //

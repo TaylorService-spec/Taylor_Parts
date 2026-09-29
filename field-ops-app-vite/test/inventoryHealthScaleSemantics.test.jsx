@@ -130,27 +130,38 @@ test("the ledger has NO total-order field spanning every document, so it cannot 
 
 test("the catalogue read is WHOLE, so 'not on this page' can never mean 'does not exist'", () => {
   const src = read("src/services/partMasterQueries.js");
-  // fetchPartMasterList takes no plan, no cursor and no page size. Paging is opted into by name via
-  // partMasterPageQuery, and the consumers that must prove existence do not opt in.
-  expectMatch(src, /export async function fetchPartMasterList\(\)/);
-  expectMatch(src, /A scanner that cannot\s*\n?\s*\*? ?find part 51 reports the part does not exist/);
+  // ADAPTED (commit 6228d9bb retired the fetch-all): the WHOLE-collection read `fetchPartMasterList`
+  // is deliberately gone, and "existence never depends on a page" is now carried by the EXACT-ID
+  // reads rather than by reading everything. Asserted: the fetch-all is not quietly reintroduced,
+  // the exact-id reads exist, and the module keeps the per-consumer record of what replaced it.
+  expect(/export async function fetchPartMasterList\b/.test(src)).toBe(false);
+  expectMatch(src, /export async function fetchPart\(partId/);
+  expectMatch(src, /export async function fetchPartsByIds\(partIds/);
+  expectMatch(src, /export const PART_CATALOGUE_WHOLE_COLLECTION_READ_RETIRED = Object\.freeze\(/);
 });
 
-test("every existence-proving consumer still uses the WHOLE catalogue read", () => {
-  // Scanner, receiving, the Work Order parts plan and the name resolver each have to be able to
-  // find ANY part, not the ones a list happens to have fetched.
-  for (const rel of [
-    "src/modules/receiving/ReceiveAgainstPurchaseOrder.jsx",
-    "src/modules/workOrders/WorkOrderPartsPlanEditor.jsx",
-    "src/hooks/useCanonicalPartNames.js",
-    "src/modules/inventory/PartsList.jsx",
-  ]) {
+test("every existence-proving consumer reads the EXACT Part, never a page", () => {
+  // Receiving and the Part detail page each say "not found" about one specific Part. From a page, a Part beyond it
+  // would read as missing -- so each must read the Part it names by id (readPartsForView), and must not page.
+  for (const rel of ["src/modules/receiving/ReceiveAgainstPurchaseOrder.jsx", "src/modules/inventory/PartDetail.jsx"]) {
     const src = read(rel);
-    expectMatch(src, /fetchPartMasterList/, `${rel} must read the whole catalogue`);
-    expectEqual(
-      /fetchPartMasterPage/.test(src), false,
-      `${rel} must NOT page — a first page would make a real part look missing`,
-    );
+    expectMatch(src, /\breadPartsForView\(\[/, `${rel} must read the exact Part it names`);
+    expectEqual(/\bsearchParts\s*\(/.test(src), false, `${rel} must NOT page -- a first page would make a real part look missing`);
+    expectEqual(/\bfetchPartMasterList\b\s*\(/.test(src), false, `${rel} must not call the retired fetch-all`);
+    expectEqual(/fetchPartMasterPage/.test(src), false, `${rel} must not use the retired paged Firestore reader`);
+  }
+});
+
+test("the retirement record tells the truth about every former whole-collection consumer", () => {
+  // The record is what makes "nothing still fetches everything" checkable, so it must match the code: each entry's
+  // named read is the one the module actually calls.
+  const record = read("src/services/partMasterQueries.js");
+  const entries = [...record.matchAll(/^\s+"([\w/]+)": "(\w+)/gm)].map((m) => [m[1], m[2]]);
+  expectEqual(entries.length, 6, "six former whole-collection consumers are recorded");
+  for (const [mod, fn] of entries) {
+    const rel = ["src/" + mod + ".jsx", "src/" + mod + ".js"].find((p) => { try { read(p); return true; } catch { return false; } });
+    expectMatch(read(rel), new RegExp(`\\b${fn}\\(`), `${rel} must call ${fn}, as the record says`);
+    expectEqual(/\bfetchPartMasterList\b\s*\(/.test(read(rel)), false, `${rel} must not call the retired fetch-all`);
   }
 });
 

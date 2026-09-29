@@ -77,6 +77,8 @@ test("the catalog authority is composed ONLY by the Work Order/ops commands that
     .map((f) => f.slice(SRC.length + 1).split("\\").join("/"))
     .sort();
   assert.deepEqual(importers, [
+    // The Catalog cutover lane composes it ONCE for the Commercial transport (next test).
+    "eosApi/server.ts",
     // Controller ruling DQ-018 (2026-09-28): the EOS Cycle Count commands resolve the counted Part and its
     // tracking mode from the catalog, never from the caller -- a count against a caller-stated tracking mode
     // would be wrong silently. Wired, NOT activatable: they refuse NOT_ACTIVATED until the Cycle Count
@@ -103,6 +105,26 @@ test("every composer uses it as a REPOSITORY, on its own client, never over HTTP
     assert.doesNotMatch(src, /FROM\s+(eos_ops\.|\$\{SCHEMA\}\.)parts\b/,
       `${rel} queries eos_ops.parts directly instead of asking the catalog authority`);
   }
+});
+
+// COMPOSED FOR COMMERCIAL, BY THE CATALOG CUTOVER LANE, EXACTLY ONCE (eosApi/server.ts). The reason the old ratchet
+// gave has NOT expired: eos_ops.parts is empty until the Catalog COPY, so a composed authority answers NOT_FOUND for
+// every real product until then. Since Pass 11 the Commercial CLIENT does call the PostgreSQL commands (Retail Sales),
+// so the ordering constraint is carried by the coordinated Catalog + Reorder activation window and by the committed
+// CATALOG_WRITER_AUTHORITY below: the PostgreSQL catalog is activated only after COPY/VERIFY.
+test("the catalog authority is composed EXACTLY ONCE, as a repository, and never as an HTTP client", () => {
+  const SRC = join(FUNCTIONS_DIR, "src");
+  const server = strip(readFileSync(join(SRC, "eosApi/server.ts"), "utf8"));
+  assert.equal((server.match(/createPostgresCatalogReferenceAuthority\(\)/g) ?? []).length, 1,
+    "one authority, shared -- a second would be a second answer to the same question");
+  const handlerCall = server.match(/createCommercialHttpHandler\(\{([\s\S]*?)\}\)/);
+  assert.ok(handlerCall, "server.ts still composes the Commercial handler");
+  assert.match(handlerCall[1], /catalog: catalogReferenceAuthority/, "and hands it the authority");
+
+  // A REPOSITORY, never a URL. Commercial calling /operations/catalog would validate a reference in
+  // one transaction and commit the agreement in another.
+  assert.doesNotMatch(server, /fetch\(/, "the server composition makes no HTTP call");
+  // The full importer set is enumerated by the test above (the server composition plus the four ruled ops modules).
 });
 
 test("ORDERING CONSTRAINT: while eos_ops.parts is empty, these commands are wired but NOT activatable", () => {

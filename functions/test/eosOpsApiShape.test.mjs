@@ -12,6 +12,7 @@ import {
   OPERATIONS_READ_OPERATIONS,
   OPERATIONS_ROUTES,
   OPERATIONS_ROUTE_BY_OPERATION,
+  OPERATIONS_MUTATION_OPERATIONS,
   isOperationsOperation,
   handleOperationsRequest,
   CYCLE_COUNT_ROUTE,
@@ -19,18 +20,27 @@ import {
   isCycleCountOperation,
 } from "../lib/eosOps/eosOpsHttp.js";
 
-// The list is CLOSED, not frozen at one. `resolveMyExperienceContext` joined it when the client
-// gained an EOS source for navigation; both entries are non-mutating reads of the CALLER's own
-// context, which is the property this assertion is really protecting. A mutation named here, or a
-// third read added without a route, still fails.
-test("the Operations read list is closed and every entry is a named, routed, non-mutating read", () => {
-  assert.deepEqual(OPERATIONS_READ_OPERATIONS, ["resolveMyCapabilities", "resolveMyExperienceContext"]);
-  assert.equal(isOperationsOperation("resolveMyCapabilities"), true);
-  assert.equal(isOperationsOperation("resolveMyExperienceContext"), true);
+// BOTH LISTS ARE CLOSED. `resolveMyExperienceContext` joined the reads when the client gained an EOS source for navigation;
+// the Reorder domain cutover (#1961) added its reads, its lifecycle commands and the governed Reorder receipt. A
+// mutation named as a read, an operation without a route, or anything not named here still fails.
+test("both Operations lists are closed, every entry is routed, and they name exactly what the transport serves", () => {
+  assert.deepEqual(OPERATIONS_READ_OPERATIONS,
+    ["resolveMyCapabilities", "resolveMyExperienceContext", "readReorderQueue", "readMyAssignedReorders",
+      "readReorderRequest", "readMyReorderHistory", "listReorderWarehouseOptions"]);
+  assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
+    "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
+    "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
+    "recordReorderPurchaseOrder", "voidReorderPurchaseOrder", "receiveReorderStock",
+  ]);
+  for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
+    assert.equal(isOperationsOperation(name), true, name);
+  }
   assert.equal(isOperationsOperation("mutateAnything"), false);
   assert.equal(isOperationsOperation("runSQL"), false);
+  const reads = new Set(OPERATIONS_READ_OPERATIONS);
+  assert.ok(!OPERATIONS_MUTATION_OPERATIONS.some((m) => reads.has(m)), "an operation is a read or a mutation, never both");
   // Every operation has exactly one route, and every route is named by an operation.
-  assert.deepEqual(Object.keys(OPERATIONS_ROUTE_BY_OPERATION).sort(), [...OPERATIONS_READ_OPERATIONS].sort());
+  assert.deepEqual(Object.keys(OPERATIONS_ROUTE_BY_OPERATION).sort(), [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].sort());
   // The read routes, plus ONE command route with its OWN closed table (Controller ruling DQ-018: Cycle
   // Count is the first inventory domain on this transport). No read route serves a command.
   assert.deepEqual(OPERATIONS_ROUTES, ["/operations/cycle-count", "/operations/experience", "/operations/inventory"]);
@@ -160,4 +170,26 @@ test("firestore.rules was not changed by this tranche's file set -- eos_ops touc
   // path, and this repository's Rules files are not under src/eosOps by construction.
   const source = readdirSync("src/eosOps").join(",");
   assert.doesNotMatch(source, /firestore\.rules/);
+});
+
+// ════════════════ the PostgreSQL Reorder activation boundary (Controller ruling 2026-09-28, window step 19) ════════════════
+test("until REORDER_POSTGRES_ACTIVE, EVERY Reorder operation refuses before any identity or database work", async () => {
+  const { executeOperation } = await import("../lib/eosOps/eosOpsHttp.js");
+  const { REORDER_POSTGRES_ACTIVE } = await import("../lib/eosOps/reorderLifecycleCommands.js");
+  assert.equal(REORDER_POSTGRES_ACTIVE, false, "the integration package ships the Reorder authority INACTIVE");
+  const untouchable = new Proxy({}, { get: () => { throw new Error("DEPS_TOUCHED"); } });
+  const reorderOps = [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].filter((o) => !/^resolveMy/.test(o));
+  assert.equal(reorderOps.length, 15);
+  for (const operation of reorderOps) {
+    const r = await executeOperation({ reader: untouchable, pool: untouchable },
+      { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });
+    assert.deepEqual([r.ok, r.code], [false, "PRECONDITION_FAILED"], operation);
+    assert.match(r.message, /not active yet/);
+  }
+  // The two principal-context resolvers are not Reorder operations: they are not behind this boundary.
+  for (const operation of ["resolveMyCapabilities", "resolveMyExperienceContext"]) {
+    const r = await executeOperation({ reader: untouchable, pool: untouchable },
+      { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation }).catch((e) => e);
+    assert.notEqual(r && r.code, "PRECONDITION_FAILED", `${operation} must not be gated by the Reorder activation`);
+  }
 });

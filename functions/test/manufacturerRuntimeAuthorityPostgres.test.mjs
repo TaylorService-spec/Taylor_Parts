@@ -86,7 +86,8 @@ test("this change adds no migration: the applied set is the one the base commit 
   // Raised again for the tenant sales channel activation (1762905600000, lane GA), likewise unrelated.
   // Raised again for the direct-exception cell lock (1762992000000, lane DX), likewise unrelated.
   // Raised again for the Administrator staffing capability (1763078400000, Owner ruling R1), likewise unrelated.
-  assert.ok(Number(newest.split("_")[0]) <= 1763078400000, `an unexpected newest migration ${newest}`);
+  // Raised again for the Catalog + Reorder activation candidate (1763164800000 .. 1763596800000), likewise unrelated.
+  assert.ok(Number(newest.split("_")[0]) <= 1763596800000, `an unexpected newest migration ${newest}`);
 });
 
 // ════════════════════ no Firebase, no delete, not wired ════════════════════

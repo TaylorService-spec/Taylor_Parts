@@ -8,59 +8,59 @@
 // errorStatus is the callable's HttpsError `code` (functions/-prefix stripped), or "internal" when
 // the failure carries no usable code. Turning that code into a human message belongs to the domain
 // layer -- this file performs transport only.
-function mapErrorToStatus(err) {
-  const raw = err && typeof err.code === "string" ? err.code : "";
-  const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
-  return code || "internal";
+// PASS 11 RETAIL SALES: the Sales Agreement commands and reads moved from the Firebase callables to the governed
+// PostgreSQL Commercial transport (POST /commercial/sales -- functions/src/eosCommercial/commands/
+// salesAgreementCommandService.ts and reads/the server's Sales Agreement read), because the Opportunity they belong to now
+// lives in eos_commercial. Same `{ result } | { errorStatus }` contract; reads return the same { status, salesAgreement }
+// envelope through services/commercialEosAdapters.js. No fallback to the callables.
+import { commercialApiClient } from "./commercialApiClient.js";
+import { legacyErrorStatus, readErrorStatus, toSalesAgreementReadResult } from "./commercialEosAdapters.js";
+
+const command = async (operation, input, client = commercialApiClient) => {
+  const answer = await client.call(operation, { input });
+  return answer.ok ? { result: answer.result } : { errorStatus: legacyErrorStatus(answer) };
+};
+
+const readAgreement = async (salesAgreementId, client) => {
+  const answer = await client.call("getSalesAgreementDetail", { input: { salesAgreementId } });
+  if (answer.ok) return { result: toSalesAgreementReadResult(answer.result) };
+  const status = readErrorStatus(answer);
+  return status === "not-found" ? { result: toSalesAgreementReadResult(null) } : { errorStatus: status === "denied" ? "permission-denied" : "unavailable" };
+};
+
+export const createSalesAgreement = (payload, { client } = {}) => command("createSalesAgreement", payload, client);
+export const updateSalesAgreementDraft = (payload, { client } = {}) => command("updateSalesAgreementDraft", payload, client);
+export const acceptSalesAgreement = ({ salesAgreementId, idempotencyKey }, { client } = {}) =>
+  command("acceptSalesAgreement", { salesAgreementId, idempotencyKey }, client);
+export const getSalesAgreementContext = ({ salesAgreementId }, { client = commercialApiClient } = {}) =>
+  readAgreement(salesAgreementId, client);
+
+/** By Opportunity: the Agreement is DERIVED from its own foreign key, reached through the Opportunity's lineage. */
+export async function getSalesAgreementForOpportunity({ opportunityId }, { client = commercialApiClient } = {}) {
+  const opp = await client.call("getOpportunityDetail", { input: { opportunityId } });
+  if (!opp.ok) {
+    const status = readErrorStatus(opp);
+    return status === "not-found" ? { result: toSalesAgreementReadResult(null) } : { errorStatus: status === "denied" ? "permission-denied" : "unavailable" };
+  }
+  const agreementId = opp.result?.salesAgreement?.id ?? null;
+  if (!agreementId) return { result: toSalesAgreementReadResult(null) };
+  return readAgreement(agreementId, client);
 }
 
-async function invoke(name, payload) {
+// Product reference search for Agreement lines stays on its existing Firebase catalog read UNTIL the PostgreSQL catalog
+// authority is governed: the EOS Commercial commands refuse PART / EQUIPMENT_MODEL lines with
+// CATALOG_AUTHORITY_UNAVAILABLE until then, so this picker cannot yet feed a governed write (recorded for Controller).
+async function invokeCatalogSearch(payload) {
   const [{ httpsCallable }, { functions }] = await Promise.all([
     import("firebase/functions"),
     import("../firebase/firebase.js"),
   ]);
-  const res = await httpsCallable(functions, name)(payload);
-  return res?.data;
-}
-
-const call = async (name, payload) => {
   try {
-    return { result: await invoke(name, payload) };
+    const res = await httpsCallable(functions, "searchProductReferences")(payload);
+    return { result: res?.data };
   } catch (err) {
-    return { errorStatus: mapErrorToStatus(err) };
+    const raw = err && typeof err.code === "string" ? err.code : "";
+    return { errorStatus: (raw.startsWith("functions/") ? raw.slice("functions/".length) : raw) || "internal" };
   }
-};
-
-// idempotencyKey is REQUIRED and is carried through VERBATIM, never regenerated here: the caller
-// owns generating it once per user intent and reusing it across a retry. A key minted inside this
-// function would make every retry a fresh create.
-//
-// accountId is NOT sent, and this is the one thing to preserve if this file is ever refactored: the
-// server derives the customer from the Opportunity, because that is the fact that decides who gets
-// billed. The callable rejects the payload outright if it carries one.
-export const createSalesAgreement = (payload) => call("createSalesAgreement", payload);
-export const updateSalesAgreementDraft = (payload) => call("updateSalesAgreementDraft", payload);
-
-// ACCEPT takes NO commercial input -- only which agreement, and the retry key. state, acceptedAt and
-// acceptedBy are server-stamped, and sending them is refused rather than ignored.
-export const acceptSalesAgreement = ({ salesAgreementId, idempotencyKey }) =>
-  call("acceptSalesAgreement", { salesAgreementId, idempotencyKey });
-
-export const getSalesAgreementContext = ({ salesAgreementId }) =>
-  call("getSalesAgreementContext", { salesAgreementId });
-
-// The entry point a salesperson actually uses: standing on an Opportunity, not knowing whether an
-// agreement exists yet. A "not-found" result is a real answer, not an error.
-export const getSalesAgreementForOpportunity = ({ opportunityId }) =>
-  call("getSalesAgreementForOpportunity", { opportunityId });
-
-// THE PRODUCT PICKER'S READ. One callable serves both the Part typeahead and the Equipment Model
-// picker (functions/src/salesAgreement/productReferenceSearchService.ts), behind the existing
-// inventory.catalog.read authority -- neither catalog is client-readable, and `parts` would be a
-// whole-catalog download even if it were.
-//
-// `query` is ignored for EQUIPMENT_MODEL: that population is reference-data small and is listed
-// whole (capped), so the surface can present a real select rather than making somebody guess a
-// prefix of a canonical id they have never seen.
-export const searchProductReferences = ({ kind, query, limit }) =>
-  call("searchProductReferences", { kind, query, limit });
+}
+export const searchProductReferences = ({ kind, query, limit }) => invokeCatalogSearch({ kind, query, limit });

@@ -6,8 +6,12 @@
 // assertions are really protecting.
 //
 // What is real: the component, the canonical controls, the canonical definitions, the query
-// descriptor builder, and the URL-state parser. Only the Firestore read and the write-readiness hook
-// are faked — so a failure here means the metadata and the screen actually disagree.
+// descriptor builder, the URL-state parser, AND the Part Master read path itself
+// (services/partMasterPageQuery -> services/partMasterQueries -> the view mapping). Only the Catalog
+// API transport (services/catalogApiClient -- the Render call) and the write-readiness hook are faked,
+// so a failure here means the metadata, the translation to the governed query and the screen actually
+// disagree. There is NO Firestore mock in this file, because nothing on this screen's read path may
+// reach Firestore: if it did, the real module would load and these tests would show it.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -15,14 +19,32 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 const h = vi.hoisted(() => ({
-  page: { ok: true, parts: [], invalid: [], hasMore: false, nextCursor: null },
+  page: { ok: true, result: { parts: [], nextCursor: null, limit: 50 } },
+  count: { ok: true, result: 0 },
   params: new URLSearchParams(),
   setSearchParams: null,
-  fetchPartMasterPage: null,
+  call: null,
+  firebaseLoaded: [],
 }));
 
-vi.mock("../src/services/partMasterPageQuery", () => ({
-  fetchPartMasterPage: (h.fetchPartMasterPage = vi.fn(() => Promise.resolve(h.page))),
+// TRIPWIRES, not fakes. The shared list chrome (hooks/useListViewChrome.js) still IMPORTS Firestore statically,
+// because it counts every Firestore-backed list and a dependency is not hidden by loading it lazily. What this
+// screen must never do is USE it: every Firestore function the chrome imports records its call here, and the
+// Firestore list source records being loaded at all -- the suite fails below on either. The screen must render every
+// state (rows, empty, denied, unavailable, count) without one Firestore call.
+vi.mock("firebase/firestore", () => {
+  const trip = (name) => (...args) => { h.firebaseLoaded.push(`firebase/firestore.${name}`); throw new Error(`Firestore ${name} called`); };
+  return { collection: trip("collection"), getCountFromServer: trip("getCountFromServer"), query: trip("query"), where: trip("where"), limit: trip("limit") };
+});
+vi.mock("../src/firebase/firebase", () => ({ db: {} }));
+vi.mock("../src/metadata/firestoreListSource.js", () => { h.firebaseLoaded.push("firestoreListSource"); return {}; });
+
+// THE RENDER CATALOG TRANSPORT, and nothing else. `call(operation, input)` is the exact seam every
+// Part read takes; recording it is how these tests see the governed query the screen asked.
+vi.mock("../src/services/catalogApiClient.js", () => ({
+  catalogApiClient: {
+    call: (h.call = vi.fn((operation) => Promise.resolve(operation === "countParts" ? h.count : h.page))),
+  },
 }));
 vi.mock("../src/hooks/usePartMasterWrite", () => ({
   usePartMasterWrite: () => ({
@@ -39,29 +61,41 @@ vi.mock("react-router-dom", async (orig) => {
 });
 
 import PartMasterList from "../src/modules/inventory/PartMasterList.jsx";
+import { fetchPartMasterPage, countPartMaster } from "../src/services/partMasterPageQuery.js";
+import { buildQueryDescriptor } from "../src/metadata/listRuntime.js";
 import { partEntity, partIndexList } from "../src/metadata/definitions/part.js";
+
+/** The page reads the Catalog was asked for, in order. */
+const searchCalls = () => h.call.mock.calls.filter(([op]) => op === "searchParts").map(([, input]) => input);
+const countCalls = () => h.call.mock.calls.filter(([op]) => op === "countParts").map(([, input]) => input);
 
 // Two REAL business part numbers in the shapes this catalogue actually mints. Both must survive every
 // id check below untouched — a guard that rejects PRT-1001 is a guard nobody keeps.
+// Shaped exactly as the Render Catalog API returns them (functions/src/catalogMaster/catalogRows.ts
+// CanonicalPart): the identity is `id`, and there is no `partId` key at all.
 const PART_ROWS = [
   {
-    partId: "p1", version: 1, internalPartNumber: "PRT-1001", name: "Beater assembly",
+    id: "p1", version: 1, internalPartNumber: "PRT-1001", name: "Beater assembly",
     category: "Drive", status: "ACTIVE", stockingUnit: "EACH", controlType: "STANDARD",
     stockingClass: "STOCKED",
   },
   {
-    partId: "p2", version: 1, internalPartNumber: "CW-P-0004", name: "Compressor",
+    id: "p2", version: 1, internalPartNumber: "CW-P-0004", name: "Compressor",
     category: "Refrigeration", status: "SUPERSEDED", stockingUnit: "EACH",
     controlType: "SERIALIZED", stockingClass: "NON_STOCK",
   },
 ];
 
-function setup({ page, search = "" } = {}) {
-  h.page = page ?? { ok: true, parts: PART_ROWS, invalid: [], hasMore: false, nextCursor: null };
+/** A Render searchParts answer: the rows, and a next cursor only when the server read one more. */
+const pageOf = (parts, nextCursor = null) => ({ ok: true, result: { parts, nextCursor, limit: 50 } });
+
+function setup({ page, count, search = "" } = {}) {
+  h.page = page ?? pageOf(PART_ROWS);
+  h.count = count ?? { ok: true, result: PART_ROWS.length };
   h.params = new URLSearchParams(search);
   h.setSearchParams = vi.fn();
-  h.fetchPartMasterPage.mockClear();
-  h.fetchPartMasterPage.mockImplementation(() => Promise.resolve(h.page));
+  h.call.mockClear();
+  h.call.mockImplementation((operation) => Promise.resolve(operation === "countParts" ? h.count : h.page));
   // INSIDE A ROUTER, because the list now reaches its record. Part Master was the one MIGRATE
   // family with a real record page and no way to open it from its own collection; wiring the row
   // anchor made `useNavigate` and `<Link>` real dependencies, and a component rendered outside a
@@ -74,7 +108,12 @@ function setup({ page, search = "" } = {}) {
   );
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // Checked after EVERY test, so no state of the screen -- including a failed read or a failed
+  // count -- may reach Firestore, as a fallback or otherwise.
+  expect(h.firebaseLoaded).toEqual([]);
+});
 
 describe("the list renders business words, not storage tokens", () => {
   it("shows the human label and keeps the canonical value on the cell", async () => {
@@ -223,7 +262,8 @@ describe("a link that asks for something this build cannot do", () => {
 describe("the list says which kind of empty it is", () => {
   it("filtered to nothing reads as filtered, not as an empty catalogue", async () => {
     setup({
-      page: { ok: true, parts: [], invalid: [], hasMore: false, nextCursor: null },
+      page: pageOf([]),
+      count: { ok: true, result: 0 },
       search: "f=status:EQUALS:DISCONTINUED",
     });
     expect(await screen.findByText(/no records match these filters/i)).toBeTruthy();
@@ -233,43 +273,104 @@ describe("the list says which kind of empty it is", () => {
   });
 
   it("a genuinely empty catalogue says so", async () => {
-    setup({ page: { ok: true, parts: [], invalid: [], hasMore: false, nextCursor: null } });
+    setup({ page: pageOf([]), count: { ok: true, result: 0 } });
     expect(await screen.findByText(/No canonical Part records exist yet/i)).toBeTruthy();
   });
 
   it("a denied read says denied — never an empty Part Master", async () => {
-    setup({ page: { ok: false, code: "permission-denied" } });
+    // The Catalog client's refusal categories. The screen used to test Firestore's
+    // "permission-denied", which the Catalog client never returns -- so a real denial would have
+    // rendered as an outage.
+    setup({ page: { ok: false, code: "FORBIDDEN", message: "no" } });
     expect(await screen.findByText(/do not have access to the Part Master/i)).toBeTruthy();
+  });
+
+  it("a signed-out caller is a denial too, not an outage", async () => {
+    setup({ page: { ok: false, code: "NOT_SIGNED_IN", message: "sign in" } });
+    expect(await screen.findByText(/do not have access to the Part Master/i)).toBeTruthy();
+  });
+
+  it("an unreachable Catalog says unavailable — and nothing else is consulted", async () => {
+    setup({ page: { ok: false, code: "UNREACHABLE", message: "down" } });
+    expect(await screen.findByText(/Part Master is currently unavailable/i)).toBeTruthy();
+    expect(screen.queryByText(/do not have access/i)).toBeNull();
+    // Every read the screen made went to the Catalog; there is no second source to have tried.
+    for (const [op] of h.call.mock.calls) expect(["searchParts", "countParts"]).toContain(op);
   });
 });
 
 describe("the read is bounded by the canonical runtime", () => {
-  it("the first read carries a descriptor with a limit and no cursor", async () => {
+  it("the first read carries the page bound, the default sort and no cursor", async () => {
     setup();
     await screen.findByText("PRT-1001");
-    const { descriptor, cursor } = h.fetchPartMasterPage.mock.calls[0][0];
-    // The descriptor ALWAYS carries a limit — the runtime has no argument that removes one. It is
-    // pageSize + 1 on purpose: the extra row is how truncation is DETECTED rather than assumed, and
-    // interpretPage is what keeps that probe row out of the rendered page.
-    expect(descriptor.pageSize).toBe(partIndexList.pageSize);
-    expect(descriptor.limit).toBe(partIndexList.pageSize + 1);
-    expect(cursor).toBeNull();
+    const [input] = searchCalls();
+    // The bound is the runtime's pageSize -- the runtime has no argument that removes one, and the
+    // server clamps it again. The server reads one row beyond the page to decide hasMore itself.
+    expect(input.limit).toBe(partIndexList.pageSize);
+    expect(input.sort).toEqual({ field: "internalPartNumber", direction: "ASC" });
+    expect(input.cursor).toBeUndefined();
   });
 
-  it("a URL filter reaches the descriptor as a real query constraint", async () => {
+  it("a URL filter reaches the Catalog as a real query constraint", async () => {
     setup({ search: "f=status:EQUALS:ACTIVE" });
     await screen.findByText("PRT-1001");
-    const { descriptor } = h.fetchPartMasterPage.mock.calls[0][0];
-    expect(descriptor.filters).toEqual([{ fieldId: "status", operator: "EQUALS", value: "ACTIVE" }]);
+    const [input] = searchCalls();
+    expect(input.status).toBe("ACTIVE");
+    expect(input.statuses).toBeUndefined();
   });
 
-  it("an undeclared filter NEVER reaches the descriptor", async () => {
+  it("an undeclared filter NEVER reaches the Catalog", async () => {
     setup({ search: "f=category:EQUALS:Drive" });
     await screen.findByText("PRT-1001");
-    const { descriptor } = h.fetchPartMasterPage.mock.calls[0][0];
+    const [input] = searchCalls();
     // Parsed out at the URL, and refused again by buildQueryDescriptor if it ever got past. Two
     // gates, because this is the one that would otherwise fail in production.
-    expect(descriptor.filters).toEqual([]);
+    for (const key of ["category", "status", "statuses", "stockingClass", "stockingClasses"]) {
+      expect(input[key], key).toBeUndefined();
+    }
+  });
+
+  it("the stated sort reaches the Catalog, and the page keeps the SERVER's order", async () => {
+    // Descending by part number: the server answers PRT-1001 then CW-P-0004. The Part view mapping
+    // sorts ascending by part number, which would silently undo the sort inside every page.
+    setup({ search: "sort=internalPartNumber:DESC", page: pageOf([PART_ROWS[0], PART_ROWS[1]]) });
+    await screen.findByText("PRT-1001");
+    expect(searchCalls()[0].sort).toEqual({ field: "internalPartNumber", direction: "DESC" });
+    const rendered = [...document.querySelectorAll("td.fo-pml__part-number")].map((td) => td.textContent);
+    expect(rendered).toEqual(["PRT-1001", "CW-P-0004"]);
+  });
+
+  it("the total is the Catalog's count over the SAME filters as the page", async () => {
+    setup({ search: "f=status:EQUALS:ACTIVE", count: { ok: true, result: 31 } });
+    await screen.findByText("PRT-1001");
+    await waitFor(() => expect(countCalls().length).toBeGreaterThan(0));
+    expect(countCalls().at(-1)).toEqual({ status: "ACTIVE" });
+    await waitFor(() => expect(document.body.textContent).toMatch(/31\s*parts/i));
+    expect(document.body.textContent).toMatch(/31 items/);
+  });
+
+  it("a failed count renders NO count, never 0", async () => {
+    setup({ count: { ok: false, code: "UNREACHABLE", message: "down" } });
+    await screen.findByText("PRT-1001");
+    await waitFor(() => expect(countCalls().length).toBeGreaterThan(0));
+    // Let the refused count settle before asserting its absence, so this cannot pass on timing alone.
+    await new Promise((r) => setTimeout(r, 25));
+    // Two rows are on screen; a tally of them would read "2 parts". Neither that nor 0 may appear.
+    expect(document.body.textContent).not.toMatch(/\d+\s*(parts|items)/i);
+  });
+
+  it("a record the Catalog serves is a PART, not a malformed record", async () => {
+    // The canonical record carries `id`, not `partId`; the view gate compares the two. Passing it
+    // over unmapped made every Render-served Part "malformed".
+    setup();
+    await screen.findByText("PRT-1001");
+    expect(screen.queryByText(/malformed record/i)).toBeNull();
+  });
+
+  it("a genuinely malformed record is still separated out and SAID", async () => {
+    setup({ page: pageOf([...PART_ROWS, { id: "bad-1", internalPartNumber: "X-1", status: "NOT_A_STATUS" }]) });
+    await screen.findByText("PRT-1001");
+    expect((await screen.findAllByText(/1 malformed record/i)).length).toBeGreaterThan(0);
   });
 
   it("a complete page offers no pager", async () => {
@@ -279,20 +380,62 @@ describe("the read is bounded by the canonical runtime", () => {
   });
 
   it("more pages offer a pager that CARRIES the cursor", async () => {
-    setup({ page: { ok: true, parts: PART_ROWS, invalid: [], hasMore: true, nextCursor: ["PRT-1001"] } });
+    setup({ page: pageOf(PART_ROWS, "k1.opaque-server-token") });
     await screen.findByText("PRT-1001");
 
-    h.page = {
-      ok: true, hasMore: false, nextCursor: null, invalid: [],
-      parts: [{ ...PART_ROWS[0], partId: "p3", internalPartNumber: "PRT-1099", name: "Seal kit" }],
-    };
+    h.page = pageOf([{ ...PART_ROWS[0], id: "p3", internalPartNumber: "PRT-1099", name: "Seal kit" }]);
     fireEvent.click(screen.getByRole("button", { name: /load more parts/i }));
 
-    await waitFor(() => expect(h.fetchPartMasterPage).toHaveBeenCalledTimes(2));
-    expect(h.fetchPartMasterPage.mock.calls[1][0].cursor).toEqual(["PRT-1001"]);
+    await waitFor(() => expect(searchCalls()).toHaveLength(2));
+    // Opaque: the screen hands back exactly what the server gave it, under the same sort.
+    expect(searchCalls()[1].cursor).toBe("k1.opaque-server-token");
+    expect(searchCalls()[1].sort).toEqual(searchCalls()[0].sort);
     // Appended, not replaced: the page already on screen stays on screen.
     expect(await screen.findByText("PRT-1099")).toBeTruthy();
     expect(screen.getByText("PRT-1001")).toBeTruthy();
+  });
+});
+
+describe("the descriptor is translated into the governed Catalog query, or refused", () => {
+  const client = (answer) => ({ call: vi.fn(() => Promise.resolve(answer)) });
+  const describeWith = (request) => buildQueryDescriptor(partIndexList, partEntity, request).descriptor;
+
+  it("IN filters become statuses / stockingClasses; the count takes the same keys", async () => {
+    const descriptor = describeWith({
+      filters: [
+        { fieldId: "status", operator: "IN", value: ["ACTIVE", "DRAFT"] },
+        { fieldId: "stockingClass", operator: "IN", value: ["KIT"] },
+      ],
+      sort: [{ fieldId: "status", direction: "DESC" }],
+    });
+    const c = client(pageOf(PART_ROWS, "k1.next"));
+    const res = await fetchPartMasterPage({ descriptor }, { client: c });
+    expect(c.call).toHaveBeenCalledWith("searchParts", {
+      query: "", statuses: ["ACTIVE", "DRAFT"], stockingClasses: ["KIT"],
+      sort: { field: "status", direction: "DESC" }, limit: partIndexList.pageSize,
+    });
+    expect(res).toMatchObject({ ok: true, hasMore: true, nextCursor: "k1.next" });
+    expect(res.parts.map((p) => p.partId)).toEqual(["p1", "p2"]);
+
+    const cc = client({ ok: true, result: 7 });
+    expect(await countPartMaster(descriptor, { client: cc })).toBe(7);
+    expect(cc.call).toHaveBeenCalledWith("countParts", { statuses: ["ACTIVE", "DRAFT"], stockingClasses: ["KIT"] });
+  });
+
+  it("a descriptor the Catalog cannot express is REFUSED, never run broader", async () => {
+    const c = client(pageOf(PART_ROWS));
+    const unfilterable = { filters: [{ fieldId: "category", operator: "EQUALS", value: "x" }], sort: [], pageSize: 50 };
+    expect(await fetchPartMasterPage({ descriptor: unfilterable }, { client: c })).toMatchObject({ ok: false, code: "INVALID_INPUT" });
+    const unsortable = { filters: [], sort: [{ fieldId: "category", direction: "ASC" }], pageSize: 50 };
+    expect(await fetchPartMasterPage({ descriptor: unsortable }, { client: c })).toMatchObject({ ok: false, code: "INVALID_INPUT" });
+    expect(c.call).not.toHaveBeenCalled();
+    expect(await countPartMaster(unfilterable, { client: c })).toBeNull();
+  });
+
+  it("a failed count is null, never 0", async () => {
+    const descriptor = describeWith({ filters: [], sort: [] });
+    expect(await countPartMaster(descriptor, { client: client({ ok: false, code: "FORBIDDEN" }) })).toBeNull();
+    expect(await countPartMaster(descriptor, { client: client({ ok: true, result: "12" }) })).toBeNull();
   });
 });
 

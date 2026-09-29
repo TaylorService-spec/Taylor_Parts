@@ -16,7 +16,8 @@ export function syntheticOpportunitySource() {
   return {
     status: "ready",
     synthetic: true,
-    opportunities: OPPORTUNITY_SCENARIO_FIXTURES.map((o) => ({ ...o })),
+    // Synthetic records carry the governed edit version a real EOS record carries (edit_version starts at 1).
+    opportunities: OPPORTUNITY_SCENARIO_FIXTURES.map((o) => ({ editVersion: 1, ...o })),
     accountNameById: { ...OPPORTUNITY_ACCOUNT_NAMES },
     error: null,
   };
@@ -75,26 +76,18 @@ export function mapOpportunityReadResult({ ok, payload, errorCode } = {}) {
   };
 }
 
-// GOVERNED read source (post-Wave-5 activation). `listOpportunityContext` is exported/deployed
-// (functions/src/index.ts), and `opportunity.read` is granted to admin/dispatcher/owner
-// (compatibilityRoles.ts) and sandbox-activated (config/environments.json's
-// capabilityActivationOverrides) -- so this is now safe to call. Firebase is imported LAZILY
-// (dynamic import) so this module has no import-time initializeApp side effect, mirroring
-// services/receivingCallableClient.js. Takes no request payload; the callable resolves the
-// caller's own authorized scope server-side.
-export async function governedOpportunitySource() {
-  try {
-    const [{ httpsCallable }, { functions }] = await Promise.all([
-      import("firebase/functions"),
-      import("../firebase/firebase.js"),
-    ]);
-    const res = await httpsCallable(functions, "listOpportunityContext")({});
-    return mapOpportunityReadResult({ ok: true, payload: res?.data });
-  } catch (err) {
-    const raw = err && typeof err.code === "string" ? err.code : "";
-    const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
-    return mapOpportunityReadResult({ ok: false, errorCode: code || "unavailable" });
-  }
+// GOVERNED read source -- the PostgreSQL Commercial transport (Pass 11 Retail Sales journey). Was the Firebase
+// `listOpportunityContext` callable; now POST /commercial/sales `listOpportunities`, the caller's own governed reach,
+// bounded at 1000 like the callable it replaces, projected to the same envelope (services/commercialEosAdapters.js).
+// No fallback: a refusal is "denied", any other failure "unavailable" -- never "zero opportunities".
+export async function governedOpportunitySource({ client } = {}) {
+  const [{ commercialApiClient }, { readCommercialList, toLegacyListPayload, legacyErrorStatus }] = await Promise.all([
+    import("../services/commercialApiClient.js"),
+    import("../services/commercialEosAdapters.js"),
+  ]);
+  const answer = await readCommercialList(client ?? commercialApiClient, "listOpportunities", { cap: 1000 });
+  if (answer.ok) return mapOpportunityReadResult({ ok: true, payload: toLegacyListPayload("opportunity", answer.items, answer.truncated) });
+  return mapOpportunityReadResult({ ok: false, errorCode: legacyErrorStatus(answer) });
 }
 
 // The default the app uses when no source is explicitly injected -- stays synthetic (test call

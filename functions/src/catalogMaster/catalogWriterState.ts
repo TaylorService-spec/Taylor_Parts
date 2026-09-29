@@ -45,8 +45,9 @@ export interface CatalogWriterAuthority {
 }
 
 /** THE COMMITTED STATE. Change only through an allowed transition, with the authorization §5 requires. */
-// FREEZE (Controller ruling 2026-09-28, coordinated Catalog + Reorder activation window, step 2): OPEN/INACTIVE ->
-// FROZEN/INACTIVE, the declared FREEZE transition. PostgreSQL stays INACTIVE until the Catalog COPY is verified.
+// FREEZE (Controller ruling 2026-09-28, activation window step 2): OPEN/INACTIVE -> FROZEN/INACTIVE, the declared FREEZE
+// transition. PostgreSQL stays INACTIVE -- and the Render Catalog transport therefore refuses (assertPostgresCatalogActive)
+// -- until the verified COPY and the separate ACTIVATE_POSTGRES change (window step 18).
 export const CATALOG_WRITER_AUTHORITY: CatalogWriterAuthority = Object.freeze({ firestore: "FROZEN", postgres: "INACTIVE" });
 
 export const CATALOG_WRITER_TRANSITIONS = Object.freeze([
@@ -344,4 +345,97 @@ export function assertFirestoreCatalogWriterOpen(
   }
   assertCatalogWriterAuthorityCoherent(authority);
   if (authority.firestore !== "OPEN") throw new FirestoreCatalogWriterClosedError(writer, authority.firestore);
+}
+
+// ════════════════════ THE READ SIDE: WHEN A FIRESTORE CATALOG READ STOPS BEING TRUE ════════════════════
+//
+// Everything above governs WRITERS. A reader needs its own rule, because the two stop being safe at
+// DIFFERENT MOMENTS, and collapsing them would be wrong in both directions.
+//
+//   FROZEN/INACTIVE  the legacy writers refuse, but Firestore is STILL THE AUTHORITY -- it simply is not
+//                    accepting changes. A read here is current truth, and it must stay legal: this is the
+//                    rollback window, and a reader that refused during it would take the whole platform
+//                    down for a migration that has not happened yet and might be rolled back.
+//   FROZEN/ACTIVE    PostgreSQL has accepted authoritative writes. From this instant the Firestore copy is
+//                    a SNAPSHOT of a past state. Every read of it is a stale read presented as current.
+//
+// So the read guard keys on `postgres === "ACTIVE"`, not on the Firestore state. A reader that cannot
+// reach PostgreSQL from its own runtime -- which is every Firebase Functions reader, because a Firebase
+// Function calling Render or opening a PostgreSQL pool is the forbidden bridge -- has exactly one honest
+// answer left, and it is to say it does not know.
+//
+// THIS IS THE PROJECTION RULE, ENFORCED. catalogActivationLedger.ts states it
+// (CONSUME_POSTGRES_CATALOG | REPORT_UNAVAILABLE, never READ_FROZEN_FIRESTORE_CATALOG); a rule with no
+// executable guard behind it is a comment. A stale read is the one failure here that looks like success:
+// a balance computed from last month's controlType, or an import resolved against Parts that have since
+// been renamed, is indistinguishable from a correct one to the person reading it.
+
+/** Every deployed Firestore catalog READ whose answer stops being current truth at PostgreSQL activation. */
+export const FIRESTORE_CATALOG_READERS = Object.freeze({
+  "dataImport.inventory.partReference": Object.freeze({
+    module: "functions/src/dataImport/firestoreInventoryImportAdapters.ts",
+    entry: "loadInventoryReferences / opening-balance Part resolution",
+    fact: "Part existence and internalPartNumber, to resolve an opening-balance row's Part reference",
+  }),
+  "ai.workOrderReadiness.controlType": Object.freeze({
+    module: "functions/src/ai/workOrderReadinessContext.ts",
+    entry: "buildWorkOrderReadinessDeps().loadBalances",
+    fact: "Part.controlType for each planned part, to shape that part's balance projection",
+  }),
+  "inventory.partBalance.controlType": Object.freeze({
+    module: "functions/src/inventory/partBalanceReadService.ts",
+    entry: "getPartBalanceCallable / readPartBalances",
+    fact: "Part.controlType -- whether the Part is counted by quantity or by serial, which decides the SHAPE of the answer",
+  }),
+});
+
+export type FirestoreCatalogReaderId = keyof typeof FIRESTORE_CATALOG_READERS;
+
+/**
+ * The Catalog authority has moved to PostgreSQL and this runtime cannot reach it.
+ *
+ * `CATALOG_AUTHORITY_MOVED` is deliberately NOT one of the writer codes. "Frozen" and "retired" describe
+ * what happened to the WRITER; this describes what happened to the TRUTH, and a caller that wants to tell
+ * a person why a number is missing needs the second sentence, not the first.
+ */
+export class FirestoreCatalogNotCurrentError extends Error {
+  readonly code = "CATALOG_AUTHORITY_MOVED" as const;
+  constructor(readonly reader: FirestoreCatalogReaderId) {
+    super(
+      `the catalog authority has moved to PostgreSQL; ${reader} reads the frozen Firestore catalog, which is no `
+      + "longer current truth, and this runtime cannot reach the PostgreSQL catalog",
+    );
+    this.name = "FirestoreCatalogNotCurrentError";
+  }
+}
+
+/** First act of every deployed Firestore catalog READ. A no-op until PostgreSQL is ACTIVE. */
+export function assertFirestoreCatalogReadCurrent(
+  reader: FirestoreCatalogReaderId,
+  authority: CatalogWriterAuthority = CATALOG_WRITER_AUTHORITY,
+): void {
+  if (!Object.prototype.hasOwnProperty.call(FIRESTORE_CATALOG_READERS, reader)) {
+    throw new Error(`unknown Firestore catalog reader ${String(reader)}`);
+  }
+  assertCatalogWriterAuthorityCoherent(authority);
+  if (authority.postgres === "ACTIVE") throw new FirestoreCatalogNotCurrentError(reader);
+}
+
+// ════════════════════ the PostgreSQL side: the Render Catalog transport is gated too ════════════════════
+//
+// The Firestore guards above stop the LEGACY writers. This is the other half: until the ACTIVATE_POSTGRES transition is
+// committed, the Render Catalog transport refuses every operation, so no PostgreSQL Catalog write can land between the
+// integration deploy and the verified COPY (a write there would make the COPY refuse a tenant row the snapshot does not
+// contain). Mirrors crm/crmWriterState.ts assertPostgresCrmWriterActive -- the same boundary, the same shape.
+export class PostgresCatalogWriterInactiveError extends Error {
+  readonly code = "POSTGRES_CATALOG_INACTIVE";
+  constructor(readonly writer: string) {
+    super(`the PostgreSQL Catalog authority is not active yet (${writer}); the Catalog cutover has not activated it`);
+    this.name = "PostgresCatalogWriterInactiveError";
+  }
+}
+
+export function assertPostgresCatalogActive(writer: string, authority: CatalogWriterAuthority = CATALOG_WRITER_AUTHORITY): void {
+  assertCatalogWriterAuthorityCoherent(authority);
+  if (authority.postgres !== "ACTIVE") throw new PostgresCatalogWriterInactiveError(writer);
 }

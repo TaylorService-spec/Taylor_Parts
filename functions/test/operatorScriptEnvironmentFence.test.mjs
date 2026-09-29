@@ -525,6 +525,38 @@ for (const [label, args, env, pattern] of [
   });
 }
 
+// ============================ THE REORDER CUTOVER ============================
+//
+// scripts/reorderCutover.js writes eos_ops.reorder_requests, reorder_request_assignments, purchase_orders and
+// purchase_order_voids (copy, one --stage per run). It must refuse before `pg` is even resolved, and has no production
+// mode.
+const RR_CUTOVER = "scripts/reorderCutover.js";
+const RR_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "REORDER_FENCE_DB", "--tenantKey", "taylor-nonprod", "--snapshot", "/nonexistent/snapshot.json",
+  "--exclusionManifest", "/nonexistent/manifest.json"];
+const RR_ENV = { EOS_ENVIRONMENT: "nonprod", REORDER_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+
+for (const [label, args, env, pattern] of [
+  ["no mode", RR_ARGS, RR_ENV, /--mode must be one of/],
+  ["no environment", ["--mode", "census"], RR_ENV, /--environment is required/],
+  ["production environment", ["--mode", "copy", "--stage", "objects", ...RR_ARGS.map((a) => (a === "platform-sandbox" ? "taylor-parts-production" : a)), "--principalId", "p"], RR_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", ["--mode", "copy", "--stage", "objects", ...RR_ARGS, "--principalId", "p"], { ...RR_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["EOS_ENVIRONMENT absent", ["--mode", "verify", ...RR_ARGS], { REORDER_FENCE_DB: RR_ENV.REORDER_FENCE_DB, EOS_ENVIRONMENT: "" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", ["--mode", "census", ...RR_ARGS.map((a) => (a === "platform-sandbox" ? "platform-certification" : a))], RR_ENV, /Certification world, which is frozen/],
+  ["no tenant key", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "REORDER_FENCE_DB", "--snapshot", "x.json"], RR_ENV, /--tenantKey is required/],
+  ["no snapshot", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "REORDER_FENCE_DB", "--tenantKey", "t"], RR_ENV, /--snapshot <file> is required/],
+  ["no DQ-032 exclusion manifest", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "REORDER_FENCE_DB", "--tenantKey", "t", "--snapshot", "x.json"], RR_ENV, /--exclusionManifest <file> is required/],
+  ["copy without a stage", ["--mode", "copy", ...RR_ARGS, "--principalId", "p"], RR_ENV, /--stage must be one of objects \| assignments \| purchasing/],
+  ["copy with an unknown stage", ["--mode", "copy", "--stage", "everything", ...RR_ARGS, "--principalId", "p"], RR_ENV, /--stage must be one of/],
+  ["copy without an EOS principal", ["--mode", "copy", "--stage", "objects", ...RR_ARGS], RR_ENV, /--principalId <EOS principal id> is required/],
+  ["a stage outside copy", ["--mode", "verify", "--stage", "objects", ...RR_ARGS], RR_ENV, /--stage applies only to --mode copy/],
+]) {
+  test(`reorder cutover: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(RR_CUTOVER, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `reorder cutover, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
 const EXPORT = "scripts/exportCatalogSnapshot.js";
 for (const [label, args, pattern] of [
   ["no project", ["--out", "/nonexistent/x.json"], /--projectId is required/],
@@ -540,24 +572,29 @@ for (const [label, args, pattern] of [
   });
 }
 
-// ============================ INVENTORY SNAPSHOT EXPORT (DQ-025) ============================
 //
 // scripts/exportInventorySnapshot.js reads a Firebase project (the FIREBASE_EXIT_MIGRATION_ONLY exception for
 // cycle_counts / inventory_transactions / transfer_orders). It must refuse before firebase-admin is even resolved,
 // and it has no production mode.
 const INVENTORY_EXPORT = "scripts/exportInventorySnapshot.js";
-for (const [label, args, pattern] of [
+=======
+// scripts/exportReorderSnapshot.js: the Reorder extension of the migration-only exception (Controller ruling
+// 2026-09-28). Same fence, same order: every refusal happens before firebase-admin is resolved.
+const EXPORT_REORDER = "scripts/exportReorderSnapshot.js";
+// ============================ INVENTORY SNAPSHOT EXPORT (DQ-025) =====================for (const [label, args, pattern] of [
   ["no project", ["--out", "/nonexistent/x.json"], /--projectId is required/],
   ["production, even confirmed", ["--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--out", "/nonexistent/x.json"], /is production/],
   ["frozen Certification world", ["--projectId", "eos-platform-certification", "--out", "/nonexistent/x.json"], /frozen/],
   ["undeclared project", ["--projectId", "someone-elses-project", "--out", "/nonexistent/x.json"], /not a Firebase project declared/],
   ["no out file", ["--projectId", "eos-platform-sandbox"], /--out <file> is required/],
 ]) {
-  test(`inventory snapshot export: refuses (${label}) before firebase-admin loads`, () => {
-    const res = runCli(INVENTORY_EXPORT, args);
-    const out = assertRefusedBeforeAnySdk(res, `inventory snapshot export, ${label}`);
-    assert.match(out, pattern);
-  });
+  for (const [what, script] of [["reorder", EXPORT_REORDER], ["inventory", INVENTORY_EXPORT]]) {
+    test(`${what} snapshot export: refuses (${label}) before firebase-admin loads`, () => {
+      const res = runCli(script, args);
+      const out = assertRefusedBeforeAnySdk(res, `${what} snapshot export, ${label}`);
+      assert.match(out, pattern);
+    });
+  }
 }
 
 // ============================ COMMERCIAL C5 ============================

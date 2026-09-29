@@ -219,8 +219,8 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps,
           // governed command rather than an inert form. This is the wiring that was missing --
           // the command and every affordance around it already existed.
           const result = onSaveSection
-            ? await onSaveSection(sectionId, draft, row.updatedAtMillis)
-            : await sectionSave.saveSection(sectionId, draft, row.updatedAtMillis);
+            ? await onSaveSection(sectionId, draft, row.editVersion)
+            : await sectionSave.saveSection(sectionId, draft, row.editVersion);
 
           // The section closes only on a save that actually happened. Everything else keeps the
           // form open with the draft intact, because the user has something to do with it --
