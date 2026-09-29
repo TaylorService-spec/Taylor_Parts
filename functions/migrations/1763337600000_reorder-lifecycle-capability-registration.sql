@@ -74,7 +74,27 @@ BEGIN
   IF refs > 0 THEN
     RAISE EXCEPTION 'migration 1763337600000 refuses to remove the Reorder lifecycle capabilities: % grant(s) reference them', refs;
   END IF;
+  -- A PUBLISHED (non-DRAFT) workflow action bound to one of the eight is likewise a governed decision: refuse.
+  SELECT count(*) INTO refs
+    FROM workflow_actions a JOIN workflow_versions v ON v.id = a.workflow_version_id
+   WHERE v.status <> 'DRAFT' AND a.capability_key IN (
+         'reorder.request.approve', 'reorder.request.reject', 'reorder.request.startPurchasing',
+         'reorder.request.postPurchasingUpdate', 'reorder.request.markReceived', 'reorder.request.cancel',
+         'reorder.request.recordPurchaseOrder', 'reorder.purchaseOrder.void');
+  IF refs > 0 THEN
+    RAISE EXCEPTION 'migration 1763337600000 refuses to remove the Reorder lifecycle capabilities: % published workflow action(s) are bound to them', refs;
+  END IF;
 END $$;
+
+-- A DRAFT workflow action seeded while these capabilities existed was bound to them by the seed's own rule (it binds
+-- only KNOWN capability keys). Reversing the registration returns those drafts to the unbound state the same seed
+-- produces when the keys are unknown -- exactly what migration 1762732800000's own down does to draft bindings.
+UPDATE workflow_actions a SET capability_key = NULL
+  FROM workflow_versions v
+ WHERE v.id = a.workflow_version_id AND v.status = 'DRAFT' AND a.capability_key IN (
+       'reorder.request.approve', 'reorder.request.reject', 'reorder.request.startPurchasing',
+       'reorder.request.postPurchasingUpdate', 'reorder.request.markReceived', 'reorder.request.cancel',
+       'reorder.request.recordPurchaseOrder', 'reorder.purchaseOrder.void');
 
 DELETE FROM capabilities WHERE id IN (
     'cap_reorder_request_approve', 'cap_reorder_request_reject', 'cap_reorder_request_start_purchasing',

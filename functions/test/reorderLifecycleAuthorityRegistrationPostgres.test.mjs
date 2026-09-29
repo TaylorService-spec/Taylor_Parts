@@ -29,6 +29,7 @@ const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js"
 const { ADMINISTRATION_GRANT_ONLY_CAPABILITIES } = require("../lib/adminPolicy/roleCapabilityAdministration.js");
 const { reconcileInventoryCapabilityGrants, deriveLegacyRoleGrants } = require("../lib/eosOps/migration/inventoryCapabilityGrantMigration.js");
 const life = require("../lib/eosOps/reorderLifecycleCommands.js");
+const { seedTenantPolicy } = require("../lib/adminPolicy/seed/policySeed.js");
 
 const OP = "operator-reorder-authority";
 const REGISTERED = Object.freeze([
@@ -164,5 +165,78 @@ test("registration without grants; no legacy holder is imported", { skip: SKIP, 
     assert.equal(await heldCount(), heldBefore);
     const pmApprove = report.rows.find((r) => r.roleKey === "partsManager" && r.capabilityKey === "reorder.request.approve");
     if (pmApprove) assert.equal(pmApprove.status, "ALREADY_GRANTED");
+  });
+});
+
+// PR #2000 CI: the down migration must account for governed DRAFT workflow actions the seed bound to these keys.
+// The policy seed binds a workflow action's capability only when the key is KNOWN, so once 1763337600000 registers the
+// eight, the seeded (DRAFT) Parts/Purchasing workflow references them through workflow_actions.capability_key (FK). The
+// down unbinds those DRAFTS -- returning them to exactly what the seed produces when the keys are unknown -- and refuses
+// while a PUBLISHED workflow action is bound, as it refuses while any grant references them.
+test("down migration: DRAFT workflow bindings are unbound, a PUBLISHED binding refuses, up restores", { skip: SKIP, concurrency: 1 }, async (t) => {
+  const name = `rr_down_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  let pool;
+  await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
+  t.after(async () => {
+    await pool?.end();
+    await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
+  });
+  const migrate = (args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"],
+    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
+  migrate(["up"]);
+  pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 4 });
+  const q = (s, v = []) => pool.query(s, v);
+  const repo = new PostgresPolicyRepository(pool);
+  const { tenant } = await bootstrapTenant(repo, { key: "rr-down", name: "RR down", actorUid: OP });
+  await seedTenantPolicy(repo, tenant.id, OP);
+
+  const bound = async (status) => Number((await q(
+    `SELECT count(*)::int n FROM eos_policy.workflow_actions a JOIN eos_policy.workflow_versions v ON v.id = a.workflow_version_id
+      WHERE a.capability_key = ANY($1) AND ($2::text IS NULL OR v.status::text = $2)`, [KEYS, status])).rows[0].n);
+  const registered = async () => Number((await q(`SELECT count(*)::int n FROM eos_policy.capabilities WHERE key = ANY($1)`, [KEYS])).rows[0].n);
+  // Peel every migration newer than this one, so a single `down` reverses exactly 1763337600000.
+  const peelTo = async (prefix) => {
+    for (;;) {
+      const newest = (await q("SELECT name FROM pgmigrations ORDER BY id DESC LIMIT 1")).rows[0]?.name;
+      if (!newest || newest.startsWith(prefix) || newest < prefix) return;
+      migrate(["down"]);
+    }
+  };
+
+  await t.test("precondition: the seed bound DRAFT workflow actions to the eight", async () => {
+    assert.ok(await bound("DRAFT") > 0, "the seeded Parts/Purchasing workflow binds the lifecycle keys");
+    assert.equal(await bound(null), await bound("DRAFT"), "and every such binding is a DRAFT");
+  });
+
+  await peelTo("1763337600000_");
+
+  await t.test("with only DRAFT bindings, the down unbinds them and removes exactly the eight", async () => {
+    const draftActionsBefore = Number((await q(`SELECT count(*)::int n FROM eos_policy.workflow_actions`)).rows[0].n);
+    migrate(["down"]);
+    assert.equal(await registered(), 0);
+    assert.equal(await bound(null), 0);
+    assert.equal(Number((await q(`SELECT count(*)::int n FROM eos_policy.workflow_actions`)).rows[0].n), draftActionsBefore,
+      "no workflow action is deleted -- only its binding is cleared");
+  });
+
+  let draftActionId;
+  await t.test("up restores the eight registrations", async () => {
+    migrate(["up"]);
+    assert.equal(await registered(), 8);
+  });
+
+  // Published versions are immutable (DRAFT -> PUBLISHED is one-way), so this runs last, on a throwaway database.
+  await t.test("a PUBLISHED workflow action bound to one of the eight refuses the down; nothing is removed", async () => {
+    draftActionId = (await q(
+      `SELECT a.id, a.workflow_version_id FROM eos_policy.workflow_actions a JOIN eos_policy.workflow_versions v
+         ON v.id = a.workflow_version_id WHERE v.status = 'DRAFT' AND a.key = 'approve' LIMIT 1`)).rows[0];
+    assert.ok(draftActionId, "the seeded Parts/Purchasing DRAFT has an approve action");
+    await q(`UPDATE eos_policy.workflow_actions SET capability_key = 'reorder.request.approve' WHERE id = $1`, [draftActionId.id]);
+    await q(`UPDATE eos_policy.workflow_versions SET status = 'PUBLISHED', published_at = now(), published_by = $2 WHERE id = $1`,
+      [draftActionId.workflow_version_id, OP]);
+    await peelTo("1763337600000_");
+    assert.throws(() => migrate(["down"]), /published workflow action\(s\) are bound to them/);
+    assert.equal(await registered(), 8, "the capabilities are still registered");
+    assert.equal(await bound("PUBLISHED"), 1, "the published binding is untouched");
   });
 });
