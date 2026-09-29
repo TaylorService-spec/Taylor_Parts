@@ -20,7 +20,8 @@ const { FieldValue } = admin.firestore;
 
 const cmd = await import("../lib/inventoryReceiving/receiveInventoryStockCommand.js");
 const { receiveInventoryStock, PartInvalidError, SerialIdentityConflictError } = cmd;
-const { receivingOrderDocId } = await import("../lib/inventoryReceiving/receivingRepository.js");
+const { receivingOrderDocId, canonicalReceivingOrderDocId } = await import("../lib/inventoryReceiving/receivingRepository.js");
+const { ReorderSourceFrozenError } = await import("../lib/reorderRequest/reorderSourceFreeze.js");
 const { serializedAssetDocId } = await import("../lib/serializedAsset/serializedAssetRegistration.js");
 const { SERIALIZED_ASSETS_COLLECTION } = await import("../lib/constants/collections.js");
 
@@ -34,15 +35,19 @@ let seq = 0;
 const nextId = (p) => `${p}-${runId}-${(seq += 1)}`;
 const NOW = new Date(1_700_000_000_000);
 
-async function seedScenario({ orderedQuantity = 3, grant = true } = {}) {
-  const rrid = nextId("rr");
-  const partId = nextId("part");
+// REORDER SOURCE FREEZE (Catalog + Reorder cutover, step 2): the legacy REORDER_PURCHASE_ORDER receipt branch is frozen,
+// so every SERIAL domain proof below runs against the unfrozen CANONICAL purchase_orders source through the SAME command
+// (ruling B). The PO orders TWICE what each receipt takes, so a receipt is partial, the PO stays SENT, and an exact retry is
+// still within the remaining quantity (the canonical replay is validated against remaining -- a known, pre-existing
+// canonical-path behaviour, not part of the freeze). The legacy branch itself is pinned as the FROZEN refusal at the end (ruling A).
+async function seedScenario({ orderedQuantity = 3, grant = true, partId = nextId("part") } = {}) {
+  const poId = nextId("po");
   const actorId = nextId("actor");
-  await db.collection("reorder_purchase_orders").doc(rrid).set({ reorderRequestId: rrid, partId, supplierName: "ACME", externalPoNumber: "PO-1", orderedQuantity, orderedDate: 1, expectedArrivalDate: null, status: "ORDERED", createdBy: "x", createdAt: 1 });
-  await db.collection("reorder_requests").doc(rrid).set({ partId, status: "ORDERED", purchaseOrderId: rrid, receivedBy: null, receivedAt: null, orderedBy: "x", orderedAt: 1 });
+  await db.collection("purchase_orders").doc(poId).set({ supplierId: nextId("sup"), status: "SENT", items: [{ lineId: "L1", partId, quantity: orderedQuantity * 2, unitPrice: 1 }], totalCost: orderedQuantity * 2 });
   if (grant) await db.collection("receiving_grants").doc(actorId).set({ granted: true });
-  return { rrid, partId, actorId, orderedQuantity };
+  return { poId, partId, actorId, orderedQuantity };
 }
+const receiptId = (sc, req) => canonicalReceivingOrderDocId({ operation: "receiveInventoryStock", sourceType: "PURCHASE_ORDER", purchaseOrderId: sc.poId, actorId: sc.actorId, idempotencyKey: req.idempotencyKey });
 
 function serials(sc, n = sc.orderedQuantity) {
   return Array.from({ length: n }, (_, i) => `${sc.partId}-SN-${i + 1}`);
@@ -51,11 +56,11 @@ function serials(sc, n = sc.orderedQuantity) {
 function request(sc, over = {}) {
   const { line: lineOver, ...top } = over;
   return {
-    source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: sc.rrid, purchaseOrderId: sc.rrid },
+    source: { type: "PURCHASE_ORDER", purchaseOrderId: sc.poId },
     receivingLocation: { type: "WAREHOUSE", locationId: "WH-1" },
     lines: [{
       lineId: "L1", partId: sc.partId,
-      expectedQuantity: sc.orderedQuantity, receivedQuantity: sc.orderedQuantity,
+      expectedQuantity: sc.orderedQuantity * 2, receivedQuantity: sc.orderedQuantity,
       serialNumbers: serials(sc),
       ...(lineOver || {}),
     }],
@@ -85,6 +90,7 @@ const assetsFor = async (partId) =>
   (await db.collection(SERIALIZED_ASSETS_COLLECTION).where("partId", "==", partId).get()).docs.map((d) => d.data());
 
 // ---- happy path ------------------------------------------------------------------------------
+// Ruling B: SERIAL activation is receiving domain logic -- proven on the canonical source.
 await check("SERIAL receipt activates one Serialized Asset per unit, atomically with the receipt", async () => {
   const sc = await seedScenario();
   const { deps, audits } = makeDeps(sc);
@@ -92,7 +98,7 @@ await check("SERIAL receipt activates one Serialized Asset per unit, atomically 
   const out = await receiveInventoryStock(req, deps);
 
   assert.equal(out.outcome, "applied");
-  assert.equal(out.receivingId, receivingOrderDocId(req.idempotencyKey));
+  assert.equal(out.receivingId, receiptId(sc, req));
   assert.equal(out.serializedAssetIds.length, 3);
 
   const assets = await assetsFor(sc.partId);
@@ -117,12 +123,13 @@ await check("SERIAL receipt activates one Serialized Asset per unit, atomically 
   assert.equal(ro.lines[0].trackingMode, "SERIAL");
   assert.deepEqual(ro.lines[0].serialNumbers, serials(sc));
 
-  // Closeout still happens exactly as for a NONE receipt.
-  assert.equal((await db.collection("reorder_requests").doc(sc.rrid).get()).data().status, "RECEIVED");
+  // The PO lifecycle moves exactly as for a NONE receipt (canonical: the version serializes every receipt).
+  assert.equal((await db.collection("purchase_orders").doc(sc.poId).get()).data().version, 1);
   assert.equal(audits.length, 1);
   assert.equal(audits[0].serialCount, 3);
 });
 
+// Ruling B: per-unit ledger staging is receiving domain logic -- proven on the canonical source.
 await check("SERIAL stages one ledger event PER UNIT (quantity 1 + serialNo), never one bulk event", async () => {
   const sc = await seedScenario();
   const { deps } = makeDeps(sc);
@@ -141,6 +148,7 @@ await check("SERIAL stages one ledger event PER UNIT (quantity 1 + serialNo), ne
 });
 
 // ---- idempotency / retry ----------------------------------------------------------------------
+// Ruling B: replay idempotency is receiving domain logic -- proven on the canonical source.
 await check("an exact retry REPLAYS: no second asset, no second ledger effect", async () => {
   const sc = await seedScenario();
   const { deps } = makeDeps(sc);
@@ -156,6 +164,7 @@ await check("an exact retry REPLAYS: no second asset, no second ledger effect", 
   assert.equal((await ledgerFor(first.receivingId)).length, 3, "retry must not create a second ledger effect");
 });
 
+// Ruling B: idempotency conflict on serial identity is receiving domain logic -- proven on the canonical source.
 await check("the same key with DIFFERENT serials conflicts -- and creates nothing new", async () => {
   const sc = await seedScenario();
   const { deps } = makeDeps(sc);
@@ -170,15 +179,14 @@ await check("the same key with DIFFERENT serials conflicts -- and creates nothin
 });
 
 // ---- duplicate serial identity -----------------------------------------------------------------
+// Ruling B: serial uniqueness is receiving domain logic -- proven on the canonical source (a second canonical PO).
 await check("the SAME physical unit cannot be received twice (duplicate serial fails the whole receipt)", async () => {
   const scA = await seedScenario({ orderedQuantity: 2 });
   const { deps: depsA } = makeDeps(scA);
   await receiveInventoryStock(request(scA, { line: { serialNumbers: ["DUP-1", "DUP-2"] } }), depsA);
 
   // A SECOND, independent receipt of the same part re-presenting one of those serials.
-  const scB = { ...scA, rrid: nextId("rr") };
-  await db.collection("reorder_purchase_orders").doc(scB.rrid).set({ reorderRequestId: scB.rrid, partId: scA.partId, supplierName: "ACME", externalPoNumber: "PO-2", orderedQuantity: 2, orderedDate: 1, expectedArrivalDate: null, status: "ORDERED", createdBy: "x", createdAt: 1 });
-  await db.collection("reorder_requests").doc(scB.rrid).set({ partId: scA.partId, status: "ORDERED", purchaseOrderId: scB.rrid, receivedBy: null, receivedAt: null, orderedBy: "x", orderedAt: 1 });
+  const scB = await seedScenario({ orderedQuantity: 2, partId: scA.partId });
   const { deps: depsB } = makeDeps(scB);
 
   await assert.rejects(
@@ -190,9 +198,11 @@ await check("the SAME physical unit cannot be received twice (duplicate serial f
   // the second receipt left no receiving order and no stock effect behind.
   assert.equal((await db.collection(SERIALIZED_ASSETS_COLLECTION).doc(serializedAssetDocId(scA.partId, "DUP-3")).get()).exists, false);
   assert.equal((await assetsFor(scA.partId)).length, 2);
-  assert.equal((await db.collection("reorder_requests").doc(scB.rrid).get()).data().status, "ORDERED");
+  assert.equal((await db.collection("receiving_orders").where("source.purchaseOrderId", "==", scB.poId).get()).size, 0);
+  assert.equal((await db.collection("purchase_orders").doc(scB.poId).get()).data().version, undefined, "the second PO is untouched");
 });
 
+// Ruling B: per-part serial identity is receiving domain logic -- proven on the canonical source.
 await check("a serial already used by a DIFFERENT part is not a conflict (identity is per part)", async () => {
   // Serial numbers are only unique within a manufacturer's line, so two different Parts may carry the
   // same printed serial. Scoping identity to (partId, serialNo) is what keeps that legal.
@@ -211,30 +221,32 @@ await check("a serial already used by a DIFFERENT part is not a conflict (identi
 });
 
 // ---- atomicity on failure ----------------------------------------------------------------------
+// Ruling B: all-or-nothing SERIAL commit is receiving domain logic -- proven on the canonical source. The failure is now
+// injected at the audit stage (step 13), which runs after the assets and ledger events were staged (steps 9/9b).
 await check("a failure AFTER serial staging creates NEITHER asset NOR stock effect", async () => {
   const sc = await seedScenario();
-  // Reorder request is not ORDERED -> the command throws at closeout, after assets/ledger were staged.
-  await db.collection("reorder_requests").doc(sc.rrid).update({ status: "RECEIVED" });
-  const { deps } = makeDeps(sc);
+  const { deps } = makeDeps(sc, { stageAudit: () => { throw new Error("boom-after-serial-staging"); } });
   const req = request(sc);
 
-  await assert.rejects(() => receiveInventoryStock(req, deps));
+  await assert.rejects(() => receiveInventoryStock(req, deps), /boom-after-serial-staging/);
 
   assert.equal((await assetsFor(sc.partId)).length, 0, "no Serialized Asset may survive a failed receipt");
-  assert.equal((await ledgerFor(receivingOrderDocId(req.idempotencyKey))).length, 0);
-  assert.equal((await db.collection("receiving_orders").doc(receivingOrderDocId(req.idempotencyKey)).get()).exists, false);
+  assert.equal((await ledgerFor(receiptId(sc, req))).length, 0);
+  assert.equal((await db.collection("receiving_orders").doc(receiptId(sc, req)).get()).exists, false);
 });
 
+// Ruling B: capability denial is receiving domain logic -- proven on the canonical source.
 await check("an unauthorized actor is denied and creates nothing", async () => {
   const sc = await seedScenario({ grant: false });
   const { deps } = makeDeps(sc);
   const req = request(sc);
   await assert.rejects(() => receiveInventoryStock(req, deps), (e) => e.code === "PERMISSION_DENIED");
   assert.equal((await assetsFor(sc.partId)).length, 0);
-  assert.equal((await db.collection("receiving_orders").doc(receivingOrderDocId(req.idempotencyKey)).get()).exists, false);
+  assert.equal((await db.collection("receiving_orders").doc(receiptId(sc, req)).get()).exists, false);
 });
 
 // ---- serial input validation at the command boundary -------------------------------------------
+// Ruling B: serial input validation is receiving domain logic -- proven on the canonical source.
 await check("missing / miscounted / duplicated serials are refused and create nothing", async () => {
   for (const bad of [undefined, [], ["ONLY-1"], ["A", "A", "B"], ["A", "B", ""]]) {
     const sc = await seedScenario();
@@ -248,6 +260,7 @@ await check("missing / miscounted / duplicated serials are refused and create no
 });
 
 // ---- LOT still deferred, NONE unchanged --------------------------------------------------------
+// Ruling B: tracking-mode policy is receiving domain logic -- proven on the canonical source.
 await check("LOT is still refused", async () => {
   const sc = await seedScenario();
   const { deps } = makeDeps(sc, { resolvePart: async (_t, partId) => ({ partId, trackingMode: "LOT", active: true }) });
@@ -258,6 +271,7 @@ await check("LOT is still refused", async () => {
   assert.equal((await assetsFor(sc.partId)).length, 0);
 });
 
+// Ruling B: NONE receipt shape is receiving domain logic -- proven on the canonical source.
 await check("a NONE receipt is unchanged: one bulk ledger event, and NO Serialized Asset", async () => {
   const sc = await seedScenario();
   const { deps } = makeDeps(sc, { resolvePart: async (_t, partId) => ({ partId, trackingMode: "NONE", active: true }) });
@@ -274,11 +288,34 @@ await check("a NONE receipt is unchanged: one bulk ledger event, and NO Serializ
   assert.equal((await assetsFor(sc.partId)).length, 0);
 });
 
+// Ruling B: serial-identity placement is receiving domain logic -- proven on the canonical source.
 await check("a NONE receipt carrying serialNumbers is REFUSED (no second home for serial identity)", async () => {
   const sc = await seedScenario();
   const { deps } = makeDeps(sc, { resolvePart: async (_t, partId) => ({ partId, trackingMode: "NONE", active: true }) });
   await assert.rejects(() => receiveInventoryStock(request(sc), deps));
   assert.equal((await assetsFor(sc.partId)).length, 0);
+});
+
+// Ruling A: a legacy REORDER_PURCHASE_ORDER SERIAL receipt is a superseded Reorder source write -- refused FROZEN before
+// any serial is staged: no asset, no ledger event, no receiving order, reorder request still ORDERED.
+await check("a legacy REORDER_PURCHASE_ORDER SERIAL receipt is refused FROZEN and activates nothing", async () => {
+  const rrid = nextId("rr"), partId = nextId("part"), actorId = nextId("actor");
+  await db.collection("reorder_purchase_orders").doc(rrid).set({ reorderRequestId: rrid, partId, supplierName: "ACME", externalPoNumber: "PO-1", orderedQuantity: 2, orderedDate: 1, expectedArrivalDate: null, status: "ORDERED", createdBy: "x", createdAt: 1 });
+  await db.collection("reorder_requests").doc(rrid).set({ partId, status: "ORDERED", purchaseOrderId: rrid, receivedBy: null, receivedAt: null, orderedBy: "x", orderedAt: 1 });
+  await db.collection("receiving_grants").doc(actorId).set({ granted: true });
+  const req = {
+    source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: rrid, purchaseOrderId: rrid },
+    receivingLocation: { type: "WAREHOUSE", locationId: "WH-1" },
+    lines: [{ lineId: "L1", partId, expectedQuantity: 2, receivedQuantity: 2, serialNumbers: [`${partId}-SN-1`, `${partId}-SN-2`] }],
+    idempotencyKey: nextId("idem"),
+  };
+  const { deps, audits } = makeDeps({ actorId });
+  await assert.rejects(() => receiveInventoryStock(req, deps), (e) => e instanceof ReorderSourceFrozenError && e.code === "REORDER_SOURCE_FROZEN");
+  assert.equal((await assetsFor(partId)).length, 0);
+  assert.equal((await ledgerFor(receivingOrderDocId(req.idempotencyKey))).length, 0);
+  assert.equal((await db.collection("receiving_orders").doc(receivingOrderDocId(req.idempotencyKey)).get()).exists, false);
+  assert.equal((await db.collection("reorder_requests").doc(rrid).get()).data().status, "ORDERED");
+  assert.equal(audits.length, 0);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

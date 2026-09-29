@@ -32,8 +32,8 @@ import {
 } from "./equipmentModelRepository";
 import { buildFirestoreOperationRepository } from "./operationRepository";
 import { MalformedStoredRecordError, type StoredMeta } from "./repository";
-// Catalog cutover: the catalog writer authority state (OPEN today; see catalogMaster/catalogWriterState.ts).
-import { assertFirestoreCatalogWriterOpen } from "../catalogMaster/catalogWriterState";
+// Catalog cutover: the catalog writer authority state (FROZEN in the activation window; see catalogMaster/catalogWriterState.ts).
+import { assertFirestoreCatalogWriterOpen, FirestoreCatalogWriterClosedError } from "../catalogMaster/catalogWriterState";
 
 // The governed capability each command requires (design §5). D4 registers these INACTIVE in Stage D;
 // the resolver seam below is what decides, so this module never inspects a role or a grant itself.
@@ -72,6 +72,8 @@ export const DENIAL_REASONS = Object.freeze({
   NOT_FOUND: "not_found",
   ALREADY_EXISTS: "already_exists",
   EVIDENCE_LIMIT_EXCEEDED: "evidence_limit_exceeded",
+  // The catalog cutover's governed state refusal (FROZEN, or RETIRED): an expected precondition, never an internal error.
+  CATALOG_WRITER_CLOSED: "catalog_writer_closed",
   INTERNAL_ERROR: "internal_error",
 });
 export type DenialReason = (typeof DENIAL_REASONS)[keyof typeof DENIAL_REASONS];
@@ -137,6 +139,7 @@ function denialReasonFor(error: unknown): DenialReason {
   if (error instanceof AlreadyExistsError) return DENIAL_REASONS.ALREADY_EXISTS;
   if (error instanceof EvidenceCapExceededError) return DENIAL_REASONS.EVIDENCE_LIMIT_EXCEEDED;
   if (error instanceof InvalidInputError) return DENIAL_REASONS.INVALID_INPUT;
+  if (error instanceof FirestoreCatalogWriterClosedError) return DENIAL_REASONS.CATALOG_WRITER_CLOSED;
   return DENIAL_REASONS.INTERNAL_ERROR;
 }
 

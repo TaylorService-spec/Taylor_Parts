@@ -152,41 +152,53 @@ await check("an execute request without explicit approval is refused", async () 
   assert.equal(stillStaged.data().status, "STAGED");
 });
 
-await check("approving writes the governed Parts, and the errored row is NOT written", async () => {
-  const res = await executeDataImport.run({ data: { jobId, approved: true }, auth });
+// CATALOG CUTOVER FREEZE (step 2): the legacy Firestore catalog writers are FROZEN, so a PARTS import is refused WHOLE at
+// execution -- before the job is claimed and before any row is written -- exactly as the CRM freeze refuses a customer
+// import below. Staging and preview stay available.
+const isPartImportFrozen = (err) => err.code === "failed-precondition" && err.details?.code === "FIRESTORE_CATALOG_WRITER_FROZEN";
+const createPartAuditsForRun = async () =>
+  (await db.collection("auditEvents").where("action", "==", "createPart").get()).docs.filter((d) => String(d.data().targetId ?? "").includes(`DI-${run}-`)).length;
 
-  assert.equal(res.job.status, "COMPLETED");
-  assert.equal(res.job.approvedBy, auth.uid);
-  assert.equal(res.job.result.created, 3);
-  assert.equal(res.job.result.failed, 0);
+// Ruling A: executing a PARTS import is the job-level legacy catalog writer (part.import) -- refused FROZEN, zero writes.
+await check("approving a PARTS import is refused FROZEN as a whole: no Part written, job not claimed", async () => {
+  await assert.rejects(executeDataImport.run({ data: { jobId, approved: true }, auth }), isPartImportFrozen);
 
   for (const n of [1, 2, 3]) {
     const snap = await db.collection("parts").doc(derivePartId(`DI-${run}-${n}`)).get();
-    assert.equal(snap.exists, true, `Part DI-${run}-${n} must exist after approval`);
-    // Written by partMaster's createPart, in ITS stored shape -- which is what makes the
-    // record visible to the normal Parts experience rather than to import alone.
-    assert.equal(snap.data().internalPartNumber, `DI-${run}-${n}`);
-    assert.equal(snap.data().status, "DRAFT");
-    assert.equal(snap.data().version, 1);
+    assert.equal(snap.exists, false, `Part DI-${run}-${n} must NOT be written while the catalog is frozen`);
   }
+  const job = (await db.collection("data_import_jobs").doc(jobId).get()).data();
+  assert.equal(job.status, "STAGED", "a refused job is never claimed");
 });
 
-await check("the governed command wrote its own audit event -- import did not bypass it", async () => {
-  const events = await db.collection("auditEvents").where("action", "==", "createPart").get();
-  const mine = events.docs.filter((d) => String(d.data().targetId ?? "").includes(`DI-${run}-`));
-  assert.ok(mine.length >= 3, `expected an audit event per created Part, saw ${mine.length}`);
+// Ruling A: no governed createPart ran, so no createPart audit exists for this file -- the refusal wrote no audit either.
+await check("a frozen PARTS import wrote NO createPart audit event", async () => {
+  assert.equal(await createPartAuditsForRun(), 0);
 });
 
 // --------------------------------------------------------------- replay
 
-await check("the same job cannot be executed twice", async () => {
-  await assert.rejects(
-    executeDataImport.run({ data: { jobId, approved: true }, auth }),
-    (err) => err.code === "failed-precondition",
-    "a completed job must not run again",
-  );
+// Ruling A: a retry of the refused PARTS job is refused FROZEN again and still claims nothing. (The "a COMPLETED job cannot
+// run twice" proof moves to the EQUIPMENT import below -- ruling B, same executeDataImport path.)
+await check("the same PARTS job is refused FROZEN again on retry, and is still not claimed", async () => {
+  await assert.rejects(executeDataImport.run({ data: { jobId, approved: true }, auth }), isPartImportFrozen);
+  assert.equal((await db.collection("data_import_jobs").doc(jobId).get()).data().status, "STAGED");
+  assert.equal(await createPartAuditsForRun(), 0);
 });
 
+// The Parts the file names cannot be created by the frozen import, so the pre-existing catalog every later check needs
+// (duplicate detection, inventory opening balances) is a FIXTURE written directly to the emulator -- the same stored shape
+// the governed createPart wrote (DRAFT, version 1).
+for (const n of [1, 2, 3]) {
+  const partId = derivePartId(`DI-${run}-${n}`);
+  const ts = Timestamp.now();
+  await db.collection("parts").doc(partId).set({
+    partId, internalPartNumber: `DI-${run}-${n}`, name: `Seeded part ${n}`, status: "DRAFT", stockingUnit: "EACH",
+    controlType: "STANDARD", stockingClass: "STOCKED", version: 1, createdAt: ts, createdBy: "seed", updatedAt: ts, updatedBy: "seed",
+  });
+}
+
+// Ruling B: duplicate detection through the derived id is import domain logic -- proven against the fixture Parts.
 await check("re-staging the SAME file now reports every row as already existing", async () => {
   const res = await stageDataImport.run({
     data: { fileName: "seeded-parts.csv", fileText: SEEDED_CSV },
@@ -199,14 +211,16 @@ await check("re-staging the SAME file now reports every row as already existing"
   assert.equal(res.job.summary.errors, 4);
   await assert.rejects(
     executeDataImport.run({ data: { jobId: res.job.jobId, approved: true }, auth }),
-    (err) => err.code === "failed-precondition",
+    (err) => err.code === "failed-precondition" && err.details?.code === "JOB_EMPTY",
     "a job with nothing importable must refuse rather than succeed at nothing",
   );
 });
 
 // --------------------------------------------------------------- xlsx
 
-await check("an XLSX workbook takes the SAME path and produces the same governed Part", async () => {
+// Ruling B (the XLSX reader + staging path is import domain logic, unchanged) + Ruling A (executing the staged PARTS job is
+// the frozen legacy catalog writer: refused FROZEN, no Part written).
+await check("an XLSX workbook takes the SAME staging path, and its PARTS execution is refused FROZEN", async () => {
   // Built here with zlib rather than by a library, for the same reason the reader has no
   // dependency: this is the format contract, and it should be exercised by bytes we control.
   const { deflateRawSync } = await import("node:zlib");
@@ -267,15 +281,12 @@ await check("an XLSX workbook takes the SAME path and produces the same governed
   assert.equal(staged.job.entityType, "PARTS");
   assert.deepEqual(staged.job.summary, { total: 1, ready: 1, warnings: 0, errors: 0 });
 
-  const done = await executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth });
-  assert.equal(done.job.status, "COMPLETED");
-
-  // Indistinguishable from the CSV path once written, which is the claim: the format
-  // changes the first step and nothing else.
+  // Indistinguishable from the CSV path, which is the claim: the format changes the first step and nothing else --
+  // including the frozen refusal at execution.
+  await assert.rejects(executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth }), isPartImportFrozen);
   const snap = await db.collection("parts").doc(derivePartId(`XL-${run}-1`)).get();
-  assert.equal(snap.exists, true);
-  assert.equal(snap.data().internalPartNumber, `XL-${run}-1`);
-  assert.equal(snap.data().status, "DRAFT");
+  assert.equal(snap.exists, false, "no Part is written while the catalog is frozen");
+  assert.equal((await db.collection("data_import_jobs").doc(staged.job.jobId).get()).data().status, "STAGED");
 });
 
 await check("a file that is not a readable workbook is refused with its own reason", async () => {
@@ -393,6 +404,15 @@ await check("equipment imports only where its customer and location BOTH resolve
   // stale copy of a customer name on every machine is how two sources of one fact appear.
   assert.equal(eq.customerName, undefined);
   assert.equal(eq.locationName, undefined);
+
+  // Ruling B: "a COMPLETED job cannot be executed twice" is import-lifecycle domain logic -- proven on this (unfrozen)
+  // EQUIPMENT job, through the same executeDataImport path the frozen PARTS job used to prove it on.
+  await assert.rejects(
+    executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth }),
+    (err) => err.code === "failed-precondition" && err.details?.code === "JOB_NOT_STAGED",
+    "a completed job must not run again",
+  );
+  assert.equal((await db.collection("equipment").where("serialNumber", "==", `EQ-${run}-1`).get()).size, 1, "and it wrote nothing more");
 });
 
 await check("a serial already registered is refused, whoever registered it", async () => {
@@ -614,7 +634,8 @@ await check("ACCEPTANCE: all five entities landed, and each is what it claims to
     counts[c] = (await db.collection(c).get()).size;
   }
 
-  assert.ok(counts.parts >= 4, `parts: ${counts.parts}`);
+  // Parts are the three FIXTURES seeded above: the PARTS import is refused while the catalog is frozen.
+  assert.ok(counts.parts >= 3, `parts: ${counts.parts}`);
   assert.ok(counts.accounts >= 2, `accounts: ${counts.accounts}`);
   assert.ok(counts.equipment >= 1, `equipment: ${counts.equipment}`);
   assert.ok(counts.inventory_transactions >= 1, `movements: ${counts.inventory_transactions}`);
@@ -627,10 +648,12 @@ await check("ACCEPTANCE: all five entities landed, and each is what it claims to
   // Every entity's write went through a command that audited it. Distinct actions per entity,
   // which is what proves import did not grow a shortcut for any one of them.
   const actions = new Set((await db.collection("auditEvents").get()).docs.map((d) => String(d.data().action)));
-  // createAccountFromImport is absent by design while the CRM cutover freeze holds (see the customer check above).
-  for (const action of ["createPart", "createEquipmentFromImport", "createServiceHistoryFromImport"]) {
+  // createAccountFromImport is absent by design while the CRM cutover freeze holds (see the customer check above), and
+  // this run's createPart audits are absent by design while the CATALOG freeze holds (see the PARTS checks above).
+  for (const action of ["createEquipmentFromImport", "createServiceHistoryFromImport"]) {
     assert.ok(actions.has(action), `no audit event for ${action}`);
   }
+  assert.equal(await createPartAuditsForRun(), 0, "no createPart audit for this run's frozen PARTS import");
 
   // And the history shows every run, with what each one wrote.
   const jobs = (await listDataImportJobs.run({ data: {}, auth })).jobs;
@@ -661,12 +684,17 @@ await check("an unauthenticated request never reaches authorization at all", asy
 
 // --------------------------------------------------------------- history
 
-await check("history lists the runs, newest first, with what each one wrote", async () => {
+// Ruling A (the refused PARTS job is listed as still STAGED, having written nothing) + Ruling B (history still lists what an
+// unfrozen run wrote -- the EQUIPMENT job).
+await check("history lists the runs, with what each one wrote", async () => {
   const res = await listDataImportJobs.run({ data: {}, auth });
   const mine = res.jobs.filter((j) => j.fileName === "seeded-parts.csv" && j.jobId === jobId);
   assert.equal(mine.length, 1);
-  assert.equal(mine[0].status, "COMPLETED");
-  assert.equal(mine[0].result.created, 3);
+  assert.equal(mine[0].status, "STAGED", "the frozen PARTS job was never claimed");
+  assert.equal(mine[0].result ?? null, null, "and it wrote nothing");
+  const equipment = res.jobs.find((j) => j.entityType === "EQUIPMENT" && j.status === "COMPLETED");
+  assert.ok(equipment, "a completed EQUIPMENT run is listed");
+  assert.equal(equipment.result.created, 1);
 });
 
 console.log(`\n${passed} passed, 0 failed`);

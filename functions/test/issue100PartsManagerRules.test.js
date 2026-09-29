@@ -35,14 +35,14 @@
 // touches the live "taylor-parts" project.
 "use strict";
 
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
+process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
+process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
 
 const admin = require("firebase-admin");
 
 const PROJECT_ID = "taylor-parts";
-const FIRESTORE_HOST = "http://127.0.0.1:8080";
-const AUTH_HOST = "http://127.0.0.1:9099";
+const FIRESTORE_HOST = `http://${process.env.FIRESTORE_EMULATOR_HOST}`;
+const AUTH_HOST = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`;
 const DOC_BASE = `${FIRESTORE_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 
 admin.initializeApp({ projectId: PROJECT_ID });
@@ -458,14 +458,14 @@ async function main() {
   // PR 1a test file previously asserted denial here specifically to
   // prove PR 3a's restructuring hadn't landed yet. That premise is now
   // obsolete.
-  report("PR 3a's Assign-write branch does not affect this PR's own read-only scope",
+  report("FROZEN (Reorder source freeze, activation window step 2): the PARTS_MANAGER browser Assign-write is DENIED (the read-only scope this suite owns is unaffected)",
     (await updateReorderRequest("req-ready-1", tokens["user-pm-1"], {
       status: { stringValue: "ASSIGNED_TO_PARTS_ASSOCIATE" },
       currentOwner: { stringValue: "PARTS_ASSOCIATE" },
       assignedToUserId: { stringValue: "user-pa-1" },
       assignedBy: { stringValue: "user-pm-1" },
       assignedAt: { integerValue: String(now) },
-    })) === 200);
+    })) === 403);
 
   // === Broken / inactive / mismatched linkage -- fail closed ===
 
