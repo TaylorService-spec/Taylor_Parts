@@ -197,6 +197,11 @@ function ScanWorkspaceBody({ deps }) {
   const assignedWorkOrderCount = deps?.assignedWorkOrderCount !== undefined
     ? deps.assignedWorkOrderCount
     : (liveWorkOrders.data?.length ?? 0);
+  // A loading or failed read is NOT "no assigned work orders" -- the count above is only meaningful
+  // once the read has answered. (Only relevant when a technician identity is resolved.)
+  const assignedWorkOrderStatus = deps?.assignedWorkOrderCount !== undefined
+    ? (deps.assignedWorkOrderStatus ?? "ready")
+    : liveWorkOrders.error ? "failed" : liveWorkOrders.loading ? "loading" : "ready";
 
   // The trusted gate comes from the shell, which already resolves it for every governed nav surface.
   const workflows = deriveScanWorkflows({
@@ -205,6 +210,7 @@ function ScanWorkspaceBody({ deps }) {
     role: deps?.role ?? null,
     technicianId,
     assignedWorkOrderCount,
+    assignedWorkOrderStatus,
   });
 
   if (active === SCAN_WORKFLOW.LOOKUP) {

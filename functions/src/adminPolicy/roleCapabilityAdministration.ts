@@ -168,6 +168,12 @@ export const ADMINISTRATION_GRANT_ONLY_CAPABILITIES: ReadonlySet<string> = new S
   "reorder.request.cancel",
   "reorder.request.recordPurchaseOrder",
   "reorder.purchaseOrder.void",
+  // Controller ruling DQ-011 (2026-09-28; migration 1763856000000): workOrder.parts.plan is registered with NO
+  // default grant. The legacy catalog declares it on the compatibility admin Role (which composes the whole
+  // PERMISSION_CATALOG) and on workOrderPartsPlanner, so without the fence the catalog reconcile would import it.
+  // (DQ-010's workOrder.lifecycle.ready / .schedule / .close are NOT in PERMISSION_CATALOG, so no catalog
+  // declaration can propose them; they need no fence entry.)
+  "workOrder.parts.plan",
 ]);
 
 export type GrantAuthoritySource =

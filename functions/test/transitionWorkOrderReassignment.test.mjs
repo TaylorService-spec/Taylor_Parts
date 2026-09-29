@@ -30,6 +30,12 @@ if (admin.apps.length === 0) {
 }
 const db = admin.firestore();
 
+// DQ-014: Dispatch now enforces the existing placement invariants (the technician exists and carries a
+// governed status), so every technician these proofs dispatch to is a real fieldops_technicians record.
+async function seedGovernedTechnician(technicianId) {
+  await db.collection("fieldops_technicians").doc(technicianId).set({ status: "available" }, { merge: true });
+}
+
 const { transitionWorkOrder } = await import("../lib/transitionWorkOrder.js");
 
 const WOS = "fieldops_wos";
@@ -78,7 +84,10 @@ test("DEFECT GUARD: reassigning away from the scheduled technician WITHOUT a rea
   await seedDispatcher(dispatcherUid);
 
   const techX = id("tech-x");
+
+  await seedGovernedTechnician(techX);
   const techY = id("tech-y");
+  await seedGovernedTechnician(techY);
   const woId = id("wo-noreason");
   await seedScheduledWorkOrder(woId, { scheduledTechId: techX, startMs: baseStart, endMs: baseEnd });
 
@@ -98,6 +107,8 @@ test("a SAME-technician Dispatch (no reassignment) succeeds with NO reason and i
   await seedDispatcher(dispatcherUid);
 
   const techX = id("tech-x");
+
+  await seedGovernedTechnician(techX);
   const woId = id("wo-samegtech");
   await seedScheduledWorkOrder(woId, { scheduledTechId: techX, startMs: baseStart, endMs: baseEnd });
 
@@ -120,7 +131,10 @@ test("DEFECT FIX: reassignment WITH a reason succeeds, reconciles both fields, a
   await seedDispatcher(dispatcherUid);
 
   const techX = id("tech-x");
+
+  await seedGovernedTechnician(techX);
   const techY = id("tech-y");
+  await seedGovernedTechnician(techY);
   const woId = id("wo-withreason");
   await seedScheduledWorkOrder(woId, { scheduledTechId: techX, startMs: baseStart, endMs: baseEnd });
 
@@ -160,7 +174,10 @@ test("MERGE COMPOSITION (M9/H19 + H20): a reassigning Dispatch stages BOTH the g
   await seedDispatcher(dispatcherUid);
 
   const techX = id("tech-x");
+
+  await seedGovernedTechnician(techX);
   const techY = id("tech-y");
+  await seedGovernedTechnician(techY);
   const woId = id("wo-composition");
   await seedScheduledWorkOrder(woId, { scheduledTechId: techX, startMs: baseStart, endMs: baseEnd });
 
@@ -207,7 +224,10 @@ test("DEFECT FIX: reassigning to a technician with a SCHEDULE conflict (overlapp
   await seedDispatcher(dispatcherUid);
 
   const techX = id("tech-x");
+
+  await seedGovernedTechnician(techX);
   const techY = id("tech-y");
+  await seedGovernedTechnician(techY);
   const woId = id("wo-conflict");
   const conflictingWoId = id("wo-conflict-existing");
 
@@ -238,7 +258,10 @@ test("DEFECT FIX: reassigning to a technician who is already actively DOUBLE-BOO
   await seedDispatcher(dispatcherUid);
 
   const techX = id("tech-x");
+
+  await seedGovernedTechnician(techX);
   const techY = id("tech-y");
+  await seedGovernedTechnician(techY);
   const woId = id("wo-doublebook");
   const activeWoId = id("wo-doublebook-active");
 
@@ -263,7 +286,10 @@ test("DEFECT GUARD: a terminal (COMPLETED) Work Order rejects reassignment entir
   await seedDispatcher(dispatcherUid);
 
   const techX = id("tech-x");
+
+  await seedGovernedTechnician(techX);
   const techY = id("tech-y");
+  await seedGovernedTechnician(techY);
   const woId = id("wo-completed");
   await db.collection(WOS).doc(woId).set({ id: woId, status: "COMPLETED", scheduledTechId: techX, assignedTechId: techX });
 
@@ -285,7 +311,10 @@ test("DEFECT GUARD: a terminal (CANCELLED) Work Order rejects reassignment entir
   await seedDispatcher(dispatcherUid);
 
   const techX = id("tech-x");
+
+  await seedGovernedTechnician(techX);
   const techY = id("tech-y");
+  await seedGovernedTechnician(techY);
   const woId = id("wo-cancelled");
   await db.collection(WOS).doc(woId).set({ id: woId, status: "CANCELLED", scheduledTechId: techX });
 

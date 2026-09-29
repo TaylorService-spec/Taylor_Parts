@@ -105,7 +105,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.notEqual(row.display_label, row.key, "a friendly label, not the key");
     }
     const total = (await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities")).rows[0].n;
-    assert.equal(total, 91, // + 1 from migration 1763683200000 (DQ-022): ownership.handoff.correct, granted to no Role
+    assert.equal(total, 95, // INTERIM PIN (integration L1+L2): + 1 from 1763683200000 (DQ-022), + 4 from 1763856000000 (DQ-010/DQ-011)
       "+ 8 from migration 1763337600000, the Reorder lifecycle authority (Administration-grant-only) -- " +
       "49 + 8 + 13 + 3 + 1 + 1 (the re-homed coordinated-visit read) + 1 (admin.securityPolicy.read, " +
       "the Administration read authority -- rolesPermissions had two ADMIN_ACTION writes and no read) " +
@@ -116,7 +116,9 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       "capability that replaces the Role-name gate on security-policy mutations " +
       "+ 1 from migration 1762819200000, the Functional Role authority: admin.employeeFunctionalRole.write, granted to " +
       "no Role + 1 from migration 1763078400000, Owner ruling R1: admin.administratorRole.assign, granted to owner " +
-      "+ 1 from migration 1763683200000, DQ-022: ownership.handoff.correct, granted to no Role");
+      "+ 1 from migration 1763683200000, DQ-022: ownership.handoff.correct, granted to no Role " +
+      "+ 4 from migration 1763856000000, Controller rulings DQ-010 / DQ-011: workOrder.lifecycle.ready / .schedule / " +
+      ".close and workOrder.parts.plan, granted to NO Role");
   });
 
   await t.test("every preserved grant is backed by an actual stored CRED row", async () => {
@@ -185,7 +187,9 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
         LEFT JOIN eos_policy.role_capabilities rc ON rc.capability_id = c.id
        WHERE c.key LIKE 'workOrder.lifecycle.%' OR c.key LIKE 'workflowDefinition.%'
        GROUP BY c.key ORDER BY c.key`);
-    assert.equal(rows.length, 9, "three lifecycle + six workflow");
+    // Six lifecycle (dispatch, cancel, complete + DQ-010's ready, schedule, close -- registered with NO grant, so
+    // the ungranted assertion below covers them too) + six workflow.
+    assert.equal(rows.length, 12, "six lifecycle + six workflow");
     for (const r of rows) {
       if (r.key in RELEASED) continue;
       assert.equal(r.grants, 0, `${r.key} must remain ungranted -- no Owner ruling has released it`);

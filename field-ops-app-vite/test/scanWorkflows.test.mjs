@@ -117,6 +117,24 @@ test("technician scanning mirrors the server rule: role, identity, and assigned 
   assert.equal(reasonFor(noIdentity, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER), UNAVAILABLE_REASON.NO_TECHNICIAN_IDENTITY);
 });
 
+test("an UNREAD assigned-work count is never 'no assigned work' (XLF-008)", () => {
+  const base = { hasCapability: gate(), role: "technician", technicianId: "T1", assignedWorkOrderCount: 0 };
+  assert.equal(reasonFor(deriveScanWorkflows({ ...base, assignedWorkOrderStatus: "loading" }), SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER),
+    UNAVAILABLE_REASON.ASSIGNED_WORK_LOADING);
+  assert.equal(reasonFor(deriveScanWorkflows({ ...base, assignedWorkOrderStatus: "failed" }), SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER),
+    UNAVAILABLE_REASON.ASSIGNED_WORK_UNREADABLE);
+  // An unrecognised status is unknown too, and fails closed with the unreadable reason.
+  assert.equal(reasonFor(deriveScanWorkflows({ ...base, assignedWorkOrderStatus: "???" }), SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER),
+    UNAVAILABLE_REASON.ASSIGNED_WORK_UNREADABLE);
+  // A stale non-zero count under a failed read still does not open the workflow.
+  assert.equal(has(deriveScanWorkflows({ ...base, assignedWorkOrderCount: 3, assignedWorkOrderStatus: "failed" }), SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER), false);
+  for (const r of [UNAVAILABLE_REASON.ASSIGNED_WORK_LOADING, UNAVAILABLE_REASON.ASSIGNED_WORK_UNREADABLE]) {
+    assert.doesNotMatch(UNAVAILABLE_TEXT[r], /no assigned work/i);
+  }
+  // Default (status omitted) keeps the existing meaning for callers that pass a read count.
+  assert.equal(reasonFor(deriveScanWorkflows(base), SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER), UNAVAILABLE_REASON.NO_ASSIGNED_WORK);
+});
+
 test("NO ASSIGNED WORK is a state, not a permission — and gets its own message", () => {
   const r = deriveScanWorkflows({ hasCapability: gate(), role: "technician", technicianId: "T1", assignedWorkOrderCount: 0 });
   assert.equal(reasonFor(r, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER), UNAVAILABLE_REASON.NO_ASSIGNED_WORK);

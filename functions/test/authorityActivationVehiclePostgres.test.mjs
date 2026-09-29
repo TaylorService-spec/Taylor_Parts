@@ -162,7 +162,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     "1763337600000_reorder-lifecycle-capability-registration.sql", "1763424000000_reorder-requester-is-a-principal.sql",
     "1763510400000_reorder-actor-identity-normalization.sql", "1763596800000_receiving-business-time-number-and-acquisition-cost.sql",
     // DQ-022 (lane L1), appended after the candidate.
-    "1763683200000_ownership-handoff-correction-capability.sql"],
+    "1763683200000_ownership-handoff-correction-capability.sql",
+    // Lane L2, Controller rulings DQ-010 / DQ-011: four Work Order business actions, no grants.
+    "1763856000000_work-order-business-action-capabilities.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -382,8 +384,13 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
 
     // The Administration control plane (1762646400000) sits after the activation: +1 capability, +1
     // grant. It is peeled first so the reversal below is THIS migration's and nothing else's.
+    // INTERIM PIN (integration L1+L2; final reconciliation after all lanes land).
+    assert.deepEqual(await counts(), { caps: 95, grants: 415, mine: 26 });
+    // The Work Order business-action capabilities (1763856000000, Controller rulings DQ-010 / DQ-011) are peeled
+    // first: -4 capabilities, NO grant (they are registered with none).
+    runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 91, grants: 415, mine: 26 });
-    // The ownership handoff correction capability (1763683200000, DQ-022) is peeled first: -1 capability, no grant.
+    // The ownership handoff correction capability (1763683200000, DQ-022) is peeled next: -1 capability, no grant.
     runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 90, grants: 415, mine: 26 });
     // The Catalog + Reorder activation candidate is peeled next, newest first. Three Reorder/Receiving schema
@@ -434,7 +441,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the ownership handoff correction capability (1763683200000) first
+    runMigrate(url, "down", 1); // peel the Work Order business-action capabilities (1763856000000) first
+    runMigrate(url, "down", 1); // then the ownership handoff correction capability (1763683200000)
     runMigrate(url, "down", 6); // then the Catalog + Reorder activation candidate (1763164800000 .. 1763596800000)
     runMigrate(url, "down", 1); // then the later Administrator staffing capability (1763078400000)
     runMigrate(url, "down", 1); // then the direct-exception cell lock (1762992000000)

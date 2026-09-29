@@ -82,7 +82,7 @@ const PRE_EXISTING_RECONCILE_EXTRAS = Object.freeze([
   "dispatcher/reorder.request.assign", "dispatcher/reorder.request.read.queue",
   "partsManager/reorder.request.read.queue", "purchasingManager/reorder.request.read.queue",
   "technician/reorder.purchaseOrder.create", "technician/reorder.purchaseOrder.read",
-]);
+].sort());
 
 const V1 = {
   steps: [

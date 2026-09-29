@@ -29,7 +29,7 @@
 // Never touches the live "taylor-parts" project.
 "use strict";
 
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
+process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
@@ -253,6 +253,8 @@ test("transitionWorkOrder: admin MarkReady succeeds, status becomes READY_TO_DIS
 });
 
 test("transitionWorkOrder: admin Dispatch succeeds, sets assignedTechId and dispatchedAt", async () => {
+  // DQ-014: Dispatch enforces the existing invariant that the technician exists with a governed status.
+  await db.collection("fieldops_technicians").doc("tech-dispatch-target").set({ status: "available" }, { merge: true });
   const adminUid = uid("two-admin-dispatch-happy");
   await seedUser(adminUid, "admin");
   const woId = uid("wo-dispatch-happy");

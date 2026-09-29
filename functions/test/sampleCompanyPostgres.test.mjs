@@ -239,8 +239,11 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // (vocabulary 82 -> 90, reconciled in the manifest) granted to NO Role -- Administration-grant-only, so the seed's
 // catalog reconcile writes none of them and no persona moves.
 // 63 -> 64: 1763683200000, the ownership handoff correction capability (DQ-022) -- one capability, granted to nobody.
-const PINNED_LAST_MIGRATION = "1763683200000_ownership-handoff-correction-capability";
-const PINNED_MIGRATION_COUNT = 64;
+// 64 -> 65: 1763856000000 (the Work Order business-action capabilities, Controller rulings DQ-010 / DQ-011, lane L2): FOUR
+// capabilities (workOrder.lifecycle.ready / .schedule / .close, workOrder.parts.plan; vocabulary 91 -> 95, reconciled
+// in the manifest), granted to NO Role by the migration. INTERIM PIN (integration L1+L2).
+const PINNED_LAST_MIGRATION = "1763856000000_work-order-business-action-capabilities";
+const PINNED_MIGRATION_COUNT = 65;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

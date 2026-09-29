@@ -4334,6 +4334,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
+          "functions/src/eosOps/workOrderEquipmentInstall.ts",
           "functions/src/equipmentInstall/equipmentImportCommand.ts",
           "functions/src/equipmentInstall/installSerializedAssetCommand.ts"
         ],
@@ -4341,7 +4342,7 @@
           "field-ops-app-vite/src/access/equipmentInstallCapabilityAccess.js",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },

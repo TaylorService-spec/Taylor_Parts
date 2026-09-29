@@ -65,7 +65,7 @@ const PRE_EXISTING_RECONCILE_EXTRAS = Object.freeze([
   // Pass 8: the technician Purchase Order cells are no longer a SYSTEM INVARIANT (LEGACY_BASELINE_ARTIFACT);
   // the legacy catalog declares them, so the reconcile now adds them like the rows above.
   "technician/reorder.purchaseOrder.create", "technician/reorder.purchaseOrder.read",
-]);
+].sort());
 
 const DISPATCHER_SELLING = Object.freeze([
   { objectKey: "opportunity", actionKey: "edit", capabilityKey: "opportunity.write", operation: "updateOpportunity" },

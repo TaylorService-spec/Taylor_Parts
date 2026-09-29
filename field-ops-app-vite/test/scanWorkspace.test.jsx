@@ -130,6 +130,19 @@ describe("Scan workspace (nothing available is SAID, never a blank screen)", () 
     render(<ScanWorkspace deps={technicianUser({ assignedWorkOrderCount: 0 })} />);
     expect(screen.getByText(/no assigned work orders to scan against/i)).toBeTruthy();
   });
+
+  // XLF-008: a work-order read that is still loading, or failed, is NOT "no assigned work orders".
+  it("a LOADING assigned-work read says it is loading, never 'no assigned work'", () => {
+    render(<ScanWorkspace deps={technicianUser({ assignedWorkOrderCount: 0, assignedWorkOrderStatus: "loading" })} />);
+    expect(screen.getByText(/assigned work orders are still loading/i)).toBeTruthy();
+    expect(screen.queryByText(/no assigned work orders to scan against/i)).toBeNull();
+  });
+
+  it("a FAILED assigned-work read says it could not be loaded, never 'no assigned work'", () => {
+    render(<ScanWorkspace deps={technicianUser({ assignedWorkOrderCount: 0, assignedWorkOrderStatus: "failed" })} />);
+    expect(screen.getByText(/could not be loaded/i)).toBeTruthy();
+    expect(screen.queryByText(/no assigned work orders to scan against/i)).toBeNull();
+  });
 });
 
 // ────────────────────────────────────────────── absent, not disabled

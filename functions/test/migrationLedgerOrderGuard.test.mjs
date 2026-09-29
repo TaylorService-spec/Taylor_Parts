@@ -172,8 +172,11 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // the ledger model is not extended.
 // 63 -> 64 runnable: migration 1763683200000, the ownership handoff correction capability (DQ-022, lane L1) -- APPENDED
 // after the candidate, another EXPLAINED pending migration; the ledger model is not extended.
-const RUNNABLE_MIGRATION_COUNT = 64;
-const TRACKED_MIGRATION_COUNT = 65; // the 64 runnable + the one deferred file
+// 64 -> 65 runnable: migration 1763856000000, the Work Order business-action capabilities (Controller rulings DQ-010 /
+// DQ-011, lane L2) -- APPENDED in lane L2's slot above the candidate, an EXPLAINED pending migration; the ledger model
+// is not extended. INTERIM PIN (integration L1+L2; final reconciliation after all lanes land).
+const RUNNABLE_MIGRATION_COUNT = 65;
+const TRACKED_MIGRATION_COUNT = 66; // the 65 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -189,6 +192,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1763510400000_reorder-actor-identity-normalization",
   "1763596800000_receiving-business-time-number-and-acquisition-cost",
   "1763683200000_ownership-handoff-correction-capability",
+  "1763856000000_work-order-business-action-capabilities",
 ]);
 
 const repoMigrations = () =>

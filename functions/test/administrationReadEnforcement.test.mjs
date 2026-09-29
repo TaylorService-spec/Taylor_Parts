@@ -200,7 +200,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // a READ key, and none is a read-enforcement change.
   // 63 -> 64: the ownership handoff correction capability (1763683200000, DQ-022, lane L1) -- ONE BUSINESS_ACTION
   // capability granted to nobody. It registers no READ key.
-  assert.equal(migrations.length, 64, "a migration was added or removed by the read enforcement");
+  // 64 -> 65: the Work Order business-action capabilities (1763856000000, Controller rulings DQ-010 / DQ-011, lane L2) -- FOUR BUSINESS_ACTION capabilities granted to nobody. It registers no READ key.
+  // INTERIM PIN (integration L1+L2; final reconciliation after all lanes land).
+  assert.equal(migrations.length, 65, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

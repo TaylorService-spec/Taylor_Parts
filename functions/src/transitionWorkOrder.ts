@@ -29,6 +29,10 @@ import { findDoubleBookingConflict, findScheduleConflict } from "./workOrderAvai
 // ND-24: THE governed placement policy, shared with the Scheduling command service so the initial
 // placement and every later change cannot disagree about what a legal placement is.
 import { checkPlacement } from "./scheduling/placementPolicy";
+// DQ-014: the SAME existence / governed-status / blocked-time rules checkPlacement applies to Schedule,
+// applied to the technician a Dispatch actually sends the job to. Existing modules, existing collections.
+import { GOVERNED_TECHNICIAN_STATUSES, loadBlockedTime, loadTechnician } from "./scheduling/schedulingRepository";
+import { findBlockedTimeConflict } from "./scheduling/availabilityModel";
 import { mapError as mapSchedulingError } from "./scheduling/errorMapping";
 import { SchedulingError, type SchedulingWarning } from "./scheduling/types";
 import { stageAuditEvent, stageAuditEventWithId } from "./access/auditEventWriter";
@@ -308,6 +312,35 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
         );
       }
 
+      // DQ-014 (Controller ruling 2026-09-28) -- RETIREMENT-ONLY REPAIR, enforcing EXISTING invariants and
+      // nothing new. Schedule refuses a technician that does not exist, carries no governed status, or has
+      // blocked time over the window (ND-20, via checkPlacement). Dispatch -- including H20's dispatch to a
+      // DIFFERENT technician -- sent the job to whoever was named without asking any of the three, so a job
+      // could be dispatched onto a technician's PTO or to an id that names nobody. The reads are the ones
+      // this callable already performs for Schedule (fieldops_technicians, technician_blocked_time): no new
+      // collection, no new Firebase responsibility. Deliberately NOT applied: START_IN_PAST (dispatching a job
+      // whose window has begun is ordinary) and working-hours warnings (Schedule's concern, never a refusal).
+      // Deletion condition: this callable retires with the EOS Work Order dispatch transport (FX-L01).
+      {
+        const technician = await loadTechnician(tx, assignedTechId as string);
+        if (!technician) {
+          throw new HttpsError("not-found", `No technician exists at ${assignedTechId}.`);
+        }
+        if (!GOVERNED_TECHNICIAN_STATUSES.has(technician.status)) {
+          throw new HttpsError("failed-precondition",
+            `Technician ${assignedTechId} has no governed status and cannot be dispatched.`);
+        }
+        const windowStart = wo.scheduledStart?.toMillis?.();
+        const windowEnd = wo.scheduledEnd?.toMillis?.();
+        if (typeof windowStart === "number" && typeof windowEnd === "number") {
+          const blocked = findBlockedTimeConflict(await loadBlockedTime(tx, assignedTechId as string, windowStart), windowStart, windowEnd);
+          if (blocked) {
+            throw new HttpsError("failed-precondition",
+              `Technician ${assignedTechId} has ${blocked.kind} blocked time overlapping this Work Order's window.`);
+          }
+        }
+      }
+
       // Double-booking guard: a technician actively assigned to another Work Order cannot be dispatched to this
       // one. Read (inside the transaction, before the write) the technician's other Work Orders and reject if any
       // is in an occupying status. This closes the availability gap the legacy dispatch path enforced.
@@ -489,6 +522,39 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
             qty: (existing?.qty ?? 0) + qty,
             ...(lineId ? { lineId } : {}),
           });
+        }
+
+        // DQ-015 (Controller ruling 2026-09-28): the technician's governed Complete EMITS the SERVICE-line
+        // acceptance when its established prerequisites hold, instead of depending on a declaration no
+        // technician surface ever sent (so SERVICE lines never fulfilled and the Sales Order sat in
+        // IN_FULFILLMENT). Prerequisites, every one already established and read in THIS transaction:
+        //   * this is Complete -- reachable only by the ASSIGNED technician from WORK_IN_PROGRESS, once;
+        //   * the line is referenced by THIS Work Order as a SERVICE line (a quantity-bearing line ref);
+        //   * this Work Order is the Sales Order's SOLE service Work Order (serviceWorkOrderIds is exactly
+        //     [this id]) -- the one-service-WO-per-SO shape createServiceForSalesOrder enforces. With any
+        //     other shape the share is ambiguous, so nothing is derived (never a guess);
+        //   * the SO line still has remaining quantity; exactly that remainder is accepted (the line's own
+        //     orderedQty minus fulfilledQty -- not a cap: it is the whole of the service this Work Order is).
+        // NOT derived: EQUIPMENT_MODEL lines. Their prerequisite is a recorded installation, which this callable
+        // does not read; proving it here would be a new Firebase read (retirement-only), so they stay on the
+        // explicit declaration below. An explicit declaration for a SERVICE line still overrides this.
+        // IDEMPOTENT by structure: COMPLETED is one-way, so a retried or replayed Complete is refused by
+        // canTransition before this code runs and the Sales Order is never written twice.
+        const soleServiceWorkOrder = Array.isArray((so as { serviceWorkOrderIds?: unknown }).serviceWorkOrderIds)
+          && ((so as { serviceWorkOrderIds: unknown[] }).serviceWorkOrderIds.length === 1)
+          && (so as { serviceWorkOrderIds: unknown[] }).serviceWorkOrderIds[0] === workOrderId;
+        if (soleServiceWorkOrder) {
+          for (const lineRef of Array.isArray(wo.salesOrderLineRefs) ? wo.salesOrderLineRefs : []) {
+            if (!lineRef || typeof lineRef !== "object" || lineRef.kind !== "SERVICE" || typeof lineRef.ref !== "string") continue;
+            const lineId = typeof lineRef.lineId === "string" && lineRef.lineId.trim().length > 0 ? lineRef.lineId : undefined;
+            const soLine = currentLines.find((l) => (lineId ? l.lineId === lineId : (l.ref === lineRef.ref && l.kind === "SERVICE")));
+            if (!soLine) continue; // an unmatched ref is never accepted against a different line
+            const remaining = (typeof soLine.orderedQty === "number" ? soLine.orderedQty : 0)
+              - (typeof soLine.fulfilledQty === "number" ? soLine.fulfilledQty : 0);
+            if (!(remaining > 0)) continue;
+            derivedByKey.set(lineId ? `LINE:${lineId}` : `SERVICE:${lineRef.ref}`,
+              { ref: lineRef.ref, kind: "SERVICE", qty: remaining, ...(lineId ? { lineId } : {}) });
+          }
         }
 
         // Explicit declarations are allowed only for non-PART lines that have no governed inventory actuals.
