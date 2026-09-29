@@ -229,8 +229,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 1762992000000 (the direct-exception cell lock, lane DX): one trigger -- no capability, no grant, no vocabulary move.
 // 1763078400000 (the Administrator staffing capability, Owner ruling R1): ONE capability,
 // admin.administratorRole.assign (vocabulary 81 -> 82, reconciled in the manifest), granted to owner.
-const PINNED_LAST_MIGRATION = "1763078400000_administrator-staffing-capability";
-const PINNED_MIGRATION_COUNT = 57;
+// 1764115200000 (the MOBILE location -> warehouse scope binding, DQ-024, lane L3): one eos_ops table, EMPTY --
+// no capability, no grant, no vocabulary move.
+const PINNED_LAST_MIGRATION = "1764115200000_mobile-location-scope-binding";
+const PINNED_MIGRATION_COUNT = 58;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

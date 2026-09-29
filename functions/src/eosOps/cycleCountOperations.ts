@@ -28,9 +28,9 @@
 //
 // ════════════════════ WHAT IS REFUSED, NOT GUESSED ════════════════════
 //
-//   * MOBILE (truck) counts: a truck is not a warehouse, and the governed scope model has no rule mapping a
-//     truck to a warehouse scope. Refused LOCATION_TYPE_NOT_SUPPORTED on this path (truck counts stay on
-//     the legacy engine until that is ruled) rather than inventing a mapping.
+//   * MOBILE (truck) counts are scoped ONLY through the truck location's explicit governed warehouse
+//     binding (DQ-024; eosOps/inventoryScopeAuthority.ts). No binding -> MOBILE_SCOPE_BINDING_MISSING --
+//     never the technician's, driver's or user's warehouse, never the truck's descriptive home warehouse.
 //   * A Part the PostgreSQL catalog does not hold (eos_ops.parts is EMPTY in nonprod until the Catalog
 //     COPY): PART_NOT_FOUND -- the honest answer, never a fallback to Firestore.
 //   * A negative ledger sum, or a serial whose net is not 0/1: LEDGER_INTEGRITY -- an impossible expected
@@ -67,6 +67,7 @@ import {
   type Queryable,
 } from "./cycleCountRepository.js";
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";
+import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import type { PostgresCycleCountWriterState } from "../cycleCount/cycleCountWriterState.js";
 
 // ════════════════════ vocabulary ════════════════════
@@ -201,37 +202,27 @@ async function authorizeReadAtWarehouse(db: Queryable, actor: CycleCountActor, w
 }
 
 interface CountLocation {
-  readonly type: "WAREHOUSE" | "BIN";
+  readonly type: "WAREHOUSE" | "BIN" | "MOBILE";
   readonly id: string;
+  /** The warehouse whose scope governs this location (a MOBILE location: its explicit binding only). */
   readonly warehouseId: string;
   readonly operatingCompanyKey: string;
-  /** Both the location and (for a BIN) its warehouse are ACTIVE. */
   readonly active: boolean;
 }
 
-/** WHERE the location rolls up to, read from eos_ops -- never from the request. */
+/** WHERE the location rolls up to, read from eos_ops through the one scope resolver -- never from the request. */
 async function resolveCountLocation(db: Queryable, tenantId: string, type: unknown, id: string): Promise<CountLocation> {
-  if (type === "MOBILE") {
-    refuse("LOCATION_TYPE_NOT_SUPPORTED", "PRECONDITION_FAILED",
-      "truck counts are not on the EOS path: the governed scope model has no rule placing a truck in a warehouse scope");
+  try {
+    const r = await resolveScopeLocation(db, tenantId, { type, locationId: id });
+    return { type: r.type, id: r.locationId, warehouseId: r.scopeWarehouseId, operatingCompanyKey: r.operatingCompanyKey, active: r.active };
+  } catch (err) {
+    if (err instanceof InventoryScopeError) {
+      return refuse(err.code === "LOCATION_TYPE_INVALID" ? "INVALID_INPUT" : err.code,
+        err.code === "LOCATION_NOT_FOUND" ? "NOT_FOUND" : err.code === "LOCATION_TYPE_INVALID" ? "INVALID_INPUT" : "PRECONDITION_FAILED",
+        err.code === "LOCATION_TYPE_INVALID" ? "location.type must be WAREHOUSE, BIN or MOBILE" : err.message);
+    }
+    throw err;
   }
-  if (type === "WAREHOUSE") {
-    const { rows } = await db.query<{ status: string; operating_company_key: string }>(
-      `SELECT status::text AS status, operating_company_key FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2`, [tenantId, id]);
-    if (!rows[0]) refuse("LOCATION_NOT_FOUND", "NOT_FOUND", "no warehouse with that id");
-    return { type: "WAREHOUSE", id, warehouseId: id, operatingCompanyKey: rows[0].operating_company_key, active: rows[0].status === "ACTIVE" };
-  }
-  if (type === "BIN") {
-    const { rows } = await db.query<{ bin_status: string; warehouse_id: string; warehouse_status: string; operating_company_key: string }>(
-      `SELECT b.status::text AS bin_status, b.warehouse_id, w.status::text AS warehouse_status, w.operating_company_key
-         FROM eos_ops.bins b JOIN eos_ops.warehouses w ON w.tenant_id = b.tenant_id AND w.id = b.warehouse_id
-        WHERE b.tenant_id = $1 AND b.id = $2`, [tenantId, id]);
-    if (!rows[0]) refuse("LOCATION_NOT_FOUND", "NOT_FOUND", "no bin with that id");
-    const r = rows[0];
-    return { type: "BIN", id, warehouseId: r.warehouse_id, operatingCompanyKey: r.operating_company_key,
-      active: r.bin_status === "ACTIVE" && r.warehouse_status === "ACTIVE" };
-  }
-  return refuse("INVALID_INPUT", "INVALID_INPUT", "location.type must be WAREHOUSE or BIN");
 }
 
 async function sheetOrRefuse(db: Queryable, actor: CycleCountActor, sheetId: string, forUpdate: boolean): Promise<{ sheet: CycleCountSheetFull; where: CountLocation }> {

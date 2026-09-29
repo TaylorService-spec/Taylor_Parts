@@ -182,7 +182,11 @@ test("DQ-017: capability, Warehouse Operations eligibility, and the SHEET'S ware
   refused(await call(NO_CAPS, "createCycleCountSheet", at(WH_A)), 403, "CAPABILITY_MISSING");
   refused(await call(UNSCOPED, "createCycleCountSheet", at(WH_A)), 403, "OUTSIDE_OPERATIONAL_SCOPE");
   refused(await call("nobody-at-all", "createCycleCountSheet", at(WH_A)), 403, "FORBIDDEN");
-  refused(await call(COUNTER, "createCycleCountSheet", { location: { type: "MOBILE", locationId: "truck-1" }, idempotencyKey: "k-m" }), 412, "LOCATION_TYPE_NOT_SUPPORTED");
+  // DQ-024: a truck location is scoped ONLY by its explicit governed binding; none exists yet -> fail closed.
+  await q(`INSERT INTO eos_ops.mobile_locations (tenant_id, location_type, location_id, operating_company_key, display_label, active, created_by, updated_by)
+           VALUES ($1, 'MOBILE', 'truck-1', $2, 'Truck 1', true, $3, $3)`, [TENANT, COMPANY_KEY, ACTOR]);
+  refused(await call(COUNTER, "createCycleCountSheet", { location: { type: "MOBILE", locationId: "truck-1" }, idempotencyKey: "k-m" }), 412, "MOBILE_SCOPE_BINDING_MISSING");
+  refused(await call(COUNTER, "createCycleCountSheet", { location: { type: "MOBILE", locationId: "no-such-truck" }, idempotencyKey: "k-m2" }), 404, "LOCATION_NOT_FOUND");
   assert.equal(await count("SELECT count(*) AS n FROM eos_ops.cycle_count_sheets"), 0, "no refused create wrote anything");
 });
 
@@ -296,6 +300,17 @@ test("a sheet with nothing counted can be cancelled (its open lines with it); a 
   assert.equal(ok(await call(COUNTER, "cancelCycleCountSheet", { sheetId: s })).outcome, "applied");
   assert.equal((await q(`SELECT status::text AS s FROM eos_ops.cycle_count_lines WHERE sheet_id = $1`, [s])).rows[0].s, "CANCELLED");
   assert.equal(ok(await call(COUNTER, "cancelCycleCountSheet", { sheetId: s })).outcome, "replayed");
+});
+
+test("DQ-024: a truck count is scoped by the truck's EXPLICIT binding -- and only by it", { skip: SKIP }, async () => {
+  await q(`INSERT INTO eos_ops.mobile_location_scope_bindings (id, tenant_id, location_type, location_id, warehouse_id, established_by, reason)
+           VALUES ('msb-1', $1, 'MOBILE', 'truck-1', $2, $3, 'truck 1 works out of warehouse B')`, [TENANT, WH_B, ACTOR]);
+  // Bound to B: the A-scoped counter is OUT of scope for it (no matter who drives it); a B-scoped counter is in.
+  refused(await call(COUNTER, "createCycleCountSheet", { location: { type: "MOBILE", locationId: "truck-1" }, idempotencyKey: "k-truck-a" }), 403, "OUTSIDE_OPERATIONAL_SCOPE");
+  const counterB = await persona({ subject: "cc-counter-b2", capabilities: COUNTER_CAPS, warehouses: [WH_B] });
+  const made = ok(await call(counterB, "createCycleCountSheet", { location: { type: "MOBILE", locationId: "truck-1" }, idempotencyKey: "k-truck-b" }));
+  assert.equal(made.sheet.warehouseId, WH_B);
+  assert.equal(made.sheet.operatingCompanyKey, COMPANY_KEY, "the company is the truck location's own authored key");
 });
 
 test("transport: closed table, input shape, identity only from the verifier", { skip: SKIP }, async () => {

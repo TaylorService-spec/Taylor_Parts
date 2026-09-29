@@ -408,6 +408,9 @@ on:
       - "functions/test/experienceAuthorityPostgres.test.mjs"
       # DQ-017/018 -- EOS Cycle Count commands with server-side warehouse scope, and their activation constant.
       - "functions/test/eosCycleCountOperationsPostgres.test.mjs"
+      - "functions/test/inventoryScopeAuthorityPostgres.test.mjs"
+      - "functions/src/eosOps/inventoryScopeAuthority.ts"
+      - "functions/migrations/1764115200000_mobile-location-scope-binding.sql"
       - "functions/src/cycleCount/cycleCountWriterState.ts"
       - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       # WAVE 9 / LANE AH: the Administration surface + Owner persona readiness record. Registered
@@ -1012,6 +1015,9 @@ on:
       - "functions/test/experienceAuthorityPostgres.test.mjs"
       # DQ-017/018 -- EOS Cycle Count commands with server-side warehouse scope, and their activation constant.
       - "functions/test/eosCycleCountOperationsPostgres.test.mjs"
+      - "functions/test/inventoryScopeAuthorityPostgres.test.mjs"
+      - "functions/src/eosOps/inventoryScopeAuthority.ts"
+      - "functions/migrations/1764115200000_mobile-location-scope-binding.sql"
       - "functions/src/cycleCount/cycleCountWriterState.ts"
       - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       - "field-ops-app-vite/src/navigation/navConfig.js"
