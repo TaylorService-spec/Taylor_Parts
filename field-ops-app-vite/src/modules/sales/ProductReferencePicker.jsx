@@ -48,7 +48,7 @@ export function isSearchableKind(kind) {
 }
 
 function EquipmentModelSelect({ value, onChange, disabled, lineNumber }) {
-  const { state, results } = useProductReferenceSearch("EQUIPMENT_MODEL", null, { enabled: !disabled });
+  const { state, results, truncated } = useProductReferenceSearch("EQUIPMENT_MODEL", null, { enabled: !disabled });
   const sorted = useMemo(
     () => [...results].sort((a, b) => (a.displayName ?? a.ref).localeCompare(b.displayName ?? b.ref)),
     [results],
@@ -63,6 +63,7 @@ function EquipmentModelSelect({ value, onChange, disabled, lineNumber }) {
   // the record keeps saying what it says, and is labelled for what it is.
   const known = sorted.some((m) => m.ref === value);
   return (
+    <>
     <select
       aria-label={`Line ${lineNumber} equipment model`}
       value={value ?? ""}
@@ -77,6 +78,9 @@ function EquipmentModelSelect({ value, onChange, disabled, lineNumber }) {
         </option>
       ))}
     </select>
+    {/* The server's own statement that the list is capped -- never implied complete when it is not. */}
+    {truncated && <span className="fo-muted"> Not every model is listed.</span>}
+    </>
   );
 }
 

@@ -39,6 +39,7 @@ export const CATALOG_READ_OPERATIONS = Object.freeze([
   "listPartAliases",
   "probePartAlias",
   "lookupScannedPart",
+  "listEquipmentModels",
 ]);
 
 export const CATALOG_MUTATION_OPERATIONS = Object.freeze([

@@ -102,10 +102,15 @@ test("the Catalog route requires authentication, a tenant context and a governed
   });
   assert.equal(wrongRoute.status, 404);
 
-  // The capability itself is checked by the COMMAND, not the transport: one place decides.
+  // A WRITE's capability is checked by its COMMAND, not the transport: one place decides.
   const kernel = code("functions/src/catalogMaster/catalogMasterKernel.ts");
   assert.ok(kernel.includes("ACTOR_NOT_TENANT_MEMBER"), "membership is proved in the command");
   const http = code("functions/src/catalogMaster/catalogHttp.ts");
+  // A READ has no command around it, so its capability is decided by the transport (DQ-031) -- once, from
+  // CATALOG_READ_REQUIREMENTS, for every read. Membership alone is not authority to read the Catalog.
+  const { CATALOG_READ_OPERATIONS, CATALOG_READ_REQUIREMENTS } = await import("../lib/catalogMaster/catalogHttp.js");
+  for (const op of CATALOG_READ_OPERATIONS) assert.ok(CATALOG_READ_REQUIREMENTS[op]?.includes("inventory.catalog.read"), op);
+  assert.ok(/READS\.has\(request\.operation\)[\s\S]{0,200}CATALOG_READ_REQUIREMENTS/.test(http), "the transport enforces the table");
   assert.ok(http.includes("resolveOperationalContext"), "identity resolves to an EOS Principal");
   assert.ok(/principalId:\s*ctx\.principalContext\.uid/.test(http), "and the actor IS that Principal");
 });

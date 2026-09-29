@@ -81,6 +81,16 @@ describe("equipment model picker", () => {
     expect(screen.getByText(/model catalog is unavailable/i)).toBeTruthy();
   });
 
+  it("says so when the server capped the model list (DQ-030), and is silent when it did not", () => {
+    useProductReferenceSearch.mockReturnValue({ state: S.READY, results: MODELS, truncated: true, refresh: vi.fn() });
+    const { unmount } = render(<ProductReferencePicker kind="EQUIPMENT_MODEL" value="" onChange={vi.fn()} lineNumber={1} />);
+    expect(screen.getByText(/Not every model is listed/i)).toBeTruthy();
+    unmount();
+    useProductReferenceSearch.mockReturnValue(ready(MODELS));
+    render(<ProductReferencePicker kind="EQUIPMENT_MODEL" value="" onChange={vi.fn()} lineNumber={1} />);
+    expect(screen.queryByText(/Not every model is listed/i)).toBeNull();
+  });
+
   it("a genuinely empty catalog says so, distinctly from loading", () => {
     useProductReferenceSearch.mockReturnValue({ state: S.LOADING, results: [], truncated: false, refresh: vi.fn() });
     const { unmount } = render(<ProductReferencePicker kind="EQUIPMENT_MODEL" value="" onChange={vi.fn()} lineNumber={1} />);

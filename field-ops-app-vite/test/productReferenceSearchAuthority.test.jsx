@@ -1,5 +1,5 @@
-// Product reference search after the Catalog activation: PART reads the governed PostgreSQL Catalog, and
-// EQUIPMENT_MODEL is refused rather than served from the frozen Firestore snapshot. The Firebase
+// Product reference search after the Catalog activation: PART and EQUIPMENT_MODEL both read the governed
+// PostgreSQL Catalog (searchParts / listEquipmentModels, DQ-030), never the frozen Firestore snapshot. The Firebase
 // `searchProductReferences` callable is never reached for either kind.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -9,7 +9,7 @@ vi.mock("firebase/functions", () => ({ httpsCallable: (...a) => httpsCallable(..
 vi.mock("../src/firebase/firebase.js", () => ({ functions: {}, auth: { currentUser: null }, db: {} }));
 
 const {
-  searchProductReferences, PRODUCT_SEARCH_AUTHORITY_UNAVAILABLE, PRODUCT_SEARCH_MAX_LIMIT,
+  searchProductReferences, PRODUCT_SEARCH_MAX_LIMIT,
 } = await import("../src/services/salesAgreementCommandClient.js");
 
 const clientAnswering = (answer) => {
@@ -48,13 +48,39 @@ describe("searchProductReferences -- PART reads the PostgreSQL Catalog", () => {
   });
 });
 
-describe("searchProductReferences -- EQUIPMENT_MODEL has no current authority to search", () => {
-  it("is refused with NO read of any kind", async () => {
-    const { calls, client } = clientAnswering({ ok: true, result: { parts: [] } });
-    expect(await searchProductReferences({ kind: "EQUIPMENT_MODEL", query: "" }, { client }))
-      .toEqual({ errorStatus: PRODUCT_SEARCH_AUTHORITY_UNAVAILABLE });
-    expect(calls).toEqual([]);
+describe("searchProductReferences -- EQUIPMENT_MODEL reads the PostgreSQL Catalog (DQ-030)", () => {
+  it("asks listEquipmentModels and projects the picker's shape, with modelNumber as the display fallback", async () => {
+    const { calls, client } = clientAnswering({ ok: true, result: {
+      models: [
+        { id: "taylor--c713", displayName: "Taylor C713", modelNumber: "C713", status: "ACTIVE" },
+        { id: "taylor--c161", displayName: "", modelNumber: "C161", status: "INACTIVE" },
+        { id: "", displayName: "no identity" },
+      ],
+      nextCursor: null,
+    } });
+    const res = await searchProductReferences({ kind: "EQUIPMENT_MODEL", query: "" }, { client });
+    expect(calls).toEqual([{ operation: "listEquipmentModels", input: {} }]);
+    expect(res).toEqual({ result: { status: "ready", kind: "EQUIPMENT_MODEL", truncated: false, results: [
+      { ref: "taylor--c713", kind: "EQUIPMENT_MODEL", displayName: "Taylor C713", status: "ACTIVE" },
+      { ref: "taylor--c161", kind: "EQUIPMENT_MODEL", displayName: "C161", status: "INACTIVE" },
+    ] } });
     expect(httpsCallable).not.toHaveBeenCalled();
+  });
+
+  it("says the list is capped when the server says more exist", async () => {
+    const { client } = clientAnswering({ ok: true, result: { models: [], nextCursor: "taylor--z" } });
+    expect((await searchProductReferences({ kind: "EQUIPMENT_MODEL" }, { client })).result.truncated).toBe(true);
+  });
+
+  it("keeps a server refusal (no inventory.catalog.read) DENIED, and a failure UNAVAILABLE -- never an empty list", async () => {
+    expect(await searchProductReferences({ kind: "EQUIPMENT_MODEL" }, clientAnswering({ ok: false, code: "FORBIDDEN" })))
+      .toEqual({ errorStatus: "permission-denied" });
+    expect(await searchProductReferences({ kind: "EQUIPMENT_MODEL" }, clientAnswering({ ok: false, code: "NOT_SIGNED_IN" })))
+      .toEqual({ errorStatus: "permission-denied" });
+    expect(await searchProductReferences({ kind: "EQUIPMENT_MODEL" }, clientAnswering({ ok: false, code: "PRECONDITION_FAILED" })))
+      .toEqual({ errorStatus: "unavailable" });
+    expect(await searchProductReferences({ kind: "EQUIPMENT_MODEL" }, clientAnswering({ ok: true, result: {} })))
+      .toEqual({ errorStatus: "unavailable" });
   });
 
   it("the Firebase callable is not named by the client transport any more", () => {
