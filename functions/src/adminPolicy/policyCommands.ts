@@ -39,9 +39,11 @@ import type {
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
   PrincipalRecord,
+  PrincipalIdentityBindingRecord,
   RoleObjectPermissionRecord,
   TenantId,
 } from "./types";
+import { EOS_IDENTITY_PROVIDER, resolvePrincipalByVerifiedIdentity } from "./principalContext";
 import type { PolicyRepository, PolicyTransaction } from "./policyRepository";
 import { actorCapabilities, capabilityKeysFor, requireSecurityAdministrationCapability } from "./administrationCapabilityGate";
 import {
@@ -598,8 +600,9 @@ export interface RebindPrincipalIdentityInput {
  * ════════════════════ WHY THIS COMMAND HAS TO EXIST ════════════════════
  *
  * The identity model is ONE external identity per Principal: `eos_policy.principals` carries
- * `(identity_provider, external_subject)` under a UNIQUE constraint and there is no separate
- * identity-binding table. A Principal provisioned against a provider no verifier recognizes is
+ * `(identity_provider, external_subject)` under a UNIQUE constraint, and (until migration 1764200000000,
+ * which added an ADDITIONAL binding for EOS-issued identities only -- bindPrincipalEosIdentity) there was no
+ * separate identity-binding table. A Principal provisioned against a provider no verifier recognizes is
  * therefore a Principal that can never authenticate, and there is no way to ADD a second binding to
  * it -- so the only governed route from "authority fixture" to "account" is to move the binding it
  * already has.
@@ -669,6 +672,12 @@ export async function rebindPrincipalIdentity(
   if (clash && clash.id !== principalId) {
     throw new PolicyValidationError("another principal already holds that identity");
   }
+  // An EOS subject may also be held through an ADDITIONAL binding (principal_identities). Re-pointing a
+  // primary onto a subject another Principal holds that way would make one subject name two Principals.
+  if (identityProvider === EOS_IDENTITY_PROVIDER) {
+    const bound = await repo.getPrincipalByIdentityBinding(identityProvider, externalSubject);
+    if (bound) throw new PolicyValidationError("that EOS identity is already bound to a principal");
+  }
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     const updated = await tx.setPrincipalIdentity(principalId, {
@@ -694,6 +703,109 @@ export async function rebindPrincipalIdentity(
       },
     });
     return updated;
+  });
+}
+
+// ════════════════════ EOS IDENTITY BINDING — OWNER, GENERAL MANAGER OR ADMIN ════════════════════
+//
+// docs/architecture/eos-identity-session-foundation.md, section 3(c). ADDITIVE: the Principal keeps its
+// primary (Firebase) binding; this adds an EOS-issued identity that resolves to the SAME Principal, so no
+// Role, grant, scope, assignment, Employee link or audit reference moves.
+
+/** An EOS identity subject. Mirrors the principal_identities CHECK and the token verifier. */
+const EOS_SUBJECT = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
+
+export interface BindPrincipalEosIdentityInput {
+  readonly principalId: string;
+  readonly externalSubject: string;
+  readonly reason: string;
+}
+
+/**
+ * Bind an EOS identity subject to an EXISTING Principal. Identity only -- never an authority change.
+ *
+ *   GATE        the same assignment-shaped authority as rebindPrincipalIdentity (naming who a Principal IS).
+ *   NOT A CREATE a Principal that does not exist, or is not an ACTIVE member of the actor's tenant, is refused.
+ *   NOT SELF     the actor may not bind an identity to itself: that is a login it could hand to anyone.
+ *   NO SPLIT     a subject already bound (even revoked) or already some Principal's primary is refused, and a
+ *                Principal holds at most ONE active EOS binding.
+ *   NO-OP        re-stating the identical ACTIVE binding writes nothing and appends no audit event.
+ *   AUDITED      one audit_events row, actor = the administering Principal, target = the Principal, with the
+ *                binding in `after`. The access version is bumped (conservative: caches keyed on the old
+ *                login set are invalidated; no grant is affected).
+ */
+export async function bindPrincipalEosIdentity(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  input: BindPrincipalEosIdentityInput,
+): Promise<PrincipalIdentityBindingRecord> {
+  await requireSecurityAdministrationCapability(repo, actor, "assignRole");
+  const principalId = nonEmpty(input.principalId, "principalId");
+  const externalSubject = nonEmpty(input.externalSubject, "externalSubject");
+  const reason = nonEmpty(input.reason, "reason");
+  if (!EOS_SUBJECT.test(externalSubject)) throw new PolicyValidationError("externalSubject is not a valid EOS subject");
+  if (reason.length > 500) throw new PolicyValidationError("reason is too long");
+  if (principalId === actor.uid) {
+    throw new PolicyValidationError("an administrator may not bind an identity to their own principal");
+  }
+
+  const principal = await repo.getPrincipal(principalId);
+  if (!principal) throw new PolicyValidationError("principal not found");
+  const membership = await repo.getMembership(actor.tenantId, principalId);
+  if (!membership || membership.status !== "active") {
+    throw new PolicyValidationError("that principal is not an active member of this tenant");
+  }
+
+  const existing = await repo.getActiveIdentityBinding(principalId, EOS_IDENTITY_PROVIDER);
+  if (existing) {
+    if (existing.externalSubject === externalSubject) return existing; // silent no-op
+    throw new PolicyValidationError("that principal already has an active EOS identity; revoke it first");
+  }
+  const holder = await resolvePrincipalByVerifiedIdentity(repo, EOS_IDENTITY_PROVIDER, externalSubject);
+  if (holder) throw new PolicyValidationError("another principal already holds that identity");
+
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    const created = await tx.createPrincipalIdentityBinding({
+      principalId, identityProvider: EOS_IDENTITY_PROVIDER, externalSubject, createdBy: actor.uid, reason,
+    });
+    await tx.bumpAccessVersion(principalId);
+    await tx.appendAudit({
+      ...auditBase(actor, "bindPrincipalEosIdentity", "principal", principalId, reason),
+      before: null,
+      after: { bindingId: created.id, identityProvider: created.identityProvider, externalSubject: created.externalSubject, status: created.status },
+    });
+    return created;
+  });
+}
+
+export interface RevokePrincipalEosIdentityInput {
+  readonly principalId: string;
+  readonly reason: string;
+}
+
+/** Revoke a Principal's ACTIVE EOS identity. Final: the subject is never re-issued. Same gate, audited. */
+export async function revokePrincipalEosIdentity(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  input: RevokePrincipalEosIdentityInput,
+): Promise<PrincipalIdentityBindingRecord> {
+  await requireSecurityAdministrationCapability(repo, actor, "assignRole");
+  const principalId = nonEmpty(input.principalId, "principalId");
+  const reason = nonEmpty(input.reason, "reason");
+  if (reason.length > 500) throw new PolicyValidationError("reason is too long");
+  const membership = await repo.getMembership(actor.tenantId, principalId);
+  if (!membership) throw new PolicyValidationError("that principal is not a member of this tenant");
+  const existing = await repo.getActiveIdentityBinding(principalId, EOS_IDENTITY_PROVIDER);
+  if (!existing) throw new PolicyValidationError("that principal has no active EOS identity");
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    const revoked = await tx.revokePrincipalIdentityBinding(principalId, EOS_IDENTITY_PROVIDER, actor.uid, reason);
+    await tx.bumpAccessVersion(principalId);
+    await tx.appendAudit({
+      ...auditBase(actor, "revokePrincipalEosIdentity", "principal", principalId, reason),
+      before: { bindingId: existing.id, identityProvider: existing.identityProvider, externalSubject: existing.externalSubject, status: existing.status },
+      after: { bindingId: revoked.id, identityProvider: revoked.identityProvider, externalSubject: revoked.externalSubject, status: revoked.status },
+    });
+    return revoked;
   });
 }
 

@@ -7,6 +7,12 @@ import {
   signOut
 } from "firebase/auth";
 import { resolveEmployeeSession } from "./employeeSession";
+// ADDITIVE EOS SESSION (docs/architecture/eos-identity-session-foundation.md, 3(e)). When a valid EOS access
+// token is present the session is signed in through EOS and identity comes from the EOS API; otherwise the
+// Firebase path below runs exactly as before.
+import { clearEosSession, readEosSession } from "./eosSession";
+import { eosSessionUser, resolveEosSessionIdentity } from "./eosSessionIdentity";
+import { operationsApiClient } from "../services/operationsApiClient.js";
 
 const AuthContext = createContext();
 
@@ -48,6 +54,40 @@ export function AuthProvider({ children }) {
     // up.
     let generation = 0;
     let isMounted = true;
+
+    // ── EOS SESSION ── checked once per mount/retry. While it is present, Firebase auth state is not
+    // subscribed: one session, one identity source, never two identities paired in one context.
+    const eosSession = readEosSession();
+    if (eosSession) {
+      setUser(eosSessionUser(eosSession));
+      setLoading(true);
+      setIdentityError(null);
+      setRole(null);
+      setEmployeeId(null);
+      setDisplayName(null);
+      setOperationalRoles([]);
+      setEmploymentStatus(null);
+      resolveEosSessionIdentity(operationsApiClient).then((identity) => {
+        if (!isMounted) return;
+        setRole(identity.role);
+        setEmployeeId(identity.employeeId);
+        setDisplayName(identity.displayName);
+        // No legacy operational-role list for an EOS session: scope and eligibility are the server's.
+        setOperationalRoles([]);
+        setEmploymentStatus(identity.employmentStatus);
+        setLoading(false);
+      }, (err) => {
+        if (!isMounted) return;
+        // Refused or unreachable: signed in, but no identity -- the same fail-closed shape as a Firebase
+        // resolution failure below. Never a fallback role.
+        console.error("AuthContext: failed to resolve EOS session identity.", err?.code ?? err?.message ?? err);
+        setIdentityError("Your account details could not be loaded. Please retry.");
+        setLoading(false);
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
 
     const unsub = onAuthStateChanged(auth, async (u) => {
       generation += 1;
@@ -129,7 +169,21 @@ export function AuthProvider({ children }) {
   const login = (email, password) =>
     signInWithEmailAndPassword(auth, email, password);
 
-  const logout = () => signOut(auth);
+  const logout = () => {
+    // Ending an EOS session clears its token; the Firebase sign-out is unchanged.
+    const hadEosSession = readEosSession() !== null;
+    clearEosSession();
+    if (hadEosSession) {
+      setUser(null);
+      setRole(null);
+      setEmployeeId(null);
+      setDisplayName(null);
+      setOperationalRoles([]);
+      setEmploymentStatus(null);
+      setRetryGeneration((n) => n + 1);
+    }
+    return signOut(auth);
+  };
 
   // AUTH-PR-2 self-service recovery (email-input path). Fire-and-forget: asks
   // Firebase to send a password-reset email. Callers MUST show a neutral

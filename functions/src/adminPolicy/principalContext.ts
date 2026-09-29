@@ -4,6 +4,9 @@
 //
 //   Firebase authenticates. EOS authorizes.
 //
+// (Since 2026-09-29 an EOS-issued token authenticates too, additively -- provider `eos`, resolved through
+// the same function below. Either way the identity provider hands over a SUBJECT and nothing else.)
+//
 // The identity provider hands the server a verified SUBJECT and nothing else that matters. Every
 // other question -- which tenant, which Roles, which authority -- is answered here, from the policy
 // database, and from nowhere else.
@@ -114,9 +117,43 @@ export async function resolvePrincipalContext(
   const subject = typeof input.externalSubject === "string" ? input.externalSubject.trim() : "";
   if (subject.length === 0) throw new PrincipalContextError("UNKNOWN_PRINCIPAL", "no authenticated subject");
 
-  const principal = await reader.getPrincipalBySubject(identityProvider, subject);
+  const principal = await resolvePrincipalByVerifiedIdentity(reader, identityProvider, subject);
   if (!principal) throw new PrincipalContextError("UNKNOWN_PRINCIPAL");
   return contextForPrincipal(reader, principal, input.requestedTenantId ?? null);
+}
+
+/** The EOS-issued identity provider (docs/architecture/eos-identity-session-foundation.md). */
+export const EOS_IDENTITY_PROVIDER = "eos";
+
+/**
+ * THE ONE RESOLUTION FUNCTION: verified (provider, subject) -> Principal.
+ *
+ * Every transport reaches it through `resolvePrincipalContext`; nothing else maps a verified subject to a
+ * Principal. Two sources, one answer:
+ *
+ *   1. the PRIMARY binding on `principals` (identity_provider, external_subject) -- the Firebase binding
+ *      every existing Principal has. Consulted first, with the same single query as before, so a Firebase
+ *      request resolves exactly as it always did;
+ *   2. for provider `eos` ONLY, an ACTIVE row of `principal_identities` (migration 1764200000000).
+ *
+ * If both answer and they name DIFFERENT Principals the result is null (UNKNOWN_PRINCIPAL): picking one
+ * would be guessing which human this is. Everything after "which Principal" -- status, membership, tenant,
+ * the DQ-007 employment gate, Roles -- is `contextForPrincipal`, unchanged, for both sources.
+ */
+export async function resolvePrincipalByVerifiedIdentity(
+  reader: PolicyReader,
+  identityProvider: string,
+  externalSubject: string,
+): Promise<PrincipalRecord | null> {
+  const primary = await reader.getPrincipalBySubject(identityProvider, externalSubject);
+  if (identityProvider !== EOS_IDENTITY_PROVIDER) return primary;
+  // A reader without the binding port (a hand-built test double predating migration 1764200000000) has no
+  // bindings to consult; every production reader implements it.
+  const bound = typeof reader.getPrincipalByIdentityBinding === "function"
+    ? await reader.getPrincipalByIdentityBinding(identityProvider, externalSubject)
+    : null;
+  if (primary && bound && primary.id !== bound.id) return null;
+  return primary ?? bound;
 }
 
 /**

@@ -20,6 +20,15 @@
 // object store `firebaseLocalStorage`, under key `firebase:authUser:<apiKey>:[DEFAULT]`. Writing
 // that record before the first app script runs is what makes onAuthStateChanged resolve to a signed
 // -in user instead of null.
+//
+// ════════════════════ THE EOS PERSONA SESSION PATH (preferred when available) ════════════════════
+//
+// docs/architecture/eos-identity-session-foundation.md. When EOS_PERSONA_ISSUER_CREDENTIAL is set, the
+// deployed path does NOT touch SANDBOX_CREDENTIALS_FILE, Identity Toolkit or Firebase persistence at all:
+// it asks the EOS API's nonprod persona issuer for a short-lived EOS access token and writes it to the
+// app's sessionStorage (`eos.session.v1`) before the first app script runs. AuthContext then treats the
+// EOS session as signed in and resolves identity from the EOS API. Without the variable, the Firebase path
+// below runs exactly as before.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -52,6 +61,26 @@ export function sandboxFirebaseConfig(environmentId = "platform-sandbox") {
 // runs long. Keyed by persona AND environment so the cache can never hand back a session for the
 // wrong target.
 const SESSION_CACHE = new Map();
+
+/** True when the EOS persona session path is available (the issuer credential is supplied explicitly). */
+export const eosPersonaSessionAvailable = (env = process.env) =>
+  typeof env.EOS_PERSONA_ISSUER_CREDENTIAL === "string" && env.EOS_PERSONA_ISSUER_CREDENTIAL.length > 0;
+
+/** Issue an EOS persona session (no password file, no Firebase). */
+export async function issueEosPersonaSession(personaId, options = {}) {
+  const mod = await import(pathToFileURL(join(REPO_ROOT, "scripts", "eosPersonaSession.mjs")).href);
+  return mod.issueEosPersonaSession(personaId, options);
+}
+
+/**
+ * Seed the EOS session BEFORE any app script runs, on every navigation of this page's origin. The token
+ * lives in sessionStorage only (per tab, gone when the tab closes); nothing is written to disk.
+ */
+export async function seedEosSession(page, session) {
+  await page.addInitScript(([key, token]) => {
+    try { window.sessionStorage.setItem(key, token); } catch { /* storage unavailable: app stays signed out */ }
+  }, ["eos.session.v1", session.token]);
+}
 
 export async function signInPersona(personaId, environmentId = "platform-sandbox") {
   const cacheKey = `${environmentId}::${personaId}`;
@@ -134,6 +163,18 @@ export const LOCAL_TO_SANDBOX_PERSONA = Object.freeze({
 });
 
 /**
+ * The same mapping onto the CANONICAL 16 persona keys the EOS issuer accepts
+ * (config/sandboxRoleIdentityRegistry.json). The legacy SANDBOX_PERSONAS keys differ for two of them.
+ */
+export const LOCAL_TO_EOS_PERSONA = Object.freeze({
+  admin: "administrator",
+  technicianMultiRole: "serviceTechnician",
+  ineligibleDispatcher: "dispatcher",
+  eligiblePartsManager: "partsManager",
+  technician: "serviceTechnician",
+});
+
+/**
  * Establish an authenticated session for whichever target is in play.
  *
  * LOCAL keeps the real form login, deliberately: against the emulator that exercises Login.jsx
@@ -151,6 +192,12 @@ export async function establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, 
     await page.locator('input[type="email"]').fill(acct.email);
     await page.locator('input[type="password"]').fill(acct.password);
     await page.locator('button[type="submit"]').click();
+  } else if (eosPersonaSessionAvailable()) {
+    // EOS persona session: the canonical 16 persona keys, no SANDBOX_CREDENTIALS_FILE.
+    const personaId = LOCAL_TO_EOS_PERSONA[accountKey] ?? accountKey;
+    const session = await issueEosPersonaSession(personaId);
+    await seedEosSession(page, session);
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
   } else {
     const personaId = LOCAL_TO_SANDBOX_PERSONA[accountKey] ?? accountKey;
     const session = await signInPersona(personaId);

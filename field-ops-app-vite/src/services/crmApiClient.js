@@ -5,8 +5,7 @@
 // One business authority. There is no Firestore read or write for CRM records anywhere behind this module and no
 // fallback: if the EOS API is not configured, unreachable or refuses, the caller renders that state. Firebase supplies
 // the bearer token only; no claim it carries is read as authority.
-import { auth } from "../firebase/firebase.js";
-import { policyApiBaseUrl } from "./adminPolicyApiClient.js";
+import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
 
 export const CRM_ROUTE = "/crm/customer";
 
@@ -37,7 +36,8 @@ export async function callCrmApi(operation, input = {}, options = {}) {
 
   let token = null;
   try {
-    token = await (options.getIdToken ? options.getIdToken() : auth?.currentUser?.getIdToken?.());
+    // The one client token source (EOS session when present, else Firebase) -- see adminPolicyApiClient.currentIdToken.
+    token = await (options.getIdToken ? options.getIdToken() : currentIdToken());
   } catch {
     token = null;
   }

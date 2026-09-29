@@ -43,6 +43,7 @@ import type {
   PolicyRepository,
   PolicyTransaction,
   PrincipalIdentityBindingInput,
+  NewPrincipalIdentityBindingInput,
   AuditEventFilter,
   TenantSalesChannelRecord,
 } from "./policyRepository";
@@ -62,6 +63,7 @@ import type {
   PolicyRoleRecord,
   PrincipalAccessVersionRecord,
   PrincipalRecord,
+  PrincipalIdentityBindingRecord,
   PrincipalStatus,
   TenantAdminBootstrapRecord,
   TenantMembershipRecord,
@@ -132,6 +134,21 @@ const toPrincipal = (r: Record<string, unknown>): PrincipalRecord => ({
   status: String(r.status) as PrincipalStatus,
   createdAt: iso(r.created_at),
   updatedAt: iso(r.updated_at),
+});
+
+const optionalIso = (v: unknown): string | null => (v === null || v === undefined ? null : iso(v));
+const toIdentityBinding = (r: Record<string, unknown>): PrincipalIdentityBindingRecord => ({
+  id: String(r.id),
+  principalId: String(r.principal_id),
+  identityProvider: String(r.identity_provider),
+  externalSubject: String(r.external_subject),
+  status: String(r.status) as PrincipalIdentityBindingRecord["status"],
+  createdBy: String(r.created_by),
+  createdAt: iso(r.created_at),
+  reason: String(r.reason),
+  revokedBy: r.revoked_by === null || r.revoked_by === undefined ? null : String(r.revoked_by),
+  revokedAt: optionalIso(r.revoked_at),
+  revokeReason: r.revoke_reason === null || r.revoke_reason === undefined ? null : String(r.revoke_reason),
 });
 
 const toMembership = (r: Record<string, unknown>): TenantMembershipRecord => ({
@@ -476,6 +493,27 @@ export class PostgresPolicyRepository implements PolicyRepository {
 
   getPrincipal(principalId: string) {
     return this.one(`SELECT * FROM ${SCHEMA}.principals WHERE id = $1`, [principalId], toPrincipal);
+  }
+
+  // ADDITIONAL IDENTITY BINDINGS (migration 1764200000000). ACTIVE rows only: a revoked binding
+  // resolves to nobody. Read only through principalContext.resolvePrincipalByVerifiedIdentity.
+  getPrincipalByIdentityBinding(identityProvider: string, externalSubject: string) {
+    return this.one(
+      `SELECT p.* FROM ${SCHEMA}.principal_identities i
+         JOIN ${SCHEMA}.principals p ON p.id = i.principal_id
+        WHERE i.identity_provider = $1 AND i.external_subject = $2 AND i.status = 'active'`,
+      [identityProvider, externalSubject],
+      toPrincipal,
+    );
+  }
+
+  getActiveIdentityBinding(principalId: string, identityProvider: string) {
+    return this.one(
+      `SELECT * FROM ${SCHEMA}.principal_identities
+        WHERE principal_id = $1 AND identity_provider = $2 AND status = 'active'`,
+      [principalId, identityProvider],
+      toIdentityBinding,
+    );
   }
 
   listMembershipsForPrincipal(principalId: string) {
@@ -934,6 +972,43 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
         throw new PolicyStoreError("principal not found in this tenant");
       }
       return toPrincipal(rows[0]);
+    },
+
+    async createPrincipalIdentityBinding(input: NewPrincipalIdentityBindingInput) {
+      // TENANT-SCOPED IN SQL, exactly like setPrincipalIdentity: `principal_identities` is global, so
+      // the membership EXISTS is what stops one tenant binding a subject to another tenant's Principal.
+      let rows;
+      try {
+        ({ rows } = await q.query(
+          `INSERT INTO ${SCHEMA}.principal_identities
+             (id, principal_id, identity_provider, external_subject, status, created_by, created_at, reason)
+           SELECT $1, p.id, $3, $4, 'active', $5, now(), $6
+             FROM ${SCHEMA}.principals p
+            WHERE p.id = $2
+              AND EXISTS (SELECT 1 FROM ${SCHEMA}.tenant_memberships m
+                           WHERE m.principal_id = p.id AND m.tenant_id = $7)
+           RETURNING *`,
+          [newId(), input.principalId, input.identityProvider, input.externalSubject, input.createdBy, input.reason, tenantId],
+        ));
+      } catch (err) {
+        return asDuplicate(err, "that identity is already bound, or the principal already has an active binding");
+      }
+      if (rows.length === 0) throw new PolicyStoreError("principal not found in this tenant");
+      return toIdentityBinding(rows[0]);
+    },
+
+    async revokePrincipalIdentityBinding(principalId: string, identityProvider: string, revokedBy: string, reason: string) {
+      const { rows } = await q.query(
+        `UPDATE ${SCHEMA}.principal_identities i
+            SET status = 'revoked', revoked_by = $3, revoked_at = now(), revoke_reason = $4
+          WHERE i.principal_id = $1 AND i.identity_provider = $2 AND i.status = 'active'
+            AND EXISTS (SELECT 1 FROM ${SCHEMA}.tenant_memberships m
+                         WHERE m.principal_id = i.principal_id AND m.tenant_id = $5)
+          RETURNING *`,
+        [principalId, identityProvider, revokedBy, reason, tenantId],
+      );
+      if (rows.length === 0) throw new PolicyStoreError("no active binding for that principal in this tenant");
+      return toIdentityBinding(rows[0]);
     },
 
     async createTenantMembership(principalId: string, status?: PrincipalStatus) {
