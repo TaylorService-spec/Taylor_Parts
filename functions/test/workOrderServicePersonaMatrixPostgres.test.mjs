@@ -257,24 +257,25 @@ test("the service persona matrix over the governed Work Order authority", { skip
   });
 
   // ── ON LEAVE: characterised, not endorsed ──
-  await t.test("CHARACTERISATION (XLF-001, L5 owns the central fix; re-pin when it lands): an assigned technician placed ON_LEAVE is still ALLOWED to complete", async () => {
-    // New assignments already refuse a non-ACTIVE Employee (assignWorkOrderToEmployee). But neither the
-    // RECORD_ASSIGNMENT evaluator nor principal-context resolution consults PostgreSQL employment status,
-    // so an EXISTING assignment keeps working after the Employee goes on leave. Whether that is refused
-    // belongs to the access-eligibility authority (workforce ruling 2), a shared foundation this lane does
-    // not own -- recorded as an XLF. When that authority lands, this case must be REWRITTEN to expect the
-    // refusal, not deleted.
+  await t.test("XLF-001 / DQ-007: an assigned technician placed ON_LEAVE is REFUSED -- existing and new assignments agree", async () => {
+    // L5's central employment gate (DQ-007): the RECORD_ASSIGNMENT evaluator resolves the caller's Employee
+    // only when its PostgreSQL employment status is ACTIVE or CONTRACTOR, so an EXISTING assignment stops
+    // conferring completion the moment the Employee goes on leave -- the same answer a NEW assignment gives.
     await workOrder("wo-leave", "READY_TO_DISPATCH");
     await assignment.assignWorkOrderToEmployee({ pool }, actor(PERSONA.dispatcher),
       { workOrderId: "wo-leave", employeeId: "emp-tech-leave", source: "SCHEDULE" });
-    await q(`UPDATE eos_workforce.employees SET employment_status='ON_LEAVE' WHERE tenant_id=$1 AND id='emp-tech-leave'`, [T]);
     const onLeave = { principalId: "prn-tech-leave", caps: capsOf("technician") };
+    assert.equal((await decide(onLeave, { ...complete, workOrderId: "wo-leave" })).reason, "ALLOWED", "while ACTIVE");
+    await q(`UPDATE eos_workforce.employees SET employment_status='ON_LEAVE' WHERE tenant_id=$1 AND id='emp-tech-leave'`, [T]);
     const d = await decide(onLeave, { ...complete, workOrderId: "wo-leave" });
-    assert.equal(d.reason, "ALLOWED");
-    // ...and a NEW assignment to the same Employee is refused, so the two paths currently disagree.
+    assert.equal(d.allowed, false);
+    assert.equal(d.reason, "EMPLOYEE_LINK_REQUIRED", "an ineligible Employee is not resolved at the predicate layer");
     await workOrder("wo-leave-2", "READY_TO_DISPATCH");
     await assert.rejects(assignment.assignWorkOrderToEmployee({ pool }, actor(PERSONA.dispatcher),
       { workOrderId: "wo-leave-2", employeeId: "emp-tech-leave", source: "SCHEDULE" }), /only an ACTIVE or CONTRACTOR Employee/);
+    // Back to ACTIVE: authority returns with the status, because it was never copied anywhere.
+    await q(`UPDATE eos_workforce.employees SET employment_status='ACTIVE' WHERE tenant_id=$1 AND id='emp-tech-leave'`, [T]);
+    assert.equal((await decide(onLeave, { ...complete, workOrderId: "wo-leave" })).reason, "ALLOWED");
   });
 
   // ── DQ-010: the dispatcher-bucket edges have their OWN capabilities, held by nobody by default ──

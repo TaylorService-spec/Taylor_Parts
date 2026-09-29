@@ -82,6 +82,9 @@ test("the catalog authority is composed ONLY by the Work Order/ops commands that
     "eosOps/equipmentCustody.ts",
     "eosOps/inventoryCommitmentRepository.ts",
     "eosOps/serviceFromSalesOrderBoundary.ts",
+    // DQ-034 (Controller 2026-09-28): the EOS Work Order equipment-install boundary (J5) reads whole_unit / catalog
+    // identity from the PG Catalog through the Part policy authority; built inert, no transport.
+    "eosOps/workOrderEquipmentInstall.ts",
     "eosOps/workOrderPartsPlanAuthority.ts",
   ], "a NEW module composes the catalog authority -- name it here and say why it may");
 });
