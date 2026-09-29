@@ -36,8 +36,10 @@ import { RECEIVING_OUTCOME } from "../../domain/receivingTransport";
 // TWO PURCHASING AUTHORITIES, TWO JOURNEYS, ONE GOVERNED COMMAND. A reorder PO is one part at a
 // full quantity and its document is immutable; a supplier PO carries several lines and accepts
 // partial receipts over time. The row SAYS which journey it is, because an operator genuinely has
-// to know which they are holding. Both journeys submit through the same trusted
-// receiveInventoryStock command, which re-validates everything client composition concluded.
+// to know which they are holding. Each journey submits to ITS OWN governed authority, which
+// re-validates everything client composition concluded: a reorder PO to the PostgreSQL Receiving
+// authority (receiveReorderStock, since the Reorder activation), a supplier PO to the existing
+// receiveInventoryStock command (its own, separate cutover). Neither falls back to the other.
 //
 // ND-33 — THE EXCEPTIONAL PATH, DELIBERATELY BESIDE THE NORMAL ONES AND NOT AMONG THEM. Add
 // existing unit is not a third way to receive (no purchase order, no supplier, provenance

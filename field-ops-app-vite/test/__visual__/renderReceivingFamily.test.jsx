@@ -40,7 +40,9 @@ vi.mock("../../src/services/receivingCallableClient", () => ({
   fetchReceivingLocationOptions: (...a) => mockFetchLocations(...a),
   fetchPurchaseOrderProgress: (...a) => mockFetchProgress(...a),
   submitCanonicalReceive: async () => ({ status: "unavailable" }),
-  submitReceiveInventoryStock: (...a) => mockSubmitReceive(...a),
+}));
+vi.mock("../../src/services/reorderReceivingClient", () => ({
+  submitReorderReceipt: (...a) => mockSubmitReceive(...a),
 }));
 vi.mock("../../src/services/partMasterQueries", () => ({ fetchPartMasterList: (...a) => mockFetchParts(...a) }));
 

@@ -295,9 +295,11 @@ test("frame 1b recomposition changed presentation only — same submit path, no 
 
 test("frame 1d recomposition changed presentation only — same submit path, no new authority", () => {
   const src = read("src/modules/receiving/ReceiveAgainstPurchaseOrder.jsx");
-  // The one governed submit, reached only through the readiness-gated client — no new transport,
-  // callable, command, resolver, or numbering implementation.
-  assert.match(src, /submitReceiveInventoryStock/);
+  // The one governed submit -- since the Reorder activation, the PostgreSQL Receiving authority
+  // (submitReorderReceipt), never the Firebase callable -- and no new callable, command, resolver, or
+  // numbering implementation.
+  assert.match(src, /submitReorderReceipt/);
+  assert.doesNotMatch(src, /submitReceiveInventoryStock/);
   assert.doesNotMatch(src, /httpsCallable|from "firebase/);
   assert.doesNotMatch(src, /aliasScan|scanResolver|resolveScan/i);
   assert.doesNotMatch(src, /RR-\$\{|`RR-/);

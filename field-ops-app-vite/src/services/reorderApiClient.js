@@ -48,6 +48,8 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   "cancelReorderRequest",
   "recordReorderPurchaseOrder",
   "voidReorderPurchaseOrder",
+  // The governed Reorder receipt (REORDER_PURCHASE_ORDER sources only). See services/reorderReceivingClient.js.
+  "receiveReorderStock",
 ]);
 
 /** Reads that take no input. */

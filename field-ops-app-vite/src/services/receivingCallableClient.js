@@ -1,3 +1,14 @@
+// ════════════════════ REORDER PURCHASE ORDER RECEIPTS DO NOT GO THROUGH THIS FILE ════════════════════
+//
+// The legacy single-line submit (`submitReceiveInventoryStock`, source REORDER_PURCHASE_ORDER) is GONE from
+// this module. A Reorder Purchase Order is received through the governed PostgreSQL authority
+// (services/reorderReceivingClient.js -> receiveReorderStock on /operations/inventory). The Firebase
+// `receiveInventoryStock` deployed in nonprod pre-dates the Reorder freeze and would write the Firestore
+// Reorder Request to RECEIVED while PostgreSQL stays ORDERED, so no client path may send it that source.
+// What remains here is the canonical multi-line PURCHASE_ORDER journey (its own authority and cutover,
+// unchanged; buildCanonicalReceiveRequest refuses any other source type client-side) and the receiving
+// location options read.
+//
 // EI Receiving -- the ISOLATED, UNWIRED, readiness-false transport client over the two frozen
 // E1 callables (receiveInventoryStock, listReceivingLocationOptions). It has NO production
 // caller and no UI/route/modal wiring. Structure mirrors services/truckRegistryCommandClient.js
@@ -28,9 +39,7 @@ import {
   validatePurchaseOrderProgress,
   RECEIVING_OUTCOME,
   OPTIONS_REQUEST,
-  buildReceiveRequest,
   validateOptionsResponse,
-  validateReceiveResponse,
   mapCallableErrorToStatus,
 } from "../domain/receivingTransport.js";
 
@@ -65,23 +74,6 @@ async function fetchOptionsCore(invoke) {
   return { status: RECEIVING_OUTCOME.READY, options: adapted.options };
 }
 
-async function submitReceiveCore(request, invoke) {
-  const payload = buildReceiveRequest(request); // validate + sanitize exact frozen fields
-  if (payload === null) return { status: RECEIVING_OUTCOME.INVALID }; // malformed request -> fail closed, no invoke
-  let data;
-  try {
-    data = await invoke(CALLABLE_NAMES.receive, payload);
-  } catch (err) {
-    return { status: mapCallableErrorToStatus(err) };
-  }
-  const outcome = validateReceiveResponse(data); // exact envelope, rejects unknown fields
-  if (outcome === null) return { status: RECEIVING_OUTCOME.UNAVAILABLE };
-  return {
-    status: outcome.outcome === "replayed" ? RECEIVING_OUTCOME.REPLAYED : RECEIVING_OUTCOME.APPLIED,
-    receipt: outcome,
-  };
-}
-
 // ---- production-facing public API ----
 // No parameters that could select the invoker or override readiness. Consults ONLY the governed
 // constant; while readiness is false, returns a sanitized unavailable outcome and NEVER invokes.
@@ -90,13 +82,6 @@ async function submitReceiveCore(request, invoke) {
 export async function fetchReceivingLocationOptions() {
   if (!RECEIVING_TRANSPORT_READY) return { status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] };
   return fetchOptionsCore(defaultInvoke);
-}
-
-// Submit a receipt. `request` must already carry a stable idempotencyKey; it is preserved
-// verbatim and never regenerated (a retry re-invokes with the same request/key).
-export async function submitReceiveInventoryStock(request) {
-  if (!RECEIVING_TRANSPORT_READY) return { status: RECEIVING_OUTCOME.UNAVAILABLE };
-  return submitReceiveCore(request, defaultInvoke);
 }
 
 // ═══════════════════════ CANONICAL MULTI-LINE RECEIVING (Phase D) ═══════════════════════
