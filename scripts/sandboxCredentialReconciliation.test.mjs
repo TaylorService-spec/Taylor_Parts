@@ -467,12 +467,15 @@ test("the loader remains READ ONLY: the reconciliation did not add a write path 
   }
 });
 
-test("P15 is the ONLY missing account, and it is the reporting analyst", () => {
-  const missing = RECONCILIATION.filter((r) => r.classification === "AUTH_ACCOUNT_MISSING");
-  assert.deepEqual(missing.map((r) => r.persona), ["reportingAnalyst"]);
-  assert.equal(missing[0].credentialCandidate, "reporting@sandbox.invalid");
-  assert.equal(missing[0].authAccountExists, false);
-  assert.match(missing[0].action, /CREATE EXACTLY ONE/);
+test("no account is missing: P15, the reporting analyst, was created by Phase 1 and is now PRESERVE", () => {
+  // D1 corrected 2026-09-29 (evidence doc P1). It was the ONLY missing account; Phase 1 created it on 2026-09-25.
+  assert.deepEqual(RECONCILIATION.filter((r) => r.classification === "AUTH_ACCOUNT_MISSING"), []);
+  const reporting = RECONCILIATION.find((r) => r.persona === "reportingAnalyst");
+  assert.equal(reporting.credentialCandidate, "reporting@sandbox.invalid");
+  assert.equal(reporting.authAccountExists, true);
+  assert.equal(reporting.authUid, "Wv5msonPZyXtiy8ZOdJPxlnAboK2");
+  assert.equal(reporting.classification, "EXISTING_CREDENTIAL_EXACT_MATCH");
+  assert.match(reporting.action, /NEVER ROTATE/);
 });
 
 test("financeAccounting and generalEmployee reuse existing accounts and are never rotated", () => {
@@ -585,13 +588,13 @@ test("P05 is the dispatcher and names the account the live Dispatcher Principal 
 // THE CATALOG AND THE EXPLICIT CREDENTIAL SOURCE
 // ======================================================================================
 
-test("the catalog declares all sixteen roles, and the only non-loadable one is the pending account", () => {
+test("the catalog declares all sixteen roles, and all sixteen are loadable (no pending account remains)", () => {
   const directory = personaDirectory();
   assert.equal(directory.length, 16);
-  assert.equal(directory.filter((r) => r.state === "MAPPED").length, 15);
-  const pending = directory.filter((r) => r.state === "PENDING_ACCOUNT");
-  assert.deepEqual(pending.map((r) => r.personaId), ["reportingAnalyst"]);
-  assert.equal(pending[0].email, "reporting@sandbox.invalid", "a pending key still declares its address");
+  // D1 corrected 2026-09-29: reportingAnalyst's account exists (Phase 1), so nothing is PENDING_ACCOUNT.
+  assert.equal(directory.filter((r) => r.state === "MAPPED").length, 16);
+  assert.deepEqual(directory.filter((r) => r.state === "PENDING_ACCOUNT"), []);
+  assert.equal(directory.find((r) => r.personaId === "reportingAnalyst").email, "reporting@sandbox.invalid");
   assert.deepEqual(Object.keys(UNRECONCILED_PERSONAS), [], "the unreconciled state was emptied by the ruling");
   for (const row of directory) assert.ok(row.jobRole, `${row.personaId} must name its Job Role`);
 });
@@ -647,20 +650,17 @@ test("the load path consults the explicit source ONLY -- candidatePaths is diagn
   }
 });
 
-test("a pending-account role fails closed BEFORE the credential source is read", () => {
+test("the former pending-account role is now an ordinary MAPPED role: it reaches the explicit-source check", () => {
   const prev = process.env[CREDENTIAL_SOURCE_ENV];
-  // Deliberately UNSET: a pending role must be answered by name, so it must not even reach the
-  // source check -- otherwise the operator is told to configure a file for an account that does not
-  // exist, which is the wrong remedy.
+  // Deliberately UNSET. Before D1 was corrected this role was PENDING_ACCOUNT and refused by name; its account
+  // now exists, so it is answered like every other MAPPED role -- the unset source fails closed, never a search.
   delete process.env[CREDENTIAL_SOURCE_ENV];
   try {
     assert.throws(
       () => loadSandboxPersona("reportingAnalyst"),
       (err) => {
-        assert.equal(err.failureType, "PERSONA_ACCOUNT_PENDING");
+        assert.equal(err.failureType, "CREDENTIAL_SOURCE_NOT_CONFIGURED");
         assert.deepEqual(err.pathsTried, []);
-        assert.match(err.message, /reporting@sandbox\.invalid/);
-        assert.match(err.message, /OPERATOR ACTION:/);
         return true;
       },
     );

@@ -292,12 +292,11 @@ test("all sixteen canonical role keys are accounted for -- mapped or pending, ne
     assert.match(row.email, /@sandbox\.invalid$/, `${row.personaId} must declare its address in either state`);
     assert.ok(row.jobRole, `${row.personaId} must name the Job Role it serves`);
   }
-  // Fifteen accounts exist; exactly one (the reporting analyst) does not.
-  assert.equal(directory.filter((r) => r.state === "MAPPED").length, 15);
-  const pending = directory.filter((r) => r.state === "PENDING_ACCOUNT");
-  assert.deepEqual(pending.map((r) => r.personaId), ["reportingAnalyst"]);
-  assert.equal(pending[0].email, "reporting@sandbox.invalid");
-  assert.equal(pending[0].uid, null, "a pending role has no uid because it has no account");
+  // All sixteen accounts exist: the reporting analyst's was created by Phase 1 (D1 corrected 2026-09-29).
+  assert.equal(directory.filter((r) => r.state === "MAPPED").length, 16);
+  assert.deepEqual(directory.filter((r) => r.state === "PENDING_ACCOUNT"), []);
+  const reporting = directory.find((r) => r.personaId === "reportingAnalyst");
+  assert.equal(reporting.email, "reporting@sandbox.invalid");
 });
 
 test("the unreconciled state is EMPTY: every canonical role now has a settled address", () => {
@@ -313,17 +312,14 @@ test("the unreconciled state is EMPTY: every canonical role now has a settled ad
   }
 });
 
-test("a PENDING_ACCOUNT role fails closed before the credential source is read, and names what to create", () => {
+test("the former PENDING_ACCOUNT role is now MAPPED: with the source unset it fails closed on the source, never a search", () => {
   const prev = process.env[CREDENTIAL_SOURCE_ENV];
-  // Deliberately unset: a pending role must be answered BY NAME, so it must not even reach the source
-  // check. Otherwise the operator is told to configure a file for an account that does not exist.
+  // D1 corrected 2026-09-29: reportingAnalyst's account exists, so no role is PENDING_ACCOUNT any more.
   delete process.env[CREDENTIAL_SOURCE_ENV];
   try {
     assert.throws(() => loadSandboxPersona("reportingAnalyst"), (err) => {
-      assert.equal(err.failureType, "PERSONA_ACCOUNT_PENDING", "a missing ACCOUNT is not a missing password");
+      assert.equal(err.failureType, "CREDENTIAL_SOURCE_NOT_CONFIGURED");
       assert.deepEqual(err.pathsTried, [], "no path may be reported: none was tried");
-      assert.match(err.message, /reporting@sandbox\.invalid/);
-      assert.match(err.message, /OPERATOR ACTION:/);
       return true;
     });
   } finally {

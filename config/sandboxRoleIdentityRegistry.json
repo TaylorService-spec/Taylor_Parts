@@ -4,7 +4,7 @@
   "$whyThisFileExists": "ONE AUTHORITY, TWO MODULE SYSTEMS. scripts/sandboxCredentials.mjs is ESM and functions/scripts/seedSampleCompany.js is CommonJS, so neither can import the other. Duplicating the registry in both is how the two would drift, and the symptom of drift here is an account created for an identity that already has one. JSON is the one shape both can read, so this file is the authority and both consume it. NO CODE MAY CARRY A COPY OF THESE ADDRESSES: the seed does one lookup against this file and holds no address literals, which is the failure mode the ruling explicitly forbids.",
   "firebaseProjectId": "eos-platform-sandbox",
   "emailDomain": "sandbox.invalid",
-  "confirmedBy": "Authoritative Firebase Admin SDK lookup against eos-platform-sandbox via ADC, 2026-09-25. 15 of 16 accounts exist; reporting@sandbox.invalid does not.",
+  "confirmedBy": "Authoritative Firebase Admin SDK lookup against eos-platform-sandbox via ADC, 2026-09-25. 15 of 16 accounts existed; reporting@sandbox.invalid was then created by Phase 1 (2026-09-25) and all 16 now exist.",
   "$uidNote": "A uid is an IDENTIFIER, not a credential: it proves which account a key names without revealing anything that can be signed in with. It is also the only way to catch the defect that keeps recurring here -- a key whose address and whose uid belong to two different accounts.",
   "credentialEmailInvariant": {
     "default": "credentialEmail === employee.workEmail",
@@ -202,17 +202,16 @@
       "key": "reportingAnalyst",
       "jobRole": "reporting-analyst",
       "authEmail": "reporting@sandbox.invalid",
-      "uid": null,
-      "accountExists": false,
+      "uid": "Wv5msonPZyXtiy8ZOdJPxlnAboK2",
+      "accountExists": true,
       "sampleCompanyEmployee": "report-analyst",
-      "reason": "ACCOUNT_NOT_CREATED_YET: an authoritative Firebase Admin SDK enumeration of eos-platform-sandbox on 2026-09-25 found 28 @sandbox.invalid accounts and no reporting address among them. It is the only canonical role whose account does not exist.",
-      "operatorAction": "Run sandboxPersonaBootstrap after merge and deploy; it creates exactly ONE account for reporting@sandbox.invalid and then activates its credential through the existing activateMissingSandboxPasswords. Do not create a second reporting-shaped account and do not point this key at a substitute. NOTE the authority gap is separate and unchanged: reportViewer, reportFinanceViewer and reportAuthor each resolve to ZERO role_capabilities in nonprod, so a holder measures nothing until those grants exist.",
+      "$comment": "CREATED 2026-09-25 by Phase 1 (the ONE CREATE_AUTH_ACCOUNT of the ruling); now PRESERVE. Never recreate, never rotate. The uid is recorded so the bootstrap's AUTH_UID_MISMATCH guard covers this role like the other fifteen.",
       "phase": 5,
       "expectedSecurityRoles": [
         "reportViewer"
       ],
       "expectedEmployeeId": "synthetic-np-emp-report-analyst",
-      "credentialDisposition": "CREATE_AUTH_ACCOUNT"
+      "credentialDisposition": "PRESERVE"
     },
     {
       "key": "generalEmployee",
@@ -360,7 +359,7 @@
     "1": {
       "name": "AUTH",
       "scope": "GLOBAL",
-      "action": "Ensure exactly one PASSWORDLESS sandbox Auth account per canonical role. Reuse every existing account; create only a genuinely missing one. Measured 2026-09-25: 15 exist, only reporting@sandbox.invalid does not."
+      "action": "Ensure exactly one PASSWORDLESS sandbox Auth account per canonical role. Reuse every existing account; create only a genuinely missing one. Measured 2026-09-25: 15 existed; reporting@sandbox.invalid was created by Phase 1 the same day, so all 16 exist."
     },
     "2": {
       "name": "JOB_ROLE_CATALOG",
@@ -407,6 +406,7 @@
     "PRESERVE": "A credential already exists in the canonical file and works. Reuse verbatim: never rotated, never reset, never recreated. Five roles.",
     "RESET_EXISTING_SANDBOX_PASSWORD": "The Auth account EXISTS and already HAS a password, but that password is in no canonical source, so no mission can sign in as it. The password is RESET -- an intentional, authorized sandbox credential rotation, not an activation. Preconditions, each asserted: the account exists, an authoritative Admin lookup confirms the EXPECTED UID before the write, the UID is unchanged after it, no Auth account is created, no Principal is created, no duplicate identity appears. Ten roles.",
     "CREATE_AUTH_ACCOUNT": "No Auth account exists. Exactly ONE is created and given one secure password. No Firebase Role document, no business custom claim, no duplicate Principal. One role.",
+    "current": {"$comment": "After Phase 1 (2026-09-25) created reporting@sandbox.invalid, which is now PRESERVE. expectedFinalState below is the Phase 1 plan outcome, kept as history.", "preserve": 6, "reset": 10, "create": 0},
     "expectedFinalState": {
       "preserved": 5,
       "rotated": 10,

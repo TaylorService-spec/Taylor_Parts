@@ -116,8 +116,9 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
     const roleRecord = await repo.getRoleByKey(tenantId, ROLE_BY_PERSONA[role.key]);
     assert.ok(roleRecord, `seed defines ${ROLE_BY_PERSONA[role.key]}`);
     const principalId = await repo.transact({ tenantId, uid: "idn-fixture" }, async (tx) => {
-      // reportingAnalyst's registry entry carries no uid (no Auth account): its fixture Principal gets a stand-in primary.
-      const p = await tx.createPrincipal({ externalSubject: role.uid ?? `fixture-uid-${role.key}`, identityProvider: "firebase", displayName: role.key });
+      // Every persona -- reportingAnalyst included since D1 was corrected -- is keyed by its REGISTRY uid.
+      assert.ok(role.uid, `${role.key}: the registry must record a uid`);
+      const p = await tx.createPrincipal({ externalSubject: role.uid, identityProvider: "firebase", displayName: role.key });
       await tx.createTenantMembership(p.id);
       const v = await tx.bumpAccessVersion(p.id);
       await tx.createAssignment({ principalId: p.id, roleId: roleRecord.id, scopeType: "global", scopeValue: null, status: "active",
@@ -130,7 +131,7 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
                (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason)
              VALUES ($1, $2, $3, $4, 'taylor', 'OPERATOR_ASSERTED', 'idn-fixture', 'EOS identity proof fixture')`,
     [`epl-${role.key}`, tenantId, principalId, role.expectedEmployeeId]);
-    personas.set(role.key, { principalId, employeeId: role.expectedEmployeeId, uid: role.uid ?? `fixture-uid-${role.key}`, registryUid: role.uid });
+    personas.set(role.key, { principalId, employeeId: role.expectedEmployeeId, uid: role.uid });
   }
   assert.equal(personas.size, 16);
   // A SCOPED assignment, so "scope enforcement unchanged" compares something non-empty.
@@ -147,10 +148,19 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
   // ════════════════════ the governed binding, through the operator CLI ════════════════════
   const cliOptions = (persona, apply) => ({
     environmentId: "platform-sandbox", connectionString: "never-read", tenantKey: TENANT_KEY, adminPrincipalId,
-    persona, principalId: personas.get(persona).registryUid ? null : personas.get(persona).principalId, externalSubject: `nonprod-persona.${persona}`,
+    persona, principalId: null, externalSubject: `nonprod-persona.${persona}`,
     reason: `Provision the EOS persona identity for ${persona} (EOS identity/session foundation proof)`, apply,
   });
   const cliDeps = { PostgresPolicyRepository, bindPrincipalEosIdentity, hasAdministrationAuthority };
+
+  await t.test("all 16 canonical personas are addressable from the registry alone (every one records a uid)", () => {
+    assert.equal(REGISTRY.roles.length, 16);
+    for (const r of REGISTRY.roles) {
+      assert.ok(typeof r.uid === "string" && r.uid.length > 0, `${r.key}: no registry uid`);
+      assert.equal(r.accountExists, true, `${r.key}: account not recorded as existing`);
+    }
+    assert.equal(REGISTRY.roles.find((r) => r.key === "reportingAnalyst").uid, "Wv5msonPZyXtiy8ZOdJPxlnAboK2");
+  });
 
   await t.test("the CLI: dry run writes nothing; apply binds all 16 with ONE audit event each; a re-run is NO_CHANGE; authority preserved", async () => {
     const before = await q("SELECT count(*)::int n FROM eos_policy.principal_identities");
@@ -188,6 +198,8 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
     assert.throws(() => cli.assertInvocation(parse([...base, "--roles", "admin"]), env), /AUTHORITY_ARGUMENT_REFUSED/);
     assert.throws(() => cli.assertInvocation(parse([...base, "--signingKey", "x"]), env), /CREDENTIAL_ARGUMENT_REFUSED/);
     assert.throws(() => cli.assertInvocation(parse(base.map((a) => (a === "dispatcher" ? "root" : a))), env), /UNKNOWN_PERSONA/);
+    // --persona derives the Principal from the registry alone: an operator-supplied Principal is refused.
+    assert.throws(() => cli.assertInvocation(parse([...base, "--principalId", "p-anyone"]), env), /MODE_REQUIRED/);
     assert.throws(() => cli.assertInvocation(parse(["--environment", "platform-sandbox", "--databaseUrlEnv", "X_DB", "--tenantKey", TENANT_KEY,
       "--adminPrincipalId", adminPrincipalId, "--principalId", "p1", "--externalSubject", "nonprod-persona.owner",
       "--reason", "a long enough reason that names p1 as the target principal here"]), env), /PERSONA_SUBJECT_REFUSED/);

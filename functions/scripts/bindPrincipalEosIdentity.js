@@ -106,8 +106,9 @@ function assertInvocation(args, env) {
   if (!personaMode && !directMode) {
     refuse("MODE_REQUIRED", "name EXACTLY one target: --persona <key>, or --principalId <id> with --externalSubject <subject>");
   }
-  if (personaMode && args.externalSubject !== undefined) {
-    refuse("MODE_REQUIRED", "--persona derives the subject; --externalSubject is not accepted with it");
+  if (personaMode && (args.externalSubject !== undefined || args.principalId !== undefined)) {
+    refuse("MODE_REQUIRED",
+      "--persona derives BOTH the Principal (from the registry uid) and the subject; --principalId and --externalSubject are not accepted with it");
   }
   let persona = null;
   let principalId = null;
@@ -119,15 +120,6 @@ function assertInvocation(args, env) {
       refuse("UNKNOWN_PERSONA", `--persona '${persona}' is not one of the ${registry.size} governed persona keys`);
     }
     externalSubject = `${PERSONA_PREFIX}${persona}`;
-    // A persona whose registry entry carries NO uid (reportingAnalyst at the time of writing) has no primary
-    // binding to find its Principal by; the operator then names the Principal, which is still cross-checked
-    // against the registry uid whenever one exists.
-    if (args.principalId !== undefined) {
-      if (typeof args.principalId !== "string" || args.principalId.trim() === "" || args.principalId === "true") {
-        refuse("ARGUMENT_REQUIRED", "--principalId was given with no value");
-      }
-      principalId = args.principalId.trim();
-    }
   } else {
     for (const flag of ["principalId", "externalSubject"]) {
       if (typeof args[flag] !== "string" || args[flag].trim() === "" || args[flag] === "true") {
@@ -145,7 +137,6 @@ function assertInvocation(args, env) {
   if (reason.length < MIN_REASON_LENGTH) refuse("REASON_NOT_SPECIFIC", `--reason needs at least ${MIN_REASON_LENGTH} characters`);
   if (reason.length > MAX_REASON_LENGTH) refuse("REASON_TOO_LONG", `--reason may hold at most ${MAX_REASON_LENGTH} characters`);
   const namesTarget = persona ? reason.includes(persona) : reason.includes(principalId);
-  // (In persona mode the reason names the persona key; an explicit --principalId is echoed in the report.)
   if (!namesTarget) refuse("REASON_NOT_SPECIFIC", "--reason must NAME the persona key or the target principal id");
   return {
     environmentId, connectionString, tenantKey: args.tenantKey.trim(), adminPrincipalId: args.adminPrincipalId.trim(),
@@ -175,17 +166,16 @@ async function bindPrincipalEosIdentityRun(pool, options, deps) {
 
   let principalId = options.principalId;
   if (options.persona) {
+    // FROM GOVERNED REGISTRY INFORMATION ALONE: the registry uid is the persona's PRIMARY (firebase) subject.
     const entry = (deps.personaRegistry ?? loadPersonaRegistry()).get(options.persona);
-    const primary = entry && entry.uid ? await repo.getPrincipalBySubject("firebase", entry.uid) : null;
-    if (primary && principalId && primary.id !== principalId) {
-      refuse("PERSONA_PRINCIPAL_MISMATCH", `--principalId does not match the Principal holding persona '${options.persona}''s registry uid`);
+    if (!entry || typeof entry.uid !== "string" || entry.uid.length === 0) {
+      refuse("PERSONA_UID_NOT_RECORDED", `the registry records no uid for persona '${options.persona}'; correct the registry -- this tool never guesses`);
     }
-    if (!primary && !principalId) {
-      refuse("PERSONA_PRINCIPAL_NOT_FOUND",
-        `no Principal holds the registry uid of persona '${options.persona}'${entry && !entry.uid ? " (the registry records no uid)" : ""}; `
-        + "name it with --principalId -- this tool never creates one");
+    const primary = await repo.getPrincipalBySubject("firebase", entry.uid);
+    if (!primary) {
+      refuse("PERSONA_PRINCIPAL_NOT_FOUND", `no Principal holds the registry uid of persona '${options.persona}'; this tool never creates one`);
     }
-    principalId = primary ? primary.id : principalId;
+    principalId = primary.id;
   }
   if (principalId === admin.id) refuse("ADMIN_PRINCIPAL_SELF_BIND_REFUSED", "the administering Principal may not bind an identity to itself");
 

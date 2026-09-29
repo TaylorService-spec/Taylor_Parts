@@ -221,8 +221,8 @@ eos_policy.principal_identities (
   project id, requires `EOS_ENVIRONMENT=nonprod`, refuses frozen Certification, refuses unknown,
   authority-bearing and credential-bearing flags, reads the admin's Roles from PG, and defaults to a
   dry run. Its `--persona <key>` mode derives the Principal from the registry uid (the primary
-  Firebase binding, used here only as a lookup key) and the subject from the persona key. A persona whose registry entry has no uid (`reportingAnalyst` today)
-  also takes `--principalId`, which is cross-checked against the registry uid whenever one exists. **It has
+  Firebase binding, used here only as a lookup key) and the subject from the persona key. `--persona` takes no `--principalId`: all 16 personas are bindable from the registry
+  alone (the `reportingAnalyst` uid gap, D1, was corrected by this change per the Persona Foundation evidence P1). **It has
   not been run against nonprod.** That is the provisioning packet in section 6.
 
 ### (d) Nonprod persona issuance

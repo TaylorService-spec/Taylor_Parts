@@ -213,6 +213,12 @@ export const MEASURED_CREDENTIAL_KEYS = Object.freeze([
   "salesmgr@sandbox.invalid",
   "tech@sandbox.invalid",
   "whmgr@sandbox.invalid",
+  // NOT part of the 2026-09-25 key-name measurement above. Added 2026-09-29 (D1 correction, evidence doc P1,
+  // Controller ruling) from the Phase 1 operator apply record: reporting@sandbox.invalid was created on
+  // 2026-09-25 with its credential activated and sign-in verified (OP-RECORD; the evidence doc's read-only
+  // census found the credential source PRESENT with 72 entries). Recorded here so the table stops calling a
+  // PRESERVE account missing. It was NOT re-measured by this change: no credential file was opened.
+  "reporting@sandbox.invalid",
 ]);
 
 /**
@@ -284,6 +290,8 @@ export const CREDENTIAL_POLICY = Object.freeze({
     "dispatcher",
     "financeAccounting",
     "generalEmployee",
+    // Created by Phase 1 (2026-09-25), the one CREATE of the ruling; PRESERVE since (D1 corrected 2026-09-29).
+    "reportingAnalyst",
   ]),
   /** Account exists with a uid matching its live Principal; no credential, so a password may be minted. */
   bootstrapAuthorized: Object.freeze([
@@ -298,13 +306,13 @@ export const CREDENTIAL_POLICY = Object.freeze({
     "retailSales",
     "nationalAccountsSales",
   ]),
-  /** The ONE account this programme creates. */
-  createOne: Object.freeze(["reportingAnalyst"]),
+  /** The ONE account this programme created -- reportingAnalyst, by Phase 1 on 2026-09-25. Nothing remains. */
+  createOne: Object.freeze([]),
   expectedEndState: Object.freeze({
     ready: 16,
-    preserved: 5,
+    preserved: 6,
     bootstrapped: 10,
-    created: 1,
+    created: 0,
     duplicatePersonaAccountsCreated: 0,
   }),
 });
