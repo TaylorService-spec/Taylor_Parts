@@ -79,8 +79,12 @@ test("the write path converts through the shared money core, not its own arithme
   }
 });
 
-test("MINOR UNITS cross the wire — the typed string never reaches the callable", () => {
-  const payload = SRC.slice(SRC.indexOf("submitRecordReorderPurchaseOrder({"));
+test("MINOR UNITS cross the wire — the typed string never reaches the governed command", () => {
+  // The Firebase callable was replaced by the governed PostgreSQL command in the Reorder Domain
+  // Cutover. The invariant is unchanged and is what this test is actually about: the exact
+  // conversion happens once, where the currency that governs the decimal places is known, and only
+  // the minor-unit integer is sent.
+  const payload = SRC.slice(SRC.indexOf('reorderApiClient.call("recordReorderPurchaseOrder", {'));
   assert.match(payload, /unitPriceMinor,/);
   assert.match(payload, /currency: trimmedCurrency,/);
   assert.ok(!/unitPriceMajor/.test(payload.slice(0, payload.indexOf("}"))), "the raw typed value must not be sent");

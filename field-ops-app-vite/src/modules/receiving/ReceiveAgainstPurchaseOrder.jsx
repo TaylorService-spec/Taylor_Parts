@@ -5,7 +5,7 @@ import { buildPurchaseOrdersView, PURCHASE_ORDERS_STATUS } from "../../domain/pu
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { fetchReceivingLocationOptions, submitReceiveInventoryStock } from "../../services/receivingCallableClient";
-import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { readPartsForView } from "../../services/partMasterQueries";
 import {
   buildReceiveRequestInput,
   describeLotNotSupported,
@@ -37,7 +37,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 //
 // Wave 7 Part 2 -- a SERIAL-tracked Part additionally requires one serial number per unit before
 // it can be received. The Part's tracking mode is resolved through the SAME governed Part Master
-// read the rest of the app uses (services/partMasterQueries.fetchPartMasterList) -- no new read is
+// read the rest of the app uses (services/partMasterQueries.searchParts) -- no new read is
 // added -- and a failed/denied read blocks the receipt honestly rather than assuming NONE.
 const ORDERED_ONLY = [REORDER_REQUEST_STATUS.ORDERED];
 
@@ -102,7 +102,7 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
     setPartTracking({ status: "loading", trackingMode: null });
     // Fetch the receiving locations AND resolve this part's tracking mode in parallel -- the
     // tracking mode isn't needed until Continue, but reading it now avoids a second spinner.
-    const [locationsRes, partsRes] = await Promise.all([fetchReceivingLocationOptions(), fetchPartMasterList()]);
+    const [locationsRes, partsRes] = await Promise.all([fetchReceivingLocationOptions(), readPartsForView([c.partId])]);
     if (!mountedRef.current || generation !== locationRequestGenerationRef.current) return;
     setLocations({ status: locationsRes.status, options: locationsRes.options ?? [] });
     setPartTracking(resolvePartTrackingMode({ partsFetchResult: partsRes, partId: c.partId }));

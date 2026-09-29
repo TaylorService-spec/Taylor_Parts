@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collection, query, orderBy, limit, startAfter, getDocs, where, documentId } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { EQUIPMENT_COLLECTION, ACCOUNTS_COLLECTION, LOCATIONS_COLLECTION } from "../domain/constants";
+import { callCrmApi } from "../services/crmApiClient.js";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 import { collectAccountIds, collectLocationIds } from "../domain/installedEquipmentListView";
 
@@ -59,6 +60,21 @@ async function defaultReadEquipmentPage({ cursor, pageSize }) {
 
 // Resolve names for ONLY the given ids, in bounded batches.
 async function defaultReadNames({ collectionName, ids }) {
+  // CRM CUTOVER: Account and customer-site names come from the governed PostgreSQL CRM authority (EOS API), never from
+  // the retired Firestore collections.
+  if (collectionName === ACCOUNTS_COLLECTION || collectionName === LOCATIONS_COLLECTION) {
+    const op = collectionName === ACCOUNTS_COLLECTION ? ["getAccount", "accountId", "ACCOUNT_NOT_FOUND"] : ["getAccountLocation", "accountLocationId", "ACCOUNT_LOCATION_NOT_FOUND"];
+    const crmMap = new Map();
+    for (let i = 0; i < ids.length; i += NAME_BATCH) {
+      const results = await Promise.all(ids.slice(i, i + NAME_BATCH).map((id) => callCrmApi(op[0], { [op[1]]: id })));
+      results.forEach((res, n) => {
+        if (res.ok) { if (res.result.name) crmMap.set(ids[i + n], res.result.name); return; }
+        if (res.code === op[2] || res.code === "RECORD_ID_REQUIRED") return;
+        throw Object.assign(new Error(res.message), { code: ["CAPABILITY_REQUIRED", "FORBIDDEN", "ACTOR_NOT_TENANT_MEMBER"].includes(res.code) ? "permission-denied" : res.code });
+      });
+    }
+    return crmMap;
+  }
   const map = new Map();
   for (let i = 0; i < ids.length; i += NAME_BATCH) {
     const batch = ids.slice(i, i + NAME_BATCH);

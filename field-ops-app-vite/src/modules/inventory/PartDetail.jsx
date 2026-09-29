@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
-import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { readPartsForView, isCatalogReadRefused } from "../../services/partMasterQueries";
+import { REORDER_PURCHASE_ORDER_VOID_GATE } from "../../access/shellCapabilityGates.js";
 import UsedInEquipmentSection from "./UsedInEquipmentSection";
 import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
 import { canViewCompatibility } from "../../domain/equipmentCompatibilitySection.js";
@@ -73,7 +74,7 @@ import {
 //
 // INV-CONVERGENCE-E C2 -- catalog metadata NO LONGER comes from the static
 // per-sku catalog lookup. It is the GOVERNED compatibility-adapter output: the live
-// canonical `parts` read (fetchPartMasterList, PR 1.9 -- the same authorized
+// canonical `parts` read (searchParts, PR 1.9 -- the same authorized
 // one-shot read C1 uses, no new query surface) composed with the static catalog
 // through buildPartsWorkspace(), via the pure domain/partDetailView.js. The static
 // PARTS_CATALOG remains the compatibility INPUT to that composition, not a parallel
@@ -236,18 +237,15 @@ function CancelReorderRequestAction({ request, onCancelled }) {
   );
 }
 
-// Void is available only at ORDERED, only to the current assignee
-// (isAdminOrDispatcher() AND request.auth.uid == assignedToUserId --
-// BOTH required, per the Specification's corrected Authorization
-// section). Client-side checks assignee identity only, same posture
-// as every assignee-restricted action on this object
-// (ReorderRequestStartPurchasing, ReorderRequestMarkReceived) --
-// firestore.rules enforces both conditions server-side.
-function VoidPurchaseOrderAction({ request, onVoided }) {
+// Void is available only at ORDERED, and it is a MANAGEMENT EXCEPTION action (Controller ruling 2026-09-28): it is
+// offered to a holder of reorder.purchaseOrder.void, NOT to the purchasing assignee as such. The governed command
+// decides the rest -- the Purchase Order's operating-company REORDER_QUEUE scope, the ORDERED state and a stated
+// reason -- and a refusal is rendered, never recomputed here.
+function VoidPurchaseOrderAction({ request, onVoided, hasCapability }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const isAssignee = user?.uid === request.assignedToUserId;
-  if (!isAssignee) return null; // assignee-only UI restriction preserved (Rules enforce it too)
+  const canVoid = typeof hasCapability === "function" && hasCapability(REORDER_PURCHASE_ORDER_VOID_GATE.void) === true;
+  if (!canVoid) return null;
 
   return (
     <div className="disp-board-toolbar">
@@ -260,7 +258,10 @@ function VoidPurchaseOrderAction({ request, onVoided }) {
           requireReason
           reasonLabel="Reason"
           onConfirm={async (reason) => {
-            await voidPurchaseOrder(request.id, { reason });
+            // The governed command returns a refusal as a value; throwing it keeps ConfirmDialog's
+            // existing mapError path, which renders safe categorized copy rather than a raw string.
+            const res = await voidPurchaseOrder(request.id, { reason });
+            if (!res?.ok) throw new Error(res?.message ?? "the void was refused");
             setOpen(false);
             onVoided();
           }}
@@ -394,14 +395,16 @@ function ReorderRequestReview({ request, onReviewed }) {
 // transition and is not added here -- flagged as a known,
 // intentional gap, not fixed in this correction.
 function ReorderRequestAssignment({ request, onAssigned }) {
+  // THE PICKER ALREADY CHOSE AN EMPLOYEE. It then derived that Employee's Firebase uid and submitted
+  // THAT -- so a correct choice became a uid on the way to the database. The Employee id is what the
+  // governed assignment authority names, so it is simply what gets submitted now, and the uid is not
+  // read at all.
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
-  const [assignedToUserId, setAssignedToUserId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
   function handleEmployeeSelect(employee) {
     setSelectedEmployeeId(employee.employeeId);
-    setAssignedToUserId(employee.userId);
   }
 
   async function handleAssign(e) {
@@ -409,7 +412,14 @@ function ReorderRequestAssignment({ request, onAssigned }) {
     setSubmitting(true);
     setError(null);
     try {
-      await assignReorderRequest(request.id, { assignedToUserId });
+      // The governed command returns a refusal as a VALUE, so a "you may not assign this" answer is
+      // rendered rather than thrown away as a generic failure.
+      const res = await assignReorderRequest(request.id, { employeeId: selectedEmployeeId });
+      if (!res?.ok) {
+        setError(res?.message ?? workflowActionErrorMessage(new Error("assignment refused")));
+        setSubmitting(false);
+        return;
+      }
       onAssigned();
     } catch (err) {
       // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
@@ -456,7 +466,7 @@ function ReorderRequestAssignment({ request, onAssigned }) {
           placeholder="Search employees by name..."
         />
         <div className="disp-board-toolbar">
-          <Button type="submit" variant="primary" disabled={submitting || !assignedToUserId}>
+          <Button type="submit" variant="primary" disabled={submitting || !selectedEmployeeId}>
             Assign
           </Button>
         </div>
@@ -478,7 +488,10 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
   const { user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const isAssignee = user?.uid === request.assignedToUserId;
+  // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
+  // read resolves the caller to an Employee through an active employee_principal_link and compares
+  // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
+  const isAssignee = request.isAssignee === true;
 
   async function handleStart() {
     setSubmitting(true);
@@ -500,7 +513,7 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
         <tbody>
           <tr>
             <td>Assigned to</td>
-            <td>{resolveActorDisplayName(request.assignedToUserId, employeeDirectory)}</td>
+            <td>{resolveActorDisplayName(request.assignedEmployeeId, employeeDirectory)}</td>
           </tr>
           <tr>
             <td>Assigned</td>
@@ -553,7 +566,10 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
 // updatePurchasingProgress().
 function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory }) {
   const { user } = useAuth();
-  const isAssignee = user?.uid === request.assignedToUserId;
+  // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
+  // read resolves the caller to an Employee through an active employee_principal_link and compares
+  // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
+  const isAssignee = request.isAssignee === true;
   const [purchasingNotes, setPurchasingNotes] = useState(request.purchasingNotes ?? "");
   const [vendorContacted, setVendorContacted] = useState(!!request.vendorContacted);
   const [expectedAvailabilityDate, setExpectedAvailabilityDate] = useState(request.expectedAvailabilityDate ?? "");
@@ -582,7 +598,7 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
         <tbody>
           <tr>
             <td>Assigned to</td>
-            <td>{resolveActorDisplayName(request.assignedToUserId, employeeDirectory)}</td>
+            <td>{resolveActorDisplayName(request.assignedEmployeeId, employeeDirectory)}</td>
           </tr>
           <tr>
             <td>Purchasing started</td>
@@ -674,7 +690,10 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
 // Firestore transaction.
 function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion }) {
   const { user } = useAuth();
-  const isAssignee = user?.uid === request.assignedToUserId;
+  // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
+  // read resolves the caller to an Employee through an active employee_principal_link and compares
+  // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
+  const isAssignee = request.isAssignee === true;
   // Governed supplier SELECTION (admin/dispatcher PO path): the supplier comes from the ONE governed
   // Supplier read model, not free text. `selectedSupplier` holds the chosen governed ENTITY; only its
   // NAME is persisted for now (existing supplierName schema), and the entity-based state keeps the future
@@ -833,7 +852,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
 // realtime, via hooks/useReorderPurchaseOrders.js. Read-only: no
 // further action on the Purchase Order exists this sprint
 // (reassignment/receiving/etc. are all explicitly out of scope).
-function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
+function ReorderRequestOrdered({ request, employeeDirectory, onVoided, hasCapability }) {
   const { data: purchaseOrder, loading, error: purchaseOrderError } = usePurchaseOrderForReorderRequest(request.id);
 
   return (
@@ -890,7 +909,7 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
         <p className="fo-muted">Purchase Order details unavailable.</p>
       )}
 
-      <VoidPurchaseOrderAction request={request} onVoided={onVoided} />
+      <VoidPurchaseOrderAction request={request} onVoided={onVoided} hasCapability={hasCapability} />
     </div>
   );
 }
@@ -908,7 +927,10 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
 // real stock remains a separate backlog item.
 function ReorderRequestMarkReceived({ request, onReceived }) {
   const { user } = useAuth();
-  const isAssignee = user?.uid === request.assignedToUserId;
+  // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
+  // read resolves the caller to an Employee through an active employee_principal_link and compares
+  // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
+  const isAssignee = request.isAssignee === true;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -1134,10 +1156,10 @@ function ReorderRequestDecision({ request, employeeDirectory }) {
               <td>{request.currentOwner}</td>
             </tr>
           )}
-          {request.assignedToUserId && (
+          {request.assignedEmployeeId && (
             <tr>
               <td>Assigned to</td>
-              <td>{resolveActorDisplayName(request.assignedToUserId, employeeDirectory)}</td>
+              <td>{resolveActorDisplayName(request.assignedEmployeeId, employeeDirectory)}</td>
             </tr>
           )}
           {request.assignedAt && (
@@ -1287,7 +1309,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   const [searchParams] = useSearchParams();
   const requestId = searchParams.get("requestId") || undefined;
   // INV-CONVERGENCE-E C2 -- live canonical `parts` read (one-shot, PR 1.9's
-  // fetchPartMasterList; the SAME authorized read C1 uses -- no new query surface).
+  // searchParts; the SAME authorized read C1 uses -- no new query surface).
   // null until the first read resolves. Mapped to the canonicalRead status contract
   // the pure buildPartDetailView() consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
   const [canonicalRead, setCanonicalRead] = useState(null);
@@ -1297,21 +1319,21 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   const [canonicalRefreshToken, setCanonicalRefreshToken] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    // The FULL catalogue, and this page is one of the reasons the shared reader stayed that way: it
-    // composes one part plus its relationships through a composer that expects the whole set, so a
-    // first page would truncate a detail screen and look like missing data rather than like paging.
-    // Recorded in PART_CATALOGUE_WHOLE_COLLECTION_READ alongside the other five.
-    fetchPartMasterList().then((result) => {
+    // THE EXACT PART, never a page. This page says "not found" when the composed rows lack the route's Part, so it
+    // must read that Part by id: from a first page, any Part beyond it would read as missing. The composer accounts
+    // for whatever canonical rows it is given, so one row composes exactly as it did inside the whole set.
+    // Recorded in PART_CATALOGUE_WHOLE_COLLECTION_READ_RETIRED.
+    readPartsForView([partId]).then((result) => {
       if (cancelled) return;
       // Pass `invalid` through so the shared composer fails closed on any malformed canonical document
       // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
       if (result.ok) setCanonicalRead({ status: "OK", rows: result.parts, invalid: result.invalid });
-      else setCanonicalRead({ status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" });
+      else setCanonicalRead({ status: isCatalogReadRefused(result.code) ? "PERMISSION_DENIED" : "UNAVAILABLE" });
     });
     return () => {
       cancelled = true;
     };
-  }, [canonicalRefreshToken]);
+  }, [canonicalRefreshToken, partId]);
   const canonicalLoading = canonicalRead === null;
 
   // Governed detail composition (pure). While the read is in flight we pass a
@@ -1506,7 +1528,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         </>
       ) : reorderRequest.status === REORDER_REQUEST_STATUS.ORDERED ? (
         <>
-          <ReorderRequestOrdered request={reorderRequest} employeeDirectory={employeeDirectory} onVoided={refreshReorderRequest} />
+          <ReorderRequestOrdered request={reorderRequest} employeeDirectory={employeeDirectory} onVoided={refreshReorderRequest} hasCapability={hasCapability} />
           <ReorderRequestMarkReceived request={reorderRequest} onReceived={refreshReorderRequest} />
         </>
       ) : reorderRequest.status === REORDER_REQUEST_STATUS.RECEIVED ? (
@@ -1540,7 +1562,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
           <Link to="/inventory">Inventory → Parts</Link>
           {identity.titleIsAbsent ? null : ` → ${identity.title}`}
         </span>
-        {/* NO LIVE INDICATOR. The canonical Parts read is a one-shot getDocs, not a subscription —
+        {/* NO LIVE INDICATOR. The canonical Parts read is a one-shot governed Catalog query, not a subscription —
             this record does not update on its own, and claiming otherwise is the kind of small
             false promise a dispatcher plans around. */}
       </div>

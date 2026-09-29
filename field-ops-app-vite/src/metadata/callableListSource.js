@@ -1,5 +1,34 @@
 import { interpretPage } from "./listRuntime.js";
 
+// PASS 11 RETAIL SALES: the four Opportunity / Sales Order list reads moved from Firebase callables to the governed
+// PostgreSQL Commercial transport. Their names stay the list views' declared `readCallable` values; the transport behind
+// them is POST /commercial/sales (services/commercialApiClient.js), projected by services/commercialEosAdapters.js to the
+// same envelope. No fallback to the callables.
+const COMMERCIAL_EOS_LISTS = Object.freeze({
+  listOpportunityContext: { operation: "listOpportunities", family: "opportunity" },
+  listOpportunitiesForAccount: { operation: "listOpportunities", family: "opportunity" },
+  listSalesOrderIndex: { operation: "listSalesOrders", family: "salesOrder" },
+  listSalesOrdersForAccount: { operation: "listSalesOrders", family: "salesOrder" },
+});
+
+async function invokeCommercialList(name, payload) {
+  const target = COMMERCIAL_EOS_LISTS[name];
+  const [{ commercialApiClient }, { readCommercialList, toLegacyListPayload, legacyErrorStatus }] = await Promise.all([
+    import("../services/commercialApiClient.js"),
+    import("../services/commercialEosAdapters.js"),
+  ]);
+  const answer = await readCommercialList(commercialApiClient, target.operation, {
+    accountId: payload.accountId ?? null,
+    cap: Number.isInteger(payload.limit) && payload.limit > 0 ? payload.limit : 50,
+  });
+  if (!answer.ok) {
+    const err = new Error(answer.message ?? "commercial list read failed");
+    err.code = legacyErrorStatus(answer);
+    throw err;
+  }
+  return toLegacyListPayload(target.family, answer.items, answer.truncated);
+}
+
 // Executes a query descriptor against a trusted READ CALLABLE instead of Firestore. The
 // counterpart to firestoreListSource.js's fetchPage, for the entities that declare
 // `readVia: "CALLABLE"` (opportunity, salesOrder — functions/src/opportunity/
@@ -29,6 +58,7 @@ import { interpretPage } from "./listRuntime.js";
 // consume them (useAccountOpportunities.js / useAccountSalesOrders.js), not for a query
 // descriptor.
 async function invokeCallable(name, payload) {
+  if (Object.prototype.hasOwnProperty.call(COMMERCIAL_EOS_LISTS, name)) return invokeCommercialList(name, payload);
   const [{ httpsCallable }, { functions }] = await Promise.all([
     import("firebase/functions"),
     import("../firebase/firebase.js"),

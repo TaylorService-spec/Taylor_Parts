@@ -75,11 +75,14 @@ export function deriveLegacyRoleGrants(
  * ADMIN_REVOKED: the catalog declares the pair, and an administrator REVOKED it through EOS
  * Administration -- the current decision wins over the catalog default, so it is never re-inserted.
  * SYSTEM_INVARIANT: the pair is forbidden by an Owner ruling whatever the catalog says.
- * Neither is an unresolved mismatch: both are the precedence rule doing its job.
+ * ADMINISTRATION_ONLY: the capability has no system default (roleCapabilityAdministration.ts
+ * ADMINISTRATION_GRANT_ONLY_CAPABILITIES); only an Administration grant may confer it, so a catalog declaration is
+ * never imported.
+ * None is an unresolved mismatch: each is the precedence rule doing its job.
  */
 export type ReconcileRowStatus =
   | "PROPOSED" | "APPLIED" | "ALREADY_GRANTED" | "UNRESOLVED_ROLE" | "UNKNOWN_CAPABILITY"
-  | "ADMIN_REVOKED" | "SYSTEM_INVARIANT";
+  | "ADMIN_REVOKED" | "SYSTEM_INVARIANT" | "ADMINISTRATION_ONLY";
 
 export interface ReconcileRow {
   readonly roleKey: string;
@@ -214,7 +217,8 @@ async function reconcileWith(pool: Pool, options: ReconcileOptions): Promise<Rec
     if (!precedence.allowed) {
       rows.push({
         roleKey: grant.roleKey, capabilityKey: grant.capabilityKey,
-        status: precedence.source === "ADMIN_REVOKED" ? "ADMIN_REVOKED" : "SYSTEM_INVARIANT",
+        status: precedence.source === "ADMIN_REVOKED" ? "ADMIN_REVOKED"
+          : precedence.source === "NONE" ? "ADMINISTRATION_ONLY" : "SYSTEM_INVARIANT",
       });
       continue;
     }

@@ -7,11 +7,11 @@
 import { collection, getDocs, query, where, documentId, orderBy, limit, Timestamp } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import {
-  REORDER_REQUESTS_COLLECTION as LIVE_REORDER_REQUESTS_COLLECTION,
   REORDER_REQUEST_STATUS,
   PURCHASE_ORDERS_COLLECTION as LIVE_REORDER_PURCHASE_ORDERS_COLLECTION,
 } from "../domain/constants";
 import { buildPurchaseOrdersView } from "../domain/purchaseOrdersView.js";
+import { reorderApiClient } from "./reorderApiClient.js";
 
 const INVENTORY_TRANSACTIONS_COLLECTION = "inventory_transactions";
 const WAREHOUSES_COLLECTION = "warehouses";
@@ -180,13 +180,19 @@ export const fetchPurchaseOrders = () => listCollection<RawPurchaseOrder>(PURCHA
 // client-writable elsewhere (the reorder lifecycle), but this file only READS them
 // (getDocs, no subscription, no filter/index/query-shape change). The PO list is the
 // LIVE `reorder_purchase_orders`, NOT the dormant Epic-5 `purchase_orders` above.
-const REORDER_REQUESTS_COLLECTION = "reorder_requests";
 const REORDER_PURCHASE_ORDERS_COLLECTION = "reorder_purchase_orders";
 
 export interface RawReorderRequest { id: string; partId: string; status: string; }
 export interface RawReorderPurchaseOrder { id: string; partId: string; status: string; }
 
-export const fetchReorderRequests = () => listCollection<RawReorderRequest>(REORDER_REQUESTS_COLLECTION);
+// The shadow-parity diagnostic's Reorder side. It reads the GOVERNED authority now -- a parity
+// diagnostic that still read the retired source would be comparing the new world against a window
+// nobody writes to any more, and would report drift forever.
+export const fetchReorderRequests = async (): Promise<RawReorderRequest[]> => {
+  const res = await reorderApiClient.call("readReorderQueue");
+  if (!res.ok) throw new Error(res.message ?? "the Reorder requests could not be read");
+  return (Array.isArray(res.result) ? res.result : []) as RawReorderRequest[];
+};
 export const fetchReorderPurchaseOrders = () => listCollection<RawReorderPurchaseOrder>(REORDER_PURCHASE_ORDERS_COLLECTION);
 
 // site-work r4 item A: the Operations dashboard's Procurement panel was reading the
@@ -233,10 +239,19 @@ export interface ProcurementPurchaseOrderRow {
 }
 
 export const fetchProcurementPurchaseOrders = async (): Promise<ProcurementPurchaseOrderRow[]> => {
-  const requestsSnap = await getDocs(
-    query(collection(db, LIVE_REORDER_REQUESTS_COLLECTION), where("status", "in", PROCUREMENT_PO_REQUEST_STATUSES))
-  );
-  const requests = requestsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Record<string, unknown> & { id: string });
+  // THE REORDER REQUESTS COME FROM THE GOVERNED POSTGRESQL AUTHORITY. The purchase orders below are
+  // still Firestore's -- reorder_purchase_orders is a DIFFERENT object with its own cutover -- so
+  // this function deliberately reads two sources for two objects. That is not a dual read of one
+  // authority: no Reorder fact here comes from Firestore any more.
+  const res = await reorderApiClient.call("readReorderQueue", { statuses: PROCUREMENT_PO_REQUEST_STATUSES });
+  if (!res.ok) {
+    // Thrown rather than returned empty: an empty procurement panel and an unreadable one are
+    // different facts, and the caller already renders a failure.
+    const err = new Error(res.message ?? "the Reorder requests could not be read");
+    (err as Error & { code?: string }).code = res.reason ?? res.code;
+    throw err;
+  }
+  const requests = (Array.isArray(res.result) ? res.result : []) as (Record<string, unknown> & { id: string })[];
 
   const ids = requests.map((r) => r.id);
   const purchaseOrdersById: Record<string, Record<string, unknown>> = {};

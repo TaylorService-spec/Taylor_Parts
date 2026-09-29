@@ -39,7 +39,8 @@ export {
 // Sales Opportunity governed write callables (Cycle 3). EXPORT != DEPLOY, REGISTER != GRANT: exported for
 // build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing
 // runs in production until a separate deploy + Owner grant.
-export { createOpportunity, transitionOpportunity, updateOpportunity } from "./opportunity/opportunityCallables";
+// PASS 11 RETAIL SALES: createOpportunity / transitionOpportunity / updateOpportunity RETIRED from the Firebase runtime --
+// the governed PostgreSQL Commercial transport (POST /commercial/sales) owns them. Frozen Firestore records are untouched.
 // Workstream 2B -- the two reorder writes that author a governed company fact. EXPORT != DEPLOY:
 // these are exported for build and test, and deployment is NOT authorized. They are half of a
 // three-part activation (Functions + Rules + Hosting) that must land together, because the Rules
@@ -61,17 +62,17 @@ export { listOpportunityContext, listOpportunitiesForAccount } from "./opportuni
 export { getOpportunityContext } from "./opportunity/opportunityReadService";
 // P1.3 -- governed, human-invoked WON -> Create Sales Order action (decision #3: no Firestore trigger).
 // EXPORT != DEPLOY; capability `opportunity.createSalesOrder` registered active:false (REGISTER != GRANT).
-export { createSalesOrderFromOpportunity } from "./opportunity/createSalesOrderFromOpportunity";
+// PASS 11 RETAIL SALES: createSalesOrderFromOpportunity RETIRED (EOS createSalesOrderFromOpportunity owns it).
 // The ATOMIC Won action. Closes the Opportunity as WON and creates its Sales Order in ONE
 // transaction, so a Won Opportunity can never exist without its order. EXPORT != DEPLOY.
-export { closeOpportunityAsWon } from "./opportunity/closeOpportunityAsWon";
+// PASS 11 RETAIL SALES: closeOpportunityAsWon RETIRED (EOS closeOpportunityAsWon owns it).
 // Sales Order trusted read projection. EXPORT != DEPLOY; capability `salesOrder.read` registered
 // active:false (REGISTER != GRANT). Owner-ratified 2026-08-15 (see permissionCatalog.ts's entry).
 export { getSalesOrderContext, listSalesOrdersForAccount, listSalesOrderIndex } from "./salesOrder/salesOrderReadService";
 // Sales Agreement (Slice 4) -- the commercial commitment. Three write verbs and two reads; no
 // generic update, and nothing that can amend an ACCEPTED agreement. EXPORT != DEPLOY: these are
 // registered active:false and deny for everyone until a separate grant + per-environment activation.
-export { createSalesAgreement, updateSalesAgreementDraft, acceptSalesAgreement } from "./salesAgreement/salesAgreementCallables";
+// PASS 11 RETAIL SALES: createSalesAgreement / updateSalesAgreementDraft / acceptSalesAgreement RETIRED (EOS owns them).
 export { getSalesAgreementContext, getSalesAgreementForOpportunity } from "./salesAgreement/salesAgreementReadService";
 // The product picker read. Serves BOTH the Part typeahead and the Equipment Model picker, behind
 // the existing inventory.catalog.read authority -- no new capability, no widened Firestore Rules.
@@ -90,7 +91,7 @@ export { listCoordinatedOperations } from "./fulfillment/coordinatedVisitReadSer
 export { getLocationDisplay } from "./inventoryLocation/locationDisplayReadService";
 // Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered
 // active:false (REGISTER != GRANT).
-export { createSalesOrder, transitionSalesOrder } from "./salesOrder/salesOrderCallables";
+// PASS 11 RETAIL SALES: createSalesOrder / transitionSalesOrder RETIRED (EOS owns them).
 // Fulfillment allocation (Cycle 5 live). EXPORT != DEPLOY; capability `salesOrder.fulfill` active:false.
 export { allocateSalesOrder } from "./fulfillment/allocateSalesOrder";
 // Sales Order → Service seam (Cycle 7). EXPORT != DEPLOY; capability `salesOrder.service` active:false.

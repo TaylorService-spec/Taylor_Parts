@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { searchParts } from "../../services/partMasterQueries";
 import { useWorkOrderPartsPlan, PLAN_OUTCOME } from "../../hooks/useWorkOrderPartsPlan";
 import { WORK_ORDER_PARTS_PLAN_CAPABILITY } from "../../access/workOrderPartsPlanCapabilityAccess.js";
 import {
@@ -88,7 +88,7 @@ export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps,
 
   const loadCatalog = useCallback(async () => {
     setCatalog({ loading: true, code: null, parts: [] });
-    const fetchParts = deps?.fetchParts ?? fetchPartMasterList;
+    const fetchParts = deps?.fetchParts ?? (() => searchParts({ limit: 100 }));
     const res = await fetchParts();
     if (res?.ok) setCatalog({ loading: false, code: null, parts: res.parts ?? [] });
     else setCatalog({ loading: false, code: res?.code ?? "unavailable", parts: [] });

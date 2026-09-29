@@ -39,7 +39,10 @@ export interface OpportunitySummaryProjection {
   readonly owner: CommercialPersonReference;
   readonly accountablePerson: CommercialPersonReference | null;
   readonly creditedSalesperson: CommercialPersonReference | null;
+  /** The governed operating company, resolved from the stored key through the ACTIVE binding; null when unbound. */
   readonly operatingCompanyId: string | null;
+  /** The stored operating company KEY (a different vocabulary from the company id). */
+  readonly operatingCompanyKey: string | null;
   readonly salesChannel: string;
   readonly stage: string;
   readonly outcome: string | null;
@@ -62,7 +65,8 @@ export interface OpportunityDetailProjection extends OpportunitySummaryProjectio
 /** The lifecycle columns C1 left nullable for historical identity-only rows. Every governed create writes both. */
 export const OPPORTUNITY_IS_COMPLETE = "o.stage IS NOT NULL AND o.sales_channel IS NOT NULL";
 
-const SUMMARY_COLUMNS = `o.id, o.opportunity_number, o.account_id, acc.name AS account_name, o.operating_company_key,
+const SUMMARY_COLUMNS = `o.id, o.opportunity_number, o.account_id, acc.name AS account_name, o.operating_company_key, (SELECT k.operating_company_id FROM eos_policy.tenant_operating_company_keys k
+  WHERE k.tenant_id = o.tenant_id AND k.operating_company_key = o.operating_company_key AND k.status = 'ACTIVE') AS operating_company_id,
   o.sales_channel::text AS sales_channel, o.stage::text AS stage, o.outcome::text AS outcome, o.need,
   o.expected_value::float8 AS expected_value, o.expected_close_at, o.next_action, o.closed_at, o.edit_version, o.created_at, o.updated_at,
   o.owner_employee_id, EXISTS (SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = o.tenant_id AND e.id = o.owner_employee_id) AS owner_resolved,
@@ -89,7 +93,7 @@ function summaryOf(r: Row, lines: readonly OpportunityLineProjection[]): Opportu
     owner: personOf(r.owner_employee_id, r.owner_resolved)!,
     accountablePerson: personOf(r.accountable_employee_id, r.accountable_resolved),
     creditedSalesperson: personOf(r.credited_salesperson_employee_id, r.credited_resolved),
-    operatingCompanyId: r.operating_company_key, salesChannel: r.sales_channel, stage: r.stage, outcome: r.outcome, need: r.need,
+    operatingCompanyId: r.operating_company_id, operatingCompanyKey: r.operating_company_key, salesChannel: r.sales_channel, stage: r.stage, outcome: r.outcome, need: r.need,
     expectedValue: r.expected_value, expectedCloseAt: isoOf(r.expected_close_at), nextAction: r.next_action, closedAt: isoOf(r.closed_at),
     editVersion: Number(r.edit_version), createdAt: isoOf(r.created_at)!, updatedAt: isoOf(r.updated_at)!, lines,
   };

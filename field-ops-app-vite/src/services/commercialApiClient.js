@@ -68,6 +68,32 @@ const READ_OPERATION_SET = new Set(COMMERCIAL_READ_OPERATIONS);
 export const isCommercialReadOperation = (name) =>
   typeof name === "string" && READ_OPERATION_SET.has(name);
 
+/**
+ * Mirrors functions/src/eosCommercial/commercialHttp.ts MUTATION_RUNNERS (Pass 11 Retail Sales journey).
+ *
+ * The Opportunity and Sales Order commands moved from the Firebase callables to the governed PostgreSQL Commercial
+ * transport, so the browser now reaches them here -- ONE write path per object. Sales Agreement writes stay on their
+ * existing client (services/salesAgreementCommandClient.js) and are not reached through this list by any caller.
+ * Every command carries its own idempotencyKey; the server refuses a tenant, principal or capability in the input.
+ */
+export const COMMERCIAL_MUTATION_OPERATIONS = Object.freeze([
+  "acceptSalesAgreement",
+  "closeOpportunityAsWon",
+  "createOpportunity",
+  "createSalesAgreement",
+  "createSalesOrder",
+  "createSalesOrderFromOpportunity",
+  "transitionOpportunity",
+  "transitionSalesOrder",
+  "updateOpportunity",
+  "updateSalesAgreementDraft",
+]);
+
+const MUTATION_OPERATION_SET = new Set(COMMERCIAL_MUTATION_OPERATIONS);
+
+export const isCommercialOperation = (name) =>
+  typeof name === "string" && (READ_OPERATION_SET.has(name) || MUTATION_OPERATION_SET.has(name));
+
 /** Every failure category a screen renders differently. Same vocabulary as the Operations client. */
 export const COMMERCIAL_FAILURES = Object.freeze([
   "NOT_CONFIGURED",
@@ -77,6 +103,9 @@ export const COMMERCIAL_FAILURES = Object.freeze([
   "UNAUTHENTICATED",
   "FORBIDDEN",
   "NOT_FOUND",
+  "CONFLICT",
+  "PRECONDITION_FAILED",
+  "UNAVAILABLE",
   "INTERNAL",
   "UNREACHABLE",
 ]);
@@ -87,8 +116,12 @@ const CATEGORY_BY_STATUS = Object.freeze({
   403: "FORBIDDEN",
   404: "NOT_FOUND",
   405: "UNKNOWN_OPERATION",
-  409: "INVALID_INPUT",
+  // The governed commands' refusals (commercialHttp.ts STATUS_BY_CATEGORY): a stale edit version or a duplicate is a
+  // CONFLICT, a record not in a state that allows the command is PRECONDITION_FAILED -- both distinct from bad input.
+  409: "CONFLICT",
+  412: "PRECONDITION_FAILED",
   413: "INVALID_INPUT",
+  503: "UNAVAILABLE",
 });
 
 const failure = (code, message, extra = {}) =>
@@ -109,8 +142,8 @@ export function commercialFailureCategory(status, serverCode) {
  * so the envelope can be proven without a network or a browser.
  */
 export async function callCommercialApi(operation, options = {}) {
-  if (!isCommercialReadOperation(operation)) {
-    return failure("UNKNOWN_OPERATION", `"${operation}" is not a Commercial read operation`);
+  if (!isCommercialOperation(operation)) {
+    return failure("UNKNOWN_OPERATION", `"${operation}" is not a Commercial operation`);
   }
   let rawBase = options.baseUrl;
   if (rawBase === undefined) {

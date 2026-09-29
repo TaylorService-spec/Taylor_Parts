@@ -165,8 +165,8 @@ test("the contextual authorization SEAM", { skip: SKIP, concurrency: 1 }, async 
   // The manifest's REORDER_ASSIGNMENT_NOT_SEEDED blocker, resolved IN THIS THROWAWAY DATABASE ONLY:
   // the record relationship it declares but nonprod does not hold.
   await q(`INSERT INTO eos_ops.reorder_requests
-             (id,tenant_id,operating_company_key,part_id,warehouse_id,status,requested_quantity,requested_by,updated_by)
-           VALUES ($1,$2,$3,'p1','SC-WH-MAIN','PENDING_REVIEW',1,'fixture','fixture')`, [REORDER_RECORD, T, COMPANY_KEY]);
+             (id,tenant_id,operating_company_key,part_id,warehouse_id,status,requested_quantity,requested_by,updated_by,provenance)
+           VALUES ($1,$2,$3,'p1','SC-WH-MAIN','PENDING_REVIEW',1,(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$2),(SELECT min(principal_id) FROM eos_policy.tenant_memberships WHERE tenant_id=$2),'NATIVE')`, [REORDER_RECORD, T, COMPANY_KEY]);
   const relationship = MANIFEST.recordRelationships.find((r) => r.recordId === REORDER_RECORD);
   await q(`INSERT INTO eos_ops.reorder_request_assignments
              (id,tenant_id,reorder_request_id,assigned_employee_id,effective_from,provenance,assigned_by_principal_id)

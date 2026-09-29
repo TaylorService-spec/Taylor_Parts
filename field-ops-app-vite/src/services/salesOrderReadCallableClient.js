@@ -1,37 +1,17 @@
-// Sales Order — transport over the trusted `getSalesOrderContext` callable
-// (functions/src/salesOrder/salesOrderReadService.ts). Structure mirrors
-// services/financeReadCallableClient.js / services/receivingCallableClient.js: firebase is
-// imported LAZILY (no import-time initializeApp side effect), and this is the only place
-// that invokes the callable.
+// Sales Order detail read -- over the governed PostgreSQL Commercial transport (Pass 11 Retail Sales journey).
 //
-// READ, no client-side readiness flag -- `salesOrder.read` authorization and its
-// per-environment activation are both enforced server-side (the callable throws
-// permission-denied when unauthorized); attempting the call and mapping whatever comes
-// back is the same governed-read pattern every other read client in this codebase uses.
-function mapErrorToStatus(err) {
-  const raw = err && typeof err.code === "string" ? err.code : "";
-  const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
-  return code === "permission-denied" ? "denied" : "unavailable";
-}
+// Was the Firebase `getSalesOrderContext` callable. The Sales Order now lives in eos_commercial, read through
+// POST /commercial/sales `getSalesOrderDetail` (the server's governed Commercial read layer). Same
+// contract as before: `{ result }` ({status, salesOrder}, "ready" | "not-found") or `{ errorStatus: "denied" |
+// "unavailable" }`, never throws, no fallback to Firestore. Downstream execution facts (allocation, fulfillment,
+// billing, service Work Orders) are not carried -- that boundary is held (Owner ruling D2).
+import { commercialApiClient } from "./commercialApiClient.js";
+import { readErrorStatus, toSalesOrderContextResult } from "./commercialEosAdapters.js";
 
-async function invoke(payload) {
-  const [{ httpsCallable }, { functions }] = await Promise.all([
-    import("firebase/functions"),
-    import("../firebase/firebase.js"),
-  ]);
-  const res = await httpsCallable(functions, "getSalesOrderContext")(payload);
-  return res?.data;
-}
-
-// Fetch one Sales Order by id. Returns { result } on success (the callable's own
-// {status, salesOrder} envelope, "ready" or "not-found", passed through verbatim for
-// domain/salesOrderView.js to interpret) or { errorStatus } on failure ("denied" |
-// "unavailable") -- never throws.
-export async function fetchSalesOrderContext(salesOrderId) {
-  try {
-    const result = await invoke({ salesOrderId });
-    return { result };
-  } catch (err) {
-    return { errorStatus: mapErrorToStatus(err) };
-  }
+export async function fetchSalesOrderContext(salesOrderId, { client = commercialApiClient } = {}) {
+  const answer = await client.call("getSalesOrderDetail", { input: { salesOrderId } });
+  if (answer.ok) return { result: toSalesOrderContextResult(answer.result) };
+  const status = readErrorStatus(answer);
+  if (status === "not-found") return { result: toSalesOrderContextResult(null) };
+  return { errorStatus: status };
 }

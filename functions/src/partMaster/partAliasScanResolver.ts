@@ -34,58 +34,15 @@
 
 import { getFirestore } from "firebase-admin/firestore";
 import { resolvePartAlias } from "./partAliasCommands.js";
-import { ALIAS_TYPES } from "./types.js";
-import type { AliasType, PartId } from "./types.js";
+import { resolveScannedIdentifierWith } from "./partAliasScanCore.js";
+import type { ScannedIdentifierResolution } from "./partAliasScanCore.js";
 import type { PartMasterDeps } from "./partMasterCommands.js";
 
-/**
- * The outcome of resolving one scanned value.
- *
- * FOUND carries WHICH identifier matched, not just the Part. A warehouse user who scanned a box and
- * got a Part back should be able to see that it matched the supplier's SKU rather than a UPC --
- * without that, a mis-registered identifier is invisible until it causes a wrong receipt.
- */
-export type ScannedIdentifierResolution =
-  | {
-      readonly result: "FOUND";
-      readonly partId: PartId;
-      readonly aliasType: AliasType;
-      readonly aliasId: string;
-    }
-  | {
-      // Registered, and deliberately switched off. Reported with the Part it points to, because
-      // "this barcode used to mean PRT-1001" is the fact an operator needs; acting on it is a
-      // separate decision the caller does not get to make here.
-      readonly result: "INACTIVE";
-      readonly partId: PartId;
-      readonly aliasType: AliasType;
-      readonly aliasId: string;
-    }
-  | {
-      // The same scanned value is registered against more than one Part. Real data can be wrong,
-      // and a resolver that picks one hides the error inside a confident answer.
-      readonly result: "AMBIGUOUS";
-      readonly matches: readonly { readonly partId: PartId; readonly aliasType: AliasType }[];
-    }
-  | { readonly result: "NOT_FOUND" }
-  | { readonly result: "MALFORMED"; readonly detail: string };
-
-/**
- * Which alias types a bare scanned value could be.
- *
- * All of them EXCEPT MANUFACTURER_PN, which normalizeIdentifier() requires a manufacturer scope for
- * (`${manufacturerId}|${value}`) and which therefore cannot be resolved from a bare scan. When the
- * caller supplies a manufacturerId it is included; when they do not, it is not a candidate rather
- * than an error, because "you did not tell me the manufacturer" is not a property of the scan.
- *
- * Types whose normalizer rejects the value simply return MALFORMED for that type and drop out --
- * scanning a 12-digit number does not "fail" as a UPC and also "fail" as a LEGACY code; it is
- * asked about as both and answers for itself. That is why per-type MALFORMED is not an error here,
- * and why an OVERALL malformed verdict requires every candidate type to have rejected it.
- */
-export function candidateAliasTypes(hasManufacturerScope: boolean): readonly AliasType[] {
-  return ALIAS_TYPES.filter((t) => t !== "MANUFACTURER_PN" || hasManufacturerScope);
-}
+// The five outcomes, the candidate-type rule and the fan-out itself now live in the PURE
+// `partAliasScanCore.ts`, so the PostgreSQL Catalog authority shares them without importing
+// Firebase. Re-exported here so every existing caller and test keeps its import path.
+export { candidateAliasTypes } from "./partAliasScanCore.js";
+export type { ScannedIdentifierResolution } from "./partAliasScanCore.js";
 
 /** Injectable for tests; production passes the real service. */
 export type AliasResolver = typeof resolvePartAlias;
@@ -94,86 +51,22 @@ export async function resolveScannedPartIdentifier(
   input: { rawValue: string; manufacturerId?: string },
   deps?: PartMasterDeps & { readonly resolver?: AliasResolver }
 ): Promise<ScannedIdentifierResolution> {
+  // An empty identifier is MALFORMED before anything is read. Resolving the Firestore handle first
+  // would make a pure input check depend on an initialized app.
   const raw = typeof input?.rawValue === "string" ? input.rawValue.trim() : "";
   if (raw.length === 0) return { result: "MALFORMED", detail: "identifier value must be a non-empty string" };
 
   const resolver = deps?.resolver ?? resolvePartAlias;
   const db = deps?.db ?? getFirestore();
-  const manufacturerId = typeof input?.manufacturerId === "string" && input.manufacturerId.length > 0
-    ? input.manufacturerId
-    : undefined;
-
-  const types = candidateAliasTypes(manufacturerId !== undefined);
-
-  const found: { partId: PartId; aliasType: AliasType; aliasId: string }[] = [];
-  const inactive: { partId: PartId; aliasType: AliasType; aliasId: string }[] = [];
-  let anyTypeAccepted = false;
-  const malformedDetails: string[] = [];
-
-  for (const aliasType of types) {
-    const outcome = await resolver(
-      { aliasType, rawValue: raw, ...(manufacturerId !== undefined ? { manufacturerId } : {}) },
+  return resolveScannedIdentifierWith(
+    (probe) => resolver(
+      {
+        aliasType: probe.aliasType,
+        rawValue: probe.rawValue,
+        ...(probe.manufacturerId !== undefined ? { manufacturerId: probe.manufacturerId } : {}),
+      },
       { db },
-    );
-    switch (outcome.result) {
-      case "FOUND":
-        anyTypeAccepted = true;
-        found.push({ partId: outcome.partId, aliasType: outcome.aliasType, aliasId: outcome.aliasId });
-        break;
-      case "INACTIVE":
-        anyTypeAccepted = true;
-        inactive.push({ partId: outcome.partId, aliasType: outcome.aliasType, aliasId: outcome.aliasId });
-        break;
-      case "NOT_FOUND":
-        // The value normalizes as this type; nothing is registered under it. That still means the
-        // value is WELL-FORMED for at least one type, which is what separates NOT_FOUND from
-        // MALFORMED overall.
-        anyTypeAccepted = true;
-        break;
-      case "MALFORMED":
-        malformedDetails.push(`${aliasType}: ${outcome.detail}`);
-        break;
-      case "CONFLICT":
-        // Reserved and structurally unreachable under the unique-doc-id contract. If it ever does
-        // occur, it is a stored-data conflict and must surface as one, not be swallowed.
-        return { result: "MALFORMED", detail: `alias conflict: ${outcome.detail}` };
-    }
-  }
-
-  // ACTIVE registrations win over inactive ones, but only where they agree on the Part.
-  const distinctFound = [...new Map(found.map((f) => [f.partId, f])).values()];
-  if (distinctFound.length === 1) {
-    const one = distinctFound[0]!;
-    return { result: "FOUND", partId: one.partId, aliasType: one.aliasType, aliasId: one.aliasId };
-  }
-  if (distinctFound.length > 1) {
-    return {
-      result: "AMBIGUOUS",
-      matches: distinctFound.map((f) => ({ partId: f.partId, aliasType: f.aliasType })),
-    };
-  }
-
-  // Nothing active. A registered-but-switched-off identifier is reported as exactly that: telling
-  // the operator it was never registered would send them to create a duplicate of a record that
-  // someone deliberately retired.
-  const distinctInactive = [...new Map(inactive.map((i) => [i.partId, i])).values()];
-  if (distinctInactive.length === 1) {
-    const one = distinctInactive[0]!;
-    return { result: "INACTIVE", partId: one.partId, aliasType: one.aliasType, aliasId: one.aliasId };
-  }
-  if (distinctInactive.length > 1) {
-    return {
-      result: "AMBIGUOUS",
-      matches: distinctInactive.map((i) => ({ partId: i.partId, aliasType: i.aliasType })),
-    };
-  }
-
-  // Well-formed for at least one type and registered under none of them.
-  if (anyTypeAccepted) return { result: "NOT_FOUND" };
-
-  // Every candidate type rejected the value outright.
-  return {
-    result: "MALFORMED",
-    detail: malformedDetails.length > 0 ? "not a recognizable identifier for any registered type" : "no candidate identifier type",
-  };
+    ),
+    input,
+  );
 }

@@ -24,7 +24,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [
     { sku: "TST-9001", name: "STATIC-CATALOG-NAME-A", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 },
@@ -92,7 +92,7 @@ vi.mock("react-router-dom", async (orig) => {
   };
 });
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import PartDetail from "../src/modules/inventory/PartDetail.jsx";
 
 const CANONICAL_OK = {
@@ -115,7 +115,7 @@ describe("PartDetail -- Fix 1: requestable again once the only request is termin
       error: null,
       refresh: () => {},
     };
-    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    searchParts.mockResolvedValue(CANONICAL_OK);
     render(<PartDetail />);
     await screen.findByText("CANONICAL-NAME-A");
     // Terminal-status history card still shows (this fix must not hide history)...
@@ -131,7 +131,7 @@ describe("PartDetail -- Fix 1: requestable again once the only request is termin
       error: null,
       refresh: () => {},
     };
-    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    searchParts.mockResolvedValue(CANONICAL_OK);
     render(<PartDetail />);
     await screen.findByText("CANONICAL-NAME-A");
     expect(screen.getByText("Reorder Request -- Pending Review")).toBeTruthy();
@@ -140,7 +140,7 @@ describe("PartDetail -- Fix 1: requestable again once the only request is termin
 
   it("a part with no request at all shows Request Reorder (pre-existing behavior preserved)", async () => {
     reorderRequestState.current = { data: null, loading: false, error: null, refresh: () => {} };
-    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    searchParts.mockResolvedValue(CANONICAL_OK);
     render(<PartDetail />);
     await screen.findByText("CANONICAL-NAME-A");
     expect(screen.getByRole("button", { name: "Request Reorder" })).toBeTruthy();
@@ -150,7 +150,7 @@ describe("PartDetail -- Fix 1: requestable again once the only request is termin
 describe("PartDetail -- Fix 2: an access/read error is not reported as 'not found'", () => {
   it("a denied read (permission-denied) surfaces a distinct access-error message, not the not-found copy, and withholds Request Reorder", async () => {
     reorderRequestState.current = { data: null, loading: false, error: "permission-denied", refresh: () => {} };
-    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    searchParts.mockResolvedValue(CANONICAL_OK);
     render(<PartDetail />);
     await screen.findByText("CANONICAL-NAME-A");
     expect(screen.getByText(/access denied or a read error/i)).toBeTruthy();
@@ -161,7 +161,7 @@ describe("PartDetail -- Fix 2: an access/read error is not reported as 'not foun
 
   it("a genuinely missing document (not_found) still shows the not-found copy (regression pin)", async () => {
     reorderRequestState.current = { data: null, loading: false, error: "not_found", refresh: () => {} };
-    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    searchParts.mockResolvedValue(CANONICAL_OK);
     render(<PartDetail />);
     await screen.findByText("CANONICAL-NAME-A");
     expect(screen.getByText(/this reorder request could not be found/i)).toBeTruthy();
@@ -176,7 +176,7 @@ describe("PartDetail -- Fix 2: an access/read error is not reported as 'not foun
 describe("PartDetail -- M25: a denied/failed reorder-request read carries alert semantics, an empty one does not", () => {
   it("permission-denied renders inside role=\"alert\"", async () => {
     reorderRequestState.current = { data: null, loading: false, error: "permission-denied", refresh: () => {} };
-    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    searchParts.mockResolvedValue(CANONICAL_OK);
     render(<PartDetail />);
     await screen.findByText("CANONICAL-NAME-A");
     const alertEl = screen.getByRole("alert");
@@ -185,7 +185,7 @@ describe("PartDetail -- M25: a denied/failed reorder-request read carries alert 
 
   it("an unavailable read also renders inside role=\"alert\" (not just permission-denied)", async () => {
     reorderRequestState.current = { data: null, loading: false, error: "unavailable", refresh: () => {} };
-    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    searchParts.mockResolvedValue(CANONICAL_OK);
     render(<PartDetail />);
     await screen.findByText("CANONICAL-NAME-A");
     expect(screen.getByRole("alert")).toBeTruthy();
@@ -193,7 +193,7 @@ describe("PartDetail -- M25: a denied/failed reorder-request read carries alert 
 
   it("not_found (a genuine miss) never carries role=\"alert\"", async () => {
     reorderRequestState.current = { data: null, loading: false, error: "not_found", refresh: () => {} };
-    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    searchParts.mockResolvedValue(CANONICAL_OK);
     render(<PartDetail />);
     await screen.findByText("CANONICAL-NAME-A");
     expect(screen.queryByRole("alert")).toBeNull();
@@ -201,7 +201,7 @@ describe("PartDetail -- M25: a denied/failed reorder-request read carries alert 
 
   it("mismatch (a genuine miss) never carries role=\"alert\"", async () => {
     reorderRequestState.current = { data: null, loading: false, error: "mismatch", refresh: () => {} };
-    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    searchParts.mockResolvedValue(CANONICAL_OK);
     render(<PartDetail />);
     await screen.findByText("CANONICAL-NAME-A");
     expect(screen.queryByRole("alert")).toBeNull();
@@ -219,7 +219,7 @@ describe("PartDetail -- Fix 3: workflow action failures show safe categorized co
     const rawError = new Error("RAW-INTERNAL-DETAIL-should-never-render");
     rawError.code = "permission-denied";
     assignReorderRequest.mockRejectedValue(rawError);
-    fetchPartMasterList.mockResolvedValue(CANONICAL_OK);
+    searchParts.mockResolvedValue(CANONICAL_OK);
     render(<PartDetail />);
     await screen.findByText("CANONICAL-NAME-A");
 

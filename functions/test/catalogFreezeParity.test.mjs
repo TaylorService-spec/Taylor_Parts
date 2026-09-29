@@ -101,7 +101,7 @@ const INVOCATIONS = Object.freeze([
 test("the freeze parity suite exercises EXACTLY the registered catalog writer set", () => {
   const exercised = INVOCATIONS.map((i) => i.writerId);
   // The JOB_GATE writer (part.import) is a job-level refusal inside a callable, not a command body this suite can
-  // invoke with stub deps; its behavioural proof is catalogPartImportFreeze.test.mjs. It is named here so the census
+  // invoke with stub deps; its behavioural proof is catalogLane2Readiness.test.mjs. It is named here so the census
   // still closes over the WHOLE registry.
   const jobGated = LEGACY_CATALOG_MASTER_COMMANDS.filter((c) => c.form === "JOB_GATE").flatMap((c) => c.writerIds);
   assert.deepEqual(jobGated, ["part.import"]);

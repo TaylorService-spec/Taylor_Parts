@@ -1,7 +1,7 @@
 // INV-CONVERGENCE-E Stage A completion -- production reader bundle for the diagnostics
 // surface. Wires the EXISTING one-shot read-only paths (no new query surface, no
 // subscriptions, one call each) and a deterministic build identifier:
-//   - canonical : fetchPartMasterList()          (services/partMasterQueries)
+//   - canonical : searchParts({ limit: 100 })          (services/partMasterQueries)
 //   - static    : PARTS_CATALOG                  (data/partsCatalog)
 //   - ledger    : fetchInventoryTransactions()   (operationsQueries; inventory_transactions)
 //   - reorder   : fetchReorderRequests()         (operationsQueries; reorder_requests)
@@ -10,7 +10,7 @@
 // the existing computeAvailableStockByPart semantics. Performs NO writes. clock/runId
 // live here (never in the pure core). adapterCommit = the injected build id; when it is
 // absent/"unknown" the pure core resolves BLOCKED_INCOMPLETE_INPUT (never a false PASS).
-import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { searchParts } from "../../services/partMasterQueries";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { fetchInventoryTransactions, fetchReorderRequests, fetchReorderPurchaseOrders } from "../../services/operationsQueries";
 import { readOnce } from "../../domain/partsShadowParityReadOnce";
@@ -24,7 +24,7 @@ const ADAPTER_COMMIT = typeof __APP_COMMIT__ !== "undefined" ? __APP_COMMIT__ : 
 // run id (opaque prefix + incrementing sequence; no user identity).
 export function defaultReaders(overrides = {}) {
   return {
-    canonicalPartsReader: fetchPartMasterList, // already returns { ok, parts } | { ok:false, code }
+    canonicalPartsReader: searchParts, // already returns { ok, parts } | { ok:false, code }
     staticCatalogProvider: async () => ({ ok: true, rows: PARTS_CATALOG }),
     ledgerReader: () => readOnce(fetchInventoryTransactions),
     reorderReader: () => readOnce(fetchReorderRequests),

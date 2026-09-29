@@ -9,9 +9,9 @@
     "noNewBusinessAuthorityBehindAShim": true
   },
   "observed": {
-    "scannedFiles": 1269,
+    "scannedFiles": 1304,
     "shimsDiscovered": 4,
-    "alreadyFencedConsumers": 71,
+    "alreadyFencedConsumers": 60,
     "insulationNotGoverned": "Read hooks, query services and domain commands that use Firestore internally and return data are NOT shims and their callers are NOT censused -- see authorityExports."
   },
   "shims": [
@@ -24,10 +24,7 @@
         "makeCollectionStore"
       ],
       "consumers": [
-        "field-ops-app-vite/src/domain/accounts.js",
-        "field-ops-app-vite/src/domain/contacts.js",
-        "field-ops-app-vite/src/domain/equipmentRepository.js",
-        "field-ops-app-vite/src/domain/locations.js"
+        "field-ops-app-vite/src/domain/equipmentRepository.js"
       ]
     },
     {

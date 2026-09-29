@@ -10,7 +10,7 @@ import {
 } from "../src/domain/opportunitySectionSave.js";
 import { opportunityDetailModel, sectionDraft } from "../src/domain/opportunityFieldModel.js";
 
-const BASE = { opportunityId: "opp-1", expectedUpdatedAtMillis: 1700, idempotencyKey: "k1" };
+const BASE = { opportunityId: "opp-1", expectedEditVersion: 3, idempotencyKey: "k1" };
 
 // ------------------------------------------------------------------ the rename
 
@@ -24,13 +24,13 @@ test("channel is renamed to salesChannel — the one place the two vocabularies 
 test("the version token and idempotency key are always carried", () => {
   const { input } = buildSectionSaveInput({ ...BASE, draft: { need: "two units" } });
   assert.equal(input.opportunityId, "opp-1");
-  assert.equal(input.expectedUpdatedAtMillis, 1700, "without this the command rejects the call outright");
+  assert.equal(input.expectedEditVersion, 3, "without this the command rejects the call outright (EDIT_VERSION_REQUIRED)");
   assert.equal(input.idempotencyKey, "k1");
 });
 
 test("only the edited section's fields are sent — absent means leave alone", () => {
   const { input } = buildSectionSaveInput({ ...BASE, draft: { need: "two units" } });
-  assert.deepEqual(Object.keys(input).sort(), ["expectedUpdatedAtMillis", "idempotencyKey", "need", "opportunityId"]);
+  assert.deepEqual(Object.keys(input).sort(), ["expectedEditVersion", "idempotencyKey", "need", "opportunityId"]);
 });
 
 test("an explicit null is preserved — clearing a value is not the same as omitting it", () => {

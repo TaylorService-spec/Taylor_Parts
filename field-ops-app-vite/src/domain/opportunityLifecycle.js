@@ -113,6 +113,8 @@ export function buildPipelineRow(opp, { nowMillis = null, accountNameById = {} }
     // "I loaded the version-less copy" -- and it still fails the check if someone else edits
     // in between, because that write gives the record a real version.
     updatedAtMillis: num(opp.updatedAtMillis) ?? 0,
+    // The governed edit's concurrency token (eos_commercial edit_version), passed back by the save.
+    editVersion: num(opp.editVersion),
     // Record timestamps. The Record section rendered "not recorded" for every Opportunity ever
     // shown, because these were never projected -- not because the data was missing.
     createdAt: num(opp.createdAtMillis),

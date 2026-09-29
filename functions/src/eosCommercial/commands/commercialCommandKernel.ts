@@ -129,6 +129,7 @@ export async function requireCatalogReferences(
 // ════════════════════ error translation ════════════════════
 
 const PRECONDITION_CODES = new Set([
+  "OPERATING_COMPANY_KEY_NOT_BOUND", "OPERATING_COMPANY_KEY_AMBIGUOUS",
   "ALREADY_CLOSED", "ILLEGAL_TRANSITION", "OUTCOME_REQUIRES_DECISION", "NO_LINES", "LINE_QTY_REQUIRED_FOR_WON", "CLOSED",
   "NO_CHANGES", "TERMINAL", "NOT_FULFILLABLE", "UNPRICED_LINE", "COMPANY_REQUIRED", "ALREADY_ESTABLISHED", "NOTHING_TO_HAND_OFF",
   "HANDOFF_IS_NO_OP", "NO_OP",
@@ -137,6 +138,8 @@ const DOMAIN_ERROR_NAMES = new Set([
   "OpportunityCommandError", "SalesAgreementCommandError", "SalesOrderCommandError", "CommercialCompanyScopeError",
   "CommercialOwnershipError", "CreationOwnerUnresolvedError", "AttributionError", "CreationAccountablePersonError",
   "AccountablePersonMintError", "CommercialAccountabilityWriteError", "CommercialNumberingError", "EmployeeAuthorityFailure",
+  // The governed company -> key binding (eosOps/operatingCompanyBinding.ts): an unkeyed or inactive company refuses.
+  "OperatingCompanyBindingError",
 ]);
 const CONSTRAINT_CODES: Readonly<Record<string, [string, CommercialErrorCategory]>> = Object.freeze({
   opportunities_account_fk: ["ACCOUNT_NOT_FOUND", "NOT_FOUND"],

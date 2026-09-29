@@ -6,7 +6,11 @@
 // trusted command (Phase B) can stage the Receiving Order create INSIDE its own transaction. Reuses the
 // merged inventoryLedger foundation; creates NO second ledger and touches no legacy collection.
 
-import { createHash } from "node:crypto";
+import {
+  fingerprintReceivingOrder,
+  receivingOrderDocId,
+  RECEIVING_ID_RE,
+} from "./receivingIdentity.js";
 import { Timestamp } from "firebase-admin/firestore";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { validateLocationRef, isPlainObject, isNonEmptyString } from "../inventoryLedger/operationalMovementValidation.js";
@@ -36,66 +40,15 @@ import { isOperatingCompanyIdShape } from "../ownership/operatingCompanyAuthorit
 // The injected idempotency store is the ledger foundation's generic { read, create } doc seam.
 export type ReceivingIdempotencyStore = LedgerIdempotencyStore;
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    return `{${Object.keys(obj).sort().map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-// 16-hex fingerprint over the request-derived value only (not the server-authored actor/timestamps):
-// replay iff equal, conflict iff not (mirrors the ledger/truck-registry precedent).
-export function fingerprintReceivingOrder(value: ReceivingOrderValue): string {
-  return createHash("sha256").update(canonicalJson(value)).digest("hex").slice(0, 16);
-}
-
-// LEGACY receipt identity: deterministic and path-safe, derived from the caller idempotencyKey ALONE.
-// The raw caller string is never a Firestore path; the deterministic doc IS the idempotency record.
-//
-// PRESERVED EXACTLY, and deliberately not "fixed". Deployed callers already hold receipts at these
-// ids, and changing the derivation would orphan every one of them -- a genuine retry would hash to a
-// new id, find nothing, and RE-APPLY. Its narrowness is contained instead: legacy receipts are
-// full-quantity, one-shot, and additionally serialized by the reorder_requests transition, so a key
-// reused across two legacy POs is caught by that transition rather than silently replayed.
-export function receivingOrderDocId(idempotencyKey: string): string {
-  return "rcv_" + createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 40);
-}
-
-/**
- * CANONICAL receipt identity — TARGET-SCOPED, not key-scoped.
- *
- * The legacy derivation hashes the idempotency key and nothing else, so the SAME raw client key used
- * against two DIFFERENT purchase orders resolves to one document. For a one-shot legacy receipt that
- * is contained; for canonical receipts, where a client legitimately sends many receipts and may well
- * reuse a key generator per session, it would mean the second PO's receipt silently replays the
- * first PO's result — reporting success for a receipt that never happened, against stock that never
- * moved.
- *
- * So the canonical namespace carries the operation, the source authority, the purchase order, the
- * actor, and the client key. Same actor + same PO + same key + same payload replays; the same key
- * against a different PO is a different receipt and applies. Actor scoping matches the established
- * pattern in this repository (partMasterCommands' auditDocId is actor-scoped), so two people are two
- * intents.
- *
- * Hashed over `canonicalJson`, this module's own key-sorted encoding — the same encoding the
- * fingerprint uses — so the identity cannot depend on property insertion order.
- *
- * The `rcvc_` prefix is what makes legacy and canonical namespaces PROVABLY disjoint while sharing
- * one collection: a canonical id can never equal a legacy id, whatever the inputs.
- */
-export interface CanonicalReceivingNamespace {
-  readonly operation: "receiveInventoryStock";
-  readonly sourceType: ReceivingSourceType;
-  readonly purchaseOrderId: string;
-  readonly actorId: string;
-  readonly idempotencyKey: string;
-}
-
-export function canonicalReceivingOrderDocId(ns: CanonicalReceivingNamespace): string {
-  return "rcvc_" + createHash("sha256").update(canonicalJson(ns)).digest("hex").slice(0, 40);
-}
+// The pure identity derivations live in `receivingIdentity.ts` so the PostgreSQL receiving
+// authority can share them without importing Firebase. Re-exported here so every existing caller
+// and test keeps its import path, and so there is exactly ONE definition of "which receipt is this".
+export {
+  fingerprintReceivingOrder,
+  receivingOrderDocId,
+  canonicalReceivingOrderDocId,
+  type CanonicalReceivingNamespace,
+} from "./receivingIdentity.js";
 
 // Serialize a validated value into the stored order. actor + createdAt/updatedAt/createdBy/updatedBy are
 // SERVER-AUTHORED from the trusted caller's actor and clock (never accepted from untrusted input).
@@ -158,7 +111,6 @@ const STORED_KEYS = new Set([
 ]);
 // Both namespaces. `rcvc_` (canonical, target-scoped) and `rcv_` (legacy, key-scoped) share this
 // one collection and are provably disjoint by prefix -- a canonical id can never equal a legacy one.
-const RECEIVING_ID_RE = /^rcvc?_[0-9a-f]{40}$/;
 // RO-YYYY-###### — six-digit zero-padded sequence, but not truncated once the sequence outgrows six
 // digits (see receivingOrderNumbering.ts's formatReceivingOrderNumber), so this stays a floor, not a cap.
 const RECEIVING_ORDER_NUMBER_RE = /^RO-[0-9]{4}-[0-9]{6,}$/;
