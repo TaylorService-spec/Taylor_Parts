@@ -63,7 +63,13 @@ test("commercial schema parity, numbering and receipts, in PostgreSQL", { skip: 
   }
   const spineOpp = await createCommercialRecord(pool, "t1", "seed", { kind: "OPPORTUNITY", recordNumber: "SYN-NP-OPP-0001", accountId: "acct-1", ownerEmployeeId: "e-owner", createdBy: "seed" });
   const spineSa = await createCommercialRecord(pool, "t1", "seed", { kind: "SALES_AGREEMENT", recordNumber: "SYN-NP-SA-0001", accountId: "acct-1", ownerEmployeeId: "e-owner", createdBy: "seed", opportunityId: spineOpp.id });
-  const spineSo = await createCommercialRecord(pool, "t1", "seed", { kind: "SALES_ORDER", recordNumber: "SYN-NP-SO-0001", accountId: "acct-1", ownerEmployeeId: "e-owner", operatingCompanyId: "taylor", createdBy: "seed", opportunityId: spineOpp.id, salesAgreementId: spineSa.id });
+  // The pre-022 world predates the governed company-key binding (migration 1760486400000), so a Sales Order row of that
+  // era is seeded as the historical row it was -- by SQL, with the key it carried -- not through today's writer, which
+  // resolves the key through a binding that does not exist at this schema point.
+  const spineSo = { id: "sor-syn-np-0001" };
+  await q(`INSERT INTO eos_commercial.sales_orders (id, tenant_id, sales_order_number, account_id, owner_employee_id, operating_company_key,
+    opportunity_id, sales_agreement_id, created_by, updated_by) VALUES ($1,'t1','SYN-NP-SO-0001','acct-1','e-owner','taylor',$2,$3,'seed','seed')`,
+    [spineSo.id, spineOpp.id, spineSa.id]);
   // A pre-022 row whose Account was never loaded into eos_crm.
   await q(`INSERT INTO eos_commercial.opportunities (id, tenant_id, opportunity_number, account_id, owner_employee_id, created_by, updated_by)
     VALUES ('opp-legacy','t1','OPP-LEGACY','firestore-only-account','e-owner','legacy','legacy')`);

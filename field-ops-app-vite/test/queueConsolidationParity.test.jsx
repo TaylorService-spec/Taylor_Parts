@@ -8,7 +8,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [{ sku: "TST-9001", name: "STATIC-CATALOG-NAME-A", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }],
   getCatalogItem: () => undefined,
@@ -25,7 +25,7 @@ vi.mock("../src/hooks/useReorderRequests", () => {
     useReorderRequests: r,
     useReorderRequestsByStatus: () => ({ data: [managerQueueRow], loading: false, error: null }),
     useReorderRequestsByStatuses: () => ({ data: [], loading: false, error: null }),
-    useReorderRequestsAssignedTo: (uid, status) =>
+    useMyAssignedReorderRequests: (status) =>
       status === "ASSIGNED_TO_PARTS_ASSOCIATE"
         ? { data: [associateWaitingRow], loading: false, error: null }
         : { data: [], loading: false, error: null },
@@ -71,7 +71,7 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useSearchParams: () => [new URLSearchParams(), () => {}], Link: ({ children }) => children };
 });
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import PartsList from "../src/modules/inventory/PartsList.jsx";
 import ManagerQueuePanel from "../src/shared/reorder/ManagerQueuePanel.jsx";
 
@@ -81,7 +81,7 @@ const READY = { ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-A"
 
 describe("Parts -> WORK (PartsList.jsx) is actionable via the shared queue components", () => {
   it("Parts Manager Queue: an Assign button is present (not just a link) and invokes the SAME governed assignReorderRequest()", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<PartsList accessVersion={1} />);
     const assignButton = await screen.findByRole("button", { name: /assign canonical-name-a/i });
     fireEvent.click(assignButton);
@@ -90,7 +90,7 @@ describe("Parts -> WORK (PartsList.jsx) is actionable via the shared queue compo
   });
 
   it("My Work: a View button opens the shared AssignedRequestDetail (not a bare link)", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<PartsList accessVersion={1} />);
     const viewButton = await screen.findByRole("button", { name: /view canonical-name-a/i });
     fireEvent.click(viewButton);
@@ -98,7 +98,7 @@ describe("Parts -> WORK (PartsList.jsx) is actionable via the shared queue compo
   });
 
   it("no queue item disappears: the manager-queue row and the my-work row both still render their part name", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<PartsList accessVersion={1} />);
     const names = await screen.findAllByText("CANONICAL-NAME-A");
     // At least the catalog row + manager-queue card + my-work card each render the name.
@@ -168,13 +168,19 @@ describe("ManagerQueuePanel: the Assign panel opens beside the selected card", (
     expect(document.activeElement).toBe(trigger);
   });
 
-  it("8+9: submits the selected request id and the selected employee's linked userId, unchanged", async () => {
+  it("8+9: submits the selected request id and the selected EMPLOYEE -- never the linked uid", async () => {
     renderQueue();
     fireEvent.click(assignButtons()[1]);
     fireEvent.click(screen.getByRole("button", { name: "pick-emp-77" }));
     fireEvent.click(screen.getByRole("button", { name: /^assign$/i }));
     await waitFor(() => expect(assignReorderRequest).toHaveBeenCalledTimes(1));
-    expect(assignReorderRequest).toHaveBeenCalledWith("req-second", { assignedToUserId: "user-77" });
+    // The picker always chose an Employee; the panel used to derive that Employee's Firebase uid and
+    // submit THAT, so a correct choice became a uid on the way to the database. The governed
+    // assignment authority names an Employee, so the Employee id is simply what is submitted.
+    expect(assignReorderRequest).toHaveBeenCalledWith("req-second", { employeeId: "emp-77" });
+    const [, payload] = assignReorderRequest.mock.calls[0];
+    expect(payload).not.toHaveProperty("assignedToUserId");
+    expect(JSON.stringify(payload)).not.toContain("user-77");
   });
 
   it("10: a rejected assignment shows its error INSIDE the selected queue item", async () => {

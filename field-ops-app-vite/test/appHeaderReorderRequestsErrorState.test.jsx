@@ -2,7 +2,7 @@
 // (vitest + jsdom), following test/dispatchSurfacesErrorState.test.jsx's convention.
 //
 // AppHeader.jsx used to call (this orchestration now lives in NotificationControl.jsx) useReorderRequests()/useReorderRequestsByStatus()(x2)/
-// useReorderRequestsAssignedTo() and destructure only `{ data }` from each, discarding
+// useMyAssignedReorderRequests() and destructure only `{ data }` from each, discarding
 // the `error` every one of those hooks already exposes (hooks/useReorderRequests.js's
 // W2 notes). A failed reorder-request subscription rendered the exact same "no pending
 // reorder requests" / undercounted bell as a genuinely empty queue -- an admin/
@@ -37,7 +37,7 @@ const reorderHooks = vi.hoisted(() => ({
 vi.mock("../src/hooks/useReorderRequests", () => ({
   useReorderRequests: vi.fn(() => reorderHooks.requests),
   useReorderRequestsByStatus: vi.fn(() => reorderHooks.byStatus),
-  useReorderRequestsAssignedTo: vi.fn(() => reorderHooks.assignedTo),
+  useMyAssignedReorderRequests: vi.fn(() => reorderHooks.assignedTo),
 }));
 
 import NotificationControl from "../src/shared/ui/NotificationControl.jsx";
@@ -76,7 +76,7 @@ describe("NotificationControl -- a failed reorder-request subscription is not sw
     expect(screen.getByRole("button", { name: /Notifications, couldn't load/i })).toBeTruthy();
   });
 
-  it("useReorderRequestsAssignedTo() (Assigned to You) erroring surfaces the failure indication", () => {
+  it("useMyAssignedReorderRequests() (Assigned to You) erroring surfaces the failure indication", () => {
     reorderHooks.assignedTo = { data: [], error: PERMISSION_ERROR };
     renderHeader();
     expect(screen.getByRole("button", { name: /Notifications, couldn't load/i })).toBeTruthy();

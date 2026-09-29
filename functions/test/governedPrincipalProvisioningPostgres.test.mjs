@@ -329,10 +329,10 @@ test("the governed Principal provisioning operator, in PostgreSQL", { skip: SKIP
     `SELECT tenant_id, actor_uid, target_kind, target_id, reason, after FROM eos_policy.audit_events
       WHERE action = $1 ORDER BY occurred_at, id`, [tool.AUDIT_ACTION])).rows;
 
-  await t.test("the premise: the catalog carries 82 capabilities and NO tenant grants them yet", async () => {
+  await t.test("the premise: the catalog carries 90 capabilities and NO tenant grants them yet", async () => {
     const counts = await rowCounts();
-    assert.equal(counts["eos_policy.capabilities"], 82,
-      "the capability catalog is not the measured 82 (79 + admin.securityPolicy.write, 1762646400000, + admin.employeeFunctionalRole.write, 1762819200000, granted to nobody, + admin.administratorRole.assign, 1763078400000, Owner ruling R1) -- this lane registers none, so this must hold");
+    assert.equal(counts["eos_policy.capabilities"], 90,
+      "the capability catalog is not the measured 90 (79 + admin.securityPolicy.write, 1762646400000, + admin.employeeFunctionalRole.write, 1762819200000, granted to nobody, + admin.administratorRole.assign, 1763078400000, Owner ruling R1, + the eight Reorder lifecycle keys, 1763337600000, Administration-grant-only) -- this lane registers none, so this must hold");
     assert.equal(counts["eos_policy.role_capabilities"], 0,
       "a freshly bootstrapped tenant already grants capabilities -- the two-half authority proof below needs it not to");
     assert.equal(counts["eos_policy.principal_capabilities"], 0);
@@ -383,7 +383,7 @@ test("the governed Principal provisioning operator, in PostgreSQL", { skip: SKIP
     await grantRoleCapability(tenantA.id, "admin");
     // Reproduces the measured nonprod pairing (admin, owner hold admin.roleAssignment.write) in this
     // throwaway database. The catalog is untouched: this is a GRANT row, not a capability.
-    assert.equal((await q("SELECT count(*)::int AS n FROM eos_policy.capabilities")).rows[0].n, 82);
+    assert.equal((await q("SELECT count(*)::int AS n FROM eos_policy.capabilities")).rows[0].n, 90);
 
     const resolved = await tool.resolveAdministrationAuthority(pool, repo, tenantA.id, roleGrantedAdminId, deps);
     assert.deepEqual(resolved.heldRoleKeys, ["admin"]);
@@ -477,7 +477,7 @@ test("the governed Principal provisioning operator, in PostgreSQL", { skip: SKIP
       "an Employee link was created as a side effect");
     assert.equal(after["eos_policy.principal_capabilities"], before["eos_policy.principal_capabilities"],
       "a direct Principal capability grant was made");
-    assert.equal(after["eos_policy.capabilities"], 82, "the capability catalog changed");
+    assert.equal(after["eos_policy.capabilities"], 90, "the capability catalog changed");
     assert.equal(after["eos_policy.role_capabilities"], before["eos_policy.role_capabilities"], "a Role was widened");
     assert.equal(after["eos_policy.roles"], before["eos_policy.roles"], "a Role was created");
     // The command bumps no access version for a bare admission either.

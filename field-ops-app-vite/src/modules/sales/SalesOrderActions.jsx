@@ -47,8 +47,11 @@ export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapa
   const hasPartLine = view.lines.some((l) => l.kind === "PART");
   const advanceAllowed = canAdvance(view.state, { allLinesFulfilled: view.allLinesFulfilled });
   const cancelAllowed = canCancel(view.state);
-  const allocateAllowed = canAllocate(view.state);
-  const serviceAllowed = canCreateService(view.state, { serviceWorkOrderIds: view.serviceWorkOrderIds });
+  // Allocation and service creation are the HELD downstream boundary for a governed (PostgreSQL) Sales Order: they are
+  // not offered while the order's downstream execution is not tracked (Owner ruling D2).
+  const downstreamTracked = view.downstreamTracked !== false;
+  const allocateAllowed = downstreamTracked && canAllocate(view.state);
+  const serviceAllowed = downstreamTracked && canCreateService(view.state, { serviceWorkOrderIds: view.serviceWorkOrderIds });
   const nextState = nextAdvanceState(view.state);
 
   // Dialog copy must use the governed business reference, never the Firestore document id

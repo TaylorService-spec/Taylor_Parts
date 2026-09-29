@@ -99,6 +99,7 @@ on:
       - "field-ops-app-vite/test/metadataConvergedFeatures.test.mjs"
       - "field-ops-app-vite/test/objectListMetadataAuthority.test.mjs"
       - "field-ops-app-vite/test/partMasterStructuredListScreen.test.jsx"
+      - "field-ops-app-vite/test/partMasterQueriesServerShape.test.jsx"
       # PartsList / Inventory Health scale semantics + phone cards.
       - "field-ops-app-vite/src/domain/inventoryUrgencyTone.js"
       - "field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts"
@@ -208,6 +209,7 @@ on:
       - "field-ops-app-vite/test/metadataConvergedFeatures.test.mjs"
       - "field-ops-app-vite/test/objectListMetadataAuthority.test.mjs"
       - "field-ops-app-vite/test/partMasterStructuredListScreen.test.jsx"
+      - "field-ops-app-vite/test/partMasterQueriesServerShape.test.jsx"
       # PartsList / Inventory Health scale semantics + phone cards.
       - "field-ops-app-vite/src/domain/inventoryUrgencyTone.js"
       - "field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts"

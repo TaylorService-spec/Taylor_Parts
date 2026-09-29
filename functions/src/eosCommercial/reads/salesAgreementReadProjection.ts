@@ -51,7 +51,10 @@ export interface SalesAgreementSummaryProjection {
   readonly owner: CommercialPersonReference;
   readonly accountablePerson: CommercialPersonReference | null;
   readonly creditedSalesperson: CommercialPersonReference | null;
+  /** The governed operating company, resolved from the stored key through the ACTIVE binding; null when unbound. */
   readonly operatingCompanyId: string | null;
+  /** The stored operating company KEY (a different vocabulary from the company id). */
+  readonly operatingCompanyKey: string | null;
   readonly state: string;
   readonly currency: string;
   readonly acceptedAt: string | null;
@@ -78,7 +81,8 @@ export interface SalesAgreementDetailProjection extends SalesAgreementSummaryPro
 /** Every governed Agreement create writes both; C1 leaves them nullable only for identity-only rows. */
 export const SALES_AGREEMENT_IS_COMPLETE = "a.state IS NOT NULL AND a.currency IS NOT NULL";
 
-const SUMMARY_COLUMNS = `a.id, a.sales_agreement_number, a.opportunity_id, a.account_id, acc.name AS account_name, a.operating_company_key,
+const SUMMARY_COLUMNS = `a.id, a.sales_agreement_number, a.opportunity_id, a.account_id, acc.name AS account_name, a.operating_company_key, (SELECT k.operating_company_id FROM eos_policy.tenant_operating_company_keys k
+  WHERE k.tenant_id = a.tenant_id AND k.operating_company_key = a.operating_company_key AND k.status = 'ACTIVE') AS operating_company_id,
   a.state::text AS state, a.currency, a.accepted_at, a.accepted_by, a.created_at, a.updated_at,
   a.shipping_minor, a.install_charge_minor, a.tax_minor, a.down_payment_minor, a.trade_in_minor,
   a.owner_employee_id, EXISTS (SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = a.tenant_id AND e.id = a.owner_employee_id) AS owner_resolved,
@@ -120,7 +124,7 @@ function summaryOf(r: Row, lines: readonly SalesAgreementLineProjection[]): Sale
     owner: personOf(r.owner_employee_id, r.owner_resolved)!,
     accountablePerson: personOf(r.accountable_employee_id, r.accountable_resolved),
     creditedSalesperson: personOf(r.credited_salesperson_employee_id, r.credited_resolved),
-    operatingCompanyId: r.operating_company_key, state: r.state, currency: r.currency,
+    operatingCompanyId: r.operating_company_id, operatingCompanyKey: r.operating_company_key, state: r.state, currency: r.currency,
     acceptedAt: isoOf(r.accepted_at), acceptedByPrincipalId: r.accepted_by,
     totals: totals as SalesAgreementTotalsProjection, createdAt: isoOf(r.created_at)!, updatedAt: isoOf(r.updated_at)!, lines,
   };

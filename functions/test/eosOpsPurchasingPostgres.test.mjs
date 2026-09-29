@@ -25,6 +25,11 @@ const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
 
 const TENANT = "tenant-purchasing";
+/** The governed Principal this suite acts as. requested_by is a Principal id, not a uid. */
+const ACTOR = "prn-purchasing-fixture";
+/** The buyer and the voider. Separate Principals, because separation of actors is the point. */
+const BUYER = "prn-purchasing-buyer";
+const VOIDER = "prn-purchasing-voider";
 // OPAQUE, and deliberately not a real company name. Nothing this schema does may depend on which
 // operating companies a deployment happens to have.
 const CO_A = "oc-alpha";
@@ -68,6 +73,23 @@ async function reset() {
     "INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1) ON CONFLICT DO NOTHING",
     [TENANT],
   );
+  // reorder_requests.requested_by is a governed EOS Principal (migration 037), so the fixture
+  // actor has to be one. It used to be the bare string "u-1", which is exactly the uid-shaped
+  // value that foreign key exists to keep out of a governed identity column.
+  // purchase_orders.created_by and purchase_order_voids.voided_by are governed Principals too
+  // (migration 039), so every actor this suite acts as has to be one.
+  for (const principalId of [ACTOR, BUYER, VOIDER]) {
+    await seed.query(
+      `INSERT INTO eos_policy.principals (id, identity_provider, external_subject, status)
+       VALUES ($1, 'firebase', $2, 'active') ON CONFLICT DO NOTHING`,
+      [principalId, `fixture-${principalId}`],
+    );
+    await seed.query(
+      `INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id, status)
+       VALUES ($3, $1, $2, 'active') ON CONFLICT DO NOTHING`,
+      [TENANT, principalId, `tm-${principalId}`],
+    );
+  }
   await seed.end();
 }
 
@@ -85,7 +107,7 @@ const columnsOf = (table) => query(
 
 /** A reorder request parked in the state its purchase order may be recorded from. */
 async function seedRecordableRequest(suffix, company = CO_A) {
-  return po.createReorderRequest(repoPool(), TENANT, "u-1", company, {
+  return po.createReorderRequest(repoPool(), TENANT, ACTOR, company, {
     partId: `PRT-00000${suffix}`,
     warehouseId: "wh-1",
     status: po.PO_RECORDABLE_STATUS,
@@ -187,7 +209,7 @@ test("the repository offers no update or delete for the immutable tables", { ski
 test("a purchase order's id IS its reorder request's id -- one column, PK and FK", { skip: SKIP }, async () => {
   await reset();
   const request = await seedRecordableRequest(1);
-  const order = await po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput());
+  const order = await po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput());
   assert.equal(order.purchaseOrderId, request.id);
 
   // There is no second identity column that could disagree.
@@ -216,10 +238,10 @@ test("a purchase order cannot name a reorder request that does not exist", { ski
 test("a reorder request has AT MOST ONE purchase order -- the PO_ALREADY_EXISTS guard is the primary key", { skip: SKIP }, async () => {
   await reset();
   const request = await seedRecordableRequest(2);
-  await po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput());
+  await po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput());
   // The request is now ORDERED, so the domain refusal names the state first...
   await assert.rejects(
-    () => po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput()),
+    () => po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput()),
     (err) => err.code === "REQUEST_STATE_INVALID",
   );
   // ...and the schema refuses the duplicate outright, regardless of any command's state check.
@@ -237,11 +259,11 @@ test("a reorder request has AT MOST ONE purchase order -- the PO_ALREADY_EXISTS 
 
 test("a purchase order cannot be recorded from a state that is not PURCHASING_IN_PROGRESS", { skip: SKIP }, async () => {
   await reset();
-  const request = await po.createReorderRequest(repoPool(), TENANT, "u-1", CO_A, {
+  const request = await po.createReorderRequest(repoPool(), TENANT, ACTOR, CO_A, {
     partId: "PRT-000003", warehouseId: "wh-1", status: "PENDING_REVIEW", requestedQuantity: 1,
   });
   await assert.rejects(
-    () => po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput()),
+    () => po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput()),
     (err) => err.code === "REQUEST_STATE_INVALID",
   );
   // FAIL CLOSED: the refusal happened before any write.
@@ -253,12 +275,12 @@ test("a purchase order cannot be recorded from a state that is not PURCHASING_IN
 test("voiding appends a record and never touches the purchase order", { skip: SKIP }, async () => {
   await reset();
   const request = await seedRecordableRequest(4);
-  const order = await po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput());
+  const order = await po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput());
   const before = await po.readPurchaseOrder(repoPool(), TENANT, order.purchaseOrderId);
 
-  const record = await po.voidPurchaseOrder(repoPool(), TENANT, "u-3", order.purchaseOrderId, "supplier cancelled");
+  const record = await po.voidPurchaseOrder(repoPool(), TENANT, VOIDER, order.purchaseOrderId, "supplier cancelled");
   assert.equal(record.purchaseOrderId, order.purchaseOrderId);
-  assert.equal(record.voidedBy, "u-3");
+  assert.equal(record.voidedBy, VOIDER);
   // The void record inherits the purchase order's company and part -- not supplied, not re-derived.
   assert.equal(record.operatingCompanyKey, CO_A);
   assert.equal(record.partId, before.partId);
@@ -275,7 +297,7 @@ test("a void is reachable only from ORDERED, and writes nothing when refused", {
   await reset();
   const request = await seedRecordableRequest(5);
   await assert.rejects(
-    () => po.voidPurchaseOrder(repoPool(), TENANT, "u-3", request.id, "too early"),
+    () => po.voidPurchaseOrder(repoPool(), TENANT, VOIDER, request.id, "too early"),
     (err) => err.code === "REQUEST_STATE_INVALID",
   );
   assert.equal(await po.readPurchaseOrderVoid(repoPool(), TENANT, request.id), null);
@@ -285,9 +307,9 @@ test("a void is reachable only from ORDERED, and writes nothing when refused", {
 test("a void with no stated reason records nothing and is refused", { skip: SKIP }, async () => {
   await reset();
   const request = await seedRecordableRequest(6);
-  const order = await po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput());
+  const order = await po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput());
   await assert.rejects(
-    () => po.voidPurchaseOrder(repoPool(), TENANT, "u-3", order.purchaseOrderId, "   "),
+    () => po.voidPurchaseOrder(repoPool(), TENANT, VOIDER, order.purchaseOrderId, "   "),
     (err) => err.code === "VOID_REASON_REQUIRED",
   );
   // The column refuses it too, so no other writer can slip a blank reason past.
@@ -335,7 +357,7 @@ test("every purchasing table refuses a row with no operating company", { skip: S
 test("the repository refuses a missing company before SQL ever sees it", { skip: SKIP }, async () => {
   await reset();
   await assert.rejects(
-    () => po.createReorderRequest(repoPool(), TENANT, "u-1", "", {
+    () => po.createReorderRequest(repoPool(), TENANT, ACTOR, "", {
       partId: "PRT-000007", warehouseId: "wh-1", status: "PENDING_REVIEW", requestedQuantity: 1,
     }),
     OperatingCompanyAuthorityError,
@@ -345,7 +367,7 @@ test("the repository refuses a missing company before SQL ever sees it", { skip:
 test("a purchase order INHERITS its company from the request and cannot be told a different one", { skip: SKIP }, async () => {
   await reset();
   const request = await seedRecordableRequest(8, CO_B);
-  const order = await po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput());
+  const order = await po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput());
   assert.equal(order.operatingCompanyKey, CO_B);
   // There is no parameter through which a caller could have supplied one: the arity of the call is
   // the boundary.
@@ -461,9 +483,9 @@ test("the legacy receipt's identity equation is enforced by the schema in both d
       `INSERT INTO eos_ops.receiving_orders
          (id, tenant_id, operating_company_key, source_kind, source_purchase_order_id,
           source_reorder_request_id, receiving_location_type, receiving_location_id,
-          status, idempotency_key, created_by, updated_by)
+          status, idempotency_key, received_at, created_by, updated_by)
        VALUES ('r1', $1, $2, 'REORDER_PURCHASE_ORDER', 'po-1', 'rr-9', 'WAREHOUSE', 'wh-1',
-               'PUTAWAY_COMPLETE', 'i1', 'u', 'u')`,
+               'PUTAWAY_COMPLETE', 'i1', now(), 'u', 'u')`,
       [TENANT, CO_A],
     ),
     /receiving_order_source_identity/,
@@ -474,9 +496,9 @@ test("the legacy receipt's identity equation is enforced by the schema in both d
       `INSERT INTO eos_ops.receiving_orders
          (id, tenant_id, operating_company_key, source_kind, source_purchase_order_id,
           source_reorder_request_id, receiving_location_type, receiving_location_id,
-          status, idempotency_key, created_by, updated_by)
+          status, idempotency_key, received_at, created_by, updated_by)
        VALUES ('r2', $1, $2, 'PURCHASE_ORDER', 'po-1', 'po-1', 'WAREHOUSE', 'wh-1',
-               'PUTAWAY_COMPLETE', 'i2', 'u', 'u')`,
+               'PUTAWAY_COMPLETE', 'i2', now(), 'u', 'u')`,
       [TENANT, CO_A],
     ),
     /receiving_order_source_identity/,
@@ -486,7 +508,7 @@ test("the legacy receipt's identity equation is enforced by the schema in both d
 test("received quantity is the SUM OF COMMITTED RECEIPTS, and cancelled receipts do not count", { skip: SKIP }, async () => {
   await reset();
   const request = await seedRecordableRequest(9);
-  const order = await po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput({ orderedQuantity: 10 }));
+  const order = await po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput({ orderedQuantity: 10 }));
   const legacyReceipt = (idem, qty, status = "PUTAWAY_COMPLETE") => po.createReceivingOrder(
     repoPool(), TENANT, "u-5", CO_A, {
       sourceKind: "REORDER_PURCHASE_ORDER",
@@ -495,6 +517,8 @@ test("received quantity is the SUM OF COMMITTED RECEIPTS, and cancelled receipts
       receivingLocation: { type: "WAREHOUSE", id: "wh-1" },
       status,
       idempotencyKey: idem,
+      // The goods arrived when they arrived. Required, never defaulted from the write clock.
+      receivedAt: new Date("2026-09-20T12:00:00.000Z"),
       lines: [{ lineId: "L1", partId: "PRT-000009", trackingMode: "NONE", expectedQuantity: 10, receivedQuantity: qty }],
     },
   );
@@ -522,6 +546,7 @@ test("a receiving order and its lines commit together, or not at all", { skip: S
       receivingLocation: { type: "WAREHOUSE", id: "wh-1" },
       status: "PUTAWAY_COMPLETE",
       idempotencyKey: "i-rollback",
+      receivedAt: new Date("2026-09-20T12:00:00.000Z"),
       // A NONE line carrying a serial: refused by receiving_line_serials_match_tracking, AFTER the
       // order row has already been inserted in this transaction.
       lines: [{
@@ -545,6 +570,7 @@ test("a retried receipt cannot post twice for one physical event", { skip: SKIP 
     receivingLocation: { type: "WAREHOUSE", id: "wh-1" },
     status: "PUTAWAY_COMPLETE",
     idempotencyKey: idem,
+    receivedAt: new Date("2026-09-20T12:00:00.000Z"),
     lines: [{ lineId: "L1", partId: "PRT-000015", trackingMode: "NONE", expectedQuantity: 2, receivedQuantity: 2 }],
   });
   await receipt("i-dup");
@@ -558,16 +584,16 @@ test("an amount and its currency move together, and a stamp implies a price", { 
   const request = await seedRecordableRequest(16);
   // amount without currency
   await assert.rejects(
-    () => po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput({ unitPriceMinor: 1250 })),
+    () => po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput({ unitPriceMinor: 1250 })),
     /purchase_order_price_pairs/,
   );
   // a stamp with no price is incoherent -- the command that stamps is the one that requires
   await assert.rejects(
-    () => po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput({ priceAuthorityVersion: 2 })),
+    () => po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput({ priceAuthorityVersion: 2 })),
     /purchase_order_stamp_implies_price/,
   );
   // a pre-authority purchase order -- no stamp, no price -- is legal and stays receivable
-  const legacy = await po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput());
+  const legacy = await po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput());
   assert.equal(legacy.unitPriceMinor, null);
   assert.equal(legacy.priceAuthorityVersion, null);
 });
@@ -575,7 +601,7 @@ test("an amount and its currency move together, and a stamp implies a price", { 
 test("explicit zero is a committed price and survives the round trip as a number", { skip: SKIP }, async () => {
   await reset();
   const request = await seedRecordableRequest(17);
-  await po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput({
+  await po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput({
     unitPriceMinor: 0, currency: "USD", priceAuthorityVersion: 2,
   }));
   const read = await po.readPurchaseOrder(repoPool(), TENANT, request.id);
@@ -604,8 +630,8 @@ test("migration 008 touches no table migration 005 or 007 created", { skip: SKIP
 test("the whole migration set is reversible from a populated purchasing schema", { skip: SKIP }, async () => {
   await reset();
   const request = await seedRecordableRequest(18);
-  const order = await po.recordPurchaseOrder(repoPool(), TENANT, "u-2", request.id, orderInput());
-  await po.voidPurchaseOrder(repoPool(), TENANT, "u-3", order.purchaseOrderId, "supplier cancelled");
+  const order = await po.recordPurchaseOrder(repoPool(), TENANT, BUYER, request.id, orderInput());
+  await po.voidPurchaseOrder(repoPool(), TENANT, VOIDER, order.purchaseOrderId, "supplier cancelled");
   // Down then up: the purchasing tables are the migration's own and carry no pre-cutover rows it
   // would have to refuse to invent an authority for.
   await peelMigrationsNewerThan("1758672000000_");

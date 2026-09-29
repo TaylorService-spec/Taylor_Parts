@@ -182,7 +182,12 @@ test("financial authority lives in eos_finance, and does not leak into eos_ops",
   // not here" passes identically whether the authority lives in the right schema or nowhere at all.
   await reset();
 
-  const FINANCIAL_TABLES = ["invoice_lines", "invoices", "payment_applications", "payments"];
+  // `inventory_acquisition_costs` joined the list under Reorder Receiving Owner Ruling R3: what
+  // stock COST to acquire is financial evidence, so it lives here and not beside the receipt that
+  // produced it. It is the reason the ruling also says the fact carries `operating_company_id` --
+  // the governed business company -- rather than the operational `operating_company_key` every
+  // eos_ops row carries.
+  const FINANCIAL_TABLES = ["inventory_acquisition_costs", "invoice_lines", "invoices", "payment_applications", "payments"];
   const FINANCIAL_VIEWS = ["invoice_application_totals", "invoice_totals", "payment_balances"];
 
   // (1) The schema exists and holds EXACTLY the seven objects the ruling names -- derived from the

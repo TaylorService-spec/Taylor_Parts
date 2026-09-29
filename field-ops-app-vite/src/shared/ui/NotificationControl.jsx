@@ -12,7 +12,7 @@
 import { useMemo } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
-import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
+import { useReorderRequests, useReorderRequestsByStatus, useMyAssignedReorderRequests } from "../../hooks/useReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { partsAttentionItems, groupPartsAttentionItemsBySection } from "../../domain/partsAttentionProjection.js";
 import NotificationPanel from "./NotificationPanel";
@@ -77,8 +77,8 @@ export default function NotificationControl({ accessVersion } = {}) {
     REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER,
     canSeeReorderRequests
   );
-  const { data: assignedToYouRequests, error: assignedToYouRequestsError } = useReorderRequestsAssignedTo(
-    user?.uid,
+  const { data: assignedToYouRequests, error: assignedToYouRequestsError } = useMyAssignedReorderRequests(
+    // NO uid: the governed read is scoped to the caller's own Employee, server side.
     REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
     canSeeReorderRequests
   );

@@ -18,7 +18,7 @@
 // admin in a world with no governed warehouses, and a Parts Manager whose warehouse scope no
 // authority has yet defined, are different situations and the caller may want to say so.
 import { useEffect, useState } from "react";
-import { fetchReorderWarehouseOptions } from "../services/reorderCallableClient.js";
+import { fetchReorderWarehouseOptions } from "../services/reorderApiClient.js";
 
 export function useReorderWarehouseOptions(enabled = true, { load = fetchReorderWarehouseOptions } = {}) {
   const [state, setState] = useState({ options: [], reason: null, loading: Boolean(enabled), error: false });

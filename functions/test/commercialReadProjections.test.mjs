@@ -63,6 +63,21 @@ const APPROVED_INDEX_HOOK = "field-ops-app-vite/src/hooks/useSalesAgreementIndex
 const APPROVED_INDEX_SCREEN = "field-ops-app-vite/src/modules/sales/SalesAgreementsList.jsx";
 const APPROVED_INDEX_DOMAIN = "field-ops-app-vite/src/domain/salesAgreementIndex.js";
 const APPROVED_CLIENT_PATH = [APPROVED_TRANSPORT_CLIENT, APPROVED_INDEX_HOOK, APPROVED_INDEX_SCREEN, APPROVED_INDEX_DOMAIN];
+/**
+ * PASS 11 RETAIL SALES (Controller-authorized cutover): the Opportunity / Sales Order / Sales Agreement screens read
+ * through the governed transport too. Each approved client module is pinned to EXACTLY the read operations it may name
+ * -- nothing is allowed by pattern, and a new module naming a Commercial read still fails.
+ */
+const APPROVED_READ_NAMERS = Object.freeze({
+  [APPROVED_INDEX_HOOK]: ["listSalesAgreements"],
+  "field-ops-app-vite/src/access/opportunitySource.js": ["listOpportunities"],
+  "field-ops-app-vite/src/metadata/callableListSource.js": ["listOpportunities", "listSalesOrders"],
+  "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js": ["listOpportunities"],
+  "field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js": ["listSalesOrders"],
+  "field-ops-app-vite/src/services/opportunityReadCallableClient.js": ["getOpportunityDetail"],
+  "field-ops-app-vite/src/services/salesOrderReadCallableClient.js": ["getSalesOrderDetail"],
+  "field-ops-app-vite/src/services/salesAgreementCommandClient.js": ["getOpportunityDetail", "getSalesAgreementDetail"],
+});
 /** The C3 operations the C4 transport serves. Exact names: listOpportunitiesForAccount is a LEGACY callable, not one of these. */
 const C3_OPERATIONS = ["getAccountCommercialProjection", "getOpportunityDetail", "getSalesAgreementDetail", "getSalesOrderDetail", "listOpportunities", "listSalesAgreements", "listSalesOrders"];
 
@@ -119,19 +134,24 @@ test("(2b) the approved Sales Agreements index is the ONE client Commercial read
     const hits = C3_OPERATIONS.filter((op) => namesInCode(source, new RegExp(`\\b${op}\\b`)));
     if (hits.length) naming.set(crel(f), hits.sort());
   }
-  assert.deepEqual([...naming.keys()].sort(), [APPROVED_INDEX_HOOK, APPROVED_TRANSPORT_CLIENT].sort(),
+  assert.deepEqual([...naming.keys()].sort(), [APPROVED_TRANSPORT_CLIENT, ...Object.keys(APPROVED_READ_NAMERS)].sort(),
     "an unapproved client module names a Commercial read operation");
   assert.deepEqual(naming.get(APPROVED_TRANSPORT_CLIENT), [...C3_OPERATIONS].sort(),
     "the transport client's mirrored read list drifted from the transport's READ_RUNNERS");
-  assert.deepEqual(naming.get(APPROVED_INDEX_HOOK), ["listSalesAgreements"],
-    "the Sales Agreements hook names a Commercial read other than its own index");
+  for (const [file, ops] of Object.entries(APPROVED_READ_NAMERS)) {
+    assert.deepEqual(naming.get(file), [...ops].sort(), `${file} names a Commercial read other than the one it is approved for`);
+  }
 
   // NO WRITE MASQUERADING AS A READ. The C2 mutations stay absent from the whole approved path.
   const C2_MUTATIONS = ["createOpportunity", "updateOpportunity", "transitionOpportunity", "closeOpportunityAsWon", "createSalesAgreement",
     "updateSalesAgreementDraft", "acceptSalesAgreement", "createSalesOrder", "createSalesOrderFromOpportunity", "transitionSalesOrder"];
   for (const file of APPROVED_CLIENT_PATH) {
     const code = stripComments(readFileSync(join(REPO, file), "utf8"));
-    for (const mutation of C2_MUTATIONS) assert.doesNotMatch(code, new RegExp(`\\b${mutation}\\b`), `${file} names the C2 mutation ${mutation}`);
+    // The transport client MIRRORS the server's command list (the Pass 11 command clients send through it); the index
+    // read files stay free of every command name.
+    if (file !== APPROVED_TRANSPORT_CLIENT) {
+      for (const mutation of C2_MUTATIONS) assert.doesNotMatch(code, new RegExp(`\\b${mutation}\\b`), `${file} names the C2 mutation ${mutation}`);
+    }
 
     // NO DIRECT FIRESTORE READ. Lane AO's shared fence, not a fifth bare-string variant.
     assert.equal(opaqueFirestoreAccess(code), false, `${file} holds a Firestore accessor`);

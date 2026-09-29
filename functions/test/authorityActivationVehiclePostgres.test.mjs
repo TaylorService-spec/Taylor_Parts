@@ -156,7 +156,11 @@ test("the activation migration was APPENDED: only the later Administration and w
   assert.ok(at >= 0);
   assert.deepEqual(files.slice(at + 1), ["1762646400000_administration-control-plane.sql", "1762732800000_workflow-control-plane.sql",
     "1762819200000_employee-functional-role-authority.sql", "1762905600000_tenant-sales-channel-scope.sql",
-    "1762992000000_direct-exception-cell-lock.sql", "1763078400000_administrator-staffing-capability.sql"],
+    "1762992000000_direct-exception-cell-lock.sql", "1763078400000_administrator-staffing-capability.sql",
+    // The Catalog + Reorder activation candidate, appended after current main (2026-09-28).
+    "1763164800000_catalog-part-alias-authority.sql", "1763251200000_reorder-object-schema-parity.sql",
+    "1763337600000_reorder-lifecycle-capability-registration.sql", "1763424000000_reorder-requester-is-a-principal.sql",
+    "1763510400000_reorder-actor-identity-normalization.sql", "1763596800000_receiving-business-time-number-and-acquisition-cost.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -376,6 +380,18 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
 
     // The Administration control plane (1762646400000) sits after the activation: +1 capability, +1
     // grant. It is peeled first so the reversal below is THIS migration's and nothing else's.
+    assert.deepEqual(await counts(), { caps: 90, grants: 415, mine: 26 });
+    // The Catalog + Reorder activation candidate is peeled first, newest first. Three Reorder/Receiving schema
+    // migrations: the counts do not move.
+    for (let i = 0; i < 3; i++) {
+      runMigrate(url, "down", 1);
+      assert.deepEqual(await counts(), { caps: 90, grants: 415, mine: 26 });
+    }
+    // The Reorder lifecycle capability REGISTRATION (1763337600000): -8 capabilities, and no grant, because it wrote none.
+    runMigrate(url, "down", 1);
+    assert.deepEqual(await counts(), { caps: 82, grants: 415, mine: 26 });
+    // The Reorder object schema parity and the Part alias authority: schema only.
+    runMigrate(url, "down", 2);
     assert.deepEqual(await counts(), { caps: 82, grants: 415, mine: 26 });
     // The Administrator staffing capability (1763078400000, Owner ruling R1) is peeled first: -1 capability,
     // -1 grant (owner -> admin.administratorRole.assign).
@@ -413,7 +429,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the later Administrator staffing capability (1763078400000) first
+    runMigrate(url, "down", 6); // peel the Catalog + Reorder activation candidate (1763164800000 .. 1763596800000) first
+    runMigrate(url, "down", 1); // then the later Administrator staffing capability (1763078400000)
     runMigrate(url, "down", 1); // then the direct-exception cell lock (1762992000000)
     runMigrate(url, "down", 1); // then the tenant sales channel activation (1762905600000)
     runMigrate(url, "down", 1); // then the Functional Role authority (1762819200000)

@@ -15,30 +15,16 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { Timestamp } from "firebase-admin/firestore";
 import { ALIAS_STATUSES, ALIAS_TYPES } from "./types";
 import type { AliasStatus, AliasType, ManufacturerId, PartAliasId, PartId } from "./types";
-import { buildAliasKey, normalizeIdentifier } from "./normalization";
 import { parseManufacturerId, parsePartId } from "./validation";
 import { INITIAL_VERSION, MalformedStoredRecordError, type StoredMeta } from "./partMasterRepository";
 
 export const PART_ALIASES_COLLECTION = "part_aliases";
 
-/** Storage-safe deterministic alias document id from the PR 1.1 key. */
-export function encodeAliasDocId(aliasKey: string): PartAliasId {
-  return aliasKey.replace(/%/g, "%25").replace(/\//g, "%2F") as PartAliasId;
-}
-
-/** Derive the storage doc id for (type, raw value, scope) via the SINGLE
- * PR 1.1 normalization + key authority. Returns null on invalid input. */
-export function deriveAliasDocId(
-  aliasType: AliasType,
-  rawValue: string,
-  manufacturerId?: ManufacturerId
-): { docId: PartAliasId; normalizedValue: string } | null {
-  const normalized = normalizeIdentifier(aliasType, rawValue, manufacturerId);
-  if (!normalized.valid) return null;
-  const key = buildAliasKey(aliasType, normalized.value);
-  if (!key.valid) return null;
-  return { docId: encodeAliasDocId(key.value), normalizedValue: normalized.value };
-}
+// The pure derivation lives in `partAliasIdentity.ts` so the PostgreSQL Catalog authority can share
+// it without importing Firebase. Re-exported here so every existing caller and test keeps its import
+// path, and so there is exactly ONE definition of what identity an identifier has.
+import { deriveAliasDocId } from "./partAliasIdentity";
+export { encodeAliasDocId, deriveAliasDocId } from "./partAliasIdentity";
 
 export interface StoredPartAlias extends StoredMeta {
   readonly aliasId: PartAliasId;

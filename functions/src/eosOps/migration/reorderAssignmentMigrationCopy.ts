@@ -221,7 +221,9 @@ export async function copyReorderAssignmentsOnce(
         `INSERT INTO eos_ops.reorder_request_assignments
            (id, tenant_id, reorder_request_id, assigned_employee_id, effective_from, provenance, assigned_by_principal_id, reason)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [`rra_${randomUUID()}`, input.tenantId, row.reorderRequestId, row.assignedEmployeeId, at,
+        // effective_from is the LEGACY assignedAt when the source carried a valid one (reorderFieldParityMatrix);
+        // otherwise the copy time, and the plan row + audit say which.
+        [`rra_${randomUUID()}`, input.tenantId, row.reorderRequestId, row.assignedEmployeeId, row.effectiveFrom ?? at,
           MIGRATED_PROVENANCE, row.assignedByPrincipalId, "legacy assignedToUserId migration"],
       );
       inserted += 1;
@@ -231,7 +233,8 @@ export async function copyReorderAssignmentsOnce(
       `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
        VALUES ($1, $2, $3, $4, 'reorder_assignment_migration', $2, NULL, $5::jsonb, $6, $7)`,
       [`audit_${randomUUID()}`, input.tenantId, MIGRATION_COPY_ACTION, input.performedByPrincipalId,
-        JSON.stringify({ inserted, sourceRows: plan.sourceRows, unresolvedAssignors: plan.assignorCounts.UNRESOLVED_PROVENANCE }),
+        JSON.stringify({ inserted, sourceRows: plan.sourceRows, unresolvedAssignors: plan.assignorCounts.UNRESOLVED_PROVENANCE,
+          effectiveFromWithoutLegacyInstant: plan.copyable.filter((r) => r.effectiveFrom === null).length }),
         at, "legacy Reorder assignment copy once"],
     );
     await client.query("COMMIT");

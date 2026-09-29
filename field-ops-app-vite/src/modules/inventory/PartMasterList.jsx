@@ -1,6 +1,8 @@
 // INV-1 / ADR-009 G2 -- governed Part Master administration workspace. Evolves the former READ-ONLY
 // registry (PR 1.9) into the first-class catalog-admin surface WITHOUT a second Parts read model: it
-// still reads via services/partMasterQueries.fetchPartMasterList + domain/partMasterView, and adds
+// reads through services/partMasterPageQuery (the governed Render Catalog API: searchParts for the
+// page, countParts over the same filters for the total -- NO Firestore, and no fallback to it) +
+// domain/partMasterView, and adds
 // create / edit / status flows that go ONLY through the trusted Part callables (usePartMasterWrite ->
 // partMasterCommandClient -> createPart/updatePart/changePartStatus). There is ONE Part authority and
 // ONE trusted command path; NO client Firestore writes, NO parallel validator, NO parallel status
@@ -12,7 +14,7 @@
 // governed outcomes. Authorization is enforced server-side regardless; the UI never claims a success it
 // did not receive.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchPartMasterPage } from "../../services/partMasterPageQuery";
+import { fetchPartMasterPage, countPartMaster, isPartMasterReadDenied } from "../../services/partMasterPageQuery";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
@@ -141,6 +143,9 @@ const PART_FILTER_VALUES = Object.freeze({
   stockingClass: Object.entries(STOCKING_CLASS_LABEL).map(([value, label]) => ({ value, label })),
 });
 
+/** The Part Master is counted by its own authority. Module-level so its identity never changes. */
+const CHROME_OPTIONS = Object.freeze({ count: countPartMaster });
+
 export default function PartMasterList(props) {
   const navigate = useNavigate();
   const [state, setState] = useState({ phase: "loading" });
@@ -157,7 +162,11 @@ export default function PartMasterList(props) {
   // SAVED VIEWS + AN HONEST COUNT, shared by every object. The count is a real aggregate over
   // the same filters the list uses -- never a tally of loaded rows, and null rather than 0 on
   // any failure.
-  const { activeViewId, selectView, total } = useListViewChrome(partIndexList, partEntity, criteria, apply);
+  //
+  // THE COUNT IS THE CATALOG'S, not Firestore's: `countPartMaster` asks the Render Catalog API over
+  // the same filters as the page, so a Part created here is counted here. Stable module function --
+  // the hook keys its effect on it.
+  const { activeViewId, selectView, total } = useListViewChrome(partIndexList, partEntity, criteria, apply, CHROME_OPTIONS);
 
   // THE DESCRIPTOR IS WHAT THE READ EXECUTES, and it is the canonical runtime's, not this
   // screen's. It refuses any filter `partIndexList` did not declare -- which is the set whose
@@ -198,7 +207,8 @@ export default function PartMasterList(props) {
     else setState((prev) => ({ ...prev, loadingMore: true }));
     fetchPartMasterPage({ descriptor: activePage.descriptor ?? descriptor, cursor }).then((result) => {
       if (cancelled) return;
-      if (!result.ok) { setState({ phase: result.code === "permission-denied" ? "denied" : "error" }); return; }
+      // A Catalog REFUSAL (FORBIDDEN / NOT_SIGNED_IN) is a denial; everything else is an outage.
+      if (!result.ok) { setState({ phase: isPartMasterReadDenied(result.code) ? "denied" : "error" }); return; }
       setState((prev) => ({
         phase: "ready",
         // Appending rather than replacing: the page already on screen stays on screen.

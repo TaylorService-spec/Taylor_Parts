@@ -46,7 +46,7 @@ describe("Opportunity section save (the governed command is really invoked)", ()
     expect(payload.opportunityId).toBeTruthy();
     // The command REJECTS any caller that cannot prove which version it loaded. A payload without
     // this is a save that can never succeed.
-    expect(typeof payload.expectedUpdatedAtMillis).toBe("number");
+    expect(Number.isInteger(payload.expectedEditVersion)).toBe(true);
     expect(payload.idempotencyKey).toBeTruthy();
   });
 

@@ -52,6 +52,7 @@ function projection(overrides = {}) {
     createdAtMillis: NOW - 47 * DAY,
     updatedAtMillis: NOW - DAY,
     closedAtMillis: null,
+    editVersion: 3,
     ...overrides,
   };
 }
@@ -329,7 +330,7 @@ describe("Opportunity P1v2 — editing goes through the version-checked authorit
     // The THIRD argument is the optimistic-concurrency token. A save that did not carry the
     // version the page loaded would be an unguarded overwrite.
     const [, , version] = saveSection.mock.calls[0];
-    expect(version).toBe(projection().updatedAtMillis);
+    expect(version).toBe(projection().editVersion);
   });
 
   it("editing is refused on a closed opportunity, because the command refuses it", () => {

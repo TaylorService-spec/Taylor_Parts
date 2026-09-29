@@ -20,7 +20,7 @@
 //                  must still precede capability resolution (asserted separately).
 //   JOB_GATE       the guard is an `if (staged.entityType === "...")` line in a JOB-level execution entry, which must
 //                  precede the job claim and every row write. Its ordering and FROZEN refusal are proven in
-//                  catalogPartImportFreeze.test.mjs; the lists here keep it inside the closed writer set.
+//                  catalogLane2Readiness.test.mjs; the lists here keep it inside the closed writer set.
 
 export const LEGACY_CATALOG_MASTER_COMMANDS = Object.freeze([
   // ── Part (the copy scope) ───────────────────────────────────────────────────────────────────────

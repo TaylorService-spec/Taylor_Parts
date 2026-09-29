@@ -18,6 +18,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -229,8 +230,16 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 1762992000000 (the direct-exception cell lock, lane DX): one trigger -- no capability, no grant, no vocabulary move.
 // 1763078400000 (the Administrator staffing capability, Owner ruling R1): ONE capability,
 // admin.administratorRole.assign (vocabulary 81 -> 82, reconciled in the manifest), granted to owner.
-const PINNED_LAST_MIGRATION = "1763078400000_administrator-staffing-capability";
-const PINNED_MIGRATION_COUNT = 57;
+// 1763164800000 (the Catalog Part Alias authority; authored as 1762560000000 on the Catalog cutover lane and
+// renumbered above main's high-water mark when the coordinated Catalog + Reorder activation candidate was assembled,
+// because node-pg-migrate refuses an unapplied migration that precedes applied ones). The seed writes no Part alias,
+// so eos_ops.part_aliases stays empty: no row count moves.
+// 1763251200000 .. 1763596800000 (the Reorder Domain Cutover's four schema migrations and the Reorder lifecycle
+// capability REGISTRATION, renumbered above main for the same reason). The registration adds EIGHT capabilities
+// (vocabulary 82 -> 90, reconciled in the manifest) granted to NO Role -- Administration-grant-only, so the seed's
+// catalog reconcile writes none of them and no persona moves.
+const PINNED_LAST_MIGRATION = "1763596800000_receiving-business-time-number-and-acquisition-cost";
+const PINNED_MIGRATION_COUNT = 63;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
@@ -1223,6 +1232,9 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     let armed;
     try {
       await client.query("BEGIN");
+      // The commercial writer resolves operating_company_key only through an ACTIVE binding; the probe states one
+      // inside the same rolled-back transaction, so the seeded database is still left exactly as found.
+      await bindOperatingCompany((s, v) => client.query(s, v), tenantId, MANIFEST.company.operatingCompanyId, "lane-r-probe-key");
       await createCommercialRecord(client, tenantId, "lane-r-fail-closed-probe", {
         kind: victim.kind, recordNumber: victim.number, accountId: victim.account, ownerEmployeeId: ownerId,
         operatingCompanyId: MANIFEST.company.operatingCompanyId, createdBy: "lane-r-fail-closed-probe",
