@@ -94,7 +94,12 @@ test("employee reference matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
 // point at -- a TERMINATED or RETIRED Employee. Whether V2 (a new policy version, per the ruling) extends to Account
 // ownership and to new managers is not answered by any ruling. Pinned as measured.
 const ALL_STATUSES_OK = { ACTIVE: "200 OK", CONTRACTOR: "200 OK", ON_LEAVE: "200 OK", INACTIVE: "200 OK", TERMINATED: "200 OK", RETIRED: "200 OK" };
+// INTEGRATION RE-MEASURE (L1+L2+L5, 2026-09-29): crm.createAccount(owner) is now RULED -- Controller DQ-009 (lane L1,
+// 964921b4): a newly selected CRM Account owner must be an ACTIVE or CONTRACTOR Employee; any other status is refused
+// 412 OWNER_NOT_CURRENTLY_ELIGIBLE. That closes the Account half of L5-F09; the reporting-line half stays unruled.
+const OWNER_ELIGIBILITY_V1 = { ACTIVE: "200 OK", CONTRACTOR: "200 OK", ON_LEAVE: "412 OWNER_NOT_CURRENTLY_ELIGIBLE",
+  INACTIVE: "412 OWNER_NOT_CURRENTLY_ELIGIBLE", TERMINATED: "412 OWNER_NOT_CURRENTLY_ELIGIBLE", RETIRED: "412 OWNER_NOT_CURRENTLY_ELIGIBLE" };
 const EXPECTED_UNRULED = {
-  "crm.createAccount(owner)": ALL_STATUSES_OK,
+  "crm.createAccount(owner)": OWNER_ELIGIBILITY_V1,
   "workforce.establishReportingRelationship(manager)": ALL_STATUSES_OK,
 };

@@ -97,8 +97,11 @@ test("operating-company binding matrix", { skip: SKIP, concurrency: 1 }, async (
 // inactive company (the binding read admits only ACTIVE companies) -- fail-closed and correct; the code name is
 // imprecise (L5 KNOWN_LIMITATION P4). Workforce names the same fact OPERATING_COMPANY_INACTIVE.
 const EXPECTED_INACTIVE = {
-  "commercial.createOpportunity": "412 OPERATING_COMPANY_KEY_NOT_BOUND",
-  "commercial.createSalesOrder": "412 OPERATING_COMPANY_KEY_NOT_BOUND",
+  // INTEGRATION RE-MEASURE (L1+L2+L5, 2026-09-29): lane L1's DQ-008 implementation (157b4e13) checks the company's
+  // tenant status BEFORE the key binding, so Commercial now names the fact OPERATING_COMPANY_INACTIVE, like Workforce
+  // (L5 KNOWN_LIMITATION P4 resolved). Still 412, still fail-closed.
+  "commercial.createOpportunity": "412 OPERATING_COMPANY_INACTIVE",
+  "commercial.createSalesOrder": "412 OPERATING_COMPANY_INACTIVE",
   "workforce.createEmployee": "412 OPERATING_COMPANY_INACTIVE",
   "workforce.changeOperatingCompany": "412 OPERATING_COMPANY_INACTIVE",
 };
