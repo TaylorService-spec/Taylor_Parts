@@ -52,6 +52,8 @@
 // a uid, token or custom claim as authority, and never narrows a refusal into an empty capability
 // set -- an unknown, disabled or non-member Principal is REFUSED.
 import type { Pool } from "pg";
+import { PostgresPolicyRepository } from "../../adminPolicy/postgresPolicyRepository";
+import { employeeAccessIneligibility } from "../../adminPolicy/employmentAccessEligibility";
 import { resolveOperationalCapabilities } from "../../eosOps/capabilityAuthority";
 import { postgresGrantConditionProvider, resolveDirectEntitlements } from "../../eosOps/entitledActionAuthority";
 import {
@@ -184,6 +186,12 @@ export async function resolveEmployeeAdministrationActor(
   if (member.rows.length === 0) {
     throw new EmployeeCommandError("ADMINISTRATOR_NOT_ACTIVE_MEMBER", "FORBIDDEN",
       "the administering Principal must be an ACTIVE Principal with an ACTIVE membership in this tenant");
+  }
+  // EMPLOYMENT ACCESS ELIGIBILITY (DQ-007): the same rule, the same relations, as principal resolution -- an
+  // administering Principal linked to a non-eligible Employee administers nothing, whatever Roles remain assigned.
+  const ineligible = employeeAccessIneligibility(await new PostgresPolicyRepository(pool).getLinkedEmployeeAccessFact(tenantId, principalId));
+  if (ineligible) {
+    throw new EmployeeCommandError("ADMINISTRATOR_NOT_ACCESS_ELIGIBLE", "FORBIDDEN", `the administering Principal is refused: ${ineligible}`);
   }
   // ACTIVE, GLOBAL, NON-STALE assignments only (Pass 9 S3) -- the runtime's rule (loadPrincipalPolicy
   // .qualifyingRoleIds). A SCOPED assignment is decided only against a record's business context, which an operator

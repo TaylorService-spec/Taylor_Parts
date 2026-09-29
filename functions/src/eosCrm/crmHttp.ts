@@ -17,6 +17,7 @@
 // imported: the verifier is injected. The tenant arrives only as the x-eos-tenant header, which the resolver checks
 // against membership and never adopts; authority fields in the body are refused (and refused again by the authority).
 import type { Pool } from "pg";
+import { containsNulCharacter, NUL_CHARACTER_REFUSAL } from "../adminPolicy/requestText";
 import { capabilitiesWithoutUnevaluatedConditions, resolveOperationalContext } from "../eosOps/capabilityAuthority";
 import { postgresGrantConditionProvider } from "../eosOps/entitledActionAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
@@ -176,6 +177,10 @@ export async function handleCrmRequest(options: CrmHttpOptions, request: HttpReq
     envelope = parseEnvelope(request.body);
   } catch {
     return failure(400, "", "INVALID_INPUT", "body must be a JSON object", origin);
+  }
+  // U+0000 is refused at the envelope, before identity or any query (adminPolicy/requestText.ts; Controller XLF-002).
+  if (containsNulCharacter(envelope)) {
+    return failure(400, typeof envelope.operation === "string" ? envelope.operation : "", "INVALID_INPUT", NUL_CHARACTER_REFUSAL, origin);
   }
   if (Object.keys(envelope).some((k) => k !== "operation" && k !== "input")) {
     return failure(400, String(envelope.operation ?? ""), "INVALID_INPUT", "the envelope accepts only operation and input", origin);

@@ -40,6 +40,8 @@ const code = (f) => strip(readFileSync(f, "utf8"));
 function fakeWorld({ capabilities = ["opportunity.read"], clientQuery, member = true } = {}) {
   const lookups = [];
   const reader = {
+    // No Employee link in this fake world: the DQ-007 employment-eligibility gate has nothing to refuse.
+    async getLinkedEmployeeAccessFact() { return null; },
     async getPrincipalBySubject(provider, subject) {
       lookups.push({ provider, subject });
       return provider === "firebase" && subject === "subj-alice" ? { id: "p-eos-alice", status: "active" } : null;

@@ -33,6 +33,7 @@
 import { loadPrincipalPolicy } from "./effectiveObjectAccess";
 import type { ScopedAssignment } from "./assignmentScopeRuntime";
 import type { PolicyReader } from "./policyRepository";
+import { employeeAccessIneligibility } from "./employmentAccessEligibility";
 import type { PrincipalRecord, TenantId, TenantRecord } from "./types";
 
 /** The identity provider in use. Recorded per principal so replacing it is a data change. */
@@ -45,7 +46,16 @@ export type PrincipalContextRefusal =
   | "NO_TENANT_MEMBERSHIP"
   | "TENANT_NOT_A_MEMBERSHIP"
   | "AMBIGUOUS_TENANT"
-  | "TENANT_NOT_ACTIVE";
+  | "TENANT_NOT_ACTIVE"
+  /**
+   * The Principal is linked to a governed Employee whose PostgreSQL employment status is not access-eligible, or
+   * whose linked Employee does not resolve in the tenant. Controller ruling DQ-007 (2026-09-28).
+   */
+  | "EMPLOYEE_NOT_ACCESS_ELIGIBLE";
+
+// The eligibility rule itself lives in a dependency-free module so the predicate layer (eosOps/contextualAuthorization)
+// can share it without importing principal resolution. Re-exported here, where principal resolution applies it.
+export { ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES, employeeAccessIneligibility } from "./employmentAccessEligibility";
 
 export class PrincipalContextError extends Error {
   constructor(readonly refusal: PrincipalContextRefusal, message?: string) {
@@ -162,6 +172,14 @@ async function contextForPrincipal(
   if (!tenant) throw new PrincipalContextError("NO_TENANT_MEMBERSHIP");
   // A suspended tenant confers nothing on anybody, administrator included.
   if (tenant.status !== "active") throw new PrincipalContextError("TENANT_NOT_ACTIVE");
+
+  // EMPLOYMENT ACCESS ELIGIBILITY (DQ-007). Decided HERE, once, for every entry point and every transport, BEFORE any
+  // Role is read -- so a lingering assignment cannot confer anything. A Principal with no active Employee link (a
+  // service or administrative Principal) is not an Employee and is unaffected. A link whose Employee does not resolve
+  // in this tenant fails closed exactly like an ineligible status. Refused like PRINCIPAL_DISABLED, never downgraded:
+  // no Role assignment is deleted and no history is rewritten -- restoring an eligible status restores access.
+  const ineligible = employeeAccessIneligibility(await reader.getLinkedEmployeeAccessFact(tenantId, principal.id));
+  if (ineligible) throw new PrincipalContextError("EMPLOYEE_NOT_ACCESS_ELIGIBLE", ineligible);
 
   // QUALIFYING assignments only — the same rule the resolver uses, resolved in the same place, so
   // administration authority and object access can never disagree about which Roles are held.

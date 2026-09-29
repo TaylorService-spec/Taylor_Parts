@@ -392,11 +392,17 @@ export async function executeAdminOperation<T = unknown>(
     });
   } catch (err) {
     if (err instanceof PrincipalContextError) {
-      // UNKNOWN_PRINCIPAL is authentication-shaped; everything else is a refusal about authority.
-      const code: AdminApiFailureCode = err.refusal === "UNKNOWN_PRINCIPAL" ? "UNAUTHENTICATED" : "FORBIDDEN";
-      return fail(operation, code, refusalMessage(err.refusal));
+      // EVERY principal-resolution refusal is FORBIDDEN (403), UNKNOWN_PRINCIPAL included -- the token WAS verified;
+      // "this subject is not provisioned in EOS" is an authority fact, not an authentication failure. Aligned with the
+      // Operations, Commercial, CRM and Workforce transports (L5 XLF-L5-01 / Controller XLF-003, 2026-09-28).
+      return fail(operation, "FORBIDDEN", refusalMessage(err.refusal));
     }
-    throw err;
+    // An unreadable policy store is a server fault, answered HERE as a governed INTERNAL -- never thrown past the pure
+    // handler, where the node adapter's last-resort 500 carries no CORS header and a browser reads it as a network
+    // failure. Same posture as the sibling transports (L5 XLF-L5-02 / Controller XLF-004, 2026-09-28).
+    // eslint-disable-next-line no-console -- same posture as the sibling transports' unhandled-error log
+    console.error("[adminPolicyApi] principal resolution failed", err);
+    return fail(operation, "INTERNAL", "the request could not be completed");
   }
 
   const actor: AdminActor = {
@@ -1215,6 +1221,7 @@ function refusalMessage(refusal: string): string {
     case "TENANT_NOT_A_MEMBERSHIP": return "this principal is not a member of the requested tenant";
     case "AMBIGUOUS_TENANT": return "this principal belongs to several tenants; state which one";
     case "TENANT_NOT_ACTIVE": return "this tenant is not active";
+    case "EMPLOYEE_NOT_ACCESS_ELIGIBLE": return "this principal's Employee is not eligible for access";
     default: return "not authorized";
   }
 }

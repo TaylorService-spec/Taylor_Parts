@@ -327,7 +327,9 @@ test("updateEmployeeProfile over the real Workforce and policy authorities", { s
       cpSync(join(FUNCTIONS_DIR, "lib", "eosOps"), join(dir, "eosOps"), { recursive: true });
       // Lane SC: the decision imports the PURE assignment-scope model (and its value-match rules) from adminPolicy.
       // Pass 9 S2: the model's ONE Administration-capability definition reads the (pure) surface authority.
-      for (const f of ["assignmentScopeRuntime.js", "assignmentScope.js", "administrationSurfaceAuthority.js", "administrationAuthority.js"]) {
+      // Controller DQ-007: the predicate layer's Employee link applies the (pure) employment access-eligibility rule.
+      for (const f of ["assignmentScopeRuntime.js", "assignmentScope.js", "administrationSurfaceAuthority.js", "administrationAuthority.js",
+        "employmentAccessEligibility.js"]) {
         cpSync(join(FUNCTIONS_DIR, "lib", "adminPolicy", f), join(dir, "adminPolicy", f));
       }
       let mutated = kernelSrc;
