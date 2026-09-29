@@ -437,7 +437,13 @@ await check("a serial already registered is refused, whoever registered it", asy
 
 // --------------------------------------------------------------- inventory
 
-await check("an opening balance becomes a LEDGER MOVEMENT, not a stored quantity", async () => {
+// ACTIVATION (window step 18): with the PostgreSQL catalog ACTIVE the Firestore catalog is no longer current truth, so an
+// INVENTORY import -- which resolves Part references against it -- is refused WHOLE at execution
+// (assertFirestoreCatalogReadCurrent), before the job is claimed and before any movement is written. Staging stays available.
+const isInventoryImportCatalogMoved = (e) =>
+  e && e.code === "failed-precondition" && e.details && e.details.code === "CATALOG_AUTHORITY_MOVED";
+// Ruling B (staging -- still valid) + Ruling A (execution against a moved catalog authority).
+await check("an opening balance still STAGES with its findings; executing it is refused whole: CATALOG_AUTHORITY_MOVED", async () => {
   await db.collection("warehouses").add({ name: `Main Warehouse ${run}`, status: "ACTIVE" });
   await db.collection("warehouses").add({ name: `Retired Warehouse ${run}`, status: "INACTIVE" });
 
@@ -457,32 +463,19 @@ await check("an opening balance becomes a LEDGER MOVEMENT, not a stored quantity
   assert.ok(staged.job.rows[2].findings.some((f) => f.code === "WAREHOUSE_NOT_FOUND"));
   assert.ok(staged.job.rows[3].findings.some((f) => f.code === "PART_NOT_FOUND"));
 
-  const done = await executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth });
-  assert.equal(done.job.status, "COMPLETED");
-  // One movement written, one deliberate no-op: a zero balance moves nothing, and a movement
-  // that moves nothing is not written at all.
-  assert.equal(done.job.result.created, 1);
-  assert.equal(done.job.result.replayed, 1);
-
-  const moves = await db.collection("inventory_transactions").where("partId", "==", derivePartId(`DI-${run}-1`)).get();
-  assert.equal(moves.size, 1);
-  const move = moves.docs[0].data();
-  // The EXISTING primitives, not a new movement type: ADJUSTED / SIGNED / ADJUSTMENT. An
-  // opening balance invents no vocabulary and writes to no second balance table.
-  assert.equal(move.type, "ADJUSTED");
-  assert.equal(move.quantity, 12);
-  assert.equal(move.sourceObject.type, "ADJUSTMENT");
-  assert.match(String(move.sourceObject.id), /IMPORT_OPENING_BALANCE/);
-
-  // The zero-balance row wrote NOTHING. Not a movement of zero -- nothing.
-  const none = await db.collection("inventory_transactions").where("partId", "==", derivePartId(`DI-${run}-2`)).get();
-  assert.equal(none.size, 0);
+  await assert.rejects(executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth }), isInventoryImportCatalogMoved);
+  assert.equal((await db.collection("data_import_jobs").doc(staged.job.jobId).get()).data().status, "STAGED", "a refused job is never claimed");
+  for (const n of [1, 2, 3]) {
+    const moves = await db.collection("inventory_transactions").where("partId", "==", derivePartId(`DI-${run}-${n}`)).get();
+    assert.equal(moves.size, 0, `no opening-balance movement for DI-${run}-${n}`);
+  }
+  // The opening-balance LEDGER rule itself (ADJUSTED/ADJUSTMENT movement, zero writes nothing, second balance refused)
+  // stays proven below the import boundary in openingInventoryBalance.test.mjs.
 });
 
-await check("a SECOND opening balance at the same position is refused at execution, and says why", async () => {
-  // This is the deliberate gap, proven rather than described: the preview cannot know, so it
-  // shows READY, and the ledger refuses inside its own transaction. The operator learns the
-  // reason from the result rather than from a preview that guessed.
+// Ruling A: a repeat opening balance cannot be reached through a refused import; the ledger's own refusal of a second
+// balance (OPENING_BALANCE_ALREADY_SET) is proven in openingInventoryBalance.test.mjs.
+await check("a repeat opening-balance import still stages, and is refused whole at execution: CATALOG_AUTHORITY_MOVED", async () => {
   const csv = [
     "PART_NO,WAREHOUSE,ON_HAND",
     `DI-${run}-1,Main Warehouse ${run},99`,
@@ -491,16 +484,11 @@ await check("a SECOND opening balance at the same position is refused at executi
   const staged = await stageDataImport.run({ data: { fileName: "inventory.csv", fileText: csv }, auth });
   assert.equal(staged.job.summary.ready, 1, "the preview cannot know, and does not pretend to");
 
-  const done = await executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth });
-  assert.equal(done.job.status, "FAILED");
-  assert.equal(done.job.result.rows[0].failureCode, "OPENING_BALANCE_ALREADY_SET");
-  assert.match(done.job.result.rows[0].failureMessage, /opening-balance rules|already/i);
-
-  // AND THE BALANCE IS UNCHANGED. A refused opening balance must leave the ledger exactly
-  // as it was -- one movement of 12, not a second one and not an overwritten first.
+  await assert.rejects(executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth }), isInventoryImportCatalogMoved);
+  assert.equal((await db.collection("data_import_jobs").doc(staged.job.jobId).get()).data().status, "STAGED");
+  // AND THE LEDGER IS UNCHANGED: still no movement for this position.
   const moves = await db.collection("inventory_transactions").where("partId", "==", derivePartId(`DI-${run}-1`)).get();
-  assert.equal(moves.size, 1);
-  assert.equal(moves.docs[0].data().quantity, 12);
+  assert.equal(moves.size, 0);
 });
 
 // --------------------------------------------------------------- service history
@@ -638,7 +626,8 @@ await check("ACCEPTANCE: all five entities landed, and each is what it claims to
   assert.ok(counts.parts >= 3, `parts: ${counts.parts}`);
   assert.ok(counts.accounts >= 2, `accounts: ${counts.accounts}`);
   assert.ok(counts.equipment >= 1, `equipment: ${counts.equipment}`);
-  assert.ok(counts.inventory_transactions >= 1, `movements: ${counts.inventory_transactions}`);
+  // Ruling A (activation): the INVENTORY import is refused while the catalog authority has moved, so it wrote no movement.
+  assert.equal(counts.inventory_transactions, 0, `movements: ${counts.inventory_transactions}`);
   assert.ok(counts.imported_service_history >= 1, `history: ${counts.imported_service_history}`);
 
   // NO WORK ORDERS, NO JOBS. Import creates neither, in any entity.
