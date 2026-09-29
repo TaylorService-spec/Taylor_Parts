@@ -31,12 +31,21 @@
 // fact, or a business fact decide a permission.
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
+import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding";
 
 /** Already in the Role catalog; this command does not invent a capability. */
 export const WORK_ORDER_ASSIGN = "workOrder.lifecycle.dispatch";
 /** The one qualification Work Order assignment asks for. Fixed by the operation, never by the caller. */
 export const WORK_ORDER_ASSIGNMENT_QUALIFICATION = "SERVICE_TECHNICIAN";
 export const NATIVE_PROVENANCE = "NATIVE";
+
+/**
+ * The employment statuses a Work Order may be assigned to (Controller rulings DQ-007 / DQ-012,
+ * 2026-09-28): ACTIVE and CONTRACTOR, and nothing else. A CONTRACTOR technician is assignable when every
+ * other prerequisite holds -- active governed login, SERVICE_TECHNICIAN eligibility, the Work Order's
+ * operating company. Status is never the only disqualification of a contractor.
+ */
+export const WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES = Object.freeze(["ACTIVE", "CONTRACTOR"] as const);
 
 /**
  * The statuses a Work Order may be assigned from.
@@ -150,7 +159,7 @@ export async function assignWorkOrderToEmployee(
     // LOCK THE WORK ORDER FIRST. Everything downstream decides against this row, and a concurrent
     // transition must not be able to move the lifecycle out from under the assignment.
     const wo = await client.query(
-      `SELECT status::text AS status FROM eos_ops.work_orders
+      `SELECT status::text AS status, operating_company_key FROM eos_ops.work_orders
         WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
       [actor.tenantId, workOrderId],
     );
@@ -167,15 +176,35 @@ export async function assignWorkOrderToEmployee(
     // uid or a technician id passed here is simply NOT_FOUND -- the tenant boundary is not something
     // a caller can name its way across.
     const employee = await client.query(
-      `SELECT employment_status::text AS status FROM eos_workforce.employees
+      `SELECT employment_status::text AS status, operating_company_id FROM eos_workforce.employees
         WHERE tenant_id = $1 AND id = $2 FOR SHARE`,
       [actor.tenantId, employeeId],
     );
     if (employee.rows.length === 0) {
       refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
     }
-    if (employee.rows[0].status !== "ACTIVE") {
-      refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED", "only an ACTIVE Employee may be assigned work");
+    if (!(WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES as readonly string[]).includes(employee.rows[0].status)) {
+      refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
+        "only an ACTIVE or CONTRACTOR Employee may be assigned work");
+    }
+
+    // THE WORK ORDER'S OPERATING COMPANY (Controller ruling DQ-013). The assignee must be eligible for the
+    // company that performs this Work Order. The company is READ from the governed key binding of the Work
+    // Order's own operating_company_key -- never inferred from the customer, the actor or the Employee, and
+    // never rewritten. An unbound or inactive key fails closed; so does a mismatch.
+    let workOrderCompanyId: string;
+    try {
+      workOrderCompanyId = await resolveActiveOperatingCompanyId(client, actor.tenantId, wo.rows[0].operating_company_key);
+    } catch (err) {
+      if (err instanceof OperatingCompanyBindingError) {
+        refuse("WORK_ORDER_OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED",
+          "the Work Order's operating company is not bound to an ACTIVE governed company; nothing is inferred");
+      }
+      throw err;
+    }
+    if (employee.rows[0].operating_company_id !== workOrderCompanyId!) {
+      refuse("EMPLOYEE_NOT_ELIGIBLE_FOR_OPERATING_COMPANY", "PRECONDITION_FAILED",
+        "the Employee is not eligible for the Work Order's operating company");
     }
 
     // THE ACCOUNT PREDICATE: work is assigned only to an Employee with an ACTIVE governed login. It is

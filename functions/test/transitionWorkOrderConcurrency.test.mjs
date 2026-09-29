@@ -28,6 +28,12 @@ const PROJECT_ID = "taylor-parts";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 
+// DQ-014: Dispatch now enforces the existing placement invariants (the technician exists and carries a
+// governed status), so every technician these proofs dispatch to is a real fieldops_technicians record.
+async function seedGovernedTechnician(technicianId) {
+  await db.collection("fieldops_technicians").doc(technicianId).set({ status: "available" }, { merge: true });
+}
+
 const { transitionWorkOrder } = await import("../lib/transitionWorkOrder.js");
 
 const WOS = "fieldops_wos";
@@ -57,6 +63,8 @@ test("CONCURRENCY GUARD: two concurrent Dispatch calls for the SAME technician o
   await seedDispatcher(dispatcherUid);
 
   const techId = id("tech-race");
+
+  await seedGovernedTechnician(techId);
   const woA = id("wo-race-a");
   const woB = id("wo-race-b");
   await seedWorkOrder(woA, { status: "SCHEDULED" });
@@ -95,6 +103,8 @@ test("the per-technician lock doc is written (proves the fix's read+write-in-tra
   await seedDispatcher(dispatcherUid);
 
   const techId = id("tech-solo");
+
+  await seedGovernedTechnician(techId);
   const woId = id("wo-solo");
   await seedWorkOrder(woId, { status: "SCHEDULED" });
 
@@ -115,6 +125,7 @@ test("DETERMINISTIC PROOF: two transactions that read+write the SAME per-technic
   // the mechanism the fix relies on: reading AND writing the same doc inside the transaction is what forces
   // Firestore write-write contention between two same-technician transitions.
   const techId = id("tech-direct-race");
+  await seedGovernedTechnician(techId);
   const lockRef = db.collection(TECH_LOCKS).doc(techId);
 
   const attempt = (label) =>
@@ -143,7 +154,10 @@ test("Dispatch for DIFFERENT technicians on concurrent Work Orders is unaffected
   await seedDispatcher(dispatcherUid);
 
   const techA = id("tech-a");
+
+  await seedGovernedTechnician(techA);
   const techB = id("tech-b");
+  await seedGovernedTechnician(techB);
   const woA = id("wo-diff-a");
   const woB = id("wo-diff-b");
   await seedWorkOrder(woA, { status: "SCHEDULED" });

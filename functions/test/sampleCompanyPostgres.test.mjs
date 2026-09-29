@@ -229,8 +229,11 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 1762992000000 (the direct-exception cell lock, lane DX): one trigger -- no capability, no grant, no vocabulary move.
 // 1763078400000 (the Administrator staffing capability, Owner ruling R1): ONE capability,
 // admin.administratorRole.assign (vocabulary 81 -> 82, reconciled in the manifest), granted to owner.
-const PINNED_LAST_MIGRATION = "1763078400000_administrator-staffing-capability";
-const PINNED_MIGRATION_COUNT = 57;
+// 1763856000000 (the Work Order business-action capabilities, Controller rulings DQ-010 / DQ-011): FOUR capabilities
+// (workOrder.lifecycle.ready / .schedule / .close, workOrder.parts.plan; vocabulary 82 -> 86, reconciled in the
+// manifest), granted to NO Role by the migration.
+const PINNED_LAST_MIGRATION = "1763856000000_work-order-business-action-capabilities";
+const PINNED_MIGRATION_COUNT = 58;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

@@ -43,6 +43,8 @@ on:
       - "functions/test/transitionWorkOrderReassignment.test.mjs"
       - "functions/test/transitionWorkOrderAuditTrail.test.mjs"
       - "functions/test/transitionWorkOrderConcurrency.test.mjs"
+      - "functions/test/transitionWorkOrderRulingRepairs.test.mjs"
+      - "functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -181,6 +183,7 @@ jobs:
           test/transitionWorkOrderReassignment.test.mjs
           test/transitionWorkOrderAuditTrail.test.mjs
           test/transitionWorkOrderConcurrency.test.mjs
+          test/transitionWorkOrderRulingRepairs.test.mjs
         working-directory: functions
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080

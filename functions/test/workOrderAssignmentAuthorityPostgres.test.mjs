@@ -38,6 +38,16 @@ test("Work Order assignment names an EMPLOYEE, never a technician id and never a
   const q = (text, values = []) => pool.query(text, values);
   const repo = new PostgresPolicyRepository(pool);
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  // The governed company <-> key binding (DQ-013). Company `taylor` is keyed `sample-co` on purpose: the
+  // Work Order carries a KEY, the Employee a COMPANY id, and only the binding relates them. `ventana` is an
+  // ACTIVE company with its own key, so a Ventana Employee is NOT eligible for a Taylor Work Order.
+  for (const [company, key] of [["taylor", "sample-co"], ["ventana", "ventana-co"]]) {
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
+             VALUES ('t1',$1,'ACTIVE','fixture','fixture','fixture')`, [company]);
+    await q(`INSERT INTO eos_policy.tenant_operating_company_keys
+               (tenant_id,operating_company_id,operating_company_key,status,provenance,source,established_by,updated_by)
+             VALUES ('t1',$1,$2,'ACTIVE','MIGRATED','fixture','fixture','fixture')`, [company, key]);
+  }
 
   const principal = async (tenantId, subject) => repo.transact({ tenantId, uid: "fixture" }, async (tx) => {
     const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
@@ -49,9 +59,9 @@ test("Work Order assignment names an EMPLOYEE, never a technician id and never a
   const pBob = await principal("t1", "uid-bob");
   const pUnlinked = await principal("t1", "uid-unlinked");
 
-  const employee = (id, status = "ACTIVE", tenant = "t1") => q(
+  const employee = (id, status = "ACTIVE", tenant = "t1", company = "taylor") => q(
     `INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at)
-     VALUES ($1, $2, $3, 'taylor', '2020-01-01T00:00:00Z')`, [id, tenant, status]);
+     VALUES ($1, $2, $3, $4, '2020-01-01T00:00:00Z')`, [id, tenant, status, company]);
   let n = 0;
   const link = (employeeId, principalId, tenant = "t1") => q(
     `INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
@@ -74,6 +84,10 @@ test("Work Order assignment names an EMPLOYEE, never a technician id and never a
   await employee("e-warehouse"); await link("e-warehouse", pWarehouse); await qualify("e-warehouse", "WAREHOUSE_OPERATIONS");
   await employee("e-onleave", "ON_LEAVE"); await link("e-onleave", pOnLeave); await qualify("e-onleave");
   await employee("e-contractor", "CONTRACTOR"); await link("e-contractor", pContractor); await qualify("e-contractor");
+  const pVentana = await principal("t1", "uid-ventana");
+  const pTerminated = await principal("t1", "uid-terminated");
+  await employee("e-ventana", "ACTIVE", "t1", "ventana"); await link("e-ventana", pVentana); await qualify("e-ventana");
+  await employee("e-terminated", "TERMINATED"); await link("e-terminated", pTerminated); await qualify("e-terminated");
   // ACTIVE and qualified, but no login at all -- and one whose only login was REVOKED.
   await employee("e-nologin"); await qualify("e-nologin");
   await employee("e-revoked"); await qualify("e-revoked");
@@ -83,13 +97,14 @@ test("Work Order assignment names an EMPLOYEE, never a technician id and never a
 
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by)
            VALUES ('acct-1','t1','Cust','ACTIVE','f','f')`);
-  const workOrder = (id, status = "READY_TO_DISPATCH", tenant = "t1") => q(
+  const workOrder = (id, status = "READY_TO_DISPATCH", tenant = "t1", key = "sample-co") => q(
     `INSERT INTO eos_ops.work_orders
        (id, tenant_id, operating_company_key, status, work_order_type, priority, customer_id,
         location_id, provenance, created_by_principal_id, created_at, updated_at)
-     VALUES ($1, $2, 'sample-co', $3, 'SERVICE_CALL', 2, 'acct-1', 'loc-1', 'NATIVE', $4, now(), now())`,
-    [id, tenant, status, tenant === "t1" ? pDispatcher : null]);
-  for (const id of ["wo-1", "wo-2", "wo-3", "wo-x"]) await workOrder(id);
+     VALUES ($1, $2, $5, $3, 'SERVICE_CALL', 2, 'acct-1', 'loc-1', 'NATIVE', $4, now(), now())`,
+    [id, tenant, status, tenant === "t1" ? pDispatcher : null, key]);
+  for (const id of ["wo-1", "wo-2", "wo-3", "wo-x", "wo-contract"]) await workOrder(id);
+  await workOrder("wo-unbound", "READY_TO_DISPATCH", "t1", "no-such-key");
   await workOrder("wo-running", "WORK_IN_PROGRESS");
 
   const deps = { pool };
@@ -121,11 +136,29 @@ test("Work Order assignment names an EMPLOYEE, never a technician id and never a
 
   await t.test("an inactive Employee is not assignable, whatever they are qualified for", async () => {
     await assert.rejects(assign({ workOrderId: "wo-1", employeeId: "e-onleave" }),
-      /only an ACTIVE Employee/);
-    // ACTIVE ALONE is the declared assignability policy (assignableEmployeeReads.ts); widening it to
-    // CONTRACTOR is a business decision, not something this command infers.
-    await assert.rejects(assign({ workOrderId: "wo-1", employeeId: "e-contractor" }),
-      /only an ACTIVE Employee/);
+      /only an ACTIVE or CONTRACTOR Employee/);
+    await assert.rejects(assign({ workOrderId: "wo-1", employeeId: "e-terminated" }),
+      /only an ACTIVE or CONTRACTOR Employee/);
+  });
+
+  await t.test("DQ-012: a CONTRACTOR technician IS assignable when every other prerequisite holds", async () => {
+    const r = await assign({ workOrderId: "wo-contract", employeeId: "e-contractor" });
+    assert.equal(r.outcome, "ASSIGNED");
+    assert.equal(r.assigneeEmployeeId, "e-contractor");
+  });
+
+  await t.test("DQ-013: the assignee must be eligible for the Work Order's governed operating company", async () => {
+    // A Ventana Employee, otherwise fully assignable, is refused a Taylor (key sample-co) Work Order.
+    await assert.rejects(assign({ workOrderId: "wo-1", employeeId: "e-ventana" }),
+      (e) => { assert.equal(e.code, "EMPLOYEE_NOT_ELIGIBLE_FOR_OPERATING_COMPANY"); return true; });
+    // A Work Order whose key binds to no ACTIVE company fails closed -- nothing is inferred.
+    await assert.rejects(assign({ workOrderId: "wo-unbound", employeeId: "e-alice" }),
+      (e) => { assert.equal(e.code, "WORK_ORDER_OPERATING_COMPANY_NOT_GOVERNED"); return true; });
+    // And the Work Order's company is never rewritten by a refused attempt.
+    const { rows } = await q(`SELECT id, operating_company_key FROM eos_ops.work_orders WHERE id IN ('wo-1','wo-unbound') ORDER BY id`);
+    assert.deepEqual(rows.map((r) => r.operating_company_key), ["sample-co", "no-such-key"]);
+    const n = (await q(`SELECT count(*)::int n FROM eos_ops.work_order_assignments WHERE work_order_id IN ('wo-1','wo-unbound')`)).rows[0].n;
+    assert.equal(n, 0);
   });
 
   await t.test("THE ACCOUNT PREDICATE: no active governed login, no assignment -- a revoked link is not a login", async () => {

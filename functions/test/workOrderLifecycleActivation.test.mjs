@@ -245,6 +245,12 @@ test("the five grants, and the assignment they gate", { skip: SKIP, concurrency:
     await q(`INSERT INTO eos_policy.tenant_memberships (id,tenant_id,principal_id,status)
              VALUES ($1,$2,$3,'active')`, [`mem-${pid}`, T, pid]);
   };
+  // The governed company <-> key binding the Work Order's operating_company_key resolves through (DQ-013).
+  await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
+           VALUES ($1,'taylor','ACTIVE','fixture','fixture','fixture')`, [T]);
+  await q(`INSERT INTO eos_policy.tenant_operating_company_keys
+             (tenant_id,operating_company_id,operating_company_key,status,provenance,source,established_by,updated_by)
+           VALUES ($1,'taylor','taylor','ACTIVE','MIGRATED','fixture','fixture','fixture')`, [T]);
   await mkPrincipal("prn-tech-a", "uid-tech-a");
   await mkPrincipal("prn-tech-b", "uid-tech-b");
   await mkPrincipal("prn-dispatcher", "uid-dispatcher");

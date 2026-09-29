@@ -28,6 +28,12 @@ const PROJECT_ID = "taylor-parts";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 
+// DQ-014: Dispatch now enforces the existing placement invariants (the technician exists and carries a
+// governed status), so every technician these proofs dispatch to is a real fieldops_technicians record.
+async function seedGovernedTechnician(technicianId) {
+  await db.collection("fieldops_technicians").doc(technicianId).set({ status: "available" }, { merge: true });
+}
+
 const { transitionWorkOrder } = await import("../lib/transitionWorkOrder.js");
 
 const WOS = "fieldops_wos";
@@ -76,6 +82,8 @@ test("AUDIT TRAIL: Dispatch stages a transitionWorkOrder Audit Event with correc
   await seedWorkOrder(woId, { status: "SCHEDULED" });
 
   const techId = id("tech-audit-dispatch");
+
+  await seedGovernedTechnician(techId);
   const result = await transitionWorkOrder.run(
     callRequest({ workOrderId: woId, action: "Dispatch", assignedTechId: techId }, adminUid),
   );

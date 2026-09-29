@@ -29,6 +29,8 @@ const require = createRequire(import.meta.url);
 const lifecycle = require("../lib/eosOps/workOrderLifecycle.js");
 const assignment = require("../lib/eosOps/workOrderAssignmentAuthority.js");
 const ctx = require("../lib/eosOps/contextualAuthorization.js");
+const model = require("../lib/eosOps/conditionalEntitlement.js");
+const woRead = require("../lib/eosOps/workOrderRecordRead.js");
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -51,6 +53,21 @@ test("baseline: only the dispatch bucket (admin, dispatcher, fieldManager) may A
   for (const k of [assignment.WORK_ORDER_ASSIGN, lifecycle.WORK_ORDER_LIFECYCLE_COMPLETE, lifecycle.WORK_ORDER_LIFECYCLE_CANCEL]) {
     assert.equal(capsOf("officeManager").has(k), false, `officeManager must not hold ${k}`);
   }
+});
+
+test("DQ-016: no module outside the Work Order authority reads a Work Order's history or plan UNGOVERNED", async () => {
+  // The raw readers are the commands' trusted internals; a transport must use workOrderRecordRead's governed
+  // readers, which decide workOrder.record.read + RECORD_ASSIGNMENT first. Comments are stripped so a
+  // mention is not an import.
+  const { readdirSync, statSync } = await import("node:fs");
+  const walk = (d) => readdirSync(d).flatMap((f) => { const p = resolve(d, f); return statSync(p).isDirectory() ? walk(p) : [p]; });
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const ALLOWED = new Set(["eosOps/workOrderLifecycle.ts", "eosOps/workOrderPartsPlanAuthority.ts", "eosOps/workOrderRecordRead.ts"]);
+  const offenders = walk(resolve(FUNCTIONS_DIR, "src")).filter((f) => f.endsWith(".ts"))
+    .map((f) => [f.slice(resolve(FUNCTIONS_DIR, "src").length + 1), strip(readFileSync(f, "utf8"))])
+    .filter(([rel, code]) => !ALLOWED.has(rel) && /\b(readTransitionHistory|readPartsPlan)\b/.test(code))
+    .map(([rel]) => rel);
+  assert.deepEqual(offenders, []);
 });
 
 // ════════════════════ AGAINST REAL POSTGRESQL ════════════════════
@@ -81,15 +98,24 @@ test("the service persona matrix over the governed Work Order authority", { skip
 
   // ── fixtures: two tenants, principals, Employees, links, eligibility ──
   await q(`INSERT INTO eos_policy.tenants (id,key,name) VALUES ($1,$1,$1), ($2,$2,$2)`, [T, T2]);
+  // Governed company <-> key bindings (DQ-013): Taylor Work Orders carry key `taylor`; Ventana is a second
+  // ACTIVE company with its own key.
+  for (const [company, key] of [["taylor", "taylor"], ["ventana", "ventana"]]) {
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
+             VALUES ($1,$2,'ACTIVE','fixture','fixture','fixture')`, [T, company]);
+    await q(`INSERT INTO eos_policy.tenant_operating_company_keys
+               (tenant_id,operating_company_id,operating_company_key,status,provenance,source,established_by,updated_by)
+             VALUES ($1,$2,$3,'ACTIVE','MIGRATED','fixture','fixture','fixture')`, [T, company, key]);
+  }
   const principal = async (pid, tenant = T) => {
     await q(`INSERT INTO eos_policy.principals (id,external_subject,identity_provider,status) VALUES ($1,$2,'firebase','active')`,
       [pid, `uid-${pid}`]);
     await q(`INSERT INTO eos_policy.tenant_memberships (id,tenant_id,principal_id,status) VALUES ($1,$2,$3,'active')`,
       [`mem-${pid}`, tenant, pid]);
   };
-  const employee = async (eid, status = "ACTIVE", tenant = T) => {
+  const employee = async (eid, status = "ACTIVE", tenant = T, company = "taylor") => {
     await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,employee_number)
-             VALUES ($1,$2,$3,'taylor',$1)`, [eid, tenant, status]);
+             VALUES ($1,$2,$3,$4,$1)`, [eid, tenant, status, company]);
     await q(`INSERT INTO eos_workforce.employee_work_eligibility
                (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by,reason)
              VALUES ($1,$2,$3,'SERVICE_TECHNICIAN',now(),'fixture','service matrix fixture')`, [`elig-${eid}`, tenant, eid]);
@@ -109,6 +135,8 @@ test("the service persona matrix over the governed Work Order authority", { skip
   await employee("emp-tech-leave"); await link("prn-tech-leave", "emp-tech-leave");
   await employee("emp-tech-contract", "CONTRACTOR"); await link("prn-tech-contract", "emp-tech-contract");
   await employee("emp-tech-foreign", "ACTIVE", T2); await link("prn-tech-foreign", "emp-tech-foreign", T2);
+  await principal("prn-tech-ventana");
+  await employee("emp-tech-ventana", "ACTIVE", T, "ventana"); await link("prn-tech-ventana", "emp-tech-ventana");
   // prn-tech-unlinked holds the technician Role's capabilities and has NO Employee link at all.
 
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by)
@@ -155,11 +183,22 @@ test("the service persona matrix over the governed Work Order authority", { skip
     await assert.rejects(dispatch("uid-prn-tech-b"), /does not exist in this tenant/);
     // A foreign-tenant Employee cannot be named across the boundary.
     await assert.rejects(dispatch("emp-tech-foreign"), /does not exist in this tenant/);
-    // CONTRACTOR is refused under the declared ACTIVE-only assignability policy.
-    await assert.rejects(dispatch("emp-tech-contract"), /only an ACTIVE Employee/);
+    // A Ventana Employee is not eligible for a Taylor Work Order (DQ-013).
+    await assert.rejects(dispatch("emp-tech-ventana"), (e) => e.code === "EMPLOYEE_NOT_ELIGIBLE_FOR_OPERATING_COMPANY");
     const { rows } = await q(`SELECT assignee_employee_id FROM eos_ops.work_order_assignments
                                WHERE work_order_id='wo-a' AND effective_to IS NULL`);
     assert.deepEqual(rows.map((r) => r.assignee_employee_id), ["emp-tech-a"], "no refused attempt moved the assignment");
+  });
+
+  await t.test("DQ-012: a CONTRACTOR technician is assigned, and completes their own job like any assignee", async () => {
+    await workOrder("wo-contract", "READY_TO_DISPATCH");
+    const r = await assignment.assignWorkOrderToEmployee({ pool }, actor(PERSONA.dispatcher),
+      { workOrderId: "wo-contract", employeeId: "emp-tech-contract", source: "SCHEDULE" });
+    assert.equal(r.outcome, "ASSIGNED");
+    const contractor = { principalId: "prn-tech-contract", caps: capsOf("technician") };
+    const d = await lifecycle.authorizeLifecycleEdge(reader, actor(contractor),
+      { workOrderId: "wo-contract", expectedStatus: "WORK_IN_PROGRESS", toStatus: "COMPLETED" });
+    assert.equal(d.reason, "ALLOWED");
   });
 
   // ── COMPLETE: RECORD_ASSIGNMENT, Employee against Employee ──
@@ -218,7 +257,7 @@ test("the service persona matrix over the governed Work Order authority", { skip
   });
 
   // ── ON LEAVE: characterised, not endorsed ──
-  await t.test("CHARACTERISATION (XLF): an assigned technician placed ON_LEAVE is still ALLOWED to complete", async () => {
+  await t.test("CHARACTERISATION (XLF-001, L5 owns the central fix; re-pin when it lands): an assigned technician placed ON_LEAVE is still ALLOWED to complete", async () => {
     // New assignments already refuse a non-ACTIVE Employee (assignWorkOrderToEmployee). But neither the
     // RECORD_ASSIGNMENT evaluator nor principal-context resolution consults PostgreSQL employment status,
     // so an EXISTING assignment keeps working after the Employee goes on leave. Whether that is refused
@@ -235,31 +274,84 @@ test("the service persona matrix over the governed Work Order authority", { skip
     // ...and a NEW assignment to the same Employee is refused, so the two paths currently disagree.
     await workOrder("wo-leave-2", "READY_TO_DISPATCH");
     await assert.rejects(assignment.assignWorkOrderToEmployee({ pool }, actor(PERSONA.dispatcher),
-      { workOrderId: "wo-leave-2", employeeId: "emp-tech-leave", source: "SCHEDULE" }), /only an ACTIVE Employee/);
+      { workOrderId: "wo-leave-2", employeeId: "emp-tech-leave", source: "SCHEDULE" }), /only an ACTIVE or CONTRACTOR Employee/);
   });
 
-  // ── the ALLOWED non-effect edges: characterised, pending a decision ──
-  await t.test("CHARACTERISATION (DQ-L2-A): every workOrder.transition holder may CLOSE / MARK READY any Work Order", async () => {
-    // Legacy ACTION_PERMISSIONS (the live Firebase runtime) restricts MarkReady and Close to admin and
-    // dispatcher. The PG matrix gates both with the general workOrder.transition, which the baseline grants
-    // to technician, partsAssociate, shopAssociate, generalManager, owner and operationsManager too -- and
-    // declares no record predicate on it. So an UNASSIGNED technician closes somebody else's job. Pinned
-    // here so the decision's consequence is measured; if DQ-L2-A narrows it, this case flips to a refusal.
+  // ── DQ-010: the dispatcher-bucket edges have their OWN capabilities, held by nobody by default ──
+  await t.test("DQ-010: CLOSE and MARK READY need workOrder.lifecycle.close / .ready -- no baseline persona holds them", async () => {
+    // Before DQ-010 these edges were gated by the broad workOrder.transition, so an UNASSIGNED technician
+    // could close anybody's job. The ruling registers distinct BUSINESS_ACTION capabilities with NO grants:
+    // every baseline persona is now refused until Administration grants them.
     await workOrder("wo-done", "WORK_IN_PROGRESS");
     await q(`UPDATE eos_ops.work_orders SET status='COMPLETED', completed_at=now() WHERE id='wo-done'`);
     await workOrder("wo-new", "CREATED");
-    const unassignedTech = PERSONA.techAssigned; // assigned to nothing now (reassigned away above)
-    const closed = await lifecycle.transitionWorkOrder({ pool }, actor(unassignedTech),
-      { workOrderId: "wo-done", expectedStatus: "COMPLETED", toStatus: "CLOSED" });
-    assert.equal(closed.toStatus, "CLOSED");
-    const ready = await lifecycle.transitionWorkOrder({ pool }, actor(PERSONA.partsAssociate),
-      { workOrderId: "wo-new", expectedStatus: "CREATED", toStatus: "READY_TO_DISPATCH" });
-    assert.equal(ready.toStatus, "READY_TO_DISPATCH");
-    // officeManager does NOT hold workOrder.transition in the baseline, so it is refused.
-    await workOrder("wo-new-2", "CREATED");
-    await assert.rejects(lifecycle.transitionWorkOrder({ pool }, actor(PERSONA.officeManager),
-      { workOrderId: "wo-new-2", expectedStatus: "CREATED", toStatus: "READY_TO_DISPATCH" }),
-    (e) => { assert.equal(e.code, "CAPABILITY_MISSING"); return true; });
+    for (const who of Object.keys(PERSONA)) {
+      await assert.rejects(lifecycle.transitionWorkOrder({ pool }, actor(PERSONA[who]),
+        { workOrderId: "wo-done", expectedStatus: "COMPLETED", toStatus: "CLOSED" }),
+      (e) => { assert.equal(e.code, "CAPABILITY_MISSING", who); assert.match(e.message, /workOrder\.lifecycle\.close/); return true; }, who);
+      await assert.rejects(lifecycle.transitionWorkOrder({ pool }, actor(PERSONA[who]),
+        { workOrderId: "wo-new", expectedStatus: "CREATED", toStatus: "READY_TO_DISPATCH" }),
+      (e) => { assert.equal(e.code, "CAPABILITY_MISSING", who); assert.match(e.message, /workOrder\.lifecycle\.ready/); return true; }, who);
+    }
+    // Whoever Administration grants them to can perform exactly that edge -- and nothing else.
+    const closer = { tenantId: T, principalId: "prn-dispatcher", capabilities: new Set(["workOrder.lifecycle.close"]) };
+    assert.equal((await lifecycle.transitionWorkOrder({ pool }, closer,
+      { workOrderId: "wo-done", expectedStatus: "COMPLETED", toStatus: "CLOSED" })).toStatus, "CLOSED");
+    await assert.rejects(lifecycle.transitionWorkOrder({ pool }, closer,
+      { workOrderId: "wo-new", expectedStatus: "CREATED", toStatus: "READY_TO_DISPATCH" }),
+    (e) => { assert.equal(e.code, "CAPABILITY_MISSING"); return true; }, "close does not imply ready");
+    // And the four new keys are REGISTERED, with no Role grant anywhere.
+    const { rows } = await q(`SELECT c.key, count(rc.id)::int AS grants FROM eos_policy.capabilities c
+                                LEFT JOIN eos_policy.role_capabilities rc ON rc.capability_id = c.id
+                               WHERE c.key IN ('workOrder.lifecycle.ready','workOrder.lifecycle.schedule','workOrder.lifecycle.close','workOrder.parts.plan')
+                               GROUP BY c.key ORDER BY c.key`);
+    assert.deepEqual(rows.map((r) => [r.key, r.grants]), [
+      ["workOrder.lifecycle.close", 0], ["workOrder.lifecycle.ready", 0],
+      ["workOrder.lifecycle.schedule", 0], ["workOrder.parts.plan", 0],
+    ]);
+  });
+
+  // ── DQ-016: technician read = workOrder.record.read + RECORD_ASSIGNMENT, no tenant-wide fallback ──
+  await t.test("DQ-016: the governed WO read -- conditioned technician reads own only; dispatcher reads any; no record = no read", async () => {
+    // The technician grant as Administration conditions it (setGrantCondition, CASE D), composed by the
+    // SAME entitlement model the runtime uses. The dispatcher grant is unconditioned.
+    const conditions = model.grantConditionCatalog([{ grantor: { kind: "ROLE", roleKey: "technician" },
+      capabilityKey: "workOrder.record.read",
+      condition: { paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "workOrder" } }]);
+    const opActor = (principalId, roleKey) => {
+      const ent = model.entitlementsFrom(
+        [...capsOf(roleKey)].map((capabilityKey) => ({ grantor: { kind: "ROLE", roleKey }, capabilityKey })), conditions);
+      const flat = new Set(ent.filter((e) => e.condition === null).map((e) => e.capabilityKey));
+      const cond = new Set(ent.filter((e) => e.condition !== null).map((e) => e.capabilityKey));
+      return { tenantId: T, principalId, capabilities: flat, conditionallyHeld: cond, entitlements: () => ent };
+    };
+    const techB = opActor("prn-tech-b", "technician");     // currently assigned wo-a (reassigned above)
+    const techA = opActor("prn-tech-a", "technician");     // assigned to nothing
+    const unlinked = opActor("prn-tech-unlinked", "technician");
+    const dispatcher = opActor("prn-dispatcher", "dispatcher");
+    const office = opActor("prn-office", "officeManager");
+    const decide = (a, id) => woRead.authorizeWorkOrderRecordRead(reader, a, id);
+
+    assert.deepEqual([(await decide(techB, "wo-a")).allowed, (await decide(techB, "wo-a")).viaCondition], [true, true]);
+    assert.equal((await decide(techA, "wo-a")).outcome, "NOT_ASSIGNED", "another technician does NOT gain access");
+    assert.equal((await decide(unlinked, "wo-a")).allowed, false);
+    assert.equal((await decide(techB, "wo-does-not-exist")).outcome, (await decide(techA, "wo-a")).outcome,
+      "a guessed id and another's real id refuse identically");
+    assert.deepEqual([(await decide(dispatcher, "wo-a")).allowed, (await decide(dispatcher, "wo-a")).viaCondition], [true, false]);
+    assert.equal((await decide(office, "wo-a")).outcome, "CAPABILITY_MISSING");
+    // NO TENANT-WIDE FALLBACK: no record id is refused before the evaluator, and a flat-only actor
+    // (no entitlements) is refused rather than decided by capabilities.has().
+    for (const bad of [undefined, "", "a/b"]) {
+      await assert.rejects(decide(techB, bad), (e) => e.code === "WORK_ORDER_ID_REQUIRED");
+    }
+    await assert.rejects(decide({ tenantId: T, principalId: "prn-tech-b", capabilities: new Set(["workOrder.record.read"]) }, "wo-a"),
+      (e) => e.code === "ACTOR_CONTEXT_REQUIRED");
+    // The governed readers enforce the same decision before returning data.
+    const deps = { db: pool, reader };
+    assert.ok((await woRead.readWorkOrderTransitionHistoryGoverned(deps, dispatcher, "wo-a")).length >= 0);
+    await assert.rejects(woRead.readWorkOrderTransitionHistoryGoverned(deps, techA, "wo-a"), (e) => e.code === "NOT_ASSIGNED");
+    await assert.rejects(woRead.readWorkOrderPartsPlanGoverned(deps, techA, "wo-a"), (e) => e.code === "NOT_ASSIGNED");
+    assert.deepEqual(await woRead.readWorkOrderPartsPlanGoverned(deps, techB, "wo-a"), []);
   });
 
   // ── the PostgreSQL edges that exist today ──

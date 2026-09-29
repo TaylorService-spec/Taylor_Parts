@@ -194,7 +194,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 55 -> 56: the direct-exception cell lock (1762992000000, lane DX) -- one trigger, no capability, no grant.
   // 56 -> 57: the Administrator staffing capability (1763078400000, Owner ruling R1) -- ONE WRITE capability
   // (admin.administratorRole.assign) granted to owner. It registers no READ key.
-  assert.equal(migrations.length, 57, "a migration was added or removed by the read enforcement");
+  // 57 -> 58: the Work Order business-action capabilities (1763856000000, Controller rulings DQ-010 / DQ-011,
+  // lane L2) -- FOUR BUSINESS_ACTION capabilities granted to nobody. It registers no READ key.
+  assert.equal(migrations.length, 58, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

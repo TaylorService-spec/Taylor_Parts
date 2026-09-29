@@ -64,6 +64,17 @@ export const WORK_ORDER_LIFECYCLE_DISPATCH = "workOrder.lifecycle.dispatch";
 export const WORK_ORDER_LIFECYCLE_CANCEL = "workOrder.lifecycle.cancel";
 export const WORK_ORDER_LIFECYCLE_COMPLETE = "workOrder.lifecycle.complete";
 
+/**
+ * Controller ruling DQ-010 (2026-09-28): the materially distinct DISPATCHER-BUCKET actions each get their
+ * OWN BUSINESS_ACTION capability instead of the broad `workOrder.transition` -- which the baseline grants
+ * to eleven Roles, technician and partsAssociate included, so a technician could have closed any
+ * Work Order in the tenant. Registered by migration 1763856000000 with NO grants: holding them is an
+ * Administration decision. `workOrder.transition` now gates ONLY the technician runtime edges.
+ */
+export const WORK_ORDER_LIFECYCLE_READY = "workOrder.lifecycle.ready";
+export const WORK_ORDER_LIFECYCLE_SCHEDULE = "workOrder.lifecycle.schedule";
+export const WORK_ORDER_LIFECYCLE_CLOSE = "workOrder.lifecycle.close";
+
 /** Exactly the edges that fire an inventory effect (inventoryService.ts STATE_TRIGGERS). */
 export const EFFECT_BEARING_TARGET_STATUSES: readonly WorkOrderStatus[] =
   Object.freeze(["DISPATCHED", "COMPLETED", "CANCELLED"]);
@@ -90,11 +101,11 @@ const rule = (
  */
 export const TRANSITION_MATRIX: readonly TransitionRule[] = Object.freeze([
   // ── implemented: no dependent authority is missing and no inventory effect is owed ──
-  rule("CREATED", "READY_TO_DISPATCH", "markReadyToDispatch", "ALLOWED", WORK_ORDER_TRANSITION, null),
-  rule("COMPLETED", "CLOSED", "close", "ALLOWED", WORK_ORDER_TRANSITION, null),
+  rule("CREATED", "READY_TO_DISPATCH", "markReadyToDispatch", "ALLOWED", WORK_ORDER_LIFECYCLE_READY, null),
+  rule("COMPLETED", "CLOSED", "close", "ALLOWED", WORK_ORDER_LIFECYCLE_CLOSE, null),
 
   // ── scheduling ──
-  rule("READY_TO_DISPATCH", "SCHEDULED", "schedule", "NOT_YET_IMPLEMENTED", WORK_ORDER_TRANSITION,
+  rule("READY_TO_DISPATCH", "SCHEDULED", "schedule", "NOT_YET_IMPLEMENTED", WORK_ORDER_LIFECYCLE_SCHEDULE,
     "the scheduling authority: a SCHEDULED Work Order asserts a time and an assignee, and neither is established here"),
   // UNSCHEDULE IS THE INVERSE OF SCHEDULE, and it is deferred with it. Owner ruling ND-18 (2026-08-27)
   // makes un-scheduling a REASONED act: a stated reason is required, the technician and window being
@@ -102,7 +113,7 @@ export const TRANSITION_MATRIX: readonly TransitionRule[] = Object.freeze([
   // indistinguishable from one never scheduled (transitionWorkOrder.ts's Unschedule branch). A bare
   // status flip here would do none of the three -- no reason, no record, and scheduled_start /
   // scheduled_end left set on a READY_TO_DISPATCH row, the H20 defect in PostgreSQL form.
-  rule("SCHEDULED", "READY_TO_DISPATCH", "unschedule", "NOT_YET_IMPLEMENTED", WORK_ORDER_TRANSITION,
+  rule("SCHEDULED", "READY_TO_DISPATCH", "unschedule", "NOT_YET_IMPLEMENTED", WORK_ORDER_LIFECYCLE_SCHEDULE,
     "the scheduling authority: ND-18 requires a stated reason, a record of the technician and window given up, "
     + "and clearing the placement (scheduled_start / scheduled_end and the open assignment); none is composed here"),
 

@@ -165,8 +165,10 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // tenant sales channel activation, a sixth EXPLAINED pending migration; the ledger model is not extended.
 // 56 -> 57 runnable: migration 1763078400000, the Administrator staffing capability (Owner ruling R1) -- APPENDED
 // after the direct-exception cell lock, a seventh EXPLAINED pending migration; the ledger model is not extended.
-const RUNNABLE_MIGRATION_COUNT = 57;
-const TRACKED_MIGRATION_COUNT = 58; // the 57 runnable + the one deferred file
+// 57 -> 58 runnable: migration 1763856000000, the Work Order business-action capabilities (Controller rulings
+// DQ-010 / DQ-011, lane L2) -- APPENDED in lane L2's slot, an eighth EXPLAINED pending migration; not extended.
+const RUNNABLE_MIGRATION_COUNT = 58;
+const TRACKED_MIGRATION_COUNT = 59; // the 58 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -175,6 +177,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762905600000_tenant-sales-channel-scope",
   "1762992000000_direct-exception-cell-lock",
   "1763078400000_administrator-staffing-capability",
+  "1763856000000_work-order-business-action-capabilities",
 ]);
 
 const repoMigrations = () =>
@@ -347,9 +350,9 @@ test("a BACK-DATED pending migration is REPORTED -- the hazard --no-check-order 
 });
 
 test("a properly APPENDED pending migration is explained, and is not reported", () => {
-  const repo = [...repoMigrations(), "1763164800000_a-migration-appended-after-the-chain"].sort();
+  const repo = [...repoMigrations(), "1899999999999_a-migration-appended-after-the-chain"].sort();
   const { pending, unexplainedPending } = analyseLedger(repo, NONPROD_LEDGER);
-  assert.deepEqual(pending, [...PENDING_AT_MEASUREMENT, "1763164800000_a-migration-appended-after-the-chain"]);
+  assert.deepEqual(pending, [...PENDING_AT_MEASUREMENT, "1899999999999_a-migration-appended-after-the-chain"]);
   assert.deepEqual(unexplainedPending, [], "new work at the end of the chain is normal and must not fire the guard");
 });
 

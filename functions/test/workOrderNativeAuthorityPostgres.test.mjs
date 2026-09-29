@@ -70,7 +70,10 @@ test("native Work Order authority", { skip: SKIP, concurrency: 1 }, async (t) =>
 
   const deps = { pool };
   const actor = (over = {}) => ({
-    tenantId: TENANT, principalId, capabilities: new Set([create.WORK_ORDER_CREATE, lifecycle.WORK_ORDER_TRANSITION]),
+    // The dispatcher-bucket keys are DISTINCT since Controller ruling DQ-010 (2026-09-28); this actor holds
+    // them so the lifecycle proofs below exercise the edges themselves, not the missing grant.
+    tenantId: TENANT, principalId, capabilities: new Set([create.WORK_ORDER_CREATE, lifecycle.WORK_ORDER_TRANSITION,
+      lifecycle.WORK_ORDER_LIFECYCLE_READY, lifecycle.WORK_ORDER_LIFECYCLE_SCHEDULE, lifecycle.WORK_ORDER_LIFECYCLE_CLOSE]),
     operatingCompanyId: COMPANY, ...over,
   });
   const INPUT = Object.freeze({ customerId: "acct-1", locationId: "loc-1", workOrderType: "SERVICE_CALL", priority: 2 });
@@ -349,9 +352,35 @@ test("native Work Order authority", { skip: SKIP, concurrency: 1 }, async (t) =>
           `${e.from}->${to} writes an inventory commitment; the general capability must not stand in for it`);
       }
     }
-    // Conversely the non-effect edges use the general key and nothing more specific.
+    // UPDATED DELIBERATELY by Controller ruling DQ-010 (2026-09-28): the materially distinct DISPATCHER-BUCKET
+    // non-effect edges carry their OWN BUSINESS_ACTION capability (registered by migration 1763856000000 with
+    // no grants), and the general workOrder.transition is left gating ONLY the technician runtime edges. It
+    // previously pinned "every non-effect edge uses the general key", which let an unassigned technician close
+    // any Work Order in the tenant.
+    const DISPATCHER_BUCKET = {
+      "CREATED->READY_TO_DISPATCH": lifecycle.WORK_ORDER_LIFECYCLE_READY,
+      "READY_TO_DISPATCH->SCHEDULED": lifecycle.WORK_ORDER_LIFECYCLE_SCHEDULE,
+      "SCHEDULED->READY_TO_DISPATCH": lifecycle.WORK_ORDER_LIFECYCLE_SCHEDULE,
+      "COMPLETED->CLOSED": lifecycle.WORK_ORDER_LIFECYCLE_CLOSE,
+    };
     for (const e of lifecycle.TRANSITION_MATRIX.filter((r) => !lifecycle.EFFECT_BEARING_TARGET_STATUSES.includes(r.to))) {
-      assert.equal(e.capability, lifecycle.WORK_ORDER_TRANSITION, `${e.from}->${e.to}`);
+      const key = `${e.from}->${e.to}`;
+      assert.equal(e.capability, DISPATCHER_BUCKET[key] ?? lifecycle.WORK_ORDER_TRANSITION, key);
+    }
+    // The general key now gates exactly the four technician runtime edges.
+    assert.deepEqual(lifecycle.TRANSITION_MATRIX.filter((r) => r.capability === lifecycle.WORK_ORDER_TRANSITION).map((r) => r.action).sort(),
+      ["accept", "arrive", "startTravel", "startWork"]);
+  });
+
+  await t.test("DQ-010: workOrder.transition alone cannot mark ready or close", async () => {
+    const general = actor({ capabilities: new Set([create.WORK_ORDER_CREATE, lifecycle.WORK_ORDER_TRANSITION]) });
+    for (const [expectedStatus, toStatus, key] of [["CREATED", "READY_TO_DISPATCH", "workOrder.lifecycle.ready"], ["COMPLETED", "CLOSED", "workOrder.lifecycle.close"]]) {
+      const wo = await make();
+      if (expectedStatus === "COMPLETED") {
+        await q(`UPDATE eos_ops.work_orders SET status='COMPLETED', completed_at=now() WHERE id=$1`, [wo.workOrderId]);
+      }
+      await assert.rejects(() => lifecycle.transitionWorkOrder(deps, general, { workOrderId: wo.workOrderId, expectedStatus, toStatus }),
+        (e) => { assert.equal(e.code, "CAPABILITY_MISSING"); assert.match(e.message, new RegExp(key.replace(/\./g, "\\."))); return true; });
     }
   });
 
