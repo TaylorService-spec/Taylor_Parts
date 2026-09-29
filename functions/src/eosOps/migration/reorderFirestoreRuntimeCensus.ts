@@ -220,6 +220,14 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
     classification: "MIGRATION_EVIDENCE", consumer: "the snapshot format names the source collection it carries", occurrences: 2 }),
   e({ path: "functions/src/eosOps/migration/reorderSnapshot.ts", object: "PURCHASE_ORDER_VOID",
     classification: "MIGRATION_EVIDENCE", consumer: "the snapshot format names the source collection it carries", occurrences: 2 }),
+  // DQ-032: the COPY exclusion names the three legacy collections of the snapshot FILE it filters (and the reference
+  // fields between them); it loads no Firebase module and reads no Firestore.
+  e({ path: "functions/src/eosOps/migration/reorderMigrationExclusion.ts", object: "REORDER_REQUEST",
+    classification: "MIGRATION_EVIDENCE", consumer: "the DQ-032 exclusion names the snapshot collection it filters", occurrences: 3 }),
+  e({ path: "functions/src/eosOps/migration/reorderMigrationExclusion.ts", object: "PURCHASE_ORDER",
+    classification: "MIGRATION_EVIDENCE", consumer: "the DQ-032 exclusion names the snapshot collection it filters", occurrences: 3 }),
+  e({ path: "functions/src/eosOps/migration/reorderMigrationExclusion.ts", object: "PURCHASE_ORDER_VOID",
+    classification: "MIGRATION_EVIDENCE", consumer: "the DQ-032 exclusion names the snapshot collection it filters", occurrences: 1 }),
   e({ path: "functions/src/eosOps/migration/assignedToUserIdCensus.ts", object: "REORDER_REQUEST",
     classification: "MIGRATION_EVIDENCE", consumer: "the assignee census names the collection", occurrences: 1 }),
   e({ path: "functions/src/eosOps/migration/purchasingMigrationMapping.ts", object: "REORDER_REQUEST",

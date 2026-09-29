@@ -1,26 +1,23 @@
 name: Contact Provenance Tests
 
-# Contact provenance convergence -- CI coverage for the three Contact write paths
-# (single create, single update, CSV import) converging on the platform provenance
-# invariant (metadata/v2/provenance.js's createdAt/createdBy/updatedAt/updatedBy).
-# Contact is a client-direct write (no callable, gated by firestore.rules'
-# isAdminOrDispatcher()), so the test mocks firebase entirely -- no emulator, deploy,
-# or secrets. Runs the vitest + jsdom write-path test and lint over exactly the files
-# this change touches.
+# Contact provenance -- CI coverage for the Contact write paths (single create, single update, CSV import).
+# Since the CRM client cutover (f4e340b9) these go ONLY to the EOS CRM transport (POST /crm/customer) with
+# server-side provenance; the former Firestore write-path test (contactProvenance.test.jsx) was replaced by
+# crmClientCutover.test.jsx, which this workflow now runs. No emulator, deploy, or secrets.
 
 on:
   pull_request:
     paths:
       - "field-ops-app-vite/src/domain/contacts.js"
       - "field-ops-app-vite/src/domain/contactImport.js"
-      - "field-ops-app-vite/test/contactProvenance.test.jsx"
+      - "field-ops-app-vite/test/crmClientCutover.test.jsx"
       - ".github/workflows/contact-provenance-tests.yml"
   push:
     branches: [main]
     paths:
       - "field-ops-app-vite/src/domain/contacts.js"
       - "field-ops-app-vite/src/domain/contactImport.js"
-      - "field-ops-app-vite/test/contactProvenance.test.jsx"
+      - "field-ops-app-vite/test/crmClientCutover.test.jsx"
       - ".github/workflows/contact-provenance-tests.yml"
   workflow_dispatch:
 
@@ -54,7 +51,7 @@ jobs:
         run: npm install
         working-directory: field-ops-app-vite
       - name: Contact write-path provenance tests (vitest + jsdom)
-        run: npx vitest run test/contactProvenance.test.jsx
+        run: npx vitest run test/crmClientCutover.test.jsx
         working-directory: field-ops-app-vite
       - name: Lint the touched surfaces (oxlint)
         run: npx oxlint src/domain/contacts.js src/domain/contactImport.js
