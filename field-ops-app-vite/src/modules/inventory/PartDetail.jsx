@@ -51,6 +51,8 @@ import RuledSection from "../../shared/ui/RuledSection.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
+import CatalogMutationPausedNotice from "../../shared/partMaster/CatalogMutationPausedNotice.jsx";
+import { CATALOG_MUTATION_HOLD, CATALOG_MUTATION_PAUSED_REASON } from "../../config/catalogMutationHold.js";
 import { useManufacturerCatalog } from "../../hooks/useManufacturerCatalog";
 import { MANUFACTURER_CATALOG_VIEW_STATE, manufacturerCatalogViewState, manufacturerNameById } from "../../domain/manufacturerCatalogView";
 import { inventoryUrgencyTone, inventoryUrgencyLabel } from "../../domain/inventoryUrgencyTone.js";
@@ -1410,6 +1412,8 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // usePartMasterWrite governed hook PartMasterList.jsx's own dedicated admin
   // screen uses -- no second write path.
   const [masterDataPanel, setMasterDataPanel] = useState(null);
+  // DQ-034 -- read at render, so a module mock of the hold is honoured.
+  const catalogMutationHeld = CATALOG_MUTATION_HOLD.held !== false;
 
   // WORKSTREAM 2B: `warehouseId` is handed back by the control that was gated on it, so the
   // warehouse that enabled the button is the one written. The trusted command re-reads it and
@@ -1592,16 +1596,18 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                   part" then "Change status" -- and the Owner settled it on the mobile order. Both
                   frames agree that Edit part is the filled one, so it takes the primary variant it
                   never had; responsive layout may restack these, it may not reverse them. */}
-              <Button type="button" variant="primary" onClick={() => setMasterDataPanel("edit")}>
+              {/* DQ-034: while the Catalog mutation hold is on, neither change is OFFERED -- both stay, disabled, with why. */}
+              <Button type="button" variant="primary" onClick={() => setMasterDataPanel("edit")} disabled={catalogMutationHeld} title={catalogMutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined}>
                 Edit part
               </Button>{" "}
-              <Button type="button" variant="secondary" onClick={() => setMasterDataPanel("status")}>
+              <Button type="button" variant="secondary" onClick={() => setMasterDataPanel("status")} disabled={catalogMutationHeld} title={catalogMutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined}>
                 Change status
               </Button>
             </>
           )
         }
       />
+      {canonicalPart && catalogMutationHeld && <CatalogMutationPausedNotice />}
 
       {reorderRequestError && (
         <LoadingEmptyState

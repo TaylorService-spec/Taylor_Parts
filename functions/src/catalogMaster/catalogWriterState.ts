@@ -439,3 +439,52 @@ export function assertPostgresCatalogActive(writer: string, authority: CatalogWr
   assertCatalogWriterAuthorityCoherent(authority);
   if (authority.postgres !== "ACTIVE") throw new PostgresCatalogWriterInactiveError(writer);
 }
+
+// ════════════════════ THE COMPATIBILITY HOLD ON PostgreSQL CATALOG MUTATIONS (Controller ruling DQ-034, option A) ════════════════════
+//
+// ACTIVATE_POSTGRES makes PostgreSQL the Catalog READ authority. It does NOT, by itself, make it safe for PostgreSQL to
+// start CHANGING the catalog: release-journey implementations still read the FROZEN Firebase catalog (the deployed
+// Firebase Functions are old code and read the frozen Firestore `parts`), and the first PostgreSQL Part edit, status
+// change, controlType change, whole-unit reclassification or alias change would make those readers answer from a catalog
+// that no longer matches the one PostgreSQL serves. DQ-034 closes that window with a HOLD, not with a dual write:
+//
+//   the invariant while the hold exists:   PostgreSQL Catalog == frozen legacy Catalog
+//
+// So every PostgreSQL Catalog MUTATION the Render transport offers is refused, before any write, with
+// CATALOG_MUTATION_HELD. Reads are untouched (and keep their DQ-031 inventory.catalog.read gate). The one writer that may
+// populate PostgreSQL while the hold exists is the governed one-time COPY (catalogCutover.ts via
+// functions/scripts/catalogCutover.js): it is an operator tool, it never goes through the transport or this switch, and
+// it refuses DRIFT_DETECTED / TARGET_HAS_UNKNOWN_RECORDS -- so it can only make PostgreSQL EQUAL to the frozen source,
+// never different from it. That is exactly the invariant the hold protects.
+//
+// LIFTING IT. The hold is a CODE constant, like CATALOG_WRITER_AUTHORITY: no environment variable, no Firestore flag, no
+// request field and no deploy-time override can turn it off. It is lifted only by a reviewed change setting `held` to
+// false, and only after the evidence docs/architecture/catalog-cutover-plan.md §5.4 requires: (a) proof that no active
+// release journey still reads the Firebase catalog, and (b) a catalog equivalence proof (VERIFY + canonical digest).
+export interface CatalogMutationHold {
+  readonly held: boolean;
+  readonly ruling: string;
+  readonly reason: string;
+}
+
+export const CATALOG_MUTATION_HOLD_REASON = "DQ-034: active release-journey readers still read the frozen Firebase catalog";
+
+/** THE COMMITTED HOLD. Lifted only by a reviewed code change, with the §5.4 evidence. */
+export const CATALOG_MUTATION_HOLD: CatalogMutationHold = Object.freeze({
+  held: true,
+  ruling: "DQ-034",
+  reason: CATALOG_MUTATION_HOLD_REASON,
+});
+
+export class CatalogMutationHeldError extends Error {
+  readonly code = "CATALOG_MUTATION_HELD" as const;
+  constructor(readonly operation: string, readonly reason: string) {
+    super(`Catalog changes are paused during the migration (${operation} refused): ${reason}`);
+    this.name = "CatalogMutationHeldError";
+  }
+}
+
+/** First act of every PostgreSQL Catalog mutation the transport dispatches. A no-op only when the hold is lifted. */
+export function assertCatalogMutationNotHeld(operation: string, hold: CatalogMutationHold = CATALOG_MUTATION_HOLD): void {
+  if (hold?.held !== false) throw new CatalogMutationHeldError(operation, hold?.reason ?? CATALOG_MUTATION_HOLD_REASON);
+}

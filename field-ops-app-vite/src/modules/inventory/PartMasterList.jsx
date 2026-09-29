@@ -37,6 +37,8 @@ import {
 import Modal from "../../shared/ui/Modal";
 import { Field, FormActions, FormStatus } from "../../shared/ui/form";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import CatalogMutationPausedNotice from "../../shared/partMaster/CatalogMutationPausedNotice.jsx";
+import { CATALOG_MUTATION_PAUSED_REASON } from "../../config/catalogMutationHold.js";
 import { Link, useNavigate } from "react-router-dom";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
@@ -153,7 +155,7 @@ export default function PartMasterList(props) {
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState(null);
-  const { writeReady, runCreate, runUpdate, runChangeStatus } = usePartMasterWrite(props?.writeDeps);
+  const { writeReady, mutationHeld, runCreate, runUpdate, runChangeStatus } = usePartMasterWrite(props?.writeDeps);
 
   // LIST CRITERIA LIVE IN THE URL, so filters and sort survive opening a part and coming back --
   // and so a narrowed list can be shared or bookmarked rather than described over the phone.
@@ -252,7 +254,10 @@ export default function PartMasterList(props) {
 
   const parts = state.parts ?? [];
   const actions = (
-    <Button variant="primary" onClick={openCreate} disabled={busy}>New part</Button>
+    // DQ-034: while the Catalog mutation hold is on, no create is OFFERED -- the control stays, locked, and says why.
+    mutationHeld
+      ? <Button variant="protected" reason={CATALOG_MUTATION_PAUSED_REASON} id="part-master-new-part">New part</Button>
+      : <Button variant="primary" onClick={openCreate} disabled={busy}>New part</Button>
   );
 
   // THE SHELL SURVIVES EVERY STATE (Lists P2 board 2d), and it did not.
@@ -312,7 +317,8 @@ export default function PartMasterList(props) {
         Every change goes through the catalog administration service and is authorized server-side.
         {state.invalidCount > 0 ? ` ${state.invalidCount} malformed record(s) were excluded and need review.` : ""}
       </p>
-      {!writeReady && (
+      {mutationHeld && <CatalogMutationPausedNotice />}
+      {!mutationHeld && !writeReady && (
         <p className="fo-state fo-tone-muted fo-state-message" role="status">
           Editing isn’t enabled in this environment yet. You can review parts; create/edit/status changes are activated
           with the catalog administration service (a governed deployment + grant), not from this screen.
@@ -475,8 +481,8 @@ export default function PartMasterList(props) {
                     </span>
                   </td>
                   <td className="fo-pml__actions" data-label="Actions">
-                    <button type="button" onClick={() => openEdit(part)} disabled={busy} className="fo-btn-secondary">Edit</button>{" "}
-                    <button type="button" onClick={() => openStatus(part)} disabled={busy} className="fo-btn-secondary">Status</button>
+                    <button type="button" onClick={() => openEdit(part)} disabled={busy || mutationHeld} title={mutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined} className="fo-btn-secondary">Edit</button>{" "}
+                    <button type="button" onClick={() => openStatus(part)} disabled={busy || mutationHeld} title={mutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined} className="fo-btn-secondary">Status</button>
                   </td>
                 </tr>
               ))}

@@ -9,7 +9,13 @@ import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-li
 import PartIdentifiersSection from "../src/shared/partMaster/PartIdentifiersSection.jsx";
 import { NOT_READY_STATUS } from "../src/services/partAliasCallableClient.js";
 
-afterEach(cleanup);
+// DQ-034: the Catalog mutation hold is a CODE constant and is ON in every build. These flows exercise the UNHELD
+// governed path, so the hold module is mocked with a mutable `held` (default false here); the held state has its own
+// block below, and the committed constant itself is pinned by test/catalogMutationHold.test.jsx.
+const hold = vi.hoisted(() => ({ held: false }));
+vi.mock("../src/config/catalogMutationHold.js", async (orig) => ({ ...(await orig()), CATALOG_MUTATION_HOLD: hold }));
+
+afterEach(() => { cleanup(); hold.held = false; });
 
 const alias = (over = {}) => ({
   aliasId: "UPC%2F012345678905",
@@ -258,5 +264,46 @@ describe("Barcodes & Identifiers (there is no edit, and it says so)", () => {
     expect(note.textContent).toMatch(/deactivate the old one/i);
     expect(note.textContent).toMatch(/Nothing is deleted/i);
     expect(screen.queryByRole("button", { name: /^edit$/i })).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────── DQ-034: the Catalog mutation hold
+
+describe("Barcodes & Identifiers (DQ-034 hold: identifier changes are paused)", () => {
+  const ready = () => mockClient({
+    listPartAliases: vi.fn().mockResolvedValue({ result: { partId: "P1", aliases: [alias(), alias({ aliasId: "b", status: "INACTIVE", value: "999" })], truncated: false, limit: 200 } }),
+  });
+
+  it("says changes are paused, offers no add / deactivate / reactivate, and still lists and scan-tests", async () => {
+    hold.held = true;
+    const client = ready();
+    renderSection(client);
+    expect(await screen.findByText(/catalog changes are paused during the migration\. you can still/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /add identifier/i }).disabled).toBe(true);
+    for (const b of screen.getAllByRole("button", { name: /^(deactivate|reactivate)$/i })) {
+      expect(b.disabled).toBe(true);
+      fireEvent.click(b);
+    }
+    fireEvent.change(screen.getByLabelText(/value/i), { target: { value: "012345678905" } });
+    fireEvent.click(screen.getByRole("button", { name: /add identifier/i }));
+    // READS continue: the list was read, and the scan test (a read) still runs.
+    expect(client.listPartAliases).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /test this scan/i }));
+    await waitFor(() => expect(client.probePartAlias).toHaveBeenCalledTimes(1));
+    expect(client.createPartAlias).not.toHaveBeenCalled();
+    expect(client.deactivatePartAlias).not.toHaveBeenCalled();
+    expect(client.reactivatePartAlias).not.toHaveBeenCalled();
+  });
+
+  it("a server CATALOG_MUTATION_HELD refusal renders the paused state, not a generic failure", async () => {
+    const client = mockClient({
+      listPartAliases: vi.fn().mockResolvedValue({ result: { partId: "P1", aliases: [alias()], truncated: false, limit: 200 } }),
+      deactivatePartAlias: vi.fn().mockResolvedValue({ errorStatus: "failed-precondition", errorDetail: "CATALOG_MUTATION_HELD" }),
+    });
+    renderSection(client);
+    fireEvent.click(await screen.findByRole("button", { name: /^deactivate$/i }));
+    await waitFor(() => expect(client.deactivatePartAlias).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/catalog changes are paused during the migration/i)).toBeTruthy();
+    expect(screen.queryByText(/isn't allowed|not allowed/i)).toBeNull();
   });
 });

@@ -30,6 +30,7 @@ import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicy
 import { CatalogMasterError, type CatalogActorContext } from "./catalogMasterKernel.js";
 import {
   CATALOG_WRITER_AUTHORITY, PostgresCatalogWriterInactiveError, assertPostgresCatalogActive, type CatalogWriterAuthority,
+  CatalogMutationHeldError, assertCatalogMutationNotHeld,
 } from "./catalogWriterState.js";
 import { createPart, updatePart, changePartStatus } from "./postgresPartMasterWriter.js";
 import {
@@ -91,6 +92,10 @@ export const CATALOG_MUTATION_OPERATIONS = Object.freeze([
 ] as const);
 export type CatalogMutationOperation = (typeof CATALOG_MUTATION_OPERATIONS)[number];
 
+// DQ-034: EVERY operation in CATALOG_MUTATION_OPERATIONS is held while CATALOG_MUTATION_HOLD.held is true. The hold is
+// applied to the TABLE, not to a hand-kept list of names, so an operation added to the table is held the moment it
+// exists; functions/test/catalogMutationHold.test.mjs proves it for every entry and fails on any that escapes.
+
 export type CatalogOperation = CatalogReadOperation | CatalogMutationOperation;
 
 const READS = new Set<string>(CATALOG_READ_OPERATIONS);
@@ -102,7 +107,10 @@ export const CATALOG_ROUTE = "/operations/catalog";
 
 export type CatalogApiFailureCode =
   | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "INVALID_INPUT"
-  | "PRECONDITION_FAILED" | "CONFLICT" | "UNAVAILABLE" | "UNKNOWN_OPERATION" | "INTERNAL";
+  | "PRECONDITION_FAILED" | "CONFLICT" | "UNAVAILABLE" | "UNKNOWN_OPERATION" | "INTERNAL"
+  // DQ-034: its own code, not a bare PRECONDITION_FAILED -- "Catalog changes are paused during the migration" is a
+  // different fact from "the Catalog is not active yet", and the client renders a different sentence for it.
+  | "CATALOG_MUTATION_HELD";
 
 export interface CatalogApiDeps {
   readonly reader: PolicyReader;
@@ -154,6 +162,10 @@ export async function executeCatalogOperation(
     // FIRST ACT: the PostgreSQL Catalog authority must be ACTIVE (the activation window's step 18). Before that, the
     // transport answers nothing -- not a read of a not-yet-copied catalogue, and certainly not a write.
     assertPostgresCatalogActive(`catalog.transport.${request.operation}`, deps.writerAuthority ?? CATALOG_WRITER_AUTHORITY);
+    // SECOND ACT (DQ-034): a MUTATION is refused while the compatibility hold exists -- before identity resolution,
+    // before a connection is taken, before any write. The hold is the committed constant; there is no dep, flag or
+    // input that lifts it.
+    if (MUTATIONS.has(request.operation)) assertCatalogMutationNotHeld(`catalog.transport.${request.operation}`);
     const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
       identityProvider: request.caller.identityProvider,
       externalSubject: request.caller.externalSubject,
@@ -249,6 +261,9 @@ export async function executeCatalogOperation(
         return { ok: false, operation: request.operation, code: "UNKNOWN_OPERATION", message: "no such Catalog operation" };
     }
   } catch (err) {
+    if (err instanceof CatalogMutationHeldError) {
+      return { ok: false, operation: request.operation, code: "CATALOG_MUTATION_HELD", message: err.message };
+    }
     if (err instanceof PostgresCatalogWriterInactiveError) {
       return { ok: false, operation: request.operation, code: "PRECONDITION_FAILED", message: err.message };
     }
@@ -299,6 +314,9 @@ const STATUS_BY_CODE: Readonly<Record<CatalogApiFailureCode, number>> = Object.f
   NOT_FOUND: 404,
   INVALID_INPUT: 400,
   PRECONDITION_FAILED: 412,
+  // A standing system precondition (the DQ-034 hold), the same status the not-yet-active transport answers with; never
+  // 409, which the clients read as an optimistic-concurrency conflict on the record.
+  CATALOG_MUTATION_HELD: 412,
   CONFLICT: 409,
   UNAVAILABLE: 503,
   INTERNAL: 500,

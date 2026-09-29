@@ -51,6 +51,12 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useParams: () => ({ partId: "TST-9001" }), useSearchParams: () => [new URLSearchParams(), () => {}], Link: ({ children }) => children };
 });
 
+// DQ-034: the Catalog mutation hold is a CODE constant and is ON in every build. These flows exercise the UNHELD
+// governed path, so the hold module is mocked with a mutable `held` (default false here); the held state has its own
+// block below, and the committed constant itself is pinned by test/catalogMutationHold.test.jsx.
+const hold = vi.hoisted(() => ({ held: false }));
+vi.mock("../src/config/catalogMutationHold.js", async (orig) => ({ ...(await orig()), CATALOG_MUTATION_HOLD: hold }));
+
 const captured = [];
 vi.mock("../src/shared/partMaster/PartWriteModal.jsx", () => ({
   default: (props) => { captured.push(props); return <div data-testid="part-write-modal">{props.mode}</div>; },
@@ -60,7 +66,7 @@ import { searchParts } from "../src/services/partMasterQueries";
 import PartsList from "../src/modules/inventory/PartsList.jsx";
 import PartDetail from "../src/modules/inventory/PartDetail.jsx";
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); captured.length = 0; });
+afterEach(() => { cleanup(); vi.clearAllMocks(); captured.length = 0; hold.held = false; });
 
 const READY = { ok: true, parts: [{ partId: "TST-9001", internalPartNumber: "TST-9001", name: "CANONICAL-NAME-A", category: "Valves", stockingUnit: "each", controlType: "STANDARD", stockingClass: "STOCKED", status: "ACTIVE", version: 2, manufacturerId: "MFG-1" }], invalid: [] };
 
@@ -113,5 +119,34 @@ describe("PartDetail -- Edit/Status entry points", () => {
     await screen.findByText(/could not be verified against the canonical source/i);
     expect(screen.queryByRole("button", { name: /edit part details/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /change status/i })).toBeNull();
+  });
+});
+
+describe("DQ-034 hold -- no Part change is OFFERED while Catalog changes are paused", () => {
+  it("PartsList: New Part is locked with the reason and opens nothing", async () => {
+    hold.held = true;
+    searchParts.mockResolvedValue(READY);
+    render(<PartsList accessVersion={1} />);
+    const newPart = screen.getByRole("button", { name: /new part/i });
+    expect(newPart.disabled).toBe(true);
+    expect(screen.getByText(/catalog changes are paused during the migration/i)).toBeTruthy();
+    fireEvent.click(newPart);
+    expect(screen.queryByTestId("part-write-modal")).toBeNull();
+  });
+
+  it("PartDetail: Edit part / Change status are disabled, the pause is stated, and the Part still reads", async () => {
+    hold.held = true;
+    searchParts.mockResolvedValue(READY);
+    render(<PartDetail />);
+    const edit = await screen.findByRole("button", { name: /^edit part$/i });
+    const status = screen.getByRole("button", { name: /change status/i });
+    expect(edit.disabled).toBe(true);
+    expect(status.disabled).toBe(true);
+    expect(screen.getByText(/catalog changes are paused during the migration/i)).toBeTruthy();
+    fireEvent.click(edit);
+    fireEvent.click(status);
+    expect(screen.queryByTestId("part-write-modal")).toBeNull();
+    // Reads continue from PostgreSQL: the canonical read ran and the record rendered.
+    expect(searchParts).toHaveBeenCalled();
   });
 });

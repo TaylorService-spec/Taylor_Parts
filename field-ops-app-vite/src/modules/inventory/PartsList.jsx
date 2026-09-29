@@ -43,6 +43,7 @@ import {
   PARTS_COLLECTION_SORT_LABEL,
 } from "../../domain/partsNorthStar.js";
 import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
+import { CATALOG_MUTATION_HOLD, CATALOG_MUTATION_PAUSED_REASON } from "../../config/catalogMutationHold.js";
 import ManagerQueuePanel from "../../shared/reorder/ManagerQueuePanel.jsx";
 import { RequestCards, AssignedRequestDetail } from "../../shared/reorder/AssociateRequestPanel.jsx";
 import AssignedWorkOversightTable from "../../shared/reorder/AssignedWorkOversightTable.jsx";
@@ -981,9 +982,16 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
         <ActionRail
           start={<GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search part number, description, or category" />}
           primary={
-            <Button variant="primary" onClick={() => setNewPartOpen(true)}>
-              New Part
-            </Button>
+            // DQ-034: no create is OFFERED while the Catalog mutation hold is on; the control stays, locked, with why.
+            CATALOG_MUTATION_HOLD.held !== false ? (
+              <Button variant="protected" reason={CATALOG_MUTATION_PAUSED_REASON} id="parts-new-part">
+                New Part
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={() => setNewPartOpen(true)}>
+                New Part
+              </Button>
+            )
           }
         />
       }
