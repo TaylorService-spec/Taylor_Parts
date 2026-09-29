@@ -531,7 +531,8 @@ for (const [label, args, env, pattern] of [
 // purchase_order_voids (copy, one --stage per run). It must refuse before `pg` is even resolved, and has no production
 // mode.
 const RR_CUTOVER = "scripts/reorderCutover.js";
-const RR_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "REORDER_FENCE_DB", "--tenantKey", "taylor-nonprod", "--snapshot", "/nonexistent/snapshot.json"];
+const RR_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "REORDER_FENCE_DB", "--tenantKey", "taylor-nonprod", "--snapshot", "/nonexistent/snapshot.json",
+  "--exclusionManifest", "/nonexistent/manifest.json"];
 const RR_ENV = { EOS_ENVIRONMENT: "nonprod", REORDER_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
 
 for (const [label, args, env, pattern] of [
@@ -543,6 +544,7 @@ for (const [label, args, env, pattern] of [
   ["frozen Certification world", ["--mode", "census", ...RR_ARGS.map((a) => (a === "platform-sandbox" ? "platform-certification" : a))], RR_ENV, /Certification world, which is frozen/],
   ["no tenant key", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "REORDER_FENCE_DB", "--snapshot", "x.json"], RR_ENV, /--tenantKey is required/],
   ["no snapshot", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "REORDER_FENCE_DB", "--tenantKey", "t"], RR_ENV, /--snapshot <file> is required/],
+  ["no DQ-032 exclusion manifest", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "REORDER_FENCE_DB", "--tenantKey", "t", "--snapshot", "x.json"], RR_ENV, /--exclusionManifest <file> is required/],
   ["copy without a stage", ["--mode", "copy", ...RR_ARGS, "--principalId", "p"], RR_ENV, /--stage must be one of objects \| assignments \| purchasing/],
   ["copy with an unknown stage", ["--mode", "copy", "--stage", "everything", ...RR_ARGS, "--principalId", "p"], RR_ENV, /--stage must be one of/],
   ["copy without an EOS principal", ["--mode", "copy", "--stage", "objects", ...RR_ARGS], RR_ENV, /--principalId <EOS principal id> is required/],

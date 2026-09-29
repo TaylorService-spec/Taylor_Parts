@@ -18,11 +18,24 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import pg from "pg";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// DQ-032: the committed manifest of the eight synthetic fixtures the COPY excludes (never deleted from Firestore).
+const EXCLUSION_MANIFEST = resolve(FUNCTIONS_DIR, "..", "docs", "architecture", "reorder-migration-exclusion-manifest.json");
+const { REORDER_SCENARIO_FIXTURES, SCENARIO_ID } = createRequire(import.meta.url)("../lib/sandboxFixtures/reorderScenarioFixtures.js");
+/** The base snapshot plus all eight declared fixtures, exactly as the scenario seeder writes their facts. */
+const SNAPSHOT_WITH_FIXTURES = () => {
+  const base = SNAPSHOT();
+  const collections = { ...base.collections };
+  for (const f of REORDER_SCENARIO_FIXTURES) {
+    collections[f.collection] = [...collections[f.collection], { id: f.id, data: { ...f.facts, scenarioId: SCENARIO_ID } }];
+  }
+  return { ...base, collections, counts: Object.fromEntries(Object.entries(collections).map(([k, v]) => [k, v.length])) };
+};
 
 const DB_NAME = `rr_cut_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => { const u = new URL(URL_BASE); u.pathname = `/${DB_NAME}`; return u.toString(); };
@@ -126,7 +139,7 @@ test("reorder cutover CLI, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async
     if (checksum === "match") writeFileSync(`${file}.sha256`, `${hash("sha256", text)}  snapshot.json\n`);
     if (checksum === "mismatch") writeFileSync(`${file}.sha256`, `${hash("sha256", `${text} `)}  snapshot.json\n`);
     const res = spawnSync(process.execPath, ["scripts/reorderCutover.js", "--mode", mode, "--environment", "platform-sandbox", "--databaseUrlEnv", "REORDER_TEST_DB",
-      "--tenantKey", TENANT_KEY, "--snapshot", file, ...extra], {
+      "--tenantKey", TENANT_KEY, "--snapshot", file, "--exclusionManifest", EXCLUSION_MANIFEST, ...extra], {
       cwd: FUNCTIONS_DIR, encoding: "utf8", env: { ...process.env, EOS_ENVIRONMENT: "nonprod", REORDER_TEST_DB: dbUrl() },
     });
     const all = `${res.stdout}${res.stderr}`;
@@ -164,6 +177,66 @@ test("reorder cutover CLI, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async
     assert.deepEqual(r.out.stages.purchasing.blockers, []);
     assert.deepEqual(r.out.target, { reorderRequests: 0, reorderRequestsMigrated: 0, currentAssignments: 0, currentAssignmentsMigrated: 0, purchaseOrders: 0, purchaseOrderVoids: 0 });
     assert.deepEqual(await target(), EMPTY, "census wrote nothing");
+  });
+
+  await t.test("DQ-032: the eight declared fixtures are excluded exactly -- counts, ids, nothing else removed", async () => {
+    const r = run("census", [], { snapshot: SNAPSHOT_WITH_FIXTURES() });
+    assert.equal(r.status, 0, r.err);
+    assert.equal(r.out.copyReady, true);
+    const x = r.out.evidence.exclusion;
+    assert.match(x.manifestSha256, /^[0-9a-f]{64}$/);
+    assert.equal(x.manifestCount, 8);
+    assert.equal(x.excluded.length, 8);
+    assert.deepEqual(x.absent, []);
+    assert.equal(x.onlyDeclaredFixturesExcluded, true);
+    assert.deepEqual(x.counts, {
+      reorder_requests: { source: 9, excluded: 5, retained: 4 },
+      reorder_purchase_orders: { source: 5, excluded: 3, retained: 2 },
+      reorder_purchase_order_voids: { source: 1, excluded: 0, retained: 1 },
+    });
+    // Every later stage sees the retained population only: the same plan as the fixture-free snapshot.
+    assert.deepEqual(r.out.evidence.snapshotCensus.counts, { reorder_requests: 4, reorder_purchase_orders: 2, reorder_purchase_order_voids: 1 });
+    assert.equal(r.out.stages.objects.counts.MIGRATABLE, 4);
+    assert.deepEqual(await target(), EMPTY, "census wrote nothing");
+  });
+
+  await t.test("warehouse identity: every legacy warehouse id is an exact EOS warehouse, per warehouse, with evidence", async () => {
+    const r = run("census");
+    assert.equal(r.status, 0, r.err);
+    assert.equal(r.out.warehouseIdentity.allExact, true);
+    assert.deepEqual(r.out.warehouseIdentity.entries.map((e) => [e.legacyWarehouseId, e.verdict, e.reorderCount, e.eosWarehouse?.id]),
+      [["wh-1", "EXACT_MATCH", 4, "wh-1"]]);
+  });
+
+  await t.test("warehouse identity: an id EOS does not hold blocks the copy and is never translated", async () => {
+    const snapshot = SNAPSHOT();
+    snapshot.collections.reorder_requests[0].data.warehouseId = "legacy-main-yard";
+    const r = run("census", [], { snapshot });
+    assert.equal(r.status, 1);
+    assert.equal(r.out.copyReady, false);
+    assert.ok(r.out.blockers.includes("WAREHOUSE_IDENTITY"));
+    const missing = r.out.warehouseIdentity.entries.find((e) => e.legacyWarehouseId === "legacy-main-yard");
+    assert.equal(missing.verdict, "MISSING_IN_EOS");
+    assert.equal(missing.eosWarehouse, null);
+    assert.deepEqual(await target(), EMPTY);
+  });
+
+  await t.test("DQ-032: a manifest other than the declared one is refused before any read", async () => {
+    const wider = join(dir, `wider-${randomUUID()}.json`);
+    const text = JSON.stringify({ format: "EOS_REORDER_MIGRATION_EXCLUSION", entries: [{ collection: "reorder_requests", id: "rr-cut-1" }] });
+    writeFileSync(wider, text);
+    writeFileSync(`${wider}.sha256`, `${hash("sha256", text)}  wider.json\n`);
+    const snapFile = join(dir, `snap-${randomUUID()}.json`);
+    const snapText = JSON.stringify(SNAPSHOT());
+    writeFileSync(snapFile, snapText);
+    writeFileSync(`${snapFile}.sha256`, `${hash("sha256", snapText)}  snapshot.json\n`);
+    const res = spawnSync(process.execPath, ["scripts/reorderCutover.js", "--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "REORDER_TEST_DB",
+      "--tenantKey", TENANT_KEY, "--snapshot", snapFile, "--exclusionManifest", wider], {
+      cwd: FUNCTIONS_DIR, encoding: "utf8", env: { ...process.env, EOS_ENVIRONMENT: "nonprod", REORDER_TEST_DB: dbUrl() },
+    });
+    assert.equal(res.status, 2);
+    assert.match(res.stderr, /not the repository's declared DQ-032 manifest/);
+    assert.deepEqual(await target(), EMPTY);
   });
 
   await t.test("the stage order is enforced before anything is written", async () => {

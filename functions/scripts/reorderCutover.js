@@ -49,7 +49,8 @@
 //
 // Usage (Render Shell on eos-api-nonprod):
 //   node scripts/reorderCutover.js --mode census --environment platform-sandbox --databaseUrlEnv DATABASE_URL \
-//     --tenantKey <tenant key> --snapshot <snapshot.json>
+//     --tenantKey <tenant key> --snapshot <snapshot.json> \
+//     --exclusionManifest ../docs/architecture/reorder-migration-exclusion-manifest.json
 //   ... --mode copy --stage objects     --principalId <EOS principal id>
 //   ... --mode copy --stage assignments --principalId <EOS principal id>
 //   ... --mode copy --stage purchasing  --principalId <EOS principal id>
@@ -80,6 +81,9 @@ function assertReorderCutoverInvocation(args, env) {
   }
   if (!args.tenantKey || args.tenantKey === "true") throw new Error("--tenantKey is required: the tenant is named, never inferred.");
   if (!args.snapshot || args.snapshot === "true") throw new Error("--snapshot <file> is required: the copy consumes an exported snapshot, never a live Firestore read.");
+  if (!args.exclusionManifest || args.exclusionManifest === "true") {
+    throw new Error("--exclusionManifest <file> is required: the DQ-032 manifest of the eight synthetic fixtures the COPY excludes (docs/architecture/reorder-migration-exclusion-manifest.json).");
+  }
   if (args.mode === "copy") {
     if (!STAGES.includes(args.stage)) {
       throw new Error(`--stage must be one of ${STAGES.join(" | ")} for copy (got ${args.stage === undefined ? "nothing" : `'${args.stage}'`}); stages run in that order, one per invocation.`);
@@ -97,6 +101,7 @@ function assertReorderCutoverInvocation(args, env) {
     connectionString,
     tenantKey: args.tenantKey,
     snapshotPath: args.snapshot,
+    exclusionManifestPath: args.exclusionManifest,
     principalId: args.principalId,
   };
 }
@@ -197,13 +202,25 @@ async function main() {
   }
   // AFTER the fence, never at module scope.
   const snap = require("../lib/eosOps/migration/reorderSnapshot.js");
-  const snapshot = snap.parseReorderSnapshot(raw);
-  assertSnapshotSource(snapshot, options.environmentId);
+  const sourceSnapshot = snap.parseReorderSnapshot(raw);
+  assertSnapshotSource(sourceSnapshot, options.environmentId);
+  // DQ-032: the eight synthetic fixtures are EXCLUDED, never deleted from Firestore. The manifest must match its
+  // .sha256 sidecar AND be byte-identical to the repository's declared manifest; every stage then sees only the
+  // filtered snapshot, and the proof (source = retained + excluded, per collection) travels with the evidence.
+  const manifestFile = verifySnapshotChecksum(options.exclusionManifestPath);
+  const exclusion = require("../lib/eosOps/migration/reorderMigrationExclusion.js");
+  const manifest = exclusion.assertDeclaredExclusionManifest(manifestFile.bytes.toString("utf8"));
+  const { hash } = require("node:crypto");
+  const excluded = exclusion.applyReorderExclusion(sourceSnapshot, manifest, (input) => hash("sha256", input));
+  const snapshot = excluded.snapshot;
   const snapshotCensus = snap.censusReorderSnapshot(snapshot);
   const objectSource = snap.toReorderObjectSource(snapshot);
   const assignmentSource = snap.toReorderAssignmentSource(snapshot);
   const purchasingSource = snap.toPurchasingSource(snapshot);
-  const evidence = { snapshotSha256: sha256, source: snapshot.source, snapshotCensus };
+  const evidence = {
+    snapshotSha256: sha256, source: snapshot.source, snapshotCensus,
+    exclusion: { manifestSha256: manifestFile.sha256, ...excluded.proof },
+  };
 
   const pg = require("pg");
   const { resolvePolicyDatabaseConfig } = require("../lib/adminPolicy/policyDatabase.js");
@@ -226,7 +243,11 @@ async function main() {
     if (options.mode === "census") {
       const [objectPlan, assignmentPlan, purchasingPlan] = [await dryObjects(), await dryAssignments(), await dryPurchasing()];
       const po = purchasingBlockers(purchasingPlan, objectPlan);
+      // WAREHOUSE IDENTITY (Controller pre-COPY gate, 2026-09-28): the legacy warehouse ids against this tenant's
+      // eos_ops.warehouses, per warehouse, exact or not. Never translated; a mismatch blocks the copy.
+      const warehouseIdentity = await censusReorderWarehouses(pool, tenantId, snapshot);
       const blockers = [];
+      if (!warehouseIdentity.allExact) blockers.push("WAREHOUSE_IDENTITY");
       if (objectPlan.counts.REFUSED > 0) blockers.push("OBJECTS_REFUSED");
       if (assignmentPlan.blockedReorderIds.length > 0) blockers.push("ASSIGNMENTS_BLOCKED");
       if (po.blockers.length > 0) blockers.push("PURCHASING_REFUSED");
@@ -238,6 +259,7 @@ async function main() {
           assignments: summarizeAssignments(assignmentPlan),
           purchasing: { ...summarizePurchasing(purchasingPlan), pendingObjects: po.pendingObjects, blockers: po.blockers },
         },
+        warehouseIdentity,
         target: await targetCounts(pool, tenantId),
         evidence,
       }, null, 2));
@@ -321,13 +343,37 @@ async function main() {
   }
 }
 
+// Declared after main() so the fence stays the only thing required at module scope (lib/ and pg load after it).
+/** The warehouse-identity census: legacy ids (retained Reorders only) against eos_ops.warehouses for the tenant. */
+async function censusReorderWarehouses(pool, tenantId, snapshot) {
+  const { censusWarehouseIdentity } = require("../lib/eosOps/migration/reorderWarehouseIdentity.js");
+  const warehouses = await pool.query(
+    "SELECT id, operating_company_key, status FROM eos_ops.warehouses WHERE tenant_id = $1", [tenantId]);
+  // The same ACTIVE-company x ACTIVE-binding view the object classifier resolves through.
+  const bindings = await pool.query(
+    `SELECT b.operating_company_id, b.operating_company_key
+       FROM eos_policy.tenant_operating_company_keys b
+       JOIN eos_policy.tenant_operating_companies c
+         ON c.tenant_id = b.tenant_id AND c.operating_company_id = b.operating_company_id
+      WHERE b.tenant_id = $1 AND b.status = 'ACTIVE' AND c.status = 'ACTIVE'`, [tenantId]);
+  const keyByCompany = new Map(bindings.rows.map((r) => [r.operating_company_id, r.operating_company_key]));
+  const refs = snapshot.collections.reorder_requests.map((d) => ({
+    reorderId: d.id,
+    warehouseId: d.data.warehouseId,
+    boundCompanyKey: keyByCompany.get(d.data.operatingCompanyId) ?? null,
+  }));
+  return censusWarehouseIdentity(refs, warehouses.rows.map((r) => ({
+    id: r.id, operatingCompanyKey: r.operating_company_key, status: r.status,
+  })));
+}
+
 module.exports = { assertReorderCutoverInvocation, MODES, STAGES, FROZEN_ENVIRONMENTS };
 
 if (require.main === module) {
   main().catch((err) => {
     // Governed refusals speak for themselves; a driver or connection error is reduced to its code, because its
     // message can carry a host or user.
-    const governed = !err || !err.code || ["ReorderSnapshotError"].includes(err.name);
+    const governed = !err || !err.code || ["ReorderSnapshotError", "ReorderExclusionError"].includes(err.name);
     const message = governed ? (err instanceof Error ? err.message : String(err)) : "the run could not be completed";
     console.error(JSON.stringify({ outcome: "REFUSED_OR_FAILED", code: err && err.code ? err.code : null, message }, null, 2));
     process.exitCode = 2;
