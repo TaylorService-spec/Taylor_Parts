@@ -33,12 +33,12 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { createHash } from "node:crypto";
 import { INVENTORY_TRANSACTIONS_COLLECTION, WAREHOUSES_COLLECTION, SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
 import {
-  classifyLedgerDoc,
   deserializeOperationalMovement,
   operationalMovementDocId,
   stageOperationalMovement,
 } from "../inventoryLedger/operationalMovementRepository.js";
 import { IdempotencyConflictError, MalformedStoredRecordError, InvalidMovementError } from "../inventoryLedger/operationalMovementTypes.js";
+import { authoritativeOperationalMovements, LedgerRowIntegrityError } from "../inventoryLedger/authoritativeLedgerRows.js";
 import type { LocationRef, OperationalMovementValue } from "../inventoryLedger/operationalMovementTypes.js";
 import { sumExactLocationOnHand } from "../inventoryLedger/locationOnHand.js";
 import { validateGovernedWarehouse } from "../warehouseGovernance/governedWarehouseValidation.js";
@@ -418,16 +418,15 @@ export async function relocateStock(request: unknown, deps: RelocationDeps): Pro
       });
     } else {
       const ledger = await txn.get(deps.db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", part.partId));
-      const movements: OperationalMovementValue[] = [];
-      for (const doc of ledger.docs) {
-        const data = doc.data();
-        if (classifyLedgerDoc(data) !== "operational") continue;
-        try {
-          movements.push(deserializeOperationalMovement(data).value);
-        } catch {
-          // A malformed row is skipped, never trusted: it can only ever REDUCE what we are willing to
-          // move, never inflate it.
-        }
+      // FAIL CLOSED (DQ-019). This used to skip a malformed row "because it can only REDUCE what we
+      // are willing to move" -- false for a malformed DEBIT, whose omission raises the source's
+      // stock and lets the move pass the check below.
+      let movements: OperationalMovementValue[];
+      try {
+        movements = authoritativeOperationalMovements(ledger.docs);
+      } catch (err) {
+        if (err instanceof LedgerRowIntegrityError) throw new RelocationError("INTEGRITY", "ledger_row_unreadable");
+        throw err;
       }
       const atSource = sumExactLocationOnHand(movements, req.source);
       if (atSource < (req.quantity as number)) throw new RelocationError("INSUFFICIENT_STOCK", "exact_source_short");

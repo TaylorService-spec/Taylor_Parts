@@ -276,6 +276,18 @@ await check("duplicate dispatch (retry after apply) -> replayed, no second TRANS
   assert.equal(await countAt("inventory_transactions", "sourceObject.id", created.transferOrderId), 1);
 });
 
+await check("DQ-019: a MALFORMED ledger row for the part refuses the create (TRANSFER_INTEGRITY), never skipped", async () => {
+  const origin = WH(); const destination = WH();
+  await seedWarehouse(origin.locationId); await seedWarehouse(destination.locationId);
+  const partId = nextId("part");
+  await seedNoneOnHand(partId, origin, 10);
+  await db.collection("inventory_transactions").doc("bad_" + nextId("mv")).set({ schemaVersion: 2, type: "TRANSFER_OUT", partId, quantity: "ten" });
+  const { deps } = makeDeps();
+  await assert.rejects(createTransferOrder({ partId, quantity: 3, origin, destination, idempotencyKey: nextId("idem") }, deps),
+    (e) => e.code === "TRANSFER_INTEGRITY");
+  assert.equal(await countAt("transfer_orders", "partId", partId), 0);
+});
+
 await check("retry of a COMMITTED create after the part is retired -> replayed; a NEW create of it is refused", async () => {
   const origin = WH(); const destination = WH();
   await seedWarehouse(origin.locationId); await seedWarehouse(destination.locationId);

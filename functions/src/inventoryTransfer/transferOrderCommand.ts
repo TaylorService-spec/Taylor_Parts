@@ -25,11 +25,12 @@
 
 import { resolveTransferCustodyWarehouseId } from "./transferLocationResolver.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
+import { authoritativeOperationalMovements, LedgerRowIntegrityError } from "../inventoryLedger/authoritativeLedgerRows.js";
 import type { Firestore, Transaction, DocumentReference } from "firebase-admin/firestore";
 import { createHash } from "node:crypto";
 import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION, TRANSFER_ORDERS_COLLECTION } from "../constants/collections.js";
 import { stageOperationalMovement, operationalMovementDocId } from "../inventoryLedger/operationalMovementRepository.js";
-import { classifyLedgerDoc, deserializeOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
+import { deserializeOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
 import { serializedAssetDocId } from "../serializedAsset/serializedAssetRegistration.js";
 import {
   UnauthorizedTransferError,
@@ -139,16 +140,16 @@ function serialLedgerIdKey(transferOrderId: string, suffix: string, serialNo: st
 async function computeNoneOnHandThroughTxn(txn: Transaction, db: Firestore, partId: string, location: TransferLocationRef): Promise<number> {
   const snap = await txn.get(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", partId));
   let onHand = 0;
-  for (const doc of snap.docs) {
-    const data = doc.data();
-    if (classifyLedgerDoc(data) !== "operational") continue;
-    let mv;
-    try {
-      mv = deserializeOperationalMovement(data);
-    } catch {
-      continue; // a malformed operational record is skipped, not trusted -- never inflates on-hand
-    }
-    const v = mv.value;
+  // FAIL CLOSED (DQ-019): an unreadable row for this part refuses the sufficiency check -- skipping a
+  // malformed DEBIT would overstate stock and let the transfer pass.
+  let movements;
+  try {
+    movements = authoritativeOperationalMovements(snap.docs);
+  } catch (err) {
+    if (err instanceof LedgerRowIntegrityError) throw new TransferIntegrityError(`on-hand cannot be derived: ${err.message}`);
+    throw err;
+  }
+  for (const v of movements) {
     if (v.location.type !== location.type || v.location.locationId !== location.locationId) continue;
     // The sign comes from inventoryLedger/locationOnHand.ts -- the ONE place it is decided. This line
     // used to carry its own RECEIVED/TRANSFER/ADJUSTED branches and never learned

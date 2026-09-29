@@ -13,6 +13,9 @@ on:
       - "functions/test/operationalMovementLedger.test.mjs"
       # Ownership Model v1 fields on stored records (ledger, transfer, receiving strict readers).
       - "functions/test/ownershipFieldStrictReaders.test.mjs"
+      # DQ-019 -- authoritative ledger reads fail closed; the pre-activation census and its CLI.
+      - "functions/test/authoritativeLedgerRows.test.mjs"
+      - "functions/scripts/inventoryLedgerCensus.js"
       - "functions/src/inventoryTransfer/transferOrderRepository.ts"
       - "functions/src/inventoryReceiving/receivingRepository.ts"
       - "functions/src/ownership/operatingCompanyAuthority.ts"
@@ -27,6 +30,9 @@ on:
       - "functions/test/operationalMovementLedger.test.mjs"
       # Ownership Model v1 fields on stored records (ledger, transfer, receiving strict readers).
       - "functions/test/ownershipFieldStrictReaders.test.mjs"
+      # DQ-019 -- authoritative ledger reads fail closed; the pre-activation census and its CLI.
+      - "functions/test/authoritativeLedgerRows.test.mjs"
+      - "functions/scripts/inventoryLedgerCensus.js"
       - "functions/src/inventoryTransfer/transferOrderRepository.ts"
       - "functions/src/inventoryReceiving/receivingRepository.ts"
       - "functions/src/ownership/operatingCompanyAuthority.ts"
@@ -74,4 +80,8 @@ jobs:
 
       - name: Ownership fields on stored records (strict readers accept exactly the backfilled shapes)
         run: node test/ownershipFieldStrictReaders.test.mjs
+        working-directory: functions
+
+      - name: DQ-019 authoritative ledger rows fail closed + pre-activation census (offline)
+        run: node --test test/authoritativeLedgerRows.test.mjs
         working-directory: functions

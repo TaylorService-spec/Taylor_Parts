@@ -323,6 +323,18 @@ await check("CONFLICT: placement intent is part of the replay -- asking for a pl
   await expectCode(relocateStock({ ...placed, pickedForWorkOrderId: "WO-1" }, both), "IDEMPOTENCY_CONFLICT", "placement_intent_differs");
 });
 
+await check("DQ-019: a MALFORMED ledger row for the part refuses the move (INTEGRITY), never skipped", async () => {
+  const wh = nextId("wh"); await seedWarehouse(wh);
+  const binA = await seedBin(wh);
+  const partId = nextId("part");
+  await seedMovement(partId, WHref(wh), "RECEIVED", 5);
+  // A consumption row whose quantity is unreadable. Skipped, it would leave 5 "available" at the source.
+  await seedMovement(partId, WHref(wh), "WORK_ORDER_CONSUMPTION", "four");
+  await expectCode(relocateStock({ partId, source: WHref(wh), destination: BINref(binA), quantity: 5, idempotencyKey: nextId("k") }, makeDeps().deps),
+    "INTEGRITY", "ledger_row_unreadable");
+  assert.equal((await rawRowsFor(partId)).length, 2, "nothing written");
+});
+
 await check("a partial prior write is an integrity failure, never 'finish the rest'", async () => {
   const wh = nextId("wh"); await seedWarehouse(wh);
   const binA = await seedBin(wh);
