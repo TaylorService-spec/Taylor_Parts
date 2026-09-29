@@ -29,9 +29,9 @@
 // correctly excluded from what a count at this location should expect to find.
 
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
+import { authoritativeOperationalMovements, LedgerRowIntegrityError } from "../inventoryLedger/authoritativeLedgerRows.js";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
-import { classifyLedgerDoc, deserializeOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
 import { CycleCountIntegrityError, type CycleCountLocationRef } from "./cycleCountTypes.js";
 
 export async function computeExpectedQuantityThroughTxn(
@@ -42,16 +42,16 @@ export async function computeExpectedQuantityThroughTxn(
 ): Promise<number> {
   const snap = await txn.get(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", partId));
   let onHand = 0;
-  for (const doc of snap.docs) {
-    const data = doc.data();
-    if (classifyLedgerDoc(data) !== "operational") continue;
-    let mv;
-    try {
-      mv = deserializeOperationalMovement(data);
-    } catch {
-      continue; // a malformed operational record is skipped, not trusted -- never inflates expected qty
-    }
-    const v = mv.value;
+  // FAIL CLOSED (DQ-019): an unreadable row for this part makes the expected quantity unknowable --
+  // a skipped malformed debit would have the counter "expect" stock that already left.
+  let movements;
+  try {
+    movements = authoritativeOperationalMovements(snap.docs);
+  } catch (err) {
+    if (err instanceof LedgerRowIntegrityError) throw new CycleCountIntegrityError(`expected quantity cannot be derived: ${err.message}`);
+    throw err;
+  }
+  for (const v of movements) {
     if (v.location.type !== location.type || v.location.locationId !== location.locationId) continue;
     // The sign comes from inventoryLedger/locationOnHand.ts -- the ONE place it is decided. This line
     // used to carry its own RECEIVED/TRANSFER/ADJUSTED branches and never learned

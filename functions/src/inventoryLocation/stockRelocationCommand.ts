@@ -33,12 +33,12 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { createHash } from "node:crypto";
 import { INVENTORY_TRANSACTIONS_COLLECTION, WAREHOUSES_COLLECTION, SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
 import {
-  classifyLedgerDoc,
   deserializeOperationalMovement,
   operationalMovementDocId,
   stageOperationalMovement,
 } from "../inventoryLedger/operationalMovementRepository.js";
-import { IdempotencyConflictError, MalformedStoredRecordError } from "../inventoryLedger/operationalMovementTypes.js";
+import { IdempotencyConflictError, MalformedStoredRecordError, InvalidMovementError } from "../inventoryLedger/operationalMovementTypes.js";
+import { authoritativeOperationalMovements, LedgerRowIntegrityError } from "../inventoryLedger/authoritativeLedgerRows.js";
 import type { LocationRef, OperationalMovementValue } from "../inventoryLedger/operationalMovementTypes.js";
 import { sumExactLocationOnHand } from "../inventoryLedger/locationOnHand.js";
 import { validateGovernedWarehouse } from "../warehouseGovernance/governedWarehouseValidation.js";
@@ -306,7 +306,8 @@ export async function relocateStock(request: unknown, deps: RelocationDeps): Pro
     // ---- 2. part authority: tracking mode from the Part Master, never from the request ----
     const part = await deps.resolvePart(txn, deps.db, req.partId);
     if (part === null) throw new RelocationError("NOT_FOUND", "part_not_found");
-    if (!part.active) throw new RelocationError("INVALID", "part_not_active");
+    // `part.active` is a gate on a NEW move and is checked after the replay decision below: a
+    // committed relocation whose response was lost must replay even if the part was since retired.
     if (part.trackingMode === "LOT") throw new RelocationError("INVALID", "lot_not_supported");
     const isSerial = part.trackingMode === "SERIAL";
     if (isSerial !== serials.length > 0) {
@@ -359,19 +360,40 @@ export async function relocateStock(request: unknown, deps: RelocationDeps): Pro
         if (err instanceof MalformedStoredRecordError) throw new RelocationError("INTEGRITY", "stored_row_malformed");
         throw err;
       }
-      const placementIds = req.recordPlacement
-        ? buildPlacementEntries({
-            warehouseId: "", binId: req.destination.locationId, binCode: "", partId: part.partId,
-            idempotencyKey: req.idempotencyKey, pickedForWorkOrderId: req.pickedForWorkOrderId, note: null,
-            serialNumbers: serials, quantity: req.quantity ?? 0, now, actorId: deps.actor.id,
-          }).map((e) => e.id)
-        : [];
+      // THE PLACEMENT IS PART OF THE INTENT. The ledger rows alone cannot tell a move that also recorded
+      // a put-away from one that did not, so the replay checks the placement records too: a retry that
+      // asks for a placement the original never wrote (or omits one it did, or names another pick)
+      // is a different request under this key, not a replay -- and reporting placementIds for records
+      // that do not exist would be a false answer.
+      const derivedPlacementIds = buildPlacementEntries({
+        warehouseId: "", binId: req.destination.locationId, binCode: "", partId: part.partId,
+        idempotencyKey: req.idempotencyKey, pickedForWorkOrderId: req.pickedForWorkOrderId, note: null,
+        serialNumbers: serials, quantity: req.quantity ?? 0, now, actorId: deps.actor.id,
+      }).map((e) => e.id);
+      const placementSnapsReplay = await Promise.all(
+        derivedPlacementIds.map((id) => txn.get(deps.db.collection(BIN_PLACEMENTS_COLLECTION).doc(id))),
+      );
+      const placementsPresent = placementSnapsReplay.filter((snap) => snap.exists);
+      if (req.recordPlacement) {
+        if (placementsPresent.length !== placementSnapsReplay.length) throw new RelocationError("IDEMPOTENCY_CONFLICT", "placement_intent_differs");
+        for (const snap of placementSnapsReplay) {
+          const d = snap.data() ?? {};
+          if (d.binId !== req.destination.locationId || (d.pickedForWorkOrderId ?? null) !== (req.pickedForWorkOrderId ?? null)) {
+            throw new RelocationError("IDEMPOTENCY_CONFLICT", "placement_intent_differs");
+          }
+        }
+      } else if (placementsPresent.length > 0) {
+        throw new RelocationError("IDEMPOTENCY_CONFLICT", "placement_intent_differs");
+      }
+      const placementIds = req.recordPlacement ? derivedPlacementIds : [];
       return {
         outcome: "replayed" as const, relocationId, partId: part.partId, source: req.source,
         destination: req.destination, quantity: isSerial ? null : (req.quantity ?? null),
         serialNumbers: serials, movementIds, placementIds,
       };
     }
+
+    if (!part.active) throw new RelocationError("INVALID", "part_not_active");
 
     // ---- 4. endpoints: governed, ACTIVE, same custody parent ----
     const source = await resolveEndpoint(txn, deps.db, req.source);
@@ -396,16 +418,15 @@ export async function relocateStock(request: unknown, deps: RelocationDeps): Pro
       });
     } else {
       const ledger = await txn.get(deps.db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", part.partId));
-      const movements: OperationalMovementValue[] = [];
-      for (const doc of ledger.docs) {
-        const data = doc.data();
-        if (classifyLedgerDoc(data) !== "operational") continue;
-        try {
-          movements.push(deserializeOperationalMovement(data).value);
-        } catch {
-          // A malformed row is skipped, never trusted: it can only ever REDUCE what we are willing to
-          // move, never inflate it.
-        }
+      // FAIL CLOSED (DQ-019). This used to skip a malformed row "because it can only REDUCE what we
+      // are willing to move" -- false for a malformed DEBIT, whose omission raises the source's
+      // stock and lets the move pass the check below.
+      let movements: OperationalMovementValue[];
+      try {
+        movements = authoritativeOperationalMovements(ledger.docs);
+      } catch (err) {
+        if (err instanceof LedgerRowIntegrityError) throw new RelocationError("INTEGRITY", "ledger_row_unreadable");
+        throw err;
       }
       const atSource = sumExactLocationOnHand(movements, req.source);
       if (atSource < (req.quantity as number)) throw new RelocationError("INSUFFICIENT_STOCK", "exact_source_short");
@@ -435,7 +456,16 @@ export async function relocateStock(request: unknown, deps: RelocationDeps): Pro
     // ---- 7. stage the ledger pair (reads inside staging are idempotency probes only) ----
     const movementIds: string[] = [];
     for (const ev of buildRowEvents(req, part, relocationId, deps.actor.id, now.getTime())) {
-      const o = await stageOperationalMovement(bufferedStore, ev, partAuthority, { now });
+      let o;
+      try {
+        o = await stageOperationalMovement(bufferedStore, ev, partAuthority, { now });
+      } catch (err) {
+        // The ledger's own classes are permanent, governed failures -- not the callable's
+        // "unexpected, safe to retry" fallback.
+        if (err instanceof MalformedStoredRecordError || err instanceof InvalidMovementError) throw new RelocationError("INTEGRITY", "ledger_refused_movement");
+        if (err instanceof IdempotencyConflictError) throw new RelocationError("IDEMPOTENCY_CONFLICT", "idempotency_key_reused");
+        throw err;
+      }
       if (o.outcome !== "applied") throw new RelocationError("INTEGRITY", "fresh_relocation_replayed");
       movementIds.push(o.docId);
     }

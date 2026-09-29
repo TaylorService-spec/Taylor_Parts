@@ -19,6 +19,7 @@ const {
   captureCycleCountSubmit, captureTruckHandoff,
 } = await import("../src/offline/warehouseIntent.js");
 const { runSyncPass, drainQueue } = await import("../src/offline/syncExecutor.js");
+const { RECEIVING_OUTCOME } = await import("../src/domain/receivingTransport.js");
 const { enqueueIntent } = await import("../src/offline/intentQueue.js");
 
 const UID = "uid-wh-1";
@@ -78,12 +79,29 @@ describe("the bindings", () => {
   });
 
   it("a receiving transport that is not ready stays RETRYABLE, not refused", async () => {
-    const { commands } = createWarehouseBindings({ submitCanonicalReceive: async () => ({ status: "UNAVAILABLE", receipt: null }) });
+    // The receiving client's REAL vocabulary is the lower-case RECEIVING_OUTCOME; this test once
+    // mocked "UNAVAILABLE", a value the client never returns, and so pinned a binding that matched nothing.
+    const { commands } = createWarehouseBindings({ submitCanonicalReceive: async () => ({ status: RECEIVING_OUTCOME.UNAVAILABLE, receipt: null }) });
     const out = await commands[WAREHOUSE_INTENT.INVENTORY_RECEIVE]({ payload: {} });
     expect(out.ok).toBe(false);
     // Nobody refused it; it never reached anyone to be refused by.
     expect(out.offline).toBe(true);
     expect(out.code).toBe("unavailable");
+  });
+
+  it("an APPLIED or REPLAYED receipt is a success carrying the receipt's receivingId", async () => {
+    for (const [status, replayed] of [[RECEIVING_OUTCOME.APPLIED, false], [RECEIVING_OUTCOME.REPLAYED, true]]) {
+      const { commands } = createWarehouseBindings({ submitCanonicalReceive: async () => ({ status, receipt: { receivingId: "rcv_1" } }) });
+      const out = await commands[WAREHOUSE_INTENT.INVENTORY_RECEIVE]({ payload: {} });
+      expect(out).toEqual({ ok: true, replayed, serverIds: { receiptId: "rcv_1" } });
+    }
+  });
+
+  it("a governed refusal of a receipt is NOT reported as success", async () => {
+    const { commands } = createWarehouseBindings({ submitCanonicalReceive: async () => ({ status: RECEIVING_OUTCOME.CONFLICT, receipt: null }) });
+    const out = await commands[WAREHOUSE_INTENT.INVENTORY_RECEIVE]({ payload: {} });
+    expect(out.ok).toBe(false);
+    expect(out.code).toBe("failed-precondition");
   });
 });
 

@@ -103,3 +103,20 @@ export function lineDraft(line) {
 export function pendingWorkCount(lines) {
   return linesToSubmit(lines).reduce((n, l) => n + Math.max(l.entryIds.length, 1), 0);
 }
+
+/**
+ * A submitted/decided line's own variance, straight off its own response -- never a second derivation.
+ *
+ * A variance the response did NOT carry is unknown, and unknown is never "Match": such a line is
+ * counted with the ones that need review, because claiming it matched would assert a zero nobody
+ * measured.
+ */
+export function lineHasVariance(line) {
+  if (line.trackingMode === "SERIAL") {
+    const missing = line.serialVariance?.missing;
+    const unexpected = line.serialVariance?.unexpected;
+    if (!Array.isArray(missing) || !Array.isArray(unexpected)) return true;
+    return missing.length + unexpected.length > 0;
+  }
+  return typeof line.variance !== "number" || !Number.isFinite(line.variance) || line.variance !== 0;
+}

@@ -25,6 +25,9 @@ on:
       - "functions/scripts/certificationWorld/actorAuthority.mjs"
       - "functions/scripts/certificationWorld/executionTarget.mjs"
       - "functions/test/certificationCycleVariance.test.mjs"
+      # DQ-018 -- activation gate 1 (zero-population census) and the activation constant.
+      - "functions/test/cycleCountActivationCensus.test.mjs"
+      - "functions/scripts/cycleCountActivationCensus.js"
       - "functions/test/cycleCountCommand.test.mjs"
       - "functions/test/cycleCountSheet.test.mjs"
       # Technician MOBILE flow: "which truck is mine?", reusing readAssignedMobileLocation.
@@ -51,6 +54,9 @@ on:
       - "functions/scripts/certificationWorld/actorAuthority.mjs"
       - "functions/scripts/certificationWorld/executionTarget.mjs"
       - "functions/test/certificationCycleVariance.test.mjs"
+      # DQ-018 -- activation gate 1 (zero-population census) and the activation constant.
+      - "functions/test/cycleCountActivationCensus.test.mjs"
+      - "functions/scripts/cycleCountActivationCensus.js"
       - "functions/test/cycleCountCommand.test.mjs"
       - "functions/test/cycleCountSheet.test.mjs"
       - "functions/test/cycleCountAssignedMobileLocation.test.mjs"
@@ -107,6 +113,10 @@ jobs:
       # fails fast.
       - name: Certification cycle-count operator safety tests
         run: node --test test/certificationCycleVariance.test.mjs
+        working-directory: functions
+
+      - name: Cycle Count activation gate 1 -- zero-population census (offline)
+        run: node --test test/cycleCountActivationCensus.test.mjs
         working-directory: functions
 
       - name: Start Firestore emulator (background)

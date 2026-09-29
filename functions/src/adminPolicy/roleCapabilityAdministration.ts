@@ -174,6 +174,10 @@ export const ADMINISTRATION_GRANT_ONLY_CAPABILITIES: ReadonlySet<string> = new S
   // (DQ-010's workOrder.lifecycle.ready / .schedule / .close are NOT in PERMISSION_CATALOG, so no catalog
   // declaration can propose them; they need no fence entry.)
   "workOrder.parts.plan",
+  // Controller ruling DQ-036(b) (2026-09-28; migration 1764129600000): acquire-existing-unit. The compiled catalog declares
+  // it on admin (whole-catalog composition) and on inventorySerializedAssetAcquirer; neither is a default. Its Taylor
+  // holders (Parts Associate, Parts Manager, Warehouse Associate, Warehouse Manager) are Administration grants.
+  "inventory.serializedAsset.acquire",
 ]);
 
 export type GrantAuthoritySource =

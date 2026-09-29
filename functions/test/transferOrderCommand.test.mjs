@@ -276,6 +276,75 @@ await check("duplicate dispatch (retry after apply) -> replayed, no second TRANS
   assert.equal(await countAt("inventory_transactions", "sourceObject.id", created.transferOrderId), 1);
 });
 
+await check("DQ-019: a MALFORMED ledger row for the part refuses the create (TRANSFER_INTEGRITY), never skipped", async () => {
+  const origin = WH(); const destination = WH();
+  await seedWarehouse(origin.locationId); await seedWarehouse(destination.locationId);
+  const partId = nextId("part");
+  await seedNoneOnHand(partId, origin, 10);
+  await db.collection("inventory_transactions").doc("bad_" + nextId("mv")).set({ schemaVersion: 2, type: "TRANSFER_OUT", partId, quantity: "ten" });
+  const { deps } = makeDeps();
+  await assert.rejects(createTransferOrder({ partId, quantity: 3, origin, destination, idempotencyKey: nextId("idem") }, deps),
+    (e) => e.code === "TRANSFER_INTEGRITY");
+  assert.equal(await countAt("transfer_orders", "partId", partId), 0);
+});
+
+await check("retry of a COMMITTED create after the part is retired -> replayed; a NEW create of it is refused", async () => {
+  const origin = WH(); const destination = WH();
+  await seedWarehouse(origin.locationId); await seedWarehouse(destination.locationId);
+  const partId = nextId("part");
+  await seedNoneOnHand(partId, origin, 10);
+  const { deps, parts } = makeDeps();
+  const req = { partId, quantity: 2, origin, destination, idempotencyKey: nextId("idem") };
+  const first = await createTransferOrder(req, deps);
+  parts.set(partId, { partId, trackingMode: "NONE", active: false });
+  const again = await createTransferOrder(req, deps);
+  assert.equal(first.outcome, "applied"); assert.equal(again.outcome, "replayed");
+  await assert.rejects(createTransferOrder({ ...req, idempotencyKey: nextId("idem") }, deps), (e) => e.code === "PART_INVALID");
+});
+
+await check("retry of a COMMITTED receive by another user, later -> replayed (not refused by its own success)", async () => {
+  const origin = WH(); const destination = WH();
+  await seedWarehouse(origin.locationId); await seedWarehouse(destination.locationId);
+  const partId = nextId("part");
+  await seedNoneOnHand(partId, origin, 10);
+  const { deps } = makeDeps();
+  const created = await createTransferOrder({ partId, quantity: 2, origin, destination, idempotencyKey: nextId("idem") }, deps);
+  await dispatchTransferOrder({ transferOrderId: created.transferOrderId }, deps);
+  const r1 = await receiveTransferOrder({ transferOrderId: created.transferOrderId }, deps);
+  // A different authorized user retries an hour later (lost response): same act, different clock/actor.
+  const later = { ...deps, actor: { kind: "USER", id: nextId("actor") }, now: () => new Date(NOW.getTime() + 3_600_000) };
+  const r2 = await receiveTransferOrder({ transferOrderId: created.transferOrderId }, later);
+  assert.equal(r1.outcome, "applied"); assert.equal(r2.outcome, "replayed");
+  assert.deepEqual(r1.ledgerEventIds, r2.ledgerEventIds);
+  const d2 = await dispatchTransferOrder({ transferOrderId: created.transferOrderId }, later).catch((e) => e);
+  assert.ok(d2 instanceof Error, "a COMPLETED order still refuses a dispatch");
+  assert.equal(await countAt("inventory_transactions", "sourceObject.id", created.transferOrderId), 2);
+});
+
+await check("retry of a COMMITTED dispatch by another user, later -> replayed", async () => {
+  const origin = WH(); const destination = WH();
+  await seedWarehouse(origin.locationId); await seedWarehouse(destination.locationId);
+  const partId = nextId("part");
+  await seedNoneOnHand(partId, origin, 10);
+  const { deps } = makeDeps();
+  const created = await createTransferOrder({ partId, quantity: 2, origin, destination, idempotencyKey: nextId("idem") }, deps);
+  const d1 = await dispatchTransferOrder({ transferOrderId: created.transferOrderId }, deps);
+  const later = { ...deps, actor: { kind: "USER", id: nextId("actor") }, now: () => new Date(NOW.getTime() + 3_600_000) };
+  const d2 = await dispatchTransferOrder({ transferOrderId: created.transferOrderId }, later);
+  assert.equal(d1.outcome, "applied"); assert.equal(d2.outcome, "replayed");
+  assert.equal(await countAt("inventory_transactions", "sourceObject.id", created.transferOrderId), 1);
+});
+
+await check("ledger refusals reach the caller as governed failed-precondition, never a bare internal", async () => {
+  const { mapTransferError } = await import("../lib/inventoryTransfer/transferCallables.js");
+  const ledger = await import("../lib/inventoryLedger/operationalMovementTypes.js");
+  const a = mapTransferError(new ledger.IdempotencyConflictError("x"));
+  assert.equal(a.code, "failed-precondition"); assert.deepEqual(a.details, { code: "IDEMPOTENCY_CONFLICT" });
+  const b = mapTransferError(new ledger.MalformedStoredRecordError("x"));
+  assert.equal(b.code, "failed-precondition"); assert.deepEqual(b.details, { code: "MALFORMED_STORED_RECORD" });
+  assert.equal(mapTransferError(new Error("raw")).code, "internal");
+});
+
 // =================================================================================================
 // unauthorized
 // =================================================================================================

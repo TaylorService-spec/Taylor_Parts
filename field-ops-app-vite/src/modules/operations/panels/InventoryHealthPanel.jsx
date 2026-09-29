@@ -2,6 +2,7 @@ import { URGENCY_ORDER, hasUsageHistory } from "../../../domain/inventoryAnalyti
 import { inventoryUrgencyTone } from "../../../domain/inventoryUrgencyTone";
 import RequestReorderControl from "../../../shared/inventory/RequestReorderControl";
 import StatusPill from "../../../shared/ui/StatusPill.jsx";
+import { LEDGER_UNAVAILABLE_TEXT } from "../../../domain/ledgerRowIntegrity.js";
 
 // Epic 3 Analytics -- pure renderer, all computation already done by
 // Operations.jsx (domain/inventoryAnalyticsEngine.ts). Only shows parts
@@ -67,6 +68,11 @@ export default function InventoryHealthPanel({
   // each pass their own filter-specific message, since "No ledger activity
   // yet" was misleading when it actually meant "nothing matches this tab."
   emptyText = "No ledger activity yet -- nothing to forecast.",
+  // DQ-027: parts whose figures cannot be derived because a ledger record for them cannot be read.
+  // They are LISTED, as unavailable rows -- never dropped from the table and never shown as zero.
+  unavailablePartIds = [],
+  // DQ-027: an unreadable ledger record that names NO part -- no figure in this panel can be trusted.
+  ledgerUnavailable = false,
 }) {
   // recommendation.urgency is null for NEEDS_PLANNING entries (no
   // usage history -- see domain/inventoryAnalyticsEngine.ts). Ranking
@@ -84,7 +90,18 @@ export default function InventoryHealthPanel({
   return (
     <div className="fo-card">
       <h3>{title}</h3>
-      {sorted.length === 0 ? (
+      {ledgerUnavailable ? (
+        <p className="fo-warning" role="status">
+          Inventory health is unavailable: a ledger record cannot be read or attributed to a part.
+        </p>
+      ) : null}
+      {!ledgerUnavailable && unavailablePartIds.length > 0 && (
+        <p className="fo-warning" role="status">
+          Incomplete: {unavailablePartIds.length} part{unavailablePartIds.length === 1 ? "" : "s"} cannot be forecast because a
+          ledger record for {unavailablePartIds.length === 1 ? "it" : "them"} cannot be read. The other figures are unaffected.
+        </p>
+      )}
+      {ledgerUnavailable ? null : sorted.length === 0 && unavailablePartIds.length === 0 ? (
         <p className="fo-muted">{emptyText}</p>
       ) : (
         // Above the phone breakpoint this still needs a scroll container: it was the one table in
@@ -135,6 +152,14 @@ export default function InventoryHealthPanel({
               </tr>
               );
             })}
+            {unavailablePartIds.map((partId) => (
+              <tr key={`unavailable-${partId}`} data-integrity="unavailable">
+                <td data-label="Part">{resolveName(partId)}</td>
+                <td data-label="Available" colSpan={onRequestReorder ? 6 : 5}>
+                  <span className="fo-muted">{LEDGER_UNAVAILABLE_TEXT}</span>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
         </div>

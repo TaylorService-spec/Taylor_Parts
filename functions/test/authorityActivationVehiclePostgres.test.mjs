@@ -161,10 +161,15 @@ test("the activation migration was APPENDED: only the later Administration and w
     "1763164800000_catalog-part-alias-authority.sql", "1763251200000_reorder-object-schema-parity.sql",
     "1763337600000_reorder-lifecycle-capability-registration.sql", "1763424000000_reorder-requester-is-a-principal.sql",
     "1763510400000_reorder-actor-identity-normalization.sql", "1763596800000_receiving-business-time-number-and-acquisition-cost.sql",
-    // DQ-022 (lane L1), appended after the candidate.
+    // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): appended after the candidate, in id order.
+    // DQ-022 (lane L1).
     "1763683200000_ownership-handoff-correction-capability.sql",
     // Lane L2, Controller rulings DQ-010 / DQ-011: four Work Order business actions, no grants.
-    "1763856000000_work-order-business-action-capabilities.sql"],
+    "1763856000000_work-order-business-action-capabilities.sql",
+    // Lane L3: scope binding (DQ-024 / DQ-029), Transfer-on-EOS storage, bin placement (DQ-038), acquire (DQ-036(b)).
+    "1764115200000_mobile-location-scope-binding.sql", "1764118800000_mobile-location-scope-binding-capability.sql",
+    "1764122400000_transfer-eos-lifecycle-support.sql", "1764126000000_bin-placement-authority.sql",
+    "1764129600000_serialized-asset-acquire-authority.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -384,13 +389,27 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
 
     // The Administration control plane (1762646400000) sits after the activation: +1 capability, +1
     // grant. It is peeled first so the reversal below is THIS migration's and nothing else's.
-    // INTERIM PIN (integration L1+L2; final reconciliation after all lanes land).
+    // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): 97 = 90 + 1 (L1) + 4 (L2) + 2 (L3).
+    // Peeled NEWEST FIRST. None of the seven wrote a grant, so only the capability count moves.
+    assert.deepEqual(await counts(), { caps: 97, grants: 415, mine: 26 });
+    // Lane L3: the serialized asset acquire authority (1764129600000, DQ-036(b)): -1 capability, no grant.
+    runMigrate(url, "down", 1);
+    assert.deepEqual(await counts(), { caps: 96, grants: 415, mine: 26 });
+    // the bin placement authority (1764126000000) and the Transfer-on-EOS storage support (1764122400000): schema only.
+    runMigrate(url, "down", 1);
+    assert.deepEqual(await counts(), { caps: 96, grants: 415, mine: 26 });
+    runMigrate(url, "down", 1);
+    assert.deepEqual(await counts(), { caps: 96, grants: 415, mine: 26 });
+    // the truck scope binding capability (1764118800000, DQ-029): -1 capability, no grant.
+    runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 95, grants: 415, mine: 26 });
-    // The Work Order business-action capabilities (1763856000000, Controller rulings DQ-010 / DQ-011) are peeled
-    // first: -4 capabilities, NO grant (they are registered with none).
+    // the MOBILE scope binding table (1764115200000): schema only.
+    runMigrate(url, "down", 1);
+    assert.deepEqual(await counts(), { caps: 95, grants: 415, mine: 26 });
+    // Lane L2: the Work Order business-action capabilities (1763856000000, DQ-010 / DQ-011): -4 capabilities, no grant.
     runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 91, grants: 415, mine: 26 });
-    // The ownership handoff correction capability (1763683200000, DQ-022) is peeled next: -1 capability, no grant.
+    // Lane L1: the ownership handoff correction capability (1763683200000, DQ-022): -1 capability, no grant.
     runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 90, grants: 415, mine: 26 });
     // The Catalog + Reorder activation candidate is peeled next, newest first. Three Reorder/Receiving schema
@@ -405,7 +424,7 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // The Reorder object schema parity and the Part alias authority: schema only.
     runMigrate(url, "down", 2);
     assert.deepEqual(await counts(), { caps: 82, grants: 415, mine: 26 });
-    // The Administrator staffing capability (1763078400000, Owner ruling R1) is peeled first: -1 capability,
+    // The Administrator staffing capability (1763078400000, Owner ruling R1) is peeled next: -1 capability,
     // -1 grant (owner -> admin.administratorRole.assign).
     runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 81, grants: 414, mine: 26 });
@@ -441,10 +460,11 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the Work Order business-action capabilities (1763856000000) first
-    runMigrate(url, "down", 1); // then the ownership handoff correction capability (1763683200000)
+    runMigrate(url, "down", 5); // peel lane L3's five migrations (1764129600000 .. 1764115200000) first, newest first
+    runMigrate(url, "down", 1); // then the Work Order business-action capabilities (1763856000000, lane L2)
+    runMigrate(url, "down", 1); // then the ownership handoff correction capability (1763683200000, lane L1)
     runMigrate(url, "down", 6); // then the Catalog + Reorder activation candidate (1763164800000 .. 1763596800000)
-    runMigrate(url, "down", 1); // then the later Administrator staffing capability (1763078400000)
+    runMigrate(url, "down", 1); // then the Administrator staffing capability (1763078400000)
     runMigrate(url, "down", 1); // then the direct-exception cell lock (1762992000000)
     runMigrate(url, "down", 1); // then the tenant sales channel activation (1762905600000)
     runMigrate(url, "down", 1); // then the Functional Role authority (1762819200000)

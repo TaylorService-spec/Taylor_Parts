@@ -121,14 +121,19 @@ test("a negative total ELSEWHERE does not fail a count at this location", async 
   assert.equal(await expected([row("RECEIVED", 5), row("ADJUSTED", -9, ELSEWHERE)]), 5);
 });
 
-test("legacy and malformed rows are still skipped, and still cannot push the total negative", async () => {
-  // A commitment is not physical stock; a malformed row is not trusted. Neither may manufacture an
-  // integrity failure out of a location that is genuinely fine.
-  assert.equal(await expected([row("RECEIVED", 4), legacy("RESERVED", 99), { schemaVersion: 2, type: "NONSENSE" }]), 4);
+test("a LEGACY row is excluded by classification (a governed population, not a skip)", async () => {
+  assert.equal(await expected([row("RECEIVED", 4), legacy("RESERVED", 99)]), 4);
 });
 
-test("a corrupt negative receipt contributes nothing rather than turning the count negative", async () => {
-  // signedQuantity's own rule: an IN/OUT row must be a positive magnitude. A corrupt one is dropped,
-  // so this is a 4, not a -1 refusal and not a manufactured 6.
-  assert.equal(await expected([row("RECEIVED", 4), { ...row("RECEIVED", 1), quantity: -2 }]), 4);
+// DQ-019 (Controller ruling 2026-09-28): an authoritative result FAILS CLOSED on a malformed row. These
+// two cases used to be pinned the other way ("skipped, contributes nothing") -- but a skipped
+// malformed DEBIT raises the expected quantity just as surely as a trusted malformed credit would.
+test("an UNCLASSIFIABLE row refuses the expected quantity (DQ-019), never skipped", async () => {
+  await assert.rejects(expected([row("RECEIVED", 4), { schemaVersion: 2, type: "NONSENSE" }]),
+    (e) => e instanceof CycleCountIntegrityError);
+});
+
+test("an operational row the strict reader rejects (a negative receipt) refuses the expected quantity", async () => {
+  await assert.rejects(expected([row("RECEIVED", 4), { ...row("RECEIVED", 1), quantity: -2 }]),
+    (e) => e instanceof CycleCountIntegrityError);
 });

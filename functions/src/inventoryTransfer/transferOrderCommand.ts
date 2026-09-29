@@ -25,11 +25,12 @@
 
 import { resolveTransferCustodyWarehouseId } from "./transferLocationResolver.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
+import { authoritativeOperationalMovements, LedgerRowIntegrityError } from "../inventoryLedger/authoritativeLedgerRows.js";
 import type { Firestore, Transaction, DocumentReference } from "firebase-admin/firestore";
 import { createHash } from "node:crypto";
 import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION, TRANSFER_ORDERS_COLLECTION } from "../constants/collections.js";
-import { stageOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
-import { classifyLedgerDoc, deserializeOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
+import { stageOperationalMovement, operationalMovementDocId } from "../inventoryLedger/operationalMovementRepository.js";
+import { deserializeOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
 import { serializedAssetDocId } from "../serializedAsset/serializedAssetRegistration.js";
 import {
   UnauthorizedTransferError,
@@ -139,16 +140,16 @@ function serialLedgerIdKey(transferOrderId: string, suffix: string, serialNo: st
 async function computeNoneOnHandThroughTxn(txn: Transaction, db: Firestore, partId: string, location: TransferLocationRef): Promise<number> {
   const snap = await txn.get(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", partId));
   let onHand = 0;
-  for (const doc of snap.docs) {
-    const data = doc.data();
-    if (classifyLedgerDoc(data) !== "operational") continue;
-    let mv;
-    try {
-      mv = deserializeOperationalMovement(data);
-    } catch {
-      continue; // a malformed operational record is skipped, not trusted -- never inflates on-hand
-    }
-    const v = mv.value;
+  // FAIL CLOSED (DQ-019): an unreadable row for this part refuses the sufficiency check -- skipping a
+  // malformed DEBIT would overstate stock and let the transfer pass.
+  let movements;
+  try {
+    movements = authoritativeOperationalMovements(snap.docs);
+  } catch (err) {
+    if (err instanceof LedgerRowIntegrityError) throw new TransferIntegrityError(`on-hand cannot be derived: ${err.message}`);
+    throw err;
+  }
+  for (const v of movements) {
     if (v.location.type !== location.type || v.location.locationId !== location.locationId) continue;
     // The sign comes from inventoryLedger/locationOnHand.ts -- the ONE place it is decided. This line
     // used to carry its own RECEIVED/TRANSFER/ADJUSTED branches and never learned
@@ -176,8 +177,9 @@ export async function createTransferOrder(request: unknown, deps: TransferComman
     if (!isPlainObject(request) || !str(request.partId)) throw new TransferPartInvalidError("partId missing");
     const part = await deps.resolvePart(txn, request.partId as string);
     if (part === null) throw new TransferPartInvalidError("part not found");
-    if (part.active !== true) throw new TransferPartInvalidError("part is not active");
     if (part.partId !== request.partId) throw new TransferPartInvalidError("resolved part identity incoherent");
+    // `part.active` gates a NEW transfer only -- checked after the idempotency read below, so a
+    // committed create whose response was lost still replays after the part is retired.
 
     // ---- 3. structural + shape validation, bound to the authoritative Part ----
     const authority = { part: { partId: part.partId, trackingMode: part.trackingMode } };
@@ -207,6 +209,7 @@ export async function createTransferOrder(request: unknown, deps: TransferComman
       if (storedRecomputed !== fingerprint) throw new TransferIdempotencyConflictError();
       return { outcome: "replayed", transferOrderId, fingerprint };
     }
+    if (part.active !== true) throw new TransferPartInvalidError("part is not active");
 
     // ---- 4. origin / destination must be ACTIVE governed locations ----
     if (!(await deps.resolveLocationActive(txn, value.origin))) throw new OriginInvalidError("origin is not an active governed location");
@@ -350,7 +353,9 @@ export async function dispatchTransferOrder(request: unknown, deps: TransferComm
     };
     const outcomes = [];
     for (const ev of ledgerEvents) {
-      outcomes.push(await stageOperationalMovement(bufferedStore, ev, { partId: part.partId, trackingMode: part.trackingMode }, { now }));
+      // A retry of a COMMITTED dispatch replays against the ORIGINAL act: its own actor and instant.
+      const replayEv = alreadyDispatched ? await asCommittedMovement(bufferedStore, ev) : ev;
+      outcomes.push(await stageOperationalMovement(bufferedStore, replayEv, { partId: part.partId, trackingMode: part.trackingMode }, { now }));
     }
     const ledgerEventIds = outcomes.map((o) => o.docId);
 
@@ -440,7 +445,11 @@ export async function receiveTransferOrder(request: unknown, deps: TransferComma
     };
     const outcomes = [];
     for (const ev of ledgerEvents) {
-      outcomes.push(await stageOperationalMovement(bufferedStore, ev, { partId: part.partId, trackingMode: part.trackingMode }, { now }));
+      // A retry of a COMMITTED receipt replays against the ORIGINAL act. Rebuilding it with THIS
+      // attempt's clock (occurredAt = now) and actor changed the ledger fingerprint, so every genuine
+      // retry of a completed receive was refused as an idempotency conflict -- by its own success.
+      const replayEv = alreadyReceived ? await asCommittedMovement(bufferedStore, ev) : ev;
+      outcomes.push(await stageOperationalMovement(bufferedStore, replayEv, { partId: part.partId, trackingMode: part.trackingMode }, { now }));
     }
     const ledgerEventIds = outcomes.map((o) => o.docId);
 
@@ -490,6 +499,24 @@ export async function receiveTransferOrder(request: unknown, deps: TransferComma
     }
     return { outcome: "applied", transferOrderId, ledgerEventIds };
   });
+}
+
+/**
+ * For the replay of an already-transitioned transfer: the expected movement, carrying the actor and
+ * occurredAt the COMMITTED row recorded -- the only two fields that legitimately differ between the
+ * original attempt and a retry (who pressed retry, and when). Every other field is still compared by
+ * the ledger's fingerprint, so a stored row that disagrees on part, location, quantity or serial still
+ * conflicts. A missing row is returned unchanged (the ledger then reports it as not replayed -> the
+ * caller's integrity refusal); a malformed row fails closed in deserializeOperationalMovement.
+ */
+async function asCommittedMovement<T extends { idempotencyKey: string; actor: unknown; occurredAt: number }>(
+  store: { read(docId: string): Promise<Record<string, unknown> | null> },
+  ev: T,
+): Promise<T> {
+  const existing = await store.read(operationalMovementDocId(ev.idempotencyKey));
+  if (existing === null) return ev;
+  const stored = deserializeOperationalMovement(existing);
+  return { ...ev, actor: stored.value.actor, occurredAt: stored.value.occurredAt };
 }
 
 // =====================================================================================================

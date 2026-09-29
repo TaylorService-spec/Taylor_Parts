@@ -18,6 +18,15 @@ check("unknown/malformed error -> generic bounded message, never raw error text"
   assert.equal(mapTransferActionError(null), "The transfer action could not be completed.");
 });
 
+check("the governed details.code the server sends selects a specific message; unknown detail falls back to the HTTP code", () => {
+  assert.match(mapTransferActionError({ code: "functions/failed-precondition", details: { code: "INSUFFICIENT_STOCK" } }), /not enough stock/);
+  assert.match(mapTransferActionError({ code: "failed-precondition", details: { code: "SAME_CUSTODY_PARENT" } }), /relocation/);
+  assert.match(mapTransferActionError({ code: "failed-precondition", details: { code: "STATUS_INVALID" } }), /not in a state/);
+  assert.equal(mapTransferActionError({ code: "failed-precondition", details: { code: "SOMETHING_NEW" } }).includes("not currently permitted"), true);
+  assert.equal(mapTransferActionError({ code: "failed-precondition", details: "INSUFFICIENT_STOCK" }).includes("not currently permitted"), true);
+  assert.equal(mapTransferActionError({ code: "internal", details: { code: "__proto__" } }), "The transfer action could not be completed.");
+});
+
 check("describeOutcome distinguishes applied vs replayed per action", () => {
   assert.equal(describeOutcome("create", "applied"), "Transfer created.");
   assert.equal(describeOutcome("create", "replayed"), "Already created (no change made).");

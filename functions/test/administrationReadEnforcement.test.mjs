@@ -198,11 +198,17 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // Reorder domain schema migrations (1763251200000, 1763424000000, 1763510400000, 1763596800000) and the Reorder
   // lifecycle capability REGISTRATION (1763337600000: eight BUSINESS_ACTION keys, granted to nobody). None registers
   // a READ key, and none is a read-enforcement change.
-  // 63 -> 64: the ownership handoff correction capability (1763683200000, DQ-022, lane L1) -- ONE BUSINESS_ACTION
-  // capability granted to nobody. It registers no READ key.
-  // 64 -> 65: the Work Order business-action capabilities (1763856000000, Controller rulings DQ-010 / DQ-011, lane L2) -- FOUR BUSINESS_ACTION capabilities granted to nobody. It registers no READ key.
-  // INTERIM PIN (integration L1+L2; final reconciliation after all lanes land).
-  assert.equal(migrations.length, 65, "a migration was added or removed by the read enforcement");
+  // 63 -> 70, INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability) -- seven migrations appended after the
+  // Catalog + Reorder candidate, none of which registers a READ key or is a read-enforcement change:
+  //   1763683200000 (L1, DQ-022): ownership.handoff.correct -- ONE BUSINESS_ACTION capability granted to nobody.
+  //   1763856000000 (L2, DQ-010 / DQ-011): FOUR Work Order BUSINESS_ACTION capabilities granted to nobody.
+  //   1764115200000 (L3, DQ-024): the MOBILE location -> warehouse scope binding -- one eos_ops table, no capability.
+  //   1764118800000 (L3, DQ-029): inventory.location.scopeBinding.manage -- ONE ADMIN_ACTION capability granted to nobody.
+  //   1764122400000 (L3): the Transfer-on-EOS storage support -- an enum value, a counter table, an index; no capability.
+  //   1764126000000 (L3, DQ-038): the bin placement authority -- one eos_ops table, no capability.
+  //   1764129600000 (L3, DQ-036(b)): inventory.serializedAsset.acquire -- ONE BUSINESS_ACTION capability granted to
+  //   nobody (Administration-grant-only), plus its provenance table.
+  assert.equal(migrations.length, 70, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

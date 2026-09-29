@@ -16,7 +16,11 @@ import { inventoryUrgencyTone } from "../../../domain/inventoryUrgencyTone";
 import StatusPill from "../../../shared/ui/StatusPill.jsx";
 import { resolveSupplierIdentity } from "../../../domain/actorDisplayName";
 
-export default function ProcurementPanel({ purchaseOrders, suppliers, procurementDrafts, resolveName }) {
+export default function ProcurementPanel({ purchaseOrders, suppliers, procurementDrafts, resolveName, ledgerIntegrity = null }) {
+  // DQ-027: draft proposals are derived from the ledger. Parts whose ledger cannot be read have NO
+  // proposal either way -- that is said, so "no proposals" never stands in for "not assessed".
+  const incompleteParts = ledgerIntegrity?.unavailablePartIds?.length ?? 0;
+  const ledgerUnavailable = ledgerIntegrity?.state === "UNAVAILABLE";
   // Shared resolver -- see domain/actorDisplayName.js. Previously fell back to the raw supplier
   // document id, printing an opaque key where a business name belongs.
   const supplierName = (id) => resolveSupplierIdentity(id, { suppliers }).name;
@@ -59,8 +63,15 @@ export default function ProcurementPanel({ purchaseOrders, suppliers, procuremen
 
       <h4>Draft Proposals</h4>
       <p className="fo-muted">Generated from Epic 3 reorder recommendations -- proposals only, nothing here is a real order.</p>
-      {procurementDrafts.length === 0 ? (
-        <p className="fo-muted">No draft proposals -- nothing currently needs reordering.</p>
+      {ledgerUnavailable ? (
+        <p className="fo-warning" role="status">Draft proposals are unavailable: a ledger record cannot be read or attributed to a part.</p>
+      ) : incompleteParts > 0 ? (
+        <p className="fo-warning" role="status">
+          Incomplete: {incompleteParts} part{incompleteParts === 1 ? " was" : "s were"} not assessed because a ledger record cannot be read.
+        </p>
+      ) : null}
+      {ledgerUnavailable ? null : procurementDrafts.length === 0 ? (
+        <p className="fo-muted">{incompleteParts > 0 ? "No draft proposals among the parts that could be assessed." : "No draft proposals -- nothing currently needs reordering."}</p>
       ) : (
         <table className="fo-table">
           <thead>

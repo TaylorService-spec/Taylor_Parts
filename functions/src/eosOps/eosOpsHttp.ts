@@ -17,8 +17,18 @@
 //
 // There is deliberately no `POST /sql`, no `mutate(table, id, patch)`, no Firestore proxy, and no
 // route that takes a table name.
-import { resolveOperationalContext } from "./capabilityAuthority";
 import { containsNulCharacter, NUL_CHARACTER_REFUSAL } from "../adminPolicy/requestText";
+import { capabilitiesWithoutUnevaluatedConditions, resolveOperationalContext } from "./capabilityAuthority";
+import { EOS_CYCLE_COUNT_OPERATIONS, CycleCountOperationError, type EosCycleCountOperation } from "./cycleCountOperations";
+import { CYCLE_COUNT_WRITER_AUTHORITY, type PostgresCycleCountWriterState } from "../cycleCount/cycleCountWriterState";
+import { EOS_RELOCATION_OPERATIONS, RelocationOperationError, type EosRelocationOperation } from "./stockRelocationOperations";
+import { RELOCATION_WRITER_AUTHORITY, type PostgresRelocationWriterState } from "../inventoryLocation/stockRelocationWriterState";
+import { EOS_TRANSFER_OPERATIONS, TransferOperationError, type EosTransferOperation } from "./transferOperations";
+import { TRANSFER_WRITER_AUTHORITY, type PostgresTransferWriterState } from "../inventoryTransfer/transferWriterState";
+import { EOS_PLACEMENT_OPERATIONS, PlacementOperationError, type EosPlacementOperation } from "./binPlacementOperations";
+import { PLACEMENT_WRITER_AUTHORITY, type PostgresPlacementWriterState } from "../inventoryLocation/placementWriterState";
+import { EOS_ACQUIRE_OPERATIONS, AcquireOperationError, type EosAcquireOperation } from "./serializedAssetAcquireOperations";
+import { ACQUIRE_WRITER_AUTHORITY, type PostgresAcquireWriterState } from "../serializedAsset/acquireWriterState";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { resolveExperienceContext } from "./experienceAuthority";
 import {
@@ -120,8 +130,52 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   receiveReorderStock: "/operations/inventory",
 });
 
+// ════════════════════ the Cycle Count command route (Controller rulings DQ-017 / DQ-018) ════════════════════
+//
+// The FIRST inventory domain on this transport, and the first operations that WRITE. It is a third,
+// honestly-named route with its OWN closed operation table (eosOps/cycleCountOperations.ts) rather than
+// entries on the read list: a route names a domain, and the read list stays exactly what it says. The
+// shape is unchanged -- verify identity, resolve the operational context from PostgreSQL, hand ONE named
+// operation its input, write the result. Warehouse scope is enforced INSIDE each operation, per record.
+export const CYCLE_COUNT_ROUTE = "/operations/cycle-count";
+export const CYCLE_COUNT_OPERATIONS: readonly EosCycleCountOperation[] =
+  Object.freeze(Object.keys(EOS_CYCLE_COUNT_OPERATIONS) as EosCycleCountOperation[]);
+export const isCycleCountOperation = (name: unknown): name is EosCycleCountOperation =>
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_CYCLE_COUNT_OPERATIONS, name);
+
+// ════════════════════ the Stock Relocation command route (Controller ruling DQ-036) ════════════════════
+//
+// The EXISTING relocation on EOS, on its OWN honestly-named route with its OWN closed table, exactly as
+// Cycle Count: a route names a domain. Built and proven; INACTIVE until the inventory baseline COPY
+// (inventoryLocation/stockRelocationWriterState.ts).
+export const RELOCATION_ROUTE = "/operations/relocation";
+export const RELOCATION_OPERATIONS: readonly EosRelocationOperation[] =
+  Object.freeze(Object.keys(EOS_RELOCATION_OPERATIONS) as EosRelocationOperation[]);
+export const isRelocationOperation = (name: unknown): name is EosRelocationOperation =>
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_RELOCATION_OPERATIONS, name);
+
+// ════════════════════ the Transfer command route (DQ-024 / DQ-026; HELD) ════════════════════
+export const TRANSFER_ROUTE = "/operations/transfer";
+export const TRANSFER_OPERATIONS: readonly EosTransferOperation[] =
+  Object.freeze(Object.keys(EOS_TRANSFER_OPERATIONS) as EosTransferOperation[]);
+export const isTransferOperation = (name: unknown): name is EosTransferOperation =>
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_TRANSFER_OPERATIONS, name);
+
+// ════════════════════ Bin placement (put-away; DQ-038) and serialized asset acquisition (DQ-036(b)) ════════════════════
+export const PLACEMENT_ROUTE = "/operations/placement";
+export const PLACEMENT_OPERATIONS: readonly EosPlacementOperation[] =
+  Object.freeze(Object.keys(EOS_PLACEMENT_OPERATIONS) as EosPlacementOperation[]);
+export const isPlacementOperation = (name: unknown): name is EosPlacementOperation =>
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_PLACEMENT_OPERATIONS, name);
+export const SERIALIZED_ASSET_ROUTE = "/operations/serialized-asset";
+export const SERIALIZED_ASSET_OPERATIONS: readonly EosAcquireOperation[] =
+  Object.freeze(Object.keys(EOS_ACQUIRE_OPERATIONS) as EosAcquireOperation[]);
+export const isSerializedAssetOperation = (name: unknown): name is EosAcquireOperation =>
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_ACQUIRE_OPERATIONS, name);
+
 export const OPERATIONS_ROUTES: readonly string[] =
-  Object.freeze([...new Set(Object.values(OPERATIONS_ROUTE_BY_OPERATION))].sort());
+  Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE, RELOCATION_ROUTE, TRANSFER_ROUTE,
+    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE])].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(OPERATIONS_MUTATION_OPERATIONS);
@@ -131,8 +185,24 @@ export const isOperationsOperation = (name: unknown): name is OperationsOperatio
 export interface OperationsApiDeps {
   readonly reader: PolicyReader;
   readonly pool: Pool;
+  /**
+   * TEST INJECTION ONLY: the Cycle Count activation state. The deployed server supplies none, so the
+   * governed constant (CYCLE_COUNT_WRITER_AUTHORITY.postgres, INACTIVE) is what production reads.
+   */
+  readonly cycleCountPostgresState?: PostgresCycleCountWriterState;
   /** The committed REORDER_POSTGRES_ACTIVE unless a test states the state it exercises. */
   readonly reorderPostgresActive?: boolean;
+  /**
+   * TEST INJECTION ONLY: the Stock Relocation activation state. The deployed server supplies none, so the
+   * governed constant (RELOCATION_WRITER_AUTHORITY.postgres, INACTIVE) is what production reads.
+   */
+  readonly relocationPostgresState?: PostgresRelocationWriterState;
+  /** TEST INJECTION ONLY: the Transfer activation state (TRANSFER_WRITER_AUTHORITY.postgres, INACTIVE, otherwise). */
+  readonly transferPostgresState?: PostgresTransferWriterState;
+  /** TEST INJECTION ONLY: the put-away activation state (PLACEMENT_WRITER_AUTHORITY.postgres, INACTIVE, otherwise). */
+  readonly placementPostgresState?: PostgresPlacementWriterState;
+  /** TEST INJECTION ONLY: the acquisition activation state (ACQUIRE_WRITER_AUTHORITY.postgres, INACTIVE, otherwise). */
+  readonly acquirePostgresState?: PostgresAcquireWriterState;
 }
 
 /** Every operation of the PostgreSQL Reorder authority: all but the two principal-context resolvers. */
@@ -333,6 +403,102 @@ export interface HttpResponseShape {
   readonly body: string;
 }
 
+const STATUS_BY_CYCLE_COUNT_CATEGORY: Readonly<Record<CycleCountOperationError["category"], number>> = Object.freeze({
+  INVALID_INPUT: 400,
+  NOT_FOUND: 404,
+  PRECONDITION_FAILED: 412,
+  CONFLICT: 409,
+  FORBIDDEN: 403,
+  NOT_ACTIVATED: 503,
+  FAILED: 500,
+});
+
+/**
+ * Execute one Cycle Count operation for an already-verified caller. An unknown / disabled / non-member
+ * Principal is FORBIDDEN (PrincipalContextError); a capability reached only through a CONDITIONED grant
+ * is withheld (this kernel cannot evaluate conditions -- fail closed), exactly as the Commercial route does.
+ */
+export async function executeCycleCountOperation(
+  deps: OperationsApiDeps,
+  request: {
+    readonly caller: { readonly externalSubject: string; readonly identityProvider: string; readonly requestedTenantId: string | null };
+    readonly operation: EosCycleCountOperation;
+    readonly input: Record<string, unknown>;
+  },
+): Promise<{ readonly status: number; readonly body: unknown }> {
+  const { operation } = request;
+  try {
+    const postgresState = deps.cycleCountPostgresState ?? CYCLE_COUNT_WRITER_AUTHORITY.postgres;
+    const conditions = postgresGrantConditionProvider(deps.pool);
+    const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
+      identityProvider: request.caller.identityProvider,
+      externalSubject: request.caller.externalSubject,
+      requestedTenantId: request.caller.requestedTenantId,
+    }, conditions);
+    const capabilities = await capabilitiesWithoutUnevaluatedConditions(deps.pool, ctx.principalContext, ctx.capabilities, conditions);
+    const actor = Object.freeze({ tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities });
+    const result = await EOS_CYCLE_COUNT_OPERATIONS[operation]({ pool: deps.pool, postgresState }, actor, request.input);
+    return { status: 200, body: { ok: true, operation, result } };
+  } catch (err) {
+    if (err instanceof PrincipalContextError) return { status: 403, body: { ok: false, operation, code: "FORBIDDEN", message: err.refusal } };
+    if (err instanceof CycleCountOperationError) {
+      return { status: STATUS_BY_CYCLE_COUNT_CATEGORY[err.category] ?? 500, body: { ok: false, operation, code: err.code, message: err.message } };
+    }
+    // eslint-disable-next-line no-console -- same posture as the read path's unhandled-error log
+    console.error("[eosOpsHttp] cycle count unhandled", err);
+    return { status: 500, body: { ok: false, operation, code: "INTERNAL", message: "the request could not be completed" } };
+  }
+}
+
+type CommandRoute = "relocation" | "transfer" | "placement" | "serializedAsset";
+
+/**
+ * Execute one Stock Relocation or Transfer operation for an already-verified caller -- the Cycle Count shape
+ * exactly: operational context from PostgreSQL, conditioned grants withheld, the domain's own activation constant.
+ */
+export async function executeInventoryCommandOperation(
+  deps: OperationsApiDeps,
+  route: CommandRoute,
+  request: {
+    readonly caller: { readonly externalSubject: string; readonly identityProvider: string; readonly requestedTenantId: string | null };
+    readonly operation: string;
+    readonly input: Record<string, unknown>;
+  },
+): Promise<{ readonly status: number; readonly body: unknown }> {
+  const { operation } = request;
+  try {
+    const conditions = postgresGrantConditionProvider(deps.pool);
+    const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
+      identityProvider: request.caller.identityProvider,
+      externalSubject: request.caller.externalSubject,
+      requestedTenantId: request.caller.requestedTenantId,
+    }, conditions);
+    const capabilities = await capabilitiesWithoutUnevaluatedConditions(deps.pool, ctx.principalContext, ctx.capabilities, conditions);
+    const actor = Object.freeze({ tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities });
+    const result = route === "relocation"
+      ? await EOS_RELOCATION_OPERATIONS[operation as EosRelocationOperation](
+        { pool: deps.pool, postgresState: deps.relocationPostgresState ?? RELOCATION_WRITER_AUTHORITY.postgres }, actor, request.input)
+      : route === "transfer"
+        ? await EOS_TRANSFER_OPERATIONS[operation as EosTransferOperation](
+          { pool: deps.pool, postgresState: deps.transferPostgresState ?? TRANSFER_WRITER_AUTHORITY.postgres }, actor, request.input)
+        : route === "placement"
+          ? await EOS_PLACEMENT_OPERATIONS[operation as EosPlacementOperation](
+            { pool: deps.pool, postgresState: deps.placementPostgresState ?? PLACEMENT_WRITER_AUTHORITY.postgres }, actor, request.input)
+          : await EOS_ACQUIRE_OPERATIONS[operation as EosAcquireOperation](
+            { pool: deps.pool, postgresState: deps.acquirePostgresState ?? ACQUIRE_WRITER_AUTHORITY.postgres }, actor, request.input);
+    return { status: 200, body: { ok: true, operation, result } };
+  } catch (err) {
+    if (err instanceof PrincipalContextError) return { status: 403, body: { ok: false, operation, code: "FORBIDDEN", message: err.refusal } };
+    if (err instanceof RelocationOperationError || err instanceof TransferOperationError
+      || err instanceof PlacementOperationError || err instanceof AcquireOperationError) {
+      return { status: STATUS_BY_CYCLE_COUNT_CATEGORY[err.category] ?? 500, body: { ok: false, operation, code: err.code, message: err.message } };
+    }
+    // eslint-disable-next-line no-console -- same posture as the read path's unhandled-error log
+    console.error(`[eosOpsHttp] ${route} unhandled`, err);
+    return { status: 500, body: { ok: false, operation, code: "INTERNAL", message: "the request could not be completed" } };
+  }
+}
+
 const STATUS_BY_CODE: Readonly<Record<OperationsApiFailureCode, number>> = Object.freeze({
   UNKNOWN_OPERATION: 404,
   UNAUTHENTICATED: 401,
@@ -408,6 +574,63 @@ export async function handleOperationsRequest(
   }
 
   const operation = payload.operation;
+
+  if (path === CYCLE_COUNT_ROUTE) {
+    if (!isCycleCountOperation(operation)) return json(404, notFound(String(operation ?? "")), origin);
+    const input = payload.input === undefined ? {} : payload.input;
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      return json(400, { ok: false, operation, code: "INVALID_INPUT", message: "input must be a JSON object" }, origin);
+    }
+    const ccBearer = bearerToken(header(request, "authorization"));
+    if (!ccBearer) return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "a bearer token is required" }, origin);
+    let ccIdentity: VerifiedIdentity;
+    try {
+      ccIdentity = await options.verifyToken(ccBearer);
+    } catch {
+      return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "the token could not be verified" }, origin);
+    }
+    const out = await executeCycleCountOperation(options, {
+      caller: {
+        externalSubject: ccIdentity.externalSubject,
+        identityProvider: ccIdentity.identityProvider,
+        requestedTenantId: singleHeader(header(request, "x-eos-tenant")),
+      },
+      operation,
+      input: input as Record<string, unknown>,
+    });
+    return json(out.status, out.body, origin);
+  }
+
+  if (path === RELOCATION_ROUTE || path === TRANSFER_ROUTE || path === PLACEMENT_ROUTE || path === SERIALIZED_ASSET_ROUTE) {
+    const route: CommandRoute = path === RELOCATION_ROUTE ? "relocation" : path === TRANSFER_ROUTE ? "transfer"
+      : path === PLACEMENT_ROUTE ? "placement" : "serializedAsset";
+    const known = route === "relocation" ? isRelocationOperation(operation) : route === "transfer" ? isTransferOperation(operation)
+      : route === "placement" ? isPlacementOperation(operation) : isSerializedAssetOperation(operation);
+    if (!known) return json(404, notFound(String(operation ?? "")), origin);
+    const input = payload.input === undefined ? {} : payload.input;
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      return json(400, { ok: false, operation, code: "INVALID_INPUT", message: "input must be a JSON object" }, origin);
+    }
+    const cmdBearer = bearerToken(header(request, "authorization"));
+    if (!cmdBearer) return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "a bearer token is required" }, origin);
+    let cmdIdentity: VerifiedIdentity;
+    try {
+      cmdIdentity = await options.verifyToken(cmdBearer);
+    } catch {
+      return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "the token could not be verified" }, origin);
+    }
+    const out = await executeInventoryCommandOperation(options, route, {
+      caller: {
+        externalSubject: cmdIdentity.externalSubject,
+        identityProvider: cmdIdentity.identityProvider,
+        requestedTenantId: singleHeader(header(request, "x-eos-tenant")),
+      },
+      operation: operation as string,
+      input: input as Record<string, unknown>,
+    });
+    return json(out.status, out.body, origin);
+  }
+
   if (!isOperationsOperation(operation)) return json(404, notFound(String(operation ?? "")), origin);
   // The operation must belong to the route it arrived on. Without this, /operations/inventory would
   // answer for /operations/experience and the route names would stop describing anything.

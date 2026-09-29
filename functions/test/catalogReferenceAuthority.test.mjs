@@ -79,9 +79,22 @@ test("the catalog authority is composed ONLY by the Work Order/ops commands that
   assert.deepEqual(importers, [
     // The Catalog cutover lane composes it ONCE for the Commercial transport (next test).
     "eosApi/server.ts",
+    // Controller ruling DQ-018 (2026-09-28): the EOS Cycle Count commands resolve the counted Part and its
+    // tracking mode from the catalog, never from the caller -- a count against a caller-stated tracking mode
+    // would be wrong silently. Wired, NOT activatable: they refuse NOT_ACTIVATED until the Cycle Count
+    // activation gate, which follows the Catalog COPY (cycleCount/cycleCountWriterState.ts).
+    "eosOps/cycleCountOperations.ts",
     "eosOps/equipmentCustody.ts",
     "eosOps/inventoryCommitmentRepository.ts",
+    // Controller ruling DQ-036(b): acquire-existing-unit reads Catalog identity (ACTIVE + SERIAL) from the catalog,
+    // never the caller. INACTIVE until activation (serializedAsset/acquireWriterState.ts).
+    "eosOps/serializedAssetAcquireOperations.ts",
     "eosOps/serviceFromSalesOrderBoundary.ts",
+    // Controller ruling DQ-036: the EOS stock relocation reads the moved Part's status and tracking mode from the
+    // catalog, never the caller. INACTIVE until the inventory baseline COPY (stockRelocationWriterState.ts).
+    "eosOps/stockRelocationOperations.ts",
+    // The EOS Transfer lifecycle (HELD) resolves the transferred Part the same way (inventoryTransfer/transferWriterState.ts).
+    "eosOps/transferOperations.ts",
     // DQ-034 (Controller 2026-09-28): the EOS Work Order equipment-install boundary (J5) reads whole_unit / catalog
     // identity from the PG Catalog through the Part policy authority; built inert, no transport.
     "eosOps/workOrderEquipmentInstall.ts",
@@ -93,7 +106,7 @@ test("every composer uses it as a REPOSITORY, on its own client, never over HTTP
   // The forbidden shape is a Render handler calling another Render handler: the Part would be verified in
   // one transaction and acted on in another, with nothing making the two agree.
   const SRC = join(FUNCTIONS_DIR, "src");
-  for (const rel of ["eosOps/equipmentCustody.ts", "eosOps/inventoryCommitmentRepository.ts",
+  for (const rel of ["eosOps/cycleCountOperations.ts", "eosOps/equipmentCustody.ts", "eosOps/inventoryCommitmentRepository.ts",
                      "eosOps/serviceFromSalesOrderBoundary.ts", "eosOps/workOrderPartsPlanAuthority.ts"]) {
     const src = strip(readFileSync(join(SRC, rel), "utf8"));
     assert.doesNotMatch(src, /fetch\(/, `${rel} calls out over HTTP`);

@@ -105,7 +105,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.notEqual(row.display_label, row.key, "a friendly label, not the key");
     }
     const total = (await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities")).rows[0].n;
-    assert.equal(total, 95, // INTERIM PIN (integration L1+L2): + 1 from 1763683200000 (DQ-022), + 4 from 1763856000000 (DQ-010/DQ-011)
+    assert.equal(total, 97, // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability)
       "+ 8 from migration 1763337600000, the Reorder lifecycle authority (Administration-grant-only) -- " +
       "49 + 8 + 13 + 3 + 1 + 1 (the re-homed coordinated-visit read) + 1 (admin.securityPolicy.read, " +
       "the Administration read authority -- rolesPermissions had two ADMIN_ACTION writes and no read) " +
@@ -118,7 +118,9 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       "no Role + 1 from migration 1763078400000, Owner ruling R1: admin.administratorRole.assign, granted to owner " +
       "+ 1 from migration 1763683200000, DQ-022: ownership.handoff.correct, granted to no Role " +
       "+ 4 from migration 1763856000000, Controller rulings DQ-010 / DQ-011: workOrder.lifecycle.ready / .schedule / " +
-      ".close and workOrder.parts.plan, granted to NO Role");
+      ".close and workOrder.parts.plan, granted to NO Role " +
+      "+ 1 from migration 1764118800000, DQ-029: inventory.location.scopeBinding.manage, granted to no Role " +
+      "+ 1 from migration 1764129600000, DQ-036(b): inventory.serializedAsset.acquire, Administration-grant-only");
   });
 
   await t.test("every preserved grant is backed by an actual stored CRED row", async () => {

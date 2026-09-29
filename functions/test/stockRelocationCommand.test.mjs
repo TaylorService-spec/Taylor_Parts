@@ -292,6 +292,49 @@ await check("CONFLICT: the same key with a different quantity is refused", async
   await expectCode(relocateStock({ partId, source: WHref(wh), destination: BINref(binA), quantity: 3, idempotencyKey: key }, makeDeps().deps), "IDEMPOTENCY_CONFLICT");
 });
 
+await check("REPLAY survives the PART being retired afterwards (replay is decided before current-state gates)", async () => {
+  const wh = nextId("wh"); await seedWarehouse(wh);
+  const binA = await seedBin(wh);
+  const partId = nextId("part");
+  await seedMovement(partId, WHref(wh), "RECEIVED", 3);
+  const req = { partId, source: WHref(wh), destination: BINref(binA), quantity: 2, idempotencyKey: nextId("k") };
+  await relocateStock(req, makeDeps().deps);
+  const retired = makeDeps({ parts: { [partId]: { partId, trackingMode: "NONE", active: false } } });
+  assert.equal((await relocateStock(req, retired.deps)).outcome, "replayed");
+  // A NEW move of the retired part is still refused.
+  await expectCode(relocateStock({ ...req, idempotencyKey: nextId("k") }, retired.deps), "INVALID", "part_not_active");
+});
+
+await check("CONFLICT: placement intent is part of the replay -- asking for a placement the original never wrote is refused", async () => {
+  const wh = nextId("wh"); await seedWarehouse(wh);
+  const binA = await seedBin(wh);
+  const partId = nextId("part");
+  await seedMovement(partId, WHref(wh), "RECEIVED", 5);
+  const both = makeDeps({ grants: ["inventory.stock.relocate", "inventory.placement.record"] }).deps;
+  const plain = { partId, source: WHref(wh), destination: BINref(binA), quantity: 2, idempotencyKey: nextId("k") };
+  await relocateStock(plain, both);
+  await expectCode(relocateStock({ ...plain, recordPlacement: true }, both), "IDEMPOTENCY_CONFLICT", "placement_intent_differs");
+
+  const placed = { partId, source: WHref(wh), destination: BINref(binA), quantity: 1, idempotencyKey: nextId("k"), recordPlacement: true };
+  const first = await relocateStock(placed, both);
+  const again = await relocateStock(placed, both);
+  assert.equal(again.outcome, "replayed"); assert.deepEqual(again.placementIds, first.placementIds);
+  await expectCode(relocateStock({ ...placed, recordPlacement: false }, both), "IDEMPOTENCY_CONFLICT", "placement_intent_differs");
+  await expectCode(relocateStock({ ...placed, pickedForWorkOrderId: "WO-1" }, both), "IDEMPOTENCY_CONFLICT", "placement_intent_differs");
+});
+
+await check("DQ-019: a MALFORMED ledger row for the part refuses the move (INTEGRITY), never skipped", async () => {
+  const wh = nextId("wh"); await seedWarehouse(wh);
+  const binA = await seedBin(wh);
+  const partId = nextId("part");
+  await seedMovement(partId, WHref(wh), "RECEIVED", 5);
+  // A consumption row whose quantity is unreadable. Skipped, it would leave 5 "available" at the source.
+  await seedMovement(partId, WHref(wh), "WORK_ORDER_CONSUMPTION", "four");
+  await expectCode(relocateStock({ partId, source: WHref(wh), destination: BINref(binA), quantity: 5, idempotencyKey: nextId("k") }, makeDeps().deps),
+    "INTEGRITY", "ledger_row_unreadable");
+  assert.equal((await rawRowsFor(partId)).length, 2, "nothing written");
+});
+
 await check("a partial prior write is an integrity failure, never 'finish the rest'", async () => {
   const wh = nextId("wh"); await seedWarehouse(wh);
   const binA = await seedBin(wh);

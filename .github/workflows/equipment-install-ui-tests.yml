@@ -35,6 +35,11 @@ on:
       - "field-ops-app-vite/src/domain/acquireLocationState.js"
       - "field-ops-app-vite/test/serializedAssetAcquire.test.mjs"
       - "field-ops-app-vite/test/acquireExistingUnitComposition.test.jsx"
+      # DQ-036(b): the acquire transport switch (Firebase until activation; EOS only after).
+      - "field-ops-app-vite/test/serializedAssetAcquireEosClient.test.jsx"
+      - "field-ops-app-vite/src/services/serializedAssetAcquireCallableClient.js"
+      - "field-ops-app-vite/src/services/serializedAssetAcquireWriterState.js"
+      - "functions/src/serializedAsset/acquireWriterState.ts"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
@@ -108,6 +113,11 @@ on:
       - "field-ops-app-vite/src/domain/acquireLocationState.js"
       - "field-ops-app-vite/test/serializedAssetAcquire.test.mjs"
       - "field-ops-app-vite/test/acquireExistingUnitComposition.test.jsx"
+      # DQ-036(b): the acquire transport switch (Firebase until activation; EOS only after).
+      - "field-ops-app-vite/test/serializedAssetAcquireEosClient.test.jsx"
+      - "field-ops-app-vite/src/services/serializedAssetAcquireCallableClient.js"
+      - "field-ops-app-vite/src/services/serializedAssetAcquireWriterState.js"
+      - "functions/src/serializedAsset/acquireWriterState.ts"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
@@ -221,7 +231,7 @@ jobs:
       # could not be read". That second one was a case mismatch against the transport enum, which
       # no pure test could see.
       - name: Acquire composition — the column, the location states, the two stages
-        run: npx vitest run test/acquireExistingUnitComposition.test.jsx
+        run: npx vitest run test/acquireExistingUnitComposition.test.jsx test/serializedAssetAcquireEosClient.test.jsx
         working-directory: field-ops-app-vite
 
       # A queued note that renders as "saved" is the one failure this whole runtime exists to prevent,

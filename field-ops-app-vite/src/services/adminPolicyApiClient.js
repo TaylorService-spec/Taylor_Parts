@@ -112,7 +112,20 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   "setTenantSalesChannelStatus",
 ]);
 
-const ALL_OPERATIONS = new Set([...ADMIN_READ_OPERATIONS, ...ADMIN_MUTATION_OPERATIONS]);
+/**
+ * ADMINISTRATION CONFIGURATION operations (Controller ruling DQ-029), mirrored from the server's
+ * functions/src/adminPolicy/configurationOperations.ts. Operational configuration, not security policy: each is
+ * gated on the server by ITS OWN capability -- here inventory.location.scopeBinding.manage, the truck location ->
+ * warehouse scope binding -- and this list decides nothing; it only lets the names leave the browser.
+ */
+export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze([
+  "listMobileLocationScopeBindings",
+  "readMobileLocationScopeBinding",
+  "setMobileLocationScopeBinding",
+  "removeMobileLocationScopeBinding",
+]);
+
+const ALL_OPERATIONS = new Set([...ADMIN_READ_OPERATIONS, ...ADMIN_MUTATION_OPERATIONS, ...ADMIN_CONFIGURATION_OPERATIONS]);
 
 /** Is this a name the server would recognise? */
 export const isAdminOperation = (name) => typeof name === "string" && ALL_OPERATIONS.has(name);

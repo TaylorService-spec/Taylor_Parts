@@ -34,6 +34,7 @@ import { createAdminPolicyHttpHandler } from "../adminPolicy/adminPolicyHttp";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
 import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
 import { explainEffectiveAccess } from "../eosOps/effectiveAccessExplanation";
+import { createMobileLocationScopeBindingAdministration } from "../eosOps/mobileLocationScopeBindingAdministration";
 import { createCommercialHttpHandler } from "../eosCommercial/commercialHttp";
 import { createWorkforceHttpHandler } from "../eosWorkforce/workforceHttp";
 import { createCrmHttpHandler } from "../eosCrm/crmHttp";
@@ -164,6 +165,9 @@ export async function startEosApi(
     repo,
     // The runtime evaluator, over the one shared pool, for the explainEffectiveAccess read.
     explainEffectiveAccess: (tenantId, principalId) => explainEffectiveAccess(repo, pool, { tenantId, principalId }),
+    // DQ-029: the Administration configuration operations (truck location -> warehouse scope), over the same pool.
+    // Gated in executeAdminOperation on inventory.location.scopeBinding.manage before this is ever reached.
+    configuration: createMobileLocationScopeBindingAdministration(pool),
     verifyToken,
     allowedOrigins: config.allowedOrigins,
     health: async () => {

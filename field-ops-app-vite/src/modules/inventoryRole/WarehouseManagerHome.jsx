@@ -18,6 +18,7 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
+import { LEDGER_UNAVAILABLE_TEXT } from "../../domain/ledgerRowIntegrity.js";
 import { Button } from "../../shared/ui/primitives/index.js";
 
 // Issue #100 PR 2b (docs/specifications/inventory-nav-access-alignment.md,
@@ -135,7 +136,11 @@ function PartActivityPanel({ partId, resolveName, onClose }) {
 
 export default function WarehouseManagerHome({ accessVersion } = {}) {
   const { user } = useAuth();
-  const { healthEntries, loading, error } = useInventoryLedger();
+  // DQ-027: opted in to partial integrity. Parts with an unreadable ledger record are LISTED as
+  // unavailable (panels + catalog column), never dropped and never shown as a number.
+  const { healthEntries, loading, error, integrity } = useInventoryLedger({ allowPartial: true });
+  const unavailablePartIds = integrity?.unavailablePartIds ?? [];
+  const unavailableSet = new Set(unavailablePartIds);
 
   // INV-CONVERGENCE-E cutover -- live canonical `parts` read (one-shot, the same
   // searchParts PartsList/PartDetail use; no new query surface). Stored TAGGED with
@@ -261,11 +266,17 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
     count: cat === "ALL" ? catalogRows.length : catalogRows.filter((part) => part.category === cat).length,
   }));
 
+  // UNKNOWN IS NOT ZERO. While a read is loading, refused or failed its rows are forced to [], and a
+  // count over [] would state "0" as if it had been measured. `null` renders as "—" in ContextBand.
+  const ledgerKnown = !loading && !error;
+  // A Needs Planning COUNT over an incomplete ledger is not a count: an unreadable part might need planning.
+  const needsPlanningKnown = ledgerKnown && unavailablePartIds.length === 0;
+  const catalogKnown = !catalog.loading && !catalog.blocked;
   const context = (
     <ContextBand
       items={[
-        { key: "catalog", label: "Catalog", value: catalogRows.length },
-        { key: "needsPlanning", label: "Needs Planning", value: needsPlanningEntries.length },
+        { key: "catalog", label: "Catalog", value: catalogKnown ? catalogRows.length : null },
+        { key: "needsPlanning", label: "Needs Planning", value: needsPlanningKnown ? needsPlanningEntries.length : null },
       ]}
     />
   );
@@ -285,7 +296,7 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
         failedText="Unable to load inventory health right now. Try again shortly."
         emptyText=""
       >
-        <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
+        <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} unavailablePartIds={unavailablePartIds} />
       </LoadingEmptyState>
 
       <p className="fo-muted">
@@ -303,12 +314,13 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
       <LoadingEmptyState
         loading={loading}
         failed={!!error}
-        isEmpty={needsPlanningEntries.length === 0}
+        isEmpty={needsPlanningEntries.length === 0 && unavailablePartIds.length === 0}
         loadingText="Loading Needs Planning..."
         failedText="Unable to load Needs Planning right now. Try again shortly."
         emptyText="No parts currently need planning."
       >
         <InventoryHealthPanel
+          unavailablePartIds={unavailablePartIds}
           healthEntries={needsPlanningEntries}
           title="Needs Planning"
           resolveName={resolveName}
@@ -364,9 +376,16 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
                           <td>{part.name}</td>
                           <td className="fo-muted">{part.sku}</td>
                           <td className="fo-muted">{part.category}</td>
-                          <td>{health ? health.stock.availableStock : `${part.warehouseQty} (baseline)`}</td>
+                          {/* The ledger is the only source of "available" and of "activity": while it is
+                              loading or has failed, neither is known, so neither a static baseline
+                              quantity nor "No ledger activity" may be stated. */}
+                          <td>{!ledgerKnown ? "—" : unavailableSet.has(part.sku) ? LEDGER_UNAVAILABLE_TEXT : health ? health.stock.availableStock : `${part.warehouseQty} (baseline)`}</td>
                           <td>
-                            {!health ? (
+                            {unavailableSet.has(part.sku) ? (
+                              <span className="fo-muted">Activity unavailable</span>
+                            ) : !ledgerKnown ? (
+                              <span className="fo-muted">{loading ? "Loading activity…" : "Activity unavailable"}</span>
+                            ) : !health ? (
                               <span className="fo-muted">No ledger activity</span>
                             ) : health.recommendation.urgency ? (
                               <StatusPill tone={inventoryUrgencyTone(health.recommendation.urgency)} label={health.recommendation.urgency} />

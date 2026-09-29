@@ -12,6 +12,7 @@ import { buildCreateSheetRequest, buildSubmitLineRequest } from "../../domain/cy
 import { mapCycleCountActionError, isRetryableCycleCountError } from "../../domain/cycleCountActionResult.js";
 import {
   buildCountLines, linesToSubmit, lineDraft, pendingWorkCount, isDuplicateSerial, COUNT_LINE_STATE,
+  lineHasVariance,
 } from "../../domain/cycleCountScanSession.js";
 import {
   blindCellText, counterLineWord, lineStatusTone, deriveFinishCounting,
@@ -61,13 +62,6 @@ import { PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit
 const CONCURRENCY = 4;
 const LOCATION_LABEL = { BIN: "Bin", WAREHOUSE: "Warehouse", MOBILE: "Truck" };
 const DONE_STATES = new Set([COUNT_LINE_STATE.SUBMITTED, COUNT_LINE_STATE.DECIDED, COUNT_LINE_STATE.REMOVED]);
-
-/** A submitted/decided line's own variance, straight off its own response -- never a second derivation. */
-function lineHasVariance(line) {
-  return line.trackingMode === "SERIAL"
-    ? ((line.serialVariance?.missing?.length ?? 0) + (line.serialVariance?.unexpected?.length ?? 0)) > 0
-    : (line.variance ?? 0) !== 0;
-}
 
 export default function CycleCountScan({ deps }) {
   const client = deps?.cycleCountClient ?? cycleCountCommandClient;

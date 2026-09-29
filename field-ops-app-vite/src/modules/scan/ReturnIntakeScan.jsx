@@ -111,6 +111,8 @@ export default function ReturnIntakeScan({ deps }) {
           principalUid: deps?.offline?.principalUid ?? "self",
           sourceId: source, partId, quantity, condition,
           notes: reason.trim() || null,
+          // The replay sends EXACTLY what the online attempt sent, under the same key.
+          request,
           captureKey: keyRef.current, at: Date.now(), offline: wasOffline,
         }),
       );

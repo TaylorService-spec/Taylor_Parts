@@ -238,12 +238,20 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // capability REGISTRATION, renumbered above main for the same reason). The registration adds EIGHT capabilities
 // (vocabulary 82 -> 90, reconciled in the manifest) granted to NO Role -- Administration-grant-only, so the seed's
 // catalog reconcile writes none of them and no persona moves.
-// 63 -> 64: 1763683200000, the ownership handoff correction capability (DQ-022) -- one capability, granted to nobody.
-// 64 -> 65: 1763856000000 (the Work Order business-action capabilities, Controller rulings DQ-010 / DQ-011, lane L2): FOUR
-// capabilities (workOrder.lifecycle.ready / .schedule / .close, workOrder.parts.plan; vocabulary 91 -> 95, reconciled
-// in the manifest), granted to NO Role by the migration. INTERIM PIN (integration L1+L2).
-const PINNED_LAST_MIGRATION = "1763856000000_work-order-business-action-capabilities";
-const PINNED_MIGRATION_COUNT = 65;
+// INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability) -- seven appended migrations (vocabulary 90 -> 97,
+// reconciled in the manifest); none writes a grant the seed would carry, so no persona moves:
+// 1763683200000 (DQ-022, L1): ownership.handoff.correct, granted to nobody.
+// 1763856000000 (DQ-010 / DQ-011, L2): workOrder.lifecycle.ready / .schedule / .close, workOrder.parts.plan, granted to
+// NO Role (workOrder.parts.plan FENCED Administration-grant-only).
+// 1764115200000 (DQ-024, L3): the MOBILE location -> warehouse scope binding -- one eos_ops table, EMPTY.
+// 1764118800000 (DQ-029, L3): inventory.location.scopeBinding.manage, granted to NO Role.
+// 1764122400000 (L3): the Transfer-on-EOS storage support -- an enum value, a counter table, an index; the seed writes
+// no transfer.
+// 1764126000000 (DQ-038, L3): the bin placement authority -- one eos_ops table.
+// 1764129600000 (DQ-036(b), L3): inventory.serializedAsset.acquire, FENCED Administration-grant-only -- the seed's
+// catalog reconcile writes it to no Role.
+const PINNED_LAST_MIGRATION = "1764129600000_serialized-asset-acquire-authority";
+const PINNED_MIGRATION_COUNT = 70;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

@@ -170,13 +170,18 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // capability registration, reorder requester is a Principal, reorder actor identity normalization, receiving business
 // time / number / acquisition cost). Each id is above every applied one, so each is an EXPLAINED pending migration;
 // the ledger model is not extended.
-// 63 -> 64 runnable: migration 1763683200000, the ownership handoff correction capability (DQ-022, lane L1) -- APPENDED
-// after the candidate, another EXPLAINED pending migration; the ledger model is not extended.
-// 64 -> 65 runnable: migration 1763856000000, the Work Order business-action capabilities (Controller rulings DQ-010 /
-// DQ-011, lane L2) -- APPENDED in lane L2's slot above the candidate, an EXPLAINED pending migration; the ledger model
-// is not extended. INTERIM PIN (integration L1+L2; final reconciliation after all lanes land).
-const RUNNABLE_MIGRATION_COUNT = 65;
-const TRACKED_MIGRATION_COUNT = 66; // the 65 runnable + the one deferred file
+// 63 -> 70 runnable, INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability) -- seven migrations APPENDED
+// after the candidate, each id above every applied one, so each is an EXPLAINED pending migration; the ledger model is
+// not extended:
+//   1763683200000 the ownership handoff correction capability (DQ-022, lane L1);
+//   1763856000000 the Work Order business-action capabilities (DQ-010 / DQ-011, lane L2);
+//   1764115200000 the MOBILE location -> warehouse scope binding (DQ-024, lane L3);
+//   1764118800000 the truck scope binding capability (DQ-029, lane L3);
+//   1764122400000 the Transfer-on-EOS storage support (lane L3);
+//   1764126000000 the bin placement authority (DQ-038, lane L3);
+//   1764129600000 the serialized asset acquire authority (DQ-036(b), lane L3).
+const RUNNABLE_MIGRATION_COUNT = 70;
+const TRACKED_MIGRATION_COUNT = 71; // the 70 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -193,6 +198,11 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1763596800000_receiving-business-time-number-and-acquisition-cost",
   "1763683200000_ownership-handoff-correction-capability",
   "1763856000000_work-order-business-action-capabilities",
+  "1764115200000_mobile-location-scope-binding",
+  "1764118800000_mobile-location-scope-binding-capability",
+  "1764122400000_transfer-eos-lifecycle-support",
+  "1764126000000_bin-placement-authority",
+  "1764129600000_serialized-asset-acquire-authority",
 ]);
 
 const repoMigrations = () =>

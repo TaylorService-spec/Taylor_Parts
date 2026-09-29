@@ -575,6 +575,12 @@ for (const [label, args, pattern] of [
 // scripts/exportReorderSnapshot.js: the Reorder extension of the migration-only exception (Controller ruling
 // 2026-09-28). Same fence, same order: every refusal happens before firebase-admin is resolved.
 const EXPORT_REORDER = "scripts/exportReorderSnapshot.js";
+// ============================ INVENTORY SNAPSHOT EXPORT (DQ-025) ============================
+//
+// scripts/exportInventorySnapshot.js reads a Firebase project (the FIREBASE_EXIT_MIGRATION_ONLY exception for
+// cycle_counts / inventory_transactions / transfer_orders). It must refuse before firebase-admin is even resolved,
+// and it has no production mode.
+const INVENTORY_EXPORT = "scripts/exportInventorySnapshot.js";
 for (const [label, args, pattern] of [
   ["no project", ["--out", "/nonexistent/x.json"], /--projectId is required/],
   ["production, even confirmed", ["--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--out", "/nonexistent/x.json"], /is production/],
@@ -582,11 +588,13 @@ for (const [label, args, pattern] of [
   ["undeclared project", ["--projectId", "someone-elses-project", "--out", "/nonexistent/x.json"], /not a Firebase project declared/],
   ["no out file", ["--projectId", "eos-platform-sandbox"], /--out <file> is required/],
 ]) {
-  test(`reorder snapshot export: refuses (${label}) before firebase-admin loads`, () => {
-    const res = runCli(EXPORT_REORDER, args);
-    const out = assertRefusedBeforeAnySdk(res, `reorder snapshot export, ${label}`);
-    assert.match(out, pattern);
-  });
+  for (const [what, script] of [["reorder", EXPORT_REORDER], ["inventory", INVENTORY_EXPORT]]) {
+    test(`${what} snapshot export: refuses (${label}) before firebase-admin loads`, () => {
+      const res = runCli(script, args);
+      const out = assertRefusedBeforeAnySdk(res, `${what} snapshot export, ${label}`);
+      assert.match(out, pattern);
+    });
+  }
 }
 
 // ============================ COMMERCIAL C5 ============================

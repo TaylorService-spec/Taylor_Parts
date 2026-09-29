@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { createQueue, addScan, removeEntry } from "../src/domain/scanObservationQueue.js";
 import {
   buildCountLines, linesToSubmit, lineDraft, pendingWorkCount, isDuplicateSerial, COUNT_LINE_STATE,
+  lineHasVariance,
 } from "../src/domain/cycleCountScanSession.js";
 
 const scan = (q, partId, serialNo) => addScan(q, { partId, serialNo });
@@ -84,4 +85,14 @@ test("the module has no reconcile path and no second queue", () => {
   const src = readFileSync(new URL("../src/domain/cycleCountScanSession.js", import.meta.url), "utf8");
   assert.doesNotMatch(src, /reconcile\w*\(|approve/i);
   assert.doesNotMatch(src, /function (createQueue|addScan)/, "observations live in the shared scanObservationQueue");
+});
+
+test("lineHasVariance: an unknown variance is never a Match", () => {
+  assert.equal(lineHasVariance({ trackingMode: "NONE", variance: 0 }), false);
+  assert.equal(lineHasVariance({ trackingMode: "NONE", variance: -2 }), true);
+  assert.equal(lineHasVariance({ trackingMode: "NONE" }), true, "absent variance is unknown, not zero");
+  assert.equal(lineHasVariance({ trackingMode: "NONE", variance: null }), true);
+  assert.equal(lineHasVariance({ trackingMode: "SERIAL", serialVariance: { missing: [], unexpected: [] } }), false);
+  assert.equal(lineHasVariance({ trackingMode: "SERIAL", serialVariance: { missing: ["S1"], unexpected: [] } }), true);
+  assert.equal(lineHasVariance({ trackingMode: "SERIAL" }), true, "absent serial variance is unknown, not a match");
 });

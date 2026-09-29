@@ -244,6 +244,21 @@ describe("routing and capability", () => {
     expect(deps.transferClient.createTransferOrder.mock.calls[0][0].destination).toEqual({ type: "MOBILE", locationId: "truck-7" });
   });
 
+  it("a FAILED truck read is said, not silently dropped as if there were no trucks", async () => {
+    const grants = ["inventory.stock.relocate", "inventory.location.bin.read", "inventory.transfer.create", "inventory.transfer.dispatch"];
+    const failed = makeDeps({ grants });
+    failed.fetchTrucks = vi.fn().mockRejectedValue(Object.assign(new Error("x"), { code: "unavailable" }));
+    await setUp(failed);
+    await waitFor(() => expect(screen.getByText(/Trucks could not be loaded/)).toBeTruthy());
+    expect(screen.queryByText("Choose a truck")).toBeNull();
+    cleanup();
+
+    const denied = makeDeps({ grants });
+    denied.fetchTrucks = vi.fn().mockRejectedValue(Object.assign(new Error("x"), { code: "permission-denied" }));
+    await setUp(denied);
+    await waitFor(() => expect(screen.getByText(/not authorized to see trucks/)).toBeTruthy());
+  });
+
   it("a refused warehouse read is shown as a refusal, not an empty list", async () => {
     const deps = makeDeps({ fetchWarehouses: vi.fn().mockRejectedValue(Object.assign(new Error("no"), { code: "permission-denied" })) });
     render(<MoveStockScan deps={deps} />);

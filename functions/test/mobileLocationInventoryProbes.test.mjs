@@ -107,12 +107,14 @@ await check("NONE stock projection: RECEIVED fully offset by TRANSFER_OUT nets t
   });
 });
 
-await check("NONE stock projection: COUNTED entries are excluded from the balance (observation-only invariant)", async () => {
+await check("NONE stock projection: a COUNTED row (a type CERT-LEDGER-COUNTED-08 retired, never written) is UNREADABLE -> UNKNOWN, never ABSENT (DQ-019)", async () => {
+  // This used to assert ABSENT: the row was skipped. Under DQ-019 an authoritative result fails closed
+  // on a row it cannot read -- and "ABSENT" is what lets a truck be retired with stock still on it.
   const { locationId } = await makeTruck();
   const partId = uid("part");
   await writeLedger({ locationId, partId, type: "COUNTED", quantity: 99 });
   await db.runTransaction(async (txn) => {
-    assert.equal(await probeNoneStockPresentAtLocation(txn, db, locationId), "ABSENT");
+    assert.equal(await probeNoneStockPresentAtLocation(txn, db, locationId), "UNKNOWN");
   });
 });
 
