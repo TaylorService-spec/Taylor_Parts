@@ -42,6 +42,10 @@ export const UNAVAILABLE_REASON = Object.freeze({
   NOT_READY: "NOT_READY",
   NO_TECHNICIAN_IDENTITY: "NO_TECHNICIAN_IDENTITY",
   NO_ASSIGNED_WORK: "NO_ASSIGNED_WORK",
+  // The assigned-work read has not answered yet, or could not be read. Neither is "no assigned work":
+  // telling a technician they have nothing to do because a read failed is the unknown-as-zero defect.
+  ASSIGNED_WORK_LOADING: "ASSIGNED_WORK_LOADING",
+  ASSIGNED_WORK_UNREADABLE: "ASSIGNED_WORK_UNREADABLE",
 });
 
 export const RECEIVE_CAPABILITY = "inventory.stock.receive";
@@ -134,9 +138,11 @@ export const SCAN_WORKFLOW_CAPABILITY_IDS = Object.freeze([
  *                           It is never used to decide warehouse eligibility.
  * @param ctx.technicianId   the resolved technician identity, or null.
  * @param ctx.assignedWorkOrderCount  how many Work Orders are assigned to that identity.
+ * @param ctx.assignedWorkOrderStatus "ready" (default) | "loading" | "failed" -- whether that count was
+ *                           actually read. Only "ready" lets a zero mean "no assigned work".
  */
 export function deriveScanWorkflows(ctx = {}) {
-  const { hasCapability, receivingReady = false, role = null, technicianId = null, assignedWorkOrderCount = 0 } = ctx;
+  const { hasCapability, receivingReady = false, role = null, technicianId = null, assignedWorkOrderCount = 0, assignedWorkOrderStatus = "ready" } = ctx;
 
   const holds = (capabilityId) => {
     // A THROWING gate is a denial, never an allow — the same fail-closed posture every other
@@ -262,6 +268,11 @@ export function deriveScanWorkflows(ctx = {}) {
   // would be a client-side authority the backend never agreed to.
   if (role !== "technician" || !technicianId) {
     unavailable.push({ workflow: SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, reason: UNAVAILABLE_REASON.NO_TECHNICIAN_IDENTITY });
+  } else if (assignedWorkOrderStatus === "loading") {
+    unavailable.push({ workflow: SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, reason: UNAVAILABLE_REASON.ASSIGNED_WORK_LOADING });
+  } else if (assignedWorkOrderStatus !== "ready") {
+    // Anything but a completed read is UNKNOWN, and unknown fails closed with its own sentence.
+    unavailable.push({ workflow: SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, reason: UNAVAILABLE_REASON.ASSIGNED_WORK_UNREADABLE });
   } else if (assignedWorkOrderCount <= 0) {
     // A technician with no assigned work has nothing to scan against. State, not permission — and a
     // different message, because the fix is being assigned work rather than being granted access.
@@ -353,6 +364,10 @@ export const UNAVAILABLE_TEXT = Object.freeze({
     "Work order scanning is for technicians working an assigned job.",
   [UNAVAILABLE_REASON.NO_ASSIGNED_WORK]:
     "You have no assigned work orders to scan against right now.",
+  [UNAVAILABLE_REASON.ASSIGNED_WORK_LOADING]:
+    "Your assigned work orders are still loading.",
+  [UNAVAILABLE_REASON.ASSIGNED_WORK_UNREADABLE]:
+    "Your assigned work orders could not be loaded, so work order scanning is not available right now. This is not the same as having no work.",
 });
 
 /**

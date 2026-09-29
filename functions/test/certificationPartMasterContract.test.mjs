@@ -21,6 +21,7 @@
 //
 // That is the third time in this program that a fixture has been internally consistent and wrong,
 // and the third time only a real adapter said so.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

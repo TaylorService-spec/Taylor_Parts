@@ -18,13 +18,13 @@
 // Nothing here reopens a writer or replaces the guard.
 // Prerequisite: npm run build; Firestore emulator running.
 // Run: node --test test/partAliasCallables.test.mjs
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 
 const { createPartAlias, deactivatePartAlias, reactivatePartAlias, resolvePartAlias } = await import(

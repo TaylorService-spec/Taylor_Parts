@@ -1,0 +1,197 @@
+name: Service Work Order Authority Tests
+
+# Pass 11 lane L2 (Service). Every suite below existed on main and was registered in NO workflow, so
+# none of them ran in CI -- and one of them (workOrderLifecycleActivation) had silently gone stale for
+# a whole pass. This workflow is the registration, nothing more: it adds no product code and changes no
+# other workflow's list.
+#
+#   postgres   the governed PostgreSQL Work Order authority -- assignment (Employee identity, the three
+#              assignability predicates), the lifecycle matrix, RECORD_ASSIGNMENT completion, the service
+#              persona matrix driven by the committed Role -> capability baseline, the held migration copy.
+#              Every suite creates and drops its OWN database, so they share one ephemeral postgres:16.
+#   offline    the pure migration dry-run / copy CLI / field-parity / consumption-part contracts.
+#   emulator   the live Firebase transitionWorkOrder reassignment, audit-trail and concurrency proofs.
+#
+# No production access, no credentials, no repository secrets. The emulator is loopback-only.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/eosOps/workOrder*.ts"
+      - "functions/src/eosOps/contextualAuthorization.ts"
+      - "functions/src/eosOps/migration/**"
+      - "functions/src/adminPolicy/workOrderLifecycleGrantActivation.ts"
+      - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
+      - "functions/src/eosWorkforce/reads/assignableEmployeeReads.ts"
+      - "functions/src/transitionWorkOrder.ts"
+      - "functions/src/transitionEngine.ts"
+      - "functions/src/callerContext.ts"
+      - "functions/src/workOrderAvailability.ts"
+      - "functions/src/scheduling/**"
+      - "functions/src/workOrderConsumption/**"
+      - "functions/migrations/**"
+      - "functions/test/workOrderAssignmentAuthorityPostgres.test.mjs"
+      - "functions/test/workOrderNativeAuthorityPostgres.test.mjs"
+      - "functions/test/workOrderObjectAuthorityPostgres.test.mjs"
+      - "functions/test/workOrderLifecycleActivation.test.mjs"
+      - "functions/test/workOrderMigrationCopyPostgres.test.mjs"
+      - "functions/test/workOrderServicePersonaMatrixPostgres.test.mjs"
+      - "functions/test/workOrderEquipmentInstallPostgres.test.mjs"
+      - "functions/src/eosOps/equipmentCustody.ts"
+      - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
+      - "functions/test/workOrderMigrationCopyCli.test.mjs"
+      - "functions/test/workOrderMigrationDryRun.test.mjs"
+      - "functions/test/workOrderFieldParityMatrix.test.mjs"
+      - "functions/test/workOrderConsumptionPartAuthority.test.mjs"
+      - "functions/test/transitionWorkOrderReassignment.test.mjs"
+      - "functions/test/transitionWorkOrderAuditTrail.test.mjs"
+      - "functions/test/transitionWorkOrderConcurrency.test.mjs"
+      - "functions/test/transitionWorkOrderRulingRepairs.test.mjs"
+      - "functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/service-work-order-authority-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/eosOps/workOrder*.ts"
+      - "functions/src/eosOps/contextualAuthorization.ts"
+      - "functions/src/eosOps/migration/**"
+      - "functions/src/adminPolicy/workOrderLifecycleGrantActivation.ts"
+      - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
+      - "functions/src/eosWorkforce/reads/assignableEmployeeReads.ts"
+      - "functions/src/transitionWorkOrder.ts"
+      - "functions/src/transitionEngine.ts"
+      - "functions/src/callerContext.ts"
+      - "functions/src/workOrderAvailability.ts"
+      - "functions/src/scheduling/**"
+      - "functions/src/workOrderConsumption/**"
+      - "functions/migrations/**"
+      - "functions/test/workOrder*.test.mjs"
+      - "functions/test/transitionWorkOrder*.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/service-work-order-authority-tests.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  postgres:
+    name: Governed Work Order authority -- real PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: eos
+          POSTGRES_PASSWORD: eos
+          POSTGRES_DB: eos_policy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+      - name: Typecheck and build
+        run: npm run build
+        working-directory: functions
+      # Sequential: each suite migrates its own database, and one at a time keeps a failure attributable.
+      - name: Work Order PostgreSQL authority suites
+        run: >-
+          node --test --test-concurrency=1
+          test/workOrderAssignmentAuthorityPostgres.test.mjs
+          test/workOrderNativeAuthorityPostgres.test.mjs
+          test/workOrderObjectAuthorityPostgres.test.mjs
+          test/workOrderLifecycleActivation.test.mjs
+          test/workOrderMigrationCopyPostgres.test.mjs
+          test/workOrderServicePersonaMatrixPostgres.test.mjs
+          test/workOrderEquipmentInstallPostgres.test.mjs
+        working-directory: functions
+        env:
+          POLICY_TEST_DATABASE_URL: postgres://eos:eos@localhost:5432/eos_policy
+
+  offline:
+    name: Work Order migration and parity contracts -- offline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+      - name: Build and run
+        run: >-
+          npm run build && node --test
+          test/workOrderMigrationCopyCli.test.mjs
+          test/workOrderMigrationDryRun.test.mjs
+          test/workOrderFieldParityMatrix.test.mjs
+          test/workOrderConsumptionPartAuthority.test.mjs
+        working-directory: functions
+
+  emulator:
+    name: transitionWorkOrder reassignment, audit trail and concurrency -- Firestore emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Firebase test-safety guard (functions/test/support/firebaseTestGuard.cjs): emulator suites
+      # refuse to run unless the emulator is named explicitly -- never a silent fallback to Google.
+      FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project demo-eos-test --config ../firebase.json > /tmp/service-wo-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/service-wo-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/service-wo-emulator.log
+          exit 1
+        working-directory: functions
+      - name: Build and run
+        run: >-
+          npm run build && node --test --test-concurrency=1
+          test/transitionWorkOrderReassignment.test.mjs
+          test/transitionWorkOrderAuditTrail.test.mjs
+          test/transitionWorkOrderConcurrency.test.mjs
+          test/transitionWorkOrderRulingRepairs.test.mjs
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080

@@ -12,7 +12,7 @@
 // reciprocal-link mismatch, concurrent relink/atomic abort).
 //
 // Prerequisite: run against a live Firestore emulator, e.g.:
-//   firebase emulators:start --only firestore,auth --project taylor-parts
+//   firebase emulators:start --only firestore,auth --project demo-eos-test
 // then, in a second terminal:
 //   node functions/test/provisionEmployeeAccessCaseDTransaction.test.js
 //
@@ -31,12 +31,11 @@
 //   curl -X DELETE "http://127.0.0.1:8080/emulator/v1/projects/taylor-parts/databases/(default)/documents"
 "use strict";
 
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-
+require("./support/firebaseEmulatorGuard.cjs"); // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 const admin = require("firebase-admin");
 const { applyPlan, EMPLOYEES_COLLECTION, USERS_COLLECTION } = require("../scripts/provisionEmployeeAccess.js");
 
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();

@@ -1,6 +1,7 @@
 // Receiving Location Authority -- I-LA5: offline unit tests for the concrete resolveLocationActive resolver
 // (functions/src/inventoryReceiving/receivingLocationResolver.ts). PURE: a fake db/txn returns snapshots;
 // no Firebase app, no emulator. Prerequisite: npm run build.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
 import { makeResolveWarehouseLocationActive } from "../lib/inventoryReceiving/receivingLocationResolver.js";

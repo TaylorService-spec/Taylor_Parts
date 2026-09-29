@@ -372,6 +372,14 @@ export interface PolicyTransaction {
  * handle that could write would make "the resolver cannot mutate policy" a convention rather than a
  * type. Every method is tenant-scoped.
  */
+/** See PolicyReader.getLinkedEmployeeAccessFact. */
+export interface LinkedEmployeeAccessFact {
+  readonly employeeId: string;
+  readonly employmentStatus: string | null;
+  /** More than one active link was observed (corrupted state). Always fails closed. */
+  readonly ambiguous?: boolean;
+}
+
 export interface PolicyReader {
   // ── tenant and identity ──
   //
@@ -425,6 +433,17 @@ export interface PolicyReader {
 
   listAssignmentsForPrincipal(tenantId: TenantId, principalId: string): Promise<readonly PolicyRoleAssignmentRecord[]>;
   getAccessVersion(tenantId: TenantId, principalId: string): Promise<PrincipalAccessVersionRecord | null>;
+  /**
+   * The governed Employee this Principal is ACTIVELY linked to in this tenant, with that Employee's PostgreSQL
+   * employment status -- the ACCESS-ELIGIBILITY fact principal resolution gates on (Controller DQ-007, 2026-09-28).
+   *
+   *   null                            no active link: a service / administrative Principal, not an Employee
+   *   { employmentStatus: null }      an active link whose Employee does not resolve in this tenant (fails closed)
+   *   { employmentStatus: "..." }     the Employee's current lifecycle status
+   *
+   * An unreadable store THROWS: "could not read the link" is never "not linked".
+   */
+  getLinkedEmployeeAccessFact(tenantId: TenantId, principalId: string): Promise<LinkedEmployeeAccessFact | null>;
 
   listWorkflows(tenantId: TenantId): Promise<readonly WorkflowRecord[]>;
   listWorkflowVersions(tenantId: TenantId, workflowId: string): Promise<readonly WorkflowVersionRecord[]>;

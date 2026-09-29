@@ -2,7 +2,7 @@
 // round-trips through REAL Firestore -- seed -> backup -> mutate (migration-like) -> restore -> byte/
 // semantic parity, with Timestamps preserved exactly. Also proves the restore transaction FAILS CLOSED on
 // identity-set drift. Requires the Firestore emulator (127.0.0.1:8080). Never touches production.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import admin from "firebase-admin";
@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 const cli = require("../scripts/warehouseBackupRestoreCli.js");
 const codec = require("../lib/warehouseGovernance/warehouseBackupCodec.js");
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const COMMIT = "a".repeat(40);
 const PINS = { projectId: "taylor-parts", governedCommit: COMMIT };

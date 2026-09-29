@@ -6,13 +6,11 @@
 // a crafted request, a stale tab or a direct callable invocation.
 //
 // Run: npm run test:financialPolicyCommand   (needs the Firestore emulator)
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import { initializeApp, getApps, deleteApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-
-process.env.FIRESTORE_EMULATOR_HOST ||= "127.0.0.1:8080";
-process.env.GCLOUD_PROJECT ||= "taylor-parts";
 
 const {
   configureFinancialPolicyProfile,
@@ -22,7 +20,7 @@ const {
 } = await import("../lib/finance/financialPolicyProfileCommand.js");
 const { FinancialPolicyError, COGS_RECOGNITION_POINTS } = await import("../lib/finance/financialPolicyProfile.js");
 
-const app = getApps().length ? getApps()[0] : initializeApp({ projectId: process.env.GCLOUD_PROJECT });
+const app = getApps().length ? getApps()[0] : initializeApp({ projectId: "demo-eos-test" });
 const db = getFirestore(app);
 
 const deps = (over = {}) => ({ db, now: new Date("2026-09-03T12:00:00Z"), actorUid: "uid-deployer", ...over });

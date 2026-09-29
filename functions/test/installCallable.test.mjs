@@ -18,8 +18,8 @@
 // depends on being able to tell "already at this customer" from "failed" -- and if the adapter
 // flattened both into `internal`, the UI would keep offering a retry for a machine that is already
 // installed.
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 process.env.GCLOUD_PROJECT = "eos-platform-sandbox";       // activates equipment.install
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
 import assert from "node:assert/strict";
 import admin from "firebase-admin";

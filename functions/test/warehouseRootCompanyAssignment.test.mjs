@@ -5,6 +5,7 @@
 // preflight leaves ZERO partial assignments.
 //
 // OFFLINE. Pure functions and the real authored config; no emulator, no Firebase, no writes.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

@@ -75,8 +75,15 @@ export default function CycleCounts({ deps }) {
   const summary = useMemo(() => {
     const active = sheets.rows.filter((s) => s.status === "OPEN");
     const locations = new Set(active.map((s) => `${s.location?.type}:${s.location?.locationId}`)).size;
-    return { activeCount: active.length, locationCount: locations };
-  }, [sheets.rows]);
+    return {
+      activeCount: active.length,
+      locationCount: locations,
+      // The count is only a count of ACTIVE sheets when the list actually read them (Open or All), and
+      // only a TOTAL when every page has been read. Otherwise it is a lower bound, or not known at all.
+      knowsActive: filter === "OPEN" || filter === "",
+      partial: sheets.nextCursor !== null,
+    };
+  }, [sheets.rows, sheets.nextCursor, filter]);
 
   return (
     <div className="fo-panel">
@@ -88,9 +95,9 @@ export default function CycleCounts({ deps }) {
         the server: open one to continue counting or to review it. Bins are counted from Scan → Cycle
         count. An expected quantity appears only after that part has been counted.
       </p>
-      {sheets.rows.length > 0 && !selected && (
+      {sheets.rows.length > 0 && !selected && summary.knowsActive && (
         <p className="fo-cc-summary">
-          {summary.activeCount} active count{summary.activeCount === 1 ? "" : "s"}
+          {summary.partial ? "At least " : ""}{summary.activeCount} active count{summary.activeCount === 1 ? "" : "s"}
           {summary.locationCount > 0 ? ` · ${summary.locationCount} location${summary.locationCount === 1 ? "" : "s"} in progress` : ""}
         </p>
       )}
@@ -123,7 +130,10 @@ export default function CycleCounts({ deps }) {
             <HonestState
               state={HONEST_STATE.EMPTY}
               subject="cycle counts"
-              detail="No cycle counts are open. Start a count, or scan a bin from Scan → Cycle count."
+              detail={filter === "OPEN"
+                ? "No cycle counts are open. Start a count, or scan a bin from Scan → Cycle count."
+                : filter === "" ? "There are no cycle counts yet. Start a count, or scan a bin from Scan → Cycle count."
+                  : `No ${filter === "CLOSED" ? "closed" : "cancelled"} cycle counts.`}
             />
           )}
           {sheets.rows.length > 0 && (

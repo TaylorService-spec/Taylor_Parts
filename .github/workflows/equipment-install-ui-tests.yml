@@ -35,6 +35,11 @@ on:
       - "field-ops-app-vite/src/domain/acquireLocationState.js"
       - "field-ops-app-vite/test/serializedAssetAcquire.test.mjs"
       - "field-ops-app-vite/test/acquireExistingUnitComposition.test.jsx"
+      # DQ-036(b): the acquire transport switch (Firebase until activation; EOS only after).
+      - "field-ops-app-vite/test/serializedAssetAcquireEosClient.test.jsx"
+      - "field-ops-app-vite/src/services/serializedAssetAcquireCallableClient.js"
+      - "field-ops-app-vite/src/services/serializedAssetAcquireWriterState.js"
+      - "functions/src/serializedAsset/acquireWriterState.ts"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
@@ -73,6 +78,7 @@ on:
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
       - "field-ops-app-vite/test/technicianOfflineRuntime.test.mjs"
       - "field-ops-app-vite/test/offlineSyncUi.test.jsx"
+      - "field-ops-app-vite/test/syncQueueHonesty.test.jsx"
       # WO-03A -- the mounted shell and the end-to-end offline workflow through it.
       - "field-ops-app-vite/src/modules/technician/TechnicianShell.jsx"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
@@ -107,6 +113,11 @@ on:
       - "field-ops-app-vite/src/domain/acquireLocationState.js"
       - "field-ops-app-vite/test/serializedAssetAcquire.test.mjs"
       - "field-ops-app-vite/test/acquireExistingUnitComposition.test.jsx"
+      # DQ-036(b): the acquire transport switch (Firebase until activation; EOS only after).
+      - "field-ops-app-vite/test/serializedAssetAcquireEosClient.test.jsx"
+      - "field-ops-app-vite/src/services/serializedAssetAcquireCallableClient.js"
+      - "field-ops-app-vite/src/services/serializedAssetAcquireWriterState.js"
+      - "functions/src/serializedAsset/acquireWriterState.ts"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
@@ -140,6 +151,7 @@ on:
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
       - "field-ops-app-vite/test/technicianOfflineRuntime.test.mjs"
       - "field-ops-app-vite/test/offlineSyncUi.test.jsx"
+      - "field-ops-app-vite/test/syncQueueHonesty.test.jsx"
       # WO-03A -- the mounted shell and the end-to-end offline workflow through it.
       - "field-ops-app-vite/src/modules/technician/TechnicianShell.jsx"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
@@ -219,13 +231,13 @@ jobs:
       # could not be read". That second one was a case mismatch against the transport enum, which
       # no pure test could see.
       - name: Acquire composition — the column, the location states, the two stages
-        run: npx vitest run test/acquireExistingUnitComposition.test.jsx
+        run: npx vitest run test/acquireExistingUnitComposition.test.jsx test/serializedAssetAcquireEosClient.test.jsx
         working-directory: field-ops-app-vite
 
       # A queued note that renders as "saved" is the one failure this whole runtime exists to prevent,
       # and only a render can catch it.
       - name: Offline UI — queued is never saved, refusals read as situations, dictation offline
-        run: npx vitest run test/offlineSyncUi.test.jsx test/dictatableNote.test.jsx
+        run: npx vitest run test/offlineSyncUi.test.jsx test/dictatableNote.test.jsx test/syncQueueHonesty.test.jsx
         working-directory: field-ops-app-vite
 
       # WO-03A. The shell was imported by NOTHING for two slices while every component test passed,
@@ -250,6 +262,10 @@ jobs:
     name: Equipment install callable (offline + Firestore emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    env:
+      # Firebase test-safety guard (functions/test/support/firebaseTestGuard.cjs): emulator suites
+      # refuse to run unless the emulator is named explicitly -- never a silent fallback to Google.
+      FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
     steps:
       - uses: actions/checkout@v4
 

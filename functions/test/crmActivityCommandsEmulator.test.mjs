@@ -7,15 +7,15 @@
 // idempotency-replay + audit-atomicity invariants are provable without activating a dormant capability.
 // The capability gate ITSELF (unauthenticated / unauthorized-while-inactive) is covered separately, below,
 // via the onCall adapter's own .run() harness (mirrors financeReadCallables.test.mjs).
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import admin from "firebase-admin";
 import { buildCreateCrmActivity, CrmActivityCommandError } from "../lib/crmActivity/crmActivityCommands.js";
 import { createCrmActivity, persistCreatedCrmActivity } from "../lib/crmActivity/crmActivityCallables.js";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 let sequence = 0;
 const id = (kind) => `${kind}-${Date.now()}-${++sequence}`;

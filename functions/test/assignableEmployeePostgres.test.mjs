@@ -127,11 +127,14 @@ test("assignable Employees: qualification, lifecycle and account, each independe
     assert.deepEqual(await ids({ qualificationCode: "SERVICE_TECHNICIAN" }), []);
   });
 
-  await t.test("LIFECYCLE is load-bearing, and the policy is ACTIVE alone -- exactly the legacy rule", async () => {
-    assert.deepEqual([...reads.ASSIGNABLE_EMPLOYMENT_STATUSES], ["ACTIVE"]);
+  await t.test("LIFECYCLE is load-bearing, and the policy is the access-eligible set ACTIVE + CONTRACTOR (DQ-007 / DQ-012)", async () => {
+    // REWRITTEN (Controller DQ-007 + DQ-012, 2026-09-28; L2 XLF-L2-3). This used to pin ACTIVE alone (legacy parity).
+    assert.deepEqual([...reads.ASSIGNABLE_EMPLOYMENT_STATUSES], ["ACTIVE", "CONTRACTOR"]);
     // e-onleave is qualified and linked; only its lifecycle differs.
     assert.ok(!(await ids({ qualificationCode: "WAREHOUSE_OPERATIONS" })).includes("e-onleave"));
-    for (const status of ["ON_LEAVE", "INACTIVE", "TERMINATED", "RETIRED", "CONTRACTOR"]) {
+    await q(`UPDATE eos_workforce.employees SET employment_status = 'CONTRACTOR' WHERE id = 'e-onleave'`);
+    assert.ok((await ids({ qualificationCode: "WAREHOUSE_OPERATIONS" })).includes("e-onleave"), "a qualified, linked CONTRACTOR is not offered");
+    for (const status of ["ON_LEAVE", "INACTIVE", "TERMINATED", "RETIRED"]) {
       await q(`UPDATE eos_workforce.employees SET employment_status = $1::eos_workforce.workforce_employment_status WHERE id = 'e-onleave'`, [status]);
       assert.ok(!(await ids({ qualificationCode: "WAREHOUSE_OPERATIONS" })).includes("e-onleave"), `${status} became assignable`);
     }

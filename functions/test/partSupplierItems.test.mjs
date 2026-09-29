@@ -12,10 +12,10 @@
 //      (validateSupplierItemTerms: bad terms, the update allow-list), buildSupplierItemId, and the stored-shape
 //      adapters over Parts and items seeded DIRECTLY in exactly the shape the frozen writers staged.
 // Nothing here reopens a writer or replaces the guard.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { createPartSupplierItem, updatePartSupplierItem, changePartSupplierItemStatus, setPreferredSupplier, supplierItemFromFirestore, supplierItemToFirestore, buildSupplierItemId, validateSupplierItemTerms } =
   await import("../lib/partMaster/partSupplierItems.js");

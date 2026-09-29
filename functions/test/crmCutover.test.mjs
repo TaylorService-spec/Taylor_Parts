@@ -501,6 +501,10 @@ test("RULING 6: every server-side legacy CRM writer calls the guard with its own
     ["crm.sandboxInboundSeed", "scripts/seedSandboxInboundWork.mjs", [/initializeApp\(\{/, /\.set\(data\)/]],
     ["crm.ownershipBackfill", "scripts/ownershipSandboxBackfill.js", [/tx\.set\(/, /runTransaction\(/]],
     ["crm.certificationAccountOwners", "scripts/certificationWorld/seedAccountOwners.mjs", [/batch\.set\(/, /batch\.commit\(/]],
+    // Pass 11 CRM writer census: the three operator scripts that were unfenced.
+    ["crm.writeTimestampBackfill", "scripts/backfillWriteTimestamps.mjs", [/initializeApp\(\{/, /batch\.set\(/]],
+    ["crm.certificationWorldWrite", "scripts/certificationWorld.mjs", [/initializeApp\(\{/, /writeRecords\(db/, /batch\.delete\(/]],
+    ["crm.certificationWorldCorrection", "scripts/certificationWorld/correctLiveWorld.mjs", [/initializeApp\(\{/, /batch\.set\(/]],
   ];
   const guarded = new Set();
   for (const [id, file, writes] of cases) {

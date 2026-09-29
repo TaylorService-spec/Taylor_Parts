@@ -20,7 +20,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import type { Transaction } from "firebase-admin/firestore";
-import { recordPutAway, PlacementInvalidError, PlacementUnauthorizedError, PlacementBinError } from "./putAwayCommand.js";
+import { recordPutAway, PlacementInvalidError, PlacementUnauthorizedError, PlacementBinError, PlacementIdempotencyConflictError } from "./putAwayCommand.js";
 import {
   createBin,
   renameBin,
@@ -256,6 +256,9 @@ export const recordPutAwayCallable = onCall(REGION, async (request) => {
       // different physical problems, and collapsing them would send an operator to the wrong shelf
       // or to the wrong building.
       throw new HttpsError("failed-precondition", "That bin cannot be used.", err.resolution);
+    }
+    if (err instanceof PlacementIdempotencyConflictError) {
+      throw new HttpsError("already-exists", "That request id was already used for a different put-away.", "IDEMPOTENCY_CONFLICT");
     }
     if (err instanceof PlacementInvalidError) {
       throw new HttpsError("invalid-argument", "That put-away could not be accepted.", err.message || "INVALID");

@@ -9,13 +9,13 @@
 // resulting sequences are exactly {1..N} with zero duplicates and zero gaps. A racy implementation (e.g.
 // reading the counter outside the transaction, or a plain non-transactional read-then-write) would
 // either throw or silently hand out the same sequence to two callers; this test would catch either.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
 // The allocators under test call getFirestore()/getFirestore(app) with no app name (they resolve the
 // DEFAULT app), so this must be the default app too -- not a named secondary app.
-if (!admin.apps.length) admin.initializeApp({ projectId: "operational-numbering-contention-test" });
+if (!admin.apps.length) admin.initializeApp({ projectId: "demo-operational-numbering-contention-test" });
 const db = admin.firestore();
 
 const { allocateTransferOrderNumber } = await import("../lib/inventoryTransfer/transferOrderNumbering.js");

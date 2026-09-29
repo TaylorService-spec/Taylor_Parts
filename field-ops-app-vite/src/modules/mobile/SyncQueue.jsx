@@ -53,7 +53,11 @@ export default function SyncQueue({ runtime, onClose }) {
       ) : null}
 
       <p className="fo-muted" role="status">
-        {summary.unsynced === 0
+        {/* An UNREADABLE store is not an empty one: saying "everything is on the platform" under the
+            "could not be read" alert would tell a technician their unread work is safe. */}
+        {loadProblem
+          ? "What is saved on this phone could not be read, so what has been sent is not known."
+          : summary.unsynced === 0
           ? "Everything you have entered is on the platform."
           : `${summary.unsynced} not sent${summary.attentionCount > 0 ? `, ${summary.attentionCount} needing you` : ""}.`}
       </p>
@@ -68,7 +72,7 @@ export default function SyncQueue({ runtime, onClose }) {
       </div>
 
       {queue.length === 0 ? (
-        <p className="fo-muted">Nothing waiting.</p>
+        <p className="fo-muted">{loadProblem ? "Saved work could not be read." : "Nothing waiting."}</p>
       ) : (
         <ul className="fo-sync-queue__list">
           {attention.map((intent) => (

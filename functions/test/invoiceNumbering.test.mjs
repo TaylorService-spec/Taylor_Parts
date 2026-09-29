@@ -1,10 +1,11 @@
 // Finance — per-company invoice numbering. Tests the transactional allocation logic with a FAKE transaction
 // (no emulator): sequence increments, per-company isolation, concurrency-safe shape (one read + one write on
 // the company counter inside the caller's tx). Prereq: npm run build.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" }); // builds refs offline; the fake tx never hits the network
+admin.initializeApp({ projectId: "demo-eos-test" }); // builds refs offline; the fake tx never hits the network
 const { allocateInvoiceNumber, formatInvoiceNumber, InvoiceNumberingError } = await import("../lib/finance/invoiceNumbering.js");
 
 // A fake transaction: get() returns a stubbed counter snapshot; set() records the write + its ref path.

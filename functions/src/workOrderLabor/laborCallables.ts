@@ -14,6 +14,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import {
   recordWorkOrderLabor,
+  authorizeWorkOrderLaborRead,
   correctWorkOrderLabor,
   projectWorkOrderLabor,
   LaborCommandError,
@@ -186,9 +187,8 @@ export const getWorkOrderLabor = onCall(REGION, async (request) => {
     if (!workOrderId) throw new LaborCommandError("REQUEST_INVALID", "workOrderId required");
     const canRecord = await allows(uid, LABOR_RECORD_CAPABILITY);
     const canCorrect = await allows(uid, LABOR_CORRECT_CAPABILITY);
-    if (!canRecord && !canCorrect) {
-      throw new LaborCommandError("PERMISSION_DENIED", "not authorized to read labor");
-    }
+    // Record-only holders read their OWN assigned jobs; correct holders read any (see the function).
+    await authorizeWorkOrderLaborRead(db, await resolveActor(uid), workOrderId, { canRecord, canCorrect });
     const snap = await db.collection(LABOR_ENTRIES_COLLECTION)
       .where("workOrderId", "==", workOrderId).limit(LABOR_READ_CAP).get();
     const entries = snap.docs.map((d) => d.data() ?? {});

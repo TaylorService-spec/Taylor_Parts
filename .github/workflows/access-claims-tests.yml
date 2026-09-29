@@ -50,6 +50,10 @@ jobs:
     name: Compact-claims mint/refresh/revoke tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Firebase test-safety guard (functions/test/support/firebaseTestGuard.cjs): emulator suites
+      # refuse to run unless the emulator is named explicitly -- never a silent fallback to Google.
+      FIREBASE_AUTH_EMULATOR_HOST: 127.0.0.1:9099
     steps:
       - uses: actions/checkout@v4
 
@@ -66,7 +70,7 @@ jobs:
 
       - name: Start Auth emulator (background)
         run: |
-          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only auth --project taylor-parts --config ../firebase.json > /tmp/auth-emulator.log 2>&1 &
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only auth --project demo-eos-test --config ../firebase.json > /tmp/auth-emulator.log 2>&1 &
           for i in $(seq 1 60); do
             if grep -q "All emulators ready" /tmp/auth-emulator.log 2>/dev/null; then exit 0; fi
             sleep 1

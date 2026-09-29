@@ -3,10 +3,10 @@
 // Numbers in [brackets] are the spec's own test list (1-36).
 //
 // Run: FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node test/cycleCountSheet.test.mjs
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 
@@ -259,6 +259,27 @@ await check("[30] close requires every non-cancelled line disposed; a closed she
   await reconcile(s, a, {}, REVIEWER);
   assert.equal((await C.closeCycleCountSheet({ sheetId: s }, deps(REVIEWER))).status, "CLOSED");
   assert.equal(await codeOf(open(s, part())), "SHEET_STATUS_INVALID");
+});
+await check("[30b] REPLAY before gates: a lost-response retry survives the sheet closing and the part retiring; new work does not", async () => {
+  const a = part(), b = part(); await receive(a, WH(W), 3);
+  const s = await sheetAt(WH(W)); await open(s, a); await open(s, b);
+  await submit(s, a, { countedQuantity: 1 });
+  await C.cancelCycleCountLine({ sheetId: s, partId: b }, deps(COUNTER));
+  const first = await reconcile(s, a, { reason: "short two" });
+  assert.equal((await C.closeCycleCountSheet({ sheetId: s }, deps(REVIEWER))).status, "CLOSED");
+  // Retries of acts that already happened are answered as replays, even though the sheet is CLOSED...
+  const again = await reconcile(s, a, { reason: "short two" });
+  assert.equal(again.outcome, "replayed"); assert.deepEqual(again.ledgerEventIds, first.ledgerEventIds);
+  assert.equal((await C.cancelCycleCountLine({ sheetId: s, partId: b }, deps(COUNTER))).outcome, "replayed");
+  PARTS.set(a, { ...PARTS.get(a), active: false });
+  assert.equal((await open(s, a)).outcome, "replayed");
+  // ...but a DIFFERENT reason is not a replay, and genuinely new work on the closed sheet is still refused.
+  assert.equal(await codeOf(reconcile(s, a, { reason: "something else" })), "IDEMPOTENCY_CONFLICT");
+  assert.equal(await codeOf(open(s, part())), "SHEET_STATUS_INVALID");
+  // A retired part cannot open a NEW line.
+  const s2 = await sheetAt(WH(W));
+  assert.equal(await codeOf(open(s2, a)), "PART_INVALID");
+  assert.equal((await adjustmentsFor(s)).length, 1, "no duplicate evidence");
 });
 await check("[31] one authority: the same eligibility seam and on-hand rule Transfer and P7 use", async () => {
   const src = (await import("node:fs")).readFileSync(new URL("../src/cycleCount/cycleCountSheetCommand.ts", import.meta.url), "utf8");

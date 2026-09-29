@@ -13,6 +13,7 @@
 // It is NOT a substitute for the real thing: contention/retry behaviour, actual Firestore error codes,
 // and the genuine multi-client race remain STAGE E emulator work, per the design package. Claims here
 // are deliberately limited to what this double genuinely establishes.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
 

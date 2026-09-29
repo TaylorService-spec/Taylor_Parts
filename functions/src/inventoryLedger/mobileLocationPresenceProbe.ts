@@ -35,7 +35,7 @@
 import { signedQuantity } from "./locationOnHand.js";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
-import { classifyLedgerDoc, deserializeOperationalMovement } from "./operationalMovementRepository.js";
+import { authoritativeOperationalMovements } from "./authoritativeLedgerRows.js";
 import type { InventoryLocationType } from "./operationalMovementTypes.js";
 
 export type PresenceState = "PRESENT" | "ABSENT" | "UNKNOWN";
@@ -100,16 +100,9 @@ export async function probeNoneStockPresentAtLocation(
       db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("location.locationId", "==", locationId),
     );
     const balanceByPart = new Map<string, number>();
-    for (const doc of snap.docs) {
-      const data = doc.data();
-      if (classifyLedgerDoc(data) !== "operational") continue;
-      let mv;
-      try {
-        mv = deserializeOperationalMovement(data);
-      } catch {
-        continue; // a malformed operational record is skipped, not trusted -- never inflates balance
-      }
-      const v = mv.value;
+    // FAIL CLOSED (DQ-019): an unreadable row makes presence UNKNOWN (via the catch below), never
+    // ABSENT -- a skipped malformed receipt could otherwise let a truck with stock on it be retired.
+    for (const v of authoritativeOperationalMovements(snap.docs)) {
       if (v.location.type !== MOBILE || v.location.locationId !== locationId) continue; // defensive re-check
       if (v.trackingMode !== "NONE") continue; // SERIAL custody is authoritative via serialized_assets
       const prior = balanceByPart.get(v.partId) ?? 0;

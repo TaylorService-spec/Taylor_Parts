@@ -21,6 +21,8 @@ ok("requests exactly the workspace's own capabilities -- nothing broader", () =>
   // capability cannot be swept in unnoticed. It is not "one id" -- it is "these ids and no others".
   assert.deepEqual([...OPPORTUNITY_CAPABILITY_REQUEST], [
     "opportunity.write",
+    // Pass 11: Mark Won creates the Sales Order, so the workspace asks about that capability too (the server requires both).
+    "opportunity.createSalesOrder",
     "salesAgreement.create",
     "salesAgreement.updateDraft",
     "salesAgreement.accept",

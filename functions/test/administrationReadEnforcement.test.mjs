@@ -198,7 +198,17 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // Reorder domain schema migrations (1763251200000, 1763424000000, 1763510400000, 1763596800000) and the Reorder
   // lifecycle capability REGISTRATION (1763337600000: eight BUSINESS_ACTION keys, granted to nobody). None registers
   // a READ key, and none is a read-enforcement change.
-  assert.equal(migrations.length, 63, "a migration was added or removed by the read enforcement");
+  // 63 -> 70, INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability) -- seven migrations appended after the
+  // Catalog + Reorder candidate, none of which registers a READ key or is a read-enforcement change:
+  //   1763683200000 (L1, DQ-022): ownership.handoff.correct -- ONE BUSINESS_ACTION capability granted to nobody.
+  //   1763856000000 (L2, DQ-010 / DQ-011): FOUR Work Order BUSINESS_ACTION capabilities granted to nobody.
+  //   1764115200000 (L3, DQ-024): the MOBILE location -> warehouse scope binding -- one eos_ops table, no capability.
+  //   1764118800000 (L3, DQ-029): inventory.location.scopeBinding.manage -- ONE ADMIN_ACTION capability granted to nobody.
+  //   1764122400000 (L3): the Transfer-on-EOS storage support -- an enum value, a counter table, an index; no capability.
+  //   1764126000000 (L3, DQ-038): the bin placement authority -- one eos_ops table, no capability.
+  //   1764129600000 (L3, DQ-036(b)): inventory.serializedAsset.acquire -- ONE BUSINESS_ACTION capability granted to
+  //   nobody (Administration-grant-only), plus its provenance table.
+  assert.equal(migrations.length, 70, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,
@@ -605,15 +615,18 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
     }
   });
 
-  await t.test("I: an unauthenticated caller is still 401, never 403", async () => {
-    // The two refusals stay distinguishable. Collapsing them would make an expired token look like
-    // a permissions problem, and every support conversation about it would start in the wrong place.
+  await t.test("I: an unauthenticated caller is still 401; a verified subject EOS does not know is 403 with its own message", async () => {
+    // No token / an unverifiable token is AUTHENTICATION: 401. A VERIFIED subject with no EOS Principal is an
+    // AUTHORITY fact and is 403 FORBIDDEN, as on the Operations, Commercial, CRM and Workforce transports (Controller
+    // XLF-003, 2026-09-28). The two stay distinguishable by status AND message: an expired token never looks like a
+    // provisioning problem.
     const noToken = await handleAdminRequest(
       { repo, verifyToken: async () => { throw new Error("nope"); } },
       { method: "POST", url: "/admin/policy", headers: {}, body: JSON.stringify({ operation: "listObjects" }) },
     );
     assert.equal(noToken.status, 401);
     const stranger = await call("firebase-uid-nobody-at-all", "listObjects");
-    assert.equal(stranger.code, "UNAUTHENTICATED", "EOS does not know this identity");
+    assert.equal(stranger.code, "FORBIDDEN", "a verified identity EOS does not know is refused as authority");
+    assert.equal(stranger.message, "this identity is not known to EOS");
   });
 });

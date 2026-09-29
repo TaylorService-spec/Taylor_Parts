@@ -24,6 +24,7 @@
 // would have passed against the broken world too -- `wh-main` appeared in eight files. What it
 // never did was RESOLVE. So the load-bearing assertion here is an end-to-end number, 571, produced
 // by the product's own reader over the fixture's own movements.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -199,9 +200,20 @@ function fakeDb({ movements, warehouses }) {
   };
 }
 
-const planMovements = buildInventoryPlan().map((m) => ({
-  partId: m.partId, type: m.type, quantity: m.quantity, location: m.location, trackingMode: m.trackingMode,
-}));
+// STORED records, exactly as the governed writer (stageOperationalMovement) stores them. This used to
+// feed a stripped {partId, type, quantity, location, trackingMode} shape as if it were a ledger row; the
+// lenient reader summed it anyway. Under DQ-019 the balance read fails closed on a row it cannot read, so
+// the fixture must be what the product actually writes -- which is the point of this proof anyway.
+const { serializeOperationalMovement, fingerprintMovement } =
+  await import(L("functions/lib/inventoryLedger/operationalMovementRepository.js"));
+const planMovements = buildInventoryPlan().map((m) => {
+  const value = {
+    type: m.type, direction: m.direction, partId: m.partId, trackingMode: m.trackingMode, location: m.location,
+    quantity: m.quantity, sourceObject: m.sourceObject, idempotencyKey: m.idempotencyKey,
+    actor: { kind: "USER", id: m.actorEmployeeId }, occurredAt: m.occurredAt,
+  };
+  return serializeOperationalMovement(value, new Date(m.occurredAt), fingerprintMovement(value));
+});
 const governedWarehouseDocs = certificationWarehouseRecords().map((r) => ({
   __id: r.id, ...r.data, createdAt: Timestamp.fromMillis(1), updatedAt: Timestamp.fromMillis(1),
 }));

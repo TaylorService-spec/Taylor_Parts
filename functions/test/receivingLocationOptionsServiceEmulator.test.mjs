@@ -3,11 +3,11 @@
 // actor's role THROUGH the transaction (admin/dispatcher only, first slice); the candidate read reads the
 // whole warehouses collection through the txn. Proves the persona matrix, commit-time revocation, and
 // end-to-end §3A filtering. Never touches production. Prerequisite: npm run build; emulator running.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import { Timestamp } from "firebase-admin/firestore";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 
 const { listEligibleReceivingLocationOptions } = await import("../lib/warehouseGovernance/receivingLocationOptionsService.js");
@@ -23,7 +23,7 @@ const nextId = (p) => `${p}-${runId}-${(seq += 1)}`;
 const TS = Timestamp.fromMillis(1_700_000_000_000);
 const COL = () => db.collection("warehouses");
 // A SEPARATE connection for mid-transaction role revocation.
-const revoker = admin.initializeApp({ projectId: "taylor-parts" }, "revoker-la4").firestore();
+const revoker = admin.initializeApp({ projectId: "demo-eos-test" }, "revoker-la4").firestore();
 
 function governed(id, over = {}) {
   return { id, name: "N", location: "L", status: "ACTIVE", version: 1, updatedAt: TS, updatedBy: "u", provenance: "NATIVE", createdAt: TS, createdBy: "u", ...over };

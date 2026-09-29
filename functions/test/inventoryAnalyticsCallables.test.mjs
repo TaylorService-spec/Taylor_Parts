@@ -18,11 +18,11 @@
 // the v2 onCall directly via `.run(request)` against a LIVE Firestore
 // emulator, importing the compiled ../lib.
 // Prerequisite: npm run build; firestore emulator running on 127.0.0.1:8080.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import { readFileSync } from "node:fs";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { getInventoryAnalytics } = await import("../lib/inventoryAnalyticsCallables.js");
 
@@ -75,13 +75,27 @@ async function seedActiveWarehouse() {
   });
   return warehouseId;
 }
-/** One operational movement, in the shape the location-aware ledger actually stores. */
+/**
+ * One operational movement, in the shape the location-aware ledger ACTUALLY stores -- produced by the governed
+ * serializer. (This helper used to write a stripped {partId,type,quantity,timestamp,location,trackingMode}
+ * shape that no writer produces; the lenient reader summed it. Under DQ-019/DQ-027 an unreadable row makes its
+ * part unavailable, so the fixture must be what the product writes.)
+ */
+const { serializeOperationalMovement, fingerprintMovement } = await import("../lib/inventoryLedger/operationalMovementRepository.js");
+const DIRECTION = { RECEIVED: "IN", RETURNED: "IN", TRANSFER_IN: "IN", TRANSFER_OUT: "OUT", SCRAPPED: "OUT", ADJUSTED: "SIGNED" };
+const SOURCE = { RECEIVED: "RECEIVING_ORDER", RETURNED: "RMA", TRANSFER_IN: "TRANSFER_ORDER", TRANSFER_OUT: "TRANSFER_ORDER", SCRAPPED: "SCRAP", ADJUSTED: "ADJUSTMENT" };
 async function movement(partId, warehouseId, type, quantity, over = {}) {
-  await db.collection("inventory_transactions").doc(id("tx")).set({
-    partId, type, quantity, timestamp: TS(),
-    location: { type: "WAREHOUSE", locationId: warehouseId },
-    trackingMode: "NONE", ...over,
-  });
+  const trackingMode = over.trackingMode ?? "NONE";
+  const value = {
+    type, direction: DIRECTION[type], partId, trackingMode,
+    location: over.location ?? { type: "WAREHOUSE", locationId: warehouseId },
+    quantity, sourceObject: { type: SOURCE[type], id: id("src") }, idempotencyKey: id("idem"),
+    actor: { kind: "USER", id: "seed" }, occurredAt: Date.now(),
+    ...(trackingMode === "SERIAL" ? { serialNo: over.serialNo } : {}),
+    ...(type === "TRANSFER_IN" || type === "TRANSFER_OUT" ? { counterpartyLocation: { type: "WAREHOUSE", locationId: id("far") } } : {}),
+  };
+  await db.collection("inventory_transactions").doc(id("tx")).set(
+    serializeOperationalMovement(value, new Date(), fingerprintMovement(value)));
 }
 
 await check("BIN-P2: the physical baseline is the LEDGER, and it is reservation-netted", async () => {
@@ -121,15 +135,10 @@ await check("BIN-P2: every movement type contributes exactly as the governed aut
   await movement(partId, warehouseId, "TRANSFER_OUT", 15);  // 50
   await movement(partId, warehouseId, "SCRAPPED", 4);       // 46
   await movement(partId, warehouseId, "ADJUSTED", -6);      // 40  (signed, not absolute)
-  // A prior count's own snapshot is EVIDENCE, not a movement. Counting it would compound a shelf
-  // reading into the quantity it was measuring.
-  await movement(partId, warehouseId, "COUNTED", 999);
   // Another eligible building's stock IS company warehouse stock, which is what this dashboard means.
   await movement(partId, otherWarehouse, "RECEIVED", 7);    // 47
   // A MOBILE (truck) location is deliberately not warehouse stock.
   await movement(partId, warehouseId, "RECEIVED", 1000, { location: { type: "MOBILE", locationId: id("truck") } });
-  // A row with no location attribution fails closed rather than inflating anything.
-  await db.collection("inventory_transactions").doc(id("tx")).set({ partId, type: "RECEIVED", quantity: 500, timestamp: TS() });
 
   const result = await getInventoryAnalytics.run(req({}, admUid));
   const entry = result.health.find((e) => e.partId === partId);
@@ -192,6 +201,29 @@ await check("BIN-P2: the callable no longer reads stock_locations at all", async
     false,
     "a part known ONLY to stock_locations must not appear -- absence is how UNKNOWN is expressed",
   );
+});
+
+await check("DQ-027: a part with an unreadable ledger row is REPORTED unavailable -- not omitted, not zero -- and other parts stay truthful", async () => {
+  const goodPart = id("SKU");
+  const badPart = id("SKU");
+  const warehouseId = await seedActiveWarehouse();
+  await movement(goodPart, warehouseId, "RECEIVED", 12);
+  await movement(badPart, warehouseId, "RECEIVED", 30);
+  // A debit-shaped row nobody can read. Skipping it would report 30 on hand.
+  await db.collection("inventory_transactions").doc(id("tx")).set({ schemaVersion: 2, partId: badPart, type: "TRANSFER_OUT", quantity: "twenty" });
+  const result = await getInventoryAnalytics.run(req({}, admUid));
+  assert.equal(result.integrity.state, "INCOMPLETE");
+  assert.equal(result.integrity.reason, "LEDGER_ROW_UNREADABLE");
+  assert.ok(result.integrity.unavailablePartIds.includes(badPart), "the affected part is named");
+  assert.ok(!result.health.some((e) => e.partId === badPart), "and carries no figure");
+  assert.equal(result.health.find((e) => e.partId === goodPart)?.stock.availableStock, 12, "an unaffected part is untouched");
+});
+
+// LAST: this row poisons the shared emulator ledger for every later read.
+await check("DQ-027: an unreadable row naming NO part fails the whole read (failed-precondition), never a partial answer", async () => {
+  await db.collection("inventory_transactions").doc(id("tx")).set({ schemaVersion: 2, type: "TRANSFER_OUT", quantity: 5 });
+  await assert.rejects(getInventoryAnalytics.run(req({}, admUid)),
+    (err) => err.code === "failed-precondition" && err.details?.code === "LEDGER_ROW_UNREADABLE");
 });
 
 await check("unauthenticated -> unauthenticated", async () => {

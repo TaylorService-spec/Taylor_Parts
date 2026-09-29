@@ -249,3 +249,25 @@ function assertStoredOwnership(d: Record<string, unknown>): void {
   if (src !== undefined && (!isOperatingCompanyIdShape(src) || !isOperatingCompanyIdShape(dst))) throw new MalformedStoredRecordError("stored participating companies invalid");
   if (scalar !== undefined && src !== undefined) throw new MalformedStoredRecordError("stored record carries both a scalar owner and a participating pair");
 }
+
+/**
+ * Decode one row of an OFFLINE ledger snapshot (the exporter convention: a Firestore Timestamp is
+ * `{ "$timestamp": { seconds, nanoseconds } }`) back into the shape a stored row has, so the SAME
+ * classifier and strict deserializer judge a snapshot exactly as they judge live data. Pure: builds a
+ * Timestamp value, opens no connection. Anything that only LOOKS like a tag (extra keys, non-integer
+ * parts) is left as-is and therefore fails the strict reader -- it is never coerced into validity.
+ */
+export function decodeLedgerSnapshotValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(decodeLedgerSnapshotValue);
+  if (!isPlainObject(value)) return value;
+  const keys = Object.keys(value);
+  const tag = value.$timestamp;
+  if (keys.length === 1 && isPlainObject(tag) && Object.keys(tag).length === 2
+    && Number.isInteger(tag.seconds) && Number.isInteger(tag.nanoseconds)
+    && (tag.nanoseconds as number) >= 0 && (tag.nanoseconds as number) <= 999_999_999) {
+    return new Timestamp(tag.seconds as number, tag.nanoseconds as number);
+  }
+  const out: Record<string, unknown> = {};
+  for (const k of keys) out[k] = decodeLedgerSnapshotValue(value[k]);
+  return out;
+}

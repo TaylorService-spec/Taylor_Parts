@@ -19,12 +19,54 @@
 // A REPLAY IS NOT AN ERROR. The command derives identity from part+serial, so the same unit
 // submitted twice returns `outcome: "replayed"` through the SUCCESS path. The caller presents that
 // as completion, not as a second acquisition.
+//
+// DQ-036(b): THE EOS PATH IS PREPARED BEHIND THE GOVERNED SWITCH. SERIALIZED_ASSET_ACQUIRE_WRITER_AUTHORITY mirrors the
+// server's ACQUIRE_WRITER_AUTHORITY: INACTIVE -> the Firebase callable below, unchanged; ACTIVE -> the EOS API only
+// (callAcquireSerializedAssetOnEos), with NO Firebase fallback of any kind. The switch flips only at activation.
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
+import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
+import { SERIALIZED_ASSET_ACQUIRE_WRITER_AUTHORITY } from "./serializedAssetAcquireWriterState.js";
 
 const ACQUIRE_CALLABLE = "acquireSerializedAsset";
+export const EOS_SERIALIZED_ASSET_ROUTE = "/operations/serialized-asset";
+export const EOS_ACQUIRE_OPERATION = "acquireSerializedAsset";
+
+/**
+ * The EOS transport: POST /operations/serialized-asset, the signed-in user's bearer, nothing else. Returns the SAME
+ * { outcome, error: { code, details, message } } shape the callable path returns, so the screen is unchanged: the
+ * command's own failure code travels in `details`, exactly as the callable put it there. Never throws, never
+ * retries anywhere else.
+ */
+export async function callAcquireSerializedAssetOnEos(request, deps = {}) {
+  const rawBase = deps.baseUrl === undefined ? policyApiBaseUrl() : deps.baseUrl;
+  const base = typeof rawBase === "string" && rawBase.trim() !== "" ? rawBase.trim().replace(/\/+$/, "") : null;
+  if (!base) return { outcome: null, error: { code: "NOT_CONFIGURED", details: "NOT_CONFIGURED", message: "no EOS API is configured for this environment" } };
+  let token = null;
+  try { token = await (deps.getIdToken ? deps.getIdToken() : currentIdToken()); } catch { token = null; }
+  if (!token) return { outcome: null, error: { code: "NOT_SIGNED_IN", details: "NOT_SIGNED_IN", message: "sign in to acquire a unit" } };
+  const doFetch = deps.fetchImpl ?? (typeof fetch === "function" ? fetch : null);
+  if (!doFetch) return { outcome: null, error: { code: "UNREACHABLE", details: "UNREACHABLE", message: "no network transport is available" } };
+  let response;
+  try {
+    response = await doFetch(`${base}${EOS_SERIALIZED_ASSET_ROUTE}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ operation: EOS_ACQUIRE_OPERATION, input: request }),
+    });
+  } catch {
+    return { outcome: null, error: { code: "UNREACHABLE", details: "UNREACHABLE", message: "the EOS API could not be reached" } };
+  }
+  let body = null;
+  try { body = await response.json(); } catch { body = null; }
+  if (response.ok && body && body.ok === true) return { outcome: body.result ?? null, error: null };
+  const code = body && typeof body.code === "string" ? body.code : "INTERNAL";
+  return { outcome: null, error: { code: String(response.status), details: code, message: body && typeof body.message === "string" ? body.message : null } };
+}
 
 export async function callAcquireSerializedAsset(request, deps = {}) {
+  const authority = deps.writerAuthority ?? SERIALIZED_ASSET_ACQUIRE_WRITER_AUTHORITY;
+  if (authority.postgres === "ACTIVE") return callAcquireSerializedAssetOnEos(request, deps);
   const call = deps.call ?? ((data) => httpsCallable(functions, ACQUIRE_CALLABLE)(data));
   try {
     const res = await call(request);

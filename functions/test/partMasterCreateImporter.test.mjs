@@ -10,14 +10,14 @@
 // NOT_ATTEMPTED, no Part is written and an existing record is never touched. The importer's OWN pure logic -- plan
 // building, guards, the deterministic key, and the failure classification -- is proven unchanged (ruling B), the
 // classification through the existing createFn seam. Nothing here reopens a writer or replaces the guard.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import crypto from "node:crypto";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { buildCreatePlan, executeCreatePlan, idempotencyKeyFor } = require("../scripts/executePartMasterCreate.js");
 const { createPart, AlreadyExistsError } = await import("../lib/partMaster/partMasterCommands.js");

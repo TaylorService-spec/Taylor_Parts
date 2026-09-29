@@ -7,17 +7,16 @@
 // each applied exactly once.
 //
 // Prerequisite (also how CI runs it):
-//   firebase emulators:start --only firestore --project taylor-parts
+//   firebase emulators:start --only firestore --project demo-eos-test
 //   (after `npm run build`) node --test test/updateWorkOrderExecutionDataIdempotency.test.js
 "use strict";
 
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
-
+require("./support/firebaseEmulatorGuard.cjs"); // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const admin = require("firebase-admin");
 
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 

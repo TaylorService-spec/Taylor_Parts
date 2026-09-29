@@ -355,14 +355,18 @@ test("an unknown subject, and a member with no Roles, are different answers", { 
 
   const unknown = await executeAdminOperation({ repo: r }, asSubject("firebase-uid-nobody", "listObjects", {}));
   assert.equal(unknown.ok, false);
-  assert.equal(unknown.code, "UNAUTHENTICATED", "EOS does not know this identity");
+  // FORBIDDEN since Controller XLF-003 (2026-09-28), aligned with the four sibling transports -- the token WAS verified.
+  // Still a DIFFERENT answer from a member with no Roles: the message says EOS does not know this identity.
+  assert.equal(unknown.code, "FORBIDDEN");
+  assert.equal(unknown.message, "this identity is not known to EOS");
 
   // A member with no Roles gets a CONTEXT and reads NOTHING. Membership used to be enough to read
-  // the whole policy model; it is not any more, and the two refusals stay distinguishable --
-  // UNAUTHENTICATED means EOS does not know you, FORBIDDEN means it does and you may not.
+  // the whole policy model; it is not any more, and the two refusals stay distinguishable by
+  // message: "not known to EOS" versus a refusal naming the missing read capability.
   const plain = await executeAdminOperation({ repo: r }, asSubject(PLAIN_SUBJECT, "listObjects", {}));
   assert.equal(plain.ok, false, "membership alone is NOT enough to read the model");
   assert.equal(plain.code, "FORBIDDEN", "and it is a refusal about authority, not about identity");
+  assert.notEqual(plain.message, unknown.message, "the two refusals must stay distinguishable");
   const context = await resolvePrincipalContext(r, { externalSubject: PLAIN_SUBJECT });
   assert.deepEqual(context.heldRoleKeys, [], "and holds nothing");
 });

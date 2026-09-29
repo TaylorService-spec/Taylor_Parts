@@ -6,12 +6,12 @@
 // receive 5 → consume 2 → on-hand 3, and Sales Order availability sees 3.
 //
 // Requires the Firestore emulator. Never touches production.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+require("./support/firebaseEmulatorGuard.cjs"); // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const admin = require("firebase-admin");
 
-if (admin.apps.length === 0) admin.initializeApp({ projectId: "taylor-parts" });
+if (admin.apps.length === 0) admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 
 const { updateWorkOrderExecutionData } = require("../lib/updateWorkOrderExecutionData.js");

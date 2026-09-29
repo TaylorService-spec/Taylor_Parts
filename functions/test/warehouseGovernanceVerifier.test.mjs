@@ -1,5 +1,6 @@
 // Receiving Location Authority -- I-LA3: offline unit tests for the read-only warehouse-governance verifier
 // (functions/src/warehouseGovernance/warehouseGovernanceVerifier.ts). PURE: no Firebase, no emulator.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
 import { verifyWarehouseGovernance } from "../lib/warehouseGovernance/warehouseGovernanceVerifier.js";

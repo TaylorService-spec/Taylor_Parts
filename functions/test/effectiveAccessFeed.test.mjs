@@ -10,14 +10,14 @@
 // the same way).
 //
 // Prerequisite: run against a live Firestore emulator, e.g.:
-//   firebase emulators:start --only firestore --project taylor-parts
+//   firebase emulators:start --only firestore --project demo-eos-test
 // then, in a second terminal (after `npm run build`):
 //   node functions/test/effectiveAccessFeed.test.mjs
 //
 // Read/write only against the emulator (FIRESTORE_EMULATOR_HOST below)
 // -- never touches the live "taylor-parts" project.
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import {
@@ -86,7 +86,7 @@ async function withProject(projectId, fn) {
   }
 }
 
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 // The environment where Reporting is activated. Named explicitly so the reporting assertions
 // below cannot silently become production assertions.
 const SANDBOX_PROJECT = "eos-platform-sandbox";

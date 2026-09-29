@@ -17,7 +17,7 @@ import { isCommercialHandoffSource } from "../commercialOwnershipAuthority";
 import { stageCommercialOwnershipTransfer } from "../commercialOwnershipRepository";
 import { allocateCommercialNumber } from "../commercialNumbering";
 import {
-  COMMERCIAL_CAPABILITIES, fail, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
+  ADMINISTRATIVE_HANDOFF_SOURCES, COMMERCIAL_CAPABILITIES, OWNERSHIP_HANDOFF_CORRECT_CAPABILITY, fail, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -38,7 +38,7 @@ async function requireOpportunity(db: Queryable, tenantId: string, id: unknown) 
 }
 
 export function createOpportunity(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
-  return runCommercialCommand(deps, actor, "opportunity.create", [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE], input?.idempotencyKey, async (db, now) => {
+  return runCommercialCommand(deps, actor, "opportunity.create", [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE], input?.idempotencyKey, async (db, now, scope) => {
     if (typeof input.accountId !== "string" || input.accountId.trim() === "") fail("ACCOUNT_REQUIRED", "INVALID_INPUT", "accountId is required");
     if ("inheritedOwner" in input) fail("FIELD_NOT_ACCEPTED", "INVALID_INPUT", "inheritedOwner is server-derived");
     const account = await requireTenantAccount(db, actor.tenantId, (input.accountId as string).trim());
@@ -47,6 +47,7 @@ export function createOpportunity(deps: CommercialCommandDeps, actor: Commercial
       { ...(fields as Record<string, unknown>), accountId: account.id, inheritedOwner: deriveEmployeeRefOwner({ ownerEmployeeId: account.ownerEmployeeId }) } as never,
       { actorUid: actor.principalId, nowMillis: now.getTime() },
     );
+    scope.admitChannel(built.salesChannel); // DQ-020: the channel it is created in
     await requireTenantEmployee(db, actor.tenantId, built.ownerEmployeeId, "OWNER");
     if (built.creditedSalespersonId !== null) await requireTenantEmployee(db, actor.tenantId, built.creditedSalespersonId, "CREDITED_SALESPERSON");
     // New product references pass the catalog authority before any number is allocated or row written.
@@ -74,8 +75,9 @@ const UPDATE_COLUMNS: Readonly<Record<string, string>> = Object.freeze({
 });
 
 export function updateOpportunity(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
-  return runCommercialCommand(deps, actor, "opportunity.update", [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE], input?.idempotencyKey, async (db, now) => {
+  return runCommercialCommand(deps, actor, "opportunity.update", [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE], input?.idempotencyKey, async (db, now, scope) => {
     const current = await requireOpportunity(db, actor.tenantId, input.opportunityId);
+    scope.admitChannel(current.salesChannel); // DQ-020: its stored channel
     const expected = input.expectedEditVersion;
     if (typeof expected !== "number" || !Number.isInteger(expected) || expected < 1) {
       fail("EDIT_VERSION_REQUIRED", "INVALID_INPUT", "expectedEditVersion is required");
@@ -83,11 +85,23 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
     const { idempotencyKey: _k, expectedEditVersion: _v, ownershipHandoff, ...fields } = input;
     // The builder's own version comparison is satisfied here on purpose: the governing check is the SQL predicate below,
     // evaluated against the locked row, so there is exactly one place a stale write is refused.
+    //
+    // The builder decides what CHANGED by comparing each supplied field against the CURRENT value, so it must be handed
+    // every editable field's stored value. Handing it only the lifecycle made every supplied field compare against
+    // `undefined`: an unchanged owner was staged as a handoff and refused HANDOFF_IS_NO_OP, an unchanged value bumped
+    // the version as a "change", and a CLEARED field (null vs the missing current) read as no change and was dropped.
     const { patch, changes } = buildUpdateOpportunity(
-      { stage: current.stage as never, outcome: current.outcome as never, lines: current.lines, updatedAtMillis: expected as number },
+      {
+        stage: current.stage as never, outcome: current.outcome as never, lines: current.lines, updatedAtMillis: expected as number,
+        accountId: current.accountId, ownerEmployeeId: current.ownerEmployeeId, creditedSalespersonId: current.creditedSalespersonId,
+        salesChannel: current.salesChannel, need: current.need, expectedValue: current.expectedValue,
+        expectedCloseAt: current.expectedCloseAtMillis, nextAction: current.nextAction,
+      } as never,
       { ...(fields as Record<string, unknown>), expectedUpdatedAtMillis: expected } as never,
       { actorUid: actor.principalId, nowMillis: now.getTime() },
     );
+    // A channel move must land inside the caller's reach too: a scoped seller can neither pull a record in nor push it out.
+    if ("salesChannel" in patch) scope.admitChannel(patch.salesChannel as string);
     // Replacement lines are NEW product references: they pass the catalog authority before anything is written.
     if ("lines" in patch) await requireCatalogReferences(deps, db, actor.tenantId, patch.lines as { kind: string; ref: string }[]);
 
@@ -117,6 +131,10 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
       const handoff = (ownershipHandoff ?? {}) as { source?: unknown; reason?: unknown };
       const source = handoff.source ?? "DIRECT_HANDOFF";
       if (!isCommercialHandoffSource(source)) fail("HANDOFF_SOURCE_INVALID", "INVALID_INPUT", "ownershipHandoff.source is not a governed handoff source");
+      // DQ-022: stating an administrative source is itself governed -- held globally, never inferred from the edit grant.
+      if (ADMINISTRATIVE_HANDOFF_SOURCES.has(source as string) && !actor.capabilities.has(OWNERSHIP_HANDOFF_CORRECT_CAPABILITY)) {
+        fail("CAPABILITY_REQUIRED", "FORBIDDEN", `an ${source as string} handoff requires ${OWNERSHIP_HANDOFF_CORRECT_CAPABILITY}`);
+      }
       const recorded = await stageCommercialOwnershipTransfer(db, actor.tenantId, actor.principalId, {
         kind: "OPPORTUNITY", recordId: current.id, newOwnerEmployeeId: newOwner, source: source as never,
         reason: typeof handoff.reason === "string" ? handoff.reason : null,
@@ -127,12 +145,13 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
       result: { opportunityId: current.id, changed: changes.map((c) => c.field), editVersion: (expected as number) + 1, ownershipHandoffId },
       target: target(current.id),
     };
-  });
+  }, { family: "opportunity", id: input?.opportunityId });
 }
 
 export function transitionOpportunity(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
-  return runCommercialCommand(deps, actor, "opportunity.transition", [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE], input?.idempotencyKey, async (db, now) => {
+  return runCommercialCommand(deps, actor, "opportunity.transition", [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE], input?.idempotencyKey, async (db, now, scope) => {
     const current = await requireOpportunity(db, actor.tenantId, input.opportunityId);
+    scope.admitChannel(current.salesChannel);
     const hasStage = typeof input.toStage === "string";
     const hasOutcome = typeof input.outcome === "string";
     if (hasStage === hasOutcome) fail("TRANSITION_INVALID", "INVALID_INPUT", "exactly one of toStage or outcome is required");
@@ -149,7 +168,7 @@ export function transitionOpportunity(deps: CommercialCommandDeps, actor: Commer
       result: { opportunityId: current.id, stage: patch.stage, outcome: patch.outcome, editVersion: current.editVersion + 1 },
       target: target(current.id),
     };
-  });
+  }, { family: "opportunity", id: input?.opportunityId });
 }
 
 /** `now` is the command's governed instant -- the same one the transition patch was built with. No second clock read. */
@@ -171,8 +190,9 @@ async function applyOpportunityTransition(db: Queryable, actor: CommercialActorC
  */
 export function closeOpportunityAsWon(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "opportunity.closeAsWon",
-    [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE, COMMERCIAL_CAPABILITIES.OPPORTUNITY_CREATE_SALES_ORDER], input?.idempotencyKey, async (db, now) => {
+    [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE, COMMERCIAL_CAPABILITIES.OPPORTUNITY_CREATE_SALES_ORDER], input?.idempotencyKey, async (db, now, scope) => {
       const opportunity = await requireOpportunity(db, actor.tenantId, input.opportunityId);
+      scope.admitChannel(opportunity.salesChannel);
       if (opportunity.outcome === "LOST") fail("OPPORTUNITY_LOST", "PRECONDITION_FAILED", "a LOST Opportunity cannot be closed as WON");
       if (await lockOrderForOpportunity(db, actor.tenantId, opportunity.id)) {
         fail("SALES_ORDER_ALREADY_EXISTS", "CONFLICT", "the Opportunity already has a Sales Order");
@@ -193,5 +213,5 @@ export function closeOpportunityAsWon(deps: CommercialCommandDeps, actor: Commer
         },
         target: target(opportunity.id),
       };
-    });
+    }, { family: "opportunity", id: input?.opportunityId });
 }

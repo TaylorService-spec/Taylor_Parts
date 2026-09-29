@@ -1,12 +1,12 @@
 // Commercial coverage onCall adapter gate. These capabilities are intentionally
 // inactive, so this verifies the callable boundary fails closed before any
 // persistence read/write; pure command/resolution behavior is covered separately.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const writes = await import("../lib/coverage/coverageCallables.js");
 const reads = await import("../lib/coverage/coverageReadCallables.js");

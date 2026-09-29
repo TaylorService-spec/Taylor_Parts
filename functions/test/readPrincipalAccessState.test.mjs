@@ -2,7 +2,7 @@
 //
 // Runs against LIVE Firestore + Auth emulators (Admin SDK, no Rules involved), the same posture as
 // trustedWriterCommands.test.mjs. Start them first:
-//   firebase emulators:start --only firestore,auth --project taylor-parts
+//   firebase emulators:start --only firestore,auth --project demo-eos-test
 //
 // WHY THIS SUITE EXISTS. Administration > Users could write a person's access and could not read
 // it, so the record page declared "Account Status: Not available", showed no governed Roles, and
@@ -18,9 +18,8 @@
 //
 // The default ports are OVERRIDABLE, for the reason given in trustedWriterCommands.test.mjs: an
 // unconditional assignment means the suite can only run when one exact port happens to be free.
-process.env.FIRESTORE_EMULATOR_HOST ||= "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import {
@@ -35,7 +34,7 @@ import {
 import { COMPATIBILITY_ROLES } from "../lib/access/compatibilityRoles.js";
 import { GOVERNED_BUSINESS_ROLES } from "../lib/access/governedBusinessRoles.js";
 
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 const auth = admin.auth();

@@ -13,12 +13,12 @@
 // The pure refund logic that WOULD run past that gate (applied-payment reversal, invoice-state re-derivation,
 // INVOICE_VOID/EXCEEDS_APPLIED/CURRENCY_MISMATCH error codes that mapCommandError translates) is already
 // covered directly against the command core in refundCommands.test.mjs.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { recordRefund, FINANCE_REFUND_RECORD_CAPABILITY } = await import("../lib/finance/refundCallables.js");
 

@@ -32,6 +32,14 @@ const agreementLineRows = (lines: readonly { kind: string; ref: string; business
   lines.map((l) => ({ kind: l.kind as never, ref: l.ref, businessUnitId: l.businessUnitId, quantity: l.quantity, unitPrice: l.unitPrice,
     condition: l.condition, warranty: l.warranty, estimatedArrivalMillis: l.estimatedArrivalMillis }));
 
+/** DQ-020: an Agreement's governing channel is its source Opportunity's stored channel (none -> null, admits no scoped caller). */
+async function sourceOpportunityChannel(db: Queryable, tenantId: string, agreement: AgreementRow): Promise<string | null> {
+  if (agreement.opportunityId === null) return null;
+  const { rows } = await db.query<{ sales_channel: string | null }>(
+    `SELECT sales_channel::text FROM eos_commercial.opportunities WHERE tenant_id = $1 AND id = $2`, [tenantId, agreement.opportunityId]);
+  return rows[0]?.sales_channel ?? null;
+}
+
 async function requireAgreement(db: Queryable, tenantId: string, id: unknown): Promise<AgreementRow> {
   if (typeof id !== "string" || id.trim() === "") fail("AGREEMENT_REQUIRED", "INVALID_INPUT", "salesAgreementId is required");
   const row = await lockAgreement(db, tenantId, id as string);
@@ -42,12 +50,13 @@ async function requireAgreement(db: Queryable, tenantId: string, id: unknown): P
 
 export function createSalesAgreement(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "salesAgreement.create", [COMMERCIAL_CAPABILITIES.SALES_AGREEMENT_CREATE], input?.idempotencyKey,
-    async (db, now) => {
+    async (db, now, scope) => {
       refuseFields(input, CREATE_FORBIDDEN);
       if (typeof input.opportunityId !== "string" || input.opportunityId.trim() === "") fail("OPPORTUNITY_REQUIRED", "INVALID_INPUT", "opportunityId is required");
       const opportunity = await lockOpportunity(db, actor.tenantId, input.opportunityId as string);
       if (!opportunity) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Opportunity does not exist in this tenant");
       if (opportunity.stage === null) fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Opportunity carries no governed lifecycle");
+      scope.admitChannel(opportunity.salesChannel); // DQ-020: its source Opportunity's channel
       if (opportunity.outcome === "LOST") fail("OPPORTUNITY_LOST", "PRECONDITION_FAILED", "a LOST Opportunity cannot receive a Sales Agreement");
       if (await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id)) {
         fail("AGREEMENT_ALREADY_EXISTS", "CONFLICT", "the Opportunity already has a Sales Agreement");
@@ -101,8 +110,9 @@ const CHARGE_COLUMNS: Readonly<Record<string, string>> = Object.freeze({
 
 export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "salesAgreement.updateDraft", [COMMERCIAL_CAPABILITIES.SALES_AGREEMENT_UPDATE_DRAFT],
-    input?.idempotencyKey, async (db, now) => {
+    input?.idempotencyKey, async (db, now, scope) => {
       const current = await requireAgreement(db, actor.tenantId, input.salesAgreementId);
+      scope.admitChannel(await sourceOpportunityChannel(db, actor.tenantId, current));
       const { idempotencyKey: _k, salesAgreementId: _a, ...fields } = input;
       const patch = buildUpdateSalesAgreementDraft(
         { state: current.state as never, lines: current.lines as never, totals: computeAgreementTotals(current.lines as never, current.charges) },
@@ -134,14 +144,15 @@ export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: Co
       );
       if (patch.lines) await replaceAgreementLines(db, actor.tenantId, current.id, agreementLineRows(patch.lines as AgreementRow["lines"]));
       return { result: { salesAgreementId: current.id, changed }, target: target(current.id) };
-    });
+    }, { family: "salesAgreement", id: input?.salesAgreementId });
 }
 
 export function acceptSalesAgreement(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "salesAgreement.accept", [COMMERCIAL_CAPABILITIES.SALES_AGREEMENT_ACCEPT], input?.idempotencyKey,
-    async (db, now) => {
+    async (db, now, scope) => {
       refuseFields(input, ACCEPT_FORBIDDEN);
       const current = await requireAgreement(db, actor.tenantId, input.salesAgreementId);
+      scope.admitChannel(await sourceOpportunityChannel(db, actor.tenantId, current));
       buildAcceptSalesAgreement(
         { state: current.state as never, lines: current.lines as never, operatingCompanyId: current.operatingCompanyId },
         { actorUid: actor.principalId, nowMillis: now.getTime() },
@@ -157,5 +168,5 @@ export function acceptSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
         result: { salesAgreementId: current.id, state: "ACCEPTED", acceptedAt: accepted.rows[0].accepted_at.toISOString(), acceptedBy: actor.principalId },
         target: target(current.id),
       };
-    });
+    }, { family: "salesAgreement", id: input?.salesAgreementId });
 }

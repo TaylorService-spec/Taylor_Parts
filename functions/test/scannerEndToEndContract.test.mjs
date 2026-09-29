@@ -32,11 +32,11 @@
 // part balance read reports it as GONE, because on-hand counts movements only at `type ===
 // "WAREHOUSE"`. Van stock is answerable ONLY through the mobile-location presence probe, which is a
 // different authority with a different audience. See §7.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 
@@ -48,14 +48,14 @@ const { receiveInventoryStock, UnauthorizedReceivingError } = await import("../l
 const { createBin, renameBin, setBinStatus, resolveBinCode, resolveBinToken, BINS_COLLECTION, BIN_CODE_CLAIMS_COLLECTION } =
   await import("../lib/inventoryLocation/binCommands.js");
 const { deriveBinId, deriveBinClaimId } = await import("../lib/inventoryLocation/binRegistry.js");
-const { recordPutAway, PlacementUnauthorizedError, PlacementBinError, BIN_PLACEMENTS_COLLECTION } = await import("../lib/inventoryLocation/putAwayCommand.js");
+const { recordPutAway, PlacementUnauthorizedError, PlacementBinError, PlacementIdempotencyConflictError, BIN_PLACEMENTS_COLLECTION } = await import("../lib/inventoryLocation/putAwayCommand.js");
 const {
   createTransferOrder, dispatchTransferOrder, receiveTransferOrder,
   InsufficientStockError, UnauthorizedTransferError,
 } = await import("../lib/inventoryTransfer/transferOrderCommand.js");
 const { makeResolveTransferLocationActive } = await import("../lib/inventoryTransfer/transferLocationResolver.js");
 const { createCycleCount, submitCycleCount } = await import("../lib/cycleCount/cycleCountCommand.js");
-const { recordReturnIntake, RETURNS_COLLECTION, ReturnInvalidError } = await import("../lib/inventoryReturns/returnIntakeCommand.js");
+const { recordReturnIntake, RETURNS_COLLECTION, ReturnInvalidError, ReturnIdempotencyConflictError } = await import("../lib/inventoryReturns/returnIntakeCommand.js");
 const { probeNoneStockPresentAtLocation } = await import("../lib/inventoryLedger/mobileLocationPresenceProbe.js");
 
 // ---- runner --------------------------------------------------------------------------------------
@@ -330,6 +330,20 @@ await check("RETURN INTAKE: something comes back, and nothing becomes sellable",
   assert.equal(afterReturn.onHand.value, 3, "A RETURN NEVER AUTO-RESTORES SELLABLE STOCK");
 });
 
+await check("RETURN INTAKE REPLAY: the same intake replays from the STORED record; a different one under the key conflicts", async () => {
+  const { deps } = makeDeps(uid("returns-desk"), ALL_SCANNER_GRANTS());
+  const partId = uid("PRT");
+  const req = { partId, source: "WORK_ORDER", sourceReference: "WO-9", condition: "OPENED", quantity: 2, idempotencyKey: uid("idem") };
+  const first = await recordReturnIntake(req, deps);
+  const again = await recordReturnIntake(req, deps);
+  assert.equal(first.outcome, "recorded"); assert.equal(again.outcome, "replayed");
+  assert.equal(again.returnId, first.returnId); assert.equal(again.quantity, 2);
+  for (const variant of [{ quantity: 3 }, { partId: uid("PRT") }, { condition: "DAMAGED" }, { reason: "bent" }]) {
+    await assert.rejects(recordReturnIntake({ ...req, ...variant }, deps), (e) => e instanceof ReturnIdempotencyConflictError, JSON.stringify(variant));
+  }
+  assert.equal((await db.collection(RETURNS_COLLECTION).where("idempotencyKey", "==", req.idempotencyKey).get()).size, 1);
+});
+
 // =================================================================================================
 // NEGATIVE CASES — ten failures the chain must produce, each for its own reason
 // =================================================================================================
@@ -519,6 +533,38 @@ await check("NEGATIVE 10 — replaying any stage is idempotent, not doubled", as
   await recordPutAway({ warehouseId, binCode: "D01-002", partId, quantity: 6, idempotencyKey: placementKey }, deps);
   const placements = await db.collection(BIN_PLACEMENTS_COLLECTION).where("partId", "==", partId).get();
   assert.equal(placements.size, 1, "a replayed put-away records one placement, not two");
+});
+
+await check("PUT-AWAY REPLAY — decided before current-state gates; one key is one stow", async () => {
+  const partId = uid("PRT");
+  const warehouseId = uid("wh"); await seedWarehouse(warehouseId);
+  const { deps } = makeDeps(uid("a"), ALL_SCANNER_GRANTS());
+  const made = await createBin({ warehouseId, area: "PARTS_ROOM", aisle: "Q", bay: 1, position: 1, idempotencyKey: uid("idem") }, deps);
+  await createBin({ warehouseId, area: "PARTS_ROOM", aisle: "Q", bay: 1, position: 2, idempotencyKey: uid("idem") }, deps);
+  const key = uid("idem");
+  const first = await recordPutAway({ warehouseId, binCode: "Q01-001", partId, quantity: 4, idempotencyKey: key }, deps);
+  assert.equal(first.outcome, "recorded");
+
+  // Same key, different quantity / bin / pick -> CONFLICT, and nothing written.
+  for (const variant of [
+    { binCode: "Q01-001", quantity: 5 },
+    { binCode: "Q01-002", quantity: 4 },
+    { binCode: "Q01-001", quantity: 4, pickedForWorkOrderId: "WO-1" },
+  ]) {
+    await assert.rejects(recordPutAway({ warehouseId, partId, idempotencyKey: key, ...variant }, deps),
+      (e) => e instanceof PlacementIdempotencyConflictError, JSON.stringify(variant));
+  }
+
+  // The bin is retired AFTER the stow committed: a genuine retry (lost response) still replays.
+  await setBinStatus({ binId: made.binId }, "INACTIVE", deps);
+  const retry = await recordPutAway({ warehouseId, binCode: "Q01-001", partId, quantity: 4, idempotencyKey: key }, deps);
+  assert.equal(retry.outcome, "replayed");
+  assert.equal(retry.binCode, "Q01-001");
+  // A NEW stow into the retired bin is still refused.
+  await assert.rejects(recordPutAway({ warehouseId, binCode: "Q01-001", partId, quantity: 1, idempotencyKey: uid("idem") }, deps),
+    (e) => e instanceof PlacementBinError);
+  const placements = await db.collection(BIN_PLACEMENTS_COLLECTION).where("partId", "==", partId).get();
+  assert.equal(placements.size, 1);
 });
 
 // ═══════════════════════════════ BIN-P1 — stable identity, against the real store ═══════════════

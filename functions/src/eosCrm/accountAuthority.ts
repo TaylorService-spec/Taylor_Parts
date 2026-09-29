@@ -323,9 +323,23 @@ async function selectAccount(db: Pick<PoolClient, "query">, tenantId: string, ac
   return project(rows[0]);
 }
 
+/**
+ * DQ-009 (Controller 2026-09-28): a NEWLY selected Account owner -- at creation, an owner handoff, or the initial owner
+ * of a legacy ownerless Account -- must be a currently eligible Employee: ACTIVE or CONTRACTOR (the DQ-007 eligible set).
+ * Only NEW selections are checked; an existing owner, the ownership history, and the owner a Contact or site inherits
+ * are never re-judged or rewritten.
+ */
+export const CRM_OWNER_ELIGIBLE_STATUSES = Object.freeze(["ACTIVE", "CONTRACTOR"] as const);
+
 async function requireOwnerEmployee(db: PoolClient, tenantId: string, employeeId: string): Promise<string> {
   const resolution = await createPostgresEmployeeAuthority(db).resolveEmployeeReference({ tenantId, employeeId });
-  if (resolution.outcome === "RESOLVED") return resolution.employee.employeeId;
+  if (resolution.outcome === "RESOLVED") {
+    if (!(CRM_OWNER_ELIGIBLE_STATUSES as readonly string[]).includes(resolution.employee.employmentStatus)) {
+      fail("OWNER_NOT_CURRENTLY_ELIGIBLE", "PRECONDITION_FAILED",
+        `the owner must be an ACTIVE or CONTRACTOR Employee; ${employeeId} is ${resolution.employee.employmentStatus}`);
+    }
+    return resolution.employee.employeeId;
+  }
   if (resolution.outcome === "AUTHORITY_UNAVAILABLE") fail("EMPLOYEE_AUTHORITY_UNAVAILABLE", "UNAVAILABLE", "the Employee authority could not answer");
   return fail("OWNER_NOT_FOUND", "NOT_FOUND", "the owner is not an Employee of this tenant");
 }
@@ -343,6 +357,9 @@ export type AccountOwnershipHandoffSource = (typeof ACCOUNT_OWNERSHIP_HANDOFF_SO
 /** The audit writer's MAX_HANDOFF_REASON_LENGTH, as eos_commercial.ownership_handoffs holds it. */
 export const MAX_ACCOUNT_HANDOFF_REASON_LENGTH = 500;
 const DEFAULT_HANDOFF_SOURCE: AccountOwnershipHandoffSource = "DIRECT_HANDOFF";
+/** DQ-022: the administrative handoff sources, which require OWNERSHIP_HANDOFF_CORRECT_CAPABILITY in addition. */
+export const OWNERSHIP_HANDOFF_CORRECT_CAPABILITY = "ownership.handoff.correct";
+const ADMINISTRATIVE_ACCOUNT_HANDOFF_SOURCES: ReadonlySet<string> = new Set(["ADMIN_CORRECTION", "CUSTOMER_HANDOFF_REVIEW"]);
 
 export const ACCOUNT_OWNERSHIP_EVENTS = Object.freeze(["OWNER_HANDOFF", "INITIAL_OWNER_ASSIGNMENT"] as const);
 export type AccountOwnershipEvent = (typeof ACCOUNT_OWNERSHIP_EVENTS)[number];
@@ -502,6 +519,10 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
         if (owner === previous) {
           if (terms.named) fail("OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE", "INVALID_INPUT", "the Account is already owned by that Employee; there is no ownership change to record");
         } else {
+          // DQ-022: an ADMINISTRATIVE handoff source is itself governed (a handoff, i.e. a previous owner exists).
+          if (previous !== null && ADMINISTRATIVE_ACCOUNT_HANDOFF_SOURCES.has(terms.source) && !principal.capabilities.has(OWNERSHIP_HANDOFF_CORRECT_CAPABILITY)) {
+            fail("CAPABILITY_REQUIRED", "FORBIDDEN", `an ${terms.source} handoff requires ${OWNERSHIP_HANDOFF_CORRECT_CAPABILITY}`);
+          }
           const newOwner = await requireOwnerEmployee(db, tenantId, owner);
           await stageAccountOwnershipChange(db, tenantId, principalId, accountId, previous, newOwner, terms);
         }

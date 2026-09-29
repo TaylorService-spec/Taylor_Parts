@@ -1,5 +1,6 @@
 // EI Phase-2 Receiving -- Gate E2-V: OFFLINE proof of the backup/restore OPERATOR CLI (parseArgs guards +
 // injected-deps backup/restore orchestration + fail-closed hash/drift). No firebase-admin, no production.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { Timestamp } from "firebase-admin/firestore";

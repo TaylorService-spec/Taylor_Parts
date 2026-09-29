@@ -6,7 +6,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // the governed createTransferOrder command re-validates everything authoritatively (Part authority,
 // origin/destination active-ness, on-hand/SERIAL-availability sufficiency). This form only shapes the
 // request; it never decides whether the transfer is actually legal.
-export default function TransferOrderForm({ warehouseOptions, truckOptions, submitting, onSubmit, onCancel }) {
+export default function TransferOrderForm({ warehouseOptions, truckOptions, truckOptionsStatus = "ready", submitting, onSubmit, onCancel }) {
   const [draft, setDraft] = useState({
     partId: "",
     quantity: "1",
@@ -19,6 +19,12 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions, subm
   const [errors, setErrors] = useState({});
 
   const locationOptions = (type) => (type === "WAREHOUSE" ? warehouseOptions : truckOptions);
+  // A truck list that is still loading, or could not be read, is NOT "no trucks": an empty Truck
+  // select with no explanation is indistinguishable from a fleet with nothing in it.
+  const truckNotice = (type) => (type !== "MOBILE" ? null
+    : truckOptionsStatus === "loading" ? "Trucks are still loading…"
+      : truckOptionsStatus === "failed" ? "Trucks could not be loaded, so a truck cannot be chosen right now."
+        : null);
 
   function set(field, value) {
     setDraft((prev) => ({ ...prev, [field]: value }));
@@ -61,6 +67,7 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions, subm
             ))}
           </select>
         </div>
+        {truckNotice(draft.originType) && <p className="fo-muted" role="status">{truckNotice(draft.originType)}</p>}
         {errors.originType && <span className="fo-form-error" role="alert">{errors.originType}</span>}
         {errors.originLocationId && <span className="fo-form-error" role="alert">{errors.originLocationId}</span>}
       </fieldset>
@@ -79,6 +86,7 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions, subm
             ))}
           </select>
         </div>
+        {truckNotice(draft.destinationType) && <p className="fo-muted" role="status">{truckNotice(draft.destinationType)}</p>}
         {errors.destinationType && <span className="fo-form-error" role="alert">{errors.destinationType}</span>}
         {errors.destinationLocationId && <span className="fo-form-error" role="alert">{errors.destinationLocationId}</span>}
       </fieldset>

@@ -5,6 +5,7 @@
 // reads the SAME global app registry buildProductionDeps() would register into, so "getApps().length === 0
 // after a rejected call" is a direct, executable proof that firebase-admin was never initialized -- not an
 // inference from the error message alone.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { getApps } from "firebase-admin/app";
 

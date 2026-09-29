@@ -52,7 +52,13 @@ async function withClient(url, fn) {
 }
 
 test("the eight fence constants are the eight the runtime requires and the migration registers", () => {
-  assert.deepEqual([...ADMINISTRATION_GRANT_ONLY_CAPABILITIES].sort(), [...KEYS].sort());
+  // The fence is SHARED: the eight reorder keys are a subset of it, and the only other members are the keys other
+  // accepted rulings registered with no default grant -- DQ-011: workOrder.parts.plan (migration 1763856000000, lane L2)
+  // and DQ-036(b): inventory.serializedAsset.acquire (migration 1764129600000, lane L3), both declared on legacy Roles
+  // and granted only through Administration. An unexpected member fails here.
+  for (const k of KEYS) assert.ok(ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(k), `${k} must be fenced`);
+  assert.deepEqual([...ADMINISTRATION_GRANT_ONLY_CAPABILITIES].sort(),
+    [...KEYS, "workOrder.parts.plan", "inventory.serializedAsset.acquire"].sort());
   assert.deepEqual([
     life.REORDER_APPROVE, life.REORDER_REJECT, life.REORDER_START_PURCHASING, life.REORDER_POST_UPDATE,
     life.REORDER_MARK_RECEIVED, life.REORDER_CANCEL, life.REORDER_RECORD_PO,

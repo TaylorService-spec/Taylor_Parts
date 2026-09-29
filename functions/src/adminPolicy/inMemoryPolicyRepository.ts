@@ -805,6 +805,17 @@ export class InMemoryPolicyRepository implements PolicyRepository {
   async listAssignmentsForPrincipal(tenantId: TenantId, principalId: string) {
     return this.mine(this.tables.assignments, tenantId).filter((a) => a.principalId === principalId);
   }
+  /**
+   * Employee links live in PostgreSQL (eos_policy.employee_principal_links + eos_workforce.employees); the in-memory
+   * repository models none unless a test SEEDS one through `seedEmployeeLink`, so every Principal here is unlinked.
+   */
+  private readonly employeeLinks = new Map<string, { employeeId: string; employmentStatus: string | null }>();
+  seedEmployeeLink(tenantId: TenantId, principalId: string, employeeId: string, employmentStatus: string | null): void {
+    this.employeeLinks.set(`${tenantId}|${principalId}`, { employeeId, employmentStatus });
+  }
+  async getLinkedEmployeeAccessFact(tenantId: TenantId, principalId: string) {
+    return this.employeeLinks.get(`${tenantId}|${principalId}`) ?? null;
+  }
   async getAccessVersion(tenantId: TenantId, principalId: string) {
     return this.mine(this.tables.accessVersions, tenantId).find((v) => v.principalId === principalId) ?? null;
   }

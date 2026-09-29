@@ -10,6 +10,7 @@
 // Run: node test/governedWarehouseValidation.test.mjs   (or npm run test:warehouseGovernance)
 // NO test here connects to any Firebase project, emulator, or network.
 
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
 import {

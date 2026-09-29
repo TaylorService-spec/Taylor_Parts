@@ -15,6 +15,9 @@ import {
   OPERATIONS_MUTATION_OPERATIONS,
   isOperationsOperation,
   handleOperationsRequest,
+  CYCLE_COUNT_ROUTE,
+  CYCLE_COUNT_OPERATIONS,
+  isCycleCountOperation,
 } from "../lib/eosOps/eosOpsHttp.js";
 
 // BOTH LISTS ARE CLOSED. `resolveMyExperienceContext` joined the reads when the client gained an EOS source for navigation;
@@ -38,7 +41,32 @@ test("both Operations lists are closed, every entry is routed, and they name exa
   assert.ok(!OPERATIONS_MUTATION_OPERATIONS.some((m) => reads.has(m)), "an operation is a read or a mutation, never both");
   // Every operation has exactly one route, and every route is named by an operation.
   assert.deepEqual(Object.keys(OPERATIONS_ROUTE_BY_OPERATION).sort(), [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].sort());
-  assert.deepEqual(OPERATIONS_ROUTES, ["/operations/experience", "/operations/inventory"]);
+  // The read routes, plus ONE command route with its OWN closed table (Controller ruling DQ-018: Cycle
+  // Count is the first inventory domain on this transport). No read route serves a command.
+  // DQ-036: + the Stock Relocation command route, its own closed table.
+  assert.deepEqual(OPERATIONS_ROUTES, ["/operations/cycle-count", "/operations/experience", "/operations/inventory", "/operations/placement", "/operations/relocation", "/operations/serialized-asset", "/operations/transfer"]);
+  assert.equal(CYCLE_COUNT_ROUTE, "/operations/cycle-count");
+  assert.ok(!Object.values(OPERATIONS_ROUTE_BY_OPERATION).includes(CYCLE_COUNT_ROUTE));
+});
+
+test("the Cycle Count command table is CLOSED and names only the sheet/line lifecycle", () => {
+  assert.deepEqual([...CYCLE_COUNT_OPERATIONS].sort(), [
+    "cancelCycleCountLine", "cancelCycleCountSheet", "closeCycleCountSheet", "createCycleCountSheet",
+    "getCycleCountSheet", "listCycleCountSheets", "openCycleCountLine", "reconcileCycleCountLine", "submitCycleCountLine",
+  ]);
+  for (const bad of ["runSQL", "mutate", "resolveMyCapabilities", "__proto__", "constructor", "toString"]) {
+    assert.equal(isCycleCountOperation(bad), false, bad);
+  }
+});
+
+test("a Cycle Count operation posted to a READ route is 404, and a read posted to the Cycle Count route is 404", async () => {
+  const deps = { reader: /** @type {any} */ ({}), pool: /** @type {any} */ ({}), verifyToken: async () => ({ externalSubject: "x", identityProvider: "firebase" }) };
+  for (const url of ["/operations/inventory", "/operations/experience"]) {
+    const res = await handleOperationsRequest(deps, { method: "POST", url, headers: { authorization: "Bearer t" }, body: JSON.stringify({ operation: "createCycleCountSheet", input: {} }) });
+    assert.equal(res.status, 404);
+  }
+  const res = await handleOperationsRequest(deps, { method: "POST", url: CYCLE_COUNT_ROUTE, headers: { authorization: "Bearer t" }, body: JSON.stringify({ operation: "resolveMyCapabilities" }) });
+  assert.equal(res.status, 404);
 });
 
 test("an operation posted to the WRONG Operations route is 404 -- routes do not answer for each other", async () => {

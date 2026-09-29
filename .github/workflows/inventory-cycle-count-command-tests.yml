@@ -25,6 +25,9 @@ on:
       - "functions/scripts/certificationWorld/actorAuthority.mjs"
       - "functions/scripts/certificationWorld/executionTarget.mjs"
       - "functions/test/certificationCycleVariance.test.mjs"
+      # DQ-018 -- activation gate 1 (zero-population census) and the activation constant.
+      - "functions/test/cycleCountActivationCensus.test.mjs"
+      - "functions/scripts/cycleCountActivationCensus.js"
       - "functions/test/cycleCountCommand.test.mjs"
       - "functions/test/cycleCountSheet.test.mjs"
       # Technician MOBILE flow: "which truck is mine?", reusing readAssignedMobileLocation.
@@ -51,6 +54,9 @@ on:
       - "functions/scripts/certificationWorld/actorAuthority.mjs"
       - "functions/scripts/certificationWorld/executionTarget.mjs"
       - "functions/test/certificationCycleVariance.test.mjs"
+      # DQ-018 -- activation gate 1 (zero-population census) and the activation constant.
+      - "functions/test/cycleCountActivationCensus.test.mjs"
+      - "functions/scripts/cycleCountActivationCensus.js"
       - "functions/test/cycleCountCommand.test.mjs"
       - "functions/test/cycleCountSheet.test.mjs"
       - "functions/test/cycleCountAssignedMobileLocation.test.mjs"
@@ -82,6 +88,10 @@ jobs:
     name: Inventory cycle count command tests (Firestore emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Firebase test-safety guard (functions/test/support/firebaseTestGuard.cjs): emulator suites
+      # refuse to run unless the emulator is named explicitly -- never a silent fallback to Google.
+      FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
     steps:
       - uses: actions/checkout@v4
 
@@ -109,9 +119,13 @@ jobs:
         run: node --test test/certificationCycleVariance.test.mjs
         working-directory: functions
 
+      - name: Cycle Count activation gate 1 -- zero-population census (offline)
+        run: node --test test/cycleCountActivationCensus.test.mjs
+        working-directory: functions
+
       - name: Start Firestore emulator (background)
         run: |
-          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/cycle-count-emulator.log 2>&1 &
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project demo-eos-test --config ../firebase.json > /tmp/cycle-count-emulator.log 2>&1 &
           for i in $(seq 1 60); do
             if grep -q "All emulators ready" /tmp/cycle-count-emulator.log 2>/dev/null; then exit 0; fi
             sleep 1

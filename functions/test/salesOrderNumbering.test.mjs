@@ -6,13 +6,14 @@
 // Order: its number must never be derived from another entity's identity (its own
 // document id, the originating Opportunity's number, the Account, or a Work Order).
 
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
 // Building a DocumentReference needs an initialized app but touches no network — the
 // counter ref is constructed locally and handed to the caller's transaction, which is
 // a stub here. No emulator, no credentials, no I/O.
-if (!admin.apps.length) admin.initializeApp({ projectId: "sales-order-numbering-test" });
+if (!admin.apps.length) admin.initializeApp({ projectId: "demo-sales-order-numbering-test" });
 
 import {
   formatSalesOrderNumber,

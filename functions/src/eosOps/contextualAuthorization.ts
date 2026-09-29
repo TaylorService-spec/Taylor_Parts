@@ -35,6 +35,7 @@
 // which the policy port neither owns nor should learn about. It belongs beside
 // eosOps/capabilityAuthority.ts, the runtime resolver it partners with.
 import type { PoolClient } from "pg";
+import { ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES } from "../adminPolicy/employmentAccessEligibility";
 
 /** The predicate kinds this evaluator can prove. Each is a DIFFERENT authority, not a scope string. */
 export const CONTEXT_PREDICATE_KINDS = Object.freeze([
@@ -254,10 +255,17 @@ export function ownRecordsPredicate(
 export function postgresContextualReader(db: Pick<PoolClient, "query">): ContextualReader {
   return {
     async linkedEmployeeId(tenantId, principalId) {
+      // ONLY AN ACCESS-ELIGIBLE EMPLOYEE (Controller DQ-007): the link must resolve to an Employee of this tenant whose
+      // PostgreSQL employment status is ACTIVE or CONTRACTOR. Principal resolution already refuses an ineligible
+      // Principal outright; this is the same rule at the predicate layer, so an evaluator reached with a hand-built
+      // actor (or a future caller that skips principal resolution) can never satisfy WORK_ELIGIBILITY,
+      // OPERATIONAL_SCOPE or RECORD_ASSIGNMENT for an off-boarded Employee -- it answers EMPLOYEE_LINK_REQUIRED.
       const { rows } = await db.query(
-        `SELECT employee_id FROM eos_policy.employee_principal_links
-          WHERE tenant_id = $1 AND principal_id = $2 AND status = 'active'`,
-        [tenantId, principalId]);
+        `SELECT l.employee_id FROM eos_policy.employee_principal_links l
+           JOIN eos_workforce.employees e ON e.tenant_id = l.tenant_id AND e.id = l.employee_id
+          WHERE l.tenant_id = $1 AND l.principal_id = $2 AND l.status = 'active'
+            AND e.employment_status::text = ANY($3::text[])`,
+        [tenantId, principalId, [...ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES]]);
       return rows.length === 1 ? String(rows[0].employee_id) : null;
     },
     async hasWorkEligibility(tenantId, employeeId, qualificationCode) {

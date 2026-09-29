@@ -201,3 +201,23 @@ describe("OpportunityLifecycleControl -- what the Won produced", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 });
+
+describe("OpportunityLifecycleControl -- Mark Won needs the Sales Order capability too (Pass 11 Retail Sales)", () => {
+  it("with wonDisabledReason, Mark Won is protected with that reason and never fires; Mark Lost still works", async () => {
+    const transitions = transitionsStub();
+    render(<OpportunityLifecycleControl row={{ stage: "DECISION", ownerEmployeeId: "e", channel: "RETAIL" }} readiness={ENABLED}
+      transitions={transitions} wonDisabledReason="no order for you" />);
+    const won = screen.getByRole("button", { name: /mark won/i });
+    expect(won.disabled).toBe(true);
+    expect(won.getAttribute("title")).toBe("no order for you");
+    fireEvent.click(won);
+    expect(transitions.runTransition).not.toHaveBeenCalled();
+    const lost = screen.getByRole("button", { name: /mark lost/i });
+    expect(lost.disabled).toBe(false);
+  });
+
+  it("without it, Mark Won is offered exactly as before", () => {
+    render(<OpportunityLifecycleControl row={{ stage: "DECISION" }} readiness={ENABLED} transitions={transitionsStub()} />);
+    expect(screen.getByRole("button", { name: /mark won/i }).disabled).toBe(false);
+  });
+});

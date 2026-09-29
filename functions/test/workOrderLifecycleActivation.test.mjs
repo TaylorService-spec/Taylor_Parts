@@ -163,7 +163,15 @@ test("the five grants, and the assignment they gate", { skip: SKIP, concurrency:
     }
   });
 
-  const adminActor = { tenantId: T, uid: OPERATOR, heldRoleKeys: ["admin"] };
+  // The security administrator as the trusted API resolves it. Since Pass 8 the gate is the CAPABILITY
+  // admin.securityPolicy.write, resolved server-side into `capabilities` -- a Role NAME authorizes
+  // nothing (administrationCapabilityGate.ts). The fixture tenant is not bootstrapped, so the resolved
+  // set is supplied here exactly as the transport would supply it.
+  //
+  // It holds NO Role in the grant set: Pass 8 D5a forbids a principal widening a Role it holds
+  // (SELF_ADMINISTRATION), and two of the five rows widen `admin`. So the activation is performed by a
+  // security administrator who is not itself an `admin` holder -- which the ruling-B apply run predated.
+  const adminActor = { tenantId: T, uid: OPERATOR, heldRoleKeys: [], capabilities: new Set(["admin.securityPolicy.write"]) };
 
   await t.test("DRY RUN proposes five and writes nothing", async () => {
     const before = (await repo.listRoleCapabilities(T)).length;
@@ -227,7 +235,7 @@ test("the five grants, and the assignment they gate", { skip: SKIP, concurrency:
       () => activation.activateWorkOrderLifecycleGrants(repo,
         { tenantId: T, uid: "prn-gm", heldRoleKeys: ["generalManager", "dispatcher"] },
         { apply: true, reason: "should not happen" }),
-      /not authorized to perform "editRoleDefinition"/);
+      /not authorized: "admin\.securityPolicy\.write" is required/);
   });
 
   // ── the Work Order, two technicians, and ONE governed assignment ──
@@ -237,6 +245,12 @@ test("the five grants, and the assignment they gate", { skip: SKIP, concurrency:
     await q(`INSERT INTO eos_policy.tenant_memberships (id,tenant_id,principal_id,status)
              VALUES ($1,$2,$3,'active')`, [`mem-${pid}`, T, pid]);
   };
+  // The governed company <-> key binding the Work Order's operating_company_key resolves through (DQ-013).
+  await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
+           VALUES ($1,'taylor','ACTIVE','fixture','fixture','fixture')`, [T]);
+  await q(`INSERT INTO eos_policy.tenant_operating_company_keys
+             (tenant_id,operating_company_id,operating_company_key,status,provenance,source,established_by,updated_by)
+           VALUES ($1,'taylor','taylor','ACTIVE','MIGRATED','fixture','fixture','fixture')`, [T]);
   await mkPrincipal("prn-tech-a", "uid-tech-a");
   await mkPrincipal("prn-tech-b", "uid-tech-b");
   await mkPrincipal("prn-dispatcher", "uid-dispatcher");

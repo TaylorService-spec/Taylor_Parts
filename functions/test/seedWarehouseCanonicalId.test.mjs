@@ -10,6 +10,7 @@
 // The seeder cannot be unit-tested against Firestore here, so this asserts the two things that
 // actually failed: the written shape carries `id`, and the shape it writes is one the REAL canonical
 // validator accepts. A test that only grepped for the field would pass on a typo'd key name.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

@@ -4,10 +4,10 @@
 // invariant without activating dormant capabilities.
 //
 // Prerequisite (same harness as the sibling create-idempotency test):
-//   firebase emulators:start --only firestore --project taylor-parts
+//   firebase emulators:start --only firestore --project demo-eos-test
 //   (after `npm run build`) node --test test/commercialTransitionIdempotency.test.mjs
-process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import admin from "firebase-admin";
@@ -16,7 +16,7 @@ import { persistCreatedOpportunity, persistTransitionedOpportunity } from "../li
 import { buildCreateSalesOrder } from "../lib/salesOrder/salesOrderCommands.js";
 import { persistCreatedSalesOrder, persistTransitionedSalesOrder } from "../lib/salesOrder/salesOrderCallables.js";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 let sequence = 0;
 const id = (kind) => `${kind}-${Date.now()}-${++sequence}`;

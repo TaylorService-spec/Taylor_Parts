@@ -2,6 +2,7 @@
 // (functions/scripts/seedOperationsDemoData.js). No firebase-admin app is ever created by this file; every
 // rejected configuration is proven to fail BEFORE buildProductionDeps() (and therefore before firebase-admin
 // is ever required and before any Firestore connection, read, or write) runs.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { getApps } from "firebase-admin/app";

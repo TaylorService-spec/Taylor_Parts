@@ -1,5 +1,7 @@
 // part_supplier_items: compiled-entry export test. Asserts the four callables are exported from
 // lib/index.js under their EXACT frozen public names, and the suffixed impl consts are NOT exposed.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
+import "./support/firebaseDemoProjectEnv.cjs"; // lib/index.js calls initializeApp() at import: give it a demo project
 import assert from "node:assert/strict";
 import * as indexMod from "../lib/index.js";
 

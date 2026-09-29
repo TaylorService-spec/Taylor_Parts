@@ -13,8 +13,8 @@
 // Every one has a test. The refusals are asserted by CODE, because those are what a phone branches
 // on, and capability is resolved against REAL roleAssignment documents -- a stubbed authorizer would
 // prove nothing about the control that keeps a technician on their own work.
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
@@ -28,7 +28,7 @@ const {
   LaborCommandError, LABOR_TYPES, LABOR_ENTRY_KINDS, LABOR_STATUSES,
   LABOR_RECORDABLE_WO_STATUSES, LABOR_ENTRIES_COLLECTION,
   MIN_LABOR_MINUTES, MAX_LABOR_MINUTES,
-  LABOR_RECORD_CAPABILITY, LABOR_CORRECT_CAPABILITY,
+  LABOR_RECORD_CAPABILITY, LABOR_CORRECT_CAPABILITY, authorizeWorkOrderLaborRead,
 } = await import("../lib/workOrderLabor/workOrderLaborCommand.js");
 
 let passed = 0, failed = 0;
@@ -470,6 +470,44 @@ await check("an entry recorded online carries no device claim at all", async () 
   const out = await recordWorkOrderLabor(duration(wo), deps(actorOf(p)));
   const stored = (await db.collection(LABOR_ENTRIES_COLLECTION).doc(out.laborEntryId).get()).data();
   assert.equal("deviceReportedAtMillis" in stored, false);
+});
+
+// ── READ: the assignment boundary holds for labor VISIBILITY too ─────────────────────────────────
+
+await check("READ: a record-only technician reads labor on THEIR OWN assigned work order", async () => {
+  const p = await seedPrincipal({ roleIds: ["technician"] });
+  const wo = await seedJob({ assignedTechId: p.technicianId });
+  await authorizeWorkOrderLaborRead(db, actorOf(p), wo, { canRecord: true, canCorrect: false });
+});
+
+await check("READ: a record-only technician is REFUSED another technician's work order -- and a missing one, identically", async () => {
+  const mine = await seedPrincipal({ roleIds: ["technician"] });
+  const other = await seedPrincipal({ roleIds: ["technician"] });
+  const theirs = await seedJob({ assignedTechId: other.technicianId });
+  const unassigned = await seedJob({ assignedTechId: null });
+  const codes = [];
+  for (const wo of [theirs, unassigned, uniq("wo-missing")]) {
+    await assert.rejects(authorizeWorkOrderLaborRead(db, actorOf(mine), wo, { canRecord: true, canCorrect: false }),
+      (e) => { codes.push(e.code); return e instanceof LaborCommandError; });
+  }
+  assert.deepEqual(codes, ["NOT_ASSIGNED_TECHNICIAN", "NOT_ASSIGNED_TECHNICIAN", "NOT_ASSIGNED_TECHNICIAN"],
+    "another's job, an unassigned job and a non-existent id must be indistinguishable");
+});
+
+await check("READ: a principal with the record capability but no technician identity reads nothing", async () => {
+  const p = await seedPrincipal({ roleIds: ["technician"] });
+  const wo = await seedJob({ assignedTechId: p.technicianId });
+  await assert.rejects(authorizeWorkOrderLaborRead(db, { technicianId: null }, wo, { canRecord: true, canCorrect: false }),
+    (e) => e.code === "NOT_ASSIGNED_TECHNICIAN");
+});
+
+await check("READ: a correct holder reads any work order's labor; neither capability reads nothing", async () => {
+  const p = await seedPrincipal({ roleIds: [] });
+  const other = await seedPrincipal({ roleIds: ["technician"] });
+  const wo = await seedJob({ assignedTechId: other.technicianId });
+  await authorizeWorkOrderLaborRead(db, actorOf(p), wo, { canRecord: false, canCorrect: true });
+  await assert.rejects(authorizeWorkOrderLaborRead(db, actorOf(other), wo, { canRecord: false, canCorrect: false }),
+    (e) => e.code === "PERMISSION_DENIED");
 });
 
 // ── AUDIT ─────────────────────────────────────────────────────────────────────────────────────

@@ -170,6 +170,12 @@ on:
       # WO-05A -- every warehouse form now routes through the shared submit policy.
       - "field-ops-app-vite/src/modules/receiving/MultiScanReceiving.jsx"
       - "field-ops-app-vite/test/warehouseOfflineScreens.test.jsx"
+      # L3 -- unknown is not zero / not empty on the warehouse queue, transfer form and cycle-count landing.
+      - "field-ops-app-vite/test/warehouseSyncQueueHonesty.test.jsx"
+      - "field-ops-app-vite/test/transferOrderFormTruckStatus.test.jsx"
+      - "field-ops-app-vite/src/modules/inventory/TransferOrderForm.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Transfers.jsx"
+      - "field-ops-app-vite/src/modules/inventory/CycleCounts.jsx"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/personaOperability.test.mjs"
       - "field-ops-app-vite/test/scanMobileRegression.test.jsx"
@@ -306,6 +312,12 @@ on:
       # WO-05A -- every warehouse form now routes through the shared submit policy.
       - "field-ops-app-vite/src/modules/receiving/MultiScanReceiving.jsx"
       - "field-ops-app-vite/test/warehouseOfflineScreens.test.jsx"
+      # L3 -- unknown is not zero / not empty on the warehouse queue, transfer form and cycle-count landing.
+      - "field-ops-app-vite/test/warehouseSyncQueueHonesty.test.jsx"
+      - "field-ops-app-vite/test/transferOrderFormTruckStatus.test.jsx"
+      - "field-ops-app-vite/src/modules/inventory/TransferOrderForm.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Transfers.jsx"
+      - "field-ops-app-vite/src/modules/inventory/CycleCounts.jsx"
       - "field-ops-app-vite/test/technicianInventory.test.mjs"
       - "field-ops-app-vite/test/personaOperability.test.mjs"
       - "field-ops-app-vite/test/scanMobileRegression.test.jsx"
@@ -495,5 +507,5 @@ jobs:
 
       # Named explicitly: an unnamed vitest suite does not run in this repository's CI at all.
       - name: Scan workspace + lookup + multi-scan receiving journey + transport (vitest + jsdom)
-        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/dictatableNote.test.jsx test/submissionQueue.test.jsx test/scanMobileRegression.test.jsx test/putAwayOfflineAdoption.test.jsx test/technicianHandheld.test.jsx test/returnIntakeScan.test.jsx test/mobileTabBar.test.jsx test/partsScannerJobContext.test.jsx test/partsScannerQtyReset.test.jsx test/receivingLocationOptionAdapter.test.jsx test/cycleCountsBlindReview.test.jsx test/operationsTransferOrders.test.jsx test/stockLocationSurfaceRetired.test.jsx test/useTransferOrders.test.jsx test/operationsQueriesTransferOrdersPage.test.jsx test/putAwayScan.test.jsx test/moveStockScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx test/receivingWorkspaceComposition.test.jsx
+        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/dictatableNote.test.jsx test/submissionQueue.test.jsx test/scanMobileRegression.test.jsx test/putAwayOfflineAdoption.test.jsx test/technicianHandheld.test.jsx test/returnIntakeScan.test.jsx test/mobileTabBar.test.jsx test/partsScannerJobContext.test.jsx test/partsScannerQtyReset.test.jsx test/receivingLocationOptionAdapter.test.jsx test/cycleCountsBlindReview.test.jsx test/operationsTransferOrders.test.jsx test/stockLocationSurfaceRetired.test.jsx test/useTransferOrders.test.jsx test/operationsQueriesTransferOrdersPage.test.jsx test/putAwayScan.test.jsx test/moveStockScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx test/receivingWorkspaceComposition.test.jsx test/warehouseSyncQueueHonesty.test.jsx test/transferOrderFormTruckStatus.test.jsx
         working-directory: field-ops-app-vite

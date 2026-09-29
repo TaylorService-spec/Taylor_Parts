@@ -8,11 +8,12 @@ import {
   requireAuth,
   mapReceiveError,
   mapOptionsError,
+  validatePurchaseOrderProgressRequest,
 } from "../lib/inventoryReceiving/receivingCallables.js";
 import { HttpsError } from "firebase-functions/v2/https";
 import {
   UnauthorizedReceivingError, SourceNotFoundError, SourceNotReceivableError,
-  DestinationInvalidError, PartInvalidError, ReceivingIntegrityError,
+  DestinationInvalidError, PartInvalidError, ReceivingIntegrityError, SerialIdentityConflictError,
 } from "../lib/inventoryReceiving/receiveInventoryStockCommand.js";
 import { IdempotencyConflictError, MalformedStoredRecordError, InvalidReceivingError } from "../lib/inventoryReceiving/receivingTypes.js";
 import { ReceivingLocationOptionsError } from "../lib/warehouseGovernance/receivingLocationOptionsService.js";
@@ -120,6 +121,8 @@ check("mapReceiveError: exact governed -> public code matrix, no raw leak", () =
     [new DestinationInvalidError("inactive"), "failed-precondition"],
     [new PartInvalidError("inactive part"), "failed-precondition"],
     [new ReceivingIntegrityError("ledger disagreed"), "internal"],
+    // A duplicate serial is a governed conflict the operator can act on -- never a 500.
+    [new SerialIdentityConflictError(), "failed-precondition"],
     [new IdempotencyConflictError("conflict"), "failed-precondition"],
     [new MalformedStoredRecordError("bad stored"), "failed-precondition"],
     [new InvalidReceivingError("bad input"), "invalid-argument"],
@@ -134,6 +137,16 @@ check("mapReceiveError: exact governed -> public code matrix, no raw leak", () =
   // HttpsError passes through unchanged
   const passthrough = new HttpsError("invalid-argument", "bad payload");
   assert.equal(mapReceiveError(passthrough), passthrough);
+});
+
+check("validatePurchaseOrderProgressRequest: a malformed purchaseOrderId is invalid-argument, never a raw path 500", () => {
+  assert.equal(validatePurchaseOrderProgressRequest({ purchaseOrderId: "po-1" }), "po-1");
+  for (const bad of [undefined, null, [], "po-1", {}, { purchaseOrderId: "" }, { purchaseOrderId: "  " },
+    { purchaseOrderId: "a/b" }, { purchaseOrderId: ".." }, { purchaseOrderId: "__x__" }, { purchaseOrderId: 7 },
+    { purchaseOrderId: { id: "po-1" } }, { purchaseOrderId: "x".repeat(1501) }]) {
+    assert.throws(() => validatePurchaseOrderProgressRequest(bad),
+      (e) => e instanceof HttpsError && e.code === "invalid-argument" && !RAW.test(e.message), JSON.stringify(bad)?.slice(0, 40));
+  }
 });
 
 check("mapOptionsError: option-service codes -> public matrix, no raw leak", () => {

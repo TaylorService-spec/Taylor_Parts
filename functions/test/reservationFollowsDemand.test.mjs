@@ -1,7 +1,7 @@
 // RESERVATION FOLLOWS CURRENT DEMAND (DECISIONS #165, ruling 3).
 //
 // Prerequisite (also how CI runs it):
-//   firebase emulators:start --only firestore --project taylor-parts
+//   firebase emulators:start --only firestore --project demo-eos-test
 //   (after `npm run build`) node --test test/reservationFollowsDemand.test.mjs
 //
 // THE GAPS THESE CLOSE. A reservation was made at DISPATCH against that moment's qtyPlanned and
@@ -15,13 +15,13 @@
 // Same harness as inventoryService.test.mjs: the compiled module against a live emulator. Stock is
 // seeded as GOVERNED LEDGER EVIDENCE (RECEIVED at an ACTIVE warehouse), never the static catalogue
 // — that baseline is retired and a part with no ledger evidence is UNKNOWN, not stocked.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
 const admin = (await import("firebase-admin")).default;
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 
 const { reserveParts, releaseParts, reconcileReservation } = await import("../lib/inventoryService.js");

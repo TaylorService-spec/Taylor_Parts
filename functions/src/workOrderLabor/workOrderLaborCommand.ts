@@ -314,6 +314,38 @@ async function readWorkOrder(db: Firestore, txn: Transaction, workOrderId: strin
 }
 
 /**
+ * May this actor READ the labor on one work order?
+ *
+ * A holder of workOrder.labor.correct reads any job's labor: correcting another person's time is that
+ * capability's whole purpose, so seeing it is too. A holder of ONLY workOrder.labor.record reads the
+ * labor on work orders ASSIGNED TO THEM -- the capability is "record labor you personally performed on
+ * work orders assigned to you", so the time it can see is the time on those same jobs. Without this
+ * narrowing any recording technician could read another technician's job (who worked it, how long, the
+ * notes) by naming its id, which the assignment boundary exists to prevent.
+ *
+ * A missing work order and somebody else's work order refuse IDENTICALLY, so the read is not a probe for
+ * which ids exist.
+ */
+export async function authorizeWorkOrderLaborRead(
+  db: Firestore,
+  actor: Pick<LaborActor, "technicianId">,
+  workOrderId: string,
+  held: { readonly canRecord: boolean; readonly canCorrect: boolean },
+): Promise<void> {
+  if (!held.canRecord && !held.canCorrect) {
+    throw new LaborCommandError("PERMISSION_DENIED", "not authorized to read labor");
+  }
+  if (held.canCorrect) return;
+  const technicianId = str(actor?.technicianId);
+  const snap = technicianId ? await db.collection(WORK_ORDERS_COLLECTION).doc(workOrderId).get() : null;
+  const assignedTechId = snap?.exists ? str((snap.data() ?? {}).assignedTechId) : null;
+  if (!technicianId || assignedTechId !== technicianId) {
+    throw new LaborCommandError("NOT_ASSIGNED_TECHNICIAN",
+      "labor may only be read on a work order assigned to you");
+  }
+}
+
+/**
  * Record labor the authenticated technician performed.
  *
  * FOR THEMSELVES, ALWAYS. There is no technicianId in the request, and one in the payload is

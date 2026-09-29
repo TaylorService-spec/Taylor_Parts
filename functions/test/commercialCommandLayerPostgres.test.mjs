@@ -127,8 +127,26 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     const created = await newOpportunity();
     const id = created.result?.opportunityId ?? created.opportunityId;
     assert.equal((await q(`SELECT operating_company_key FROM eos_commercial.opportunities WHERE id=$1`, [id])).rows[0].operating_company_key, "taylor-ops-t1");
-    // Ventana is an authorized company with NO key binding: refused, never stored as key "ventana".
+    // DQ-008: a company THIS tenant does not govern refuses before any key is consulted.
+    await assert.rejects(newOpportunity({ operatingCompanyId: "ventana" }), (e) => e.code === "OPERATING_COMPANY_NOT_GOVERNED");
+    // Ventana governed and ACTIVE but with NO key binding: refused, never stored as key "ventana".
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by)
+             VALUES ('t1','ventana','ACTIVE','test-fixture','fixture','fixture')`);
     await assert.rejects(newOpportunity({ operatingCompanyId: "ventana" }), (e) => e.code === "OPERATING_COMPANY_KEY_NOT_BOUND");
+    // DQ-008: an INACTIVE company refuses NEW records, keyed or not; the records already booked to it are untouched.
+    await q(`UPDATE eos_policy.tenant_operating_companies SET status='INACTIVE' WHERE tenant_id='t1' AND operating_company_id='taylor'`);
+    try {
+      const before = await count("opportunities");
+      await assert.rejects(newOpportunity(), (e) => e.code === "OPERATING_COMPANY_INACTIVE" && e.category === "PRECONDITION_FAILED");
+      await assert.rejects(agreementFor(id), (e) => e.code === "OPERATING_COMPANY_INACTIVE", "an Agreement inherits the company and is a NEW record");
+      assert.equal(await count("opportunities"), before);
+      assert.equal((await q(`SELECT operating_company_key FROM eos_commercial.opportunities WHERE id=$1`, [id])).rows[0].operating_company_key, "taylor-ops-t1", "history is never remapped");
+      // An existing record's ordinary edit does not re-resolve its company.
+      const edited = await opp.updateOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: id, expectedEditVersion: 1, nextAction: "still editable" });
+      assert.equal(edited.editVersion, 2);
+    } finally {
+      await q(`UPDATE eos_policy.tenant_operating_companies SET status='ACTIVE' WHERE tenant_id='t1' AND operating_company_id='taylor'`);
+    }
     const { lockOpportunity } = require("../lib/eosCommercial/commands/commercialRecordStore.js");
     const row = await lockOpportunity(pool, "t1", id);
     assert.equal(row.operatingCompanyId, "taylor", "the read maps the stored key back to the governed company");
@@ -180,6 +198,18 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     assert.equal(await count("accountability_handoffs", "opportunity_id=$1", [o1.opportunityId]), 1, "an owner change wrote accountability history");
   });
 
+  await t.test("(15b) DQ-022: an ADMIN_CORRECTION / CUSTOMER_HANDOFF_REVIEW handoff requires ownership.handoff.correct; DIRECT_HANDOFF does not", async () => {
+    const o = await newOpportunity({ lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] });
+    for (const source of ["ADMIN_CORRECTION", "CUSTOMER_HANDOFF_REVIEW"]) {
+      await assert.rejects(opp.updateOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, ownerEmployeeId: "e-gm", ownershipHandoff: { source } }), code("CAPABILITY_REQUIRED"), source);
+    }
+    assert.equal(await count("ownership_handoffs", "opportunity_id=$1", [o.opportunityId]), 0);
+    const corrector = { ...ACTOR, capabilities: new Set([...ALL_CAPS, "ownership.handoff.correct"]) };
+    const res = await opp.updateOpportunity(deps, corrector, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, ownerEmployeeId: "e-gm", ownershipHandoff: { source: "ADMIN_CORRECTION", reason: "wrong rep" } });
+    assert.ok(res.ownershipHandoffId);
+    assert.deepEqual((await q(`SELECT source::text FROM eos_commercial.ownership_handoffs WHERE opportunity_id=$1`, [o.opportunityId])).rows, [{ source: "ADMIN_CORRECTION" }]);
+  });
+
   await t.test("(16) a failed ownership-history write rolls back the owner change, the version bump and the receipt", async () => {
     const k = key();
     await withTrigger("ownership_handoffs", async () => {
@@ -188,6 +218,23 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     const row = (await q(`SELECT owner_employee_id, need, edit_version FROM eos_commercial.opportunities WHERE id=$1`, [o1.opportunityId])).rows[0];
     assert.deepEqual(row, { owner_employee_id: "e-national", need: "Walk-in freezer", edit_version: "3" });
     assert.equal(await count("command_receipts", "operation='opportunity.update' AND result->>'editVersion' = '4'"), 0);
+  });
+
+  await t.test("(16b) a SECTION save compares against the stored values: unchanged fields are not changes, an unchanged owner is not a handoff, a cleared field clears", async () => {
+    // The Sales workspace saves a whole section draft, so unchanged fields ride along with the edited one.
+    const o = await newOpportunity({ nextAction: undefined });
+    const same = { salesChannel: "RETAIL", ownerEmployeeId: "e-retail", need: "Walk-in freezer", expectedValue: 18500.5, expectedCloseAt: Date.parse("2026-11-01T00:00:00Z") };
+    const handoffsBefore = await count("ownership_handoffs", "opportunity_id=$1", [o.opportunityId]);
+    const edited = await opp.updateOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, ...same, nextAction: "Call back" });
+    assert.deepEqual(edited.changed, ["nextAction"], "only the field that moved is a change");
+    assert.equal(edited.ownershipHandoffId, null, "an unchanged owner is not a handoff");
+    assert.equal(await count("ownership_handoffs", "opportunity_id=$1", [o.opportunityId]), handoffsBefore);
+    await assert.rejects(opp.updateOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 2, ...same }), code("NO_CHANGES"),
+      "re-saving the stored values is not an edit and does not bump the version");
+    const cleared = await opp.updateOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 2, need: null, expectedValue: null, expectedCloseAt: null, nextAction: null });
+    assert.deepEqual(cleared.changed.sort(), ["expectedCloseAt", "expectedValue", "need", "nextAction"]);
+    const row = (await q(`SELECT need, expected_value, expected_close_at, next_action, edit_version FROM eos_commercial.opportunities WHERE id=$1`, [o.opportunityId])).rows[0];
+    assert.deepEqual(row, { need: null, expected_value: null, expected_close_at: null, next_action: null, edit_version: "3" }, "a cleared field is stored cleared");
   });
 
   await t.test("(17)(18) a transition bumps the version; an illegal transition refuses", async () => {
@@ -343,6 +390,23 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     assert.equal(await count("command_receipts", "idempotency_key_hash = encode(sha256(convert_to($1,'UTF8')),'hex')", [k]), 3);
     const raw = await q(`SELECT count(*)::int n FROM eos_commercial.command_receipts WHERE idempotency_key_hash = $1 OR result::text LIKE $2`, [k, `%${k}%`]);
     assert.equal(raw.rows[0].n, 0, "the raw idempotency key was persisted");
+  });
+
+  await t.test("(36b) a key reused on a DIFFERENT record is refused, never a false replay of the first record's result", async () => {
+    const a = await newOpportunity({ lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] });
+    const b = await newOpportunity({ lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] });
+    const k = key();
+    const first = await opp.transitionOpportunity(deps, ACTOR, { idempotencyKey: k, opportunityId: a.opportunityId, toStage: "QUALIFYING" });
+    assert.equal(first.replayed, false);
+    // The SAME record replays (the retry the key exists for).
+    assert.equal((await opp.transitionOpportunity(deps, ACTOR, { idempotencyKey: k, opportunityId: a.opportunityId, toStage: "QUALIFYING" })).replayed, true);
+    // A DIFFERENT record with the same key: refused, and B does not move.
+    await assert.rejects(opp.transitionOpportunity(deps, ACTOR, { idempotencyKey: k, opportunityId: b.opportunityId, toStage: "QUALIFYING" }), code("IDEMPOTENCY_KEY_REUSED"));
+    const ku = key();
+    await opp.updateOpportunity(deps, ACTOR, { idempotencyKey: ku, opportunityId: a.opportunityId, expectedEditVersion: 2, need: "a" });
+    await assert.rejects(opp.updateOpportunity(deps, ACTOR, { idempotencyKey: ku, opportunityId: b.opportunityId, expectedEditVersion: 1, need: "b" }), code("IDEMPOTENCY_KEY_REUSED"));
+    const rowB = (await q(`SELECT stage::text, need, edit_version FROM eos_commercial.opportunities WHERE id=$1`, [b.opportunityId])).rows[0];
+    assert.deepEqual(rowB, { stage: "IDENTIFIED", need: "Walk-in freezer", edit_version: "1" });
   });
 
   await t.test("(34) concurrent same-key submissions create exactly one record; the rest replay it", async () => {

@@ -18,6 +18,16 @@ const CODE_OUTCOMES = Object.freeze({
   // domain/salesOrderActions.js's documented createService/allocation gap), not a silent failure.
   "failed-precondition": { kind: "invalid", message: "That action isn't allowed for this Opportunity's current state. Reload to see the latest state." },
   internal: { kind: "error", message: "The request could not be completed. Try again." },
+  // The EOS Commercial transport's statuses (services/commercialEosAdapters.js legacyErrorStatus). A stale edit version
+  // is a CONFLICT the user resolves by reloading -- never "invalid"; a held boundary is UNAVAILABLE, not a failure of
+  // the user's input.
+  aborted: {
+    kind: "conflict",
+    message: "Someone else saved this Opportunity while you were editing. Reload to see their changes, then reapply yours.",
+  },
+  "already-exists": { kind: "invalid", message: "That has already been done for this Opportunity. Reload to see the latest state." },
+  unavailable: { kind: "error", message: "That can't be done right now -- the service it depends on is unavailable. Nothing was changed." },
+  "transport-not-ready": { kind: "error", message: "Sales is not connected in this environment. Nothing was changed." },
 });
 
 // DOMAIN-CODE outcomes, keyed by what the callable put in `details`. These are strictly more
@@ -42,6 +52,15 @@ const DETAIL_OUTCOMES = Object.freeze({
   ACCOUNT_REQUIRED: { kind: "invalid", message: "An Opportunity must have a customer." },
   CHANNEL_INVALID: { kind: "invalid", message: "That is not a recognized sales channel." },
   LINE_INVALID: { kind: "invalid", message: "One of the solution lines is incomplete. Each line needs a kind and a reference." },
+  // Close-as-Won creates the Sales Order FROM the customer's ACCEPTED Sales Agreement, in one transaction.
+  AGREEMENT_REQUIRED: { kind: "invalid", message: "Mark Won needs the customer's accepted Sales Agreement first. Create and accept it, then mark the Opportunity won." },
+  AGREEMENT_NOT_ACCEPTED: { kind: "invalid", message: "The Sales Agreement hasn't been accepted yet. Accept it, then mark the Opportunity won." },
+  SALES_ORDER_ALREADY_EXISTS: { kind: "invalid", message: "This Opportunity already has its Sales Order. Reload to see it." },
+  // Held catalog boundary (EOS refuses PART / EQUIPMENT_MODEL lines until the PostgreSQL catalog authority is governed).
+  CATALOG_AUTHORITY_UNAVAILABLE: {
+    kind: "invalid",
+    message: "Part and equipment-model lines can't be saved yet -- the product catalog isn't connected. Service lines can. Nothing was changed.",
+  },
   SERIALIZED_LINE_FORBIDDEN: {
     kind: "invalid",
     message: "Solution lines reference a product, model or part — not a specific serialized unit. That is decided at fulfillment.",

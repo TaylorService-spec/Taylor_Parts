@@ -46,9 +46,9 @@ export function useOpportunityCreate(deps) {
       const idempotencyKey = keyRef.current;
       setPending(true);
       try {
-        const { result, errorStatus } = await client.createOpportunity({ ...input, idempotencyKey });
+        const { result, errorStatus, errorDetail } = await client.createOpportunity({ ...input, idempotencyKey });
         if (errorStatus) {
-          throw Object.assign(new Error(outcomeFromErrorCode(errorStatus).message), { outcome: outcomeFromErrorCode(errorStatus) });
+          throw Object.assign(new Error(outcomeFromErrorCode(errorStatus, errorDetail).message), { outcome: outcomeFromErrorCode(errorStatus, errorDetail) });
         }
         const outcome = outcomeFromCreateResult(result);
         keyRef.current = null; // this intent is finished -- a future submit starts a new one

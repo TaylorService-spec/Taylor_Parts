@@ -18,6 +18,7 @@
 // from the command they exist to protect.
 //
 // Run: node --test functions/test/sandboxReceivingSourceFixture.test.mjs
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";

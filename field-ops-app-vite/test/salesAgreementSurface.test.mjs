@@ -276,3 +276,19 @@ test("THE PANEL DEFAULTS TO A RESOLVER, so a mounting surface cannot forget", ()
     "the panel must default its resolver, not default it to null");
   assert.doesNotMatch(src, /entityResolver = null/, "null default is what produced the blank page");
 });
+
+test("THE PANEL SEEDS MONEY THROUGH THE ONE EXACT INVERSE, never a float /100 (cross-lane finding, L4 money class)", async () => {
+  // Charges and line prices are seeded into the editors from integer minor units. A hand-written `minor / 100` is a
+  // float division, turns an ABSENT value into "NaN", and is a second answer to the question toMinor / toMajorText
+  // (salesAgreementLines.jsx) already answer exactly.
+  const src = readFileSync(new URL("../src/modules/sales/SalesAgreementPanel.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /Minor\s*\/\s*100/, "a hand-rolled minor/100 conversion is back in the panel");
+  assert.match(src, /toMajorText\(view\.shippingMinor\)/);
+  assert.match(src, /toEditorLines\(view\.lines\)/);
+  const { toMajorText } = await import("../src/modules/sales/salesAgreementLines.jsx").catch(() => ({}));
+  if (toMajorText) {
+    assert.equal(toMajorText(1005), "10.05");
+    assert.equal(toMajorText(null), "");
+    assert.equal(toMajorText(undefined), "");
+  }
+});

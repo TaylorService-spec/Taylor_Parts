@@ -35,6 +35,19 @@
 
 import { readBinParentage } from "../inventoryLocation/binParentage.js";
 import { binIdsReferenced } from "../inventoryLedger/locationOnHand.js";
+import { authoritativeOperationalMovements, LedgerRowIntegrityError } from "../inventoryLedger/authoritativeLedgerRows.js";
+
+/**
+ * A part's balance cannot be derived: a ledger row for it is unreadable (Controller ruling DQ-019). A
+ * number computed past it would be wrong in an unknown direction -- a skipped malformed debit inflates
+ * on-hand -- so the answer is UNAVAILABLE, never a figure.
+ */
+export class PartBalanceLedgerUnreadableError extends Error {
+  constructor(readonly partId: string) {
+    super(`the ledger for part ${partId} has a record that cannot be read`);
+    this.name = "PartBalanceLedgerUnreadableError";
+  }
+}
 import type { BinParentage } from "../inventoryLedger/locationOnHand.js";
 import { getFirestore } from "firebase-admin/firestore";
 import { RECEIVING_ORDERS_COLLECTION } from "../inventoryReceiving/receivingTypes";
@@ -287,6 +300,13 @@ export async function readPartBalance(
     db.collection(PURCHASE_ORDERS_COLLECTION).get(),
   ]);
 
+  // FAIL CLOSED (DQ-019): refuse the whole balance if any row for this part is unreadable.
+  try {
+    authoritativeOperationalMovements(ledgerSnap.docs);
+  } catch (err) {
+    if (err instanceof LedgerRowIntegrityError) throw new PartBalanceLedgerUnreadableError(partId);
+    throw err;
+  }
   const ledgerRows = ledgerSnap.docs.map((d) => d.data() as {
     type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string; workOrderId?: string;
   });
@@ -418,6 +438,9 @@ export const getPartBalanceCallable = onCall({ region: "us-central1" }, async (r
     return await readPartBalance(db, partId, serialTracked);
   } catch (err) {
     if (err instanceof HttpsError) throw err;
+    if (err instanceof PartBalanceLedgerUnreadableError) {
+      throw new HttpsError("failed-precondition", "This part's balance is unavailable: a ledger record for it cannot be read.", { code: "LEDGER_ROW_UNREADABLE" });
+    }
     // UNAVAILABLE, said plainly, with its own stable code. Folding this into "internal" would make a
     // governed migration state indistinguishable from a crash, and a caller could not tell a person why.
     if (err instanceof FirestoreCatalogNotCurrentError) {

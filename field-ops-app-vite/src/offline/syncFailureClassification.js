@@ -74,6 +74,19 @@ export const ATTENTION_DETAILS = Object.freeze([
   "PAYLOAD_FINGERPRINT_MISMATCH",
 ]);
 
+/**
+ * The command's business code, from either shape a callable sends it in: a bare string
+ * (`"ASSET_INSTALLED_ELSEWHERE"`) or a structured `{ code }` object (the Transfer and Cycle Count
+ * callables). Reading only the string shape meant a structured IDEMPOTENCY_CONFLICT was never seen,
+ * so a conflicting count retried on backoff instead of stopping for a person.
+ */
+function businessCode(details) {
+  const raw = typeof details === "string" ? details
+    : details && typeof details === "object" && !Array.isArray(details) && typeof details.code === "string" ? details.code
+      : "";
+  return raw.toUpperCase();
+}
+
 const strip = (raw) => {
   const s = typeof raw === "string" ? raw : "";
   return s.startsWith("functions/") ? s.slice("functions/".length) : s;
@@ -92,7 +105,7 @@ export function classifyFailure({ code = null, details = null, offline = false }
   // turn a network outage into a permanent "not accepted".
   if (offline) return FAILURE_CLASS.RETRYABLE;
 
-  const detail = typeof details === "string" ? details.toUpperCase() : "";
+  const detail = businessCode(details);
   if (ATTENTION_DETAILS.includes(detail)) return FAILURE_CLASS.NEEDS_ATTENTION;
   if (CONFLICT_DETAILS.includes(detail)) return FAILURE_CLASS.CONFLICT;
 

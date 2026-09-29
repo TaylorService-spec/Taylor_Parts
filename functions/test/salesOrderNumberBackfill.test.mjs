@@ -2,6 +2,7 @@
 // (functions/src/salesOrder/salesOrderNumberBackfill.ts, salesOrderNumberBackfillEvidence.ts) + operator CLI
 // orchestration (functions/scripts/salesOrderNumberBackfillCli.js). PURE: no Firebase app, no emulator, no
 // network. `Timestamp` is constructed offline. Prerequisite: npm run build.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";

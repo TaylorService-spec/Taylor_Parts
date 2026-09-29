@@ -5,11 +5,10 @@
 // unblock (resolver grants admin.roleAssignment.write, then
 // assignApprovedRole(inventoryCreateExecutor) succeeds; privileged grants
 // still need two people).
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST ?? "127.0.0.1:9099";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" }); // a demo project: the test-safety guard refuses every real one
 const db = admin.firestore();
 const auth = admin.auth();
 const {
@@ -31,10 +30,11 @@ async function assertRejects(promise, ErrorClass, label) { await assert.rejects(
 
 const COMMIT = "d0dad859ca67fbcfc955c41f4713ec4467a7206c";
 const OPERATOR = "infra-operator-1";
-// The emulator app is initialized with projectId "taylor-parts" (line 12), so the
-// confirmed target project passed to the command must match it (cross-project
-// fail-closed guard). A DIFFERENT project id is used only in the mismatch test.
-const PROJECT = "taylor-parts";
+// The emulator app is initialized with the demo projectId "demo-eos-test" (top of file), so the
+// confirmed target project passed to the command must match it (cross-project fail-closed guard).
+// A DIFFERENT project id -- a real, governed one, held purely as data -- is used only in the
+// mismatch test, where it must be refused before any write.
+const PROJECT = "demo-eos-test";
 // Seed a legacy admin: enabled Auth user + users/{uid}.role=admin, NO roleAssignment.
 async function seedLegacyAdmin(email) {
   const u = uid("legacy-admin");
@@ -185,7 +185,7 @@ await check("operator script: dry-run performs ZERO writes (no assignment, no ve
   const u = await seedLegacyAdmin(email);
   const script = fileURLToPath(new URL("../scripts/bootstrapCompatibilityAdmin.js", import.meta.url));
   const run = spawnSync(process.execPath, [script,
-    "--project-id", "taylor-parts", "--confirm-project", "taylor-parts",
+    "--project-id", PROJECT, "--confirm-project", PROJECT,
     "--uid", u, "--operator", OPERATOR, "--email", email, "--commit", COMMIT,
   ], { encoding: "utf8", env: { ...process.env } });
   assert.equal(run.status, 0, run.stderr);
@@ -214,7 +214,7 @@ await check("cross-project fail-closed: confirmed project != runtime project -> 
   const email = `${uid("e")}@test.com`;
   const u = await seedLegacyAdmin(email);
   const k = key(u);
-  // Runtime app is "taylor-parts"; claim a DIFFERENT project.
+  // Runtime app is the demo project; claim a DIFFERENT (real, governed) project.
   await assertRejects(
     bootstrapCompatibilityAdmin({ operatorUid: OPERATOR, projectId: "eos-platform-sandbox", uid: u, expectedEmail: email, provenanceCommit: COMMIT, idempotencyKey: k }),
     InvalidStateError, "project mismatch must fail closed",

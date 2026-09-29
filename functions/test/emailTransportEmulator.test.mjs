@@ -10,7 +10,7 @@
 //   node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore \
 //     --project eos-platform-sandbox --config ../firebase.json
 //   npm run build && node --test test/emailTransportEmulator.test.mjs
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
 
 import { test, before, beforeEach } from "node:test";
@@ -35,7 +35,7 @@ import { createInMemoryVault, forgetAccessToken } from "../lib/inboundWork/provi
 import { createInMemoryAttachmentStore } from "../lib/inboundWork/attachmentCustody.js";
 import { SANDBOX_RECORDS } from "../scripts/fixtures/inboundWorkFixtures.mjs";
 
-admin.initializeApp({ projectId: "eos-platform-sandbox" });
+admin.initializeApp({ projectId: "demo-eos-sandbox" }); // its own demo namespace, as the sandbox id once gave it
 const db = admin.firestore();
 
 const CONNECTION_ID = "tx-conn-m365";

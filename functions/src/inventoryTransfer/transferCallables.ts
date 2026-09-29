@@ -17,6 +17,10 @@ import {
   type TransferCommandCompositionInput,
 } from "./transferCommandComposition.js";
 import { TransferCommandError, type TransferCommandFailureCode } from "./transferOrderTypes.js";
+import {
+  IdempotencyConflictError as LedgerIdempotencyConflictError,
+  MalformedStoredRecordError as LedgerMalformedStoredRecordError,
+} from "../inventoryLedger/operationalMovementTypes.js";
 import { makeResolveTransferPermissionThroughTxn, resolveTransferPartThroughTxn, stageTransferAuditEvent } from "./transferCallableWiring.js";
 import { listMyReceivableTransfers, ReceivableReadError, type ReceivableReadDeps, type ReceivableReadFailure } from "./transferReceivableRead.js";
 
@@ -76,7 +80,7 @@ function validateIdOnlyRequest(data: unknown): Record<string, unknown> {
 }
 
 // -------- sanitized error matrix --------
-function mapTransferError(err: unknown): HttpsError {
+export function mapTransferError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
   if (err instanceof TransferCommandError) {
     const code: FunctionsErrorCode = mapCode(err.code);
@@ -89,6 +93,15 @@ function mapTransferError(err: unknown): HttpsError {
     // origin" from "those are in the same warehouse -- use a relocation". It is a bounded code, never a
     // stored value.
     return new HttpsError(code, message, { code: err.code });
+  }
+  // The transfer commands stage ledger movements, whose errors are the LEDGER's classes, not
+  // TransferCommandError. Unmapped, a same-key/different-movement conflict and a malformed stored row
+  // both surfaced as a bare `internal` (retryable-looking) -- they are governed, permanent refusals.
+  if (err instanceof LedgerIdempotencyConflictError) {
+    return new HttpsError("failed-precondition", "This transfer action is not currently permitted.", { code: "IDEMPOTENCY_CONFLICT" });
+  }
+  if (err instanceof LedgerMalformedStoredRecordError) {
+    return new HttpsError("failed-precondition", "This transfer action is not currently permitted.", { code: "MALFORMED_STORED_RECORD" });
   }
   return new HttpsError("internal", "The transfer action could not be completed.");
 }

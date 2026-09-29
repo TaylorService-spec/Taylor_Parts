@@ -1,0 +1,128 @@
+name: Platform QA Matrices
+
+# Lane L5 (Platform QA) cross-cutting matrices: the five EOS transports held to ONE contract (existence oracle,
+# refusal footprint, audit attribution, auth shape, outage), every manifest persona through the full token path,
+# operating-company binding, the scoped-assignment differential, and the client x server error contract.
+#
+# Each matrix PINS the divergences it measured (see the EXPECTED_* constants), so a regression AND an unrecorded fix
+# both fail here. The paths filter names the matrices' SUBJECTS -- the five transports, the capability / contextual /
+# experience authorities, the scope runtime and the client error mappers -- not only the test files, because a guard
+# whose subject is missing from its paths filter never fires (taylor-parts CI blind spot #4).
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/adminPolicy/**"
+      - "functions/src/eosApi/**"
+      - "functions/src/catalogMaster/**"
+      - "functions/src/eosOps/**"
+      - "functions/src/eosCommercial/**"
+      - "functions/src/eosCrm/**"
+      - "functions/src/eosWorkforce/**"
+      - "functions/src/ownership/**"
+      - "functions/src/crm/**"
+      - "functions/migrations/**"
+      - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
+      - "functions/test/platformQa*"
+      - "field-ops-app-vite/src/services/commercialApiClient.js"
+      - "field-ops-app-vite/src/services/operationsApiClient.js"
+      - "field-ops-app-vite/src/services/workforceApiClient.js"
+      - "field-ops-app-vite/src/services/reorderApiClient.js"
+      - "field-ops-app-vite/test/platformQaClientErrorContract.test.jsx"
+      - ".github/workflows/platform-qa-matrices.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/adminPolicy/**"
+      - "functions/src/eosApi/**"
+      - "functions/src/catalogMaster/**"
+      - "functions/src/eosOps/**"
+      - "functions/src/eosCommercial/**"
+      - "functions/src/eosCrm/**"
+      - "functions/src/eosWorkforce/**"
+      - "functions/src/ownership/**"
+      - "functions/src/crm/**"
+      - "functions/migrations/**"
+      - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
+      - "functions/test/platformQa*"
+      - "field-ops-app-vite/src/services/commercialApiClient.js"
+      - "field-ops-app-vite/src/services/operationsApiClient.js"
+      - "field-ops-app-vite/src/services/workforceApiClient.js"
+      - "field-ops-app-vite/src/services/reorderApiClient.js"
+      - "field-ops-app-vite/test/platformQaClientErrorContract.test.jsx"
+      - ".github/workflows/platform-qa-matrices.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: Cross-transport, persona, operating-company and scope matrices -- real PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: eos
+          POSTGRES_PASSWORD: eos
+          POSTGRES_DB: eos_policy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+
+      - name: Typecheck and build
+        run: npm run build
+        working-directory: functions
+
+      - name: Platform QA matrices (each creates and drops its own database)
+        run: npm run test:platformQa
+        working-directory: functions
+        env:
+          POLICY_TEST_DATABASE_URL: postgres://eos:eos@localhost:5432/eos_policy
+
+  client:
+    name: Client x server error contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install client dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: field-ops-app-vite
+
+      - name: Client error-category mapping vs every status the server can emit (vitest)
+        run: npx vitest run test/platformQaClientErrorContract.test.jsx
+        working-directory: field-ops-app-vite

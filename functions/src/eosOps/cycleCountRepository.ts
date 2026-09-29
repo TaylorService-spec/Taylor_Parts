@@ -75,6 +75,13 @@ import {
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 
 const SCHEMA = "eos_ops";
+
+/**
+ * Anything that can run one statement: the pool, or a client already inside a transaction. The
+ * single-statement functions accept either, so a COMMAND layer can run several of them -- plus its
+ * audit row -- inside ONE transaction it owns (eosOps/cycleCountOperations.ts). Pool callers are unaffected.
+ */
+export type Queryable = Pick<PoolClient, "query">;
 const newId = (prefix: string): string => `${prefix}_${randomUUID()}`;
 
 // The PHYSICAL movement vocabulary, re-exported so existing importers are unaffected. Serialized
@@ -143,16 +150,18 @@ export interface CycleCountLineFullRecord extends CycleCountLineBlindView {
 }
 
 export async function createSheet(
-  pool: Pool,
+  pool: Queryable,
   tenantId: string,
   actorId: string,
   operatingCompanyKey: OperatingCompanyKey,
   location: LocationRef,
+  /** A caller-derived DETERMINISTIC id (idempotent create). Omitted: a fresh random id, exactly as before. */
+  sheetId?: string,
 ): Promise<CycleCountSheetRecord> {
   // Refused HERE as well as by the NOT NULL column, so a caller that omitted it gets the reason
   // rather than a constraint name -- and so no code path can quietly supply a placeholder.
   const companyKey = requireOperatingCompanyKey(operatingCompanyKey);
-  const id = newId("ccs");
+  const id = sheetId ?? newId("ccs");
   await pool.query(
     `INSERT INTO ${SCHEMA}.cycle_count_sheets
        (id, tenant_id, operating_company_key, location_type, location_id, status, created_by, updated_by)
@@ -164,7 +173,7 @@ export async function createSheet(
 
 /** Open a line with its server-computed blind snapshot. The snapshot is never accepted from a caller past this point. */
 export async function openLine(
-  pool: Pool,
+  pool: Queryable,
   tenantId: string,
   actorId: string,
   sheetId: string,
@@ -190,7 +199,7 @@ export async function openLine(
 
 /** THE ONLY READ A COUNTER MAY USE. Structurally cannot return an expected value. */
 export async function readLineForCounter(
-  pool: Pool,
+  pool: Queryable,
   tenantId: string,
   lineId: string,
 ): Promise<CycleCountLineBlindView | null> {
@@ -211,7 +220,7 @@ export async function readLineForCounter(
 
 /** The reviewer/reconcile-path read. Always carries expected* -- there is no partial-review view. */
 export async function readLineForReview(
-  pool: Pool,
+  pool: Queryable,
   tenantId: string,
   lineId: string,
 ): Promise<CycleCountLineFullRecord | null> {
@@ -221,7 +230,7 @@ export async function readLineForReview(
 
 /** Records the observation. NOT an adjustment -- on-hand truth is unchanged by this call. */
 export async function submitCount(
-  pool: Pool,
+  pool: Queryable,
   tenantId: string,
   actorId: string,
   lineId: string,
@@ -283,6 +292,34 @@ export async function reconcileLine(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await reconcileLineInTransaction(client, tenantId, actorId, lineId, decision, reason);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  const result = await selectFull(pool, tenantId, lineId);
+  if (!result) throw new CycleCountRepositoryError("LINE_NOT_FOUND", "cycle count line disappeared after commit");
+  return result;
+}
+
+/**
+ * The same disposition, inside a transaction the CALLER owns (BEGIN already issued; COMMIT/ROLLBACK are
+ * the caller's). The ledger row and the line update still commit together because they share that
+ * transaction -- and a command layer adds its audit row to the same one (eosOps/cycleCountOperations.ts).
+ */
+export async function reconcileLineInTransaction(
+  client: Queryable,
+  tenantId: string,
+  actorId: string,
+  lineId: string,
+  decision: CycleCountReviewDecision,
+  reason: string | null,
+): Promise<CycleCountLineFullRecord> {
+  {
     const line = await selectFull(client, tenantId, lineId);
     if (!line) throw new CycleCountRepositoryError("LINE_NOT_FOUND", "cycle count line not found");
     if (line.status !== "COUNTED") {
@@ -345,24 +382,149 @@ export async function reconcileLine(
     if (rowCount !== 1) {
       throw new CycleCountRepositoryError("STATUS_INVALID", "the line was dispositioned by someone else before this decision could commit");
     }
-
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
   }
-
-  const result = await selectFull(pool, tenantId, lineId);
-  if (!result) throw new CycleCountRepositoryError("LINE_NOT_FOUND", "cycle count line disappeared after commit");
+  const result = await selectFull(client, tenantId, lineId);
+  if (!result) throw new CycleCountRepositoryError("LINE_NOT_FOUND", "cycle count line disappeared mid-transaction");
   return result;
+}
+
+// ════════════════════ sheet lifecycle and reads (the EOS Cycle Count command surface) ════════════════════
+//
+// The sheet/line model the Firestore engine (cycleCount/cycleCountSheetCommand.ts) already runs, over
+// the SAME eos_ops tables: cancel a not-yet-counted line, close a sheet whose every live line is decided,
+// cancel a sheet that has nothing counted (cancelling its open lines with it). Each is one guarded
+// statement set on a Queryable, so the command layer composes them inside its own transaction.
+
+export interface CycleCountSheetFull extends CycleCountSheetRecord {
+  readonly createdBy: string;
+}
+
+/** The sheet row, or null. `forUpdate` locks it for the caller's transaction (one writer per sheet). */
+export async function readSheet(db: Queryable, tenantId: string, sheetId: string, forUpdate = false): Promise<CycleCountSheetFull | null> {
+  const { rows } = await db.query<{
+    id: string; operating_company_key: string; location_type: OpsLocationType; location_id: string;
+    status: CycleCountSheetStatus; created_by: string;
+  }>(
+    `SELECT id, operating_company_key, location_type, location_id, status, created_by
+       FROM ${SCHEMA}.cycle_count_sheets WHERE tenant_id = $1 AND id = $2${forUpdate ? " FOR UPDATE" : ""}`,
+    [tenantId, sheetId],
+  );
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    id: r.id, tenantId, operatingCompanyKey: r.operating_company_key,
+    location: { type: r.location_type, id: r.location_id }, status: r.status, createdBy: r.created_by,
+  };
+}
+
+/** THE line for (sheet, part) -- the schema allows exactly one -- as the FULL record, or null. */
+export async function findLineForPart(db: Queryable, tenantId: string, sheetId: string, partId: string): Promise<CycleCountLineFullRecord | null> {
+  const { rows } = await db.query<{ id: string }>(
+    `SELECT id FROM ${SCHEMA}.cycle_count_lines WHERE tenant_id = $1 AND sheet_id = $2 AND part_id = $3`,
+    [tenantId, sheetId, partId],
+  );
+  return rows[0] ? selectFull(db, tenantId, rows[0].id) : null;
+}
+
+/** Every line of a sheet, FULL records, ordered by part. Callers redact (the blind rule is theirs to apply). */
+export async function listLinesForSheet(db: Queryable, tenantId: string, sheetId: string): Promise<CycleCountLineFullRecord[]> {
+  const { rows } = await db.query<{ id: string }>(
+    `SELECT id FROM ${SCHEMA}.cycle_count_lines WHERE tenant_id = $1 AND sheet_id = $2 ORDER BY part_id, id`,
+    [tenantId, sheetId],
+  );
+  const out: CycleCountLineFullRecord[] = [];
+  for (const r of rows) {
+    const line = await selectFull(db, tenantId, r.id);
+    if (line) out.push(line);
+  }
+  return out;
+}
+
+/** OPEN -> CANCELLED. A counted or decided line is never cancelled. */
+export async function cancelLine(db: Queryable, tenantId: string, actorId: string, lineId: string): Promise<void> {
+  const { rowCount } = await db.query(
+    `UPDATE ${SCHEMA}.cycle_count_lines SET status = 'CANCELLED', updated_by = $3, updated_at = now()
+      WHERE tenant_id = $1 AND id = $2 AND status = 'OPEN'`,
+    [tenantId, lineId, actorId],
+  );
+  if (rowCount !== 1) throw new CycleCountRepositoryError("STATUS_INVALID", "only a line not yet counted can be cancelled");
+}
+
+/** OPEN -> CLOSED, only when every non-cancelled line is RECONCILED or REJECTED (checked in the same statement set). */
+export async function closeSheet(db: Queryable, tenantId: string, actorId: string, sheetId: string): Promise<void> {
+  const { rows } = await db.query<{ undecided: string }>(
+    `SELECT count(*) AS undecided FROM ${SCHEMA}.cycle_count_lines
+      WHERE tenant_id = $1 AND sheet_id = $2 AND status IN ('OPEN', 'COUNTED')`,
+    [tenantId, sheetId],
+  );
+  if (Number(rows[0]?.undecided ?? 0) > 0) {
+    throw new CycleCountRepositoryError("SHEET_STATUS_INVALID", "every line must be reconciled, rejected or cancelled before the sheet closes");
+  }
+  const { rowCount } = await db.query(
+    `UPDATE ${SCHEMA}.cycle_count_sheets SET status = 'CLOSED', closed_by = $3, closed_at = now(), updated_by = $3, updated_at = now()
+      WHERE tenant_id = $1 AND id = $2 AND status = 'OPEN'`,
+    [tenantId, sheetId, actorId],
+  );
+  if (rowCount !== 1) throw new CycleCountRepositoryError("SHEET_STATUS_INVALID", "only an OPEN sheet can be closed");
+}
+
+/** OPEN -> CANCELLED, only while nothing on it has been counted; its OPEN lines are cancelled with it. */
+export async function cancelSheet(db: Queryable, tenantId: string, actorId: string, sheetId: string): Promise<void> {
+  const { rows } = await db.query<{ counted: string }>(
+    `SELECT count(*) AS counted FROM ${SCHEMA}.cycle_count_lines
+      WHERE tenant_id = $1 AND sheet_id = $2 AND status IN ('COUNTED', 'RECONCILED', 'REJECTED')`,
+    [tenantId, sheetId],
+  );
+  if (Number(rows[0]?.counted ?? 0) > 0) {
+    throw new CycleCountRepositoryError("SHEET_STATUS_INVALID", "a sheet with a counted line cannot be cancelled");
+  }
+  await db.query(
+    `UPDATE ${SCHEMA}.cycle_count_lines SET status = 'CANCELLED', updated_by = $3, updated_at = now()
+      WHERE tenant_id = $1 AND sheet_id = $2 AND status = 'OPEN'`,
+    [tenantId, sheetId, actorId],
+  );
+  const { rowCount } = await db.query(
+    `UPDATE ${SCHEMA}.cycle_count_sheets SET status = 'CANCELLED', updated_by = $3, updated_at = now()
+      WHERE tenant_id = $1 AND id = $2 AND status = 'OPEN'`,
+    [tenantId, sheetId, actorId],
+  );
+  if (rowCount !== 1) throw new CycleCountRepositoryError("SHEET_STATUS_INVALID", "only an OPEN sheet can be cancelled");
+}
+
+/**
+ * Sheets whose location rolls up to one of `warehouseIds` (a WAREHOUSE sheet by its own id, a BIN
+ * sheet through its bin's immutable parent). The SCOPE is part of the QUERY: a sheet outside the
+ * caller's warehouses never leaves the database. An empty scope list returns nothing.
+ */
+export async function listSheetsInWarehouses(
+  db: Queryable, tenantId: string, warehouseIds: readonly string[], status: CycleCountSheetStatus | null, limit: number,
+): Promise<CycleCountSheetFull[]> {
+  if (warehouseIds.length === 0) return [];
+  const { rows } = await db.query<{
+    id: string; operating_company_key: string; location_type: OpsLocationType; location_id: string;
+    status: CycleCountSheetStatus; created_by: string;
+  }>(
+    `SELECT s.id, s.operating_company_key, s.location_type, s.location_id, s.status, s.created_by
+       FROM ${SCHEMA}.cycle_count_sheets s
+       LEFT JOIN ${SCHEMA}.bins b ON s.location_type = 'BIN' AND b.tenant_id = s.tenant_id AND b.id = s.location_id
+      WHERE s.tenant_id = $1
+        AND ((s.location_type = 'WAREHOUSE' AND s.location_id = ANY($2::text[]))
+          OR (s.location_type = 'BIN' AND b.warehouse_id = ANY($2::text[])))
+        AND ($3::text IS NULL OR s.status::text = $3)
+      ORDER BY s.created_at DESC, s.id
+      LIMIT $4`,
+    [tenantId, [...warehouseIds], status, limit],
+  );
+  return rows.map((r) => ({
+    id: r.id, tenantId, operatingCompanyKey: r.operating_company_key,
+    location: { type: r.location_type, id: r.location_id }, status: r.status, createdBy: r.created_by,
+  }));
 }
 
 // ════════════════════ internals ════════════════════
 
 async function selectFull(
-  db: Pool | PoolClient,
+  db: Queryable,
   tenantId: string,
   lineId: string,
 ): Promise<CycleCountLineFullRecord | null> {
@@ -392,7 +554,7 @@ async function selectFull(
 
 /** The sheet's governed facts a line inherits: WHETHER it may still change, WHERE, and WHOSE inventory. */
 async function selectSheetAuthority(
-  db: Pool | PoolClient,
+  db: Queryable,
   tenantId: string,
   sheetId: string,
 ): Promise<{ status: CycleCountSheetStatus; location: LocationRef; operatingCompanyKey: OperatingCompanyKey }> {

@@ -168,8 +168,16 @@ test("(F2-regression) the boundary scan reads CODE: a forbidden import fails, th
 test("(F3) capabilities: the Owner V1 ruling -- customer.record.* for every CRM family, governedField.write for governed fields", () => {
   const catalog = readFileSync(join(SRC, "access", "permissionCatalog.ts"), "utf8");
   const used = new Set(crmSources().flatMap((f) => [...strip(readFileSync(f, "utf8")).matchAll(/"([a-z][A-Za-z]*\.[a-z][A-Za-z]*\.[a-z][A-Za-z]*)"/g)].map((m) => m[1])));
-  assert.deepEqual([...used].sort(), CRM_CAPABILITY_IDS);
-  for (const id of used) assert.ok(catalog.includes(`id: "${id}"`), `${id} is not in the permission catalog`);
+  // DQ-022: ownership.handoff.correct (migration 1763683200000) gates the ADMINISTRATIVE handoff sources on an Account.
+  assert.deepEqual([...used].sort(), [...CRM_CAPABILITY_IDS, "ownership.handoff.correct"].sort());
+  // DQ-022: ownership.handoff.correct is PostgreSQL-NATIVE (migration 1763683200000) and deliberately ABSENT from
+  // PERMISSION_CATALOG -- the in-repo admin Role composes the whole catalog, so listing it there would silently grant it
+  // to admin through the seed / Sample Company reconcile. Its holders are an Administration decision.
+  const PG_NATIVE = new Set(["ownership.handoff.correct"]);
+  for (const id of used) {
+    if (PG_NATIVE.has(id)) assert.ok(!catalog.includes(`id: "${id}"`), `${id} must stay out of the permission catalog`);
+    else assert.ok(catalog.includes(`id: "${id}"`), `${id} is not in the permission catalog`);
+  }
   assert.deepEqual({ ...kernel.CRM_CAPABILITIES }, {
     CUSTOMER_RECORD_READ: "customer.record.read", CUSTOMER_RECORD_CREATE: "customer.record.create",
     CUSTOMER_RECORD_UPDATE: "customer.record.update", CUSTOMER_GOVERNED_FIELD_WRITE: "customer.governedField.write",

@@ -16,17 +16,23 @@
 // invoked directly via `.run(request)` against a live Firestore emulator.
 //
 // Prerequisite (also how CI runs it):
-//   firebase emulators:start --only firestore --project taylor-parts
+//   firebase emulators:start --only firestore --project demo-eos-test
 //   (after `npm run build`) node --test test/transitionWorkOrderAuditTrail.test.mjs
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
 const admin = (await import("firebase-admin")).default;
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
+
+// DQ-014: Dispatch now enforces the existing placement invariants (the technician exists and carries a
+// governed status), so every technician these proofs dispatch to is a real fieldops_technicians record.
+async function seedGovernedTechnician(technicianId) {
+  await db.collection("fieldops_technicians").doc(technicianId).set({ status: "available" }, { merge: true });
+}
 
 const { transitionWorkOrder } = await import("../lib/transitionWorkOrder.js");
 
@@ -76,6 +82,8 @@ test("AUDIT TRAIL: Dispatch stages a transitionWorkOrder Audit Event with correc
   await seedWorkOrder(woId, { status: "SCHEDULED" });
 
   const techId = id("tech-audit-dispatch");
+
+  await seedGovernedTechnician(techId);
   const result = await transitionWorkOrder.run(
     callRequest({ workOrderId: woId, action: "Dispatch", assignedTechId: techId }, adminUid),
   );

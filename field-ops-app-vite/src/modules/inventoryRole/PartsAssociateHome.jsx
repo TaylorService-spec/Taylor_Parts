@@ -58,8 +58,9 @@ export default function PartsAssociateHome({ accessVersion } = {}) {
   const context = (
     <ContextBand
       items={[
-        { key: "waiting", label: "Waiting", value: waiting.length },
-        { key: "inProgress", label: "In Progress", value: inProgress.length },
+        // Unknown is not zero: a loading or failed read renders "—", never a measured-looking 0.
+        { key: "waiting", label: "Waiting", value: waitingLoading || waitingError ? null : waiting.length },
+        { key: "inProgress", label: "In Progress", value: inProgressLoading || inProgressError ? null : inProgress.length },
       ]}
     />
   );

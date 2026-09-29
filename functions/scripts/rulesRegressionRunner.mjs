@@ -8,7 +8,7 @@
 //     runner). No test framework, no new heavyweight deps.
 //   - Every path resolves from THIS FILE's location (import.meta.url), never from
 //     the caller's process.cwd().
-//   - Uses ONLY the local Firestore/Auth emulators for project "taylor-parts"
+//   - Uses ONLY the local Firestore/Auth emulators for the demo project "demo-eos-test"
 //     with an explicit ABSOLUTE root firebase.json. It never contacts or writes
 //     production, needs no credentials / service-account / API key / secret, and
 //     never prints tokens, passwords, or fixture document contents (it only
@@ -41,7 +41,10 @@ export const EMULATOR = Object.freeze({
   host: "127.0.0.1",
   firestorePort: envPort(process.env.FIRESTORE_EMULATOR_HOST, 8080),
   authPort: envPort(process.env.FIREBASE_AUTH_EMULATOR_HOST, 9099),
-  projectId: "taylor-parts",
+  // A Firebase demo- project: the emulator runs fully offline for it, and every suite initializes the
+  // Admin SDK for this same id (the test-safety guard refuses any real one), so the rules the emulator
+  // loads for its project are the rules the suites are judged by.
+  projectId: "demo-eos-test",
 });
 
 // The canonical, ORDERED suite list with expected pass counts. Order matters.

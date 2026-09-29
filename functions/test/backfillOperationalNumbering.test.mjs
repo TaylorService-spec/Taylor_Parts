@@ -1,12 +1,12 @@
 // backfillOperationalNumbering.mjs — offline pure-logic tests (guard + planning) plus real Firestore-
 // emulator tests proving dry-run detection, idempotency, and collision rejection end-to-end. Requires the
 // Firestore emulator (127.0.0.1:8080) for the emulator section only; the guard/planning section is pure.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import { Timestamp, FieldValue } from "firebase-admin/firestore";
 
-if (!admin.apps.length) admin.initializeApp({ projectId: "backfill-operational-numbering-test" });
+if (!admin.apps.length) admin.initializeApp({ projectId: "demo-backfill-operational-numbering-test" });
 const db = admin.firestore();
 
 const {

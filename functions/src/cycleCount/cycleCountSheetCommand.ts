@@ -178,25 +178,28 @@ export async function openCycleCountLine(request: unknown, deps: SheetCommandDep
     const now = deps.now();
     if (!(await deps.authorize(txn, actor.id, CYCLE_COUNT_CAPABILITY.create))) throw new UnauthorizedCycleCountError();
     const sheet = await readSheet(txn, deps.db, sheetId);
-    requireOpen(sheet, "open a line");
 
     const part = await deps.resolvePart(txn, partId);
     if (part === null) throw new CycleCountPartInvalidError("part not found");
     if (part.partId !== partId) throw new CycleCountPartInvalidError("resolved part identity incoherent");
+
+    // D5: a repeat open (or a second scan of the same Part) resolves to the SAME line. No second snapshot.
+    // Decided BEFORE the gates on current state (sheet still OPEN, part still ACTIVE): those judge a NEW
+    // line, and a retry of an open that already happened is not one.
+    const existing = await readLine(txn, deps.db, sheetId, partId);
+    if (existing) {
+      if (existing.fingerprint !== fingerprintLine(partId, part.trackingMode as CycleCountTrackingMode)) {
+        throw new CycleCountIdempotencyConflictError("the part's tracking mode changed after its line opened");
+      }
+      return openResponse("replayed", existing);
+    }
+
+    requireOpen(sheet, "open a line");
     if (part.active !== true) throw new CycleCountPartInvalidError("part is not active");
     if (!(CYCLE_COUNT_SUPPORTED_TRACKING_MODES as readonly string[]).includes(part.trackingMode)) {
       throw new CycleCountPartInvalidError("tracking mode not supported (LOT deferred)");
     }
     const trackingMode = part.trackingMode as CycleCountTrackingMode;
-
-    // D5: a repeat open (or a second scan of the same Part) resolves to the SAME line. No second snapshot.
-    const existing = await readLine(txn, deps.db, sheetId, partId);
-    if (existing) {
-      if (existing.fingerprint !== fingerprintLine(partId, trackingMode)) {
-        throw new CycleCountIdempotencyConflictError("the part's tracking mode changed after its line opened");
-      }
-      return openResponse("replayed", existing);
-    }
 
     // Fail closed if the location stopped being countable after the sheet was created.
     if (!(await deps.resolveLocationEligible(txn, sheet.location))) {
@@ -239,6 +242,8 @@ export async function submitCycleCountLine(request: unknown, deps: SheetCommandD
     const now = deps.now();
     if (!(await deps.authorize(txn, actor.id, CYCLE_COUNT_CAPABILITY.submit))) throw new UnauthorizedCycleCountError();
     const sheet = await readSheet(txn, deps.db, sheetId);
+    // (A COUNTED line only exists on an OPEN sheet -- close needs every line disposed and sheet cancel
+    // needs none counted -- so this gate never stands in front of a submit replay.)
     requireOpen(sheet, "submit a count");
     const line = await readLine(txn, deps.db, sheetId, partId);
     if (!line) throw new CycleCountNotFoundError("that part has no line on this sheet -- open it first");
@@ -311,19 +316,25 @@ export async function reconcileCycleCountLine(request: unknown, deps: SheetComma
     const writes: { ref: DocumentReference; data: Record<string, unknown> }[] = [];
     if (!(await deps.authorize(txn, actor.id, CYCLE_COUNT_CAPABILITY.reconcile))) throw new UnauthorizedCycleCountError();
     const sheet = await readSheet(txn, deps.db, sheetId);
-    requireOpen(sheet, "reconcile a line");
     const line = await readLine(txn, deps.db, sheetId, partId);
     if (!line) throw new CycleCountNotFoundError("that part has no line on this sheet");
 
+    // Replay is decided BEFORE the sheet gate: reconciling the last line and then closing the sheet
+    // must not turn a lost-response retry of that reconcile into SHEET_STATUS_INVALID.
     if (line.status === "RECONCILED" || line.status === "REJECTED") {
       // Replay: the decision cannot change, and the evidence it produced must still be there.
       if ((line.status === "REJECTED") !== isReject) throw new CycleCountStatusInvalidError(`line was already ${line.status}; the decision cannot change`);
+      // ...and neither can its reason: a different reason under a "replay" would be silently dropped.
+      if ((line.reconciliationReason ?? null) !== (reason ?? null)) {
+        throw new CycleCountIdempotencyConflictError("line was already decided with a different reason");
+      }
       for (const id of line.ledgerEventIds ?? []) {
         const s = await txn.get(deps.db.collection(INVENTORY_TRANSACTIONS_COLLECTION).doc(id));
         if (!s.exists) throw new CycleCountIntegrityError("a decided line's ledger evidence is missing");
       }
       return decisionResponse("replayed", line, line.ledgerEventIds ?? [], line.status, line.reconciliationReason ?? null);
     }
+    requireOpen(sheet, "reconcile a line");
     if (line.status !== "COUNTED") throw new CycleCountStatusInvalidError(`line is ${line.status}; submit a count first`);
 
     const isSerial = line.trackingMode === "SERIAL";
@@ -401,10 +412,11 @@ export async function cancelCycleCountLine(request: unknown, deps: SheetCommandD
     const now = deps.now();
     if (!(await deps.authorize(txn, actor.id, CYCLE_COUNT_CAPABILITY.cancel))) throw new UnauthorizedCycleCountError();
     const sheet = await readSheet(txn, deps.db, sheetId);
-    requireOpen(sheet, "cancel a line");
     const line = await readLine(txn, deps.db, sheetId, partId);
     if (!line) throw new CycleCountNotFoundError();
+    // Replay first: a cancelled line stays answerable after its sheet is cancelled or closed.
     if (line.status === "CANCELLED") return { outcome: "replayed" as const, sheetId, partId, status: "CANCELLED" as const };
+    requireOpen(sheet, "cancel a line");
     if (line.status !== "OPEN") throw new CycleCountStatusInvalidError(`line is ${line.status}; only a line not yet counted can be cancelled`);
     txn.update(lineRef(deps.db, sheetId, partId), lineCancelFields(line, actor, now));
     deps.stageAudit(txn, { action: "cancelCycleCountLine", actorId: actor.id, sheetId, location: sheet.location, partId });

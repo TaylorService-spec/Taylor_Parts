@@ -20,6 +20,7 @@
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { createPostgresEmployeeAuthority } from "../../employeeIdentity/postgresEmployeeAuthority";
+import { admittedScopeValues, type ScopedHolding } from "../../adminPolicy/assignmentScopeRuntime";
 
 export type CommercialFamily = "opportunity" | "salesAgreement" | "salesOrder";
 
@@ -32,6 +33,16 @@ export const COMMERCIAL_CAPABILITIES = Object.freeze({
   SALES_AGREEMENT_ACCEPT: "salesAgreement.accept",
   SALES_ORDER_WRITE: "salesOrder.write",
 } as const);
+
+/**
+ * DQ-022: an ADMINISTRATIVE handoff source (ADMIN_CORRECTION / CUSTOMER_HANDOFF_REVIEW) needs this in addition to the
+ * record's edit capability. Not one of the Commercial vocabulary keys above (migration 023): it belongs to the ownership
+ * handoff domain shared with the CRM Account (migration 1763683200000).
+ */
+export const OWNERSHIP_HANDOFF_CORRECT_CAPABILITY = "ownership.handoff.correct";
+
+/** DQ-022: the handoff sources that state an administrative act, and so require OWNERSHIP_HANDOFF_CORRECT. */
+export const ADMINISTRATIVE_HANDOFF_SOURCES: ReadonlySet<string> = new Set(["ADMIN_CORRECTION", "CUSTOMER_HANDOFF_REVIEW"]);
 
 /** Owner ruling 2026-09-14. Fixed here; a command cannot be handed a different policy. */
 export const COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1 = Object.freeze({
@@ -46,6 +57,32 @@ export interface CommercialActorContext {
   readonly principalId: string;
   /** Capability KEYS held in this tenant, as resolveOperationalContext computes them. */
   readonly capabilities: ReadonlySet<string>;
+  /**
+   * Capabilities held ONLY within an assignment scope (resolveOperationalContext(...).scopedHeld). Never in
+   * `capabilities`. A Commercial command honours an UNCONDITIONED salesChannel holding against the governing channel of
+   * the record it writes (DQ-020); every other scoped or conditioned holding grants nothing here. Absent = none.
+   */
+  readonly scopedHeld?: readonly ScopedHolding[];
+}
+
+/**
+ * DQ-020 (Controller 2026-09-28): Commercial writes are NOT tenant-wide. A capability held globally reaches every
+ * channel; one held only at salesChannel=X reaches records whose GOVERNING channel is X -- decided exactly the way the
+ * Commercial reads decide it (admittedScopeValues over unconditioned holdings). The governing channel is fixed by the
+ * record's relationship, per operation:
+ *   Opportunity create        the channel it is created in (validated by the builder)
+ *   Opportunity edit/move     its stored channel -- and, when an edit changes the channel, the new one too
+ *   Agreement create/edit/accept  its source Opportunity's stored channel
+ *   Sales Order create        its source Opportunity's channel (direct: the channel it is created in)
+ *   Sales Order transition    its stored channel
+ * A record with no channel admits no scoped holder. The command body MUST decide the channel: a body that returns
+ * without calling `admitChannel` for a non-global actor is refused (fail closed).
+ */
+export interface CommercialWriteScope {
+  /** True when every required capability is held globally; `admitChannel` then admits everything. */
+  readonly global: boolean;
+  /** Refuse OUTSIDE_SALES_CHANNEL_SCOPE unless every required capability reaches `channel`. */
+  admitChannel(channel: string | null | undefined): void;
 }
 
 export type CommercialErrorCategory =
@@ -207,7 +244,15 @@ export async function runCommercialCommand<R extends object>(
   operation: string,
   requiredCapabilities: readonly string[],
   idempotencyKey: unknown,
-  body: (client: PoolClient, now: Date) => Promise<CommercialCommandOutcome<R>>,
+  body: (client: PoolClient, now: Date, scope: CommercialWriteScope) => Promise<CommercialCommandOutcome<R>>,
+  /**
+   * The record the caller's input NAMES (e.g. the Opportunity an edit targets), for commands that act on an existing
+   * record. A committed receipt for the same key is a replay ONLY of a command on that same record: the replay identity
+   * is (tenant, principal, operation, key), so without this a key reused on a DIFFERENT record would return the first
+   * record's result as "replayed" and apply nothing -- the false replay the retired Firestore path closed by scoping its
+   * replay id to the record. Refused IDEMPOTENCY_KEY_REUSED instead.
+   */
+  replayTarget?: { readonly family: CommercialFamily; readonly id: unknown },
 ): Promise<CommercialReplayable<R>> {
   if (!actor || typeof actor.tenantId !== "string" || actor.tenantId.trim() === "" || typeof actor.principalId !== "string" || actor.principalId.trim() === "") {
     throw new CommercialCommandError("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved tenant and principal are required");
@@ -215,10 +260,29 @@ export async function runCommercialCommand<R extends object>(
   if (!(actor.capabilities instanceof Set)) {
     throw new CommercialCommandError("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved capability set is required");
   }
-  const missing = requiredCapabilities.filter((c) => !actor.capabilities.has(c));
+  // Global first (unchanged); a key absent from the flat set may still be held at sales-channel scope (DQ-020).
+  const channelsByCapability = new Map<string, readonly string[]>();
+  for (const c of requiredCapabilities) {
+    if (actor.capabilities.has(c)) continue;
+    const channels = admittedScopeValues(actor.scopedHeld, c, "salesChannel");
+    if (channels.length > 0) channelsByCapability.set(c, channels);
+  }
+  const missing = requiredCapabilities.filter((c) => !actor.capabilities.has(c) && !channelsByCapability.has(c));
   if (missing.length > 0) {
     throw new CommercialCommandError("CAPABILITY_REQUIRED", "FORBIDDEN", `this command requires ${missing.join(", ")}`);
   }
+  let channelDecided = false;
+  const scope: CommercialWriteScope = Object.freeze({
+    global: channelsByCapability.size === 0,
+    admitChannel(channel: string | null | undefined) {
+      channelDecided = true;
+      for (const [capability, channels] of channelsByCapability) {
+        if (typeof channel !== "string" || channel === "" || !channels.includes(channel)) {
+          fail("OUTSIDE_SALES_CHANNEL_SCOPE", "FORBIDDEN", `${capability} is held only for sales channel(s) ${channels.join(", ")}; this record's channel is ${channel ?? "unset"}`);
+        }
+      }
+    },
+  });
   if (typeof idempotencyKey !== "string" || idempotencyKey.trim() === "") {
     throw new CommercialCommandError("IDEMPOTENCY_KEY_REQUIRED", "INVALID_INPUT", "a non-empty idempotency key is required");
   }
@@ -234,12 +298,16 @@ export async function runCommercialCommand<R extends object>(
     await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
       `commercial-command|${actor.tenantId}|${actor.principalId}|${operation}|${keyHash}`,
     ]);
-    const prior = await client.query<{ result: R }>(
-      `SELECT result FROM eos_commercial.command_receipts
+    const prior = await client.query<{ result: R; target_family: string | null; target_id: string | null }>(
+      `SELECT result, target_family, target_id FROM eos_commercial.command_receipts
         WHERE tenant_id = $1 AND principal_id = $2 AND operation = $3 AND idempotency_key_hash = $4`,
       [actor.tenantId, actor.principalId, operation, keyHash],
     );
     if (prior.rows.length === 1) {
+      const receipt = prior.rows[0];
+      if (replayTarget && (receipt.target_family !== replayTarget.family || receipt.target_id !== replayTarget.id)) {
+        fail("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "this idempotency key was already used for a different record; use a new key for a new action");
+      }
       await client.query("COMMIT");
       return { ...prior.rows[0].result, replayed: true };
     }
@@ -251,7 +319,10 @@ export async function runCommercialCommand<R extends object>(
     if (member.rows.length === 0) {
       fail("ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN", "the principal is not an active member of this tenant");
     }
-    const outcome = await body(client, now);
+    const outcome = await body(client, now, scope);
+    if (!scope.global && !channelDecided) {
+      fail("OUTSIDE_SALES_CHANNEL_SCOPE", "FORBIDDEN", "this command did not establish the record's sales channel for a channel-scoped caller");
+    }
     await client.query(
       `INSERT INTO eos_commercial.command_receipts
          (id, tenant_id, principal_id, operation, idempotency_key_hash, target_family, target_id, result)

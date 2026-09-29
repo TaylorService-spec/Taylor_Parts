@@ -7,11 +7,11 @@
 // deliberately granted to NO Role and has NO per-environment activation override -- exactly like
 // inventory.serializedAsset.read at its own introduction -- so the READY/authorized path cannot be
 // driven through the callable itself without a real grant).
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const svc = await import("../lib/inventoryLocation/locationDisplayReadService.js");
 const { __resetRuntimeCapabilityOverridesCacheForTest } = await import("../lib/access/environmentCapabilityOverrides.js");

@@ -10,7 +10,7 @@
 // atomicity, idempotency, and cross-service recovery, not Rules).
 //
 // Prerequisite: run against live Firestore + Auth emulators, e.g.:
-//   firebase emulators:start --only firestore,auth --project taylor-parts
+//   firebase emulators:start --only firestore,auth --project demo-eos-test
 // then, in a second terminal (after `npm run build`):
 //   node functions/test/trustedWriterCommands.test.mjs
 //
@@ -24,9 +24,8 @@
 // STILL EMULATOR-ONLY. Both variables are set unconditionally to a LOCAL default when absent, so
 // the Admin SDK can never fall through to a live project: an unset variable is the dangerous state
 // this guards, and it does not occur.
-process.env.FIRESTORE_EMULATOR_HOST ||= "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import {
@@ -60,7 +59,7 @@ import {
 // The suite now states which environment it is asserting about.
 process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
 
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 const auth = admin.auth();

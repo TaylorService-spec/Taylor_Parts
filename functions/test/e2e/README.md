@@ -41,7 +41,7 @@ That's `npm run build` (compiles `src/` → `lib/`, which is what these tests im
 1. Generates a **temporary, gitignored** `firebase.json` copy (`.e2e-emulator-firebase.json` at the repo
    root) with the Firestore/Auth/hub/logging emulator ports overridden from env vars — never edits the
    real `firebase.json`.
-2. Runs `firebase emulators:exec --only firestore,auth --project eos-platform-sandbox --config
+2. Runs `firebase emulators:exec --only firestore,auth --project demo-eos-e2e --config
    .e2e-emulator-firebase.json "node functions/test/e2e/runAll.mjs"` from the **repo root**, so
    `firestore.rules` resolves from THIS worktree's checked-out branch.
 3. Exits with `runAll.mjs`'s own exit code — 0 only if every file's every `check()` passed. **This is
@@ -61,9 +61,11 @@ To run a single file against an emulator you've already started yourself:
 
 ```
 npm run build
-firebase emulators:start --only firestore,auth --project eos-platform-sandbox
-# in a second terminal:
-node test/e2e/workOrderLifecycleEmulator.test.mjs
+firebase emulators:start --only firestore,auth --project demo-eos-e2e
+# in a second terminal (the test-safety guard refuses to run without these, and refuses any real
+# project id -- see functions/test/support/firebaseTestGuard.cjs):
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+  node test/e2e/workOrderLifecycleEmulator.test.mjs
 ```
 
 ## The pattern, so this becomes a habit and not a one-off

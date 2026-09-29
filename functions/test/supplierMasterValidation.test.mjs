@@ -3,6 +3,7 @@
 // no network -- a plain Node assert test against the compiled lib/ output, matching this repo's
 // pure-logic convention (governedWarehouseValidation.test.mjs). `Timestamp` is constructed offline
 // via firebase-admin/firestore (no initializeApp needed). Prerequisite: `npm run build` in functions/.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
 import {

@@ -12,12 +12,12 @@
 // zero-diff on firestore.rules). This callable uses the Admin SDK, which bypasses Rules by design,
 // exactly like every other trusted read service in this codebase (opportunityReadService.ts,
 // financeReadCallables.ts).
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const reads = await import("../lib/salesOrder/salesOrderReadService.js");
 const { __resetRuntimeCapabilityOverridesCacheForTest } = await import("../lib/access/environmentCapabilityOverrides.js");

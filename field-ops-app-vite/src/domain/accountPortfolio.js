@@ -144,8 +144,19 @@ export const accountLineOfBusinessTone = () => "info";
 export function accountSaveErrorMessage(err) {
   if (err?.blocked) return "Saving is disabled in this mode -- no changes were made.";
   const code = err?.code ?? "";
-  if (code === "permission-denied" || code === "firestore/permission-denied") {
+  // The Firestore-era code, and the governed CRM transport's refusals (eosCrm/accountAuthority.ts, crm/crmWriterState.ts).
+  if (code === "permission-denied" || code === "firestore/permission-denied" || code === "CAPABILITY_REQUIRED"
+      || code === "FORBIDDEN" || code === "ACTOR_NOT_TENANT_MEMBER") {
     return "You do not have permission to save this customer.";
   }
+  const governed = {
+    // DQ-009: a newly selected owner must be a currently eligible Employee.
+    OWNER_NOT_CURRENTLY_ELIGIBLE: "The owner must be an active or contractor employee. Choose a different owner.",
+    OWNER_NOT_FOUND: "That owner is not an employee of this company. Choose a different owner.",
+    OWNER_REQUIRED: "A customer must have an owner.",
+    ACCOUNT_OWNER_CHANGED_SINCE_READ: "Someone changed this customer's owner while you were editing. Reload and try again.",
+    POSTGRES_CRM_WRITER_INACTIVE: "Customer records can't be changed yet in this environment -- nothing was saved.",
+  };
+  if (governed[code]) return governed[code];
   return "Could not save this customer. Please try again.";
 }

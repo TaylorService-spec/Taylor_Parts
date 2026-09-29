@@ -1,18 +1,11 @@
-// Sales Agreement -- transport over the three trusted, capability-gated WRITE callables and the two
-// trusted READS (functions/src/salesAgreement/salesAgreementCallables.ts and
-// salesAgreementReadService.ts). Structure mirrors services/salesOrderCommandClient.js exactly:
-// firebase is imported LAZILY (no import-time initializeApp side effect), and this is the only
-// place that invokes these callables.
-//
-// Never throws. Each method returns { result } on success or { errorStatus } on failure, where
-// errorStatus is the callable's HttpsError `code` (functions/-prefix stripped), or "internal" when
-// the failure carries no usable code. Turning that code into a human message belongs to the domain
-// layer -- this file performs transport only.
 // PASS 11 RETAIL SALES: the Sales Agreement commands and reads moved from the Firebase callables to the governed
 // PostgreSQL Commercial transport (POST /commercial/sales -- functions/src/eosCommercial/commands/
 // salesAgreementCommandService.ts and reads/the server's Sales Agreement read), because the Opportunity they belong to now
 // lives in eos_commercial. Same `{ result } | { errorStatus }` contract; reads return the same { status, salesAgreement }
 // envelope through services/commercialEosAdapters.js. No fallback to the callables.
+// Never throws: { result } on success or { errorStatus } in the callable-era vocabulary the domain layer renders.
+// The ONE remaining Firebase call below (searchProductReferences, the product picker) is the held catalog boundary: it
+// moves when the PostgreSQL catalog authority is activated (Catalog lane), not before.
 import { commercialApiClient } from "./commercialApiClient.js";
 import { legacyErrorStatus, readErrorStatus, toSalesAgreementReadResult } from "./commercialEosAdapters.js";
 

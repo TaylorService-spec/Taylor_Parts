@@ -2,6 +2,7 @@
 // runtime operation-record validation, actor+expected-version-bound idempotency, and full
 // predecessor/successor transition validation. Firestore Timestamps are constructed directly (no
 // initializeApp / emulator needed for the Timestamp value class).
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
 import { OPERATION_STATES, OPERATION_ACTIONS, OPERATION_TARGET_TYPES, ACTION_TARGET_TYPES, isAllowedActionTarget, isAllowedOperationTransition, assertOperationTransition, assertOperationRecordTransition, validateOperationRecord, isSameOperationCommand, isValidOperationTargetId, readTimestamp, compareTimestamps, TIMESTAMP_MIN_SECONDS, TIMESTAMP_MAX_SECONDS } from "../lib/equipmentCompatibility/operations.js";

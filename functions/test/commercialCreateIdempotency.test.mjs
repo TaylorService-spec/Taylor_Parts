@@ -1,7 +1,7 @@
 // Firestore-emulator coverage for commercial create replay.  These persistence helpers sit below the
 // capability gate, so the test proves the transaction invariant without activating dormant capabilities.
-process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import admin from "firebase-admin";
@@ -10,7 +10,7 @@ import { persistCreatedOpportunity } from "../lib/opportunity/opportunityCallabl
 import { buildCreateSalesOrder } from "../lib/salesOrder/salesOrderCommands.js";
 import { persistCreatedSalesOrder } from "../lib/salesOrder/salesOrderCallables.js";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 let sequence = 0;
 const id = (kind) => `${kind}-${Date.now()}-${++sequence}`;

@@ -12,25 +12,26 @@
 // EMULATOR ONLY. Every helper here talks to the Firestore emulator via the Admin SDK. Nothing in
 // this file, or any file that imports it, may run against a live Firebase project -- see
 // functions/test/e2e/README.md for the full harness contract and how to add the next chain.
+import "../../support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import admin from "firebase-admin";
 import { Timestamp } from "firebase-admin/firestore";
 
-// Fallback only -- when this file's importing test is run directly (not through
-// `firebase emulators:exec`, which sets these itself), default to the same
-// 127.0.0.1:8080 / demo project convention every other emulator test in this repo uses.
-// See functions/test/e2e/README.md's "gotchas" section for why these three lines matter:
-// the emulator loads firestore.rules from the CWD's branch, so run this from THIS worktree's root.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? `127.0.0.1:${process.env.E2E_FIRESTORE_PORT ?? "8080"}`;
-// GCLOUD_PROJECT deliberately defaults to the SANDBOX project id, not "taylor-parts" (which
+// The emulator address comes ONLY from the caller (`firebase emulators:exec` sets it); the guard
+// imported above refuses to run without it. See functions/test/e2e/README.md's "gotchas" section: the
+// emulator loads firestore.rules from the CWD's branch, so run this from THIS worktree's root.
+//
+// GCLOUD_PROJECT is set to the SANDBOX project id as DATA, not "taylor-parts" (which
 // environmentCapabilityOverrides.ts's embedded registry maps to role:"production" -> an
 // unconditional EMPTY override set). Using the sandbox id here is what lets this harness exercise
 // setWorkOrderPartsPlan's real governed capability gate (workOrder.parts.plan, catalog active:false,
-// sandbox-activated) through its REAL resolveEffectiveAccess() path -- not a test-only bypass -- while
-// still being pure emulator-local Firestore data with no path to any live project.
-process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT ?? "eos-platform-sandbox";
+// sandbox-activated) through its REAL resolveEffectiveAccess() path -- not a test-only bypass. It is
+// never the SDK's project: the Admin SDK is initialized for a demo- project, so the emulator data it
+// writes has no path to any live project.
+process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
+export const E2E_SDK_PROJECT = "demo-eos-e2e";
 
 if (admin.apps.length === 0) {
-  admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT });
+  admin.initializeApp({ projectId: E2E_SDK_PROJECT });
 }
 
 export const db = admin.firestore();

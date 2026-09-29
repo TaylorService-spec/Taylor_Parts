@@ -265,6 +265,23 @@ describe("Transfer scan (a read failure is not an empty warehouse)", () => {
     expect(alert.textContent).not.toMatch(/no transfers are waiting/i);
     vi.doUnmock("../src/hooks/useTransferOrders");
   });
+
+  it("a CAPPED read whose listed slice holds nothing open does not claim nothing is waiting", async () => {
+    vi.resetModules();
+    vi.doMock("../src/hooks/useTransferOrders", () => ({
+      useTransferOrders: () => ({
+        loading: false, error: null, transferOrdersTruncated: true,
+        transferOrderDocs: [{ transferOrderId: "TO-OLD", status: "COMPLETED", partId: "P", quantity: 1, origin: WH1, destination: WH2 }],
+      }),
+    }));
+    const { default: Fresh } = await import("../src/modules/scan/TransferScan.jsx?truncated");
+    render(<Fresh />);
+    const text = document.body.textContent;
+    expect(text).not.toMatch(/No transfers are waiting to be sent or received/);
+    expect(text).toMatch(/None of the listed transfers is waiting/);
+    expect(text).toMatch(/Not every transfer order could be listed/);
+    vi.doUnmock("../src/hooks/useTransferOrders");
+  });
 });
 
 // ────────────────────────────────────────────── warehouse ↔ truck handoff (Phase O)

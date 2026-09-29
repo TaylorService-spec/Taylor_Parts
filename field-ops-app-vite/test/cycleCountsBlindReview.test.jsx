@@ -80,3 +80,26 @@ describe("Cycle Counts workspace", () => {
     expect(screen.queryByText(/no counts here/i)).toBeNull();
   });
 });
+
+describe("the landing summary counts only what it read", () => {
+  it("OPEN, fully read: an exact active count", async () => {
+    render(<CycleCounts deps={{ cycleCountClient: client() }} />);
+    await screen.findByRole("button", { name: /A01-003/ });
+    expect(document.body.textContent).toMatch(/1 active count(?!s)/);
+    expect(document.body.textContent).not.toMatch(/At least/);
+  });
+  it("OPEN with more pages: a lower bound, never a total", async () => {
+    render(<CycleCounts deps={{ cycleCountClient: client({ listCycleCountSheets: vi.fn().mockResolvedValue({ sheets: [SHEET], nextCursor: "c2" }) }) }} />);
+    await screen.findByRole("button", { name: /A01-003/ });
+    expect(document.body.textContent).toMatch(/At least 1 active count/);
+  });
+  it("CLOSED filter: open sheets were never read, so no '0 active counts'", async () => {
+    const closed = { ...SHEET, sheetId: "ccs_2", status: "CLOSED" };
+    const c = client({ listCycleCountSheets: vi.fn().mockResolvedValue({ sheets: [closed], nextCursor: null }) });
+    render(<CycleCounts deps={{ cycleCountClient: c }} />);
+    await screen.findByRole("button", { name: /A01-003/ });
+    await act(async () => { fireEvent.change(screen.getByLabelText("Show counts"), { target: { value: "CLOSED" } }); });
+    await screen.findByRole("button", { name: /A01-003/ });
+    expect(document.body.textContent).not.toMatch(/active count/);
+  });
+});

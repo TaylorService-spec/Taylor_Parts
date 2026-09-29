@@ -5,12 +5,12 @@
 // only the query shape (a real server-side accountId `where` clause, bounded) is new. Reuses
 // projectSalesOrder() -- the SAME projection function getSalesOrderContext uses -- so PR #991's pricing
 // exclusion (no unitPrice) cannot leak through a second code path; asserted directly below.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const reads = await import("../lib/salesOrder/salesOrderReadService.js");
 const { __resetRuntimeCapabilityOverridesCacheForTest } = await import("../lib/access/environmentCapabilityOverrides.js");

@@ -51,6 +51,7 @@ import { execFileSync } from "node:child_process";
 import { MARKER_FIELD, LEGACY_CERTIFICATION_PATTERNS } from "./certificationWorld/manifest.mjs";
 import { buildWorld } from "./certificationWorld/build.mjs";
 import { writeRecords } from "./certificationWorld/seedWrite.mjs";
+import { assertFirestoreCrmWriterOpen } from "../lib/crm/crmWriterState.js";
 import { classifyWorld, WORLD_STATE, SEED_POLICY } from "./certificationWorld/verify.mjs";
 import { STATE_COLLECTION, STATE_DOC_ID, VOLATILE_FIELDS, worldFingerprint } from "./certificationWorld/state.mjs";
 
@@ -453,6 +454,9 @@ async function main() {
   const env = (registry.environments || []).find((e) => e?.firebase?.projectId === args.projectId);
   console.log("certification world :: " + args.mode + " :: " + (env?.id ?? "unknown") + " (" + args.projectId + ", role=" + target.role + ")");
   console.log(describeTarget(target));
+  // CRM cutover writer freeze (functions/src/crm/crmWriterState.ts): seed and reset write/delete accounts, locations and
+  // contacts. Against any project but the (separately frozen) certification world they refuse while CRM is not OPEN.
+  if (args.mode !== "verify" && args.projectId !== "eos-platform-certification") assertFirestoreCrmWriterOpen("crm.certificationWorldWrite");
 
   initializeApp({ credential: applicationDefault(), projectId: args.projectId });
   const db = getFirestore();

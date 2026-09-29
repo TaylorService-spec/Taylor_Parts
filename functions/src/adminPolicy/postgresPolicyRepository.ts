@@ -590,6 +590,28 @@ export class PostgresPolicyRepository implements PolicyRepository {
     );
   }
 
+  async getLinkedEmployeeAccessFact(tenantId: TenantId, principalId: string) {
+    // The active link (at most one per Principal per tenant: employee_principal_links_one_active_per_principal), and
+    // the linked Employee's status IN THE SAME TENANT. A LEFT JOIN, so a link to an Employee that does not resolve in
+    // this tenant is reported (employmentStatus null) rather than silently read as "not linked".
+    const rows = await this.many(
+      `SELECT l.employee_id, e.employment_status::text AS employment_status
+         FROM ${SCHEMA}.employee_principal_links l
+         LEFT JOIN eos_workforce.employees e ON e.tenant_id = l.tenant_id AND e.id = l.employee_id
+        WHERE l.tenant_id = $1 AND l.principal_id = $2 AND l.status = 'active'`,
+      [tenantId, principalId],
+      (r) => ({
+        employeeId: String(r.employee_id),
+        employmentStatus: typeof r.employment_status === "string" ? r.employment_status : null,
+      }),
+    );
+    if (rows.length === 0) return null;
+    // TWO active links for one Principal is unrepresentable in a governed database (partial unique index); if it is
+    // ever observed, the fact is AMBIGUOUS and fails closed -- never "pick one".
+    if (rows.length > 1) return { employeeId: rows.map((r) => r.employeeId).sort().join(","), employmentStatus: null, ambiguous: true };
+    return rows[0];
+  }
+
   getAccessVersion(tenantId: TenantId, principalId: string) {
     return this.one(
       `SELECT * FROM ${SCHEMA}.principal_access_versions WHERE tenant_id = $1 AND principal_id = $2`,

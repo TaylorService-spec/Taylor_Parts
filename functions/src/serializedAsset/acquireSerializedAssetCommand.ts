@@ -215,22 +215,8 @@ export async function acquireSerializedAsset(request: unknown, deps: AcquireComm
       throw new AcquireCommandError("PERMISSION_DENIED", "actor is not authorized to acquire serialized assets");
     }
 
-    // ---- 2. THE PART. Serialized only -- a quantity part has no individual units to acquire.
-    const part = await deps.resolvePart(txn, req.partId);
-    if (part === null) throw new AcquireCommandError("PART_NOT_FOUND", `part ${req.partId} not found`);
-    if (part.active !== true) throw new AcquireCommandError("PART_NOT_FOUND", `part ${req.partId} is not active`);
-    if (part.trackingMode !== "SERIAL") {
-      throw new AcquireCommandError("PART_NOT_SERIALIZED",
-        `part ${req.partId} is ${part.trackingMode}; only SERIAL parts have individually identified units`);
-    }
-
-    // ---- 3. CUSTODY. A real, governed, ACTIVE company location -- never a customer's.
-    if (!(await deps.resolveLocationActive(txn, req.locationId))) {
-      throw new AcquireCommandError("LOCATION_INVALID",
-        `${req.locationId} is not an active governed company location`);
-    }
-
-    // ---- 4. THE UNIT. Existing is a replay if the intent matches, a conflict if it does not.
+    // ---- 2. THE UNIT, FIRST (identity -> replay -> gates). Existing is a replay if the intent matches, a
+    //         conflict if it does not; the part and custody gates below judge only a NEW acquisition.
     const ref = deps.db.collection(SERIALIZED_ASSETS_COLLECTION).doc(assetId);
     const snap = await txn.get(ref);
     if (snap.exists) {
@@ -245,6 +231,13 @@ export async function acquireSerializedAsset(request: unknown, deps: AcquireComm
         throw new AcquireCommandError("ALREADY_EXISTS_CONFLICT",
           "this unit already exists from a receipt; acquisition must not overwrite purchasing history");
       }
+      // THE SAME KEY is the same act: a different provenance note under it is a different request, not
+      // a replay. (Location is compared below against where the unit is NOW; the acquisition location
+      // is not stored separately, so a retry after the unit has since moved is still refused -- a
+      // recorded limitation, not something this block can infer.)
+      if (stored.acquisitionIdempotencyKey === req.idempotencyKey && (stored.acquisitionNote ?? null) !== req.provenanceNote) {
+        throw new AcquireCommandError("ALREADY_EXISTS_CONFLICT", "this request id already acquired this unit with a different note");
+      }
       if (stored.acquisitionReason !== req.reason || existing.currentLocationId !== req.locationId) {
         throw new AcquireCommandError("ALREADY_EXISTS_CONFLICT",
           `this unit was already acquired as ${String(stored.acquisitionReason)} at ${existing.currentLocationId}`);
@@ -258,6 +251,21 @@ export async function acquireSerializedAsset(request: unknown, deps: AcquireComm
         state: existing.inventoryState,
         reason: req.reason,
       };
+    }
+
+    // ---- 3. THE PART. Serialized only -- a quantity part has no individual units to acquire.
+    const part = await deps.resolvePart(txn, req.partId);
+    if (part === null) throw new AcquireCommandError("PART_NOT_FOUND", `part ${req.partId} not found`);
+    if (part.active !== true) throw new AcquireCommandError("PART_NOT_FOUND", `part ${req.partId} is not active`);
+    if (part.trackingMode !== "SERIAL") {
+      throw new AcquireCommandError("PART_NOT_SERIALIZED",
+        `part ${req.partId} is ${part.trackingMode}; only SERIAL parts have individually identified units`);
+    }
+
+    // ---- 4. CUSTODY. A real, governed, ACTIVE company location -- never a customer's.
+    if (!(await deps.resolveLocationActive(txn, req.locationId))) {
+      throw new AcquireCommandError("LOCATION_INVALID",
+        `${req.locationId} is not an active governed company location`);
     }
 
     // ---- 5. CREATE. Same governed shape receipt produces, with acquisition provenance instead of a

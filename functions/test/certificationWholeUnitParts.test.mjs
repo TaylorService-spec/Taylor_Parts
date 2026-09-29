@@ -16,6 +16,7 @@
 //
 // So this runs the product's own validator and the product's own resolver. The mutations below
 // exist because a test that only asserts the happy path proves the fixture agrees with itself.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

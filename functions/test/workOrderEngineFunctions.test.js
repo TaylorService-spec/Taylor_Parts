@@ -22,20 +22,19 @@
 // call below).
 //
 // Prerequisite: run against a live Firestore emulator, e.g.:
-//   firebase emulators:start --only firestore --project taylor-parts
+//   firebase emulators:start --only firestore --project demo-eos-test
 // then, in a second terminal (after `npm run build`):
 //   node --test test/workOrderEngineFunctions.test.js
 //
 // Never touches the live "taylor-parts" project.
 "use strict";
 
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-
+require("./support/firebaseEmulatorGuard.cjs"); // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const admin = require("firebase-admin");
 
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 
@@ -253,6 +252,8 @@ test("transitionWorkOrder: admin MarkReady succeeds, status becomes READY_TO_DIS
 });
 
 test("transitionWorkOrder: admin Dispatch succeeds, sets assignedTechId and dispatchedAt", async () => {
+  // DQ-014: Dispatch enforces the existing invariant that the technician exists with a governed status.
+  await db.collection("fieldops_technicians").doc("tech-dispatch-target").set({ status: "available" }, { merge: true });
   const adminUid = uid("two-admin-dispatch-happy");
   await seedUser(adminUid, "admin");
   const woId = uid("wo-dispatch-happy");

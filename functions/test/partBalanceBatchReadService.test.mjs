@@ -29,7 +29,32 @@ import {
 // stub that returned rows and ignored the queries would pass every value assertion below while
 // still issuing one read per part.
 
-function fakeDb({ ledger = [], warehouses = [], purchaseOrders = [], receipts = {} } = {}) {
+// Shorthand ledger rows in the tests below are turned into STORED operational records -- exactly what
+// the governed writer stores -- because the balance read now fails closed on a row it cannot read
+// (Controller ruling DQ-019). Legacy WO rows (RESERVED/RELEASED/CONSUMED) and deliberately bogus types
+// pass through unchanged, so they exercise the legacy path and the fail-closed path respectively.
+const { serializeOperationalMovement, fingerprintMovement } = await import("../lib/inventoryLedger/operationalMovementRepository.js");
+const { OPERATIONAL_MOVEMENT_TYPES, MOVEMENT_DIRECTION } = await import("../lib/inventoryLedger/operationalMovementTypes.js");
+const COUNTERPARTY_TYPES = new Set(["TRANSFER_OUT", "TRANSFER_IN", "RELOCATION_OUT", "RELOCATION_IN"]);
+const SOURCE_TYPE = { RECEIVED: "RECEIVING_ORDER", TRANSFER_OUT: "TRANSFER_ORDER", TRANSFER_IN: "TRANSFER_ORDER", ADJUSTED: "ADJUSTMENT", SCRAPPED: "SCRAP", RETURNED: "RMA", WORK_ORDER_CONSUMPTION: "WORK_ORDER", RELOCATION_OUT: "STOCK_RELOCATION", RELOCATION_IN: "STOCK_RELOCATION" };
+let storedSeq = 0;
+function asStored(r) {
+  if (!OPERATIONAL_MOVEMENT_TYPES.includes(r.type) || !r.location) return r;
+  storedSeq += 1;
+  const trackingMode = r.trackingMode ?? "NONE";
+  const value = {
+    type: r.type, direction: MOVEMENT_DIRECTION[r.type], partId: r.partId, trackingMode,
+    location: r.location, quantity: trackingMode === "SERIAL" ? 1 : r.quantity,
+    sourceObject: { type: SOURCE_TYPE[r.type], id: `src-${storedSeq}` }, idempotencyKey: `k-${storedSeq}`,
+    actor: { kind: "USER", id: "u-test" }, occurredAt: 1_700_000_000_000,
+    ...(trackingMode === "SERIAL" ? { serialNo: `SN-${storedSeq}` } : {}),
+    ...(COUNTERPARTY_TYPES.has(r.type) ? { counterpartyLocation: { type: "WAREHOUSE", locationId: `elsewhere-${storedSeq}` } } : {}),
+  };
+  return serializeOperationalMovement(value, new Date(1_700_000_000_000), fingerprintMovement(value));
+}
+
+function fakeDb({ ledger: rawLedger = [], warehouses = [], purchaseOrders = [], receipts = {} } = {}) {
+  const ledger = rawLedger.map(asStored);
   const calls = [];
   const snap = (docs) => ({ docs: docs.map((d) => ({ id: d.id, data: () => d.data ?? d })) });
 
@@ -307,15 +332,21 @@ test("a COMPLETED transfer conserves company-owned stock and moves the warehouse
   assert.equal(total, balance.onHand.value, "the breakdown must add up to its own total");
 });
 
-test("RETURN INTAKE alone does not restock", async () => {
-  // Intake records that something came back. It does not assert the unit is sellable, so it must not
-  // move availability — inferring physical availability from a Return record is how a damaged unit
-  // gets promised to the next customer.
+test("a ledger row of a type no governed writer produces (RETURN_INTAKE) gives the part NO answer (DQ-019)", async () => {
+  // Return intake writes `inventory_returns`, never the ledger (scannerEndToEndContract proves a return
+  // never restocks). A RETURN_INTAKE-typed ledger row is therefore not a movement this system wrote: it
+  // used to be silently ignored and the part reported 5. Under DQ-019 a row the reader cannot read
+  // refuses that part's balance -- omitted, reported by the callable as unresolved -- never a figure.
   const withIntake = [
     { partId: "PRT-R", type: "RECEIVED", quantity: 5, location: { type: "WAREHOUSE", locationId: "wh-main" } },
     { partId: "PRT-R", type: "RETURN_INTAKE", quantity: 3, location: { type: "WAREHOUSE", locationId: "wh-main" } },
+    { partId: "PRT-OK", type: "RECEIVED", quantity: 2, location: { type: "WAREHOUSE", locationId: "wh-main" } },
   ];
   const db = fakeDb({ ledger: withIntake, warehouses: WAREHOUSES });
-  const [balance] = await readPartBalances(db, ["PRT-R"], new Map([["PRT-R", false]]));
-  assert.equal(balance.onHand.value, 5, "intake alone must leave availability unchanged");
+  const balances = await readPartBalances(db, ["PRT-R", "PRT-OK"], new Map([["PRT-R", false], ["PRT-OK", false]]));
+  assert.deepEqual(balances.map((b) => b.partId), ["PRT-OK"], "only the readable part is answered");
+  assert.equal(balances[0].onHand.value, 2);
+  const { readPartBalancesWithIntegrity } = await import("../lib/inventory/partBalanceBatchReadService.js");
+  const withIntegrity = await readPartBalancesWithIntegrity(fakeDb({ ledger: withIntake, warehouses: WAREHOUSES }), ["PRT-R", "PRT-OK"], new Map([["PRT-R", false], ["PRT-OK", false]]));
+  assert.deepEqual(withIntegrity.ledgerUnavailablePartIds, ["PRT-R"], "the reason is NAMED, not folded into 'unresolved'");
 });

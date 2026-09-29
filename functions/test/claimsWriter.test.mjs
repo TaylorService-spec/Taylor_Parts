@@ -14,14 +14,14 @@
 // @firebase/rules-unit-testing.
 //
 // Prerequisite: run against a live Auth emulator, e.g.:
-//   firebase emulators:start --only auth --project taylor-parts
+//   firebase emulators:start --only auth --project demo-eos-test
 // then, in a second terminal (after `npm run build`):
 //   node functions/test/claimsWriter.test.mjs
 //
 // Read/write only against the emulator (FIREBASE_AUTH_EMULATOR_HOST
 // below) -- never touches the live "taylor-parts" project.
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import {
@@ -30,8 +30,8 @@ import {
 } from "../lib/access/claimsWriter.js";
 import { CompactClaimsValidationError } from "../lib/access/compactClaims.js";
 
-const PROJECT_ID = "taylor-parts";
-const AUTH_HOST = "http://127.0.0.1:9099";
+const PROJECT_ID = "demo-eos-test";
+const AUTH_HOST = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`; // the caller's emulator (the guard requires it)
 
 admin.initializeApp({ projectId: PROJECT_ID });
 const auth = admin.auth();

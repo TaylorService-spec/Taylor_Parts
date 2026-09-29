@@ -21,8 +21,8 @@
 //
 // A unit that arrived by RECEIPT must never be rewritten as acquired: that would erase real
 // purchasing history, and it is the one failure here that is silent if it is not asserted.
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 process.env.GCLOUD_PROJECT = "eos-platform-sandbox";   // activates inventory.serializedAsset.acquire
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
 import assert from "node:assert/strict";
 import admin from "firebase-admin";

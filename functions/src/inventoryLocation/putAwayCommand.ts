@@ -65,6 +65,8 @@ export const PLACEMENT_RECORD_CAPABILITY = "inventory.placement.record";
 
 export class PlacementInvalidError extends Error {}
 export class PlacementUnauthorizedError extends Error {}
+/** The idempotency key was already used for a DIFFERENT stow (another bin, part, quantity, serial set, pick or note). */
+export class PlacementIdempotencyConflictError extends Error {}
 export class PlacementBinError extends Error {
   constructor(public readonly resolution: string) { super(resolution); }
 }
@@ -287,6 +289,48 @@ export async function recordPutAway(request: unknown, deps: PutAwayDeps): Promis
       throw new PlacementUnauthorizedError();
     }
 
+    // REPLAY IS DECIDED FIRST, before any gate on CURRENT state. A committed stow whose response was
+    // lost must replay even if the bin has since been deactivated or the serial has moved on: those
+    // gates judge a NEW placement, and a retry is not one. The placement ids derive from the key and
+    // the serial/part alone, so they are known before the bin is resolved.
+    //
+    // ONE KEY, ONE STOW. A stored placement under this key that disagrees with the request -- another
+    // bin, part, quantity, pick or note -- is an idempotency CONFLICT, never a replay (which would
+    // report a stow that did not happen) and never a top-up. And because a stow is written in ONE
+    // transaction, a key that holds SOME of this request's placements but not all was used for a
+    // different serial set: that is a conflict too, not a half-written retry to complete.
+    const serialsForId = req.serialNumbers ?? [];
+    const probeIds = serialsForId.length > 0
+      ? serialsForId.map((serialNo) => derivePlacementId(req.idempotencyKey, serialNo))
+      : [derivePlacementId(req.idempotencyKey, req.partId)];
+    const probes = await Promise.all(probeIds.map((id) => txn.get(deps.db.collection(BIN_PLACEMENTS_COLLECTION).doc(id))));
+    const present = probes.filter((snap) => snap.exists);
+    if (present.length > 0) {
+      if (present.length !== probes.length) throw new PlacementIdempotencyConflictError("partial_key_reuse");
+      let storedBinCode: string | null = null;
+      for (const snap of probes) {
+        const d = snap.data() ?? {};
+        const same = d.idempotencyKey === req.idempotencyKey
+          && d.warehouseId === req.warehouseId
+          && d.partId === req.partId
+          && (req.binId !== undefined ? d.binId === req.binId : d.binCode === req.binCode)
+          && (d.pickedForWorkOrderId ?? null) === (req.pickedForWorkOrderId ?? null)
+          && (d.note ?? null) === (req.note ?? null)
+          && (serialsForId.length > 0 ? d.quantity === 1 : (d.serialNo ?? null) === null && d.quantity === req.quantity);
+        if (!same) throw new PlacementIdempotencyConflictError("different_stow");
+        storedBinCode = typeof d.binCode === "string" ? d.binCode : storedBinCode;
+      }
+      return {
+        outcome: "replayed" as const,
+        placementIds: probeIds,
+        warehouseId: req.warehouseId,
+        binCode: storedBinCode ?? (req.binCode as string),
+        partId: req.partId,
+        quantity: serialsForId.length > 0 ? null : (req.quantity ?? 0),
+        serialNumbers: serialsForId,
+      };
+    }
+
     // THE BIN MUST BE REAL, USABLE, AND AT THIS WAREHOUSE — read inside the transaction, so a bin
     // retired mid-stow cannot be stowed into.
     //
@@ -354,26 +398,9 @@ export async function recordPutAway(request: unknown, deps: PutAwayDeps): Promis
       actorId: deps.actor.id,
     });
 
-    const existing = await Promise.all(
-      entries.map((e) => txn.get(deps.db.collection(BIN_PLACEMENTS_COLLECTION).doc(e.id))),
-    );
-    const allPresent = existing.every((s) => s.exists);
-    if (allPresent) {
-      return {
-        outcome: "replayed" as const,
-        placementIds: entries.map((e) => e.id),
-        warehouseId: req.warehouseId,
-        binCode,
-        partId: req.partId,
-        quantity: serials.length > 0 ? null : (req.quantity ?? 0),
-        serialNumbers: serials,
-      };
-    }
-
-    entries.forEach((e, i) => {
-      // A partially-written retry completes rather than conflicting: the ids are derived, so writing
-      // the missing half produces exactly the record a clean run would have.
-      if (!existing[i].exists) txn.create(deps.db.collection(BIN_PLACEMENTS_COLLECTION).doc(e.id), e.data);
+    // None of these ids exists (the probe above decided replay/conflict), so every entry is new.
+    entries.forEach((e) => {
+      txn.create(deps.db.collection(BIN_PLACEMENTS_COLLECTION).doc(e.id), e.data);
     });
 
     return {

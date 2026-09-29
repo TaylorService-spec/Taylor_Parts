@@ -3,11 +3,11 @@
 // (127.0.0.1:8080). Imports the compiled ../lib output. The server-derived actor is TRUSTED command
 // context (deps.actor), never in the untrusted request. Authorization + audit are injected seams.
 // Never touches production. Prerequisite: npm run build; emulator running (npm run test:warehouseStatusWriter).
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import { Timestamp } from "firebase-admin/firestore";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { FieldValue } = admin.firestore;
 
@@ -55,7 +55,7 @@ function makeDeps(actorId, over = {}) {
 }
 const read = async (id) => (await db.collection("warehouses").doc(id).get()).data();
 // A SEPARATE Firestore connection used to mutate a grant mid-transaction (commit-time revocation).
-const revoker = admin.initializeApp({ projectId: "taylor-parts" }, "revoker").firestore();
+const revoker = admin.initializeApp({ projectId: "demo-eos-test" }, "revoker").firestore();
 const auditCount = async (id) => (await db.collection("warehouse_audit_test").where("warehouseId", "==", id).get()).size;
 
 // ---- CREATE ---------------------------------------------------------------------------------------

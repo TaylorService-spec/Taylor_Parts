@@ -20,22 +20,20 @@
 // Prerequisite: a live Firestore + Auth emulator pair loaded from THIS worktree's firebase.json /
 // firestore.rules (the emulator loads Rules from the config's CWD -- run it from the repo root of the
 // branch under test), e.g. from the repo root:
-//   node functions/node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore,auth --project taylor-parts
+//   node functions/node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore,auth --project demo-eos-test
 // then:
 //   node functions/test/equipmentCompatibilityEmulator.test.mjs
 // Emulator-only: it never touches the live "taylor-parts" project.
 "use strict";
 
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
-
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import { Timestamp } from "firebase-admin/firestore";
 
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 const FIRESTORE_HOST = `http://${process.env.FIRESTORE_EMULATOR_HOST}`;
-const AUTH_HOST = "http://127.0.0.1:9099";
+const AUTH_HOST = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`;
 const DOC_BASE = `${FIRESTORE_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 
 admin.initializeApp({ projectId: PROJECT_ID });

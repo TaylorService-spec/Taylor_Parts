@@ -118,7 +118,15 @@ function SharedTransfers({ deps }) {
     : live.error === "permission-denied"
       ? "You are not authorized to see transfer orders."
       : "Transfer orders could not be loaded, so none can be scanned right now.";
-  return <TransferFlow deps={deps} orders={live.transferOrderDocs} loading={live.loading} failureText={failureText} />;
+  // The shared read is CAPPED. When the cap is hit, the listed slice is not the whole set, and an empty
+  // slice must not be presented as "no transfers are waiting".
+  return (
+    <TransferFlow
+      deps={deps} orders={live.transferOrderDocs} loading={live.loading} failureText={failureText}
+      more={live.transferOrdersTruncated === true}
+      moreText="Not every transfer order could be listed here, so some waiting transfers may not appear."
+    />
+  );
 }
 
 /** Why the truck list could not be shown -- each its own sentence, never "nothing incoming". */
@@ -152,7 +160,7 @@ function MyTruckTransfers({ deps }) {
   );
 }
 
-function TransferFlow({ deps, orders, loading = false, failureText = null, onRetry, heading, emptyText, more = false, onReturn }) {
+function TransferFlow({ deps, orders, loading = false, failureText = null, onRetry, heading, emptyText, more = false, moreText, onReturn }) {
   const [selectedId, setSelectedId] = useState(null);
   const order = useMemo(
     () => (orders ?? []).find((o) => (o.transferOrderId ?? o.id) === selectedId) ?? null,
@@ -162,7 +170,7 @@ function TransferFlow({ deps, orders, loading = false, failureText = null, onRet
     return (
       <TransferPicker
         orders={orders} loading={loading} failureText={failureText} onRetry={onRetry}
-        heading={heading} emptyText={emptyText} more={more} onPick={setSelectedId}
+        heading={heading} emptyText={emptyText} more={more} moreText={moreText} onPick={setSelectedId}
       />
     );
   }
@@ -170,7 +178,7 @@ function TransferFlow({ deps, orders, loading = false, failureText = null, onRet
 }
 
 /** Which transfer are you standing in front of? */
-function TransferPicker({ orders, loading, failureText, onRetry, heading, emptyText, more, onPick }) {
+function TransferPicker({ orders, loading, failureText, onRetry, heading, emptyText, more, moreText, onPick }) {
   if (loading) return <p className="fo-muted" role="status">Loading transfers…</p>;
   if (failureText) {
     return (
@@ -185,13 +193,17 @@ function TransferPicker({ orders, loading, failureText, onRetry, heading, emptyT
     <>
       {heading && <p className="fo-scan__kind">{heading}</p>}
       {open.length === 0 ? (
-        <p className="fo-muted">{emptyText ?? "No transfers are waiting to be sent or received."}</p>
+        <p className="fo-muted">
+          {more
+            ? "None of the listed transfers is waiting to be sent or received."
+            : (emptyText ?? "No transfers are waiting to be sent or received.")}
+        </p>
       ) : (
         <TransferList orders={open} onPick={onPick} />
       )}
       {more && (
         <p className="fo-scan__notice fo-scan__notice--warn" role="status">
-          More incoming transfers exist than this screen lists. Receive these, then come back for the rest.
+          {moreText ?? "More incoming transfers exist than this screen lists. Receive these, then come back for the rest."}
         </p>
       )}
     </>

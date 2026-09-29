@@ -32,6 +32,7 @@
 // precheck that passes followed by a command that refuses is a normal race the command wins.
 import { WAREHOUSE_INTENT } from "./warehouseIntent.js";
 import { submitCanonicalReceive } from "../services/receivingCallableClient.js";
+import { RECEIVING_OUTCOME } from "../domain/receivingTransport.js";
 import { transferCommandClient } from "../services/transferCommandClient.js";
 import { cycleCountCommandClient } from "../services/cycleCountCommandClient.js";
 import { returnCommandClient } from "../services/returnCommandClient.js";
@@ -68,15 +69,19 @@ export function createWarehouseBindings(deps = {}) {
     async [WAREHOUSE_INTENT.INVENTORY_RECEIVE](intent) {
       try {
         const result = await receive(intent.payload);
-        if (result?.status === "APPLIED" || result?.status === "REPLAYED") {
+        // The receiving client reports the frozen, LOWER-CASE RECEIVING_OUTCOME vocabulary and a
+        // receipt carrying `receivingId`. Comparing against upper-case literals (as this once did)
+        // matched nothing, so every replayed receipt -- success and not-ready alike -- was burned as
+        // a conflict.
+        if (result?.status === RECEIVING_OUTCOME.APPLIED || result?.status === RECEIVING_OUTCOME.REPLAYED) {
           return {
             ok: true,
-            replayed: result.status === "REPLAYED",
-            serverIds: { receiptId: result.receipt?.receivingOrderId ?? null },
+            replayed: result.status === RECEIVING_OUTCOME.REPLAYED,
+            serverIds: { receiptId: result.receipt?.receivingId ?? null },
           };
         }
         // A transport that is not ready is not a refusal by anybody, and must stay retryable.
-        return result?.status === "UNAVAILABLE"
+        return result?.status === RECEIVING_OUTCOME.UNAVAILABLE
           ? { ok: false, code: "unavailable", details: null, offline: true }
           : { ok: false, code: "failed-precondition", details: result?.status ?? "RECEIVE_FAILED" };
       } catch (err) { return failureFrom(err); }

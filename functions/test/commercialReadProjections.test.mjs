@@ -95,7 +95,12 @@ test("(2) the only runtime entry point to the read projections is the C4 Commerc
   const importsReadLayer = (f) => moduleSpecifiers(readFileSync(f, "utf8"))
     .some((spec) => /^eosCommercial\/reads\//.test(resolveSpecifier(f, spec, SRC, PATH)));
   const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) && importsReadLayer(f));
-  assert.deepEqual(importers.map(rel), ["src/eosCommercial/commercialHttp.ts"], "a module other than the C4 transport imports the read layer");
+  // Pass 11 Retail Sales: readMyCommercialCapabilities runs through the read KERNEL (active Principal + membership in a
+  // read-only snapshot) and is itself reachable ONLY from the transport -- asserted just below, so it is not a second door.
+  assert.deepEqual(importers.map(rel).sort(), ["src/eosCommercial/commercialHttp.ts", "src/eosCommercial/myCommercialCapabilities.ts"], "a module other than the C4 transport imports the read layer");
+  const offerImporters = walk(SRC, [".ts"]).filter((f) => moduleSpecifiers(readFileSync(f, "utf8"))
+    .some((spec) => /^eosCommercial\/myCommercialCapabilities$/.test(resolveSpecifier(f, spec, SRC, PATH).replace(/\.ts$/, ""))));
+  assert.deepEqual(offerImporters.map(rel), ["src/eosCommercial/commercialHttp.ts"], "the capability offer read is reachable other than through the C4 transport");
   assert.ok(importsReadLayer(join(SRC, "eosCommercial", "commercialHttp.ts")), "the specifier scan stopped seeing the transport's own imports and would now pass for the wrong reason");
   for (const surface of ["index.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts"]) {
     assert.doesNotMatch(strip(readFileSync(join(SRC, surface), "utf8")), /eosCommercial|ReadProjection|commercialReadKernel/, `${surface} reaches Commercial reads`);

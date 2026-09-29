@@ -9,22 +9,21 @@
 // this file's own admin.initializeApp()).
 //
 // Prerequisite: run against a live Firestore emulator, e.g.:
-//   firebase emulators:start --only firestore --project taylor-parts
+//   firebase emulators:start --only firestore --project demo-eos-test
 // then, in a second terminal (after `npm run build`):
 //   node --test test/completeAssignedJob.test.js
 //
 // Never touches the live "taylor-parts" project.
 "use strict";
 
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
-
+require("./support/firebaseEmulatorGuard.cjs"); // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const fs = require("node:fs");
 const path = require("node:path");
 const admin = require("firebase-admin");
 
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 

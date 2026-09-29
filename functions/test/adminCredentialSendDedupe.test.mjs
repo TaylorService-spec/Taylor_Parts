@@ -8,8 +8,8 @@
 //
 // Prerequisite: a live Firestore emulator, then (after `npm run build`):
 //   node functions/test/adminCredentialSendDedupe.test.mjs
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";

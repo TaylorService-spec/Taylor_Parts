@@ -40,12 +40,11 @@
 // worktrees share a machine, and a suite that can only run on one pair of ports is a suite
 // that cannot run while somebody else is working. The defaults are unchanged, so the
 // regression runner and CI behave exactly as before.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST ?? "127.0.0.1:9099";
 
+require("./support/firebaseEmulatorGuard.cjs"); // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 const admin = require("firebase-admin");
 
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 const FIRESTORE_HOST = `http://${process.env.FIRESTORE_EMULATOR_HOST}`;
 const AUTH_HOST = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`;
 const DOC_BASE = `${FIRESTORE_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents`;

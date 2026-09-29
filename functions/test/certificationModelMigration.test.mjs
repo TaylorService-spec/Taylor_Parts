@@ -16,6 +16,7 @@
 // A small in-memory Firestore. It implements exactly what the migration uses -- collection().get(),
 // doc().get(), batch() with set/update/delete, and serverTimestamp -- and it distinguishes set-merge
 // from update, because that distinction is the whole reason the migration cannot lose a field.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

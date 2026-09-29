@@ -24,6 +24,7 @@
 import type { Pool } from "pg";
 import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
+import { containsNulCharacter, NUL_CHARACTER_REFUSAL } from "../adminPolicy/requestText";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
 import { CatalogMasterError, type CatalogActorContext } from "./catalogMasterKernel.js";
@@ -349,6 +350,10 @@ export async function handleCatalogRequest(
     payload = parseBody(request.body);
   } catch {
     return json(400, { ok: false, code: "INVALID_INPUT", message: "body must be a JSON object" }, origin);
+  }
+  // U+0000 is refused at the envelope, before identity or any query (adminPolicy/requestText.ts; Controller XLF-002).
+  if (containsNulCharacter(payload)) {
+    return json(400, { ok: false, operation: typeof payload.operation === "string" ? payload.operation : "", code: "INVALID_INPUT", message: NUL_CHARACTER_REFUSAL }, origin);
   }
 
   const operation = payload.operation;
