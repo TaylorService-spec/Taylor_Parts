@@ -39,6 +39,7 @@
 
 import { readBinParentage } from "../inventoryLocation/binParentage.js";
 import { binIdsReferenced } from "../inventoryLedger/locationOnHand.js";
+import { authoritativeOperationalMovements, LedgerRowIntegrityError } from "../inventoryLedger/authoritativeLedgerRows.js";
 import { getFirestore } from "firebase-admin/firestore";
 import type { Firestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
@@ -113,8 +114,20 @@ export async function readPartBalances(
   const ledgerByPart = new Map<string, Array<{
     type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string; workOrderId?: string;
   }>>(partIds.map((id) => [id, []] as const));
+  // FAIL CLOSED PER PART (DQ-019): a part with ANY unreadable ledger row gets no balance -- it is
+  // omitted exactly like a part the Part Master could not resolve, so the caller reports it as having
+  // no answer rather than a number computed past a record nobody can read.
+  const unreadableParts = new Set<string>();
   for (const snap of ledgerSnaps) {
     for (const doc of snap.docs) {
+      try {
+        authoritativeOperationalMovements([doc]);
+      } catch (err) {
+        if (!(err instanceof LedgerRowIntegrityError)) throw err;
+        const pid = (doc.data() as { partId?: unknown } | undefined)?.partId;
+        if (typeof pid === "string") unreadableParts.add(pid);
+        continue;
+      }
       const row = doc.data() as {
         partId?: string; type: string; quantity: number;
         location?: { type?: string; locationId?: string }; trackingMode?: string; workOrderId?: string;
@@ -165,6 +178,7 @@ export async function readPartBalances(
     // A part the Part Master could not resolve is OMITTED. Assuming quantity-tracked would
     // reintroduce the confident zero by a different route.
     if (serialTracked === undefined) continue;
+    if (unreadableParts.has(partId)) continue;
     out.push(composePartBalance({
       partId,
       ledgerRows: ledgerByPart.get(partId) ?? [],
@@ -239,7 +253,9 @@ export const getPartBalancesCallable = onCall({ region: "us-central1" }, async (
       // WHICH PARTS HAD NO ANSWER, said explicitly. A caller that asked about fifty and received
       // forty-eight must be able to tell WHICH two are missing — silently short results are how a
       // list ends up rendering a blank cell that looks like a zero.
-      unresolvedPartIds: partIds.filter((id) => !serialTrackedByPartId.has(id)),
+      // Unresolvable in the Part Master, OR a part whose ledger has an unreadable row (DQ-019): both
+      // are "no answer", never a figure.
+      unresolvedPartIds: partIds.filter((id) => !balances.some((b) => b.partId === id)),
     };
   } catch (err) {
     if (err instanceof HttpsError) throw err;

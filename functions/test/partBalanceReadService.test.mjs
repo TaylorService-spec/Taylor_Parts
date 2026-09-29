@@ -243,3 +243,20 @@ test("an order with neither shape stays UNKNOWN rather than inventing zero", () 
   assert.equal(sumOpenOrderedQuantity([{ id: "po-1", status: "SENT", items: [] }], "CW-P-0003"), null);
 });
 
+
+// DQ-019: the single-part balance read FAILS CLOSED on an unreadable ledger row for the part.
+test("readPartBalance refuses (PartBalanceLedgerUnreadableError) when a ledger row for the part cannot be read", async () => {
+  const { readPartBalance: read, PartBalanceLedgerUnreadableError } = await import("../lib/inventory/partBalanceReadService.js");
+  const rows = [{ id: "bad", data: { schemaVersion: 2, type: "TRANSFER_OUT", partId: "P-BAD", quantity: "four" } }];
+  const snap = (docs) => ({ docs: docs.map((d) => ({ id: d.id, data: () => d.data })), size: docs.length, empty: docs.length === 0 });
+  const db = {
+    collection(name) {
+      const api = {
+        where: () => api,
+        get: async () => snap(name === "inventory_transactions" ? rows : []),
+      };
+      return api;
+    },
+  };
+  await assert.rejects(read(db, "P-BAD", false), (e) => e instanceof PartBalanceLedgerUnreadableError && e.partId === "P-BAD");
+});
