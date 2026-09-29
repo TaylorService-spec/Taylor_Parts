@@ -680,6 +680,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/workOrderPartsPlanAuthority.ts",
           "functions/src/workOrderPartsPlan/setWorkOrderPartsPlan.ts"
         ],
@@ -688,7 +689,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/workOrderPartsPlanCapabilityAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
