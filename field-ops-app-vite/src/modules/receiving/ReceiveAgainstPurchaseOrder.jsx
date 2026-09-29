@@ -4,7 +4,8 @@ import { usePurchaseOrdersByIds } from "../../hooks/usePurchaseOrdersByIds";
 import { buildPurchaseOrdersView, PURCHASE_ORDERS_STATUS } from "../../domain/purchaseOrdersView";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
-import { fetchReceivingLocationOptions, submitReceiveInventoryStock } from "../../services/receivingCallableClient";
+import { fetchReceivingLocationOptions } from "../../services/receivingCallableClient";
+import { submitReorderReceipt } from "../../services/reorderReceivingClient";
 import { readPartsForView } from "../../services/partMasterQueries";
 import {
   buildReceiveRequestInput,
@@ -28,8 +29,13 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // consumed by TWO launch points: the Inventory > Receiving workspace (modules/inventory/
 // Receiving.jsx, all ORDERED candidates) and the PartsScanner "Receive" action in FieldMode
 // (part-scoped via initialPartId). It receives an ORDERED reorder Purchase Order into a warehouse
-// location, reusing the existing PO read stack for candidates and the READINESS-GATED, fail-closed
-// transport (services/receivingCallableClient.js) for the location options and the receipt itself.
+// location. Candidates come from the governed PostgreSQL Reorder reads (the ORDERED Reorder Requests and
+// their Reorder Purchase Orders -- hooks/useReorderRequests.js + hooks/usePurchaseOrdersByIds.js, never the
+// frozen Firestore collections); the location options still come from the READINESS-GATED receiving
+// callable (warehouses, not a Reorder object); and the receipt itself goes to the governed PostgreSQL
+// Receiving authority (services/reorderReceivingClient.js -> receiveReorderStock), with NO Firebase
+// fallback. The Firebase receiveInventoryStock deployed in nonprod would write the Firestore Reorder Request
+// to RECEIVED while PostgreSQL stayed ORDERED, so this workflow never calls it.
 //
 // Nothing here can execute a live receipt while readiness is false OR the caller lacks the
 // inventory.stock.receive capability — both fail closed to honest sanitized states. No readiness
@@ -135,7 +141,7 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
     });
     if (!input) return;
     setSubmitting(true);
-    const res = await submitReceiveInventoryStock(input);
+    const res = await submitReorderReceipt(input);
     if (!mountedRef.current) return;
     setSubmitting(false);
     setResult(res.status);

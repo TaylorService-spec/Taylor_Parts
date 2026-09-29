@@ -25,7 +25,10 @@ vi.mock("../src/domain/purchaseOrdersView", () => ({
   PURCHASE_ORDERS_STATUS: { READY: "ready", LOADING: "loading" },
   buildPurchaseOrdersView: () => ({ status: "ready", rows: candidateRows }),
 }));
-vi.mock("../src/services/receivingCallableClient", () => ({ fetchReceivingLocationOptions: (...a) => fetchLocations(...a), submitReceiveInventoryStock: (...a) => submitReceipt(...a) }));
+// The receipt goes to the governed PostgreSQL authority (reorderReceivingClient); the Firebase receiving
+// client serves only the location options. submitReceiveInventoryStock no longer exists to be called.
+vi.mock("../src/services/receivingCallableClient", () => ({ fetchReceivingLocationOptions: (...a) => fetchLocations(...a) }));
+vi.mock("../src/services/reorderReceivingClient", () => ({ submitReorderReceipt: (...a) => submitReceipt(...a) }));
 vi.mock("../src/services/partMasterQueries", () => ({ readPartsForView: (...a) => fetchParts(...a) }));
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); candidateRows = []; });
