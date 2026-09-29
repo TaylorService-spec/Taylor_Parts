@@ -2,7 +2,7 @@
 //
 //   browser -> readMyCommercialCapabilities (services/commercialApiClient.js) -> POST /commercial/sales
 //           -> the caller's resolved EOS Principal, ACTIVE membership, Roles and eos_policy.role_capabilities
-//           -> { capabilities, channelScopedReads } intersected with the closed Commercial list
+//           -> { capabilities, channelScoped } intersected with the closed Commercial list
 //
 // Replaces access/useOpportunityCapabilities.js and access/useSalesOrderCapabilities.js, which asked the Firebase
 // effective-access feed (Firestore users/{uid}.accessVersion + resolveEffectiveAccessCallable) while the Commercial

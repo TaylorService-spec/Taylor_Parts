@@ -710,6 +710,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/eosCommercial/myCommercialCapabilities.ts",
@@ -722,7 +723,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/opportunityCapabilityAccess.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -791,6 +792,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/eosCommercial/myCommercialCapabilities.ts",
@@ -803,7 +805,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/opportunityCapabilityAccess.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 5,
         "evidence": "EXPORTED"
       },
@@ -825,6 +827,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/eosCommercial/commands/salesAgreementCommandService.ts",
           "functions/src/eosCommercial/myCommercialCapabilities.ts",
@@ -837,7 +840,7 @@
           "field-ops-app-vite/src/access/policyObjectRegistry.js",
           "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -859,6 +862,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/eosCommercial/commands/salesAgreementCommandService.ts",
           "functions/src/eosCommercial/myCommercialCapabilities.ts",
@@ -871,7 +875,7 @@
           "field-ops-app-vite/src/access/policyObjectRegistry.js",
           "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -893,6 +897,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/eosCommercial/commands/salesAgreementCommandService.ts",
@@ -906,7 +911,7 @@
           "field-ops-app-vite/src/access/policyObjectRegistry.js",
           "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1012,6 +1017,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/eosCommercial/myCommercialCapabilities.ts",
@@ -1024,7 +1030,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/salesOrderCapabilityAccess.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 5,
         "evidence": "EXPORTED"
       },

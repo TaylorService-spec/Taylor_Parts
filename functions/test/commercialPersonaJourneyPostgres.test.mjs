@@ -75,11 +75,15 @@ const COMMERCIAL_HOLDINGS = Object.freeze({
   "restricted-user": [],
   "records-clerk": [],
 });
+// DQ-020 (Controller 2026-09-28): Commercial writes are NOT tenant-wide. The sales personas hold `salesperson` at
+// their channel -- the Administration configuration this suite proves (assignRole with scopeType salesChannel). The
+// global holders above (owner, GM, dispatcher, administrator, salesManager) keep every channel.
+const SALES_CHANNEL_OF = Object.freeze({ "retail-sales-a": "RETAIL", "retail-sales-b": "RETAIL", "national-accounts-sales": "NATIONAL_ACCOUNTS" });
 const rolesOf = (persona) => (persona.startsWith("role:") ? [persona.slice(5)] : PERSONAS[persona].securityRoles);
 
 /** Operation -> the capabilities it requires (the C2/C3 contract), and an input that fails AFTER authorization. */
 const OPERATIONS = Object.freeze({
-  createOpportunity: [["opportunity.write"], () => ({ idempotencyKey: `k-${randomUUID()}`, accountId: "acct-missing", salesChannel: "RETAIL", lines: [{ kind: "SERVICE", ref: "s", qty: 1 }] })],
+  createOpportunity: [["opportunity.write"], (channel = "RETAIL") => ({ idempotencyKey: `k-${randomUUID()}`, accountId: "acct-missing", salesChannel: channel, lines: [{ kind: "SERVICE", ref: "s", qty: 1 }] })],
   updateOpportunity: [["opportunity.write"], () => ({ idempotencyKey: `k-${randomUUID()}`, opportunityId: "opp-missing", expectedEditVersion: 1, need: "x" })],
   transitionOpportunity: [["opportunity.write"], () => ({ idempotencyKey: `k-${randomUUID()}`, opportunityId: "opp-missing", toStage: "QUALIFYING" })],
   closeOpportunityAsWon: [["opportunity.write", "opportunity.createSalesOrder"], () => ({ idempotencyKey: `k-${randomUUID()}`, opportunityId: "opp-missing" })],
@@ -87,7 +91,7 @@ const OPERATIONS = Object.freeze({
   createSalesAgreement: [["salesAgreement.create"], () => ({ idempotencyKey: `k-${randomUUID()}`, opportunityId: "opp-missing" })],
   updateSalesAgreementDraft: [["salesAgreement.updateDraft"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesAgreementId: "sag-missing", customerPO: "x" })],
   acceptSalesAgreement: [["salesAgreement.accept"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesAgreementId: "sag-missing" })],
-  createSalesOrder: [["salesOrder.write"], () => ({ idempotencyKey: `k-${randomUUID()}`, accountId: "acct-missing", ownerEmployeeId: "e-retail-a", salesChannel: "RETAIL", operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", orderedQty: 1, unitPrice: 100, businessUnitId: "SERVICE" }] })],
+  createSalesOrder: [["salesOrder.write"], (channel = "RETAIL") => ({ idempotencyKey: `k-${randomUUID()}`, accountId: "acct-missing", ownerEmployeeId: "e-retail-a", salesChannel: channel, operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", orderedQty: 1, unitPrice: 100, businessUnitId: "SERVICE" }] })],
   transitionSalesOrder: [["salesOrder.write"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesOrderId: "sor-missing", transition: "ADVANCE" })],
   getOpportunityDetail: [["opportunity.read"], () => ({ opportunityId: "opp-missing" })],
   listOpportunities: [["opportunity.read"], () => ({})],
@@ -170,7 +174,7 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     return { externalSubject: subject, identityProvider: "firebase" };
   };
   const deps = { reader: repo, pool, verifyToken, allowedOrigins: [] };
-  const signIn = async (persona, tenantId = TENANT) => {
+  const signIn = async (persona, tenantId = TENANT, channel = tenantId === TENANT ? SALES_CHANNEL_OF[persona] ?? null : null) => {
     const subject = `uid-${persona.replace(/[^a-z0-9]/gi, "-")}-${tenantId}`;
     const principalId = await repo.transact(actorFor(tenantId), async (tx) => {
       const principal = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
@@ -181,11 +185,11 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
       const roleId = await roleFor(tenantId, roleKey);
       await repo.transact(actorFor(tenantId), async (tx) => {
         const accessVersion = await tx.bumpAccessVersion(principalId);
-        return tx.createAssignment({ principalId, roleId, scopeType: "global", scopeValue: null, status: "active", grantedBy: "fixture", grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion });
+        return tx.createAssignment({ principalId, roleId, scopeType: channel ? "salesChannel" : "global", scopeValue: channel, status: "active", grantedBy: "fixture", grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion });
       });
     }
     TOKENS.set(`tok-${subject}`, subject);
-    return { persona, principalId, token: `tok-${subject}` };
+    return { persona, principalId, token: `tok-${subject}`, channel };
   };
   const call = async (actor, operation, input) => {
     const res = await http.handleCommercialRequest(deps, {
@@ -207,6 +211,10 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     ('acct-retail',$1,'Corner Deli','ACTIVE','e-retail-a','x','x'), ('acct-national',$1,'Chain HQ','ACTIVE','e-national','x','x'),
     ('acct-inactive-owner',$1,'Old Book','ACTIVE','e-inactive','x','x'), ('acct-other','t-other','Elsewhere','ACTIVE','e-other-tenant','x','x')`, [TENANT]);
 
+  for (const channel of ["RETAIL", "NATIONAL_ACCOUNTS"]) {
+    await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by)
+             VALUES ($1,$2,'ACTIVE','fixture','fixture','fixture')`, [TENANT, channel]);
+  }
   const personas = {};
   for (const persona of Object.keys(COMMERCIAL_HOLDINGS)) personas[persona] = await signIn(persona);
   const retailA = personas["retail-sales-a"];
@@ -215,7 +223,8 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     let cells = 0;
     for (const [persona, holdings] of Object.entries(COMMERCIAL_HOLDINGS)) {
       for (const [operation, [required, input]] of Object.entries(OPERATIONS)) {
-        const res = await call(personas[persona], operation, input());
+        // A channel-scoped seller is asked inside its own channel: this matrix proves the capability, the DQ-020 tests below the channel.
+        const res = await call(personas[persona], operation, input(personas[persona].channel ?? undefined));
         const authorized = required.every((c) => holdings.includes(c));
         if (authorized) {
           assert.notEqual(res.status, 403, `${persona} ${operation} was refused although it holds ${required.join("+")}: ${JSON.stringify(res.body)}`);
@@ -233,14 +242,13 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
   await t.test("OFFER == AUTHORITY: every persona's readMyCommercialCapabilities is exactly what the commands will accept", async () => {
     for (const [persona, holdings] of Object.entries(COMMERCIAL_HOLDINGS)) {
       const answer = ok(await call(personas[persona], "readMyCommercialCapabilities"), persona);
-      assert.deepEqual([...answer.capabilities].sort(), [...holdings].sort(), `${persona}: the offer disagrees with the authority`);
-      assert.deepEqual(answer.channelScopedReads, [], `${persona} holds no channel-scoped read`);
-      assert.deepEqual(Object.keys(answer).sort(), ["capabilities", "channelScopedReads"], "the answer discloses nothing else");
+      const scopedPersona = Boolean(personas[persona].channel);
+      assert.deepEqual([...(scopedPersona ? answer.channelScoped : answer.capabilities)].sort(), [...holdings].sort(), `${persona}: the offer disagrees with the authority`);
+      assert.deepEqual(scopedPersona ? answer.capabilities : answer.channelScoped, [], `${persona}: global and channel-scoped holdings mixed`);
+      assert.deepEqual(Object.keys(answer).sort(), ["capabilities", "channelScoped"], "the answer discloses nothing else");
     }
-    // A salesManager holding its Role ONLY at salesChannel=RETAIL: the reads are offered (the reads filter to RETAIL), no
-    // write is -- a scope-qualified holding never authorizes a Commercial write.
-    await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by)
-             VALUES ($1,'RETAIL','ACTIVE','fixture','fixture','fixture')`, [TENANT]);
+    // A salesManager holding its Role ONLY at salesChannel=RETAIL: everything it holds is offered as channel-scoped, and the
+    // server decides each record against its channel (DQ-020).
     const scopedSubject = "uid-scoped-retail-manager";
     const scopedPrincipal = await repo.transact(actorFor(TENANT), async (tx) => {
       const principal = await tx.createPrincipal({ externalSubject: scopedSubject, identityProvider: "firebase" });
@@ -252,9 +260,9 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     TOKENS.set(`tok-${scopedSubject}`, scopedSubject);
     const scoped = { persona: "scoped", principalId: scopedPrincipal, token: `tok-${scopedSubject}` };
     const scopedAnswer = ok(await call(scoped, "readMyCommercialCapabilities"), "scoped");
-    assert.deepEqual(scopedAnswer, { capabilities: [], channelScopedReads: ["opportunity.read", "salesAgreement.read", "salesOrder.read"] });
+    assert.deepEqual(scopedAnswer, { capabilities: [], channelScoped: [...COMMERCIAL_HOLDINGS["role:salesManager"]].sort((a, b) => COMMERCIAL_KEYS.indexOf(a) - COMMERCIAL_KEYS.indexOf(b)) });
     ok(await call(scoped, "listOpportunities"), "the offered read is served");
-    refused(await call(scoped, "createOpportunity", OPERATIONS.createOpportunity[1]()), 403, "CAPABILITY_REQUIRED", "scoped write");
+    refused(await call(scoped, "createOpportunity", { ...OPERATIONS.createOpportunity[1]("NATIONAL_ACCOUNTS"), accountId: "acct-national" }), 403, "OUTSIDE_SALES_CHANNEL_SCOPE", "scoped write outside its channel");
 
     refused(await call(retailA, "readMyCommercialCapabilities", { principalId: "someone-else" }), 400, "AUTHORITY_FIELD_NOT_ACCEPTED", "selector");
     refused(await call(retailA, "readMyCommercialCapabilities", { employeeId: "e-retail-b" }), 400, "FIELD_NOT_ACCEPTED", "any input");
@@ -433,18 +441,42 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     assert.deepEqual(row, { owner_employee_id: "e-retail-b", accountable_employee_id: "e-retail-a" }, "ownership moved; accountability did not");
   });
 
-  // ════════════════════ CURRENT BEHAVIOUR PINNED FOR A DECISION (not asserted as correct) ════════════════════
+  // ════════════════════ DQ-020: COMMERCIAL WRITES FOLLOW THE SALES CHANNEL ════════════════════
 
-  await t.test("PINNED (decision candidate): Commercial writes are tenant-wide -- another salesperson and another channel's salesperson can edit this record", async () => {
-    // Legacy parity: the retired Firebase callables authorized on the flat `opportunity.write` capability alone, with no
-    // owner / assignee / channel predicate, and the PostgreSQL commands reproduce exactly that. A SALES_CHANNEL-scoped
-    // grant confers nothing on a write (assignmentScopeRuntime: only the three Commercial READS are scope-evaluable), so
-    // today a channel-scoped salesperson could not write at all. Whether Retail vs National Accounts must be enforced on
-    // WRITES is a business-policy decision -- pinned here so the day it is decided, this test names the change.
-    const o = ok(await call(retailA, "createOpportunity", { idempotencyKey: key(), accountId: "acct-retail", salesChannel: "RETAIL", operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", qty: 1 }] }), "create");
-    ok(await call(personas["retail-sales-b"], "updateOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, nextAction: "b was here" }), "other salesperson");
-    ok(await call(personas["national-accounts-sales"], "transitionOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, toStage: "QUALIFYING" }), "other channel");
-    ok(await call(personas["national-accounts-sales"], "createOpportunity", { idempotencyKey: key(), accountId: "acct-retail", salesChannel: "RETAIL", operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", qty: 1 }] }), "national creates RETAIL");
+  const base = (accountId, salesChannel) => ({ idempotencyKey: key(), accountId, salesChannel, operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", qty: 1 }] });
+  await t.test("DQ-020: a channel-scoped seller writes inside its channel -- and the relationship, not the owner, decides (another RETAIL seller may work the record)", async () => {
+    const o = ok(await call(retailA, "createOpportunity", base("acct-retail", "RETAIL")), "create");
+    ok(await call(personas["retail-sales-b"], "updateOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, nextAction: "b covers" }), "same channel, not the owner");
+    ok(await call(personas["national-accounts-sales"], "createOpportunity", base("acct-national", "NATIONAL_ACCOUNTS")), "national in its own channel");
+  });
+
+  await t.test("DQ-020: outside its channel a scoped seller is refused on every write -- create, edit, stage, Agreement, Won, Order -- and nothing is written", async () => {
+    const national = personas["national-accounts-sales"];
+    const o = ok(await call(retailA, "createOpportunity", base("acct-retail", "RETAIL")), "retail create");
+    const before = (await q(`SELECT count(*)::int n FROM eos_commercial.command_receipts`)).rows[0].n;
+    const outside = (res, what) => refused(res, 403, "OUTSIDE_SALES_CHANNEL_SCOPE", what);
+    outside(await call(national, "createOpportunity", base("acct-retail", "RETAIL")), "create RETAIL");
+    outside(await call(national, "updateOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, nextAction: "x" }), "edit RETAIL");
+    outside(await call(national, "transitionOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, toStage: "QUALIFYING" }), "stage RETAIL");
+    outside(await call(national, "createSalesAgreement", { idempotencyKey: key(), opportunityId: o.opportunityId, ownerEmployeeId: "e-national", isLease: false, lines: [{ kind: "SERVICE", ref: "s", quantity: 1, unitPrice: 100, businessUnitId: "SERVICE" }] }), "agreement on RETAIL");
+    outside(await call(national, "closeOpportunityAsWon", { idempotencyKey: key(), opportunityId: o.opportunityId }), "won RETAIL");
+    outside(await call(national, "transitionSalesOrder", { idempotencyKey: key(), salesOrderId: order.salesOrderId, transition: "CANCEL" }), "cancel a RETAIL order");
+    outside(await call(national, "updateSalesAgreementDraft", { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId, customerPO: "x" }), "edit a RETAIL agreement");
+    // A retail seller cannot push its record out of its reach, nor a national seller pull one in.
+    outside(await call(retailA, "updateOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, salesChannel: "NATIONAL_ACCOUNTS" }), "move out of channel");
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_commercial.command_receipts`)).rows[0].n, before, "a refused write left a receipt");
+    const row = (await q(`SELECT sales_channel::text, stage::text, edit_version FROM eos_commercial.opportunities WHERE id=$1`, [o.opportunityId])).rows[0];
+    assert.deepEqual(row, { sales_channel: "RETAIL", stage: "IDENTIFIED", edit_version: "1" });
+  });
+
+  await t.test("DQ-020: GLOBAL holders (GM, dispatcher, owner) keep every channel; a global `salesperson` assignment is tenant-wide -- the pre-DQ-020 nonprod configuration", async () => {
+    const o = ok(await call(retailA, "createOpportunity", base("acct-retail", "RETAIL")), "retail create");
+    ok(await call(personas["general-manager"], "transitionOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, toStage: "QUALIFYING" }), "GM");
+    ok(await call(personas["owner-executive"], "createOpportunity", base("acct-national", "NATIONAL_ACCOUNTS")), "owner");
+    // The canonical sales personas hold `salesperson` GLOBALLY in nonprod today. Until Administration re-scopes those
+    // assignments to their channels (the ledger's DQ-020 execution packet), that global holding stays tenant-wide:
+    const legacyGlobal = await signIn("role:salesperson"); // the same Role, assigned globally
+    ok(await call(legacyGlobal, "transitionOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, toStage: "SOLUTION" }), "global salesperson (pre-rescoping)");
   });
 
   await t.test("FIREBASE: the journey loaded no Firebase module", () => {

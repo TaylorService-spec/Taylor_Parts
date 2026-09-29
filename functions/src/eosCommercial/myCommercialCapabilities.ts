@@ -12,11 +12,11 @@
 // role_capabilities, grant conditions withheld) and hands this read that actor. Nothing is re-resolved here: the answer
 // is `actor.capabilities` -- the exact set every Commercial command re-checks -- intersected with the closed list below.
 //
-// WHAT IT RETURNS. { capabilities: [...], channelScopedReads: [...] }
-//   capabilities         held flat, in the closed list's order;
-//   channelScopedReads   the three Commercial READ keys held ONLY within a sales-channel scope (lane GA). Such a reader
-//                        may open the screens; the reads themselves filter to its channels. A scoped holding never
-//                        appears in `capabilities`, so it can never be offered as a write.
+// WHAT IT RETURNS. { capabilities: [...], channelScoped: [...] }
+//   capabilities    held flat (every channel), in the closed list's order;
+//   channelScoped   the Commercial keys held ONLY within a sales-channel scope (lane GA reads; DQ-020 writes). Such a
+//                   caller may be offered the control; every read filters, and every command decides, against the
+//                   record's own channel -- so the offer never widens anything.
 // Nothing else: no Role, Principal, tenant, subject, channel list, or capability outside the list.
 //
 // CAPABILITY. None beyond an active Principal with an active membership (the read kernel checks both inside its
@@ -24,7 +24,7 @@
 // NO NEW CAPABILITY: the list names existing Commercial ids only.
 import { admittedScopeValues } from "../adminPolicy/assignmentScopeRuntime";
 import { fail } from "./commands/commercialCommandKernel";
-import { COMMERCIAL_READ_CAPABILITIES, runCommercialRead, type CommercialReadActor, type CommercialReadDeps } from "./reads/commercialReadKernel";
+import { runCommercialRead, type CommercialReadActor, type CommercialReadDeps } from "./reads/commercialReadKernel";
 
 /** The closed list of Commercial capability ids a caller may learn it holds. Existing ids only. */
 export const COMMERCIAL_OFFER_CAPABILITY_IDS = Object.freeze([
@@ -39,11 +39,10 @@ export const COMMERCIAL_OFFER_CAPABILITY_IDS = Object.freeze([
   "salesOrder.write",
 ] as const);
 
-const READ_KEYS: readonly string[] = Object.freeze(Object.values(COMMERCIAL_READ_CAPABILITIES));
 
 export interface MyCommercialCapabilities {
   readonly capabilities: readonly string[];
-  readonly channelScopedReads: readonly string[];
+  readonly channelScoped: readonly string[];
 }
 
 export function readMyCommercialCapabilities(deps: CommercialReadDeps, actor: CommercialReadActor, input?: Record<string, unknown>): Promise<MyCommercialCapabilities> {
@@ -55,6 +54,6 @@ export function readMyCommercialCapabilities(deps: CommercialReadDeps, actor: Co
     // Runs only after the kernel confirmed the active Principal + active membership in the snapshot.
     async () => ({
       capabilities: COMMERCIAL_OFFER_CAPABILITY_IDS.filter((id) => actor.capabilities.has(id)),
-      channelScopedReads: READ_KEYS.filter((id) => !actor.capabilities.has(id) && admittedScopeValues(actor.scopedHeld, id, "salesChannel").length > 0),
+      channelScoped: COMMERCIAL_OFFER_CAPABILITY_IDS.filter((id) => !actor.capabilities.has(id) && admittedScopeValues(actor.scopedHeld, id, "salesChannel").length > 0),
     }));
 }

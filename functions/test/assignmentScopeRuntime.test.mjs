@@ -27,7 +27,10 @@ test("the runtime decides operatingCompany and salesChannel; businessUnit and lo
   // Lane GA: sales channel scopes the three Commercial READ keys only -- no write key is evaluable at a channel.
   assert.deepEqual(scope.SCOPE_EVALUABLE_GRANTS.map((g) => [g.scopeType, g.capabilityKey]), [
     ["operatingCompany", "employee.record.read"],
-    ["salesChannel", "opportunity.read"], ["salesChannel", "salesAgreement.read"], ["salesChannel", "salesOrder.read"]]);
+    ["salesChannel", "opportunity.read"], ["salesChannel", "salesAgreement.read"], ["salesChannel", "salesOrder.read"],
+    // DQ-020: the Commercial writes, decided against the governing channel of the record each command writes.
+    ["salesChannel", "opportunity.write"], ["salesChannel", "opportunity.createSalesOrder"], ["salesChannel", "salesAgreement.create"],
+    ["salesChannel", "salesAgreement.updateDraft"], ["salesChannel", "salesAgreement.accept"], ["salesChannel", "salesOrder.write"]]);
   for (const g of scope.SCOPE_EVALUABLE_GRANTS.filter((x) => x.scopeType === "salesChannel")) {
     assert.ok(g.consumers.length > 0 && g.consumers.every((c) => c.startsWith("commercial.")), g.capabilityKey);
   }

@@ -183,9 +183,9 @@ export async function lockOrderForOpportunity(db: Queryable, tenantId: string, o
   return rows[0] ?? null;
 }
 
-export async function lockOrderState(db: Queryable, tenantId: string, id: string): Promise<{ id: string; state: string | null } | null> {
-  const { rows } = await db.query(`SELECT id, state::text FROM ${S}.sales_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tenantId, id]);
-  return rows[0] ?? null;
+export async function lockOrderState(db: Queryable, tenantId: string, id: string): Promise<{ id: string; state: string | null; salesChannel: string | null } | null> {
+  const { rows } = await db.query(`SELECT id, state::text, sales_channel::text FROM ${S}.sales_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tenantId, id]);
+  return rows[0] ? { id: rows[0].id, state: rows[0].state, salesChannel: rows[0].sales_channel } : null;
 }
 
 export async function insertSalesOrder(db: Queryable, tenantId: string, actorId: string, o: {

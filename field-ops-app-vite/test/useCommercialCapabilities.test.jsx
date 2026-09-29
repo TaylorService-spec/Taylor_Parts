@@ -24,11 +24,12 @@ describe("the closed list and the operation", () => {
     expect(COMMERCIAL_READ_OPERATIONS).toContain(MY_COMMERCIAL_CAPABILITIES_OPERATION);
   });
 
-  it("commercialCapabilitiesFrom accepts only the governed shape; a scoped READ is offerable, never a scoped write", () => {
-    expect([...commercialCapabilitiesFrom({ capabilities: ["opportunity.write"], channelScopedReads: [] })]).toEqual(["opportunity.write"]);
-    expect([...commercialCapabilitiesFrom({ capabilities: [], channelScopedReads: ["salesOrder.read"] })]).toEqual(["salesOrder.read"]);
-    for (const bad of [null, [], "x", {}, { capabilities: [] }, { capabilities: ["opportunity.read"], channelScopedReads: ["opportunity.write"] },
-      { capabilities: ["salesOrder.fulfill"], channelScopedReads: [] }, { capabilities: [1], channelScopedReads: [] }]) {
+  it("commercialCapabilitiesFrom accepts only the governed shape; a channel-scoped holding is offerable (DQ-020)", () => {
+    expect([...commercialCapabilitiesFrom({ capabilities: ["opportunity.write"], channelScoped: [] })]).toEqual(["opportunity.write"]);
+    expect([...commercialCapabilitiesFrom({ capabilities: [], channelScoped: ["salesOrder.read"] })]).toEqual(["salesOrder.read"]);
+    expect([...commercialCapabilitiesFrom({ capabilities: [], channelScoped: ["opportunity.write"] })]).toEqual(["opportunity.write"]);
+    for (const bad of [null, [], "x", {}, { capabilities: [] }, { capabilities: ["opportunity.read"], channelScoped: ["made.up"] },
+      { capabilities: ["salesOrder.fulfill"], channelScoped: [] }, { capabilities: [1], channelScoped: [] }]) {
       expect(commercialCapabilitiesFrom(bad), JSON.stringify(bad)).toBeNull();
     }
   });
@@ -36,7 +37,7 @@ describe("the closed list and the operation", () => {
 
 describe("useCommercialCapabilities", () => {
   it("offers exactly what a READY answer holds, asked once, with no input", async () => {
-    const client = clientAnswering({ ok: true, result: { capabilities: SALESPERSON, channelScopedReads: [] } });
+    const client = clientAnswering({ ok: true, result: { capabilities: SALESPERSON, channelScoped: [] } });
     const { result } = renderHook(() => useCommercialCapabilities({ uid: "u1" }, { client }));
     expect(result.current.hasCapability("opportunity.write")).toBe(false); // loading: nothing offered
     await waitFor(() => expect(result.current.status).toBe(COMMERCIAL_CAPABILITY_STATE.READY));
@@ -47,7 +48,7 @@ describe("useCommercialCapabilities", () => {
 
   it("the Owner's pinned parity gap is visible to the UI: draft offered, accept / Mark Won not", async () => {
     const owner = ["opportunity.read", "opportunity.write", "salesAgreement.read", "salesAgreement.create", "salesAgreement.updateDraft", "salesOrder.read", "salesOrder.write"];
-    const ownerClient = clientAnswering({ ok: true, result: { capabilities: owner, channelScopedReads: [] } });
+    const ownerClient = clientAnswering({ ok: true, result: { capabilities: owner, channelScoped: [] } });
     const { result } = renderHook(() => useCommercialCapabilities({ uid: "owner" }, { client: ownerClient }));
     await waitFor(() => expect(result.current.status).toBe(COMMERCIAL_CAPABILITY_STATE.READY));
     expect(result.current.hasCapability("salesAgreement.create")).toBe(true);
@@ -60,7 +61,7 @@ describe("useCommercialCapabilities", () => {
       { ok: false, code: "FORBIDDEN", reason: "ACTOR_NOT_TENANT_MEMBER" },
       { ok: false, code: "UNREACHABLE" },
       () => { throw new Error("boom"); },
-      { ok: true, result: { capabilities: ["opportunity.write", "made.up"], channelScopedReads: [] } },
+      { ok: true, result: { capabilities: ["opportunity.write", "made.up"], channelScoped: [] } },
     ];
     for (const answer of cases) {
       const failing = clientAnswering(answer);
@@ -69,7 +70,7 @@ describe("useCommercialCapabilities", () => {
       expect(result.current.hasCapability("opportunity.write")).toBe(false);
       unmount();
     }
-    const client = clientAnswering({ ok: true, result: { capabilities: SALESPERSON, channelScopedReads: [] } });
+    const client = clientAnswering({ ok: true, result: { capabilities: SALESPERSON, channelScoped: [] } });
     const { result } = renderHook(() => useCommercialCapabilities(null, { client }));
     await waitFor(() => expect(result.current.status).toBe(COMMERCIAL_CAPABILITY_STATE.FAILED));
     expect(client.call).not.toHaveBeenCalled();
@@ -78,7 +79,7 @@ describe("useCommercialCapabilities", () => {
 
   it("re-reads on a principal change and never shows the previous principal's offer", async () => {
     let held = SALESPERSON;
-    const client = clientAnswering(() => ({ ok: true, result: { capabilities: held, channelScopedReads: [] } }));
+    const client = clientAnswering(() => ({ ok: true, result: { capabilities: held, channelScoped: [] } }));
     const { result, rerender } = renderHook(({ user }) => useCommercialCapabilities(user, { client }), { initialProps: { user: { uid: "a" } } });
     await waitFor(() => expect(result.current.hasCapability("opportunity.write")).toBe(true));
     held = [];

@@ -119,7 +119,7 @@ const sameMultiset = (a: string[], b: string[]) => a.length === b.length && [...
 
 /** Direct governed create. With a source Opportunity it must be WON, same Account, identical lines, and have no Order. */
 export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
-  return runCommercialCommand(deps, actor, "salesOrder.create", [COMMERCIAL_CAPABILITIES.SALES_ORDER_WRITE], input?.idempotencyKey, async (db, now) => {
+  return runCommercialCommand(deps, actor, "salesOrder.create", [COMMERCIAL_CAPABILITIES.SALES_ORDER_WRITE], input?.idempotencyKey, async (db, now, scope) => {
     refuseServerDerived(input, SERVER_DERIVED_ORDER_FIELDS);
     if (typeof input.ownerEmployeeId !== "string" || input.ownerEmployeeId.trim() === "") {
       fail("OWNER_REQUIRED", "INVALID_INPUT", "ownerEmployeeId is required for a direct Sales Order");
@@ -127,6 +127,8 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
     const { idempotencyKey: _k, accountableEmployeeId, sourceOpportunityId, ...fields } = input;
     const built = buildCreateSalesOrder({ ...(fields as Record<string, unknown>), sourceOpportunityId } as never,
       { actorUid: actor.principalId, nowMillis: now.getTime() });
+    // DQ-020: the channel it is created in -- which, with a source Opportunity, must equal that Opportunity's (below).
+    scope.admitChannel(built.salesChannel);
     let opportunityId: string | null = null;
     if (typeof sourceOpportunityId === "string" && sourceOpportunityId.trim() !== "") {
       const opportunity = await lockOpportunity(db, actor.tenantId, sourceOpportunityId);
@@ -152,10 +154,11 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
 /** Sales Order from an already-WON Opportunity and its ACCEPTED Agreement. Does not transition the Opportunity. */
 export function createSalesOrderFromOpportunity(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "salesOrder.createFromOpportunity", [COMMERCIAL_CAPABILITIES.OPPORTUNITY_CREATE_SALES_ORDER],
-    input?.idempotencyKey, async (db, now) => {
+    input?.idempotencyKey, async (db, now, scope) => {
       if (typeof input.opportunityId !== "string") fail("OPPORTUNITY_REQUIRED", "INVALID_INPUT", "opportunityId is required");
       const opportunity = await lockOpportunity(db, actor.tenantId, input.opportunityId as string);
       if (!opportunity) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Opportunity does not exist in this tenant");
+      scope.admitChannel(opportunity.salesChannel);
       if (opportunity.outcome !== "WON") fail("OPPORTUNITY_NOT_WON", "PRECONDITION_FAILED", "the Opportunity is not WON");
       if (await lockOrderForOpportunity(db, actor.tenantId, opportunity.id)) {
         fail("SALES_ORDER_ALREADY_EXISTS", "CONFLICT", "the Opportunity already has a Sales Order");
@@ -169,11 +172,12 @@ export function createSalesOrderFromOpportunity(deps: CommercialCommandDeps, act
 /** Core lifecycle: CONFIRMED -> IN_FULFILLMENT, CANCEL before FULFILLED. The quantity-decided step refuses (D2). */
 export function transitionSalesOrder(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "salesOrder.transition", [COMMERCIAL_CAPABILITIES.SALES_ORDER_WRITE], input?.idempotencyKey,
-    async (db, now) => {
+    async (db, now, scope) => {
       const transition = input.transition as SalesOrderTransition;
       if (transition !== "ADVANCE" && transition !== "CANCEL") fail("TRANSITION_INVALID", "INVALID_INPUT", "transition must be ADVANCE or CANCEL");
       const order = await lockOrderState(db, actor.tenantId, String(input.salesOrderId ?? ""));
       if (!order) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
+      scope.admitChannel(order.salesChannel); // DQ-020: its stored channel
       if (!isSalesOrderState(order.state)) return fail("ORDER_STATE_UNSET", "PRECONDITION_FAILED", "the Sales Order has no governed lifecycle state");
       if (transition === "ADVANCE" && order.state === "IN_FULFILLMENT") {
         fail("FULFILLMENT_AUTHORITY_UNAVAILABLE", "UNAVAILABLE",
