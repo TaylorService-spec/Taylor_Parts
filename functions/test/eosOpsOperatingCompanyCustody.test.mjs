@@ -187,7 +187,7 @@ test("createSheet takes the operating company as a REQUIRED positional argument"
   const repo = readFileSync("src/eosOps/cycleCountRepository.ts", "utf8");
   assert.match(
     repo,
-    /export async function createSheet\(\s*pool: Pool,\s*tenantId: string,\s*actorId: string,\s*operatingCompanyKey: OperatingCompanyKey,/,
+    /export async function createSheet\(\s*pool: (?:Pool|Queryable),\s*tenantId: string,\s*actorId: string,\s*operatingCompanyKey: OperatingCompanyKey,/,
     "not optional, and not defaulted",
   );
   assert.match(repo, /requireOperatingCompanyKey\(operatingCompanyKey\)/, "and refused at the boundary, not just by SQL");

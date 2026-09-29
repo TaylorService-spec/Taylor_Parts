@@ -77,6 +77,11 @@ test("the catalog authority is composed ONLY by the Work Order/ops commands that
     .map((f) => f.slice(SRC.length + 1).split("\\").join("/"))
     .sort();
   assert.deepEqual(importers, [
+    // Controller ruling DQ-018 (2026-09-28): the EOS Cycle Count commands resolve the counted Part and its
+    // tracking mode from the catalog, never from the caller -- a count against a caller-stated tracking mode
+    // would be wrong silently. Wired, NOT activatable: they refuse NOT_ACTIVATED until the Cycle Count
+    // activation gate, which follows the Catalog COPY (cycleCount/cycleCountWriterState.ts).
+    "eosOps/cycleCountOperations.ts",
     "eosOps/equipmentCustody.ts",
     "eosOps/inventoryCommitmentRepository.ts",
     "eosOps/serviceFromSalesOrderBoundary.ts",
@@ -88,7 +93,7 @@ test("every composer uses it as a REPOSITORY, on its own client, never over HTTP
   // The forbidden shape is a Render handler calling another Render handler: the Part would be verified in
   // one transaction and acted on in another, with nothing making the two agree.
   const SRC = join(FUNCTIONS_DIR, "src");
-  for (const rel of ["eosOps/equipmentCustody.ts", "eosOps/inventoryCommitmentRepository.ts",
+  for (const rel of ["eosOps/cycleCountOperations.ts", "eosOps/equipmentCustody.ts", "eosOps/inventoryCommitmentRepository.ts",
                      "eosOps/serviceFromSalesOrderBoundary.ts", "eosOps/workOrderPartsPlanAuthority.ts"]) {
     const src = strip(readFileSync(join(SRC, rel), "utf8"));
     assert.doesNotMatch(src, /fetch\(/, `${rel} calls out over HTTP`);

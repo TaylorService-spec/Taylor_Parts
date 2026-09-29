@@ -406,6 +406,10 @@ on:
       - "functions/src/eosOps/contextualAuthorization.ts"
       - "functions/test/experienceAuthority.test.mjs"
       - "functions/test/experienceAuthorityPostgres.test.mjs"
+      # DQ-017/018 -- EOS Cycle Count commands with server-side warehouse scope, and their activation constant.
+      - "functions/test/eosCycleCountOperationsPostgres.test.mjs"
+      - "functions/src/cycleCount/cycleCountWriterState.ts"
+      - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       # WAVE 9 / LANE AH: the Administration surface + Owner persona readiness record. Registered
       # individually for the reason every entry above was -- a suite that runs in a registered job
       # but matches no path filter goes stale in silence. The two readiness suites were merged by
@@ -1006,6 +1010,10 @@ on:
       # deploys. Named here too.
       - "functions/test/experienceAuthority.test.mjs"
       - "functions/test/experienceAuthorityPostgres.test.mjs"
+      # DQ-017/018 -- EOS Cycle Count commands with server-side warehouse scope, and their activation constant.
+      - "functions/test/eosCycleCountOperationsPostgres.test.mjs"
+      - "functions/src/cycleCount/cycleCountWriterState.ts"
+      - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/access/experienceContext.js"
       - ".github/workflows/eos-admin-policy-tests.yml"

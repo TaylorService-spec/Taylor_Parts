@@ -17,7 +17,9 @@
 //
 // There is deliberately no `POST /sql`, no `mutate(table, id, patch)`, no Firestore proxy, and no
 // route that takes a table name.
-import { resolveOperationalContext } from "./capabilityAuthority";
+import { capabilitiesWithoutUnevaluatedConditions, resolveOperationalContext } from "./capabilityAuthority";
+import { EOS_CYCLE_COUNT_OPERATIONS, CycleCountOperationError, type EosCycleCountOperation } from "./cycleCountOperations";
+import { CYCLE_COUNT_WRITER_AUTHORITY, type PostgresCycleCountWriterState } from "../cycleCount/cycleCountWriterState";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { resolveExperienceContext } from "./experienceAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
@@ -57,8 +59,21 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsReadOperat
   resolveMyExperienceContext: "/operations/experience",
 });
 
+// ════════════════════ the Cycle Count command route (Controller rulings DQ-017 / DQ-018) ════════════════════
+//
+// The FIRST inventory domain on this transport, and the first operations that WRITE. It is a third,
+// honestly-named route with its OWN closed operation table (eosOps/cycleCountOperations.ts) rather than
+// entries on the read list: a route names a domain, and the read list stays exactly what it says. The
+// shape is unchanged -- verify identity, resolve the operational context from PostgreSQL, hand ONE named
+// operation its input, write the result. Warehouse scope is enforced INSIDE each operation, per record.
+export const CYCLE_COUNT_ROUTE = "/operations/cycle-count";
+export const CYCLE_COUNT_OPERATIONS: readonly EosCycleCountOperation[] =
+  Object.freeze(Object.keys(EOS_CYCLE_COUNT_OPERATIONS) as EosCycleCountOperation[]);
+export const isCycleCountOperation = (name: unknown): name is EosCycleCountOperation =>
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_CYCLE_COUNT_OPERATIONS, name);
+
 export const OPERATIONS_ROUTES: readonly string[] =
-  Object.freeze([...new Set(Object.values(OPERATIONS_ROUTE_BY_OPERATION))].sort());
+  Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE])].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
 export const isOperationsOperation = (name: unknown): name is OperationsReadOperation =>
@@ -67,6 +82,11 @@ export const isOperationsOperation = (name: unknown): name is OperationsReadOper
 export interface OperationsApiDeps {
   readonly reader: PolicyReader;
   readonly pool: Pool;
+  /**
+   * TEST INJECTION ONLY: the Cycle Count activation state. The deployed server supplies none, so the
+   * governed constant (CYCLE_COUNT_WRITER_AUTHORITY.postgres, INACTIVE) is what production reads.
+   */
+  readonly cycleCountPostgresState?: PostgresCycleCountWriterState;
 }
 
 export type OperationsApiFailureCode =
@@ -159,6 +179,53 @@ export interface HttpResponseShape {
   readonly body: string;
 }
 
+const STATUS_BY_CYCLE_COUNT_CATEGORY: Readonly<Record<CycleCountOperationError["category"], number>> = Object.freeze({
+  INVALID_INPUT: 400,
+  NOT_FOUND: 404,
+  PRECONDITION_FAILED: 412,
+  CONFLICT: 409,
+  FORBIDDEN: 403,
+  NOT_ACTIVATED: 503,
+  FAILED: 500,
+});
+
+/**
+ * Execute one Cycle Count operation for an already-verified caller. An unknown / disabled / non-member
+ * Principal is FORBIDDEN (PrincipalContextError); a capability reached only through a CONDITIONED grant
+ * is withheld (this kernel cannot evaluate conditions -- fail closed), exactly as the Commercial route does.
+ */
+export async function executeCycleCountOperation(
+  deps: OperationsApiDeps,
+  request: {
+    readonly caller: { readonly externalSubject: string; readonly identityProvider: string; readonly requestedTenantId: string | null };
+    readonly operation: EosCycleCountOperation;
+    readonly input: Record<string, unknown>;
+  },
+): Promise<{ readonly status: number; readonly body: unknown }> {
+  const { operation } = request;
+  try {
+    const postgresState = deps.cycleCountPostgresState ?? CYCLE_COUNT_WRITER_AUTHORITY.postgres;
+    const conditions = postgresGrantConditionProvider(deps.pool);
+    const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
+      identityProvider: request.caller.identityProvider,
+      externalSubject: request.caller.externalSubject,
+      requestedTenantId: request.caller.requestedTenantId,
+    }, conditions);
+    const capabilities = await capabilitiesWithoutUnevaluatedConditions(deps.pool, ctx.principalContext, ctx.capabilities, conditions);
+    const actor = Object.freeze({ tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities });
+    const result = await EOS_CYCLE_COUNT_OPERATIONS[operation]({ pool: deps.pool, postgresState }, actor, request.input);
+    return { status: 200, body: { ok: true, operation, result } };
+  } catch (err) {
+    if (err instanceof PrincipalContextError) return { status: 403, body: { ok: false, operation, code: "FORBIDDEN", message: err.refusal } };
+    if (err instanceof CycleCountOperationError) {
+      return { status: STATUS_BY_CYCLE_COUNT_CATEGORY[err.category] ?? 500, body: { ok: false, operation, code: err.code, message: err.message } };
+    }
+    // eslint-disable-next-line no-console -- same posture as the read path's unhandled-error log
+    console.error("[eosOpsHttp] cycle count unhandled", err);
+    return { status: 500, body: { ok: false, operation, code: "INTERNAL", message: "the request could not be completed" } };
+  }
+}
+
 const STATUS_BY_CODE: Readonly<Record<OperationsApiFailureCode, number>> = Object.freeze({
   UNKNOWN_OPERATION: 404,
   UNAUTHENTICATED: 401,
@@ -224,6 +291,33 @@ export async function handleOperationsRequest(
   }
 
   const operation = payload.operation;
+
+  if (path === CYCLE_COUNT_ROUTE) {
+    if (!isCycleCountOperation(operation)) return json(404, notFound(String(operation ?? "")), origin);
+    const input = payload.input === undefined ? {} : payload.input;
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      return json(400, { ok: false, operation, code: "INVALID_INPUT", message: "input must be a JSON object" }, origin);
+    }
+    const ccBearer = bearerToken(header(request, "authorization"));
+    if (!ccBearer) return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "a bearer token is required" }, origin);
+    let ccIdentity: VerifiedIdentity;
+    try {
+      ccIdentity = await options.verifyToken(ccBearer);
+    } catch {
+      return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "the token could not be verified" }, origin);
+    }
+    const out = await executeCycleCountOperation(options, {
+      caller: {
+        externalSubject: ccIdentity.externalSubject,
+        identityProvider: ccIdentity.identityProvider,
+        requestedTenantId: singleHeader(header(request, "x-eos-tenant")),
+      },
+      operation,
+      input: input as Record<string, unknown>,
+    });
+    return json(out.status, out.body, origin);
+  }
+
   if (!isOperationsOperation(operation)) return json(404, notFound(String(operation ?? "")), origin);
   // The operation must belong to the route it arrived on. Without this, /operations/inventory would
   // answer for /operations/experience and the route names would stop describing anything.
