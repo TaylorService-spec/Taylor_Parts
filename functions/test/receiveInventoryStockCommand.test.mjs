@@ -3,10 +3,10 @@
 // server-derived actor is TRUSTED command context (deps.actor), never in the untrusted request.
 // Authorization / part / location / audit are injected seams. Never touches production.
 // Prerequisite: npm run build; emulator running (npm run test:receiveInventoryStock via emulators:exec).
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { FieldValue } = admin.firestore;
 
@@ -26,7 +26,7 @@ let seq = 0;
 const nextId = (p) => `${p}-${runId}-${(seq += 1)}`;
 const NOW = new Date(1_700_000_000_000);
 
-const writerApp = admin.apps.find((a) => a && a.name === "cw") || admin.initializeApp({ projectId: "taylor-parts" }, "cw");
+const writerApp = admin.apps.find((a) => a && a.name === "cw") || admin.initializeApp({ projectId: "demo-eos-test" }, "cw");
 const writerDb = writerApp.firestore();
 
 // REORDER SOURCE FREEZE (Catalog + Reorder cutover, step 2): the legacy REORDER_PURCHASE_ORDER receipt branch is frozen,

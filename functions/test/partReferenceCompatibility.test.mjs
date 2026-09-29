@@ -6,10 +6,10 @@
 // emulator in EXACTLY the stored shape those writers produced -- the real validatePart + partToFirestore
 // serializer the writer staged through. What is under test is unchanged: RESOLUTION and PARITY over a stored
 // Part (ruling B). Nothing here reopens a writer.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { partToFirestore } = await import("../lib/partMaster/partMasterRepository.js");
 const { validatePart } = await import("../lib/partMaster/validation.js");

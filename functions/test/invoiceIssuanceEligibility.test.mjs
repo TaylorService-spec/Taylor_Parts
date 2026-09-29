@@ -5,17 +5,17 @@
 // -- tx.get the SO, cross-check accountId/currency/unitPrice/billing-eligible qty, idempotency replay --
 // directly, without activating a dormant capability.
 //
-// Prerequisite: firebase emulators:start --only firestore --project taylor-parts
+// Prerequisite: firebase emulators:start --only firestore --project demo-eos-test
 //   (after `npm run build`) node --test test/invoiceIssuanceEligibility.test.mjs
-process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import admin from "firebase-admin";
 import { persistIssuedInvoice } from "../lib/finance/invoiceCallables.js";
 import { InvoiceCommandError } from "../lib/finance/invoiceCommands.js";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 let sequence = 0;
 const id = (kind) => `${kind}-${Date.now()}-${++sequence}`;

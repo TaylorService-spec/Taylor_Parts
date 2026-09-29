@@ -24,6 +24,7 @@
 // would have passed against the broken world too -- `wh-main` appeared in eight files. What it
 // never did was RESOLVE. So the load-bearing assertion here is an end-to-end number, 571, produced
 // by the product's own reader over the fixture's own movements.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

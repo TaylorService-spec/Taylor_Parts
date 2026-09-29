@@ -1,6 +1,8 @@
 // Receiving Phase-2 E1: compiled-entry export test. Imports the compiled lib/index.js and asserts the two
 // callables are exported under their EXACT frozen public names (the names Firebase deploys), and that the
 // suffixed implementation consts are NOT exposed as additional callable surfaces. Prerequisite: npm run build.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
+import "./support/firebaseDemoProjectEnv.cjs"; // lib/index.js calls initializeApp() at import: give it a demo project
 import assert from "node:assert/strict";
 import * as indexMod from "../lib/index.js";
 

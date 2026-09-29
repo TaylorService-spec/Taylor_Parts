@@ -7,12 +7,12 @@
 // transient, a genuine bug inside resolveEffectiveAccess) is no longer indistinguishable from an
 // ordinary permission-denied to anyone reading Cloud Logging after the fact. Same idiom as the
 // existing "genuine read failure is logged server-side" check in salesOrderIndexRead.test.mjs.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { getAccountPortfolioSummary, ACCOUNT_PORTFOLIO_READ_CAPABILITY } = await import(
   "../lib/account/accountPortfolioSummary.js"

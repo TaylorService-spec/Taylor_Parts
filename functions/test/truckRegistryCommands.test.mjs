@@ -3,10 +3,10 @@
 // compiled ../lib output, seeds actor role via users/{uid}.role (admin/dispatcher security
 // role -- NO capability), and injects the governed-inventory predicate. Never touches
 // production. Prerequisite: npm run build; emulator running.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 
 const {
@@ -454,7 +454,7 @@ await check("delete AUTHZ commit-time: admin role REVOKED mid-transaction -> den
   // A SEPARATE Firestore connection performs the concurrent revocation (a genuinely independent
   // writer -- not the transaction's own stream), so it conflicts the txn's read set of
   // users/{raceAdmin} instead of corrupting the in-flight transaction.
-  const writerApp = admin.apps.find((a) => a && a.name === "concurrent-writer") || admin.initializeApp({ projectId: "taylor-parts" }, "concurrent-writer");
+  const writerApp = admin.apps.find((a) => a && a.name === "concurrent-writer") || admin.initializeApp({ projectId: "demo-eos-test" }, "concurrent-writer");
   const db2 = writerApp.firestore();
   let revokedOnce = false;
   const deps = {

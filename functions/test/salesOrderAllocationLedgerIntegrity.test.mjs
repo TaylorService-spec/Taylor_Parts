@@ -5,6 +5,7 @@
 // order could be allocated stock that already left. The gate now reads the rows through the authoritative ledger read
 // (inventoryLedger/authoritativeLedgerRows.ts, the one L3 module): any unclassifiable or unreadable operational row
 // refuses the whole determination with an explicit integrity refusal. Never a skip, never a substituted zero.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";

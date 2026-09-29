@@ -5,6 +5,7 @@
 // to touch.
 //
 // OFFLINE. Pure functions; no emulator, no Firebase, no writes.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

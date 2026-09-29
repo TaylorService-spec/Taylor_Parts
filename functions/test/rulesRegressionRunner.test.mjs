@@ -276,7 +276,8 @@ await okAsync("8. no credential/production prerequisite; emulator-only, fixed lo
   assert.ok(!/GOOGLE_APPLICATION_CREDENTIALS|serviceAccount|service-account|applicationDefault|apiKey|API_KEY|process\.env\.[A-Z_]*SECRET|firebase deploy/i.test(RUNNER_CODE));
   assert.ok(!/firestore\.googleapis\.com|identitytoolkit\.googleapis\.com/.test(RUNNER_CODE), "must not reference production endpoints");
   // Uses the fixed local project + loopback emulator only.
-  assert.ok(/projectId:\s*"taylor-parts"/.test(RUNNER_CODE));
+  assert.ok(/projectId:\s*"demo-eos-test"/.test(RUNNER_CODE), "a Firebase demo- project, never a real one");
+  assert.ok(!/projectId:\s*"(taylor-parts|eos-platform-sandbox|eos-platform-certification)"/.test(RUNNER_CODE));
   assert.ok(/host:\s*"127\.0\.0\.1"/.test(RUNNER_CODE));
   assert.ok(/--only.*firestore,auth|"firestore,auth"/.test(RUNNER_CODE));
   // Orchestration runs with NO cloud credentials present in the environment.

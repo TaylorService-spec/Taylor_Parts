@@ -3,10 +3,10 @@
 // serialized_assets / inventory_transactions / transfer_orders data, and that the truck-registry
 // commands (deactivateTruck / deleteTruckCreatedInError) now use them by DEFAULT. Requires the
 // Firestore emulator. Prerequisite: npm run build; emulator running.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 
 const {

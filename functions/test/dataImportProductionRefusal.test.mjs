@@ -13,13 +13,14 @@
 // NO EMULATOR AND NO CREDENTIALS ARE NEEDED, which is itself the assertion: if any call
 // reached Firestore, this test would hang or fail on credentials rather than pass. Refusal
 // happens before anything touches a database.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 process.env.GCLOUD_PROJECT = "taylor-parts";
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 
 const { stageDataImportCallable, executeDataImportCallable, listDataImportJobsCallable } =
   await import("../lib/dataImport/dataImportCallables.js");

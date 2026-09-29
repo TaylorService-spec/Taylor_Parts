@@ -35,14 +35,12 @@
 //
 // Prerequisite: run against a live Firestore + Auth emulator pair,
 // e.g.:
-//   firebase emulators:start --only firestore,auth --project taylor-parts
+//   firebase emulators:start --only firestore,auth --project demo-eos-test
 // then, in a second terminal:
 //   node functions/test/verifyIssue100ProductionRules.test.js
 "use strict";
 
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
-
+require("./support/firebaseEmulatorGuard.cjs"); // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 const admin = require("firebase-admin");
 const {
   checkPrerequisites,
@@ -56,9 +54,9 @@ const {
   REQUIRED_FIXTURE_ENV,
 } = require("../scripts/verifyIssue100ProductionRules.js");
 
-const PROJECT_ID = "taylor-parts";
-const FIRESTORE_REST_BASE = "http://127.0.0.1:8080/v1";
-const IDENTITY_TOOLKIT_BASE = "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1";
+const PROJECT_ID = "demo-eos-test";
+const FIRESTORE_REST_BASE = `http://${process.env.FIRESTORE_EMULATOR_HOST}/v1`;
+const IDENTITY_TOOLKIT_BASE = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1`;
 
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
@@ -234,7 +232,9 @@ async function seedAll() {
 
   return {
     env: {
-      FIREBASE_PROJECT_ID: PROJECT_ID,
+      // The production project id is DATA for the script's own project guard; the SDK (already
+      // initialized above) is bound to a demo project, which the test-safety guard enforces.
+      FIREBASE_PROJECT_ID: "taylor-parts",
       PRODUCTION_DATA_AUTHORIZED: "YES",
       FIREBASE_WEB_API_KEY: "fake-api-key",
       GOOGLE_APPLICATION_CREDENTIALS: "/dev/null-not-actually-read-by-admin-sdk-already-initialized",

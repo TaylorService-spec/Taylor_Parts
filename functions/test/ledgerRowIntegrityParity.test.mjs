@@ -1,6 +1,7 @@
 // DQ-027: the client's ledger-row readability (field-ops-app-vite/src/domain/ledgerRowIntegrity.js) must give
 // the SAME verdict as the server's strict stored-record reader, row for row, over a shared matrix of
 // well-formed and deliberately broken rows. Pure: no Firebase app.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Timestamp } from "firebase-admin/firestore";

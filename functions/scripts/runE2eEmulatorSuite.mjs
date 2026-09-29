@@ -39,12 +39,12 @@ const AUTH_PORT = process.env.E2E_AUTH_PORT ?? "9099";
 // another emulator instance on this machine. Configurable for the same reason as the two above.
 const HUB_PORT = process.env.E2E_HUB_PORT ?? "4400";
 const LOGGING_PORT = process.env.E2E_LOGGING_PORT ?? "4500";
-// Deliberately the SANDBOX project id, not "taylor-parts" (which the embedded
-// environmentCapabilityOverrides.ts registry maps to role:"production" -> an unconditional empty
-// per-environment capability-activation set). This is still 100% local emulator data -- the project id
-// is only ever used to pick a row out of that in-process registry and to namespace the emulator's
-// in-memory Firestore instance. Never touches any live Firebase project.
-const PROJECT_ID = process.env.E2E_PROJECT_ID ?? "eos-platform-sandbox";
+// A Firebase DEMO project: the emulators run fully offline for it and it can never resolve to a real
+// project. The Firebase test-safety guard (functions/test/support/firebaseTestGuard.cjs) refuses a
+// governed project id in the environment `emulators:exec` hands the suite, so this must stay demo-.
+// The SANDBOX id the capability-activation registry needs is set by test/e2e/lib/testKit.mjs as DATA
+// (GCLOUD_PROJECT), never as the SDK's or the emulator's project.
+const PROJECT_ID = process.env.E2E_PROJECT_ID ?? "demo-eos-e2e";
 
 const baseConfig = JSON.parse(readFileSync(path.join(REPO_ROOT, "firebase.json"), "utf8"));
 const genConfig = {

@@ -23,6 +23,7 @@
 // set, which is all this function reads. Runs the COMPILED output (../lib).
 //
 // Run: npm run build && node --test functions/test/cycleCountExpectedQuantityIntegrity.test.mjs
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Timestamp } from "firebase-admin/firestore";

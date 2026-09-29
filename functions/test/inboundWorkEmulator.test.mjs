@@ -13,7 +13,7 @@
 // PROJECT IDENTITY IS PART OF THE TEST. It runs as eos-platform-sandbox because that is where the six
 // capabilities are activated; under the production identity every one of them resolves DENY, which is the
 // posture the environment suite asserts separately.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
 
 import { test, before } from "node:test";
@@ -50,7 +50,7 @@ import {
   FIXTURE_GMAIL_SERVICE,
 } from "../scripts/fixtures/inboundWorkFixtures.mjs";
 
-admin.initializeApp({ projectId: "eos-platform-sandbox" });
+admin.initializeApp({ projectId: "demo-eos-sandbox" }); // its own demo namespace, as the sandbox id once gave it
 const db = admin.firestore();
 const SYSTEM_ACTOR = "sbx-intake-system";
 const REVIEWER = "sbx-reviewer-uid";

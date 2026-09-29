@@ -15,13 +15,13 @@
 // refuses a non-sandbox project by name, and the capability resolver's activation overrides
 // are keyed on the same identity. Running this against "taylor-parts" would refuse at the
 // first line of every callable, which is the behaviour the guard's own suite asserts.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
 
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "eos-platform-sandbox" });
+admin.initializeApp({ projectId: "demo-eos-sandbox" }); // its own demo namespace, as the sandbox id once gave it
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 

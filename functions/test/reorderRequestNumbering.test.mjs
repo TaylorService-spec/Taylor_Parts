@@ -6,10 +6,11 @@
 // reorderRequestNumbering.ts's module header) — these tests exercise the allocator itself to the same
 // standard as the wired families, independent of that.
 
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-if (!admin.apps.length) admin.initializeApp({ projectId: "reorder-request-numbering-test" });
+if (!admin.apps.length) admin.initializeApp({ projectId: "demo-reorder-request-numbering-test" });
 
 import {
   formatReorderRequestNumber,

@@ -4,10 +4,10 @@
 // a drifted PO fails STALE_PRESTATE (bounded, run continues); a PO with a different existing link fails
 // UNEXPECTED_EXISTING_LINK (never overwritten); and rollback removes exactly the two fields (supplierName
 // intact) and is idempotent. Sandbox-only; no production data/credentials.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const M = await import("../lib/supplierMaster/reorderPurchaseOrderSupplierMigration.js");
 const E = await import("../lib/supplierMaster/reorderPurchaseOrderSupplierMigrationExecute.js");
@@ -20,9 +20,11 @@ async function check(name, fn) {
 const stamp = Date.now();
 const id = (p) => `s8-${p}-${stamp}`;
 const nm = (b) => `${b} ${stamp}`;
-const TARGET = { projectId: "taylor-parts", databaseId: "(default)" };
+// TARGET is where the write LANDS, compared against the Firestore instance itself -- so it is the SDK's
+// (demo) project. The test-safety guard never lets the SDK be initialized for a real one.
+const TARGET = { projectId: "demo-eos-test", databaseId: "(default)" };
 const CONFIRM = `${TARGET.projectId}/${TARGET.databaseId}`;
-const PINS = { projectId: "taylor-parts", governedCommit: "s8-test" };
+const PINS = { projectId: "demo-eos-test", governedCommit: "s8-test" };
 const read = async (poId) => (await db.collection("reorder_purchase_orders").doc(poId).get()).data();
 
 console.log("reorderPurchaseOrderSupplierMigrationExecuteEmulator.test.mjs");

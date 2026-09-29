@@ -7,16 +7,16 @@
 // `.run(request)` against a live Firestore emulator.
 //
 // Prerequisite (also how CI runs it):
-//   firebase emulators:start --only firestore --project taylor-parts (this session: port 8201, see
+//   firebase emulators:start --only firestore --project demo-eos-test (this session: port 8201, see
 //   firebase.json's temporary override)
 //   (after `npm run build`) node --test test/salesOrderFulfillmentWriteBackEmulator.test.mjs
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8201";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
 const admin = (await import("firebase-admin")).default;
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 

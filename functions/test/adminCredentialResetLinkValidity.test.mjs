@@ -17,10 +17,10 @@
 // Sanitized: OOB codes / links / emails are never printed. Emulator-only.
 //
 // Run:
-//   firebase emulators:exec --only auth --project taylor-parts \
+//   firebase emulators:exec --only auth --project demo-eos-test \
 //     "node functions/test/adminCredentialResetLinkValidity.test.mjs"
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import { getAuth } from "firebase-admin/auth";
@@ -28,7 +28,7 @@ import { getAuth } from "firebase-admin/auth";
 const PROJECT = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "demo-authpr3";
 admin.initializeApp({ projectId: PROJECT });
 const auth = getAuth();
-const EMU = "http://127.0.0.1:9099";
+const EMU = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`; // the caller's emulator (the guard requires it)
 
 let passed = 0;
 async function okAsync(name, fn) { await fn(); passed += 1; console.log("PASS -- " + name); }

@@ -4,12 +4,12 @@
 // THREE real holders (ADMIN + DISPATCHER + INVENTORY RECEIVING CLERK) can receive/list, every excluded
 // persona -- OWNER now included -- is denied, stale accessVersion denies, and revocation prevents both
 // receive and option access. Never touches production. Prereq: build + emulator.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import { Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 
 const { runReceiveInventoryStock, runListReceivingLocationOptions, mapReceiveError } = await import("../lib/inventoryReceiving/receivingCallables.js");

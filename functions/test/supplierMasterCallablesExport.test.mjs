@@ -2,6 +2,8 @@
 // Supplier callables are exported under their EXACT frozen public names (the names Firebase deploys), and
 // that the suffixed implementation consts are NOT exposed as additional callable surfaces. Prerequisite:
 // npm run build. Offline (no emulator).
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
+import "./support/firebaseDemoProjectEnv.cjs"; // lib/index.js calls initializeApp() at import: give it a demo project
 import assert from "node:assert/strict";
 import * as indexMod from "../lib/index.js";
 

@@ -1,5 +1,6 @@
 // DQ-019: authoritative inventory results FAIL CLOSED on a malformed ledger row, and the pre-activation
 // census measures exactly what that read would refuse. Pure + one CLI run over a temp snapshot file.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, writeFileSync } from "node:fs";

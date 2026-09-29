@@ -11,6 +11,7 @@
 // The behaviour behind that claim is measured here too, against the real firebase-admin with no
 // credential present. That is the part worth re-running: the rest is configuration, but "token
 // verification needs no service-account key" is a claim about a library, and libraries change.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -92,12 +93,13 @@ test("verifyIdToken needs the project id and NO credential — measured, not ass
   // A structurally valid JWT signed by nobody. Reaching "kid does not correspond to a known public
   // key" proves the SDK got past credential resolution and fetched Google's public certificates;
   // failing earlier with a credential complaint would prove the opposite.
+  const SDK_PROJECT = "demo-eos-test";
   const seg = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
   const token = [
     seg({ alg: "RS256", kid: "none", typ: "JWT" }),
     seg({
-      aud: "eos-platform-sandbox",
-      iss: "https://securetoken.google.com/eos-platform-sandbox",
+      aud: SDK_PROJECT,
+      iss: `https://securetoken.google.com/${SDK_PROJECT}`,
       sub: "subject",
       iat: 1,
       exp: 9999999999,
@@ -105,16 +107,22 @@ test("verifyIdToken needs the project id and NO credential — measured, not ass
     "signature",
   ].join(".");
 
-  const imported = await import("firebase-admin");
-  const admin = imported.default ?? imported;
-  const app = admin.apps?.length ? admin.app() : admin.initializeApp();
-
   const saved = process.env.GOOGLE_CLOUD_PROJECT;
   try {
-    process.env.GOOGLE_CLOUD_PROJECT = envOf("GOOGLE_CLOUD_PROJECT").value;
+    // The mechanism under test is the blueprint's: initializeApp() with NO options, the project id
+    // taken from GOOGLE_CLOUD_PROJECT alone, no credential. The Firebase test-safety guard never lets
+    // the SDK be initialized for a governed project, so the SAME mechanism is measured with a demo-
+    // project; the blueprint's own value (eos-platform-sandbox) is asserted as data above.
+    process.env.GOOGLE_CLOUD_PROJECT = SDK_PROJECT;
+    const imported = await import("firebase-admin");
+    const admin = imported.default ?? imported;
+    const app = admin.apps?.length ? admin.app() : admin.initializeApp();
     await assert.rejects(
       () => app.auth().verifyIdToken(token),
-      /kid|public key/i,
+      // Under the Firebase test-safety guard the process has no egress, so the SDK's attempt to FETCH Google's
+      // public certificates is refused locally (www.googleapis.com). Reaching that fetch is the same proof: it
+      // comes after credential resolution, which a missing credential would have failed first.
+      /kid|public key|outbound network to www\.googleapis\.com is blocked/i,
       "verification reached public-key checking with no credential present",
     );
   } finally {

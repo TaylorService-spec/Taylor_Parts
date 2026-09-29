@@ -22,6 +22,7 @@
 // would not have thought to: that the stored `equipmentModelId` EQUALS the document id, that the id
 // is canonical in its own right rather than merely equal to a stored string, and the full D1
 // validation behind it.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

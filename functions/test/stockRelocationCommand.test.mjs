@@ -8,10 +8,10 @@
 //   - EXACT SOURCE: sufficiency never borrows from direct stock, a sibling bin, or another building;
 //   - ONE SIGN RULE: consumption now reduces Transfer and Cycle Count on-hand, which it did not before;
 //   - REPLAY BY INTENT: a retry writes nothing; a changed request under the same key is a conflict.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 

@@ -32,11 +32,11 @@
 // part balance read reports it as GONE, because on-hand counts movements only at `type ===
 // "WAREHOUSE"`. Van stock is answerable ONLY through the mobile-location presence probe, which is a
 // different authority with a different audience. See §7.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 

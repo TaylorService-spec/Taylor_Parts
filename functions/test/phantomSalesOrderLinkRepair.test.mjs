@@ -2,6 +2,7 @@
 // (functions/src/repair/phantomSalesOrderLinkRepair.ts, phantomSalesOrderLinkRepairEvidence.ts) + operator CLI
 // orchestration (functions/scripts/phantomSalesOrderLinkRepairCli.js). PURE: no Firebase app, no emulator, no
 // network. Prerequisite: npm run build. Mirrors functions/test/salesOrderNumberBackfill.test.mjs's structure.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { getApps } from "firebase-admin/app";

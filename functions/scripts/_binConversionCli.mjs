@@ -34,7 +34,9 @@ export function openBinConversionContext(argv) {
 
   let operator = "emulator-operator";
   if (emulator) {
-    admin.initializeApp({ projectId: projectId ?? "taylor-parts-emulator" });
+    // A Firebase demo- project: the emulator path can never name a real one (and the functions test
+    // suites that drive this script refuse any other -- see functions/test/support/firebaseTestGuard.cjs).
+    admin.initializeApp({ projectId: projectId ?? "demo-eos-test" });
   } else {
     try {
       operator = gcloud(["config", "get-value", "account"]) || "unknown-operator";

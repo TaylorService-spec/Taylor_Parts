@@ -118,6 +118,10 @@ jobs:
     name: Coordinated Visit read callable -- bounded query + authorization boundary (emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Firebase test-safety guard (functions/test/support/firebaseTestGuard.cjs): emulator suites
+      # refuse to run unless the emulator is named explicitly -- never a silent fallback to Google.
+      FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
     steps:
       - uses: actions/checkout@v4
 
@@ -134,7 +138,7 @@ jobs:
 
       - name: Start Firestore emulator (background)
         run: |
-          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/coordinated-visit-read-emulator.log 2>&1 &
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project demo-eos-test --config ../firebase.json > /tmp/coordinated-visit-read-emulator.log 2>&1 &
           for i in $(seq 1 60); do
             if grep -q "All emulators ready" /tmp/coordinated-visit-read-emulator.log 2>/dev/null; then exit 0; fi
             sleep 1

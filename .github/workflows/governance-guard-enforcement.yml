@@ -124,6 +124,13 @@ jobs:
       - name: Production publish trigger fence
         run: node scripts/productionPublishTriggerFence.mjs
 
+      # Firebase test-safety guard: every functions test that loads the Firebase/Google SDK must load the
+      # guard first, emulator suites must name a loopback emulator and a demo- project, and ADC is
+      # neutralized. Plain node, no dependencies, no network -- so it runs on every pull request.
+      - name: Firebase test-safety guard regression tests
+        run: npm run test:firebaseTestGuard
+        working-directory: functions
+
       # =================== THE DIFF, COMPUTED FAIL-CLOSED ===================
       #
       # Same three-case resolution, and the same fail-closed rule, as firebase-exit-guard.yml: an

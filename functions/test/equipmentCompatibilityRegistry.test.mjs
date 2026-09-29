@@ -2,6 +2,7 @@
 // client-closed Rules proposal. Pure logic, no emulator: these assert what the REPOSITORY declares,
 // not what any environment enforces. Rules ENFORCEMENT against the emulator is Stage E, and deployment
 // is the separate D10 gate.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

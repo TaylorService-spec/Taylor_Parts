@@ -2,12 +2,12 @@
 // (127.0.0.1:8080). Prerequisite: npm run build; emulator running. Mirrors financeReadCallables.test.mjs
 // exactly: the onCall adapter's fail-closed capability boundary, plus the bounded-read-honesty invariant
 // (a truncated page must report "unavailable", never a partial "ready" list).
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const reads = await import("../lib/crmActivity/crmActivityReadService.js");
 

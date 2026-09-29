@@ -5,7 +5,7 @@
 // files (no @firebase/rules-unit-testing, no test runner).
 //
 // Prerequisite: run against a live Firestore emulator, e.g.:
-//   firebase emulators:start --only firestore --project taylor-parts
+//   firebase emulators:start --only firestore --project demo-eos-test
 // then, in a second terminal (after `npm run build`):
 //   node functions/test/reportExecutionService.test.mjs
 //
@@ -14,8 +14,8 @@
 // deployment/production-data change of any kind; this test grants
 // capabilities ONLY via the service's own test-only `options.roles`
 // injection seam, never by mutating the real Role catalogs.
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -36,7 +36,7 @@ import {
 // The suite now states which environment it is asserting about.
 process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
 
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 

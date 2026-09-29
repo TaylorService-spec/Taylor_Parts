@@ -1,5 +1,6 @@
 // EI Phase-2 Receiving -- Gate E2-V: OFFLINE proof of the lossless warehouse backup codec + restore drift
 // gate. Pure `node` against the compiled codec. Prereq: npm run build.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
 import {

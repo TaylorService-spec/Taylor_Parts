@@ -23,13 +23,14 @@
 // A dummy emulator host forces firebase-admin's mock credentials. Nothing here ever performs an
 // RPC: the audit writer builds a real DocumentReference (local, no network) which the double
 // below accepts alongside its own refs, and every read/write goes through the double.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:65535";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import admin from "firebase-admin";
 
-if (admin.apps.length === 0) admin.initializeApp({ projectId: "p1b-control-type-immutable" });
+if (admin.apps.length === 0) admin.initializeApp({ projectId: "demo-p1b-control-type-immutable" });
 
 const {
   createPart,

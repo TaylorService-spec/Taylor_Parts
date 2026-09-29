@@ -5,12 +5,12 @@
 // DIRECTLY -- below the capability gate, exactly the pattern salesOrderCallables.ts/opportunityCallables.ts
 // already establish for persistCreatedSalesOrder/persistTransitionedOpportunity -- to prove the WON-only
 // precondition, the sourceOpportunityId dedup, the atomic Opportunity back-link, and idempotency replay.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8202";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const mod = await import("../lib/opportunity/createSalesOrderFromOpportunity.js");
 

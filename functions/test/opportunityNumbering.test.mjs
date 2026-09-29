@@ -5,13 +5,14 @@
 // in front of a user and in another record's lineage: it is never reused, it never
 // exists without its record, and its shape is stable.
 
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
 // Building a DocumentReference needs an initialized app but touches no network — the
 // counter ref is constructed locally and handed to the caller's transaction, which is
 // a stub here. No emulator, no credentials, no I/O.
-if (!admin.apps.length) admin.initializeApp({ projectId: "opportunity-numbering-test" });
+if (!admin.apps.length) admin.initializeApp({ projectId: "demo-opportunity-numbering-test" });
 
 import {
   formatOpportunityNumber,

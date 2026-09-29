@@ -6,6 +6,7 @@
 // FK-checked at the command layer, but never written/read by the repository, so they reverted to
 // undefined on the very next read).
 // Prerequisite: npm run build.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";

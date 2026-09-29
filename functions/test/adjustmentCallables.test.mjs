@@ -14,12 +14,12 @@
 // The pure adjustment logic that WOULD run past that gate (AR-projection derivation,
 // INVOICE_VOID/EXCEEDS_OUTSTANDING/CURRENCY_MISMATCH error codes that mapCommandError translates) is already
 // covered directly against the command core in adjustmentCommands.test.mjs.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { recordInvoiceAdjustment, FINANCE_ADJUSTMENT_RECORD_CAPABILITY } = await import("../lib/finance/adjustmentCallables.js");
 

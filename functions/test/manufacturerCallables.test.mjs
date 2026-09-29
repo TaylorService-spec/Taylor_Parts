@@ -5,10 +5,10 @@
 // request.data); sanitized error->HttpsError mapping; idempotency replay; and that
 // changeManufacturerStatus requires the DISTINCT inventory.catalog.activate (a .manage-only actor is denied).
 // Prerequisite: npm run build; Firestore emulator running.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const c = await import("../lib/partMaster/manufacturerCallables.js");
 

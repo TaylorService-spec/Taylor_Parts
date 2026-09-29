@@ -7,6 +7,7 @@
 // referential integrity, and audit pairing. Real contention/retry, real Rules and the genuine
 // multi-client race remain STAGE E emulator work. Nothing here activates a permission or grants a role --
 // the resolver is a fixture, exactly as the design's §5 seam requires.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
 

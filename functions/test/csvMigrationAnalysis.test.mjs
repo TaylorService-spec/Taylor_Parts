@@ -1,10 +1,10 @@
 // INV-1 Phase 1 PR 1.8 -- CSV dry-run analysis tests (emulator for
 // Part/alias fixtures; the analysis core itself takes injected lookups).
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import admin from "firebase-admin";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { createPart, changePartStatus, updatePart, createPartAlias } = await import("../lib/partMaster/partMasterCommands.js")
   .then(async (m) => ({ ...m, createPartAlias: (await import("../lib/partMaster/partAliasCommands.js")).createPartAlias }));

@@ -11,11 +11,11 @@
 //     emulator via firebase-admin, no @firebase/rules-unit-testing).
 //
 // Prerequisite: run against a live Firestore emulator, e.g.:
-//   firebase emulators:start --only firestore --project taylor-parts
+//   firebase emulators:start --only firestore --project demo-eos-test
 // then, in a second terminal (after `npm run build`):
 //   node functions/test/operationalRoleContext.test.mjs
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import {
@@ -134,7 +134,7 @@ async function pureChecks() {
 
 // === Emulator-backed checks (live Firestore, mirrors employeesRules.test.js's document shape) ===
 
-const PROJECT_ID = "taylor-parts";
+const PROJECT_ID = "demo-eos-test";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 

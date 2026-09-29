@@ -13,8 +13,8 @@
 // Every one has a test. The refusals are asserted by CODE, because those are what a phone branches
 // on, and capability is resolved against REAL roleAssignment documents -- a stubbed authorizer would
 // prove nothing about the control that keeps a technician on their own work.
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
 import assert from "node:assert/strict";
 import admin from "firebase-admin";

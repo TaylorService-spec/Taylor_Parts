@@ -11,9 +11,8 @@
 // Prerequisite: a live Firestore emulator (8080) AND Auth emulator (9099), then
 // (after `npm run build`):
 //   node functions/test/adminCredentialTargetFacts.test.mjs
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import { getAuth } from "firebase-admin/auth";

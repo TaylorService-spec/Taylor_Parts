@@ -13,6 +13,7 @@
 // more; no writer here may author it, and the last section asserts that rather than trusting it.
 //
 // OFFLINE. Pure functions and a fake Firestore; no emulator.
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

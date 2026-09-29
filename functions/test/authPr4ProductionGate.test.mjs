@@ -15,6 +15,7 @@
 // Run (emulator): firebase emulators:exec --only auth --project demo-authpr4 \
 //                   "node test/authPr4ProductionGate.test.mjs"
 
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import os from "node:os";
 import fs from "node:fs";

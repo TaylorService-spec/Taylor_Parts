@@ -10,10 +10,11 @@
 // caller would need to commit -- and separately proves that committing it (as the real caller does)
 // reproduces the identical safety properties.
 
+import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-if (!admin.apps.length) admin.initializeApp({ projectId: "receiving-order-numbering-test" });
+if (!admin.apps.length) admin.initializeApp({ projectId: "demo-receiving-order-numbering-test" });
 
 import {
   formatReceivingOrderNumber,

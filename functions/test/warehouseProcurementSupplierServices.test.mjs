@@ -12,13 +12,13 @@
 // NOT retired: Operations.jsx's ProcurementPanel still reads it live through
 // field-ops-app-vite/src/services/operationsQueries.ts's fetchSupplierCatalog. Only the duplicate
 // server-side Firebase supplier authority went away. See docs/handoff/w1-c21-registrations.md.
-process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import admin from "firebase-admin";
 import { createPurchaseOrder, updatePurchaseOrderStatus } from "../lib/procurementService.js";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 let sequence = 0;
 const id = (prefix) => `${prefix}-${Date.now()}-${++sequence}`;
 

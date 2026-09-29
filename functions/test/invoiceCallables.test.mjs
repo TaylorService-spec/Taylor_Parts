@@ -13,12 +13,12 @@
 // The pure invoice-issuance logic that WOULD run past that gate (amount recomputation, NOT_BILLABLE /
 // TAX_REQUIRES_REVIEW / UNPRICED error codes that mapCommandError translates) is already covered directly
 // against the command core in invoiceCommands.test.mjs.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { issueInvoice, persistIssuedInvoice, FINANCE_INVOICE_ISSUE_CAPABILITY } = await import("../lib/finance/invoiceCallables.js");
 

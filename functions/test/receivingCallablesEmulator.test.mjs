@@ -4,12 +4,12 @@
 // inventory.stock.receive denies every persona (no bypass); a synthetic grant seam proves valid
 // invocation without a repository grant; exact success/replay response; commit-time revocation cannot
 // commit/return; sanitized deterministic option list; the real Part adapter; and error-matrix mapping.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import { Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 
 const { runReceiveInventoryStock, runListReceivingLocationOptions, mapReceiveError } = await import("../lib/inventoryReceiving/receivingCallables.js");
@@ -27,7 +27,7 @@ let seq = 0;
 const nextId = (p) => `${p}-${runId}-${(seq += 1)}`;
 const NOW = new Date(1_700_000_000_000);
 const TS = Timestamp.fromMillis(1_700_000_000_000);
-const revoker = admin.initializeApp({ projectId: "taylor-parts" }, "revoker-e1").firestore();
+const revoker = admin.initializeApp({ projectId: "demo-eos-test" }, "revoker-e1").firestore();
 
 function governedWh(id, status = "ACTIVE", name = "Main") {
   return { id, name, location: "L", status, version: 1, updatedAt: TS, updatedBy: "u", provenance: "NATIVE", createdAt: TS, createdBy: "u" };

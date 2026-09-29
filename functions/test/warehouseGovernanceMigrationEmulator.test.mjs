@@ -3,11 +3,11 @@
 // Firestore emulator (127.0.0.1:8080). Proves the governed MIGRATED write, all-or-nothing staging,
 // complete-set binding (added/deleted/changed records fail closed), stale-pre-state, idempotency, and
 // atomic rollback. Never touches production. Prerequisite: npm run build; emulator running.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
 import { Timestamp } from "firebase-admin/firestore";
-admin.initializeApp({ projectId: "taylor-parts" });
+admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 
 const { planMigration, executeMigration } = await import("../lib/warehouseGovernance/warehouseGovernanceMigration.js");

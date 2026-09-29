@@ -10,13 +10,13 @@
 //
 // Harness: the compiled onCall handler invoked via `.run(request)` against a live Firestore emulator, as
 // transitionWorkOrderReassignment.test.mjs does.
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
 
+import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
 const admin = (await import("firebase-admin")).default;
-if (admin.apps.length === 0) admin.initializeApp({ projectId: "taylor-parts" });
+if (admin.apps.length === 0) admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { transitionWorkOrder } = await import("../lib/transitionWorkOrder.js");
 

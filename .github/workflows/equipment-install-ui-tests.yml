@@ -262,6 +262,10 @@ jobs:
     name: Equipment install callable (offline + Firestore emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    env:
+      # Firebase test-safety guard (functions/test/support/firebaseTestGuard.cjs): emulator suites
+      # refuse to run unless the emulator is named explicitly -- never a silent fallback to Google.
+      FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
     steps:
       - uses: actions/checkout@v4
 
