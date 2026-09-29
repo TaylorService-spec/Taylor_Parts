@@ -114,6 +114,18 @@ export const EQUIPMENT_COMPATIBILITY_GATE = Object.freeze({
 });
 
 /**
+ * Inventory > Part detail → the ORDERED Reorder's "Void Purchase Order" control.
+ *
+ * VOID IS A MANAGEMENT EXCEPTION (Controller ruling 2026-09-28): it is offered to a holder of
+ * reorder.purchaseOrder.void -- the Parts Manager by the ruled Administration grant -- not to the purchasing
+ * assignee as such. The governed command decides the rest (the Purchase Order company's REORDER_QUEUE scope,
+ * the ORDERED state, a stated reason); this gate only decides whether the control is offered.
+ */
+export const REORDER_PURCHASE_ORDER_VOID_GATE = Object.freeze({
+  void: "reorder.purchaseOrder.void",
+});
+
+/**
  * Every gate the shell's `hasCapability` answers, by surface. The keys are documentation; the
  * union below is what is asked for.
  *
@@ -139,6 +151,8 @@ export const SHELL_CAPABILITY_GATES = Object.freeze({
   financialPolicy: Object.freeze(Object.values(FINANCIAL_POLICY_GATE)),
   // domain/equipmentCompatibilitySection.js, via PartDetail → UsedInEquipmentSection.
   equipmentCompatibility: Object.freeze(Object.values(EQUIPMENT_COMPATIBILITY_GATE)),
+  // modules/inventory/PartDetail.jsx VoidPurchaseOrderAction.
+  reorderPurchaseOrderVoid: Object.freeze(Object.values(REORDER_PURCHASE_ORDER_VOID_GATE)),
 });
 
 /**

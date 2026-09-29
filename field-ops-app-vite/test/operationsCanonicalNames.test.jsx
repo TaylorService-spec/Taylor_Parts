@@ -14,7 +14,7 @@ vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [{ sku: "TST-9001", name: "STATIC-CATALOG-NAME-A", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }],
   getCatalogItem: () => undefined,
 }));
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({ collection: () => ({}), getDocs: async () => ({ docs: [] }) }));
@@ -40,7 +40,7 @@ vi.mock("../src/analytics/executionAnalyticsService", () => ({
 const capturedIHP = [];
 vi.mock("../src/modules/operations/panels/InventoryHealthPanel", () => ({ default: ({ resolveName }) => { capturedIHP.push(resolveName); return null; } }));
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import Operations from "../src/modules/operations/Operations.jsx";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -50,10 +50,10 @@ const READY = { ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-A"
 
 describe("Operations (OD-3) -- dashboard canonical name resolution, mounted path", () => {
   it("READY: ONE canonical read for the dashboard; ProcurementPanel shows the canonical name; no static name; no notice", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<Operations accessVersion={1} />);
     await screen.findByText("CANONICAL-NAME-A");
-    expect(fetchPartMasterList).toHaveBeenCalledTimes(1); // one shared read, not one per panel
+    expect(searchParts).toHaveBeenCalledTimes(1); // one shared read, not one per panel
     expect(screen.queryByText("STATIC-CATALOG-NAME-A")).toBeNull();
     expect(screen.queryByText(NOTICE)).toBeNull();
     // the Inventory Health panel mount receives the SAME single canonical resolver
@@ -67,7 +67,7 @@ describe("Operations (OD-3) -- dashboard canonical name resolution, mounted path
   });
 
   it("invalid canonical documents: raw partId + bounded notice; draft row (table) preserved; no static name; no raw invalid leak", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: READY.parts, invalid: [{ partId: "TST-9001", secretField: "raw-invalid-value" }] });
+    searchParts.mockResolvedValue({ ok: true, parts: READY.parts, invalid: [{ partId: "TST-9001", secretField: "raw-invalid-value" }] });
     render(<Operations accessVersion={1} />);
     await screen.findByText(NOTICE);
     expect(screen.getByText("TST-9001")).toBeTruthy();          // fail-closed name
@@ -81,7 +81,7 @@ describe("Operations (OD-3) -- dashboard canonical name resolution, mounted path
   it("accessVersion change fail-closes prior data + names immediately; a denied replacement leaves raw partId + notice", async () => {
     // Deferred reads so we control resolution ordering across the accessVersion change.
     const deferreds = [];
-    fetchPartMasterList.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
+    searchParts.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
     const { rerender } = render(<Operations accessVersion={1} />);
     await act(async () => { deferreds[0].resolve(READY); });
     await screen.findByText("CANONICAL-NAME-A");

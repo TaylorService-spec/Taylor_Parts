@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchPartMasterList } from "../services/partMasterQueries";
+import { searchParts } from "../services/partMasterQueries";
 import { PARTS_CATALOG } from "../data/partsCatalog";
 import { resolveCanonicalPartNames, partNamesBoundaryKey, selectCanonicalReadForKey } from "../domain/partsCatalogView";
 
@@ -46,7 +46,10 @@ export function useCanonicalPartNames({ uid, accessVersion, enabled = true } = {
     // Mark this boundary's read as LOADING (keyed) so an in-flight read is attributed to the
     // current boundary and never confused with a prior one.
     setStored({ key: currentKey, read: { status: "LOADING" } });
-    fetchPartMasterList()
+    // THE BOUNDED GOVERNED READ. This used to be a whole-collection fetch; it is now one page of the
+    // Catalog search, through Render, with no fallback. A resolver that needs specific ids should ask
+    // readPartsByIds; this hook composes the shared workspace, so a page is the right shape.
+    searchParts({ limit: 100 })
       .then((result) => {
         if (cancelled || token !== tokenRef.current) return;
         // Pass `invalid` through so the shared composer fails closed on any malformed
@@ -54,7 +57,7 @@ export function useCanonicalPartNames({ uid, accessVersion, enabled = true } = {
         // composeGovernedPartsWorkspace step 1b.
         const read = result.ok
           ? { status: "OK", rows: result.parts, invalid: result.invalid }
-          : { status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" };
+          : { status: (result.code === "FORBIDDEN" || result.code === "NOT_SIGNED_IN") ? "PERMISSION_DENIED" : "UNAVAILABLE" };
         setStored({ key: currentKey, read });
       })
       .catch(() => {

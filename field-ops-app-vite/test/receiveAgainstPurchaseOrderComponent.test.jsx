@@ -26,7 +26,7 @@ vi.mock("../src/domain/purchaseOrdersView", () => ({
   buildPurchaseOrdersView: () => ({ status: "ready", rows: candidateRows }),
 }));
 vi.mock("../src/services/receivingCallableClient", () => ({ fetchReceivingLocationOptions: (...a) => fetchLocations(...a), submitReceiveInventoryStock: (...a) => submitReceipt(...a) }));
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: (...a) => fetchParts(...a) }));
+vi.mock("../src/services/partMasterQueries", () => ({ readPartsForView: (...a) => fetchParts(...a) }));
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); candidateRows = []; });
 
@@ -159,7 +159,7 @@ describe("ReceiveAgainstPurchaseOrder — Part read failure fails CLOSED", () =>
   it("permission-denied blocks honestly instead of proceeding as NONE", async () => {
     candidateRows = [candidateRow({ partId: "P-4", orderedQuantity: 1 })];
     readyLocation();
-    fetchParts.mockResolvedValue({ ok: false, code: "permission-denied" });
+    fetchParts.mockResolvedValue({ ok: false, code: "FORBIDDEN", message: "forbidden" });
     render(<ReceiveAgainstPurchaseOrder onDone={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /P-4/i }));
     await screen.findByText(/can't verify this part/i);
@@ -171,7 +171,7 @@ describe("ReceiveAgainstPurchaseOrder — Part read failure fails CLOSED", () =>
   it("an unavailable Part read also blocks honestly (never assumes NONE)", async () => {
     candidateRows = [candidateRow({ partId: "P-5", orderedQuantity: 1 })];
     readyLocation();
-    fetchParts.mockResolvedValue({ ok: false, code: "unavailable" });
+    fetchParts.mockResolvedValue({ ok: false, code: "UNAVAILABLE", message: "unavailable" });
     render(<ReceiveAgainstPurchaseOrder onDone={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /P-5/i }));
     await screen.findByText(/can't verify this part/i);

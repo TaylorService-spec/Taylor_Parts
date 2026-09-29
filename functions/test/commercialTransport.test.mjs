@@ -249,14 +249,17 @@ test("(19)(20) the transport imports no Firebase or Firestore, contains no SQL, 
   assert.doesNotMatch(code, /resolvePrincipalContext|capabilitiesForRoleKeys/, "the transport grew its own resolver");
 });
 
-test("only the server identity seam imports firebase-admin; server composes one pool, one verifier, and no catalog", () => {
+test("only the server identity seam imports firebase-admin; server composes one pool, one verifier, and ONE catalog authority", () => {
   const importers = walk(SRC, [".ts"]).filter((f) => /["']firebase-admin["']/.test(strip(readFileSync(f, "utf8")))).map(rel);
   assert.ok(importers.includes("functions/src/eosApi/server.ts"));
   const server = strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8"));
   assert.equal((server.match(/getPolicyDatabasePool\(\)/g) ?? []).length, 1, "a second pool was composed");
   assert.equal((server.match(/createFirebaseTokenVerifier\(config\.identityProvider\)/g) ?? []).length, 1, "the verifier is composed more than once");
-  assert.match(server, /createCommercialHttpHandler\(\{\s*reader: repo,\s*pool,\s*verifyToken,\s*allowedOrigins: config\.allowedOrigins,\s*\}\)/);
-  assert.doesNotMatch(server, /catalog/i, "the deployed server composes a catalog authority");
+  // The Commercial handler now also receives the shared catalog authority. Everything else about the
+  // composition is unchanged: same repository, same pool, same verifier, same origins.
+  assert.match(server, /createCommercialHttpHandler\(\{\s*reader: repo,\s*pool,\s*verifyToken,\s*allowedOrigins: config\.allowedOrigins,\s*catalog: catalogReferenceAuthority,\s*\}\)/);
+  // EXACTLY ONE authority, composed once and shared. Two would be two answers to one question.
+  assert.equal((server.match(/createPostgresCatalogReferenceAuthority\(\)/g) ?? []).length, 1);
   assert.doesNotMatch(server, /createServer\([\s\S]*createServer\(/, "a second HTTP server");
   assert.doesNotMatch(server, /NOT DEPLOYED/);
 });

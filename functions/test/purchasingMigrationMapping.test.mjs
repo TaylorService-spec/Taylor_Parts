@@ -65,6 +65,7 @@ const voidDoc = (id, over = {}) => ({
   partId: PART,
   reason: "supplier cancelled the order",
   voidedBy: "u-2",
+  voidedAt: 1758000900000,
   ...over,
 });
 
@@ -202,6 +203,17 @@ test("a void record's document id, reorderRequestId and reorderPurchaseOrderId m
 test("a void with no stated reason records nothing and is refused", () => {
   const blank = mapLegacyPurchaseOrderVoid("rr-1", voidDoc("rr-1", { reason: "   " }), opts);
   assert.equal(refusalCode(blank), "MISSING_REQUIRED_TEXT");
+});
+
+test("a void carries its OWN instant; one with no valid voidedAt is refused, never stamped with the copy time", () => {
+  const ok = mapLegacyPurchaseOrderVoid("rr-1", voidDoc("rr-1"), opts);
+  assert.equal(ok.row.voidedAt, new Date(1758000900000).toISOString());
+  assert.equal(mapLegacyPurchaseOrderVoid("rr-1", voidDoc("rr-1", { voidedAt: "2026-09-01T10:00:00Z" }), opts).row.voidedAt,
+    "2026-09-01T10:00:00.000Z");
+  for (const bad of [undefined, null, "1 Sept 2026", { seconds: 1, nanoseconds: 0 }, -5]) {
+    assert.equal(refusalCode(mapLegacyPurchaseOrderVoid("rr-1", voidDoc("rr-1", { voidedAt: bad }), opts)), "MISSING_REQUIRED_TEXT",
+      `voidedAt ${JSON.stringify(bad)} must refuse`);
+  }
 });
 
 // ============================ receiving ============================

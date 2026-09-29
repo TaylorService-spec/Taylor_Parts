@@ -20,6 +20,8 @@ import { PART_IDENTIFIER_TRANSPORT_READY } from "../config/partIdentifierReadine
 import { toPartListView } from "../domain/partMasterView.js";
 import { normalizeScanToken } from "../domain/scannedIdentity.js";
 
+// The governed Catalog OPERATION names, mirrored from the server. Kept under the frozen export name
+// so existing callers and tests are unaffected; the values are operations now, not callables.
 export const CALLABLE_NAMES = Object.freeze({
   create: "createPartAlias",
   deactivate: "deactivatePartAlias",
@@ -42,33 +44,34 @@ export const CALLABLE_NAMES = Object.freeze({
 // already have.
 export const NOT_READY_STATUS = "transport-not-ready";
 
-function mapErrorToStatus(err) {
-  const raw = err && typeof err.code === "string" ? err.code : "";
-  const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
-  return code || "internal";
-}
-
-// The DOMAIN code the adapter put in `details`. Only ever a string; anything else is absent.
-function mapErrorDetail(err) {
-  return typeof err?.details === "string" && err.details.length > 0 ? err.details : null;
-}
-
-// Private, non-exported. Firebase is imported LAZILY so this module has no import-time side effect
-// (firebase/firebase.js runs initializeApp on import) and stays test-safe.
-async function invoke(name, payload) {
+// Private, non-exported. THE GOVERNED RENDER CATALOG TRANSPORT.
+//
+// This used to invoke the Firebase alias callables. They remain exported and deployed -- legacy
+// authority pending retirement -- but nothing in this application calls them any more, and there is
+// NO fallback: a refusal or an unreachable service is returned as a value, never retried against
+// Firestore.
+//
+// The outcome SHAPES are unchanged, deliberately: the callers' state machines (domain/partLookup.js,
+// the identifier screens) already read `{ result }` or `{ errorStatus, errorDetail }`, and changing
+// them in the same move that changes the authority would mix two reviews into one.
+async function invoke(operation, payload) {
   if (!PART_IDENTIFIER_TRANSPORT_READY) {
     return { errorStatus: NOT_READY_STATUS, errorDetail: null };
   }
-  try {
-    const [{ httpsCallable }, { functions }] = await Promise.all([
-      import("firebase/functions"),
-      import("../firebase/firebase.js"),
-    ]);
-    const res = await httpsCallable(functions, name)(payload);
-    return { result: res?.data };
-  } catch (err) {
-    return { errorStatus: mapErrorToStatus(err), errorDetail: mapErrorDetail(err) };
-  }
+  const { catalogApiClient } = await import("./catalogApiClient.js");
+  const res = await catalogApiClient.call(operation, payload);
+  if (res.ok) return { result: res.result };
+  return { errorStatus: mapCatalogFailure(res.code), errorDetail: res.reason ?? null };
+}
+
+/** The Catalog API's categories, in the status vocabulary the screens already render. */
+function mapCatalogFailure(code) {
+  if (code === "FORBIDDEN" || code === "NOT_SIGNED_IN") return "permission-denied";
+  if (code === "NOT_FOUND") return "not-found";
+  if (code === "INVALID_INPUT") return "invalid-argument";
+  if (code === "CONFLICT" || code === "PRECONDITION_FAILED") return "failed-precondition";
+  if (code === "NOT_CONFIGURED" || code === "UNREACHABLE" || code === "UNAVAILABLE") return "unavailable";
+  return "internal";
 }
 
 export const listPartAliases = ({ partId }) => invoke(CALLABLE_NAMES.list, { partId });

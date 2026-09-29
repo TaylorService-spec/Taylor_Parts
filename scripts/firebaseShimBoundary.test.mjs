@@ -288,16 +288,16 @@ test("the canonical frontend shim exports the Firestore and Functions HANDLES an
     "auth must never appear here -- Firebase Auth identity is permitted by Owner ruling");
 });
 
-test("all 58 importers of the frontend handle shim's db/functions also import the fenced " +
+test("all 51 importers of the frontend handle shim's db/functions also import the fenced " +
   "dependency DIRECTLY, so the guard's own baseline already governs every one of them -- which " +
   "is why this shim's tolerated consumer set is empty rather than unexamined", () => {
   const live = buildCensus(REPO_ROOT);
   const shim = live.shims.find((entry) => entry.shim === "field-ops-app-vite/src/firebase/firebase.js");
   assert.deepEqual(shim.consumers, []);
-  // CRM cutover: 11 former importers now reach the EOS API instead of Firebase at all (71 -> 60).
-  // Pass 11 Retail Sales: the Opportunity / Sales Order capability hooks were DELETED -- replaced by the PostgreSQL
-  // Commercial offer, which imports no Firebase at all (60 -> 58). Removed, not moved behind the shim.
-  assert.equal(live.observed.alreadyFencedConsumers, 58,
+  // CRM cutover: 11 former importers now reach the EOS API instead of Firebase at all (71 -> 60). The Catalog + Reorder
+  // activation candidate moves 7 more to the EOS API (60 -> 53): they left the shim AND the fenced dependency together.
+  // Pass 11 Retail Sales: the two Commercial capability hooks were DELETED (PostgreSQL offer, no Firebase) -- 53 -> 51.
+  assert.equal(live.observed.alreadyFencedConsumers, 51,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });

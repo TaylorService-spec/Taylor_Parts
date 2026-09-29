@@ -16,12 +16,14 @@
 // originals so the two cannot drift while both exist.
 //
 // Differences from the Firestore command, each deliberate:
-//   * internalPartNumber CHANGE is refused with INTERNAL_PART_NUMBER_ALIAS_AUTHORITY_UNAVAILABLE. The Firestore
-//     command preserves the old number as an INTERNAL_PN alias in `part_aliases` atomically with the update; that
-//     alias authority has not moved to PostgreSQL, and changing the number without the alias would silently break
-//     historical lookup. Fail closed until part_aliases moves (CATALOG_AUTHORITY_GAP, catalog-cutover-plan.md).
+//   * internalPartNumber CHANGE now behaves as the Firestore command does: the old number is preserved as an
+//     ACTIVE INTERNAL_PN alias in eos_ops.part_aliases, in the SAME transaction, and a conflicting alias identity
+//     refuses the whole update. This used to be refused with INTERNAL_PART_NUMBER_ALIAS_AUTHORITY_UNAVAILABLE,
+//     which was correct while the alias authority did not exist in PostgreSQL. The gap is closed, so the refusal
+//     is gone -- the RULE is not.
 //   * idempotency is content-addressed (catalogMasterKernel.ts header); a whole no-op update is NO_CHANGES.
 import type { PoolClient } from "pg";
+import { preserveInternalPartNumberAlias } from "./postgresPartAliasWriter.js";
 import {
   CATALOG_CAPABILITIES,
   type CatalogActorContext,
@@ -65,6 +67,8 @@ export const PART_UPDATABLE_FIELDS: ReadonlySet<string> = new Set([
 const PART_CREATE_FIELDS: ReadonlySet<string> = new Set(["partId", "status", ...PART_UPDATABLE_FIELDS]);
 
 export interface PartWriteResult {
+  /** Present only when this update preserved the prior internal part number as an alias. */
+  readonly preservedAliasId?: string;
   readonly partId: string;
   readonly version: number;
 }
@@ -165,15 +169,35 @@ export async function updatePart(
     if (effective.length === 0) refuse("NO_CHANGES", "PRECONDITION_FAILED", "the requested changes are already the stored values");
     // P1B R2 (partMasterCommands.ts assertControlTypeImmutable): a real change refuses; a same-value resend does not.
     if (merged.controlType !== stored.controlType) refuse("CONTROL_TYPE_IMMUTABLE", "PRECONDITION_FAILED", "a part's control type cannot be changed after it is created");
+    // ---- HISTORICAL INTERNAL PART NUMBER PRESERVATION ----
+    //
+    // The refusal that used to stand here (INTERNAL_PART_NUMBER_ALIAS_AUTHORITY_UNAVAILABLE) is gone
+    // because the authority it was protecting now EXISTS, not because the rule was relaxed. The rule
+    // is unchanged and is enforced here exactly as the Firestore command enforces it: the OLD number
+    // becomes an ACTIVE INTERNAL_PN alias to this same Part, in the SAME transaction, and both
+    // identities are probed BEFORE any write so a conflict refuses the WHOLE update rather than
+    // leaving a renamed Part whose previous number resolves somewhere else.
+    //
+    // `preserveInternalPartNumberAlias` is client-scoped for that reason: it opens no transaction,
+    // so "no Part update without the alias" is structural rather than a convention.
+    let preservedAliasId: string | null = null;
     if (merged.internalPartNumber !== stored.internalPartNumber) {
-      refuse("INTERNAL_PART_NUMBER_ALIAS_AUTHORITY_UNAVAILABLE", "UNAVAILABLE",
-        "changing internalPartNumber requires preserving the prior number as an alias, and the alias authority is not in PostgreSQL");
+      const preserved = await preserveInternalPartNumberAlias(client, {
+        tenantId: actor.tenantId,
+        partId: id,
+        previousInternalPartNumber: stored.internalPartNumber,
+        nextInternalPartNumber: merged.internalPartNumber,
+        actorPrincipalId: actor.principalId,
+        now,
+      });
+      preservedAliasId = preserved.aliasId;
     }
     await requireEquipmentModel(client, actor.tenantId, merged.equipmentModelId);
     const after: CanonicalPart = { ...stored, ...merged, version: stored.version + 1, updatedAt: isoMicros(now) };
     await writeUpdate(client, actor.tenantId, after, actor.principalId, expectedVersion);
     return {
-      result: { partId: id, version: after.version }, replayed: false,
+      result: { partId: id, version: after.version, ...(preservedAliasId === null ? {} : { preservedAliasId }) },
+      replayed: false,
       audit: { action: "catalog.part.update", targetKind: "part", targetId: id, before: stored, after },
     };
   });

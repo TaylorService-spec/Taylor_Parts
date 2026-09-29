@@ -1,0 +1,42 @@
+{
+  "format": "EOS_REORDER_MIGRATION_EXCLUSION",
+  "version": 1,
+  "ruling": "DQ-032",
+  "scenarioId": "SBX-SCN-001",
+  "reason": "Repository-authored SBX-SCN-001 scenario fixtures: excluded from the governed COPY, left unchanged in Firestore, removed only by the final Firebase retirement.",
+  "count": 8,
+  "entries": [
+    {
+      "collection": "reorder_purchase_orders",
+      "id": "ro-sbx-001"
+    },
+    {
+      "collection": "reorder_purchase_orders",
+      "id": "ro-sbx-005"
+    },
+    {
+      "collection": "reorder_purchase_orders",
+      "id": "ro-sbx-006"
+    },
+    {
+      "collection": "reorder_requests",
+      "id": "ro-sbx-001"
+    },
+    {
+      "collection": "reorder_requests",
+      "id": "ro-sbx-002"
+    },
+    {
+      "collection": "reorder_requests",
+      "id": "ro-sbx-003"
+    },
+    {
+      "collection": "reorder_requests",
+      "id": "ro-sbx-004"
+    },
+    {
+      "collection": "reorder_requests",
+      "id": "ro-sbx-006"
+    }
+  ]
+}

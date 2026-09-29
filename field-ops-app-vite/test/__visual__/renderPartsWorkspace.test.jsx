@@ -29,7 +29,7 @@ vi.mock("../../src/hooks/useReorderRequests", () => {
       loading: false, hasMore: false, loadMore: () => {}, refresh: () => {}, error: null,
     }),
     useReorderRequestsByStatus: empty, useReorderRequestsByStatuses: empty,
-    useReorderRequestsAssignedTo: empty, useReorderRequestsHistory: empty, useReorderRequestById: empty,
+    useMyAssignedReorderRequests: empty, useReorderRequestsHistory: empty, useReorderRequestById: empty,
     fetchReorderRequestsHistoryPage: async () => ({ items: [], hasMore: false }),
   };
 });

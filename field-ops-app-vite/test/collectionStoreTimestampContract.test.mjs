@@ -103,11 +103,22 @@ test("every shared-writer store was found", () => {
   // ledger. Retiring recordInventoryAction() while leaving a live .add()-capable handle beside it
   // would have shut the front door and left the side one open, so the handle went too.
   //
+  // FLOOR LOWERED 5 -> 4 (Reorder Domain Cutover). domain/inventoryReorderRequests.js exported
+  // reorderRequestsStore until the Reorder object moved to governed PostgreSQL. Every writer in that
+  // file now calls a governed command, so the collection handle had no caller -- and leaving an
+  // .add()/.update()-capable handle beside the retired write path is the same side door the
+  // inventoryActionsStore removal closed: the front door shut, the side one left open.
+  //
   // The floor exists so a store cannot vanish unnoticed. It moves only with a reason, and only
   // down by the number actually removed -- never re-raised to paper over a later disappearance.
   // FLOOR LOWERED 5 -> 2 (CRM cutover): accounts, contacts and locations are no longer Firestore stores; their writes go
   // to the governed PostgreSQL CRM authority through the EOS API.
-  assert.ok(stores.length >= 2, `expected the known stores, found ${stores.length}`);
+  // FLOOR LOWERED 2 -> 1 (Catalog + Reorder activation candidate): the CRM floor of 2 still counted reorderRequestsStore,
+  // which the Reorder Domain Cutover (5 -> 4 above) removed on its own lineage. Integrated, the only remaining store is
+  // equipmentStore -- asserted by name so the floor cannot be satisfied by some other store appearing.
+  assert.ok(stores.length >= 1, `expected the known stores, found ${stores.length}`);
+  assert.ok(stores.some((s) => s.file === "domain/equipmentRepository.js"), "equipmentStore is the remaining shared-writer store");
+  assert.equal(stores.some((s) => s.collection === "reorderRequests" || /reorder/i.test(s.file)), false, "a retired Reorder Firestore store is back");
   assert.equal(stores.some((s) => ["accounts", "contacts", "locations"].includes(s.collection)), false, "a retired CRM Firestore store is back");
   assert.ok(stores.every((s) => s.collection), `a store's collection could not be resolved: ${JSON.stringify(stores.filter((s) => !s.collection))}`);
 });

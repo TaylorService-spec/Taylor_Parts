@@ -12,6 +12,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -62,6 +63,9 @@ test("PostgreSQL catalog reference authority, in PostgreSQL", { skip: SKIP, conc
 
   // ── the world ──
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  // The commercial writers resolve operating_company_key only through the governed binding -- never key = id.
+  await bindOperatingCompany(q, "t1", "taylor", "taylor-ops-t1");
+  await bindOperatingCompany(q, "t2", "taylor", "taylor-ops-t2");
   // Migration 027 (catalog cutover) gives every Part identity its Part Master descriptive record, NOT NULL. These proofs
   // are about identity, so each row carries one fixed, valid descriptive record and nothing below depends on it.
   const PART_ROW = `INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type,

@@ -29,6 +29,8 @@ import { createHash } from "node:crypto";
 import { validatePart } from "../partMaster/validation";
 import { isCanonicalEquipmentModelId, validateEquipmentModel } from "../equipmentCompatibility/domain/equipmentModel";
 import { type CanonicalEquipmentModel, type CanonicalPart, canonicalPartOf, EQUIPMENT_MODEL_FIELDS, PART_FIELDS } from "./catalogRows";
+import { deriveAliasDocId } from "../partMaster/partAliasIdentity";
+import { ALIAS_STATUSES, ALIAS_TYPES } from "../partMaster/types";
 
 export const SNAPSHOT_FORMAT = "EOS_CATALOG_SNAPSHOT";
 export const SNAPSHOT_VERSION = 1;
@@ -81,6 +83,12 @@ export interface CatalogSnapshot {
   readonly source: { readonly firebaseProjectId: string; readonly exportedAt: string };
   readonly parts: readonly SnapshotDocument[];
   readonly equipmentModels: readonly SnapshotDocument[];
+  /**
+   * Part identity. In the SAME snapshot as the Parts, deliberately: an alias and the Part it names
+   * are one consistent picture or they are not evidence. Two exports taken minutes apart could
+   * disagree about a Part that was renamed in between, and the copy would have no way to tell.
+   */
+  readonly partAliases: readonly SnapshotDocument[];
 }
 
 const isPlain = (v: unknown): v is Record<string, unknown> =>
@@ -95,7 +103,7 @@ export function parseCatalogSnapshot(json: unknown): CatalogSnapshot {
   if (!isPlain(source) || typeof source.firebaseProjectId !== "string" || source.firebaseProjectId === "" || typeof source.exportedAt !== "string") {
     throw new CatalogSnapshotError("SNAPSHOT_FORMAT_INVALID", "source.firebaseProjectId and source.exportedAt are required");
   }
-  const docs = (name: "parts" | "equipmentModels"): SnapshotDocument[] => {
+  const docs = (name: "parts" | "equipmentModels" | "partAliases"): SnapshotDocument[] => {
     const list = json[name];
     if (!Array.isArray(list)) throw new CatalogSnapshotError("SNAPSHOT_FORMAT_INVALID", `${name} must be a list`);
     return list.map((d, i) => {
@@ -105,7 +113,14 @@ export function parseCatalogSnapshot(json: unknown): CatalogSnapshot {
       return { id: d.id, data: d.data };
     });
   };
-  return { source: { firebaseProjectId: source.firebaseProjectId, exportedAt: source.exportedAt }, parts: docs("parts"), equipmentModels: docs("equipmentModels") };
+  return {
+    source: { firebaseProjectId: source.firebaseProjectId, exportedAt: source.exportedAt },
+    parts: docs("parts"),
+    equipmentModels: docs("equipmentModels"),
+    // Accepted as ABSENT so a snapshot taken before aliases joined the export still parses; the
+    // census then reports zero aliases, which is true of that file rather than a silent default.
+    partAliases: json.partAliases === undefined ? [] : docs("partAliases"),
+  };
 }
 
 interface TimestampValue { seconds: number; nanoseconds: number }
@@ -160,6 +175,98 @@ export function canonicalizePart(doc: SnapshotDocument): Canonicalized<Canonical
   return { ok: true, record: canonicalPartOf(v.value, meta), truncatedTimestamps: meta.truncated };
 }
 
+/**
+ * One alias, as the target stores it.
+ *
+ * The identity is RE-DERIVED from (type, value, scope) through the same normalization authority the
+ * source used, and compared to the document id. A snapshot whose alias id does not agree with its
+ * own normalized value is not copied: it would either be a record written before a normalization
+ * change, or one edited by hand, and either way the identifier it claims is not the identifier it
+ * would resolve under.
+ */
+export interface CanonicalPartAliasRecord {
+  readonly id: string;
+  readonly partId: string;
+  readonly aliasType: string;
+  readonly originalValue: string;
+  readonly normalizedValue: string;
+  readonly status: string;
+  readonly source: string;
+  readonly manufacturerId: string | null;
+  readonly effectiveFrom: string | null;
+  readonly effectiveTo: string | null;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly deactivatedAt: string | null;
+}
+
+export const PART_ALIAS_STORED_FIELDS: ReadonlySet<string> = new Set([
+  "aliasId", "partId", "aliasType", "originalValue", "normalizedValue", "status", "source",
+  "manufacturerId", "effectiveFrom", "effectiveTo", "deactivatedAt", "deactivatedBy",
+  "version", "createdAt", "createdBy", "updatedAt", "updatedBy",
+]);
+
+export function canonicalizePartAlias(doc: SnapshotDocument): Canonicalized<CanonicalPartAliasRecord> {
+  const d = doc.data;
+  if (d.aliasId !== doc.id) return { ok: false, reason: "IDENTITY_MISMATCH" };
+  const partId = typeof d.partId === "string" ? d.partId : "";
+  if (partId === "") return { ok: false, reason: "PART_REFERENCE_INVALID" };
+  const aliasType = typeof d.aliasType === "string" ? d.aliasType : "";
+  if (!(ALIAS_TYPES as readonly string[]).includes(aliasType)) return { ok: false, reason: "ALIAS_TYPE_INVALID" };
+  const status = typeof d.status === "string" ? d.status : "";
+  if (!(ALIAS_STATUSES as readonly string[]).includes(status)) return { ok: false, reason: "ALIAS_STATUS_INVALID" };
+  const originalValue = typeof d.originalValue === "string" ? d.originalValue : "";
+  if (originalValue.trim() === "") return { ok: false, reason: "ALIAS_VALUE_INVALID" };
+  const source = typeof d.source === "string" && d.source.trim() !== "" ? d.source : "";
+  if (source === "") return { ok: false, reason: "ALIAS_SOURCE_INVALID" };
+  const manufacturerId = typeof d.manufacturerId === "string" && d.manufacturerId !== "" ? d.manufacturerId : null;
+  if ((aliasType === "MANUFACTURER_PN") !== (manufacturerId !== null)) {
+    return { ok: false, reason: "ALIAS_MANUFACTURER_SCOPE_INVALID" };
+  }
+
+  // THE IDENTITY, RE-DERIVED. See the type's header.
+  // `undefined`, NOT null: the normalizer refuses a manufacturer scope on any type but
+  // MANUFACTURER_PN, and a null scope is still a scope as far as that check is concerned.
+  const derived = deriveAliasDocId(aliasType as never, originalValue, (manufacturerId ?? undefined) as never);
+  if (derived === null) return { ok: false, reason: "ALIAS_VALUE_NOT_NORMALIZABLE" };
+  if (derived.docId !== doc.id) return { ok: false, reason: "IDENTITY_NOT_CANONICAL" };
+  if (typeof d.normalizedValue === "string" && d.normalizedValue !== derived.normalizedValue) {
+    return { ok: false, reason: "NORMALIZATION_DISAGREES" };
+  }
+
+  const meta = readMeta(d, false);
+  if (typeof meta === "string") return { ok: false, reason: meta };
+  const deactivated = d.deactivatedAt === undefined || d.deactivatedAt === null ? null : readTimestamp(d.deactivatedAt);
+  if (d.deactivatedAt !== undefined && d.deactivatedAt !== null && deactivated === null) {
+    return { ok: false, reason: "META_TIMESTAMP_INVALID" };
+  }
+  // The lifecycle rule the target enforces structurally, applied to the source so a record that
+  // cannot be stored is a census finding rather than a constraint violation mid-copy.
+  if ((status === "INACTIVE") !== (deactivated !== null)) return { ok: false, reason: "ALIAS_DEACTIVATION_INCOHERENT" };
+
+  const day = (v: unknown): string | null => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  if (d.effectiveFrom !== undefined && d.effectiveFrom !== null && day(d.effectiveFrom) === null) {
+    return { ok: false, reason: "ALIAS_EFFECTIVE_DATE_INVALID" };
+  }
+  if (d.effectiveTo !== undefined && d.effectiveTo !== null && day(d.effectiveTo) === null) {
+    return { ok: false, reason: "ALIAS_EFFECTIVE_DATE_INVALID" };
+  }
+
+  const dt = deactivated === null ? null : timestampToIsoMicros(deactivated);
+  return {
+    ok: true,
+    record: Object.freeze({
+      id: doc.id, partId, aliasType, originalValue, normalizedValue: derived.normalizedValue,
+      status, source, manufacturerId,
+      effectiveFrom: day(d.effectiveFrom), effectiveTo: day(d.effectiveTo),
+      version: meta.version, createdAt: meta.createdAt, updatedAt: meta.updatedAt,
+      deactivatedAt: dt === null ? null : dt.iso,
+    }),
+    truncatedTimestamps: meta.truncated + (dt === null ? 0 : Number(dt.truncated)),
+  };
+}
+
 export function canonicalizeEquipmentModel(doc: SnapshotDocument): Canonicalized<CanonicalEquipmentModel> {
   const d = doc.data;
   if (d.equipmentModelId !== doc.id) return { ok: false, reason: "IDENTITY_MISMATCH" };
@@ -186,20 +293,20 @@ export function canonicalizeEquipmentModel(doc: SnapshotDocument): Canonicalized
 
 
 export interface CatalogFinding {
-  readonly kind: "part" | "equipment_model";
+  readonly kind: "part" | "equipment_model" | "part_alias";
   readonly id: string;
   readonly reason: string;
 }
 
 export interface CatalogCensus {
   readonly source: CatalogSnapshot["source"];
-  readonly counts: { readonly parts: number; readonly equipmentModels: number };
+  readonly counts: { readonly parts: number; readonly equipmentModels: number; readonly partAliases: number };
   /** Identified Certification fixtures, always excluded: counts, ids and reason (evidence, never copied). */
   readonly certificationExcluded: {
-    readonly counts: { readonly parts: number; readonly equipmentModels: number };
+    readonly counts: { readonly parts: number; readonly equipmentModels: number; readonly partAliases: number };
     readonly records: readonly CatalogFinding[];
   };
-  readonly selected: { readonly parts: number; readonly equipmentModels: number };
+  readonly selected: { readonly parts: number; readonly equipmentModels: number; readonly partAliases: number };
   readonly invalid: readonly CatalogFinding[];
   readonly duplicateIdentities: readonly CatalogFinding[];
   readonly missingReferences: readonly CatalogFinding[];
@@ -219,17 +326,27 @@ export interface CatalogCensus {
 export interface CanonicalCatalog {
   readonly parts: readonly CanonicalPart[];
   readonly equipmentModels: readonly CanonicalEquipmentModel[];
+  readonly partAliases: readonly CanonicalPartAliasRecord[];
 }
 
 const asciiSort = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const countInto = (bag: Record<string, number>, key: string) => { bag[key] = (bag[key] ?? 0) + 1; };
 const sortedBag = (bag: Record<string, number>) => Object.fromEntries(Object.entries(bag).sort(([a], [b]) => asciiSort(a, b)));
 
+export const PART_ALIAS_DIGEST_FIELDS = Object.freeze([
+  "id", "partId", "aliasType", "originalValue", "normalizedValue", "status", "source",
+  "manufacturerId", "effectiveFrom", "effectiveTo", "version", "createdAt", "updatedAt", "deactivatedAt",
+] as const);
+
 export function canonicalDigest(catalog: CanonicalCatalog): string {
   const h = createHash("sha256");
   for (const m of catalog.equipmentModels) h.update(JSON.stringify(EQUIPMENT_MODEL_FIELDS.map((f) => m[f])) + "\n");
   h.update("--parts--\n");
   for (const p of catalog.parts) h.update(JSON.stringify(PART_FIELDS.map((f) => p[f])) + "\n");
+  // Aliases are INSIDE the digest: the snapshot's checksum has to cover everything the copy will
+  // write, or a file could be accepted as unchanged while the identity half of it differed.
+  h.update("--partAliases--\n");
+  for (const a of catalog.partAliases) h.update(JSON.stringify(PART_ALIAS_DIGEST_FIELDS.map((f) => a[f])) + "\n");
   return h.digest("hex");
 }
 
@@ -242,7 +359,9 @@ export function canonicalDigest(catalog: CanonicalCatalog): string {
  */
 /** A legacy Firestore actor uid, kept ONLY as migration provenance evidence (Owner ruling: a uid is not a Principal). */
 export interface LegacyActorProvenance {
-  readonly kind: "part" | "equipment_model";
+  // Aliases carry legacy actors too, and they are recorded here for the same reason Parts' are: the
+  // uid survives ONLY as migration evidence and never reaches a column.
+  readonly kind: "part" | "equipment_model" | "part_alias";
   readonly id: string;
   readonly legacyCreatedBy: string | null;
   readonly legacyUpdatedBy: string | null;
@@ -253,14 +372,15 @@ export function censusCatalogSnapshot(snapshot: CatalogSnapshot): { census: Cata
   const duplicates: CatalogFinding[] = [];
   const blockers: string[] = [];
   let truncated = 0;
-  const excludedCounts = { parts: 0, equipmentModels: 0 };
+  const excludedCounts = { parts: 0, equipmentModels: 0, partAliases: 0 };
   const excluded: CatalogFinding[] = [];
   const provenance: LegacyActorProvenance[] = [];
-  const nonMaster = { parts: {} as Record<string, number>, equipmentModels: {} as Record<string, number> };
-  const statuses = { parts: {} as Record<string, number>, equipmentModels: {} as Record<string, number> };
+  const nonMaster = { parts: {} as Record<string, number>, equipmentModels: {} as Record<string, number>, partAliases: {} as Record<string, number> };
+  const statuses = { parts: {} as Record<string, number>, equipmentModels: {} as Record<string, number>, partAliases: {} as Record<string, number> };
 
   const select = <T extends { id: string }>(
-    docs: readonly SnapshotDocument[], kind: CatalogFinding["kind"], storedFields: Set<string>, bag: "parts" | "equipmentModels",
+    docs: readonly SnapshotDocument[], kind: CatalogFinding["kind"], storedFields: ReadonlySet<string>,
+    bag: "parts" | "equipmentModels" | "partAliases",
     canonicalize: (d: SnapshotDocument) => Canonicalized<T>,
   ): T[] => {
     const seen = new Map<string, number>();
@@ -290,11 +410,40 @@ export function censusCatalogSnapshot(snapshot: CatalogSnapshot): { census: Cata
   const equipmentModels = select(snapshot.equipmentModels, "equipment_model", MODEL_STORED_FIELDS, "equipmentModels", canonicalizeEquipmentModel);
   const parts = select(snapshot.parts, "part", PART_STORED_FIELDS, "parts", canonicalizePart);
 
+  // ════════════════════ ALIAS EXCLUSION FOLLOWS ITS PART ════════════════════
+  //
+  // An alias of an EXCLUDED certification Part is excluded under the SAME evidence, not evaluated on
+  // its own. The alias document carries no certification marker of its own -- only the Part does --
+  // so judging aliases independently would copy identity records pointing at Parts that were
+  // deliberately left behind, and VERIFY would then find them dangling in the target.
+  const selectedPartIds = new Set(parts.map((p) => p.id));
+  const excludedPartIds = new Set(excluded.filter((e) => e.kind === "part").map((e) => e.id));
+  const aliasCandidates = snapshot.partAliases.filter((d) => {
+    const partId = typeof d.data.partId === "string" ? d.data.partId : "";
+    if (excludedPartIds.has(partId)) {
+      excludedCounts.partAliases += 1;
+      excluded.push({ kind: "part_alias", id: d.id, reason: `CERTIFICATION_FIXTURE_EXCLUDED:alias-of-excluded-part:${partId}` });
+      return false;
+    }
+    return true;
+  });
+  const partAliases = select(aliasCandidates, "part_alias", PART_ALIAS_STORED_FIELDS, "partAliases", canonicalizePartAlias);
+
   // A Part's equipment-model FK must resolve INSIDE what is being copied (assertEquipmentModelExists, at copy time).
   const modelIds = new Set(equipmentModels.map((m) => m.id));
   const missingReferences: CatalogFinding[] = parts
     .filter((p) => p.equipmentModelId !== null && !modelIds.has(p.equipmentModelId))
     .map((p) => ({ kind: "part", id: p.id, reason: `EQUIPMENT_MODEL_NOT_IN_SNAPSHOT:${p.equipmentModelId}` }));
+
+  // A DANGLING ALIAS IS NEVER COPIED. Its Part is neither being copied nor excluded with it, so the
+  // identifier would resolve to nothing. That is a BLOCKER for a person, not a row to drop quietly:
+  // an alias whose Part vanished means either the export missed a Part or the source is incoherent,
+  // and both need an answer before anything is written.
+  for (const a of partAliases) {
+    if (!selectedPartIds.has(a.partId)) {
+      missingReferences.push({ kind: "part_alias", id: a.id, reason: `PART_NOT_IN_SNAPSHOT:${a.partId}` });
+    }
+  }
 
   const skuDisagrees = snapshot.parts.filter((d) => d.data.sku !== undefined && d.data.sku !== d.id).map((d) => d.id).sort(asciiSort);
   const byIpn = new Map<string, string[]>();
@@ -307,12 +456,12 @@ export function censusCatalogSnapshot(snapshot: CatalogSnapshot): { census: Cata
   if (duplicates.length > 0) blockers.push("DUPLICATE_CANONICAL_IDENTITY");
   if (missingReferences.length > 0) blockers.push("MISSING_REFERENCES");
 
-  const catalog: CanonicalCatalog = { parts, equipmentModels };
+  const catalog: CanonicalCatalog = { parts, equipmentModels, partAliases };
   const census: CatalogCensus = {
     source: snapshot.source,
-    counts: { parts: snapshot.parts.length, equipmentModels: snapshot.equipmentModels.length },
+    counts: { parts: snapshot.parts.length, equipmentModels: snapshot.equipmentModels.length, partAliases: snapshot.partAliases.length },
     certificationExcluded: { counts: excludedCounts, records: excluded.sort((a, b) => asciiSort(`${a.kind}|${a.id}`, `${b.kind}|${b.id}`)) },
-    selected: { parts: parts.length, equipmentModels: equipmentModels.length },
+    selected: { parts: parts.length, equipmentModels: equipmentModels.length, partAliases: partAliases.length },
     invalid: invalid.sort((a, b) => asciiSort(`${a.kind}|${a.id}`, `${b.kind}|${b.id}`)),
     duplicateIdentities: duplicates.sort((a, b) => asciiSort(`${a.kind}|${a.id}`, `${b.kind}|${b.id}`)),
     missingReferences,

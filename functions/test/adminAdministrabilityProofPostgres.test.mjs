@@ -141,6 +141,8 @@ test("administrability: workflow responsibility is changed by Administration alo
   for (const company of ["taylor", "ventana"]) {
     await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
              VALUES ($1,$2,'ACTIVE','fixture','fixture','fixture')`, [TENANT, company]);
+    // The commercial writers resolve operating_company_key only through the governed binding -- never key = id.
+    await bindOperatingCompany(q, TENANT, company, `${company}-ops`);
   }
   // Taylor's governed KEY binding (the nonprod shape: Ventana stays unkeyed). Commercial writes store the bound key and
   // refuse an unkeyed company, so the fixture states the binding P2(e)'s Opportunities rely on.

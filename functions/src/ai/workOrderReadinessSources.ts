@@ -4,7 +4,17 @@
 // `workOrderPartsReadiness` input contract. They do NOT derive readiness and they do NOT create new
 // business states. The readiness projection remains the sole owner of READY / ATTENTION / UNKNOWN.
 
-export type ReadinessProcurementStatus = "PENDING" | "ORDERED" | "RECEIVED" | "NONE";
+/**
+ * NONE and UNAVAILABLE ARE DIFFERENT ANSWERS.
+ *
+ *   NONE         the governed evidence says there is no procurement for this part.
+ *   UNAVAILABLE  this runtime has no authoritative procurement source to ask.
+ *
+ * Collapsing the second into the first would tell a technician "nothing is on order" when the
+ * truthful answer is "nobody here can say". It is the same distinction `truck: UNAVAILABLE`
+ * already draws in this projection, and for the same reason.
+ */
+export type ReadinessProcurementStatus = "PENDING" | "ORDERED" | "RECEIVED" | "NONE" | "UNAVAILABLE";
 
 /**
  * Narrow adapter from the richer Reorder Request lifecycle to the readiness projection's procurement

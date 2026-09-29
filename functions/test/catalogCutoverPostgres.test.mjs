@@ -166,7 +166,7 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
     await assert.rejects(partWriter.createPart(deps, actor("t1", "p1", EQ_CAPS), { part: unit }), code("CAPABILITY_REQUIRED"));
   });
 
-  await t.test("part writer: update rules -- control type immutable, internal part number fails closed, replay, conflict", async () => {
+  await t.test("part writer: update rules -- control type immutable, internal part number fails closed WITHOUT the alias authority, replay, conflict", async () => {
     const a = actor("t1", "p1", PART_CAPS);
     const base = { partId: "UNIT-CW-100", expectedVersion: 1 };
     await assert.rejects(partWriter.updatePart(deps, a, { ...base, changes: { controlType: "LOT" } }), (e) => ["CONTROL_TYPE_IMMUTABLE", "PART_INVALID"].includes(e.code));
@@ -270,8 +270,15 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
     assert.equal(report.reconciled, true, JSON.stringify(report, null, 2));
     assert.equal(report.certificationExcluded.count, 3);
     assert.deepEqual(report.certificationFixturesInTarget, []);
-    assert.deepEqual(report.counts, { equipmentModels: { source: 3, target: 3 }, parts: { source: 4, target: 4 } });
-    assert.deepEqual(report.sampled, { equipmentModels: 3, parts: 4 });
+    // This suite migrates only through 027, so the alias authority is absent here and the snapshot
+    // carries none: zero source, zero target, reconciled. The alias half is proved against a fully
+    // migrated database in catalogPartAliasPostgres / catalogAliasCutoverPostgres.
+    assert.deepEqual(report.counts, {
+      equipmentModels: { source: 3, target: 3 }, parts: { source: 4, target: 4 }, partAliases: { source: 0, target: 0 },
+    });
+    assert.deepEqual(report.sampled, { equipmentModels: 3, parts: 4, partAliases: 0 });
+    assert.deepEqual(report.danglingAliasPartReferences, []);
+    assert.deepEqual(report.aliasIdentityDisagreements, []);
     const verdicts = report.verdictChecks;
     assert.ok(verdicts.some((v) => v.kind === "EQUIPMENT_MODEL" && v.tenant === "t3" && v.actual === "FOUND"));
     assert.ok(verdicts.some((v) => v.kind === "EQUIPMENT_MODEL" && v.tenant === ABSENT_TENANT_PROBE && v.actual === "NOT_FOUND"));

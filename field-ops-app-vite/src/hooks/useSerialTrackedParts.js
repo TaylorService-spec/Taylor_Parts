@@ -23,9 +23,8 @@
 // from. Here the list IS the input to a governed write: an empty or partial picker must read as
 // "we could not offer you the parts", never as "there are none", because the second would invite
 // somebody to conclude the part they are holding is not in the system.
+import { searchParts } from "../services/partMasterQueries";
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where, limit } from "firebase/firestore";
-import { db } from "../firebase/firebase";
 // The pure shaping lives in the domain layer so it is testable without a firebase module resolving.
 // Re-exported here so existing importers of the hook keep one place to reach for.
 import { SERIAL_CONTROL_TYPE, toSerialPartOptions } from "../domain/serialTrackedPartOptions";
@@ -35,7 +34,6 @@ export { SERIAL_CONTROL_TYPE, toSerialPartOptions };
 // Declared here for the same reason hooks/useWholeUnitParts.js declares its own: `parts` is not in
 // domain/constants.js, and adding it there to serve one hook would be a wider change than this
 // surface earns.
-const PARTS_COLLECTION = "parts";
 
 
 /** A guard against an unexpectedly large catalogue, not an expected size. */
@@ -59,24 +57,23 @@ export function useSerialTrackedParts({ enabled = true } = {}) {
     let cancelled = false;
     setState({ options: [], status: SERIAL_PARTS_STATUS.LOADING });
 
-    getDocs(query(
-      collection(db, PARTS_COLLECTION),
-      where("controlType", "==", SERIAL_CONTROL_TYPE),
-      limit(SERIAL_PART_READ_CAP),
-    ))
-      .then((snap) => {
+    // THE GOVERNED QUERY, applied in PostgreSQL. `controlType` is part of the Catalog search
+    // contract; narrowing here would mean loading the catalogue to the browser first.
+    searchParts({ controlType: SERIAL_CONTROL_TYPE, limit: SERIAL_PART_READ_CAP })
+      .then((res) => {
         if (cancelled) return;
-        const docs = snap.docs.map((d) => ({ partId: d.id, ...d.data() }));
-        setState({ options: toSerialPartOptions(docs), status: SERIAL_PARTS_STATUS.READY });
-      })
-      .catch((err) => {
-        if (cancelled) return;
+        if (res.ok) {
+          const docs = (res.parts ?? []).map((p) => ({ partId: p.partId ?? p.id, ...p }));
+          setState({ options: toSerialPartOptions(docs), status: SERIAL_PARTS_STATUS.READY });
+          return;
+        }
         // DENIED and UNAVAILABLE are different facts about the world and the surface says different
         // things about them. Collapsing them would tell somebody their data is missing when the
         // truth is that their role is narrow.
         setState({
           options: [],
-          status: err?.code === "permission-denied" ? SERIAL_PARTS_STATUS.DENIED : SERIAL_PARTS_STATUS.UNAVAILABLE,
+          status: (res.code === "FORBIDDEN" || res.code === "NOT_SIGNED_IN")
+            ? SERIAL_PARTS_STATUS.DENIED : SERIAL_PARTS_STATUS.UNAVAILABLE,
         });
       });
 

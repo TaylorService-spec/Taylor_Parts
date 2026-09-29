@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
-import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { searchParts, isCatalogReadRefused } from "../../services/partMasterQueries";
 import { buildPartsCatalogRows, canonicalNameBySku, partNamesBoundaryKey, selectCanonicalReadForKey, isCatalogBlocked, partCatalogRoute } from "../../domain/partsCatalogView";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import {
   useReorderRequests,
   useReorderRequestsByStatus,
-  useReorderRequestsAssignedTo,
+  useMyAssignedReorderRequests,
   useReorderRequestsByStatuses,
   useReorderRequestsHistory,
   useReorderRequestById,
@@ -59,7 +59,7 @@ import AssignedWorkOversightTable from "../../shared/reorder/AssignedWorkOversig
 //
 // Read-only. INV-CONVERGENCE-E C1 -- the Parts Catalog identity/metadata
 // source is the GOVERNED compatibility-adapter output: the live canonical
-// `parts` read (fetchPartMasterList, PR 1.9 -- the same one-shot authorized
+// `parts` read (searchParts, PR 1.9 -- the same one-shot authorized
 // read) composed with the static catalog through buildPartsWorkspace(), via
 // the pure domain/partsCatalogView.buildPartsCatalogRows(). The static
 // PARTS_CATALOG remains the compatibility INPUT to that composition (not a
@@ -158,7 +158,7 @@ import AssignedWorkOversightTable from "../../shared/reorder/AssignedWorkOversig
 //
 // 1. THE DATA ALREADY FLOWING HERE DOES NOT CARRY partIndexList'S COLUMNS.
 //    domain/partsCatalogView.js's buildPartsCatalogRows() -- the ONE governed read this
-//    page performs for catalog identity (fetchPartMasterList, unbounded, composed with
+//    page performs for catalog identity (searchParts, unbounded, composed with
 //    the static catalog) -- flattens each row to exactly { sku, name, category,
 //    warehouseQty, identityState }. partIndexList declares internalPartNumber, name,
 //    status, stockingClass, stockingUnit, controlType: four of those six fields
@@ -171,7 +171,7 @@ import AssignedWorkOversightTable from "../../shared/reorder/AssignedWorkOversig
 //
 // 2. SEARCH CANNOT BE PRESERVED THROUGH THE RUNTIME. shared/search/searchProviders.js's
 //    `parts` provider substring-matches sku/name/category against the FULL catalog
-//    (catalogRows, from the same unbounded fetchPartMasterList read) -- true substring
+//    (catalogRows, from the same unbounded searchParts read) -- true substring
 //    matching over every Part in the collection. The metadata list runtime has no
 //    free-text/CONTAINS filter operator anywhere in its contract (listViewDefinition.js
 //    declares only EQUALS/IN/ARRAY_CONTAINS/ARRAY_CONTAINS_ANY), and useMetadataList
@@ -384,7 +384,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
   const { healthEntries, loading, error: healthError } = useInventoryLedger();
 
   // INV-CONVERGENCE-E C1 -- live canonical `parts` read (one-shot, PR 1.9's
-  // fetchPartMasterList; no new query surface). null until the first read
+  // searchParts; no new query surface). null until the first read
   // resolves. Mapped to the canonicalRead status contract the pure
   // buildPartsCatalogRows() consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
   // Stored TAGGED with the (uid, accessVersion) boundary key it was produced under; `null`
@@ -413,14 +413,14 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     const token = ++tokenRef.current;
     let cancelled = false;
     setStored({ key: currentKey, read: null });
-    fetchPartMasterList().then((result) => {
+    searchParts({ limit: 100 }).then((result) => {
       if (cancelled || token !== tokenRef.current) return;
       setReadCheckedAt(new Date());
       // Pass `invalid` through so the shared composer fails closed on any malformed canonical document
       // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
       const read = result.ok
         ? { status: "OK", rows: result.parts, invalid: result.invalid }
-        : { status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" };
+        : { status: isCatalogReadRefused(result.code) ? "PERMISSION_DENIED" : "UNAVAILABLE" };
       setStored({ key: currentKey, read });
     });
     return () => {
@@ -449,12 +449,12 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
   const { data: partsManagerQueue, loading: partsManagerLoading, error: partsManagerError } = useReorderRequestsByStatus(
     REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER
   );
-  const { data: partsAssociateWaiting, loading: partsAssociateWaitingLoading, error: partsAssociateWaitingError } = useReorderRequestsAssignedTo(
-    user?.uid,
+  const { data: partsAssociateWaiting, loading: partsAssociateWaitingLoading, error: partsAssociateWaitingError } = useMyAssignedReorderRequests(
+    // NO uid. The server scopes this to the caller's own Employee through the governed assignment;
+    // the browser no longer states whose work it is asking for.
     REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE
   );
-  const { data: partsAssociateInProgress, loading: partsAssociateInProgressLoading, error: partsAssociateInProgressError } = useReorderRequestsAssignedTo(
-    user?.uid,
+  const { data: partsAssociateInProgress, loading: partsAssociateInProgressLoading, error: partsAssociateInProgressError } = useMyAssignedReorderRequests(
     REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS
   );
   const {

@@ -9,9 +9,9 @@
     "noNewBusinessAuthorityBehindAShim": true
   },
   "observed": {
-    "scannedFiles": 1459,
+    "scannedFiles": 1486,
     "shimsDiscovered": 4,
-    "alreadyFencedConsumers": 58,
+    "alreadyFencedConsumers": 51,
     "insulationNotGoverned": "Read hooks, query services and domain commands that use Firestore internally and return data are NOT shims and their callers are NOT censused -- see authorityExports."
   },
   "shims": [
