@@ -3,6 +3,7 @@
 import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { resolveOperatingCompanyKeyForCompany } from "../../eosOps/operatingCompanyBinding";
+import { fail } from "./commercialCommandKernel";
 
 type Queryable = Pick<PoolClient, "query">;
 const S = "eos_commercial";
@@ -18,9 +19,27 @@ const toTimestamp = (ms: number | null | undefined): Date | null => (typeof ms =
 // the command's transaction and refuse an unkeyed company (OPERATING_COMPANY_KEY_NOT_BOUND); reads map the stored key
 // back to its company through the same binding.
 
-/** The governed key for a company, or null when the record states no company. Fails closed on an unbound company. */
+/**
+ * The governed key for a company a NEW record is booked to, or null when the record states no company.
+ *
+ * Called only on CREATE (every insert below); an existing record's company is never re-resolved or remapped.
+ * DQ-008 (Controller 2026-09-28): a new Commercial record may be booked only to an ACTIVE governed operating company of
+ * THIS tenant -- an INACTIVE one refuses OPERATING_COMPANY_INACTIVE and one this tenant does not govern refuses
+ * OPERATING_COMPANY_NOT_GOVERNED, before the key binding is consulted (whose own refusal stays
+ * OPERATING_COMPANY_KEY_NOT_BOUND for an ACTIVE company with no ACTIVE key). Historical records are untouched.
+ */
 export async function operatingCompanyKeyFor(db: Queryable, tenantId: string, operatingCompanyId: string | null): Promise<string | null> {
   if (operatingCompanyId === null) return null;
+  const { rows } = await db.query<{ status: string }>(
+    `SELECT status FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND operating_company_id = $2`,
+    [tenantId, operatingCompanyId],
+  );
+  if (rows.length === 0) {
+    fail("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", `operating company '${operatingCompanyId}' is not governed in this tenant`);
+  }
+  if (rows[0].status !== "ACTIVE") {
+    fail("OPERATING_COMPANY_INACTIVE", "PRECONDITION_FAILED", `operating company '${operatingCompanyId}' is not ACTIVE; a new Commercial record cannot be booked to it`);
+  }
   return resolveOperatingCompanyKeyForCompany(db, tenantId, operatingCompanyId);
 }
 

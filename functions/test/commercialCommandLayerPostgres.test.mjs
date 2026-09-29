@@ -124,8 +124,26 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     const created = await newOpportunity();
     const id = created.result?.opportunityId ?? created.opportunityId;
     assert.equal((await q(`SELECT operating_company_key FROM eos_commercial.opportunities WHERE id=$1`, [id])).rows[0].operating_company_key, "taylor-ops-t1");
-    // Ventana is an authorized company with NO key binding: refused, never stored as key "ventana".
+    // DQ-008: a company THIS tenant does not govern refuses before any key is consulted.
+    await assert.rejects(newOpportunity({ operatingCompanyId: "ventana" }), (e) => e.code === "OPERATING_COMPANY_NOT_GOVERNED");
+    // Ventana governed and ACTIVE but with NO key binding: refused, never stored as key "ventana".
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by)
+             VALUES ('t1','ventana','ACTIVE','test-fixture','fixture','fixture')`);
     await assert.rejects(newOpportunity({ operatingCompanyId: "ventana" }), (e) => e.code === "OPERATING_COMPANY_KEY_NOT_BOUND");
+    // DQ-008: an INACTIVE company refuses NEW records, keyed or not; the records already booked to it are untouched.
+    await q(`UPDATE eos_policy.tenant_operating_companies SET status='INACTIVE' WHERE tenant_id='t1' AND operating_company_id='taylor'`);
+    try {
+      const before = await count("opportunities");
+      await assert.rejects(newOpportunity(), (e) => e.code === "OPERATING_COMPANY_INACTIVE" && e.category === "PRECONDITION_FAILED");
+      await assert.rejects(agreementFor(id), (e) => e.code === "OPERATING_COMPANY_INACTIVE", "an Agreement inherits the company and is a NEW record");
+      assert.equal(await count("opportunities"), before);
+      assert.equal((await q(`SELECT operating_company_key FROM eos_commercial.opportunities WHERE id=$1`, [id])).rows[0].operating_company_key, "taylor-ops-t1", "history is never remapped");
+      // An existing record's ordinary edit does not re-resolve its company.
+      const edited = await opp.updateOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: id, expectedEditVersion: 1, nextAction: "still editable" });
+      assert.equal(edited.editVersion, 2);
+    } finally {
+      await q(`UPDATE eos_policy.tenant_operating_companies SET status='ACTIVE' WHERE tenant_id='t1' AND operating_company_id='taylor'`);
+    }
     const { lockOpportunity } = require("../lib/eosCommercial/commands/commercialRecordStore.js");
     const row = await lockOpportunity(pool, "t1", id);
     assert.equal(row.operatingCompanyId, "taylor", "the read maps the stored key back to the governed company");
