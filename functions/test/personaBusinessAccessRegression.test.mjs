@@ -275,7 +275,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   //   1764122400000: the Transfer-on-EOS storage support, schema only;
   //   1764126000000 (DQ-038): the bin placement authority, schema only;
   //   1764129600000 (DQ-036(b)): inventory.serializedAsset.acquire, FENCED Administration-grant-only.
-  assert.equal(files.length, 70, "the migration chain moved; re-measure before trusting anything below");
+  //   1764200000000 (EOS identity boundary, 2026-09-29): eos_policy.principal_identities -- schema only, no capability.
+  assert.equal(files.length, 71, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
