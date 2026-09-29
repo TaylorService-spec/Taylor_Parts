@@ -82,12 +82,6 @@ const PRE_EXISTING_RECONCILE_EXTRAS = Object.freeze([
   "dispatcher/reorder.request.assign", "dispatcher/reorder.request.read.queue",
   "partsManager/reorder.request.read.queue", "purchasingManager/reorder.request.read.queue",
   "technician/reorder.purchaseOrder.create", "technician/reorder.purchaseOrder.read",
-  // DQ-011 (migration 1763856000000) registered workOrder.parts.plan with NO grant. The legacy compatibility
-  // `admin` Role composes the WHOLE Firestore catalog, which declares that id, so this same pre-existing
-  // reconcile defect now proposes admin/workOrder.parts.plan too. It is a TOOLING widening (Sample Company
-  // reconcile), not a migration or runtime grant, and verification reports it as drift; recorded as XLF-L2-2
-  // for the reconcile's owner rather than hidden.
-  "admin/workOrder.parts.plan",
 ].sort());
 
 const V1 = {

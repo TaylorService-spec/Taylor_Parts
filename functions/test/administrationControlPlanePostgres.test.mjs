@@ -65,12 +65,6 @@ const PRE_EXISTING_RECONCILE_EXTRAS = Object.freeze([
   // Pass 8: the technician Purchase Order cells are no longer a SYSTEM INVARIANT (LEGACY_BASELINE_ARTIFACT);
   // the legacy catalog declares them, so the reconcile now adds them like the rows above.
   "technician/reorder.purchaseOrder.create", "technician/reorder.purchaseOrder.read",
-  // DQ-011 (migration 1763856000000) registered workOrder.parts.plan with NO grant. The legacy compatibility
-  // `admin` Role composes the WHOLE Firestore catalog, which declares that id, so this same pre-existing
-  // reconcile defect now proposes admin/workOrder.parts.plan too. It is a TOOLING widening (Sample Company
-  // reconcile), not a migration or runtime grant, and verification reports it as drift; recorded as XLF-L2-2
-  // for the reconcile's owner rather than hidden.
-  "admin/workOrder.parts.plan",
 ].sort());
 
 const DISPATCHER_SELLING = Object.freeze([
