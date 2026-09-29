@@ -198,10 +198,33 @@ export function resolveCell(input: {
   if (input.decision === "ADMIN_REVOKED") return Object.freeze({ shouldHold: false, source: "ADMIN_REVOKED" as const });
   // No system default exists for an Administration-grant-only capability, whatever a catalog declares.
   if (ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(input.capabilityKey)) return Object.freeze({ shouldHold: false, source: "NONE" as const });
+  if (CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT.has(cellKey(input.roleKey, input.capabilityKey))) return Object.freeze({ shouldHold: false, source: "NONE" as const });
   return input.isSystemDefault
     ? Object.freeze({ shouldHold: true, source: "SYSTEM_DEFAULT" as const })
     : Object.freeze({ shouldHold: false, source: "NONE" as const });
 }
+
+/**
+ * LEGACY CATALOG DECLARATIONS THAT ARE NOT SYSTEM DEFAULTS -- Controller DQ-023 / DQ-037 (2026-09-28): reconciliation is
+ * REPORT-ONLY for anything no accepted ruling established; only Administration changes governed authority.
+ *
+ * The compiled Role catalog (admin composes the whole legacy permission catalog) declares these eight (Role, capability)
+ * PAIRS, but no migration, ruling or measured baseline establishes them: none is in the governed authority baseline
+ * (roleCapabilityAuthorityBaseline), so a verifier already reads them as "no system default". Without this fence every
+ * default writer (catalog reconcile --apply, the Sample Company seed) still INSERTED them. With it, a default writer
+ * reports them (status ADMINISTRATION_ONLY) and never applies them; a Role holds one only through a current
+ * ADMIN_GRANTED decision.
+ *
+ * PAIR-LEVEL, deliberately -- not a capability-key fence. The same keys ARE governed defaults for other Roles
+ * (partsManager / reorder.request.assign; the purchaseOrder.create / .read holders), and a key-level fence would strip
+ * default status from grants the baseline establishes. Nothing is revoked: an existing row is untouched.
+ */
+export const CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT: ReadonlySet<string> = new Set([
+  ["admin", "reorder.request.assign"], ["admin", "reorder.request.read.queue"],
+  ["dispatcher", "reorder.request.assign"], ["dispatcher", "reorder.request.read.queue"],
+  ["partsManager", "reorder.request.read.queue"], ["purchasingManager", "reorder.request.read.queue"],
+  ["technician", "reorder.purchaseOrder.create"], ["technician", "reorder.purchaseOrder.read"],
+].map(([roleKey, capabilityKey]) => cellKey(roleKey, capabilityKey)));
 
 export interface CurrentDecision extends RoleCapabilityCell {
   readonly decision: RoleCapabilityDecision;

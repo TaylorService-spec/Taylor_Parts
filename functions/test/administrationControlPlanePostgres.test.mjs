@@ -57,7 +57,7 @@ const WO_READ = "workOrder.record.read";
 const ASSIGNED = Object.freeze({ paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "workOrder" });
 
 /** The six dispatcher selling capabilities (pass5), each with the Commercial operation it gates. */
-/** The six pairs the catalog reconcile adds to a baseline-equal tenant today -- a PRE-EXISTING defect. */
+/** The eight legacy-catalog pairs the reconcile USED to add to a baseline-equal tenant; since DQ-037 it reports them only. */
 const PRE_EXISTING_RECONCILE_EXTRAS = Object.freeze([
   "admin/reorder.request.assign", "admin/reorder.request.read.queue",
   "dispatcher/reorder.request.assign", "dispatcher/reorder.request.read.queue",
@@ -233,12 +233,14 @@ test("the Administration control plane, end to end, against PostgreSQL", { skip:
     });
     assert.deepEqual(report.rows.filter((r) => r.status === "ADMIN_REVOKED").map((r) => `${r.roleKey}/${r.capabilityKey}`).sort(),
       DISPATCHER_SELLING.map((s) => `dispatcher/${s.capabilityKey}`).sort(), "every revoked pair the catalog declares was skipped");
-    // PRE-EXISTING, AND NOT THIS LANE'S: run over a baseline-equal tenant, the Sample Company reconcile
-    // ADDS six reorder pairs the governed baseline withholds -- the superseded queue key "may never be
-    // granted again" and the operationalRole-conditioned assign key, both declared by the legacy Role
-    // catalog. Pinned by name and reported; none of them is an Administration-decided cell.
-    assert.deepEqual(report.rows.filter((r) => r.status === "APPLIED").map((r) => `${r.roleKey}/${r.capabilityKey}`),
-      PRE_EXISTING_RECONCILE_EXTRAS, "the reconcile re-added something other than the known pre-existing extras");
+    // REPORT-ONLY (Controller DQ-023 / DQ-037, 2026-09-28). Over a baseline-equal tenant the Sample Company reconcile
+    // used to APPLY eight legacy-catalog reorder pairs the governed baseline withholds. They are now fenced
+    // (CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT): REPORTED as ADMINISTRATION_ONLY, never inserted -- and nothing else
+    // is applied either, so a baseline-equal tenant stays baseline-equal.
+    assert.deepEqual(report.rows.filter((r) => r.status === "APPLIED").map((r) => `${r.roleKey}/${r.capabilityKey}`), [],
+      "the reconcile applied a grant to a baseline-equal tenant");
+    assert.deepEqual(report.rows.filter((r) => r.status === "ADMINISTRATION_ONLY" && PRE_EXISTING_RECONCILE_EXTRAS.includes(`${r.roleKey}/${r.capabilityKey}`))
+      .map((r) => `${r.roleKey}/${r.capabilityKey}`).sort(), [...PRE_EXISTING_RECONCILE_EXTRAS].sort(), "the eight legacy pairs are REPORTED, not dropped");
     assert.deepEqual(report.unresolved, []);
 
     // THE NONPROD ACTIVATION TOOL yields to a revoke too.
@@ -251,11 +253,10 @@ test("the Administration control plane, end to end, against PostgreSQL", { skip:
     assert.equal(activation.appliedAdditions, 0);
     await refuse();
 
-    // THE BASELINE VERIFICATION: Administration decisions explain every difference they made -- the
-    // ONLY drift left is the reconcile's pre-existing extras above, none of them an Administration cell.
+    // THE BASELINE VERIFICATION: Administration decisions explain every difference they made -- and since the
+    // reconcile is report-only for the legacy pairs, there is NO drift at all.
     const v = baseline.verifyLiveTenantAuthority({ live: await liveGrants(), decisions: await currentDecisions(), environment: "nonprod" });
-    assert.deepEqual(v.drift.map((d) => `${d.kind}:${d.roleKey}/${d.capabilityKey}`),
-      PRE_EXISTING_RECONCILE_EXTRAS.map((c) => `UNEXPLAINED_EXTRA:${c}`), JSON.stringify(v.drift));
+    assert.deepEqual(v.drift.map((d) => `${d.kind}:${d.roleKey}/${d.capabilityKey}`), [], JSON.stringify(v.drift));
     const decided = new Set((await currentDecisions()).map((d) => `${d.roleKey}/${d.capabilityKey}`));
     assert.equal(v.drift.some((d) => decided.has(`${d.roleKey}/${d.capabilityKey}`)), false, "an Administration decision produced drift");
     // Remove the pre-existing extras (fixture restore) so the remaining proofs start from the baseline.

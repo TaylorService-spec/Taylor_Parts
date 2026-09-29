@@ -627,8 +627,11 @@ test("administrability: workflow responsibility is changed by Administration alo
       capabilityKeys: sampleCompanyCapabilityKeys().filter((k) => vocabulary.has(k)), roleKeys: sampleCompanyRoleKeys(),
     });
     assert.deepEqual(report.unresolved, []);
-    assert.deepEqual(report.rows.filter((r) => r.status === "APPLIED").map((r) => `${r.roleKey}/${r.capabilityKey}`), PRE_EXISTING_RECONCILE_EXTRAS,
-      "the reconcile re-added nothing an administrator decided");
+    // REPORT-ONLY (Controller DQ-023 / DQ-037): the eight legacy-catalog pairs are reported, never applied.
+    assert.deepEqual(report.rows.filter((r) => r.status === "APPLIED").map((r) => `${r.roleKey}/${r.capabilityKey}`), [],
+      "the reconcile applied a grant");
+    assert.deepEqual(report.rows.filter((r) => r.status === "ADMINISTRATION_ONLY" && PRE_EXISTING_RECONCILE_EXTRAS.includes(`${r.roleKey}/${r.capabilityKey}`))
+      .map((r) => `${r.roleKey}/${r.capabilityKey}`).sort(), [...PRE_EXISTING_RECONCILE_EXTRAS].sort());
     const activation = await activateWorkOrderLifecycleGrants(repo, { tenantId: TENANT, uid: boot.principal.id, heldRoleKeys: ["admin"] },
       { apply: true, reason: "re-run the activation" });
     assert.equal(activation.appliedAdditions, 0);
@@ -654,7 +657,7 @@ test("administrability: workflow responsibility is changed by Administration alo
     }
     const decisions = await currentDecisions();
     const v = baseline.verifyLiveTenantAuthority({ live, decisions, environment: "nonprod", principals });
-    assert.deepEqual(v.drift.map((d) => `${d.kind}:${d.roleKey}/${d.capabilityKey}`), PRE_EXISTING_RECONCILE_EXTRAS.map((c) => `UNEXPLAINED_EXTRA:${c}`), JSON.stringify(v.drift));
+    assert.deepEqual(v.drift.map((d) => `${d.kind}:${d.roleKey}/${d.capabilityKey}`), [], JSON.stringify(v.drift));
     const decided = new Set(decisions.map((d) => `${d.roleKey}/${d.capabilityKey}`));
     assert.equal(v.drift.some((d) => decided.has(`${d.roleKey}/${d.capabilityKey}`)), false, "an Administration decision was reported as drift");
     assert.ok(v.explainedByAdminGrant.some((c) => c.roleKey === "officeManager" && c.capabilityKey === WO_READ));
