@@ -17,6 +17,10 @@
 -- inherited from its Account's owner -- and the handoff vocabulary is one domain across the Account and the Commercial
 -- records. Kind BUSINESS_ACTION, as every other governed business decision in this catalog.
 --
+-- POSTGRESQL-NATIVE. Deliberately ABSENT from the in-repo PERMISSION_CATALOG (as admin.employeeFunctionalRole.write is):
+-- the in-repo admin Role composes the whole catalog, so a catalog entry would grant it to admin through the policy seed
+-- and the Sample Company reconcile -- a grant by default, which DQ-022 forbids.
+--
 -- NO GRANT. No Role receives it here: who performs administrative ownership corrections is an Administration decision
 -- (grantObjectActionToRole), never a migration default. Until it is granted, the two administrative sources are
 -- refused for everyone and DIRECT_HANDOFF is unaffected.

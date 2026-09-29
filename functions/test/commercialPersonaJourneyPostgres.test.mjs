@@ -383,12 +383,45 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     refused(await call(personas["parts-associate"], "getSalesAgreementDetail", { salesAgreementId: agreement.salesAgreementId }), 403, "CAPABILITY_REQUIRED", "parts agreement");
   });
 
-  await t.test("PARITY GAP (pinned): the Owner and salesManager can draft but can neither accept an Agreement nor close as WON", async () => {
+  await t.test("CURRENT STATE (pinned until the DQ-021 packet runs): the Owner and salesManager can draft but can neither accept an Agreement nor close as WON", async () => {
     for (const persona of ["owner-executive", "role:salesManager"]) {
       const o = ok(await call(personas[persona], "createOpportunity", { idempotencyKey: key(), accountId: "acct-retail", salesChannel: "RETAIL", operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] }), `${persona} create`);
       const a = ok(await call(personas[persona], "createSalesAgreement", { idempotencyKey: key(), opportunityId: o.opportunityId, ownerEmployeeId: "e-retail-a", isLease: false, lines: [{ kind: "SERVICE", ref: "svc", quantity: 1, unitPrice: 100, businessUnitId: "SERVICE" }] }), `${persona} agreement`);
       refused(await call(personas[persona], "acceptSalesAgreement", { idempotencyKey: key(), salesAgreementId: a.salesAgreementId }), 403, "CAPABILITY_REQUIRED", `${persona} accept`);
       refused(await call(personas[persona], "closeOpportunityAsWon", { idempotencyKey: key(), opportunityId: o.opportunityId }), 403, "CAPABILITY_REQUIRED", `${persona} won`);
+    }
+  });
+
+  // DQ-021 (Controller 2026-09-28): salesManager receives salesAgreement.accept + opportunity.createSalesOrder through
+  // CURRENT Administration in nonprod (the ledger's execution packet: grantObjectActionToRole x2), never a migration.
+  // The Owner stays on the governed Owner model (ownerCapabilityContract: neither key), so the Owner half of the pinned
+  // gap is the ruled state, not a gap. This is the NAMED POST-GRANT EXPECTATION: the same two rows the packet writes,
+  // applied in this disposable database only, then removed so the pinned current state above stays the baseline.
+  const base = (accountId, salesChannel) => ({ idempotencyKey: key(), accountId, salesChannel, operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", qty: 1 }] });
+  const DQ021_SALES_MANAGER_POST_GRANT = Object.freeze([...COMMERCIAL_HOLDINGS["role:salesManager"], "salesAgreement.accept", "opportunity.createSalesOrder"]);
+  await t.test("DQ-021 POST-GRANT EXPECTATION: after the Administration packet, salesManager completes the chain; the Owner still cannot", async () => {
+    const roleId = await roleFor(TENANT, "salesManager");
+    const added = [];
+    for (const capabilityKey of ["salesAgreement.accept", "opportunity.createSalesOrder"]) {
+      const r = await q(`INSERT INTO eos_policy.role_capabilities (id, tenant_id, role_id, capability_id, granted_by, created_by, updated_by)
+               SELECT $1, $2, $3, c.id, 'dq021-packet', 'dq021-packet', 'dq021-packet' FROM eos_policy.capabilities c WHERE c.key = $4 RETURNING id`,
+        [`rc_dq021_${capabilityKey}`, TENANT, roleId, capabilityKey]);
+      added.push(r.rows[0].id);
+    }
+    try {
+      const manager = personas["role:salesManager"];
+      const offered = ok(await call(manager, "readMyCommercialCapabilities"), "offer");
+      assert.deepEqual([...offered.capabilities].sort(), [...DQ021_SALES_MANAGER_POST_GRANT].sort());
+      const o = ok(await call(manager, "createOpportunity", base("acct-retail", "RETAIL")), "create");
+      for (const toStage of ["QUALIFYING", "SOLUTION", "QUOTING", "CUSTOMER_REVIEW", "DECISION"]) {
+        ok(await call(manager, "transitionOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, toStage }), toStage);
+      }
+      const a = ok(await call(manager, "createSalesAgreement", { idempotencyKey: key(), opportunityId: o.opportunityId, ownerEmployeeId: "e-retail-a", isLease: false, lines: [{ kind: "SERVICE", ref: "s", quantity: 1, unitPrice: 100, businessUnitId: "SERVICE" }] }), "agreement");
+      ok(await call(manager, "acceptSalesAgreement", { idempotencyKey: key(), salesAgreementId: a.salesAgreementId }), "accept");
+      ok(await call(manager, "closeOpportunityAsWon", { idempotencyKey: key(), opportunityId: o.opportunityId }), "won");
+      refused(await call(personas["owner-executive"], "acceptSalesAgreement", { idempotencyKey: key(), salesAgreementId: a.salesAgreementId }), 403, "CAPABILITY_REQUIRED", "owner model unchanged");
+    } finally {
+      await q(`DELETE FROM eos_policy.role_capabilities WHERE id = ANY($1)`, [added]);
     }
   });
 
@@ -443,7 +476,6 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
 
   // ════════════════════ DQ-020: COMMERCIAL WRITES FOLLOW THE SALES CHANNEL ════════════════════
 
-  const base = (accountId, salesChannel) => ({ idempotencyKey: key(), accountId, salesChannel, operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", qty: 1 }] });
   await t.test("DQ-020: a channel-scoped seller writes inside its channel -- and the relationship, not the owner, decides (another RETAIL seller may work the record)", async () => {
     const o = ok(await call(retailA, "createOpportunity", base("acct-retail", "RETAIL")), "create");
     ok(await call(personas["retail-sales-b"], "updateOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, nextAction: "b covers" }), "same channel, not the owner");
