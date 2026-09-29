@@ -6,6 +6,16 @@
 // conflict path is distinguishable from a validation failure, that a replay is a replay, and that
 // the probe changes nothing.
 //
+// CATALOG CUTOVER FREEZE (catalogMaster/catalogWriterState.ts, FROZEN/INACTIVE). createPart, createPartAlias,
+// deactivatePartAlias and reactivatePartAlias are legacy Firestore catalog writers and are FROZEN: each refuses first
+// with FirestoreCatalogWriterClosedError (FIRESTORE_CATALOG_WRITER_FROZEN). So:
+//   B. the READ and RESOLUTION proofs (the list projection, its ordering and scoping, the scan-to-test probe) run
+//      unchanged over alias and Part documents seeded DIRECTLY in exactly the stored shape the frozen writers wrote
+//      -- the real aliasToFirestore / partToFirestore serializers and the real deriveAliasDocId key authority;
+//   A. the superseded WRITER contract (replay, cross-part conflict, re-create-vs-reactivate, stale version) now
+//      asserts the governed refusal AND that nothing was written: the alias document is absent or byte-for-byte
+//      unchanged, and no audit / idempotency record exists for it.
+// Nothing here reopens a writer or replaces the guard.
 // Prerequisite: npm run build; Firestore emulator running.
 // Run: node --test test/partAliasCallables.test.mjs
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
@@ -20,10 +30,13 @@ const db = admin.firestore();
 const { createPartAlias, deactivatePartAlias, reactivatePartAlias, resolvePartAlias } = await import(
   "../lib/partMaster/partAliasCommands.js"
 );
+const { aliasToFirestore, deriveAliasDocId } = await import("../lib/partMaster/partAliasRepository.js");
+const { partToFirestore } = await import("../lib/partMaster/partMasterRepository.js");
+const { validatePart } = await import("../lib/partMaster/validation.js");
+const { FirestoreCatalogWriterClosedError } = await import("../lib/catalogMaster/catalogWriterState.js");
 const { listPartAliases } = await import("../lib/partMaster/partAliasReadService.js");
 const { mapError } = await import("../lib/partMaster/partAliasCallables.js");
 const {
-  createPart,
   InvalidInputError,
   AlreadyExistsError,
   VersionConflictError,
@@ -82,15 +95,42 @@ after(async () => {
   }
 });
 
-await createPart({ actorUid: ACTOR, idempotencyKey: key("c"), part: partInput(PART_ID) }, DEPS);
+// ---- stored-shape fixtures (ruling B): exactly what the frozen writers staged, through their own serializers ----
+const AT = DEPS.now();
+async function seedPart(partId) {
+  const v = validatePart(partInput(partId));
+  assert.equal(v.valid, true);
+  await db.collection("parts").doc(partId).set(partToFirestore({ part: v.value, version: 1, createdAt: AT, createdBy: ACTOR, updatedAt: AT, updatedBy: ACTOR }));
+}
+await seedPart(PART_ID);
 
-async function addAlias(rawValue, aliasType = "SUPPLIER_SKU") {
-  const res = await createPartAlias(
-    { actorUid: ACTOR, idempotencyKey: key("a"), partId: PART_ID, aliasType, rawValue },
-    DEPS
-  );
-  createdAliases.push(res.aliasId);
-  return res;
+// createPartAlias wrote an ACTIVE v1 alias keyed by deriveAliasDocId; deactivatePartAlias then wrote INACTIVE at v+1
+// with deactivatedAt/deactivatedBy. `status: "INACTIVE"` seeds that post-deactivation shape (version 2).
+async function addAlias(rawValue, aliasType = "SUPPLIER_SKU", { status = "ACTIVE", partId = PART_ID } = {}) {
+  const derived = deriveAliasDocId(aliasType, rawValue);
+  assert.ok(derived, `fixture value must be a valid ${aliasType}`);
+  const inactive = status === "INACTIVE";
+  await db.collection("part_aliases").doc(derived.docId).set(aliasToFirestore({
+    aliasId: derived.docId, partId, aliasType, originalValue: rawValue, normalizedValue: derived.normalizedValue,
+    status, source: "manual", ...(inactive ? { deactivatedAt: AT, deactivatedBy: ACTOR } : {}),
+    version: inactive ? 2 : 1, createdAt: AT, createdBy: ACTOR, updatedAt: AT, updatedBy: ACTOR,
+  }));
+  createdAliases.push(derived.docId);
+  return { aliasId: derived.docId, version: inactive ? 2 : 1 };
+}
+
+// ---- freeze helpers (ruling A) ----
+const frozen = (writer) => (err) => {
+  assert.ok(err instanceof FirestoreCatalogWriterClosedError, `expected the governed freeze refusal, got ${err?.name}: ${err?.message}`);
+  assert.equal(err.code, "FIRESTORE_CATALOG_WRITER_FROZEN");
+  assert.equal(err.writer, writer);
+  return true;
+};
+const aliasDoc = async (aliasId) => (await db.collection("part_aliases").doc(aliasId).get());
+const auditsFor = async (targetId) => (await db.collection("auditEvents").where("targetId", "==", targetId).get()).size;
+async function assertAliasUnchanged(aliasId, before) {
+  assert.deepEqual((await aliasDoc(aliasId)).data(), before, "the alias record must be byte-for-byte unchanged");
+  assert.equal(await auditsFor(aliasId), 0, "no audit / idempotency record for the alias");
 }
 
 // ------------------------------------------------------------------ the read
@@ -119,11 +159,8 @@ test("the list returns what a person typed, not the normalized form", async () =
 test("the list includes INACTIVE identifiers", async () => {
   // Load-bearing: re-adding a deactivated identifier is refused as a conflict, and an
   // administrator who cannot see the inactive record cannot understand the refusal.
-  const created = await addAlias("SKU-TO-DEACTIVATE");
-  await deactivatePartAlias(
-    { actorUid: ACTOR, idempotencyKey: key("k"), aliasId: created.aliasId, expectedVersion: 1 },
-    DEPS
-  );
+  // Ruling B: the stored shape deactivatePartAlias left behind (INACTIVE, version 2), read through the real list.
+  const created = await addAlias("SKU-TO-DEACTIVATE", "SUPPLIER_SKU", { status: "INACTIVE" });
   const { aliases } = await listPartAliases(db, PART_ID);
   const row = aliases.find((a) => a.aliasId === created.aliasId);
   assert.ok(row, "a deactivated identifier must still be listed");
@@ -144,79 +181,78 @@ test("the list is scoped to ONE part", async () => {
   for (const a of aliases) assert.ok(a.aliasId, "every row must carry its own identity");
 });
 
-// ------------------------------------------------------- conflict is not invalidity
+// ------------------------------------------------------- the alias WRITERS are frozen (ruling A)
 
-test("re-adding the SAME identifier for the SAME part replays rather than duplicating", async () => {
-  const first = await createPartAlias(
-    { actorUid: ACTOR, idempotencyKey: key("k"), partId: PART_ID, aliasType: "UPC", rawValue: "012345678905" },
-    DEPS
-  );
-  createdAliases.push(first.aliasId);
-  const second = await createPartAlias(
-    { actorUid: ACTOR, idempotencyKey: key("k"), partId: PART_ID, aliasType: "UPC", rawValue: "012345678905" },
-    DEPS
-  );
-  assert.equal(second.outcome, "replayed");
-  assert.equal(second.aliasId, first.aliasId, "one identifier, not two");
+test("re-adding the SAME identifier: FROZEN on every attempt, no alias and no idempotency record", async () => {
+  const derived = deriveAliasDocId("UPC", "012345678905");
+  const k = key("k");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await assert.rejects(
+      createPartAlias({ actorUid: ACTOR, idempotencyKey: k, partId: PART_ID, aliasType: "UPC", rawValue: "012345678905" }, DEPS),
+      frozen("partAlias.create")
+    );
+  }
+  assert.equal((await aliasDoc(derived.docId)).exists, false, "no alias may be created");
+  assert.equal(await auditsFor(derived.docId), 0, "no audit / idempotency record");
 });
 
-test("an identifier owned by ANOTHER part is refused, and refused as a CONFLICT", async () => {
-  // Created through the real command, not a raw write: an alias create reads the Part through the
-  // Part repository, and a hand-shaped document would fail its parse for a reason unrelated to what
-  // this test is about.
+test("an identifier owned by ANOTHER part: FROZEN, and ownership never transfers", async () => {
   const otherPart = uid("PRTOTHER");
-  await createPart({ actorUid: ACTOR, idempotencyKey: key("c"), part: partInput(otherPart) }, DEPS);
+  await seedPart(otherPart);
   const mine = await addAlias("SKU-OWNED-BY-ME");
+  const before = (await aliasDoc(mine.aliasId)).data();
   await assert.rejects(
     createPartAlias(
       { actorUid: ACTOR, idempotencyKey: key("k"), partId: otherPart, aliasType: "SUPPLIER_SKU", rawValue: "SKU-OWNED-BY-ME" },
       DEPS
     ),
-    (err) => err instanceof AlreadyExistsError,
-    "identity must never transfer silently between parts"
+    frozen("partAlias.create")
   );
+  await assertAliasUnchanged(mine.aliasId, before);
+  // Ruling B: the identity still resolves to its owner through the real resolver.
+  const found = await resolvePartAlias({ aliasType: "SUPPLIER_SKU", rawValue: "SKU-OWNED-BY-ME" }, DEPS);
+  assert.equal(found.result, "FOUND");
+  assert.equal(found.partId, PART_ID, "identity must never transfer silently between parts");
   await db.collection("parts").doc(otherPart).delete().catch(() => {});
-  assert.ok(mine.aliasId);
 });
 
-test("a deactivated identifier cannot be re-created — it must be reactivated", async () => {
-  const created = await addAlias("SKU-REACTIVATE-ME");
-  await deactivatePartAlias(
-    { actorUid: ACTOR, idempotencyKey: key("k"), aliasId: created.aliasId, expectedVersion: 1 },
-    DEPS
-  );
+test("a deactivated identifier: re-create and reactivate are both FROZEN; the record stays INACTIVE", async () => {
+  const created = await addAlias("SKU-REACTIVATE-ME", "SUPPLIER_SKU", { status: "INACTIVE" });
+  const before = (await aliasDoc(created.aliasId)).data();
   await assert.rejects(
     createPartAlias(
       { actorUid: ACTOR, idempotencyKey: key("k"), partId: PART_ID, aliasType: "SUPPLIER_SKU", rawValue: "SKU-REACTIVATE-ME" },
       DEPS
     ),
-    (err) => err instanceof AlreadyExistsError,
-    "create must never silently reactivate"
+    frozen("partAlias.create")
   );
-  const back = await reactivatePartAlias(
-    { actorUid: ACTOR, idempotencyKey: key("k"), aliasId: created.aliasId, expectedVersion: 2 },
-    DEPS
+  await assert.rejects(
+    reactivatePartAlias({ actorUid: ACTOR, idempotencyKey: key("k"), aliasId: created.aliasId, expectedVersion: 2 }, DEPS),
+    frozen("partAlias.reactivate")
   );
-  assert.equal(back.outcome, "applied");
-  assert.equal(back.version, 3);
+  await assertAliasUnchanged(created.aliasId, before);
+  assert.equal(before.status, "INACTIVE");
 });
 
-test("a stale version is refused rather than merged", async () => {
+test("deactivate (current or stale version): FROZEN, the record is unchanged", async () => {
   const created = await addAlias("SKU-STALE-VERSION");
-  await assert.rejects(
-    deactivatePartAlias(
-      { actorUid: ACTOR, idempotencyKey: key("k"), aliasId: created.aliasId, expectedVersion: 99 },
-      DEPS
-    ),
-    (err) => err instanceof VersionConflictError
-  );
+  const before = (await aliasDoc(created.aliasId)).data();
+  for (const expectedVersion of [99, 1]) {
+    await assert.rejects(
+      deactivatePartAlias({ actorUid: ACTOR, idempotencyKey: key("k"), aliasId: created.aliasId, expectedVersion }, DEPS),
+      frozen("partAlias.deactivate")
+    );
+  }
+  await assertAliasUnchanged(created.aliasId, before);
 });
 
 // ------------------------------------------------------------------ the probe
 
 test("scan-to-test resolves through the SAME resolver the scanner uses, and changes nothing", async () => {
-  const created = await addAlias("SKU-PROBE-ME");
-  const before = (await listPartAliases(db, PART_ID)).aliases.length;
+  // Ruling B: the probe is a READ through the scanner's resolver, exercised over stored-shape fixtures.
+  await addAlias("SKU-PROBE-ME");
+  await addAlias("SKU-PROBE-OFF", "SUPPLIER_SKU", { status: "INACTIVE" });
+  const before = (await listPartAliases(db, PART_ID)).aliases;
 
   const found = await resolvePartAlias({ aliasType: "SUPPLIER_SKU", rawValue: "SKU-PROBE-ME" }, DEPS);
   assert.equal(found.result, "FOUND");
@@ -225,15 +261,12 @@ test("scan-to-test resolves through the SAME resolver the scanner uses, and chan
   const missing = await resolvePartAlias({ aliasType: "SUPPLIER_SKU", rawValue: "NOT-REGISTERED-AT-ALL" }, DEPS);
   assert.equal(missing.result, "NOT_FOUND");
 
-  await deactivatePartAlias(
-    { actorUid: ACTOR, idempotencyKey: key("k"), aliasId: created.aliasId, expectedVersion: 1 },
-    DEPS
-  );
-  const inactive = await resolvePartAlias({ aliasType: "SUPPLIER_SKU", rawValue: "SKU-PROBE-ME" }, DEPS);
+  const inactive = await resolvePartAlias({ aliasType: "SUPPLIER_SKU", rawValue: "SKU-PROBE-OFF" }, DEPS);
   assert.equal(inactive.result, "INACTIVE", "registered-but-off is never reported as never-registered");
+  assert.equal(inactive.partId, PART_ID);
 
-  const after = (await listPartAliases(db, PART_ID)).aliases.length;
-  assert.equal(after, before, "probing must not create, remove, or alter anything");
+  const after = (await listPartAliases(db, PART_ID)).aliases;
+  assert.deepEqual(after, before, "probing must not create, remove, or alter anything");
 });
 
 test("a malformed probe value reports MALFORMED, not NOT_FOUND", async () => {

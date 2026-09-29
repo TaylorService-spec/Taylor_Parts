@@ -30,6 +30,7 @@
 // limit nobody has asked for yet.
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { assertFirestoreCatalogWriterOpen, FirestoreCatalogWriterClosedError } from "../catalogMaster/catalogWriterState.js";
 import { getFirestore } from "firebase-admin/firestore";
 import type { Firestore } from "firebase-admin/firestore";
 
@@ -216,13 +217,22 @@ async function requireCapability(db: Firestore, actorUid: string, capability: st
   }
 }
 
-function mapError(err: unknown): HttpsError {
+export function mapError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
   // Intake failures are the ONE class surfaced with their own message: they describe the
   // caller's own file ("row 4 has 7 values, the header has 6") and are useless generically.
   if (err instanceof IntakeError) return new HttpsError("invalid-argument", err.message, { code: err.code });
   if (err instanceof ImportJobError) return new HttpsError("failed-precondition", err.message, { code: err.code });
   if (err instanceof FirestoreCrmWriterClosedError) return new HttpsError("failed-precondition", err.message, { code: err.code });
+  // CATALOG CUTOVER: a frozen catalog refuses a Parts import as a governed state refusal, never an internal error, and
+  // says WHICH import is unavailable and why (ported from the catalog lane's Lane 2 gate).
+  if (err instanceof FirestoreCatalogWriterClosedError) {
+    return new HttpsError(
+      "failed-precondition",
+      "Part Import is unavailable on this legacy import runtime: the catalog authority has moved to PostgreSQL.",
+      { code: err.code },
+    );
+  }
   if (err instanceof ImportTargetRefusedError) {
     return new HttpsError("failed-precondition", "Data Import is not available in this environment.");
   }
@@ -379,6 +389,11 @@ export const executeDataImportCallable = onCall(REGION, async (request) => {
     // CRM cutover writer freeze: a customer import honours the freeze as a WHOLE, before the job is claimed and before
     // any row is written; a frozen CRM refuses the job rather than failing row by row (crm/crmWriterState.ts).
     if (staged.entityType === "CUSTOMERS") assertFirestoreCrmWriterOpen("account.import");
+    // CATALOG CUTOVER -- THE JOB-LEVEL PART IMPORT GATE (ported unchanged from the catalog lane). `part.create` already
+    // guards every row, because Data Import calls the governed createPart; a per-row guard is the wrong SHAPE for an
+    // import -- a frozen catalog would let a 400-row Parts job be claimed and then fail row by row. Refused here, BEFORE
+    // the job is claimed and before any row is written. Staging, preview and listing stay available.
+    if (staged.entityType === "PARTS") assertFirestoreCatalogWriterOpen("part.import");
     const claimed = beginExecution(staged, actorUid, new Date().toISOString());
     if (!(await store.claimForExecution(claimed))) {
       // Someone else claimed it between the read and the write. Refusing is correct:

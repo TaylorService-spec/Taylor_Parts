@@ -45,7 +45,9 @@ export interface CatalogWriterAuthority {
 }
 
 /** THE COMMITTED STATE. Change only through an allowed transition, with the authorization §5 requires. */
-export const CATALOG_WRITER_AUTHORITY: CatalogWriterAuthority = Object.freeze({ firestore: "OPEN", postgres: "INACTIVE" });
+// FREEZE (Controller ruling 2026-09-28, coordinated Catalog + Reorder activation window, step 2): OPEN/INACTIVE ->
+// FROZEN/INACTIVE, the declared FREEZE transition. PostgreSQL stays INACTIVE until the Catalog COPY is verified.
+export const CATALOG_WRITER_AUTHORITY: CatalogWriterAuthority = Object.freeze({ firestore: "FROZEN", postgres: "INACTIVE" });
 
 export const CATALOG_WRITER_TRANSITIONS = Object.freeze([
   Object.freeze({ name: "FREEZE", from: Object.freeze({ firestore: "OPEN", postgres: "INACTIVE" }), to: Object.freeze({ firestore: "FROZEN", postgres: "INACTIVE" }) }),
@@ -109,6 +111,20 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     reachedFrom: Object.freeze([
       "callable changePartStatus (partMasterCallables.ts changePartStatusCallable)",
       "client field-ops-app-vite/src/services/partMasterCommandClient.js (changeStatus)",
+    ]),
+  }),
+  // THE JOB-LEVEL PART IMPORT WRITER. `part.create` above already guards every individual row, because
+  // Data Import calls the governed createPart rather than writing Parts itself. This id exists because a
+  // per-row guard is the wrong SHAPE for an import: a frozen catalog would let an administrator approve a
+  // 400-row Parts job, claim it, and then fail all 400 rows one at a time, which reads as a broken import
+  // rather than as "this runtime no longer writes Parts". The CRM cutover already settled this shape for
+  // `account.import` (crm/crmWriterState.ts); Catalog follows it rather than inventing a second one.
+  "part.import": Object.freeze({
+    module: "functions/src/dataImport/dataImportCallables.ts",
+    entry: "executeDataImportCallable (entityType PARTS), refused before the job is claimed and before any row is written",
+    reachedFrom: Object.freeze([
+      "callable executeDataImport (functions/src/index.ts -> dataImportCallables.ts) with a staged PARTS job",
+      "client field-ops-app-vite/src/services/access/dataImportClient.js (executeDataImport)",
     ]),
   }),
   "equipmentModel.import": Object.freeze({

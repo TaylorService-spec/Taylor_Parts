@@ -1321,23 +1321,33 @@ async function main() {
     );
   });
 
-  await check("wiring: end-to-end -- createPart resolves inventory.catalog.manage AFTER trusted assignment, and DENIES after revoke", async () => {
-    const { createPart, UnauthorizedActorError: PMUnauthorized } = await import("../lib/partMaster/partMasterCommands.js");
+  // Ruling B (Controller, freeze fix cycle 2026-09-28): this proves the TRUSTED-WRITER AUTHORITY CHAIN -- a trusted
+  // assignment makes inventory.catalog.manage resolve ALLOW, a trusted revoke makes it resolve DENY. createPart was only
+  // the probe, and the legacy Firestore catalog writers are FROZEN for the catalog cutover, so the proof moves to the
+  // EXISTING active governed boundary that resolves the same chain: the deployed effective-access feed
+  // (resolveEffectiveAccess -> live roleAssignments + the real Role catalog -> resolveEffectivePermission).
+  await check("wiring: end-to-end -- inventory.catalog.manage resolves ALLOW after trusted assignment, and DENY after revoke", async () => {
+    const { resolveEffectiveAccess } = await import("../lib/access/effectiveAccessFeed.js");
+    const { createPart } = await import("../lib/partMaster/partMasterCommands.js");
+    const { FirestoreCatalogWriterClosedError } = await import("../lib/catalogMaster/catalogWriterState.js");
     const actor = await makeAdminActor();
     const operator = await makePrincipal("ice-operator");
     const grantKey = `assign-ice-e2e-${uid("k")}`;
+    const manage = async () => (await resolveEffectiveAccess({ principalUid: operator, permissionIds: ["inventory.catalog.manage"] }, { db })).decisions["inventory.catalog.manage"];
+    assert.equal(await manage(), false, "precondition: no authority before the trusted assignment");
     // Grant through the TRUSTED command (real allRoles() resolution, no deps injection):
     await assignApprovedRole({ actorUid: actor, principalUid: operator, roleId: "inventoryCreateExecutor", scope: { type: "global" }, idempotencyKey: grantKey });
+    assert.equal(await manage(), true, "the trusted assignment makes inventory.catalog.manage resolve ALLOW");
+    // Ruling A: the frozen legacy writer refuses even an authorized actor, and writes nothing.
     const pid = uid("E2E-PART").toUpperCase().replace(/[^A-Z0-9_-]/g, "-");
-    const created = await createPart({ actorUid: operator, idempotencyKey: `pmcreate-${uid("k")}`, part: { partId: pid, internalPartNumber: pid, name: "Wired", status: "DRAFT", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" } });
-    assert.equal(created.outcome, "applied");
+    await assertRejectsWith(
+      createPart({ actorUid: operator, idempotencyKey: `pmcreate-${uid("k")}`, part: { partId: pid, internalPartNumber: pid, name: "Wired", status: "DRAFT", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" } }),
+      FirestoreCatalogWriterClosedError, "the legacy catalog writer is frozen",
+    );
+    assert.equal((await db.collection("parts").doc(pid).get()).exists, false, "no Part written");
     // Revoke through the trusted command; the capability must resolve DENY:
     await revokeRole({ actorUid: actor, assignmentId: grantKey, idempotencyKey: `revoke-ice-e2e-${uid("k")}` });
-    const pid2 = uid("E2E-PART2").toUpperCase().replace(/[^A-Z0-9_-]/g, "-");
-    await assertRejectsWith(
-      createPart({ actorUid: operator, idempotencyKey: `pmcreate2-${uid("k")}`, part: { partId: pid2, internalPartNumber: pid2, name: "AfterRevoke", status: "DRAFT", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" } }),
-      PMUnauthorized, "createPart denies after revoke",
-    );
+    assert.equal(await manage(), false, "the trusted revoke makes inventory.catalog.manage resolve DENY");
   });
 
   // =====================================================================
