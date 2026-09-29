@@ -80,7 +80,7 @@ export function useOpportunityTransitions(opportunityId, deps) {
         // The server derives account and lines itself rather than trusting the payload, so
         // only these two are sent.
         const isWon = intent.kind === "OUTCOME" && intent.outcome === "WON";
-        const { result, errorStatus } = isWon
+        const { result, errorStatus, errorDetail } = isWon
           ? await client.closeOpportunityAsWon({
               opportunityId,
               ownerEmployeeId: intent.ownerEmployeeId,
@@ -93,7 +93,7 @@ export function useOpportunityTransitions(opportunityId, deps) {
               ...(intent.kind === "ADVANCE" ? { toStage: intent.toStage } : { outcome: intent.outcome }),
             });
         if (errorStatus) {
-          throw Object.assign(new Error(outcomeFromErrorCode(errorStatus).message), { outcome: outcomeFromErrorCode(errorStatus) });
+          throw Object.assign(new Error(outcomeFromErrorCode(errorStatus, errorDetail).message), { outcome: outcomeFromErrorCode(errorStatus, errorDetail) });
         }
         // The atomic command returns the Sales Order it created OR found. Carried through so
         // the caller can link to it -- a Won that does not show its order leaves the user to

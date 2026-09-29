@@ -77,6 +77,25 @@ describe("commands", () => {
     expect(denied.errorStatus).toBe("permission-denied");
   });
 
+  it("a refusal's errorDetail is the governed CODE, so the screen shows the specific outcome -- not a generic failure", async () => {
+    const { outcomeFromErrorCode } = await import("../src/domain/opportunityCommandOutcome.js");
+    const via = async (category, reason) => {
+      const out = await opp.updateOpportunity({ opportunityId: "opp_1", expectedEditVersion: 4, idempotencyKey: "k", need: "x" },
+        { client: client(() => ({ ok: false, code: category, reason, message: `human text for ${reason}`, status: null })) });
+      expect(out.errorDetail).toBe(reason);
+      return outcomeFromErrorCode(out.errorStatus, out.errorDetail);
+    };
+    expect((await via("CONFLICT", "VERSION_CONFLICT")).kind).toBe("conflict");
+    expect((await via("PRECONDITION_FAILED", "NO_CHANGES")).kind).toBe("noop");
+    expect((await via("PRECONDITION_FAILED", "CLOSED")).message).toMatch(/closed/i);
+    expect((await via("UNAVAILABLE", "CATALOG_AUTHORITY_UNAVAILABLE")).message).toMatch(/catalog/i);
+    expect((await via("PRECONDITION_FAILED", "AGREEMENT_REQUIRED")).message).toMatch(/accepted Sales Agreement/);
+    // An unknown code still falls back to the status message, never to the server's raw text.
+    const unknown = await via("PRECONDITION_FAILED", "SOMETHING_NEW");
+    expect(unknown.message).not.toMatch(/human text/);
+    expect(unknown.kind).toBe("invalid");
+  });
+
   it("create / transition / close-as-won go to the EOS commands with the caller's idempotency key", async () => {
     const c = client((op) => ok({ op }));
     await opp.createOpportunity({ accountId: "acct_1", idempotencyKey: "k1" }, { client: c });

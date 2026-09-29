@@ -47,6 +47,7 @@
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
+import { assertFirestoreCrmWriterOpen } from "../../lib/crm/crmWriterState.js";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -91,6 +92,8 @@ async function main() {
   const { target } = authorizeCorrection(argv);
   console.log(describeTarget(target));
   console.log(`mode   : ${APPLY ? "APPLY (writes)" : "DRY RUN (writes nothing)"}\n`);
+  // CRM cutover writer freeze (functions/src/crm/crmWriterState.ts): --apply patches accounts, locations and contacts.
+  if (APPLY && target.projectId !== "eos-platform-certification") assertFirestoreCrmWriterOpen("crm.certificationWorldCorrection");
 
   if (!getApps().length) initializeApp({ credential: applicationDefault(), projectId: target.projectId });
   const db = getFirestore();

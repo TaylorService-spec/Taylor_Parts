@@ -59,6 +59,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
+import { assertFirestoreCrmWriterOpen } from "../lib/crm/crmWriterState.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
@@ -123,6 +124,9 @@ async function main() {
   console.log(`target      : ${target.projectId} (role=${target.role})`);
   console.log(`collection  : ${COLLECTION}`);
   console.log(`mode        : ${APPLY ? "APPLY (writes)" : "DRY RUN (writes nothing)"}\n`);
+  // CRM cutover writer freeze (functions/src/crm/crmWriterState.ts): an --apply against a CRM collection is a Firestore
+  // CRM write; it refuses while the committed CRM writer state is not OPEN. A dry run still reads.
+  if (APPLY && ["accounts", "contacts", "locations"].includes(COLLECTION)) assertFirestoreCrmWriterOpen("crm.writeTimestampBackfill");
 
   if (!getApps().length) initializeApp({ credential: applicationDefault(), projectId: target.projectId });
   const db = getFirestore();

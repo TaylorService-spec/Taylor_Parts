@@ -144,6 +144,9 @@ test("administrability: workflow responsibility is changed by Administration alo
     // The commercial writers resolve operating_company_key only through the governed binding -- never key = id.
     await bindOperatingCompany(q, TENANT, company, `${company}-ops`);
   }
+  // Taylor's governed KEY binding (the nonprod shape: Ventana stays unkeyed). Commercial writes store the bound key and
+  // refuse an unkeyed company, so the fixture states the binding P2(e)'s Opportunities rely on.
+  await bindOperatingCompany(q, TENANT, "taylor");
   const boot = await bootstrapAdministrator(repo, { tenantId: TENANT, externalSubject: ADMIN_SUBJECT, performedBy: OPERATOR, reason: "initial administrator" });
 
   const deps = { repo, explainEffectiveAccess: (tenantId, principalId) => explainEffectiveAccess(repo, pool, { tenantId, principalId }) };

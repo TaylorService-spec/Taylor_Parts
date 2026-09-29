@@ -11,10 +11,13 @@
 import { commercialApiClient } from "./commercialApiClient.js";
 import { legacyErrorStatus } from "./commercialEosAdapters.js";
 
+// `errorDetail` is the server's GOVERNED REFUSAL CODE (VERSION_CONFLICT, CLOSED, NO_CHANGES, ...), the same contract the
+// callable-era `details` carried and domain/opportunityCommandOutcome.js keys its specific messages on -- never the
+// server's human message, which would match none of them and turn a version conflict into a generic failure.
 async function run(operation, input, client) {
   const answer = await client.call(operation, { input });
   if (answer.ok) return { result: answer.result };
-  return { errorStatus: legacyErrorStatus(answer), errorDetail: typeof answer.message === "string" && answer.message ? answer.message : null };
+  return { errorStatus: legacyErrorStatus(answer), errorDetail: typeof answer.reason === "string" && answer.reason ? answer.reason : null };
 }
 
 const present = (entries) => Object.fromEntries(Object.entries(entries).filter(([, v]) => v !== undefined));

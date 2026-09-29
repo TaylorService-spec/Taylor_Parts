@@ -171,7 +171,9 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
     assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.tenant_sales_channels`)).rows[0].n, 0, "the migration activated a channel");
     const empty = ok(await call("admin-a", "listSupportedAssignmentScopes", {})).scopeTypes.find((s) => s.scopeType === "salesChannel");
     assert.deepEqual([empty.supported, empty.label, empty.contextKey, empty.values], [true, "Sales Channel", "salesChannel", []]);
-    assert.deepEqual(empty.capabilities.map((c) => c.capabilityKey), ["opportunity.read", "salesAgreement.read", "salesOrder.read"]);
+    // The three reads (lane GA) and, since DQ-020, the six Commercial writes -- each decided against the record's channel.
+    assert.deepEqual(empty.capabilities.map((c) => c.capabilityKey), ["opportunity.read", "salesAgreement.read", "salesOrder.read",
+      "opportunity.write", "opportunity.createSalesOrder", "salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept", "salesOrder.write"]);
     // With nothing activated, no channel can be assigned -- there is no value to name.
     refusedWith(await assign("admin-a", retailMgr, lead, "salesChannel", "RETAIL"), "SCOPE_VALUE_INVALID");
 

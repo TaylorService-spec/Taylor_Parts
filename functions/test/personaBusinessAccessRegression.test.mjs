@@ -266,7 +266,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // owner's set grows by exactly admin.administratorRole.assign; no other persona moves.
   // 63: + the six Catalog + Reorder integration migrations (PR #2000, 1763164800000..1763596800000). None grants a
   // capability to any Role: the eight Reorder lifecycle keys are registered with NO grants (Administration-only).
-  assert.equal(files.length, 63, "the migration chain moved; re-measure before trusting anything below");
+  // 64: + the ownership handoff correction capability (1763683200000, DQ-022): one capability granted to nobody -- no
+  // persona's set moves.
+  assert.equal(files.length, 64, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -368,7 +370,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 90); // + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 91); // + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.

@@ -238,8 +238,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // capability REGISTRATION, renumbered above main for the same reason). The registration adds EIGHT capabilities
 // (vocabulary 82 -> 90, reconciled in the manifest) granted to NO Role -- Administration-grant-only, so the seed's
 // catalog reconcile writes none of them and no persona moves.
-const PINNED_LAST_MIGRATION = "1763596800000_receiving-business-time-number-and-acquisition-cost";
-const PINNED_MIGRATION_COUNT = 63;
+// 63 -> 64: 1763683200000, the ownership handoff correction capability (DQ-022) -- one capability, granted to nobody.
+const PINNED_LAST_MIGRATION = "1763683200000_ownership-handoff-correction-capability";
+const PINNED_MIGRATION_COUNT = 64;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

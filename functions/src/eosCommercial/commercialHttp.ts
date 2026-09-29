@@ -40,6 +40,7 @@ import { getAccountCommercialProjection } from "./reads/accountCommercialProject
 import { getOpportunityDetail, listOpportunities } from "./reads/opportunityReadProjection";
 import { getSalesAgreementDetail, listSalesAgreements } from "./reads/salesAgreementReadProjection";
 import { getSalesOrderDetail, listSalesOrders } from "./reads/salesOrderReadProjection";
+import { readMyCommercialCapabilities } from "./myCommercialCapabilities";
 
 export interface VerifiedIdentity {
   readonly externalSubject: string;
@@ -59,13 +60,14 @@ export interface CommercialApiDeps {
 }
 
 type Input = Record<string, unknown>;
-// The resolved actor. `scopedHeld` (lane GA) is read ONLY by the C3 reads that opt in to sales-channel scope; the C2
-// commands take the flat set alone, so a scope-qualified holding can never authorize a write.
+// The resolved actor. `scopedHeld` (lane GA) is honoured by the C3 reads that opt in to sales-channel scope AND, since
+// DQ-020 (Controller 2026-09-28), by the C2 commands -- each against the governing channel of the record it writes
+// (commands/commercialCommandKernel.ts CommercialWriteScope). Only UNCONDITIONED salesChannel holdings count.
 type ResolvedActor = CommercialActorContext & Pick<CommercialReadActor, "scopedHeld">;
 type Runner = (deps: CommercialApiDeps, actor: ResolvedActor, input: Input) => Promise<unknown>;
 const command = (fn: (d: { pool: Pool; catalog?: CommercialCatalogAuthority; now?: () => Date }, a: CommercialActorContext, i: Input) => Promise<unknown>): Runner =>
   (deps, actor, input) => fn({ pool: deps.pool, catalog: deps.catalog, now: deps.now },
-    Object.freeze({ tenantId: actor.tenantId, principalId: actor.principalId, capabilities: actor.capabilities }), input);
+    Object.freeze({ tenantId: actor.tenantId, principalId: actor.principalId, capabilities: actor.capabilities, scopedHeld: actor.scopedHeld }), input);
 const read = (fn: (d: { pool: Pool }, a: CommercialReadActor, i: Input) => Promise<unknown>): Runner =>
   (deps, actor, input) => fn({ pool: deps.pool }, actor, input);
 
@@ -79,6 +81,8 @@ const READ_RUNNERS = Object.freeze({
   getSalesOrderDetail: read(getSalesOrderDetail),
   listSalesOrders: read(listSalesOrders),
   getAccountCommercialProjection: read(getAccountCommercialProjection),
+  // Which Commercial controls the caller may be OFFERED -- its own PostgreSQL capabilities, never anyone else's.
+  readMyCommercialCapabilities: read(readMyCommercialCapabilities),
 } as const);
 
 const MUTATION_RUNNERS = Object.freeze({
@@ -106,10 +110,11 @@ export const isCommercialOperation = (name: unknown): name is CommercialOperatio
   typeof name === "string" && Object.prototype.hasOwnProperty.call(RUNNERS, name);
 
 /**
- * The ONLY operations whose `input` may be omitted: the unfiltered list reads, whose C3 signatures take an optional input.
- * Every detail read, the Account projection and every mutation requires `input` to be present as an object.
+ * The ONLY operations whose `input` may be omitted: the unfiltered list reads, whose C3 signatures take an optional input,
+ * and the caller's own capability read, which takes none. Every detail read, the Account projection and every mutation
+ * requires `input` to be present as an object.
  */
-export const COMMERCIAL_OPTIONAL_INPUT_OPERATIONS: readonly CommercialReadOperation[] = Object.freeze(["listOpportunities", "listSalesAgreements", "listSalesOrders"]);
+export const COMMERCIAL_OPTIONAL_INPUT_OPERATIONS: readonly CommercialReadOperation[] = Object.freeze(["listOpportunities", "listSalesAgreements", "listSalesOrders", "readMyCommercialCapabilities"]);
 const OPTIONAL_INPUT = new Set<string>(COMMERCIAL_OPTIONAL_INPUT_OPERATIONS);
 
 /** Fields that would state authority. Authority comes from the verified subject and PostgreSQL, never from the body. */

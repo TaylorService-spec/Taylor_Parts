@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import { accountRecordPage } from "../../metadata/definitions/accountPage.js";
@@ -40,6 +40,7 @@ import {
 import { formatClockTime } from "../../domain/displayTimestamp.js";
 import { useIsPhone } from "../../navigation/useIsPhone.js";
 import { useAuth } from "../../auth/AuthContext";
+import { useCommercialCapabilities } from "../../hooks/useCommercialCapabilities.js";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import {
@@ -397,7 +398,18 @@ export default function AccountDetail() {
   // The real, fail-closed capability decisions for accountRecordPage's declared ids -- see
   // accountPageComponents.js. Denies everything while loading/signed-out/erroring; never a
   // permissive default.
-  const capabilityDecisions = useAccountPageCapabilityDecisions(user);
+  const feedDecisions = useAccountPageCapabilityDecisions(user);
+  // PASS 11 RETAIL SALES: the Opportunities and Sales Orders sections read the EOS Commercial transport, which PostgreSQL
+  // authorizes -- so whether to SHOW them is decided by the same authority (hooks/useCommercialCapabilities), not the
+  // Firebase feed. The other declared ids (finance.read, crm.activity.read) keep their feed until their own domains move.
+  const commercial = useCommercialCapabilities(user);
+  const capabilityDecisions = useMemo(() => {
+    const decisions = { ...feedDecisions };
+    for (const id of ["opportunity.read", "salesOrder.read"]) {
+      if (id in decisions) decisions[id] = commercial.hasCapability(id);
+    }
+    return decisions;
+  }, [feedDecisions, commercial]);
   // Health-strip inputs. Both are EXISTING authoritative account-scoped reads.
   //
   // This comment used to claim the strip and the AR area "can never disagree" because they share

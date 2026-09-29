@@ -55,7 +55,7 @@ const money = (minor, currency) => (typeof minor === "number" ? formatMinorUnits
 const STATE_TONE = { DRAFT: "neutral", ACCEPTED: "positive", DECLINED: "negative" };
 const STATE_LABEL = { DRAFT: "Draft", ACCEPTED: "Accepted", DECLINED: "Declined" };
 
-import { BLANK_LINE, toMinor, LinesEditor, buildLines } from "./salesAgreementLines.jsx";
+import { BLANK_LINE, toMinor, toMajorText, toEditorLines, LinesEditor, buildLines } from "./salesAgreementLines.jsx";
 
 function CreateForm({ onCreate, pending, canCreate }) {
   const [lines, setLines] = useState([{ ...BLANK_LINE }]);
@@ -121,12 +121,14 @@ function TermsForm({ view, pending, onSave }) {
       specialInstructions: view.specialInstructions ?? "",
       isLease: view.isLease === true,
       // Charges are shown in MAJOR units because that is what a person types, and converted back to
-      // integer minor units on submit. The stored value never leaves minor units.
-      shippingMinor: view.shippingMinor === null ? "" : String(view.shippingMinor / 100),
-      installChargeMinor: view.installChargeMinor === null ? "" : String(view.installChargeMinor / 100),
-      taxMinor: view.taxMinor === null ? "" : String(view.taxMinor / 100),
-      downPaymentMinor: view.downPaymentMinor === null ? "" : String(view.downPaymentMinor / 100),
-      tradeInMinor: view.tradeInMinor === null ? "" : String(view.tradeInMinor / 100),
+      // integer minor units on submit. The stored value never leaves minor units. The seed is the ONE exact
+      // inverse of toMinor (salesAgreementLines.jsx toMajorText): integer math, never a float division, and
+      // an absent charge stays empty rather than becoming "0".
+      shippingMinor: toMajorText(view.shippingMinor),
+      installChargeMinor: toMajorText(view.installChargeMinor),
+      taxMinor: toMajorText(view.taxMinor),
+      downPaymentMinor: toMajorText(view.downPaymentMinor),
+      tradeInMinor: toMajorText(view.tradeInMinor),
     });
     setError(null);
     setOpen(true);
@@ -294,10 +296,7 @@ export default function SalesAgreementPanel({ agreement, hasCapability = () => f
               </tbody>
             </table>
             {editable && (
-              <Button variant="ghost" onClick={() => setEditingLines(view.lines.map((l) => ({
-                kind: l.kind ?? "PART", ref: l.ref ?? "", quantity: String(l.quantity ?? 1),
-                unitPrice: l.unitPriceMinor === null ? "" : String(l.unitPriceMinor / 100),
-              })))}>
+              <Button variant="ghost" onClick={() => setEditingLines(toEditorLines(view.lines))}>
                 Edit lines
               </Button>
             )}

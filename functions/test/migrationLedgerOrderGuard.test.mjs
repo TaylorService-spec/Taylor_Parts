@@ -170,8 +170,10 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // capability registration, reorder requester is a Principal, reorder actor identity normalization, receiving business
 // time / number / acquisition cost). Each id is above every applied one, so each is an EXPLAINED pending migration;
 // the ledger model is not extended.
-const RUNNABLE_MIGRATION_COUNT = 63;
-const TRACKED_MIGRATION_COUNT = 64; // the 63 runnable + the one deferred file
+// 63 -> 64 runnable: migration 1763683200000, the ownership handoff correction capability (DQ-022, lane L1) -- APPENDED
+// after the candidate, another EXPLAINED pending migration; the ledger model is not extended.
+const RUNNABLE_MIGRATION_COUNT = 64;
+const TRACKED_MIGRATION_COUNT = 65; // the 64 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -186,6 +188,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1763424000000_reorder-requester-is-a-principal",
   "1763510400000_reorder-actor-identity-normalization",
   "1763596800000_receiving-business-time-number-and-acquisition-cost",
+  "1763683200000_ownership-handoff-correction-capability",
 ]);
 
 const repoMigrations = () =>

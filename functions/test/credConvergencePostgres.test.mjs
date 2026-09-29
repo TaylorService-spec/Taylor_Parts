@@ -105,7 +105,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.notEqual(row.display_label, row.key, "a friendly label, not the key");
     }
     const total = (await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities")).rows[0].n;
-    assert.equal(total, 90,
+    assert.equal(total, 91, // + 1 from migration 1763683200000 (DQ-022): ownership.handoff.correct, granted to no Role
       "+ 8 from migration 1763337600000, the Reorder lifecycle authority (Administration-grant-only) -- " +
       "49 + 8 + 13 + 3 + 1 + 1 (the re-homed coordinated-visit read) + 1 (admin.securityPolicy.read, " +
       "the Administration read authority -- rolesPermissions had two ADMIN_ACTION writes and no read) " +
@@ -115,7 +115,8 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       "+ 1 from migration 1762646400000, the Administration control plane: admin.securityPolicy.write, the " +
       "capability that replaces the Role-name gate on security-policy mutations " +
       "+ 1 from migration 1762819200000, the Functional Role authority: admin.employeeFunctionalRole.write, granted to " +
-      "no Role + 1 from migration 1763078400000, Owner ruling R1: admin.administratorRole.assign, granted to owner");
+      "no Role + 1 from migration 1763078400000, Owner ruling R1: admin.administratorRole.assign, granted to owner " +
+      "+ 1 from migration 1763683200000, DQ-022: ownership.handoff.correct, granted to no Role");
   });
 
   await t.test("every preserved grant is backed by an actual stored CRED row", async () => {

@@ -37,7 +37,9 @@ function walk(dir, exts) {
 const rel = (f) => relative(REPO, f).split("\\").join("/");
 
 const ALL_CAPS = [...Object.values(COMMERCIAL_CAPABILITIES), ...Object.values(COMMERCIAL_READ_CAPABILITIES)];
-const EXPECTED_READS = ["getOpportunityDetail", "listOpportunities", "getSalesAgreementDetail", "listSalesAgreements", "getSalesOrderDetail", "listSalesOrders", "getAccountCommercialProjection"];
+const EXPECTED_READS = ["getOpportunityDetail", "listOpportunities", "getSalesAgreementDetail", "listSalesAgreements", "getSalesOrderDetail", "listSalesOrders", "getAccountCommercialProjection",
+  // Pass 11 Retail Sales: the caller's own Commercial capabilities, so the screens offer controls from the authority that decides.
+  "readMyCommercialCapabilities"];
 const EXPECTED_MUTATIONS = ["createOpportunity", "updateOpportunity", "transitionOpportunity", "closeOpportunityAsWon", "createSalesAgreement", "updateSalesAgreementDraft",
   "acceptSalesAgreement", "createSalesOrder", "createSalesOrderFromOpportunity", "transitionSalesOrder"];
 
@@ -93,7 +95,7 @@ const parsed = (res) => JSON.parse(res.body);
 
 // ════════════════════ closed surface ════════════════════
 
-test("(1)(23) the operation list is closed: exactly the 17 approved C2/C3 operations, no D2", () => {
+test("(1)(23) the operation list is closed: exactly the 18 approved C2/C3 operations, no D2", () => {
   assert.deepEqual([...http.COMMERCIAL_READ_OPERATIONS], EXPECTED_READS);
   assert.deepEqual([...http.COMMERCIAL_MUTATION_OPERATIONS], EXPECTED_MUTATIONS);
   for (const name of [...EXPECTED_READS, ...EXPECTED_MUTATIONS]) assert.equal(http.isCommercialOperation(name), true);
@@ -293,6 +295,9 @@ const COMMERCIAL_TRANSPORT_CLIENT = "field-ops-app-vite/src/services/commercialA
  */
 const APPROVED_TRANSPORT_IMPORTERS = [
   "field-ops-app-vite/src/access/opportunitySource.js",
+  // Pass 11 Retail Sales: the Commercial screens' OFFER (readMyCommercialCapabilities) -- a read of the caller's own
+  // PostgreSQL capabilities, replacing the Firebase effective-access feed hooks for Opportunity / Sales Order.
+  "field-ops-app-vite/src/hooks/useCommercialCapabilities.js",
   "field-ops-app-vite/src/hooks/useSalesAgreementIndex.js",
   "field-ops-app-vite/src/metadata/callableListSource.js",
   "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js",
@@ -312,7 +317,9 @@ const APPROVED_COMMAND_CLIENTS = [
 /** Pure-EOS Commercial clients: no Firebase import at all (callableListSource / salesAgreementCommandClient keep
  *  unrelated legacy callables -- the manufacturer catalog, invoice AR, the product-reference picker). */
 const PURE_EOS_COMMERCIAL_CLIENTS = [
+  "field-ops-app-vite/src/access/commercialCapabilityAccess.js",
   "field-ops-app-vite/src/access/opportunitySource.js",
+  "field-ops-app-vite/src/hooks/useCommercialCapabilities.js",
   "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js",
   "field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js",
   "field-ops-app-vite/src/services/commercialEosAdapters.js",
@@ -449,13 +456,11 @@ test("(22) C4 leaves Firebase callables as the legacy runtime and does not wire 
   for (const [, names, from] of index.matchAll(/export\s*\{([^}]*)\}\s*from\s*"([^"]+)"/g)) {
     for (const name of names.split(",").map((n) => n.trim()).filter(Boolean)) exported.set(name, from);
   }
-  // PASS 11 RETAIL SALES: the Commercial WRITERS EOS now owns are RETIRED from the Firebase runtime -- they must never be
-  // exported again (the frozen Firestore commercial records they wrote must not change). The legacy READ callables stay.
-  const RETIRED_WRITERS = new Set(["createOpportunity", "transitionOpportunity", "updateOpportunity", "createSalesOrderFromOpportunity",
-    "closeOpportunityAsWon", "createSalesAgreement", "updateSalesAgreementDraft", "acceptSalesAgreement", "createSalesOrder", "transitionSalesOrder"]);
-  for (const [name, from] of LEGACY_COMMERCIAL_CALLABLES) {
-    if (RETIRED_WRITERS.has(name)) assert.equal(exported.has(name), false, `retired Commercial writer ${name} is exported again`);
-    else assert.equal(exported.get(name), from, `legacy read callable ${name} is no longer exported from ${from}`);
+  // PASS 11 RETAIL SALES: EVERY Commercial callable EOS now owns is RETIRED from the Firebase runtime and must never be
+  // exported again -- the ten WRITERS (the frozen Firestore commercial records they wrote must not change) and the eight
+  // READS, whose every client consumer now reads the governed PostgreSQL Commercial transport (no bounded overlap left).
+  for (const [name] of LEGACY_COMMERCIAL_CALLABLES) {
+    assert.equal(exported.has(name), false, `retired Commercial callable ${name} is exported from Functions again`);
   }
   // Functions never reach the PostgreSQL Commercial layer: no import of the transport, C2 commands or C3 reads.
   assert.doesNotMatch(index, /eosCommercial|commercialHttp|CommandService|commercialCommandKernel|ReadProjection|commercialReadKernel/);

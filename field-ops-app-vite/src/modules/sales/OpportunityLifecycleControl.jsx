@@ -35,7 +35,10 @@ import { allowedActions, stageProgress } from "../../domain/opportunityLifecycle
 // At earlier stages the ADVANCE chevron is itself the primary action -- P1v2: "the advance chevron
 // IS the primary" -- so the actions slot offers no advance button. Mark Won appears only at
 // Decision, because that is the only place the engine permits it.
-export default function OpportunityLifecycleControl({ row, readiness, transitions, onChanged, slot = "all" }) {
+// `wonDisabledReason` (optional): Mark Won also CREATES the Sales Order, which the server authorizes separately
+// (opportunity.createSalesOrder). A host that knows the caller lacks it passes the reason, and Mark Won renders
+// protected with it -- rather than offering a button whose confirm is a guaranteed denial. Absent = no extra gate.
+export default function OpportunityLifecycleControl({ row, readiness, transitions, onChanged, slot = "all", wonDisabledReason }) {
   const [error, setError] = useState(null);
   // What the Won actually PRODUCED. Marking an Opportunity Won creates a Sales Order in the same
   // transaction, and until now the control discarded that fact entirely: the chevrons flipped to
@@ -94,15 +97,16 @@ export default function OpportunityLifecycleControl({ row, readiness, transition
   const outcomeButtons = actions.outcomes.map((o) => {
     const pendingKey = `OUTCOME:${o}`;
     const isPending = !!transitions.pending[pendingKey];
-    const disabled = writeDisabled || isPending;
+    const protectedReason = writeDisabled ? readiness.reason : o === "WON" && wonDisabledReason ? wonDisabledReason : undefined;
+    const disabled = protectedReason !== undefined || isPending;
     return (
       <Button
         key={o}
         type="button"
-        variant={writeDisabled ? "protected" : "tertiary"}
+        variant={protectedReason !== undefined ? "protected" : "tertiary"}
         disabled={disabled}
-        title={writeDisabled ? readiness.reason : undefined}
-        reason={writeDisabled ? readiness.reason : undefined}
+        title={protectedReason}
+        reason={protectedReason}
         onClick={
           disabled
             ? undefined

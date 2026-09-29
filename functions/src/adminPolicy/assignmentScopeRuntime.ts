@@ -92,10 +92,13 @@ export interface ScopeEvaluableGrant {
  *                                            -- the record's STORED sales channel, read in the Commercial read's own
  *                                               snapshot (an Agreement's is its source Opportunity's, joined in the
  *                                               same statement). A record with NO channel admits no scoped holder.
- *                                               READS ONLY: the Commercial commands decide on the flat set and cannot
- *                                               derive a channel for a create (the caller supplies it), so no write
- *                                               capability is evaluable at this scope -- and the writes are fenced
- *                                               INACTIVE regardless.
+ *   salesChannel x opportunity.write / opportunity.createSalesOrder / salesAgreement.create / .updateDraft / .accept /
+ *                  salesOrder.write         -- DQ-020 (Controller 2026-09-28): Commercial WRITES are not tenant-wide.
+ *                                               Each command decides the holding against the GOVERNING channel of the
+ *                                               record it writes, fixed by the record's relationship (a create: the
+ *                                               channel it is created in; an Agreement: its source Opportunity's; an
+ *                                               edit that moves the channel: both), inside its own transaction
+ *                                               (the Commercial command kernel's CommercialWriteScope).
  *
  * businessUnit and location have NO PostgreSQL consumer today: FIN-004 company/BU reach is still bound through
  * Firestore roleAssignments (finance/financeReadCallables.ts), Commercial carries a business unit per LINE and its
@@ -122,6 +125,37 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
     scopeType: "salesChannel" as const,
     capabilityKey: "salesOrder.read",
     consumers: Object.freeze(["commercial.getSalesOrderDetail", "commercial.listSalesOrders", "commercial.getAccountCommercialProjection"]),
+  }),
+  // DQ-020: the Commercial WRITES, each decided against the governing channel of the record it writes.
+  Object.freeze({
+    scopeType: "salesChannel" as const,
+    capabilityKey: "opportunity.write",
+    consumers: Object.freeze(["commercial.createOpportunity", "commercial.updateOpportunity", "commercial.transitionOpportunity", "commercial.closeOpportunityAsWon"]),
+  }),
+  Object.freeze({
+    scopeType: "salesChannel" as const,
+    capabilityKey: "opportunity.createSalesOrder",
+    consumers: Object.freeze(["commercial.closeOpportunityAsWon", "commercial.createSalesOrderFromOpportunity"]),
+  }),
+  Object.freeze({
+    scopeType: "salesChannel" as const,
+    capabilityKey: "salesAgreement.create",
+    consumers: Object.freeze(["commercial.createSalesAgreement"]),
+  }),
+  Object.freeze({
+    scopeType: "salesChannel" as const,
+    capabilityKey: "salesAgreement.updateDraft",
+    consumers: Object.freeze(["commercial.updateSalesAgreementDraft"]),
+  }),
+  Object.freeze({
+    scopeType: "salesChannel" as const,
+    capabilityKey: "salesAgreement.accept",
+    consumers: Object.freeze(["commercial.acceptSalesAgreement"]),
+  }),
+  Object.freeze({
+    scopeType: "salesChannel" as const,
+    capabilityKey: "salesOrder.write",
+    consumers: Object.freeze(["commercial.createSalesOrder", "commercial.transitionSalesOrder"]),
   }),
 ]);
 

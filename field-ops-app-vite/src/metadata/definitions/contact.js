@@ -27,7 +27,11 @@ export const contactEntity = makeEntityDefinition({
   label: "Contact",
   labelPlural: "Contacts",
   collection: CONTACTS_COLLECTION,
-  readVia: "CLIENT_DIRECT",
+  // CRM CUTOVER (Pass 11 CRM writer census): the Contact is served by the governed PostgreSQL CRM authority through the
+  // EOS API (services/crmApiClient.js; the Account page binds it via useContactsForAccount / useLocationsForAccount).
+  // Declared EOS_API so no generic metadata surface can read the FROZEN Firestore collection as current authority: a
+  // list or related list without an EOS source resolves to no source (fail closed), never to Firestore.
+  readVia: "EOS_API",
   // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null
   // rather than invented — see the header.
   readCapability: null,

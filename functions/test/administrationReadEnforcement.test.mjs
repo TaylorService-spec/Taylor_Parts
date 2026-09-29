@@ -198,7 +198,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // Reorder domain schema migrations (1763251200000, 1763424000000, 1763510400000, 1763596800000) and the Reorder
   // lifecycle capability REGISTRATION (1763337600000: eight BUSINESS_ACTION keys, granted to nobody). None registers
   // a READ key, and none is a read-enforcement change.
-  assert.equal(migrations.length, 63, "a migration was added or removed by the read enforcement");
+  // 63 -> 64: the ownership handoff correction capability (1763683200000, DQ-022, lane L1) -- ONE BUSINESS_ACTION
+  // capability granted to nobody. It registers no READ key.
+  assert.equal(migrations.length, 64, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

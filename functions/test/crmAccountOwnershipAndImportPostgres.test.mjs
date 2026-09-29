@@ -44,7 +44,8 @@ async function withClient(url, fn) {
 const ALL = new Set(["customer.record.read", "customer.record.create", "customer.record.update"]);
 const A1 = Object.freeze({ tenantId: "t1", principalId: "p-t1", capabilities: ALL });
 const A2 = Object.freeze({ tenantId: "t2", principalId: "p-t2", capabilities: ALL });
-const UPDATER = Object.freeze({ tenantId: "t1", principalId: "p-updater", capabilities: ALL });
+// DQ-022: the administrative handoff sources need ownership.handoff.correct; UPDATER is the administrative corrector.
+const UPDATER = Object.freeze({ tenantId: "t1", principalId: "p-updater", capabilities: new Set([...ALL, "ownership.handoff.correct"]) });
 const K = () => `key-${randomUUID()}`;
 const sha = (s) => createHash("sha256").update(s, "utf8").digest("hex");
 const code = (c) => (e) => {
@@ -185,7 +186,7 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
     assert.equal(await ownerOf(acct.accountId), "e-a");
     for (const source of accounts.ACCOUNT_OWNERSHIP_HANDOFF_SOURCES) {
       const next = (await ownerOf(acct.accountId)) === "e-a" ? "e-b" : "e-a";
-      await accounts.updateAccount(deps, A1, { accountId: acct.accountId, ownerEmployeeId: next, ownershipHandoff: { source, reason: "y".repeat(500) } });
+      await accounts.updateAccount(deps, source === "DIRECT_HANDOFF" ? A1 : UPDATER, { accountId: acct.accountId, ownerEmployeeId: next, ownershipHandoff: { source, reason: "y".repeat(500) } });
     }
     const recent = (await history(acct.accountId)).slice(-3);
     assert.deepEqual(recent.map((r) => r.source), ["DIRECT_HANDOFF", "CUSTOMER_HANDOFF_REVIEW", "ADMIN_CORRECTION"]);
@@ -270,7 +271,7 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
   });
 
   await t.test("(A9c) the chain: a handoff after the initial assignment names it as predecessor; owner -> null refused; a second initial assignment is refused by the store", async () => {
-    await accounts.updateAccount(deps, A1, { accountId: "acct-remediate", ownerEmployeeId: "e-b", ownershipHandoff: { source: "ADMIN_CORRECTION", reason: "wrong rep" } });
+    await accounts.updateAccount(deps, UPDATER, { accountId: "acct-remediate", ownerEmployeeId: "e-b", ownershipHandoff: { source: "ADMIN_CORRECTION", reason: "wrong rep" } });
     await accounts.updateAccount(deps, A1, { accountId: "acct-remediate", ownerEmployeeId: "e-c" });
     const rows = await history("acct-remediate");
     assert.deepEqual(rows.map((r) => [r.event, r.previous_owner_employee_id, r.new_owner_employee_id, r.source]), [
@@ -345,7 +346,7 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
     assert.deepEqual([await ownerOf("acct-precond"), (await history("acct-precond")).length], ["e-a", 1], "the stale first assignment became a handoff");
     // A stale expected OWNER refuses too; the matching one proceeds as a handoff.
     await assert.rejects(accounts.updateAccount(deps, A1, { accountId: "acct-precond", ownerEmployeeId: "e-c", expectedCurrentOwnerEmployeeId: "e-b" }), code("ACCOUNT_OWNER_CHANGED_SINCE_READ"));
-    await accounts.updateAccount(deps, A1, { accountId: "acct-precond", ownerEmployeeId: "e-c", expectedCurrentOwnerEmployeeId: "e-a", ownershipHandoff: { source: "ADMIN_CORRECTION" } });
+    await accounts.updateAccount(deps, UPDATER, { accountId: "acct-precond", ownerEmployeeId: "e-c", expectedCurrentOwnerEmployeeId: "e-a", ownershipHandoff: { source: "ADMIN_CORRECTION" } });
     assert.deepEqual((await history("acct-precond")).map((r) => [r.event, r.previous_owner_employee_id, r.new_owner_employee_id]),
       [["INITIAL_OWNER_ASSIGNMENT", null, "e-a"], ["OWNER_HANDOFF", "e-a", "e-c"]]);
     // A refused precondition rolls back the other fields of the same command.
@@ -394,6 +395,44 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
       assert.equal(rows[n].previous_owner_employee_id, rows[n - 1].new_owner_employee_id, `link ${n}: a handoff recorded a predecessor who never held the Account`);
     }
     assert.equal(await ownerOf(race.accountId), rows[rows.length - 1].new_owner_employee_id);
+  });
+
+  await t.test("(A12) DQ-009: a NEW owner must be ACTIVE or CONTRACTOR -- at create, handoff and initial assignment; an existing owner and history are never re-judged", async () => {
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES
+      ('e-contract','t1','CONTRACTOR','taylor'), ('e-inactive','t1','INACTIVE','taylor'), ('e-leave','t1','ON_LEAVE','taylor'), ('e-gone','t1','TERMINATED','taylor')`);
+    const refused = (p, what) => assert.rejects(p, (e) => e.code === "OWNER_NOT_CURRENTLY_ELIGIBLE" && e.category === "PRECONDITION_FAILED", what);
+    const accountsBefore = (await q(`SELECT count(*)::int n FROM eos_crm.accounts WHERE tenant_id='t1'`)).rows[0].n;
+    for (const e of ["e-inactive", "e-leave", "e-gone"]) {
+      await refused(accounts.createAccount(deps, A1, { idempotencyKey: K(), name: `No ${e}`, status: "ACTIVE", ownerEmployeeId: e }), `create with ${e}`);
+    }
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_crm.accounts WHERE tenant_id='t1'`)).rows[0].n, accountsBefore);
+    const contractorOwned = await accounts.createAccount(deps, A1, { idempotencyKey: K(), name: "Contractor Co", status: "ACTIVE", ownerEmployeeId: "e-contract" });
+    assert.equal(contractorOwned.ownerEmployeeId, "e-contract");
+    const historyBefore = (await history(contractorOwned.accountId)).length;
+    await refused(accounts.updateAccount(deps, A1, { accountId: contractorOwned.accountId, ownerEmployeeId: "e-inactive" }), "handoff to INACTIVE");
+    assert.equal((await history(contractorOwned.accountId)).length, historyBefore, "a refused handoff writes no history");
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-remediate-3','t1','Third Remediation Cafe','ACTIVE','import','import')`);
+    await refused(accounts.updateAccount(deps, A1, { accountId: "acct-remediate-3", ownerEmployeeId: "e-leave" }), "initial assignment to ON_LEAVE");
+    // The owner becomes INACTIVE later: the Account keeps its owner, ordinary edits still work, nothing is rewritten.
+    await q(`UPDATE eos_workforce.employees SET employment_status='INACTIVE' WHERE id='e-contract'`);
+    const edited = await accounts.updateAccount(deps, A1, { accountId: contractorOwned.accountId, notes: "still ours" });
+    assert.deepEqual([edited.ownerEmployeeId, edited.notes], ["e-contract", "still ours"]);
+    assert.equal((await history(contractorOwned.accountId)).length, historyBefore);
+    // ...and the owner can be handed to an eligible Employee.
+    const moved = await accounts.updateAccount(deps, A1, { accountId: contractorOwned.accountId, ownerEmployeeId: "e-a" });
+    assert.equal(moved.ownerEmployeeId, "e-a");
+  });
+
+  await t.test("(A13) DQ-022: ADMIN_CORRECTION / CUSTOMER_HANDOFF_REVIEW require ownership.handoff.correct; DIRECT_HANDOFF and first assignments do not", async () => {
+    const target = await accounts.createAccount(deps, A1, { idempotencyKey: K(), name: "Correction Co", status: "ACTIVE", ownerEmployeeId: "e-a" });
+    for (const source of ["ADMIN_CORRECTION", "CUSTOMER_HANDOFF_REVIEW"]) {
+      await assert.rejects(accounts.updateAccount(deps, A1, { accountId: target.accountId, ownerEmployeeId: "e-b", ownershipHandoff: { source } }), code("CAPABILITY_REQUIRED"), source);
+    }
+    assert.equal((await history(target.accountId)).length, 0, "a refused administrative handoff wrote history");
+    assert.equal(await ownerOf(target.accountId), "e-a");
+    await accounts.updateAccount(deps, A1, { accountId: target.accountId, ownerEmployeeId: "e-b", ownershipHandoff: { source: "DIRECT_HANDOFF" } });
+    await accounts.updateAccount(deps, UPDATER, { accountId: target.accountId, ownerEmployeeId: "e-c", ownershipHandoff: { source: "ADMIN_CORRECTION", reason: "wrong rep" } });
+    assert.deepEqual((await history(target.accountId)).map((r) => [r.source, r.changed_by]), [["DIRECT_HANDOFF", "p-t1"], ["ADMIN_CORRECTION", "p-updater"]]);
   });
 
   // ════════════════════ B. atomic Contact import ════════════════════
