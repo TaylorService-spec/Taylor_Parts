@@ -348,6 +348,68 @@ legacy writers in source, refusing with `FIRESTORE_CATALOG_WRITER_FROZEN`; `RETI
 only from `FROZEN/INACTIVE`. Tests: committed state coherent; the four moves exactly; all others refused; each legacy
 writer calls the guard first; while `postgres` is `INACTIVE` nothing outside catalogMaster imports the PostgreSQL writers.
 
+### 5.4 DQ-034 compatibility hold on PostgreSQL Catalog mutations — evidence and lift procedure
+
+**Ruling (Controller, DQ-034, CLOSED, option A).** At activation PostgreSQL becomes the Catalog **read** authority.
+Every PostgreSQL Catalog **write/mutation** stays **HELD** while any active release-journey implementation still reads
+the frozen Firebase Catalog. This is **not** dual write and **not** new Firebase work. The invariant while the hold
+exists: **PostgreSQL Catalog == frozen legacy Catalog.**
+
+**Mechanism.** `CATALOG_MUTATION_HOLD` in `functions/src/catalogMaster/catalogWriterState.ts` (`held: true`, reason
+`"DQ-034: active release-journey readers still read the frozen Firebase catalog"`). `catalogHttp.ts` refuses every
+operation in its own `CATALOG_MUTATION_OPERATIONS` table with `CATALOG_MUTATION_HELD` (HTTP 412) **before** identity
+resolution, before a connection is taken, and before any write. Held today: `createPart`, `updatePart`,
+`changePartStatus` (which covers status/activation, `controlType` and whole-unit classification changes), and
+`createPartAlias`, `deactivatePartAlias`, `reactivatePartAlias`. The hold is applied to the table, not to a list of names,
+so a mutation added to the table is held when it is added. Reads are unaffected, and they keep the DQ-031
+`inventory.catalog.read` gate. No PostgreSQL Part or alias **import** path exists (Data Import reaches Parts only through
+the frozen Firestore `createPart`, and `part.import` is frozen), and the Manufacturer and Equipment Model PostgreSQL
+writers are composed nowhere. `functions/test/catalogMutationHold.test.mjs` proves each of these facts. The client
+mirror, `field-ops-app-vite/src/config/catalogMutationHold.js`, is pinned to the server constant. Part Master, New Part,
+Edit part / Change status and Identifiers show "Catalog changes are paused during the migration", offer no mutation, and
+map a server `CATALOG_MUTATION_HELD` refusal to that same state.
+
+**The only permitted PostgreSQL Catalog writer under the hold is the governed one-time COPY** (§4.2,
+`functions/scripts/catalogCutover.js copy`). It does not go through the transport or the hold. It can only make
+PostgreSQL *equal* to the frozen source: any difference is `DRIFT_DETECTED` and any unknown target row is
+`TARGET_HAS_UNKNOWN_RECORDS`, and either one rolls back the whole copy.
+
+**At activation — equivalence evidence (required).**
+1. Run `catalogCutover.js census` on the post-freeze snapshot. Record `snapshotSha256` and `canonicalDigest`.
+2. Run `copy`, then `verify --sample all`. Every count, identity set and field must reconcile. Certification exclusion
+   must hold, and the reference verdicts must agree.
+3. Rerun `copy` against the same snapshot. It must be `NO_CHANGES`.
+4. **Any divergence is STOP**: a verify mismatch, drift, unknown target records, a digest that differs from the recorded
+   snapshot, or a copy rerun that is not `NO_CHANGES`. Nothing is repaired in the tool. Do not activate.
+
+**Lifting the hold.** The hold is lifted only by a reviewed code change that sets `held: false` in **both** the server
+constant and the client mirror. No runtime flag, environment variable, request field or deploy-time override exists.
+The change requires both of these:
+- **(a) No active Firebase Catalog reader remains in any release journey.** This is proved against the import graph
+  and the deployed Functions. Proof from source alone is not enough, because the deployed Firebase Functions are older
+  code (between `5ddb9e4a` and `1d0745c6`) that reads the frozen Firestore catalog.
+- **(b) A catalog equivalence proof taken at the moment of the lift.** Rerun `verify --sample all` against a fresh
+  read-only export of the frozen source, and compare its canonical digest with the one recorded at activation. It must
+  show PostgreSQL == frozen legacy Catalog.
+
+**Remaining active Firebase Catalog readers.** Each one blocks the lift. L2 and L3 own moving them off the frozen
+catalog as part of existing journey work; nothing here creates new work for them.
+
+| Journey | Owner | Readers |
+|---|---|---|
+| J4 — Work Order parts planning | L2 | `setWorkOrderPartsPlan` |
+| J5 — technician parts actuals | L2 | `listWorkOrderConsumptionSources`, `updateWorkOrderExecutionData` |
+| J5 — equipment install | L2 | `getInstallableEquipmentForWorkOrder`, `recordWorkOrderEquipmentInstall` |
+| J6 — serialized acquisition | L3 | `acquireSerializedAsset` |
+| J7 — transfers, relocation, cycle count | L3 | `createTransferOrder`, `dispatchTransferOrder`, `receiveTransferOrder`; `relocateStock`; `openCycleCountLine`, `reconcileCycleCountLine` |
+
+`getWorkOrderReadinessContext` also reads `controlType` from the catalog (`ai.workOrderReadiness.controlType` in
+`FIRESTORE_CATALOG_READERS`). Per the ruling, `WORK_ORDER_READINESS_CONTEXT_READY` stays unchanged.
+
+**Scanner (ruled).** The client scanner still calls Firebase. That is a known retirement dependency, and it stays
+INACTIVE. `PART_IDENTIFIER_TRANSPORT_READY` stays `false` in every environment. `field-ops-app-vite/test/
+catalogMutationHold.test.jsx` enforces this for as long as the scanner path reaches a Firebase callable.
+
 ---
 
 ## 6. Production

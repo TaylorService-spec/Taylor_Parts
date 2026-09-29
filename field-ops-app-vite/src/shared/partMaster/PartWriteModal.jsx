@@ -23,6 +23,7 @@ import Modal from "../ui/Modal";
 import { Field, FormActions, FormStatus } from "../ui/form";
 import StatusPill from "../ui/StatusPill.jsx";
 import { Button } from "../ui/primitives/index.js";
+import CatalogMutationPausedNotice from "./CatalogMutationPausedNotice.jsx";
 
 const OUTCOME_TONE = {
   applied: "positive",
@@ -134,7 +135,7 @@ function PartForm({ mode, form, setForm, disabled }) {
 // applied/replayed write so the caller can refresh its own read (this component never
 // re-fetches on its own -- it has no opinion on which read the caller uses).
 export default function PartWriteModal({ mode, part, onClose, onSaved, writeDeps }) {
-  const { writeReady, runCreate, runUpdate, runChangeStatus } = usePartMasterWrite(writeDeps);
+  const { writeReady, mutationHeld, runCreate, runUpdate, runChangeStatus } = usePartMasterWrite(writeDeps);
   const [form, setForm] = useState(() => (mode === "edit" ? { ...part } : { stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" }));
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState(null);
@@ -159,7 +160,9 @@ export default function PartWriteModal({ mode, part, onClose, onSaved, writeDeps
   return (
     <Modal title={title} onClose={requestClose}>
       <OutcomeBanner outcome={outcome} />
-      {!writeReady && (
+      {/* DQ-034: the hold is the truer reason, so it replaces the readiness notice rather than stacking on it. */}
+      {mutationHeld && <CatalogMutationPausedNotice />}
+      {!mutationHeld && !writeReady && (
         <p className="fo-state fo-tone-muted fo-state-message" role="status">
           Editing isn't enabled in this environment yet. This action is activated with the catalog
           administration service (a governed deployment + grant), not from this screen.

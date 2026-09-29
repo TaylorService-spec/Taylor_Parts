@@ -4,6 +4,8 @@ import PartsInfoDisclosure from "../../modules/inventory/PartsInfoDisclosure.jsx
 import { Button } from "../ui/primitives/index.js";
 import { usePartIdentifiers } from "../../hooks/usePartIdentifiers.js";
 import { PART_IDENTIFIER_UNAVAILABLE_REASON } from "../../config/partIdentifierReadiness.js";
+import { CATALOG_MUTATION_PAUSED_REASON } from "../../config/catalogMutationHold.js";
+import CatalogMutationPausedNotice from "./CatalogMutationPausedNotice.jsx";
 import {
   ALIAS_TYPES,
   ALIAS_TYPE_LABEL,
@@ -57,7 +59,7 @@ function StatusLine({ tone, children }) {
   );
 }
 
-function AddIdentifierForm({ onAdd, onProbe, partId, busy }) {
+function AddIdentifierForm({ onAdd, onProbe, partId, busy, mutationHeld }) {
   const [draft, setDraft] = useState({ aliasType: "INTERNAL_PN", rawValue: "", manufacturerId: "" });
   const [error, setError] = useState(null);
   const [probeResult, setProbeResult] = useState(null);
@@ -155,9 +157,17 @@ function AddIdentifierForm({ onAdd, onProbe, partId, busy }) {
       {probeResult && <StatusLine tone={probeResult.tone}>{probeResult.message}</StatusLine>}
 
       <div className="fo-chip-row">
-        <Button type="submit" variant="primary" disabled={busy}>
-          {busy ? "Adding…" : "Add identifier"}
-        </Button>
+        {/* DQ-034: adding an identifier is a Catalog change; while the hold is on it is not OFFERED. The scan test
+            beside it is a READ and stays. */}
+        {mutationHeld ? (
+          <Button variant="protected" reason={CATALOG_MUTATION_PAUSED_REASON} id="alias-add">
+            Add identifier
+          </Button>
+        ) : (
+          <Button type="submit" variant="primary" disabled={busy}>
+            {busy ? "Adding…" : "Add identifier"}
+          </Button>
+        )}
         {/* Scan-to-test uses the SAME resolver the real scan path uses. A test-only matcher could
             agree with the administrator and disagree with the scanner, which is the whole failure
             this control exists to catch. */}
@@ -169,7 +179,7 @@ function AddIdentifierForm({ onAdd, onProbe, partId, busy }) {
   );
 }
 
-function IdentifierRow({ alias, onDeactivate, onReactivate, pending }) {
+function IdentifierRow({ alias, onDeactivate, onReactivate, pending, mutationHeld }) {
   const isActive = alias.status === "ACTIVE";
   const busy = !!pending[`${isActive ? "deactivate" : "reactivate"}:${alias.aliasId}`];
   return (
@@ -199,7 +209,8 @@ function IdentifierRow({ alias, onDeactivate, onReactivate, pending }) {
         <Button
           type="button"
           variant="tertiary"
-          disabled={busy}
+          disabled={busy || mutationHeld}
+          title={mutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined}
           onClick={() => (isActive ? onDeactivate(alias) : onReactivate(alias))}
         >
           {busy ? "Working…" : isActive ? "Deactivate" : "Reactivate"}
@@ -212,6 +223,7 @@ function IdentifierRow({ alias, onDeactivate, onReactivate, pending }) {
 export default function PartIdentifiersSection({ partId, partNumber, deps }) {
   const {
     status,
+    mutationHeld,
     aliases,
     truncated,
     limit,
@@ -328,6 +340,7 @@ export default function PartIdentifiersSection({ partId, partNumber, deps }) {
                       pending={pending}
                       onDeactivate={deactivate}
                       onReactivate={reactivate}
+                      mutationHeld={mutationHeld}
                     />
                   ))}
                 </tbody>
@@ -342,7 +355,9 @@ export default function PartIdentifiersSection({ partId, partNumber, deps }) {
             </p>
           )}
 
-          {outcome && outcome.kind !== "applied" && (
+          {(mutationHeld || outcome?.held) && <CatalogMutationPausedNotice />}
+
+          {outcome && outcome.kind !== "applied" && !outcome.held && (
             <StatusLine tone={outcome.kind === "conflict" ? "attention" : "error"}>{outcome.message}</StatusLine>
           )}
 
@@ -351,6 +366,7 @@ export default function PartIdentifiersSection({ partId, partNumber, deps }) {
             onProbe={probe}
             partId={partId}
             busy={!!pending.create}
+            mutationHeld={mutationHeld}
           />
 
           {/* THE STANDING STATEMENT, NOW WHERE IT IS EARNED. It explains a rule of the MANAGE
