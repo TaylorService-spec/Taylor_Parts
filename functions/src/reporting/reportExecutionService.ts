@@ -1174,9 +1174,12 @@ export function computeAggregate(rows: Array<Record<string, unknown>>, objectId:
   if (isFieldlessAggregate(agg.fn)) return rows.length; // countRows: bounded by the runner's own authorized/filtered row set
   const field = getReportField(agg.fieldId as string);
   if (!field) return null;
-  const values = rows
-    .map((doc) => getFieldValue(doc, objectId, field))
-    .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const raw = rows.map((doc) => getFieldValue(doc, objectId, field));
+  const values = raw.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  // DQ-019: a PRESENT value that is not a finite number is a malformed row, not an absent one.
+  // Skipping it would understate a sum/count and shift an average -- so the figure is withheld
+  // (null, rendered "—"), never computed over the rows that happened to be readable.
+  if (raw.some((v) => v !== null && v !== undefined && !(typeof v === "number" && Number.isFinite(v)))) return null;
   if (agg.fn === "count") return values.length;
   if (values.length === 0) return null;
   switch (agg.fn) {

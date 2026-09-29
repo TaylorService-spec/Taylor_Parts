@@ -181,3 +181,11 @@ test("sum/avg/min/max over no numeric value (or an unresolvable field) is null, 
   assert.match(body, /if \(values\.length === 0\) return null;/, "an empty value set must short-circuit to null");
   assert.ok(!/: 0;\s*\n\s*}/.test(body) && !/return 0;/.test(body), "no aggregate branch may return a literal 0");
 });
+
+test("DQ-019: a PRESENT non-numeric value withholds the aggregate (null) instead of being skipped", () => {
+  const src = readFileSync(SERVICE_SRC, "utf8");
+  const body = src.slice(src.indexOf("export function computeAggregate("), src.indexOf("// ENG-E AXIS 3 -- the one-hop join"));
+  const guard = body.indexOf("raw.some((v) => v !== null && v !== undefined");
+  const count = body.indexOf('if (agg.fn === "count") return values.length;');
+  assert.ok(guard > 0 && count > guard, "the malformed-row guard must precede every figure, count included");
+});
