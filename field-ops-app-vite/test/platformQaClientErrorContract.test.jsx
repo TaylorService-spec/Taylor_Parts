@@ -11,6 +11,7 @@ import path from "node:path";
 import { commercialFailureCategory } from "../src/services/commercialApiClient.js";
 import { operationsFailureCategory } from "../src/services/operationsApiClient.js";
 import { workforceFailureCategory } from "../src/services/workforceApiClient.js";
+import { reorderFailureCategory } from "../src/services/reorderApiClient.js";
 
 const read = (rel) => readFileSync(path.resolve(process.cwd(), rel), "utf8");
 
@@ -48,17 +49,27 @@ describe("client x server error contract", () => {
     }
   });
 
-  it("the full grid, pinned (L5 ledger L5-F08)", () => {
-    // Measured 2026-09-28 at main 1d0745c6. Operations and Workforce cover every status their server emits.
-    // Commercial (L1): the server emits 409 CONFLICT, 412 PRECONDITION_FAILED and 503 UNAVAILABLE (STATUS_BY_CATEGORY);
-    // the READ-only client maps 409 -> INVALID_INPUT and 412 / 503 -> INTERNAL. Harmless while the client issues reads
-    // only; it becomes a user-facing defect the day Commercial mutations are wired to this client.
+  it("the full grid, pinned", () => {
+    // Re-measured on main e2dac914. L5-F08 is FIXED on main: the Commercial client now maps 409 CONFLICT, 412
+    // PRECONDITION_FAILED and 503 UNAVAILABLE. The Operations transport (PR #2000) now also carries the Reorder
+    // operations and emits 409 CONFLICT and -- since the L5 alignment -- 412 PRECONDITION_FAILED; the generic
+    // operationsApiClient serves only the two principal-context reads, which emit neither, so its INTERNAL for 409/412
+    // is latent. The Reorder operations use reorderApiClient, which maps 409 and 412 (asserted below).
     expect(grid).toEqual({
       commercial: { 400: "INVALID_INPUT", 401: "UNAUTHENTICATED", 403: "FORBIDDEN", 404: "NOT_FOUND", 405: "UNKNOWN_OPERATION",
-        409: "INVALID_INPUT", 412: "INTERNAL", 413: "INVALID_INPUT", 500: "INTERNAL", 503: "INTERNAL" },
-      operations: { 400: "INVALID_INPUT", 401: "UNAUTHENTICATED", 403: "FORBIDDEN", 404: "NOT_FOUND", 405: "UNKNOWN_OPERATION", 500: "INTERNAL" },
+        409: "CONFLICT", 412: "PRECONDITION_FAILED", 413: "INVALID_INPUT", 500: "INTERNAL", 503: "UNAVAILABLE" },
+      operations: { 400: "INVALID_INPUT", 401: "UNAUTHENTICATED", 403: "FORBIDDEN", 404: "NOT_FOUND", 405: "UNKNOWN_OPERATION",
+        409: "INTERNAL", 412: "INTERNAL", 500: "INTERNAL" },
       workforce: { 400: "INVALID_INPUT", 401: "UNAUTHENTICATED", 403: "FORBIDDEN", 404: "NOT_FOUND", 405: "UNKNOWN_OPERATION",
         409: "CONFLICT", 412: "PRECONDITION_FAILED", 413: "INVALID_INPUT", 500: "INTERNAL" },
     });
+  });
+
+  it("the Reorder client covers every status the Operations transport emits for the Reorder operations", () => {
+    const statuses = emittableStatuses(read("../functions/src/eosOps/eosOpsHttp.ts"));
+    const mapped = Object.fromEntries(statuses.map((s) => [s, reorderFailureCategory(s, s === 405 ? "UNKNOWN_OPERATION" : "SOME_DOMAIN_CODE")]));
+    expect(mapped[409]).toBe("CONFLICT");
+    expect(mapped[412]).toBe("PRECONDITION_FAILED");
+    expect(Object.entries(mapped).filter(([s, c]) => Number(s) < 500 && c === "INTERNAL")).toEqual([]);
   });
 });

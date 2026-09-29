@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { SKIP, freshMigratedDatabase, composeTransports, tokenRegistry, makeActor, call } from "./platformQaHarness.mjs";
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 
 const require = createRequire(import.meta.url);
 const { SCOPE_EVALUABLE_GRANTS } = require("../lib/adminPolicy/assignmentScopeRuntime.js");
@@ -22,8 +23,7 @@ const key = () => `l5-${randomUUID()}`;
 test("scoped assignment differential matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { pool } = await freshMigratedDatabase(t, "l5scope");
   await pool.query(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1')`);
-  await pool.query(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES
-    ('t1','taylor','ACTIVE','l5','l5','l5'), ('t1','ventana','ACTIVE','l5','l5','l5')`);
+  for (const c of ['taylor', 'ventana']) await bindOperatingCompany((text, values) => pool.query(text, values), 't1', c); // ACTIVE + key bound (DQ-008)
   const tokens = tokenRegistry();
   const { repo, transports } = composeTransports(pool, tokens.verifyToken);
   const ctx = { repo, pool, tokens };

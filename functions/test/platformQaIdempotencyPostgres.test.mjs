@@ -13,10 +13,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { SKIP, freshMigratedDatabase, composeTransports, tokenRegistry, makeActor, call } from "./platformQaHarness.mjs";
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 
 test("idempotency key matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { pool } = await freshMigratedDatabase(t, "l5idem");
   await pool.query(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  for (const t of ['t1', 't2']) await bindOperatingCompany((text, values) => pool.query(text, values), t, 'taylor', `taylor-${t}`); // ACTIVE + key bound (DQ-008)
   const tokens = tokenRegistry();
   const { repo, transports } = composeTransports(pool, tokens.verifyToken);
   const ctx = { repo, pool, tokens };

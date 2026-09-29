@@ -20,6 +20,7 @@ import pg from "pg";
 import {
   SKIP, freshMigratedDatabase, composeTransports, tokenRegistry, makeActor, call, callNode, auditFootprint,
 } from "./platformQaHarness.mjs";
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 
 const FAKE = "l5-does-not-exist-0001";
 const key = () => `l5-${randomUUID()}`;
@@ -27,6 +28,8 @@ const key = () => `l5-${randomUUID()}`;
 test("cross-transport contract matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { pool } = await freshMigratedDatabase(t, "l5contract");
   await pool.query(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  // Commercial creates need an ACTIVE tenant company AND its key binding (DQ-008, main e2dac914).
+  await bindOperatingCompany((text, values) => pool.query(text, values), 't1', 'taylor');
   const tokens = tokenRegistry();
   const { repo, transports } = composeTransports(pool, tokens.verifyToken);
   const ctx = { repo, pool, tokens };
@@ -160,7 +163,7 @@ test("cross-transport contract matrix", { skip: SKIP, concurrency: 1 }, async (t
   });
 
   await t.test("AUTH SHAPE: one identity/tenancy refusal, one status, on every transport; never a 500", async () => {
-    const probe = { administration: "listRoles", operations: "resolveMyCapabilities", commercial: "listOpportunities", crm: "listAccounts", workforce: "listEmployees" };
+    const probe = { administration: "listRoles", operations: "resolveMyCapabilities", commercial: "listOpportunities", crm: "listAccounts", catalog: "countParts", workforce: "listEmployees" };
     const CELLS = {
       "no bearer": (tr, op) => call(tr, op, { input: {} }),
       "unverifiable token": (tr, op) => call(tr, op, { token: "tok-garbage", input: {} }),
@@ -224,7 +227,7 @@ test("an UNREACHABLE policy database: every transport answers the same, and neve
   tokens.register("tok-l5-outage", "l5-sub-outage");
   const ORIGIN = "https://app.l5.invalid";
   const { transports } = composeTransports(broken, tokens.verifyToken, { allowedOrigins: [ORIGIN] });
-  const probe = { administration: "listRoles", operations: "resolveMyCapabilities", commercial: "listOpportunities", crm: "listAccounts", workforce: "listEmployees" };
+  const probe = { administration: "listRoles", operations: "resolveMyCapabilities", commercial: "listOpportunities", crm: "listAccounts", catalog: "countParts", workforce: "listEmployees" };
   const grid = {};
   for (const [name, tr] of Object.entries(transports)) {
     const r = await callNode(tr, probe[name], { token: "tok-l5-outage", input: {}, origin: ORIGIN });
@@ -249,5 +252,6 @@ const EXPECTED_OUTAGE_GRID = {
   operations: "500 INTERNAL cors=yes",
   commercial: "500 INTERNAL cors=yes",
   crm: "500 INTERNAL cors=yes",
+  catalog: "500 INTERNAL cors=yes",
   workforce: "500 INTERNAL cors=yes",
 };

@@ -23,6 +23,7 @@ const opsHttp = require("../lib/eosOps/eosOpsHttp.js");
 const commercialHttp = require("../lib/eosCommercial/commercialHttp.js");
 const crmHttp = require("../lib/eosCrm/crmHttp.js");
 const workforceHttp = require("../lib/eosWorkforce/workforceHttp.js");
+const catalogHttp = require("../lib/catalogMaster/catalogHttp.js");
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
 const { explainEffectiveAccess } = require("../lib/eosOps/effectiveAccessExplanation.js");
 
@@ -74,6 +75,11 @@ export function composeTransports(pool, verifyToken, { crmActive = true, allowed
   };
   const shared = { reader: repo, pool, verifyToken, allowedOrigins };
   const crm = crmActive ? { ...shared, writerAuthority: Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" }) } : shared;
+  // The Reorder operations (PR #2000) are committed INACTIVE and refuse 412 PRECONDITION_FAILED before principal resolution; measured
+  // ACTIVE through the Operations transport's declared test seam, so authority -- not the activation gate -- answers.
+  const ops = crmActive ? { ...shared, reorderPostgresActive: true } : shared;
+  // The Catalog transport (PR #2000) is committed INACTIVE too; measured ACTIVE through its declared test seam.
+  const catalog = crmActive ? { ...shared, writerAuthority: Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" }) } : shared;
   return {
     repo,
     transports: {
@@ -85,11 +91,11 @@ export function composeTransports(pool, verifyToken, { crmActive = true, allowed
         node: adminHttp.createAdminPolicyHttpHandler(admin),
       },
       operations: {
-        operations: [...opsHttp.OPERATIONS_READ_OPERATIONS],
-        mutations: new Set(),
+        operations: [...opsHttp.OPERATIONS_READ_OPERATIONS, ...(opsHttp.OPERATIONS_MUTATION_OPERATIONS ?? [])],
+        mutations: new Set(opsHttp.OPERATIONS_MUTATION_OPERATIONS ?? []),
         route: (op) => opsHttp.OPERATIONS_ROUTE_BY_OPERATION[op] ?? "/operations/inventory",
-        handle: (req) => opsHttp.handleOperationsRequest(shared, req),
-        node: opsHttp.createOperationsHttpHandler(shared),
+        handle: (req) => opsHttp.handleOperationsRequest(ops, req),
+        node: opsHttp.createOperationsHttpHandler(ops),
       },
       commercial: {
         operations: [...commercialHttp.COMMERCIAL_READ_OPERATIONS, ...commercialHttp.COMMERCIAL_MUTATION_OPERATIONS],
@@ -104,6 +110,13 @@ export function composeTransports(pool, verifyToken, { crmActive = true, allowed
         route: () => crmHttp.CRM_ROUTE,
         handle: (req) => crmHttp.handleCrmRequest(crm, req),
         node: crmHttp.createCrmHttpHandler(crm),
+      },
+      catalog: {
+        operations: [...catalogHttp.CATALOG_READ_OPERATIONS, ...catalogHttp.CATALOG_MUTATION_OPERATIONS],
+        mutations: new Set(catalogHttp.CATALOG_MUTATION_OPERATIONS),
+        route: () => catalogHttp.CATALOG_ROUTE,
+        handle: (req) => catalogHttp.handleCatalogRequest(catalog, req),
+        node: catalogHttp.createCatalogHttpHandler(catalog),
       },
       workforce: {
         operations: [...workforceHttp.WORKFORCE_READ_OPERATIONS, ...workforceHttp.WORKFORCE_COMMAND_OPERATIONS],

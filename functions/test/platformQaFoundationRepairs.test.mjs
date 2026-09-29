@@ -20,6 +20,7 @@ const opsHttp = require("../lib/eosOps/eosOpsHttp.js");
 const commercialHttp = require("../lib/eosCommercial/commercialHttp.js");
 const crmHttp = require("../lib/eosCrm/crmHttp.js");
 const workforceHttp = require("../lib/eosWorkforce/workforceHttp.js");
+const catalogHttp = require("../lib/catalogMaster/catalogHttp.js");
 
 const { ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES, employeeAccessIneligibility, resolvePrincipalContext, PrincipalContextError } = principalContext;
 
@@ -87,6 +88,7 @@ test("XLF-002: every transport refuses U+0000 with 400 INVALID_INPUT at the enve
     commercial: await commercialHttp.handleCommercialRequest({ reader: {}, pool: {}, verifyToken }, req("/commercial/sales")),
     crm: await crmHttp.handleCrmRequest({ reader: {}, pool: {}, verifyToken }, req("/crm/customer")),
     workforce: await workforceHttp.handleWorkforceRequest({ reader: {}, pool: {}, verifyToken }, req("/workforce/employees")),
+    catalog: await catalogHttp.handleCatalogRequest({ reader: {}, pool: {}, verifyToken }, req(catalogHttp.CATALOG_ROUTE)),
   };
   for (const [name, r] of Object.entries(results)) {
     assert.deepEqual([r.status, JSON.parse(r.body).code], [400, "INVALID_INPUT"], name);

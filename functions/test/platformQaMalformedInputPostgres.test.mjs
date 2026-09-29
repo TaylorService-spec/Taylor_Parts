@@ -9,6 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { SKIP, freshMigratedDatabase, composeTransports, tokenRegistry, makeActor, call } from "./platformQaHarness.mjs";
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 
 const key = () => `l5-${randomUUID()}`;
 const HOSTILE = {
@@ -31,8 +32,7 @@ const HOSTILE = {
 test("malformed input matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { pool } = await freshMigratedDatabase(t, "l5fuzz");
   await pool.query(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1')`);
-  await pool.query(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by)
-                    VALUES ('t1','taylor','ACTIVE','l5','l5','l5')`);
+  await bindOperatingCompany((text, values) => pool.query(text, values), 't1', 'taylor'); // company ACTIVE + key bound (DQ-008)
   const tokens = tokenRegistry();
   const { repo, transports } = composeTransports(pool, tokens.verifyToken);
   const ctx = { repo, pool, tokens };
@@ -73,6 +73,8 @@ test("malformed input matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
     ["workforce", "assignEmployeeWorkEligibility", () => ({ employeeId: "e-fz-2", qualificationCode: "SERVICE_TECHNICIAN", reason: "r" })],
     ["workforce", "createEmployee", () => ({ employeeId: `e-fz-${randomUUID().slice(0, 8)}`, employmentStatus: "ACTIVE", operatingCompanyId: "taylor", reason: "r" })],
     ["workforce", "updateEmployeeProfile", () => ({ employeeId: "e-fz-1", profile: { displayName: "D" } })],
+    ["catalog", "searchParts", () => ({ query: "valve", limit: 10 })],
+    ["catalog", "lookupScannedPart", () => ({ rawValue: "0123456789" })],
     ["administration", "createRole", () => ({ key: `l5_fz_${randomUUID().slice(0, 6)}`, name: "F", reason: "r" })],
     ["administration", "assignRole", () => ({ principalId: other.principalId, roleId: "nope", reason: "r" })],
     ["administration", "listPrincipalRoleAssignments", () => ({ principalId: other.principalId })],

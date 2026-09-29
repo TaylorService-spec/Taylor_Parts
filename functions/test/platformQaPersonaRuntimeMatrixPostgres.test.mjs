@@ -242,7 +242,7 @@ test("persona runtime matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
     return out;
   };
   const eligibilityGrid = {};
-  await t.test("E1: employment status x persona x every operation of all five transports", async () => {
+  await t.test("E1: employment status x persona x every operation of all six transports", async () => {
     const violations = [];
     for (const key of LIFECYCLE_PERSONAS) {
       const baseline = await fingerprint(actors[key]);

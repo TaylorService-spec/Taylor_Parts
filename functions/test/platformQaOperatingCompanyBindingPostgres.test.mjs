@@ -61,6 +61,9 @@ test("operating-company binding matrix", { skip: SKIP, concurrency: 1 }, async (
   };
   // ventana INACTIVE for t1: make the row exist so "INACTIVE" is a real state, not "absent".
   await pool.query(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES ('t1','ventana','INACTIVE','l5','l5','l5')`);
+  // ...and KEYED, so the Commercial answer is decided by the company's INACTIVE status, not by a missing key binding.
+  await pool.query(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+                    VALUES ('t1','ventana','ventana-key','ACTIVE','NATIVE','l5','l5','l5')`);
 
   const grid = {};
   for (const [cmd, run] of Object.entries(COMMANDS)) {
@@ -83,20 +86,19 @@ test("operating-company binding matrix", { skip: SKIP, concurrency: 1 }, async (
   });
   await t.test("a company INACTIVE for the actor's tenant: measured, per command", () => {
     const inactive = Object.fromEntries(Object.keys(COMMANDS).map((cmd) => [cmd, grid[cmd]["governed id, INACTIVE for this tenant (ventana)"]]));
-    // Workforce: ruled (option b) -- refused. Commercial: accepts any code-registry company (commercialCompanyScope
-    // resolves against the in-code registry, not the tenant authority). L5-F07 -- pinned as measured.
+    // Workforce: ruled (option b); Commercial: ruled DQ-008. Both refuse; pinned as measured.
     assert.deepEqual(inactive, EXPECTED_INACTIVE);
   });
 });
 
-// Measured 2026-09-28 at main 1d0745c6. L5-F07 (DECISION CANDIDATE, Commercial / L1): Commercial resolves the company
-// against the IN-CODE registry only (ownership/commercialCompanyScope.ts, "INERT ... no enforcement until the census
-// gate passes"), so a NEW Opportunity / Sales Order can be booked to a company the tenant has INACTIVE -- or has no
-// tenant row for at all (platformQaTransportContractPostgres books 'taylor' in a tenant with zero rows). Workforce
-// enforces the tenant authority (Owner option (b), 2026-09-16). The KEY and an ungoverned id are refused by both.
+// Re-measured on main e2dac914 (PR #2000). L5-F07 is CLOSED by Controller DQ-008: a NEW Opportunity / Sales Order
+// against a company INACTIVE for the tenant is refused (412), history untouched. Commercial resolves the company through
+// its ACTIVE key binding, so the refusal is named OPERATING_COMPANY_KEY_NOT_BOUND even when a key row exists for the
+// inactive company (the binding read admits only ACTIVE companies) -- fail-closed and correct; the code name is
+// imprecise (L5 KNOWN_LIMITATION P4). Workforce names the same fact OPERATING_COMPANY_INACTIVE.
 const EXPECTED_INACTIVE = {
-  "commercial.createOpportunity": "200 OK",
-  "commercial.createSalesOrder": "200 OK",
+  "commercial.createOpportunity": "412 OPERATING_COMPANY_KEY_NOT_BOUND",
+  "commercial.createSalesOrder": "412 OPERATING_COMPANY_KEY_NOT_BOUND",
   "workforce.createEmployee": "412 OPERATING_COMPANY_INACTIVE",
   "workforce.changeOperatingCompany": "412 OPERATING_COMPANY_INACTIVE",
 };

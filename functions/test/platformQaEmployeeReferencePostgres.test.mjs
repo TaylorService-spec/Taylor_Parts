@@ -12,14 +12,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { SKIP, freshMigratedDatabase, composeTransports, tokenRegistry, makeActor, call } from "./platformQaHarness.mjs";
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 
 const key = () => `l5-${randomUUID()}`;
 
 test("employee reference matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { pool } = await freshMigratedDatabase(t, "l5empref");
   await pool.query(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
-  await pool.query(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by)
-                    VALUES ('t1','taylor','ACTIVE','l5','l5','l5')`);
+  await bindOperatingCompany((text, values) => pool.query(text, values), 't1', 'taylor'); // ACTIVE + key bound (DQ-008)
   const tokens = tokenRegistry();
   const { repo, transports } = composeTransports(pool, tokens.verifyToken);
   const ctx = { repo, pool, tokens };

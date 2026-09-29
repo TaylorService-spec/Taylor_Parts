@@ -339,7 +339,10 @@ const STATUS_BY_CODE: Readonly<Record<OperationsApiFailureCode, number>> = Objec
   FORBIDDEN: 403,
   INVALID_INPUT: 400,
   NOT_FOUND: 404,
-  PRECONDITION_FAILED: 409,
+  // 412, as on the Commercial, CRM, Workforce and Catalog transports -- and as the Reorder client maps it. 409 made a
+  // governed precondition (e.g. "the PostgreSQL Reorder authority is not active") indistinguishable from CONFLICT, and
+  // the client rendered it as one (L5, contract-mismatch auto-fix, 2026-09-28).
+  PRECONDITION_FAILED: 412,
   CONFLICT: 409,
   INTERNAL: 500,
 });
