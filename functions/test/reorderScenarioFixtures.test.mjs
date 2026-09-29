@@ -2,6 +2,7 @@
 //
 // The tool deletes records, so almost every test here is about something it must NOT do.
 import test from "node:test";
+import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -195,4 +196,15 @@ test("the runner defaults to DRY RUN and requires an explicit flag to delete", (
   // The manifest is written BEFORE any delete, in both modes.
   assert.ok(runner.indexOf("writeFileSync") < runner.indexOf(".delete()"),
     "the pre-delete manifest must be durable before anything is removed");
+});
+
+test("DQ-032: --apply is withdrawn and refused before Firebase is initialised; the dry run remains", () => {
+  const runner = readFileSync(join(REPO, "functions/scripts/retireReorderScenarioFixtures.js"), "utf8");
+  const refusal = runner.indexOf("--apply is withdrawn by DQ-032");
+  assert.ok(refusal > 0, "APPLY must be refused");
+  assert.ok(refusal < runner.indexOf("initializeApp({"), "the refusal must precede any Firebase initialisation");
+  const res = spawnSync(process.execPath, [join(REPO, "functions/scripts/retireReorderScenarioFixtures.js"),
+    "--environment", "sandbox", "--projectId", "eos-platform-sandbox", "--apply"], { encoding: "utf8" });
+  assert.notEqual(res.status, 0);
+  assert.match(res.stderr, /withdrawn by DQ-032/);
 });

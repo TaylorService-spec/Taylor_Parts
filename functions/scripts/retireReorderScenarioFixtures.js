@@ -60,6 +60,13 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  // DQ-032 (Controller 2026-09-28): the zero-new-Firebase-mutation direction wins. The fixtures are EXCLUDED from the
+  // governed COPY by docs/architecture/reorder-migration-exclusion-manifest.json and left unchanged in Firestore until
+  // the final Firebase retirement. APPLY is withdrawn; the dry run remains as read-only evidence.
+  if (args.apply) {
+    throw new Error("--apply is withdrawn by DQ-032: the synthetic fixtures are excluded from the COPY by the exclusion "
+      + "manifest and are never deleted from Firestore. Run without --apply for the read-only manifest.");
+  }
   if (!args.projectId) throw new Error("--projectId is required; nothing is inferred");
 
   // PRODUCTION, BY NAME. The registry guard below would refuse it too, but naming it here means the

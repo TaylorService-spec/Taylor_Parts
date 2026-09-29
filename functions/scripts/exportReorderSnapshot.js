@@ -30,7 +30,7 @@
 // RETIREMENT. Temporary migration tooling: deleted in the same change that retires the legacy Firestore Reorder source.
 // The exported snapshot and its checksum are kept with the cutover evidence, never in the repository.
 //
-// Usage (the freeze and the fixture retirement come FIRST):
+// Usage (inside the controlled window; the DQ-032 fixtures are excluded at COPY, never deleted):
 //   node scripts/exportReorderSnapshot.js --projectId eos-platform-sandbox --out ./reorder-snapshot.json
 "use strict";
 
