@@ -404,9 +404,17 @@ test("an existing account is REUSED and never recreated; only a genuinely missin
   const result = bootstrap.plan({
     authAccountsByEmail: Object.fromEntries(REGISTRY.roles.filter((r) => r.accountExists).map((r) => [r.authEmail, { uid: r.uid }])),
   });
-  assert.equal(result.counts.accountsPresent, 15);
-  assert.equal(result.counts.accountsToCreate, 1);
-  const toCreate = result.rows.filter((r) => r.wouldCreateAccount);
+  // D1 corrected 2026-09-29 (evidence doc P1): Phase 1 created reporting@ on 2026-09-25, so all 16 exist and
+  // nothing is left to create. The create-exactly-the-missing-one path is still proved below, historically.
+  assert.equal(result.counts.accountsPresent, 16);
+  assert.equal(result.counts.accountsToCreate, 0);
+  assert.deepEqual(result.rows.filter((r) => r.wouldCreateAccount), []);
+  // The pre-Phase-1 world, constructed explicitly: reporting@ absent -> exactly that one account is created.
+  const historical = bootstrap.plan({
+    authAccountsByEmail: Object.fromEntries(REGISTRY.roles.filter((r) => r.accountExists && r.key !== "reportingAnalyst").map((r) => [r.authEmail, { uid: r.uid }])),
+  });
+  assert.equal(historical.counts.accountsToCreate, 1);
+  const toCreate = historical.rows.filter((r) => r.wouldCreateAccount);
   assert.deepEqual(toCreate.map((r) => r.key), ["reportingAnalyst"]);
   assert.equal(toCreate[0].email, "reporting@sandbox.invalid");
   for (const row of result.rows.filter((r) => r.accountExists)) {
@@ -529,7 +537,8 @@ test("canonicalRoleCoverage reports every role, and only reused or pending ones 
   assert.equal(coverage.length, 16);
   const notActivatable = coverage.filter((c) => !c.activatableByThisManifest).map((c) => c.key).sort();
   // ownerExecutive and administrator are the two REUSED real Principals (credentialEmail null, out of
-  // activation scope by construction); reportingAnalyst has no account yet.
+  // activation scope by construction); reportingAnalyst is outside this manifest's activation allowlist (its account
+  // was created by Phase 1 and is PRESERVE -- never re-activated here).
   assert.deepEqual(notActivatable, ["administrator", "ownerExecutive", "reportingAnalyst"]);
-  assert.equal(coverage.filter((c) => c.accountExists).length, 15);
+  assert.equal(coverage.filter((c) => c.accountExists).length, 16);
 });

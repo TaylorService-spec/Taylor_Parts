@@ -400,7 +400,7 @@ test("no reset result or error carries the password, and the directory never ret
 // THE VOCABULARY
 // ======================================================================================
 
-test("the registry declares exactly 5 PRESERVE, 10 RESET_EXISTING_SANDBOX_PASSWORD, 1 CREATE_AUTH_ACCOUNT", () => {
+test("the registry declares exactly 6 PRESERVE, 10 RESET_EXISTING_SANDBOX_PASSWORD and no CREATE_AUTH_ACCOUNT (reporting created by Phase 1)", () => {
   const byDisposition = {};
   for (const r of REGISTRY.roles) {
     assert.ok(
@@ -409,10 +409,15 @@ test("the registry declares exactly 5 PRESERVE, 10 RESET_EXISTING_SANDBOX_PASSWO
     );
     (byDisposition[r.credentialDisposition] ??= []).push(r.key);
   }
-  assert.deepEqual(byDisposition.PRESERVE.sort(), ["administrator", "dispatcher", "financeAccounting", "generalEmployee", "ownerExecutive"]);
+  assert.deepEqual(byDisposition.PRESERVE.sort(), ["administrator", "dispatcher", "financeAccounting", "generalEmployee", "ownerExecutive", "reportingAnalyst"]);
   assert.equal(byDisposition.RESET_EXISTING_SANDBOX_PASSWORD.length, 10);
-  assert.deepEqual(byDisposition.CREATE_AUTH_ACCOUNT, ["reportingAnalyst"]);
+  // D1 corrected 2026-09-29 (evidence doc P1): the one CREATE was performed by Phase 1, so the bucket is gone.
+  assert.equal(byDisposition.CREATE_AUTH_ACCOUNT, undefined);
+  assert.deepEqual(
+    { preserve: REGISTRY.credentialDispositions.current.preserve, reset: REGISTRY.credentialDispositions.current.reset, create: REGISTRY.credentialDispositions.current.create },
+    { preserve: 6, reset: 10, create: 0 });
 
+  // The Phase 1 PLAN outcome, kept as history.
   const expected = REGISTRY.credentialDispositions.expectedFinalState;
   assert.deepEqual(expected, { preserved: 5, rotated: 10, created: 1, canonicalUsableLogins: 16, duplicates: 0 });
   assert.equal(expected.preserved + expected.rotated + expected.created, expected.canonicalUsableLogins);
@@ -483,11 +488,11 @@ test("a PRESERVE role missing from the canonical source is reported as a merge, 
   assert.ok(!/RESET_EXISTING_SANDBOX_PASSWORD/.test(step5.detail.replace(/disposition PRESERVE;/, "")));
 });
 
-test("the dry run's disposition counts are 5 / 10 / 1", () => {
+test("the dry run's disposition counts are 6 / 10 / 0", () => {
   const auth = Object.fromEntries(REGISTRY.roles.filter((r) => r.accountExists).map((r) => [r.authEmail, { uid: r.uid }]));
   const result = bootstrap.plan({ authAccountsByEmail: auth, credentialKeyNames: [] });
-  assert.equal(result.counts.preserve, 5);
+  assert.equal(result.counts.preserve, 6);
   assert.equal(result.counts.resetExistingSandboxPassword, 10);
-  assert.equal(result.counts.createAuthAccount, 1);
+  assert.equal(result.counts.createAuthAccount, 0);
   assert.match(bootstrap.formatPlan(result), /RESET_EXISTING_SANDBOX_PASSWORD : 10/);
 });

@@ -3,11 +3,9 @@
   "baseSha": "1fdef0b748e8ec98bcd957375ef9f3689daa1e59",
   "authority": {
     "targetRuntime": "Browser -> Vercel -> Firebase Auth token -> Render EOS API -> EOS authorization -> PostgreSQL",
-    "firebaseAllowedAfterExit": [
-      "Firebase Authentication for sign-in identity",
-      "Firebase UID for EOS principal/employee correlation"
-    ],
-    "noNewFirebaseBusinessDependencies": true
+    "firebaseAllowedAfterExit": [],
+    "noNewFirebaseBusinessDependencies": true,
+    "firebaseAuthExitStatus": "TRANSITIONAL_ACTIVE_PENDING_RETIREMENT (FX-AUTH-001, Controller ruling 2026-09-29; see docs/architecture/firebase-exit-manifest.json and docs/architecture/eos-identity-session-foundation.md)"
   },
   "baseline": {
     "frontend": {

@@ -44,6 +44,7 @@ import type {
   PolicyRoleRecord,
   PrincipalAccessVersionRecord,
   PrincipalRecord,
+  PrincipalIdentityBindingRecord,
   PrincipalStatus,
   TenantAdminBootstrapRecord,
   TenantMembershipRecord,
@@ -64,6 +65,7 @@ import type {
 interface Tables {
   tenants: TenantRecord[];
   principals: PrincipalRecord[];
+  principalIdentities: PrincipalIdentityBindingRecord[];
   memberships: TenantMembershipRecord[];
   adminBootstraps: TenantAdminBootstrapRecord[];
   objects: ObjectRecord[];
@@ -92,6 +94,7 @@ interface Tables {
 const emptyTables = (): Tables => ({
   tenants: [],
   principals: [],
+  principalIdentities: [],
   memberships: [],
   adminBootstraps: [],
   objects: [],
@@ -243,6 +246,35 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         };
         t.principals[t.principals.indexOf(found)] = updated;
         return updated;
+      },
+
+      createPrincipalIdentityBinding: async (input) => {
+        // Same refusals as the PostgreSQL adapter (its CHECK, UNIQUE, partial UNIQUE and trigger), so
+        // the two adapters refuse the same call.
+        const member = t.memberships.some((m) => m.tenantId === tenantId && m.principalId === input.principalId);
+        if (!t.principals.some((x) => x.id === input.principalId) || !member) {
+          throw new PolicyStoreError("principal not found in this tenant");
+        }
+        if (input.identityProvider !== "eos") throw new PolicyStoreError("only 'eos' identities are bound here");
+        const dup = t.principalIdentities.some((x) => x.identityProvider === input.identityProvider && x.externalSubject === input.externalSubject)
+          || t.principals.some((x) => x.identityProvider === input.identityProvider && x.externalSubject === input.externalSubject)
+          || t.principalIdentities.some((x) => x.principalId === input.principalId && x.identityProvider === input.identityProvider && x.status === "active");
+        if (dup) throw new PolicyStoreError("that identity is already bound, or the principal already has an active binding");
+        const row: PrincipalIdentityBindingRecord = {
+          id: this.nextId(), principalId: input.principalId, identityProvider: input.identityProvider,
+          externalSubject: input.externalSubject, status: "active", createdBy: input.createdBy, createdAt: this.now(),
+          reason: input.reason, revokedBy: null, revokedAt: null, revokeReason: null,
+        };
+        t.principalIdentities.push(row);
+        return row;
+      },
+
+      revokePrincipalIdentityBinding: async (principalId, identityProvider, revokedBy, reason) => {
+        const member = t.memberships.some((m) => m.tenantId === tenantId && m.principalId === principalId);
+        const found = t.principalIdentities.find((x) => x.principalId === principalId && x.identityProvider === identityProvider && x.status === "active");
+        if (!found || !member) throw new PolicyStoreError("no active binding for that principal in this tenant");
+        const updated: PrincipalIdentityBindingRecord = { ...found, status: "revoked", revokedBy, revokedAt: this.now(), revokeReason: reason };
+        return replace(t.principalIdentities, updated);
       },
 
       createTenantMembership: async (principalId, status) => {
@@ -737,6 +769,17 @@ export class InMemoryPolicyRepository implements PolicyRepository {
   }
   async getPrincipal(principalId: string) {
     return this.tables.principals.find((x) => x.id === principalId) ?? null;
+  }
+  async getPrincipalByIdentityBinding(identityProvider: string, externalSubject: string) {
+    const binding = (this.tables.principalIdentities ?? []).find(
+      (x) => x.identityProvider === identityProvider && x.externalSubject === externalSubject && x.status === "active",
+    );
+    return binding ? (this.tables.principals.find((x) => x.id === binding.principalId) ?? null) : null;
+  }
+  async getActiveIdentityBinding(principalId: string, identityProvider: string) {
+    return (this.tables.principalIdentities ?? []).find(
+      (x) => x.principalId === principalId && x.identityProvider === identityProvider && x.status === "active",
+    ) ?? null;
   }
   async listMembershipsForPrincipal(principalId: string) {
     return this.tables.memberships.filter((m) => m.principalId === principalId);

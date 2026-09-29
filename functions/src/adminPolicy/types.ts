@@ -91,6 +91,24 @@ export interface PrincipalRecord {
 }
 
 /**
+ * An ADDITIONAL, EOS-issued authentication binding of a Principal (eos_policy.principal_identities,
+ * migration 1764200000000). The primary binding stays on the Principal row. Identity only: no authority.
+ */
+export interface PrincipalIdentityBindingRecord {
+  readonly id: string;
+  readonly principalId: string;
+  readonly identityProvider: string;
+  readonly externalSubject: string;
+  readonly status: "active" | "revoked";
+  readonly createdBy: string;
+  readonly createdAt: string;
+  readonly reason: string;
+  readonly revokedBy: string | null;
+  readonly revokedAt: string | null;
+  readonly revokeReason: string | null;
+}
+
+/**
  * Which tenant a principal belongs to.
  *
  * NOT a request parameter. A client that sends a tenantId is stating a preference the server checks

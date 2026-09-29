@@ -558,6 +558,8 @@ on:
       - "functions/src/eosWorkforce/migration/partsAssignabilityExclusionReport.ts"
       - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
       - "field-ops-app-vite/test/employeeSecurityRolesScope.test.jsx"
+      - "field-ops-app-vite/test/eosSessionAuthContext.test.jsx"
+      - "field-ops-app-vite/src/auth/**"
       # LANE GA (2026-09-26): governed scope values + the SALES_CHANNEL scope -- tenant sales channel activation, the
       # Commercial reads deciding a record's stored channel, the governed Operational Scope targets, no free-text pickers.
       - "functions/migrations/1762905600000_tenant-sales-channel-scope.sql"
@@ -1003,6 +1005,8 @@ on:
       - "functions/src/eosWorkforce/migration/partsAssignabilityExclusionReport.ts"
       - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
       - "field-ops-app-vite/test/employeeSecurityRolesScope.test.jsx"
+      - "field-ops-app-vite/test/eosSessionAuthContext.test.jsx"
+      - "field-ops-app-vite/src/auth/**"
       # LANE GA (2026-09-26): governed scope values + the SALES_CHANNEL scope -- tenant sales channel activation, the
       # Commercial reads deciding a record's stored channel, the governed Operational Scope targets, no free-text pickers.
       - "functions/migrations/1762905600000_tenant-sales-channel-scope.sql"
@@ -1302,6 +1306,12 @@ jobs:
       # without the vocabulary; Effective Access renders each scope-qualified source.
       - name: Security Role assignment scope -- client (vitest + jsdom)
         run: npx vitest run test/employeeSecurityRolesScope.test.jsx
+        working-directory: field-ops-app-vite
+
+      # EOS IDENTITY BOUNDARY (Controller ruling 2026-09-29): the client treats a valid EOS session as signed in and sends
+      # its token, falls back to Firebase otherwise, and ignores an EOS session in a production-role build.
+      - name: EOS session identity source -- client (vitest + jsdom)
+        run: npx vitest run test/eosSessionAuthContext.test.jsx
         working-directory: field-ops-app-vite
 
       # LANE GA: governed scope pickers -- Operational Scope targets and Sales Channel values come ONLY from the server;

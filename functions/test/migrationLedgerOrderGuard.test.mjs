@@ -180,8 +180,11 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 //   1764122400000 the Transfer-on-EOS storage support (lane L3);
 //   1764126000000 the bin placement authority (DQ-038, lane L3);
 //   1764129600000 the serialized asset acquire authority (DQ-036(b), lane L3).
-const RUNNABLE_MIGRATION_COUNT = 70;
-const TRACKED_MIGRATION_COUNT = 71; // the 70 runnable + the one deferred file
+// 70 -> 71 runnable: migration 1764200000000, the EOS principal identities (Controller ruling 2026-09-29, EOS
+// IDENTITY BOUNDARY; lane IDENTITY) -- APPENDED after the chain, an EXPLAINED pending migration; the ledger model is
+// not extended.
+const RUNNABLE_MIGRATION_COUNT = 71;
+const TRACKED_MIGRATION_COUNT = 72; // the 71 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -203,6 +206,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764122400000_transfer-eos-lifecycle-support",
   "1764126000000_bin-placement-authority",
   "1764129600000_serialized-asset-acquire-authority",
+  "1764200000000_eos-principal-identities",
 ]);
 
 const repoMigrations = () =>

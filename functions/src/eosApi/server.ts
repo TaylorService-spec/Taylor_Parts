@@ -40,10 +40,17 @@ import { createWorkforceHttpHandler } from "../eosWorkforce/workforceHttp";
 import { createCrmHttpHandler } from "../eosCrm/crmHttp";
 import { createCatalogHttpHandler, CATALOG_ROUTE } from "../catalogMaster/catalogHttp";
 import { createPostgresCatalogReferenceAuthority } from "../catalogAuthority/postgresCatalogReferenceAuthority";
+// EOS-issued authentication (docs/architecture/eos-identity-session-foundation.md). ADDITIVE: with none of
+// its environment set, the composite verifier below is the Firebase verifier and the auth route is a 404.
+import { EOS_AUTH_DISABLED, readEosAuthConfig, type EosAuthRuntime } from "../eosAuth/eosAuthConfig";
+import { EosAuthConfigError } from "../eosAuth/eosAccessToken";
+import { createCompositeTokenVerifier, createEosAuthHttpHandler } from "../eosAuth/eosAuthHttp";
 
 /** Which domain transport answers a request path. Everything not Catalog, Operations, Commercial, Workforce or CRM is Administration. */
-export function eosApiDomainFor(url: string | undefined): "catalog" | "crm" | "commercial" | "operations" | "workforce" | "administration" {
+export function eosApiDomainFor(url: string | undefined): "auth" | "catalog" | "crm" | "commercial" | "operations" | "workforce" | "administration" {
   const path = (url ?? "").split("?")[0];
+  // EOS session issuance. Only the nonprod persona route exists, and only when configured; otherwise 404.
+  if (path.startsWith("/auth/")) return "auth";
   if (path.startsWith("/crm/")) return "crm";
   if (path.startsWith("/commercial/")) return "commercial";
   if (path.startsWith("/workforce/")) return "workforce";
@@ -63,7 +70,9 @@ export function eosApiDomainFor(url: string | undefined): "catalog" | "crm" | "c
  *   EOS_ENVIRONMENT           a label -- "local", "nonprod". REFUSED if it says production.
  *   EOS_API_PORT              listen port. Render supplies PORT; both are read.
  *   EOS_ALLOWED_ORIGINS       comma-separated browser origins. No wildcard.
- *   EOS_IDENTITY_PROVIDER     defaults to "firebase".
+ *   EOS_IDENTITY_PROVIDER     defaults to "firebase". May NOT be "eos": a Firebase uid must never be
+ *                             looked up as an EOS subject.
+ *   EOS_AUTH_*, EOS_PERSONA_ISSUER_CREDENTIAL_SHA256   EOS-issued authentication; see eosAuth/eosAuthConfig.ts.
  *   FIREBASE_AUTH_EMULATOR_HOST  present only for local development; see below.
  */
 export interface ServiceConfig {
@@ -71,6 +80,8 @@ export interface ServiceConfig {
   readonly environment: string;
   readonly allowedOrigins: readonly string[];
   readonly identityProvider: string;
+  /** EOS-issued authentication. Absent = disabled (Firebase-only, exactly as before). */
+  readonly eosAuth?: EosAuthRuntime;
 }
 
 export class ServiceConfigError extends Error {}
@@ -105,11 +116,27 @@ export function readServiceConfig(env: NodeJS.ProcessEnv = process.env): Service
     throw new ServiceConfigError("EOS_ALLOWED_ORIGINS may not contain '*'");
   }
 
+  // The Firebase verifier stamps THIS provider on the uid it returns. Stamping "eos" would let a Firebase
+  // uid be resolved through an EOS identity binding -- one provider's subject answering as another's.
+  if ((env.EOS_IDENTITY_PROVIDER ?? "").trim() === "eos") {
+    throw new ServiceConfigError("EOS_IDENTITY_PROVIDER may not be 'eos'; EOS identities come only from the EOS verifier");
+  }
+
+  let eosAuth: EosAuthRuntime;
+  try {
+    eosAuth = readEosAuthConfig(env, environment);
+  } catch (err) {
+    // The message names the variable, never its value.
+    if (err instanceof EosAuthConfigError) throw new ServiceConfigError(err.message);
+    throw err;
+  }
+
   return {
     port,
     environment,
     allowedOrigins: Object.freeze(allowedOrigins),
     identityProvider: (env.EOS_IDENTITY_PROVIDER ?? "firebase").trim(),
+    eosAuth,
   };
 }
 
@@ -151,7 +178,10 @@ export interface StartedService {
 export async function startEosApi(
   options: {
     readonly config?: ServiceConfig;
+    /** Replaces the WHOLE verifier (existing tests). */
     readonly verifyToken?: TokenVerifier;
+    /** Replaces only the Firebase half of the composite verifier (tests: a fake Firebase, no network). */
+    readonly firebaseVerifyToken?: TokenVerifier;
   } = {},
 ): Promise<StartedService> {
   const config = options.config ?? readServiceConfig();
@@ -159,8 +189,15 @@ export async function startEosApi(
   await requirePolicyDatabaseReady(pool);
 
   const repo = new PostgresPolicyRepository(pool);
-  // ONE verifier for every domain transport: Firebase says only "this token belongs to subject X".
-  const verifyToken = options.verifyToken ?? createFirebaseTokenVerifier(config.identityProvider);
+  // ONE verifier for every domain transport. It says only "this token belongs to (provider, subject)":
+  // an EOS-issued token -> ("eos", sub); anything else -> Firebase, unchanged -> ("firebase", uid).
+  const eosAuth = config.eosAuth ?? EOS_AUTH_DISABLED;
+  const verifyToken = options.verifyToken ?? createCompositeTokenVerifier({
+    eos: eosAuth,
+    firebase: options.firebaseVerifyToken ?? createFirebaseTokenVerifier(config.identityProvider),
+  });
+  // The EOS session route. A 404 unless nonprod AND the persona issuer is fully configured.
+  const authHandler = createEosAuthHttpHandler({ repo, auth: eosAuth, environment: config.environment });
   const handler = createAdminPolicyHttpHandler({
     repo,
     // The runtime evaluator, over the one shared pool, for the explainEffectiveAccess read.
@@ -248,6 +285,10 @@ export async function startEosApi(
 
   const server = createServer((req, res) => {
     const domain = eosApiDomainFor(req.url);
+    if (domain === "auth") {
+      void authHandler(req, res);
+      return;
+    }
     if (domain === "catalog") {
       void catalogHandler(req as never, res as never);
       return;
@@ -272,9 +313,11 @@ export async function startEosApi(
   });
 
   await new Promise<void>((resolve) => server.listen(config.port, resolve));
+  const address = server.address();
+  const boundPort = address && typeof address === "object" ? address.port : config.port;
 
   return {
-    port: config.port,
+    port: boundPort,
     async close() {
       // ORDERLY: stop accepting, then let in-flight requests finish, then release the pool. Ending
       // the pool first would fail the requests that are still running.

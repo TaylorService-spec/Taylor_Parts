@@ -36,6 +36,7 @@
 // build, so NOT CONFIGURED remains a state this client must report honestly -- which is the part of
 // the original paragraph that was always the point.
 import { auth } from "../firebase/firebase.js";
+import { currentEosSessionToken } from "../auth/eosSession.js";
 
 /** The operations the server accepts. Mirrored so a typo fails here rather than as a 404. */
 export const ADMIN_READ_OPERATIONS = Object.freeze([
@@ -245,6 +246,10 @@ export async function callPolicyApi(operation, input = {}, options = {}) {
  * token that said otherwise would not be believed.
  */
 export async function currentIdToken() {
+  // ADDITIVE EOS SESSION (docs/architecture/eos-identity-session-foundation.md): an EOS access token, when
+  // present and unexpired, is the bearer; otherwise the Firebase ID token, exactly as before.
+  const eosToken = currentEosSessionToken();
+  if (eosToken) return eosToken;
   const user = auth?.currentUser ?? null;
   if (!user) return null;
   return user.getIdToken();

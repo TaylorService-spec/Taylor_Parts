@@ -250,8 +250,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 1764126000000 (DQ-038, L3): the bin placement authority -- one eos_ops table.
 // 1764129600000 (DQ-036(b), L3): inventory.serializedAsset.acquire, FENCED Administration-grant-only -- the seed's
 // catalog reconcile writes it to no Role.
-const PINNED_LAST_MIGRATION = "1764129600000_serialized-asset-acquire-authority";
-const PINNED_MIGRATION_COUNT = 70;
+// 1764200000000 (lane IDENTITY, Controller ruling 2026-09-29): eos_policy.principal_identities -- the additive EOS
+// identity binding, EMPTY; no capability, no grant, no seed write.
+const PINNED_LAST_MIGRATION = "1764200000000_eos-principal-identities";
+const PINNED_MIGRATION_COUNT = 71;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

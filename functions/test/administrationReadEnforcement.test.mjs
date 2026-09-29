@@ -208,7 +208,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   //   1764126000000 (L3, DQ-038): the bin placement authority -- one eos_ops table, no capability.
   //   1764129600000 (L3, DQ-036(b)): inventory.serializedAsset.acquire -- ONE BUSINESS_ACTION capability granted to
   //   nobody (Administration-grant-only), plus its provenance table.
-  assert.equal(migrations.length, 70, "a migration was added or removed by the read enforcement");
+  // 70 -> 71 (lane IDENTITY, Controller ruling 2026-09-29): 1764200000000 eos_policy.principal_identities -- the additive
+  // EOS identity binding table; no capability, no READ key, not a read-enforcement change.
+  assert.equal(migrations.length, 71, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

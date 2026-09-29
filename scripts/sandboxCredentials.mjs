@@ -202,7 +202,7 @@ export const RETIRED_PERSONAS = Object.freeze({
  * DELIBERATELY EMPTY, and kept rather than deleted.
  *
  * Every former member was resolved by the ruling: financeAccounting and generalEmployee name
- * EXISTING accounts, and reportingAnalyst has a settled address with its account pending. An empty
+ * EXISTING accounts, and reportingAnalyst had a settled address (its account was since created by Phase 1). An empty
  * map is a stronger statement than a missing one -- it says the state was emptied, not forgotten,
  * and it remains the right home for a role whose identity nobody has settled.
  *

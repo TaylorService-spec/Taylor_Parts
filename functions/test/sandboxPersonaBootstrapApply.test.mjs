@@ -54,12 +54,18 @@ function recordingAuthDirectory() {
   };
 }
 
-/** Auth accounts exactly as the registry records them: 15 present, reporting@ absent. */
+/**
+ * Auth accounts as they stood BEFORE Phase 1 (2026-09-25): 15 present, reporting@ absent.
+ *
+ * A SYNTHETIC HISTORICAL SCENARIO, constructed explicitly. The registry now records reporting@ as existing
+ * (PRESERVE, uid recorded -- evidence doc P1, D1 corrected 2026-09-29), so the absence is built here on purpose:
+ * it is still the only fixture that exercises the governed "create exactly the one missing account" path.
+ */
 function authAccountsFromRegistry({ includeReporting = false } = {}) {
   const out = {};
   for (const r of REGISTRY.roles) {
+    if (r.key === "reportingAnalyst" && !includeReporting) continue;
     if (r.accountExists) out[r.authEmail] = { uid: r.uid, hasPassword: true, disabled: false };
-    else if (includeReporting) out[r.authEmail] = { uid: `uid-${r.key}`, hasPassword: true, disabled: false };
   }
   return out;
 }

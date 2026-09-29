@@ -156,7 +156,7 @@ test("binding the nonprod Owner persona to a real login, in PostgreSQL", { skip:
       WHERE a.principal_id = $1 AND a.status = 'active' ORDER BY r.key, a.scope_type`, [principalId],
   )).rows.map((x) => x.key);
 
-  await t.test("THE IDENTITY MODEL: one external identity per Principal, and no binding table", async () => {
+  await t.test("THE IDENTITY MODEL: one PRIMARY external identity per Principal; the only binding table is the EOS one", async () => {
     const cols = (await q(
       `SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'eos_policy' AND table_name = 'principals' ORDER BY column_name`,
@@ -175,13 +175,22 @@ test("binding the nonprod Owner persona to a real login, in PostgreSQL", { skip:
     )).rows.map((r) => r.conname);
     assert.deepEqual(unique, ["principals_provider_subject_unique"]);
 
-    // NO SEPARATE IDENTITY-BINDING TABLE. Anything that referenced a Principal AND carried an
-    // external subject would be one; nothing does.
+    // ONE ADDITIONAL IDENTITY-BINDING TABLE, and only for EOS-issued identities: Controller ruling 2026-09-29
+    // (EOS IDENTITY BOUNDARY) added eos_policy.principal_identities (migration 1764200000000). The Firebase
+    // binding this suite re-points stays on `principals`; the new table is CHECK-constrained to provider 'eos',
+    // so it can never hold a second Firebase subject for a Principal.
     const subjectCarriers = (await q(
       `SELECT table_name FROM information_schema.columns
         WHERE table_schema = 'eos_policy' AND column_name = 'external_subject' ORDER BY table_name`,
     )).rows.map((r) => r.table_name);
-    assert.deepEqual(subjectCarriers, ["principals"]);
+    assert.deepEqual(subjectCarriers, ["principal_identities", "principals"]);
+    const providerCheck = (await q(
+      `SELECT pg_get_constraintdef(c.oid) AS def FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+       WHERE n.nspname = 'eos_policy' AND t.relname = 'principal_identities' AND c.conname = 'principal_identities_provider_is_eos'`,
+    )).rows;
+    assert.equal(providerCheck.length, 1);
+    assert.match(providerCheck[0].def, /identity_provider = 'eos'/);
   });
 
   const before = {};

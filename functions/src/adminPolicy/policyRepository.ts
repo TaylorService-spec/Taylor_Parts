@@ -51,6 +51,7 @@ import type {
   PolicyRoleRecord,
   PrincipalAccessVersionRecord,
   PrincipalRecord,
+  PrincipalIdentityBindingRecord,
   PrincipalStatus,
   TenantAdminBootstrapRecord,
   TenantMembershipRecord,
@@ -131,9 +132,10 @@ export interface NewPrincipalInput {
 /**
  * A Principal's EXTERNAL AUTHENTICATION BINDING, and nothing else.
  *
- * The model is ONE external identity per Principal: `principals` carries `(identity_provider,
- * external_subject)` under a UNIQUE constraint and there is no separate identity-binding table. So
- * changing which token resolves to a Principal is an UPDATE of those two columns -- not an insert,
+ * The model is ONE PRIMARY external identity per Principal: `principals` carries `(identity_provider,
+ * external_subject)` under a UNIQUE constraint. (Since migration 1764200000000 an ADDITIONAL EOS-issued
+ * identity may be bound in `principal_identities` -- provider 'eos' only; see createPrincipalIdentityBinding.)
+ * So changing which PRIMARY token resolves to a Principal is an UPDATE of those two columns -- not an insert,
  * and deliberately not a field of `NewPrincipalInput`, which would let a create silently re-point an
  * existing row.
  *
@@ -145,6 +147,14 @@ export interface PrincipalIdentityBindingInput {
   readonly identityProvider: string;
   readonly externalSubject: string;
   readonly displayName?: string | null;
+}
+
+export interface NewPrincipalIdentityBindingInput {
+  readonly principalId: string;
+  readonly identityProvider: string;
+  readonly externalSubject: string;
+  readonly createdBy: string;
+  readonly reason: string;
 }
 
 /**
@@ -213,6 +223,14 @@ export interface PolicyTransaction {
    * somebody else's Principal at a subject it controls.
    */
   setPrincipalIdentity(principalId: string, input: PrincipalIdentityBindingInput): Promise<PrincipalRecord>;
+  /**
+   * Add an ADDITIONAL identity binding (provider 'eos') to an existing Principal. Tenant-scoped like
+   * setPrincipalIdentity: the Principal must be a member of the transaction's tenant. Refuses a subject
+   * already bound (even if revoked) or already a primary, and a second ACTIVE binding for the Principal.
+   */
+  createPrincipalIdentityBinding(input: NewPrincipalIdentityBindingInput): Promise<PrincipalIdentityBindingRecord>;
+  /** Revoke the ACTIVE binding of this provider on this Principal. Revocation is final. */
+  revokePrincipalIdentityBinding(principalId: string, identityProvider: string, revokedBy: string, reason: string): Promise<PrincipalIdentityBindingRecord>;
   createTenantMembership(principalId: string, status?: PrincipalStatus): Promise<TenantMembershipRecord>;
   setTenantMembershipStatus(membershipId: string, status: PrincipalStatus): Promise<TenantMembershipRecord>;
   /**
@@ -396,6 +414,14 @@ export interface PolicyReader {
    * two different claims about who somebody is.
    */
   getPrincipalBySubject(identityProvider: string, externalSubject: string): Promise<PrincipalRecord | null>;
+  /**
+   * The Principal an ACTIVE additional identity binding (eos_policy.principal_identities) names, or null.
+   * Consulted ONLY through principalContext.resolvePrincipalByVerifiedIdentity -- never directly by a
+   * transport -- so there is one resolution rule for every entry point.
+   */
+  getPrincipalByIdentityBinding(identityProvider: string, externalSubject: string): Promise<PrincipalRecord | null>;
+  /** The ACTIVE binding of this provider on this Principal, or null. */
+  getActiveIdentityBinding(principalId: string, identityProvider: string): Promise<PrincipalIdentityBindingRecord | null>;
   getPrincipal(principalId: string): Promise<PrincipalRecord | null>;
   /** Every membership this principal holds, across tenants. The caller decides which one applies. */
   listMembershipsForPrincipal(principalId: string): Promise<readonly TenantMembershipRecord[]>;
