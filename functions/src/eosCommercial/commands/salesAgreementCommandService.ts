@@ -13,7 +13,7 @@ import {
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
-import { lockAgreement, lockAgreementForOpportunity, lockOpportunity, newRecordId, replaceAgreementLines, type AgreementRow } from "./commercialRecordStore";
+import { lockAgreement, lockAgreementForOpportunity, lockOpportunity, newRecordId, operatingCompanyKeyFor, replaceAgreementLines, type AgreementRow } from "./commercialRecordStore";
 
 type Queryable = Pick<PoolClient, "query">;
 const target = (id: string) => ({ family: "salesAgreement" as const, id });
@@ -73,7 +73,8 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
            shipping_instructions, ship_via, special_instructions, shipping_minor, install_charge_minor, tax_minor, down_payment_minor,
            trade_in_minor, created_by, updated_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,'DRAFT','USD',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$21)`,
-        [id, actor.tenantId, number.number, built.accountId, opportunity.id, built.ownerEmployeeId, built.operatingCompanyId,
+        [id, actor.tenantId, number.number, built.accountId, opportunity.id, built.ownerEmployeeId,
+          await operatingCompanyKeyFor(db, actor.tenantId, built.operatingCompanyId),
           built.creditedSalespersonId, built.locationId, built.customerPO, built.isLease, built.fulfillmentIntent, built.shippingInstructions,
           built.shipVia, built.specialInstructions, built.totals.shippingMinor, built.totals.installChargeMinor, built.totals.taxMinor,
           built.totals.downPaymentMinor, built.totals.tradeInMinor, actor.principalId],

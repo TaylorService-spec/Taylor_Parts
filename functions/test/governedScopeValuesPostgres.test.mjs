@@ -27,6 +27,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -85,6 +86,9 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
     }
     await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
              VALUES ($1,'taylor','ACTIVE','fixture','fixture','fixture')`, [tenant.id]);
+    // The commercial writers resolve operating_company_key only through the governed binding -- never key = id. The
+    // same keys subtest D states for its scope targets.
+    await bindOperatingCompany(q, tenant.id, "taylor", `taylor-${k}`);
   }
   const call = (subject, operation, input) => executeAdminOperation({ repo },
     { caller: { externalSubject: subject, identityProvider: "firebase" }, operation, input, requestId: `r-${operation}` });
@@ -332,7 +336,8 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
       VALUES ($1,$2,'taylor',$3,'Somewhere, AZ',$4,'NATIVE','fixture','fixture')`, [id, tenant, `WH ${id}`, status]);
     await wh("wh-a1", T.a); await wh("wh-a-old", T.a, "INACTIVE"); await wh("wh-b1", T.b);
     await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
-             VALUES ($1,'taylor','taylor-a','ACTIVE','NATIVE','fixture','fixture','fixture'), ($2,'taylor','taylor-b','ACTIVE','NATIVE','fixture','fixture','fixture')`, [T.a, T.b]);
+             VALUES ($1,'taylor','taylor-a','ACTIVE','NATIVE','fixture','fixture','fixture'), ($2,'taylor','taylor-b','ACTIVE','NATIVE','fixture','fixture','fixture')
+             ON CONFLICT DO NOTHING`, [T.a, T.b]);
     await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ('e-scope',$1,'ACTIVE','taylor')`, [T.a]);
 
     const targets = await wf("admin-a", "listOperationalScopeTargets", {});
@@ -368,6 +373,9 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
     const after = (await wf("admin-a", "listOperationalScopeTargets", {})).result.scopeTypes.find((s) => s.scopeType === "REORDER_QUEUE");
     assert.deepEqual([after.available, after.values], [false, []]);
     assert.match(after.reason, /no ACTIVE governed value/);
+    // Restore the key: the later subtests write commercial records, which resolve operating_company_key only through
+    // an ACTIVE binding. What this subtest proved is the scope refusal above, not a permanently retired key.
+    await q(`UPDATE eos_policy.tenant_operating_company_keys SET status='ACTIVE' WHERE tenant_id=$1 AND operating_company_key='taylor-a'`, [T.a]);
   });
 
   // ════════════════════ F. Pass 10 P10-3 / P10-4 / P10-5 ════════════════════

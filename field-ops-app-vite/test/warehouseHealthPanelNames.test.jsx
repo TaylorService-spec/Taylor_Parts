@@ -7,7 +7,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, act } from "@testing-library/react";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
 vi.mock("../src/hooks/useInventoryActions", () => ({ useInventoryActionsForPart: () => ({ data: [], loading: false }) }));
 vi.mock("../src/domain/inventoryReorderRequests", () => ({ requestReorderForRecommendation: vi.fn() }));
@@ -25,7 +25,7 @@ vi.mock("../src/data/partsCatalog", () => ({
   getCatalogItem: (id) => ({ "TST-9001": { name: "Static Name A" } }[id]),
 }));
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import WarehouseManagerHome from "../src/modules/inventoryRole/WarehouseManagerHome.jsx";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -34,7 +34,7 @@ const READY = { ok: true, parts: [{ partId: "TST-9001", name: "Canonical Name A"
 
 describe("WarehouseManagerHome + InventoryHealthPanel (OD-3)", () => {
   it("READY: the health panel shows the CANONICAL name, never the static name", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<WarehouseManagerHome accessVersion={1} />);
     // canonical name appears in the health panel (and WMH's canonical catalog table) -- both canonical.
     expect((await screen.findAllByText("Canonical Name A")).length).toBeGreaterThan(0);
@@ -42,7 +42,7 @@ describe("WarehouseManagerHome + InventoryHealthPanel (OD-3)", () => {
   });
 
   it("permission-denied: the health panel degrades to the raw partId, never the static name", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: false, code: "permission-denied" });
+    searchParts.mockResolvedValue({ ok: false, code: "FORBIDDEN", message: "forbidden" });
     render(<WarehouseManagerHome accessVersion={1} />);
     await screen.findByText("TST-9001");
     expect(screen.queryByText("Canonical Name A")).toBeNull();
@@ -51,7 +51,7 @@ describe("WarehouseManagerHome + InventoryHealthPanel (OD-3)", () => {
 
   it("accessVersion change invalidates the prior canonical name immediately (synchronous render-time guard)", async () => {
     const deferreds = [];
-    fetchPartMasterList.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
+    searchParts.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
     const { rerender } = render(<WarehouseManagerHome accessVersion={1} />);
     await act(async () => { deferreds[0].resolve(READY); });
     expect((await screen.findAllByText("Canonical Name A")).length).toBeGreaterThan(0);
@@ -66,7 +66,7 @@ describe("WarehouseManagerHome + InventoryHealthPanel (OD-3)", () => {
 
   it("stale completion: an OLD-boundary read LEFT PENDING across the access change cannot alter the new boundary", async () => {
     const deferreds = [];
-    fetchPartMasterList.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
+    searchParts.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
     const { rerender } = render(<WarehouseManagerHome accessVersion={1} />);
     expect(deferreds).toHaveLength(1);                                  // read #1 issued, LEFT PENDING (not resolved)
     rerender(<WarehouseManagerHome accessVersion={2} />);

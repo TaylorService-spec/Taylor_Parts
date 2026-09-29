@@ -17,7 +17,7 @@
 // and by the time it is visible the data is already wrong.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { normalizeNameForSearch, withSearchableName, SEARCH_NAME_FIELD } from "../src/domain/nameNormalization.js";
@@ -65,25 +65,17 @@ test("withSearchableName pairs the display name with its derived copy, unchanged
 
 // --- the writers -------------------------------------------------------------
 
-test("both canonical writers derive the field, and neither does it at the call site", () => {
-  // Derivation lives IN the writer so a caller cannot forget what it never had to remember.
+test("CRM CUTOVER: both canonical writers go to the governed PostgreSQL CRM authority, which folds the name itself", () => {
+  // The derived search field is gone with Firestore: eos_crm searches `lower(btrim(name))`, computed by the database from
+  // the one stored name, so no writer can leave it stale. The writers must send no nameLower and must use the CRM route.
   const src = readFileSync(path.join(srcDir, CANONICAL_WRITER), "utf8");
-  const create = src.match(/export function createAccount[\s\S]*?\n\}/);
-  const update = src.match(/export function updateAccount[\s\S]*?\n\}/);
+  const create = src.match(/export async function createAccount[\s\S]*?\n\}/);
+  const update = src.match(/export async function updateAccount[\s\S]*?\n\}/);
   assert.ok(create, "createAccount not found -- this guard's premise has expired");
   assert.ok(update, "updateAccount not found -- this guard's premise has expired");
-  assert.match(create[0], /withDerivedSearchName/, "createAccount writes a name without deriving nameLower");
-  assert.match(update[0], /withDerivedSearchName/, "updateAccount writes a name without deriving nameLower");
-});
-
-test("a partial update that does not touch the name must not clobber the derived field", () => {
-  // Deriving unconditionally would write nameLower:"" for any status-only edit, silently removing
-  // that customer from search. The writer must skip derivation when `name` is absent -- asserted
-  // here against the source, since the branch is what matters.
-  const src = readFileSync(path.join(srcDir, CANONICAL_WRITER), "utf8");
-  const fn = src.match(/function withDerivedSearchName[\s\S]*?\n\}/);
-  assert.ok(fn, "withDerivedSearchName not found");
-  assert.match(fn[0], /"name" in data/, "the derivation must be conditional on the payload carrying a name");
+  assert.match(create[0], /requireCrmApi\("createAccount"/);
+  assert.match(update[0], /requireCrmApi\("updateAccount"/);
+  assert.doesNotMatch(src.replace(/\/\/[^\n]*/g, ""), /nameLower|SEARCH_NAME_FIELD|firebase\/firestore/);
 });
 
 // --- the structural invariant ------------------------------------------------
@@ -121,29 +113,15 @@ test("MUTATION: the structural sweep can actually fail", () => {
   assert.ok(anyWriter.length > 0, "the write pattern matches nothing anywhere -- the regex has gone stale");
 });
 
-// --- nonprod CRM cutover freeze ---------------------------------------------
+// --- CRM cutover: the client Firestore CRM writers are retired ---------------
 
-test("platform-sandbox CRM client writes are fused before every legacy Firestore mutation path", () => {
-  const gate = readFileSync(path.join(srcDir, "domain", "crmCutoverFreeze.js"), "utf8");
-  assert.match(gate, /CRM_CUTOVER_FROZEN_ENVIRONMENT\s*=\s*"platform-sandbox"/);
-  assert.doesNotMatch(gate, /firestore\.rules|allow\s+(create|update|write)/i, "the client fuse must not become a Rules authority");
-
-  const cases = [
-    ["domain/accounts.js", "account.clientCreate", "accountsStore.add"],
-    ["domain/accounts.js", "account.clientUpdate", "accountsStore.update"],
-    ["domain/contacts.js", "contact.clientCreate", "contactsStore.add"],
-    ["domain/contacts.js", "contact.clientUpdate", "contactsStore.update"],
-    ["domain/contactImport.js", "contact.clientImport", "writeBatch(db)"],
-    ["domain/locations.js", "location.clientCreate", "locationsStore.add"],
-    ["domain/locations.js", "location.clientUpdate", "locationsStore.update"],
-  ];
-
-  for (const [rel, writer, mutation] of cases) {
+test("CRM writes go only through the governed EOS CRM route; the Firestore writers and their freeze fuse are gone", () => {
+  // The platform-sandbox freeze fuse (domain/crmCutoverFreeze.js) guarded the legacy Firestore CRM writers until the
+  // client moved to the EOS API. With no Firestore CRM writer left in the client there is nothing for it to guard.
+  assert.equal(existsSync(path.join(srcDir, "domain", "crmCutoverFreeze.js")), false, "the superseded client fuse must stay deleted");
+  for (const rel of ["domain/accounts.js", "domain/contacts.js", "domain/contactImport.js", "domain/locations.js"]) {
     const src = readFileSync(path.join(srcDir, rel), "utf8");
-    const guard = src.indexOf(`assertClientCrmWriterOpen("${writer}")`);
-    const write = src.indexOf(mutation);
-    assert.ok(guard >= 0, `${rel}: missing cutover fuse for ${writer}`);
-    assert.ok(write >= 0, `${rel}: expected mutation marker ${mutation} not found`);
-    assert.ok(guard < write, `${rel}: ${writer} must refuse before ${mutation}`);
+    assert.match(src, /requireCrmApi\(/, `${rel}: writes through the governed CRM route`);
+    assert.doesNotMatch(src, /firebase\/firestore|writeBatch|makeCollectionStore|Store\.(add|update)\(/, `${rel}: no Firestore write path`);
   }
 });

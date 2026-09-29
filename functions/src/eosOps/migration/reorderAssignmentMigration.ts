@@ -33,6 +33,8 @@
 //
 // It writes nothing, activates nothing and authorizes nothing. Producing a plan is not executing one, and the
 // existence of this tooling is not a reason to activate the governed assignment authority.
+import { legacyInstant } from "./purchasingMigrationMapping.js";
+
 export const ASSIGNEE_DISPOSITIONS = Object.freeze([
   /** The uid resolved through Principal and an ACTIVE link to exactly one Employee. Migratable. */
   "EXACT_EMPLOYEE_ASSIGNMENT",
@@ -66,7 +68,16 @@ export interface LegacyReorderAssignment {
   readonly reorderRequestId: string;
   readonly assignedToUserId: unknown;
   readonly assignedBy: unknown;
+  /** The legacy assignment instant (reorderFieldParityMatrix: assignedAt -> effective_from). Optional. */
+  readonly assignedAt?: unknown;
 }
+
+/**
+ * Where an assignment's effective_from comes from. LEGACY_INSTANT carries the historical assignedAt; ABSENT and
+ * MALFORMED have no usable historical instant, so the copy states the copy time -- and says so, per row and in the
+ * audit -- rather than inventing a history. Never blocking: the assignment itself is still exactly resolved.
+ */
+export type AssignedAtDisposition = "LEGACY_INSTANT" | "ABSENT" | "MALFORMED";
 
 /** What a uid resolves to, read from PostgreSQL. `null` means no Principal carries that subject. */
 export interface UidResolution {
@@ -102,6 +113,9 @@ export interface AssignmentMigrationRow {
   readonly assignedByPrincipalId: string | null;
   /** True when this row blocks activation for its Reorder. */
   readonly blocking: boolean;
+  /** The historical assignment instant (ISO) when the legacy row carried a valid one; null otherwise. */
+  readonly effectiveFrom: string | null;
+  readonly assignedAtDisposition: AssignedAtDisposition;
 }
 
 export interface AssignmentMigrationPlan {
@@ -185,7 +199,12 @@ export function planReorderAssignmentMigration(
   const rows = source.map((row): AssignmentMigrationRow => {
     const assignee = resolveAssignee(row, view);
     const assignor = resolveAssignor(row, view);
+    const at = legacyInstant(row.assignedAt);
+    const assignedAtDisposition: AssignedAtDisposition =
+      at.ok !== true ? "MALFORMED" : at.value === null ? "ABSENT" : "LEGACY_INSTANT";
     return Object.freeze({
+      effectiveFrom: at.ok === true ? at.value : null,
+      assignedAtDisposition,
       reorderRequestId: row.reorderRequestId,
       disposition: assignee.disposition,
       assignedEmployeeId: assignee.employeeId,

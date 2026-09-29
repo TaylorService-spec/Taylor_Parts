@@ -25,6 +25,7 @@
 
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
+import { resolveOperatingCompanyKeyForCompany } from "../eosOps/operatingCompanyBinding";
 import {
   COMMERCIAL_TABLE_BY_KIND,
   buildCommercialHandoff,
@@ -131,9 +132,14 @@ export async function createCommercialRecord(
     "id", "tenant_id", numberColumn, "account_id", "owner_employee_id",
     "operating_company_key", "created_by", "updated_by", ...lineageColumns,
   ];
+  // The authority's normalized value is the governed operating company ID; the column holds its KEY, reached only
+  // through the ACTIVE governed binding (never by assuming the two literals are equal). Unbound refuses.
+  const operatingCompanyKey = built.operatingCompanyKey === null
+    ? null
+    : await resolveOperatingCompanyKeyForCompany(pool, tenantId, built.operatingCompanyKey);
   const values = [
     id, tenantId, built.recordNumber, built.accountId, built.ownerEmployeeId,
-    built.operatingCompanyKey, built.createdBy, actorId, ...lineageValues,
+    operatingCompanyKey, built.createdBy, actorId, ...lineageValues,
   ];
   const placeholders = values.map((_, i) => `$${i + 1}`).join(", ");
 

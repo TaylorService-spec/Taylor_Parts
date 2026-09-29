@@ -31,7 +31,7 @@ things and this document never fuses them into one verdict.
 - **catalogInactive**: 151
 - **eligibleForEnvironmentActivation**: 92
 - **activatedInSomeEnvironment**: 92
-- **callableExports**: 48
+- **callableExports**: 43
 - **destinations**: 95
 - **destinationsHidden**: 19
 - **guides**: 0
@@ -46,8 +46,8 @@ Evidence of reference. **Not** proof that a callable exists, except where stated
 
 | Class | Count | Means |
 | --- | ---: | --- |
-| EXPORTED | 21 | An exported callable in `index.ts` names this capability |
-| SERVER_REFERENCED | 127 | Referenced under `functions/src`; no callable matched |
+| EXPORTED | 20 | An exported callable in `index.ts` names this capability |
+| SERVER_REFERENCED | 128 | Referenced under `functions/src`; no callable matched |
 | CLIENT_ONLY | 0 | Referenced only in the client app |
 | NO_IMPLEMENTATION_EVIDENCE | 3 | No literal reference found — **may be a false negative** for ids assembled indirectly |
 

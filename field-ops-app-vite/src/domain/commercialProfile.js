@@ -205,6 +205,9 @@ export function isContactOnAccount(contactId, accountContacts) {
 // accepted just because it is present.
 export function isCompleteAccountOwner(accountOwner) {
   if (accountOwner == null) return true;
+  // CRM CUTOVER: an owner READ from the governed PostgreSQL CRM authority is an Employee id the server already resolved
+  // in this tenant; it carries no client-side assignment snapshot and is complete as it stands.
+  if (accountOwner.source === "EOS_CRM") return typeof accountOwner.assignedToEmployeeId === "string" && accountOwner.assignedToEmployeeId !== "";
   const hasAssignee = Boolean(accountOwner.assignedToEmployeeId && accountOwner.assignedToUserId);
   const hasSnapshot = Boolean(accountOwner.assignedToDisplayName);
   const hasAssignor = Boolean(
@@ -278,13 +281,13 @@ export function commercialProfileErrors(
 // Current display identity for the account owner, re-resolved from the stable
 // internal reference (userId) via the employee directory -- NOT the stored
 // snapshot.
-export function resolveOwnerIdentity(accountOwner, { byUserId, loading = false, error = null } = {}) {
+export function resolveOwnerIdentity(accountOwner, { byUserId, byEmployeeId = null, loading = false, error = null } = {}) {
   const userId = accountOwner?.assignedToUserId;
   const employeeId = accountOwner?.assignedToEmployeeId;
   if (!accountOwner || (!userId && !employeeId)) return { state: "unset", name: null };
   if (error) return { state: "error", name: "Owner name unavailable" };
   if (loading) return { state: "loading", name: null };
-  const current = userId ? byUserId?.get?.(userId)?.displayName : null;
+  const current = (userId ? byUserId?.get?.(userId)?.displayName : null) ?? (employeeId ? byEmployeeId?.get?.(employeeId)?.displayName : null);
   if (current) return { state: "resolved", name: current };
   return { state: "unknown", name: "Unknown owner" };
 }

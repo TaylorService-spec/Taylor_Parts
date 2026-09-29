@@ -1,68 +1,34 @@
-// Sales Order — transport over the three trusted, capability-gated WRITE callables
-// (functions/src/salesOrder/salesOrderCallables.ts's transitionSalesOrder,
-// functions/src/fulfillment/allocateSalesOrder.ts, functions/src/salesOrder/createServiceForSalesOrder.ts).
-// Structure mirrors services/salesOrderReadCallableClient.js exactly: firebase is imported LAZILY (no
-// import-time initializeApp side effect), and this is the only place that invokes these callables.
+// Sales Order commands -- over the governed PostgreSQL Commercial transport (Pass 11 Retail Sales journey).
 //
-// salesOrder.write / salesOrder.fulfill / salesOrder.service are already sandbox-activated
-// (config/environments.json's capabilityActivationOverrides) — unlike Part Master's write callables,
-// there is no "not deployed" posture here, so this client carries NO client-side readiness flag. A
-// persona's authorization is resolved fail-closed server-side (resolveEffectiveAccess) on every call,
-// exactly like the read callable; attempting the call and mapping whatever comes back is the same
-// governed pattern every other write client in this codebase uses once its capability is live.
+// transitionSalesOrder (ADVANCE / CANCEL) was the Firebase callable of the same name; it is now POST /commercial/sales
+// `transitionSalesOrder` (functions/src/eosCommercial/commands/salesOrderCommandService.ts), decided by the caller's
+// governed capability, idempotent on the caller's key. Never throws: `{ result }` or `{ errorStatus }` in the error
+// vocabulary domain/salesOrderActions.js already renders.
 //
-// Never throws. Each method returns { result } on success or { errorStatus } on failure, where
-// errorStatus is the callable's HttpsError `code` (functions/-prefix stripped), or "internal" when the
-// failure carries no usable code. domain/salesOrderActions.js's outcomeFromErrorCode owns turning that
-// code into a safe, human message — this file performs transport only.
-function mapErrorToStatus(err) {
-  const raw = err && typeof err.code === "string" ? err.code : "";
-  const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
-  return code || "internal";
+// ALLOCATE and CREATE SERVICE are the HELD downstream boundary (Owner ruling D2): PostgreSQL governs no allocation,
+// reservation or service Work Order lineage yet, and a Sales Order in eos_commercial is not a Firestore order the
+// legacy commands could act on. They refuse honestly here ("failed-precondition") and the screen does not offer them
+// for an order whose downstream execution is not tracked (view.downstreamTracked === false).
+import { commercialApiClient } from "./commercialApiClient.js";
+import { legacyErrorStatus } from "./commercialEosAdapters.js";
+
+// idempotencyKey is REQUIRED and is carried through VERBATIM -- the caller (hooks/useSalesOrderActions.js) generates it
+// once per user intent and reuses it across a retry.
+export async function transitionSalesOrder({ salesOrderId, transition, idempotencyKey }, { client = commercialApiClient } = {}) {
+  const answer = await client.call("transitionSalesOrder", { input: { salesOrderId, transition, idempotencyKey } });
+  return answer.ok ? { result: answer.result } : { errorStatus: legacyErrorStatus(answer) };
 }
 
-async function invoke(name, payload) {
-  const [{ httpsCallable }, { functions }] = await Promise.all([
-    import("firebase/functions"),
-    import("../firebase/firebase.js"),
-  ]);
-  const res = await httpsCallable(functions, name)(payload);
-  return res?.data;
+const HELD = Object.freeze({ errorStatus: "failed-precondition" });
+
+/** Held downstream boundary: allocation is not governed in PostgreSQL yet (D2). */
+export async function allocateSalesOrder() {
+  return HELD;
 }
 
-// idempotencyKey is REQUIRED by transitionSalesOrder and is carried through VERBATIM (never
-// regenerated here) — the caller (hooks/useSalesOrderActions.js) owns generating it once per user
-// intent and reusing it across a retry.
-export async function transitionSalesOrder({ salesOrderId, transition, idempotencyKey }) {
-  try {
-    const result = await invoke("transitionSalesOrder", { salesOrderId, transition, idempotencyKey });
-    return { result };
-  } catch (err) {
-    return { errorStatus: mapErrorToStatus(err) };
-  }
-}
-
-// allocateSalesOrder takes no idempotencyKey — the command is naturally re-run-safe (it nets this SO's
-// own prior allocation against on-hand before writing), so none is fabricated or sent here.
-export async function allocateSalesOrder({ salesOrderId }) {
-  try {
-    const result = await invoke("allocateSalesOrder", { salesOrderId });
-    return { result };
-  } catch (err) {
-    return { errorStatus: mapErrorToStatus(err) };
-  }
-}
-
-// createServiceForSalesOrder also takes no idempotencyKey — it is guarded by its own domain
-// invariant (an SO may only ever gain ONE lineage of Service Work Orders; a second call fails
-// failed-precondition once serviceWorkOrderIds is non-empty), so none is fabricated or sent here.
-export async function createServiceForSalesOrder({ salesOrderId }) {
-  try {
-    const result = await invoke("createServiceForSalesOrder", { salesOrderId });
-    return { result };
-  } catch (err) {
-    return { errorStatus: mapErrorToStatus(err) };
-  }
+/** Held downstream boundary: service Work Order creation waits for the governed Work Order lane (D2). */
+export async function createServiceForSalesOrder() {
+  return HELD;
 }
 
 export const salesOrderCommandClient = Object.freeze({

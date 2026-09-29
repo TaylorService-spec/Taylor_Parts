@@ -40,6 +40,8 @@ const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const { REORDER_SOURCE_FROZEN } = require("../lib/reorderRequest/reorderSourceFreeze.js");
+
 const {
   buildScheduledWindow,
   buildSecondScheduledWindow,
@@ -118,6 +120,12 @@ function reorderRequest(o) {
     voidedBy: o.voidedBy || null,
     voidedAt: o.voidedAt || null,
     voidReason: o.voidReason || null,
+    // THE SCENARIO MARKER, which this helper never stamped. Its absence is why the retirement tool
+    // has to accept `reorder_requests` on the deterministic manifest plus a content fingerprint
+    // rather than on a marker. Stamping it now means a re-seeded sandbox carries the same evidence
+    // on both collections; the tool still does not REQUIRE it here, because the documents already in
+    // the sandbox predate this line.
+    scenarioId: SCENARIO_ID,
   };
 }
 
@@ -431,6 +439,28 @@ async function main() {
   // disagree with itself; the scenario's opening positions come from the ledger.
 
   // --- Reorder requests across lifecycle states -------------------------
+  //
+  // ════════════════════ THE CUTOVER GATE ════════════════════
+  //
+  // After the Reorder cutover these writes are not fixtures any more -- they are a SECOND
+  // AUTHORITY, recreating in Firestore exactly the records the migration just retired, in the store
+  // that stopped being authoritative. A sandbox that re-seeded itself this way would undo the
+  // cutover every time someone refreshed it, silently.
+  //
+  // So the Reorder portion refuses once the source is frozen, and the scenario's PostgreSQL form
+  // (src/sandboxFixtures/reorderScenarioPostgresSeed.ts) takes over -- built through the SAME
+  // governed commands a person would use, writing PostgreSQL and nothing else. There is no bridge
+  // between the two, in either direction.
+  //
+  // The rest of this pack -- Work Orders, customers, equipment, locations -- is unaffected: those
+  // are different authorities with their own cutovers, and freezing them here would stop workflows
+  // this cutover has no mandate over.
+  if (REORDER_SOURCE_FROZEN) {
+    console.log(
+      `Reorder portion SKIPPED: the legacy Reorder source is frozen for the PostgreSQL cutover.\n` +
+      `  Seed the Reorder scenario through src/sandboxFixtures/reorderScenarioPostgresSeed.ts instead.\n` +
+      `  Receiving candidates come from the governed PostgreSQL authority, not from Firestore.`);
+  } else {
   // ORDERED — the canonical scenario's receiving candidate.
   await set("reorder_requests", "ro-sbx-001", reorderRequest({
     partId: "PRT-1001", recommendedQty: 4, requestedQty: 4, status: "ORDERED",
@@ -531,6 +561,7 @@ async function main() {
   for (const staleId of ["po-sbx-001", "po-sbx-002"]) {
     await db.collection("reorder_purchase_orders").doc(staleId).delete();
   }
+  } // end of the un-frozen Reorder portion
 
   console.log("Seeded:", JSON.stringify(counts));
   console.log(`Scenario ${SCENARIO_ID} v${SCENARIO_VERSION} ready.`);

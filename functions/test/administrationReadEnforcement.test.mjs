@@ -194,9 +194,12 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 55 -> 56: the direct-exception cell lock (1762992000000, lane DX) -- one trigger, no capability, no grant.
   // 56 -> 57: the Administrator staffing capability (1763078400000, Owner ruling R1) -- ONE WRITE capability
   // (admin.administratorRole.assign) granted to owner. It registers no READ key.
-  // 57 -> 58: the Work Order business-action capabilities (1763856000000, Controller rulings DQ-010 / DQ-011,
-  // lane L2) -- FOUR BUSINESS_ACTION capabilities granted to nobody. It registers no READ key.
-  assert.equal(migrations.length, 58, "a migration was added or removed by the read enforcement");
+  // 57 -> 63: the Catalog + Reorder coordinated activation candidate -- the Part alias authority (1763164800000), four
+  // Reorder domain schema migrations (1763251200000, 1763424000000, 1763510400000, 1763596800000) and the Reorder
+  // lifecycle capability REGISTRATION (1763337600000: eight BUSINESS_ACTION keys, granted to nobody). None registers
+  // a READ key, and none is a read-enforcement change.
+  // 63 -> 64: the Work Order business-action capabilities (1763856000000, Controller rulings DQ-010 / DQ-011, lane L2) -- FOUR BUSINESS_ACTION capabilities granted to nobody. It registers no READ key.
+  assert.equal(migrations.length, 64, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

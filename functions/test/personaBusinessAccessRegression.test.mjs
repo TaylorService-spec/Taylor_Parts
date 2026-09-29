@@ -264,9 +264,10 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 56: + the direct-exception cell lock (1762992000000): one trigger -- no capability, no grant, so no persona moves.
   // 57: + the Administrator staffing capability (1763078400000, Owner ruling R1): one capability granted to owner --
   // owner's set grows by exactly admin.administratorRole.assign; no other persona moves.
-  // 58: + the Work Order business-action capabilities (1763856000000, Controller rulings DQ-010 / DQ-011): four
-  // capabilities granted to NO Role -- no persona's set moves.
-  assert.equal(files.length, 58, "the migration chain moved; re-measure before trusting anything below");
+  // 63: + the six Catalog + Reorder integration migrations (PR #2000, 1763164800000..1763596800000). None grants a
+  // capability to any Role: the eight Reorder lifecycle keys are registered with NO grants (Administration-only).
+  // 64: + the Work Order business-action capabilities (1763856000000, Controller rulings DQ-010 / DQ-011, lane L2): four capabilities granted to NO Role -- no persona's set moves.
+  assert.equal(files.length, 64, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -368,7 +369,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 86); // + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011)
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 94); // + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.
@@ -1001,7 +1002,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
 
   await t.test("WORKFLOW BINDINGS NEVER CREATE ABSENT OBJECT CAPABILITY -- the seeded proof", async () => {
     // THE CLEANEST CASE IN THE SEEDED WORLD. `partsAssociate` is bound to FOUR actions of the
-    // partsPurchasing workflow, whose Object is `reorderRequest` -- and holds ZERO of the five
+    // partsPurchasing workflow, whose Object is `reorderRequest` -- and holds ZERO of the twelve
     // reorderRequest capabilities. The binding lets it be NAMED by a transition; it confers no read,
     // no create and no queue, and the persona is offered no Reorder destination.
     const workflows = await repo.listWorkflows(TENANT);
@@ -1017,8 +1018,12 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
 
     const reorderObjectKeys = capabilityCatalog
       .filter((c) => c.objectKey === "reorderRequest").map((c) => c.key).sort();
-    assert.deepEqual(reorderObjectKeys, ["reorder.request.assign", "reorder.request.create.manual",
-      "reorder.request.create.system", "reorder.request.read", "reorder.request.read.queue"]);
+    // + the seven reorderRequest lifecycle actions registered by 1763337600000 (reorder.purchaseOrder.void is the
+    // purchaseOrder Object's). They are Administration-grant-only: the associate below holds none of them either.
+    assert.deepEqual(reorderObjectKeys, ["reorder.request.approve", "reorder.request.assign", "reorder.request.cancel",
+      "reorder.request.create.manual", "reorder.request.create.system", "reorder.request.markReceived",
+      "reorder.request.postPurchasingUpdate", "reorder.request.read", "reorder.request.read.queue",
+      "reorder.request.recordPurchaseOrder", "reorder.request.reject", "reorder.request.startPurchasing"]);
     const associate = await resolvePersona("parts-associate");
     assert.deepEqual(reorderObjectKeys.filter((k) => associate.capabilities.has(k)), [],
       "a workflow binding has produced an Object capability");

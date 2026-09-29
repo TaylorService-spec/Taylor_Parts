@@ -40,6 +40,7 @@ import {
   OWNER_EXCLUDED_NOT_AN_AUTHORITY,
 } from "../lib/access/governedBusinessRoles.js";
 import { PERMISSION_CATALOG } from "../lib/access/permissionCatalog.js";
+import { ADMINISTRATION_GRANT_ONLY_CAPABILITIES } from "../lib/adminPolicy/roleCapabilityAdministration.js";
 
 let passed = 0;
 let failed = 0;
@@ -78,7 +79,10 @@ const VOCABULARY = new Set(MANIFEST.expectedAccess.postgresCapabilityVocabulary)
 
 const OWNER = new Set(OWNER_ROLE.permissions);
 const ADMIN = new Set(ADMIN_ROLE.permissions);
-const ownerInVocabulary = [...OWNER].filter((id) => VOCABULARY.has(id)).sort();
+// ADMINISTRATION-GRANT-ONLY keys (the Reorder lifecycle authority, 2026-09-28) are registered but have NO system default:
+// a catalog declaration of one is never reconciled into a grant (roleCapabilityAdministration.ts resolveCell). Owner's
+// legacy declaration of four of them is therefore not something a reconcile could write, and is measured separately below.
+const ownerInVocabulary = [...OWNER].filter((id) => VOCABULARY.has(id) && !ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(id)).sort();
 
 // ═══════════════ 1. Owner is no longer Administrator ═══════════════
 
@@ -196,6 +200,17 @@ check("the SUPERSEDED reorder queue key is not declared on Owner", () => {
   assert.equal(OWNER.has("reorder.request.assign"), false);
 });
 
+check("Owner's legacy declaration of Administration-grant-only keys cannot become a grant by reconcile", () => {
+  const declaredAdminOnly = [...OWNER].filter((id) => ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(id)).sort();
+  assert.deepEqual(declaredAdminOnly, [
+    "reorder.purchaseOrder.void", "reorder.request.approve", "reorder.request.cancel", "reorder.request.reject",
+  ]);
+  for (const id of declaredAdminOnly) {
+    assert.ok(VOCABULARY.has(id), `${id} is registered`);
+    assert.equal(LIVE_OWNER.has(id), false, `${id} is not held by the live Owner -- it waits for an Administration grant`);
+  }
+});
+
 // ═══════════════ 3. The exclusions are real ═══════════════
 
 check("OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES is exactly the 19 admin-only keys measured in nonprod", () => {
@@ -302,9 +317,10 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // RE-PINNED 2026-09-26: 79 -> 80, admin.securityPolicy.write (migration 1762646400000).
   // RE-PINNED 2026-09-26: 80 -> 81, admin.employeeFunctionalRole.write (migration 1762819200000; granted to nobody).
   // RE-PINNED 2026-09-26: 81 -> 82, admin.administratorRole.assign (migration 1763078400000; Owner ruling R1).
-  // RE-PINNED 2026-09-28: 82 -> 86, the four Work Order business actions (migration 1763856000000; Controller
-  // rulings DQ-010 / DQ-011), granted to no Role. Owner's governed set is unchanged (still 41, asserted above).
-  assert.equal(VOCABULARY.size, 86);
+  // RE-PINNED 2026-09-28: 82 -> 90, the eight Reorder lifecycle keys (migration 1763337600000), Administration-grant-only.
+  // RE-PINNED 2026-09-28 (lane L2): 90 -> 94, the four Work Order business actions (migration 1763856000000;
+  // Controller rulings DQ-010 / DQ-011), granted to no Role. Owner's governed set is unchanged.
+  assert.equal(VOCABULARY.size, 94);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

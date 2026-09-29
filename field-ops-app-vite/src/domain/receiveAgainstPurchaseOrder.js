@@ -96,9 +96,9 @@ export function receiveIdempotencyKey(reorderRequestId) {
 }
 
 // Resolve a receipt candidate's Part tracking mode from the SAME governed Part Master read the
-// rest of the app uses (services/partMasterQueries.fetchPartMasterList's result, passed in
+// rest of the app uses (services/partMasterQueries.readPartsForView([partId])'s result, passed in
 // verbatim -- this module stays Firebase-free). Pure and fail-closed:
-//   - a non-ok fetch (permission-denied / unavailable) blocks, never defaults to NONE
+//   - a non-ok fetch (a Catalog refusal FORBIDDEN / NOT_SIGNED_IN, or an outage) blocks, never defaults to NONE
 //   - a partId absent from the returned list blocks as BLOCKED_NOT_FOUND (never defaults to NONE)
 //   - only a genuine, present, valid-controlType Part record resolves READY with a trackingMode
 export function resolvePartTrackingMode({ partsFetchResult, partId }) {
@@ -106,7 +106,7 @@ export function resolvePartTrackingMode({ partsFetchResult, partId }) {
   if (!isPlainObject(partsFetchResult) || partsFetchResult.ok !== true) {
     const code = isPlainObject(partsFetchResult) ? partsFetchResult.code : null;
     return {
-      status: code === "permission-denied" ? PART_TRACKING_STATUS.BLOCKED_PERMISSION : PART_TRACKING_STATUS.BLOCKED_UNAVAILABLE,
+      status: code === "FORBIDDEN" || code === "NOT_SIGNED_IN" ? PART_TRACKING_STATUS.BLOCKED_PERMISSION : PART_TRACKING_STATUS.BLOCKED_UNAVAILABLE,
     };
   }
   const parts = Array.isArray(partsFetchResult.parts) ? partsFetchResult.parts : [];

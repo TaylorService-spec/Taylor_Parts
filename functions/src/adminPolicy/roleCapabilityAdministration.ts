@@ -148,6 +148,28 @@ export const conditionIsEvaluableFor = (capabilityKey: string): boolean =>
 
 // ════════════════════ 3. PRECEDENCE ════════════════════
 
+/**
+ * ADMINISTRATION-GRANT-ONLY capabilities: registered, with NO system default. The Reorder lifecycle authority (Controller
+ * ruling "REORDER LIFECYCLE AUTHORITY -- GO", 2026-09-28; migration 1763337600000) is registered in the current
+ * Administration model and must be granted THROUGH Administration -- "do not seed legacy role grants".
+ *
+ * The compiled Role catalog still declares several of these keys on legacy Roles (admin, dispatcher, technician,
+ * purchasingManager, generalManager, owner). Without this fence, the moment the keys became registered every default
+ * writer (the catalog reconcile, the activation tool, the Sample Company seed) would import those legacy holders as
+ * grants. With it, a catalog declaration of one of these keys is NOT a system default: the only way a Role holds one is
+ * a current ADMIN_GRANTED decision, and until then every command requiring it fails closed.
+ */
+export const ADMINISTRATION_GRANT_ONLY_CAPABILITIES: ReadonlySet<string> = new Set([
+  "reorder.request.approve",
+  "reorder.request.reject",
+  "reorder.request.startPurchasing",
+  "reorder.request.postPurchasingUpdate",
+  "reorder.request.markReceived",
+  "reorder.request.cancel",
+  "reorder.request.recordPurchaseOrder",
+  "reorder.purchaseOrder.void",
+]);
+
 export type GrantAuthoritySource =
   | "SYSTEM_INVARIANT"
   | "ADMIN_GRANTED"
@@ -174,6 +196,8 @@ export function resolveCell(input: {
   }
   if (input.decision === "ADMIN_GRANTED") return Object.freeze({ shouldHold: true, source: "ADMIN_GRANTED" as const });
   if (input.decision === "ADMIN_REVOKED") return Object.freeze({ shouldHold: false, source: "ADMIN_REVOKED" as const });
+  // No system default exists for an Administration-grant-only capability, whatever a catalog declares.
+  if (ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(input.capabilityKey)) return Object.freeze({ shouldHold: false, source: "NONE" as const });
   return input.isSystemDefault
     ? Object.freeze({ shouldHold: true, source: "SYSTEM_DEFAULT" as const })
     : Object.freeze({ shouldHold: false, source: "NONE" as const });

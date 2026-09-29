@@ -126,7 +126,11 @@ check("resolvePartTrackingMode: STANDARD -> NONE, SERIALIZED -> SERIAL, LOT -> L
 });
 
 check("resolvePartTrackingMode: fails CLOSED (never defaults to NONE) on a denied/unavailable/not-found Part read", () => {
-  assert.equal(resolvePartTrackingMode({ partsFetchResult: { ok: false, code: "permission-denied" }, partId: "p-1" }).status, PART_TRACKING_STATUS.BLOCKED_PERMISSION);
+  // The Part read is the Render Catalog client's (readPartsForView), whose refusal vocabulary is FORBIDDEN /
+  // NOT_SIGNED_IN and whose outage is UNAVAILABLE. Firestore's "permission-denied" is never produced by it.
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: { ok: false, code: "FORBIDDEN" }, partId: "p-1" }).status, PART_TRACKING_STATUS.BLOCKED_PERMISSION);
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: { ok: false, code: "NOT_SIGNED_IN" }, partId: "p-1" }).status, PART_TRACKING_STATUS.BLOCKED_PERMISSION);
+  assert.equal(resolvePartTrackingMode({ partsFetchResult: { ok: false, code: "UNAVAILABLE" }, partId: "p-1" }).status, PART_TRACKING_STATUS.BLOCKED_UNAVAILABLE);
   assert.equal(resolvePartTrackingMode({ partsFetchResult: { ok: false, code: "unavailable" }, partId: "p-1" }).status, PART_TRACKING_STATUS.BLOCKED_UNAVAILABLE);
   assert.equal(resolvePartTrackingMode({ partsFetchResult: okPartsFetch([{ partId: "other", controlType: "STANDARD" }]), partId: "p-1" }).status, PART_TRACKING_STATUS.BLOCKED_NOT_FOUND);
   // malformed fetch result (not even a plain object) -> also fails closed, never throws

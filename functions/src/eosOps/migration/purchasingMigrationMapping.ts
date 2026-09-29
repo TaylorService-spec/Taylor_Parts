@@ -511,6 +511,22 @@ export interface PurchaseOrderVoidRow {
   readonly partId: string;
   readonly reason: string;
   readonly voidedBy: string;
+  /** The legacy void instant (reorderFieldParityMatrix: voidedAt -> purchase_order_voids.voided_at). ISO. */
+  readonly voidedAt: string;
+}
+
+/**
+ * A legacy Firestore instant, parsed the one way the Reorder migration accepts: epoch MILLISECONDS (what the legacy
+ * writers stored and firestore.rules asserted) or an ISO-8601 instant. Anything else is refused, never handed to
+ * `new Date(...)` to be guessed at. Absent is `value: null` -- the caller decides whether absence is allowed.
+ */
+export function legacyInstant(v: unknown): { ok: true; value: string | null } | { ok: false } {
+  if (v === null || v === undefined) return { ok: true, value: null };
+  if (typeof v === "number" && Number.isSafeInteger(v) && v > 0) return { ok: true, value: new Date(v).toISOString() };
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T/.test(v) && !Number.isNaN(Date.parse(v))) {
+    return { ok: true, value: new Date(v).toISOString() };
+  }
+  return { ok: false };
 }
 
 /**
@@ -555,6 +571,12 @@ export function mapLegacyPurchaseOrderVoid(
   }
   const voidedBy = text(data.voidedBy);
   if (voidedBy === null) return refuse("MISSING_REQUIRED_TEXT", id, "voidedBy is required");
+  // WHEN the order was cancelled is the void's own fact, and the governed row carries it. Stamping the copy time
+  // instead would move a business event to the day of the migration.
+  const voidedAt = legacyInstant(data.voidedAt);
+  if (voidedAt.ok !== true || voidedAt.value === null) {
+    return refuse("MISSING_REQUIRED_TEXT", id, "voidedAt is required and must be an epoch-millisecond or ISO instant");
+  }
 
   return {
     ok: true,
@@ -564,6 +586,7 @@ export function mapLegacyPurchaseOrderVoid(
       partId: part.partId,
       reason,
       voidedBy,
+      voidedAt: voidedAt.value,
     }),
   };
 }

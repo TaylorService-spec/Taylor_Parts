@@ -3,6 +3,7 @@
 // Its OWN database, migrated by the normal runner. The records are written by the real C2 commands (and, for the
 // identity-only rows, by the bounded spine writer the synthetic seed uses), then read back through the real C3
 // projections. Numbers in test names refer to the C3 work order's proof list.
+import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -79,6 +80,8 @@ test("governed PostgreSQL Commercial read projections, in PostgreSQL", { skip: S
 
   // ── the world ──
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  await bindOperatingCompany(q, "t1", "taylor"); // governed key binding, explicit (never inferred from the id)
+  await bindOperatingCompany(q, "t2", "taylor"); // governed key binding, explicit (never inferred from the id)
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, owner_employee_id, created_by, updated_by) VALUES
     ('acct-1','t1','Retail Customer','ACTIVE','e-retail','x','x'), ('acct-2','t1','Second Customer','ACTIVE','e-national','x','x'),
     ('acct-t2','t2','Retail Customer','ACTIVE','e-t2','x','x')`);

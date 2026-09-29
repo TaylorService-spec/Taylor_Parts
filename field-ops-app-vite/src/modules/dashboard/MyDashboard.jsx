@@ -46,7 +46,7 @@ import { composeDashboard, goalTargetsFor, resolvedModuleKeys, MODULE_STATE, SEC
 import { usePerformanceGoals, goalKey } from "../../hooks/usePerformanceGoals.js";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames.js";
 import { useAccountPortfolioSummary } from "../../hooks/useAccountPortfolioSummary.js";
-import { fetchReorderWarehouseOptions } from "../../services/reorderCallableClient.js";
+import { fetchReorderWarehouseOptions } from "../../services/reorderApiClient.js";
 
 import { useWorkOrders } from "../../hooks/useWorkOrders.js";
 import {

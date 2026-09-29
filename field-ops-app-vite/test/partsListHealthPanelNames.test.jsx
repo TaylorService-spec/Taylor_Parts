@@ -7,7 +7,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, act } from "@testing-library/react";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [{ sku: "TST-9001", name: "STATIC-CATALOG-NAME-A", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }],
   getCatalogItem: () => undefined,
@@ -17,7 +17,7 @@ vi.mock("../src/hooks/useReorderRequests", () => {
   const r = () => ({ data: [], loading: false, hasMore: false, loadMore: () => {}, refresh: () => {}, error: null });
   return {
     useReorderRequests: r, useReorderRequestsByStatus: r, useReorderRequestsByStatuses: r,
-    useReorderRequestsAssignedTo: r, useReorderRequestsHistory: r, useReorderRequestById: r,
+    useMyAssignedReorderRequests: r, useReorderRequestsHistory: r, useReorderRequestById: r,
     fetchReorderRequestsHistoryPage: async () => ({ items: [], hasMore: false }),
   };
 });
@@ -38,7 +38,7 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useSearchParams: () => [new URLSearchParams(), () => {}], Link: ({ children }) => children };
 });
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import PartsList from "../src/modules/inventory/PartsList.jsx";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); captured.length = 0; });
@@ -48,7 +48,7 @@ const READY = { ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-A"
 
 describe("PartsList + InventoryHealthPanel (OD-3)", () => {
   it("READY: catalog shows canonical name; the resolveName passed to the health panel resolves canonically; no static name", async () => {
-    fetchPartMasterList.mockResolvedValue(READY);
+    searchParts.mockResolvedValue(READY);
     render(<PartsList accessVersion={1} />);
     await screen.findByText("CANONICAL-NAME-A");            // PartsList's own canonical catalog table
     expect(latestResolve("TST-9001")).toBe("CANONICAL-NAME-A"); // 5th mount's resolver is canonical
@@ -57,7 +57,7 @@ describe("PartsList + InventoryHealthPanel (OD-3)", () => {
   });
 
   it("invalid canonical documents: the health-panel resolver fails closed to the raw partId (never static)", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: READY.parts, invalid: [{ partId: "TST-9001", secretField: "raw-invalid-value" }] });
+    searchParts.mockResolvedValue({ ok: true, parts: READY.parts, invalid: [{ partId: "TST-9001", secretField: "raw-invalid-value" }] });
     render(<PartsList accessVersion={1} />);
     await screen.findByText(/could not be verified against the canonical source/i);
     expect(latestResolve("TST-9001")).toBe("TST-9001");
@@ -66,7 +66,7 @@ describe("PartsList + InventoryHealthPanel (OD-3)", () => {
 
   it("accessVersion change invalidates the health-panel resolver synchronously", async () => {
     const deferreds = [];
-    fetchPartMasterList.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
+    searchParts.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
     const { rerender } = render(<PartsList accessVersion={1} />);
     await act(async () => { deferreds[0].resolve(READY); });
     await screen.findByText("CANONICAL-NAME-A");
@@ -79,7 +79,7 @@ describe("PartsList + InventoryHealthPanel (OD-3)", () => {
 
   it("stale completion: an OLD-boundary read LEFT PENDING across the access change cannot alter the new boundary's resolver", async () => {
     const deferreds = [];
-    fetchPartMasterList.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
+    searchParts.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
     const { rerender } = render(<PartsList accessVersion={1} />);
     expect(deferreds).toHaveLength(1);                       // read #1 issued, LEFT PENDING
     rerender(<PartsList accessVersion={2} />);               // access changes; read #2 issued

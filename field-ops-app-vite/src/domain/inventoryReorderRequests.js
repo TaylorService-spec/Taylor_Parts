@@ -1,15 +1,11 @@
-import { doc, runTransaction } from "firebase/firestore";
-import { submitCreateReorderRequest } from "../services/reorderCallableClient.js";
-import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS, REORDER_REQUEST_OWNER, QUANTITY_SOURCE } from "./constants";
-import { makeCollectionStore } from "../firebase/collectionStore";
-import { auth, db } from "../firebase/firebase";
+import { REORDER_REQUEST_STATUS, QUANTITY_SOURCE } from "./constants";
 import { isWriteBlocked } from "../config/env";
 // buildReorderRequestFields is no longer imported here: the canonical 35-field payload is now built
 // server-side by the trusted createReorderRequest command, which is the only writer. The pure
 // builder and its tests remain in domain/reorderRequestPayload.js -- retiring them is a separate
 // cleanup, and deleting a tested module as a side effect of an authority migration would be scope
 // this change has no business taking.
-import { isCancellableReorderRequestStatus } from "./reorderRequestCancelGuard";
+import { reorderApiClient } from "../services/reorderApiClient.js";
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation
 // (docs/BusinessEntityModel.md's Reorder Request entry; Inventory
@@ -53,7 +49,10 @@ import { isCancellableReorderRequestStatus } from "./reorderRequestCancelGuard";
 // this file -- they're set exclusively by
 // domain/reorderPurchaseOrders.js's recordPurchaseOrder(), atomically
 // together with creating the linked Reorder Purchase Order record.
-export const reorderRequestsStore = makeCollectionStore(REORDER_REQUESTS_COLLECTION);
+// THE FIRESTORE STORE IS GONE. Every writer in this file now calls the governed PostgreSQL command
+// through services/reorderApiClient.js, so there is no collection handle to hold and nothing here
+// imports firebase/firestore at all. Leaving the store exported "just in case" would leave a second
+// write path one import away from being used again.
 
 // Zero-history reorder behavior sprint, PR 3 (docs/specifications/
 // inventory-zero-history-reorder-behavior.md). recommendationStatus/
@@ -112,15 +111,29 @@ export function createReorderRequest({ partId, warehouseId, urgency, recommended
   // requestedBy is the AUTHENTICATED actor, taken server-side from the callable context, and is
   // deliberately not sent -- a client-asserted actor is not an actor. operatingCompanyId is never
   // sent either: the server derives it and REFUSES a caller that supplies one.
-  return submitCreateReorderRequest({
+  // THE GOVERNED POSTGRESQL COMMAND. This was a Firebase callable writing a Firestore document; the
+  // Reorder object now lives in eos_ops, so the callable is no longer the authority and is not
+  // called as a fallback either -- two write authorities for one command is exactly what the
+  // Firestore retirement exists to prevent.
+  //
+  // requestedBy is still the AUTHENTICATED actor taken server-side, and is deliberately not sent: a
+  // client-asserted actor is not an actor. operatingCompanyId is never sent either -- the server
+  // reads it FROM the governed warehouse and refuses a caller that supplies one.
+  //
+  // MANUAL_ZERO_HISTORY is the hand-entered quantity path and ANALYTICS is the system
+  // recommendation; they are separate capabilities (create.manual / create.system) because they are
+  // separate authorities, and a hand-entered quantity must be greater than zero while a system
+  // recommendation may legitimately be zero.
+  return reorderApiClient.call("createReorderRequest", {
     partId,
     warehouseId,
     recommendationStatus,
-    urgency,
+    urgency: urgency ?? undefined,
     quantitySource,
-    recommendedQty,
-    requestedQty,
-    workOrderId,
+    recommendedQuantity: recommendedQty ?? null,
+    requestedQuantity: requestedQty,
+    workOrderId: workOrderId ?? null,
+    manual: quantitySource === QUANTITY_SOURCE.MANUAL_ZERO_HISTORY,
   });
 }
 
@@ -195,24 +208,24 @@ export function getDisplayQty(request) {
 // rejection is terminal (`status` = REJECTED, `reviewDecision` =
 // REJECTED) and leaves `currentOwner` with Inventory -- there's no
 // further hand-off for a rejected request.
-export function reviewReorderRequest(requestId, { decision, notes }) {
+export function reviewReorderRequest(requestId, { decision, notes }, deps = {}) {
+  const client = deps.client ?? reorderApiClient;
   if (decision !== REORDER_REQUEST_STATUS.APPROVED && decision !== REORDER_REQUEST_STATUS.REJECTED) {
     throw new Error(`Invalid review decision: ${decision}`);
   }
   const trimmedNotes = notes?.trim() || "";
+  // Kept client-side as well as server-side: the server refuses a note-less rejection too, and this
+  // is the message the reviewer actually sees while typing.
   if (decision === REORDER_REQUEST_STATUS.REJECTED && !trimmedNotes) {
     throw new Error("Review notes are required when rejecting a Reorder Request.");
   }
-
-  const isApproved = decision === REORDER_REQUEST_STATUS.APPROVED;
-
-  return reorderRequestsStore.update(requestId, {
-    status: isApproved ? REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER : REORDER_REQUEST_STATUS.REJECTED,
-    reviewDecision: decision,
-    reviewedBy: auth.currentUser?.uid ?? null,
-    reviewedAt: Date.now(),
-    reviewNotes: trimmedNotes || null,
-    currentOwner: isApproved ? REORDER_REQUEST_OWNER.PARTS_MANAGER : REORDER_REQUEST_OWNER.INVENTORY,
+  // The status and currentOwner the legacy client wrote by hand are the SERVER'S to decide now:
+  // APPROVED advances to READY_FOR_PARTS_MANAGER and the owner is derived from the status, so
+  // neither is sent.
+  return client.call("reviewReorderRequest", {
+    reorderRequestId: requestId,
+    decision,
+    reviewNotes: trimmedNotes || undefined,
   });
 }
 
@@ -224,19 +237,30 @@ export function reviewReorderRequest(requestId, { decision, notes }) {
 // not a picker. This is the platform's first per-user workflow
 // ownership field -- `currentOwner` stays role-level (PARTS_ASSOCIATE),
 // while `assignedToUserId` carries the individual identity.
-export function assignReorderRequest(requestId, { assignedToUserId }) {
-  const trimmedUserId = assignedToUserId?.trim() || "";
-  if (!trimmedUserId) {
-    throw new Error("A Parts Associate user ID is required to assign this Reorder Request.");
+/**
+ * Assign a Reorder Request to an EMPLOYEE.
+ *
+ * WAS: a direct client Firestore write that set `assignedToUserId` to a Firebase uid, alongside the
+ * status and owner. THREE things were wrong with that, and the cutover fixes all three at once.
+ *
+ *   1. THE ASSIGNEE WAS A UID. Work is assigned to a person the business employs, not to a login.
+ *      The governed authority names an Employee, and a uid has no column to land in.
+ *   2. THE CLIENT WAS THE WRITER. A browser cannot be the authority for who may assign work, nor for
+ *      whether the Employee is active, linked and qualified. The server checks all of it, in one
+ *      transaction, and refuses with a reason.
+ *   3. THE STATUS MOVED SEPARATELY. Assigning and advancing were two fields in one client write, so
+ *      a partial write could leave a Reorder assigned but not advanced. They are now one transaction.
+ *
+ * Returns the client envelope ({ ok, result } or { ok:false, code, reason, message }) rather than
+ * throwing, so a refusal is a value the screen renders.
+ */
+export function assignReorderRequest(requestId, { employeeId }, deps = {}) {
+  const client = deps.client ?? reorderApiClient;
+  const trimmed = typeof employeeId === "string" ? employeeId.trim() : "";
+  if (!trimmed) {
+    throw new Error("An Employee is required to assign this Reorder Request.");
   }
-
-  return reorderRequestsStore.update(requestId, {
-    status: REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
-    currentOwner: REORDER_REQUEST_OWNER.PARTS_ASSOCIATE,
-    assignedToUserId: trimmedUserId,
-    assignedBy: auth.currentUser?.uid ?? null,
-    assignedAt: Date.now(),
-  });
+  return client.call("assignReorderRequest", { reorderRequestId: requestId, employeeId: trimmed });
 }
 
 // Sprint 2.1.7 -- Purchase Execution Foundation. The only writer of a
@@ -248,12 +272,11 @@ export function assignReorderRequest(requestId, { assignedToUserId }) {
 // they can still read the request. currentOwner and the assignment
 // fields are untouched -- this is the same person's work moving from
 // waiting to in-progress, not a hand-off.
-export function startPurchasing(requestId) {
-  return reorderRequestsStore.update(requestId, {
-    status: REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
-    purchasingStartedAt: Date.now(),
-    purchasingStartedBy: auth.currentUser?.uid ?? null,
-  });
+export function startPurchasing(requestId, deps = {}) {
+  const client = deps.client ?? reorderApiClient;
+  // ASSIGNEE ONLY, and the server decides that by resolving the caller to an Employee -- not by
+  // comparing a Firebase uid to a document field.
+  return client.call("startPurchasingOnReorder", { reorderRequestId: requestId });
 }
 
 // Sprint 2.1.8 -- Purchasing Progress Update. The only writer of a
@@ -268,13 +291,14 @@ export function startPurchasing(requestId) {
 // any Vendor Management record -- purchasingNotes/vendorContacted/
 // expectedAvailabilityDate are informal progress fields on the
 // existing Reorder Request, not a new object.
-export function updatePurchasingProgress(requestId, { purchasingNotes, vendorContacted, expectedAvailabilityDate }) {
-  return reorderRequestsStore.update(requestId, {
-    purchasingNotes: purchasingNotes?.trim() || null,
+export function updatePurchasingProgress(requestId, { purchasingNotes, vendorContacted, expectedAvailabilityDate }, deps = {}) {
+  const client = deps.client ?? reorderApiClient;
+  return client.call("postPurchasingUpdate", {
+    reorderRequestId: requestId,
+    purchasingNotes: purchasingNotes?.trim() || undefined,
     vendorContacted: !!vendorContacted,
-    expectedAvailabilityDate: expectedAvailabilityDate || null,
-    lastPurchasingUpdateAt: Date.now(),
-    lastPurchasingUpdateBy: auth.currentUser?.uid ?? null,
+    // An ISO calendar day or nothing. The server refuses anything else rather than parsing it.
+    expectedAvailabilityDate: expectedAvailabilityDate || undefined,
   });
 }
 
@@ -293,12 +317,9 @@ export function updatePurchasingProgress(requestId, { purchasingNotes, vendorCon
 // the ledger via a Cloud-Function-mediated path once Firebase Blaze
 // is enabled), genuinely blocked on Blaze (issue #15), not solved by
 // this function.
-export function receiveReorderRequest(requestId) {
-  return reorderRequestsStore.update(requestId, {
-    status: REORDER_REQUEST_STATUS.RECEIVED,
-    receivedAt: Date.now(),
-    receivedBy: auth.currentUser?.uid ?? null,
-  });
+export function receiveReorderRequest(requestId, deps = {}) {
+  const client = deps.client ?? reorderApiClient;
+  return client.call("markReorderReceived", { reorderRequestId: requestId });
 }
 
 // Cancel/Void schema deployment sequence, PR 4 of 6 (docs/specifications/
@@ -334,35 +355,21 @@ export function receiveReorderRequest(requestId) {
 // createReorderRequest() above) already lives in reorderRequestPayload.js:
 // this file imports Firebase (auth/db), so nothing in it is directly
 // importable under this project's plain-Node test runner.
-export function cancelReorderRequest(requestId, { reason }) {
+export function cancelReorderRequest(requestId, { reason }, deps = {}) {
+  const client = deps.client ?? reorderApiClient;
   if (isWriteBlocked()) {
     console.warn("WRITE BLOCKED (cancelReorderRequest)", requestId);
     return Promise.resolve({ blocked: true });
   }
-
   const trimmedReason = reason?.trim() || "";
   if (!trimmedReason) {
     throw new Error("A reason is required to cancel this Reorder Request.");
   }
-
-  const reorderRequestRef = doc(db, REORDER_REQUESTS_COLLECTION, requestId);
-
-  return runTransaction(db, async (transaction) => {
-    // Firestore transactions require all reads before any writes.
-    const reorderRequestSnap = await transaction.get(reorderRequestRef);
-
-    if (!reorderRequestSnap.exists()) {
-      throw new Error("Reorder Request not found.");
-    }
-    if (!isCancellableReorderRequestStatus(reorderRequestSnap.data().status)) {
-      throw new Error("This Reorder Request can no longer be cancelled from its current status.");
-    }
-
-    transaction.update(reorderRequestRef, {
-      status: REORDER_REQUEST_STATUS.CANCELLED,
-      cancelledBy: auth.currentUser?.uid ?? null,
-      cancelledAt: Date.now(),
-      cancellationReason: trimmedReason,
-    });
+  // The status guard that used to be a client-side Firestore transaction read is now the server's
+  // precondition, checked against the row it locks. isCancellableReorderRequestStatus remains a
+  // separately unit-tested predicate; it is simply no longer the enforcement.
+  return client.call("cancelReorderRequest", {
+    reorderRequestId: requestId,
+    cancellationReason: trimmedReason,
   });
 }

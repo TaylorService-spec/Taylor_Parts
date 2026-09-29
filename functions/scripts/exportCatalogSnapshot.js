@@ -10,7 +10,7 @@
 //
 //   * READ ONLY, SOURCE-EXPORT PURPOSE ONLY. The only Firestore calls are `collection(name).get()`; no write verb
 //     appears in the code (static test). No sync, no scheduled job, no second run that "refreshes" anything.
-//   * EXACT SOURCE ALLOWLIST: `parts` and `equipment_models`, nothing else (SOURCE_COLLECTIONS + assertAllowlisted).
+//   * EXACT SOURCE ALLOWLIST: `parts`, `equipment_models` and `part_aliases`, nothing else (SOURCE_COLLECTIONS + assertAllowlisted).
 //   * NOT RUNTIME. No module under functions/src, field-ops-app-vite/src or integrations references it; it is not in
 //     functions/package.json main/exports/scripts; no workflow runs it or schedules it (structural test). It lives in
 //     functions/scripts beside the other operator tools, which scripts/firebaseExitGuard.mjs does not scan.
@@ -45,7 +45,11 @@ const { parseArgs, PRODUCTION_PROJECT_ID } = require("./projectTargetGuard.js");
 const FIREBASE_EXIT_MIGRATION_ONLY = "FIREBASE_EXIT_MIGRATION_ONLY";
 
 /** The exact source collections, snapshot key -> Firestore collection. Nothing else may be read. */
-const SOURCE_COLLECTIONS = Object.freeze({ parts: "parts", equipmentModels: "equipment_models" });
+// `part_aliases` joined the allowlist with the PostgreSQL alias authority. It is in the SAME
+// snapshot as the Parts deliberately: an alias and the Part it names are one consistent picture or
+// they are not evidence, and two exports taken minutes apart could disagree about a Part renamed in
+// between. The allowlist is still EXACT -- three names, and `assertAllowlisted` refuses every other.
+const SOURCE_COLLECTIONS = Object.freeze({ parts: "parts", equipmentModels: "equipment_models", partAliases: "part_aliases" });
 const FROZEN_PROJECTS = Object.freeze(["eos-platform-certification"]);
 
 function assertAllowlisted(collectionName) {

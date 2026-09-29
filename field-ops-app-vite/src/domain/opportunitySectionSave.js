@@ -49,8 +49,9 @@ export const COMMAND_EDITABLE_FIELDS = Object.freeze([
  * a field the surface offers to edit but the command will not accept is a defect in one of the
  * two, and the surface must be able to say so instead of reporting a save that did nothing.
  */
-export function buildSectionSaveInput({ opportunityId, expectedUpdatedAtMillis, idempotencyKey, draft }) {
-  const input = { opportunityId, expectedUpdatedAtMillis, idempotencyKey };
+export function buildSectionSaveInput({ opportunityId, expectedEditVersion, idempotencyKey, draft }) {
+  // expectedEditVersion: the edit_version the screen loaded; the governed command applies the edit only against it.
+  const input = { opportunityId, expectedEditVersion, idempotencyKey };
   const unsupported = [];
   for (const [key, value] of Object.entries(draft ?? {})) {
     const inputKey = FIELD_TO_INPUT[key] ?? key;

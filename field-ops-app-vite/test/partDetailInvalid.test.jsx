@@ -1,5 +1,5 @@
 // Issue #100 C1/C2 invalid-passthrough — RENDER gate for PartDetail (C2). Runs via `npm run test:components`
-// (vitest + jsdom). Proves PartDetail passes fetchPartMasterList's `invalid` into the shared composer and,
+// (vitest + jsdom). Proves PartDetail passes searchParts's `invalid` into the shared composer and,
 // when the canonical read reports invalid (or malformed-invalid) documents, renders the BLOCKED detail
 // message — showing neither canonical nor static detail and never raw invalid-document data. The shared
 // composer + static catalog are REAL; only the Firebase-touching hooks, router, and heavy children are
@@ -7,7 +7,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 
-vi.mock("../src/services/partMasterQueries", () => ({ fetchPartMasterList: vi.fn() }));
+vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
 vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [{ sku: "TST-9001", name: "STATIC-CATALOG-NAME-A", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }],
   getCatalogItem: () => undefined,
@@ -35,7 +35,7 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useParams: () => ({ partId: "TST-9001" }), useSearchParams: () => [new URLSearchParams(), () => {}], Link: ({ children }) => children };
 });
 
-import { fetchPartMasterList } from "../src/services/partMasterQueries";
+import { searchParts } from "../src/services/partMasterQueries";
 import PartDetail from "../src/modules/inventory/PartDetail.jsx";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -44,7 +44,7 @@ const BLOCKED_DETAIL = /could not be verified against the canonical source, so i
 
 describe("PartDetail (C2) — invalid-passthrough fail-closed render", () => {
   it("canonical read with invalid documents => BLOCKED detail message; NO canonical/static detail, no raw invalid data", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-A", category: "Valves", stockingUnit: "each" }], invalid: [{ partId: "TST-9001", secretField: "raw-invalid-value", invalid: true }] });
+    searchParts.mockResolvedValue({ ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-A", category: "Valves", stockingUnit: "each" }], invalid: [{ partId: "TST-9001", secretField: "raw-invalid-value", invalid: true }] });
     render(<PartDetail />);
     await screen.findByText(BLOCKED_DETAIL);
     expect(screen.queryByText("CANONICAL-NAME-A")).toBeNull();
@@ -54,7 +54,7 @@ describe("PartDetail (C2) — invalid-passthrough fail-closed render", () => {
   });
 
   it("malformed invalid metadata (non-array) also blocks the detail page (never a static-fallback page)", async () => {
-    fetchPartMasterList.mockResolvedValue({ ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-A", category: "Valves", stockingUnit: "each" }], invalid: "not-an-array" });
+    searchParts.mockResolvedValue({ ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-A", category: "Valves", stockingUnit: "each" }], invalid: "not-an-array" });
     render(<PartDetail />);
     await screen.findByText(BLOCKED_DETAIL);
     expect(screen.queryByText("STATIC-CATALOG-NAME-A")).toBeNull();

@@ -2,12 +2,32 @@
 // every caller is about to decide something from it inside its transaction. No business rule lives here.
 import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
+import { resolveOperatingCompanyKeyForCompany } from "../../eosOps/operatingCompanyBinding";
 
 type Queryable = Pick<PoolClient, "query">;
 const S = "eos_commercial";
 export const newRecordId = (prefix: "opp" | "sag" | "sor"): string => `${prefix}_${randomUUID()}`;
 const millis = (d: Date | null): number | null => (d === null ? null : d.getTime());
 const toTimestamp = (ms: number | null | undefined): Date | null => (typeof ms === "number" ? new Date(ms) : null);
+
+// ════════════════════ Operating company: id in, KEY stored, id out ════════════════════
+//
+// `operating_company_key` holds an operating company KEY. Commands speak the governed operating company ID. The two are
+// different vocabularies and cross ONLY through the governed binding (eos_policy.tenant_operating_company_keys, both
+// the binding and the company ACTIVE) -- never by assuming the literal values are equal. Writes resolve the key inside
+// the command's transaction and refuse an unkeyed company (OPERATING_COMPANY_KEY_NOT_BOUND); reads map the stored key
+// back to its company through the same binding.
+
+/** The governed key for a company, or null when the record states no company. Fails closed on an unbound company. */
+export async function operatingCompanyKeyFor(db: Queryable, tenantId: string, operatingCompanyId: string | null): Promise<string | null> {
+  if (operatingCompanyId === null) return null;
+  return resolveOperatingCompanyKeyForCompany(db, tenantId, operatingCompanyId);
+}
+
+/** SQL: the ACTIVE company bound to a record's stored key (`alias` is the record table's alias). */
+export const operatingCompanyIdOfKey = (alias: string): string =>
+  `(SELECT k.operating_company_id FROM eos_policy.tenant_operating_company_keys k
+     WHERE k.tenant_id = ${alias}.tenant_id AND k.operating_company_key = ${alias}.operating_company_key AND k.status = 'ACTIVE')`;
 
 // ════════════════════ Opportunity ════════════════════
 
@@ -21,10 +41,10 @@ export interface OpportunityRow {
 
 export async function lockOpportunity(db: Queryable, tenantId: string, id: string): Promise<OpportunityRow | null> {
   const { rows } = await db.query(
-    `SELECT id, opportunity_number, account_id, owner_employee_id, operating_company_key, sales_channel::text, stage::text,
-            outcome::text, closed_at, need, expected_value::float8 AS expected_value, expected_close_at, next_action,
-            credited_salesperson_employee_id, accountable_employee_id, edit_version
-       FROM ${S}.opportunities WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+    `SELECT o.id, o.opportunity_number, o.account_id, o.owner_employee_id, ${operatingCompanyIdOfKey("o")} AS operating_company_id,
+            o.sales_channel::text, o.stage::text, o.outcome::text, o.closed_at, o.need, o.expected_value::float8 AS expected_value,
+            o.expected_close_at, o.next_action, o.credited_salesperson_employee_id, o.accountable_employee_id, o.edit_version
+       FROM ${S}.opportunities o WHERE o.tenant_id = $1 AND o.id = $2 FOR UPDATE OF o`,
     [tenantId, id],
   );
   if (rows.length === 0) return null;
@@ -35,7 +55,7 @@ export async function lockOpportunity(db: Queryable, tenantId: string, id: strin
   );
   return {
     id: r.id, number: r.opportunity_number, accountId: r.account_id, ownerEmployeeId: r.owner_employee_id,
-    operatingCompanyId: r.operating_company_key, salesChannel: r.sales_channel, stage: r.stage, outcome: r.outcome,
+    operatingCompanyId: r.operating_company_id, salesChannel: r.sales_channel, stage: r.stage, outcome: r.outcome,
     closedAtMillis: millis(r.closed_at), need: r.need, expectedValue: r.expected_value, expectedCloseAtMillis: millis(r.expected_close_at),
     nextAction: r.next_action, creditedSalespersonId: r.credited_salesperson_employee_id, accountableEmployeeId: r.accountable_employee_id,
     editVersion: Number(r.edit_version), lines: lines.rows.map((l) => ({ kind: l.kind, ref: l.ref, qty: l.qty })),
@@ -51,7 +71,7 @@ export async function insertOpportunity(db: Queryable, tenantId: string, actorId
     `INSERT INTO ${S}.opportunities (id, tenant_id, opportunity_number, account_id, owner_employee_id, operating_company_key,
        sales_channel, stage, need, expected_value, expected_close_at, credited_salesperson_employee_id, created_by, updated_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)`,
-    [o.id, tenantId, o.number, o.accountId, o.ownerEmployeeId, o.operatingCompanyId, o.salesChannel, o.stage, o.need,
+    [o.id, tenantId, o.number, o.accountId, o.ownerEmployeeId, await operatingCompanyKeyFor(db, tenantId, o.operatingCompanyId), o.salesChannel, o.stage, o.need,
       o.expectedValue, toTimestamp(o.expectedCloseAtMillis), o.creditedSalespersonId, actorId],
   );
   await replaceOpportunityLines(db, tenantId, o.id, o.lines);
@@ -82,10 +102,11 @@ export interface AgreementRow {
   acceptedAtMillis: number | null; lines: AgreementLineRow[];
 }
 
-const agreementSelect = `SELECT id, sales_agreement_number, account_id, opportunity_id, owner_employee_id, operating_company_key, state::text,
-  credited_salesperson_employee_id, location_id, customer_po, is_lease, fulfillment_intent::text, shipping_instructions, ship_via,
-  special_instructions, shipping_minor, install_charge_minor, tax_minor, down_payment_minor, trade_in_minor, accepted_at
-  FROM ${S}.sales_agreements`;
+const agreementSelect = `SELECT a.id, a.sales_agreement_number, a.account_id, a.opportunity_id, a.owner_employee_id,
+  ${operatingCompanyIdOfKey("a")} AS operating_company_id, a.state::text,
+  a.credited_salesperson_employee_id, a.location_id, a.customer_po, a.is_lease, a.fulfillment_intent::text, a.shipping_instructions, a.ship_via,
+  a.special_instructions, a.shipping_minor, a.install_charge_minor, a.tax_minor, a.down_payment_minor, a.trade_in_minor, a.accepted_at
+  FROM ${S}.sales_agreements a`;
 
 async function agreementFrom(db: Queryable, tenantId: string, r: Record<string, any>): Promise<AgreementRow> {
   const lines = await db.query(
@@ -96,7 +117,7 @@ async function agreementFrom(db: Queryable, tenantId: string, r: Record<string, 
   const n = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
   return {
     id: r.id, number: r.sales_agreement_number, accountId: r.account_id, opportunityId: r.opportunity_id, ownerEmployeeId: r.owner_employee_id,
-    operatingCompanyId: r.operating_company_key, state: r.state, creditedSalespersonId: r.credited_salesperson_employee_id,
+    operatingCompanyId: r.operating_company_id, state: r.state, creditedSalespersonId: r.credited_salesperson_employee_id,
     locationId: r.location_id, customerPO: r.customer_po, isLease: r.is_lease, fulfillmentIntent: r.fulfillment_intent,
     shippingInstructions: r.shipping_instructions, shipVia: r.ship_via, specialInstructions: r.special_instructions,
     charges: { shippingMinor: n(r.shipping_minor), installChargeMinor: n(r.install_charge_minor), taxMinor: n(r.tax_minor),
@@ -114,12 +135,12 @@ async function agreementFrom(db: Queryable, tenantId: string, r: Record<string, 
 }
 
 export async function lockAgreement(db: Queryable, tenantId: string, id: string): Promise<AgreementRow | null> {
-  const { rows } = await db.query(`${agreementSelect} WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tenantId, id]);
+  const { rows } = await db.query(`${agreementSelect} WHERE a.tenant_id = $1 AND a.id = $2 FOR UPDATE OF a`, [tenantId, id]);
   return rows.length === 0 ? null : agreementFrom(db, tenantId, rows[0]);
 }
 
 export async function lockAgreementForOpportunity(db: Queryable, tenantId: string, opportunityId: string): Promise<AgreementRow | null> {
-  const { rows } = await db.query(`${agreementSelect} WHERE tenant_id = $1 AND opportunity_id = $2 FOR UPDATE`, [tenantId, opportunityId]);
+  const { rows } = await db.query(`${agreementSelect} WHERE a.tenant_id = $1 AND a.opportunity_id = $2 FOR UPDATE OF a`, [tenantId, opportunityId]);
   return rows.length === 0 ? null : agreementFrom(db, tenantId, rows[0]);
 }
 
@@ -158,7 +179,8 @@ export async function insertSalesOrder(db: Queryable, tenantId: string, actorId:
        operating_company_key, state, sales_channel, currency, credited_salesperson_employee_id, booked_at, location_id, customer_po, notes,
        created_by, updated_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'CONFIRMED',$9,'USD',$10,$11,$12,$13,$14,$15,$15)`,
-    [o.id, tenantId, o.number, o.accountId, o.opportunityId, o.salesAgreementId, o.ownerEmployeeId, o.operatingCompanyId, o.salesChannel,
+    [o.id, tenantId, o.number, o.accountId, o.opportunityId, o.salesAgreementId, o.ownerEmployeeId,
+      await operatingCompanyKeyFor(db, tenantId, o.operatingCompanyId), o.salesChannel,
       o.creditedSalespersonId, new Date(o.bookedAtMillis), o.locationId, o.customerPO, o.notes, actorId],
   );
   for (const [i, l] of o.lines.entries()) {

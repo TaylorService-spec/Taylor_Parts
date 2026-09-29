@@ -165,10 +165,15 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // tenant sales channel activation, a sixth EXPLAINED pending migration; the ledger model is not extended.
 // 56 -> 57 runnable: migration 1763078400000, the Administrator staffing capability (Owner ruling R1) -- APPENDED
 // after the direct-exception cell lock, a seventh EXPLAINED pending migration; the ledger model is not extended.
-// 57 -> 58 runnable: migration 1763856000000, the Work Order business-action capabilities (Controller rulings
-// DQ-010 / DQ-011, lane L2) -- APPENDED in lane L2's slot, an eighth EXPLAINED pending migration; not extended.
-const RUNNABLE_MIGRATION_COUNT = 58;
-const TRACKED_MIGRATION_COUNT = 59; // the 58 runnable + the one deferred file
+// 57 -> 63 runnable: the Catalog + Reorder integration candidate (PR #2000) -- six migrations APPENDED after the
+// Administrator staffing capability (catalog part alias authority, reorder object schema parity, reorder lifecycle
+// capability registration, reorder requester is a Principal, reorder actor identity normalization, receiving business
+// time / number / acquisition cost). Each id is above every applied one, so each is an EXPLAINED pending migration;
+// the ledger model is not extended.
+// 63 -> 64 runnable: migration 1763856000000, the Work Order business-action capabilities (1763856000000, Controller rulings DQ-010 / DQ-011, lane L2) -- APPENDED in lane L2's slot above the candidate, an
+// EXPLAINED pending migration; the ledger model is not extended.
+const RUNNABLE_MIGRATION_COUNT = 64;
+const TRACKED_MIGRATION_COUNT = 65; // the 64 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -177,6 +182,12 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762905600000_tenant-sales-channel-scope",
   "1762992000000_direct-exception-cell-lock",
   "1763078400000_administrator-staffing-capability",
+  "1763164800000_catalog-part-alias-authority",
+  "1763251200000_reorder-object-schema-parity",
+  "1763337600000_reorder-lifecycle-capability-registration",
+  "1763424000000_reorder-requester-is-a-principal",
+  "1763510400000_reorder-actor-identity-normalization",
+  "1763596800000_receiving-business-time-number-and-acquisition-cost",
   "1763856000000_work-order-business-action-capabilities",
 ]);
 
