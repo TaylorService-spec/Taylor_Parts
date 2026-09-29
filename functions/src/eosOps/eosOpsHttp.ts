@@ -35,7 +35,7 @@ import {
   ReorderLifecycleError, createGovernedReorderRequest, reviewReorderRequest,
   startPurchasingOnReorder, postPurchasingUpdate, markReorderReceived, cancelReorderRequest,
   readReorderQueue, readMyAssignedReorders, readReorderRequest, readMyReorderHistory,
-  listReorderWarehouseOptions,
+  listReorderWarehouseOptions, readReorderPurchaseOrders,
   recordReorderPurchaseOrder, voidReorderPurchaseOrder, REORDER_POSTGRES_ACTIVE, type ReorderActor,
 } from "./reorderLifecycleCommands.js";
 import { ReorderAssignmentError, assignReorderRequestToEmployee } from "./reorderAssignmentAuthority.js";
@@ -74,6 +74,10 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "readReorderRequest",
   "readMyReorderHistory",
   "listReorderWarehouseOptions",
+  // The Reorder Purchase Order and its void record, by the Reorder Request ids a screen already holds.
+  // Same reach as readReorderRequest, applied to every id. It replaces the browser's Firestore reads of
+  // reorder_purchase_orders / reorder_purchase_order_voids, which stop being current at activation.
+  "readReorderPurchaseOrders",
 ] as const);
 export type OperationsReadOperation = (typeof OPERATIONS_READ_OPERATIONS)[number];
 
@@ -118,6 +122,7 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   readReorderRequest: "/operations/inventory",
   readMyReorderHistory: "/operations/inventory",
   listReorderWarehouseOptions: "/operations/inventory",
+  readReorderPurchaseOrders: "/operations/inventory",
   createReorderRequest: "/operations/inventory",
   reviewReorderRequest: "/operations/inventory",
   assignReorderRequest: "/operations/inventory",
@@ -208,6 +213,7 @@ export interface OperationsApiDeps {
 /** Every operation of the PostgreSQL Reorder authority: all but the two principal-context resolvers. */
 const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "readReorderQueue", "readMyAssignedReorders", "readReorderRequest", "readMyReorderHistory", "listReorderWarehouseOptions",
+  "readReorderPurchaseOrders",
   "createReorderRequest", "reviewReorderRequest", "assignReorderRequest", "startPurchasingOnReorder", "postPurchasingUpdate",
   "markReorderReceived", "cancelReorderRequest", "recordReorderPurchaseOrder", "voidReorderPurchaseOrder", "receiveReorderStock",
 ]);
@@ -309,6 +315,10 @@ export async function executeOperation(
       case "readReorderRequest": {
         const { actor, pool } = await reorderActor();
         return ok(await readReorderRequest({ pool }, actor, request.input ?? {}));
+      }
+      case "readReorderPurchaseOrders": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readReorderPurchaseOrders({ pool }, actor, request.input ?? {}));
       }
       case "readMyReorderHistory": {
         const { actor, pool } = await reorderActor();

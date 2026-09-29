@@ -34,6 +34,7 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "readReorderRequest",
   "readMyReorderHistory",
   "listReorderWarehouseOptions",
+  "readReorderPurchaseOrders",
 ]);
 
 /** Mirrors the server's OPERATIONS_MUTATION_OPERATIONS. */

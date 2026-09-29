@@ -8,8 +8,8 @@
 // live reorder purchase orders present -- exactly the bug this test pins.
 //
 // Part 1 (unit): services/operationsQueries.ts's fetchProcurementPurchaseOrders()
-// queries `reorder_requests` + `reorder_purchase_orders` -- never `purchase_orders`
-// -- and returns a non-empty row when reorder_purchase_orders has a matching row.
+// reads the governed Reorder queue + Reorder Purchase Orders -- never Firestore, and
+// never `purchase_orders` -- and returns a non-empty row when a matching PO exists.
 //
 // Part 2 (integration): Operations.jsx wires fetchProcurementPurchaseOrders() (not
 // fetchPurchaseOrders()) into ProcurementPanel, and the panel renders the live row.
@@ -25,6 +25,7 @@ const FIXTURE_REQUEST = {
   orderedAt: 5000,
 };
 const FIXTURE_PO = {
+  id: "req-1",
   reorderRequestId: "req-1",
   partId: "PART-77",
   supplierName: "Acme Supply Co",
@@ -42,14 +43,17 @@ const FIXTURE_PO = {
 // `reorder_requests` / `reorder_purchase_orders` (live) are.
 const queriedCollections = [];
 
-// THE REORDER SIDE MOVED to the governed PostgreSQL authority; the PURCHASE ORDER side is a
-// different object and is still Firestore's. The point of this suite survives the move intact:
-// the panel must read the LIVE reorder purchase orders and never the dormant Epic-5 collection.
+// BOTH SIDES MOVED to the governed PostgreSQL Reorder authority (the Reorder Requests through
+// readReorderQueue, and -- since the Reorder activation -- their purchase orders through
+// readReorderPurchaseOrders). The point of this suite survives the move intact: the panel must read
+// the LIVE reorder purchase orders and never the dormant Epic-5 collection. It now also proves the
+// frozen Firestore reorder_purchase_orders snapshot is not read at all.
 const reorderCalls = [];
 vi.mock("../src/services/reorderApiClient.js", () => ({
   reorderApiClient: {
     call: async (operation, input) => {
       reorderCalls.push({ operation, input });
+      if (operation === "readReorderPurchaseOrders") return { ok: true, result: { purchaseOrders: [FIXTURE_PO] } };
       return { ok: true, result: [{ ...FIXTURE_REQUEST, id: FIXTURE_REQUEST.id }] };
     },
   },
@@ -60,19 +64,13 @@ vi.mock("firebase/firestore", () => ({
   query: (ref, ...constraints) => ({ __collection: ref.__collection, constraints }),
   where: (field, op, value) => ({ field, op, value }),
   documentId: () => "__name__",
+  orderBy: () => ({}),
+  limit: () => ({}),
   getDocs: async (q) => {
     queriedCollections.push(q.__collection);
-    let docs = [];
-    if (q.__collection === "reorder_requests") {
-      docs = [{ id: FIXTURE_REQUEST.id, data: () => FIXTURE_REQUEST }];
-    } else if (q.__collection === "reorder_purchase_orders") {
-      docs = [{ id: FIXTURE_PO.reorderRequestId, data: () => FIXTURE_PO }];
-    }
-    // The dormant Epic-5 `purchase_orders` collection (or anything else): always
-    // empty in this fixture -- if the fix regresses to reading it, Part 1's "never
-    // queries purchase_orders" assertion fails, and Part 2's row would come back
-    // empty instead of populated.
-    return { docs, forEach: (fn) => docs.forEach(fn) };
+    // Every Firestore collection is empty in this fixture: the procurement rows can only come from the
+    // governed reads above.
+    return { docs: [], forEach: () => {} };
   },
 }));
 
@@ -83,15 +81,15 @@ afterEach(() => {
 });
 
 describe("operationsQueries.fetchProcurementPurchaseOrders (site-work r4 item A)", () => {
-  it("reads Reorders from the governed authority and POs from the LIVE reorder collection", async () => {
+  it("reads Reorders AND their purchase orders from the governed authority -- never Firestore", async () => {
     const { fetchProcurementPurchaseOrders } = await import("../src/services/operationsQueries");
     const rows = await fetchProcurementPurchaseOrders();
 
-    // The Reorder side no longer touches Firestore at all.
-    expect(reorderCalls.map((c) => c.operation)).toEqual(["readReorderQueue"]);
+    // Neither side touches Firestore at all.
+    expect(reorderCalls.map((c) => c.operation)).toEqual(["readReorderQueue", "readReorderPurchaseOrders"]);
+    expect(reorderCalls[1].input).toEqual({ reorderRequestIds: ["req-1"] });
     expect(queriedCollections).not.toContain("reorder_requests");
-    // The purchase order side is unchanged, and still never the dormant Epic-5 collection.
-    expect(queriedCollections).toContain("reorder_purchase_orders");
+    expect(queriedCollections).not.toContain("reorder_purchase_orders");
     expect(queriedCollections).not.toContain("purchase_orders");
 
     // Non-empty when reorder_purchase_orders has a row -- this is the exact

@@ -40,20 +40,52 @@ export async function getSalesAgreementForOpportunity({ opportunityId }, { clien
   return readAgreement(agreementId, client);
 }
 
-// Product reference search for Agreement lines stays on its existing Firebase catalog read UNTIL the PostgreSQL catalog
-// authority is governed: the EOS Commercial commands refuse PART / EQUIPMENT_MODEL lines with
-// CATALOG_AUTHORITY_UNAVAILABLE until then, so this picker cannot yet feed a governed write (recorded for Controller).
-async function invokeCatalogSearch(payload) {
-  const [{ httpsCallable }, { functions }] = await Promise.all([
-    import("firebase/functions"),
-    import("../firebase/firebase.js"),
-  ]);
-  try {
-    const res = await httpsCallable(functions, "searchProductReferences")(payload);
-    return { result: res?.data };
-  } catch (err) {
-    const raw = err && typeof err.code === "string" ? err.code : "";
-    return { errorStatus: (raw.startsWith("functions/") ? raw.slice("functions/".length) : raw) || "internal" };
-  }
+// ════════════════════ PRODUCT REFERENCE SEARCH, AFTER THE CATALOG ACTIVATION ════════════════════
+//
+// This used to call the Firebase `searchProductReferences` callable, which reads the Firestore `parts` and
+// `equipment_models` collections. At the Catalog activation (CATALOG_WRITER_AUTHORITY FROZEN/ACTIVE) those
+// collections became a FROZEN SNAPSHOT: PostgreSQL is the Catalog authority, and the EOS Commercial commands
+// validate a PART / EQUIPMENT_MODEL line reference against PostgreSQL inside their own transaction. A picker
+// that kept offering Firestore's copy would present retired data as current, and could offer a reference the
+// governed command then refuses. The callable is therefore NOT reached from here any more, for either kind.
+//
+//   PART             -> the governed Render Catalog read `searchParts` (services/catalogApiClient.js).
+//   EQUIPMENT_MODEL  -> REFUSED, with no read at all. The PostgreSQL Catalog transport serves no Equipment
+//                       Model list yet, and a governed one is not invented here (its authorization is a
+//                       decision, not a port). The picker renders its honest "unavailable" state.
+//
+// Same `{ result } | { errorStatus }` contract and the same result shape the picker renders
+// ({ status, kind, results: [{ ref, kind, displayName, status }], truncated }). No Firebase fallback.
+import { catalogApiClient } from "./catalogApiClient.js";
+
+/** The picker's page size, and the ceiling a caller may ask for. Mirrors the retired callable's bounds. */
+export const PRODUCT_SEARCH_DEFAULT_LIMIT = 20;
+export const PRODUCT_SEARCH_MAX_LIMIT = 50;
+/** Stated when a kind has no current authority to search. The hook renders it as UNAVAILABLE. */
+export const PRODUCT_SEARCH_AUTHORITY_UNAVAILABLE = "catalog-authority-unavailable";
+
+const catalogErrorStatus = (res) =>
+  res?.code === "FORBIDDEN" || res?.code === "NOT_SIGNED_IN" || res?.code === "UNAUTHENTICATED"
+    ? "permission-denied"
+    : "unavailable";
+
+export async function searchProductReferences({ kind, query, limit }, { client = catalogApiClient } = {}) {
+  if (kind === "EQUIPMENT_MODEL") return { errorStatus: PRODUCT_SEARCH_AUTHORITY_UNAVAILABLE };
+  if (kind !== "PART") return { errorStatus: "invalid-argument" };
+  const requested = Number.isSafeInteger(limit) ? limit : PRODUCT_SEARCH_DEFAULT_LIMIT;
+  const bounded = Math.min(Math.max(requested, 1), PRODUCT_SEARCH_MAX_LIMIT);
+  const res = await client.call("searchParts", { query: String(query ?? "").trim(), limit: bounded });
+  if (!res?.ok) return { errorStatus: catalogErrorStatus(res) };
+  const parts = Array.isArray(res.result?.parts) ? res.result.parts : null;
+  if (parts === null) return { errorStatus: "unavailable" };
+  const results = parts
+    .filter((p) => p && typeof p.id === "string" && p.id !== "")
+    .map((p) => ({
+      ref: p.id,
+      kind: "PART",
+      // The Part's NAME is display only; the ref is the identity the line stores.
+      displayName: typeof p.name === "string" && p.name.trim() !== "" ? p.name : null,
+      status: typeof p.status === "string" ? p.status : null,
+    }));
+  return { result: { status: "ready", kind: "PART", results, truncated: res.result?.nextCursor != null } };
 }
-export const searchProductReferences = ({ kind, query, limit }) => invokeCatalogSearch({ kind, query, limit });
