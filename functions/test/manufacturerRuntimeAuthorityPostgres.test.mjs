@@ -141,8 +141,8 @@ test("the reconciliation reads and reports; it modifies no dependent data", () =
 });
 
 test("the PostgreSQL Manufacturer writer stays unwired while the catalog writer state says INACTIVE", () => {
-  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, { firestore: "OPEN", postgres: "INACTIVE" },
-    "this lane does not move the catalog writer state");
+  // The Firestore side is FROZEN by the activation window (step 2); what this lane pins is that PostgreSQL is INACTIVE.
+  assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "INACTIVE", "this lane does not activate the PostgreSQL writers");
   const importers = walk(resolve(FUNCTIONS_DIR, "src"))
     .filter((f) => !f.includes(`${"src"}/catalogMaster`) && !f.endsWith("catalogMaster"))
     .filter((f) => /postgresManufacturerWriter/.test(readFileSync(f, "utf8")));

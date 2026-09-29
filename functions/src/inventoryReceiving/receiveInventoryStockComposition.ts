@@ -18,6 +18,7 @@ import {
 } from "./receiveInventoryStockCommand.js";
 import { makeResolveWarehouseLocationActive } from "./receivingLocationResolver.js";
 import { ReceivingError } from "./receivingTypes.js";
+import { ReorderSourceFrozenError } from "../reorderRequest/reorderSourceFreeze.js";
 
 // The production seams EXCEPT resolveLocationActive (pinned) and the test-only hooks (never in production).
 export interface ReceiveInventoryStockCompositionInput {
@@ -54,6 +55,9 @@ export async function runReceiveInventoryStockSanitized(request: unknown, deps: 
     // stored record, invalid receiving) pass through so the callable can map each to its exact public
     // code; only a truly unknown/raw Firestore/transaction failure collapses to RECEIVING_INTEGRITY.
     if (err instanceof ReceiveCommandError || err instanceof ReceivingError) throw err;
+    // THE REORDER SOURCE FREEZE is a governed state refusal (the legacy REORDER_PURCHASE_ORDER branch is frozen for the
+    // PostgreSQL cutover), not a raw transaction failure: it passes through so the callable answers failed-precondition.
+    if (err instanceof ReorderSourceFrozenError) throw err;
     throw new ReceivingIntegrityError("receiving failed due to a transient transaction/integrity error");
   }
 }

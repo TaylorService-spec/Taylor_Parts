@@ -28,12 +28,19 @@ import net from "node:net";
 
 const RUNNER_DIR = dirname(fileURLToPath(import.meta.url));
 
-// Emulator identity. Must match the root firebase.json emulator ports. The suites
-// themselves also pin these exact hosts.
+// Emulator identity. Must match the emulator ports of the firebase.json the runner starts (the root one by
+// default). TEST HARNESS ONLY: a machine whose 8080/9099 are taken by another local service may point the runner at
+// other ports through the standard emulator variables (FIRESTORE_EMULATOR_HOST / FIREBASE_AUTH_EMULATOR_HOST) plus
+// RULES_EMULATOR_FIREBASE_CONFIG naming a firebase.json that declares them. Unset -- as in CI -- everything is exactly
+// the canonical 8080/9099 against the root firebase.json. The suites honour the same variables.
+const envPort = (v, fallback) => {
+  const m = /^127\.0\.0\.1:(\d+)$/.exec(v ?? "");
+  return m ? Number(m[1]) : fallback;
+};
 export const EMULATOR = Object.freeze({
   host: "127.0.0.1",
-  firestorePort: 8080,
-  authPort: 9099,
+  firestorePort: envPort(process.env.FIRESTORE_EMULATOR_HOST, 8080),
+  authPort: envPort(process.env.FIREBASE_AUTH_EMULATOR_HOST, 9099),
   projectId: "taylor-parts",
 });
 
@@ -78,7 +85,8 @@ export function resolvePaths(runnerDir = RUNNER_DIR) {
   const repoRoot = resolve(runnerDir, "..", "..");
   return {
     repoRoot,
-    rootFirebaseJson: join(repoRoot, "firebase.json"),
+    rootFirebaseJson: process.env.RULES_EMULATOR_FIREBASE_CONFIG
+      ? resolve(repoRoot, process.env.RULES_EMULATOR_FIREBASE_CONFIG) : join(repoRoot, "firebase.json"),
     rootRules: join(repoRoot, "firestore.rules"),
     viteRules: join(repoRoot, "field-ops-app-vite", "firestore.rules"),
     testDir: join(repoRoot, "functions", "test"),

@@ -13,7 +13,8 @@ const { FieldValue } = admin.firestore;
 
 const { receiveInventoryStockProduction, buildReceiveInventoryStockDeps, runReceiveInventoryStockSanitized } = await import("../lib/inventoryReceiving/receiveInventoryStockComposition.js");
 const { receiveInventoryStock, DestinationInvalidError, ReceiveCommandError, ReceivingIntegrityError, SourceNotReceivableError } = await import("../lib/inventoryReceiving/receiveInventoryStockCommand.js");
-const { receivingOrderDocId } = await import("../lib/inventoryReceiving/receivingRepository.js");
+const { receivingOrderDocId, canonicalReceivingOrderDocId } = await import("../lib/inventoryReceiving/receivingRepository.js");
+const { ReorderSourceFrozenError } = await import("../lib/reorderRequest/reorderSourceFreeze.js");
 const RAW_LEAK_RE = /INVALID_ARGUMENT|Transaction is invalid|ABORTED|firestore|\bcode\b|a\/b/i;
 
 let passed = 0, failed = 0;
@@ -31,13 +32,15 @@ const flipper = admin.initializeApp({ projectId: "taylor-parts" }, "flipper-la5"
 function governedWarehouse(id, status = "ACTIVE") {
   return { id, name: "Main", location: "L", status, version: 1, updatedAt: TS, updatedBy: "u", provenance: "NATIVE", createdAt: TS, createdBy: "u" };
 }
+// REORDER SOURCE FREEZE (Catalog + Reorder cutover, step 2): the legacy REORDER_PURCHASE_ORDER receipt branch is frozen,
+// so the pinned-resolver DESTINATION proofs below run on the unfrozen CANONICAL purchase_orders source through the SAME
+// production composition (ruling B); the legacy branch is pinned as the FROZEN refusal (ruling A).
 async function seedScenario({ warehouse = "ACTIVE" } = {}) {
-  const rrid = nextId("rr"), partId = nextId("part"), actorId = nextId("actor"), wh = nextId("wh");
-  await db.collection("reorder_purchase_orders").doc(rrid).set({ reorderRequestId: rrid, partId, supplierName: "ACME", externalPoNumber: "PO-1", orderedQuantity: 5, orderedDate: 1, expectedArrivalDate: null, status: "ORDERED", createdBy: "x", createdAt: 1 });
-  await db.collection("reorder_requests").doc(rrid).set({ partId, status: "ORDERED", purchaseOrderId: rrid, receivedBy: null, receivedAt: null, orderedBy: "x", orderedAt: 1 });
+  const poId = nextId("po"), partId = nextId("part"), actorId = nextId("actor"), wh = nextId("wh");
+  await db.collection("purchase_orders").doc(poId).set({ supplierId: nextId("sup"), status: "SENT", items: [{ lineId: "L1", partId, quantity: 5, unitPrice: 1 }] });
   await db.collection("receiving_grants").doc(actorId).set({ granted: true });
   if (warehouse) await db.collection("warehouses").doc(wh).set(governedWarehouse(wh, warehouse));
-  return { rrid, partId, actorId, wh };
+  return { poId, partId, actorId, wh };
 }
 function input(sc, over = {}) {
   const audits = [];
@@ -54,58 +57,82 @@ function input(sc, over = {}) {
 }
 function request(sc, locationId) {
   return {
-    source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: sc.rrid, purchaseOrderId: sc.rrid },
+    source: { type: "PURCHASE_ORDER", purchaseOrderId: sc.poId },
     receivingLocation: { type: "WAREHOUSE", locationId },
     lines: [{ lineId: "L1", partId: sc.partId, expectedQuantity: 5, receivedQuantity: 5 }],
     idempotencyKey: nextId("idem"),
   };
 }
-const reorderStatus = async (rrid) => (await db.collection("reorder_requests").doc(rrid).get()).data().status;
-const auditCount = async (rrid) => (await db.collection("receiving_audit_la5").where("reorderRequestId", "==", rrid).get()).size;
+const poOf = async (sc) => (await db.collection("purchase_orders").doc(sc.poId).get()).data();
+const auditCount = async (sc) => (await db.collection("receiving_audit_la5").where("purchaseOrderId", "==", sc.poId).get()).size;
+const receiptIdOf = (sc, req) => canonicalReceivingOrderDocId({ operation: "receiveInventoryStock", sourceType: "PURCHASE_ORDER", purchaseOrderId: sc.poId, actorId: sc.actorId, idempotencyKey: req.idempotencyKey });
 // Prove a fail-closed receipt committed ZERO of the primary writes: the deterministic receiving_orders
-// document is absent, no inventory_transactions ledger event references that Receiving Order, the reorder
-// request is still ORDERED, and no audit was staged.
-async function assertNoReceipt(req, rrid) {
-  const receivingId = receivingOrderDocId(req.idempotencyKey);
+// document is absent, no inventory_transactions ledger event references that Receiving Order, the
+// purchase order is untouched (not even its version), and no audit was staged.
+async function assertNoReceipt(req, sc) {
+  const receivingId = receiptIdOf(sc, req);
   assert.equal((await db.collection("receiving_orders").doc(receivingId).get()).exists, false, "no receiving_orders document");
   assert.equal((await db.collection("inventory_transactions").where("sourceObject.id", "==", receivingId).get()).size, 0, "no ledger event for the receiving order");
-  assert.equal(await reorderStatus(rrid), "ORDERED", "reorder request unchanged");
-  assert.equal(await auditCount(rrid), 0, "no audit staged");
+  const po = await poOf(sc);
+  assert.equal(po.status, "SENT", "purchase order unchanged"); assert.equal(po.version, undefined, "purchase order version unchanged");
+  assert.equal(await auditCount(sc), 0, "no audit staged");
 }
 
+// Ruling B: the pinned resolver admitting a governed ACTIVE warehouse is receiving domain logic -- proven on the canonical source.
 await check("governed ACTIVE WAREHOUSE via pinned resolver -> receipt proceeds atomically", async () => {
   const sc = await seedScenario({ warehouse: "ACTIVE" });
   const { deps } = input(sc);
   const out = await receiveInventoryStockProduction(request(sc, sc.wh), deps);
   assert.equal(out.outcome, "applied");
-  assert.equal(await reorderStatus(sc.rrid), "RECEIVED");
-  assert.equal(await auditCount(sc.rrid), 1);
+  assert.equal((await poOf(sc)).status, "RECEIVED");
+  assert.equal(await auditCount(sc), 1);
 });
 
+// Ruling A: a legacy REORDER_PURCHASE_ORDER receipt through the SANITIZED production composition is a superseded Reorder
+// source write: it surfaces as the typed ReorderSourceFrozenError (not collapsed to RECEIVING_INTEGRITY), zero writes.
+await check("legacy REORDER_PURCHASE_ORDER receipt via the production composition -> ReorderSourceFrozenError (not sanitized away), zero writes", async () => {
+  const rrid = nextId("rr"), partId = nextId("part"), actorId = nextId("actor"), wh = nextId("wh");
+  await db.collection("reorder_purchase_orders").doc(rrid).set({ reorderRequestId: rrid, partId, supplierName: "ACME", externalPoNumber: "PO-1", orderedQuantity: 5, orderedDate: 1, expectedArrivalDate: null, status: "ORDERED", createdBy: "x", createdAt: 1 });
+  await db.collection("reorder_requests").doc(rrid).set({ partId, status: "ORDERED", purchaseOrderId: rrid, receivedBy: null, receivedAt: null, orderedBy: "x", orderedAt: 1 });
+  await db.collection("receiving_grants").doc(actorId).set({ granted: true });
+  await db.collection("warehouses").doc(wh).set(governedWarehouse(wh, "ACTIVE"));
+  const req = { source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: rrid, purchaseOrderId: rrid }, receivingLocation: { type: "WAREHOUSE", locationId: wh }, lines: [{ lineId: "L1", partId, expectedQuantity: 5, receivedQuantity: 5 }], idempotencyKey: nextId("idem") };
+  await assert.rejects(receiveInventoryStockProduction(req, input({ actorId }).deps), (e) => e instanceof ReorderSourceFrozenError && e.code === "REORDER_SOURCE_FROZEN");
+  const receivingId = receivingOrderDocId(req.idempotencyKey);
+  assert.equal((await db.collection("receiving_orders").doc(receivingId).get()).exists, false);
+  assert.equal((await db.collection("inventory_transactions").where("sourceObject.id", "==", receivingId).get()).size, 0);
+  assert.equal((await db.collection("reorder_requests").doc(rrid).get()).data().status, "ORDERED");
+  assert.equal((await db.collection("receiving_audit_la5").where("reorderRequestId", "==", rrid).get()).size, 0);
+});
+
+// Ruling B: destination validation is receiving domain logic -- proven on the canonical source.
 await check("INACTIVE warehouse -> DESTINATION_INVALID, zero writes", async () => {
   const sc = await seedScenario({ warehouse: "INACTIVE" });
   const { deps } = input(sc);
   const req = request(sc, sc.wh);
   await assert.rejects(receiveInventoryStockProduction(req, deps), DestinationInvalidError);
-  await assertNoReceipt(req, sc.rrid);
+  await assertNoReceipt(req, sc);
 });
 
+// Ruling B: destination validation is receiving domain logic -- proven on the canonical source.
 await check("missing warehouse -> DESTINATION_INVALID, zero writes", async () => {
   const sc = await seedScenario({ warehouse: null }); // no warehouse doc
   const { deps } = input(sc);
   const req = request(sc, nextId("ghost"));
   await assert.rejects(receiveInventoryStockProduction(req, deps), DestinationInvalidError);
-  await assertNoReceipt(req, sc.rrid);
+  await assertNoReceipt(req, sc);
 });
 
+// Ruling B: destination validation is receiving domain logic -- proven on the canonical source.
 await check("non-WAREHOUSE location type -> DESTINATION_INVALID, zero writes", async () => {
   const sc = await seedScenario({ warehouse: "ACTIVE" });
   const { deps } = input(sc);
   const req = request(sc, sc.wh); req.receivingLocation = { type: "BIN", locationId: sc.wh };
   await assert.rejects(receiveInventoryStockProduction(req, deps), DestinationInvalidError);
-  await assertNoReceipt(req, sc.rrid);
+  await assertNoReceipt(req, sc);
 });
 
+// Ruling B: a concurrent warehouse retire must not commit a receipt -- proven on the canonical source.
 await check("concurrent ACTIVE->INACTIVE AFTER the resolver read cannot commit a receipt (fail closed, zero writes)", async () => {
   const sc = await seedScenario({ warehouse: "ACTIVE" });
   let flipped = false;
@@ -126,15 +153,16 @@ await check("concurrent ACTIVE->INACTIVE AFTER the resolver read cannot commit a
     runReceiveInventoryStockSanitized(req, deps),
     (e) => e instanceof ReceiveCommandError && (e.code === "DESTINATION_INVALID" || e.code === "RECEIVING_INTEGRITY") && !RAW_LEAK_RE.test(e.message),
   );
-  await assertNoReceipt(req, sc.rrid); // no receiving_orders doc, no ledger event, reorder ORDERED, no audit
+  await assertNoReceipt(req, sc); // no receiving_orders doc, no ledger event, PO untouched, no audit
 });
 
+// Ruling B: destination validation is receiving domain logic -- proven on the canonical source.
 await check("path-unsafe locationId -> DESTINATION_INVALID, zero writes", async () => {
   const sc = await seedScenario({ warehouse: "ACTIVE" });
   const { deps } = input(sc);
   const req = request(sc, sc.wh); req.receivingLocation = { type: "WAREHOUSE", locationId: "a/b/c" };
   await assert.rejects(receiveInventoryStockProduction(req, deps), DestinationInvalidError);
-  await assertNoReceipt(req, sc.rrid);
+  await assertNoReceipt(req, sc);
 });
 
 await check("composition sanitizes a raw transaction error -> RECEIVING_INTEGRITY (no raw leak)", async () => {

@@ -53,7 +53,7 @@ export function mapError(err: unknown): HttpsError {
   if (err instanceof MalformedStoredRecordError) return new HttpsError("internal", "The request could not be completed.");
   // Catalog cutover: FROZEN (the controlled freeze window) and RETIRED are governed refusals, not faults.
   if (err instanceof FirestoreCatalogWriterClosedError) {
-    return new HttpsError("failed-precondition", err.state === "FROZEN" ? "Part records are frozen for the catalog cutover." : "Part records are no longer written here.");
+    return new HttpsError("failed-precondition", err.state === "FROZEN" ? "Part records are frozen for the catalog cutover." : "Part records are no longer written here.", { code: err.code });
   }
   return new HttpsError("internal", "The request could not be completed.");
 }

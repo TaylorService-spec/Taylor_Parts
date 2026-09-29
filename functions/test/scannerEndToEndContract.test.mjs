@@ -41,8 +41,7 @@ const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 
 // ---- the real modules under contract ------------------------------------------------------------
-const { createPart, changePartStatus } = await import("../lib/partMaster/partMasterCommands.js");
-const { createPartAlias } = await import("../lib/partMaster/partAliasCommands.js");
+const { deriveAliasDocId } = await import("../lib/partMaster/partAliasRepository.js");
 const { resolveScannedPartIdentifier } = await import("../lib/partMaster/partAliasScanResolver.js");
 const { readPartBalance } = await import("../lib/inventory/partBalanceReadService.js");
 const { receiveInventoryStock, UnauthorizedReceivingError } = await import("../lib/inventoryReceiving/receiveInventoryStockCommand.js");
@@ -84,34 +83,30 @@ async function seedMobileLocation(id) {
     createdAt: Timestamp.fromDate(NOW), createdBy: "seed", updatedAt: Timestamp.fromDate(NOW), updatedBy: "seed",
   });
 }
+// REORDER SOURCE FREEZE: the legacy REORDER_PURCHASE_ORDER receipt branch is frozen, so every custody stage below receives
+// against the unfrozen CANONICAL purchase order through the SAME receiveInventoryStock command (ruling B) -- the ledger
+// shape it writes, and so every downstream seam this contract checks, is the same.
 async function seedPurchaseOrder(partId, orderedQuantity) {
-  const rrid = uid("rr");
-  await db.collection("reorder_purchase_orders").doc(rrid).set({
-    reorderRequestId: rrid, partId, supplierName: "ACME", externalPoNumber: uid("PO"),
-    orderedQuantity, orderedDate: 1, expectedArrivalDate: null, status: "ORDERED", createdBy: "seed", createdAt: 1,
+  const poId = uid("po");
+  await db.collection("purchase_orders").doc(poId).set({
+    supplierId: uid("sup"), status: "SENT", items: [{ lineId: "L1", partId, quantity: orderedQuantity, unitPrice: 1 }],
   });
-  await db.collection("reorder_requests").doc(rrid).set({
-    partId, status: "ORDERED", purchaseOrderId: rrid, receivedBy: null, receivedAt: null, orderedBy: "seed", orderedAt: 1,
-  });
-  return rrid;
+  return poId;
 }
 
 /**
- * A catalog actor who genuinely holds `inventory.catalog.manage`, resolved through the real access
- * path rather than a stubbed `authorize`. The IDENTIFY stage is the one place the chain must not
- * inject its own answer: alias administration and alias lookup were separated deliberately, and a
- * faked grant would erase the distinction this whole stage exists to preserve.
+ * CATALOG CUTOVER FREEZE: the legacy Firestore catalog writers (createPart, changePartStatus, createPartAlias) are FROZEN,
+ * so the chain's Part and its barcode alias are FIXTURES written directly to the emulator in exactly the stored shapes
+ * those writers produced (an ACTIVE Part; an ACTIVE alias keyed by the real deriveAliasDocId). The IDENTIFY stage still
+ * runs the REAL scan resolver over them -- the seam under test is resolve -> partId, not alias administration.
  */
-const CATALOG_ROLES = Object.freeze({
-  scannerCatalog: { id: "scannerCatalog", name: "x", description: "x", permissions: ["inventory.catalog.manage", "inventory.catalog.activate"] },
-});
-const catalogActor = uid("catalog-actor");
-await db.collection("users").doc(catalogActor).set({ accessVersion: 1 });
-await db.collection("roleAssignments").doc(uid("asg")).set({
-  id: "a", principalUid: catalogActor, roleId: "scannerCatalog", scope: { type: "global" },
-  grantedBy: "seed", grantedAt: Timestamp.now(), status: "active", accessVersionAtGrant: 1,
-});
-const CATALOG_DEPS = { roles: CATALOG_ROLES, now: () => NOW };
+async function seedActivePartWithBarcode(partId, barcode) {
+  const ts = Timestamp.fromDate(NOW);
+  const meta = { version: 1, createdAt: ts, createdBy: "seed", updatedAt: ts, updatedBy: "seed" };
+  await db.collection("parts").doc(partId).set({ partId, internalPartNumber: partId, name: "Chain Part", status: "ACTIVE", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", ...meta });
+  const alias = deriveAliasDocId("BARCODE_OTHER", barcode);
+  await db.collection("part_aliases").doc(alias.docId).set({ aliasId: alias.docId, partId, aliasType: "BARCODE_OTHER", originalValue: barcode, normalizedValue: alias.normalizedValue, status: "ACTIVE", source: "seed", ...meta });
+}
 
 /**
  * Command deps for the custody stages.
@@ -152,6 +147,7 @@ console.log("scannerEndToEndContract.test.mjs — one part, the whole chain");
 // =================================================================================================
 // THE CHAIN
 // =================================================================================================
+// Ruling B: the custody chain is inventory domain logic; its receipt now uses the canonical PO (legacy source frozen).
 await check("THE CHAIN: identify → lookup → receive → put away → pick/stage → transfer → truck", async () => {
   const partId = uid("PRT");
   const barcode = `BC-${partId}`;
@@ -168,12 +164,8 @@ await check("THE CHAIN: identify → lookup → receive → put away → pick/st
   // A real Part, a real alias, resolved by the real scan resolver. The contract under test is that
   // the partId coming OUT of a scan is byte-identical to the one every later stage keys on — not
   // merely "a part was found".
-  await createPart({
-    actorUid: catalogActor, idempotencyKey: uid("k"),
-    part: { partId, internalPartNumber: partId, name: "Chain Part", status: "DRAFT", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" },
-  }, CATALOG_DEPS);
-  await changePartStatus({ actorUid: catalogActor, idempotencyKey: uid("k"), partId, expectedVersion: 1, newStatus: "ACTIVE" }, CATALOG_DEPS);
-  await createPartAlias({ actorUid: catalogActor, idempotencyKey: uid("k"), partId, aliasType: "BARCODE_OTHER", rawValue: barcode }, CATALOG_DEPS);
+  // Ruling B: the Part + alias are catalog FIXTURES (the frozen catalog writers cannot create them); the scan resolver is real.
+  await seedActivePartWithBarcode(partId, barcode);
 
   // Scanned with the whitespace a wedge scanner really appends.
   const identified = await resolveScannedPartIdentifier({ rawValue: `  ${barcode}\r\n` }, { db });
@@ -188,9 +180,9 @@ await check("THE CHAIN: identify → lookup → receive → put away → pick/st
   assert.deepEqual(before.byLocation, [], "and no location may be invented for it");
 
   // ─────────────────────────────────────────── 3. RECEIVE
-  const rrid = await seedPurchaseOrder(partId, 10);
+  const poId = await seedPurchaseOrder(partId, 10);
   const received = await receiveInventoryStock({
-    source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: rrid, purchaseOrderId: rrid },
+    source: { type: "PURCHASE_ORDER", purchaseOrderId: poId },
     receivingLocation: { type: "WAREHOUSE", locationId: warehouseId },
     lines: [{ lineId: "L1", partId, expectedQuantity: 10, receivedQuantity: 10 }],
     idempotencyKey: uid("idem"),
@@ -274,6 +266,7 @@ await check("THE CHAIN: identify → lookup → receive → put away → pick/st
 // =================================================================================================
 // CYCLE COUNT — an OBSERVATION, run separately because it is not a step in the journey
 // =================================================================================================
+// Ruling B: the custody chain is inventory domain logic; its receipt now uses the canonical PO (legacy source frozen).
 await check("CYCLE COUNT: expected quantity comes from the same ledger the chain built, and counting changes nothing", async () => {
   const partId = uid("PRT");
   const warehouseId = uid("wh");
@@ -282,9 +275,9 @@ await check("CYCLE COUNT: expected quantity comes from the same ledger the chain
   const { deps } = makeDeps(actor, grants);
   await seedWarehouse(warehouseId);
 
-  const rrid = await seedPurchaseOrder(partId, 7);
+  const poId = await seedPurchaseOrder(partId, 7);
   await receiveInventoryStock({
-    source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: rrid, purchaseOrderId: rrid },
+    source: { type: "PURCHASE_ORDER", purchaseOrderId: poId },
     receivingLocation: { type: "WAREHOUSE", locationId: warehouseId },
     lines: [{ lineId: "L1", partId, expectedQuantity: 7, receivedQuantity: 7 }],
     idempotencyKey: uid("idem"),
@@ -306,6 +299,7 @@ await check("CYCLE COUNT: expected quantity comes from the same ledger the chain
 // =================================================================================================
 // RETURN INTAKE — an ARRIVAL, run separately because DECISIONS #118 forbids it restoring stock
 // =================================================================================================
+// Ruling B: the custody chain is inventory domain logic; its receipt now uses the canonical PO (legacy source frozen).
 await check("RETURN INTAKE: something comes back, and nothing becomes sellable", async () => {
   const partId = uid("PRT");
   const warehouseId = uid("wh");
@@ -314,9 +308,9 @@ await check("RETURN INTAKE: something comes back, and nothing becomes sellable",
   const { deps } = makeDeps(actor, grants);
   await seedWarehouse(warehouseId);
 
-  const rrid = await seedPurchaseOrder(partId, 3);
+  const poId = await seedPurchaseOrder(partId, 3);
   await receiveInventoryStock({
-    source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: rrid, purchaseOrderId: rrid },
+    source: { type: "PURCHASE_ORDER", purchaseOrderId: poId },
     receivingLocation: { type: "WAREHOUSE", locationId: warehouseId },
     lines: [{ lineId: "L1", partId, expectedQuantity: 3, receivedQuantity: 3 }],
     idempotencyKey: uid("idem"),
@@ -351,13 +345,14 @@ await check("NEGATIVE 2 — an empty scan is MALFORMED, distinct from a miss", a
   assert.equal(r.result, "MALFORMED", "nothing scanned is a different fact from nothing found");
 });
 
+// Ruling B: the custody chain is inventory domain logic; its receipt now uses the canonical PO (legacy source frozen).
 await check("NEGATIVE 3 — receiving without inventory.stock.receive is refused", async () => {
   const partId = uid("PRT");
   const warehouseId = uid("wh"); await seedWarehouse(warehouseId);
-  const rrid = await seedPurchaseOrder(partId, 4);
+  const poId = await seedPurchaseOrder(partId, 4);
   const grants = ALL_SCANNER_GRANTS(); grants.delete("inventory.stock.receive");
   await assert.rejects(receiveInventoryStock({
-    source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: rrid, purchaseOrderId: rrid },
+    source: { type: "PURCHASE_ORDER", purchaseOrderId: poId },
     receivingLocation: { type: "WAREHOUSE", locationId: warehouseId },
     lines: [{ lineId: "L1", partId, expectedQuantity: 4, receivedQuantity: 4 }],
     idempotencyKey: uid("idem"),
@@ -436,14 +431,15 @@ await check("NEGATIVE 6 — a bin code from ANOTHER warehouse is refused, and a 
   );
 });
 
+// Ruling B: the custody chain is inventory domain logic; its receipt now uses the canonical PO (legacy source frozen).
 await check("NEGATIVE 7 — transferring more than is on hand is refused, and the ledger is unchanged", async () => {
   const partId = uid("PRT");
   const warehouseId = uid("wh"); const truckLocationId = uid("truck-loc");
   await seedWarehouse(warehouseId); await seedMobileLocation(truckLocationId);
   const actor = uid("a"); const grants = ALL_SCANNER_GRANTS();
-  const rrid = await seedPurchaseOrder(partId, 2);
+  const poId = await seedPurchaseOrder(partId, 2);
   await receiveInventoryStock({
-    source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: rrid, purchaseOrderId: rrid },
+    source: { type: "PURCHASE_ORDER", purchaseOrderId: poId },
     receivingLocation: { type: "WAREHOUSE", locationId: warehouseId },
     lines: [{ lineId: "L1", partId, expectedQuantity: 2, receivedQuantity: 2 }],
     idempotencyKey: uid("idem"),
@@ -459,14 +455,15 @@ await check("NEGATIVE 7 — transferring more than is on hand is refused, and th
   assert.equal((await balance(partId)).onHand.value, 2, "a refused transfer moves nothing");
 });
 
+// Ruling B: the custody chain is inventory domain logic; its receipt now uses the canonical PO (legacy source frozen).
 await check("NEGATIVE 8 — dispatch without inventory.transfer.dispatch is refused after a legitimate create", async () => {
   const partId = uid("PRT");
   const warehouseId = uid("wh"); const truckLocationId = uid("truck-loc");
   await seedWarehouse(warehouseId); await seedMobileLocation(truckLocationId);
   const actor = uid("a"); const grants = ALL_SCANNER_GRANTS();
-  const rrid = await seedPurchaseOrder(partId, 5);
+  const poId = await seedPurchaseOrder(partId, 5);
   await receiveInventoryStock({
-    source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: rrid, purchaseOrderId: rrid },
+    source: { type: "PURCHASE_ORDER", purchaseOrderId: poId },
     receivingLocation: { type: "WAREHOUSE", locationId: warehouseId },
     lines: [{ lineId: "L1", partId, expectedQuantity: 5, receivedQuantity: 5 }],
     idempotencyKey: uid("idem"),
@@ -495,15 +492,17 @@ await check("NEGATIVE 9 — a return with an unrecognized condition is REFUSED, 
   }, deps), ReturnInvalidError);
 });
 
+// Ruling B: the custody chain is inventory domain logic; its receipt now uses the canonical PO (legacy source frozen).
 await check("NEGATIVE 10 — replaying any stage is idempotent, not doubled", async () => {
   const partId = uid("PRT");
   const warehouseId = uid("wh"); await seedWarehouse(warehouseId);
   const actor = uid("a"); const grants = ALL_SCANNER_GRANTS();
-  const rrid = await seedPurchaseOrder(partId, 6);
+  // Ordered 12, received 6: the canonical PO stays receivable, so the exact retry reaches the replay path.
+  const poId = await seedPurchaseOrder(partId, 12);
   const request = {
-    source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: rrid, purchaseOrderId: rrid },
+    source: { type: "PURCHASE_ORDER", purchaseOrderId: poId },
     receivingLocation: { type: "WAREHOUSE", locationId: warehouseId },
-    lines: [{ lineId: "L1", partId, expectedQuantity: 6, receivedQuantity: 6 }],
+    lines: [{ lineId: "L1", partId, expectedQuantity: 12, receivedQuantity: 6 }],
     idempotencyKey: uid("idem"),
   };
   const rd = makeDeps(actor, grants, { resolveLocationActive: async () => true }).deps;

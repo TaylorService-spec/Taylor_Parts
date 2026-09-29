@@ -23,6 +23,7 @@ const { receiveInventoryStock, SourceNotFoundError, SourceNotReceivableError, Pa
 const { IdempotencyConflictError } = await import("../lib/inventoryReceiving/receivingTypes.js");
 const { canonicalReceivingOrderDocId, receivingOrderDocId } = await import("../lib/inventoryReceiving/receivingRepository.js");
 const { normalizePoVersion } = await import("../lib/inventoryReceiving/receivingSourceResolver.js");
+const { ReorderSourceFrozenError } = await import("../lib/reorderRequest/reorderSourceFreeze.js");
 
 let passed = 0, failed = 0;
 async function check(name, fn) {
@@ -115,49 +116,50 @@ function makeDeps(sc, over = {}) {
 }
 
 const poDoc = async (poId) => (await db.collection("purchase_orders").doc(poId).get()).data();
+// THE REORDER SOURCE FREEZE: a legacy REORDER_PURCHASE_ORDER receipt is refused with the governed typed error, and
+// NOTHING is written -- no receipt, no ledger event, no audit, reorder request still ORDERED, legacy PO byte-identical.
+const isFrozen = (e) => e instanceof ReorderSourceFrozenError && e.code === "REORDER_SOURCE_FROZEN" && e.writer === "receiveInventoryStockLegacyReorder";
+async function assertLegacyFrozen(sc, req, deps) {
+  const poBefore = (await db.collection("reorder_purchase_orders").doc(sc.rrid).get()).data();
+  await assert.rejects(receiveInventoryStock(req, deps), isFrozen);
+  const receivingId = receivingOrderDocId(req.idempotencyKey);
+  assert.equal((await db.collection("receiving_orders").doc(receivingId).get()).exists, false, "no receipt");
+  assert.equal((await db.collection("inventory_transactions").where("sourceObject.id", "==", receivingId).get()).size, 0, "no ledger event");
+  assert.equal((await db.collection("receiving_audit_canon").where("purchaseOrderId", "==", sc.rrid).get()).size, 0, "no audit");
+  assert.equal((await db.collection("reorder_requests").doc(sc.rrid).get()).data().status, "ORDERED", "reorder request untouched");
+  assert.deepEqual((await db.collection("reorder_purchase_orders").doc(sc.rrid).get()).data(), poBefore, "legacy PO byte-identical");
+}
 const lineOf = (out, lineId) => out.lines.find((l) => l.lineId === lineId);
 
 // ═══════════════════════════════════ LEGACY BOUNDARY ═══════════════════════════════════
 
-await check("1. legacy one-line FULL receipt still succeeds, and its PO is never written", async () => {
+// Ruling A: a legacy full receipt closes a Reorder out -- a superseded Reorder source write, now refused FROZEN.
+await check("1. legacy one-line FULL receipt is refused FROZEN, and its PO is never written", async () => {
   const sc = await seedLegacy();
-  const before = (await db.collection("reorder_purchase_orders").doc(sc.rrid).get()).data();
-  const out = await receiveInventoryStock(legacyReq(sc), makeDeps(sc).deps);
-  assert.equal(out.outcome, "applied");
-  assert.equal(out.sourceType, "REORDER_PURCHASE_ORDER");
-  assert.equal(out.derivedState, "RECEIVED");
-  const after = (await db.collection("reorder_purchase_orders").doc(sc.rrid).get()).data();
-  assert.deepEqual(after, before, "the legacy purchase order document is immutable and must be byte-identical");
-  assert.equal((await db.collection("reorder_requests").doc(sc.rrid).get()).data().status, "RECEIVED");
+  await assertLegacyFrozen(sc, legacyReq(sc), makeDeps(sc).deps);
 });
 
-await check("2. legacy replay is unchanged, and keeps its KEY-SCOPED receipt id", async () => {
+// Ruling A: legacy replay needs a committed legacy receipt, which the freeze forbids; a retry is refused FROZEN again and
+// still writes nothing. The key-only legacy identity itself stays pinned as a pure derivation (and by check 27).
+await check("2. a legacy retry is refused FROZEN every time; the legacy id stays KEY-SCOPED", async () => {
   const sc = await seedLegacy();
   const req = legacyReq(sc);
-  const a = await receiveInventoryStock(req, makeDeps(sc).deps);
-  const b = await receiveInventoryStock(req, makeDeps(sc).deps);
-  assert.equal(b.outcome, "replayed");
-  assert.equal(a.receivingId, b.receivingId);
-  assert.equal(a.receivingId, receivingOrderDocId(req.idempotencyKey), "legacy identity must stay derived from the key alone");
-  assert.ok(a.receivingId.startsWith("rcv_"));
+  await assertLegacyFrozen(sc, req, makeDeps(sc).deps);
+  await assertLegacyFrozen(sc, req, makeDeps(sc).deps);
+  assert.ok(receivingOrderDocId(req.idempotencyKey).startsWith("rcv_"), "legacy identity must stay derived from the key alone");
 });
 
-await check("3. legacy PARTIAL receipt is REJECTED (the legacy document cannot carry cumulative state)", async () => {
+// Ruling A: the legacy partial-receipt rule lives on the frozen branch; the freeze now refuses before validation.
+await check("3. legacy PARTIAL receipt is refused FROZEN (before validation), nothing written", async () => {
   const sc = await seedLegacy({ orderedQuantity: 4 });
   const req = legacyReq(sc, { lines: [{ lineId: "CLIENT-LABEL", partId: sc.partId, expectedQuantity: 4, receivedQuantity: 2 }] });
-  await assert.rejects(receiveInventoryStock(req, makeDeps(sc).deps), (e) => e instanceof SourceNotReceivableError);
+  await assertLegacyFrozen(sc, req, makeDeps(sc).deps);
 });
 
-await check("4. legacy line label is the CALLER'S, not the normalized L1", async () => {
-  // Deployed clients generate their own label. Requiring "L1" would reject every one of them.
+// Ruling A: the caller's legacy line label only mattered for a committed legacy receipt, which the freeze forbids.
+await check("4. a legacy receipt with the CALLER'S line label is refused FROZEN, nothing stored", async () => {
   const sc = await seedLegacy();
-  const out = await receiveInventoryStock(legacyReq(sc), makeDeps(sc).deps);
-  const stored = (await db.collection("receiving_orders").doc(out.receivingId).get()).data();
-  assert.equal(stored.lines[0].lineId, "CLIENT-LABEL");
-  // ...and the derived result reports the PO's own line, correctly attributed.
-  assert.equal(out.lines.length, 1);
-  assert.equal(out.lines[0].receivedNow, sc.orderedQuantity);
-  assert.equal(out.lines[0].remainingQuantity, 0);
+  await assertLegacyFrozen(sc, legacyReq(sc), makeDeps(sc).deps);
 });
 
 // ═══════════════════════════════════ CANONICAL RECEIPTS ═══════════════════════════════════
@@ -545,15 +547,15 @@ await check("36. normalization NEVER mutates the source document", async () => {
   assert.deepEqual(await poDoc(sc.poId), before, "a rejected read-and-normalize leaves the document exactly as it was");
 });
 
-await check("37. legacy and canonical purchase orders coexist, each receivable through its own authority", async () => {
+// Ruling A (legacy half: refused FROZEN, nothing written) + Ruling B (canonical half: the SAME command still receives the
+// unfrozen canonical authority -- the freeze sits on the legacy branch only, never at the command's entry point).
+await check("37. legacy and canonical purchase orders coexist: legacy is refused FROZEN, canonical still receives", async () => {
   const legacy = await seedLegacy();
   const canonical = await seedCanonical({ items: [{ qty: 2 }] });
-  const l = await receiveInventoryStock(legacyReq(legacy), makeDeps(legacy).deps);
+  await assertLegacyFrozen(legacy, legacyReq(legacy), makeDeps(legacy).deps);
   const c = await receiveInventoryStock(canonicalReq(canonical, [{ lineId: "L1", partId: canonical.lines[0].partId, receivedQuantity: 2 }]), makeDeps(canonical).deps);
-  assert.equal(l.sourceType, "REORDER_PURCHASE_ORDER");
   assert.equal(c.sourceType, "PURCHASE_ORDER");
-  assert.ok(l.receivingId.startsWith("rcv_") && c.receivingId.startsWith("rcvc_"));
-  assert.equal((await db.collection("reorder_requests").doc(legacy.rrid).get()).data().status, "RECEIVED");
+  assert.ok(c.receivingId.startsWith("rcvc_"));
   assert.equal((await poDoc(canonical.poId)).status, "RECEIVED");
 });
 

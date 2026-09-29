@@ -2,6 +2,14 @@
 // emulator; the idempotency + conflict tests exercise the REAL createPart
 // against the Firestore emulator with an injected capability (deps.roles),
 // exactly like partMasterCommands.test.mjs. Zero production access.
+//
+// CATALOG CUTOVER FREEZE (catalogMaster/catalogWriterState.ts, FROZEN/INACTIVE). The importer writes ONLY through
+// createPart, a legacy Firestore catalog writer that is now FROZEN. So the two emulator tests that executed the plan
+// against the real createPart assert the governed refusal (ruling A): the first row fails with the writer's
+// FirestoreCatalogWriterClosedError (FIRESTORE_CATALOG_WRITER_FROZEN), stop-on-first-failure leaves every other row
+// NOT_ATTEMPTED, no Part is written and an existing record is never touched. The importer's OWN pure logic -- plan
+// building, guards, the deterministic key, and the failure classification -- is proven unchanged (ruling B), the
+// classification through the existing createFn seam. Nothing here reopens a writer or replaces the guard.
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -12,7 +20,22 @@ import admin from "firebase-admin";
 admin.initializeApp({ projectId: "taylor-parts" });
 const db = admin.firestore();
 const { buildCreatePlan, executeCreatePlan, idempotencyKeyFor } = require("../scripts/executePartMasterCreate.js");
-const { createPart } = await import("../lib/partMaster/partMasterCommands.js");
+const { createPart, AlreadyExistsError } = await import("../lib/partMaster/partMasterCommands.js");
+const { partToFirestore } = await import("../lib/partMaster/partMasterRepository.js");
+const { validatePart } = await import("../lib/partMaster/validation.js");
+const { FirestoreCatalogWriterClosedError } = await import("../lib/catalogMaster/catalogWriterState.js");
+// The REAL frozen createPart, observed through the importer's existing createFn seam so the thrown error's class and
+// code are visible (the importer's result row carries only its message).
+function observedCreatePart(seen) {
+  return async (input) => {
+    try { return await createPart(input, DEPS); } catch (err) { seen.push(err); throw err; }
+  };
+}
+function assertFrozenPartCreate(err) {
+  assert.ok(err instanceof FirestoreCatalogWriterClosedError, `expected the governed freeze refusal, got ${err?.name}: ${err?.message}`);
+  assert.equal(err.code, "FIRESTORE_CATALOG_WRITER_FROZEN");
+  assert.equal(err.writer, "part.create");
+}
 
 let passed = 0, failed = 0;
 async function check(name, fn) {
@@ -72,34 +95,54 @@ await check("deterministic idempotency key: stable for (approved hash, partId)",
   assert.notEqual(idempotencyKeyFor(CSV_SHA, "CREATEFIX-1"), idempotencyKeyFor(CSV_SHA, "CREATEFIX-2"));
   assert.ok(idempotencyKeyFor(CSV_SHA, "CREATEFIX-1").startsWith("pmcreate-"));
 });
-await check("execute then idempotent rerun: SUCCESS then ALREADY_APPLIED (real createPart, emulator)", async () => {
+// Ruling A: the importer's only write path is frozen. Row 1 is refused with the governed code, rows 2-3 are never
+// attempted, nothing is written, and a rerun is refused identically (no idempotency record was ever created).
+await check("execute and rerun against the FROZEN createPart: row 1 FAILED (FROZEN), rest NOT_ATTEMPTED, zero writes (emulator)", async () => {
   const suffix = uid("run");
   const rows = [1, 2, 3].map((n) => pkgRow(n, `${suffix}-${n}`));
   const csv = `${HEADER}\n${rowCsv(`${suffix}-1`, "A")}\n${rowCsv(`${suffix}-2`, "B")}\n${rowCsv(`${suffix}-3`, "C")}\n`;
   const csvSha = sha256(csv);
   const built = buildCreatePlan({ csvText: csv, packageMetadata: { approvedInputSha256: csvSha }, packageRows: rows, approvedSha256: csvSha, expectedCount: 3, csvSha256: csvSha });
   assert.deepEqual(built.refusals, []);
-  const opts = { actorUid, approvedSha256: csvSha, deps: DEPS };
-  const first = await executeCreatePlan(built.plan, opts);
-  assert.deepEqual(first.counts, { SUCCESS: 3 });
-  assert.equal(first.complete, true);
-  assert.equal((await db.collection("parts").doc(`${suffix}-1`).get()).exists, true);
-  const second = await executeCreatePlan(built.plan, opts); // safe restart
-  assert.deepEqual(second.counts, { ALREADY_APPLIED: 3 });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const seen = [];
+    const res = await executeCreatePlan(built.plan, { actorUid, approvedSha256: csvSha, deps: DEPS, createFn: observedCreatePart(seen) });
+    assert.deepEqual(res.results.map((r) => r.status), ["FAILED", "NOT_ATTEMPTED", "NOT_ATTEMPTED"]);
+    assert.equal(res.results[0].failureKind, "ERROR");
+    assert.equal(res.complete, false);
+    assert.equal(seen.length, 1, "stop-on-first-failure: exactly one create attempted");
+    assertFrozenPartCreate(seen[0]);
+    assert.equal(res.results[0].message, seen[0].message);
+  }
+  for (const n of [1, 2, 3]) {
+    assert.equal((await db.collection("parts").doc(`${suffix}-${n}`).get()).exists, false);
+    assert.equal((await db.collection("auditEvents").where("targetId", "==", `${suffix}-${n}`).get()).size, 0);
+  }
 });
-await check("conflicting existing record: never overwrites -> FAILED CONFLICT_EXISTING (emulator)", async () => {
+// Ruling A: an existing record is never overwritten -- the frozen writer refuses before reading it. Ruling B: the
+// importer's own classification of a governed conflict (AlreadyExistsError -> CONFLICT_EXISTING) through createFn.
+await check("existing record: FROZEN writer never overwrites it; a governed conflict still classifies CONFLICT_EXISTING", async () => {
   const suffix = uid("conf");
   const pid = `${suffix}-1`;
-  // Pre-create the part under a DIFFERENT idempotency key (foreign create).
-  await createPart({ actorUid, idempotencyKey: uid("foreign"), part: { partId: pid, internalPartNumber: pid, name: "Foreign", status: "DRAFT", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" } }, DEPS);
+  // The foreign record, in exactly the stored shape createPart wrote.
+  const v = validatePart({ partId: pid, internalPartNumber: pid, name: "Foreign", status: "DRAFT", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" });
+  const at = DEPS.now();
+  await db.collection("parts").doc(pid).set(partToFirestore({ part: v.value, version: 1, createdAt: at, createdBy: "foreign", updatedAt: at, updatedBy: "foreign" }));
+  const before = (await db.collection("parts").doc(pid).get()).data();
   const rows = [pkgRow(1, pid)];
   const csv = `${HEADER}\n${rowCsv(pid, "Mine")}\n`;
   const csvSha = sha256(csv);
   const built = buildCreatePlan({ csvText: csv, packageMetadata: { approvedInputSha256: csvSha }, packageRows: rows, approvedSha256: csvSha, expectedCount: 1, csvSha256: csvSha });
-  const res = await executeCreatePlan(built.plan, { actorUid, approvedSha256: csvSha, deps: DEPS });
+  const seen = [];
+  const res = await executeCreatePlan(built.plan, { actorUid, approvedSha256: csvSha, deps: DEPS, createFn: observedCreatePart(seen) });
   assert.equal(res.results[0].status, "FAILED");
-  assert.equal(res.results[0].failureKind, "CONFLICT_EXISTING");
   assert.equal(res.complete, false);
+  assertFrozenPartCreate(seen[0]);
+  assert.deepEqual((await db.collection("parts").doc(pid).get()).data(), before, "the existing record is never overwritten");
+  const classified = await executeCreatePlan(built.plan, { actorUid, approvedSha256: csvSha, createFn: async () => { throw new AlreadyExistsError(`part ${pid} already exists`); } });
+  assert.equal(classified.results[0].status, "FAILED");
+  assert.equal(classified.results[0].failureKind, "CONFLICT_EXISTING");
+  assert.equal(classified.complete, false);
 });
 await check("partial failure: stop-on-first-failure; remaining NOT_ATTEMPTED (stub createFn)", async () => {
   const plan = [{ partId: "A", part: {} }, { partId: "B", part: {} }, { partId: "C", part: {} }];

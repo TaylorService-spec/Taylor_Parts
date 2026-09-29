@@ -45,14 +45,14 @@
 // touches the live "taylor-parts" project.
 "use strict";
 
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
+process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
+process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
 
 const admin = require("firebase-admin");
 
 const PROJECT_ID = "taylor-parts";
-const FIRESTORE_HOST = "http://127.0.0.1:8080";
-const AUTH_HOST = "http://127.0.0.1:9099";
+const FIRESTORE_HOST = `http://${process.env.FIRESTORE_EMULATOR_HOST}`;
+const AUTH_HOST = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`;
 const DOC_BASE = `${FIRESTORE_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 
 admin.initializeApp({ projectId: PROJECT_ID });
@@ -338,14 +338,14 @@ async function main() {
 
   // === Assign -- merged branch: admin/dispatcher OR eligible PARTS_MANAGER ===
 
-  report("PARTS_MANAGER Assign succeeds (merged branch, Issue #100 PR 3a)",
+  report("FROZEN (Reorder source freeze, activation window step 2): PARTS_MANAGER browser Assign is DENIED (merged branch, Issue #100 PR 3a)",
     (await updateDoc("reorder_requests", "rr-assign-by-pm", tokens["user-pm-1"], {
       status: str("ASSIGNED_TO_PARTS_ASSOCIATE"),
       currentOwner: str("PARTS_ASSOCIATE"),
       assignedToUserId: str("user-pa-1"),
       assignedBy: str("user-pm-1"),
       assignedAt: int(now),
-    })) === 200);
+    })) === 403);
 
   report("PARTS_ASSOCIATE Assign attempt denied -- PARTS_ASSOCIATE never gains Assign",
     (await updateDoc("reorder_requests", "rr-assign-by-pa", tokens["user-pa-1"], {
@@ -420,12 +420,12 @@ async function main() {
 
   // === Start Purchasing -- assignee-restricted, gains the new OR ===
 
-  report("PARTS_ASSOCIATE assignee: Start Purchasing succeeds",
+  report("FROZEN (Reorder source freeze, activation window step 2): PARTS_ASSOCIATE assignee: browser Start Purchasing is DENIED",
     (await updateDoc("reorder_requests", "rr-start-purchasing", tokens["user-pa-1"], {
       status: str("PURCHASING_IN_PROGRESS"),
       purchasingStartedBy: str("user-pa-1"),
       purchasingStartedAt: int(now),
-    })) === 200);
+    })) === 403);
 
   report("A DIFFERENT PARTS_ASSOCIATE (not the assignee): Start Purchasing denied",
     (await updateDoc("reorder_requests", "rr-start-purchasing-not-assignee", tokens["user-pa-2"], {
@@ -436,14 +436,14 @@ async function main() {
 
   // === Post Purchasing Update -- assignee-restricted, gains the new OR ===
 
-  report("PARTS_ASSOCIATE assignee: Post Purchasing Update succeeds",
+  report("FROZEN (Reorder source freeze, activation window step 2): PARTS_ASSOCIATE assignee: browser Post Purchasing Update is DENIED",
     (await updateDoc("reorder_requests", "rr-progress-update", tokens["user-pa-1"], {
       purchasingNotes: str("Vendor contacted, awaiting quote"),
       vendorContacted: str("Acme Parts Co."),
       expectedAvailabilityDate: str("2026-08-01"),
       lastPurchasingUpdateAt: int(now),
       lastPurchasingUpdateBy: str("user-pa-1"),
-    })) === 200);
+    })) === 403);
 
   // === Record PO -- RETIRED in Workstream 2B ===
   //
@@ -482,19 +482,19 @@ async function main() {
 
   // === Mark Received -- assignee-restricted, gains the new OR ===
 
-  report("PARTS_ASSOCIATE assignee: Mark Received succeeds",
+  report("FROZEN (Reorder source freeze, activation window step 2): PARTS_ASSOCIATE assignee: browser Mark Received is DENIED",
     (await updateDoc("reorder_requests", "rr-mark-received", tokens["user-pa-1"], {
       status: str("RECEIVED"),
       receivedBy: str("user-pa-1"),
       receivedAt: int(now),
-    })) === 200);
+    })) === 403);
 
-  report("admin/dispatcher Mark Received regression -- existing admin capability unaffected",
+  report("FROZEN (Reorder source freeze, activation window step 2): admin/dispatcher browser Mark Received is DENIED as well -- the freeze has no role exemption",
     (await updateDoc("reorder_requests", "rr-admin-mark-received-regression", tokens["user-admin-1"], {
       status: str("RECEIVED"),
       receivedBy: str("user-admin-1"),
       receivedAt: int(now),
-    })) === 200);
+    })) === 403);
 
   // === Cancel -- confirmed still admin/dispatcher-only, PARTS_ASSOCIATE never gains it ===
 

@@ -2,12 +2,12 @@
 // collection: ALL client access denied for every principal. Same harness
 // as partMasterRules.test.js. Registered with expected count 8.
 "use strict";
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
+process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
+process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
 const admin = require("firebase-admin");
 const PROJECT_ID = "taylor-parts";
-const AUTH_HOST = "http://127.0.0.1:9099";
-const DOC_BASE = `http://127.0.0.1:8080/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+const AUTH_HOST = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`;
+const DOC_BASE = `http://${process.env.FIRESTORE_EMULATOR_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 const auth = admin.auth();

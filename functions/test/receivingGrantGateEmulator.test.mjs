@@ -12,7 +12,8 @@ import { HttpsError } from "firebase-functions/v2/https";
 admin.initializeApp({ projectId: "taylor-parts" });
 const db = admin.firestore();
 
-const { runReceiveInventoryStock, runListReceivingLocationOptions } = await import("../lib/inventoryReceiving/receivingCallables.js");
+const { runReceiveInventoryStock, runListReceivingLocationOptions, mapReceiveError } = await import("../lib/inventoryReceiving/receivingCallables.js");
+const { receiveInventoryStockProduction } = await import("../lib/inventoryReceiving/receiveInventoryStockComposition.js");
 const { resolveReceivePermissionThroughTxn, resolveReceivePartThroughTxn, stageReceiveAuditEvent } = await import("../lib/inventoryReceiving/receivingCallableWiring.js");
 
 let passed = 0, failed = 0;
@@ -44,6 +45,20 @@ async function seedReceive() {
 const reqData = (sc) => ({ source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: sc.rrid, purchaseOrderId: sc.rrid }, receivingLocation: { type: "WAREHOUSE", locationId: sc.wh }, lines: [{ lineId: "L1", partId: sc.partId, expectedQuantity: 5, receivedQuantity: 5 }], idempotencyKey: nextId("idem") });
 const callReq = (uid, data) => ({ auth: { uid }, data });
 const reorderStatus = async (rrid) => (await db.collection("reorder_requests").doc(rrid).get()).data().status;
+// REORDER SOURCE FREEZE (Catalog + Reorder cutover, step 2). The receive callable's contract admits only the legacy
+// REORDER_PURCHASE_ORDER source, whose receipt branch is frozen, so a HOLDER's receipt is now refused failed-precondition /
+// REORDER_SOURCE_FROZEN -- which is itself proof the grant passed (an ungranted caller gets permission-denied first, inside
+// the same transaction, before the source is reached). The APPLIED half of the grant proof moves one boundary below: the
+// callable's own composition, with the REAL governed resolver + wiring + error map, on the unfrozen CANONICAL source.
+async function receiveCanonical(uid, sc) {
+  const poId = nextId("po");
+  await db.collection("purchase_orders").doc(poId).set({ supplierId: nextId("sup"), status: "SENT", items: [{ lineId: "L1", partId: sc.partId, quantity: 5, unitPrice: 1 }] });
+  const data = { source: { type: "PURCHASE_ORDER", purchaseOrderId: poId }, receivingLocation: { type: "WAREHOUSE", locationId: sc.wh }, lines: [{ lineId: "L1", partId: sc.partId, expectedQuantity: 5, receivedQuantity: 5 }], idempotencyKey: nextId("idem") };
+  try {
+    const out = await receiveInventoryStockProduction(data, { db: wiring.db, actor: { kind: "USER", id: uid }, authorize: (txn, actorId) => wiring.resolvePermission(txn, actorId), resolvePart: wiring.resolvePart, stageAudit: wiring.stageAudit, now: wiring.now });
+    return { out, poId };
+  } catch (err) { throw mapReceiveError(err); }
+}
 
 // PIN MOVED 2026-09-24 (Owner ruling A -- narrow the compiled Owner Role). This loop used to read
 // ["admin", "dispatcher", "owner"] under the comment "owner is Owner-ratified as an inherited holder
@@ -59,12 +74,16 @@ const reorderStatus = async (rrid) => (await db.collection("reorder_requests").d
 // loop therefore proves strictly MORE than it did: the complete holder set now runs the real
 // callables, and it is the only non-privileged Role among them.
 for (const role of ["admin", "dispatcher", "inventoryReceivingClerk"]) {
-  await check(`${role} roleAssignment -> receive APPLIED + options returns (real governed grant)`, async () => {
+  // Ruling A (legacy receive via the callable: refused FROZEN, not permission-denied, zero writes) + Ruling B (the real
+  // governed grant APPLIES a canonical receipt through the callable's composition).
+  await check(`${role} roleAssignment -> legacy receive refused FROZEN (past the grant gate), canonical receive APPLIED + options returns (real governed grant)`, async () => {
     const sc = await seedReceive();
     const uid = nextId("actor"); await grantRole(uid, role);
-    const out = await runReceiveInventoryStock(callReq(uid, reqData(sc)), wiring);
+    await assert.rejects(runReceiveInventoryStock(callReq(uid, reqData(sc)), wiring), (e) => e instanceof HttpsError && e.code === "failed-precondition" && e.details?.code === "REORDER_SOURCE_FROZEN");
+    assert.equal(await reorderStatus(sc.rrid), "ORDERED");
+    const { out, poId } = await receiveCanonical(uid, sc);
     assert.equal(out.outcome, "applied");
-    assert.equal(await reorderStatus(sc.rrid), "RECEIVED");
+    assert.equal((await db.collection("purchase_orders").doc(poId).get()).data().status, "RECEIVED");
     const opt = await runListReceivingLocationOptions(callReq(uid, {}), wiring);
     assert.ok(opt.options.some((o) => o.value === sc.wh));
   });
