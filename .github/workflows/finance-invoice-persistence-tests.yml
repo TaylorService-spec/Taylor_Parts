@@ -61,6 +61,9 @@ on:
       # Persona matrix: its SUBJECT is the role bundles, the activation registry and the resolver,
       # none of which live under finance/ -- without these lines a widening there would not run it.
       - "functions/test/financeReportingPersonaMatrix.test.mjs"
+      # DQ-019 integrity + pre-activation census (core, CLI, suite).
+      - "functions/test/financeRecordIntegrity.test.mjs"
+      - "functions/scripts/financeRecordCensusCli.js"
       - "functions/src/access/governedBusinessRoles.ts"
       - "functions/src/access/compatibilityRoles.ts"
       - "functions/src/access/environmentCapabilityOverrides.ts"
@@ -122,6 +125,9 @@ on:
       # Persona matrix: its SUBJECT is the role bundles, the activation registry and the resolver,
       # none of which live under finance/ -- without these lines a widening there would not run it.
       - "functions/test/financeReportingPersonaMatrix.test.mjs"
+      # DQ-019 integrity + pre-activation census (core, CLI, suite).
+      - "functions/test/financeRecordIntegrity.test.mjs"
+      - "functions/scripts/financeRecordCensusCli.js"
       - "functions/src/access/governedBusinessRoles.ts"
       - "functions/src/access/compatibilityRoles.ts"
       - "functions/src/access/environmentCapabilityOverrides.ts"
@@ -175,7 +181,7 @@ jobs:
         working-directory: functions
 
       - name: Invoice command core + numbering (node:test)
-        run: node --test test/financialAttribution.test.mjs test/financialScopeBinding.test.mjs test/billingQueue.test.mjs test/costMargin.test.mjs test/costAuthorityAbsence.test.mjs test/planVsActual.test.mjs test/forecasting.test.mjs test/financialApprovals.test.mjs test/financialPeriods.test.mjs test/financialAllocation.test.mjs test/financialReconciliation.test.mjs test/financialVisibility.test.mjs test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs test/paymentCommands.test.mjs test/adjustmentCommands.test.mjs test/financeReadProjection.test.mjs test/financialReportingRead.test.mjs test/refundCommands.test.mjs test/financialCompanyDimension.test.mjs test/financeDetectorWiring.test.mjs test/financialVisibilitySandboxActivation.test.mjs test/financeReportingPersonaMatrix.test.mjs
+        run: node --test test/financialAttribution.test.mjs test/financialScopeBinding.test.mjs test/billingQueue.test.mjs test/costMargin.test.mjs test/costAuthorityAbsence.test.mjs test/planVsActual.test.mjs test/forecasting.test.mjs test/financialApprovals.test.mjs test/financialPeriods.test.mjs test/financialAllocation.test.mjs test/financialReconciliation.test.mjs test/financialVisibility.test.mjs test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs test/paymentCommands.test.mjs test/adjustmentCommands.test.mjs test/financeReadProjection.test.mjs test/financialReportingRead.test.mjs test/refundCommands.test.mjs test/financialCompanyDimension.test.mjs test/financeDetectorWiring.test.mjs test/financialVisibilitySandboxActivation.test.mjs test/financeReportingPersonaMatrix.test.mjs test/financeRecordIntegrity.test.mjs
         working-directory: functions
 
       - name: Capability catalog + resolver exhaustiveness (node:test)

@@ -745,3 +745,17 @@ test("Customer Financials asks for INVOICE facts only -- the tenant-wide payment
   const src = readFileSync(new URL("../src/modules/financials/FinancialsCustomerFinancials.jsx", import.meta.url), "utf8");
   assert.match(src, /useFinancialFacts\(\s*\{\s*accountId: selected\?\.id \?\? null, factTypes: \["INVOICE"\] \}/);
 });
+
+test("DQ-019: a MALFORMED_RECORD read is UNAVAILABLE with a named reason and a count — never a figure, never empty", () => {
+  const result = {
+    status: "unavailable",
+    completeness: {
+      status: "PARTIAL", reason: "MALFORMED_RECORD", consistency: "SINGLE_SNAPSHOT",
+      reads: [{ collection: "invoices", documentsRead: 3, bound: 500, exhausted: true, tenantWide: true, danglingIds: 0, malformedIds: 2 }],
+    },
+    invoices: [], payments: [], applications: [],
+  };
+  const s = financialFactsState({ loading: false, errorStatus: null, result });
+  assert.equal(s.state, FACTS_STATE.UNAVAILABLE);
+  assert.match(s.detail, /^2 of the invoices in this answer carry amounts the system cannot read/);
+});

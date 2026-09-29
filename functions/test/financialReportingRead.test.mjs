@@ -508,7 +508,9 @@ const bulkInvoice = (i, over = {}) =>
   invoice(`inv-${String(i).padStart(5, "0")}`, { totalMinor: 100, appliedMinor: 0, ...over });
 const bulk = (n, over) => Array.from({ length: n }, (_, i) => bulkInvoice(i, over));
 const app = (id, invoiceId, paymentId) => ({ id, data: { invoiceId, paymentId, companyId: "taylor", currency: "USD", appliedAmountMinor: 1, appliedAtMillis: T0 } });
-const pay = (id) => ({ id, data: { companyId: "taylor", currency: "USD", amountMinor: 1, receivedAtMillis: T0 } });
+// The governed receipt shape (paymentCommands CashReceiptRecord): recordPayment always writes
+// appliedMinor, so a fixture without it is a MALFORMED receipt and the read now refuses it (DQ-019).
+const pay = (id) => ({ id, data: { companyId: "taylor", currency: "USD", amountMinor: 1, appliedMinor: 1, receivedAtMillis: T0 } });
 
 test("40. the bounds are UNCHANGED: server maximum 500, callable default 200", () => {
   assert.equal(MAX_REPORTING_LIMIT, 500);
@@ -710,4 +712,49 @@ test("an application's invoice number is never projected for an invoice outside 
   const r = await readFinancialFacts(db, TAYLOR_ONLY, { factTypes: ["PAYMENT_APPLICATION"] }, 50);
   // inv-b is ventana: its application is not returned at all, so its number cannot surface.
   assert.deepEqual(r.applications.map((a) => [a.applicationId, a.invoiceNumber]), [["app-1", "INV-C"]]);
+});
+
+// ═══════════════ DQ-019: malformed AUTHORIZED records fail closed — never skipped, never zero ═══════════════
+
+test("an authorized invoice with an unreadable appliedMinor is PARTIAL / MALFORMED_RECORD — not 'owes the full total'", async () => {
+  for (const bad of ["5000", -1, 12.5, null, Number.NaN]) {
+    const r = await readFinancialFacts(fakeDb({ invoices: [invoice("inv-x", { appliedMinor: bad })] }), CONSOLIDATED, {}, 50);
+    assert.equal(r.status, "unavailable", `appliedMinor=${String(bad)}`);
+    assert.deepEqual({ s: r.completeness.status, reason: r.completeness.reason }, { s: "PARTIAL", reason: "MALFORMED_RECORD" });
+    assert.equal(r.completeness.reads.find((x) => x.collection === "invoices").malformedIds, 1);
+    assert.deepEqual(r.invoices, []);
+    assert.deepEqual(r.summary.outstandingByCurrency, {}, "no figure over a row the system cannot read");
+  }
+});
+
+test("an ABSENT optional counter is the writers' own zero and stays COMPLETE; an absent totalMinor/currency does not", async () => {
+  const noCounters = invoice("inv-new", {});
+  delete noCounters.data.appliedMinor; delete noCounters.data.creditsMinor; delete noCounters.data.chargesMinor; delete noCounters.data.writeOffMinor;
+  const ok = await readFinancialFacts(fakeDb({ invoices: [noCounters] }), CONSOLIDATED, {}, 50);
+  assert.equal(ok.completeness.status, "COMPLETE");
+  for (const field of ["totalMinor", "currency"]) {
+    const broken = invoice("inv-broken", {});
+    delete broken.data[field];
+    const r = await readFinancialFacts(fakeDb({ invoices: [broken] }), CONSOLIDATED, {}, 50);
+    assert.equal(r.completeness.reason, "MALFORMED_RECORD", field);
+  }
+});
+
+test("a malformed record OUTSIDE the caller's reach neither blocks nor is disclosed to them", async () => {
+  const other = invoice("inv-other", { companyId: "ventana", appliedMinor: "oops" });
+  const r = await readFinancialFacts(fakeDb({ invoices: [invoice("inv-mine"), other] }), TAYLOR_ONLY, {}, 50);
+  assert.equal(r.completeness.status, "COMPLETE");
+  assert.deepEqual(r.invoices.map((i) => i.invoiceId), ["inv-mine"]);
+  assert.equal(r.completeness.reads.find((x) => x.collection === "invoices").malformedIds, 0);
+});
+
+test("a malformed authorized APPLICATION or RECEIPT fails closed — cash is never silently dropped", async () => {
+  const badApp = { id: "app-bad", data: { invoiceId: "inv-c", paymentId: "pay-1", companyId: "taylor", currency: "USD", appliedAmountMinor: "100", appliedAtMillis: T0 } };
+  const r1 = await readFinancialFacts(fakeDb({ invoices: INVOICES, payment_applications: [badApp], payments: [pay("pay-1")] }), CONSOLIDATED, {}, 50);
+  assert.equal(r1.completeness.reason, "MALFORMED_RECORD");
+  assert.equal(r1.completeness.reads.find((x) => x.collection === "payment_applications").malformedIds, 1);
+  const badPay = { id: "pay-1", data: { companyId: "taylor", currency: "USD", amountMinor: 1, receivedAtMillis: T0 } }; // no appliedMinor
+  const r2 = await readFinancialFacts(fakeDb({ invoices: INVOICES, payment_applications: [app("a1", "inv-c", "pay-1")], payments: [badPay] }), CONSOLIDATED, {}, 50);
+  assert.equal(r2.completeness.reason, "MALFORMED_RECORD");
+  assert.equal(r2.completeness.reads.find((x) => x.collection === "payments").malformedIds, 1);
 });

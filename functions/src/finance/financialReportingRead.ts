@@ -71,6 +71,7 @@ import {
 } from "./financeReadProjection";
 import { invoiceVisibilityFacts, type FinancialVisibilityAuthority } from "./financialVisibility";
 import { loadFinancialVisibilityAuthority } from "./financeReadCallables";
+import { isFinanceRecordSound, type FinanceRecordKind } from "./financeRecordIntegrity";
 
 /** The fact families this read can serve — each backed by a persisted collection, no synthesis. */
 export const REPORTING_FACT_TYPES = ["INVOICE", "PAYMENT_RECEIPT", "PAYMENT_APPLICATION"] as const;
@@ -101,7 +102,12 @@ export type ReportingIncompleteReason =
   | "READ_LIMIT_REACHED"
   | "READ_FAILED"
   /** An authorized payment application names a receipt that does not exist. */
-  | "DANGLING_REFERENCE";
+  | "DANGLING_REFERENCE"
+  /**
+   * An AUTHORIZED record in the answer carries money or identity the governed writers never produce
+   * (DQ-019: fail closed, never skip, never read as zero). financeRecordIntegrity.ts defines it.
+   */
+  | "MALFORMED_RECORD";
 
 export interface ReportingCollectionRead {
   collection: string;
@@ -115,6 +121,8 @@ export interface ReportingCollectionRead {
   tenantWide: boolean;
   /** Receipts only: ids named by authorized applications that are absent from the complete read. */
   danglingIds: number;
+  /** AUTHORIZED records of this collection that failed the structural check (count only, never ids). */
+  malformedIds: number;
 }
 
 export interface FinancialFactsCompleteness {
@@ -364,7 +372,7 @@ export async function readFinancialFacts(
 
   /** One bounded read: `bound` + 1 rows requested; more than `bound` returned is READ_LIMIT_REACHED. */
   const boundedRead = async (reader: SnapshotReader, collection: string, query: Query, bound: number, tenantWide: boolean) => {
-    const entry: ReportingCollectionRead = { collection, documentsRead: 0, bound, exhausted: false, tenantWide, danglingIds: 0 };
+    const entry: ReportingCollectionRead = { collection, documentsRead: 0, bound, exhausted: false, tenantWide, danglingIds: 0, malformedIds: 0 };
     reads.push(entry);
     let snap: QuerySnapshot;
     try {
@@ -380,6 +388,17 @@ export async function readFinancialFacts(
     return { snap, entry };
   };
 
+  /**
+   * DQ-019. Every AUTHORIZED record that feeds this answer must be structurally sound. One that is
+   * not ends the read as PARTIAL / MALFORMED_RECORD — never skipped (skipping an application drops
+   * cash) and never read as zero (a zero appliedMinor inflates what is owed). Records outside the
+   * caller's reach are not judged: they contribute nothing, and refusing on them would disclose them.
+   */
+  const assertSound = (entry: ReportingCollectionRead, kind: FinanceRecordKind, docs: Array<{ data(): unknown }>) => {
+    entry.malformedIds = docs.filter((d) => !isFinanceRecordSound(kind, d.data())).length;
+    if (entry.malformedIds > 0) throw new IncompleteRead("MALFORMED_RECORD");
+  };
+
   // ONE read-only transaction: every read below shares one consistent snapshot. `reads` is reset
   // at the top so a retry of the function starts its counts clean.
   const readAll = async (reader: SnapshotReader): Promise<FinancialFactsResult> => {
@@ -389,10 +408,11 @@ export async function readFinancialFacts(
     const base = db.collection(INVOICES_COLLECTION);
     const accountNarrowed = nonEmpty(filters.accountId);
     const query = accountNarrowed ? base.where("accountId", "==", filters.accountId) : base;
-    const { snap } = await boundedRead(reader, INVOICES_COLLECTION, query, limit, !accountNarrowed);
+    const { snap, entry: invoiceRead } = await boundedRead(reader, INVOICES_COLLECTION, query, limit, !accountNarrowed);
 
     // ── AUTHORIZATION FIRST. Requested filters are not consulted until after this line. ──
     const visibleDocs = snap.docs.filter((d) => authority.isInvoiceVisible(invoiceVisibilityFacts(d.data() ?? {})));
+    assertSound(invoiceRead, "INVOICE", visibleDocs);
 
     // ── Then the caller's narrowing, over the already-authorized set. ──
     const invoices: InvoiceReportRead[] = [];
@@ -420,7 +440,7 @@ export async function readFinancialFacts(
     let payments: PaymentReportRead[] = [];
     let applications: PaymentApplicationReportRead[] = [];
     if (visibleInvoiceIds.size > 0 && (wants("PAYMENT_APPLICATION") || wants("PAYMENT_RECEIPT"))) {
-      const { snap: appSnap } = await boundedRead(
+      const { snap: appSnap, entry: appRead } = await boundedRead(
         reader,
         PAYMENT_APPLICATIONS_COLLECTION,
         db.collection(PAYMENT_APPLICATIONS_COLLECTION),
@@ -428,6 +448,7 @@ export async function readFinancialFacts(
         true,
       );
       const visibleApps = appSnap.docs.filter((d) => visibleInvoiceIds.has(String((d.data() ?? {}).invoiceId ?? "")));
+      assertSound(appRead, "PAYMENT_APPLICATION", visibleApps);
       // Every application the caller may see, before any period narrowing — this is what authorizes
       // a receipt, so a receipt stays judged on its own received date.
       const allVisibleApplicationPaymentIds = visibleApps
@@ -472,6 +493,7 @@ export async function readFinancialFacts(
           const present = new Set(paySnap.docs.map((d) => d.id));
           payRead.danglingIds = [...paymentIds].filter((id) => !present.has(id)).length;
           if (payRead.danglingIds > 0) throw new IncompleteRead("DANGLING_REFERENCE");
+          assertSound(payRead, "PAYMENT_RECEIPT", paySnap.docs.filter((d) => paymentIds.has(d.id)));
           payments = paySnap.docs
             .filter((d) => paymentIds.has(d.id))
             .map((d) => {

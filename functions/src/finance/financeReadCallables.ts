@@ -25,6 +25,7 @@ import { OPERATING_COMPANY_IDS } from "../ownership/operatingCompanyAuthority";
 import { BUSINESS_UNITS } from "./financialAttribution";
 import { INVOICES_COLLECTION } from "../constants/collections";
 import { projectInvoiceAr, summarizeAccountAr, type InvoiceArRead } from "./financeReadProjection";
+import { isFinanceRecordSound } from "./financeRecordIntegrity";
 import {
   FINANCIAL_VISIBILITY_CAPABILITIES,
   FINANCE_READ_FACT_FAMILY_CAPABILITY,
@@ -200,6 +201,11 @@ export async function readAccountInvoiceAr(
     // row, not a summary amount, not a count. The caller cannot tell hidden from absent, which is
     // the point: visibility follows the number.
     const visibleDocs = snap.docs.filter((d) => isVisible(invoiceVisibilityFacts(d.data() ?? {})));
+    // DQ-019: a visible invoice the governed writers could not have produced (unreadable money or
+    // currency) makes the account's AR UNAVAILABLE -- never skipped, never read as zero owed.
+    if (visibleDocs.some((d) => !isFinanceRecordSound("INVOICE", d.data()))) {
+      return { status: "unavailable", invoices: [], summary: summarizeAccountAr([]) };
+    }
     const invoices: InvoiceArRead[] = visibleDocs.map((d) => projectInvoiceAr(d.id, d.data() ?? {}, now));
     return { status: "ready", invoices, summary: summarizeAccountAr(invoices) };
   } catch {

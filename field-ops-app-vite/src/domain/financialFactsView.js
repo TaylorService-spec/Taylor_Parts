@@ -120,6 +120,19 @@ export function incompleteReadNote(completeness) {
       return completeness.status === "PARTIAL"
         ? `The governed read failed part-way (reading ${what}). Nothing is shown, because the records already read are not the whole answer.`
         : "The governed read failed before any record was read. Nothing is shown; this is not an absence of records.";
+    case "MALFORMED_RECORD": {
+      // A count of RECORDS the server could not read (never their values), and where they sit.
+      let n = 0;
+      const where = [];
+      for (const r of reads) {
+        if (typeof r?.malformedIds === "number" && r.malformedIds > 0) {
+          n += r.malformedIds;
+          where.push(COLLECTION_WORDS[r.collection] ?? r.collection);
+        }
+      }
+      const records = where.length > 0 ? where.join(" and ") : "records";
+      return `${n || "Some"} of the ${records} in this answer carry amounts the system cannot read. Nothing is shown: a figure computed over a record read as zero would be wrong, and those records need review, not a guess.`;
+    }
     case "NO_REACH":
       return "No financial visibility scope confers reach for your principal, so nothing was read.";
     default:
