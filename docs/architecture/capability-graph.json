@@ -3680,6 +3680,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosOps/binPlacementOperations.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
           "functions/src/inventoryLocation/putAwayCommand.ts"
@@ -3691,7 +3692,7 @@
           "field-ops-app-vite/src/modules/scan/MoveStockScan.jsx",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3890,13 +3891,14 @@
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/adminPolicy/roleCapabilityAdministration.ts",
+          "functions/src/eosOps/serializedAssetAcquireOperations.ts",
           "functions/src/serializedAsset/acquireSerializedAssetCommand.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/serializedAssetAcquireCapabilityAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
