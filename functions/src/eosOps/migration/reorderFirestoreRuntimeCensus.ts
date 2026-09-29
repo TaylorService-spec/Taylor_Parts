@@ -18,6 +18,26 @@
 // follows IMPORTS: a client module that imports a wrapper which reaches a Reorder callable is a
 // callable consumer, however many hops away it sits.
 //
+// ════════════════════ AND WRONG A SECOND TIME: CONSTANTS, AND A CALLABLE THAT IS A WRITER BY SOURCE ════════════════════
+//
+// The census then read `field-ops-app-vite/src/domain/constants.js` as DEAD -- "the collection-name
+// constant" -- and never asked who IMPORTED the constant. Every client hook that read
+// `reorder_purchase_orders` / `reorder_purchase_order_voids` did so through PURCHASE_ORDERS_COLLECTION
+// and REORDER_PURCHASE_ORDER_VOIDS_COLLECTION, so none of them was counted. The derivation now follows the
+// constants too: a client module that imports one of them from domain/constants.js and USES it is an
+// occurrence at its own path, exactly as if it had spelled the name.
+//
+// It also never saw the receiving callable. `receiveInventoryStock` is a Reorder WRITER for one source
+// type (REORDER_PURCHASE_ORDER: it moves the Firestore Reorder Request to RECEIVED) and not for the other
+// (the canonical PURCHASE_ORDER). Its client transport names it only through a CALLABLE_NAMES table in
+// another module, so a name match missed it. The derivation now finds receiving transports through that
+// indirection and counts one as a Reorder callable consumer exactly when it can put a
+// REORDER_PURCHASE_ORDER source on the wire.
+//
+// And it called the legacy receive write "FROZEN". That was true of the repository's code and false of
+// the Functions DEPLOYED in nonprod, which pre-date the freeze. A census entry states what runs, not what
+// is written down: see the receiving entries below.
+//
 // ════════════════════ THE SAME NAME IS TWO DIFFERENT THINGS ════════════════════
 //
 // `reorder_requests` is a Firestore collection AND a PostgreSQL table. A schema qualifier -- a
@@ -137,28 +157,43 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
   // still reaches Firestore and what replaced it, and the gate reads its length as a count of
   // blockers.
 
-  // ══════════ THE DEFECT THIS MODEL EXISTS TO CATCH ══════════
+  // ══════════ THE DEFECT THIS MODEL EXISTS TO CATCH -- and what closed it ══════════
+  //
+  // The legacy ORDERED -> RECEIVED write is still in the repository and still DEPLOYED. What changed is
+  // that no EOS client path reaches its Reorder branch any more: a Reorder Purchase Order is received
+  // through the governed PostgreSQL receipt (field-ops-app-vite/src/services/reorderReceivingClient.js ->
+  // receiveReorderStock), and the one client transport that still names receiveInventoryStock
+  // (receivingCallableClient.js) can only send the canonical PURCHASE_ORDER source. The companion suite
+  // DERIVES both facts from the client source; it does not take them from this comment.
+  //
+  // So these are DEPLOYED legacy authority with no repository callers -- externally invokable Firebase
+  // code that blocks the Firebase RETIREMENT, which is retirement-only work, and not the activation.
   e({
     path: "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts", object: "REORDER_REQUEST",
-    classification: "FIRESTORE_SOURCE_WRITER_FROZEN",
+    classification: "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
     consumer: "THE LEGACY ORDERED -> RECEIVED WRITE. On a REORDER_PURCHASE_ORDER-sourced receipt it "
-      + "updates the Firestore Reorder Request with { status: RECEIVED, receivedAt, receivedBy } in "
-      + "the receiving transaction. A live Firestore Reorder writer, in the receiving path, that a "
-      + "one-row-per-file census could not see because the same file also reads a purchase order. "
-      + "NOW GATED by reorderSourceFreeze on the LEGACY BRANCH ONLY -- the canonical PURCHASE_ORDER "
-      + "receipt shares this command and is deliberately NOT frozen, because it has its own cutover.",
+      + "updates the Firestore Reorder Request with { status: RECEIVED, receivedAt, receivedBy }. The "
+      + "repository's copy refuses that branch through reorderSourceFreeze, but the copy DEPLOYED in nonprod "
+      + "pre-dates the freeze and would still write it. No repository client sends it that source any more "
+      + "(the Reorder receipt goes to the PostgreSQL receiveReorderStock); the canonical PURCHASE_ORDER "
+      + "receipt shares this command and is its own authority. Deployed and externally invokable until its "
+      + "export is removed and that removal deployed.",
     occurrences: 1,
   }),
   e({
     path: "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts", object: "PURCHASE_ORDER",
-    classification: "FIRESTORE_RUNTIME_WRITE",
-    consumer: "sets the purchase order status to RECEIVED in the same transaction", occurrences: 1,
+    classification: "DEAD",
+    consumer: "declares the reorder_purchase_orders collection name and never uses it: the legacy branch "
+      + "never writes the Reorder Purchase Order (it is immutable), and its source is read by "
+      + "receivingSourceResolver.ts",
+    occurrences: 1,
   }),
   e({
     path: "functions/src/inventoryReceiving/receivingSourceResolver.ts", object: "PURCHASE_ORDER",
-    classification: "FIRESTORE_RUNTIME_READ",
-    consumer: "resolves a receipt's source purchase order from Firestore. THE CONTINUITY SEAM: a "
-      + "purchase order recorded in PostgreSQL by the governed command is invisible here.",
+    classification: "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
+    consumer: "resolves a REORDER_PURCHASE_ORDER receipt's source purchase order from Firestore -- the "
+      + "legacy branch of the deployed receiveInventoryStock, which no repository client reaches any more. "
+      + "A purchase order recorded in PostgreSQL is invisible here, which is why the Reorder receipt left.",
     occurrences: 1,
   }),
 
@@ -178,12 +213,12 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
     consumer: "recordReorderPurchaseOrder creates the purchase order document", occurrences: 1,
   }),
 
-  // ══════════ the Procurement panel's remaining purchase-order read ══════════
-  e({
-    path: "field-ops-app-vite/src/services/operationsQueries.ts", object: "PURCHASE_ORDER",
-    classification: "FIRESTORE_RUNTIME_READ",
-    consumer: "the Procurement panel's purchase-order read; its Reorder side is governed now", occurrences: 1,
-  }),
+  // ══════════ the client purchase-order and void reads: GONE ══════════
+  //
+  // operationsQueries.ts (Procurement panel, shadow-parity diagnostic), usePurchaseOrdersByIds.js,
+  // useReorderPurchaseOrders.js and useReorderPurchaseOrderVoids.js read the governed
+  // readReorderPurchaseOrders now. They appear in no entry because they name no Reorder collection, by
+  // literal OR by imported constant -- which the derivation now checks.
 
   // ══════════ THE SYNTHETIC FIXTURE DECLARATION ══════════
   //
@@ -238,26 +273,35 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
     classification: "MIGRATION_EVIDENCE", consumer: "the supplier back-fill executor", occurrences: 1 }),
 
   // ══════════ names them, reaches nothing ══════════
+  // The DECLARATION of the collection-name constants. Declaring reaches nothing; every module that
+  // imports and USES one is counted at its own path by the constant-following derivation, so this entry
+  // can no longer hide a consumer the way it once hid four.
   e({ path: "field-ops-app-vite/src/domain/constants.js", object: "REORDER_REQUEST", classification: "DEAD",
-    consumer: "the collection-name constant", occurrences: 1 }),
+    consumer: "declares REORDER_REQUESTS_COLLECTION; its users are counted where they use it", occurrences: 1 }),
   e({ path: "field-ops-app-vite/src/domain/constants.js", object: "PURCHASE_ORDER", classification: "DEAD",
-    consumer: "the collection-name constant", occurrences: 1 }),
+    consumer: "declares PURCHASE_ORDERS_COLLECTION; its users are counted where they use it", occurrences: 1 }),
   e({ path: "field-ops-app-vite/src/domain/constants.js", object: "PURCHASE_ORDER_VOID", classification: "DEAD",
-    consumer: "the collection-name constant", occurrences: 1 }),
+    consumer: "declares REORDER_PURCHASE_ORDER_VOIDS_COLLECTION; its users are counted where they use it", occurrences: 1 }),
+  // The metadata entity bindings. Each declares `collection:` through the constant (now counted), and
+  // each is DEAD for a checked reason: no screen runs their index lists through the metadata list runtime
+  // (the companion suite asserts nothing outside metadata/definitions imports them), and nothing reads
+  // Firestore through the entity registry's collection field.
   e({ path: "field-ops-app-vite/src/metadata/definitions/reorderRequest.js", object: "REORDER_REQUEST",
-    classification: "DEAD", consumer: "the Reorder Request metadata binding", occurrences: 2 }),
+    classification: "DEAD", consumer: "the Reorder Request metadata binding", occurrences: 3 }),
   e({ path: "field-ops-app-vite/src/metadata/definitions/reorderRequest.js", object: "PURCHASE_ORDER",
     classification: "DEAD", consumer: "its related-object binding", occurrences: 2 }),
   e({ path: "field-ops-app-vite/src/metadata/definitions/reorderRequest.js", object: "PURCHASE_ORDER_VOID",
     classification: "DEAD", consumer: "its related-object binding", occurrences: 1 }),
   e({ path: "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js", object: "PURCHASE_ORDER",
-    classification: "DEAD", consumer: "the purchase order metadata binding", occurrences: 3 }),
+    classification: "DEAD", consumer: "the purchase order metadata binding", occurrences: 4 }),
   e({ path: "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js", object: "REORDER_REQUEST",
     classification: "DEAD", consumer: "its related-object binding", occurrences: 1 }),
   e({ path: "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js", object: "PURCHASE_ORDER_VOID",
     classification: "DEAD", consumer: "its related-object binding", occurrences: 1 }),
   e({ path: "field-ops-app-vite/src/metadata/definitions/purchaseOrderVoid.js", object: "REORDER_REQUEST",
     classification: "DEAD", consumer: "the void metadata binding's related object", occurrences: 2 }),
+  e({ path: "field-ops-app-vite/src/metadata/definitions/purchaseOrderVoid.js", object: "PURCHASE_ORDER_VOID",
+    classification: "DEAD", consumer: "the void metadata binding", occurrences: 1 }),
   e({ path: "field-ops-app-vite/src/domain/reporting/reportCatalog.js", object: "REORDER_REQUEST",
     classification: "DEAD", consumer: "names the collection in the client report catalog", occurrences: 1 }),
   e({ path: "field-ops-app-vite/src/domain/reporting/reportCatalog.js", object: "PURCHASE_ORDER",
@@ -289,7 +333,11 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
 ]);
 
 export interface RuntimeActivationReadiness {
-  /** True only when NO runtime consumer of the Reorder Request object remains, of any kind. */
+  /**
+   * True only when NO runtime consumer of ANY Reorder object remains, of any kind -- the Reorder Request,
+   * the Reorder Purchase Order and its void record alike (Owner ruling: the Reorder domain's runtime census
+   * gate is ZERO at activation).
+   */
   readonly ready: boolean;
   readonly blockedBy: readonly string[];
   readonly runtimeConsumerCount: number;
@@ -297,14 +345,19 @@ export interface RuntimeActivationReadiness {
   readonly firebaseRetired: boolean;
   readonly firebaseRetirementBlockedBy: readonly string[];
   /**
-   * Purchase-order and void runtime consumers. Reported, and deliberately NOT part of the gate:
-   * a different object with its own authority. Stated so the number is never zero by omission.
+   * Purchase-order and void runtime consumers, reported on their own as well.
+   *
+   * THEY ARE PART OF THE GATE NOW. They were once reported and excluded, on the ground that the purchase
+   * order was "a different object with its own authority". At this activation it is not: the governed
+   * PostgreSQL commands record and void the Reorder Purchase Order, and PostgreSQL serves its reads
+   * (readReorderPurchaseOrders), so a client still reading the Firestore copy is reading a frozen snapshot
+   * of an object PostgreSQL owns. Excluding them would let the gate read zero over live stale reads.
    */
   readonly purchaseOrderRuntimeConsumers: readonly string[];
 }
 
 /**
- * MAY THE REORDER REQUEST AUTHORITY BE ACTIVATED, AND IS FIREBASE RETIRED?
+ * MAY THE REORDER AUTHORITY BE ACTIVATED, AND IS FIREBASE RETIRED?
  *
  * Two questions, answered separately because they are answered at different steps. Activation needs
  * zero runtime consumers -- Firestore reads, Firestore writes, and callable client wrappers alike.
@@ -313,17 +366,17 @@ export interface RuntimeActivationReadiness {
 export function reorderRuntimeActivationReadiness(
   census: readonly RuntimeCensusEntry[] = REORDER_LEGACY_RUNTIME_CENSUS,
 ): RuntimeActivationReadiness {
-  const reorder = census.filter((c) => c.object === "REORDER_REQUEST");
-  const blocking = reorder.filter((c) => ACTIVATION_BLOCKING.includes(c.classification));
-  const retirementBlocking = reorder.filter((c) => RETIREMENT_BLOCKING.includes(c.classification));
-  const po = census.filter((c) =>
-    c.object !== "REORDER_REQUEST" && ACTIVATION_BLOCKING.includes(c.classification));
+  // EVERY Reorder object. Keyed (path, object), so a file blocking on two objects counts twice.
+  const blocking = census.filter((c) => ACTIVATION_BLOCKING.includes(c.classification));
+  const retirementBlocking = census.filter((c) => RETIREMENT_BLOCKING.includes(c.classification));
+  const po = blocking.filter((c) => c.object !== "REORDER_REQUEST");
+  const paths = (rows: readonly RuntimeCensusEntry[]) => Object.freeze([...new Set(rows.map((c) => c.path))].sort());
   return Object.freeze({
     ready: blocking.length === 0,
-    blockedBy: Object.freeze(blocking.map((c) => c.path).sort()),
+    blockedBy: paths(blocking),
     runtimeConsumerCount: blocking.length,
     firebaseRetired: retirementBlocking.length === 0,
-    firebaseRetirementBlockedBy: Object.freeze(retirementBlocking.map((c) => c.path).sort()),
-    purchaseOrderRuntimeConsumers: Object.freeze(po.map((c) => c.path).sort()),
+    firebaseRetirementBlockedBy: paths(retirementBlocking),
+    purchaseOrderRuntimeConsumers: paths(po),
   });
 }
