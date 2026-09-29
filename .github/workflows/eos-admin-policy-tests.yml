@@ -476,6 +476,7 @@ on:
       - "functions/src/serializedAsset/acquireSerializedAssetCommand.ts"
       - "functions/migrations/1764129600000_serialized-asset-acquire-authority.sql"
       - "functions/test/eosSerializedAssetAcquirePostgres.test.mjs"
+      - "functions/test/eosSerializedAssetAcquireAtomicityPostgres.test.mjs"
       - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       # WAVE 9 / LANE AH: the Administration surface + Owner persona readiness record. Registered
       # individually for the reason every entry above was -- a suite that runs in a registered job
@@ -1147,6 +1148,7 @@ on:
       - "functions/src/serializedAsset/acquireSerializedAssetCommand.ts"
       - "functions/migrations/1764129600000_serialized-asset-acquire-authority.sql"
       - "functions/test/eosSerializedAssetAcquirePostgres.test.mjs"
+      - "functions/test/eosSerializedAssetAcquireAtomicityPostgres.test.mjs"
       - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/access/experienceContext.js"
