@@ -29,9 +29,9 @@
 //
 // ════════════════════ WHAT IS REFUSED, NOT GUESSED ════════════════════
 //
-//   * recordPlacement: the put-away PLACEMENT record (bin_placements) has NO PostgreSQL authority yet. A move
-//     that asks for one is refused PLACEMENT_NOT_ON_EOS rather than performed without it -- a relocation that
-//     silently dropped its put-away record would be new behavior. (Recorded as an open item.)
+//   * recordPlacement needs inventory.placement.record as well (held separately, scoped to the same warehouse), and
+//     writes the SAME placement rows put-away writes (eosOps/binPlacementOperations.ts, eos_ops.bin_placements,
+//     DQ-038) in the same transaction as the ledger pair; the placement is part of the replay intent.
 //   * An impossible ledger (a negative balance at the source, or a serial whose custody and ledger disagree):
 //     LEDGER_INTEGRITY (DQ-019) -- never clamped into a plausible number.
 //   * Not activated: every operation refuses NOT_ACTIVATED before touching anything while
@@ -47,6 +47,7 @@ import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAutho
 import { isSafeIdSegment } from "../inventoryLocation/binRegistry.js";
 import type { PostgresRelocationWriterState } from "../inventoryLocation/stockRelocationWriterState.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
+import { EOS_PLACEMENT_RECORD_CAPABILITY, insertPlacements, planPlacements, readPlacements } from "./binPlacementOperations.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -232,10 +233,9 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
     // ---- 1. capability (the scope predicates follow once the custody warehouse is known) ----
     if (!actor.capabilities.has(EOS_STOCK_RELOCATE_CAPABILITY)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${EOS_STOCK_RELOCATE_CAPABILITY}`);
 
-    // ---- 2. PLACEMENT: no PostgreSQL authority yet -- refused, never silently dropped ----
-    if (req.recordPlacement) {
-      refuse("PLACEMENT_NOT_ON_EOS", "PRECONDITION_FAILED",
-        "recording a put-away placement with a relocation is not available on EOS yet; relocate without it, or use the current system");
+    // ---- 2. PLACEMENT is its own authority: holding relocate does not imply it (Decision #170) ----
+    if (req.recordPlacement && !actor.capabilities.has(EOS_PLACEMENT_RECORD_CAPABILITY)) {
+      refuse("CAPABILITY_MISSING", "FORBIDDEN", "placement_not_authorized");
     }
 
     // ---- 3. part authority: tracking mode from eos_ops.parts, never the request ----
@@ -260,6 +260,21 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
           : decision.reason === "WORK_ELIGIBILITY_MISSING" ? "relocating stock requires the Warehouse Operations work eligibility"
             : decision.reason === "EMPLOYEE_LINK_REQUIRED" ? "only an Employee can relocate stock" : "not authorized");
     }
+    if (req.recordPlacement) {
+      const placement = await authorizeObjectAction(postgresContextualReader(db), {
+        actor, capabilityKey: EOS_PLACEMENT_RECORD_CAPABILITY, predicates: warehousePredicates(source.scopeWarehouseId),
+      });
+      if (!placement.allowed) refuse(placement.reason, "FORBIDDEN", "placement_not_authorized");
+    }
+    // The placement a move ALSO records (DQ-038): the same rows put-away writes, at the custody warehouse's bin.
+    const destinationBinCode = req.destination.type === "BIN"
+      ? (await db.query<{ code: string }>(`SELECT code FROM eos_ops.bins WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, req.destination.locationId])).rows[0]?.code ?? null
+      : null;
+    // The ids derive from the key and the serial/part alone, so they are known whatever the destination -- which is
+    // what lets a replay WITHOUT a placement notice one that was written under the same key.
+    const plannedPlacements = planPlacements({ warehouseId: source.scopeWarehouseId, binId: req.destination.locationId,
+      binCode: destinationBinCode ?? "", partId: req.partId, idempotencyKey: req.idempotencyKey,
+      pickedForWorkOrderId: req.pickedForWorkOrderId, note: null, serialNumbers: serials, quantity: req.quantity ?? 0 });
 
     // ---- 5. prior write? replay by INTENT ----
     const planned = planRows(req);
@@ -283,9 +298,23 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
         if (!same) refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "idempotency_key_reused");
         return (r as { id: string }).id;
       });
+      // THE PLACEMENT IS PART OF THE INTENT: a retry that asks for a placement the original never wrote (or omits
+      // one it did, or names another pick) is a different request under this key, not a replay.
+      const placed = await readPlacements(db, actor.tenantId, plannedPlacements.map((p) => p.id));
+      if (req.recordPlacement) {
+        if (placed.length !== plannedPlacements.length) refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "placement_intent_differs");
+        for (const d of placed) {
+          if (d.bin_id !== req.destination.locationId || (d.picked_for_work_order_id ?? null) !== (req.pickedForWorkOrderId ?? null)) {
+            refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "placement_intent_differs");
+          }
+        }
+      } else if (placed.length > 0) {
+        refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "placement_intent_differs");
+      }
       return {
         outcome: "replayed" as const, relocationId, partId: req.partId, source: req.source, destination: req.destination,
-        quantity: isSerial ? null : (req.quantity ?? null), serialNumbers: serials, movementIds, placementIds: [] as string[],
+        quantity: isSerial ? null : (req.quantity ?? null), serialNumbers: serials, movementIds,
+        placementIds: req.recordPlacement ? plannedPlacements.map((p) => p.id) : [] as string[],
       };
     }
 
@@ -331,7 +360,15 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
       if (atSource < (req.quantity as number)) refuse("INSUFFICIENT_STOCK", "PRECONDITION_FAILED", "exact_source_short");
     }
 
-    // ---- 8. the ledger pair(s), and the serial custody pointer, in ONE transaction ----
+    // ---- 7b. placement records, read before any write: an existing one without its movement is an integrity fault ----
+    if (req.recordPlacement) {
+      if (destinationBinCode === null) refuse("NOT_FOUND", "NOT_FOUND", "bin_not_found");
+      if ((await readPlacements(db, actor.tenantId, plannedPlacements.map((p) => p.id))).length > 0) {
+        refuse("INTEGRITY", "CONFLICT", "placement_without_movement");
+      }
+    }
+
+    // ---- 8. the ledger pair(s), the serial custody pointer, and the placement, in ONE transaction ----
     const movementIds: string[] = [];
     for (const p of planned) {
       const id = `mov_${randomUUID()}`;
@@ -356,15 +393,18 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
           WHERE tenant_id = $1 AND part_id = $2 AND serial_number = ANY($3)`,
         [actor.tenantId, req.partId, serials, req.destination.type, req.destination.locationId, actor.principalId]);
     }
+    if (req.recordPlacement) await insertPlacements(db, actor.tenantId, actor.principalId, plannedPlacements);
     await db.query(
       `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
        VALUES ($1, $2, 'stockRelocation.relocate', $3, 'stockRelocation', $4, NULL, $5, NULL)`,
       [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, relocationId,
         JSON.stringify({ partId: req.partId, source: req.source, destination: req.destination, warehouseId: source.scopeWarehouseId,
-          quantity: isSerial ? serials.length : req.quantity, serialCount: serials.length, placementRecorded: false })]);
+          quantity: isSerial ? serials.length : req.quantity, serialCount: serials.length, placementRecorded: req.recordPlacement,
+          placementIds: req.recordPlacement ? plannedPlacements.map((p) => p.id) : [] })]);
     return {
       outcome: "relocated" as const, relocationId, partId: req.partId, source: req.source, destination: req.destination,
-      quantity: isSerial ? null : (req.quantity as number), serialNumbers: serials, movementIds, placementIds: [] as string[],
+      quantity: isSerial ? null : (req.quantity as number), serialNumbers: serials, movementIds,
+      placementIds: req.recordPlacement ? plannedPlacements.map((p) => p.id) : [] as string[],
     };
   });
 }

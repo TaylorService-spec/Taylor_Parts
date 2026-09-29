@@ -176,8 +176,10 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // -- APPENDED after the scope binding table, an EXPLAINED pending migration; the ledger model is not extended.
 // 65 -> 66 runnable: migration 1764122400000, the Transfer-on-EOS storage support (lane L3) -- APPENDED, an EXPLAINED
 // pending migration; the ledger model is not extended.
-const RUNNABLE_MIGRATION_COUNT = 66;
-const TRACKED_MIGRATION_COUNT = 67; // the 66 runnable + the one deferred file
+// 66 -> 68 runnable: 1764126000000 (bin placement authority, DQ-038) and 1764129600000 (serialized asset acquire
+// authority, DQ-036(b)), lane L3 -- APPENDED, EXPLAINED pending migrations; the ledger model is not extended.
+const RUNNABLE_MIGRATION_COUNT = 68;
+const TRACKED_MIGRATION_COUNT = 69; // the 68 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -195,6 +197,8 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764115200000_mobile-location-scope-binding",
   "1764118800000_mobile-location-scope-binding-capability",
   "1764122400000_transfer-eos-lifecycle-support",
+  "1764126000000_bin-placement-authority",
+  "1764129600000_serialized-asset-acquire-authority",
 ]);
 
 const repoMigrations = () =>

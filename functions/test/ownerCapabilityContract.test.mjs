@@ -319,7 +319,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // RE-PINNED 2026-09-26: 81 -> 82, admin.administratorRole.assign (migration 1763078400000; Owner ruling R1).
   // RE-PINNED 2026-09-28: 82 -> 90, the eight Reorder lifecycle keys (migration 1763337600000), Administration-grant-only.
   // RE-PINNED 2026-09-28: 90 -> 91, inventory.location.scopeBinding.manage (migration 1764118800000; DQ-029; granted to nobody).
-  assert.equal(VOCABULARY.size, 91);
+  // RE-PINNED 2026-09-29: 91 -> 92, inventory.serializedAsset.acquire (migration 1764129600000; DQ-036(b); Administration-grant-only).
+  assert.equal(VOCABULARY.size, 92);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

@@ -156,3 +156,29 @@ Both are **built and not activated**. Each has its own writer-authority constant
 - **Fails closed on bad evidence (DQ-019).** A negative ledger balance, or custody the ledger does not support, is refused.
 - **Storage support.** Migration `1764122400000` adds a serial `IN_TRANSIT` state and TO-YYYY-###### numbering.
 - **Open item (DQ-037).** The put-away placement record has no PostgreSQL authority. An EOS relocation that asks for one is refused with PLACEMENT_NOT_ON_EOS rather than performed without it.
+
+## 8. Bin placement and serialized acquisition on EOS (DQ-038, DQ-036(b), 2026-09-29)
+
+Both are **built and not activated**.
+
+| | Route | Constant | Migration |
+|---|---|---|---|
+| Put-away placement | `POST /operations/placement` (`recordPutAway`) | `inventoryLocation/placementWriterState.ts` | `1764126000000`, `eos_ops.bin_placements` |
+| Acquire an existing serialized unit | `POST /operations/serialized-asset` (`acquireSerializedAsset`) | `serializedAsset/acquireWriterState.ts`, mirrored in the client | `1764129600000`, capability + `serialized_asset_acquisitions` |
+
+**Placement keeps the Firestore behavior exactly** (`binPlacementParity.test.mjs` pins this):
+- **It is an append-only event.** One row per serial or per quantity stow. It moves no stock.
+- **It belongs to a governed warehouse.** The server resolves the bin, and the table refuses a bin that is not a bin of the stated warehouse.
+- **Warehouse scope is authoritative.**
+
+The EOS relocation now records the same placement in the same transaction. PLACEMENT_NOT_ON_EOS is gone.
+
+**`inventory.serializedAsset.acquire` is Administration-grant-only.** It is fenced in `roleCapabilityAdministration.ADMINISTRATION_GRANT_ONLY_CAPABILITIES`. Its initial Taylor holders (Parts Associate, Parts Manager, Warehouse Associate, Warehouse Manager) are granted by an execution packet.
+
+The capability alone is not enough. An acquisition also requires:
+- the Warehouse Operations eligibility and scope for the receiving warehouse;
+- Catalog identity (the Part is ACTIVE and SERIAL);
+- an ACTIVE warehouse belonging to a governed company;
+- a unit that is not already in custody.
+
+The acquisition writes the custody row, the provenance row, and one `ADJUSTED` +1 serial movement (the opening-balance model) in a single transaction. At activation the client switch and the server switch flip together, and the Firebase `acquireSerializedAsset` callable is retired.

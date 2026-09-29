@@ -24,6 +24,10 @@ import { EOS_RELOCATION_OPERATIONS, RelocationOperationError, type EosRelocation
 import { RELOCATION_WRITER_AUTHORITY, type PostgresRelocationWriterState } from "../inventoryLocation/stockRelocationWriterState";
 import { EOS_TRANSFER_OPERATIONS, TransferOperationError, type EosTransferOperation } from "./transferOperations";
 import { TRANSFER_WRITER_AUTHORITY, type PostgresTransferWriterState } from "../inventoryTransfer/transferWriterState";
+import { EOS_PLACEMENT_OPERATIONS, PlacementOperationError, type EosPlacementOperation } from "./binPlacementOperations";
+import { PLACEMENT_WRITER_AUTHORITY, type PostgresPlacementWriterState } from "../inventoryLocation/placementWriterState";
+import { EOS_ACQUIRE_OPERATIONS, AcquireOperationError, type EosAcquireOperation } from "./serializedAssetAcquireOperations";
+import { ACQUIRE_WRITER_AUTHORITY, type PostgresAcquireWriterState } from "../serializedAsset/acquireWriterState";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { resolveExperienceContext } from "./experienceAuthority";
 import {
@@ -156,8 +160,21 @@ export const TRANSFER_OPERATIONS: readonly EosTransferOperation[] =
 export const isTransferOperation = (name: unknown): name is EosTransferOperation =>
   typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_TRANSFER_OPERATIONS, name);
 
+// ════════════════════ Bin placement (put-away; DQ-038) and serialized asset acquisition (DQ-036(b)) ════════════════════
+export const PLACEMENT_ROUTE = "/operations/placement";
+export const PLACEMENT_OPERATIONS: readonly EosPlacementOperation[] =
+  Object.freeze(Object.keys(EOS_PLACEMENT_OPERATIONS) as EosPlacementOperation[]);
+export const isPlacementOperation = (name: unknown): name is EosPlacementOperation =>
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_PLACEMENT_OPERATIONS, name);
+export const SERIALIZED_ASSET_ROUTE = "/operations/serialized-asset";
+export const SERIALIZED_ASSET_OPERATIONS: readonly EosAcquireOperation[] =
+  Object.freeze(Object.keys(EOS_ACQUIRE_OPERATIONS) as EosAcquireOperation[]);
+export const isSerializedAssetOperation = (name: unknown): name is EosAcquireOperation =>
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_ACQUIRE_OPERATIONS, name);
+
 export const OPERATIONS_ROUTES: readonly string[] =
-  Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE, RELOCATION_ROUTE, TRANSFER_ROUTE])].sort());
+  Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE, RELOCATION_ROUTE, TRANSFER_ROUTE,
+    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE])].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(OPERATIONS_MUTATION_OPERATIONS);
@@ -181,6 +198,10 @@ export interface OperationsApiDeps {
   readonly relocationPostgresState?: PostgresRelocationWriterState;
   /** TEST INJECTION ONLY: the Transfer activation state (TRANSFER_WRITER_AUTHORITY.postgres, INACTIVE, otherwise). */
   readonly transferPostgresState?: PostgresTransferWriterState;
+  /** TEST INJECTION ONLY: the put-away activation state (PLACEMENT_WRITER_AUTHORITY.postgres, INACTIVE, otherwise). */
+  readonly placementPostgresState?: PostgresPlacementWriterState;
+  /** TEST INJECTION ONLY: the acquisition activation state (ACQUIRE_WRITER_AUTHORITY.postgres, INACTIVE, otherwise). */
+  readonly acquirePostgresState?: PostgresAcquireWriterState;
 }
 
 /** Every operation of the PostgreSQL Reorder authority: all but the two principal-context resolvers. */
@@ -428,7 +449,7 @@ export async function executeCycleCountOperation(
   }
 }
 
-type CommandRoute = "relocation" | "transfer";
+type CommandRoute = "relocation" | "transfer" | "placement" | "serializedAsset";
 
 /**
  * Execute one Stock Relocation or Transfer operation for an already-verified caller -- the Cycle Count shape
@@ -456,12 +477,19 @@ export async function executeInventoryCommandOperation(
     const result = route === "relocation"
       ? await EOS_RELOCATION_OPERATIONS[operation as EosRelocationOperation](
         { pool: deps.pool, postgresState: deps.relocationPostgresState ?? RELOCATION_WRITER_AUTHORITY.postgres }, actor, request.input)
-      : await EOS_TRANSFER_OPERATIONS[operation as EosTransferOperation](
-        { pool: deps.pool, postgresState: deps.transferPostgresState ?? TRANSFER_WRITER_AUTHORITY.postgres }, actor, request.input);
+      : route === "transfer"
+        ? await EOS_TRANSFER_OPERATIONS[operation as EosTransferOperation](
+          { pool: deps.pool, postgresState: deps.transferPostgresState ?? TRANSFER_WRITER_AUTHORITY.postgres }, actor, request.input)
+        : route === "placement"
+          ? await EOS_PLACEMENT_OPERATIONS[operation as EosPlacementOperation](
+            { pool: deps.pool, postgresState: deps.placementPostgresState ?? PLACEMENT_WRITER_AUTHORITY.postgres }, actor, request.input)
+          : await EOS_ACQUIRE_OPERATIONS[operation as EosAcquireOperation](
+            { pool: deps.pool, postgresState: deps.acquirePostgresState ?? ACQUIRE_WRITER_AUTHORITY.postgres }, actor, request.input);
     return { status: 200, body: { ok: true, operation, result } };
   } catch (err) {
     if (err instanceof PrincipalContextError) return { status: 403, body: { ok: false, operation, code: "FORBIDDEN", message: err.refusal } };
-    if (err instanceof RelocationOperationError || err instanceof TransferOperationError) {
+    if (err instanceof RelocationOperationError || err instanceof TransferOperationError
+      || err instanceof PlacementOperationError || err instanceof AcquireOperationError) {
       return { status: STATUS_BY_CYCLE_COUNT_CATEGORY[err.category] ?? 500, body: { ok: false, operation, code: err.code, message: err.message } };
     }
     // eslint-disable-next-line no-console -- same posture as the read path's unhandled-error log
@@ -565,9 +593,11 @@ export async function handleOperationsRequest(
     return json(out.status, out.body, origin);
   }
 
-  if (path === RELOCATION_ROUTE || path === TRANSFER_ROUTE) {
-    const route: CommandRoute = path === RELOCATION_ROUTE ? "relocation" : "transfer";
-    const known = route === "relocation" ? isRelocationOperation(operation) : isTransferOperation(operation);
+  if (path === RELOCATION_ROUTE || path === TRANSFER_ROUTE || path === PLACEMENT_ROUTE || path === SERIALIZED_ASSET_ROUTE) {
+    const route: CommandRoute = path === RELOCATION_ROUTE ? "relocation" : path === TRANSFER_ROUTE ? "transfer"
+      : path === PLACEMENT_ROUTE ? "placement" : "serializedAsset";
+    const known = route === "relocation" ? isRelocationOperation(operation) : route === "transfer" ? isTransferOperation(operation)
+      : route === "placement" ? isPlacementOperation(operation) : isSerializedAssetOperation(operation);
     if (!known) return json(404, notFound(String(operation ?? "")), origin);
     const input = payload.input === undefined ? {} : payload.input;
     if (!input || typeof input !== "object" || Array.isArray(input)) {

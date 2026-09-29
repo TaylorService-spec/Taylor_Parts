@@ -9,7 +9,8 @@
 //   * the RELOCATION_OUT/IN pair (one per serial), the custody pointer moving in the same transaction, one audit;
 //   * replay by intent (same -> replayed, nothing written; different -> IDEMPOTENCY_CONFLICT; partial -> INTEGRITY);
 //   * DQ-019: an impossible ledger or custody/ledger disagreement fails closed;
-//   * put-away placement is refused on EOS (no PostgreSQL placement authority yet), never silently dropped.
+//   * DQ-038: a relocation that also records the put-away placement needs inventory.placement.record too, writes the
+//     SAME eos_ops.bin_placements rows put-away writes, in the same transaction; the placement is part of the replay.
 // Set POLICY_TEST_DATABASE_URL to run (a dedicated database: this suite resets the schemas it declares).
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -159,8 +160,10 @@ const onHand = async (partId, type, id) => Number((await q(
   [TENANT, partId, type, id])).rows[0].n);
 const move = (qty, key, over = {}) => ({ partId: PART, source: { type: "WAREHOUSE", locationId: WH_A }, destination: { type: "BIN", locationId: BIN_A1 }, quantity: qty, idempotencyKey: key, ...over });
 
+const W = (id) => ({ type: "WAREHOUSE", locationId: id });
+const B = (id) => ({ type: "BIN", locationId: id });
 const RELOCATE = ["inventory.stock.relocate"];
-let MOVER, MOVER_B, NO_ELIG, NO_CAPS, NO_EMPLOYEE;
+let MOVER, MOVER_B, NO_ELIG, NO_CAPS, NO_EMPLOYEE, STOWER;
 
 test("world", { skip: SKIP }, async () => {
   await reset();
@@ -169,6 +172,7 @@ test("world", { skip: SKIP }, async () => {
   NO_ELIG = await persona({ subject: "rl-no-elig", capabilities: RELOCATE, eligibility: [] });
   NO_CAPS = await persona({ subject: "rl-no-caps", capabilities: [] });
   NO_EMPLOYEE = await persona({ subject: "rl-no-employee", capabilities: RELOCATE, employee: false });
+  STOWER = await persona({ subject: "rl-stower", capabilities: [...RELOCATE, "inventory.placement.record"] });
   await receive(PART, "WAREHOUSE", WH_A, 10, "mv-a-1");
   await receive(PART, "BIN", BIN_B, 5, "mv-b-1");
   await receiveSerial("SN-1", "BIN", BIN_A1);
@@ -236,8 +240,8 @@ test("the same business refusals as the Firestore command", { skip: SKIP }, asyn
   refused(await call(MOVER, move(1, "k-r10", { destination: { type: "WAREHOUSE", locationId: WH_A } })), 400, "INVALID", /same_location/);
   refused(await call(MOVER, move(1, "k-r11", { destination: { type: "BIN", locationId: "no-such-bin" } })), 404, "NOT_FOUND", /bin_not_found/);
   refused(await call(MOVER, { ...move(1, "k-r12"), tenantId: "other" }), 400, "INVALID", /unknown_field/);
-  // Put-away placement: no PostgreSQL authority yet -- refused, never silently dropped.
-  refused(await call(MOVER, move(1, "k-r13", { recordPlacement: true })), 412, "PLACEMENT_NOT_ON_EOS");
+  // Placement is its own authority: relocate alone does not imply it (Decision #170).
+  refused(await call(MOVER, move(1, "k-r13", { recordPlacement: true })), 403, "CAPABILITY_MISSING", /placement_not_authorized/);
   assert.equal(await count(`SELECT count(*) AS n FROM eos_ops.inventory_movements WHERE idempotency_key LIKE 'stockRelocation:k-r%'`), 0);
 });
 
@@ -265,6 +269,26 @@ test("DQ-019: an impossible ledger or custody the ledger does not support fails 
   await receiveSerial("SN-3", "BIN", BIN_A1, { ledger: false });
   refused(await call(MOVER, { partId: PART_SER, source: { type: "BIN", locationId: BIN_A1 }, destination: { type: "BIN", locationId: BIN_A2 }, serialNumbers: ["SN-3"], idempotencyKey: "k-d2" }),
     412, "LEDGER_INTEGRITY", /ledger_disagrees_with_custody/);
+});
+
+test("DQ-038: relocation WITH placement -- both capabilities, the placement rows written with the pair, replay covers them", { skip: SKIP }, async () => {
+  const before = await count(`SELECT count(*) AS n FROM eos_ops.bin_placements`);
+  const r = ok(await call(STOWER, move(2, "k-p1", { recordPlacement: true, pickedForWorkOrderId: "WO-7" })));
+  assert.equal(r.outcome, "relocated");
+  assert.deepEqual(r.placementIds, ["plc_k-p1__PRT-RL-1"]);
+  const row = (await q(`SELECT warehouse_id, bin_id, part_id, quantity, serial_number, picked_for_work_order_id, placed_by FROM eos_ops.bin_placements WHERE id = 'plc_k-p1__PRT-RL-1'`)).rows[0];
+  assert.deepEqual({ ...row, placed_by: undefined }, { warehouse_id: WH_A, bin_id: BIN_A1, part_id: PART, quantity: 2, serial_number: null, picked_for_work_order_id: "WO-7", placed_by: undefined });
+  assert.equal(await count(`SELECT count(*) AS n FROM eos_ops.bin_placements`), before + 1);
+  // Replay: the same intent replays placements too; asking now WITHOUT the placement, or for another pick, conflicts.
+  assert.deepEqual(ok(await call(STOWER, move(2, "k-p1", { recordPlacement: true, pickedForWorkOrderId: "WO-7" }))).placementIds, r.placementIds);
+  refused(await call(STOWER, move(2, "k-p1")), 409, "IDEMPOTENCY_CONFLICT", /placement_intent_differs/);
+  refused(await call(STOWER, move(2, "k-p1", { recordPlacement: true, pickedForWorkOrderId: "WO-8" })), 409, "IDEMPOTENCY_CONFLICT", /placement_intent_differs/);
+  // A plain relocation whose key was later used for a placement-bearing request conflicts the other way.
+  ok(await call(STOWER, move(1, "k-p2")));
+  refused(await call(STOWER, move(1, "k-p2", { recordPlacement: true })), 409, "IDEMPOTENCY_CONFLICT", /placement_intent_differs/);
+  assert.equal(await count(`SELECT count(*) AS n FROM eos_ops.bin_placements`), before + 1);
+  // Placement into a warehouse (not a bin) is refused by shape, as before.
+  refused(await call(STOWER, move(1, "k-p3", { source: B(BIN_A1), destination: W(WH_A), recordPlacement: true })), 400, "INVALID", /placement_requires_bin_destination/);
 });
 
 test("transport: closed table, identity only from the verifier", { skip: SKIP }, async () => {

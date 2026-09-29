@@ -271,7 +271,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 65: + the truck scope binding capability (1764118800000, DQ-029): one capability granted to NO Role, so no
   // persona's set moves.
   // 66: + the Transfer-on-EOS storage support (1764122400000): schema only -- no capability, no grant.
-  assert.equal(files.length, 66, "the migration chain moved; re-measure before trusting anything below");
+  // 68: + the bin placement authority (1764126000000, schema only) and the serialized asset acquire authority
+  // (1764129600000): one capability FENCED Administration-grant-only, so no Role receives it and no persona moves.
+  assert.equal(files.length, 68, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -373,7 +375,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 91); // + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 92); // + inventory.serializedAsset.acquire (1764129600000, DQ-036(b), Administration-grant-only), + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.

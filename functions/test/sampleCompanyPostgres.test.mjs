@@ -245,8 +245,12 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // so no persona moves.
 // 1764122400000 (the Transfer-on-EOS storage support, lane L3): an enum value, a counter table, an index -- no
 // capability, no grant, no vocabulary move, and the seed writes no transfer.
-const PINNED_LAST_MIGRATION = "1764122400000_transfer-eos-lifecycle-support";
-const PINNED_MIGRATION_COUNT = 66;
+// 1764126000000 (the bin placement authority, DQ-038): one eos_ops table -- no capability, no grant.
+// 1764129600000 (the serialized asset acquire authority, DQ-036(b)): ONE capability, inventory.serializedAsset.acquire
+// (vocabulary 91 -> 92, reconciled in the manifest), FENCED Administration-grant-only -- the seed's catalog reconcile
+// writes it to no Role, so no persona moves.
+const PINNED_LAST_MIGRATION = "1764129600000_serialized-asset-acquire-authority";
+const PINNED_MIGRATION_COUNT = 68;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

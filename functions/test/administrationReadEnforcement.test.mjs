@@ -204,7 +204,10 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // (inventory.location.scopeBinding.manage) granted to nobody. It registers no READ key.
   // 65 -> 66: the Transfer-on-EOS storage support (1764122400000, lane L3) -- an enum value, a counter table and an
   // index; no capability, no grant. It registers no READ key.
-  assert.equal(migrations.length, 66, "a migration was added or removed by the read enforcement");
+  // 66 -> 68: the bin placement authority (1764126000000, DQ-038) -- one eos_ops table, no capability -- and the
+  // serialized asset acquire authority (1764129600000, DQ-036(b)) -- ONE BUSINESS_ACTION capability granted to
+  // nobody, plus its provenance table. Neither registers a READ key.
+  assert.equal(migrations.length, 68, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

@@ -86,6 +86,9 @@ test("the catalog authority is composed ONLY by the Work Order/ops commands that
     "eosOps/cycleCountOperations.ts",
     "eosOps/equipmentCustody.ts",
     "eosOps/inventoryCommitmentRepository.ts",
+    // Controller ruling DQ-036(b): acquire-existing-unit reads Catalog identity (ACTIVE + SERIAL) from the catalog,
+    // never the caller. INACTIVE until activation (serializedAsset/acquireWriterState.ts).
+    "eosOps/serializedAssetAcquireOperations.ts",
     "eosOps/serviceFromSalesOrderBoundary.ts",
     // Controller ruling DQ-036: the EOS stock relocation reads the moved Part's status and tracking mode from the
     // catalog, never the caller. INACTIVE until the inventory baseline COPY (stockRelocationWriterState.ts).
