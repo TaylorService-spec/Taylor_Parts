@@ -316,7 +316,7 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
     catalogFact: "Part identity, status, and controlType -> trackingMode, which decides whether a count line snapshots a quantity or a blind serial set",
     classification: "ACTIVE_DEPLOYED_BUSINESS_PATH",
     deployedReachable: true,
-    replacementAuthority: "eos_ops.parts via eosOps/cycleCountRepository.ts -- BUILT, but composed by nothing",
+    replacementAuthority: "eos_ops.parts via eosOps/cycleCountRepository.ts -- composed by eosOps/cycleCountOperations.ts on /operations/cycle-count; writer INACTIVE (cycleCount/cycleCountWriterState.ts)",
     activationBlocking: true,
     retirementBlocking: true,
     disposition: "CONSUME_POSTGRES_CATALOG",
@@ -326,9 +326,8 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
       + "buildFirestorePartRepository), and live rather than dormant: inventory.cycleCount.* is activated "
       + "in platform-sandbox and a governed Role carrying it exists. It cannot be wired to PostgreSQL "
       + "Catalog here -- the enclosing command is a Firebase transaction, so that is the forbidden bridge "
-      + "-- and it cannot move yet: eos_ops.cycleCountRepository.ts has NO importer anywhere, no Cycle "
-      + "Count operation exists on the Operations transport (which carries resolveMyCapabilities and "
-      + "nothing else), and there is no mapper, DRY RUN, COPY or VERIFY for cycle_counts in either "
+      + "-- and it cannot move yet: eosOps/cycleCountRepository.ts is now composed by eosOps/cycleCountOperations.ts "
+      + "on /operations/cycle-count, but that writer is INACTIVE (CYCLE_COUNT_WRITER_AUTHORITY), and there is no mapper, DRY RUN, COPY or VERIFY for cycle_counts in either "
       + "direction. The trackingMode fact is the sharp end: a stale controlType makes a count snapshot the "
       + "wrong KIND of expectation, and a blind serial count against a quantity expectation is not a "
       + "smaller error than a wrong number.",
@@ -340,7 +339,7 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
     catalogFact: "Part identity, status, and controlType -> trackingMode, which decides serial sufficiency versus quantity sufficiency",
     classification: "ACTIVE_DEPLOYED_BUSINESS_PATH",
     deployedReachable: true,
-    replacementAuthority: "eos_ops.transfer_orders via eosOps/purchasingRepository.ts -- BUILT, but composed by nothing",
+    replacementAuthority: "eos_ops.transfer_orders via eosOps/purchasingRepository.ts -- composed by eosOps/transferOperations.ts on /operations/transfer; writer INACTIVE, HELD (inventoryTransfer/transferWriterState.ts)",
     activationBlocking: true,
     retirementBlocking: true,
     disposition: "CONSUME_POSTGRES_CATALOG",
@@ -349,8 +348,9 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
       + "inventoryLocation/stockRelocationCallables.ts, which imports resolveTransferPartThroughTxn "
       + "directly -- one wiring module, two deployed operations. Further along than Cycle Count and still "
       + "not ready: eos_ops.transfer_orders exists, purchasingRepository.createTransferOrder/readTransferOrder "
-      + "exist, and purchasingMigrationMapping.mapLegacyTransferOrder exists -- but the repository has NO "
-      + "importer, there is no Transfer operation on any transport, and the mapper has no DRY RUN / COPY / "
+      + "exist, and purchasingMigrationMapping.mapLegacyTransferOrder exists -- the repository is now "
+      + "composed by eosOps/transferOperations.ts on /operations/transfer, but that writer is INACTIVE and HELD "
+      + "(TRANSFER_WRITER_AUTHORITY), and the mapper has no DRY RUN / COPY / "
       + "VERIFY runner behind it. A mapper is not a migration. Per the Owner ruling, caller-supplied "
       + "tracking mode is NOT an option here: the Part authority owns trackingMode, and the command already "
       + "takes it from the authority rather than the request.",
