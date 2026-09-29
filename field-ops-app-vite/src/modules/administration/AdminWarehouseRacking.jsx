@@ -4,6 +4,7 @@ import { Field, FormError, FormStatus } from "../../shared/ui/form";
 import { binCommandClient } from "../../services/binCommandClient";
 import { WAREHOUSE_RACKING_GATE } from "../../access/shellCapabilityGates.js";
 import BinLabelsAndExport from "./BinLabelsAndExport";
+import TruckLocationScopeBindings from "./TruckLocationScopeBindings";
 import { fetchWarehouses } from "../../services/operationsQueries";
 import { applyProposals, summarizeApply, APPLY_CONCURRENCY } from "../../services/rackingApply";
 import {
@@ -167,7 +168,7 @@ function BinRow({ bin, canManage, onRename, onSetStatus, onLabel, busy }) {
 
 // ═══════════════════════════════════ the screen ═══════════════════════════════════
 
-export default function AdminWarehouseRacking({ client = binCommandClient, loadWarehouses = fetchWarehouses, hasCapability }) {
+export default function AdminWarehouseRacking({ client = binCommandClient, loadWarehouses = fetchWarehouses, hasCapability, scopeBindingApi }) {
   // Fail closed: an absent previewer means no capability, never "assume yes".
   const canRead = typeof hasCapability === "function" ? hasCapability(CAP_READ) === true : false;
   const canManage = typeof hasCapability === "function" ? hasCapability(CAP_MANAGE) === true : false;
@@ -566,6 +567,10 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
           </table>
         </>
       )}
+
+      {/* DQ-029: truck location -> warehouse scope. NOT gated on the bin capabilities above or on the Firebase
+          feed: the server gates it on inventory.location.scopeBinding.manage and the section renders its answer. */}
+      <TruckLocationScopeBindings callApi={scopeBindingApi} warehouseOptions={warehouses} />
     </div>
   );
 }

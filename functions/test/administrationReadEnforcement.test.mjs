@@ -196,7 +196,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // (admin.administratorRole.assign) granted to owner. It registers no READ key.
   // 57 -> 58: the MOBILE location -> warehouse scope binding (1764115200000, DQ-024, lane L3) -- one eos_ops table,
   // no capability, no grant. It registers no READ key.
-  assert.equal(migrations.length, 58, "a migration was added or removed by the read enforcement");
+  // 58 -> 59: the truck scope binding capability (1764118800000, DQ-029, lane L3) -- ONE ADMIN_ACTION capability
+  // (inventory.location.scopeBinding.manage) granted to nobody. It registers no READ key.
+  assert.equal(migrations.length, 59, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

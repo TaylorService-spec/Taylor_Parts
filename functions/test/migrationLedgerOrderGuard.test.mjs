@@ -168,8 +168,10 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 57 -> 58 runnable: migration 1764115200000, the MOBILE location -> warehouse scope binding (Controller ruling
 // DQ-024, lane L3) -- APPENDED after the Administrator staffing capability, an eighth EXPLAINED pending migration;
 // the ledger model is not extended.
-const RUNNABLE_MIGRATION_COUNT = 58;
-const TRACKED_MIGRATION_COUNT = 59; // the 58 runnable + the one deferred file
+// 58 -> 59 runnable: migration 1764118800000, the truck scope binding capability (Controller ruling DQ-029, lane L3)
+// -- APPENDED after the scope binding table, a ninth EXPLAINED pending migration; the ledger model is not extended.
+const RUNNABLE_MIGRATION_COUNT = 59;
+const TRACKED_MIGRATION_COUNT = 60; // the 59 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -179,6 +181,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762992000000_direct-exception-cell-lock",
   "1763078400000_administrator-staffing-capability",
   "1764115200000_mobile-location-scope-binding",
+  "1764118800000_mobile-location-scope-binding-capability",
 ]);
 
 const repoMigrations = () =>

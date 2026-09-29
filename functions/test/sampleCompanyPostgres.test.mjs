@@ -231,8 +231,11 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // admin.administratorRole.assign (vocabulary 81 -> 82, reconciled in the manifest), granted to owner.
 // 1764115200000 (the MOBILE location -> warehouse scope binding, DQ-024, lane L3): one eos_ops table, EMPTY --
 // no capability, no grant, no vocabulary move.
-const PINNED_LAST_MIGRATION = "1764115200000_mobile-location-scope-binding";
-const PINNED_MIGRATION_COUNT = 58;
+// 1764118800000 (the truck scope binding capability, DQ-029, lane L3): ONE capability,
+// inventory.location.scopeBinding.manage (vocabulary 82 -> 83, reconciled in the manifest), granted to NO Role --
+// so no persona moves.
+const PINNED_LAST_MIGRATION = "1764118800000_mobile-location-scope-binding-capability";
+const PINNED_MIGRATION_COUNT = 59;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

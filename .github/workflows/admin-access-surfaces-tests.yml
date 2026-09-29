@@ -52,6 +52,9 @@ on:
       - "field-ops-app-vite/test/adminPermissionPreview.test.jsx"
       - "field-ops-app-vite/test/adminUiTruthfulness.test.jsx"
       - "field-ops-app-vite/test/adminWarehouseRacking.test.jsx"
+      # DQ-029: the truck location -> warehouse scope section of Warehouse Racking.
+      - "field-ops-app-vite/test/truckLocationScopeBindings.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/TruckLocationScopeBindings.jsx"
       - "field-ops-app-vite/test/rackingLayoutGenerator.test.jsx"
       - "field-ops-app-vite/test/binLabel.test.jsx"
       - "field-ops-app-vite/test/binLabelsSurface.test.jsx"
@@ -93,6 +96,9 @@ on:
       - "field-ops-app-vite/test/adminPermissionPreview.test.jsx"
       - "field-ops-app-vite/test/adminUiTruthfulness.test.jsx"
       - "field-ops-app-vite/test/adminWarehouseRacking.test.jsx"
+      # DQ-029: the truck location -> warehouse scope section of Warehouse Racking.
+      - "field-ops-app-vite/test/truckLocationScopeBindings.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/TruckLocationScopeBindings.jsx"
       - "field-ops-app-vite/test/rackingLayoutGenerator.test.jsx"
       - "field-ops-app-vite/test/binLabel.test.jsx"
       - "field-ops-app-vite/test/binLabelsSurface.test.jsx"
@@ -157,6 +163,7 @@ jobs:
           test/adminPermissionPreview.test.jsx
           test/adminUiTruthfulness.test.jsx
           test/adminWarehouseRacking.test.jsx
+          test/truckLocationScopeBindings.test.jsx
           test/rackingLayoutGenerator.test.jsx
           test/binLabel.test.jsx
           test/binLabelsSurface.test.jsx

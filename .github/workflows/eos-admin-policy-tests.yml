@@ -412,6 +412,11 @@ on:
       - "functions/test/inventoryScopeAuthorityPostgres.test.mjs"
       - "functions/src/eosOps/inventoryScopeAuthority.ts"
       - "functions/migrations/1764115200000_mobile-location-scope-binding.sql"
+      # DQ-029 -- the truck scope binding Administration capability and its configuration command.
+      - "functions/migrations/1764118800000_mobile-location-scope-binding-capability.sql"
+      - "functions/src/eosOps/mobileLocationScopeBindingAdministration.ts"
+      - "functions/src/adminPolicy/configurationOperations.ts"
+      - "functions/test/mobileLocationScopeBindingAdministrationPostgres.test.mjs"
       - "functions/src/cycleCount/cycleCountWriterState.ts"
       - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       # WAVE 9 / LANE AH: the Administration surface + Owner persona readiness record. Registered
@@ -1020,6 +1025,11 @@ on:
       - "functions/test/inventoryScopeAuthorityPostgres.test.mjs"
       - "functions/src/eosOps/inventoryScopeAuthority.ts"
       - "functions/migrations/1764115200000_mobile-location-scope-binding.sql"
+      # DQ-029 -- the truck scope binding Administration capability and its configuration command.
+      - "functions/migrations/1764118800000_mobile-location-scope-binding-capability.sql"
+      - "functions/src/eosOps/mobileLocationScopeBindingAdministration.ts"
+      - "functions/src/adminPolicy/configurationOperations.ts"
+      - "functions/test/mobileLocationScopeBindingAdministrationPostgres.test.mjs"
       - "functions/src/cycleCount/cycleCountWriterState.ts"
       - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       - "field-ops-app-vite/src/navigation/navConfig.js"

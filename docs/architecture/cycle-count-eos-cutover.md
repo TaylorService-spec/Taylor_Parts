@@ -94,6 +94,34 @@ The ruled order puts Transfer second. The transport pattern extends to Transfer,
 
 **DQ-024 — Transfer scope.** Scope follows the inventory location acted upon: `create`, `cancel` and `dispatch` need the ORIGIN's warehouse scope; `receive` and put-away need the DESTINATION's. An act is not required to satisfy both ends just because the transfer has two. Encoded in `TRANSFER_ACT_SCOPE_END` / `requiredTransferScope` (`eosOps/inventoryScopeAuthority.ts`), proven in `inventoryScopeAuthorityPostgres.test.mjs`. Only the end the act works on is resolved, so a missing binding at the far end neither blocks nor grants.
 
-**Truck binding — what exists and what does not.** The binding TABLE, its invariants (same operating company, one current, append-only, no seed) and its fail-closed READ are built. The binding's WRITER is not: no PostgreSQL capability governs truck/location configuration today (the Firebase truck registry is role-name gated), so an Administration command to author a binding needs a new capability — a decision, not something this lane invents. Until then every truck location fails closed on the EOS path.
+**Truck binding.** The binding TABLE, its invariants (same operating company, one current, append-only, no seed) and its fail-closed READ are built (migration 1764115200000). Its writer is the DQ-029 Administration command in §5. Until a binding is set, a truck location fails closed on the EOS path.
 
 **DQ-026 — activation order.** Catalog COPY/VERIFY → inventory baseline/ledger COPY + reconciliation → Cycle Count activation → Transfer activation. The Catalog is not the source of quantity; Cycle Count is never activated against an artificial zero (hence §2 step 6). Cycle Count stays INACTIVE; Transfer stays HELD.
+
+## 5. DQ-029 — truck location → warehouse scope binding Administration (2026-09-28)
+
+**Capability.** `inventory.location.scopeBinding.manage` (object `mobileLocation`, action `manageScopeBinding`, ADMIN_ACTION, "Manage Truck Location Warehouse Scope"). It is registered by migration 1764118800000 and GRANTED TO NOBODY. It is absent from both PERMISSION_CATALOGs, so the policy seed and the Sample Company reconcile cannot default-grant it. It is not implied by any inventory, transfer or cycle-count capability, by technician assignment, by the Parts, Warehouse or Dispatcher Roles, or by owning a vehicle. No code path checks for an Administrator.
+
+**Command.** Four Administration CONFIGURATION operations are served on the existing `/admin/policy` transport (`adminPolicy/configurationOperations.ts`):
+- `listMobileLocationScopeBindings`
+- `readMobileLocationScopeBinding` (READ/explain)
+- `setMobileLocationScopeBinding` (CREATE / CHANGE / NO_CHANGE)
+- `removeMobileLocationScopeBinding`
+
+`executeAdminOperation` gates every one on the capability, using the same effective-access resolver as every other gate. The PostgreSQL implementation is `eosOps/mobileLocationScopeBindingAdministration.ts`, composed in `eosApi/server.ts`. It enforces these rules:
+- The truck location must be a governed `eos_ops.mobile_locations` row in the tenant, and it must be active to be bound.
+- The warehouse must be a governed `eos_ops.warehouses` row, in the tenant, and ACTIVE.
+- Company compatibility is checked through `resolveActiveOperatingCompanyId` on both authored keys. Both keys must resolve to an ACTIVE governed company, and it must be the same company. Nothing is inferred from a person, UID, tenant default, customer or vehicle.
+- A stated reason is required.
+- Each change writes one `eos_policy.audit_events` row in the same transaction: `mobileLocationScopeBinding.created|changed|removed`, carrying the actor, time, location, previous and new warehouse, and the reason.
+- A change ends the current row and inserts a new one, so history is never rewritten and only future operations are affected.
+- After a remove, `resolveScopeLocation` refuses with MOBILE_SCOPE_BINDING_MISSING until a new valid binding exists.
+
+**UI.** Administration → Warehouse Racking → "Truck location warehouse scope" (`TruckLocationScopeBindings.jsx`). The server decides access and the section renders FORBIDDEN or NOT_CONFIGURED as that state. Effective Access lists the capability through `explainEffectiveAccess`.
+
+**Self-administration finding.** The execution packet cannot be `grantObjectActionToRole … roleKey:"admin"` when it is run by the Administrator. Administration refuses a grant to a Role the actor holds (SELF_ADMINISTRATION), and it also refuses assigning a Role to oneself. `mobileLocationScopeBindingAdministrationPostgres.test.mjs` proves both refusals. It also proves the route an Administrator CAN execute alone:
+1. `createRole` a dedicated Security Role.
+2. `grantObjectActionToRole` the capability to that Role.
+3. `assignRole` that Role to the configuring principal, who is someone other than the Administrator.
+
+Which principal configures truck scope in nonprod is an Administration decision, and the packet in the lane ledger is written to that route.

@@ -60,6 +60,14 @@ import {
 } from "./policyCommands";
 import { CONDITIONABLE_GRANTS, CONDITION_OPERATIONAL_SCOPE_TYPES, forbiddenPair } from "./roleCapabilityAdministration";
 import type { AuditEventFilter } from "./policyRepository";
+import {
+  ADMIN_CONFIGURATION_OPERATIONS,
+  ConfigurationDeniedError,
+  ConfigurationRefusal,
+  isAdminConfigurationOperation,
+  type AdminConfigurationOperation,
+  type ConfigurationOperationHandler,
+} from "./configurationOperations";
 import { GOVERNED_QUALIFICATION_CODES } from "../eosOps/contextualAuthorization";
 import {
   dispatchWorkflowOperation,
@@ -188,15 +196,18 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
 
 export type AdminReadOperation = (typeof ADMIN_READ_OPERATIONS)[number];
 export type AdminMutationOperation = (typeof ADMIN_MUTATION_OPERATIONS)[number];
-export type AdminOperation = AdminReadOperation | AdminMutationOperation;
+export type AdminOperation = AdminReadOperation | AdminMutationOperation | AdminConfigurationOperation;
 
 const READS = new Set<string>(ADMIN_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(ADMIN_MUTATION_OPERATIONS);
 
+// A THIRD, closed table (configurationOperations.ts): operational configuration gated by its own
+// capability. Its entries are on neither list above, so every pin of those lists is unchanged.
 export const isAdminOperation = (name: unknown): name is AdminOperation =>
-  typeof name === "string" && (READS.has(name) || MUTATIONS.has(name));
+  typeof name === "string" && (READS.has(name) || MUTATIONS.has(name) || isAdminConfigurationOperation(name));
 
-export const isMutation = (name: AdminOperation): boolean => MUTATIONS.has(name);
+export const isMutation = (name: AdminOperation): boolean =>
+  MUTATIONS.has(name) || (isAdminConfigurationOperation(name) && ADMIN_CONFIGURATION_OPERATIONS[name].mutation);
 
 const WORKFLOW_OPERATIONS = new Set<string>([...WORKFLOW_READ_OPERATIONS, ...WORKFLOW_MUTATION_OPERATIONS]);
 const isWorkflowOperation = (name: AdminOperation): name is AdminOperation & WorkflowOperation => WORKFLOW_OPERATIONS.has(name);
@@ -364,6 +375,11 @@ export interface AdminApiDeps {
    * second, repository-only evaluator to fall back to.
    */
   readonly explainEffectiveAccess?: (tenantId: string, principalId: string) => Promise<unknown>;
+  /**
+   * The operational-configuration implementation (truck-location scope bindings), composed by the server over
+   * the shared pool. Absent, every configuration operation refuses; there is no repository fallback.
+   */
+  readonly configuration?: ConfigurationOperationHandler;
 }
 
 /**
@@ -418,7 +434,20 @@ export async function executeAdminOperation<T = unknown>(
     // the engine invariant, the privileged-role approval and the anti-lockout guard all stay where
     // they are, because a mutation gated only here would be unguarded for any future caller that
     // reached the command directly.
-    if (!isMutation(operation)) await requireAdminReadAuthority(repo, actor, operation);
+    // ════════════════════ OPERATIONAL CONFIGURATION ════════════════════
+    // Gated on the operation's OWN capability, resolved by the same effective-access resolver as every
+    // other gate -- never a Role name, never the security-administration invariant, never a surface read.
+    if (isAdminConfigurationOperation(operation)) {
+      const required = ADMIN_CONFIGURATION_OPERATIONS[operation].capability;
+      const access = await resolvePrincipalEffectiveAccess(repo, actor.tenantId, actor.uid);
+      if (!access.effective.some((c) => c.capabilityKey === required)) throw new ConfigurationDeniedError(operation, required);
+      if (typeof deps.configuration !== "function") throw new Error(`${operation} is not composed on this server`);
+      const data = await deps.configuration(operation, { tenantId: actor.tenantId, principalId: actor.uid }, input,
+        // A stated reason, never the request id alone (as assignRole): requiredReason refuses a missing one.
+        optionalString(input.reason) ? reason : null);
+      return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+    }
+    if (!isMutation(operation)) await requireAdminReadAuthority(repo, actor, operation as AdminReadOperation | AdminMutationOperation);
     const data = operation === "explainEffectiveAccess"
       ? await explain(deps, actor, input)
       : isWorkflowOperation(operation)
@@ -926,6 +955,13 @@ async function dispatch(
     case "migrateWorkflowInstances":
       throw new Error(`${operation} is a workflow operation`);
 
+    // Operational configuration is served above, on its own capability, before this dispatcher.
+    case "listMobileLocationScopeBindings":
+    case "readMobileLocationScopeBinding":
+    case "setMobileLocationScopeBinding":
+    case "removeMobileLocationScopeBinding":
+      throw new Error(`${operation} is a configuration operation`);
+
     default: {
       // Exhaustiveness: adding an operation to the list without handling it fails to compile,
       // rather than becoming a runtime "unknown operation" nobody notices until a user hits it.
@@ -1174,6 +1210,8 @@ function classify(err: unknown): AdminApiFailureCode {
   // A missing READ capability is a refusal about authority, exactly like a missing write authority
   // -- never a 404 and never a 500, so a caller cannot tell "you may not" from "it is not there".
   if (err instanceof AdminReadDeniedError) return "FORBIDDEN";
+  if (err instanceof ConfigurationDeniedError) return "FORBIDDEN";
+  if (err instanceof ConfigurationRefusal) return err.category;
   if (err instanceof NotFound) return "NOT_FOUND";
   // A governed workflow refusal names its own category (workflowAdministration.ts).
   if (err instanceof WorkflowRefusal) return err.category;

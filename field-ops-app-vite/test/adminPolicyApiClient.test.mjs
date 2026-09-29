@@ -77,6 +77,22 @@ test("the client's operation list matches the server's, exactly", () => {
   assert.deepEqual(listOf(SOURCE, "ADMIN_MUTATION_OPERATIONS"), [...MUTATIONS].sort());
 });
 
+test("DQ-029: the configuration operations mirror the server's closed table, and the client decides nothing", () => {
+  const server = readFileSync("../functions/src/adminPolicy/configurationOperations.ts", "utf8");
+  const start = server.indexOf("export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze({");
+  assert.ok(start >= 0, "the server's configuration table is present");
+  const block = server.slice(start, server.indexOf("} as const);", start));
+  const serverNames = [...block.matchAll(/^\s+([a-zA-Z]+): Object\.freeze/gm)].map((m) => m[1]).sort();
+  const clientStart = SOURCE.indexOf("export const ADMIN_CONFIGURATION_OPERATIONS");
+  const clientNames = [...SOURCE.slice(clientStart, SOURCE.indexOf("]", clientStart)).matchAll(/"([a-zA-Z]+)"/g)].map((m) => m[1]).sort();
+  assert.deepEqual(clientNames, serverNames);
+  assert.deepEqual(clientNames, ["listMobileLocationScopeBindings", "readMobileLocationScopeBinding",
+    "removeMobileLocationScopeBinding", "setMobileLocationScopeBinding"]);
+  // Reachable through the one endpoint, and holding no capability name: the gate is the server's.
+  assert.match(SOURCE, /\.\.\.ADMIN_CONFIGURATION_OPERATIONS\]\)/);
+  assert.equal(SOURCE.includes("inventory.location.scopeBinding.manage\""), false, "the client names no capability to decide on");
+});
+
 test("the four Object-owned security reads have a named wrapper, each on the one endpoint", () => {
   // The gap this tranche closes: the operations were SERVED and proven against PostgreSQL, and the
   // browser had no way to name them. A wrapper per projection, each sending the input key the
