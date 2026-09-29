@@ -25,6 +25,7 @@ import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { SALES_ORDERS_COLLECTION, WAREHOUSES_COLLECTION, INVENTORY_TRANSACTIONS_COLLECTION, WORK_ORDERS_COLLECTION } from "../constants/collections";
 import { buildAllocationPlan, type Availability } from "./allocationProjection";
 import { computePartAvailability, openWorkOrderReserved, sumOtherSoCommitments, sumLedgerEligibleOnHand } from "./fulfillmentAvailability";
+import { authoritativeOperationalMovements, LedgerRowIntegrityError } from "../inventoryLedger/authoritativeLedgerRows.js";
 import { readEquipmentAvailability } from "./equipmentAvailabilityContract";
 
 export const SALES_ORDER_FULFILL_CAPABILITY = "salesOrder.fulfill";
@@ -59,10 +60,10 @@ interface SoLine {
 async function readPartOnHand(tx: Transaction, ref: string, eligibleWarehouseIds: Set<string>): Promise<number | null> {
   const db = getFirestore();
   const snap = await tx.get(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", ref));
-  const rows = snap.docs.map(
-    (d) =>
-      d.data() as { type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }
-  );
+  // FAIL CLOSED (Controller ruling DQ-019): a ledger row that cannot be classified or read cannot be signed either, so
+  // skipping it could RAISE availability (a skipped debit) and over-allocate. The authoritative read refuses the whole
+  // determination instead (LedgerRowIntegrityError -> the integrity refusal below). Legacy rows are excluded by rule.
+  const rows = authoritativeOperationalMovements(snap.docs);
   // Model A: stock put away into a Bin is still this Warehouse's stock. Resolve the parent of only the
   // bins these rows name, from their governed documents, inside the same transaction.
   const binParentage = await readBinParentage(db, binIdsReferenced(rows), tx);
@@ -191,6 +192,12 @@ export const allocateSalesOrder = onCall({ region: "us-central1" }, async (reque
     return { success: true as const, salesOrderId, ...result };
   } catch (err) {
     if (err instanceof HttpsError) throw err;
+    // DQ-019: an unreadable ledger row refuses the availability result -- an explicit integrity refusal naming the row
+    // id (never its contents), never a skip, never a substituted zero, never a generic 500.
+    if (err instanceof LedgerRowIntegrityError) {
+      throw new HttpsError("failed-precondition", "Availability cannot be determined: an inventory ledger row is unreadable.",
+        { code: "LEDGER_ROW_INTEGRITY", rowId: err.docId, reason: err.reason });
+    }
     throw new HttpsError("internal", "Allocation failed.");
   }
 });
