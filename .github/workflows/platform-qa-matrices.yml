@@ -14,6 +14,7 @@ on:
     paths:
       - "functions/src/adminPolicy/**"
       - "functions/src/eosApi/**"
+      - "functions/src/catalogMaster/**"
       - "functions/src/eosOps/**"
       - "functions/src/eosCommercial/**"
       - "functions/src/eosCrm/**"
@@ -26,6 +27,7 @@ on:
       - "field-ops-app-vite/src/services/commercialApiClient.js"
       - "field-ops-app-vite/src/services/operationsApiClient.js"
       - "field-ops-app-vite/src/services/workforceApiClient.js"
+      - "field-ops-app-vite/src/services/reorderApiClient.js"
       - "field-ops-app-vite/test/platformQaClientErrorContract.test.jsx"
       - ".github/workflows/platform-qa-matrices.yml"
   push:
@@ -33,6 +35,7 @@ on:
     paths:
       - "functions/src/adminPolicy/**"
       - "functions/src/eosApi/**"
+      - "functions/src/catalogMaster/**"
       - "functions/src/eosOps/**"
       - "functions/src/eosCommercial/**"
       - "functions/src/eosCrm/**"
@@ -45,6 +48,7 @@ on:
       - "field-ops-app-vite/src/services/commercialApiClient.js"
       - "field-ops-app-vite/src/services/operationsApiClient.js"
       - "field-ops-app-vite/src/services/workforceApiClient.js"
+      - "field-ops-app-vite/src/services/reorderApiClient.js"
       - "field-ops-app-vite/test/platformQaClientErrorContract.test.jsx"
       - ".github/workflows/platform-qa-matrices.yml"
   workflow_dispatch:
