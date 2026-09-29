@@ -4043,6 +4043,7 @@
           "functions/src/cycleCount/cycleCountCommand.ts",
           "functions/src/cycleCount/cycleCountSheetCommand.ts",
           "functions/src/eosOps/capabilityAuthority.ts",
+          "functions/src/eosOps/cycleCountOperations.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts"
         ],
@@ -4053,7 +4054,7 @@
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4079,6 +4080,7 @@
           "functions/src/cycleCount/cycleCountCommand.ts",
           "functions/src/cycleCount/cycleCountSheetCommand.ts",
           "functions/src/eosOps/capabilityAuthority.ts",
+          "functions/src/eosOps/cycleCountOperations.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts"
         ],
         "clientReferences": [
@@ -4088,7 +4090,7 @@
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4114,6 +4116,7 @@
           "functions/src/cycleCount/cycleCountCommand.ts",
           "functions/src/cycleCount/cycleCountSheetCommand.ts",
           "functions/src/eosOps/capabilityAuthority.ts",
+          "functions/src/eosOps/cycleCountOperations.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts"
         ],
@@ -4122,7 +4125,7 @@
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4148,6 +4151,7 @@
           "functions/src/cycleCount/cycleCountCommand.ts",
           "functions/src/cycleCount/cycleCountSheetCommand.ts",
           "functions/src/eosOps/capabilityAuthority.ts",
+          "functions/src/eosOps/cycleCountOperations.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts"
         ],
         "clientReferences": [
@@ -4155,7 +4159,7 @@
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
