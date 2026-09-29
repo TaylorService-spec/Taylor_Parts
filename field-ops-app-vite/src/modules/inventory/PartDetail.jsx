@@ -1353,7 +1353,12 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // the raw route param. null while loading / BLOCKED / NOT_FOUND (fail-closed).
   const resolvedPartId = part ? part.partId : null;
 
-  const { transactions, healthEntries, loading } = useInventoryLedger();
+  // `error` IS CONSUMED, the way PartsList already consumes it. A failed ledger read is not an empty
+  // ledger: rendering "No ledger movements have been recorded" over a read that did not complete is a
+  // false statement about this part, and once the hook fails closed on ONE unreadable row it would be
+  // made about EVERY part. The two ledger bands below render an explicit unavailable state instead.
+  const { transactions, healthEntries, loading, error: ledgerError } = useInventoryLedger();
+  const ledgerUnavailable = !loading && Boolean(ledgerError);
   // Wave 6 Owner Decision (2026-08-15) -- must be called unconditionally, before any early
   // return below, per the Rules of Hooks; the derived name-lookup map itself is computed
   // further down, after `canonicalPart` resolves.
@@ -1641,7 +1646,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
           id="part-availability"
           title="Availability / Inventory"
           meta={
-            health && !loading
+            health && !loading && !ledgerUnavailable
               ? "Derived from this part’s movements in the work-order and receiving ledger — not a governed stock position."
               : null
           }
@@ -1655,6 +1660,12 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                   request it gates can still be raised. */}
               {loading ? (
                 <HonestState state={HONEST_STATE.LOADING} subject="the stock forecast" />
+              ) : ledgerUnavailable ? (
+                <HonestState
+                  state={HONEST_STATE.UNAVAILABLE}
+                  subject="the stock forecast"
+                  detail="The inventory ledger couldn't be read, so this part's stock forecast is unavailable. This is not a statement that no movements exist."
+                />
               ) : health ? (
                 <>
                   <table className="fo-table ns-band__facts">
@@ -1982,7 +1993,15 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
             with no actor and no description. That grammar is now used at BOTH widths, which is the
             ruling. The composition survives; the unsupported facts do not. */}
         <RuledSection id="part-activity" title="Activity" meta={PART_ACTIVITY_SCOPE_NOTE}>
-          {activityRows.length === 0 ? (
+          {loading ? (
+            <HonestState state={HONEST_STATE.LOADING} subject="this part's movements" />
+          ) : ledgerUnavailable ? (
+            <HonestState
+              state={HONEST_STATE.UNAVAILABLE}
+              subject="this part's movements"
+              detail="The inventory ledger couldn't be read, so this part's movements are unavailable. This is not a statement that none have been recorded."
+            />
+          ) : activityRows.length === 0 ? (
             <HonestState
               state={HONEST_STATE.EMPTY}
               subject="this part"
