@@ -243,8 +243,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 1764118800000 (the truck scope binding capability, DQ-029, lane L3): ONE capability,
 // inventory.location.scopeBinding.manage (vocabulary 90 -> 91, reconciled in the manifest), granted to NO Role --
 // so no persona moves.
-const PINNED_LAST_MIGRATION = "1764118800000_mobile-location-scope-binding-capability";
-const PINNED_MIGRATION_COUNT = 65;
+// 1764122400000 (the Transfer-on-EOS storage support, lane L3): an enum value, a counter table, an index -- no
+// capability, no grant, no vocabulary move, and the seed writes no transfer.
+const PINNED_LAST_MIGRATION = "1764122400000_transfer-eos-lifecycle-support";
+const PINNED_MIGRATION_COUNT = 66;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

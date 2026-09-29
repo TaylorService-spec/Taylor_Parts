@@ -20,6 +20,10 @@
 import { capabilitiesWithoutUnevaluatedConditions, resolveOperationalContext } from "./capabilityAuthority";
 import { EOS_CYCLE_COUNT_OPERATIONS, CycleCountOperationError, type EosCycleCountOperation } from "./cycleCountOperations";
 import { CYCLE_COUNT_WRITER_AUTHORITY, type PostgresCycleCountWriterState } from "../cycleCount/cycleCountWriterState";
+import { EOS_RELOCATION_OPERATIONS, RelocationOperationError, type EosRelocationOperation } from "./stockRelocationOperations";
+import { RELOCATION_WRITER_AUTHORITY, type PostgresRelocationWriterState } from "../inventoryLocation/stockRelocationWriterState";
+import { EOS_TRANSFER_OPERATIONS, TransferOperationError, type EosTransferOperation } from "./transferOperations";
+import { TRANSFER_WRITER_AUTHORITY, type PostgresTransferWriterState } from "../inventoryTransfer/transferWriterState";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { resolveExperienceContext } from "./experienceAuthority";
 import {
@@ -134,8 +138,26 @@ export const CYCLE_COUNT_OPERATIONS: readonly EosCycleCountOperation[] =
 export const isCycleCountOperation = (name: unknown): name is EosCycleCountOperation =>
   typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_CYCLE_COUNT_OPERATIONS, name);
 
+// ════════════════════ the Stock Relocation command route (Controller ruling DQ-036) ════════════════════
+//
+// The EXISTING relocation on EOS, on its OWN honestly-named route with its OWN closed table, exactly as
+// Cycle Count: a route names a domain. Built and proven; INACTIVE until the inventory baseline COPY
+// (inventoryLocation/stockRelocationWriterState.ts).
+export const RELOCATION_ROUTE = "/operations/relocation";
+export const RELOCATION_OPERATIONS: readonly EosRelocationOperation[] =
+  Object.freeze(Object.keys(EOS_RELOCATION_OPERATIONS) as EosRelocationOperation[]);
+export const isRelocationOperation = (name: unknown): name is EosRelocationOperation =>
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_RELOCATION_OPERATIONS, name);
+
+// ════════════════════ the Transfer command route (DQ-024 / DQ-026; HELD) ════════════════════
+export const TRANSFER_ROUTE = "/operations/transfer";
+export const TRANSFER_OPERATIONS: readonly EosTransferOperation[] =
+  Object.freeze(Object.keys(EOS_TRANSFER_OPERATIONS) as EosTransferOperation[]);
+export const isTransferOperation = (name: unknown): name is EosTransferOperation =>
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_TRANSFER_OPERATIONS, name);
+
 export const OPERATIONS_ROUTES: readonly string[] =
-  Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE])].sort());
+  Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE, RELOCATION_ROUTE, TRANSFER_ROUTE])].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(OPERATIONS_MUTATION_OPERATIONS);
@@ -152,6 +174,13 @@ export interface OperationsApiDeps {
   readonly cycleCountPostgresState?: PostgresCycleCountWriterState;
   /** The committed REORDER_POSTGRES_ACTIVE unless a test states the state it exercises. */
   readonly reorderPostgresActive?: boolean;
+  /**
+   * TEST INJECTION ONLY: the Stock Relocation activation state. The deployed server supplies none, so the
+   * governed constant (RELOCATION_WRITER_AUTHORITY.postgres, INACTIVE) is what production reads.
+   */
+  readonly relocationPostgresState?: PostgresRelocationWriterState;
+  /** TEST INJECTION ONLY: the Transfer activation state (TRANSFER_WRITER_AUTHORITY.postgres, INACTIVE, otherwise). */
+  readonly transferPostgresState?: PostgresTransferWriterState;
 }
 
 /** Every operation of the PostgreSQL Reorder authority: all but the two principal-context resolvers. */
@@ -399,6 +428,48 @@ export async function executeCycleCountOperation(
   }
 }
 
+type CommandRoute = "relocation" | "transfer";
+
+/**
+ * Execute one Stock Relocation or Transfer operation for an already-verified caller -- the Cycle Count shape
+ * exactly: operational context from PostgreSQL, conditioned grants withheld, the domain's own activation constant.
+ */
+export async function executeInventoryCommandOperation(
+  deps: OperationsApiDeps,
+  route: CommandRoute,
+  request: {
+    readonly caller: { readonly externalSubject: string; readonly identityProvider: string; readonly requestedTenantId: string | null };
+    readonly operation: string;
+    readonly input: Record<string, unknown>;
+  },
+): Promise<{ readonly status: number; readonly body: unknown }> {
+  const { operation } = request;
+  try {
+    const conditions = postgresGrantConditionProvider(deps.pool);
+    const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
+      identityProvider: request.caller.identityProvider,
+      externalSubject: request.caller.externalSubject,
+      requestedTenantId: request.caller.requestedTenantId,
+    }, conditions);
+    const capabilities = await capabilitiesWithoutUnevaluatedConditions(deps.pool, ctx.principalContext, ctx.capabilities, conditions);
+    const actor = Object.freeze({ tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities });
+    const result = route === "relocation"
+      ? await EOS_RELOCATION_OPERATIONS[operation as EosRelocationOperation](
+        { pool: deps.pool, postgresState: deps.relocationPostgresState ?? RELOCATION_WRITER_AUTHORITY.postgres }, actor, request.input)
+      : await EOS_TRANSFER_OPERATIONS[operation as EosTransferOperation](
+        { pool: deps.pool, postgresState: deps.transferPostgresState ?? TRANSFER_WRITER_AUTHORITY.postgres }, actor, request.input);
+    return { status: 200, body: { ok: true, operation, result } };
+  } catch (err) {
+    if (err instanceof PrincipalContextError) return { status: 403, body: { ok: false, operation, code: "FORBIDDEN", message: err.refusal } };
+    if (err instanceof RelocationOperationError || err instanceof TransferOperationError) {
+      return { status: STATUS_BY_CYCLE_COUNT_CATEGORY[err.category] ?? 500, body: { ok: false, operation, code: err.code, message: err.message } };
+    }
+    // eslint-disable-next-line no-console -- same posture as the read path's unhandled-error log
+    console.error(`[eosOpsHttp] ${route} unhandled`, err);
+    return { status: 500, body: { ok: false, operation, code: "INTERNAL", message: "the request could not be completed" } };
+  }
+}
+
 const STATUS_BY_CODE: Readonly<Record<OperationsApiFailureCode, number>> = Object.freeze({
   UNKNOWN_OPERATION: 404,
   UNAUTHENTICATED: 401,
@@ -489,6 +560,34 @@ export async function handleOperationsRequest(
         requestedTenantId: singleHeader(header(request, "x-eos-tenant")),
       },
       operation,
+      input: input as Record<string, unknown>,
+    });
+    return json(out.status, out.body, origin);
+  }
+
+  if (path === RELOCATION_ROUTE || path === TRANSFER_ROUTE) {
+    const route: CommandRoute = path === RELOCATION_ROUTE ? "relocation" : "transfer";
+    const known = route === "relocation" ? isRelocationOperation(operation) : isTransferOperation(operation);
+    if (!known) return json(404, notFound(String(operation ?? "")), origin);
+    const input = payload.input === undefined ? {} : payload.input;
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      return json(400, { ok: false, operation, code: "INVALID_INPUT", message: "input must be a JSON object" }, origin);
+    }
+    const cmdBearer = bearerToken(header(request, "authorization"));
+    if (!cmdBearer) return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "a bearer token is required" }, origin);
+    let cmdIdentity: VerifiedIdentity;
+    try {
+      cmdIdentity = await options.verifyToken(cmdBearer);
+    } catch {
+      return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "the token could not be verified" }, origin);
+    }
+    const out = await executeInventoryCommandOperation(options, route, {
+      caller: {
+        externalSubject: cmdIdentity.externalSubject,
+        identityProvider: cmdIdentity.identityProvider,
+        requestedTenantId: singleHeader(header(request, "x-eos-tenant")),
+      },
+      operation: operation as string,
       input: input as Record<string, unknown>,
     });
     return json(out.status, out.body, origin);

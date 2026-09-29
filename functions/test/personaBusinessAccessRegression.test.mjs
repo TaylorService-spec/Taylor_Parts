@@ -270,7 +270,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // capability, no grant, so no persona moves.
   // 65: + the truck scope binding capability (1764118800000, DQ-029): one capability granted to NO Role, so no
   // persona's set moves.
-  assert.equal(files.length, 65, "the migration chain moved; re-measure before trusting anything below");
+  // 66: + the Transfer-on-EOS storage support (1764122400000): schema only -- no capability, no grant.
+  assert.equal(files.length, 66, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

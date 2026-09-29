@@ -43,7 +43,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
   assert.deepEqual(Object.keys(OPERATIONS_ROUTE_BY_OPERATION).sort(), [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].sort());
   // The read routes, plus ONE command route with its OWN closed table (Controller ruling DQ-018: Cycle
   // Count is the first inventory domain on this transport). No read route serves a command.
-  assert.deepEqual(OPERATIONS_ROUTES, ["/operations/cycle-count", "/operations/experience", "/operations/inventory"]);
+  // DQ-036: + the Stock Relocation command route, its own closed table.
+  assert.deepEqual(OPERATIONS_ROUTES, ["/operations/cycle-count", "/operations/experience", "/operations/inventory", "/operations/relocation", "/operations/transfer"]);
   assert.equal(CYCLE_COUNT_ROUTE, "/operations/cycle-count");
   assert.ok(!Object.values(OPERATIONS_ROUTE_BY_OPERATION).includes(CYCLE_COUNT_ROUTE));
 });

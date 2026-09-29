@@ -202,7 +202,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // no capability, no grant. It registers no READ key.
   // 64 -> 65: the truck scope binding capability (1764118800000, DQ-029, lane L3) -- ONE ADMIN_ACTION capability
   // (inventory.location.scopeBinding.manage) granted to nobody. It registers no READ key.
-  assert.equal(migrations.length, 65, "a migration was added or removed by the read enforcement");
+  // 65 -> 66: the Transfer-on-EOS storage support (1764122400000, lane L3) -- an enum value, a counter table and an
+  // index; no capability, no grant. It registers no READ key.
+  assert.equal(migrations.length, 66, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

@@ -141,3 +141,18 @@ Which principal configures truck scope in nonprod is an Administration decision,
 - **Both** are activated by the Cycle Count writer authority, after the Catalog COPY and the inventory baseline.
 - **Transfer.** Has no EOS lifecycle yet. It is gated on L0's `purchasingRepository.ts` release, and is last in the DQ-026 order.
 - **Stock relocation and serialized acquisition.** Have no EOS implementation. Relocation is not coupled to `purchasingRepository.ts`. Acquisition's capability is Firebase-only. Both await authorization. Until then those operations run only on the deployed Firebase callables.
+
+## 7. Relocation and Transfer on EOS (DQ-036; L0 shared-file release, 2026-09-28)
+
+Both are **built and not activated**. Each has its own writer-authority constant with `postgres: INACTIVE`, and every operation refuses NOT_ACTIVATED before it reads anything.
+
+| | Route | Constant | Activates after |
+|---|---|---|---|
+| Stock relocation | `POST /operations/relocation` (`relocateStock`) | `inventoryLocation/stockRelocationWriterState.ts` | Catalog COPY, then inventory baseline COPY |
+| Transfer | `POST /operations/transfer` (`createTransfer`, `dispatchTransfer`, `receiveTransfer`, `cancelTransfer`) | `inventoryTransfer/transferWriterState.ts` | Everything above, then Cycle Count, then Transfer COPY. Last in the DQ-026 order. |
+
+- **Same business behavior as the Firestore commands.** Relocation's request validation, identity and row keys are pinned identical by `stockRelocationParity.test.mjs`. Transfer imports the pure `validateCreateTransferInput` unchanged.
+- **Governed scope added.** Relocation needs WAREHOUSE_OPERATIONS and the scope of the custody warehouse. Transfer applies the DQ-024 per-act end: create, cancel and dispatch use the ORIGIN; receive uses the DESTINATION.
+- **Fails closed on bad evidence (DQ-019).** A negative ledger balance, or custody the ledger does not support, is refused.
+- **Storage support.** Migration `1764122400000` adds a serial `IN_TRANSIT` state and TO-YYYY-###### numbering.
+- **Open item (DQ-037).** The put-away placement record has no PostgreSQL authority. An EOS relocation that asks for one is refused with PLACEMENT_NOT_ON_EOS rather than performed without it.

@@ -451,6 +451,17 @@ on:
       - "functions/test/operationalConfigurationAdministratorPostgres.test.mjs"
       - "functions/test/fixtures/l1OwnershipHandoffCorrectCapability.fixture.sql"
       - "functions/src/cycleCount/cycleCountWriterState.ts"
+      # DQ-036 -- EOS stock relocation (INACTIVE) and its parity with the Firestore command.
+      - "functions/src/eosOps/stockRelocationOperations.ts"
+      - "functions/src/inventoryLocation/stockRelocationWriterState.ts"
+      - "functions/src/inventoryLocation/stockRelocationCommand.ts"
+      - "functions/test/eosStockRelocationPostgres.test.mjs"
+      - "functions/test/stockRelocationParity.test.mjs"
+      # EOS Transfer lifecycle (HELD) and its storage support migration.
+      - "functions/src/eosOps/transferOperations.ts"
+      - "functions/src/inventoryTransfer/transferWriterState.ts"
+      - "functions/migrations/1764122400000_transfer-eos-lifecycle-support.sql"
+      - "functions/test/eosTransferPostgres.test.mjs"
       - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       # WAVE 9 / LANE AH: the Administration surface + Owner persona readiness record. Registered
       # individually for the reason every entry above was -- a suite that runs in a registered job
@@ -1097,6 +1108,17 @@ on:
       - "functions/test/operationalConfigurationAdministratorPostgres.test.mjs"
       - "functions/test/fixtures/l1OwnershipHandoffCorrectCapability.fixture.sql"
       - "functions/src/cycleCount/cycleCountWriterState.ts"
+      # DQ-036 -- EOS stock relocation (INACTIVE) and its parity with the Firestore command.
+      - "functions/src/eosOps/stockRelocationOperations.ts"
+      - "functions/src/inventoryLocation/stockRelocationWriterState.ts"
+      - "functions/src/inventoryLocation/stockRelocationCommand.ts"
+      - "functions/test/eosStockRelocationPostgres.test.mjs"
+      - "functions/test/stockRelocationParity.test.mjs"
+      # EOS Transfer lifecycle (HELD) and its storage support migration.
+      - "functions/src/eosOps/transferOperations.ts"
+      - "functions/src/inventoryTransfer/transferWriterState.ts"
+      - "functions/migrations/1764122400000_transfer-eos-lifecycle-support.sql"
+      - "functions/test/eosTransferPostgres.test.mjs"
       - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/access/experienceContext.js"

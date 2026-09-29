@@ -87,6 +87,11 @@ test("the catalog authority is composed ONLY by the Work Order/ops commands that
     "eosOps/equipmentCustody.ts",
     "eosOps/inventoryCommitmentRepository.ts",
     "eosOps/serviceFromSalesOrderBoundary.ts",
+    // Controller ruling DQ-036: the EOS stock relocation reads the moved Part's status and tracking mode from the
+    // catalog, never the caller. INACTIVE until the inventory baseline COPY (stockRelocationWriterState.ts).
+    "eosOps/stockRelocationOperations.ts",
+    // The EOS Transfer lifecycle (HELD) resolves the transferred Part the same way (inventoryTransfer/transferWriterState.ts).
+    "eosOps/transferOperations.ts",
     "eosOps/workOrderPartsPlanAuthority.ts",
   ], "a NEW module composes the catalog authority -- name it here and say why it may");
 });

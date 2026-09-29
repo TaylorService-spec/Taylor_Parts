@@ -161,7 +161,8 @@ test("the activation migration was APPENDED: only the later Administration and w
     "1763164800000_catalog-part-alias-authority.sql", "1763251200000_reorder-object-schema-parity.sql",
     "1763337600000_reorder-lifecycle-capability-registration.sql", "1763424000000_reorder-requester-is-a-principal.sql",
     "1763510400000_reorder-actor-identity-normalization.sql", "1763596800000_receiving-business-time-number-and-acquisition-cost.sql",
-    "1764115200000_mobile-location-scope-binding.sql", "1764118800000_mobile-location-scope-binding-capability.sql"],
+    "1764115200000_mobile-location-scope-binding.sql", "1764118800000_mobile-location-scope-binding-capability.sql",
+    "1764122400000_transfer-eos-lifecycle-support.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -382,8 +383,11 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // The Administration control plane (1762646400000) sits after the activation: +1 capability, +1
     // grant. It is peeled first so the reversal below is THIS migration's and nothing else's.
     assert.deepEqual(await counts(), { caps: 91, grants: 415, mine: 26 });
-    // Lane L3's two slot migrations are the newest and peel first: the truck scope binding capability
+    // Lane L3's slot migrations are the newest and peel first: the Transfer-on-EOS storage support
+    // (1764122400000: schema only), then the truck scope binding capability
     // (1764118800000, DQ-029: -1 capability, no grant), then the MOBILE scope binding table (1764115200000: schema only).
+    runMigrate(url, "down", 1);
+    assert.deepEqual(await counts(), { caps: 91, grants: 415, mine: 26 });
     runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 90, grants: 415, mine: 26 });
     runMigrate(url, "down", 1);
@@ -436,7 +440,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the later truck scope binding capability (1764118800000) first
+    runMigrate(url, "down", 1); // peel the later Transfer-on-EOS storage support (1764122400000) first
+    runMigrate(url, "down", 1); // then the truck scope binding capability (1764118800000)
     runMigrate(url, "down", 1); // then the MOBILE scope binding table (1764115200000)
     runMigrate(url, "down", 6); // then the Catalog + Reorder activation candidate (1763164800000 .. 1763596800000)
     runMigrate(url, "down", 1); // then the Administrator staffing capability (1763078400000)

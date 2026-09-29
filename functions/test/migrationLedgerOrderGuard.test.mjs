@@ -174,8 +174,10 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // DQ-024, lane L3) -- APPENDED after the receiving migration, an EXPLAINED pending migration.
 // 64 -> 65 runnable: migration 1764118800000, the truck scope binding capability (Controller ruling DQ-029, lane L3)
 // -- APPENDED after the scope binding table, an EXPLAINED pending migration; the ledger model is not extended.
-const RUNNABLE_MIGRATION_COUNT = 65;
-const TRACKED_MIGRATION_COUNT = 66; // the 65 runnable + the one deferred file
+// 65 -> 66 runnable: migration 1764122400000, the Transfer-on-EOS storage support (lane L3) -- APPENDED, an EXPLAINED
+// pending migration; the ledger model is not extended.
+const RUNNABLE_MIGRATION_COUNT = 66;
+const TRACKED_MIGRATION_COUNT = 67; // the 66 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -192,6 +194,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1763596800000_receiving-business-time-number-and-acquisition-cost",
   "1764115200000_mobile-location-scope-binding",
   "1764118800000_mobile-location-scope-binding-capability",
+  "1764122400000_transfer-eos-lifecycle-support",
 ]);
 
 const repoMigrations = () =>
