@@ -86,6 +86,6 @@ The ruled order puts Transfer second. The transport pattern extends to Transfer,
 - **Census.** The 47 sandbox records are governed business records (2026-09-20 ruling), 23 of them cross-company. They need a status distribution, typed-endpoint totality, and scalar/typed disagreement counts.
 - **Migration-only snapshot.** A migration-only Firebase read of `transfer_orders` is required. It is not yet authorized.
 - **Upstream populations.** Parts, warehouses, bins and MOBILE locations (truck fleet COPY) must all be present in `eos_ops`, because endpoints resolve against them.
-- **DRY RUN and COPY.** DRY RUN through `mapLegacyTransferOrder`: every refusal is listed, none is repaired. Then COPY ONCE → VERIFY against the same snapshot.
+- **DRY RUN and COPY.** DRY RUN through `mapLegacyTransferOrder` -- tooling built: `node functions/scripts/transferCopyCensus.js --snapshot <transfer_orders snapshot>` (mapped/refused by code with ids, status distribution, cross-company split, the IN_TRANSIT ids that need ledger agreement; exit 0 COPY_READY / 3 REFUSALS_PRESENT): every refusal is listed, none is repaired. Then COPY ONCE → VERIFY against the same snapshot.
 - **IN_TRANSIT orders.** These carry a TRANSFER_OUT already staged in the Firestore ledger. The ledger COPY and the transfer COPY must agree on it, or a receive would double or lose stock.
 - **Then:** freeze the Firestore writers, build the lifecycle commands (after the L0 boundary lifts), expose the transport route with scope enforcement, cut the client over, and run E2E.
