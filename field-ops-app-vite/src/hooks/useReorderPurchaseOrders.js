@@ -1,50 +1,46 @@
-import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { PURCHASE_ORDERS_COLLECTION } from "../domain/constants";
+import { useEffect, useRef, useState } from "react";
+import { fetchReorderPurchaseOrdersByIds } from "../services/reorderPurchaseOrderReads.js";
 
-// Sprint 2.1.10 -- Purchase Order Foundation. Realtime, single-document
-// read -- the Reorder Purchase Order's document ID IS the
-// reorderRequestId (see domain/constants.js), so this is a direct
-// doc() subscription, not a query. Read-only: writes go exclusively
-// through domain/reorderPurchaseOrders.js's recordPurchaseOrder().
+// Sprint 2.1.10 -- Purchase Order Foundation. Single-record read -- the Reorder Purchase Order's id IS
+// the reorderRequestId. Read-only: writes go exclusively through domain/reorderPurchaseOrders.js's
+// recordPurchaseOrder(), which reaches the governed command.
 //
-// H14 (reorder pair) -- this hook used to write the SAME state
-// ({ data: null, loading: false }) for a denied read as for "the
-// document does not exist", so a Parts Associate whose read was
-// denied saw the identical "Purchase Order details unavailable" copy
-// as a genuine not-yet-recorded PO -- the real answer ("you cannot
-// see it") was indistinguishable from "there is nothing to see".
-// `error` is a new field, mirroring hooks/useReorderRequests.js's
-// useReorderRequestById(): `"not_found"` when the read succeeds and
-// the document does not exist, or the real Firestore SDK error code
-// (e.g. `"permission-denied"`, `"unavailable"`) when the read itself
-// fails. Existing callers that destructure only { data, loading } are
-// unaffected.
-export function usePurchaseOrderForReorderRequest(reorderRequestId) {
+// THE AUTHORITY MOVED. This was a Firestore onSnapshot on `reorder_purchase_orders/{id}`. At the Reorder
+// activation that collection became a frozen snapshot, so it now asks the governed PostgreSQL Reorder
+// authority (`readReorderPurchaseOrders`, one id) with NO Firestore fallback. It is a fetch per id change,
+// not a live subscription.
+//
+// H14 (reorder pair) -- `error` keeps the contract the record cards render: `"not_found"` when the read
+// succeeds and the purchase order does not exist, or `"permission-denied"` / `"unavailable"` when the
+// read itself is refused or fails. "You cannot see it" stays distinguishable from "there is nothing to see".
+export function usePurchaseOrderForReorderRequest(reorderRequestId, deps = {}) {
   const [state, setState] = useState({ data: null, loading: true, error: null });
+  const clientRef = useRef(deps.client);
+  clientRef.current = deps.client;
 
   useEffect(() => {
     if (!reorderRequestId) {
       setState({ data: null, loading: false, error: null });
-      return;
+      return undefined;
     }
-
+    let cancelled = false;
     setState({ data: null, loading: true, error: null });
-    const ref = doc(db, PURCHASE_ORDERS_COLLECTION, reorderRequestId);
-    const unsubscribe = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) {
-          setState({ data: null, loading: false, error: "not_found" });
+    fetchReorderPurchaseOrdersByIds([reorderRequestId], clientRef.current)
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.ok) {
+          setState({ data: null, loading: false, error: res.error ?? "unknown" });
           return;
         }
-        setState({ data: { id: snap.id, ...snap.data() }, loading: false, error: null });
-      },
-      (err) => setState({ data: null, loading: false, error: err.code ?? "unknown" })
-    );
-
-    return unsubscribe;
+        const po = res.purchaseOrdersById[reorderRequestId] ?? null;
+        setState(po ? { data: po, loading: false, error: null } : { data: null, loading: false, error: "not_found" });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ data: null, loading: false, error: "unknown" });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [reorderRequestId]);
 
   return state;

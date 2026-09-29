@@ -23,7 +23,7 @@ import {
 test("both Operations lists are closed, every entry is routed, and they name exactly what the transport serves", () => {
   assert.deepEqual(OPERATIONS_READ_OPERATIONS,
     ["resolveMyCapabilities", "resolveMyExperienceContext", "readReorderQueue", "readMyAssignedReorders",
-      "readReorderRequest", "readMyReorderHistory", "listReorderWarehouseOptions"]);
+      "readReorderRequest", "readMyReorderHistory", "listReorderWarehouseOptions", "readReorderPurchaseOrders"]);
   assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
@@ -152,7 +152,7 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   assert.equal(REORDER_POSTGRES_ACTIVE, true, "the activation package opens the PostgreSQL Reorder authority");
   const untouchable = new Proxy({}, { get: () => { throw new Error("DEPS_TOUCHED"); } });
   const reorderOps = [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].filter((o) => !/^resolveMy/.test(o));
-  assert.equal(reorderOps.length, 15);
+  assert.equal(reorderOps.length, 16);
   for (const operation of reorderOps) {
     const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },
       { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });
