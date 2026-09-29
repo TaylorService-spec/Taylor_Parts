@@ -61,6 +61,7 @@ const { formatReceivingOrderNumber, receivingOrderCounterDocId } = await import(
 const { formatReorderRequestNumber, reorderRequestCounterDocId } = await import("../lib/reorderRequest/reorderRequestNumbering.js");
 const { formatSalesOrderNumber, salesOrderCounterDocId } = await import("../lib/salesOrder/salesOrderNumbering.js");
 const { COUNTERS_COLLECTION } = await import("../lib/constants/collections.js");
+const { default: sourceCollectionFreeze } = await import("./sourceCollectionFreeze.js");
 
 // ---- family registry: the one place that ties a collection to its field/format/counter -----------------
 const FAMILIES = {
@@ -270,6 +271,9 @@ async function readCounterSequenceOnce(db, family, year) {
 // (never trusts the report's snapshot) -- so a record numbered by ANY means since the report was printed
 // (a live create, a concurrent run of this same tool) is skipped, never overwritten.
 async function assignOne(db, family, id) {
+  // THE FREEZE GATE, at the write itself (scripts/sourceCollectionFreeze.js): a frozen Reorder source
+  // collection is never written, whoever called.
+  sourceCollectionFreeze.assertSourceCollectionWritable(family.collection, "backfillOperationalNumbering.mjs");
   return db.runTransaction(async (txn) => {
     const ref = db.collection(family.collection).doc(id);
     const snap = await txn.get(ref);
@@ -297,6 +301,13 @@ async function assignOne(db, family, id) {
     txn.update(ref, { [family.field]: candidate });
     return { id, outcome: "ASSIGNED", number: candidate };
   });
+}
+
+/** Why a family's collection may not be written (a frozen source collection), or null. Exported for tests. */
+export function frozenFamilyReason(familyKey) {
+  const family = FAMILIES[familyKey];
+  if (!family) throw new Error(`unknown family '${familyKey}'`);
+  return sourceCollectionFreeze.frozenSourceReason(family.collection);
 }
 
 // ---- main -------------------------------------------------------------------------------------------
@@ -330,6 +341,10 @@ async function main() {
     printReport(familyKey, family, plan);
 
     if (!args.write) continue;
+    // A family whose collection is a FROZEN source (reorder_requests, since the Reorder cutover) is
+    // reported above and REFUSED here; every other family is written exactly as before.
+    const frozen = frozenFamilyReason(familyKey);
+    if (frozen) { console.log(`  --write REFUSED for ${familyKey}: ${frozen}`); continue; }
     if (plan.assignments.length === 0) { console.log(`  nothing to write for ${familyKey}.`); continue; }
 
     console.log(`  --write set: assigning ${plan.assignments.length} record(s) for ${familyKey}, one transaction each...`);

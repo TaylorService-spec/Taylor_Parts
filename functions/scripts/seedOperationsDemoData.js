@@ -32,6 +32,7 @@
 "use strict";
 
 const path = require("node:path");
+const { frozenSourceCollections, assertSourceCollectionWritable } = require("./sourceCollectionFreeze.js");
 
 function parseArgs(argv) {
   const out = {};
@@ -124,20 +125,28 @@ async function seed(deps) {
     updatedAt: now,
   });
 
-  // Suppliers + catalog
+  // Suppliers + catalog -- FIRESTORE CATALOG collections, gated by scripts/sourceCollectionFreeze.js. While
+  // the Firestore Catalog is FROZEN they are skipped, never written; the rest of this demo pack is
+  // unaffected. The purchase order below names supplier "sup-a" by id only, exactly as before.
+  const frozenCatalog = frozenSourceCollections(["suppliers", "supplier_catalog"]);
+  for (const f of frozenCatalog) console.log(`Catalog portion SKIPPED -- ${f.collection}: ${f.reason}`);
   const supA = db.collection("suppliers").doc("sup-a");
   const supB = db.collection("suppliers").doc("sup-b");
-  batch.set(supA, { id: supA.id, name: "Acme Parts Co.", contactEmail: "orders@acmeparts.example", leadTimeDays: 5 });
-  batch.set(supB, { id: supB.id, name: "Reliable Supply Inc.", contactEmail: "sales@reliablesupply.example", leadTimeDays: 10 });
+  if (frozenCatalog.length === 0) {
+    assertSourceCollectionWritable("suppliers", "seedOperationsDemoData.js");
+    assertSourceCollectionWritable("supplier_catalog", "seedOperationsDemoData.js");
+    batch.set(supA, { id: supA.id, name: "Acme Parts Co.", contactEmail: "orders@acmeparts.example", leadTimeDays: 5 });
+    batch.set(supB, { id: supB.id, name: "Reliable Supply Inc.", contactEmail: "sales@reliablesupply.example", leadTimeDays: 10 });
 
-  const catalogItems = [
-    { id: "cat-1", supplierId: supA.id, partId: PART_A, unitPrice: 245.0, available: true },
-    { id: "cat-2", supplierId: supB.id, partId: PART_A, unitPrice: 260.0, available: true },
-    { id: "cat-3", supplierId: supA.id, partId: PART_B, unitPrice: 42.5, available: true },
-    { id: "cat-4", supplierId: supB.id, partId: PART_C, unitPrice: 210.0, available: false },
-  ];
-  for (const item of catalogItems) {
-    batch.set(db.collection("supplier_catalog").doc(item.id), item);
+    const catalogItems = [
+      { id: "cat-1", supplierId: supA.id, partId: PART_A, unitPrice: 245.0, available: true },
+      { id: "cat-2", supplierId: supB.id, partId: PART_A, unitPrice: 260.0, available: true },
+      { id: "cat-3", supplierId: supA.id, partId: PART_B, unitPrice: 42.5, available: true },
+      { id: "cat-4", supplierId: supB.id, partId: PART_C, unitPrice: 210.0, available: false },
+    ];
+    for (const item of catalogItems) {
+      batch.set(db.collection("supplier_catalog").doc(item.id), item);
+    }
   }
 
   // One existing purchase order, already SENT

@@ -53,6 +53,7 @@ import { buildWorld } from "./certificationWorld/build.mjs";
 import { writeRecords } from "./certificationWorld/seedWrite.mjs";
 import { classifyWorld, WORLD_STATE, SEED_POLICY } from "./certificationWorld/verify.mjs";
 import { STATE_COLLECTION, STATE_DOC_ID, VOLATILE_FIELDS, worldFingerprint } from "./certificationWorld/state.mjs";
+import sourceCollectionFreeze from "./sourceCollectionFreeze.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // THE authority. Not a second opinion beside assertSandboxTarget -- its replacement. Keeping both
@@ -203,6 +204,31 @@ export function expectedRecords() {
     }
   }
   return { world: w, records: out, markerlessIds };
+}
+
+/**
+ * THE FREEZE GATE for a LIVE reset or rebuild (scripts/sourceCollectionFreeze.js).
+ *
+ * The world includes Firestore Catalog collections (parts, equipment_models). While those are FROZEN the
+ * world cannot be written OR deleted, and a world rebuilt without them would be exactly the PARTIAL world
+ * this tool refuses to create -- a fingerprint no version matches, and no Parts behind its installed base.
+ * So a live reset or rebuild is REFUSED as a whole, before any connection, naming each frozen collection.
+ * verify and a dry-run reset write nothing and are unaffected.
+ *
+ * Exported so the refusal is proven without a live target.
+ */
+export function frozenWorldCollections() {
+  const { records } = expectedRecords();
+  const collections = [...records.map((r) => r.collection), ...LEGACY_CERTIFICATION_PATTERNS.map((p) => p.collection)];
+  return sourceCollectionFreeze.frozenSourceCollections(collections);
+}
+
+function assertWorldWritable() {
+  const frozen = frozenWorldCollections();
+  if (frozen.length > 0) {
+    throw new Error("refusing to write the certification world -- frozen source collection(s): "
+      + frozen.map((f) => `${f.collection} (${f.reason})`).join("; "));
+  }
 }
 
 function countByCollection(rows) {
@@ -385,6 +411,7 @@ async function doReset(db, opts) {
     if (hits.length) legacy[p.collection + " (legacy: " + p.describe + ")"] = hits;
   }
 
+  if (!opts.dryRun) assertWorldWritable(); // before any delete, whoever called
   if (opts.dryRun) {
     console.log("\nDRY RUN - nothing deleted.");
     let total = 0;
@@ -454,6 +481,17 @@ async function main() {
   console.log("certification world :: " + args.mode + " :: " + (env?.id ?? "unknown") + " (" + args.projectId + ", role=" + target.role + ")");
   console.log(describeTarget(target));
 
+  // A LIVE reset or rebuild writes (or deletes) frozen source collections: refused BEFORE connecting.
+  if (args.mode === "rebuild" || (args.mode === "reset" && !args.dryRun)) {
+    const frozen = frozenWorldCollections();
+    if (frozen.length > 0) {
+      console.error("REFUSED: the certification world includes frozen source collections and cannot be reset or rebuilt:");
+      for (const f of frozen) console.error("  " + f.collection + ": " + f.reason);
+      process.exitCode = 1;
+      return;
+    }
+  }
+
   initializeApp({ credential: applicationDefault(), projectId: args.projectId });
   const db = getFirestore();
 
@@ -487,6 +525,7 @@ async function main() {
   }
 
   const { world, records } = expectedRecords();
+  assertWorldWritable(); // before any write, whoever called
   const written = await writeRecords(db, records);
   const fp = worldFingerprint(records);
 

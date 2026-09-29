@@ -24,6 +24,7 @@ const { initializeApp, applicationDefault } = require("firebase-admin/app");
 const { getFirestore, Timestamp, FieldValue } = require("firebase-admin/firestore");
 const fs = require("node:fs");
 const path = require("node:path");
+const { frozenSourceCollections, assertSourceCollectionWritable } = require("./sourceCollectionFreeze.js");
 
 function parseArgs(argv) {
   const out = {};
@@ -131,6 +132,9 @@ const EQUIPMENT = [
 ];
 
 async function upsert(db, collection, id, data) {
+  // The ONE write path of this script, so the freeze is enforced where the write happens and not only
+  // where a loop decided to skip.
+  assertSourceCollectionWritable(collection, "seedSandboxBaseline.js");
   await db.collection(collection).doc(id).set(data, { merge: true });
 }
 
@@ -183,7 +187,17 @@ async function main() {
     bump("warehouses");
   }
 
-  for (const s of SUPPLIERS) {
+  // THE CATALOG PORTION IS GATED (scripts/sourceCollectionFreeze.js). suppliers, parts and
+  // part_supplier_items are Firestore Catalog collections: while the Firestore Catalog is FROZEN they are
+  // skipped, never written, and the rest of this pack -- warehouses, accounts, locations, contacts,
+  // equipment -- is unaffected. Seed Parts through the PostgreSQL Catalog authority instead.
+  const frozenCatalog = frozenSourceCollections(["suppliers", "parts", "part_supplier_items"]);
+  if (frozenCatalog.length > 0) {
+    for (const f of frozenCatalog) console.log(`Catalog portion SKIPPED -- ${f.collection}: ${f.reason}`);
+  }
+  const catalogWritable = frozenCatalog.length === 0;
+
+  for (const s of catalogWritable ? SUPPLIERS : []) {
     await upsert(db, "suppliers", s.id, {
       supplierId: s.id, name: s.name, status: s.status, contactEmail: s.contactEmail,
       createdAt: now, createdBy: by, updatedAt: now, updatedBy: by,
@@ -191,7 +205,7 @@ async function main() {
     bump("suppliers");
   }
 
-  for (const p of PARTS) {
+  for (const p of catalogWritable ? PARTS : []) {
     await upsert(db, "parts", p.id, {
       partId: p.id, sku: p.id, name: p.name, category: p.category,
       // Governed Part Master fields — what partFromFirestore()/validatePart() actually read.
