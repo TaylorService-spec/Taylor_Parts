@@ -323,9 +323,23 @@ async function selectAccount(db: Pick<PoolClient, "query">, tenantId: string, ac
   return project(rows[0]);
 }
 
+/**
+ * DQ-009 (Controller 2026-09-28): a NEWLY selected Account owner -- at creation, an owner handoff, or the initial owner
+ * of a legacy ownerless Account -- must be a currently eligible Employee: ACTIVE or CONTRACTOR (the DQ-007 eligible set).
+ * Only NEW selections are checked; an existing owner, the ownership history, and the owner a Contact or site inherits
+ * are never re-judged or rewritten.
+ */
+export const CRM_OWNER_ELIGIBLE_STATUSES = Object.freeze(["ACTIVE", "CONTRACTOR"] as const);
+
 async function requireOwnerEmployee(db: PoolClient, tenantId: string, employeeId: string): Promise<string> {
   const resolution = await createPostgresEmployeeAuthority(db).resolveEmployeeReference({ tenantId, employeeId });
-  if (resolution.outcome === "RESOLVED") return resolution.employee.employeeId;
+  if (resolution.outcome === "RESOLVED") {
+    if (!(CRM_OWNER_ELIGIBLE_STATUSES as readonly string[]).includes(resolution.employee.employmentStatus)) {
+      fail("OWNER_NOT_CURRENTLY_ELIGIBLE", "PRECONDITION_FAILED",
+        `the owner must be an ACTIVE or CONTRACTOR Employee; ${employeeId} is ${resolution.employee.employmentStatus}`);
+    }
+    return resolution.employee.employeeId;
+  }
   if (resolution.outcome === "AUTHORITY_UNAVAILABLE") fail("EMPLOYEE_AUTHORITY_UNAVAILABLE", "UNAVAILABLE", "the Employee authority could not answer");
   return fail("OWNER_NOT_FOUND", "NOT_FOUND", "the owner is not an Employee of this tenant");
 }

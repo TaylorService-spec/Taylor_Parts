@@ -396,6 +396,32 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
     assert.equal(await ownerOf(race.accountId), rows[rows.length - 1].new_owner_employee_id);
   });
 
+  await t.test("(A12) DQ-009: a NEW owner must be ACTIVE or CONTRACTOR -- at create, handoff and initial assignment; an existing owner and history are never re-judged", async () => {
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES
+      ('e-contract','t1','CONTRACTOR','taylor'), ('e-inactive','t1','INACTIVE','taylor'), ('e-leave','t1','ON_LEAVE','taylor'), ('e-gone','t1','TERMINATED','taylor')`);
+    const refused = (p, what) => assert.rejects(p, (e) => e.code === "OWNER_NOT_CURRENTLY_ELIGIBLE" && e.category === "PRECONDITION_FAILED", what);
+    const accountsBefore = (await q(`SELECT count(*)::int n FROM eos_crm.accounts WHERE tenant_id='t1'`)).rows[0].n;
+    for (const e of ["e-inactive", "e-leave", "e-gone"]) {
+      await refused(accounts.createAccount(deps, A1, { idempotencyKey: K(), name: `No ${e}`, status: "ACTIVE", ownerEmployeeId: e }), `create with ${e}`);
+    }
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_crm.accounts WHERE tenant_id='t1'`)).rows[0].n, accountsBefore);
+    const contractorOwned = await accounts.createAccount(deps, A1, { idempotencyKey: K(), name: "Contractor Co", status: "ACTIVE", ownerEmployeeId: "e-contract" });
+    assert.equal(contractorOwned.ownerEmployeeId, "e-contract");
+    const historyBefore = (await history(contractorOwned.accountId)).length;
+    await refused(accounts.updateAccount(deps, A1, { accountId: contractorOwned.accountId, ownerEmployeeId: "e-inactive" }), "handoff to INACTIVE");
+    assert.equal((await history(contractorOwned.accountId)).length, historyBefore, "a refused handoff writes no history");
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-remediate-3','t1','Third Remediation Cafe','ACTIVE','import','import')`);
+    await refused(accounts.updateAccount(deps, A1, { accountId: "acct-remediate-3", ownerEmployeeId: "e-leave" }), "initial assignment to ON_LEAVE");
+    // The owner becomes INACTIVE later: the Account keeps its owner, ordinary edits still work, nothing is rewritten.
+    await q(`UPDATE eos_workforce.employees SET employment_status='INACTIVE' WHERE id='e-contract'`);
+    const edited = await accounts.updateAccount(deps, A1, { accountId: contractorOwned.accountId, notes: "still ours" });
+    assert.deepEqual([edited.ownerEmployeeId, edited.notes], ["e-contract", "still ours"]);
+    assert.equal((await history(contractorOwned.accountId)).length, historyBefore);
+    // ...and the owner can be handed to an eligible Employee.
+    const moved = await accounts.updateAccount(deps, A1, { accountId: contractorOwned.accountId, ownerEmployeeId: "e-a" });
+    assert.equal(moved.ownerEmployeeId, "e-a");
+  });
+
   // ════════════════════ B. atomic Contact import ════════════════════
 
   const importTarget = await accounts.createAccount(deps, A1, { idempotencyKey: K(), name: "Import Co", status: "ACTIVE", ownerEmployeeId: "e-b" });

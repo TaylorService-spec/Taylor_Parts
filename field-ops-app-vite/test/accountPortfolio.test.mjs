@@ -143,6 +143,13 @@ ok("accountSaveErrorMessage: permission-denied -> authorization message", () => 
   assert.match(accountSaveErrorMessage({ code: "permission-denied" }), /permission/i);
   assert.match(accountSaveErrorMessage({ code: "firestore/permission-denied" }), /permission/i);
 });
+ok("accountSaveErrorMessage: governed CRM refusals get their own sentence (DQ-009 owner eligibility included)", () => {
+  assert.match(accountSaveErrorMessage({ code: "CAPABILITY_REQUIRED" }), /permission/i);
+  assert.match(accountSaveErrorMessage({ code: "OWNER_NOT_CURRENTLY_ELIGIBLE" }), /active or contractor/i);
+  assert.match(accountSaveErrorMessage({ code: "POSTGRES_CRM_WRITER_INACTIVE" }), /can't be changed yet/i);
+  assert.match(accountSaveErrorMessage({ code: "SOMETHING_ELSE" }), /Could not save/);
+});
+
 ok("accountSaveErrorMessage: blocked write -> disabled-mode message", () => {
   assert.match(accountSaveErrorMessage({ blocked: true }), /disabled/i);
 });
