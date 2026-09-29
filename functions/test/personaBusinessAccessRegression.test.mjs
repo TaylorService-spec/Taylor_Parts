@@ -264,7 +264,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 56: + the direct-exception cell lock (1762992000000): one trigger -- no capability, no grant, so no persona moves.
   // 57: + the Administrator staffing capability (1763078400000, Owner ruling R1): one capability granted to owner --
   // owner's set grows by exactly admin.administratorRole.assign; no other persona moves.
-  assert.equal(files.length, 57, "the migration chain moved; re-measure before trusting anything below");
+  // 58: + the ownership handoff correction capability (1763683200000, DQ-022): one capability granted to nobody -- no
+  // persona's set moves.
+  assert.equal(files.length, 58, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -366,7 +368,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 82); // + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000)
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 83); // + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.
