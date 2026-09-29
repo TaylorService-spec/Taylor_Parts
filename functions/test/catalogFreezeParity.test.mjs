@@ -100,8 +100,13 @@ const INVOCATIONS = Object.freeze([
 
 test("the freeze parity suite exercises EXACTLY the registered catalog writer set", () => {
   const exercised = INVOCATIONS.map((i) => i.writerId);
-  assert.deepEqual(exercised.slice().sort(), Object.keys(writerState.FIRESTORE_CATALOG_WRITERS).sort());
-  assert.deepEqual(exercised.slice().sort(), LEGACY_CATALOG_MASTER_COMMANDS.flatMap((c) => c.writerIds).sort());
+  // The JOB_GATE writer (part.import) is a job-level refusal inside a callable, not a command body this suite can
+  // invoke with stub deps; its behavioural proof is catalogPartImportFreeze.test.mjs. It is named here so the census
+  // still closes over the WHOLE registry.
+  const jobGated = LEGACY_CATALOG_MASTER_COMMANDS.filter((c) => c.form === "JOB_GATE").flatMap((c) => c.writerIds);
+  assert.deepEqual(jobGated, ["part.import"]);
+  assert.deepEqual([...exercised, ...jobGated].sort(), Object.keys(writerState.FIRESTORE_CATALOG_WRITERS).sort());
+  assert.deepEqual([...exercised, ...jobGated].sort(), LEGACY_CATALOG_MASTER_COMMANDS.flatMap((c) => c.writerIds).sort());
   assert.equal(exercised.length, 23);
 });
 
@@ -121,8 +126,10 @@ for (const [state, code] of [[st("FROZEN", "INACTIVE"), "FIRESTORE_CATALOG_WRITE
 
 // ── OPEN: nothing changes ───────────────────────────────────────────────────────────────────────────
 
-test("under the committed OPEN/INACTIVE state every catalog master command is UNCHANGED -- the guard is a no-op and the command proceeds", async () => {
-  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("OPEN", "INACTIVE"));
+test("under OPEN/INACTIVE (the rollback-before-PostgreSQL-writes state) every catalog master command is UNCHANGED -- the guard is a no-op", async () => {
+  // COMMITTED STATE: FROZEN/INACTIVE (activation window step 2). OPEN remains the declared rollback target, so its
+  // behaviour is still proven -- injected, never assumed from the committed constant.
+  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("FROZEN", "INACTIVE"));
   for (const { writerId, call, openMarker } of INVOCATIONS) {
     const err = await withAuthority(st("OPEN", "INACTIVE"), () => call().then(() => null, (e) => e));
     assert.ok(!(err instanceof FirestoreCatalogWriterClosedError), `${writerId} must NOT refuse on freeze grounds while OPEN`);
@@ -131,10 +138,10 @@ test("under the committed OPEN/INACTIVE state every catalog master command is UN
   }
 });
 
-test("the guard used by the commands is the real, committed one once the injection is undone", () => {
+test("the guard used by the commands is the real, committed one once the injection is undone -- and it refuses: FROZEN", () => {
   assert.equal(writerState.assertFirestoreCatalogWriterOpen, REAL_GUARD);
   for (const id of Object.keys(writerState.FIRESTORE_CATALOG_WRITERS)) {
-    assert.doesNotThrow(() => writerState.assertFirestoreCatalogWriterOpen(id));
+    assert.throws(() => writerState.assertFirestoreCatalogWriterOpen(id), (e) => e.code === "FIRESTORE_CATALOG_WRITER_FROZEN" && e.writer === id);
   }
 });
 

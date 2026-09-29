@@ -160,10 +160,14 @@ test("STRUCTURAL: no runtime code can import the exporter -- not src, not the cl
 
 const st = (firestore, postgres) => ({ firestore, postgres });
 
-test("the committed catalog writer state is OPEN/INACTIVE: legacy writers authoritative, PostgreSQL writers not active", () => {
-  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("OPEN", "INACTIVE"));
+test("the committed catalog writer state is FROZEN/INACTIVE: the legacy writers refuse, PostgreSQL writers not yet active", () => {
+  // Activation window step 2 (Controller ruling 2026-09-28): the FREEZE transition, taken before the snapshot export.
+  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("FROZEN", "INACTIVE"));
+  assert.equal(writerState.assertCatalogWriterTransition(st("OPEN", "INACTIVE"), writerState.CATALOG_WRITER_AUTHORITY), "FREEZE");
   assert.doesNotThrow(() => writerState.assertCatalogWriterAuthorityCoherent(writerState.CATALOG_WRITER_AUTHORITY));
-  for (const id of Object.keys(writerState.FIRESTORE_CATALOG_WRITERS)) assert.doesNotThrow(() => writerState.assertFirestoreCatalogWriterOpen(id));
+  for (const id of Object.keys(writerState.FIRESTORE_CATALOG_WRITERS)) {
+    assert.throws(() => writerState.assertFirestoreCatalogWriterOpen(id), (e) => e.code === "FIRESTORE_CATALOG_WRITER_FROZEN");
+  }
 });
 
 test("never two authoritative writer sets: OPEN/ACTIVE and RETIRED/INACTIVE are incoherent", () => {
@@ -231,6 +235,10 @@ test("every legacy writer calls the guard with its own id, before anything else 
     assert.ok(accept.includes(c.gateLine), `acceptForExecution must carry: ${c.gateLine}`);
   }
   assert.ok(accept.indexOf("assertFirestoreCatalogWriterOpen") < accept.indexOf("resolvePermission"), "the guard precedes capability resolution");
+  // The JOB-level gate: present verbatim in its module (its ordering against the claim is catalogPartImportFreeze's proof).
+  for (const c of LEGACY_CATALOG_MASTER_COMMANDS.filter((x) => x.form === "JOB_GATE")) {
+    assert.ok(readFileSync(c.module, "utf8").includes(c.gateLine), `${c.module} must carry: ${c.gateLine}`);
+  }
   // EVERY action of this orchestrator is gated. The compatibility actions are IN this freeze by Owner
   // ruling: `equipment_part_compatibility` is persisted, versioned, company-neutral reference data keyed
   // on two catalog identities, and `importCompatibilitySource` can itself stage an update to the

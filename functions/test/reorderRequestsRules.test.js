@@ -55,14 +55,14 @@
 // never touches the live "taylor-parts" project.
 "use strict";
 
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
+process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
+process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
 
 const admin = require("firebase-admin");
 
 const PROJECT_ID = "taylor-parts";
-const FIRESTORE_HOST = "http://127.0.0.1:8080";
-const AUTH_HOST = "http://127.0.0.1:9099";
+const FIRESTORE_HOST = `http://${process.env.FIRESTORE_EMULATOR_HOST}`;
+const AUTH_HOST = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`;
 const DOC_BASE = `${FIRESTORE_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 
 admin.initializeApp({ projectId: PROJECT_ID });
@@ -796,12 +796,12 @@ async function main() {
     purchaseOrderId: "rr-received-happy-path",
   });
   report(
-    "ORDERED -> RECEIVED accepted for the assignee",
+    "FROZEN (Reorder source freeze, activation window step 2): ORDERED -> RECEIVED DENIED from the browser for the assignee",
     (await updateReorderRequest("rr-received-happy-path", adminToken, {
       status: str("RECEIVED"),
       receivedBy: str("user-admin-rr"),
       receivedAt: int(Date.now()),
-    })) === 200
+    })) === 403
   );
 
   await seedReorderRequest("rr-received-non-assignee", {
@@ -862,13 +862,13 @@ async function main() {
     assignedToUserId: null,
   });
   report(
-    "READY_FOR_PARTS_MANAGER -> CANCELLED accepted for admin, with a genuine reason",
+    "FROZEN (Reorder source freeze, activation window step 2): READY_FOR_PARTS_MANAGER -> CANCELLED DENIED from the browser for admin, with a genuine reason",
     (await updateReorderRequest("rr-cancel-from-ready-for-pm", adminToken, {
       status: str("CANCELLED"),
       cancelledBy: str("user-admin-rr"),
       cancelledAt: int(Date.now()),
       cancellationReason: str("Duplicate request, already ordered under PART-CANCEL9"),
-    })) === 200
+    })) === 403
   );
 
   await seedReorderRequest("rr-cancel-from-assigned", {
@@ -887,51 +887,22 @@ async function main() {
   const preCancelSnapshot = (await db.doc("reorder_requests/rr-cancel-from-assigned").get()).data();
 
   report(
-    "ASSIGNED_TO_PARTS_ASSOCIATE -> CANCELLED accepted for dispatcher (not just admin, not just the assignee)",
+    "FROZEN (Reorder source freeze, activation window step 2): ASSIGNED_TO_PARTS_ASSOCIATE -> CANCELLED DENIED from the browser for dispatcher (not just admin, not just the assignee)",
     (await updateReorderRequest("rr-cancel-from-assigned", dispatcherToken, {
       status: str("CANCELLED"),
       cancelledBy: str("user-dispatcher-rr"),
       cancelledAt: int(Date.now()),
       cancellationReason: str("Part no longer needed"),
-    })) === 200
+    })) === 403
   );
 
   {
     const postCancelSnapshot = (await db.doc("reorder_requests/rr-cancel-from-assigned").get()).data();
-    const OWNED_KEYS = ["status", "cancelledBy", "cancelledAt", "cancellationReason"];
-    const preKeys = new Set(Object.keys(preCancelSnapshot));
-    const postKeys = new Set(Object.keys(postCancelSnapshot));
-    const expectedPostKeys = new Set([...preKeys, "cancelledBy", "cancelledAt", "cancellationReason"]);
-
-    // Post-transition key set equals the original key set plus exactly
-    // the three new Cancel fields (status already existed pre-transition
-    // as a key -- only its value changes, not the key set).
-    const keySetMatches =
-      postKeys.size === expectedPostKeys.size &&
-      [...expectedPostKeys].every((key) => postKeys.has(key)) &&
-      [...postKeys].every((key) => expectedPostKeys.has(key));
-
-    // Every field NOT one of the four owned keys is byte-for-byte
-    // unchanged from the pre-transition snapshot -- not a sample of a
-    // few fields, every single one seedReorderRequest() set.
-    const everyOtherFieldPinned = [...preKeys]
-      .filter((key) => !OWNED_KEYS.includes(key))
-      .every((key) => preCancelSnapshot[key] === postCancelSnapshot[key]);
-
-    const ownedFieldsCorrect =
-      postCancelSnapshot.status === "CANCELLED" &&
-      postCancelSnapshot.cancelledBy === "user-dispatcher-rr" &&
-      typeof postCancelSnapshot.cancelledAt === "number" &&
-      postCancelSnapshot.cancellationReason === "Part no longer needed";
-
-    const voidFieldsStillAbsent =
-      !("voidedBy" in postCancelSnapshot) &&
-      !("voidedAt" in postCancelSnapshot) &&
-      !("voidReason" in postCancelSnapshot);
-
+    // FROZEN (Reorder source freeze, activation window step 2): the browser Cancel is DENIED, so the NO-WRITE proof
+    // replaces the post-transition key-set proof -- the legacy document is byte-for-byte what it was before the attempt.
     report(
-      "Legacy document (six Cancel/Void keys entirely absent pre-transition): post-transition key set equals pre-transition key set plus exactly cancelledBy/cancelledAt/cancellationReason; every non-owned field byte-for-byte unchanged; voidedBy/voidedAt/voidReason still genuinely absent",
-      keySetMatches && everyOtherFieldPinned && ownedFieldsCorrect && voidFieldsStillAbsent
+      "FROZEN (Reorder source freeze, activation window step 2): legacy document (six Cancel/Void keys entirely absent) is byte-for-byte UNCHANGED after the denied browser Cancel -- no cancelledBy/cancelledAt/cancellationReason written",
+      JSON.stringify(postCancelSnapshot) === JSON.stringify(preCancelSnapshot)
     );
   }
 
@@ -941,13 +912,13 @@ async function main() {
     assignedToUserId: "user-admin-rr",
   });
   report(
-    "PURCHASING_IN_PROGRESS -> CANCELLED accepted for admin",
+    "FROZEN (Reorder source freeze, activation window step 2): PURCHASING_IN_PROGRESS -> CANCELLED DENIED from the browser for admin",
     (await updateReorderRequest("rr-cancel-from-purchasing", adminToken, {
       status: str("CANCELLED"),
       cancelledBy: str("user-admin-rr"),
       cancelledAt: int(Date.now()),
       cancellationReason: str("Wrong part identified"),
-    })) === 200
+    })) === 403
   );
 
   await seedReorderRequest("rr-cancel-auth-rejected", {
@@ -1148,8 +1119,8 @@ async function main() {
     voidFields.reorderPurchaseOrderId = str("rr-void-happy-path");
     voidFields.reorderRequestId = str("rr-void-happy-path");
     report(
-      "ORDERED -> VOIDED accepted for the assignee (isAdminOrDispatcher() AND assignedToUserId, both conditions)",
-      (await voidCommit("rr-void-happy-path", adminToken, { requestFields, voidFields })) === 200
+      "FROZEN (Reorder source freeze, activation window step 2): ORDERED -> VOIDED DENIED from the browser for the assignee (isAdminOrDispatcher() AND assignedToUserId, both conditions)",
+      (await voidCommit("rr-void-happy-path", adminToken, { requestFields, voidFields })) === 403
     );
   }
 
@@ -1169,28 +1140,12 @@ async function main() {
     const postVoidSnapshot = (await db.doc("reorder_requests/rr-void-legacy").get()).data();
     const voidRecordSnapshot = (await db.doc("reorder_purchase_order_voids/rr-void-legacy").get()).data();
 
-    const preKeys = new Set(Object.keys(preVoidSnapshot));
-    const postKeys = new Set(Object.keys(postVoidSnapshot));
-    const expectedPostKeys = new Set([...preKeys, "voidedBy", "voidedAt", "voidReason"]);
-    const keySetMatches =
-      postKeys.size === expectedPostKeys.size &&
-      [...expectedPostKeys].every((key) => postKeys.has(key)) &&
-      [...postKeys].every((key) => expectedPostKeys.has(key));
-    const cancelFieldsStillAbsent =
-      !("cancelledBy" in postVoidSnapshot) && !("cancelledAt" in postVoidSnapshot) && !("cancellationReason" in postVoidSnapshot);
-    const everyOtherFieldPinned = [...preKeys]
-      .filter((key) => !["status", "voidedBy", "voidedAt", "voidReason"].includes(key))
-      .every((key) => preVoidSnapshot[key] === postVoidSnapshot[key]);
-    const voidRecordKeySetExact =
-      voidRecordSnapshot &&
-      new Set(Object.keys(voidRecordSnapshot)).size === 6 &&
-      ["reorderPurchaseOrderId", "reorderRequestId", "partId", "voidedBy", "reason", "createdAt"].every(
-        (key) => key in voidRecordSnapshot
-      );
-
+    // FROZEN (Reorder source freeze, activation window step 2): the atomic browser Void (request update + void record
+    // create) is DENIED as a whole, so the NO-WRITE proof replaces the key-set proof: the request is byte-for-byte
+    // unchanged and NO void record exists.
     report(
-      "Legacy document (six Cancel/Void keys entirely absent pre-transition): Void adds ONLY status(value)/voidedBy/voidedAt/voidReason to reorder_requests -- cancelledBy/cancelledAt/cancellationReason never backfilled, every other field pinned, and the void record itself has exactly its six required keys",
-      commitStatus === 200 && keySetMatches && cancelFieldsStillAbsent && everyOtherFieldPinned && voidRecordKeySetExact
+      "FROZEN (Reorder source freeze, activation window step 2): legacy Void is DENIED from the browser -- reorder_requests byte-for-byte unchanged and NO reorder_purchase_order_voids record created",
+      commitStatus === 403 && JSON.stringify(postVoidSnapshot) === JSON.stringify(preVoidSnapshot) && voidRecordSnapshot === undefined
     );
   }
 
@@ -1613,32 +1568,32 @@ async function main() {
       const id = warehouse === null ? "rr-2b-legacy" : "rr-2b-new";
       await seedGeneration(id, { status: "READY_FOR_PARTS_MANAGER", assignedToUserId: null, warehouse });
       report(
-        `2B: Assign still accepted on a ${label} record`,
+        `FROZEN (Reorder source freeze, activation window step 2): 2B: Assign now DENIED from the browser on a ${label} record`,
         (await updateReorderRequest(id, adminToken, {
           status: str("ASSIGNED_TO_PARTS_ASSOCIATE"),
           currentOwner: str("PARTS_ASSOCIATE"),
           assignedToUserId: str("user-admin-rr"),
           assignedBy: str("user-admin-rr"),
           assignedAt: int(Date.now()),
-        })) === 200
+        })) === 403
       );
       report(
-        `2B: Start Purchasing still accepted on a ${label} record`,
+        `FROZEN (Reorder source freeze, activation window step 2): 2B: Start Purchasing now DENIED from the browser on a ${label} record`,
         (await updateReorderRequest(id, adminToken, {
           status: str("PURCHASING_IN_PROGRESS"),
           purchasingStartedAt: int(Date.now()),
           purchasingStartedBy: str("user-admin-rr"),
-        })) === 200
+        })) === 403
       );
       report(
-        `2B: a Purchasing Update still accepted on a ${label} record`,
+        `FROZEN (Reorder source freeze, activation window step 2): 2B: a Purchasing Update now DENIED from the browser on a ${label} record`,
         (await updateReorderRequest(id, adminToken, {
           purchasingNotes: str("Vendor contacted."),
           vendorContacted: { booleanValue: true },
           expectedAvailabilityDate: nul(),
           lastPurchasingUpdateAt: int(Date.now()),
           lastPurchasingUpdateBy: str("user-admin-rr"),
-        })) === 200
+        })) === 403
       );
     }
 

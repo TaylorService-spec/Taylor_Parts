@@ -103,7 +103,18 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 //     matched c9399b52~1 exactly, c9399b52 hashes to the new pin, and both governed copies are byte-identical.
 //     This pin is AHEAD OF LIVE until the #1929 Rules are deployed to eos-platform-sandbox: until then this
 //     verifier refusing LIVE != GOVERNED is the correct signal to deploy, and must not be resolved by moving the pin back.
-const GOVERNED_RULES_SHA256 = "e198ebe1736df8a2c153924c698e023f2210104fab87be3557785a4eb57b42bd";
+//   e198ebe1736df8a2c153924c698e023f2210104fab87be3557785a4eb57b42bd -- the ruleset before the Catalog + Reorder
+//     activation window's step-2 FREEZE (Controller ruling 2026-09-28, PR #1999). The ENTIRE non-comment delta is one
+//     new function `reorderSourceFrozen()` returning true, guarding the only two remaining browser write arms of the
+//     legacy Reorder source: `reorder_requests` `allow update` and `reorder_purchase_order_voids` `allow create`, each
+//     original expression kept intact inside parentheses behind `!reorderSourceFrozen() &&`. It GRANTS NOTHING and only
+//     NARROWS: two browser writes go from conditionally-allowed to denied.
+//
+//     RE-PINNED by synchronisation, never by editing Rules to fit a hash: the new pin is the SHA-256 of the reviewed
+//     root firestore.rules, and field-ops-app-vite/firestore.rules is byte-identical to it. This pin is AHEAD OF LIVE
+//     until the freeze Rules are deployed to eos-platform-sandbox: until then LIVE != GOVERNED is the correct signal
+//     to deploy, and must not be resolved by moving the pin back.
+const GOVERNED_RULES_SHA256 = "db665ac77cb43c0cf7c72aa82876f9ea6a1cca6b04fe9ce888e0948831d4fe1f";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------
