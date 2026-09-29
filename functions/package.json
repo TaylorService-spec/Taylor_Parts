@@ -45,6 +45,7 @@
     "test:legacyDataAudit": "node --test test/auditLegacyJobTechnicianData.test.js",
     "test:operatorAccessExecute": "npm run build && node --test test/operatorAccessCommandExecute.test.js",
     "test:operatorEnvironmentFence": "node --test test/operatorScriptEnvironmentFence.test.mjs",
+    "test:operatorSourceFreeze": "npm run build && node --test test/operatorScriptSourceFreeze.test.mjs",
     "test:sampleCompany": "npm run build && node --test test/sampleCompanyManifest.test.mjs",
     "test:sandboxRoleIdentity": "node --test test/sandboxRoleIdentityRegistry.test.mjs test/sandboxPersonaBootstrapApply.test.mjs test/sandboxCredentialOperations.test.mjs",
     "test:sampleCompanyPostgres": "npm run build && node --test --test-concurrency=1 test/sampleCompanyPostgres.test.mjs",

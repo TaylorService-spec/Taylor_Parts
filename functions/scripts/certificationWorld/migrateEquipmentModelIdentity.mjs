@@ -56,6 +56,7 @@ const { buildWorld } = await import(L("functions/scripts/certificationWorld/buil
 const { modelFromFirestore } = await import(L("functions/lib/equipmentCompatibility/equipmentModelRepository.js"));
 const { isCanonicalEquipmentModelId } =
   await import(L("functions/lib/equipmentCompatibility/domain/equipmentModel.js"));
+const { default: sourceCollectionFreeze } = await import(L("functions/scripts/sourceCollectionFreeze.js"));
 
 const MODELS = "equipment_models";
 const EQUIPMENT = "equipment";
@@ -82,7 +83,13 @@ if (INVOKED_DIRECTLY) {
   if (target) {
     console.log(describeTarget(target));
     console.log("");
-    await main(target);
+    try {
+      await main(target);
+    } catch (err) {
+      if (err?.code !== "FROZEN_SOURCE_COLLECTION") throw err;
+      console.error(`REFUSED: ${err.message}`);
+      process.exitCode = 1;
+    }
   }
 }
 
@@ -107,7 +114,18 @@ function buildMapping() {
   return { world, byLegacyId, canonical };
 }
 
+/**
+ * THE FREEZE GATE (scripts/sourceCollectionFreeze.js). An APPLY creates and deletes `equipment_models`
+ * documents -- a Firestore Catalog collection -- and repoints `equipment` at them; the repoint without the
+ * model writes would leave equipment naming models that do not exist. So while the Firestore Catalog is
+ * FROZEN the whole apply is REFUSED, before any connection. A dry run writes nothing and still runs.
+ */
+export function assertModelMigrationApplyWritable() {
+  sourceCollectionFreeze.assertSourceCollectionWritable(MODELS, "migrateEquipmentModelIdentity.mjs");
+}
+
 async function main(t) {
+  if (t.apply) assertModelMigrationApplyWritable();
   if (!getApps().length) {
     initializeApp(t.isEmulator ? { projectId: t.projectId }
       : { credential: applicationDefault(), projectId: t.projectId });

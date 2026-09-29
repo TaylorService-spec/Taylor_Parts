@@ -86,6 +86,9 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { TRANSITIONS, ACTION_TO_STATUS, ACTION_ALLOWED_FROM, canTransition } from "../lib/transitionEngine.js";
 import { createPerformanceGoalDraft, approvePerformanceGoal } from "../lib/performance/performanceGoalCommands.js";
 import { findMetric } from "../lib/performance/performanceMetricRegistry.js";
+import sourceCollectionFreeze from "./sourceCollectionFreeze.js";
+
+const { frozenSourceReason } = sourceCollectionFreeze;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -399,12 +402,24 @@ export function buildScenarioSpec({ nowMillis }) {
 // IO -- Firestore writes and governed goal-command calls. Kept apart from the pure spec above,
 // matching sandboxDispatchFixtures.js's own "pure planning, separate IO" split.
 // ============================================================================================
-async function applyScenario(db, spec, { dryRun }) {
+// Exported so the freeze gate below is proven against an injected store (sandboxPerformanceStory test).
+export async function applyScenario(db, spec, { dryRun }) {
   const now = Timestamp.now();
   const by = "sandbox-performance-story-seed";
   const counts = {};
   const bump = (k, n = 1) => { counts[k] = (counts[k] || 0) + n; };
+  // THE FREEZE GATE (scripts/sourceCollectionFreeze.js). A frozen Catalog or Reorder source collection
+  // is SKIPPED -- counted under `skipped:<collection>`, never written, in a dry run and a live run alike --
+  // and every other collection this pack seeds is unaffected. The reorder story is seeded through the
+  // governed PostgreSQL commands instead (src/sandboxFixtures/reorderScenarioPostgresSeed.ts).
+  const reported = new Set();
   const set = async (collection, id, data) => {
+    const frozen = frozenSourceReason(collection);
+    if (frozen) {
+      bump(`skipped:${collection}`);
+      if (!reported.has(collection)) { reported.add(collection); console.log(`SKIPPED ${collection}: ${frozen}`); }
+      return;
+    }
     bump(collection);
     if (dryRun) return;
     await db.collection(collection).doc(id).set(data, { merge: true });
