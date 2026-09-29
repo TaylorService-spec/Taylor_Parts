@@ -55,6 +55,10 @@ test("FIRST-OWNER BOOTSTRAP (ruling 2026-09-27, option A), in PostgreSQL", { ski
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],
     { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: url, max: 16 });
+  // Teardown drops this database WITH (FORCE); an idle client left over from case 8's six-way race is then terminated
+  // ("terminating connection due to administrator command"). That is expected at teardown, not a finding -- without a
+  // listener pg re-throws it as an uncaughtException and node:test fails the suite after every assertion passed.
+  pool.on("error", () => undefined);
   const q = (s, v = []) => pool.query(s, v);
   const repo = new PostgresPolicyRepository(pool);
 

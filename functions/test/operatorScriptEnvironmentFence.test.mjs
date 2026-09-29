@@ -74,11 +74,15 @@ const preloadPath = (() => {
  * script infers its target from any of that, these tests are how we find out.
  */
 function runCli(scriptRelPath, args, extraEnv = {}) {
+  // The CI job names its emulators for the Firebase test-safety guard; an operator's machine does not. The emulator
+  // hosts therefore reach a CLI only when a case states them (the "a Firestore emulator host" refusal), never by
+  // inheritance -- otherwise every census case would meet that one refusal first.
+  const { FIRESTORE_EMULATOR_HOST: _fs, FIREBASE_AUTH_EMULATOR_HOST: _auth, ...inherited } = process.env;
   return spawnSync(process.execPath, ["--require", preloadPath, scriptRelPath, ...args], {
     cwd: FUNCTIONS_DIR,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...inherited,
       // Ambient identity that MUST NOT be accepted as an environment selection.
       GOOGLE_CLOUD_PROJECT: "taylor-parts",
       GCLOUD_PROJECT: "taylor-parts",
