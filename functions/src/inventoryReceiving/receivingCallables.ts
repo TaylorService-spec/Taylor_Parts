@@ -10,6 +10,7 @@
 // wiring so no client can supply an actor, resolver, or audit seam.
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { ReorderSourceFrozenError } from "../reorderRequest/reorderSourceFreeze.js";
 import type { CallableRequest, FunctionsErrorCode } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
@@ -117,6 +118,13 @@ export function validateEmptyRequest(data: unknown): void {
 // -------- error matrices (bounded, sanitized public codes) --------
 export function mapReceiveError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err; // the structural invalid-argument we threw
+  // THE REORDER SOURCE FREEZE is a governed state refusal, never an internal fault: the legacy REORDER_PURCHASE_ORDER
+  // receipt branch is frozen for the PostgreSQL cutover. Same convention as the catalog freeze (failed-precondition),
+  // with the domain code in `details` so a caller can branch on it.
+  if (err instanceof ReorderSourceFrozenError) {
+    return new HttpsError("failed-precondition",
+      "The legacy Reorder source is frozen for the PostgreSQL cutover; this receipt is no longer written here.", { code: err.code });
+  }
   if (err instanceof ReceiveCommandError) {
     const code: FunctionsErrorCode =
       err.code === "PERMISSION_DENIED" ? "permission-denied"

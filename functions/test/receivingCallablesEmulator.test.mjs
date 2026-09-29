@@ -12,7 +12,9 @@ import { HttpsError } from "firebase-functions/v2/https";
 admin.initializeApp({ projectId: "taylor-parts" });
 const db = admin.firestore();
 
-const { runReceiveInventoryStock, runListReceivingLocationOptions } = await import("../lib/inventoryReceiving/receivingCallables.js");
+const { runReceiveInventoryStock, runListReceivingLocationOptions, mapReceiveError } = await import("../lib/inventoryReceiving/receivingCallables.js");
+const { receiveInventoryStockProduction } = await import("../lib/inventoryReceiving/receiveInventoryStockComposition.js");
+const { receivingOrderDocId } = await import("../lib/inventoryReceiving/receivingRepository.js");
 const { resolveReceivePermissionThroughTxn, resolveReceivePartThroughTxn, stageReceiveAuditEvent } = await import("../lib/inventoryReceiving/receivingCallableWiring.js");
 
 let passed = 0, failed = 0;
@@ -56,20 +58,51 @@ const callReq = (uid, data) => ({ auth: { uid }, data });
 const reorderStatus = async (rrid) => (await db.collection("reorder_requests").doc(rrid).get()).data().status;
 const auditCount = async (targetId) => (await db.collection("auditEvents").where("action", "==", "receiveInventoryStock").where("targetId", "==", targetId).get()).size;
 
-await check("valid invocation via synthetic grant seam: exact applied response + audit; replay is exact", async () => {
+// REORDER SOURCE FREEZE (Catalog + Reorder cutover, step 2). This callable's request contract admits ONLY the legacy
+// REORDER_PURCHASE_ORDER source, whose receipt branch is frozen -- so every receipt it accepts is now refused as the governed
+// failed-precondition / REORDER_SOURCE_FROZEN (ruling A). The receiving DOMAIN proofs are preserved one boundary below: the
+// SAME production composition the callable calls, with the callable's REAL wiring adapters and its REAL error map, against
+// the unfrozen CANONICAL purchase order (ruling B). Nothing here reopens the legacy branch.
+async function seedCanonical(sc, { ordered = 5 } = {}) {
+  const poId = nextId("po");
+  await db.collection("purchase_orders").doc(poId).set({ supplierId: nextId("sup"), status: "SENT", items: [{ lineId: "L1", partId: sc.partId, quantity: ordered, unitPrice: 1 }] });
+  return poId;
+}
+const canonicalData = (sc, poId, over = {}) => ({ source: { type: "PURCHASE_ORDER", purchaseOrderId: poId }, receivingLocation: { type: "WAREHOUSE", locationId: sc.wh }, lines: [{ lineId: "L1", partId: sc.partId, expectedQuantity: 5, receivedQuantity: 2 }], idempotencyKey: nextId("idem"), ...over });
+async function receiveCanonical(uid, data, w) {
+  try {
+    return await receiveInventoryStockProduction(data, { db: w.db, actor: { kind: "USER", id: uid }, authorize: (txn, actorId) => w.resolvePermission(txn, actorId), resolvePart: w.resolvePart, stageAudit: w.stageAudit, now: w.now });
+  } catch (err) { throw mapReceiveError(err); }
+}
+const poOf = async (poId) => (await db.collection("purchase_orders").doc(poId).get()).data();
+const isFrozenRefusal = (e) => e instanceof HttpsError && e.code === "failed-precondition" && e.details?.code === "REORDER_SOURCE_FROZEN";
+
+// Ruling A (callable: a legacy receipt is a superseded Reorder source write -> failed-precondition REORDER_SOURCE_FROZEN,
+// zero writes, and a retry is refused the same way) + Ruling B (applied receipt + real audit + exact replay, through the
+// callable's composition and real wiring, on the canonical source).
+await check("valid invocation via synthetic grant seam: legacy receipt refused FROZEN (zero writes); canonical applies + audits + replays exactly", async () => {
   const sc = await seed();
   const data = reqData(sc);
-  const out = await runReceiveInventoryStock(callReq(sc.actorId, data), wiring(grantedPermission));
-  assert.deepEqual(Object.keys(out).sort(), ["ledgerEventId", "outcome", "receivingId"]);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await assert.rejects(runReceiveInventoryStock(callReq(sc.actorId, data), wiring(grantedPermission)), isFrozenRefusal);
+  }
+  assert.equal(await reorderStatus(sc.rrid), "ORDERED");
+  assert.equal((await db.collection("receiving_orders").doc(receivingOrderDocId(data.idempotencyKey)).get()).exists, false);
+  assert.equal(await auditCount(receivingOrderDocId(data.idempotencyKey)), 0);
+
+  const poId = await seedCanonical(sc);
+  const cdata = canonicalData(sc, poId);
+  const out = await receiveCanonical(sc.actorId, cdata, wiring(grantedPermission));
   assert.equal(out.outcome, "applied");
   assert.ok(typeof out.receivingId === "string" && typeof out.ledgerEventId === "string");
-  assert.equal(await reorderStatus(sc.rrid), "RECEIVED");
+  assert.equal((await poOf(poId)).version, 1);
   assert.equal(await auditCount(out.receivingId), 1);
   // deterministic replay: same payload -> replayed, same ids
-  const out2 = await runReceiveInventoryStock(callReq(sc.actorId, data), wiring(grantedPermission));
+  const out2 = await receiveCanonical(sc.actorId, cdata, wiring(grantedPermission));
   assert.equal(out2.outcome, "replayed");
   assert.equal(out2.receivingId, out.receivingId);
   assert.equal(out2.ledgerEventId, out.ledgerEventId);
+  assert.equal(await auditCount(out.receivingId), 1, "a replay writes no second audit");
 });
 
 await check("UNGRANTED capability denies EVERY persona (no admin/dispatcher/wildcard bypass), zero writes", async () => {
@@ -89,10 +122,15 @@ await check("unauthenticated -> unauthenticated", async () => {
   await assert.rejects(runReceiveInventoryStock({ data: reqData(sc) }, wiring(grantedPermission)), (e) => e instanceof HttpsError && e.code === "unauthenticated");
 });
 
+// Ruling B: destination validation is receiving domain logic -- proven through the callable's composition + error map on
+// the canonical source (on the legacy source the freeze would answer first, so it could not prove the destination rule).
 await check("INACTIVE warehouse (granted) -> failed-precondition, zero writes", async () => {
   const sc = await seed({ warehouse: "INACTIVE" });
-  await assert.rejects(runReceiveInventoryStock(callReq(sc.actorId, reqData(sc)), wiring(grantedPermission)), (e) => e instanceof HttpsError && e.code === "failed-precondition");
-  assert.equal(await reorderStatus(sc.rrid), "ORDERED");
+  const poId = await seedCanonical(sc);
+  const before = await poOf(poId);
+  await assert.rejects(receiveCanonical(sc.actorId, canonicalData(sc, poId), wiring(grantedPermission)), (e) => e instanceof HttpsError && e.code === "failed-precondition" && e.details?.code === undefined);
+  assert.deepEqual(await poOf(poId), before);
+  assert.equal((await db.collection("receiving_orders").where("source.purchaseOrderId", "==", poId).get()).size, 0);
 });
 
 await check("missing approved source (granted) -> not-found", async () => {
@@ -134,12 +172,17 @@ await check("options: granted -> sanitized deterministic ACTIVE-only list; ungra
   await assert.rejects(runListReceivingLocationOptions(callReq(uid2, {}), wiring(realPermission)), (e) => e instanceof HttpsError && e.code === "permission-denied");
 });
 
+// Ruling B: commit-time revocation is receiving domain logic -- proven through the callable's composition + error map on
+// the canonical source (on the legacy source the freeze would refuse regardless of the revocation).
 await check("commit-time revocation cannot commit a receipt (fail closed, zero writes)", async () => {
   const sc = await seed();
+  const poId = await seedCanonical(sc);
+  const before = await poOf(poId);
   let revoked = false;
   const selfRevoke = async (txn, uid) => { const s = await txn.get(db.collection("receiving_grants").doc(uid)); const g = s.exists && s.data().granted === true; if (g && !revoked) { revoked = true; await revoker.collection("receiving_grants").doc(uid).delete(); } return g; };
-  await assert.rejects(runReceiveInventoryStock(callReq(sc.actorId, reqData(sc)), wiring(selfRevoke)), (e) => e instanceof HttpsError && (e.code === "permission-denied" || e.code === "internal"));
-  assert.equal(await reorderStatus(sc.rrid), "ORDERED");
+  await assert.rejects(receiveCanonical(sc.actorId, canonicalData(sc, poId), wiring(selfRevoke)), (e) => e instanceof HttpsError && (e.code === "permission-denied" || e.code === "internal"));
+  assert.deepEqual(await poOf(poId), before);
+  assert.equal((await db.collection("receiving_orders").where("source.purchaseOrderId", "==", poId).get()).size, 0);
 });
 
 await check("commit-time revocation cannot return options (fail closed)", async () => {
