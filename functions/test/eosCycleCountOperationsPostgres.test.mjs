@@ -313,6 +313,26 @@ test("DQ-024: a truck count is scoped by the truck's EXPLICIT binding -- and onl
   assert.equal(made.sheet.operatingCompanyKey, COMPANY_KEY, "the company is the truck location's own authored key");
 });
 
+test("DQ-034: open reads the Part's status and control type from the PostgreSQL catalog (eos_ops.parts) -- never Firestore", { skip: SKIP }, async () => {
+  for (const [id, status, control] of [["PRT-CC-INACTIVE", "INACTIVE", "STANDARD"], ["PRT-CC-LOT", "ACTIVE", "LOT"], ["PRT-CC-SER", "ACTIVE", "SERIALIZED"]]) {
+    await q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
+               expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
+             VALUES ($2, $1, 'seed', $2, 'dq034 part', $3, 'EACH', $4, 'STOCKED', false, false, false, $5, 1, 'seed')`,
+      [TENANT, id, status, control, control === "SERIALIZED"]);
+  }
+  const s = ok(await call(COUNTER, "createCycleCountSheet", { location: { type: "WAREHOUSE", locationId: WH_A }, idempotencyKey: "k-dq034" })).sheet.sheetId;
+  refused(await call(COUNTER, "openCycleCountLine", { sheetId: s, partId: "PRT-CC-INACTIVE" }), 412, "PART_INACTIVE");
+  refused(await call(COUNTER, "openCycleCountLine", { sheetId: s, partId: "PRT-CC-LOT" }), 412, "TRACKING_MODE_UNSUPPORTED");
+  ok(await call(COUNTER, "openCycleCountLine", { sheetId: s, partId: "PRT-CC-SER" }));
+  const mode = (await q(`SELECT tracking_mode FROM eos_ops.cycle_count_lines WHERE sheet_id = $1 AND part_id = 'PRT-CC-SER'`, [s])).rows[0].tracking_mode;
+  assert.equal(mode, "SERIAL", "control_type SERIALIZED in eos_ops.parts -> a SERIAL line");
+  // The module and its catalog authority import nothing Firebase.
+  const { readFileSync } = await import("node:fs");
+  for (const f of ["src/eosOps/cycleCountOperations.ts", "src/eosOps/cycleCountRepository.ts", "src/catalogAuthority/postgresPartPolicyAuthority.ts"]) {
+    assert.doesNotMatch(readFileSync(f, "utf8"), /from ["'](firebase-admin|firebase-functions)[^"']*["']/, f);
+  }
+});
+
 test("transport: closed table, input shape, identity only from the verifier", { skip: SKIP }, async () => {
   refused(await call(COUNTER, "dropTable", {}), 404, "UNKNOWN_OPERATION");
   refused(await call(COUNTER, "resolveMyCapabilities", {}), 404, "UNKNOWN_OPERATION"); // a read op is not served at this route

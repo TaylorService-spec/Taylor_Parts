@@ -125,3 +125,19 @@ The ruled order puts Transfer second. The transport pattern extends to Transfer,
 3. `assignRole` that Role to the configuring principal, who is someone other than the Administrator.
 
 Which principal configures truck scope in nonprod is an Administration decision, and the packet in the lane ledger is written to that route.
+
+## 6. DQ-033 / DQ-034 (2026-09-28)
+
+**DQ-033 — who holds the scope-binding capability.** An ordinary, narrow Security Role, "Operational Configuration Administrator", holds it. The Role is built entirely through Administration:
+1. The Administrator creates the Role.
+2. The Administrator grants it `ownership.handoff.correct` and `inventory.location.scopeBinding.manage`.
+3. The Owner assigns the Role to a separate principal.
+
+`operationalConfigurationAdministratorPostgres.test.mjs` proves the chain, and proves that SELF_ADMINISTRATION still refuses self-grants and self-assignment. There is no migration grant, no direct grant and no Firebase step. Which synthetic persona receives the Role is open. None of the 16 canonical personas fits without a new persona.
+
+**DQ-034 — J6/J7 Catalog readers on EOS.**
+- **Cycle Count open.** Reads the Part's status and control type from `eos_ops.parts` through `postgresPartPolicyAuthority`, with no Firestore fallback.
+- **Cycle Count reconcile.** Uses the tracking mode frozen on the line at open.
+- **Both** are activated by the Cycle Count writer authority, after the Catalog COPY and the inventory baseline.
+- **Transfer.** Has no EOS lifecycle yet. It is gated on L0's `purchasingRepository.ts` release, and is last in the DQ-026 order.
+- **Stock relocation and serialized acquisition.** Have no EOS implementation. Relocation is not coupled to `purchasingRepository.ts`. Acquisition's capability is Firebase-only. Both await authorization. Until then those operations run only on the deployed Firebase callables.

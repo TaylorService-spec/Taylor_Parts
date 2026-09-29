@@ -417,6 +417,9 @@ on:
       - "functions/src/eosOps/mobileLocationScopeBindingAdministration.ts"
       - "functions/src/adminPolicy/configurationOperations.ts"
       - "functions/test/mobileLocationScopeBindingAdministrationPostgres.test.mjs"
+      # DQ-033 -- the Operational Configuration Administrator Role chain, and its throwaway L1 capability fixture.
+      - "functions/test/operationalConfigurationAdministratorPostgres.test.mjs"
+      - "functions/test/fixtures/l1OwnershipHandoffCorrectCapability.fixture.sql"
       - "functions/src/cycleCount/cycleCountWriterState.ts"
       - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       # WAVE 9 / LANE AH: the Administration surface + Owner persona readiness record. Registered
@@ -1030,6 +1033,9 @@ on:
       - "functions/src/eosOps/mobileLocationScopeBindingAdministration.ts"
       - "functions/src/adminPolicy/configurationOperations.ts"
       - "functions/test/mobileLocationScopeBindingAdministrationPostgres.test.mjs"
+      # DQ-033 -- the Operational Configuration Administrator Role chain, and its throwaway L1 capability fixture.
+      - "functions/test/operationalConfigurationAdministratorPostgres.test.mjs"
+      - "functions/test/fixtures/l1OwnershipHandoffCorrectCapability.fixture.sql"
       - "functions/src/cycleCount/cycleCountWriterState.ts"
       - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       - "field-ops-app-vite/src/navigation/navConfig.js"
