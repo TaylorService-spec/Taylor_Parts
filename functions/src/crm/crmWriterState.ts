@@ -80,6 +80,11 @@ export const FIRESTORE_CRM_WRITERS = Object.freeze({
   "crm.sandboxInboundSeed": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/seedSandboxInboundWork.mjs", entry: "main (accounts, locations, contacts create-if-absent)" }),
   "crm.ownershipBackfill": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/ownershipSandboxBackfill.js", entry: "main --apply (contacts / locations typed owner)" }),
   "crm.certificationAccountOwners": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/certificationWorld/seedAccountOwners.mjs", entry: "main --apply (the Account owner assignment map)" }),
+  // Pass 11 CRM writer census (2026-09-28): three operator scripts that could still write the CRM collections of a
+  // sandbox project with no freeze check. Fenced locally; no Firebase deploy is involved (Owner correction 2026-09-28).
+  "crm.writeTimestampBackfill": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/backfillWriteTimestamps.mjs", entry: "main --apply --collection accounts|contacts|locations" }),
+  "crm.certificationWorldWrite": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/certificationWorld.mjs", entry: "main seed/reset against a non-certification project (writes/deletes accounts, locations, contacts)" }),
+  "crm.certificationWorldCorrection": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/certificationWorld/correctLiveWorld.mjs", entry: "main --apply against a non-certification project (patches accounts, locations, contacts)" }),
   "account.clientWrite": Object.freeze({ enforcement: "CLIENT_FUSE", module: "field-ops-app-vite/src/domain/accounts.js", entry: "createAccount / updateAccount" }),
   "contact.clientWrite": Object.freeze({ enforcement: "CLIENT_FUSE", module: "field-ops-app-vite/src/domain/contacts.js, field-ops-app-vite/src/domain/contactImport.js", entry: "createContact / updateContact / importContacts" }),
   "location.clientWrite": Object.freeze({ enforcement: "CLIENT_FUSE", module: "field-ops-app-vite/src/domain/locations.js", entry: "createLocation / updateLocation" }),

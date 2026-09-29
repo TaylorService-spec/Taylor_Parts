@@ -133,3 +133,22 @@ describe("the client's CRM operation list mirrors the server's closed list", () 
     expect([...CRM_OPERATIONS].sort()).toEqual(serverOps);
   });
 });
+
+describe("Pass 11 CRM writer census -- the EOS client reaches no Firestore CRM writer and no Firestore CRM read", () => {
+  const walk = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : [p]; });
+  const code = (p) => readFileSync(p, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const SRC = join(process.cwd(), "src");
+  it("no client module opens the accounts / contacts / locations collections through the Firestore SDK", () => {
+    const offenders = walk(SRC).filter((p) => /\.(jsx?|tsx?)$/.test(p)).filter((p) => {
+      const c = code(p);
+      return /(collection|doc|collectionGroup)\(\s*db\s*,\s*(ACCOUNTS_COLLECTION|CONTACTS_COLLECTION|LOCATIONS_COLLECTION|["'](accounts|contacts|locations)["'])/.test(c);
+    });
+    expect(offenders).toEqual([]);
+  });
+  it("every CRM metadata entity is served by the EOS API -- none can fall back to the frozen Firestore collection", async () => {
+    const { accountEntity } = await import("../src/metadata/definitions/account.js");
+    const { contactEntity } = await import("../src/metadata/definitions/contact.js");
+    const { locationEntity } = await import("../src/metadata/definitions/location.js");
+    expect([accountEntity.readVia, contactEntity.readVia, locationEntity.readVia]).toEqual(["EOS_API", "EOS_API", "EOS_API"]);
+  });
+});
