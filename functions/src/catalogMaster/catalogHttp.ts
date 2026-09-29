@@ -36,7 +36,9 @@ import {
   createPartAlias, deactivatePartAlias, reactivatePartAlias,
   listPartAliases, probePartAlias, resolveScannedPartIdentifier,
 } from "./postgresPartAliasWriter.js";
-import { readPart, readPartsByIds, searchParts, countParts, type PartSearchFilters } from "./postgresCatalogReads.js";
+import {
+  readPart, readPartsByIds, searchParts, countParts, listEquipmentModels, type PartSearchFilters,
+} from "./postgresCatalogReads.js";
 
 /** Reads: bounded by construction. Nothing here can return the whole catalogue. */
 export const CATALOG_READ_OPERATIONS = Object.freeze([
@@ -47,8 +49,36 @@ export const CATALOG_READ_OPERATIONS = Object.freeze([
   "listPartAliases",
   "probePartAlias",
   "lookupScannedPart",
+  "listEquipmentModels",
 ] as const);
 export type CatalogReadOperation = (typeof CATALOG_READ_OPERATIONS)[number];
+
+// ════════════════════ EVERY READ IS CAPABILITY-GATED, SERVER-SIDE (DQ-031) ════════════════════
+//
+// Tenant membership alone is NOT authority to read the Catalog, and a screen hiding a control is not
+// authorization. Every read names the capabilities it requires here, and the transport refuses a caller who
+// does not hold ALL of them before a connection is taken for the read. `inventory.catalog.read` is the
+// existing, registered key ("may this principal read the product catalog") -- no new capability.
+//
+// The alias reads keep the ADDITIONAL predicate their legacy callable always enforced, because a migration
+// read must not be wider than the path it replaces (a dropped predicate is a parity defect, not a
+// simplification):
+//   listPartAliases / probePartAlias   legacy listPartAliasesCallable / probePartAliasCallable required
+//                                      inventory.catalog.manage (identifier ADMINISTRATION reads).
+//   lookupScannedPart                  resolves a scanned identifier through the alias table; the legacy
+//                                      resolveScannedPartIdentifierCallable (and the alias half of the legacy
+//                                      lookupScannedPart) required inventory.catalog.alias.read.
+export const CATALOG_READ_CAPABILITY = "inventory.catalog.read";
+export const CATALOG_READ_REQUIREMENTS: Readonly<Record<CatalogReadOperation, readonly string[]>> = Object.freeze({
+  readPart: [CATALOG_READ_CAPABILITY],
+  readPartsByIds: [CATALOG_READ_CAPABILITY],
+  searchParts: [CATALOG_READ_CAPABILITY],
+  countParts: [CATALOG_READ_CAPABILITY],
+  listEquipmentModels: [CATALOG_READ_CAPABILITY],
+  listPartAliases: [CATALOG_READ_CAPABILITY, "inventory.catalog.manage"],
+  probePartAlias: [CATALOG_READ_CAPABILITY, "inventory.catalog.manage"],
+  lookupScannedPart: [CATALOG_READ_CAPABILITY, "inventory.catalog.alias.read"],
+});
 
 /** Writes: the governed Part and alias commands, each with its own capability check. */
 export const CATALOG_MUTATION_OPERATIONS = Object.freeze([
@@ -106,9 +136,10 @@ function searchFilters(input: Record<string, unknown>): PartSearchFilters {
 /**
  * Execute one named Catalog operation.
  *
- * The actor is resolved ONCE per request, the same way every other EOS operation resolves one, and
- * the capability check lives in the command rather than here -- a transport that decided
- * authorization would be a second place the answer could differ from the authority's.
+ * The actor is resolved ONCE per request, the same way every other EOS operation resolves one. A WRITE's
+ * capability check lives in its command, so the transport never makes a second decision about it. A READ
+ * is a bare SQL projection with no command around it, so its capability requirement
+ * (CATALOG_READ_REQUIREMENTS) is decided HERE, once, before the read runs.
  */
 export async function executeCatalogOperation(
   deps: CatalogApiDeps,
@@ -134,6 +165,18 @@ export async function executeCatalogOperation(
       principalId: ctx.principalContext.uid,
       capabilities: new Set(ctx.capabilities),
     };
+    // DQ-031: a READ is refused unless the resolved Principal holds every capability it requires. Writes are
+    // checked by their command (runCatalogCommand), so a write is not double-decided here.
+    if (READS.has(request.operation)) {
+      const required = CATALOG_READ_REQUIREMENTS[request.operation as CatalogReadOperation];
+      const missing = required.filter((k) => !actor.capabilities.has(k));
+      if (missing.length > 0) {
+        return {
+          ok: false, operation: request.operation, code: "FORBIDDEN",
+          message: `reading the Catalog requires ${missing.join(" and ")}`,
+        };
+      }
+    }
     const commandDeps = { pool: deps.pool };
     const ok = (result: unknown): CatalogApiResult => ({ ok: true, operation: request.operation, result });
     const withClient = async <T>(fn: (c: import("pg").PoolClient) => Promise<T>): Promise<T> => {
@@ -172,6 +215,12 @@ export async function executeCatalogOperation(
         return ok(await withClient((c) => resolveScannedPartIdentifier(c, actor.tenantId, {
           rawValue: str(input.rawValue),
           ...(typeof input.manufacturerId === "string" ? { manufacturerId: input.manufacturerId } : {}),
+        })));
+      case "listEquipmentModels":
+        // DQ-030: the Sales Agreement Equipment Model picker. Bounded; see postgresCatalogReads.
+        return ok(await withClient((c) => listEquipmentModels(c, actor.tenantId, {
+          limit: typeof input.limit === "number" ? input.limit : undefined,
+          cursor: input.cursor as never,
         })));
 
       // ---- WRITES ----

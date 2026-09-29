@@ -154,7 +154,7 @@ test("activation and Firebase RETIREMENT are different questions", () => {
 
 test("the Render Catalog API exposes bounded operations, and no 'all parts'", () => {
   assert.deepEqual([...HTTP.CATALOG_READ_OPERATIONS],
-    ["readPart", "readPartsByIds", "searchParts", "countParts", "listPartAliases", "probePartAlias", "lookupScannedPart"]);
+    ["readPart", "readPartsByIds", "searchParts", "countParts", "listPartAliases", "probePartAlias", "lookupScannedPart", "listEquipmentModels"]);
   assert.deepEqual([...HTTP.CATALOG_MUTATION_OPERATIONS],
     ["createPart", "updatePart", "changePartStatus", "createPartAlias", "deactivatePartAlias", "reactivatePartAlias"]);
   // There is deliberately no operation that returns the whole catalogue.
