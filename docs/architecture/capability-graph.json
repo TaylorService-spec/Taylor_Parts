@@ -1522,6 +1522,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/ai/workOrderReadinessContext.ts",
           "functions/src/eosOps/experienceAuthority.ts"
         ],
@@ -1533,7 +1534,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/shared/ui/NotificationControl.jsx"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1911,6 +1912,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/assistant/assistantStarters.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/grantConditionPolicy.ts"
@@ -1922,7 +1924,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1944,6 +1946,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/grantConditionPolicy.ts"
         ],
         "clientReferences": [
@@ -1953,7 +1956,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
