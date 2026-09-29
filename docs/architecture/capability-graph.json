@@ -547,10 +547,11 @@
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
+          "field-ops-app-vite/src/modules/jobs/Jobs.jsx",
+          "field-ops-app-vite/src/navigation/workOrderRouteAccess.js"
         ],
         "serverReferenceCount": 6,
-        "clientReferenceCount": 7,
+        "clientReferenceCount": 8,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

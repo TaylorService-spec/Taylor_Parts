@@ -922,6 +922,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/workOrderRouteAccess.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/salesOrderActions.test.mjs",
       "runner": "node"
     },
