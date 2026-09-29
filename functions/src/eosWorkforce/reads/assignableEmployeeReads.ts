@@ -16,12 +16,13 @@
 // `status != ACTIVE` as "not eligible" unless a governed policy for THAT operation says so. So this operation
 // states its policy explicitly, and states why it is what it is:
 //
-//   ASSIGNABLE_EMPLOYMENT_STATUSES = ['ACTIVE']
+//   ASSIGNABLE_EMPLOYMENT_STATUSES = ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES = ['ACTIVE', 'CONTRACTOR']
 //
-// ACTIVE ALONE, because that is exactly what the legacy query did. This is a semantics-preserving migration: adding
-// ON_LEAVE or CONTRACTOR here would be a BUSINESS CHANGE dressed as a refactor, and widening who may be assigned
-// work is not something a cutover gets to decide. Changing the policy is a separate, reviewed decision, which is
-// why the list is a named constant rather than an inline comparison.
+// Originally ACTIVE alone (legacy parity: the legacy query was ACTIVE-only, and widening who may be assigned work was
+// not a cutover's decision). The widening IS now a reviewed decision: Controller DQ-007 (2026-09-28) makes ACTIVE and
+// CONTRACTOR the access-eligible statuses, and DQ-012 makes a CONTRACTOR technician assignable when every other
+// prerequisite holds -- which the Work Order assignment command already enforces. The picker offers exactly who the
+// command accepts (L2 XLF-L2-3). It REUSES the access rule rather than restating it, so the two cannot drift.
 //
 // ════════════════════ WHAT IT DOES NOT DO ════════════════════
 //
@@ -54,6 +55,7 @@
 //
 // NO SECURITY IS CONFERRED. Being assignable is not permission to act: every governed command still checks its own
 // capability. Visibility here reuses employee.record.read, the same business visibility as the Employee directory.
+import { ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES } from "../../adminPolicy/employmentAccessEligibility";
 import {
   acceptOnly, decodeEmployeeCursor, encodeEmployeeCursor, refuse, requirePageSize, runEmployeeRead,
   type EmployeeReadActor, type EmployeeReadDeps,
@@ -69,7 +71,7 @@ import { OPERATIONAL_SCOPE_TYPES } from "../operationalScopeVocabulary";
  * Exactly the legacy query's rule, preserved deliberately. Not a schema fact, not reusable as "eligibility" by any
  * other operation, and not widened by a migration.
  */
-export const ASSIGNABLE_EMPLOYMENT_STATUSES = Object.freeze(["ACTIVE"] as const);
+export const ASSIGNABLE_EMPLOYMENT_STATUSES: readonly string[] = ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES;
 
 const ID_SHAPE = (v: unknown): v is string =>
   typeof v === "string" && v !== "" && v.trim() === v && v.length <= 200 && !v.includes("/");
