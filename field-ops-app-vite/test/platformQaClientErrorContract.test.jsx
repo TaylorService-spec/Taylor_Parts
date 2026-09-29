@@ -55,11 +55,15 @@ describe("client x server error contract", () => {
     // operations and emits 409 CONFLICT and -- since the L5 alignment -- 412 PRECONDITION_FAILED; the generic
     // operationsApiClient serves only the two principal-context reads, which emit neither, so its INTERNAL for 409/412
     // is latent. The Reorder operations use reorderApiClient, which maps 409 and 412 (asserted below).
+    // INTEGRATION RE-MEASURE (L1+L2+L3+L5, 2026-09-29): lane L3's inventory command routes (/operations/cycle-count,
+    // /relocation, /transfer, /placement, /serialized-asset) add 503 NOT_ACTIVATED while their writers are INACTIVE.
+    // The generic operationsApiClient never calls those routes, so its INTERNAL for 503 is latent too; the acquire
+    // client carries the server's code through (serializedAssetAcquireCallableClient.js).
     expect(grid).toEqual({
       commercial: { 400: "INVALID_INPUT", 401: "UNAUTHENTICATED", 403: "FORBIDDEN", 404: "NOT_FOUND", 405: "UNKNOWN_OPERATION",
         409: "CONFLICT", 412: "PRECONDITION_FAILED", 413: "INVALID_INPUT", 500: "INTERNAL", 503: "UNAVAILABLE" },
       operations: { 400: "INVALID_INPUT", 401: "UNAUTHENTICATED", 403: "FORBIDDEN", 404: "NOT_FOUND", 405: "UNKNOWN_OPERATION",
-        409: "INTERNAL", 412: "INTERNAL", 500: "INTERNAL" },
+        409: "INTERNAL", 412: "INTERNAL", 500: "INTERNAL", 503: "INTERNAL" },
       workforce: { 400: "INVALID_INPUT", 401: "UNAUTHENTICATED", 403: "FORBIDDEN", 404: "NOT_FOUND", 405: "UNKNOWN_OPERATION",
         409: "CONFLICT", 412: "PRECONDITION_FAILED", 413: "INVALID_INPUT", 500: "INTERNAL" },
     });
