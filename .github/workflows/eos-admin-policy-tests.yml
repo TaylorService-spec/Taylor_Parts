@@ -288,6 +288,7 @@ on:
       - "functions/src/catalogMaster/**"
       - "functions/scripts/catalogCutover.js"
       - "functions/scripts/exportCatalogSnapshot.js"
+      - "functions/scripts/exportInventorySnapshot.js"
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
       # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside
@@ -819,6 +820,7 @@ on:
       - "functions/src/catalogMaster/**"
       - "functions/scripts/catalogCutover.js"
       - "functions/scripts/exportCatalogSnapshot.js"
+      - "functions/scripts/exportInventorySnapshot.js"
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
       # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside

@@ -540,6 +540,26 @@ for (const [label, args, pattern] of [
   });
 }
 
+// ============================ INVENTORY SNAPSHOT EXPORT (DQ-025) ============================
+//
+// scripts/exportInventorySnapshot.js reads a Firebase project (the FIREBASE_EXIT_MIGRATION_ONLY exception for
+// cycle_counts / inventory_transactions / transfer_orders). It must refuse before firebase-admin is even resolved,
+// and it has no production mode.
+const INVENTORY_EXPORT = "scripts/exportInventorySnapshot.js";
+for (const [label, args, pattern] of [
+  ["no project", ["--out", "/nonexistent/x.json"], /--projectId is required/],
+  ["production, even confirmed", ["--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--out", "/nonexistent/x.json"], /is production/],
+  ["frozen Certification world", ["--projectId", "eos-platform-certification", "--out", "/nonexistent/x.json"], /frozen/],
+  ["undeclared project", ["--projectId", "someone-elses-project", "--out", "/nonexistent/x.json"], /not a Firebase project declared/],
+  ["no out file", ["--projectId", "eos-platform-sandbox"], /--out <file> is required/],
+]) {
+  test(`inventory snapshot export: refuses (${label}) before firebase-admin loads`, () => {
+    const res = runCli(INVENTORY_EXPORT, args);
+    const out = assertRefusedBeforeAnySdk(res, `inventory snapshot export, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
 // ============================ COMMERCIAL C5 ============================
 //
 // scripts/commercialC5.js writes eos_commercial (copy) and scripts/exportCommercialSnapshot.js reads a Firebase project

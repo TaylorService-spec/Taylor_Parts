@@ -47,7 +47,7 @@ The list query puts the caller's WAREHOUSE scopes in its `WHERE` clause, so shee
 The Firestore engine gates close with `.reconcile`. The EOS path uses the registered `.close`, held by `inventoryCycleCountReconciler`.
 
 **Refused rather than guessed:**
-- **MOBILE (truck) counts** are refused with `LOCATION_TYPE_NOT_SUPPORTED`. The scope model has no rule placing a truck in a warehouse scope.
+- **MOBILE (truck) counts** are scoped ONLY by the truck location's explicit governed binding (DQ-024: `eos_ops.mobile_location_scope_bindings`, migration `1764115200000`, resolver `eosOps/inventoryScopeAuthority.ts`). No binding → `MOBILE_SCOPE_BINDING_MISSING` (fail closed); never the technician's, driver's or user's warehouse, never the truck's descriptive `home_warehouse_id`.
 - **Parts missing from `eos_ops.parts`** are refused with `PART_NOT_FOUND`. There is no Firestore fallback.
 - **Impossible ledger balances**, meaning a negative sum or a serial that does not net to 0 or 1, are refused with `LEDGER_INTEGRITY`.
 - **SERIAL approve with a serial discrepancy** is refused by the repository, because it cannot stage per-unit signed rows.
@@ -66,7 +66,7 @@ Run these in order. Stop at any failure.
 2. **Ledger census (DQ-019).** `node functions/scripts/inventoryLedgerCensus.js --snapshot <inventory_transactions snapshot>`.
    - Any `MALFORMED_ROWS_PRESENT` blocks each listed part, because the authoritative reads refuse it.
    - Repair of those rows is a governed decision and is never done by a tool.
-3. **Snapshots.** Both snapshots require a governed, migration-only Firebase read of `cycle_counts` and `inventory_transactions`. That read is **not yet authorized**; the Reorder/Catalog exception does not cover these collections.
+3. **Snapshots (DQ-025, APPROVED; tooling prepared, NOT run).** `node functions/scripts/exportInventorySnapshot.js --projectId <nonprod project> --out <file outside the repo>` -- the fenced, read-only, checksummed migration-only export of exactly `cycle_counts`, `inventory_transactions`, `transfer_orders` (enumerated in `docs/architecture/inventory-snapshot-export-evidence.json`). The three census tools read its `EOS_INVENTORY_SNAPSHOT` file directly and require its `.sha256`. Running it is a separate, authorized execution step.
 4. **Catalog COPY/VERIFY done** (L0 window). `eos_ops.parts` is the Part authority these commands read.
 5. **Warehouses and bins present in `eos_ops`** (warehouse/bin COPY, `warehouseBinMigrationSource.ts`). Also assign WAREHOUSE operational scope and WAREHOUSE_OPERATIONS eligibility to the counting Employees, through Administration.
 6. **Opening balances in `eos_ops.inventory_movements`.** The PG expected snapshot is only as true as the PG ledger. Until the operational ledger is copied, a PG count would expect 0 everywhere. **This is a prerequisite, not a detail.** The ledger COPY (`legacyInventoryMovementMapping.ts` / `legacyInventoryMovementRun.ts`) must be VERIFIED before activation.
@@ -89,3 +89,11 @@ The ruled order puts Transfer second. The transport pattern extends to Transfer,
 - **DRY RUN and COPY.** DRY RUN through `mapLegacyTransferOrder` -- tooling built: `node functions/scripts/transferCopyCensus.js --snapshot <transfer_orders snapshot>` (mapped/refused by code with ids, status distribution, cross-company split, the IN_TRANSIT ids that need ledger agreement; exit 0 COPY_READY / 3 REFUSALS_PRESENT): every refusal is listed, none is repaired. Then COPY ONCE → VERIFY against the same snapshot.
 - **IN_TRANSIT orders.** These carry a TRANSFER_OUT already staged in the Firestore ledger. The ledger COPY and the transfer COPY must agree on it, or a receive would double or lose stock.
 - **Then:** freeze the Firestore writers, build the lifecycle commands (after the L0 boundary lifts), expose the transport route with scope enforcement, cut the client over, and run E2E.
+
+## 4. Controller rulings DQ-024 / DQ-026 (2026-09-28)
+
+**DQ-024 — Transfer scope.** Scope follows the inventory location acted upon: `create`, `cancel` and `dispatch` need the ORIGIN's warehouse scope; `receive` and put-away need the DESTINATION's. An act is not required to satisfy both ends just because the transfer has two. Encoded in `TRANSFER_ACT_SCOPE_END` / `requiredTransferScope` (`eosOps/inventoryScopeAuthority.ts`), proven in `inventoryScopeAuthorityPostgres.test.mjs`. Only the end the act works on is resolved, so a missing binding at the far end neither blocks nor grants.
+
+**Truck binding — what exists and what does not.** The binding TABLE, its invariants (same operating company, one current, append-only, no seed) and its fail-closed READ are built. The binding's WRITER is not: no PostgreSQL capability governs truck/location configuration today (the Firebase truck registry is role-name gated), so an Administration command to author a binding needs a new capability — a decision, not something this lane invents. Until then every truck location fails closed on the EOS path.
+
+**DQ-026 — activation order.** Catalog COPY/VERIFY → inventory baseline/ledger COPY + reconciliation → Cycle Count activation → Transfer activation. The Catalog is not the source of quantity; Cycle Count is never activated against an artificial zero (hence §2 step 6). Cycle Count stays INACTIVE; Transfer stays HELD.

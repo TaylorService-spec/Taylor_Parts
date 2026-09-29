@@ -16,6 +16,11 @@ on:
       # DQ-019 -- authoritative ledger reads fail closed; the pre-activation census and its CLI.
       - "functions/test/authoritativeLedgerRows.test.mjs"
       - "functions/test/ledgerRowIntegrityParity.test.mjs"
+      # DQ-025 -- the migration-only inventory snapshot exporter (prepared, not run) and the census snapshot reader.
+      - "functions/scripts/exportInventorySnapshot.js"
+      - "functions/scripts/inventorySnapshotFile.js"
+      - "functions/test/inventorySnapshotExport.test.mjs"
+      - "docs/architecture/inventory-snapshot-export-evidence.json"
       - "field-ops-app-vite/src/domain/ledgerRowIntegrity.js"
       - "functions/scripts/inventoryLedgerCensus.js"
       - "functions/src/inventoryTransfer/transferOrderRepository.ts"
@@ -35,6 +40,11 @@ on:
       # DQ-019 -- authoritative ledger reads fail closed; the pre-activation census and its CLI.
       - "functions/test/authoritativeLedgerRows.test.mjs"
       - "functions/test/ledgerRowIntegrityParity.test.mjs"
+      # DQ-025 -- the migration-only inventory snapshot exporter (prepared, not run) and the census snapshot reader.
+      - "functions/scripts/exportInventorySnapshot.js"
+      - "functions/scripts/inventorySnapshotFile.js"
+      - "functions/test/inventorySnapshotExport.test.mjs"
+      - "docs/architecture/inventory-snapshot-export-evidence.json"
       - "field-ops-app-vite/src/domain/ledgerRowIntegrity.js"
       - "functions/scripts/inventoryLedgerCensus.js"
       - "functions/src/inventoryTransfer/transferOrderRepository.ts"
@@ -87,5 +97,5 @@ jobs:
         working-directory: functions
 
       - name: DQ-019 authoritative ledger rows fail closed + pre-activation census (offline)
-        run: node --test test/authoritativeLedgerRows.test.mjs test/ledgerRowIntegrityParity.test.mjs
+        run: node --test test/authoritativeLedgerRows.test.mjs test/ledgerRowIntegrityParity.test.mjs test/inventorySnapshotExport.test.mjs
         working-directory: functions

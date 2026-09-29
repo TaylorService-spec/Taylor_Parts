@@ -1,0 +1,43 @@
+{
+  "artifact": "INVENTORY_SNAPSHOT_EXPORT_COLLECTION_ENUMERATION",
+  "ruling": "Controller DQ-025 (2026-09-28): same fenced migration-only READ pattern as exportCatalogSnapshot.js / exportReorderSnapshot.js, for the EXACT legacy inventory collections the Cycle Count / Transfer census and reconciliation need; enumerated here BEFORE any execution; READ ONLY, one-time, checksummed; no Firebase writes, no Rules/Functions deploy, no config change, no runtime dependency, no production. Prepared locally only -- NOT run.",
+  "exporter": "functions/scripts/exportInventorySnapshot.js",
+  "marker": "FIREBASE_EXIT_MIGRATION_ONLY",
+  "snapshotFormat": "EOS_INVENTORY_SNAPSHOT",
+  "collections": [
+    {
+      "collection": "cycle_counts",
+      "snapshotKey": "cycleCounts",
+      "depth": "top-level documents only (a v2 sheet's lines subcollection is NOT read)",
+      "consumer": "functions/scripts/cycleCountActivationCensus.js",
+      "purpose": "Cycle Count activation gate 1 -- zero-population census (2026-09-20 ruling: v1 = legacy historical evidence; any schemaVersion 2 sheet = STOP)"
+    },
+    {
+      "collection": "inventory_transactions",
+      "snapshotKey": "inventoryTransactions",
+      "depth": "top-level documents",
+      "consumer": "functions/scripts/inventoryLedgerCensus.js",
+      "purpose": "DQ-019 malformed-row census (ids only, blocked parts); the input the inventory baseline/ledger COPY + reconciliation (DQ-026 step 2) will read"
+    },
+    {
+      "collection": "transfer_orders",
+      "snapshotKey": "transferOrders",
+      "depth": "top-level documents",
+      "consumer": "functions/scripts/transferCopyCensus.js",
+      "purpose": "Transfer COPY-lane census through mapLegacyTransferOrder (refusals by code, status distribution, cross-company split, IN_TRANSIT ids needing ledger agreement)"
+    }
+  ],
+  "explicitlyNotIncluded": [
+    { "collection": "cycle_counts/{sheetId}/lines", "why": "any v2 sheet is already a STOP at gate 1; reading its lines would widen the exception" },
+    { "collection": "serialized_assets", "why": "SERIAL custody reconciliation belongs to the baseline/ledger COPY lane; not needed by these censuses -- a separate enumeration if that lane needs it" },
+    { "collection": "warehouses / bins / trucks / mobile locations", "why": "reference data with their own migration sources (warehouseBinMigrationSource.ts, truckFleetMigrationSource.ts); not read by this exporter" }
+  ],
+  "fences": [
+    "--projectId required, declared in config/environments.json, never inferred",
+    "production refused by project id and by role; no production mode",
+    "eos-platform-certification (frozen) refused",
+    "all fences evaluated before firebase-admin is loaded",
+    "snapshot + .sha256 written exclusively (wx, 0600), never overwritten; census tools require and verify the .sha256 of a governed snapshot"
+  ],
+  "executionStatus": "NOT_EXECUTED"
+}
