@@ -96,4 +96,24 @@ test("the down migration refuses while a binding exists", { skip: SKIP }, async 
   await assert.rejects(q(sql), /refusing to drop mobile_location_scope_bindings/);
 });
 
+// THIS SUITE LEAVES THE DATABASE AS IT FOUND IT (integration, 2026-09-29). It begins by dropping the schemas it
+// declares and migrating up, so everything it then seeds is its own: tenants, operating-company links and key
+// bindings, operational scopes, truck scope bindings. Several of those are rows a migration's down REFUSES to drop
+// while any exist, so on the shared CI database a surviving fixture made a later suite's migration peel fail
+// (eosOpsCashApplicationPostgres, eosOpsEquipmentCustodyPostgres). It ends the way it began: the declared schemas
+// reset and migrated up, empty.
+test.after(async () => {
+  if (!URL) return;
+  const c = new pg.Client({ connectionString: URL });
+  await c.connect();
+  try {
+    for (const schema of declaredSchemas()) await c.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    await c.query("DROP TABLE IF EXISTS pgmigrations");
+  } finally {
+    await c.end();
+  }
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"],
+    { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+});
+
 test("teardown", { skip: SKIP }, async () => { await pool?.end(); });
