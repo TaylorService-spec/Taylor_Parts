@@ -1,8 +1,7 @@
 import { fromMajorString } from "./money.js";
 import { isWriteBlocked } from "../config/env";
-// The Firestore collection-name constants are deliberately NOT imported: both writes reach the governed
-// PostgreSQL Reorder authority, and the Reorder runtime census counts every importer that uses one.
-import { PURCHASE_ORDER_STATUS, REORDER_REQUEST_STATUS } from "./constants";
+// No Firestore collection-name constant is imported: both writes reach the governed PostgreSQL Reorder
+// authority, and the Reorder runtime census counts every importer that uses one.
 import { reorderApiClient } from "../services/reorderApiClient.js";
 
 // Sprint 2.1.10 -- Purchase Order Foundation. The ONLY writer of

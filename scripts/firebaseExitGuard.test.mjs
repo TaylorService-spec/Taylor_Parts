@@ -984,7 +984,7 @@ test("classification is a strict SUPERSET: every file the specifier matcher alon
     SERVER_PROBE).has("server.firebase_admin_firestore"));
 });
 
-test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 338 " +
+test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 334 " +
   "guarded entries across four populated categories, nothing lost and nothing reclassified", () => {
   const scanResults = scan(REPO_ROOT);
   const baseline = loadCommittedBaseline(REPO_ROOT);
@@ -995,10 +995,14 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // baseline entry by the role-assignment census (shrink-only; never grown).
     // Catalog + Reorder activation candidate: the Part Master client cutover (catalog/part-master-cutover) and the
     // Reorder domain cutover (#1961) move their Firestore readers to the EOS API -- 45 -> 39 (shrink-only).
-    "frontend.firestore_client": 39,
+    // Catalog + Reorder activation, L0 Z3: the three Reorder Purchase Order / void hooks read the governed
+    // readReorderPurchaseOrders on the EOS API instead -- 39 -> 36 (shrink-only).
+    "frontend.firestore_client": 36,
     // Pass 11 Retail Sales: the 7 Opportunity / Sales Order read + command clients moved to the EOS Commercial API.
     // ... and their callable transports (Part / alias command clients, the Reorder callable client) -- 47 -> 44.
-    "frontend.firebase_functions_client": 44,
+    // L0 Z3: product-reference search (salesAgreementCommandClient.js) left the searchProductReferences callable
+    // for the PostgreSQL Catalog -- 44 -> 43.
+    "frontend.firebase_functions_client": 43,
     "server.firebase_admin_firestore": 183,
     "server.firebase_functions_server": 72,
   };
@@ -1011,5 +1015,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 338);
+  assert.equal(total, 334);
 });
