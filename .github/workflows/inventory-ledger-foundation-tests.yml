@@ -15,6 +15,8 @@ on:
       - "functions/test/ownershipFieldStrictReaders.test.mjs"
       # DQ-019 -- authoritative ledger reads fail closed; the pre-activation census and its CLI.
       - "functions/test/authoritativeLedgerRows.test.mjs"
+      - "functions/test/ledgerRowIntegrityParity.test.mjs"
+      - "field-ops-app-vite/src/domain/ledgerRowIntegrity.js"
       - "functions/scripts/inventoryLedgerCensus.js"
       - "functions/src/inventoryTransfer/transferOrderRepository.ts"
       - "functions/src/inventoryReceiving/receivingRepository.ts"
@@ -32,6 +34,8 @@ on:
       - "functions/test/ownershipFieldStrictReaders.test.mjs"
       # DQ-019 -- authoritative ledger reads fail closed; the pre-activation census and its CLI.
       - "functions/test/authoritativeLedgerRows.test.mjs"
+      - "functions/test/ledgerRowIntegrityParity.test.mjs"
+      - "field-ops-app-vite/src/domain/ledgerRowIntegrity.js"
       - "functions/scripts/inventoryLedgerCensus.js"
       - "functions/src/inventoryTransfer/transferOrderRepository.ts"
       - "functions/src/inventoryReceiving/receivingRepository.ts"
@@ -83,5 +87,5 @@ jobs:
         working-directory: functions
 
       - name: DQ-019 authoritative ledger rows fail closed + pre-activation census (offline)
-        run: node --test test/authoritativeLedgerRows.test.mjs
+        run: node --test test/authoritativeLedgerRows.test.mjs test/ledgerRowIntegrityParity.test.mjs
         working-directory: functions

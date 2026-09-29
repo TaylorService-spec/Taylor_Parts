@@ -96,7 +96,19 @@ export async function readPartBalances(
   partIds: readonly string[],
   serialTrackedByPartId: ReadonlyMap<string, boolean>,
 ): Promise<PartBalanceProjection[]> {
-  if (partIds.length === 0) return [];
+  return (await readPartBalancesWithIntegrity(db, partIds, serialTrackedByPartId)).balances;
+}
+
+/**
+ * The same read, with the parts it could not answer BECAUSE OF THE LEDGER named separately (DQ-027): a
+ * caller must be able to tell "no such part" from "this part's ledger has a record that cannot be read".
+ */
+export async function readPartBalancesWithIntegrity(
+  db: Firestore,
+  partIds: readonly string[],
+  serialTrackedByPartId: ReadonlyMap<string, boolean>,
+): Promise<{ balances: PartBalanceProjection[]; ledgerUnavailablePartIds: string[] }> {
+  if (partIds.length === 0) return { balances: [], ledgerUnavailablePartIds: [] };
 
   // ── the three shared reads, once for the whole page ─────────────────────────────────────────
   const [warehouseSnap, poSnap, ...ledgerSnaps] = await Promise.all([
@@ -188,7 +200,7 @@ export async function readPartBalances(
       serialTracked,
     }));
   }
-  return out;
+  return { balances: out, ledgerUnavailablePartIds: partIds.filter((id) => unreadableParts.has(id)) };
 }
 
 /**
@@ -247,9 +259,12 @@ export const getPartBalancesCallable = onCall({ region: "us-central1" }, async (
         .filter((entry): entry is readonly [string, boolean] => entry !== null),
     );
 
-    const balances = await readPartBalances(db, partIds, serialTrackedByPartId);
+    const { balances, ledgerUnavailablePartIds } = await readPartBalancesWithIntegrity(db, partIds, serialTrackedByPartId);
     return {
       balances,
+      // DQ-027: the subset of unresolvedPartIds whose ledger holds a record that cannot be read -- a
+      // reason a caller can act on, distinct from "the Part Master does not know this part".
+      ledgerUnavailablePartIds,
       // WHICH PARTS HAD NO ANSWER, said explicitly. A caller that asked about fifty and received
       // forty-eight must be able to tell WHICH two are missing — silently short results are how a
       // list ends up rendering a blank cell that looks like a zero.

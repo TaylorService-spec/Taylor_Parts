@@ -418,6 +418,10 @@
       "runner": "node"
     },
     {
+      "file": "test/ledgerRowIntegrity.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/locationDisplayReadChunking.test.mjs",
       "runner": "node --test"
     },

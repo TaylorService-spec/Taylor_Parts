@@ -17,6 +17,7 @@ import {
   generateInventoryHealthDashboard,
   computeAvailableStockByPart,
 } from "../../domain/inventoryAnalyticsEngine";
+import { partitionLedgerIntegrity } from "../../domain/ledgerRowIntegrity.js";
 import { generateProcurementDrafts } from "../../domain/procurementDraftEngine";
 import {
   getInventoryConsumptionSnapshot,
@@ -115,7 +116,10 @@ export default function Operations({ accessVersion } = {}) {
 
         const technicians = techniciansSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        const transactions = rawTransactions.map(normalizeLedgerTransaction);
+        // DQ-027: partition first. Unreadable rows are never silently dropped: their parts are listed as
+        // unavailable, and an unattributable one makes the inventory-derived panels unavailable.
+        const ledgerIntegrity = partitionLedgerIntegrity(rawTransactions);
+        const transactions = ledgerIntegrity.readable.map(normalizeLedgerTransaction);
         const availableByPart = computeAvailableStockByPart(transactions);
 
         const stockSnapshots = [...availableByPart.entries()].map(([partId, availableStock]) => ({
@@ -140,6 +144,7 @@ export default function Operations({ accessVersion } = {}) {
           error: null,
           data: {
             healthEntries,
+            ledgerIntegrity,
             warehouses,
             transferOrderDocs,
             purchaseOrders,
@@ -183,6 +188,7 @@ export default function Operations({ accessVersion } = {}) {
 
   const {
     healthEntries,
+    ledgerIntegrity,
     warehouses,
     transferOrderDocs,
     purchaseOrders,
@@ -212,13 +218,15 @@ export default function Operations({ accessVersion } = {}) {
       <InventoryHealthPanel
         healthEntries={healthEntries}
         resolveName={resolveName}
+        unavailablePartIds={ledgerIntegrity?.unavailablePartIds ?? []}
+        ledgerUnavailable={ledgerIntegrity?.state === "UNAVAILABLE"}
       />
       <WarehousePanel
         warehouses={warehouses}
         transferOrderDocs={transferOrderDocs}
         resolveName={resolveName}
       />
-      <ProcurementPanel purchaseOrders={purchaseOrders} suppliers={suppliers} procurementDrafts={procurementDrafts} resolveName={resolveName} />
+      <ProcurementPanel purchaseOrders={purchaseOrders} suppliers={suppliers} procurementDrafts={procurementDrafts} resolveName={resolveName} ledgerIntegrity={ledgerIntegrity} />
       <ExecutionInsightsPanel
         consumptionSnapshot={consumptionSnapshot}
         technicianVolume={technicianVolume}

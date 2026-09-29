@@ -1,5 +1,6 @@
 import { readBinParentage } from "./inventoryLocation/binParentage.js";
 import { binIdsReferenced } from "./inventoryLedger/locationOnHand.js";
+import { classifyLedgerDoc, deserializeOperationalMovement } from "./inventoryLedger/operationalMovementRepository.js";
 import type { BinParentage } from "./inventoryLedger/locationOnHand.js";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
@@ -186,14 +187,27 @@ export const getInventoryAnalytics = onCall({ region: "us-central1" }, async (re
     db.collection(WAREHOUSES_COLLECTION).where("status", "==", "ACTIVE").get(),
     db.collection(SERIALIZED_ASSETS_COLLECTION).where("inventoryState", "==", "AVAILABLE").get(),
   ]);
-  const transactions = normalizeLedgerTransactions(ledger.docs.map((d) => ({ ...(d.data() as Omit<InventoryTransaction, "id">), id: d.id })));
+  // DQ-027 (Controller ruling 2026-09-28): malformed ledger evidence is NEVER silently omitted. A part named by
+  // an unreadable row gets no figures and is REPORTED in `integrity.unavailablePartIds`; every other part is
+  // computed from its own readable rows and stays truthful. An unreadable row naming no part makes every
+  // figure untrustworthy, so the read fails (failed-precondition) rather than answer.
+  const integrity = partitionLedgerDocsForAnalytics(ledger.docs);
+  if (integrity.state === "UNAVAILABLE") {
+    throw new HttpsError("failed-precondition", "Inventory analytics are unavailable: a ledger record cannot be read or attributed to a part.",
+      { code: "LEDGER_ROW_UNREADABLE" });
+  }
+  const usableDocs = integrity.readableDocs;
+  const transactions = normalizeLedgerTransactions(usableDocs.map((d) => ({ ...(d.data() as Omit<InventoryTransaction, "id">), id: d.id })));
 
   // The physical baseline comes from the RAW ledger rows, not the normalized ones: normalization
   // drops `location` and `trackingMode`, which are exactly the two facts the warehouse fence and the
   // serial exclusion depend on.
   const eligibleWarehouseIds = new Set(warehouses.docs.map((d) => d.id));
-  const rawRows = ledger.docs.map((d) => d.data() as RawLedgerRow);
-  const rawAssets = serialized.docs.map((d) => d.data() as RawSerializedAsset);
+  const rawRows = usableDocs.map((d) => d.data() as RawLedgerRow);
+  // An affected part is withheld WHOLE: its serialized units are not half an answer either.
+  const unavailableParts = new Set(integrity.unavailablePartIds);
+  const rawAssets = serialized.docs.map((d) => d.data() as RawSerializedAsset)
+    .filter((a) => !(typeof a.partId === "string" && unavailableParts.has(a.partId)));
   // Resolve only the bins actually referenced: ledger rows at a BIN, and serials whose scalar location
   // is not an eligible warehouse id (a candidate bin). A non-bin id simply resolves to nothing.
   const candidateBinIds = [
@@ -223,5 +237,47 @@ export const getInventoryAnalytics = onCall({ region: "us-central1" }, async (re
     console.error("getInventoryAnalytics: refusing to return a non-encodable payload", err);
     throw new HttpsError("internal", "Inventory analytics could not be encoded. Try again shortly.");
   }
-  return { health };
+  return {
+    health,
+    integrity: {
+      state: integrity.state,
+      reason: integrity.state === "COMPLETE" ? null : "LEDGER_ROW_UNREADABLE",
+      unavailablePartIds: integrity.unavailablePartIds,
+    },
+  };
 });
+
+/**
+ * DQ-027 partition, through the server's ONE strict reader. Legacy rows stay (location-less commitment
+ * events, used for the reservation netting); operational rows must deserialize; anything else is
+ * unreadable. All rows of an affected part are withheld -- a partial figure computed from its readable
+ * rows would be a wrong figure presented as a right one.
+ */
+export function partitionLedgerDocsForAnalytics<D extends { data(): unknown }>(docs: readonly D[]): {
+  readonly state: "COMPLETE" | "INCOMPLETE" | "UNAVAILABLE";
+  readonly readableDocs: D[];
+  readonly unavailablePartIds: string[];
+} {
+  const unavailable = new Set<string>();
+  let unattributable = 0;
+  for (const d of docs) {
+    const data = d.data();
+    const cls = classifyLedgerDoc(data);
+    if (cls === "legacy") continue;
+    if (cls === "operational") {
+      try { deserializeOperationalMovement(data); continue; } catch { /* unreadable -- recorded below */ }
+    }
+    const partId = data && typeof data === "object" && !Array.isArray(data) ? (data as { partId?: unknown }).partId : undefined;
+    if (typeof partId === "string" && partId.trim() !== "") unavailable.add(partId);
+    else unattributable += 1;
+  }
+  const state = unattributable > 0 ? "UNAVAILABLE" : unavailable.size > 0 ? "INCOMPLETE" : "COMPLETE";
+  return {
+    state,
+    readableDocs: state === "UNAVAILABLE" ? [] : docs.filter((d) => {
+      const pid = (d.data() as { partId?: unknown } | undefined)?.partId;
+      return !(typeof pid === "string" && unavailable.has(pid));
+    }),
+    unavailablePartIds: [...unavailable].sort(),
+  };
+}

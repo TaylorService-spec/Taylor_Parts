@@ -61,7 +61,9 @@ export default function PartsManagerHome({ accessVersion, title = "Parts Manager
   // is threaded from App so an access change re-runs the read and invalidates the prior
   // name map before the replacement read settles.
   const { resolveName, namesUnavailable } = useCanonicalPartNames({ uid: user?.uid, accessVersion });
-  const { healthEntries, loading: healthLoading, error: healthError } = useInventoryLedger();
+  // DQ-027: opted in to partial integrity -- parts with an unreadable ledger record are LISTED as
+  // unavailable by the panel below, never dropped.
+  const { healthEntries, loading: healthLoading, error: healthError, integrity: healthIntegrity } = useInventoryLedger({ allowPartial: true });
   const { data: queue, loading: queueLoading, error: queueError } = useReorderRequestsByStatus(REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER);
   const { data: oversight, loading: oversightLoading, error: oversightError } = useReorderRequestsByStatuses(OVERSIGHT_STATUSES);
   const { data: history, loading: historyLoading, error: historyError } = useReviewedRequestsHistory(user?.uid);
@@ -111,7 +113,7 @@ export default function PartsManagerHome({ accessVersion, title = "Parts Manager
         failedText="Unable to load inventory health right now. Try again shortly."
         emptyText=""
       >
-        <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
+        <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} unavailablePartIds={healthIntegrity?.unavailablePartIds ?? []} />
       </LoadingEmptyState>
 
       <ManagerQueuePanel queue={queue} resolveName={resolveName} loading={queueLoading} error={queueError} />

@@ -346,4 +346,7 @@ test("a ledger row of a type no governed writer produces (RETURN_INTAKE) gives t
   const balances = await readPartBalances(db, ["PRT-R", "PRT-OK"], new Map([["PRT-R", false], ["PRT-OK", false]]));
   assert.deepEqual(balances.map((b) => b.partId), ["PRT-OK"], "only the readable part is answered");
   assert.equal(balances[0].onHand.value, 2);
+  const { readPartBalancesWithIntegrity } = await import("../lib/inventory/partBalanceBatchReadService.js");
+  const withIntegrity = await readPartBalancesWithIntegrity(fakeDb({ ledger: withIntake, warehouses: WAREHOUSES }), ["PRT-R", "PRT-OK"], new Map([["PRT-R", false], ["PRT-OK", false]]));
+  assert.deepEqual(withIntegrity.ledgerUnavailablePartIds, ["PRT-R"], "the reason is NAMED, not folded into 'unresolved'");
 });
