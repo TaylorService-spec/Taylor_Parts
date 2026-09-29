@@ -12,9 +12,9 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 151,
+    "capabilities": 152,
     "catalogActive": 0,
-    "catalogInactive": 151,
+    "catalogInactive": 152,
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
     "callableExports": 39,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 151,
-    "parsed": 151,
+    "raw": 152,
+    "parsed": 152,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 20,
-    "SERVER_REFERENCED": 128,
+    "SERVER_REFERENCED": 129,
     "NO_IMPLEMENTATION_EVIDENCE": 3
   },
   "guideStatuses": {},
@@ -517,6 +517,28 @@
         ],
         "serverReferenceCount": 5,
         "clientReferenceCount": 5,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "ownership.handoff.correct",
+      "resource": "account.ownershipHandoff",
+      "action": "correct",
+      "description": "Record an ownership handoff as an administrative act (ADMIN_CORRECTION or CUSTOMER_HANDOFF_REVIEW) on an Account or a Commercial record. Required in addition to the record's edit capability; confers no edit authority of its own.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
+          "functions/src/eosCrm/accountAuthority.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 0,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

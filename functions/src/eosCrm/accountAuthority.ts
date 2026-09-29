@@ -357,6 +357,9 @@ export type AccountOwnershipHandoffSource = (typeof ACCOUNT_OWNERSHIP_HANDOFF_SO
 /** The audit writer's MAX_HANDOFF_REASON_LENGTH, as eos_commercial.ownership_handoffs holds it. */
 export const MAX_ACCOUNT_HANDOFF_REASON_LENGTH = 500;
 const DEFAULT_HANDOFF_SOURCE: AccountOwnershipHandoffSource = "DIRECT_HANDOFF";
+/** DQ-022: the administrative handoff sources, which require OWNERSHIP_HANDOFF_CORRECT_CAPABILITY in addition. */
+export const OWNERSHIP_HANDOFF_CORRECT_CAPABILITY = "ownership.handoff.correct";
+const ADMINISTRATIVE_ACCOUNT_HANDOFF_SOURCES: ReadonlySet<string> = new Set(["ADMIN_CORRECTION", "CUSTOMER_HANDOFF_REVIEW"]);
 
 export const ACCOUNT_OWNERSHIP_EVENTS = Object.freeze(["OWNER_HANDOFF", "INITIAL_OWNER_ASSIGNMENT"] as const);
 export type AccountOwnershipEvent = (typeof ACCOUNT_OWNERSHIP_EVENTS)[number];
@@ -516,6 +519,10 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
         if (owner === previous) {
           if (terms.named) fail("OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE", "INVALID_INPUT", "the Account is already owned by that Employee; there is no ownership change to record");
         } else {
+          // DQ-022: an ADMINISTRATIVE handoff source is itself governed (a handoff, i.e. a previous owner exists).
+          if (previous !== null && ADMINISTRATIVE_ACCOUNT_HANDOFF_SOURCES.has(terms.source) && !principal.capabilities.has(OWNERSHIP_HANDOFF_CORRECT_CAPABILITY)) {
+            fail("CAPABILITY_REQUIRED", "FORBIDDEN", `an ${terms.source} handoff requires ${OWNERSHIP_HANDOFF_CORRECT_CAPABILITY}`);
+          }
           const newOwner = await requireOwnerEmployee(db, tenantId, owner);
           await stageAccountOwnershipChange(db, tenantId, principalId, accountId, previous, newOwner, terms);
         }

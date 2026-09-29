@@ -35,7 +35,8 @@ const rel = (f) => relative(FUNCTIONS_DIR, f).split("\\").join("/");
 const MIGRATION_024 = "1759622400000_crm-capability-vocabulary.sql";
 const MIGRATION_025 = "1759708800000_crm-account-business-facts-and-receipts.sql";
 const MIGRATION_HANDOFFS = "1759924800000_crm-account-ownership-history.sql";
-const CRM_CAPABILITY_IDS = ["customer.governedField.write", "customer.record.create", "customer.record.read", "customer.record.update"];
+// DQ-022: ownership.handoff.correct gates the ADMINISTRATIVE handoff sources on an Account (and a Commercial record).
+const CRM_CAPABILITY_IDS = ["customer.governedField.write", "customer.record.create", "customer.record.read", "customer.record.update", "ownership.handoff.correct"];
 
 /** A pool that must never be reached: every refusal below happens before a connection is taken. */
 const unreachablePool = { connect: async () => { throw new Error("the database was reached"); } };

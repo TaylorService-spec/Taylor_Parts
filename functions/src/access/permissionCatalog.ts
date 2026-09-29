@@ -89,6 +89,18 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "write",
   }),
 
+  // DQ-022 (Controller 2026-09-28): stating an ADMINISTRATIVE ownership-handoff source (ADMIN_CORRECTION /
+  // CUSTOMER_HANDOFF_REVIEW) on an Account or a Commercial record. Registered by migration 1763683200000 with NO grant;
+  // required in addition to the record's own edit capability. Registered active:false (fail-closed) until granted.
+  Object.freeze({
+    id: "ownership.handoff.correct",
+    description:
+      "Record an ownership handoff as an administrative act (ADMIN_CORRECTION or CUSTOMER_HANDOFF_REVIEW) on an Account or a Commercial record. Required in addition to the record's edit capability; confers no edit authority of its own.",
+    resource: "account.ownershipHandoff",
+    action: "correct",
+    active: false,
+  }),
+
   // --- Work Order domain (Assessment §1; transitionEngine.ts) ---
   Object.freeze({
     id: "workOrder.create",

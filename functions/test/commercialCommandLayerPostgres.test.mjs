@@ -195,6 +195,18 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     assert.equal(await count("accountability_handoffs", "opportunity_id=$1", [o1.opportunityId]), 1, "an owner change wrote accountability history");
   });
 
+  await t.test("(15b) DQ-022: an ADMIN_CORRECTION / CUSTOMER_HANDOFF_REVIEW handoff requires ownership.handoff.correct; DIRECT_HANDOFF does not", async () => {
+    const o = await newOpportunity({ lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] });
+    for (const source of ["ADMIN_CORRECTION", "CUSTOMER_HANDOFF_REVIEW"]) {
+      await assert.rejects(opp.updateOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, ownerEmployeeId: "e-gm", ownershipHandoff: { source } }), code("CAPABILITY_REQUIRED"), source);
+    }
+    assert.equal(await count("ownership_handoffs", "opportunity_id=$1", [o.opportunityId]), 0);
+    const corrector = { ...ACTOR, capabilities: new Set([...ALL_CAPS, "ownership.handoff.correct"]) };
+    const res = await opp.updateOpportunity(deps, corrector, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, ownerEmployeeId: "e-gm", ownershipHandoff: { source: "ADMIN_CORRECTION", reason: "wrong rep" } });
+    assert.ok(res.ownershipHandoffId);
+    assert.deepEqual((await q(`SELECT source::text FROM eos_commercial.ownership_handoffs WHERE opportunity_id=$1`, [o.opportunityId])).rows, [{ source: "ADMIN_CORRECTION" }]);
+  });
+
   await t.test("(16) a failed ownership-history write rolls back the owner change, the version bump and the receipt", async () => {
     const k = key();
     await withTrigger("ownership_handoffs", async () => {

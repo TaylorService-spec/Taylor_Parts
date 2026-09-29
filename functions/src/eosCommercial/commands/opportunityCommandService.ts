@@ -17,7 +17,7 @@ import { isCommercialHandoffSource } from "../commercialOwnershipAuthority";
 import { stageCommercialOwnershipTransfer } from "../commercialOwnershipRepository";
 import { allocateCommercialNumber } from "../commercialNumbering";
 import {
-  COMMERCIAL_CAPABILITIES, fail, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
+  ADMINISTRATIVE_HANDOFF_SOURCES, COMMERCIAL_CAPABILITIES, OWNERSHIP_HANDOFF_CORRECT_CAPABILITY, fail, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -131,6 +131,10 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
       const handoff = (ownershipHandoff ?? {}) as { source?: unknown; reason?: unknown };
       const source = handoff.source ?? "DIRECT_HANDOFF";
       if (!isCommercialHandoffSource(source)) fail("HANDOFF_SOURCE_INVALID", "INVALID_INPUT", "ownershipHandoff.source is not a governed handoff source");
+      // DQ-022: stating an administrative source is itself governed -- held globally, never inferred from the edit grant.
+      if (ADMINISTRATIVE_HANDOFF_SOURCES.has(source as string) && !actor.capabilities.has(OWNERSHIP_HANDOFF_CORRECT_CAPABILITY)) {
+        fail("CAPABILITY_REQUIRED", "FORBIDDEN", `an ${source as string} handoff requires ${OWNERSHIP_HANDOFF_CORRECT_CAPABILITY}`);
+      }
       const recorded = await stageCommercialOwnershipTransfer(db, actor.tenantId, actor.principalId, {
         kind: "OPPORTUNITY", recordId: current.id, newOwnerEmployeeId: newOwner, source: source as never,
         reason: typeof handoff.reason === "string" ? handoff.reason : null,

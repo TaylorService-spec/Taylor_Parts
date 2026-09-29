@@ -34,6 +34,16 @@ export const COMMERCIAL_CAPABILITIES = Object.freeze({
   SALES_ORDER_WRITE: "salesOrder.write",
 } as const);
 
+/**
+ * DQ-022: an ADMINISTRATIVE handoff source (ADMIN_CORRECTION / CUSTOMER_HANDOFF_REVIEW) needs this in addition to the
+ * record's edit capability. Not one of the Commercial vocabulary keys above (migration 023): it belongs to the ownership
+ * handoff domain shared with the CRM Account (migration 1763683200000).
+ */
+export const OWNERSHIP_HANDOFF_CORRECT_CAPABILITY = "ownership.handoff.correct";
+
+/** DQ-022: the handoff sources that state an administrative act, and so require OWNERSHIP_HANDOFF_CORRECT. */
+export const ADMINISTRATIVE_HANDOFF_SOURCES: ReadonlySet<string> = new Set(["ADMIN_CORRECTION", "CUSTOMER_HANDOFF_REVIEW"]);
+
 /** Owner ruling 2026-09-14. Fixed here; a command cannot be handed a different policy. */
 export const COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1 = Object.freeze({
   policyId: "COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1",
