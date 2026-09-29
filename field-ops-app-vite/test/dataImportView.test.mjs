@@ -6,18 +6,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildDataImportView, rowTone, IMPORT_STAGE } from "../src/domain/dataImportView.js";
+import { buildDataImportView, dataImportSubtitle, rowTone, IMPORT_STAGE } from "../src/domain/dataImportView.js";
 
 const GATED = { canStage: true, canExecute: true };
 
-function stagedJob({ ready = 2, warnings = 0, errors = 0 } = {}) {
+// CUSTOMERS, not PARTS: under an ACTIVE PostgreSQL catalog a Part file is refused outright (see the
+// Catalog-authority tests at the bottom), so the generic preview rules are exercised on an entity that
+// reaches no Catalog collection.
+function stagedJob({ ready = 2, warnings = 0, errors = 0, entityType = "CUSTOMERS" } = {}) {
   return {
     staged: true,
     job: {
       jobId: "IMP-1",
-      entityType: "PARTS",
-      fileName: "seeded-parts.csv",
-      mapping: { PART_NO: "internalPartNumber" },
+      entityType,
+      fileName: "seeded-customers.csv",
+      mapping: { NAME: "name" },
       summary: { total: ready + warnings + errors, ready, warnings, errors },
       rows: [],
     },
@@ -45,7 +48,7 @@ test("no file chosen is NOT the same state as a file with nothing importable", (
 test("an unmappable file is its own state, not an empty preview", () => {
   const view = buildDataImportView({
     ...GATED,
-    staged: { staged: false, validation: { valid: false, findings: [] }, suggestions: [] },
+    staged: { staged: false, entityType: "CUSTOMERS", validation: { valid: false, findings: [] }, suggestions: [] },
   });
   assert.equal(view.stage, IMPORT_STAGE.MAPPING_INCOMPLETE);
   assert.match(view.headline, /cannot be imported as mapped/);
@@ -107,9 +110,12 @@ test("row tone maps to the shared semantic vocabulary", () => {
 
 test("the approval sentence names what THIS entity's write actually does", async () => {
   const { APPROVAL_CONSEQUENCE } = await import("../src/domain/dataImportView.js");
+  // The catalog-bound sentences are proven with the Catalog authority INJECTED inactive: the sentences
+  // still exist for the day a PostgreSQL-backed import answers, but they are not offered today.
   const view = (entityType) =>
     buildDataImportView({
       ...GATED,
+      catalogAuthorityPostgresActive: false,
       staged: { staged: true, job: { entityType, summary: { total: 1, ready: 1, warnings: 0, errors: 0 }, rows: [], mapping: {} } },
     }).consequence;
 
@@ -129,4 +135,56 @@ test("an entity with no sentence still gets a true one rather than nothing", () 
     staged: { staged: true, job: { entityType: "SOMETHING_NEW", summary: { total: 1, ready: 1, warnings: 0, errors: 0 }, rows: [], mapping: {} } },
   });
   assert.match(view.consequence, /never overwrites/i);
+});
+
+// ════════════════ the Catalog activation: PARTS and INVENTORY are refused, not offered ════════════════
+// ACTIVE is INJECTED (catalogAuthorityPostgresActive: true): the committed constant stays INACTIVE until the activation
+// flip, and the refusal must be proven without it.
+const ACTIVE = { ...GATED, catalogAuthorityPostgresActive: true };
+
+test("under the ACTIVE PostgreSQL catalog a staged PARTS or INVENTORY file is refused with its own truthful sentence", () => {
+  for (const [entityType, why] of [["PARTS", /write Parts into the retired Firestore catalog/], ["INVENTORY", /Firestore catalog, which stopped being current/]]) {
+    const view = buildDataImportView({ ...ACTIVE, staged: stagedJob({ entityType }) });
+    assert.equal(view.stage, IMPORT_STAGE.CATALOG_REFUSED, entityType);
+    assert.equal(view.canExecute, false);
+    assert.match(view.detail, why);
+    assert.match(view.detail, /PostgreSQL/);
+    assert.ok(view.approvalBlockedReason, "approval is blocked WITH a reason");
+    // It is not a preview: the preview was computed against the retired Firestore catalog.
+    assert.equal(view.job, undefined);
+    assert.equal(view.importable, undefined);
+  }
+});
+
+test("the refusal comes BEFORE the mapping state: fixing columns of a file that can never run is a dead end", () => {
+  const view = buildDataImportView({
+    ...ACTIVE,
+    staged: { staged: false, entityType: "PARTS", validation: { valid: false, findings: [] }, suggestions: [] },
+  });
+  assert.equal(view.stage, IMPORT_STAGE.CATALOG_REFUSED);
+});
+
+test("entity types that reach no Catalog collection are unaffected", () => {
+  for (const entityType of ["CUSTOMERS", "EQUIPMENT", "SERVICE_HISTORY"]) {
+    const view = buildDataImportView({ ...ACTIVE, staged: stagedJob({ entityType }) });
+    assert.equal(view.stage, IMPORT_STAGE.PREVIEWED, entityType);
+    assert.equal(view.approvalBlockedReason, null);
+  }
+});
+
+test("the page does not offer what it will refuse", () => {
+  assert.doesNotMatch(dataImportSubtitle(true), /Load Parts|Load[^.]*Inventory/);
+  assert.match(dataImportSubtitle(true), /Parts and Inventory import are unavailable/);
+  assert.match(dataImportSubtitle(false), /Load Parts, Customers, Equipment, Inventory and Service History/);
+});
+
+test("the refusal is DORMANT unless the Catalog authority is ACTIVE: it follows the committed constant", async () => {
+  const { CATALOG_AUTHORITY_POSTGRES_ACTIVE } = await import("../src/config/catalogAuthority.js");
+  for (const entityType of ["PARTS", "INVENTORY"]) {
+    const inactive = buildDataImportView({ ...GATED, catalogAuthorityPostgresActive: false, staged: stagedJob({ entityType }) });
+    assert.equal(inactive.stage, IMPORT_STAGE.PREVIEWED, `${entityType} previews while INACTIVE`);
+    const committed = buildDataImportView({ ...GATED, staged: stagedJob({ entityType }) });
+    assert.equal(committed.stage === IMPORT_STAGE.CATALOG_REFUSED, CATALOG_AUTHORITY_POSTGRES_ACTIVE, entityType);
+  }
+  assert.equal(dataImportSubtitle(), dataImportSubtitle(CATALOG_AUTHORITY_POSTGRES_ACTIVE));
 });
