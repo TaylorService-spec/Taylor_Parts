@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
-import { TECH_STATUS } from "../../domain/constants";
+import { useWorkOrderTechnicians } from "../../hooks/useWorkOrderTechnicians";
+import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 import ScheduleWorkOrderForm from "../../shared/scheduling/ScheduleWorkOrderForm";
 import { FormError } from "../../shared/ui/form";
@@ -18,8 +19,13 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // domain/jobActions.js's updateJobStatus(), unrelated to this file.
 // That's a separate migration epic, not touched here.
 //
-// All writes go through transitionWorkOrder() (Cloud Function) --
-// nothing here ever writes fieldops_wos directly. Which actions are
+// All writes go through transitionWorkOrder() -- the GOVERNED EOS Work Order route
+// (services/workOrderService.ts), never Firestore and never a Firebase callable.
+//
+// TECHNICIAN PICKERS come from the governed per-Work-Order roster (listWorkOrderTechnicians with THIS
+// workOrderId: only Employees of the Work Order's own operating company who are eligible). The ids are
+// EMPLOYEE ids -- the `technicians` prop (a fieldops_technicians array) is no longer used for
+// assignment, because its ids can never match the governed assignee. Which actions are
 // even offered comes from domain/workOrderWorkflow.js's
 // getAllowedActions(status, role, isOwnAssignment) -- the same
 // mirror of functions/src/transitionEngine.ts already used
@@ -78,7 +84,8 @@ const ACTION_LABEL = {
   Cancel: "Cancel",
 };
 
-export default function WorkOrderActions({ workOrder, role, technicians, showStatus = true, emphasizeFirst = false }) {
+// A `technicians` prop from existing callers is deliberately NOT read (see header).
+export default function WorkOrderActions({ workOrder, role, showStatus = true, emphasizeFirst = false }) {
   const [submitting, setSubmitting] = useState(false);
   const [showTechPicker, setShowTechPicker] = useState(false);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
@@ -86,6 +93,15 @@ export default function WorkOrderActions({ workOrder, role, technicians, showSta
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [confirmingUnschedule, setConfirmingUnschedule] = useState(false);
   const [actionError, setActionError] = useState(null);
+  const [reassignReason, setReassignReason] = useState("");
+  // The per-Work-Order picker, read only while a picker is open.
+  const roster = useWorkOrderTechnicians(workOrder.id, { enabled: showTechPicker || showSchedulePicker });
+  const technicians = roster.data;
+  // Dispatch sends the Work Order to its SCHEDULED assignee unless the dispatcher names another --
+  // and naming another is a reassignment the server requires a reason for.
+  const currentAssignee = workOrder.scheduledTechId ?? workOrder.assignedTechId ?? "";
+  const dispatchTarget = selectedTechId || currentAssignee;
+  const reassigning = Boolean(currentAssignee) && Boolean(selectedTechId) && selectedTechId !== currentAssignee;
 
   const isOwnAssignment = false; // dispatcher-only view -- see header comment
   const allowedActions = getAllowedActions(workOrder.status, role, isOwnAssignment);
@@ -142,8 +158,12 @@ export default function WorkOrderActions({ workOrder, role, technicians, showSta
   }
 
   function confirmDispatch() {
-    if (!selectedTechId) return;
-    runAction("Dispatch", { assignedTechId: selectedTechId });
+    if (!dispatchTarget) return;
+    if (reassigning && !reassignReason.trim()) return;
+    runAction("Dispatch", {
+      ...(selectedTechId && selectedTechId !== currentAssignee ? { assignedTechId: selectedTechId } : {}),
+      ...(reassigning ? { reassignReason: reassignReason.trim() } : {}),
+    });
   }
 
 // THE STATUS PILL IS OPTIONAL, because a surface may already have rendered it.
@@ -207,7 +227,8 @@ const statusPill = (status) =>
           confirmLabel="Cancel work order"
           cancelLabel="Keep work order"
           onConfirm={async () => {
-            await transitionWorkOrder(workOrder.id, "Cancel");
+            // The status this dispatcher SAW travels with the cancel; the server refuses a stale one.
+            await transitionWorkOrder(workOrder.id, "Cancel", { expectedStatus: workOrder.status });
             setConfirmingCancel(false); // success -- the live subscription re-renders the read-only status
           }}
           onClose={() => setConfirmingCancel(false)}
@@ -247,19 +268,29 @@ const statusPill = (status) =>
 
       {showTechPicker && (
         <div className="fo-form">
-          <select value={selectedTechId} onChange={(e) => setSelectedTechId(e.target.value)}>
+          {roster.error ? (
+            <p className="fo-inline-error" role="alert">{loadErrorMessage(roster.error, { entity: "technicians" })}</p>
+          ) : null}
+          <select value={selectedTechId || currentAssignee} onChange={(e) => setSelectedTechId(e.target.value)} disabled={roster.loading}>
             <option value="" disabled>
-              Select technician…
+              {roster.loading ? "Loading technicians…" : "Select technician…"}
             </option>
-            {technicians
-              .filter((t) => t.status === TECH_STATUS.AVAILABLE)
-              .map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
+            {technicians.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
           </select>
-          <Button variant="primary" disabled={submitting || !selectedTechId} onClick={confirmDispatch}>
+          {reassigning && (
+            <input
+              type="text"
+              aria-label="Reason for dispatching to a different technician"
+              placeholder="Reason for dispatching to a different technician"
+              value={reassignReason}
+              onChange={(e) => setReassignReason(e.target.value)}
+            />
+          )}
+          <Button variant="primary" disabled={submitting || !dispatchTarget || (reassigning && !reassignReason.trim())} onClick={confirmDispatch}>
             Confirm Dispatch
           </Button>
           <Button variant="secondary" disabled={submitting} onClick={() => setShowTechPicker(false)}>

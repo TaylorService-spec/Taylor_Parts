@@ -1166,6 +1166,10 @@
       "runner": "node"
     },
     {
+      "file": "test/workOrderApiClient.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/workOrderAttentionProjection.test.mjs",
       "runner": "node"
     },

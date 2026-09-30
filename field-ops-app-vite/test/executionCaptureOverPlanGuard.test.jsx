@@ -9,19 +9,10 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 
-// Decision #171: a positive qtyUsed now resolves a governed source first. The component asks the
-// server which sources are permitted, so the read is mocked alongside the write -- an unambiguous
-// pick, which is the case that needs no technician input.
+// Work Order cutover: recording usage is the governed recordWorkOrderExecution command and moves NO
+// stock, so no consumption source is resolved or sent -- the write carries only the Part delta.
 vi.mock("../src/services/workOrderService", () => ({
   updateWorkOrderExecutionData: vi.fn().mockResolvedValue(undefined),
-  listWorkOrderConsumptionSources: vi.fn().mockResolvedValue({
-    autoSource: { locationId: "wh-1", locationType: "WAREHOUSE", label: "Phoenix Warehouse", method: "PICK" },
-    selectableSources: [],
-    serializedSource: null,
-    sourceRequired: false,
-    autoSourceUnavailableReason: null,
-    mobileAmbiguous: false,
-  }),
 }));
 
 import { updateWorkOrderExecutionData } from "../src/services/workOrderService";
@@ -52,9 +43,6 @@ describe("ExecutionCapture over-plan guard (site-work r2 #6)", () => {
     await waitFor(() =>
       expect(updateWorkOrderExecutionData).toHaveBeenCalledWith("wo1", {
         qtyUsedUpdates: [{ sku: "PRT-1001", delta: 1 }],
-        // Decision #171: a POSITIVE delta now carries the governed source it resolved. The negative
-        // case below deliberately does not — a correction reverses against the original lineage.
-        consumptionSources: [{ sku: "PRT-1001", locationId: "wh-1" }],
       }),
     );
   });
@@ -79,9 +67,6 @@ describe("ExecutionCapture over-plan guard (site-work r2 #6)", () => {
     await waitFor(() =>
       expect(updateWorkOrderExecutionData).toHaveBeenCalledWith("wo1", {
         qtyUsedUpdates: [{ sku: "PRT-1001", delta: 1 }],
-        // Decision #171: a POSITIVE delta now carries the governed source it resolved. The negative
-        // case below deliberately does not — a correction reverses against the original lineage.
-        consumptionSources: [{ sku: "PRT-1001", locationId: "wh-1" }],
       }),
     );
   });
@@ -98,5 +83,14 @@ describe("ExecutionCapture over-plan guard (site-work r2 #6)", () => {
         qtyUsedUpdates: [{ sku: "PRT-1001", delta: -1 }],
       }),
     );
+  });
+});
+
+describe("ExecutionCapture states that stock is not moved here", () => {
+  it("renders the NO_STOCK_MOVEMENT boundary and offers no inventory-source picker", () => {
+    renderAtPlan(0, 3);
+    expect(document.querySelector('[data-inventory-boundary="NO_STOCK_MOVEMENT"]')).toBeTruthy();
+    expect(screen.getByText(/Stock is not moved here/i)).toBeTruthy();
+    expect(screen.queryByText(/inventory source/i)).toBeNull();
   });
 });

@@ -1,40 +1,25 @@
 import { useEffect, useState } from "react";
-import { collection, query, where, orderBy, limit, getDocs, getCountFromServer } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { WORK_ORDERS_COLLECTION } from "../domain/constants";
+import { getWorkOrder, listWorkOrders } from "../services/workOrderService";
 import { OPEN_WORK_ORDER_STATUSES } from "../domain/accountWorkOrders";
 
 // Part -> Work Order Demand (Wave 7 Item 3) -- the READ half. Answers "Which Work Orders need this part?"
-// from the canonical fieldops_wos authority via a bounded Firestore QUERY, never a client-side scan of the
-// whole collection.
+// from the GOVERNED EOS Work Order route, never Firestore:
 //
-// QUERY STRATEGY (investigated honestly -- see PR report for the full reasoning):
-// `inventorySnapshot` is an ARRAY OF OBJECTS (each `{ partId, qtyPlanned, qtyUsed, ... }`), so Firestore's
-// `array-contains` cannot match a nested field inside it -- it would require the array to contain an EXACT
-// object equal to a probe value, which is not how this document is shaped and would break the instant any
-// unrelated field on that row (name, category, qtyUsed, ...) changed. There is no server-side index that
-// lets a client query "any array element whose partId field equals X" without a denormalized field the
-// Work Order writer would have to maintain (setWorkOrderPartsPlan/createWorkOrder, both functions/src --
-// out of this change's scope, and not something a read-only projection should introduce a parallel demand
-// engine to work around).
+//   1. listWorkOrders { plannedPartId, statuses: OPEN } -- the SERVER filters to the non-terminal Work
+//      Orders whose parts plan names this Part (bounded, with an explicit `truncated` flag);
+//   2. readWorkOrder for each of those rows -- the summary carries no per-part quantities, and the
+//      projection (domain/partWorkOrderDemand.js) needs qtyPlanned / qtyUsed from execution.parts.
 //
-// The honest, bounded alternative actually implemented: query only NON-TERMINAL fieldops_wos (the same
-// OPEN_WORK_ORDER_STATUSES bucket domain/accountWorkOrders.js already uses -- a completed/closed/cancelled
-// Work Order no longer needs the part, so excluding it here is both correct AND the entire point of the
-// bound), newest-first, capped at PART_DEMAND_SCAN_CAP, then the pure projection
-// (domain/partWorkOrderDemand.js) filters those documents client-side for this partId. A companion
-// getCountFromServer() over the SAME status filter (no cap) tells the caller the true size of the open-WO
-// population, so the UI can disclose "showing N of M" HONESTLY whenever the cap was actually hit, rather
-// than silently truncating or scanning everything.
-//
-// Requires the composite index fieldops_wos(status ASC, createdAt DESC) -- added to firestore.indexes.json
-// in this change; the index itself is not deployed by this change (a separate, later step).
-export const PART_DEMAND_SCAN_CAP = 300;
+// The detail reads are bounded by the list's own bound. A failed detail read fails the whole answer
+// (UNAVAILABLE) rather than rendering rows with fabricated quantities. `totalOpenWorkOrders` is null:
+// the governed route has no count read, and the disclosure uses `truncated` instead.
+export const PART_DEMAND_SCAN_CAP = 200;
 
 export const PART_WORK_ORDER_DEMAND_STATE = Object.freeze({
   LOADING: "LOADING",
   DENIED: "DENIED",
   UNAVAILABLE: "UNAVAILABLE",
+  NOT_ACTIVATED: "NOT_ACTIVATED",
   READY: "READY",
 });
 
@@ -50,31 +35,35 @@ export function usePartWorkOrderDemand(partId, { scanCap = PART_DEMAND_SCAN_CAP 
     let cancelled = false;
     setState({ status: PART_WORK_ORDER_DEMAND_STATE.LOADING });
 
-    const base = collection(db, WORK_ORDERS_COLLECTION);
-    const openFilter = where("status", "in", OPEN_WORK_ORDER_STATUSES);
-
-    Promise.all([
-      getDocs(query(base, openFilter, orderBy("createdAt", "desc"), limit(scanCap))),
-      // Independent of the bounded page fetch -- a failure here degrades the disclosure (handled below),
-      // it must never block or hide the rows the page fetch DID succeed in reading.
-      getCountFromServer(query(base, openFilter)).catch(() => null),
-    ])
-      .then(([snap, countSnap]) => {
+    (async () => {
+      const page = await listWorkOrders({
+        plannedPartId: partId,
+        statuses: OPEN_WORK_ORDER_STATUSES,
+        limit: Math.min(Math.max(1, scanCap), PART_DEMAND_SCAN_CAP),
+      });
+      const details = await Promise.all(page.items.map((wo) => getWorkOrder(wo.id)));
+      return { workOrders: details.filter(Boolean), truncated: page.truncated };
+    })()
+      .then(({ workOrders, truncated }) => {
         if (cancelled) return;
-        const workOrders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setState({
           status: PART_WORK_ORDER_DEMAND_STATE.READY,
           workOrders,
           scannedCount: workOrders.length,
-          // null (not 0) when the count read itself failed -- the disclosure must not claim a total it
-          // doesn't actually know.
-          totalOpenWorkOrders: countSnap ? countSnap.data().count : null,
+          truncated,
+          // null (not 0): the governed route has no count read, and a total it does not know is never claimed.
+          totalOpenWorkOrders: null,
         });
       })
       .catch((err) => {
         if (cancelled) return;
+        const code = err?.code;
         setState({
-          status: err?.code === "permission-denied" ? PART_WORK_ORDER_DEMAND_STATE.DENIED : PART_WORK_ORDER_DEMAND_STATE.UNAVAILABLE,
+          status: code === "NOT_ACTIVATED"
+            ? PART_WORK_ORDER_DEMAND_STATE.NOT_ACTIVATED
+            : code === "permission-denied" || code === "FORBIDDEN"
+              ? PART_WORK_ORDER_DEMAND_STATE.DENIED
+              : PART_WORK_ORDER_DEMAND_STATE.UNAVAILABLE,
         });
       });
 

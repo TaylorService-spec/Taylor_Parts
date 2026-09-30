@@ -1,5 +1,11 @@
 // Dispatch & Scheduling -- transport over the certified Scheduling domain.
 //
+// WORK ORDER CUTOVER: the three Work Order WRITES that lived here (rescheduleWorkOrderCallable,
+// reassignScheduledWorkOrderCallable, setWorkOrderEstimatedDurationCallable) no longer touch Firebase:
+// reschedule / reassign go through the governed EOS route, and the duration estimate is refused (no
+// governed operation exists). ONLY readTechnicianAvailability remains a Firebase callable -- it reads
+// technician working hours / blocked time, not a Work Order, and is keyed by fieldops_technicians ids.
+//
 // Structure mirrors services/salesAgreementCommandClient.js exactly: firebase imported LAZILY (no
 // import-time initializeApp side effect), and this is the only place these callables are invoked.
 //
@@ -16,6 +22,8 @@
 // board therefore cannot query them, and readTechnicianAvailability is the only way lane shading,
 // blocked-time chips and capacity have anything behind them. Do not add a Firestore path to either
 // collection anywhere in this app; it would fail closed, which is correct, and look like a bug.
+import { rescheduleWorkOrder as rescheduleGoverned } from "./workOrderService";
+
 function mapError(err) {
   const raw = err && typeof err.code === "string" ? err.code : "";
   const status = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
@@ -44,41 +52,63 @@ const call = async (name, payload) => {
 };
 
 // ---------------------------------------------------------------------------------------------
-// Placement changes. Initial placement is NOT here -- it is the governed Schedule transition and
-// goes through services/workOrderService.transitionWorkOrder, the same path it always used. Adding
-// a second scheduling entry point for the board is exactly what ND-24 was about.
+// Placement changes -- over the GOVERNED EOS Work Order route (services/workOrderService.ts ->
+// rescheduleWorkOrder), never a Firebase callable. Initial placement is the governed Schedule
+// transition (transitionWorkOrder). Same { result } | { errorStatus, errorCode } contract as before:
+// `errorStatus` is the client category lower-cased (e.g. "precondition_failed", "not_activated"),
+// `errorCode` the server's stable code (STALE_SCHEDULE, SCHEDULE_CONFLICT, DOUBLE_BOOKED, NOT_ACTIVATED...).
 // ---------------------------------------------------------------------------------------------
 
+async function governed(fn) {
+  try {
+    return { result: await fn() };
+  } catch (err) {
+    const category = typeof err?.code === "string" ? err.code : "INTERNAL";
+    return { errorStatus: category.toLowerCase(), errorCode: typeof err?.reason === "string" ? err.reason : category };
+  }
+}
+
+const toMillis = (v) => (typeof v === "number" ? v : v && typeof v.toMillis === "function" ? v.toMillis() : null);
+
 /**
- * Re-time a SCHEDULED Work Order, optionally onto another technician. Status stays SCHEDULED.
- *
- * `expectedScheduledStart` is what makes the drag safe: the dispatcher drags from the position they
- * can SEE, and between the render and the drop somebody else may have moved it. Passing the start
- * the board believed it was moving lets the server refuse STALE_WORK_ORDER instead of silently
- * overwriting a placement this dispatcher never saw. Always send it from a drag.
+ * Re-time a SCHEDULED Work Order, optionally onto another technician (an EMPLOYEE id). Status stays
+ * SCHEDULED. `expectedScheduledStart` is the start the board SAW -- REQUIRED by the governed command
+ * (it refuses STALE_SCHEDULE when the Work Order moved in between).
  */
 export const rescheduleWorkOrder = ({ workOrderId, scheduledStart, scheduledEnd, scheduledTechId, reason, expectedScheduledStart }) =>
-  call("rescheduleWorkOrderCallable", {
+  governed(() => rescheduleGoverned({
     workOrderId,
+    expectedScheduledStart,
     scheduledStart,
     scheduledEnd,
     reason,
-    ...(scheduledTechId ? { scheduledTechId } : {}),
-    ...(typeof expectedScheduledStart === "number" ? { expectedScheduledStart } : {}),
-  });
+    ...(scheduledTechId ? { employeeId: scheduledTechId } : {}),
+  }));
 
 /**
- * Move a SCHEDULED Work Order to a different technician, KEEPING ITS WINDOW.
+ * Move a SCHEDULED Work Order to a different technician (EMPLOYEE id), KEEPING ITS WINDOW.
  *
- * The window is deliberately not a parameter: the server takes it from the stored record. A caller
- * that could also restate the window could move a job and re-time it in one un-named action, and the
- * audit event would record a reassignment that was really both.
+ * The governed command has no separate "reassign" verb: it is a reschedule onto the SAME window with a
+ * new employeeId, and the window it keeps is the one the caller SAW (`currentWindow`), which doubles as
+ * the stale guard. Without a known window the move is refused locally rather than guessed.
  */
-export const reassignScheduledWorkOrder = ({ workOrderId, scheduledTechId, reason }) =>
-  call("reassignScheduledWorkOrderCallable", { workOrderId, scheduledTechId, reason });
+export const reassignScheduledWorkOrder = ({ workOrderId, scheduledTechId, reason, currentWindow }) => {
+  const start = toMillis(currentWindow?.startMillis ?? currentWindow?.scheduledStart);
+  const end = toMillis(currentWindow?.endMillis ?? currentWindow?.scheduledEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return Promise.resolve({ errorStatus: "invalid_input", errorCode: "NOT_SCHEDULED" });
+  }
+  return governed(() => rescheduleGoverned({
+    workOrderId, expectedScheduledStart: start, scheduledStart: start, scheduledEnd: end, employeeId: scheduledTechId, reason,
+  }));
+};
 
-export const setWorkOrderEstimatedDuration = ({ workOrderId, estimatedDurationMinutes }) =>
-  call("setWorkOrderEstimatedDurationCallable", { workOrderId, estimatedDurationMinutes });
+/**
+ * The planning estimate. The governed Work Order route has NO operation for it, and it must not fall
+ * back to the Firebase callable -- so it is refused, visibly, until the server serves one.
+ */
+export const setWorkOrderEstimatedDuration = async () =>
+  ({ errorStatus: "unavailable", errorCode: "NOT_ON_GOVERNED_ROUTE" });
 
 // ---------------------------------------------------------------------------------------------
 // The trusted read

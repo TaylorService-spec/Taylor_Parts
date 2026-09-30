@@ -18,6 +18,7 @@
 // They decide nothing. Every one of these commands re-derives authority server-side and may refuse
 // after a precheck passed; that race is normal and the command's answer is the one that counts.
 import { INTENT_TYPE } from "./technicianIntent.js";
+import { workOrderSyncError } from "./workOrderSyncError.js";
 import { updateWorkOrderExecutionData, transitionWorkOrder, getWorkOrder } from "../services/workOrderService";
 import { recordWorkOrderLabor } from "../services/workOrderLaborCallableClient";
 import {
@@ -27,12 +28,8 @@ import {
 /** Work Order statuses at or past completion — the intended end state of a completion intent. */
 const COMPLETED_OR_BEYOND = Object.freeze(["COMPLETED", "CLOSED"]);
 
-/** A thrown callable error, reduced to the shape the executor classifies. */
-const failureFrom = (err) => ({
-  ok: false,
-  code: err?.code ?? null,
-  details: err?.details ?? null,
-});
+/** A thrown command error, reduced to the shape the executor classifies (see workOrderSyncError.js). */
+const failureFrom = (err) => ({ ok: false, ...workOrderSyncError(err) });
 
 /**
  * Build the five bindings.
@@ -53,7 +50,6 @@ export function createTechnicianBindings(deps = {}) {
   const readWorkOrder = (...a) => (deps.getWorkOrder ?? getWorkOrder)(...a);
   const listInstallable = (...a) => (deps.fetchInstallableEquipmentForWorkOrder ?? fetchInstallableEquipmentForWorkOrder)(...a);
   const recordInstall = (...a) => (deps.recordWorkOrderEquipmentInstall ?? recordWorkOrderEquipmentInstall)(...a);
-  const technicianIdOf = () => (deps.technicianId ? deps.technicianId() : null);
 
   const commands = {
     /**
@@ -66,7 +62,11 @@ export function createTechnicianBindings(deps = {}) {
      */
     async [INTENT_TYPE.NOTE_ADD](intent) {
       try {
-        const result = await executionData(intent.workOrderId, { executionNote: intent.payload.executionNote });
+        // The intent id is the governed command's idempotency key: a lost response that is re-sent
+        // REPLAYS on the server instead of appending the note twice.
+        const result = await executionData(intent.workOrderId, {
+          executionNote: intent.payload.executionNote, idempotencyKey: intent.intentId,
+        });
         return { ok: true, serverIds: { workOrderId: result?.workOrderId ?? intent.workOrderId } };
       } catch (err) { return failureFrom(err); }
     },
@@ -94,7 +94,9 @@ export function createTechnicianBindings(deps = {}) {
      */
     async [INTENT_TYPE.PARTS_USAGE](intent) {
       try {
-        const result = await executionData(intent.workOrderId, { qtyUsedUpdates: intent.payload.qtyUsedUpdates });
+        const result = await executionData(intent.workOrderId, {
+          qtyUsedUpdates: intent.payload.qtyUsedUpdates, idempotencyKey: intent.intentId,
+        });
         return { ok: true, serverIds: { workOrderId: result?.workOrderId ?? intent.workOrderId } };
       } catch (err) { return failureFrom(err); }
     },
@@ -194,18 +196,23 @@ export function createTechnicianBindings(deps = {}) {
      * said it was theirs; the server says otherwise, and the server is right.
      */
     async [INTENT_TYPE.WORK_ORDER_COMPLETE](intent) {
-      const wo = await readWorkOrder(intent.workOrderId);
+      let wo;
+      try {
+        wo = await readWorkOrder(intent.workOrderId);
+      } catch (err) {
+        // The governed detail read is itself the per-record decision: a Work Order no longer this
+        // technician's is REFUSED by the server here, and that refusal is the answer.
+        const f = failureFrom(err);
+        return { proceed: false, code: f.code, details: f.details };
+      }
       if (!wo) return { proceed: false, code: "not-found", details: "WORK_ORDER_NOT_FOUND" };
 
       if (COMPLETED_OR_BEYOND.includes(wo.status)) {
         return { alreadySatisfied: true, serverIds: { workOrderId: wo.id, status: wo.status } };
       }
-      const mine = technicianIdOf();
-      // Only claimed when we can actually tell. An unknown technician id is not evidence of
-      // reassignment, and refusing on it would strand work over a failed local lookup.
-      if (mine && wo.assignedTechId && wo.assignedTechId !== mine) {
-        return { proceed: false, code: "permission-denied", details: "NOT_ASSIGNED_TECHNICIAN" };
-      }
+      // NO BROWSER IDENTITY COMPARISON. The governed assignee is an EOS Employee, and whose work this
+      // is was decided by the server when it let this read through; completeWorkOrder re-checks it
+      // (NOT_ASSIGNED) at the moment it runs.
       return { proceed: true };
     },
   };

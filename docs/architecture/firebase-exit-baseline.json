@@ -18,7 +18,6 @@
         "field-ops-app-vite/src/access/useWorkOrderPartsPlanCapability.js",
         "field-ops-app-vite/src/analytics/executionAnalyticsService.ts",
         "field-ops-app-vite/src/auth/employeeSession.js",
-        "field-ops-app-vite/src/domain/accountWorkOrders.js",
         "field-ops-app-vite/src/domain/employees.js",
         "field-ops-app-vite/src/domain/jobActions.js",
         "field-ops-app-vite/src/firebase/collectionStore.js",
@@ -31,9 +30,6 @@
         "field-ops-app-vite/src/hooks/useInstalledEquipmentPage.js",
         "field-ops-app-vite/src/hooks/useInventoryActions.js",
         "field-ops-app-vite/src/hooks/useListViewChrome.js",
-        "field-ops-app-vite/src/hooks/usePartWorkOrderDemand.js",
-        "field-ops-app-vite/src/hooks/useWorkOrder.js",
-        "field-ops-app-vite/src/hooks/useWorkOrderSearch.js",
         "field-ops-app-vite/src/lib/firebaseSafe.js",
         "field-ops-app-vite/src/metadata/definitions/accountPageComponents.js",
         "field-ops-app-vite/src/metadata/firestoreListSource.js",
@@ -41,9 +37,7 @@
         "field-ops-app-vite/src/services/operationsQueries.ts",
         "field-ops-app-vite/src/services/truckRegistryCommandClient.js",
         "field-ops-app-vite/src/services/truckRegistryQueries.js",
-        "field-ops-app-vite/src/services/workOrderService.ts",
-        "field-ops-app-vite/src/types/access.ts",
-        "field-ops-app-vite/src/types/workOrder.ts"
+        "field-ops-app-vite/src/types/access.ts"
       ],
       "firebase_functions_client": [
         "field-ops-app-vite/src/access/adminPasswordResetClient.js",
@@ -85,8 +79,7 @@
         "field-ops-app-vite/src/services/truckRegistryCommandClient.js",
         "field-ops-app-vite/src/services/workOrderInstallCallableClient.js",
         "field-ops-app-vite/src/services/workOrderLaborCallableClient.js",
-        "field-ops-app-vite/src/services/workOrderReadinessContextClient.js",
-        "field-ops-app-vite/src/services/workOrderService.ts"
+        "field-ops-app-vite/src/services/workOrderReadinessContextClient.js"
       ],
       "firebase_auth": [
         "field-ops-app-vite/src/auth/AuthContext.jsx",

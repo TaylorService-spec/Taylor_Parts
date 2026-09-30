@@ -114,14 +114,19 @@ export function interpretWorkOrderSearchRead({ term, docs = null, loading = fals
   if (error) {
     // A technician can only read Work Orders assigned to them, so denial is an ordinary
     // outcome here rather than an exceptional one — and it must never read as "no match".
-    const denied = error?.code === "permission-denied";
+    const denied = error?.code === "permission-denied" || error?.code === "FORBIDDEN";
+    // The governed EOS route answers NOT_ACTIVATED until the Work Order authority is switched on
+    // (DQ-S4). Said as itself -- never "no match", never "try again".
+    const notActivated = error?.code === "NOT_ACTIVATED";
     return Object.freeze({
       state: denied ? "DENIED" : "UNAVAILABLE",
       results: Object.freeze([]),
       truncated: false,
       message: denied
         ? "You don't have access to search work orders."
-        : "Work order search could not be completed. Try again.",
+        : notActivated
+          ? "Work Orders are not yet activated on EOS (NOT_YET_ACTIVATED); search is unavailable until they are."
+          : "Work order search could not be completed. Try again.",
     });
   }
   if (!Array.isArray(docs)) {

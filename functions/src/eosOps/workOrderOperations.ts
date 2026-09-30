@@ -24,7 +24,7 @@ import {
 } from "./workOrderScheduling";
 import { recordWorkOrderExecution } from "./workOrderExecution";
 import { setPartsPlan } from "./workOrderPartsPlanAuthority";
-import { readWorkOrderDetail, listWorkOrders, listMyAssignedWorkOrders, listWorkOrderTechnicians } from "./workOrderQueries";
+import { readWorkOrderDetail, listWorkOrders, listMyAssignedWorkOrders, listWorkOrderTechnicians, listWorkOrderOperatingCompanies } from "./workOrderQueries";
 import type { PostgresWorkOrderWriterState } from "./workOrderWriterState";
 
 export interface WorkOrderOperationDeps {
@@ -69,6 +69,7 @@ export const EOS_WORK_ORDER_OPERATIONS = Object.freeze({
   listWorkOrders: (deps, caller, input) => listWorkOrders({ pool: deps.pool }, caller.actor, input),
   listMyAssignedWorkOrders: (deps, caller, input) => listMyAssignedWorkOrders({ pool: deps.pool, reader: deps.reader }, caller.operational, input),
   listWorkOrderTechnicians: (deps, caller, input) => (only(input, ["workOrderId"]), listWorkOrderTechnicians({ pool: deps.pool }, caller.actor, input)),
+  listWorkOrderOperatingCompanies: (deps, caller, input) => (only(input, []), listWorkOrderOperatingCompanies({ pool: deps.pool }, caller.actor)),
 
   // ── create: the operating company is STATED by the caller's command context and validated as governed ──
   createWorkOrder: (deps, caller, input) => {
@@ -101,6 +102,7 @@ export type EosWorkOrderOperation = keyof typeof EOS_WORK_ORDER_OPERATIONS | "re
 
 export const WORK_ORDER_READ_OPERATIONS: readonly string[] = Object.freeze([
   "readWorkOrderAuthorityStatus", "readWorkOrder", "listWorkOrders", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
+  "listWorkOrderOperatingCompanies",
 ]);
 
 export const isWorkOrderOperation = (name: unknown): name is EosWorkOrderOperation =>

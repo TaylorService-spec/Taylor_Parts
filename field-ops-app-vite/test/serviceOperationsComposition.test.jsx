@@ -43,8 +43,9 @@ let workOrdersResult = { data: WORK_ORDERS, loading: false, error: null };
 let techniciansResult = { data: TECHNICIANS, error: null };
 
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: () => workOrdersResult }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({
-  useFirestoreCollection: () => techniciansResult,
+// Work Order cutover: technicians are the governed, Employee-keyed directory (not fieldops_technicians).
+vi.mock("../src/hooks/useWorkOrderTechnicianDirectory.js", () => ({
+  useWorkOrderTechnicianDirectory: () => techniciansResult,
 }));
 vi.mock("../src/hooks/useAccountNames", () => ({
   useAccountNames: () => new Map([["C1", "Acme Foods"], ["C2", "Northline Cold Storage"]]),
@@ -220,7 +221,7 @@ describe("invariant — the composition root owns the reads and the derivations"
       const source = read(path.join("panels", file));
       expect(source, `${file} imports firebase`).not.toMatch(/from\s+["']firebase/);
       expect(source, `${file} uses a Firestore hook`).not.toMatch(
-        /useFirestoreCollection|useWorkOrders|useAccountNames|onSnapshot|getDocs/,
+        /useFirestoreCollection|useWorkOrders|useWorkOrderTechnician|useAccountNames|onSnapshot|getDocs/,
       );
     }
   });
@@ -245,7 +246,7 @@ describe("invariant — the composition root owns the reads and the derivations"
   it("ControlTower.jsx is the only file in the module that calls the read hooks", () => {
     const root = read("ControlTower.jsx");
     expect(root).toMatch(/useWorkOrders\(\)/);
-    expect(root).toMatch(/useFirestoreCollection\(/);
+    expect(root).toMatch(/useWorkOrderTechnicianDirectory\(/);
     expect(root).toMatch(/useAccountNames\(/);
   });
 

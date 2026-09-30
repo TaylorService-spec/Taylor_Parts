@@ -4,6 +4,7 @@ import { buildListPresentation } from "../metadata/listPresentation.js";
 import { fetchPage as fetchFirestorePage } from "../metadata/firestoreListSource.js";
 import { fetchPage as fetchCallablePage } from "../metadata/callableListSource.js";
 import { fetchPage as fetchCrmAccountPage } from "../metadata/crmListSource.js";
+import { fetchPage as fetchWorkOrderPage } from "../metadata/workOrderListSource.js";
 
 // Drives a metadata list: descriptor -> page -> presentation model.
 //
@@ -39,6 +40,8 @@ function resolveReadCallable(def, entity) {
 
 function selectListSource(entity, def) {
   if (entity?.readVia === "EOS_API" && entity?.id === "account") return fetchCrmAccountPage;
+  // WORK ORDER CUTOVER: the governed EOS Work Order route, never Firestore fieldops_wos.
+  if (entity?.readVia === "EOS_API" && entity?.id === "workOrder") return fetchWorkOrderPage;
   if (entity?.readVia === "CLIENT_DIRECT") return fetchFirestorePage;
   if (entity?.readVia === "CALLABLE" && resolveReadCallable(def, entity)) return fetchCallablePage;
   // UNKNOWN readVia, or CALLABLE with no readCallable resolved (neither the list view nor

@@ -72,6 +72,32 @@ export function schedulingRefusalMessage(errorCode, errorStatus, context = {}) {
     // same remedy. The server deliberately reuses one code for both (see schedulingCallables.ts).
     case "STALE_WORK_ORDER":
       return "The schedule changed while you were moving this. The board has refreshed — try again.";
+    // The governed EOS Work Order route's codes (functions/src/eosOps/workOrderScheduling.ts).
+    case "STALE_SCHEDULE":
+    case "STALE_WORK_ORDER_STATE":
+    case "WORK_ORDER_CONCURRENT_CHANGE":
+      return "The schedule changed while you were moving this. The board has refreshed — try again.";
+    case "DOUBLE_BOOKED":
+      return `Refused — ${who} is already on an active work order.`;
+    case "EMPLOYEE_NOT_ASSIGNABLE":
+    case "EMPLOYEE_NOT_FOUND":
+    case "EMPLOYEE_NOT_ELIGIBLE_FOR_OPERATING_COMPANY":
+      return `Refused — ${who} cannot be scheduled.`;
+    case "ASSIGNEE_REQUIRED":
+      return `Refused — ${ref} has no technician; name one.`;
+    case "REASON_INVALID":
+    case "REASSIGN_REASON_REQUIRED":
+      return "A reason is required for this change.";
+    case "NOT_ACTIVATED":
+      return "Work Orders are not yet activated on EOS (NOT_YET_ACTIVATED). Nothing was changed.";
+    case "CAPABILITY_MISSING":
+    case "CAPABILITY_REQUIRED":
+      return "You are not authorized to change a schedule.";
+    case "NOT_ON_GOVERNED_ROUTE":
+      return "That change is not available on the governed Work Order service yet. Nothing was changed.";
+    case "SCHEDULE_TIME_INVALID":
+    case "SCHEDULE_END_NOT_AFTER_START":
+    case "SCHEDULE_WINDOW_TOO_LONG":
     case "INVALID_INPUT":
       return "Refused — that placement is not valid.";
     case "PERMISSION_DENIED":
@@ -109,6 +135,10 @@ export function schedulingWarningMessage(code, context = {}) {
       return `Scheduled outside ${who}'s recorded working hours.`;
     case "NO_WORKING_AVAILABILITY_RECORDED":
       return `Scheduled — ${who} has no working hours recorded, so this could not be checked against a shift.`;
+    // The governed route says, on every placement, that working hours and blocked time have no
+    // PostgreSQL authority yet and were not consulted. Said, never dropped.
+    case "AVAILABILITY_NOT_MODELED":
+      return `Placed — ${who}'s working hours and blocked time were not checked (not yet modeled on EOS).`;
     default:
       return null;
   }

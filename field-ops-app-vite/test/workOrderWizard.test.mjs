@@ -11,6 +11,13 @@ import {
   CREATE_INTERNAL_MESSAGE,
   makeWorkOrderIdempotencyKey,
   createIdempotencyKeyHolder,
+  createBlockedReason,
+  WIZARD_COMPANY_UNAVAILABLE_MESSAGE,
+  CREATE_NOT_ACTIVATED_MESSAGE,
+  CREATE_IDEMPOTENCY_KEY_REUSED_MESSAGE,
+  WIZARD_COMPANY_CHOICE_REQUIRED_MESSAGE,
+  companyChoice,
+  COMPANY_READ,
 } from "../src/domain/workOrderWizard.js";
 
 let passed = 0;
@@ -70,13 +77,53 @@ ok("step2 with locations but none chosen -> select-a-location",
 ok("step2 clears once a location is chosen",
   stepBlockedReason(2, { hasLocations: true, selectedLocationId: "loc-1" }) === null);
 
-// ----- stepBlockedReason: step 3 (type OR complaint) -----
+// ----- stepBlockedReason: step 3 (a TYPE is required -- the governed createWorkOrder needs workOrderType) -----
 ok("step3 blocked with neither type nor complaint",
-  stepBlockedReason(3, { type: "", complaint: "" }) === "Choose a Type, or enter a Complaint, to continue.");
+  stepBlockedReason(3, { type: "", complaint: "" }) === "Choose a Type to continue.");
 ok("step3 blocked when complaint is only whitespace",
-  stepBlockedReason(3, { type: "", complaint: "   " }) === "Choose a Type, or enter a Complaint, to continue.");
+  stepBlockedReason(3, { type: "", complaint: "   " }) === "Choose a Type to continue.");
 ok("step3 clears with a type", stepBlockedReason(3, { type: "PM", complaint: "" }) === null);
-ok("step3 clears with a complaint only", stepBlockedReason(3, { type: "", complaint: "No heat" }) === null);
+ok("step3 stays blocked with a complaint only -- the governed command requires a type",
+  stepBlockedReason(3, { type: "", complaint: "No heat" }) === "Choose a Type to continue.");
+
+// ----- the operating company: required, never inferred -----
+ok("create is refused, naming the missing company, when no governed company is chosen",
+  createBlockedReason({ operatingCompanyId: null }) === WIZARD_COMPANY_UNAVAILABLE_MESSAGE
+  && /operating company/i.test(WIZARD_COMPANY_UNAVAILABLE_MESSAGE)
+  && /never infers/i.test(WIZARD_COMPANY_UNAVAILABLE_MESSAGE));
+ok("a blank company is still missing", createBlockedReason({ operatingCompanyId: "  " }) === WIZARD_COMPANY_UNAVAILABLE_MESSAGE);
+ok("a stated governed company clears the block", createBlockedReason({ operatingCompanyId: "taylor" }) === null);
+
+// ----- the governed company list: one is stated, several must be chosen, none refuses -----
+const ONE = [{ operatingCompanyId: "taylor", operatingCompanyKey: "TAYLOR" }];
+const TWO = [...ONE, { operatingCompanyId: "ventana", operatingCompanyKey: "VENTANA" }];
+ok("a list of one is preselected (stated, not inferred)",
+  companyChoice({ status: COMPANY_READ.READY, companies: ONE }).preselectedId === "taylor"
+  && companyChoice({ status: COMPANY_READ.READY, companies: ONE }).mustChoose === false);
+ok("several companies must be chosen -- nothing preselected",
+  companyChoice({ status: COMPANY_READ.READY, companies: TWO }).preselectedId === null
+  && companyChoice({ status: COMPANY_READ.READY, companies: TWO }).mustChoose === true);
+ok("a failed read offers no choice", companyChoice({ status: COMPANY_READ.FAILED, companies: TWO }).options.length === 0);
+ok("several, none chosen -> choose-company copy",
+  createBlockedReason({ operatingCompanyId: null, options: TWO }) === WIZARD_COMPANY_CHOICE_REQUIRED_MESSAGE);
+ok("several, one chosen -> clear", createBlockedReason({ operatingCompanyId: "ventana", options: TWO }) === null);
+ok("a chosen id not in the governed list is never sent",
+  createBlockedReason({ operatingCompanyId: "elsewhere", options: TWO }) === WIZARD_COMPANY_CHOICE_REQUIRED_MESSAGE);
+ok("an empty governed list keeps the refusal naming the missing company",
+  createBlockedReason({ operatingCompanyId: null, options: [] }) === WIZARD_COMPANY_UNAVAILABLE_MESSAGE);
+ok("a list of one, preselected -> clear", createBlockedReason({ operatingCompanyId: "taylor", options: ONE }) === null);
+ok("IDEMPOTENCY_KEY_REUSED has its own clear copy",
+  getWizardCreateErrorMessage({ code: "CONFLICT", reason: "IDEMPOTENCY_KEY_REUSED", message: "raw" }) === CREATE_IDEMPOTENCY_KEY_REUSED_MESSAGE
+  && /nothing new was created/i.test(CREATE_IDEMPOTENCY_KEY_REUSED_MESSAGE));
+
+// ----- the governed route's error categories -----
+ok("NOT_ACTIVATED is the readiness state, never a failure copy",
+  getWizardCreateErrorMessage({ code: "NOT_ACTIVATED" }) === CREATE_NOT_ACTIVATED_MESSAGE);
+ok("FORBIDDEN -> permission copy", getWizardCreateErrorMessage({ code: "FORBIDDEN", message: "raw" }) === CREATE_PERMISSION_DENIED_MESSAGE);
+ok("INVALID_INPUT appends the governed validation message",
+  getWizardCreateErrorMessage({ code: "INVALID_INPUT", message: "a Work Order is for a customer" })
+    === `${CREATE_FAILED_MESSAGE} a Work Order is for a customer`);
+ok("UNREACHABLE -> unavailable copy", getWizardCreateErrorMessage({ code: "UNREACHABLE" }) === CREATE_UNAVAILABLE_MESSAGE);
 ok("step3 tolerates an undefined complaint", stepBlockedReason(3, { type: "PM" }) === null);
 
 // ----- step 4 and canAdvance -----

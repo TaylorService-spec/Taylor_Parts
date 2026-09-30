@@ -47,9 +47,19 @@
 // rejects the whole query for that role -- same reasoning documented
 // on subscribeAssignedWorkOrders()'s header comment). Do not wire
 // either of those two into a technician-facing screen.
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+//
+// WORK ORDER CUTOVER STATUS. getWorkOrderExecutionSummary() reads the GOVERNED EOS detail
+// (readWorkOrder via services/workOrderService.ts). The three AGGREGATE reads below
+// (getTechnicianExecutionStats / getInventoryConsumptionSnapshot / getTechnicianVolumeBreakdown)
+// STILL read Firestore fieldops_wos: the governed route has no aggregate read, its list summary
+// carries neither lifecycle timestamps (workStartedAt/completedAt) nor part usage, and the
+// technician's own list excludes CLOSED Work Orders -- so no honest conversion exists without a
+// server read that does not exist yet. They are REMAINING Firestore Work Order readers, reported
+// as such; they are not a fallback for anything.
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { WORK_ORDERS_COLLECTION } from "../domain/constants";
+import { getWorkOrder } from "../services/workOrderService";
 import type { WorkOrder, InventorySnapshotItem, ExecutionLogEntry } from "../types/workOrder";
 
 export interface NormalizedPartUsage {
@@ -86,10 +96,9 @@ export interface WorkOrderExecutionSummary {
 
 // 1. getWorkOrderExecutionSummary(workOrderId)
 export async function getWorkOrderExecutionSummary(workOrderId: string): Promise<WorkOrderExecutionSummary | null> {
-  const snap = await getDoc(doc(db, WORK_ORDERS_COLLECTION, workOrderId));
-  if (!snap.exists()) return null;
+  const wo = await getWorkOrder(workOrderId);
+  if (!wo) return null;
 
-  const wo = snap.data() as WorkOrder;
   const partsUsed = normalizeQtyUsed(wo.inventorySnapshot);
   const executionLog = sortLogOldestFirst(wo.executionLog);
 
@@ -99,7 +108,7 @@ export async function getWorkOrderExecutionSummary(workOrderId: string): Promise
     partsUsed,
     executionNotes: executionLog.map((entry) => entry.note),
     executionLog,
-    lastUpdated: wo.lastUpdated?.toMillis?.() ?? null,
+    lastUpdated: wo.lastUpdated?.toMillis?.() ?? wo.updatedAt?.toMillis?.() ?? null,
   };
 }
 

@@ -360,11 +360,13 @@ describe("Work Order", () => {
     expect(WO).toMatch(/objectListPathWithState\(OBJECT_LIST_KEY\.WORK_ORDERS/);
   });
 
-  it("the realtime dispatch subscription is untouched", () => {
-    // The list migration deliberately left this alone; a record-page package has even less business
-    // near it.
-    expect(read("src/services/workOrderService.ts"))
-      .toMatch(/onSnapshot\(collection\(db, WORK_ORDERS_COLLECTION\)/);
+  it("the dispatch subscription is the governed refresh loop, never a Firestore listener (Work Order cutover)", () => {
+    // Superseded by the Owner ruling "no runtime Firestore Work Order reads": the office list refreshes
+    // over the governed listWorkOrders route and the service imports no Firebase at all.
+    const service = read("src/services/workOrderService.ts");
+    expect(service).toMatch(/export function subscribeToWorkOrders\(/);
+    expect(service).toMatch(/listWorkOrders\(/);
+    expect(service).not.toMatch(/firebase/);
   });
 });
 

@@ -33,8 +33,30 @@ export const PLAN_OUTCOME = Object.freeze({
 // Map a callable error to an honest, user-safe outcome. An unrecognized error is FAILED -- never
 // silently treated as success, and never reported as "denied" (which would misattribute an outage to
 // the user's permissions).
+// The governed EOS Work Order route (services/workOrderService.ts) reports categories; each maps onto the
+// callable-era code that meant the same thing, so every outcome below is unchanged.
+const EOS_PLAN_CATEGORY = Object.freeze({
+  FORBIDDEN: "permission-denied",
+  UNAUTHENTICATED: "unauthenticated",
+  NOT_SIGNED_IN: "unauthenticated",
+  NOT_FOUND: "failed-precondition",
+  CONFLICT: "failed-precondition",
+  PRECONDITION_FAILED: "failed-precondition",
+  INVALID_INPUT: "invalid-argument",
+  NOT_CONFIGURED: "not-found",
+  UNREACHABLE: "not-found",
+  UNAVAILABLE: "not-found",
+});
+
 export function outcomeFromPlanError(error) {
-  const code = typeof error?.code === "string" ? error.code : "";
+  if (error?.code === "NOT_ACTIVATED") {
+    return {
+      outcome: PLAN_OUTCOME.UNAVAILABLE,
+      message: "Work Orders are not yet activated on EOS (NOT_YET_ACTIVATED). The parts plan was not changed.",
+    };
+  }
+  const raw = typeof error?.code === "string" ? error.code : "";
+  const code = EOS_PLAN_CATEGORY[raw] ?? raw;
   if (code === "functions/permission-denied" || code === "permission-denied") {
     return {
       outcome: PLAN_OUTCOME.DENIED,

@@ -146,6 +146,23 @@ test("Work Order journey acceptance through /operations/work-orders", { skip: SK
     refused(await call(SVC_MGR, "recordWorkOrderEquipmentInstall", {}), 404, "UNKNOWN_OPERATION");
   });
 
+  await t.test("SERVICE OFFICE: the company picker is governed -- ACTIVE and keyed only; create is idempotent by key", async () => {
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
+             VALUES ($1,'unkeyed-co','ACTIVE','fixture','fixture','fixture')`, [T]);
+    const companies = ok(await call(SVC_MGR, "listWorkOrderOperatingCompanies"));
+    assert.deepEqual(companies.items.map((c) => c.operatingCompanyId), ["taylor", "ventana"], "an ACTIVE but unkeyed company is not offered");
+    refused(await call(NOBODY, "listWorkOrderOperatingCompanies"), 403, "CAPABILITY_MISSING");
+    const req = { operatingCompanyId: "taylor", customerId: "acct-j", locationId: "loc-j", workOrderType: "INSPECTION", priority: 4, idempotencyKey: "wiz-1" };
+    const before = await woCount();
+    const first = ok(await call(SVC_MGR, "createWorkOrder", req));
+    const again = ok(await call(SVC_MGR, "createWorkOrder", req));
+    assert.equal(first.replayed, false);
+    assert.deepEqual([again.replayed, again.workOrderId, again.workOrderNumber], [true, first.workOrderId, first.workOrderNumber]);
+    assert.equal(await woCount(), before + 1, "a retried create mints no duplicate and burns no number");
+    refused(await call(SVC_MGR, "createWorkOrder", { ...req, priority: 1 }), 409, "IDEMPOTENCY_KEY_REUSED");
+    ok(await call(SVC_MGR, "cancelWorkOrder", { workOrderId: first.workOrderId, expectedStatus: "CREATED", note: "idempotency fixture" }));
+  });
+
   let woId;
   await t.test("SERVICE OFFICE: create (company stated, never inferred) -> ready -> plan parts", async () => {
     refused(await call(NOBODY, "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-j", locationId: "loc-j", workOrderType: "SERVICE_CALL", priority: 2 }), 403, "CAPABILITY_MISSING");

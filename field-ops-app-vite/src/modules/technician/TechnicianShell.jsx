@@ -39,7 +39,9 @@ const SyncQueue = lazy(() => import("../mobile/SyncQueue"));
 export default function TechnicianShell({ deps = {} }) {
   const [tab, setTab] = useState("home");
   const { technicianId, loading: techLoading } = useCurrentTechnician();
-  const { data: workOrders, loading: workOrdersLoading } = useAssignedWorkOrders(technicianId);
+  // The technician's own work: the governed listMyAssignedWorkOrders read (the server resolves the
+  // Employee). `technicianId` above keys the offline queue only; it never selects Work Orders.
+  const { data: workOrders, loading: workOrdersLoading } = useAssignedWorkOrders();
 
   // ONE technician-scoped subscription feeds every tab. Home and Jobs are two views of the same
   // read, not two reads -- a phone on a weak connection should not pay twice for one answer.

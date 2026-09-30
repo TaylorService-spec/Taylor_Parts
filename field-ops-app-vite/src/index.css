@@ -3908,6 +3908,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-execution-capture__part-row { align-items: center; }
 .fo-execution-capture__part-label { flex: 1; }
 .fo-execution-capture__notes { margin-top: var(--space-3); }
+/* Work Order cutover: recording usage moves no stock -- said once, quietly, above the part rows. */
+.fo-execution-capture__boundary { margin: var(--space-1) 0 var(--space-2); }
+/* NOT_YET_ACTIVATED (DQ-S4): a readiness state, not a failure banner. */
+.fo-work-order-readiness { margin: 0 0 var(--space-3); }
 .fo-wo-detail__title { margin: 0; }
 
 

@@ -22,6 +22,7 @@ import {
   getWorkOrderExecutionSummary,
   normalizeQtyUsed,
 } from "../src/analytics/executionAnalyticsService";
+import { __setWorkOrderTransportForTests } from "../src/services/workOrderService";
 
 const stamp = (ms) => ({ toMillis: () => ms });
 const docs = (items) => ({ docs: items.map(({ id, ...data }) => ({ id, data: () => data })) });
@@ -36,17 +37,23 @@ describe("execution analytics service", () => {
   });
 
   it("returns null for a missing work order and a sorted, derived execution summary otherwise", async () => {
-    firestore.getDoc.mockResolvedValueOnce({ exists: () => false });
+    // Work Order cutover: the summary reads the GOVERNED detail (readWorkOrder), not a Firestore doc.
+    __setWorkOrderTransportForTests(async () => ({ ok: false, code: "NOT_FOUND", reason: "WORK_ORDER_NOT_FOUND", status: 404, message: "x" }));
     await expect(getWorkOrderExecutionSummary("missing")).resolves.toBeNull();
 
-    firestore.getDoc.mockResolvedValueOnce({
-      exists: () => true,
-      data: () => ({
-        inventorySnapshot: [{ sku: "P-1", qtyUsed: 3 }],
-        executionLog: [{ note: "later", at: stamp(20) }, { note: "first", at: stamp(10) }],
-        lastUpdated: stamp(30),
-      }),
-    });
+    __setWorkOrderTransportForTests(async (op) => ({
+      ok: true, operation: op,
+      result: {
+        workOrderId: "wo-1", status: "WORK_IN_PROGRESS", createdAt: "1970-01-01T00:00:00.001Z", updatedAt: new Date(30).toISOString(),
+        execution: {
+          parts: [{ partId: "P-1", qtyPlanned: 3, qtyUsed: 3 }],
+          notes: [
+            { note: "later", recordedByPrincipalId: "p", recordedAt: new Date(20).toISOString() },
+            { note: "first", recordedByPrincipalId: "p", recordedAt: new Date(10).toISOString() },
+          ],
+        },
+      },
+    }));
     await expect(getWorkOrderExecutionSummary("wo-1")).resolves.toMatchObject({
       workOrderId: "wo-1",
       totalPartsUsed: 3,
@@ -54,6 +61,8 @@ describe("execution analytics service", () => {
       executionNotes: ["first", "later"],
       lastUpdated: 30,
     });
+    expect(firestore.getDoc).not.toHaveBeenCalled();
+    __setWorkOrderTransportForTests(null);
   });
 
   it("aggregates technician completion, usage, statuses, and durations from its scoped query", async () => {

@@ -13,8 +13,9 @@ vi.mock("../src/services/workOrderService", () => ({
   transitionWorkOrder: vi.fn(),
 }));
 
-vi.mock("../src/hooks/useFirestoreCollection", () => ({
-  useFirestoreCollection: () => ({ data: [], loading: false, error: null }),
+// Work Order cutover: Dispatch reads the governed technician roster, not fieldops_technicians.
+vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({
+  useWorkOrderTechnicians: () => ({ data: [], loading: false, error: null }),
 }));
 
 afterEach(() => {

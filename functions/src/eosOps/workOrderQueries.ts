@@ -20,6 +20,7 @@ import { WORK_ORDER_RECORD_READ, authorizeWorkOrderRecordRead, readWorkOrderTran
 import { WorkOrderLifecycleError, WORK_ORDER_LIFECYCLE_DISPATCH, WORK_ORDER_LIFECYCLE_SCHEDULE,
   WORK_ORDER_STATUSES, TERMINAL_STATUSES, type LifecycleActor } from "./workOrderLifecycle";
 import { readWorkOrderExecution } from "./workOrderExecution";
+import { WORK_ORDER_CREATE } from "./workOrderCreateCommand";
 import { WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES, WORK_ORDER_ASSIGNMENT_QUALIFICATION } from "./workOrderAssignmentAuthority";
 import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding";
 import { EMPLOYEE_DIRECTORY_COLUMNS, directoryItemOf, type EmployeeDirectoryItem } from "../eosWorkforce/reads/employeeRecordProjection";
@@ -303,4 +304,30 @@ export async function listWorkOrderTechnicians(
     [actor.tenantId, companyId, [...WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES], WORK_ORDER_ASSIGNMENT_QUALIFICATION]);
   return Object.freeze({ workOrderId: ID_SHAPE(workOrderId) ? workOrderId : null, operatingCompanyId: companyId,
     items: Object.freeze(rows.map(directoryItemOf)) });
+}
+
+/**
+ * The operating companies a Work Order may be CREATED for, read from governed authority -- never inferred: the
+ * tenant's ACTIVE companies that carry an ACTIVE eos_ops key binding (a company authorized but unkeyed cannot hold a
+ * native Work Order, so offering it would only lead to OPERATING_COMPANY_KEY_NOT_BOUND). The caller STATES one of
+ * these on create; the create command re-validates it. Requires workOrder.create.
+ */
+export async function listWorkOrderOperatingCompanies(
+  deps: { readonly pool: Pool },
+  actor: LifecycleActor,
+): Promise<{ readonly items: readonly { readonly operatingCompanyId: string; readonly operatingCompanyKey: string }[] }> {
+  if (!(actor?.capabilities instanceof Set) || !actor.capabilities.has(WORK_ORDER_CREATE)) {
+    refuse("CAPABILITY_MISSING", "FORBIDDEN", `choosing a Work Order's operating company requires ${WORK_ORDER_CREATE}`);
+  }
+  const { rows } = await deps.pool.query(
+    `SELECT c.operating_company_id, b.operating_company_key
+       FROM eos_policy.tenant_operating_companies c
+       JOIN eos_policy.tenant_operating_company_keys b
+         ON b.tenant_id = c.tenant_id AND b.operating_company_id = c.operating_company_id AND b.status = 'ACTIVE'
+      WHERE c.tenant_id = $1 AND c.status = 'ACTIVE'
+      ORDER BY c.operating_company_id`,
+    [actor.tenantId]);
+  return Object.freeze({ items: Object.freeze(rows.map((r) => Object.freeze({
+    operatingCompanyId: String(r.operating_company_id), operatingCompanyKey: String(r.operating_company_key),
+  }))) });
 }

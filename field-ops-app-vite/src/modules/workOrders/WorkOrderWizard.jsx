@@ -1,37 +1,41 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccountPicker } from "../../hooks/useAccountPicker";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
-import { createWorkOrder } from "../../services/workOrderService";
+import { createWorkOrder, listWorkOrderOperatingCompanies } from "../../services/workOrderService";
 import {
   WIZARD_STEPS,
   WIZARD_STEP_COUNT,
   getWizardCreateErrorMessage,
   stepBlockedReason,
+  createBlockedReason,
+  companyChoice,
+  COMPANY_READ,
   createIdempotencyKeyHolder,
 } from "../../domain/workOrderWizard";
+import WorkOrderAuthorityNotice from "../../shared/ui/WorkOrderAuthorityNotice.jsx";
 import CustomerPicker from "./CustomerPicker";
 import EquipmentPicker from "./EquipmentPicker";
 import { equipmentAllowedAtCreate } from "../../domain/workOrderEquipmentRule.js";
 import { WORK_ORDER_PRIORITY_OPTIONS } from "../../domain/workOrderPriority";
 import { Button } from "../../shared/ui/primitives";
 
-// Sprint 2.0.3 -- Work Order creation wizard. Four steps, mapped
-// directly to createWorkOrder()'s actual validated input
-// (functions/src/createWorkOrder.ts's assertValidInput) -- no backend
-// change, this only calls that Cloud Function exactly as it already
-// exists, once Sprint 2.0.2's accounts/locations give steps 1-2 real
-// data to resolve against.
+// Sprint 2.0.3 -- Work Order creation wizard. Four steps, mapped onto the
+// GOVERNED EOS createWorkOrder command (services/workOrderService.ts ->
+// POST /operations/work-orders) -- never a Firebase callable.
+//
+// The governed command needs an explicit operating company, a Work Order
+// type and a 1-4 priority. The type is required at step 3. The company comes
+// ONLY from the governed listWorkOrderOperatingCompanies read: one company is
+// preselected and SHOWN as the stated company; several must be chosen; none,
+// a refused read, or NOT_ACTIVATED keeps Create refused with a message naming
+// the missing company (domain/workOrderWizard.js). Never inferred or hard-coded.
+// Every create carries a stable-per-submission idempotency key, so a retry or
+// double submit replays the same Work Order instead of minting a duplicate.
 //
 // Step 1 reuses GlobalSearch's accounts provider via the new
-// onResultSelect prop (Sprint 2.0.3's minimal extension to that
-// component) -- selecting a result sets wizard state instead of
+// onResultSelect prop -- selecting a result sets wizard state instead of
 // navigating away from the wizard.
-//
-// Cloud Functions are NOT deployed live as of Sprint 2.0.3 (verified,
-// firebase functions:list --project taylor-parts -> empty, blocked on
-// the Blaze plan upgrade, issue #15). createWorkOrder() is still
-// wired up and called exactly as it will be once deployed.
 //
 // Layout & error clarity pass: the step model, the per-step "why can't
 // this advance" rule, and the create-error messaging all live in the
@@ -105,14 +109,34 @@ export default function WorkOrderWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
-  // site-work #2 -- ONE holder per wizard mount, so every createWorkOrder() call from this
-  // session (including a retry after a failed attempt, or a network-level double-submit)
-  // carries the SAME idempotencyKey. Never regenerated per click -- see
-  // domain/workOrderWizard.js's createIdempotencyKeyHolder.
+  // THE OPERATING COMPANY -- from the governed read only (domain/workOrderWizard.js companyChoice).
+  const [companyRead, setCompanyRead] = useState({ status: COMPANY_READ.LOADING, companies: [] });
+  const [chosenCompanyId, setChosenCompanyId] = useState("");
+  useEffect(() => {
+    let active = true;
+    listWorkOrderOperatingCompanies()
+      .then((companies) => { if (active) setCompanyRead({ status: COMPANY_READ.READY, companies }); })
+      // Refused, NOT_ACTIVATED or unreachable: no governed choice exists, so Create stays refused.
+      .catch(() => { if (active) setCompanyRead({ status: COMPANY_READ.FAILED, companies: [] }); });
+    return () => { active = false; };
+  }, []);
+  const companies = companyChoice(companyRead);
+  // A list of one is preselected -- an explicit governed choice from a list of one, shown as such.
+  const operatingCompanyId = chosenCompanyId || companies.preselectedId || null;
+  const createReason = companyRead.status === COMPANY_READ.LOADING
+    ? "Loading the operating companies this Work Order can belong to…"
+    : createBlockedReason({ operatingCompanyId, options: companies.options });
+
+  // site-work #2 -- ONE key holder per wizard mount, so every create from this session (a retry after a
+  // failed attempt, a network-level double submit) carries the SAME idempotencyKey and the server replays
+  // the same Work Order. Reset only after the server reports IDEMPOTENCY_KEY_REUSED, so the user's NEXT
+  // explicit Create is a genuinely new submission.
   const idempotencyKeyHolderRef = useRef(null);
   if (!idempotencyKeyHolderRef.current) {
     idempotencyKeyHolderRef.current = createIdempotencyKeyHolder();
   }
+  // Also guards a double click locally while a create is in flight.
+  const inFlightRef = useRef(false);
 
   const { data: locations, error: locationsError, retry: retryLocations } =
     useLocationsForAccount(selectedAccount?.id ?? null);
@@ -133,10 +157,17 @@ export default function WorkOrderWizard() {
   }
 
   async function handleCreate() {
+    if (createReason) {
+      setSubmitError(createReason);
+      return;
+    }
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
     try {
       const result = await createWorkOrder({
+        operatingCompanyId,
         customerId: selectedAccount.id,
         locationId: selectedLocationId,
         priority,
@@ -151,8 +182,10 @@ export default function WorkOrderWizard() {
       navigate(`/service/work-orders/${result.id}`);
     } catch (err) {
       console.error("createWorkOrder failed:", err);
+      if (err?.reason === "IDEMPOTENCY_KEY_REUSED") idempotencyKeyHolderRef.current.reset();
       setSubmitError(getWizardCreateErrorMessage(err));
     } finally {
+      inFlightRef.current = false;
       setSubmitting(false);
     }
   }
@@ -160,6 +193,7 @@ export default function WorkOrderWizard() {
   return (
     <div className="fo-panel fo-wizard">
       <h2>New Work Order</h2>
+      <WorkOrderAuthorityNotice />
       <WizardProgress step={step} />
 
       {step === 1 && (
@@ -251,7 +285,7 @@ export default function WorkOrderWizard() {
                 // survive into a submit the server would refuse.
                 if (!equipmentAllowedAtCreate(next)) setEquipmentId(null);
               }}>
-              <option value="">(no type -- complaint required instead)</option>
+              <option value="">Select a type…</option>
               {TYPE_OPTIONS.map((t) => (
                 <option key={t} value={t}>
                   {t}
@@ -288,7 +322,7 @@ export default function WorkOrderWizard() {
           </div>
 
           <div className="fo-wizard-field fo-wizard-field-wide">
-            <label className="fo-wizard-field-label" htmlFor="wo-complaint">Complaint (required if no Type selected)</label>
+            <label className="fo-wizard-field-label" htmlFor="wo-complaint">Complaint (optional)</label>
             <textarea
               id="wo-complaint"
               className="fo-wizard-control"
@@ -339,7 +373,46 @@ export default function WorkOrderWizard() {
             )}
           </dl>
 
-          {submitError && (
+          {companies.mustChoose ? (
+            <div className="fo-wizard-field">
+              <label className="fo-wizard-field-label" htmlFor="wo-operating-company">Operating company</label>
+              <select
+                id="wo-operating-company"
+                className="fo-wizard-control"
+                value={chosenCompanyId}
+                onChange={(e) => setChosenCompanyId(e.target.value)}
+              >
+                <option value="" disabled>Select the operating company…</option>
+                {companies.options.map((c) => (
+                  <option key={c.operatingCompanyId} value={c.operatingCompanyId}>
+                    {c.operatingCompanyKey || c.operatingCompanyId}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <dl className="fo-wizard-review">
+              <dt>Operating company</dt>
+              {companies.preselectedId ? (
+                // The only governed company -- STATED, not inferred.
+                <dd data-operating-company={companies.preselectedId}>
+                  {companies.options[0].operatingCompanyKey || companies.preselectedId}
+                  {" "}<span className="fo-muted">(the only operating company available to you)</span>
+                </dd>
+              ) : (
+                <dd data-operating-company="missing">
+                  {companyRead.status === COMPANY_READ.LOADING ? "Loading…" : "Not chosen — none is available to choose, and none is inferred."}
+                </dd>
+              )}
+            </dl>
+          )}
+          {createReason && companyRead.status !== COMPANY_READ.LOADING && (
+            <div className="warning fo-wizard-error" role="alert" data-create-blocked="OPERATING_COMPANY_REQUIRED">
+              {createReason}
+            </div>
+          )}
+
+          {submitError && submitError !== createReason && (
             <div className="warning fo-wizard-error" role="alert">
               {submitError}
             </div>
@@ -349,7 +422,7 @@ export default function WorkOrderWizard() {
             <Button variant="tertiary" onClick={() => setStep(3)} disabled={submitting}>
               Back
             </Button>
-            <Button variant="primary" onClick={handleCreate} loading={submitting}>
+            <Button variant="primary" onClick={handleCreate} loading={submitting} disabled={Boolean(createReason)}>
               Create Work Order
             </Button>
           </div>

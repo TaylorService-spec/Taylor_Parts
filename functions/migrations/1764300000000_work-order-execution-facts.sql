@@ -25,6 +25,11 @@
 -- grants to eleven Roles), so it is not folded into them (DQ-010). Who holds it is an Administration decision.
 -- The command additionally requires RECORD_ASSIGNMENT: only the assigned Employee records their job's actuals.
 --
+-- CREATE IS IDEMPOTENT BY KEY (parity with the Firebase createWorkOrder's idempotencyKey, site-work #2): a retried or
+-- double-submitted create carrying the same key replays the Work Order it already created instead of minting a
+-- duplicate and burning a Work Order number. The key is scoped to the creating Principal, and the request
+-- fingerprint is kept so a reused key with a different request refuses rather than replays.
+--
 -- Counts: capabilities +1; role_capabilities +0.
 SET search_path = eos_policy, public;
 
@@ -76,6 +81,13 @@ CREATE TABLE work_order_execution_records (
     CONSTRAINT wo_execution_key_stated CHECK (btrim(idempotency_key) <> '' AND length(idempotency_key) <= 200),
     CONSTRAINT wo_execution_one_request_per_key UNIQUE (tenant_id, work_order_id, idempotency_key)
 );
+ALTER TABLE work_orders ADD COLUMN create_idempotency_key TEXT, ADD COLUMN create_request_fingerprint TEXT;
+ALTER TABLE work_orders ADD CONSTRAINT work_orders_create_idempotency_whole CHECK (
+    (create_idempotency_key IS NULL) = (create_request_fingerprint IS NULL)
+    AND (create_idempotency_key IS NULL OR (btrim(create_idempotency_key) <> '' AND length(create_idempotency_key) <= 150)));
+CREATE UNIQUE INDEX work_orders_create_idempotency ON work_orders (tenant_id, created_by_principal_id, create_idempotency_key)
+    WHERE create_idempotency_key IS NOT NULL;
+
 CREATE INDEX work_order_execution_by_work_order ON work_order_execution_records (tenant_id, work_order_id, recorded_at);
 
 CREATE FUNCTION work_order_execution_refuse_change() RETURNS trigger AS $$
@@ -117,4 +129,7 @@ SET search_path = eos_ops, public;
 DROP TRIGGER IF EXISTS work_order_execution_append_only ON work_order_execution_records;
 DROP FUNCTION IF EXISTS work_order_execution_refuse_change();
 DROP TABLE IF EXISTS work_order_execution_records;
+DROP INDEX IF EXISTS work_orders_create_idempotency;
+ALTER TABLE work_orders DROP CONSTRAINT IF EXISTS work_orders_create_idempotency_whole;
+ALTER TABLE work_orders DROP COLUMN IF EXISTS create_request_fingerprint, DROP COLUMN IF EXISTS create_idempotency_key;
 DELETE FROM eos_policy.capabilities WHERE id = 'cap_workOrder_execution_record';

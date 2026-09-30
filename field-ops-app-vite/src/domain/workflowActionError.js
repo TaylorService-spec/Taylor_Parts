@@ -16,9 +16,30 @@ function normalizeCode(err) {
   return code;
 }
 
+// The governed EOS Work Order route (services/workOrderApiClient.js) reports CATEGORIES, not Firebase
+// codes. Each maps onto the same four safe categories -- plus NOT_ACTIVATED, which is a readiness state
+// (DQ-S4), said as itself rather than as a failure.
+const EOS_CATEGORY = Object.freeze({
+  INVALID_INPUT: "invalid-argument",
+  PRECONDITION_FAILED: "failed-precondition",
+  CONFLICT: "failed-precondition",
+  NOT_FOUND: "failed-precondition",
+  FORBIDDEN: "permission-denied",
+  UNAUTHENTICATED: "unauthenticated",
+  NOT_SIGNED_IN: "unauthenticated",
+  UNAVAILABLE: "unavailable",
+  UNREACHABLE: "unavailable",
+  NOT_CONFIGURED: "unavailable",
+});
+
+export const WORK_ORDER_NOT_YET_ACTIVATED_ACTION_MESSAGE =
+  "Work Orders are not yet activated on EOS (NOT_YET_ACTIVATED). Nothing was changed.";
+
 export function workflowActionErrorMessage(err) {
   if (err && err.blocked) return "Saving is disabled in this mode. Nothing was changed.";
-  switch (normalizeCode(err)) {
+  const raw = err && typeof err.code === "string" ? err.code : "";
+  if (raw === "NOT_ACTIVATED") return WORK_ORDER_NOT_YET_ACTIVATED_ACTION_MESSAGE;
+  switch (EOS_CATEGORY[raw] ?? normalizeCode(err)) {
     case "invalid-argument":
     case "failed-precondition":
     case "out-of-range":

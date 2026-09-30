@@ -165,10 +165,14 @@ test("the band still renders nothing when clean", () => {
 
 // ── the fixes that must not silently regress ────────────────────────────────────────────────────
 
-test("technician names resolve through the technician collection, not the employee directory", () => {
+test("technician names resolve through the Work Order technician directory, not the employee directory", () => {
   // technicianId is NOT userId. Passing the directory's byUserId map made every row read
   // "Name not resolved" -- the raw-id family of defect arriving as a plausible label.
-  assert.match(DASHBOARD, /useFirestoreCollection\(TECHNICIANS_COLLECTION/);
+  // Work Order cutover: the governed Work Orders' assignees are EMPLOYEE ids, so names resolve through
+  // the Employee-keyed Work Order technician directory (governed roster + the names the rows carry),
+  // never the fieldops_technicians collection whose ids can no longer match.
+  assert.match(DASHBOARD, /useWorkOrderTechnicianDirectory\(workOrders/);
+  assert.ok(!/useFirestoreCollection\(TECHNICIANS_COLLECTION/.test(DASHBOARD), "fieldops_technicians is back in the Work Order name path");
   assert.match(DASHBOARD, /resolveTechnicianIdentity\(\s*technicianId,\s*\{/);
   assert.ok(!/useEmployeeDirectory/.test(DASHBOARD), "the employee directory is back in the name path");
   assert.ok(!/\.displayName/.test(DASHBOARD), "resolveTechnicianIdentity returns .name, not .displayName");

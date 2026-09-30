@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
+import WorkOrderAuthorityNotice from "../../shared/ui/WorkOrderAuthorityNotice.jsx";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import EquipmentInstallCloseout from "./EquipmentInstallCloseout";
@@ -57,9 +58,15 @@ export default function FieldMode({ deps } = {}) {
     error: technicianError,
     retry: retryTechnician,
   } = useCurrentTechnician();
-  const { data: workOrders, loading: workOrdersLoading, error } = useAssignedWorkOrders(technicianId);
+  // The technician's own work: the governed listMyAssignedWorkOrders read. The SERVER resolves this login
+  // to an EOS Employee; `ownEmployeeId` is that answer (the id every row's assignedTechId carries), so the
+  // next-action ownership check compares the server's answer with itself -- never a fieldops technician id.
+  const {
+    data: workOrders, loading: workOrdersLoading, error, employeeId: ownEmployeeId, unlinked, notActivated,
+  } = useAssignedWorkOrders();
   const loading = technicianLoading || workOrdersLoading;
-  const unmapped = !technicianLoading && !technicianError && !technicianId;
+  // "Not set up for field work" is now the governed answer: this login resolves to no Employee.
+  const unmapped = !workOrdersLoading && unlinked;
 
   const [pending, setPending] = useState({ id: null, action: null });
   const [failure, setFailure] = useState(null);
@@ -99,13 +106,13 @@ export default function FieldMode({ deps } = {}) {
       : null;
     return buildCurrentJob({
       workOrder: current ?? null,
-      technicianId,
+      technicianId: ownEmployeeId,
       plannedParts: current?.inventorySnapshot ?? [],
       customerResolver,
       siteResolver,
       contextPending: contextLoading,
     });
-  }, [current, technicianId, fieldContext, contextDenied, contextLoading]);
+  }, [current, ownEmployeeId, fieldContext, contextDenied, contextLoading]);
 
   const advance = useCallback(async (workOrderId, action) => {
     if (pending.id) return; // duplicate-tap guard
@@ -155,6 +162,16 @@ export default function FieldMode({ deps } = {}) {
 
   if (loading) return <div className="fo-field"><p className="fo-muted">Loading your day…</p></div>;
 
+  if (notActivated) {
+    return (
+      <div className="fo-field">
+        <WorkOrderAuthorityNotice notActivated />
+      </div>
+    );
+  }
+
+  // The fieldops technician profile is no longer what selects the day's work, but a failed read of it is
+  // still said, with Retry -- fail closed, never an endless spinner.
   if (technicianError) {
     return (
       <div className="fo-field">
@@ -170,8 +187,8 @@ export default function FieldMode({ deps } = {}) {
     return (
       <div className="fo-field">
         <p className="fo-muted">
-          Your account isn’t linked to a technician profile yet. Ask a dispatcher
-          to link your account before using Field Mode.
+          Your account isn’t linked to an Employee record yet, so no work can be assigned to you. Ask an
+          admin to link your login to your Employee record before using Field Mode.
         </p>
       </div>
     );
@@ -225,7 +242,7 @@ export default function FieldMode({ deps } = {}) {
           pending={pending.id === job.workOrderId ? pending.action : null}
           failure={failure?.id === job.workOrderId ? failure : null}
           onAdvance={advance}
-          technicianId={technicianId}
+          technicianId={ownEmployeeId}
           offline={offline}
           deps={deps}
         />

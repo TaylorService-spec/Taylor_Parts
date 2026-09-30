@@ -26,6 +26,8 @@ const transitionWorkOrder = vi.fn();
 vi.mock("../src/services/workOrderService", () => ({
   transitionWorkOrder: (...args) => transitionWorkOrder(...args),
   subscribeAssignedWorkOrders: vi.fn(() => () => {}),
+  listWorkOrderTechnicians: vi.fn(async () => ({ workOrderId: null, operatingCompanyId: null, items: [] })),
+  onWorkOrderMutation: vi.fn(() => () => {}),
 }));
 
 vi.mock("../src/hooks/useCurrentTechnician", () => ({
@@ -55,7 +57,7 @@ afterEach(() => {
 describe("useAssignedWorkOrders -- safe error copy (site-work r3 L)", () => {
   it("wraps a raw onSnapshot error through loadErrorMessage, not the raw object", async () => {
     const { subscribeAssignedWorkOrders } = await import("../src/services/workOrderService");
-    subscribeAssignedWorkOrders.mockImplementation((technicianId, onData, onError) => {
+    subscribeAssignedWorkOrders.mockImplementation((onData, onError) => {
       onError({ code: "permission-denied", message: RAW_MESSAGE });
       return () => {};
     });
@@ -63,7 +65,7 @@ describe("useAssignedWorkOrders -- safe error copy (site-work r3 L)", () => {
     const { useAssignedWorkOrders } = await import("../src/hooks/useAssignedWorkOrders");
     let captured;
     function Probe() {
-      captured = useAssignedWorkOrders("tech1");
+      captured = useAssignedWorkOrders();
       return null;
     }
     render(<Probe />);
@@ -114,7 +116,7 @@ describe("FieldMode -- safe error copy for a failed action (site-work r3 L)", ()
       inventorySnapshot: [],
     };
     vi.doMock("../src/hooks/useAssignedWorkOrders", () => ({
-      useAssignedWorkOrders: () => ({ data: [assignedWorkOrder], loading: false, error: null }),
+      useAssignedWorkOrders: () => ({ data: [assignedWorkOrder], loading: false, error: null, employeeId: "tech1", unlinked: false }),
     }));
     transitionWorkOrder.mockRejectedValueOnce(new Error(RAW_MESSAGE));
 
@@ -154,8 +156,8 @@ describe("DispatcherBoard -- safe error copy for a failed dispatch (site-work r3
         error: null,
       }),
     }));
-    vi.doMock("../src/hooks/useFirestoreCollection", () => ({
-      useFirestoreCollection: () => ({ data: [{ id: "tech1", name: "Tech One" }], loading: false, error: null }),
+    vi.doMock("../src/hooks/useWorkOrderTechnicians", () => ({
+      useWorkOrderTechnicians: () => ({ data: [{ id: "tech1", name: "Tech One" }], loading: false, error: null }),
     }));
     transitionWorkOrder.mockRejectedValueOnce(new Error(RAW_MESSAGE));
 

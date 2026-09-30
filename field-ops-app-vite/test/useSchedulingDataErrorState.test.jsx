@@ -12,10 +12,11 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import { renderHook, cleanup } from "@testing-library/react";
 
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
+// Work Order cutover: the technicians half is the governed roster (listWorkOrderTechnicians).
+vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians: vi.fn() }));
 
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
-import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
+import { useWorkOrderTechnicians } from "../src/hooks/useWorkOrderTechnicians";
 import { useSchedulingData } from "../src/hooks/useSchedulingData";
 
 const PERMISSION_ERROR = { code: "permission-denied" };
@@ -28,7 +29,7 @@ afterEach(() => {
 describe("useSchedulingData -- a failed work-orders read is not swallowed into a false empty", () => {
   it("surfaces the useWorkOrders error even though the technicians read succeeded", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
 
     const { result } = renderHook(() => useSchedulingData());
 
@@ -41,7 +42,7 @@ describe("useSchedulingData -- a failed work-orders read is not swallowed into a
 
   it("still surfaces the technicians error when only that read fails", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
 
     const { result } = renderHook(() => useSchedulingData());
 
@@ -50,7 +51,7 @@ describe("useSchedulingData -- a failed work-orders read is not swallowed into a
 
   it("stays honestly null/empty when both reads succeed with no data", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
 
     const { result } = renderHook(() => useSchedulingData());
 
@@ -62,10 +63,19 @@ describe("useSchedulingData -- a failed work-orders read is not swallowed into a
 
   it("loading is true while either read is still loading", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: true, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
 
     const { result } = renderHook(() => useSchedulingData());
 
     expect(result.current.loading).toBe(true);
+  });
+});
+
+describe("useSchedulingData -- NOT_YET_ACTIVATED propagates as itself", () => {
+  it("reports notActivated when the governed Work Order read answers NOT_ACTIVATED", () => {
+    useWorkOrders.mockReturnValue({ data: [], loading: false, error: { code: "NOT_ACTIVATED" }, notActivated: true });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null, notActivated: false });
+    const { result } = renderHook(() => useSchedulingData());
+    expect(result.current.notActivated).toBe(true);
   });
 });

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { EQUIPMENT_COLLECTION, WORK_ORDERS_COLLECTION } from "../domain/constants";
+import { EQUIPMENT_COLLECTION } from "../domain/constants";
+import { subscribeToWorkOrders } from "../services/workOrderService";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 
 // Issue #232 unit E2 -- the Equipment read path.
@@ -100,50 +101,53 @@ export function useEquipmentForLocation(locationId) {
 // Issue #232 unit E7 -- the Work Orders linked to ONE piece of equipment, for the
 // detail page's linked-Work-Orders section and its derived Service History (§10).
 //
-// A single bounded, server-filtered query on equipmentId. Deliberately NOT
-// useWorkOrders(), which subscribes to the entire collection: pulling every Work Order
-// in the business to show one asset's history would be an unbounded read to render a
-// handful of rows. Single-field equality, so no composite index is required.
+// ONE bounded, server-filtered GOVERNED read: listWorkOrders { equipmentId } over the EOS route
+// (services/workOrderService.ts), refreshed -- never a Firestore query. `truncated` says when the asset
+// has more Work Orders than the bounded page (200); the history must then not claim completeness.
 //
-// Service History is DERIVED from these (§10) -- there is no separate history ledger --
-// so this hook is the only source, and equipmentServiceHistory()/groupServiceHistoryBy
-// Year() shape it purely, client-side, over this already-bounded set.
+// Service History is DERIVED from these (§10) -- there is no separate history ledger.
+// `notActivated` is true while the Work Order authority answers NOT_ACTIVATED; `error` then carries the
+// NOT_YET_ACTIVATED copy, never "no service history".
 export function useWorkOrdersForEquipment(equipmentId) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [truncated, setTruncated] = useState(false);
+  const [notActivated, setNotActivated] = useState(false);
 
   useEffect(() => {
     if (!equipmentId) {
       setData([]);
       setError(null);
+      setNotActivated(false);
       setLoading(false);
       return;
     }
 
     setLoading(true);
     setError(null);
-    const q = query(collection(db, WORK_ORDERS_COLLECTION), where("equipmentId", "==", equipmentId));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setData(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    const unsub = subscribeToWorkOrders(
+      (workOrders) => {
+        setData(workOrders);
         setError(null);
+        setNotActivated(false);
         setLoading(false);
       },
       (err) => {
         // Fail closed: an empty history is honest; a partial one is a lie about an
         // asset's service record.
         setData([]);
+        setNotActivated(err?.code === "NOT_ACTIVATED");
         setError(loadErrorMessage(err, { entity: "work orders" }));
         setLoading(false);
-      }
+      },
+      { filters: { equipmentId }, onTruncated: setTruncated },
     );
 
     return () => unsub();
   }, [equipmentId]);
 
-  return { data, loading, error };
+  return { data, loading, error, truncated, notActivated };
 }
 
 // Single-document live subscription for the detail surface (E7).

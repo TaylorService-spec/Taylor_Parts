@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import DictatableNote from "../../shared/ui/DictatableNote.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { updateWorkOrderExecutionData } from "../../services/workOrderService";
+import { workOrderSyncError } from "../../offline/workOrderSyncError.js";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import { submitOrQueue, SUBMIT_RESULT } from "../../offline/submitOrQueue.js";
 import { captureNote } from "../../offline/technicianIntentCapture.js";
@@ -99,7 +100,7 @@ export default function JobNote({ workOrderId, offline = null, deps }) {
           const result = await save(workOrderId, { executionNote: text });
           return { ok: true, serverIds: { workOrderId: result?.workOrderId ?? workOrderId } };
         } catch (err) {
-          return { ok: false, error: { code: err?.code ?? null, details: err?.details ?? null } };
+          return { ok: false, error: workOrderSyncError(err) };
         }
       },
       // The capture key is the note's own text plus the job. Pressing Save twice on the same words is

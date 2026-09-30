@@ -13,6 +13,7 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
+import WorkOrderAuthorityNotice from "../../shared/ui/WorkOrderAuthorityNotice.jsx";
 
 // Epic 6 Phase 6.1/6.2 -- Technician Dashboard, the landing page for
 // the technician role. UI + read-layer composition (6.1) plus the
@@ -20,10 +21,11 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // no writes happen in this file itself; selecting a card just shows
 // the detail view inline, no new route/navigation architecture.
 //
-// Data source is exactly useAssignedWorkOrders(technicianId) (PT-002)
-// -- never the dispatcher-side unfiltered useWorkOrders(). technicianId
-// comes from useCurrentTechnician() (users/{uid}.technicianId ->
-// fieldops_technicians/{technicianId}, see that hook's header comment).
+// Data source is exactly useAssignedWorkOrders() -- the GOVERNED
+// listMyAssignedWorkOrders read, where the SERVER resolves this login to an
+// EOS Employee. No technician id is passed and none is compared. The
+// fieldops_technicians profile (useCurrentTechnician) is display-only here
+// (name + field status); it never decides which Work Orders are "mine".
 //
 // Section bucketing is a pure client-side grouping of the real
 // 11-value WorkOrderStatus enum -- no new backend concept, no
@@ -71,7 +73,13 @@ export default function TechnicianDashboard() {
     error: technicianError,
     retry: retryTechnician,
   } = useCurrentTechnician();
-  const { data: workOrders, loading: workOrdersLoading, error } = useAssignedWorkOrders(technician?.id ?? null);
+  const {
+    data: workOrders,
+    loading: workOrdersLoading,
+    error,
+    unlinked,
+    notActivated,
+  } = useAssignedWorkOrders({ includeCompleted: true });
   const [selectedId, setSelectedId] = useState(null);
 
   const buckets = useMemo(() => {
@@ -107,18 +115,30 @@ export default function TechnicianDashboard() {
     );
   }
 
-  if (technicianError) {
+  if (notActivated) {
     return (
       <WorkspaceShell title="My Work Orders">
-        <p className="fo-muted" role="alert">
-          Your technician profile could not be loaded. {technicianError}
-        </p>
-        <Button variant="secondary" onClick={retryTechnician}>Retry</Button>
+        <WorkOrderAuthorityNotice notActivated />
       </WorkspaceShell>
     );
   }
 
-  if (!technician) {
+  // The fieldops technician PROFILE (name, field status) no longer selects the work -- the governed read
+  // does. A failed profile read is still said, with Retry, but it does not hide the technician's work.
+  const profileAlert = technicianError ? (
+    <div className="fo-card">
+      <p className="fo-muted" role="alert">
+        Your technician profile could not be loaded. {technicianError}
+      </p>
+      <Button variant="secondary" onClick={retryTechnician}>Retry</Button>
+    </div>
+  ) : null;
+
+  if (technicianError && unlinked) {
+    return <WorkspaceShell title="My Work Orders">{profileAlert}</WorkspaceShell>;
+  }
+
+  if (unlinked) {
     // Operational roles (Warehouse Manager, Parts Manager, Parts Associate) sit ON TOP
     // of the base "technician" role, so they land here and read a technician-record
     // message they can never satisfy -- two personas reported it as the first thing
@@ -137,8 +157,8 @@ export default function TechnicianDashboard() {
     return (
       <WorkspaceShell title="My Work Orders">
         <p className="fo-muted">
-          Your account isn't linked to a technician record yet. Contact an admin to get this set up (see PT-001's
-          technician identity mapping).
+          Your account isn't linked to an Employee record yet, so no Work Orders can be assigned to you. Contact an
+          admin to link your login to your Employee record.
         </p>
       </WorkspaceShell>
     );
@@ -155,19 +175,22 @@ export default function TechnicianDashboard() {
   const context = (
     <ContextBand
       items={[
-        { key: "status", label: "Status", value: <StatusPill tone={technicianStatusTone(technician.status)} label={technicianStatusLabel(technician.status)} /> },
+        ...(technician
+          ? [{ key: "status", label: "Status", value: <StatusPill tone={technicianStatusTone(technician.status)} label={technicianStatusLabel(technician.status)} /> }]
+          : []),
         { key: "active", label: "My Active Work Orders", value: buckets.activeCount },
       ]}
     />
   );
 
   return (
-    <WorkspaceShell title={`Hi, ${technician.name}`} context={context}>
+    <WorkspaceShell title={technician?.name ? `Hi, ${technician.name}` : "My Work Orders"} context={context}>
+      {profileAlert}
       {selectedWorkOrder ? (
         <TechnicianWorkOrderDetail workOrder={selectedWorkOrder} onClose={() => setSelectedId(null)} />
       ) : (
         <>
-          <PerformanceSnapshot technicianId={technician.id} />
+          {technician ? <PerformanceSnapshot technicianId={technician.id} /> : null}
           <Section
             title="Ready to Start"
             workOrders={buckets.readyToStart}

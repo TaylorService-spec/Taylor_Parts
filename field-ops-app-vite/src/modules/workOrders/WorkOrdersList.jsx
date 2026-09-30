@@ -6,8 +6,8 @@ import { useListCriteria } from "../../hooks/useListCriteria.js";
 import { useAccountReferenceResolver } from "../../hooks/useAccountReferenceResolver.js";
 import { useWorkOrderSearch } from "../../hooks/useWorkOrderSearch.js";
 import { useAccountPicker } from "../../hooks/useAccountPicker";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
+import { useWorkOrderTechnicianDirectory } from "../../hooks/useWorkOrderTechnicianDirectory.js";
+import WorkOrderAuthorityNotice from "../../shared/ui/WorkOrderAuthorityNotice.jsx";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
 import { ACCOUNT_NAMES_STATUS } from "../../hooks/useAccountNames.js";
@@ -119,9 +119,10 @@ export default function WorkOrdersList() {
     customerId: (accountPicker.options ?? []).map((a) => ({ value: a.id, label: a.name })),
   }), [accountPicker.options]);
 
-  // Technicians are bounded reference data (one small collection), so one read serves the
-  // whole page rather than one per row.
-  const { data: technicians, loading: techLoading, error: techError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  // The assignee is an EOS EMPLOYEE (domain/workOrderAdapter.js). Names come from the governed rows
+  // themselves plus, where the viewer may schedule, the governed roster -- never fieldops_technicians,
+  // whose ids cannot match.
+  const { data: technicians, loading: techLoading, error: techError } = useWorkOrderTechnicianDirectory(resolvableRows);
 
   const resolveReference = useCallback((fieldId, id) => {
     if (fieldId !== "assignedTechId") return resolveAccount(fieldId, id);
@@ -215,6 +216,7 @@ export default function WorkOrdersList() {
       summaryItems={summaryItems}
       action={actions}
     >
+      <WorkOrderAuthorityNotice />
       <div className="fo-global-search" role="search">
         <input
           type="search"
