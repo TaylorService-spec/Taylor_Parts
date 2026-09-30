@@ -121,19 +121,19 @@ describe("InstallAtCustomer", () => {
   const accounts = [{ id: "acct-a", name: "Harbor Grill" }];
 
   it("reads the whole thing back before it becomes permanent", () => {
-    render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} />);
+    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall onClose={() => {}} />);
     expect(screen.getAllByText("Taylor C161").length).toBeGreaterThan(0);
     expect(screen.getAllByText("CW-C161-0001").length).toBeGreaterThan(0);
   });
 
   it("the location select is dead until a customer is chosen", () => {
     useLocationsForAccount.mockReturnValue({ data: [], loading: false });
-    render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} />);
+    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall onClose={() => {}} />);
     expect(screen.getByRole("combobox", { name: /Customer location/i }).disabled).toBe(true);
   });
 
   it("Install stays disabled, with a reason, until the form is complete", () => {
-    render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} />);
+    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall onClose={() => {}} />);
     const button = screen.getByRole("button", { name: /Install at customer/i });
     expect(button.disabled).toBe(true);
     // A greyed control with no explanation is the failure mode this surface exists to avoid.
@@ -141,7 +141,7 @@ describe("InstallAtCustomer", () => {
   });
 
   it("warns, in the confirmation, that it cannot be undone", () => {
-    render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} />);
+    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall onClose={() => {}} />);
     fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct-a" } });
     fireEvent.change(screen.getByRole("combobox", { name: /Customer location/i }), { target: { value: "loc-a1" } });
     expect(screen.getByText(/cannot be undone/i)).toBeTruthy();
@@ -152,7 +152,7 @@ describe("InstallAtCustomer", () => {
     callInstallSerializedAsset.mockResolvedValue({
       outcome: null, error: { code: "failed-precondition", details: "ALREADY_INSTALLED", message: "…" },
     });
-    render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} />);
+    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall onClose={() => {}} />);
     fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct-a" } });
     fireEvent.change(screen.getByRole("combobox", { name: /Customer location/i }), { target: { value: "loc-a1" } });
     fireEvent.click(screen.getByRole("button", { name: /Confirm installation/i }));
@@ -162,7 +162,7 @@ describe("InstallAtCustomer", () => {
   it("a successful install reports the Equipment it created", async () => {
     const onInstalled = vi.fn();
     callInstallSerializedAsset.mockResolvedValue({ outcome: { outcome: "installed", equipmentId: "eq_1" }, error: null });
-    render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} onInstalled={onInstalled} />);
+    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall onClose={() => {}} onInstalled={onInstalled} />);
     fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct-a" } });
     fireEvent.change(screen.getByRole("combobox", { name: /Customer location/i }), { target: { value: "loc-a1" } });
     fireEvent.click(screen.getByRole("button", { name: /Confirm installation/i }));
@@ -173,7 +173,7 @@ describe("InstallAtCustomer", () => {
   it("ONE request per confirm -- a second click while in flight sends nothing more", async () => {
     let resolve;
     callInstallSerializedAsset.mockReturnValue(new Promise((r) => { resolve = r; }));
-    render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} />);
+    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall onClose={() => {}} />);
     fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct-a" } });
     fireEvent.change(screen.getByRole("combobox", { name: /Customer location/i }), { target: { value: "loc-a1" } });
     const button = screen.getByRole("button", { name: /Confirm installation/i });
@@ -184,8 +184,20 @@ describe("InstallAtCustomer", () => {
     resolve({ outcome: { outcome: "installed", equipmentId: "eq_1" }, error: null });
   });
 
+  it("NOT ACTIVATED by default: says so, keeps Confirm disabled, and never calls the Firebase install callable", () => {
+    render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} />);
+    expect(screen.getByText(/Equipment install is not activated yet/i)).toBeTruthy();
+    expect(document.querySelector('[data-work-order-boundary="SERIALIZED_INSTALL"]')).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct-a" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /Customer location/i }), { target: { value: "loc-a1" } });
+    const confirm = screen.getByRole("button", { name: /Confirm installation/i });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(callInstallSerializedAsset).not.toHaveBeenCalled();
+  });
+
   it("an unauthorized caller cannot press Install even if the dialog is open", () => {
-    render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall={false} onClose={() => {}} />);
+    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall={false} onClose={() => {}} />);
     expect(screen.getByRole("button", { name: /Install at customer/i }).disabled).toBe(true);
     expect(screen.getByText(/not authorized to install equipment/i)).toBeTruthy();
   });

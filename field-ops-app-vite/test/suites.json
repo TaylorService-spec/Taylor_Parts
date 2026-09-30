@@ -1226,6 +1226,10 @@
       "runner": "node"
     },
     {
+      "file": "test/workOrderOutcome.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/workflowActionOrder.test.mjs",
       "runner": "node"
     },

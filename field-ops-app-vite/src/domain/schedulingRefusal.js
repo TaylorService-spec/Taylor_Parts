@@ -16,6 +16,7 @@
 // because a code this file does not recognise must fall through to the generic sentence rather than
 // be guessed at.
 import { resolveTechnicianIdentity } from "./actorDisplayName.js";
+import { classifyWorkOrderOutcome, workOrderOutcomeMessage, WORK_ORDER_OUTCOME } from "./workOrderOutcome.js";
 
 const BLOCKED_KIND_WORDS = Object.freeze({
   PTO: "time off",
@@ -127,6 +128,14 @@ export function schedulingRefusalMessage(errorCode, errorStatus, context = {}) {
       return "You are not authorized to change a schedule.";
     default:
       break;
+  }
+
+  // A code this file does not name is classified by the ONE Work Order outcome classifier: a readiness state
+  // (NOT_YET_IMPLEMENTED, the Commercial fulfillment hold, ...) is said as itself, and an unavailable service as
+  // unavailable -- never folded into "could not be completed".
+  const outcome = classifyWorkOrderOutcome({ code: errorStatus ?? "", reason: errorCode ?? null });
+  if (outcome.kind === WORK_ORDER_OUTCOME.NOT_YET_ACTIVATED || outcome.kind === WORK_ORDER_OUTCOME.UNAVAILABLE) {
+    return workOrderOutcomeMessage(outcome, { mode: "action" });
   }
 
   // No governed code. Fall back on the transport status, and say the least that is still true.
