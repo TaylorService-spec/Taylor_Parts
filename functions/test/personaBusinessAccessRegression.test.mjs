@@ -181,7 +181,8 @@ test("the experience surface catalog satisfies its own invariants", () => {
   assert.deepEqual(surfaceCatalogViolations(), []);
   // 30, not 29: lanes BL and BQ DECLARED `commercial.agreements` -- the surface this file recorded
   // below as a gap whose stated reason was measurably false -- and built its destination.
-  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 30);
+  // 30 -> 31: `service.inboundWork` (Work Order cutover activation, 2026-09-30), earned by inboundWork.request.read.
+  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 31);
   assert.equal(EXPERIENCE_SURFACE_KEYS.includes("commercial.agreements"), true);
 });
 
@@ -1139,8 +1140,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // reached by both warehouse personas, and `warehouse.picking` is the one that remains -- see the
     // warehouse block above for why, and whose decision closing it is. Pinned here as a census so
     // another cannot join it unnoticed.
+    // `service.inboundWork` joins it BY DESIGN (activation, 2026-09-30): no baseline Role holds inboundWork.request.read
+    // -- the five inboundWork.* capabilities were registered with no grant, and holding them is the live Administration
+    // decision of the activation window (serviceActivationAuthorityDelta.ts INBOUND_WORK_GRANTS), never the baseline.
     assert.deepEqual(EXPERIENCE_SURFACE_KEYS.filter((k) => !granted.has(k)).sort(),
-      ["warehouse.picking"]);
+      ["service.inboundWork", "warehouse.picking"]);
 
     // ── THE EOS NAVIGATION SOURCE HAS NO FIREBASE FALLBACK ──
     // When the EOS authority is answering, the LEGACY path must not run at all. Measured through the
