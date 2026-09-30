@@ -182,10 +182,19 @@ test("Work Order journey acceptance through /operations/work-orders", { skip: SK
   await t.test("DISPATCHER: the picker offers only eligible technicians of the Work Order's company; schedule; dispatch", async () => {
     const techs = ok(await call(DISPATCHER, "listWorkOrderTechnicians", { workOrderId: woId }));
     assert.deepEqual(techs.items.map((e) => e.employeeId).sort(), ["emp-j-a", "emp-j-b"], "the Ventana technician is not offered (DQ-013)");
+    // DECISION 5 (Owner, 2026-09-30): without configured working hours the schedule below REFUSES
+    // AVAILABILITY_NOT_CONFIGURED -- proven first, then EXPLICIT synthetic acceptance hours are configured by the
+    // dispatcher through the governed operation on this same route.
     const start = Date.now() + 2 * 86_400_000;
+    refused(await call(DISPATCHER, "scheduleWorkOrder", { workOrderId: woId, employeeId: "emp-j-a", scheduledStart: start, scheduledEnd: start + 7_200_000 }),
+      412, "AVAILABILITY_NOT_CONFIGURED");
+    const allWeek = Object.fromEntries(["0", "1", "2", "3", "4", "5", "6"].map((d) => [d, [{ start: "00:00", end: "24:00" }]]));
+    ok(await call(DISPATCHER, "setTechnicianWorkingHours",
+      { employeeId: "emp-j-a", timeZone: "UTC", weeklyHours: allWeek, reason: "synthetic acceptance availability" }));
     const sched = ok(await call(DISPATCHER, "scheduleWorkOrder", { workOrderId: woId, employeeId: "emp-j-a", scheduledStart: start, scheduledEnd: start + 7_200_000 }));
     assert.equal(sched.transition.toStatus, "SCHEDULED");
-    assert.deepEqual(sched.warnings.map((w) => w.code), ["AVAILABILITY_NOT_MODELED"]);
+    // DECISION 5: the calendar was consulted; a placement inside it carries no warning (AVAILABILITY_NOT_MODELED is gone).
+    assert.deepEqual(sched.warnings.map((w) => w.code), []);
     refused(await call(DISPATCHER, "scheduleWorkOrder", { workOrderId: woId, employeeId: "emp-j-v", scheduledStart: start, scheduledEnd: start + 3_600_000 }), 409, "STALE_WORK_ORDER_STATE");
     const d = ok(await call(DISPATCHER, "dispatchWorkOrder", { workOrderId: woId }));
     assert.equal(d.transition.toStatus, "DISPATCHED");

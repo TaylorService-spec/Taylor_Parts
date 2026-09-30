@@ -18,12 +18,12 @@
 //               the double-booking guard over the occupying statuses (workOrderAvailability.ts).
 //   Complete    own assignment (RECORD_ASSIGNMENT, via the lifecycle authorization); DQ-015 below.
 //
-// ════════════════════ WHAT HAS NO POSTGRESQL AUTHORITY, AND SAYS SO ════════════════════
+// ════════════════════ TECHNICIAN AVAILABILITY (DECISION 5, 2026-09-30) ════════════════════
 //
-// Technician WORKING HOURS and BLOCKED TIME (technician_working_hours / technician_blocked_time) have no
-// PostgreSQL relation. Nothing is inferred in their place: every placement result carries the warning
-// AVAILABILITY_NOT_MODELED so a dispatcher is told the calendar was not consulted, rather than a clean answer
-// that implies it was. Modelling technician availability is a bounded dependency, not an assumption.
+// Schedule, Reschedule and Dispatch each call workOrderAvailability.checkTechnicianAvailability inside their
+// transaction, after eligibility: it REFUSES AVAILABILITY_NOT_CONFIGURED / TECHNICIAN_UNAVAILABLE /
+// OUTSIDE_WORKING_HOURS (superseding the Firebase ND-20 warnings) and returns the warnings a successful placement
+// carries -- none today, so `warnings` is an empty list rather than a claim the calendar was not consulted.
 //
 // Inventory: see workOrderLifecycle.ts -- DISPATCHED reserves nothing and COMPLETED consumes nothing here; the
 // edge's `inventoryBoundary` is returned with the result.
