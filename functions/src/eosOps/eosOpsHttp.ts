@@ -41,6 +41,9 @@ import {
 import { ReorderAssignmentError, assignReorderRequestToEmployee } from "./reorderAssignmentAuthority.js";
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
+import { EOS_WORK_ORDER_OPERATIONS, isWorkOrderOperation, type EosWorkOrderOperation } from "./workOrderOperations";
+import { WORK_ORDER_WRITER_AUTHORITY, type PostgresWorkOrderWriterState } from "./workOrderWriterState";
+import { postgresContextualReader } from "./contextualAuthorization";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import type { Pool } from "pg";
 
@@ -178,9 +181,15 @@ export const SERIALIZED_ASSET_OPERATIONS: readonly EosAcquireOperation[] =
 export const isSerializedAssetOperation = (name: unknown): name is EosAcquireOperation =>
   typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_ACQUIRE_OPERATIONS, name);
 
+// ════════════════════ the Work Order route (WORK ORDER DOMAIN CUTOVER AUTHORIZATION, 2026-09-30) ════════════════════
+//
+// The governed PostgreSQL Work Order domain on its OWN route with its OWN closed table (workOrderOperations.ts).
+// Fail-closed until WORK_ORDER_WRITER_AUTHORITY.postgres is ACTIVE (DQ-S4); only the readiness probe answers before.
+export const WORK_ORDER_ROUTE = "/operations/work-orders";
+
 export const OPERATIONS_ROUTES: readonly string[] =
   Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE, RELOCATION_ROUTE, TRANSFER_ROUTE,
-    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE])].sort());
+    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE, WORK_ORDER_ROUTE])].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(OPERATIONS_MUTATION_OPERATIONS);
@@ -208,6 +217,8 @@ export interface OperationsApiDeps {
   readonly placementPostgresState?: PostgresPlacementWriterState;
   /** TEST INJECTION ONLY: the acquisition activation state (ACQUIRE_WRITER_AUTHORITY.postgres, INACTIVE, otherwise). */
   readonly acquirePostgresState?: PostgresAcquireWriterState;
+  /** TEST INJECTION ONLY: the Work Order activation state (WORK_ORDER_WRITER_AUTHORITY.postgres, INACTIVE, otherwise). */
+  readonly workOrderPostgresState?: PostgresWorkOrderWriterState;
 }
 
 /** Every operation of the PostgreSQL Reorder authority: all but the two principal-context resolvers. */
@@ -509,6 +520,67 @@ export async function executeInventoryCommandOperation(
   }
 }
 
+const STATUS_BY_WORK_ORDER_CATEGORY: Readonly<Record<string, number>> = Object.freeze({
+  INVALID_INPUT: 400, NOT_FOUND: 404, PRECONDITION_FAILED: 412, CONFLICT: 409, FORBIDDEN: 403,
+  UNAVAILABLE: 503, NOT_ACTIVATED: 503, FAILED: 500,
+});
+/** Every governed Work Order refusal class carries { code, category }; each is answered with its own category. */
+const WORK_ORDER_ERROR_NAMES: ReadonlySet<string> = new Set([
+  "WorkOrderLifecycleError", "WorkOrderAssignmentError", "WorkOrderCreateError", "WorkOrderPartsPlanError", "WorkOrderReadError",
+]);
+
+/**
+ * Execute one Work Order operation for an already-verified caller. The caller is resolved ONCE, into both the flat
+ * capability set (conditioned keys withheld) and the entitled actor the per-record read decision needs.
+ */
+export async function executeWorkOrderOperation(
+  deps: OperationsApiDeps,
+  request: {
+    readonly caller: { readonly externalSubject: string; readonly identityProvider: string; readonly requestedTenantId: string | null };
+    readonly operation: EosWorkOrderOperation;
+    readonly input: Record<string, unknown>;
+  },
+): Promise<{ readonly status: number; readonly body: unknown }> {
+  const { operation } = request;
+  const postgresState = deps.workOrderPostgresState ?? WORK_ORDER_WRITER_AUTHORITY.postgres;
+  if (operation === "readWorkOrderAuthorityStatus") {
+    return { status: 200, body: { ok: true, operation, result: { postgres: postgresState,
+      readiness: postgresState === "ACTIVE" ? "ACTIVE" : "NOT_YET_ACTIVATED" } } };
+  }
+  if (postgresState !== "ACTIVE") {
+    return { status: 503, body: { ok: false, operation, code: "NOT_ACTIVATED",
+      message: "the PostgreSQL Work Order authority is not activated yet" } };
+  }
+  try {
+    const conditions = postgresGrantConditionProvider(deps.pool);
+    const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
+      identityProvider: request.caller.identityProvider,
+      externalSubject: request.caller.externalSubject,
+      requestedTenantId: request.caller.requestedTenantId,
+    }, conditions);
+    const capabilities = await capabilitiesWithoutUnevaluatedConditions(deps.pool, ctx.principalContext, ctx.capabilities, conditions);
+    const tenantId = ctx.principalContext.tenantId;
+    const principalId = ctx.principalContext.uid;
+    const caller = Object.freeze({
+      actor: Object.freeze({ tenantId, principalId, capabilities }),
+      operational: Object.freeze({ tenantId, principalId, capabilities: ctx.capabilities, conditionallyHeld: ctx.conditionallyHeld,
+        scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements }),
+    });
+    const result = await EOS_WORK_ORDER_OPERATIONS[operation](
+      { pool: deps.pool, reader: postgresContextualReader(deps.pool), postgresState }, caller, request.input);
+    return { status: 200, body: { ok: true, operation, result } };
+  } catch (err) {
+    if (err instanceof PrincipalContextError) return { status: 403, body: { ok: false, operation, code: "FORBIDDEN", message: err.refusal } };
+    if (err instanceof Error && WORK_ORDER_ERROR_NAMES.has(err.name)) {
+      const e = err as Error & { code: string; category: string };
+      return { status: STATUS_BY_WORK_ORDER_CATEGORY[e.category] ?? 500, body: { ok: false, operation, code: e.code, message: e.message } };
+    }
+    // eslint-disable-next-line no-console -- same posture as the read path's unhandled-error log
+    console.error("[eosOpsHttp] work order unhandled", err);
+    return { status: 500, body: { ok: false, operation, code: "INTERNAL", message: "the request could not be completed" } };
+  }
+}
+
 const STATUS_BY_CODE: Readonly<Record<OperationsApiFailureCode, number>> = Object.freeze({
   UNKNOWN_OPERATION: 404,
   UNAUTHENTICATED: 401,
@@ -603,6 +675,32 @@ export async function handleOperationsRequest(
       caller: {
         externalSubject: ccIdentity.externalSubject,
         identityProvider: ccIdentity.identityProvider,
+        requestedTenantId: singleHeader(header(request, "x-eos-tenant")),
+      },
+      operation,
+      input: input as Record<string, unknown>,
+    });
+    return json(out.status, out.body, origin);
+  }
+
+  if (path === WORK_ORDER_ROUTE) {
+    if (!isWorkOrderOperation(operation)) return json(404, notFound(String(operation ?? "")), origin);
+    const input = payload.input === undefined ? {} : payload.input;
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      return json(400, { ok: false, operation, code: "INVALID_INPUT", message: "input must be a JSON object" }, origin);
+    }
+    const woBearer = bearerToken(header(request, "authorization"));
+    if (!woBearer) return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "a bearer token is required" }, origin);
+    let woIdentity: VerifiedIdentity;
+    try {
+      woIdentity = await options.verifyToken(woBearer);
+    } catch {
+      return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "the token could not be verified" }, origin);
+    }
+    const out = await executeWorkOrderOperation(options, {
+      caller: {
+        externalSubject: woIdentity.externalSubject,
+        identityProvider: woIdentity.identityProvider,
         requestedTenantId: singleHeader(header(request, "x-eos-tenant")),
       },
       operation,

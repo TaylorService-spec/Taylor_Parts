@@ -250,20 +250,25 @@ test("native Work Order authority", { skip: SKIP, concurrency: 1 }, async (t) =>
     assert.deepEqual([...mine].sort(), [...legacy].sort(), "the matrix must not invent a business transition");
   });
 
-  await t.test("every NOT_YET_IMPLEMENTED edge names what it depends on", () => {
+  // UPDATED DELIBERATELY by the WORK ORDER DOMAIN CUTOVER AUTHORIZATION (2026-09-30): every edge is implemented.
+  // It previously pinned the three effect-bearing edges NOT_YET_IMPLEMENTED; the ruling replaces that deferral
+  // with an EXPLICIT inventory boundary ("stock movement is an explicit boundary, never a hidden Inventory
+  // activation"), which each effect-bearing edge must now STATE.
+  await t.test("every edge is ALLOWED, and each effect-bearing edge states the inventory boundary it does not cross", () => {
     for (const r of lifecycle.TRANSITION_MATRIX) {
-      if (r.disposition === "NOT_YET_IMPLEMENTED") {
-        assert.ok(r.dependsOn && r.dependsOn.length > 20, `${r.from}->${r.to} must say what is missing`);
+      assert.equal(r.disposition, "ALLOWED", `${r.from}->${r.to}`);
+      assert.equal(r.dependsOn, null);
+      if (lifecycle.EFFECT_BEARING_TARGET_STATUSES.includes(r.to)) {
+        assert.match(r.inventoryBoundary, /_NOT_APPLIED: /, `${r.from}->${r.to} must say which stock effect it does not apply`);
       } else {
-        assert.equal(r.dependsOn, null);
+        assert.equal(r.inventoryBoundary, null, `${r.from}->${r.to}`);
       }
     }
-    // The three inventory-effect statuses are all deferred, per inventoryService STATE_TRIGGERS.
-    for (const to of ["DISPATCHED", "COMPLETED", "CANCELLED"]) {
-      const edges = lifecycle.TRANSITION_MATRIX.filter((r) => r.to === to);
-      assert.ok(edges.length > 0);
-      for (const e of edges) assert.equal(e.disposition, "NOT_YET_IMPLEMENTED", `${e.from}->${to}`);
-    }
+    const commands = Object.fromEntries(lifecycle.TRANSITION_MATRIX.filter((r) => r.command !== "transition").map((r) => [`${r.from}->${r.to}`, r.command]));
+    assert.deepEqual(commands, {
+      "READY_TO_DISPATCH->SCHEDULED": "schedule", "SCHEDULED->READY_TO_DISPATCH": "unschedule",
+      "SCHEDULED->DISPATCHED": "dispatch", "WORK_IN_PROGRESS->COMPLETED": "complete",
+    });
   });
 
   await t.test("an ALLOWED transition succeeds and writes history exactly once", async () => {
@@ -279,14 +284,16 @@ test("native Work Order authority", { skip: SKIP, concurrency: 1 }, async (t) =>
     assert.equal(rows[0].s, "READY_TO_DISPATCH");
   });
 
-  await t.test("a transition whose authority is missing FAILS CLOSED rather than changing status", async () => {
+  // UPDATED DELIBERATELY (cutover 2026-09-30): Schedule is implemented as a COMMAND that records the window and
+  // the assignee; the bare transition still refuses it and still moves nothing.
+  await t.test("a COMMAND edge refuses the bare transition rather than changing status", async () => {
     const wo = await make();
     await lifecycle.transitionWorkOrder(deps, actor(), { workOrderId: wo.workOrderId, expectedStatus: "CREATED", toStatus: "READY_TO_DISPATCH" });
     await assert.rejects(() => lifecycle.transitionWorkOrder(deps, actor(), {
       workOrderId: wo.workOrderId, expectedStatus: "READY_TO_DISPATCH", toStatus: "SCHEDULED",
     }), (e) => {
-      assert.equal(e.code, "TRANSITION_AUTHORITY_UNAVAILABLE");
-      assert.match(e.message, /scheduling authority/);
+      assert.equal(e.code, "TRANSITION_REQUIRES_COMMAND");
+      assert.match(e.message, /schedule command/);
       return true;
     });
     const { rows } = await q(`SELECT status::text AS s FROM eos_ops.work_orders WHERE id=$1`, [wo.workOrderId]);
@@ -294,34 +301,35 @@ test("native Work Order authority", { skip: SKIP, concurrency: 1 }, async (t) =>
     assert.equal((await lifecycle.readTransitionHistory(pool, TENANT, wo.workOrderId)).length, 2, "and no history was written");
   });
 
-  await t.test("UNSCHEDULE fails closed: ND-18 makes it a reasoned act that clears the placement", async () => {
+  // UPDATED DELIBERATELY (cutover 2026-09-30): ND-18 is the governed unschedule COMMAND; the bare flip still refuses.
+  await t.test("UNSCHEDULE is never a bare flip: ND-18 makes it a reasoned command that clears the placement", async () => {
     const wo = await make();
     await q(`UPDATE eos_ops.work_orders SET status='SCHEDULED', scheduled_start=now(), scheduled_end=now() + interval '1 hour'
               WHERE id=$1`, [wo.workOrderId]);
     const edge = lifecycle.transitionRuleFor("SCHEDULED", "READY_TO_DISPATCH");
-    assert.equal(edge.disposition, "NOT_YET_IMPLEMENTED");
-    assert.match(edge.dependsOn, /ND-18/);
+    assert.equal(edge.command, "unschedule");
     for (const note of [undefined, "customer asked to move it"]) {
       await assert.rejects(() => lifecycle.transitionWorkOrder(deps, actor(), {
         workOrderId: wo.workOrderId, expectedStatus: "SCHEDULED", toStatus: "READY_TO_DISPATCH", note,
-      }), (e) => { assert.equal(e.code, "TRANSITION_AUTHORITY_UNAVAILABLE"); return true; }, String(note));
+      }), (e) => { assert.equal(e.code, "TRANSITION_REQUIRES_COMMAND"); return true; }, String(note));
     }
     const { rows } = await q(`SELECT status::text AS s, scheduled_start IS NOT NULL AS placed FROM eos_ops.work_orders WHERE id=$1`, [wo.workOrderId]);
     assert.deepEqual([rows[0].s, rows[0].placed], ["SCHEDULED", true], "nothing moved, and no half-cleared placement");
   });
 
-  await t.test("cancellation fails closed because the RELEASE effect is not composed", async () => {
+  // UPDATED DELIBERATELY (cutover 2026-09-30): cancellation is performed, and it STATES that no release was
+  // applied -- nothing was reserved on this path, and no inventory relation is written.
+  await t.test("cancellation succeeds and states the release boundary; no inventory relation is written", async () => {
     const wo = await make();
-    await assert.rejects(() => lifecycle.transitionWorkOrder(deps, actor({ capabilities: new Set([lifecycle.WORK_ORDER_LIFECYCLE_CANCEL]) }), {
+    const before = await q(`SELECT count(*)::int AS n FROM eos_ops.inventory_commitments`);
+    const r = await lifecycle.transitionWorkOrder(deps, actor({ capabilities: new Set([lifecycle.WORK_ORDER_LIFECYCLE_CANCEL]) }), {
       workOrderId: wo.workOrderId, expectedStatus: "CREATED", toStatus: "CANCELLED",
-    }), (e) => {
-      assert.equal(e.code, "TRANSITION_AUTHORITY_UNAVAILABLE");
-      assert.match(e.message, /releaseParts|strands the stock/);
-      return true;
     });
+    assert.equal(r.toStatus, "CANCELLED");
+    assert.match(r.inventoryBoundary, /^RELEASE_NOT_APPLIED/);
+    const after = await q(`SELECT count(*)::int AS n FROM eos_ops.inventory_commitments`);
+    assert.equal(after.rows[0].n, before.rows[0].n, "no commitment was written");
   });
-
-  // ════════════════════ CAPABILITY VOCABULARY AND THE EFFECT BOUNDARY ════════════════════
 
   await t.test("the engine asks for the POSTGRESQL vocabulary, and workOrder.cancel is gone", async () => {
     const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
@@ -399,13 +407,15 @@ test("native Work Order authority", { skip: SKIP, concurrency: 1 }, async (t) =>
     }
   });
 
-  await t.test("holding the SPECIFIC capability gets past authorization and then fails closed on the effect", async () => {
+  // UPDATED DELIBERATELY (cutover 2026-09-30): Dispatch is the governed dispatch COMMAND (assignee, double-booking,
+  // overlap); the bare transition refuses it after authorization.
+  await t.test("holding the SPECIFIC capability gets past authorization, and the bare transition then names the command", async () => {
     const wo = await make();
     await q(`UPDATE eos_ops.work_orders SET status='SCHEDULED' WHERE id=$1`, [wo.workOrderId]);
     await assert.rejects(() => lifecycle.transitionWorkOrder(deps, actor({ capabilities: new Set([lifecycle.WORK_ORDER_LIFECYCLE_DISPATCH]) }), {
       workOrderId: wo.workOrderId, expectedStatus: "SCHEDULED", toStatus: "DISPATCHED",
     }), (e) => {
-      assert.equal(e.code, "TRANSITION_AUTHORITY_UNAVAILABLE", "authorized, but the reserve effect is not composed");
+      assert.equal(e.code, "TRANSITION_REQUIRES_COMMAND", "authorized, but dispatch is a command");
       return true;
     });
   });

@@ -172,7 +172,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     "1764129600000_serialized-asset-acquire-authority.sql",
     // EOS identity/session foundation (Controller ruling 2026-09-29, "EOS IDENTITY BOUNDARY"): the principal_identities
     // binding table. Schema only -- no capability, no grant.
-    "1764200000000_eos-principal-identities.sql"],
+    "1764200000000_eos-principal-identities.sql",
+    // The Work Order domain cutover (2026-09-30): the execution-facts table and workOrder.execution.record, no grant.
+    "1764300000000_work-order-execution-facts.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -394,8 +396,11 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // grant. It is peeled first so the reversal below is THIS migration's and nothing else's.
     // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): 97 = 90 + 1 (L1) + 4 (L2) + 2 (L3).
     // Peeled NEWEST FIRST. None of the seven wrote a grant, so only the capability count moves.
+    assert.deepEqual(await counts(), { caps: 98, grants: 415, mine: 26 });
+    // The Work Order execution facts (1764300000000, the cutover 2026-09-30): -1 capability, no grant; peeled first.
+    runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 97, grants: 415, mine: 26 });
-    // The EOS identity binding table (1764200000000): schema only, peeled first.
+    // The EOS identity binding table (1764200000000): schema only.
     runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 97, grants: 415, mine: 26 });
     // Lane L3: the serialized asset acquire authority (1764129600000, DQ-036(b)): -1 capability, no grant.
@@ -466,7 +471,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the EOS identity binding table (1764200000000) first
+    runMigrate(url, "down", 1); // peel the Work Order execution facts (1764300000000) first
+    runMigrate(url, "down", 1); // then the EOS identity binding table (1764200000000)
     runMigrate(url, "down", 5); // then lane L3's five migrations (1764129600000 .. 1764115200000) first, newest first
     runMigrate(url, "down", 1); // then the Work Order business-action capabilities (1763856000000, lane L2)
     runMigrate(url, "down", 1); // then the ownership handoff correction capability (1763683200000, lane L1)

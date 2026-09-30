@@ -14,7 +14,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { generateKeyPairSync, createHash, randomBytes, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
@@ -67,8 +67,14 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
     if (pool) await pool.end();
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
+  // The DOWN step count is COMPUTED, never a bare `down 1`: a bare step reverses whichever migration is newest, so a
+  // later migration would silently stand in for the one this suite proves refuses. Every migration from the identity
+  // binding (1764200000000) onward is peeled, newest first; the later ones reverse cleanly on this database.
+  const IDENTITY_MIGRATION_ID = 1764200000000;
+  const downSteps = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"))
+    .filter((f) => Number(f.split("_")[0]) >= IDENTITY_MIGRATION_ID).length;
   const migrate = (dir) => spawnSync(process.execPath,
-    ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", dir, ...(dir === "down" ? ["1"] : []), "--migrations-dir", "migrations", "--no-check-order"],
+    ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", dir, ...(dir === "down" ? [String(downSteps)] : []), "--migrations-dir", "migrations", "--no-check-order"],
     { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, encoding: "utf8" });
   const up = migrate("up");
   assert.equal(up.status, 0, up.stderr);
@@ -227,6 +233,9 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
     const down = migrate("down");
     assert.notEqual(down.status, 0);
     assert.match(`${down.stdout}${down.stderr}`, /refusing to drop principal_identities/);
+    // Restore any later migration the computed down reversed before reaching the refusal.
+    const reup = migrate("up");
+    assert.equal(reup.status, 0, reup.stderr);
   });
 
   // ════════════════════ the real EOS API, in process ════════════════════

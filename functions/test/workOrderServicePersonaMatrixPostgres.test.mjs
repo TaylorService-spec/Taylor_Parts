@@ -356,14 +356,15 @@ test("the service persona matrix over the governed Work Order authority", { skip
   });
 
   // ── the PostgreSQL edges that exist today ──
-  await t.test("LIFECYCLE: no persona can reach an effect-bearing or deferred edge through PostgreSQL today", async () => {
+  // UPDATED DELIBERATELY by the WORK ORDER DOMAIN CUTOVER AUTHORIZATION (2026-09-30): completion is implemented as
+  // the governed complete COMMAND (DQ-015); the BARE transition refuses it after authorization, so no persona can
+  // reach COMPLETED by a status flip. It previously pinned the deferred consume effect (TRANSITION_AUTHORITY_UNAVAILABLE).
+  await t.test("LIFECYCLE: no persona can reach an effect-bearing edge by a bare status change", async () => {
     await q(`UPDATE eos_ops.work_orders SET status='WORK_IN_PROGRESS' WHERE id='wo-a'`);
-    // Even the ALLOWED-by-authorization assigned technician is refused UNAVAILABLE: completion's
-    // consume/finalize effect is not composed, and the status alone would misreport what happened.
     await assert.rejects(lifecycle.transitionWorkOrder({ pool }, actor(PERSONA.techOther), complete),
-      (e) => { assert.equal(e.code, "TRANSITION_AUTHORITY_UNAVAILABLE"); return true; });
+      (e) => { assert.equal(e.code, "TRANSITION_REQUIRES_COMMAND"); return true; });
     await assert.rejects(lifecycle.transitionWorkOrder({ pool }, actor(PERSONA.techAssigned), complete),
-      (e) => { assert.equal(e.code, "NOT_ASSIGNED"); return true; }, "authorization answers before availability");
+      (e) => { assert.equal(e.code, "NOT_ASSIGNED"); return true; }, "authorization answers before the command boundary");
     const { rows } = await q(`SELECT status::text AS s FROM eos_ops.work_orders WHERE id='wo-a'`);
     assert.equal(rows[0].s, "WORK_IN_PROGRESS");
   });

@@ -108,6 +108,16 @@ test("DISPATCH and CANCEL declare NO context predicate -- they do not inherit th
   assert.deepEqual(lifecycle.lifecycleContextPredicates(lifecycle.WORK_ORDER_LIFECYCLE_DISPATCH), []);
   assert.deepEqual(lifecycle.lifecycleContextPredicates(lifecycle.WORK_ORDER_LIFECYCLE_CANCEL), []);
   assert.deepEqual(lifecycle.lifecycleContextPredicates(lifecycle.WORK_ORDER_TRANSITION), []);
+  // ADDED by the WORK ORDER DOMAIN CUTOVER AUTHORIZATION (2026-09-30): the four technician runtime EDGES
+  // (accept / startTravel / arrive / startWork) are OWN-ASSIGNMENT, as Firebase's ACTION_PERMISSIONS marks them.
+  // Declared per EDGE, so the capability-keyed Workflow guard requirements do not move.
+  for (const [from, to] of [["DISPATCHED", "ACCEPTED"], ["ACCEPTED", "EN_ROUTE"], ["EN_ROUTE", "ARRIVED"], ["ARRIVED", "WORK_IN_PROGRESS"]]) {
+    assert.deepEqual(lifecycle.edgeContextPredicates(lifecycle.transitionRuleFor(from, to)),
+      [{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }], `${from}->${to}`);
+  }
+  for (const [from, to] of [["SCHEDULED", "DISPATCHED"], ["CREATED", "CANCELLED"], ["CREATED", "READY_TO_DISPATCH"], ["COMPLETED", "CLOSED"]]) {
+    assert.deepEqual(lifecycle.edgeContextPredicates(lifecycle.transitionRuleFor(from, to)), [], `${from}->${to}`);
+  }
 });
 
 test("completion's relation is ASSIGNMENT -- not owner, not requester, not Role, not Scope", () => {
@@ -375,14 +385,15 @@ test("the five grants, and the assignment they gate", { skip: SKIP, concurrency:
         { workOrderId: "wo-fixture", expectedStatus: "WORK_IN_PROGRESS", toStatus: "COMPLETED" }),
       (err) => err.code === "CAPABILITY_MISSING" && err.category === "FORBIDDEN");
 
-    // ASSIGNED: authorization PASSES, and what stops the command is the lifecycle dependency the
-    // transition matrix names -- consumeParts + finalizeInventoryTransaction -- not permission.
-    // Reaching THIS refusal is the proof that the assigned technician got through the gate.
+    // ASSIGNED: authorization PASSES, and what stops the BARE transition is that completion is a governed
+    // COMMAND (DQ-015's Sales Order prerequisite) -- not permission. Reaching THIS refusal is the proof that
+    // the assigned technician got through the gate. UPDATED DELIBERATELY (cutover 2026-09-30): it previously
+    // stopped at the deferred consume effect, which the ruling replaced with an explicit inventory boundary.
     await assert.rejects(
       () => lifecycle.transitionWorkOrder({ pool },
         actor("prn-tech-a", "workOrder.lifecycle.complete"),
         { workOrderId: "wo-fixture", expectedStatus: "WORK_IN_PROGRESS", toStatus: "COMPLETED" }),
-      (err) => err.code === "TRANSITION_AUTHORITY_UNAVAILABLE" && err.category === "UNAVAILABLE");
+      (err) => err.code === "TRANSITION_REQUIRES_COMMAND" && err.category === "PRECONDITION_FAILED");
   });
 
   await t.test("an ENDED assignment is not a current one", async () => {

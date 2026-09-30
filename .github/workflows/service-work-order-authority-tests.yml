@@ -37,6 +37,13 @@ on:
       - "functions/test/workOrderMigrationCopyPostgres.test.mjs"
       - "functions/test/workOrderServicePersonaMatrixPostgres.test.mjs"
       - "functions/test/workOrderEquipmentInstallPostgres.test.mjs"
+      - "functions/src/eosOps/eosOpsHttp.ts"
+      - "functions/scripts/exportWorkOrderSnapshot.js"
+      - "functions/scripts/workOrderProtectedRowsPlanCli.js"
+      - "functions/test/workOrderDomainCutoverPostgres.test.mjs"
+      - "functions/test/workOrderJourneyAcceptancePostgres.test.mjs"
+      - "functions/test/workOrderProtectedRows.test.mjs"
+      - "functions/test/workOrderSnapshotExporter.test.mjs"
       - "functions/src/eosOps/equipmentCustody.ts"
       - "functions/src/catalogAuthority/postgresPartPolicyAuthority.ts"
       - "functions/test/workOrderMigrationCopyCli.test.mjs"
@@ -69,6 +76,9 @@ on:
       - "functions/src/workOrderConsumption/**"
       - "functions/migrations/**"
       - "functions/test/workOrder*.test.mjs"
+      - "functions/src/eosOps/eosOpsHttp.ts"
+      - "functions/scripts/exportWorkOrderSnapshot.js"
+      - "functions/scripts/workOrderProtectedRowsPlanCli.js"
       - "functions/test/transitionWorkOrder*.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -127,6 +137,8 @@ jobs:
           test/workOrderMigrationCopyPostgres.test.mjs
           test/workOrderServicePersonaMatrixPostgres.test.mjs
           test/workOrderEquipmentInstallPostgres.test.mjs
+          test/workOrderDomainCutoverPostgres.test.mjs
+          test/workOrderJourneyAcceptancePostgres.test.mjs
         working-directory: functions
         env:
           POLICY_TEST_DATABASE_URL: postgres://eos:eos@localhost:5432/eos_policy
@@ -153,6 +165,8 @@ jobs:
           test/workOrderMigrationDryRun.test.mjs
           test/workOrderFieldParityMatrix.test.mjs
           test/workOrderConsumptionPartAuthority.test.mjs
+          test/workOrderProtectedRows.test.mjs
+          test/workOrderSnapshotExporter.test.mjs
         working-directory: functions
 
   emulator:
