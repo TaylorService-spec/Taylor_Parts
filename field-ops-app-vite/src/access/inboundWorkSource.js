@@ -85,17 +85,15 @@ async function governedWrite(name, payload) {
   }
 }
 
-export const governedInboundWorkSource = Object.freeze({
-  listQueue: (options = {}) => governedRead("listInboundWork", options),
-  getRequest: (requestId) => governedRead("getInboundWorkRequest", { requestId }),
-  accept: (input) => governedWrite("acceptInboundWork", input),
-  decline: (input) => governedWrite("declineInboundWork", input),
-  attach: (input) => governedWrite("attachInboundWorkToWorkOrder", input),
-  // The governed attachment read. It takes the PROVIDER attachment id, never a storage key -- the
-  // server looks the key up on the record after authorizing against that record.
-  getAttachment: (input) => governedWrite("getInboundWorkAttachment", input),
-});
-
+// THE REVIEW QUEUE AND ITS THREE DECISIONS ARE NOT HERE (Owner ruling W9, 2026-09-30). Service -> Inbound Work reads
+// and decides through the governed PostgreSQL intake (services/inboundWorkApiClient.js, POST /operations/inbound-work):
+// Accept creates the Work Order through the governed EOS Work Order create. The Firebase callables listInboundWork /
+// getInboundWorkRequest / acceptInboundWork / declineInboundWork / attachInboundWorkToWorkOrder /
+// getInboundWorkAttachment have no client caller.
+//
+// WHAT REMAINS BELOW IS THE PROVIDER BOUNDARY: Administration -> Email & Communications (provider connections, OAuth,
+// polling, delivery retry, the Firebase delivery seam). Its cutover is a separate Owner ruling; nothing below acts on
+// a Work Order.
 export const governedEmailIntakeSource = Object.freeze({
   getConfiguration: () => governedRead("getEmailIntakeConfiguration"),
   // What this runtime can actually offer: whether an OAuth client is configured at all, and whether
@@ -118,5 +116,4 @@ export const governedEmailIntakeSource = Object.freeze({
   deliverMessage: (input) => governedWrite("deliverInboundEmailMessage", input),
 });
 
-export const DEFAULT_INBOUND_WORK_SOURCE = governedInboundWorkSource;
 export const DEFAULT_EMAIL_INTAKE_SOURCE = governedEmailIntakeSource;

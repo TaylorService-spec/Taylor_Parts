@@ -9,17 +9,11 @@ import CustomerPicker from "../workOrders/CustomerPicker.jsx";
 import EquipmentPicker from "../workOrders/EquipmentPicker.jsx";
 import { useAccountPicker } from "../../hooks/useAccountPicker";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
-import { useAuth } from "../../auth/AuthContext";
-import { useGovernedCapabilities } from "../../access/useGovernedCapabilities.js";
 import {
-  DEFAULT_INBOUND_WORK_SOURCE,
-  INBOUND_WORK_CAPABILITY_REQUEST,
-  INBOUND_WORK_READ,
-  INBOUND_WORK_ACCEPT,
-  INBOUND_WORK_DECLINE,
-  INBOUND_WORK_ATTACH,
-  SOURCE_STATUS,
-} from "../../access/inboundWorkSource.js";
+  EOS_INBOUND_WORK_SOURCE,
+  INBOUND_SOURCE_STATUS as SOURCE_STATUS,
+  INBOUND_WORK_NOT_YET_ACTIVATED_MESSAGE,
+} from "../../services/inboundWorkApiClient.js";
 
 // SERVICE -> INBOUND WORK. The operational queue for work that arrived from outside EOS -- today by email
 // from Taylor Corporate, vendors and manufacturers.
@@ -28,8 +22,14 @@ import {
 // arrived; the right side is what EOS made of it. A reviewer confirms or corrects the interpretation and
 // presses Accept Job, and the Work Order is created server-side from those confirmed values.
 //
-// NOTHING HERE IS AUTHORITY. Every control is rendered from the trusted effective-access feed and every
-// action is re-authorized server-side; hiding a button is a courtesy, not a security boundary. The
+// THE GOVERNED EOS PATH (Owner ruling W9, 2026-09-30). Every read and decision goes to POST
+// /operations/inbound-work (services/inboundWorkApiClient.js) -- the governed PostgreSQL intake. Accept creates the
+// Work Order through the governed EOS Work Order create, with the operating company STATED here by the reviewer
+// (never inferred from the sender, the mailbox or the customer). No Firebase Inbound Work callable is invoked, and
+// there is no fallback: while the Work Order authority is not activated the screen says NOT_YET_ACTIVATED.
+//
+// NOTHING HERE IS AUTHORITY. Controls are rendered from the caller's own decision set (readInboundWorkAccess) and
+// every action is re-authorized server-side; hiding a button is a courtesy, not a security boundary. The
 // pickers are the SAME CustomerPicker / EquipmentPicker / location read the Work Order wizard uses --
 // a second lookup system for the same records is how two surfaces come to disagree about a customer.
 //
@@ -59,6 +59,7 @@ const PRIORITIES = [
 const STATUS_TONE = {
   AWAITING_DECISION: "info",
   NEEDS_REVIEW: "attention",
+  ACCEPTING: "info",
   ACCEPTED: "positive",
   DECLINED: "unknown",
   ATTACHED: "positive",
@@ -70,6 +71,7 @@ const STATUS_TONE = {
 const STATUS_LABELS = {
   AWAITING_DECISION: "Awaiting decision",
   NEEDS_REVIEW: "Needs review",
+  ACCEPTING: "Acceptance in progress",
   ACCEPTED: "Accepted",
   DECLINED: "Declined",
   ATTACHED: "Attached to existing work",
@@ -120,34 +122,8 @@ function Fact({ label, children }) {
   );
 }
 
-/**
- * Save one attachment the reviewer asked for.
- *
- * The bytes come back from the governed read as base64 and are turned into a file HERE, in the page,
- * rather than through a link to storage: there is no URL to the object at all, so there is nothing to
- * leak, share by accident, or reach without passing the authorization check first. The blob URL is
- * revoked immediately after the save -- it is a handle to memory, not a location.
- */
-async function saveAttachment(source, requestId, attachment) {
-  const result = await source.getAttachment({ requestId, providerAttachmentId: attachment.providerAttachmentId });
-  if (!result?.ok) return result?.message ?? "That attachment could not be opened.";
-  const binary = atob(result.data.contentBase64 ?? "");
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  // application/octet-stream, never the sender's declared type: a file the browser is asked to SAVE
-  // cannot be a file the browser decides to RENDER.
-  const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = result.data.filename || attachment.filename || "attachment";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-  return null;
-}
 /** The message as it arrived. Read-only evidence; never edited, never re-rendered as markup. */
-function OriginalMessage({ detail, onDownload, downloadError }) {
+function OriginalMessage({ detail }) {
   return (
     <section className="fo-inbound-pane" aria-label="Original message">
       <h2 className="fo-inbound-pane__title">Original message</h2>
@@ -172,32 +148,17 @@ function OriginalMessage({ detail, onDownload, downloadError }) {
               <span className="fo-muted">
                 {a.mimeType} · {fileSize(a.size)}
               </span>{" "}
-              {/* CUSTODY IS STATED, NOT ASSUMED. "EOS holds this file" and "the provider told us this file
-                  exists" are different facts, and a reviewer deciding on a warranty job needs to know which
-                  one they are looking at. */}
-              {a.custody === "STORED" ? (
-                <Button variant="tertiary" className="fo-link-btn" onClick={() => onDownload(a)}>
-                  Download
-                </Button>
-              ) : a.custody === "FAILED" ? (
+              {/* CUSTODY IS STATED, NOT ASSUMED. The EOS intake preserves the attachment's identity and
+                  provenance; the BYTES stay with the mailbox provider (the provider runtime is a separate
+                  boundary), so there is nothing here to download and the screen says so. */}
+              {a.custody === "FAILED" ? (
                 <StatusPill tone="attention" label="Could not be retrieved" asText />
               ) : (
-                <StatusPill tone="info" label="Not retrieved yet" asText />
+                <StatusPill tone="info" label="Held by the mailbox provider — not copied into EOS" asText />
               )}
             </li>
           ))}
         </ul>
-      )}
-      {detail.attachmentCustody === "PARTIAL" && (
-        <p className="fo-muted">
-          The message arrived in full; one or more attachments could not be retrieved. An administrator can retry
-          them from Administration → Email &amp; Communications → Exceptions.
-        </p>
-      )}
-      {downloadError && (
-        <p className="fo-inline-error" role="alert">
-          {downloadError}
-        </p>
       )}
       {detail.threadMessages.length > 0 && (
         <>
@@ -224,6 +185,10 @@ function OriginalMessage({ detail, onDownload, downloadError }) {
  */
 function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
   const accountPicker = useAccountPicker();
+  // THE OPERATING COMPANY IS STATED, NEVER PRE-FILLED. The routed suggestion is shown beside the choice; choosing
+  // it is the reviewer's act. The options are the governed ACTIVE + keyed companies (listWorkOrderOperatingCompanies).
+  const [operatingCompanyId, setOperatingCompanyId] = useState("");
+  const [companies, setCompanies] = useState({ status: "loading", items: [] });
   const [customerId, setCustomerId] = useState(detail.customerCandidate?.id ?? null);
   const [customerName, setCustomerName] = useState(null);
   const [locationId, setLocationId] = useState(detail.locationCandidate?.id ?? "");
@@ -243,6 +208,23 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
   const resolvedCustomerName =
     customerName ?? (accountPicker.options ?? []).find((a) => a.id === customerId)?.name ?? null;
   const decided = detail.status !== "AWAITING_DECISION" && detail.status !== "NEEDS_REVIEW";
+
+  useEffect(() => {
+    let active = true;
+    if (decided || !capabilities.canAccept || typeof capabilities.source.listOperatingCompanies !== "function") {
+      setCompanies({ status: "skipped", items: [] });
+      return undefined;
+    }
+    capabilities.source.listOperatingCompanies().then((res) => {
+      if (!active) return;
+      setCompanies(res?.status === SOURCE_STATUS.READY
+        ? { status: "ready", items: res.payload.items ?? [] }
+        : { status: res?.status ?? SOURCE_STATUS.UNAVAILABLE, items: [] });
+    });
+    return () => {
+      active = false;
+    };
+  }, [decided, capabilities.canAccept, capabilities.source]);
 
   // The suggestion is a starting point, not a lock: switching the customer clears the site and unit
   // chosen under the previous one so a stale selection can never be submitted.
@@ -347,7 +329,25 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
         {detail.routingRuleName || (detail.routingRuleId ? "Matched a routing rule that has since been removed" : "No rule matched — review required")}
         {detail.queue ? ` · queue ${detail.queue}` : ""}
       </Fact>
-      <Fact label="Operating company">{detail.operatingCompanyId}</Fact>
+      <Fact label="Suggested operating company">{detail.suggestedOperatingCompanyId}</Fact>
+      {decided ? (
+        <Fact label="Operating company">{detail.operatingCompanyId}</Fact>
+      ) : (
+        <div className="fo-inbound-field">
+          <label className="fo-wizard-field-label" htmlFor="inbound-company">Operating company</label>
+          <select id="inbound-company" className="fo-wizard-control" value={operatingCompanyId}
+            disabled={!capabilities.canAccept || companies.status !== "ready"}
+            onChange={(e) => setOperatingCompanyId(e.target.value)}>
+            <option value="">Select the operating company…</option>
+            {companies.items.map((c) => (
+              <option key={c.operatingCompanyId} value={c.operatingCompanyId}>{c.operatingCompanyId}</option>
+            ))}
+          </select>
+          {companies.status !== "ready" && companies.status !== "loading" && companies.status !== "skipped" && (
+            <p className="fo-inline-error" role="alert">The governed operating companies could not be read.</p>
+          )}
+        </div>
+      )}
       {detail.threadAssociation === "AMBIGUOUS" && (
         <p className="fo-inbound-warnings">
           <StatusPill tone="attention" label="Reply matched more than one open request" asText />
@@ -375,7 +375,7 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
           <StatusPill tone={STATUS_TONE[detail.status] ?? "unknown"} label={label(STATUS_LABELS, detail.status)} asText />
           {detail.workItemId ? (
             <Button variant="tertiary" className="fo-link-btn" onClick={() => onOpenWorkOrder(detail.workItemId)}>
-              Open the work order
+              Open the work order{detail.workOrderNumber ? ` ${detail.workOrderNumber}` : ""}
             </Button>
           ) : null}
         </p>
@@ -407,11 +407,12 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
                 Attach to Existing Work
               </Button>
             </div>
-            <Button variant="primary" disabled={busy || !capabilities.canAccept || !customerId || !locationId}
+            <Button variant="primary" disabled={busy || !capabilities.canAccept || !customerId || !locationId || !operatingCompanyId}
               onClick={() =>
                 run(() =>
                   capabilities.source.accept({
                     requestId: detail.id,
+                    operatingCompanyId,
                     customerId,
                     locationId,
                     equipmentId: equipmentId || null,
@@ -433,17 +434,27 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
   );
 }
 
-export default function InboundWorkWorkspace({ source = DEFAULT_INBOUND_WORK_SOURCE, capabilityRequest = INBOUND_WORK_CAPABILITY_REQUEST } = {}) {
+export default function InboundWorkWorkspace({ source = EOS_INBOUND_WORK_SOURCE } = {}) {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { hasCapability, accessVersion } = useGovernedCapabilities(user, capabilityRequest);
+  const [access, setAccess] = useState({ status: "loading", value: null });
   const [queue, setQueue] = useState({ status: "loading", rows: [], truncated: false });
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
-  const [downloadError, setDownloadError] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
 
-  const canRead = hasCapability(INBOUND_WORK_READ);
+  // The caller's OWN decision set, from the same governed authority that enforces it.
+  useEffect(() => {
+    let active = true;
+    setAccess({ status: "loading", value: null });
+    source.readAccess().then((res) => {
+      if (active) setAccess(res.status === SOURCE_STATUS.READY ? { status: "ready", value: res.payload } : { status: res.status, value: null });
+    });
+    return () => {
+      active = false;
+    };
+  }, [source, reloadToken]);
+
+  const canRead = access.status === "ready" && access.value?.canRead === true;
 
   const loadQueue = useCallback(async () => {
     const result = await source.listQueue({});
@@ -454,16 +465,23 @@ export default function InboundWorkWorkspace({ source = DEFAULT_INBOUND_WORK_SOU
     }
   }, [source]);
 
-  // Re-read on every access change as well as on mount: a revoked capability must not leave a stale
-  // queue on screen (the same convention PartsList/Operations follow with accessVersion).
+  // Re-read on every access change as well as on mount: a revoked capability must not leave a stale queue.
   useEffect(() => {
+    if (access.status === "loading") {
+      setQueue({ status: "loading", rows: [], truncated: false });
+      return;
+    }
+    if (access.status !== "ready") {
+      setQueue({ status: access.status, rows: [], truncated: false });
+      return;
+    }
     if (!canRead) {
       setQueue({ status: SOURCE_STATUS.DENIED, rows: [], truncated: false });
       return;
     }
     setQueue({ status: "loading", rows: [], truncated: false });
     loadQueue();
-  }, [canRead, accessVersion, loadQueue, reloadToken]);
+  }, [access.status, canRead, loadQueue, reloadToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -492,12 +510,12 @@ export default function InboundWorkWorkspace({ source = DEFAULT_INBOUND_WORK_SOU
     ];
   }, [queue.rows]);
 
-  const capabilities = {
-    canAccept: hasCapability(INBOUND_WORK_ACCEPT),
-    canDecline: hasCapability(INBOUND_WORK_DECLINE),
-    canAttach: hasCapability(INBOUND_WORK_ATTACH),
+  const capabilities = useMemo(() => ({
+    canAccept: access.value?.canAccept === true,
+    canDecline: access.value?.canDecline === true,
+    canAttach: access.value?.canAttach === true,
     source,
-  };
+  }), [access.value, source]);
 
   // ACCEPTANCE ENDS ON THE WORK ORDER, not on a toast. The reviewer's next act is always about the job
   // they just created, so the screen takes them there.
@@ -514,6 +532,10 @@ export default function InboundWorkWorkspace({ source = DEFAULT_INBOUND_WORK_SOU
     >
       {queue.status === "loading" ? (
         <HonestState state={HONEST_STATE.LOADING} subject="inbound work" />
+      ) : queue.status === SOURCE_STATUS.NOT_ACTIVATED ? (
+        <div className="fo-muted fo-work-order-readiness" role="status" data-inbound-work-readiness="NOT_YET_ACTIVATED">
+          <strong>Inbound Work: NOT_YET_ACTIVATED.</strong> {INBOUND_WORK_NOT_YET_ACTIVATED_MESSAGE}
+        </div>
       ) : queue.status === SOURCE_STATUS.DENIED ? (
         <HonestState state={HONEST_STATE.DENIED} subject="Inbound Work" />
       ) : queue.status !== "ready" ? (
@@ -570,11 +592,7 @@ export default function InboundWorkWorkspace({ source = DEFAULT_INBOUND_WORK_SOU
       )}
       {detail?.status === "ready" && (
         <div className="fo-inbound-review">
-          <OriginalMessage
-            detail={detail.value}
-            downloadError={downloadError}
-            onDownload={async (attachment) => setDownloadError(await saveAttachment(source, detail.value.id, attachment))}
-          />
+          <OriginalMessage detail={detail.value} />
           <Interpretation
             key={detail.value.id}
             detail={detail.value}

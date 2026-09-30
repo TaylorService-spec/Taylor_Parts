@@ -2,17 +2,15 @@
 //
 //   1. hostile message content arrives as TEXT and stays text -- no element is ever created from it;
 //   2. the review screen shows the message and EOS's reading of it side by side;
-//   3. Accept Job submits the REVIEWER'S confirmed values and nothing else -- no actor, no timestamp;
-//   4. a role without the capability sees an honest denial, not an empty screen or a live button.
-import { afterEach, beforeAll, describe, it, expect, vi } from "vitest";
+//   3. Accept Job submits the REVIEWER'S confirmed values -- including the operating company the reviewer STATES --
+//      and nothing else: no actor, no timestamp;
+//   4. a role without the capability sees an honest denial, not an empty screen or a live button;
+//   5. (Owner ruling W9) the source is the governed EOS intake: NOT_YET_ACTIVATED is said, never papered over.
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
-const capabilities = { value: new Set(["service.inboundWork.read", "service.inboundWork.accept", "service.inboundWork.decline", "service.inboundWork.attachExisting"]) };
-
-vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "reviewer-uid" } }) }));
-vi.mock("../src/access/useGovernedCapabilities.js", () => ({
-  useGovernedCapabilities: () => ({ hasCapability: (id) => capabilities.value.has(id), accessVersion: 1 }),
-}));
+const FULL_ACCESS = { canRead: true, canAccept: true, canDecline: true, canAttach: true, canManageIntake: false };
+const access = { value: { ...FULL_ACCESS } };
 // The pickers reach Firestore for their options; this suite is about the review screen, and the pickers
 // have their own. The customer suggestion is already resolved on the fixture, so no picking is required.
 vi.mock("../src/hooks/useAccountPicker", () => ({ useAccountPicker: () => ({ options: [] }) }));
@@ -39,6 +37,7 @@ const detail = {
   priority: 2,
   queue: "WARRANTY_REVIEW",
   operatingCompanyId: null,
+  suggestedOperatingCompanyId: "ventana",
   customerCandidateId: "acct-1",
   equipmentCandidateId: "eq-1",
   attachmentCount: 1,
@@ -54,10 +53,10 @@ const detail = {
   originalBodyText: HOSTILE_TEXT,
   normalizedBody: HOSTILE_TEXT,
   attachmentRefs: [
-    { filename: "authorization.pdf", mimeType: "application/pdf", size: 2048, providerAttachmentId: "att-1", sourceMessageId: "msg-1", custody: "STORED" },
-    { filename: "photo.jpg", mimeType: "image/jpeg", size: 4096, providerAttachmentId: "att-2", sourceMessageId: "msg-1", custody: "FAILED", failureCode: "ATTACHMENT_FETCH_FAILED" },
+    { filename: "authorization.pdf", mimeType: "application/pdf", size: 2048, providerAttachmentId: "att-1", sourceMessageId: "msg-1", custody: "METADATA_ONLY" },
+    { filename: "photo.jpg", mimeType: "image/jpeg", size: 4096, providerAttachmentId: "att-2", sourceMessageId: "msg-1", custody: "METADATA_ONLY" },
   ],
-  attachmentCustody: "PARTIAL",
+  attachmentCustody: "METADATA_ONLY",
   threadMessages: [],
   customerCandidate: { id: "acct-1", rawValue: "SN-1", confidence: "EXACT", matchedOn: "serialNumberKey" },
   locationCandidate: { id: "loc-1", rawValue: "SN-1", confidence: "EXACT", matchedOn: "equipmentLocation" },
@@ -99,28 +98,21 @@ const row = {
 
 function makeSource(overrides = {}) {
   return {
+    readAccess: async () => ({ status: "ready", payload: access.value, error: null }),
+    listOperatingCompanies: async () => ({ status: "ready", payload: { items: [{ operatingCompanyId: "taylor" }, { operatingCompanyId: "ventana" }] }, error: null }),
     listQueue: async () => ({ status: "ready", payload: { rows: [row], truncated: false }, error: null }),
     getRequest: async () => ({ status: "ready", payload: detail, error: null }),
     accept: async () => ({ ok: true, data: { requestId: "req-1", workItemId: "wo-1", woNumber: "WO-2026-000001", replayed: false } }),
     decline: async () => ({ ok: true, data: { requestId: "req-1", replayed: false } }),
     attach: async () => ({ ok: true, data: { requestId: "req-1", workItemId: "wo-9", replayed: false } }),
-    getAttachment: async () => ({ ok: true, data: { filename: "authorization.pdf", declaredMimeType: "application/pdf", size: 3, contentHash: "h", contentBase64: "UERG" } }),
     ...overrides,
   };
 }
 
-// jsdom implements no object-URL machinery, and the download path is the only thing here that wants it.
-// Stubbed rather than worked around in the component: a browser always has this, and a component that
-// checked for it would be carrying a branch that exists only for the test environment.
-beforeAll(() => {
-  if (typeof URL.createObjectURL !== "function") URL.createObjectURL = () => "blob:stub";
-  if (typeof URL.revokeObjectURL !== "function") URL.revokeObjectURL = () => {};
-});
-
 afterEach(() => {
   cleanup();
   navigate.mockReset();
-  capabilities.value = new Set(["service.inboundWork.read", "service.inboundWork.accept", "service.inboundWork.decline", "service.inboundWork.attachExisting"]);
+  access.value = { ...FULL_ACCESS };
 });
 
 describe("Inbound Work queue", () => {
@@ -133,9 +125,16 @@ describe("Inbound Work queue", () => {
   });
 
   it("says DENIED rather than showing an empty queue when the role does not include it", async () => {
-    capabilities.value = new Set();
+    access.value = { canRead: false, canAccept: false, canDecline: false, canAttach: false, canManageIntake: false };
     render(<InboundWorkWorkspace source={makeSource()} />);
     expect(await screen.findByText(/isn't part of your role/i)).toBeTruthy();
+  });
+
+  it("says NOT_YET_ACTIVATED -- not an outage, not an empty queue -- while the EOS authority is off", async () => {
+    render(<InboundWorkWorkspace source={makeSource({ readAccess: async () => ({ status: "not_activated", payload: null, error: "NOT_ACTIVATED" }) })} />);
+    const notice = (await screen.findByText("Inbound Work: NOT_YET_ACTIVATED.")).closest("[data-inbound-work-readiness]");
+    expect(notice.getAttribute("data-inbound-work-readiness")).toBe("NOT_YET_ACTIVATED");
+    expect(screen.queryByText("Warranty service required")).toBeNull();
   });
 
   it("says UNAVAILABLE, distinctly, when the governed read fails", async () => {
@@ -168,10 +167,27 @@ describe("Inbound Work review", () => {
     expect(region.querySelector("script")).toBeNull();
   });
 
+  const chooseCompany = async (value = "taylor") => {
+    const select = await screen.findByLabelText("Operating company");
+    await waitFor(() => expect(select.disabled).toBe(false));
+    fireEvent.change(select, { target: { value } });
+  };
+
+  it("the operating company is STATED by the reviewer: never pre-filled from the suggestion, and Accept waits for it", async () => {
+    await open();
+    const select = await screen.findByLabelText("Operating company");
+    expect(select.value).toBe("");
+    expect(screen.getByText("Suggested operating company").nextSibling.textContent).toBe("ventana"); // SHOWN, not used
+    expect(screen.getByRole("button", { name: "Accept Job" }).disabled).toBe(true);
+    await chooseCompany();
+    expect(screen.getByRole("button", { name: "Accept Job" }).disabled).toBe(false);
+  });
+
   it("Accept Job submits the reviewer's confirmed values -- and no actor or timestamp", async () => {
     const accept = vi.fn(async () => ({ ok: true, data: { requestId: "req-1", workItemId: "wo-1", replayed: false } }));
     render(<InboundWorkWorkspace source={makeSource({ accept })} />);
     fireEvent.click(await screen.findByText("Warranty service required"));
+    await chooseCompany();
     fireEvent.click(await screen.findByRole("button", { name: "Accept Job" }));
 
     await waitFor(() => expect(accept).toHaveBeenCalledTimes(1));
@@ -185,26 +201,28 @@ describe("Inbound Work review", () => {
     expect(payload.acceptedBy).toBeUndefined();
     expect(payload.actorUid).toBeUndefined();
     expect(payload.decisionAt).toBeUndefined();
-    expect(payload.operatingCompanyId).toBeUndefined();
+    expect(payload.operatingCompanyId).toBe("taylor");
   });
 
   it("takes the reviewer to the Work Order acceptance created", async () => {
     await open();
+    await chooseCompany();
     fireEvent.click(screen.getByRole("button", { name: "Accept Job" }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith("/service/work-orders/wo-1"));
   });
 
   it("says why an acceptance was refused instead of failing silently", async () => {
-    const accept = async () => ({ ok: false, code: "failed-precondition", message: "This request is DECLINED and can no longer be accepted." });
+    const accept = async () => ({ ok: false, code: "ALREADY_DECIDED", message: "This request is DECLINED and can no longer be accepted." });
     render(<InboundWorkWorkspace source={makeSource({ accept })} />);
     fireEvent.click(await screen.findByText("Warranty service required"));
+    await chooseCompany();
     fireEvent.click(await screen.findByRole("button", { name: "Accept Job" }));
     expect(await screen.findByText(/can no longer be accepted/)).toBeTruthy();
     expect(navigate).not.toHaveBeenCalled();
   });
 
   it("offers no Accept control to a reviewer whose role excludes it", async () => {
-    capabilities.value = new Set(["service.inboundWork.read"]);
+    access.value = { canRead: true, canAccept: false, canDecline: false, canAttach: false, canManageIntake: false };
     render(<InboundWorkWorkspace source={makeSource()} />);
     fireEvent.click(await screen.findByText("Warranty service required"));
     const accept = await screen.findByRole("button", { name: "Accept Job" });
@@ -213,34 +231,12 @@ describe("Inbound Work review", () => {
   });
 
 
-  it("says which attachments EOS actually holds, and which it could not retrieve", async () => {
+  it("says the attachment bytes are held by the mailbox provider -- and offers no download that cannot work", async () => {
     await open();
     const region = screen.getByRole("region", { name: "Original message" });
-    expect(within(region).getByRole("button", { name: "Download" })).toBeTruthy();
-    expect(within(region).getByText("Could not be retrieved")).toBeTruthy();
-    expect(within(region).getByText(/one or more attachments could not be retrieved/i)).toBeTruthy();
-  });
-
-  it("downloading asks for the attachment by its PROVIDER id -- never by a storage key", async () => {
-    const getAttachment = vi.fn(async () => ({
-      ok: true,
-      data: { filename: "authorization.pdf", declaredMimeType: "application/pdf", size: 3, contentBase64: "UERG" },
-    }));
-    render(<InboundWorkWorkspace source={makeSource({ getAttachment })} />);
-    fireEvent.click(await screen.findByText("Warranty service required"));
-    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
-    await waitFor(() => expect(getAttachment).toHaveBeenCalledTimes(1));
-    const payload = getAttachment.mock.calls[0][0];
-    expect(payload).toEqual({ requestId: "req-1", providerAttachmentId: "att-1" });
-    expect("storageKey" in payload).toBe(false);
-  });
-
-  it("says why a download failed instead of silently doing nothing", async () => {
-    const getAttachment = async () => ({ ok: false, code: "failed-precondition", message: "That attachment has not been retrieved yet." });
-    render(<InboundWorkWorkspace source={makeSource({ getAttachment })} />);
-    fireEvent.click(await screen.findByText("Warranty service required"));
-    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
-    expect(await screen.findByText(/has not been retrieved yet/)).toBeTruthy();
+    expect(within(region).getByText("authorization.pdf")).toBeTruthy();
+    expect(within(region).getAllByText(/Held by the mailbox provider/).length).toBe(2);
+    expect(within(region).queryByRole("button", { name: "Download" })).toBeNull();
   });
 
   it("Decline Job carries a governed reason", async () => {
