@@ -288,7 +288,7 @@ test("the canonical frontend shim exports the Firestore and Functions HANDLES an
     "auth must never appear here -- Firebase Auth identity is permitted by Owner ruling");
 });
 
-test("all 48 importers of the frontend handle shim's db/functions also import the fenced " +
+test("all 39 importers of the frontend handle shim's db/functions also import the fenced " +
   "dependency DIRECTLY, so the guard's own baseline already governs every one of them -- which " +
   "is why this shim's tolerated consumer set is empty rather than unexamined", () => {
   const live = buildCensus(REPO_ROOT);
@@ -298,7 +298,9 @@ test("all 48 importers of the frontend handle shim's db/functions also import th
   // activation candidate moves 7 more to the EOS API (60 -> 53): they left the shim AND the fenced dependency together.
   // Pass 11 Retail Sales: the two Commercial capability hooks were DELETED (PostgreSQL offer, no Firebase) -- 53 -> 51.
   // L0 Z3 moves the three Reorder Purchase Order / void hooks to the EOS API as well (51 -> 48).
-  assert.equal(live.observed.alreadyFencedConsumers, 48,
+  // Work Order domain cutover + completion pass (2026-09-30): nine Work Order modules (service, hooks, labor, field
+  // context, readiness, availability, analytics, coordinated visits) left the shim AND the fenced dependency together (48 -> 39).
+  assert.equal(live.observed.alreadyFencedConsumers, 39,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });
