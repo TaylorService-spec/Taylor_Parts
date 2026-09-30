@@ -13,7 +13,6 @@ import {
   INBOUND_WORK_CAPABILITY_REQUEST,
   EMAIL_INTAKE_CAPABILITY_REQUEST,
   governedEmailIntakeSource,
-  governedInboundWorkSource,
 } from "../src/access/inboundWorkSource.js";
 
 let passed = 0;
@@ -113,7 +112,7 @@ ok("callable error codes are normalized before anything branches on them", () =>
 // ── Two structural properties, asserted against the source rather than trusted ───────────────────
 const read = (relative) => readFileSync(new URL(relative, import.meta.url), "utf8");
 
-ok("the client reaches this feature ONLY through trusted callables -- no direct Firestore access", () => {
+ok("the provider-boundary seam reaches its callables ONLY through trusted callables -- no direct Firestore access", () => {
   const source = read("../src/access/inboundWorkSource.js");
   for (const forbidden of ["firebase/firestore", "onSnapshot", "getDocs", "collection("]) {
     assert.equal(source.includes(forbidden), false, `the source seam must not use ${forbidden}`);
@@ -138,7 +137,12 @@ ok("the real connection lifecycle is reachable from the client, and only through
   for (const action of ["startAuthorization", "completeAuthorization", "testConnection", "disconnect", "pollNow", "retryDelivery", "getProviderReadiness"]) {
     assert.equal(typeof governedEmailIntakeSource[action], "function", `${action} is missing from the source seam`);
   }
-  assert.equal(typeof governedInboundWorkSource.getAttachment, "function");
+  // The review queue and its decisions moved to the governed EOS intake (Owner ruling W9); the Firebase seam keeps
+  // only the provider boundary, and names no Work Order-acting callable.
+  const source = read("../src/access/inboundWorkSource.js");
+  for (const retired of ["acceptInboundWork", "declineInboundWork", "attachInboundWorkToWorkOrder", "getInboundWorkAttachment"]) {
+    assert.equal(source.includes(`"${retired}"`), false, `${retired} is no longer a client callable`);
+  }
 });
 
 ok("no transport action reaches Firestore directly either", () => {

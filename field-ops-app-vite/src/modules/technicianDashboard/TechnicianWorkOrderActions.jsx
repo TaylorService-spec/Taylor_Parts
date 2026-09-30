@@ -3,6 +3,8 @@ import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
+import { classifyWorkOrderOutcome, inventoryBoundaryMessage, WORK_ORDER_OUTCOME } from "../../domain/workOrderOutcome";
+import { WorkOrderBoundaryNotice } from "../../shared/ui/WorkOrderAuthorityNotice.jsx";
 import { unusedPlannedPartsMessage } from "../../domain/plannedPartsCompletion";
 import { Button } from "../../shared/ui/primitives/index.js";
 
@@ -35,6 +37,11 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // action (which requires assignedTechId), none of the 5 technician
 // actions take any additional payload -- transitionWorkOrder(id, action)
 // is always sufficient.
+//
+// OUTCOMES ARE SAID AS WHAT THEY ARE (domain/workOrderOutcome.js). A Complete that the server holds because the
+// Work Order fulfils a Sales Order (SALES_ORDER_FULFILLMENT_AUTHORITY_UNAVAILABLE, DQ-015) is a NOT_YET_ACTIVATED
+// boundary rendered as a readiness notice, not a red error; and a SUCCESSFUL Complete states its inventory
+// boundary (CONSUME_NOT_APPLIED: no stock was consumed) instead of letting "completed" imply that it was.
 const ACTION_LABEL = {
   Accept: "Accept",
   Travel: "Start Travel",
@@ -60,6 +67,8 @@ const STATUS_LABEL = {
 export default function TechnicianWorkOrderActions({ workOrder }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [boundary, setBoundary] = useState(null);
+  const [notice, setNotice] = useState(null);
 
   const allowedActions = getAllowedActions(workOrder.status, "technician", true);
 
@@ -74,12 +83,17 @@ export default function TechnicianWorkOrderActions({ workOrder }) {
     }
     setSubmitting(true);
     setError(null);
+    setBoundary(null);
+    setNotice(null);
     try {
-      await transitionWorkOrder(workOrder.id, action);
+      const result = await transitionWorkOrder(workOrder.id, action);
+      setNotice(inventoryBoundaryMessage(result?.inventoryBoundary));
     } catch (err) {
       // Safe, categorized copy -- never the raw message / Functions code.
       console.error(err);
-      setError(workflowActionErrorMessage(err));
+      const outcome = classifyWorkOrderOutcome(err);
+      if (outcome.kind === WORK_ORDER_OUTCOME.NOT_YET_ACTIVATED && outcome.boundary) setBoundary(outcome.boundary);
+      else setError(workflowActionErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -90,6 +104,8 @@ export default function TechnicianWorkOrderActions({ workOrder }) {
       <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{STATUS_LABEL[workOrder.status] ?? workOrder.status}</span>
 
       <FormError role="alert">{error}</FormError>
+      {boundary ? <WorkOrderBoundaryNotice boundary={boundary} /> : null}
+      {notice ? <p className="fo-muted" role="status" data-inventory-boundary="true">{notice}</p> : null}
 
       {allowedActions.length > 0 && (
         <div className="fo-btn-row">

@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useMemo, useState } from "react";
+import { useWorkOrderTechnicians } from "../../hooks/useWorkOrderTechnicians";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
+import { mergeTechnicianDirectories, techniciansFromWorkOrders } from "../../domain/workOrderAdapter.js";
 import { transitionWorkOrder } from "../../services/workOrderService";
-import { TECHNICIANS_COLLECTION, TECH_STATUS } from "../../domain/constants";
 import { FIELD_PHASE, fieldPhase } from "../../domain/fieldWorkOrder";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { computeJobRisk } from "../../domain/jobRiskScoring";
@@ -90,7 +90,11 @@ export default function Dispatch() {
   // The technicians read can fail independently of the work-order read. Unchecked, the assignment
   // dropdown rendered with zero options and no explanation -- silently non-functional, and
   // indistinguishable from "there are no technicians".
-  const { data: technicians, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  // GOVERNED roster (listWorkOrderTechnicians): ids are EMPLOYEE ids, matching the Work Orders'
+  // assignedTechId / scheduledTechId. Names of assignees outside the roster come from the rows themselves.
+  const { data: roster, error: techniciansError } = useWorkOrderTechnicians();
+  const technicians = useMemo(() => mergeTechnicianDirectories(roster, techniciansFromWorkOrders(jobs)), [roster, jobs]);
+  const rosterIds = useMemo(() => new Set(roster.map((t) => t.id)), [roster]);
   const [dispatchError, setDispatchError] = useState(null);
   // H20 fix: reassigning a job away from the technician it was Scheduled for is a distinct, audited,
   // reason-required action (Owner ruling) -- never a silent side effect of picking someone else from this
@@ -222,7 +226,9 @@ export default function Dispatch() {
                       Select technician…
                     </option>
                     {technicians
-                      .filter((t) => t.status === TECH_STATUS.AVAILABLE || t.id === job.scheduledTechId)
+                      // Only the governed roster is offered (plus the scheduled assignee); there is no field
+                      // "available" status on a governed Employee, and the server re-checks eligibility.
+                      .filter((t) => rosterIds.has(t.id) || t.id === job.scheduledTechId)
                       .map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.name}

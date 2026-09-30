@@ -35,8 +35,33 @@ function safeServerDetail(err) {
   return typeof err?.message === "string" && err.message.trim() ? err.message.trim() : null;
 }
 
+// The governed EOS Work Order route (services/workOrderService.ts) throws a WorkOrderApiError whose
+// `code` is a category. Mapped onto the same messages; INVALID_INPUT appends the server's validation
+// message the same way invalid-argument always did, and NOT_ACTIVATED is said as the readiness state.
+export const CREATE_NOT_ACTIVATED_MESSAGE =
+  "Work Orders are not yet activated on EOS (NOT_YET_ACTIVATED). No Work Order was created.";
+const EOS_CREATE_CATEGORY = Object.freeze({
+  NOT_CONFIGURED: "functions/unavailable",
+  UNREACHABLE: "functions/unavailable",
+  UNAVAILABLE: "functions/unavailable",
+  UNAUTHENTICATED: "functions/unauthenticated",
+  NOT_SIGNED_IN: "functions/unauthenticated",
+  FORBIDDEN: "functions/permission-denied",
+  INVALID_INPUT: "functions/invalid-argument",
+  PRECONDITION_FAILED: "functions/invalid-argument",
+  NOT_FOUND: "functions/invalid-argument",
+  CONFLICT: "functions/invalid-argument",
+  INTERNAL: "functions/internal",
+});
+
+export const CREATE_IDEMPOTENCY_KEY_REUSED_MESSAGE =
+  "An earlier attempt from this form already created a Work Order with different details, so nothing new was created. " +
+  "Review the details; pressing Create again will submit them as a new Work Order.";
+
 export function getWizardCreateErrorMessage(err) {
-  const code = err?.code ?? "";
+  if (err?.code === "NOT_ACTIVATED") return CREATE_NOT_ACTIVATED_MESSAGE;
+  if (err?.reason === "IDEMPOTENCY_KEY_REUSED") return CREATE_IDEMPOTENCY_KEY_REUSED_MESSAGE;
+  const code = EOS_CREATE_CATEGORY[err?.code] ?? err?.code ?? "";
   switch (code) {
     case "functions/not-found":
     case "functions/unavailable":
@@ -77,10 +102,52 @@ export function stepBlockedReason(step, state = {}) {
       }
       return selectedLocationId ? null : "Select a location to continue.";
     case 3:
-      return type || (complaint ?? "").trim() ? null : "Choose a Type, or enter a Complaint, to continue.";
+      // The governed createWorkOrder command requires a Work Order type (workOrderType); a complaint
+      // alone is no longer enough.
+      void complaint;
+      return type ? null : "Choose a Type to continue.";
     default:
       return null; // step 4 gates on the submit itself, not a field requirement
   }
+}
+
+// THE OPERATING COMPANY. The governed createWorkOrder command requires an explicit, governed
+// operatingCompanyId (OPERATING_COMPANY_REQUIRED) and infers nothing. The choices come ONLY from the governed
+// listWorkOrderOperatingCompanies read (the tenant's ACTIVE companies with an ACTIVE key binding). A list of
+// one is preselected but still SHOWN as the stated company -- an explicit choice from a list of one, not an
+// inference. None, a refused read, or NOT_ACTIVATED keeps Create refused, naming the missing company.
+export const WIZARD_COMPANY_UNAVAILABLE_MESSAGE =
+  "Work Order creation is refused: the operating company for this Work Order is missing. No governed operating-company choice is available to this screen, and EOS never infers one.";
+export const WIZARD_COMPANY_CHOICE_REQUIRED_MESSAGE = "Choose the operating company this Work Order belongs to.";
+
+export const COMPANY_READ = Object.freeze({ LOADING: "LOADING", READY: "READY", FAILED: "FAILED" });
+
+/**
+ * The company step's state from the governed read. Pure.
+ * Returns { options, preselectedId, mustChoose }: `preselectedId` only for a list of exactly one.
+ */
+export function companyChoice({ status, companies } = {}) {
+  const options = status === COMPANY_READ.READY && Array.isArray(companies)
+    ? companies.filter((c) => c && typeof c.operatingCompanyId === "string" && c.operatingCompanyId.trim() !== "")
+    : [];
+  return {
+    options,
+    preselectedId: options.length === 1 ? options[0].operatingCompanyId : null,
+    mustChoose: options.length > 1,
+  };
+}
+
+/**
+ * Why the Create button is blocked, or null. Pure. `options` is the governed list; the chosen id must be
+ * one of them (a stale or foreign id is never sent).
+ */
+export function createBlockedReason({ operatingCompanyId, options = null } = {}) {
+  const list = Array.isArray(options) ? options : null;
+  if (list && list.length === 0) return WIZARD_COMPANY_UNAVAILABLE_MESSAGE;
+  const chosen = typeof operatingCompanyId === "string" ? operatingCompanyId.trim() : "";
+  if (!chosen) return list && list.length > 1 ? WIZARD_COMPANY_CHOICE_REQUIRED_MESSAGE : WIZARD_COMPANY_UNAVAILABLE_MESSAGE;
+  if (list && !list.some((c) => c.operatingCompanyId === chosen)) return WIZARD_COMPANY_CHOICE_REQUIRED_MESSAGE;
+  return null;
 }
 
 export function canAdvance(step, state) {

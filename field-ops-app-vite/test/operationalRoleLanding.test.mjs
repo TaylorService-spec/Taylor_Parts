@@ -14,9 +14,11 @@ test("an operational-role holder is not told to get a technician record", () => 
   assert.match(src, /inventory-role/, "must point at the workspace that is theirs");
 });
 
-test("a genuinely unmapped technician still gets the original guidance", () => {
-  assert.match(src, /isn't linked to a technician record yet/, "the real unmapped case must survive");
-  assert.match(src, /Contact an admin/, "and keep its remedy");
+test("a genuinely unmapped technician still gets guidance", () => {
+  // Work Order cutover: "unmapped" is now the GOVERNED answer -- this login resolves to no EOS Employee
+  // (listMyAssignedWorkOrders employeeId null) -- not a missing fieldops_technicians record.
+  assert.match(src, /isn't linked to an Employee record yet/, "the real unmapped case must survive");
+  assert.match(src, /Contact an\s+admin/, "and keep its remedy");
 });
 
 test("the branch reads auth rather than inferring a role from data shape", () => {

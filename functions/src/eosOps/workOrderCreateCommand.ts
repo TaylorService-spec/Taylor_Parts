@@ -24,7 +24,7 @@
 // Ventana is ACTIVE for the tenant with no key binding today, so a native Ventana Work Order fails
 // closed with OPERATING_COMPANY_KEY_NOT_BOUND. That is the model working, not a gap to paper over.
 import type { Pool } from "pg";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { resolveOperatingCompanyKeyForCompany } from "./operatingCompanyBinding.js";
 import { allocateWorkOrderNumber } from "./workOrderNumbering.js";
 import { WORK_ORDER_STATUSES, type WorkOrderStatus } from "./workOrderLifecycle.js";
@@ -41,7 +41,7 @@ export const NATIVE_WORK_ORDER_TYPES: readonly string[] =
 /** Every status a native Work Order may START in. Creation does not skip the lifecycle. */
 export const INITIAL_STATUS: WorkOrderStatus = "CREATED";
 
-export type CreateCategory = "INVALID_INPUT" | "NOT_FOUND" | "PRECONDITION_FAILED" | "FORBIDDEN" | "UNAVAILABLE";
+export type CreateCategory = "INVALID_INPUT" | "NOT_FOUND" | "PRECONDITION_FAILED" | "CONFLICT" | "FORBIDDEN" | "UNAVAILABLE";
 
 export class WorkOrderCreateError extends Error {
   constructor(readonly code: string, readonly category: CreateCategory, message: string) {
@@ -74,11 +74,14 @@ export interface CreateWorkOrderInput {
   readonly severity?: string;
   readonly complaint?: string;
   readonly salesOrderId?: string;
+  /** Optional: a retry carrying the same key replays the Work Order it already created (never a duplicate). */
+  readonly idempotencyKey?: string;
 }
 
 /** Fields a client may state. Anything else is a forgery attempt, not a mistake to tolerate. */
 const ACCEPTED_INPUT = Object.freeze([
   "customerId", "locationId", "workOrderType", "priority", "equipmentId", "severity", "complaint", "salesOrderId",
+  "idempotencyKey",
 ]);
 
 /** Named so the refusal can say WHICH governed fact was being forged. */
@@ -98,6 +101,8 @@ export interface CreatedWorkOrder {
   readonly createdByPrincipalId: string;
   readonly createdAt: string;
   readonly transitionId: string;
+  /** True when an earlier create with the same idempotencyKey is returned instead of a new Work Order. */
+  readonly replayed: boolean;
 }
 
 const ID_SHAPE = (v: unknown): v is string =>
@@ -159,7 +164,21 @@ export async function createWorkOrder(
     refuse("PRIORITY_INVALID", "INVALID_INPUT", "priority is a governed 1-4");
   }
 
+  const key = input.idempotencyKey === undefined ? null : input.idempotencyKey;
+  if (key !== null && (typeof key !== "string" || key.trim() === "" || key.length > 150 || key.trim() !== key)) {
+    refuse("IDEMPOTENCY_KEY_INVALID", "INVALID_INPUT", "idempotencyKey, when stated, is a trimmed string of at most 150 characters");
+  }
+  const { idempotencyKey: _ignored, ...business } = input;
+  const fingerprint = key === null ? null : createHash("sha256")
+    .update(JSON.stringify([actor.operatingCompanyId, ...ACCEPTED_INPUT.filter((k) => k !== "idempotencyKey")
+      .map((k) => (business as Record<string, unknown>)[k] ?? null)]))
+    .digest("hex");
+
   const now = (deps.now ?? (() => new Date()))();
+  if (key !== null) {
+    const replay = await findPriorCreate(deps.pool, actor, key, fingerprint as string);
+    if (replay) return replay;
+  }
   const client = await deps.pool.connect();
   try {
     await client.query("BEGIN");
@@ -186,13 +205,13 @@ export async function createWorkOrder(
       `INSERT INTO ${SCHEMA}.work_orders
          (id, tenant_id, operating_company_key, work_order_number, status, work_order_type, priority,
           severity, customer_id, location_id, equipment_id, sales_order_id, complaint,
-          provenance, created_by_principal_id, created_at, updated_at)
+          provenance, created_by_principal_id, created_at, updated_at, create_idempotency_key, create_request_fingerprint)
        VALUES ($1,$2,$3,$4,$5::${SCHEMA}.ops_work_order_status,$6::${SCHEMA}.ops_work_order_type,$7,
-               $8::${SCHEMA}.ops_work_order_severity,$9,$10,$11,$12,$13,'NATIVE',$14,$15,$15)`,
+               $8::${SCHEMA}.ops_work_order_severity,$9,$10,$11,$12,$13,'NATIVE',$14,$15,$15,$16,$17)`,
       [workOrderId, actor.tenantId, operatingCompanyKey, allocated.number, INITIAL_STATUS,
        input.workOrderType, input.priority, input.severity ?? null, input.customerId, input.locationId,
        input.equipmentId ?? null, input.salesOrderId ?? null, input.complaint ?? null,
-       actor.principalId, now]);
+       actor.principalId, now, key, fingerprint]);
 
     // THE OPENING TRANSITION. from_status is NULL because nothing preceded creation, and history that
     // began only at the first move could not answer "who created this".
@@ -208,14 +227,41 @@ export async function createWorkOrder(
       workOrderId, workOrderNumber: allocated.number, status: INITIAL_STATUS,
       operatingCompanyId: actor.operatingCompanyId, operatingCompanyKey,
       provenance: "NATIVE" as const, createdByPrincipalId: actor.principalId,
-      createdAt: now.toISOString(), transitionId,
+      createdAt: now.toISOString(), transitionId, replayed: false,
     });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => { /* the original error is the one that matters */ });
+    // A concurrent create with the same key won the unique index: answer with ITS Work Order.
+    if (key !== null && (err as { code?: string })?.code === "23505") {
+      const replay = await findPriorCreate(deps.pool, actor, key, fingerprint as string);
+      if (replay) return replay;
+    }
     throw err;
   } finally {
     client.release();
   }
+}
+
+/** The Work Order this Principal already created under `key`, or null. A different request under the key refuses. */
+async function findPriorCreate(pool: Pool, actor: CreateActor, key: string, fingerprint: string): Promise<CreatedWorkOrder | null> {
+  const { rows } = await pool.query(
+    `SELECT w.id, w.work_order_number, w.operating_company_key, w.created_at, w.create_request_fingerprint,
+            (SELECT t.id FROM ${SCHEMA}.work_order_transitions t
+              WHERE t.tenant_id = w.tenant_id AND t.work_order_id = w.id AND t.action = 'create' LIMIT 1) AS transition_id
+       FROM ${SCHEMA}.work_orders w
+      WHERE w.tenant_id = $1 AND w.created_by_principal_id = $2 AND w.create_idempotency_key = $3`,
+    [actor.tenantId, actor.principalId, key]);
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  if (r.create_request_fingerprint !== fingerprint) {
+    refuse("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "this idempotencyKey already created a different Work Order request");
+  }
+  return Object.freeze({
+    workOrderId: String(r.id), workOrderNumber: String(r.work_order_number), status: INITIAL_STATUS,
+    operatingCompanyId: actor.operatingCompanyId, operatingCompanyKey: String(r.operating_company_key),
+    provenance: "NATIVE" as const, createdByPrincipalId: actor.principalId,
+    createdAt: new Date(r.created_at).toISOString(), transitionId: String(r.transition_id), replayed: true,
+  });
 }
 
 export { WORK_ORDER_STATUSES };

@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useWorkOrders } from "../../hooks/useWorkOrders";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useWorkOrderTechnicians } from "../../hooks/useWorkOrderTechnicians";
 import { useSessionActivityFeed } from "../../hooks/useSessionActivityFeed";
 import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability.js";
 import { useAccountNames } from "../../hooks/useAccountNames";
 import { useAuth } from "../../auth/AuthContext";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import {
@@ -93,8 +92,9 @@ import DispatcherActivityFeed from "./DispatcherActivityFeed";
 export default function DispatcherBoard() {
   const { role } = useAuth();
   const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } = useWorkOrders();
-  const { data: technicians, loading: techniciansLoading, error: techniciansError } =
-    useFirestoreCollection(TECHNICIANS_COLLECTION);
+  // The GOVERNED roster (listWorkOrderTechnicians): lane ids are EMPLOYEE ids, the same ids the governed
+  // Work Orders' assignedTechId / scheduledTechId carry. NOT fieldops_technicians (whose ids never match).
+  const { data: technicians, loading: techniciansLoading, error: techniciansError } = useWorkOrderTechnicians();
   const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
   const activityEntries = useSessionActivityFeed(workOrders, technicians);
 
@@ -283,6 +283,8 @@ export default function DispatcherBoard() {
             workOrderId: workOrder.id,
             scheduledTechId: technicianId,
             reason,
+            // The window this board SAW: kept as-is, and the governed command's stale guard.
+            currentWindow: placementWindow(workOrder),
           });
           if (res.errorStatus) return refusal(res, context);
           announce(schedulingWarningMessages(res.result?.warnings, context), `${workOrder.woNumber} reassigned.`);
@@ -301,9 +303,10 @@ export default function DispatcherBoard() {
         return { ok: false, message: "That action is not available." };
       } catch (err) {
         // transitionWorkOrder throws; the scheduling callables return. Both end up as a sentence.
-        const code = err?.details?.code ?? null;
+        // The governed route's specific refusal rides on `reason` (WorkOrderApiError).
+        const code = err?.reason ?? err?.details?.code ?? null;
         const message = code
-          ? schedulingRefusalMessage(code, stripPrefix(err?.code), context)
+          ? schedulingRefusalMessage(code, stripPrefix(err?.code), { ...context, serverMessage: err?.message ?? null })
           : workflowActionErrorMessage(err);
         setBoardMessage({ tone: "error", text: message });
         return { ok: false, message };
@@ -315,7 +318,7 @@ export default function DispatcherBoard() {
       }
 
       function refusal(res, ctx) {
-        const message = schedulingRefusalMessage(res.errorCode, res.errorStatus, ctx);
+        const message = schedulingRefusalMessage(res.errorCode, res.errorStatus, { ...ctx, serverMessage: res.errorMessage ?? null });
         setBoardMessage({ tone: "error", text: message });
         return { ok: false, message };
       }

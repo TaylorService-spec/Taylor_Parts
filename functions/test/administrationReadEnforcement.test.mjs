@@ -210,7 +210,10 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   //   nobody (Administration-grant-only), plus its provenance table.
   // 70 -> 71 (lane IDENTITY, Controller ruling 2026-09-29): 1764200000000 eos_policy.principal_identities -- the additive
   // EOS identity binding table; no capability, no READ key, not a read-enforcement change.
-  assert.equal(migrations.length, 71, "a migration was added or removed by the read enforcement");
+  // 71 -> 72 (the Work Order domain cutover, 2026-09-30): 1764300000000 the Work Order execution facts +
+  // workOrder.execution.record, registered with no grant.
+  // 72 -> 76: the Work Order cutover completion pass (2026-09-30): quarantine 1764310000000, availability 1764320000000, labor 1764330000000 (+workOrder.labor.correctEntry), inbound work 1764340000000 (+5 inboundWork.* capabilities) -- every new capability granted to NO Role.
+  assert.equal(migrations.length, 76, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

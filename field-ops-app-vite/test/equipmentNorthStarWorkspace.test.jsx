@@ -241,7 +241,7 @@ describe("the install confirmation", () => {
   const accounts = [{ id: "acct_desert_sun", name: "Desert Sun" }];
 
   function choose() {
-    render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} />);
+    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall onClose={() => {}} />);
     fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct_desert_sun" } });
     fireEvent.change(screen.getByRole("combobox", { name: /Customer location/i }), { target: { value: "loc_broadway" } });
   }
@@ -258,7 +258,7 @@ describe("the install confirmation", () => {
   });
 
   it("does not appear until BOTH choices are made", () => {
-    render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} />);
+    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall onClose={() => {}} />);
     expect(document.querySelector("[data-install-confirm]")).toBeNull();
     fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct_desert_sun" } });
     expect(document.querySelector("[data-install-confirm]")).toBeNull();

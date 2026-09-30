@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { updateWorkOrderExecutionData } from "../../services/workOrderService";
+import { workOrderSyncError } from "../../offline/workOrderSyncError.js";
 import { submitOrQueue, SUBMIT_RESULT } from "../../offline/submitOrQueue.js";
 import { capturePartsUsage } from "../../offline/technicianIntentCapture.js";
 import { useProvidedOfflineRuntime } from "../../offline/OfflineRuntimeContext.jsx";
@@ -46,14 +47,17 @@ import { Button } from "../../shared/ui/primitives/index.js";
 
 const STATE = { IDLE: "IDLE", SCANNING: "SCANNING", RESOLVING: "RESOLVING", DONE: "DONE" };
 
-export default function PartsScanner({ technicianId, workOrderId = null, offline: offlineProp = null }) {
+export default function PartsScanner({ workOrderId = null, offline: offlineProp = null }) {
   const { role } = useAuth();
   // Provided by the technician shell when the scanner is opened inside it. Null when the scanner is
   // reached from the shared Scan workspace at desktop widths, where the online path is the right one.
   const provided = useProvidedOfflineRuntime();
   const offline = offlineProp ?? provided;
-  const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } =
-    useAssignedWorkOrders(technicianId);
+  // The caller's OWN work, from the governed listMyAssignedWorkOrders read. `employeeId` is the Employee
+  // the SERVER resolved for this login -- the id every row's assignedTechId carries -- so the ownership
+  // check below compares the server's answer with itself, never a browser-held uid or technician id.
+  const { data: workOrders, loading: workOrdersLoading, error: workOrdersError, employeeId: ownEmployeeId } =
+    useAssignedWorkOrders();
 
   const [query, setQuery] = useState("");
   const [phase, setPhase] = useState(STATE.IDLE);
@@ -98,8 +102,8 @@ export default function PartsScanner({ technicianId, workOrderId = null, offline
   }, [active, workOrderId]);
 
   const actions = useMemo(
-    () => deriveScanActions(identity, { role, technicianId, workOrders, activeWorkOrder }),
-    [identity, role, technicianId, workOrders, activeWorkOrder],
+    () => deriveScanActions(identity, { role, technicianId: ownEmployeeId, workOrders, activeWorkOrder }),
+    [identity, role, ownEmployeeId, workOrders, activeWorkOrder],
   );
 
   // DISPLAY ENRICHMENT ONLY -- never identity, never authority. A result card
@@ -240,7 +244,7 @@ export default function PartsScanner({ technicianId, workOrderId = null, offline
           await updateWorkOrderExecutionData(workOrderId, { qtyUsedUpdates: [{ sku, delta: qty }] });
           return { ok: true };
         } catch (err) {
-          return { ok: false, error: { code: err?.code ?? null, details: err?.details ?? null } };
+          return { ok: false, error: workOrderSyncError(err) };
         }
       },
       // The capture key is the job, the part and the quantity. Scanning the same part twice for the

@@ -76,12 +76,20 @@ export default function PartWorkOrderDemandSection({ partId }) {
         </p>
       )}
 
+      {demandRead.status === PART_WORK_ORDER_DEMAND_STATE.NOT_ACTIVATED && (
+        <p className="fo-muted" role="status" data-work-order-readiness="NOT_YET_ACTIVATED">
+          Work Orders are not yet activated on EOS (NOT_YET_ACTIVATED); Work Order demand for this part is not shown until they are.
+        </p>
+      )}
+
       {demandRead.status === PART_WORK_ORDER_DEMAND_STATE.READY && (() => {
         const { scannedCount, totalOpenWorkOrders } = demandRead;
         // Honest disclosure ONLY when we actually know the true open-WO population AND the bounded scan
         // didn't cover all of it -- never claim a total the count read didn't confirm, and never disclose
         // a gap that doesn't exist.
         const capped = typeof totalOpenWorkOrders === "number" && totalOpenWorkOrders > scannedCount;
+        // The governed read says when it had more than its bound without a count; disclosed as such.
+        const truncatedWithoutTotal = demandRead.truncated === true && !capped;
 
         if (rows.length === 0) {
           return <p className="fo-muted">No open Work Order currently needs this part.</p>;
@@ -118,6 +126,11 @@ export default function PartWorkOrderDemandSection({ partId }) {
               </tbody>
             </table>
 
+            {truncatedWithoutTotal && (
+              <p className="fo-muted">
+                Showing the first {scannedCount} open Work Orders that plan this part. More exist, and one may not appear above.
+              </p>
+            )}
             {capped && (
               <p className="fo-muted">
                 Showing the most recent {scannedCount} of {totalOpenWorkOrders} open Work Orders. An older

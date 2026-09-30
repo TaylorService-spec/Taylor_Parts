@@ -193,7 +193,8 @@ function ScanWorkspaceBody({ deps }) {
 
   const liveTechnician = useCurrentTechnician();
   const technicianId = deps?.technicianId !== undefined ? deps.technicianId : liveTechnician.technicianId;
-  const liveWorkOrders = useAssignedWorkOrders(technicianId);
+  // The caller's own work comes ONLY from the governed listMyAssignedWorkOrders read; no id is passed.
+  const liveWorkOrders = useAssignedWorkOrders({ withDetail: false });
   const assignedWorkOrderCount = deps?.assignedWorkOrderCount !== undefined
     ? deps.assignedWorkOrderCount
     : (liveWorkOrders.data?.length ?? 0);

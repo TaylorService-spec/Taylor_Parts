@@ -24,6 +24,7 @@
 // that validates a PART or EQUIPMENT_MODEL reference resolves it against eos_ops inside its OWN
 // transaction. CATALOG_AUTHORITY_UNAVAILABLE remains reachable and remains correct: a composition
 // that omits the authority must still refuse rather than skip the check.
+import { CoordinatedVisitReadError, readCoordinatedOperations } from "../eosOps/coordinatedVisitPostgresRead";
 import type { Pool } from "pg";
 import { containsNulCharacter, NUL_CHARACTER_REFUSAL } from "../adminPolicy/requestText";
 import { capabilitiesWithoutUnevaluatedConditions, resolveOperationalContext } from "../eosOps/capabilityAuthority";
@@ -84,6 +85,11 @@ const READ_RUNNERS = Object.freeze({
   getAccountCommercialProjection: read(getAccountCommercialProjection),
   // Which Commercial controls the caller may be OFFERED -- its own PostgreSQL capabilities, never anyone else's.
   readMyCommercialCapabilities: read(readMyCommercialCapabilities),
+  // THE COORDINATED VISITS read (Owner WORK ORDER CUTOVER COMPLETION PASS, 2026-09-30, DECISION 7). The Sales Order is
+  // the coordinator, so it is served here, under its own governed capability (fulfillment.coordinatedVisit.read on
+  // salesOrder/readCoordinatedVisits) -- the parity-proven PostgreSQL seam over eos_ops.work_orders, quarantine excluded.
+  // It replaces the Firebase listCoordinatedOperations callable for the client; the callable stays in source only.
+  listCoordinatedOperations: read((d, a) => readCoordinatedOperations(d, a)),
 } as const);
 
 const MUTATION_RUNNERS = Object.freeze({
@@ -115,7 +121,7 @@ export const isCommercialOperation = (name: unknown): name is CommercialOperatio
  * and the caller's own capability read, which takes none. Every detail read, the Account projection and every mutation
  * requires `input` to be present as an object.
  */
-export const COMMERCIAL_OPTIONAL_INPUT_OPERATIONS: readonly CommercialReadOperation[] = Object.freeze(["listOpportunities", "listSalesAgreements", "listSalesOrders", "readMyCommercialCapabilities"]);
+export const COMMERCIAL_OPTIONAL_INPUT_OPERATIONS: readonly CommercialReadOperation[] = Object.freeze(["listOpportunities", "listSalesAgreements", "listSalesOrders", "readMyCommercialCapabilities", "listCoordinatedOperations"]);
 const OPTIONAL_INPUT = new Set<string>(COMMERCIAL_OPTIONAL_INPUT_OPERATIONS);
 
 /** Fields that would state authority. Authority comes from the verified subject and PostgreSQL, never from the body. */
@@ -181,6 +187,9 @@ export async function executeCommercialOperation(
       return { ok: false, operation, code: "FORBIDDEN", message: err.refusal, status: 403 };
     }
     if (err instanceof CommercialCommandError) {
+      return { ok: false, operation, code: err.code, message: err.message, status: STATUS_BY_CATEGORY[err.category] ?? 500 };
+    }
+    if (err instanceof CoordinatedVisitReadError) {
       return { ok: false, operation, code: err.code, message: err.message, status: STATUS_BY_CATEGORY[err.category] ?? 500 };
     }
     // eslint-disable-next-line no-console -- same posture as the sibling transports' unhandled-error log

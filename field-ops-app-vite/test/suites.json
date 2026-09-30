@@ -390,6 +390,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/inboundWorkApiClient.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/inboundWorkNav.test.mjs",
       "runner": "node"
     },
@@ -1166,8 +1170,20 @@
       "runner": "node"
     },
     {
+      "file": "test/workOrderApiClient.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/technicianAvailabilityClient.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/workOrderAttentionProjection.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/workOrderFieldExecutionClients.test.mjs",
+      "runner": "node --test"
     },
     {
       "file": "test/workOrderInstallCloseout.test.mjs",
@@ -1212,6 +1228,10 @@
     {
       "file": "test/workflowActionError.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/workOrderOutcome.test.mjs",
+      "runner": "node --test"
     },
     {
       "file": "test/workflowActionOrder.test.mjs",

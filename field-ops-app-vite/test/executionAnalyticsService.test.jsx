@@ -22,9 +22,8 @@ import {
   getWorkOrderExecutionSummary,
   normalizeQtyUsed,
 } from "../src/analytics/executionAnalyticsService";
+import { __setWorkOrderTransportForTests } from "../src/services/workOrderService";
 
-const stamp = (ms) => ({ toMillis: () => ms });
-const docs = (items) => ({ docs: items.map(({ id, ...data }) => ({ id, data: () => data })) });
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -36,17 +35,23 @@ describe("execution analytics service", () => {
   });
 
   it("returns null for a missing work order and a sorted, derived execution summary otherwise", async () => {
-    firestore.getDoc.mockResolvedValueOnce({ exists: () => false });
+    // Work Order cutover: the summary reads the GOVERNED detail (readWorkOrder), not a Firestore doc.
+    __setWorkOrderTransportForTests(async () => ({ ok: false, code: "NOT_FOUND", reason: "WORK_ORDER_NOT_FOUND", status: 404, message: "x" }));
     await expect(getWorkOrderExecutionSummary("missing")).resolves.toBeNull();
 
-    firestore.getDoc.mockResolvedValueOnce({
-      exists: () => true,
-      data: () => ({
-        inventorySnapshot: [{ sku: "P-1", qtyUsed: 3 }],
-        executionLog: [{ note: "later", at: stamp(20) }, { note: "first", at: stamp(10) }],
-        lastUpdated: stamp(30),
-      }),
-    });
+    __setWorkOrderTransportForTests(async (op) => ({
+      ok: true, operation: op,
+      result: {
+        workOrderId: "wo-1", status: "WORK_IN_PROGRESS", createdAt: "1970-01-01T00:00:00.001Z", updatedAt: new Date(30).toISOString(),
+        execution: {
+          parts: [{ partId: "P-1", qtyPlanned: 3, qtyUsed: 3 }],
+          notes: [
+            { note: "later", recordedByPrincipalId: "p", recordedAt: new Date(20).toISOString() },
+            { note: "first", recordedByPrincipalId: "p", recordedAt: new Date(10).toISOString() },
+          ],
+        },
+      },
+    }));
     await expect(getWorkOrderExecutionSummary("wo-1")).resolves.toMatchObject({
       workOrderId: "wo-1",
       totalPartsUsed: 3,
@@ -54,143 +59,65 @@ describe("execution analytics service", () => {
       executionNotes: ["first", "later"],
       lastUpdated: 30,
     });
+    expect(firestore.getDoc).not.toHaveBeenCalled();
+    __setWorkOrderTransportForTests(null);
   });
 
-  it("aggregates technician completion, usage, statuses, and durations from its scoped query", async () => {
-    firestore.getDocs.mockResolvedValueOnce(docs([
-      { id: "a", status: "CLOSED", inventorySnapshot: [{ sku: "P-1", qtyUsed: 2 }], completedAt: stamp(50), workStartedAt: stamp(10) },
-      { id: "b", status: "DISPATCHED", inventorySnapshot: [{ sku: "P-2", qtyUsed: 4 }] },
-      { id: "c", status: "CLOSED", inventorySnapshot: [{ sku: "P-1", qtyUsed: 1 }], completedAt: stamp(100), workStartedAt: stamp(40) },
-    ]));
-
-    await expect(getTechnicianExecutionStats("tech-1")).resolves.toEqual({
-      technicianId: "tech-1",
-      totalWorkOrdersCompleted: 2,
-      totalPartsConsumed: 7,
-      averageCompletionTimeMs: 50,
-      completionEvidence: { valid: 2, inverted: 0, missing: 0 },
-      workOrderVolumeByStatus: { CLOSED: 2, DISPATCHED: 1 },
-    });
-  });
-
-
-  // ── AVG JOB DURATION: the live defect, and the three kinds of evidence ────────────────────────
+  // ── THE AGGREGATES ARE GOVERNED (Work Order cutover completion pass, 2026-09-30) ──────────────────────
   //
-  // THE LIVE DEFECT. The technician screen reported "Avg Job Duration -1686m" -- a negative span
-  // presented as a performance fact about a person. The subtraction was always the right way round
-  // (completedAt - workStartedAt); what was missing is that the pair can CONTRADICT the lifecycle,
-  // and the projection pushed whatever difference it got, sign included, straight into the mean.
+  // getTechnicianExecutionStats / getInventoryConsumptionSnapshot / getTechnicianVolumeBreakdown are computed by
+  // the SERVER (functions/src/eosOps/workOrderAnalytics.ts) over the active Work Order set; their definitions --
+  // completedAt-ever-set, the inverted-pair withdrawal, missing evidence, actuals > 0, the ordering -- are proven
+  // against real PostgreSQL in functions/test/workOrderAnalyticsPostgres.test.mjs. What the CLIENT must prove is
+  // that it asks the governed route the right question, passes the answer through without re-deriving it, never
+  // shows a negative duration, never touches Firestore, and throws a classifiable failure.
 
-  it("a valid span is measured normally, and a zero-length span is a real measurement", () => {
-    // Zero is not missing evidence: start and completion were both recorded, at the same instant.
-    return (async () => {
-      firestore.getDocs.mockResolvedValueOnce(docs([
-        { id: "a", status: "CLOSED", completedAt: stamp(1000), workStartedAt: stamp(400) },
-        { id: "b", status: "CLOSED", completedAt: stamp(700), workStartedAt: stamp(700) },
-      ]));
-      const stats = await getTechnicianExecutionStats("tech-1");
-      expect(stats.averageCompletionTimeMs).toBe(300); // (600 + 0) / 2
-      expect(stats.completionEvidence).toEqual({ valid: 2, inverted: 0, missing: 0 });
-    })();
+  const calls = [];
+  const transport = (results) => async (operation, input) => {
+    calls.push({ operation, input });
+    const r = results[operation];
+    return r && r.ok === false ? r : { ok: true, operation, result: r };
+  };
+  const STATS = {
+    employeeId: "emp-a", displayName: "Ana", totalWorkOrdersCompleted: 4, totalPartsConsumed: 10,
+    averageCompletionTimeMs: 4_200_000, completionEvidence: { valid: 3, inverted: 0, missing: 1 },
+    workOrderVolumeByStatus: { CLOSED: 1, COMPLETED: 3 },
+  };
+
+  it("own stats: readTechnicianExecutionStats with NO technician id -- the server resolves the Employee", async () => {
+    calls.length = 0;
+    __setWorkOrderTransportForTests(transport({ readTechnicianExecutionStats: STATS }));
+    await expect(getTechnicianExecutionStats()).resolves.toEqual(STATS);
+    expect(calls).toEqual([{ operation: "readTechnicianExecutionStats", input: {} }]);
+    await getTechnicianExecutionStats("emp-b");
+    expect(calls[1]).toEqual({ operation: "readTechnicianExecutionStats", input: { employeeId: "emp-b" } });
+    expect(firestore.getDocs).not.toHaveBeenCalled();
+    __setWorkOrderTransportForTests(null);
   });
 
-  it("REPRODUCES THE LIVE DEFECT: an inverted pair never becomes a negative average", async () => {
-    firestore.getDocs.mockResolvedValueOnce(docs([
-      { id: "a", status: "CLOSED", completedAt: stamp(1000), workStartedAt: stamp(400) },
-      // completedAt BEFORE workStartedAt -- the shape that produced -1686m live.
-      { id: "b", status: "CLOSED", completedAt: stamp(500), workStartedAt: stamp(100_000_000) },
-    ]));
-    const stats = await getTechnicianExecutionStats("tech-1");
-    expect(stats.averageCompletionTimeMs).toBeNull();
-    expect(stats.completionEvidence).toEqual({ valid: 1, inverted: 1, missing: 0 });
+  it("the server's withheld average stays withheld, and a negative figure is never passed through as a duration", async () => {
+    __setWorkOrderTransportForTests(transport({ readTechnicianExecutionStats: { ...STATS, averageCompletionTimeMs: null,
+      completionEvidence: { valid: 1, inverted: 1, missing: 0 } } }));
+    const withheld = await getTechnicianExecutionStats();
+    expect(withheld.averageCompletionTimeMs).toBeNull();
+    expect(withheld.completionEvidence).toEqual({ valid: 1, inverted: 1, missing: 0 });
+    __setWorkOrderTransportForTests(transport({ readTechnicianExecutionStats: { ...STATS, averageCompletionTimeMs: -1686 * 60_000 } }));
+    expect((await getTechnicianExecutionStats()).averageCompletionTimeMs).toBeNull();
+    __setWorkOrderTransportForTests(null);
   });
 
-  it("an inverted pair is neither absolute-valued nor clamped to zero", async () => {
-    // The two shortcuts that would make the screen look fine and the number meaningless. abs() would
-    // report a huge plausible duration; clamping would report a suspiciously fast job. Both invent a
-    // fact from evidence the platform cannot explain.
-    firestore.getDocs.mockResolvedValueOnce(docs([
-      { id: "b", status: "CLOSED", completedAt: stamp(500), workStartedAt: stamp(900) },
-    ]));
-    const stats = await getTechnicianExecutionStats("tech-1");
-    expect(stats.averageCompletionTimeMs).toBeNull();
-    expect(stats.averageCompletionTimeMs).not.toBe(400); // abs()
-    expect(stats.averageCompletionTimeMs).not.toBe(0);   // clamp / swap
-  });
-
-  it("missing timestamps are never fabricated, and never counted as inverted", async () => {
-    firestore.getDocs.mockResolvedValueOnce(docs([
-      { id: "a", status: "CLOSED", completedAt: stamp(1000) },              // no start
-      { id: "b", status: "DISPATCHED", workStartedAt: stamp(10) },          // no completion
-      { id: "c", status: "CREATED" },                                       // neither
-    ]));
-    const stats = await getTechnicianExecutionStats("tech-1");
-    expect(stats.averageCompletionTimeMs).toBeNull();
-    expect(stats.completionEvidence).toEqual({ valid: 0, inverted: 0, missing: 1 });
-    // The completion COUNT is a different fact and is unaffected -- one Work Order has a completedAt.
-    expect(stats.totalWorkOrdersCompleted).toBe(1);
-  });
-
-  it("a mixed population withdraws the figure rather than averaging the trustworthy part", async () => {
-    // Three good records and one contradictory one. Averaging the three would report a number over a
-    // population this projection KNOWS is partly untrustworthy, under a name that claims all of it.
-    firestore.getDocs.mockResolvedValueOnce(docs([
-      { id: "a", status: "CLOSED", completedAt: stamp(1000), workStartedAt: stamp(400) },
-      { id: "b", status: "CLOSED", completedAt: stamp(2000), workStartedAt: stamp(1000) },
-      { id: "c", status: "CLOSED", completedAt: stamp(3000), workStartedAt: stamp(2000) },
-      { id: "d", status: "CLOSED", completedAt: stamp(10), workStartedAt: stamp(9000) },
-      { id: "e", status: "CREATED" },
-    ]));
-    const stats = await getTechnicianExecutionStats("tech-1");
-    expect(stats.averageCompletionTimeMs).toBeNull();
-    expect(stats.completionEvidence).toEqual({ valid: 3, inverted: 1, missing: 0 });
-  });
-
-  it("a malformed timestamp is missing evidence, not a duration", async () => {
-    firestore.getDocs.mockResolvedValueOnce(docs([
-      { id: "a", status: "CLOSED", completedAt: stamp(Number.NaN), workStartedAt: stamp(10) },
-      { id: "b", status: "CLOSED", completedAt: { notATimestamp: true }, workStartedAt: stamp(10) },
-    ]));
-    const stats = await getTechnicianExecutionStats("tech-1");
-    expect(stats.averageCompletionTimeMs).toBeNull();
-    expect(stats.completionEvidence).toEqual({ valid: 0, inverted: 0, missing: 2 });
-  });
-
-
-  it("a valid + missing population averages the ELIGIBLE records, and counts what it left out", () => {
-    // THE MIXED-POPULATION QUESTION. This service has always defined the eligible duration
-    // population as "only Work Orders where BOTH timestamps exist" -- that authority predates this
-    // corrective and is unchanged. Averaging over it is therefore authorised, NOT a silent choice.
-    //
-    // What was silent is that "Avg. Job Duration" can describe fewer jobs than the completion count
-    // beside it. `missing` makes that recoverable: here the figure describes 2 of 4 completed jobs,
-    // and a reader can find that out instead of assuming it covers all of them.
-    return (async () => {
-      firestore.getDocs.mockResolvedValueOnce(docs([
-        { id: "a", status: "CLOSED", completedAt: stamp(1000), workStartedAt: stamp(400) },
-        { id: "b", status: "CLOSED", completedAt: stamp(3000), workStartedAt: stamp(1000) },
-        { id: "c", status: "CLOSED", completedAt: stamp(5000) },
-        { id: "d", status: "CLOSED", completedAt: stamp(6000) },
-        { id: "e", status: "DISPATCHED" },
-      ]));
-      const stats = await getTechnicianExecutionStats("tech-1");
-      expect(stats.averageCompletionTimeMs).toBe(1300); // (600 + 2000) / 2
-      expect(stats.totalWorkOrdersCompleted).toBe(4);
-      expect(stats.completionEvidence).toEqual({ valid: 2, inverted: 0, missing: 2 });
-      // A never-completed Work Order is not "missing duration evidence" -- it is not yet in the
-      // population at all.
-      expect(stats.completionEvidence.missing).not.toBe(3);
-    })();
-  });
-  it("builds system-wide part consumption and technician volume rankings", async () => {
-    const snapshot = docs([
-      { id: "a", assignedTechId: "tech-1", inventorySnapshot: [{ sku: "P-1", qtyUsed: 2 }, { sku: "P-2", qtyUsed: 1 }], completedAt: stamp(1) },
-      { id: "b", assignedTechId: "tech-1", inventorySnapshot: [{ sku: "P-1", qtyUsed: 3 }] },
-      { id: "c", assignedTechId: "tech-2", inventorySnapshot: [{ sku: "P-2", qtyUsed: 1 }], completedAt: stamp(2) },
-      { id: "d", inventorySnapshot: [{ sku: "P-1", qtyUsed: 9 }] },
-    ]);
-    firestore.getDocs.mockResolvedValueOnce(snapshot).mockResolvedValueOnce(snapshot);
-
+  it("consumption and volume are the governed office aggregates, passed through in the server's order", async () => {
+    calls.length = 0;
+    __setWorkOrderTransportForTests(transport({
+      readWorkOrderConsumptionSnapshot: {
+        parts: [{ partId: "P-1", totalQuantityUsed: 14, frequency: 3 }, { partId: "P-2", totalQuantityUsed: 2, frequency: 2 }],
+        mostConsumedPartId: "P-1", basis: "RECORDED_EXECUTION_ACTUALS",
+      },
+      readTechnicianVolumeBreakdown: { items: [
+        { employeeId: "emp-a", displayName: "Ana", activeCount: 1, completedCount: 1 },
+        { employeeId: "emp-b", displayName: null, activeCount: 0, completedCount: 1 },
+      ] },
+    }));
     await expect(getInventoryConsumptionSnapshot()).resolves.toEqual({
       mostConsumedPartId: "P-1",
       parts: [
@@ -199,8 +126,22 @@ describe("execution analytics service", () => {
       ],
     });
     await expect(getTechnicianVolumeBreakdown()).resolves.toEqual([
-      { technicianId: "tech-1", activeCount: 1, completedCount: 1 },
-      { technicianId: "tech-2", activeCount: 0, completedCount: 1 },
+      { employeeId: "emp-a", displayName: "Ana", activeCount: 1, completedCount: 1 },
+      { employeeId: "emp-b", displayName: null, activeCount: 0, completedCount: 1 },
     ]);
+    expect(calls.map((c) => c.operation)).toEqual(["readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown"]);
+    expect(firestore.getDocs).not.toHaveBeenCalled();
+    __setWorkOrderTransportForTests(null);
+  });
+
+  it("a refusal THROWS the governed failure (code + reason) -- no fallback, nothing fabricated", async () => {
+    __setWorkOrderTransportForTests(transport({
+      readWorkOrderConsumptionSnapshot: { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_MISSING", status: 403, message: "no" },
+      readTechnicianExecutionStats: { ok: false, code: "NOT_ACTIVATED", reason: "NOT_ACTIVATED", status: 503, message: "off" },
+    }));
+    await expect(getInventoryConsumptionSnapshot()).rejects.toMatchObject({ code: "FORBIDDEN", reason: "CAPABILITY_MISSING" });
+    await expect(getTechnicianExecutionStats()).rejects.toMatchObject({ code: "NOT_ACTIVATED" });
+    expect(firestore.getDocs).not.toHaveBeenCalled();
+    __setWorkOrderTransportForTests(null);
   });
 });

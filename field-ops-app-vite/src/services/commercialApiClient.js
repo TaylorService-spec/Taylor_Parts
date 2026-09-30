@@ -62,6 +62,9 @@ export const COMMERCIAL_READ_OPERATIONS = Object.freeze([
   "listSalesOrders",
   // The caller's own Commercial capabilities -- which controls to OFFER (hooks/useCommercialCapabilities.js).
   "readMyCommercialCapabilities",
+  // The coordinated-visits read (Sales Order as coordinator; fulfillment.coordinatedVisit.read). Replaced the Firebase
+  // listCoordinatedOperations callable (Work Order cutover completion pass, 2026-09-30).
+  "listCoordinatedOperations",
 ]);
 
 const READ_OPERATION_SET = new Set(COMMERCIAL_READ_OPERATIONS);

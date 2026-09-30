@@ -74,6 +74,11 @@ export const ATTENTION_DETAILS = Object.freeze([
   "PAYLOAD_FINGERPRINT_MISMATCH",
 ]);
 
+/** Details that mean the capability is NOT_YET_ACTIVATED on EOS (domain/workOrderOutcome.js). */
+export const NOT_ACTIVATED_DETAILS = Object.freeze([
+  "SERIALIZED_INSTALL_NOT_ACTIVATED",
+]);
+
 /**
  * The command's business code, from either shape a callable sends it in: a bare string
  * (`"ASSET_INSTALLED_ELSEWHERE"`) or a structured `{ code }` object (the Transfer and Cycle Count
@@ -106,6 +111,9 @@ export function classifyFailure({ code = null, details = null, offline = false }
   if (offline) return FAILURE_CLASS.RETRYABLE;
 
   const detail = businessCode(details);
+  // A capability that is not activated on EOS (Equipment install) will not become activated by retrying, and
+  // nothing about the job moved: the platform declines it -- REFUSED, never CONFLICT, never retried.
+  if (NOT_ACTIVATED_DETAILS.includes(detail)) return FAILURE_CLASS.REFUSED;
   if (ATTENTION_DETAILS.includes(detail)) return FAILURE_CLASS.NEEDS_ATTENTION;
   if (CONFLICT_DETAILS.includes(detail)) return FAILURE_CLASS.CONFLICT;
 

@@ -41,6 +41,13 @@ vi.mock("../src/hooks/useEmployeeDirectory", () => ({
   resolveActorDisplayName: (id) => id,
 }));
 vi.mock("../src/domain/inventoryAnalyticsEngine", () => ({ hasUsageHistory: () => false }));
+// The Work Order demand band is its own read (the EOS Work Order route since the Work Order cutover) with its own suite
+// (partWorkOrderDemandSection.test.jsx). Isolated here like every other neighbouring hook, so this suite's "unavailable"
+// assertions are about the LEDGER band only -- and do not depend on whether an EOS API is configured.
+vi.mock("../src/hooks/usePartWorkOrderDemand", async () => {
+  const actual = await vi.importActual("../src/hooks/usePartWorkOrderDemand");
+  return { ...actual, usePartWorkOrderDemand: () => ({ status: actual.PART_WORK_ORDER_DEMAND_STATE.READY, rows: [], scannedCount: 0, totalOpenWorkOrders: 0 }) };
+});
 
 const assignReorderRequest = vi.fn();
 vi.mock("../src/domain/inventoryReorderRequests", () => ({

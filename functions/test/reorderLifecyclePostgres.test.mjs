@@ -563,8 +563,20 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
       warehouseId: W, partId: "PART-SYN", actorEmployeeId: "e-pa", externalPoNumber: "CAC-PROOF-PO-AUDIT", orderedQuantity: 2, orderedDate: "2026-09-30" });
     // The PO and its audit are one transaction: the audit names exactly the PO that exists.
     assert.deepEqual((await q(`SELECT id, created_by, operating_company_key FROM eos_ops.purchase_orders WHERE id = $1`, [id])).rows, [{ id, created_by: pPA, operating_company_key: "taylor" }]);
-    // A replay is refused (the request is ORDERED) and adds no second audit event.
-    await assert.rejects(life.recordReorderPurchaseOrder(deps, as(pPA, PA), po));
+    // A replay is refused (the request is ORDERED) and adds no second audit event. XLF 2026-09-30: it is the SAME
+    // repository refusal (REQUEST_STATE_INVALID), now answered in the lifecycle's PRECONDITION_FAILED category (412 on
+    // the transport) instead of escaping as an unhandled 500; no second PO, no state change.
+    const poBefore = JSON.stringify((await q(`SELECT * FROM eos_ops.purchase_orders WHERE id = $1`, [id])).rows);
+    await assert.rejects(life.recordReorderPurchaseOrder(deps, as(pPA, PA), po), (e) =>
+      e instanceof life.ReorderLifecycleError && e.code === "REQUEST_STATE_INVALID" && e.category === "PRECONDITION_FAILED");
     assert.equal((await poAudits(id)).length, 1);
+    assert.equal(JSON.stringify((await q(`SELECT * FROM eos_ops.purchase_orders WHERE id = $1`, [id])).rows), poBefore, "the original PO is unchanged");
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.purchase_orders WHERE id = $1`, [id])).rows[0].n, 1, "no second PO");
+    assert.equal((await q(`SELECT status::text s FROM eos_ops.reorder_requests WHERE id = $1`, [id])).rows[0].s, "ORDERED");
+    // Through the Operations transport the same refusal is a 412, never a 500.
+    const { readFileSync } = await import("node:fs");
+    const transport = readFileSync(resolve(FUNCTIONS_DIR, "src/eosOps/eosOpsHttp.ts"), "utf8");
+    assert.match(transport, /err instanceof ReorderLifecycleError[^\n]*\)\s*\{\s*const code: OperationsApiFailureCode = err\.category === "FAILED" \? "INTERNAL" : err\.category;/);
+    assert.match(transport, /PRECONDITION_FAILED: 412,/);
   });
 });

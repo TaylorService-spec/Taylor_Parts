@@ -173,6 +173,8 @@ describe("handheld shell — what it must never become", () => {
     // should not pay twice for one answer.
     render(<TechnicianShell />);
     expect(useAssignedWorkOrders).toHaveBeenCalledTimes(1);
-    expect(useAssignedWorkOrders).toHaveBeenCalledWith("tech-1");
+    // Work Order cutover: NO technician id is passed -- the server resolves whose work this is
+    // (listMyAssignedWorkOrders), and the browser compares no identities.
+    expect(useAssignedWorkOrders).toHaveBeenCalledWith();
   });
 });

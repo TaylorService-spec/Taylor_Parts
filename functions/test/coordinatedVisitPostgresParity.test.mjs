@@ -93,7 +93,10 @@ test("every difference from the legacy read is declared, with a reason", () => {
 // 2. NO CUTOVER, NO FIREBASE
 // ════════════════════════════════════════════════════════════════════════════════════
 
-test("NO CUTOVER: the legacy read still reads fieldops_wos and nothing imports the PostgreSQL seam", () => {
+// UPDATED DELIBERATELY by the Owner WORK ORDER CUTOVER COMPLETION PASS (2026-09-30, DECISION 7): the client read moved
+// to the seam, served ONLY by the Commercial transport (the Sales Order is the coordinator). The legacy callable stays in
+// source, reading fieldops_wos, and no client calls it.
+test("CUTOVER: the legacy callable is unchanged, the Commercial transport is the ONE importer of the seam, and no client reaches it", () => {
   assert.ok(LEGACY_SOURCE.includes("WORK_ORDERS_COLLECTION"),
     "the legacy read stopped naming the legacy collection -- that would be a cutover, not a seam");
   assert.ok(LEGACY_SOURCE.includes("export const listCoordinatedOperations = onCall"),
@@ -116,13 +119,13 @@ test("NO CUTOVER: the legacy read still reads fieldops_wos and nothing imports t
     .filter((f) => f !== join(SRC, "eosOps", "coordinatedVisitPostgresRead.ts"))
     .filter((f) => REACHES.test(readFileSync(f, "utf8")))
     .map((f) => relative(FUNCTIONS_DIR, f).split("\\").join("/"));
-  assert.deepEqual(importers, [], "a runtime module reaches the seam; this slice builds it and switches nothing");
-  // And the only place that names it at all is the tracker.
+  assert.deepEqual(importers, ["src/eosCommercial/commercialHttp.ts"], "exactly one transport serves the seam");
+  // And besides the transport, the only place that names it is the tracker.
   const mentions = walk(SRC)
     .filter((f) => f !== join(SRC, "eosOps", "coordinatedVisitPostgresRead.ts"))
     .filter((f) => /coordinatedVisitPostgresRead/.test(readFileSync(f, "utf8")))
     .map((f) => relative(FUNCTIONS_DIR, f).split("\\").join("/"));
-  assert.deepEqual(mentions, ["src/adminPolicy/migration/credEquivalence.ts"]);
+  assert.deepEqual(mentions.sort(), ["src/adminPolicy/migration/credEquivalence.ts", "src/eosCommercial/commercialHttp.ts"]);
 
   const clientDir = join(FUNCTIONS_DIR, "..", "field-ops-app-vite", "src");
   const clientHits = walk(clientDir)

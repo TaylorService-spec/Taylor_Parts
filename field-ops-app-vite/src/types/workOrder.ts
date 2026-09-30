@@ -1,14 +1,20 @@
 // Work Order Engine v1.2 -- canonical client-side types.
 //
-// Mirrored (not imported -- no shared/monorepo tooling exists in this repo)
-// at functions/src/types/workOrder.ts. If either file changes, change the
-// other to match.
+// SOURCE (Work Order domain cutover): every Work Order the client holds now comes from the GOVERNED EOS
+// route (services/workOrderService.ts) through domain/workOrderAdapter.js, which maps the server's
+// WorkOrderSummary / WorkOrderDetail (functions/src/eosOps/workOrderQueries.ts) onto this legacy shape.
 //
-// Timestamps come back from Firestore reads as client-SDK Timestamp
-// instances (call .toDate()/.toMillis() to use them) -- they are written
-// server-side only, by transitionWorkOrder.ts/createWorkOrder.ts via
-// admin.firestore.FieldValue.serverTimestamp(), never by the client.
-import type { Timestamp } from "firebase/firestore";
+// Timestamps are Timestamp-COMPATIBLE instants (toMillis()/toDate()/seconds/nanoseconds) built by the
+// adapter from the server's ISO-8601 strings -- no Firebase type is involved any more.
+//
+// IDENTITY: assignedTechId / scheduledTechId carry an EOS EMPLOYEE id (the one governed assignee), not a
+// fieldops_technicians document id.
+export interface Timestamp {
+  seconds: number;
+  nanoseconds: number;
+  toMillis(): number;
+  toDate(): Date;
+}
 
 export type WorkOrderStatus =
   | "CREATED"
@@ -62,6 +68,16 @@ export type ActionName =
 export interface WorkOrder {
   id: string;
   woNumber: string; // WO-2026-000001
+
+  // Governed read passthroughs (domain/workOrderAdapter.js).
+  workOrderId?: string;
+  assigneeEmployeeId?: string;
+  assigneeDisplayName?: string;
+  customerName?: string;
+  locationName?: string;
+  salesOrderId?: string;
+  operatingCompanyKey?: string;
+  provenance?: string;
 
   status: WorkOrderStatus;
 
@@ -153,8 +169,10 @@ export interface WorkOrder {
 // Epic 6 Phase 6.3 -- one entry in WorkOrder.executionLog.
 export interface ExecutionLogEntry {
   note: string;
-  at: Timestamp;
-  byTechnicianId: string;
+  at?: Timestamp;
+  // Legacy entries named the technician; governed entries name the recording Principal.
+  byTechnicianId?: string;
+  byPrincipalId?: string | null;
 }
 
 export interface InventorySnapshotItem {

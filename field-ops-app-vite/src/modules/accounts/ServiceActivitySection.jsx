@@ -8,14 +8,13 @@ import {
   useAccountWorkOrderCount,
   useAccountWorkOrderTimeline,
 } from "../../hooks/useAccountServiceActivity";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
+import { techniciansFromWorkOrders } from "../../domain/workOrderAdapter.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { workOrderStatusWords } from "../../domain/workOrderNorthStar.js";
 import { formatDateOnly } from "../../domain/displayTimestamp.js";
 import { objectListPath, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import { Button } from "../../shared/ui/primitives/index.js";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import ImportedServiceHistoryBlock from "./ImportedServiceHistoryBlock.jsx";
 import { fetchImportedServiceHistory } from "../../access/importedServiceHistorySource.js";
 
@@ -134,11 +133,12 @@ export default function ServiceActivitySection({ accountId }) {
   const timeline = useAccountWorkOrderTimeline(accountId);
   const imported = useImportedServiceHistory(accountId);
   const tView = timelineView(timeline);
-  const {
-    data: technicians,
-    loading: techniciansLoading,
-    error: techniciansError,
-  } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  // The assignee is an EOS EMPLOYEE now (domain/workOrderAdapter.js), and each governed row already
+  // carries its display name -- so the directory is built from the rows themselves, not read from
+  // fieldops_technicians (whose ids no longer match).
+  const technicians = useMemo(() => techniciansFromWorkOrders(timeline.items), [timeline.items]);
+  const techniciansLoading = false;
+  const techniciansError = null;
 
   return (
     <section className="ns-section" aria-label="Service activity">

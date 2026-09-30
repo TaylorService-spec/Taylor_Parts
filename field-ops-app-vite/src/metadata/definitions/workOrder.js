@@ -44,7 +44,10 @@ export const workOrderEntity = makeEntityDefinition({
   label: "Work Order",
   labelPlural: "Work Orders",
   collection: WORK_ORDERS_COLLECTION,
-  readVia: "CLIENT_DIRECT",
+  // WORK ORDER CUTOVER: served by the governed EOS Work Order route (metadata/workOrderListSource.js ->
+  // listWorkOrders). Declared EOS_API so no generic metadata surface can read Firestore fieldops_wos as the
+  // current authority. `collection` stays only as the legacy name other declarations reference.
+  readVia: "EOS_API",
   // Reference only, deliberately. A Work Order is called by its number, and the nearest
   // thing to a name — the complaint text — is OPTIONAL on the record. An identity field
   // that is frequently absent is worse than none: it licenses a surface to fall back to

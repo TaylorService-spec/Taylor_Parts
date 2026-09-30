@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { collection, getDocs, limit as fsLimit, orderBy, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { listWorkOrders } from "../services/workOrderService";
 import { WORK_ORDERS_COLLECTION } from "../domain/constants";
 import {
   workOrderSearchQueryShape,
@@ -8,22 +7,22 @@ import {
   WORK_ORDER_SEARCH_CAP,
 } from "../domain/workOrderSearch.js";
 
-// The ONLY place Work Order search touches Firestore. domain/workOrderSearch.js decided
-// the prefix range, the bound, the truncation probe and every resulting state already;
-// this hook debounces and issues it, and adds no filter, limit or ordering of its own —
-// anything invented here would be a query nobody proved is bounded.
+// Work Order search over the GOVERNED EOS route (listWorkOrders { search }) -- never Firestore.
+// domain/workOrderSearch.js still decides the bound, the truncation probe (cap + 1) and every resulting
+// state; this hook debounces and issues the read. The server matches the term against the Work Order
+// number and the customer name (case-insensitive), bounded by `limit`.
 //
-// A one-shot read per settled keystroke, not a subscription: a search box re-queries by
-// nature, and a live listener per character would leak one subscription per keystroke.
+// A one-shot read per settled keystroke, not a subscription.
 const DEBOUNCE_MS = 300;
+const SERVER_SEARCH_MAX = 100;
 
 export function useWorkOrderSearch(term, { cap = WORK_ORDER_SEARCH_CAP } = {}) {
   const [raw, setRaw] = useState({ docs: null, loading: false, error: null });
-  // Guards the stale-response race: a slow earlier query landing after a newer keystroke
-  // would otherwise overwrite the newer (or blank) result.
+  // Guards the stale-response race: a slow earlier read landing after a newer keystroke.
   const requestRef = useRef(0);
 
   useEffect(() => {
+    // The shape is kept as the single decision about "is this a search at all" and its bound.
     const shape = workOrderSearchQueryShape({ term, collection: WORK_ORDERS_COLLECTION, cap });
     const token = (requestRef.current += 1);
 
@@ -36,16 +35,12 @@ export function useWorkOrderSearch(term, { cap = WORK_ORDER_SEARCH_CAP } = {}) {
 
     const timer = setTimeout(async () => {
       try {
-        const q = query(
-          collection(db, shape.collection),
-          where(shape.fieldPath, ">=", shape.start),
-          where(shape.fieldPath, "<=", shape.end),
-          orderBy(shape.fieldPath, "asc"),
-          fsLimit(shape.limit),
-        );
-        const snap = await getDocs(q);
+        const { items } = await listWorkOrders({
+          search: String(term ?? "").trim().slice(0, SERVER_SEARCH_MAX),
+          limit: shape.limit,
+        });
         if (token !== requestRef.current) return;
-        setRaw({ docs: snap.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false, error: null });
+        setRaw({ docs: items, loading: false, error: null });
       } catch (error) {
         if (token !== requestRef.current) return;
         // docs stays null, never [], so a failed read is not mistaken for "no such work order".

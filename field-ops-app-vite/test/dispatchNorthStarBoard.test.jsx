@@ -17,6 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
+// The board reads the GOVERNED technician roster (listWorkOrderTechnicians), keyed by Employee id.
+vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians: vi.fn() }));
 vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
 vi.mock("../src/hooks/useAccountNames", () => ({ useAccountNames: vi.fn() }));
 vi.mock("../src/hooks/useSessionActivityFeed", () => ({ useSessionActivityFeed: vi.fn(() => []) }));
@@ -31,6 +33,7 @@ vi.mock("../src/services/schedulingCommandClient.js", () => ({
 
 import DispatcherBoard from "../src/modules/dispatcherBoard/DispatcherBoard.jsx";
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
+import { useWorkOrderTechnicians } from "../src/hooks/useWorkOrderTechnicians";
 import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
 import { useAccountNames } from "../src/hooks/useAccountNames";
 import { useAuth } from "../src/auth/AuthContext";
@@ -84,7 +87,7 @@ function availabilityResult({ withHours = true } = {}) {
 function setup({ workOrders = [SCHEDULED_WO, QUEUE_WO], role = "dispatcher", availability = availabilityResult() } = {}) {
   useAuth.mockReturnValue({ role });
   useWorkOrders.mockReturnValue({ data: workOrders, loading: false, error: null });
-  useFirestoreCollection.mockReturnValue({ data: [TECH_A, TECH_B], loading: false, error: null });
+  useWorkOrderTechnicians.mockReturnValue({ data: [TECH_A, TECH_B], loading: false, error: null });
   useAccountNames.mockReturnValue(new Map([["cust-1", "Desert Sun"]]));
   readTechnicianAvailability.mockResolvedValue(availability);
   return render(<DispatcherBoard />);
@@ -198,6 +201,8 @@ describe("availability is rendered truthfully", () => {
     await waitFor(() => expect(readTechnicianAvailability).toHaveBeenCalled());
     expect(useFirestoreCollection).not.toHaveBeenCalledWith("technician_working_availability");
     expect(useFirestoreCollection).not.toHaveBeenCalledWith("technician_blocked_time");
+    // Work Order cutover: the board reads NO Firestore collection at all -- not even fieldops_technicians.
+    expect(useFirestoreCollection).not.toHaveBeenCalled();
   });
 });
 
@@ -400,7 +405,7 @@ describe("honest states", () => {
   it("a failed work order read is not a false-empty board", () => {
     useAuth.mockReturnValue({ role: "dispatcher" });
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: new Error("boom") });
-    useFirestoreCollection.mockReturnValue({ data: [TECH_A], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [TECH_A], loading: false, error: null });
     useAccountNames.mockReturnValue(new Map());
     readTechnicianAvailability.mockResolvedValue(availabilityResult());
     render(<DispatcherBoard />);
@@ -410,7 +415,7 @@ describe("honest states", () => {
   it("a failed technician read gets its OWN sentence, never 'no technicians exist'", () => {
     useAuth.mockReturnValue({ role: "dispatcher" });
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: new Error("boom") });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: new Error("boom") });
     useAccountNames.mockReturnValue(new Map());
     readTechnicianAvailability.mockResolvedValue(availabilityResult());
     render(<DispatcherBoard />);
@@ -431,7 +436,7 @@ describe("honest states", () => {
   it("an availability read failure degrades the lanes without blocking scheduling", async () => {
     useAuth.mockReturnValue({ role: "dispatcher" });
     useWorkOrders.mockReturnValue({ data: [SCHEDULED_WO, QUEUE_WO], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [TECH_A], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [TECH_A], loading: false, error: null });
     useAccountNames.mockReturnValue(new Map());
     readTechnicianAvailability.mockResolvedValue({ errorStatus: "permission-denied", errorCode: "PERMISSION_DENIED" });
     render(<DispatcherBoard />);
@@ -550,7 +555,7 @@ describe("the technician selector", () => {
     // "Unknown technician" here exactly as it does on the lane.
     useAuth.mockReturnValue({ role: "dispatcher" });
     useWorkOrders.mockReturnValue({ data: [SCHEDULED_WO], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [TECH_A, { id: "tech-nameless" }], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [TECH_A, { id: "tech-nameless" }], loading: false, error: null });
     useAccountNames.mockReturnValue(new Map());
     readTechnicianAvailability.mockResolvedValue(availabilityResult());
     render(<DispatcherBoard />);

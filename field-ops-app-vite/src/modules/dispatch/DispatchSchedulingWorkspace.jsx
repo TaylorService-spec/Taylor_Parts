@@ -5,6 +5,7 @@ import FailureState from "../../shared/ui/FailureState";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { FormError } from "../../shared/ui/form";
 import { useSchedulingData } from "../../hooks/useSchedulingData";
+import WorkOrderAuthorityNotice from "../../shared/ui/WorkOrderAuthorityNotice.jsx";
 import { workOrderPriorityLabel } from "../../domain/workOrderPriority";
 import { workOrderStatusTone } from "../../domain/coordinatedVisit";
 import { technicianStatusTone } from "../../domain/technicianStatusTone";
@@ -82,7 +83,7 @@ function StatusChip({ status }) {
 }
 
 export default function DispatchSchedulingWorkspace({ nowMillis, initialDayMillis } = {}) {
-  const { workOrders, technicians, loading, error } = useSchedulingData();
+  const { workOrders, technicians, loading, error, notActivated } = useSchedulingData();
   const now = nowMillis ?? Date.now();
   const [dayMillis, setDayMillis] = useState(() => initialDayMillis ?? startOfTodayMillis(now));
   const [dragWo, setDragWo] = useState(null); // the Ready-for-Work row currently being dragged
@@ -109,6 +110,15 @@ export default function DispatchSchedulingWorkspace({ nowMillis, initialDayMilli
       <div className="fo-panel">
         <WorkspaceHeader title="Dispatch / Scheduling" />
         <LoadingState>Loading the dispatch board…</LoadingState>
+      </div>
+    );
+  }
+  if (notActivated) {
+    // DQ-S4: a readiness STATE, not "Board unavailable" and not an empty week.
+    return (
+      <div className="fo-panel">
+        <WorkspaceHeader title="Dispatch / Scheduling" />
+        <WorkOrderAuthorityNotice notActivated />
       </div>
     );
   }

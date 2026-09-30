@@ -19,7 +19,8 @@ import { MemoryRouter } from "react-router-dom";
 vi.mock("../src/hooks/useWorkOrder", () => ({ useWorkOrder: vi.fn() }));
 vi.mock("../src/hooks/useAccount", () => ({ useAccount: vi.fn() }));
 vi.mock("../src/hooks/useLocation", () => ({ useLocation: vi.fn() }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
+// Work Order cutover: the page resolves assignee names against the governed, Employee-keyed directory.
+vi.mock("../src/hooks/useWorkOrderTechnicianDirectory.js", () => ({ useWorkOrderTechnicianDirectory: vi.fn() }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ role: "dispatcher" }) }));
 vi.mock("../src/modules/controlTower/WorkOrderDetail", () => ({ default: () => <div data-testid="wo-detail" /> }));
 vi.mock("../src/modules/workOrders/WorkOrderPartsPlanEditor", () => ({ default: () => null }));
@@ -31,7 +32,7 @@ vi.mock("react-router-dom", async (orig) => {
 import { useWorkOrder } from "../src/hooks/useWorkOrder";
 import { useAccount } from "../src/hooks/useAccount";
 import { useLocation as useLocationDoc } from "../src/hooks/useLocation";
-import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
+import { useWorkOrderTechnicianDirectory } from "../src/hooks/useWorkOrderTechnicianDirectory.js";
 import WorkOrderDetailPage from "../src/modules/workOrders/WorkOrderDetailPage";
 
 const RESOLVED_WORK_ORDER = {
@@ -62,7 +63,7 @@ describe("WorkOrderDetailPage -- Work Order read fail-closed (H14)", () => {
     useWorkOrder.mockReturnValue({ workOrder: null, loading: true, error: null, retry: vi.fn() });
     useAccount.mockReturnValue(RESOLVED_ACCOUNT);
     useLocationDoc.mockReturnValue(RESOLVED_LOCATION);
-    useFirestoreCollection.mockReturnValue(RESOLVED_TECHS);
+    useWorkOrderTechnicianDirectory.mockReturnValue(RESOLVED_TECHS);
     renderPage();
     expect(screen.getByText(/loading work order/i)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -78,7 +79,7 @@ describe("WorkOrderDetailPage -- Work Order read fail-closed (H14)", () => {
     });
     useAccount.mockReturnValue(RESOLVED_ACCOUNT);
     useLocationDoc.mockReturnValue(RESOLVED_LOCATION);
-    useFirestoreCollection.mockReturnValue(RESOLVED_TECHS);
+    useWorkOrderTechnicianDirectory.mockReturnValue(RESOLVED_TECHS);
     renderPage();
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.getByText("You do not have permission to view these work orders.")).toBeTruthy();
@@ -90,7 +91,7 @@ describe("WorkOrderDetailPage -- Work Order read fail-closed (H14)", () => {
     useWorkOrder.mockReturnValue({ workOrder: null, loading: false, error: null, retry: vi.fn() });
     useAccount.mockReturnValue(RESOLVED_ACCOUNT);
     useLocationDoc.mockReturnValue(RESOLVED_LOCATION);
-    useFirestoreCollection.mockReturnValue(RESOLVED_TECHS);
+    useWorkOrderTechnicianDirectory.mockReturnValue(RESOLVED_TECHS);
     renderPage();
     expect(screen.getByText(/this work order could not be found/i)).toBeTruthy();
   });
@@ -99,7 +100,7 @@ describe("WorkOrderDetailPage -- Work Order read fail-closed (H14)", () => {
     useWorkOrder.mockReturnValue(RESOLVED_WORK_ORDER);
     useAccount.mockReturnValue(RESOLVED_ACCOUNT);
     useLocationDoc.mockReturnValue(RESOLVED_LOCATION);
-    useFirestoreCollection.mockReturnValue(RESOLVED_TECHS);
+    useWorkOrderTechnicianDirectory.mockReturnValue(RESOLVED_TECHS);
     renderPage();
     // The assertion used to be getByTestId("wo-detail") — a handle on the legacy WorkOrderDetail
     // card, which the approved North Star composition replaces. The INVARIANT it was protecting is
@@ -120,7 +121,7 @@ describe("WorkOrderDetailPage -- Account/Technicians reads fail-closed (H14)", (
       error: "You do not have permission to view these customers.",
     });
     useLocationDoc.mockReturnValue(RESOLVED_LOCATION);
-    useFirestoreCollection.mockReturnValue(RESOLVED_TECHS);
+    useWorkOrderTechnicianDirectory.mockReturnValue(RESOLVED_TECHS);
     renderPage();
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.getByText("You do not have permission to view these customers.")).toBeTruthy();
@@ -130,7 +131,7 @@ describe("WorkOrderDetailPage -- Account/Technicians reads fail-closed (H14)", (
     useWorkOrder.mockReturnValue(RESOLVED_WORK_ORDER);
     useAccount.mockReturnValue(RESOLVED_ACCOUNT);
     useLocationDoc.mockReturnValue(RESOLVED_LOCATION);
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: { code: "permission-denied" } });
+    useWorkOrderTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: { code: "permission-denied" } });
     renderPage();
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.getByText(/technician list/i)).toBeTruthy();
@@ -140,7 +141,7 @@ describe("WorkOrderDetailPage -- Account/Technicians reads fail-closed (H14)", (
     useWorkOrder.mockReturnValue(RESOLVED_WORK_ORDER);
     useAccount.mockReturnValue(RESOLVED_ACCOUNT);
     useLocationDoc.mockReturnValue(RESOLVED_LOCATION);
-    useFirestoreCollection.mockReturnValue(RESOLVED_TECHS);
+    useWorkOrderTechnicianDirectory.mockReturnValue(RESOLVED_TECHS);
     renderPage();
     expect(screen.queryByRole("alert")).toBeNull();
   });

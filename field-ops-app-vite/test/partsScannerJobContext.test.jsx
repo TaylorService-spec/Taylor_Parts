@@ -37,7 +37,8 @@ const JOBS = [
 ];
 
 vi.mock("../src/hooks/useAssignedWorkOrders", () => ({
-  useAssignedWorkOrders: () => ({ data: JOBS, loading: false, error: null }),
+  // employeeId: the Employee the SERVER resolved for this login (what assignedTechId carries).
+  useAssignedWorkOrders: () => ({ data: JOBS, loading: false, error: null, employeeId: "TECH-1" }),
 }));
 
 vi.mock("../src/services/workOrderService", () => ({ updateWorkOrderExecutionData: vi.fn() }));

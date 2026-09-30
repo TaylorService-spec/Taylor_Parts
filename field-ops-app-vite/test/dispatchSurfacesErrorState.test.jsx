@@ -22,12 +22,14 @@ vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
 vi.mock("../src/hooks/useMetadataList", () => ({ useMetadataList: vi.fn() }));
 vi.mock("../src/hooks/useWorkOrderSearch", () => ({ useWorkOrderSearch: () => ({ state: "IDLE", results: [], truncated: false, message: null }) }));
 vi.mock("../src/hooks/useAccountReferenceResolver", () => ({ useAccountReferenceResolver: () => ({ resolveReference: () => undefined }) }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
+// Work Order cutover: technicians are the governed roster (listWorkOrderTechnicians), Employee-keyed.
+vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians: vi.fn() }));
+vi.mock("../src/shared/ui/WorkOrderAuthorityNotice.jsx", () => ({ default: () => null }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: vi.fn() }));
 
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
 import { useMetadataList } from "../src/hooks/useMetadataList";
-import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
+import { useWorkOrderTechnicians } from "../src/hooks/useWorkOrderTechnicians";
 import { useAuth } from "../src/auth/AuthContext";
 import WorkOrdersList from "../src/modules/workOrders/WorkOrdersList";
 import Dispatch from "../src/modules/dispatch/Dispatch";
@@ -52,7 +54,7 @@ describe("WorkOrdersList -- error is not swallowed into the empty state", () => 
       state: "DENIED", columns: [], rows: [], hasMore: false,
       emptyMessage: "You do not have access to work orders.",
     }));
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
     render(
       <MemoryRouter>
         <WorkOrdersList />
@@ -67,7 +69,7 @@ describe("WorkOrdersList -- error is not swallowed into the empty state", () => 
       state: "UNAVAILABLE", columns: [], rows: [], hasMore: false,
       emptyMessage: "Work orders could not be loaded.",
     }));
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
     render(
       <MemoryRouter>
         <WorkOrdersList />
@@ -80,7 +82,7 @@ describe("WorkOrdersList -- error is not swallowed into the empty state", () => 
     useMetadataList.mockReturnValue(listResult({
       state: "EMPTY", columns: [], rows: [], hasMore: false, emptyMessage: null,
     }));
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
     render(
       <MemoryRouter>
         <WorkOrdersList />
@@ -94,7 +96,7 @@ describe("WorkOrdersList -- error is not swallowed into the empty state", () => 
 describe("Dispatch -- error is not swallowed into the empty state", () => {
   it("renders an alert, not 'No work orders yet.', when useWorkOrders returns an error", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
     render(<Dispatch />);
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.queryByText(/no work orders yet\./i)).toBeNull();
@@ -102,7 +104,7 @@ describe("Dispatch -- error is not swallowed into the empty state", () => {
 
   it("still shows the honest empty state when there is no error", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
     render(<Dispatch />);
     expect(screen.getByText(/no work orders yet\./i)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -112,7 +114,7 @@ describe("Dispatch -- error is not swallowed into the empty state", () => {
 describe("DispatcherBoard -- error is not swallowed into the empty state", () => {
   it("renders an alert, not 'No work orders exist yet.', when useWorkOrders returns an error", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
     useAuth.mockReturnValue({ role: "dispatcher" });
     render(
       <MemoryRouter>
@@ -125,7 +127,7 @@ describe("DispatcherBoard -- error is not swallowed into the empty state", () =>
 
   it("still shows the honest empty state when there is no error", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
     useAuth.mockReturnValue({ role: "dispatcher" });
     render(
       <MemoryRouter>
@@ -141,13 +143,13 @@ describe("DispatcherBoard -- error is not swallowed into the empty state", () =>
   // dispatcher would read that as "there are genuinely no technicians"
   // rather than "this read just failed," with no recommendations, no drop
   // targets, and no indication anything is wrong.
-  it("renders an alert, not the technicians empty state, when useFirestoreCollection(technicians) returns an error", () => {
+  it("renders an alert, not the technicians empty state, when the governed technician roster read returns an error", () => {
     useWorkOrders.mockReturnValue({
       data: [{ id: "wo1", woNumber: "WO-1", status: "SCHEDULED", customerId: "c1" }],
       loading: false,
       error: null,
     });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
     useAuth.mockReturnValue({ role: "dispatcher" });
     render(
       <MemoryRouter>

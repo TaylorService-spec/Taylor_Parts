@@ -1,31 +1,21 @@
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  limit,
-  startAfter,
-  getDocs,
-  getCountFromServer,
-} from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { WORK_ORDERS_COLLECTION } from "./constants";
+import { listWorkOrders } from "../services/workOrderService";
 
 // Customer/Account Business Model -- Customer PR 3, Service Activity
 // (docs/specifications/customer-account-business-model.md). Account-scoped
-// reads over fieldops_wos (Work Order Engine v1.2). These are OPERATIONAL
-// activity, never a financial figure -- see the Framework
-// (docs/architecture/enterprise-business-metrics-framework.md, Section 3):
-// Work Order counts are not sales/revenue and never share a label with a
-// dollar metric.
+// reads of Work Orders over the GOVERNED EOS route (listWorkOrders { customerId }),
+// never Firestore. These are OPERATIONAL activity, never a financial figure -- see
+// the Framework (docs/architecture/enterprise-business-metrics-framework.md,
+// Section 3): Work Order counts are not sales/revenue and never share a label
+// with a dollar metric.
 //
-// Two DISTINCT query shapes, never one shared query:
-//   - counts: aggregate getCountFromServer() over customerId + status `in`
-//     (composite index fieldops_wos(customerId ASC, status ASC)).
-//   - timeline: bounded, createdAt-desc, cursor-paginated getDocs()
-//     (composite index fieldops_wos(customerId ASC, createdAt DESC)).
-// Both indexes are already deployed [READY]; this file only READS against
-// them and never defines or changes an index.
+// THE GOVERNED ROUTE HAS NO COUNT READ AND NO CURSOR. It returns at most
+// WORK_ORDER_LIST_MAX (200) rows with an explicit `truncated` flag. So:
+//   - a count is the length of a NON-truncated read; a truncated read REFUSES
+//     (throws) rather than report a floor as the count -- the caller renders
+//     "unavailable", never an under-count;
+//   - the timeline pages CLIENT-SIDE over one bounded read, newest-first by
+//     createdAt; `hasMore` stops at the bound, and `truncated` says more exist.
+const ACCOUNT_READ_BOUND = 200;
 
 // These two buckets partition the canonical 11-value WorkOrderStatus enum
 // (the authority is functions/src/transitionEngine.ts, mirrored client-side
@@ -48,17 +38,17 @@ export const OPEN_WORK_ORDER_STATUSES = [
 
 export const SERVICE_ACTIVITY_PAGE_SIZE = 10;
 
-// Two SEPARATE, INDEPENDENT aggregate count() queries -- deliberately NOT
-// combined via Promise.all, so a failure of one count never rejects (and
-// thus never hides) the other. Each is fetched and error-handled on its own
-// (see hooks/useAccountServiceActivity.js). Never derived by summing or
-// recomputing the timeline's loaded pages. Both use the composite index
-// fieldops_wos(customerId ASC, status ASC).
+// Two SEPARATE, INDEPENDENT counts -- deliberately NOT combined, so a failure of
+// one never hides the other (see hooks/useAccountServiceActivity.js).
 async function fetchAccountWorkOrderCountForStatuses(accountId, statuses) {
-  const snap = await getCountFromServer(
-    query(collection(db, WORK_ORDERS_COLLECTION), where("customerId", "==", accountId), where("status", "in", statuses))
-  );
-  return snap.data().count;
+  const { items, truncated } = await listWorkOrders({ customerId: accountId, statuses, limit: ACCOUNT_READ_BOUND });
+  if (truncated) {
+    const err = new Error(`more than ${ACCOUNT_READ_BOUND} Work Orders; the governed route has no count read`);
+    err.code = "UNAVAILABLE";
+    err.reason = "COUNT_EXCEEDS_LIST_BOUND";
+    throw err;
+  }
+  return items.length;
 }
 
 // Completed = COMPLETED/CLOSED.
@@ -71,43 +61,36 @@ export function fetchAccountOpenWorkOrderCount(accountId) {
   return fetchAccountWorkOrderCountForStatuses(accountId, OPEN_WORK_ORDER_STATUSES);
 }
 
-// One bounded page of the Account Activity timeline, newest-first. Cursor
-// pagination via startAfter(<last DocumentSnapshot>) -- not an offset/
-// page-number scheme. Returns the raw last DocumentSnapshot as `lastDoc`
-// so the caller can pass it straight back as `afterDoc` for the next page
-// (startAfter needs the snapshot, which also carries the createdAt cursor
-// correctly for a Firestore Timestamp order-by). `hasMore` is true when a
-// full page came back -- the next fetch decides definitively.
+const createdMillis = (wo) => (wo?.createdAt && typeof wo.createdAt.toMillis === "function" ? wo.createdAt.toMillis() : 0);
+
+// One page of the Account Activity timeline, newest-first. `afterDoc` is the
+// opaque cursor the previous page returned (here: an offset into ONE bounded
+// governed read), passed straight back as before. `hasMore` is true while the
+// bounded read has rows left; `truncated` says the account has more Work Orders
+// than the bound, so the end of the list is not the end of the history.
 export async function fetchAccountWorkOrderTimelinePage(
   accountId,
   { pageSize = SERVICE_ACTIVITY_PAGE_SIZE, afterDoc = null } = {}
 ) {
-  const base = collection(db, WORK_ORDERS_COLLECTION);
-  const constraints = [where("customerId", "==", accountId), orderBy("createdAt", "desc")];
-  if (afterDoc) constraints.push(startAfter(afterDoc));
-  constraints.push(limit(pageSize));
-
-  const snap = await getDocs(query(base, ...constraints));
-  const items = snap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      woNumber: data.woNumber ?? null,
-      status: data.status ?? null,
-      createdAt: data.createdAt ?? null, // Firestore Timestamp | null
-      // Account North Star P1: the approved Service activity composition states each job's
-      // SCHEDULE and TECHNICIAN beside its status. Both are projected off the SAME documents this
-      // query already fetched -- no second read, no new query shape, no new index, and no new
-      // authority. Absent on a document means absent on the row: an unscheduled Work Order has no
-      // scheduledStart at all (see workOrder.js's own gap note), and an unassigned one has no
-      // assignedTechId. Neither is defaulted, and the display resolution of the technician id
-      // belongs to the employee/technician entity, never to this projection.
-      scheduledStart: data.scheduledStart ?? null, // Firestore Timestamp | number | null
-      assignedTechId: data.assignedTechId ?? null, // fieldops_technicians doc id | null
-    };
-  });
-  const lastDoc = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
-  return { items, lastDoc, hasMore: snap.docs.length === pageSize };
+  const { items: all, truncated } = await listWorkOrders({ customerId: accountId, limit: ACCOUNT_READ_BOUND });
+  const sorted = [...all].sort((a, b) => createdMillis(b) - createdMillis(a) || String(a.id).localeCompare(String(b.id)));
+  const offset = afterDoc && Number.isInteger(afterDoc.offset) ? afterDoc.offset : 0;
+  const pageRows = sorted.slice(offset, offset + pageSize);
+  const items = pageRows.map((wo) => ({
+    id: wo.id,
+    woNumber: wo.woNumber ?? null,
+    status: wo.status ?? null,
+    createdAt: wo.createdAt ?? null, // Timestamp-compatible instant | null
+    // Account North Star P1: SCHEDULE and TECHNICIAN beside the status, off the SAME rows.
+    // assignedTechId is an EMPLOYEE id now (domain/workOrderAdapter.js); the governed row also
+    // carries the assignee's display name, so no second read resolves it.
+    scheduledStart: wo.scheduledStart ?? null,
+    assignedTechId: wo.assignedTechId ?? null,
+    assigneeDisplayName: wo.assigneeDisplayName ?? null,
+  }));
+  const next = offset + pageRows.length;
+  const lastDoc = pageRows.length ? { offset: next } : null;
+  return { items, lastDoc, hasMore: next < sorted.length, truncated };
 }
 
 // Wave 7 extension, PART 1.6 -- Account Attention. A bounded, honest, account-scoped read of this
@@ -118,31 +101,21 @@ export async function fetchAccountWorkOrderTimelinePage(
 // scheduledStart entirely) -- reusing it would silently under-report past-due WOs sitting outside
 // whatever page the timeline happened to load.
 //
-// customerId=="..." AND status=="SCHEDULED" is a pure-equality compound query, served by the SAME
-// already-deployed fieldops_wos(customerId ASC, status ASC) composite index
-// fetchAccountWorkOrderCountForStatuses uses above -- no new index required.
-//
-// `limit` is a defensive bound (an account's own SCHEDULED backlog is normally small); `hasMore` tells
-// the caller when the result may be truncated, so a caller can degrade to an honest "unavailable" instead
-// of confidently under-reporting past-due WOs it never saw -- mirrors accountArView.js's own "a truncated
-// page is never labeled ready" rule.
+// Governed read: listWorkOrders { customerId, statuses: ["SCHEDULED"] }, bounded; `hasMore` is the
+// server's `truncated` flag, so a caller can degrade to an honest "unavailable" instead of confidently
+// under-reporting past-due WOs it never saw -- mirrors accountArView.js's "a truncated page is never
+// labeled ready" rule.
 export async function fetchAccountScheduledWorkOrdersForAttention(accountId, { limit: pageLimit = 200 } = {}) {
-  const snap = await getDocs(
-    query(
-      collection(db, WORK_ORDERS_COLLECTION),
-      where("customerId", "==", accountId),
-      where("status", "==", "SCHEDULED"),
-      limit(pageLimit)
-    )
-  );
-  const items = snap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      woNumber: data.woNumber ?? null,
-      status: data.status ?? null,
-      scheduledStart: data.scheduledStart ?? null,
-    };
+  const { items: rows, truncated } = await listWorkOrders({
+    customerId: accountId,
+    statuses: ["SCHEDULED"],
+    limit: Math.min(pageLimit, ACCOUNT_READ_BOUND),
   });
-  return { items, hasMore: snap.docs.length === pageLimit };
+  const items = rows.map((wo) => ({
+    id: wo.id,
+    woNumber: wo.woNumber ?? null,
+    status: wo.status ?? null,
+    scheduledStart: wo.scheduledStart ?? null,
+  }));
+  return { items, hasMore: truncated };
 }

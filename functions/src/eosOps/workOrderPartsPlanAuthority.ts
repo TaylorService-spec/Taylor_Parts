@@ -44,6 +44,7 @@
 // exists to fit.
 import type { Pool, PoolClient } from "pg";
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";
+import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine.js";
 
 const SCHEMA = "eos_ops";
 
@@ -210,6 +211,7 @@ export async function setPartsPlan(
     if (wo.rows.length === 0) {
       refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", `no work order ${workOrderId} in this tenant`);
     }
+    if (await isQuarantined(client, tenantId, workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
     const status = String(wo.rows[0].status);
     if ((TERMINAL_WORK_ORDER_STATUSES as readonly string[]).includes(status)) {
       refuse("TERMINAL_WORK_ORDER", "PRECONDITION_FAILED",
@@ -239,12 +241,20 @@ export async function setPartsPlan(
     // used parts against is evidence of what happened on site; un-planning it would leave consumption
     // pointing at a requirement that no longer exists.
     if (removals.length > 0) {
+      // AND FROM THE RECORDED ACTUALS (workOrderExecution.ts): a Part the technician reported using is on-site
+      // evidence even though no stock has been consumed yet -- Firebase refused un-planning a qtyUsed > 0 row.
       const used = await client.query(
-        `SELECT part_id, SUM(quantity)::bigint AS consumed
-           FROM ${SCHEMA}.inventory_commitments
-          WHERE tenant_id = $1 AND work_order_id = $2 AND event_type = 'CONSUMED' AND part_id = ANY($3::text[])
-          GROUP BY part_id
-         HAVING SUM(quantity) > 0`,
+        `SELECT part_id FROM (
+           SELECT part_id, SUM(quantity)::bigint AS used
+             FROM ${SCHEMA}.inventory_commitments
+            WHERE tenant_id = $1 AND work_order_id = $2 AND event_type = 'CONSUMED' AND part_id = ANY($3::text[])
+            GROUP BY part_id
+           UNION ALL
+           SELECT part_id, SUM(applied_delta)::bigint AS used
+             FROM ${SCHEMA}.work_order_execution_records
+            WHERE tenant_id = $1 AND work_order_id = $2 AND kind = 'PART_USAGE' AND part_id = ANY($3::text[])
+            GROUP BY part_id
+         ) u WHERE used > 0 GROUP BY part_id`,
         [tenantId, workOrderId, removals],
       );
       if (used.rows.length > 0) {

@@ -15,6 +15,7 @@
 // status: "ready" (data present, possibly empty) | "denied" (authenticated but not authorized) |
 // "unavailable" (read failed / not connected). Kept distinct on purpose — see useCoordinatedOperations.js's
 // `loading` handling for the fourth state (in flight).
+import { commercialApiClient } from "../services/commercialApiClient.js";
 
 // Explicitly-empty source for the "no governed source wired yet" state — lets the UI render an honest
 // "not connected" surface instead of pretending there are zero coordinated visits. Also a legitimate
@@ -82,25 +83,15 @@ export function mapCoordinatedOperationsReadResult({ ok, payload, errorCode } = 
   };
 }
 
-// GOVERNED read source. Firebase is imported LAZILY (dynamic import) so this module carries no import-time
-// initializeApp side effect, mirroring access/opportunitySource.js's governedOpportunitySource. Calls the
-// trusted `listCoordinatedOperations` callable; the callable resolves the caller's own authorized scope
-// server-side via the `fulfillment.coordinatedVisit.read` capability (registered active:false, granted to
-// NO Role — every caller is denied today until a later, separately authorized grant + per-environment
-// activation gate, matching inventory.serializedAsset.read's own introduction). Takes no request payload.
-export async function governedCoordinatedOperationsSource() {
-  try {
-    const [{ httpsCallable }, { functions }] = await Promise.all([
-      import("firebase/functions"),
-      import("../firebase/firebase.js"),
-    ]);
-    const res = await httpsCallable(functions, "listCoordinatedOperations")({});
-    return mapCoordinatedOperationsReadResult({ ok: true, payload: res?.data });
-  } catch (err) {
-    const raw = err && typeof err.code === "string" ? err.code : "";
-    const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
-    return mapCoordinatedOperationsReadResult({ ok: false, errorCode: code || "unavailable" });
-  }
+// GOVERNED read source: the EOS Commercial transport's listCoordinatedOperations (POST /commercial/sales), the
+// parity-proven PostgreSQL read over eos_ops.work_orders (Work Order cutover completion pass, 2026-09-30). The server
+// resolves the caller's EOS Principal and requires fulfillment.coordinatedVisit.read (salesOrder / readCoordinatedVisits).
+// No Firebase callable and no fallback: a refusal renders "denied", anything else "unavailable".
+export async function governedCoordinatedOperationsSource(client = commercialApiClient) {
+  const res = await client.call("listCoordinatedOperations");
+  if (res.ok) return mapCoordinatedOperationsReadResult({ ok: true, payload: res.result });
+  const denied = res.code === "FORBIDDEN" || res.code === "UNAUTHENTICATED" || res.code === "NOT_SIGNED_IN";
+  return mapCoordinatedOperationsReadResult({ ok: false, errorCode: denied ? "denied" : (res.reason ?? res.code ?? "unavailable") });
 }
 
 // The default the surfaces use when no source is explicitly injected. UNLIKE the Opportunity/Sales Order

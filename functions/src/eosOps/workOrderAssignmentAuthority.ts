@@ -32,6 +32,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding";
+import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 
 /** Already in the Role catalog; this command does not invent a capability. */
 export const WORK_ORDER_ASSIGN = "workOrder.lifecycle.dispatch";
@@ -146,147 +147,10 @@ export async function assignWorkOrderToEmployee(
 
     client = await deps.pool.connect();
     await client.query("BEGIN");
-
-    const member = await client.query(
-      `SELECT 1 FROM eos_policy.tenant_memberships m JOIN eos_policy.principals p ON p.id = m.principal_id
-        WHERE m.tenant_id = $1 AND m.principal_id = $2 AND m.status = 'active' AND p.status = 'active'`,
-      [actor.tenantId, actor.principalId],
-    );
-    if (member.rows.length === 0) {
-      refuse("ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN", "the principal is not an active member of this tenant");
-    }
-
-    // LOCK THE WORK ORDER FIRST. Everything downstream decides against this row, and a concurrent
-    // transition must not be able to move the lifecycle out from under the assignment.
-    const wo = await client.query(
-      `SELECT status::text AS status, operating_company_key FROM eos_ops.work_orders
-        WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
-      [actor.tenantId, workOrderId],
-    );
-    if (wo.rows.length === 0) {
-      refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
-    }
-    const status = wo.rows[0].status as string;
-    if (!(ASSIGNABLE_WORK_ORDER_STATUSES as readonly string[]).includes(status)) {
-      refuse("WORK_ORDER_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
-        `a Work Order in ${status} is not awaiting assignment`);
-    }
-
-    // The Employee must exist IN THE ACTOR'S TENANT. A foreign-tenant Employee, a Principal id, a
-    // uid or a technician id passed here is simply NOT_FOUND -- the tenant boundary is not something
-    // a caller can name its way across.
-    const employee = await client.query(
-      `SELECT employment_status::text AS status, operating_company_id FROM eos_workforce.employees
-        WHERE tenant_id = $1 AND id = $2 FOR SHARE`,
-      [actor.tenantId, employeeId],
-    );
-    if (employee.rows.length === 0) {
-      refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
-    }
-    if (!(WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES as readonly string[]).includes(employee.rows[0].status)) {
-      refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
-        "only an ACTIVE or CONTRACTOR Employee may be assigned work");
-    }
-
-    // THE WORK ORDER'S OPERATING COMPANY (Controller ruling DQ-013). The assignee must be eligible for the
-    // company that performs this Work Order. The company is READ from the governed key binding of the Work
-    // Order's own operating_company_key -- never inferred from the customer, the actor or the Employee, and
-    // never rewritten. An unbound or inactive key fails closed; so does a mismatch.
-    let workOrderCompanyId: string;
-    try {
-      workOrderCompanyId = await resolveActiveOperatingCompanyId(client, actor.tenantId, wo.rows[0].operating_company_key);
-    } catch (err) {
-      if (err instanceof OperatingCompanyBindingError) {
-        refuse("WORK_ORDER_OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED",
-          "the Work Order's operating company is not bound to an ACTIVE governed company; nothing is inferred");
-      }
-      throw err;
-    }
-    if (employee.rows[0].operating_company_id !== workOrderCompanyId!) {
-      refuse("EMPLOYEE_NOT_ELIGIBLE_FOR_OPERATING_COMPANY", "PRECONDITION_FAILED",
-        "the Employee is not eligible for the Work Order's operating company");
-    }
-
-    // THE ACCOUNT PREDICATE: work is assigned only to an Employee with an ACTIVE governed login. It is
-    // the third of the three governed assignability predicates (lifecycle, qualification, account --
-    // the governed assignable-Employee read, assignableEmployeeReads.ts), and Reorder assignment enforces it at its own
-    // command boundary for the same reason this one does: a picker is discovery, not enforcement.
-    // Without it a caller holding the capability could assign a job to an Employee who can never sign
-    // in to accept it -- RECORD_ASSIGNMENT would then refuse the technician with EMPLOYEE_LINK_REQUIRED
-    // forever, and the job would sit on a schedule nobody can act on. A REVOKED link is not a login.
-    const linked = await client.query(
-      `SELECT 1 FROM eos_policy.employee_principal_links
-        WHERE tenant_id = $1 AND employee_id = $2 AND status = 'active'`,
-      [actor.tenantId, employeeId],
-    );
-    if (linked.rows.length === 0) {
-      refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
-        "the Employee has no active governed login and cannot be assigned work");
-    }
-
-    // THE QUALIFICATION, ENFORCED BY THE COMMAND. Not by the picker: a picker is a discovery
-    // experience, and leaving the check there would make a client the only enforcement, so a caller
-    // holding the capability could submit any ACTIVE Employee.
-    const qualified = await client.query(
-      `SELECT 1 FROM eos_workforce.employee_work_eligibility
-        WHERE tenant_id = $1 AND employee_id = $2 AND qualification_code = $3 AND effective_to IS NULL`,
-      [actor.tenantId, employeeId, WORK_ORDER_ASSIGNMENT_QUALIFICATION],
-    );
-    if (qualified.rows.length === 0) {
-      refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
-        `the Employee does not currently hold the ${WORK_ORDER_ASSIGNMENT_QUALIFICATION} qualification`);
-    }
-
-    const { rows } = await client.query(
-      `SELECT id, assignee_employee_id FROM eos_ops.work_order_assignments
-        WHERE tenant_id = $1 AND work_order_id = $2 AND effective_to IS NULL FOR UPDATE`,
-      [actor.tenantId, workOrderId],
-    );
-    const current = rows[0] as { id: string; assignee_employee_id: string } | undefined;
-    const at = deps.now?.() ?? new Date();
-
-    if (current && current.assignee_employee_id === employeeId) {
-      // Nothing happened, so nothing is recorded. An interval that closed and reopened on the same
-      // person would be a history of an event nobody performed.
-      await client.query("COMMIT");
-      return Object.freeze({
-        outcome: "NO_CHANGE" as const, workOrderId, assigneeEmployeeId: employeeId,
-        assignmentId: current.id, endedAssignmentId: null,
-      });
-    }
-
-    if (current) {
-      await client.query(
-        `UPDATE eos_ops.work_order_assignments
-            SET effective_to = $3, end_source = $4, end_reason = $5, ended_by_principal_id = $6
-          WHERE tenant_id = $1 AND id = $2 AND effective_to IS NULL`,
-        [actor.tenantId, current.id, at, source, reason, actor.principalId],
-      );
-    }
-
-    const id = `woa_${randomUUID()}`;
-    await client.query(
-      `INSERT INTO eos_ops.work_order_assignments
-         (id, tenant_id, work_order_id, assignee_employee_id, source, reason, effective_from,
-          assigned_by_principal_id, provenance)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [id, actor.tenantId, workOrderId, employeeId, source, reason, at, actor.principalId, NATIVE_PROVENANCE],
-    );
-
-    // The assignment IS the history, so there is no separate audit event to write. What the
-    // transition log records is the LIFECYCLE, and assignment does not move the lifecycle by itself.
-    await client.query(
-      `UPDATE eos_ops.work_orders SET updated_by_principal_id = $3, updated_at = $4
-        WHERE tenant_id = $1 AND id = $2`,
-      [actor.tenantId, workOrderId, actor.principalId, at],
-    );
-
+    const result = await assignWithinTransaction(client, actor,
+      { workOrderId, employeeId, source, reason: reason as string | null }, deps.now?.() ?? new Date());
     await client.query("COMMIT");
-    return Object.freeze({
-      outcome: current ? ("REASSIGNED" as const) : ("ASSIGNED" as const),
-      workOrderId, assigneeEmployeeId: employeeId, assignmentId: id,
-      endedAssignmentId: current?.id ?? null,
-    });
+    return result;
   } catch (err) {
     if (client) await client.query("ROLLBACK").catch(() => undefined);
     if (err instanceof WorkOrderAssignmentError) throw err;
@@ -298,6 +162,180 @@ export async function assignWorkOrderToEmployee(
   } finally {
     client?.release();
   }
+}
+
+/**
+ * The assignment itself, INSIDE a transaction the caller owns. The capability is the CALLER's check: the
+ * governed Schedule command assigns under workOrder.lifecycle.schedule and Dispatch under
+ * workOrder.lifecycle.dispatch, and each composes this into the one transaction that also moves the status,
+ * so the placement, the assignee and the transition commit together or not at all. Every other rule --
+ * tenant membership, the Work Order's assignable status, DQ-007/DQ-012/DQ-013 Employee eligibility, one
+ * current interval -- is enforced here and nowhere else, so no path can assign by a weaker rule.
+ */
+export async function assignWithinTransaction(
+  client: PoolClient,
+  actor: WorkOrderActor,
+  input: { readonly workOrderId: string; readonly employeeId: string; readonly source: AssignmentSource; readonly reason: string | null },
+  at: Date,
+): Promise<WorkOrderAssignmentResult> {
+  const { workOrderId, employeeId, source, reason } = input;
+
+  const member = await client.query(
+    `SELECT 1 FROM eos_policy.tenant_memberships m JOIN eos_policy.principals p ON p.id = m.principal_id
+      WHERE m.tenant_id = $1 AND m.principal_id = $2 AND m.status = 'active' AND p.status = 'active'`,
+    [actor.tenantId, actor.principalId],
+  );
+  if (member.rows.length === 0) {
+    refuse("ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN", "the principal is not an active member of this tenant");
+  }
+
+  // LOCK THE WORK ORDER FIRST. Everything downstream decides against this row, and a concurrent
+  // transition must not be able to move the lifecycle out from under the assignment.
+  const wo = await client.query(
+    `SELECT status::text AS status, operating_company_key FROM eos_ops.work_orders
+      WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+    [actor.tenantId, workOrderId],
+  );
+  if (wo.rows.length === 0) {
+    refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
+  }
+  if (await isQuarantined(client, actor.tenantId, workOrderId)) {
+    refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
+  }
+  const status = wo.rows[0].status as string;
+  if (!(ASSIGNABLE_WORK_ORDER_STATUSES as readonly string[]).includes(status)) {
+    refuse("WORK_ORDER_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
+      `a Work Order in ${status} is not awaiting assignment`);
+  }
+
+  // The Employee must exist IN THE ACTOR'S TENANT. A foreign-tenant Employee, a Principal id, a
+  // uid or a technician id passed here is simply NOT_FOUND -- the tenant boundary is not something
+  // a caller can name its way across.
+  await assertEmployeeAssignable(client, actor.tenantId, employeeId, wo.rows[0].operating_company_key);
+
+  const { rows } = await client.query(
+    `SELECT id, assignee_employee_id FROM eos_ops.work_order_assignments
+      WHERE tenant_id = $1 AND work_order_id = $2 AND effective_to IS NULL FOR UPDATE`,
+    [actor.tenantId, workOrderId],
+  );
+  const current = rows[0] as { id: string; assignee_employee_id: string } | undefined;
+
+  if (current && current.assignee_employee_id === employeeId) {
+    // Nothing happened, so nothing is recorded. An interval that closed and reopened on the same
+    // person would be a history of an event nobody performed.
+    return Object.freeze({
+      outcome: "NO_CHANGE" as const, workOrderId, assigneeEmployeeId: employeeId,
+      assignmentId: current.id, endedAssignmentId: null,
+    });
+  }
+
+  if (current) {
+    await client.query(
+      `UPDATE eos_ops.work_order_assignments
+          SET effective_to = $3, end_source = $4, end_reason = $5, ended_by_principal_id = $6
+        WHERE tenant_id = $1 AND id = $2 AND effective_to IS NULL`,
+      [actor.tenantId, current.id, at, source, reason, actor.principalId],
+    );
+  }
+
+  const id = `woa_${randomUUID()}`;
+  await client.query(
+    `INSERT INTO eos_ops.work_order_assignments
+       (id, tenant_id, work_order_id, assignee_employee_id, source, reason, effective_from,
+        assigned_by_principal_id, provenance)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [id, actor.tenantId, workOrderId, employeeId, source, reason, at, actor.principalId, NATIVE_PROVENANCE],
+  );
+
+  // The assignment IS the history, so there is no separate audit event to write. What the
+  // transition log records is the LIFECYCLE, and assignment does not move the lifecycle by itself.
+  await client.query(
+    `UPDATE eos_ops.work_orders SET updated_by_principal_id = $3, updated_at = $4
+      WHERE tenant_id = $1 AND id = $2`,
+    [actor.tenantId, workOrderId, actor.principalId, at],
+  );
+
+  return Object.freeze({
+    outcome: current ? ("REASSIGNED" as const) : ("ASSIGNED" as const),
+    workOrderId, assigneeEmployeeId: employeeId, assignmentId: id,
+    endedAssignmentId: current?.id ?? null,
+  });
+}
+
+/**
+ * Is this Employee assignable to a Work Order of this operating company RIGHT NOW? Employment status
+ * (DQ-007 / DQ-012), the Work Order's governed company (DQ-013), an active governed login, and the current
+ * SERVICE_TECHNICIAN Work Eligibility. Dispatch re-asks it of the Employee already assigned, because a
+ * status can change between Schedule and Dispatch.
+ */
+export async function assertEmployeeAssignable(
+  client: PoolClient,
+  tenantId: string,
+  employeeId: string,
+  workOrderCompanyKey: string,
+): Promise<void> {
+  const employee = await client.query(
+    `SELECT employment_status::text AS status, operating_company_id FROM eos_workforce.employees
+      WHERE tenant_id = $1 AND id = $2 FOR SHARE`,
+    [tenantId, employeeId],
+  );
+  if (employee.rows.length === 0) {
+    refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
+  }
+  if (!(WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES as readonly string[]).includes(employee.rows[0].status)) {
+    refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
+      "only an ACTIVE or CONTRACTOR Employee may be assigned work");
+  }
+
+  // THE WORK ORDER'S OPERATING COMPANY (Controller ruling DQ-013). The assignee must be eligible for the
+  // company that performs this Work Order. The company is READ from the governed key binding of the Work
+  // Order's own operating_company_key -- never inferred from the customer, the actor or the Employee, and
+  // never rewritten. An unbound or inactive key fails closed; so does a mismatch.
+  let workOrderCompanyId: string;
+  try {
+    workOrderCompanyId = await resolveActiveOperatingCompanyId(client, tenantId, workOrderCompanyKey);
+  } catch (err) {
+    if (err instanceof OperatingCompanyBindingError) {
+      refuse("WORK_ORDER_OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED",
+        "the Work Order's operating company is not bound to an ACTIVE governed company; nothing is inferred");
+    }
+    throw err;
+  }
+  if (employee.rows[0].operating_company_id !== workOrderCompanyId!) {
+    refuse("EMPLOYEE_NOT_ELIGIBLE_FOR_OPERATING_COMPANY", "PRECONDITION_FAILED",
+      "the Employee is not eligible for the Work Order's operating company");
+  }
+
+  // THE ACCOUNT PREDICATE: work is assigned only to an Employee with an ACTIVE governed login. It is
+  // the third of the three governed assignability predicates (lifecycle, qualification, account --
+  // the governed assignable-Employee read, assignableEmployeeReads.ts), and Reorder assignment enforces it at its own
+  // command boundary for the same reason this one does: a picker is discovery, not enforcement.
+  // Without it a caller holding the capability could assign a job to an Employee who can never sign
+  // in to accept it -- RECORD_ASSIGNMENT would then refuse the technician with EMPLOYEE_LINK_REQUIRED
+  // forever, and the job would sit on a schedule nobody can act on. A REVOKED link is not a login.
+  const linked = await client.query(
+    `SELECT 1 FROM eos_policy.employee_principal_links
+      WHERE tenant_id = $1 AND employee_id = $2 AND status = 'active'`,
+    [tenantId, employeeId],
+  );
+  if (linked.rows.length === 0) {
+    refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
+      "the Employee has no active governed login and cannot be assigned work");
+  }
+
+  // THE QUALIFICATION, ENFORCED BY THE COMMAND. Not by the picker: a picker is a discovery
+  // experience, and leaving the check there would make a client the only enforcement, so a caller
+  // holding the capability could submit any ACTIVE Employee.
+  const qualified = await client.query(
+    `SELECT 1 FROM eos_workforce.employee_work_eligibility
+      WHERE tenant_id = $1 AND employee_id = $2 AND qualification_code = $3 AND effective_to IS NULL`,
+    [tenantId, employeeId, WORK_ORDER_ASSIGNMENT_QUALIFICATION],
+  );
+  if (qualified.rows.length === 0) {
+    refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
+      `the Employee does not currently hold the ${WORK_ORDER_ASSIGNMENT_QUALIFICATION} qualification`);
+  }
+
 }
 
 /**

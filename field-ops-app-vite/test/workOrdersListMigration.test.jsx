@@ -37,10 +37,14 @@ const SERVICE = read("src/services/workOrderService.ts");
 // ═════════════════════════════════════════ realtime dispatch is untouched
 
 describe("the realtime dispatch subscription survives the migration", () => {
-  it("subscribeToWorkOrders is still an unfiltered collection listener", () => {
-    // Deliberately asserted on the SOURCE. A test that mocked the service would pass while the
-    // real one had been quietly bounded, which is the exact substitution this package forbids.
-    expect(SERVICE).toMatch(/onSnapshot\(collection\(db, WORK_ORDERS_COLLECTION\)/);
+  it("subscribeToWorkOrders is the governed refresh loop over listWorkOrders (Work Order cutover)", () => {
+    // Deliberately asserted on the SOURCE. Superseded by the Owner ruling "no runtime Firestore Work
+    // Order reads": the realtime surfaces keep their (onChange, onError) + unsubscribe contract, now a
+    // bounded refresh over the governed route (plus an immediate re-read after a governed write), and the
+    // service imports no Firebase.
+    expect(SERVICE).toMatch(/listWorkOrders\(\{ limit: WORK_ORDER_LIST_MAX/);
+    expect(SERVICE).toMatch(/onWorkOrderMutation/);
+    expect(SERVICE).not.toMatch(/firebase/);
   });
 
   it("the five realtime consumers still read useWorkOrders", () => {
@@ -310,3 +314,74 @@ describe("Lists P2 — the cursor-paged proof family", () => {
 function buildRowHrefSync(template, key) {
   return template.replace(/:[^/]+/, encodeURIComponent(String(key)));
 }
+
+// ═════════════════════════════════════════ Work Order cutover: the governed list source
+
+describe("the Work Orders index reads the GOVERNED route (metadata/workOrderListSource.js)", () => {
+  it("maps the declared filters onto listWorkOrders, and refuses anything it cannot serve", async () => {
+    const { toListWorkOrdersInput } = await import("../src/metadata/workOrderListSource.js");
+    expect(toListWorkOrdersInput({ filters: [{ fieldId: "status", operator: "IN", value: ["CREATED", "SCHEDULED"] }] }))
+      .toEqual({ limit: 200, statuses: ["CREATED", "SCHEDULED"] });
+    expect(toListWorkOrdersInput({ filters: [{ fieldId: "status", operator: "EQUALS", value: "CLOSED" },
+      { fieldId: "customerId", operator: "EQUALS", value: "acct_1" }] }))
+      .toEqual({ limit: 200, statuses: ["CLOSED"], customerId: "acct_1" });
+    expect(() => toListWorkOrdersInput({ filters: [{ fieldId: "priority", operator: "EQUALS", value: 1 }] })).toThrow(/not served/);
+  });
+
+  const row = (id, createdMs, scheduledMs = null) => ({
+    id, woNumber: id, createdAt: { toMillis: () => createdMs }, ...(scheduledMs ? { scheduledStart: { toMillis: () => scheduledMs } } : {}),
+  });
+
+  it("a complete (untruncated) read is sorted client-side and paged by offset", async () => {
+    const { fetchPage } = await import("../src/metadata/workOrderListSource.js");
+    const list = async () => ({ items: [row("a", 1), row("b", 3), row("c", 2)], truncated: false });
+    const desc = { filters: [], sort: [{ fieldId: "createdAt", direction: "DESC" }, { fieldId: "__name__", direction: "DESC" }], pageSize: 2 };
+    const p1 = await fetchPage(desc, {}, list);
+    expect(p1.rows.map((r) => r.id)).toEqual(["b", "c"]);
+    expect(p1.hasMore).toBe(true);
+    const p2 = await fetchPage(desc, { cursorDoc: p1.nextCursorDoc }, list);
+    expect(p2.rows.map((r) => r.id)).toEqual(["a"]);
+    expect(p2.hasMore).toBe(false);
+  });
+
+  it("a TRUNCATED read under a client-side sort refuses rather than present a partial set as the head", async () => {
+    const { fetchPage } = await import("../src/metadata/workOrderListSource.js");
+    const list = async () => ({ items: [row("a", 1)], truncated: true });
+    await expect(fetchPage({ filters: [], sort: [{ fieldId: "createdAt", direction: "DESC" }], pageSize: 50 }, {}, list))
+      .rejects.toMatchObject({ code: "unsupported" });
+    // The server's own order (scheduledStart ASC) is the true head even when truncated -- served, with more to come.
+    const served = await fetchPage({ filters: [], sort: [{ fieldId: "scheduledStart", direction: "ASC" }], pageSize: 50 }, {}, list);
+    expect(served.rows.map((r) => r.id)).toEqual(["a"]);
+    expect(served.hasMore).toBe(true);
+  });
+
+  it("a refused read surfaces as denied / unavailable -- never as an empty list", async () => {
+    const { fetchPage } = await import("../src/metadata/workOrderListSource.js");
+    const refuse = (code) => async () => { throw Object.assign(new Error("x"), { code }); };
+    await expect(fetchPage({ filters: [], sort: [], pageSize: 50 }, {}, refuse("FORBIDDEN"))).rejects.toMatchObject({ code: "permission-denied" });
+    await expect(fetchPage({ filters: [], sort: [], pageSize: 50 }, {}, refuse("NOT_ACTIVATED")))
+      .rejects.toMatchObject({ code: "unavailable", reason: "NOT_ACTIVATED" });
+  });
+
+  it("the entity reads EOS_API, and the screen states NOT_YET_ACTIVATED through the readiness notice", () => {
+    expect(workOrderEntity.readVia).toBe("EOS_API");
+    expect(SCREEN).toMatch(/<WorkOrderAuthorityNotice \/>/);
+  });
+});
+
+describe("WorkOrderAuthorityNotice renders NOT_YET_ACTIVATED as a readiness state (DQ-S4)", () => {
+  it("renders the state when the server says NOT_YET_ACTIVATED, and nothing when ACTIVE", async () => {
+    const { render, cleanup } = await import("@testing-library/react");
+    const { default: WorkOrderAuthorityNotice } = await import("../src/shared/ui/WorkOrderAuthorityNotice.jsx");
+    const { container } = render(<WorkOrderAuthorityNotice authority={{ notYetActivated: true }} />);
+    const el = container.querySelector('[data-work-order-readiness="NOT_YET_ACTIVATED"]');
+    expect(el).toBeTruthy();
+    expect(el.getAttribute("role")).toBe("status");
+    expect(el.textContent).toMatch(/NOT_YET_ACTIVATED/);
+    expect(el.textContent).toMatch(/not a failure and not an empty list/);
+    cleanup();
+    const active = render(<WorkOrderAuthorityNotice authority={{ notYetActivated: false }} />);
+    expect(active.container.querySelector("[data-work-order-readiness]")).toBeNull();
+    cleanup();
+  });
+});

@@ -5,6 +5,7 @@ import FailureState from "../../shared/ui/FailureState";
 import ScheduleWorkOrderForm from "../../shared/scheduling/ScheduleWorkOrderForm";
 import Modal from "../../shared/ui/Modal";
 import { useSchedulingData } from "../../hooks/useSchedulingData";
+import WorkOrderAuthorityNotice from "../../shared/ui/WorkOrderAuthorityNotice.jsx";
 import { workOrderPriorityLabel } from "../../domain/workOrderPriority";
 import {
   buildWeeklySchedule,
@@ -104,7 +105,7 @@ function JobDetail({ job, techName, onClose }) {
 }
 
 export default function SchedulingWorkspace({ nowMillis, initialWeekStart } = {}) {
-  const { workOrders, technicians, loading, error } = useSchedulingData();
+  const { workOrders, technicians, loading, error, notActivated } = useSchedulingData();
   const now = nowMillis ?? Date.now();
   const [weekStart, setWeekStart] = useState(() => initialWeekStart ?? startOfWeekMillis(now));
   const [view, setView] = useState("week"); // "week" | "day"
@@ -132,6 +133,15 @@ export default function SchedulingWorkspace({ nowMillis, initialWeekStart } = {}
       <div className="fo-panel">
         <WorkspaceHeader title="Scheduling" />
         <LoadingState>Loading the weekly schedule…</LoadingState>
+      </div>
+    );
+  }
+  if (notActivated) {
+    // DQ-S4: a readiness STATE, not "Board unavailable" and not an empty week.
+    return (
+      <div className="fo-panel">
+        <WorkspaceHeader title="Scheduling" />
+        <WorkOrderAuthorityNotice notActivated />
       </div>
     );
   }

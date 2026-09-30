@@ -183,8 +183,12 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 70 -> 71 runnable: migration 1764200000000, the EOS principal identities (Controller ruling 2026-09-29, EOS
 // IDENTITY BOUNDARY; lane IDENTITY) -- APPENDED after the chain, an EXPLAINED pending migration; the ledger model is
 // not extended.
-const RUNNABLE_MIGRATION_COUNT = 71;
-const TRACKED_MIGRATION_COUNT = 72; // the 71 runnable + the one deferred file
+// 71 -> 72 runnable: migration 1764300000000, the Work Order execution facts + workOrder.execution.record (WORK ORDER
+// DOMAIN CUTOVER AUTHORIZATION, 2026-09-30) -- APPENDED after the chain, an EXPLAINED pending migration; the ledger
+// model is not extended.
+// 72 -> 76 runnable: the Work Order cutover completion pass (2026-09-30): quarantine 1764310000000, availability 1764320000000, labor 1764330000000 (+workOrder.labor.correctEntry), inbound work 1764340000000 (+5 inboundWork.* capabilities) -- every new capability granted to NO Role. APPENDED, each an EXPLAINED pending migration; the ledger model is not extended.
+const RUNNABLE_MIGRATION_COUNT = 76;
+const TRACKED_MIGRATION_COUNT = 77; // the 76 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -207,6 +211,11 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764126000000_bin-placement-authority",
   "1764129600000_serialized-asset-acquire-authority",
   "1764200000000_eos-principal-identities",
+  "1764300000000_work-order-execution-facts",
+  "1764310000000_work-order-quarantine",
+  "1764320000000_technician-availability",
+  "1764330000000_work-order-labor",
+  "1764340000000_inbound-work-intake",
 ]);
 
 const repoMigrations = () =>

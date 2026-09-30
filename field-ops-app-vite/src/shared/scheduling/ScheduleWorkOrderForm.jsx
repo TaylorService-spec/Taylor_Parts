@@ -6,14 +6,15 @@ import { FormError } from "../ui/form";
 import { Button } from "../ui/primitives";
 
 // Governed "Schedule this Work Order" collector -- the ONE reusable surface that moves a
-// READY_TO_DISPATCH Work Order to SCHEDULED via the already-deployed transitionWorkOrder("Schedule", ...)
-// Cloud Function. Reused by the Scheduling workspace's Ready-to-Schedule queue AND by Control Tower's
-// WorkOrderActions (which previously fired "Schedule" with NO payload -> backend invalid-argument).
+// READY_TO_DISPATCH Work Order to SCHEDULED via transitionWorkOrder("Schedule", ...), which is the
+// governed EOS scheduleWorkOrder command (services/workOrderService.ts) -- never Firestore, never a
+// Firebase callable. Reused by the Scheduling workspace's Ready-to-Schedule queue AND by Control Tower's
+// WorkOrderActions.
 //
-// It NEVER writes fieldops_wos directly and never fabricates a partial payload: buildScheduleInput (pure,
-// tested) validates date/start/end/tech and yields exactly the three fields transitionWorkOrder.ts:57
-// requires; the server re-validates and remains the authority. Governed technician selection only -- the
-// caller passes the governed `technicians` entity list; there is no free-text technician entry.
+// It never fabricates a partial payload: buildScheduleInput (pure, tested) validates date/start/end/tech
+// and yields exactly the fields the command needs; the server re-validates and remains the authority.
+// Governed technician selection only -- the caller passes the GOVERNED roster (listWorkOrderTechnicians),
+// whose ids are EMPLOYEE ids; there is no free-text technician entry.
 //
 // Technician list policy: scheduling is FUTURE planning, so we offer ALL governed technicians by name
 // (not only the currently-AVAILABLE ones the same-instant Dispatch picker filters to) -- a tech busy right
@@ -51,7 +52,7 @@ export default function ScheduleWorkOrderForm({ workOrder, technicians = [], onS
     setSubmitting(true);
     try {
       await transitionWorkOrder(workOrder.id, "Schedule", built.value);
-      onScheduled?.(workOrder); // success -- the live subscription re-renders the week board
+      onScheduled?.(workOrder); // success -- the governed write triggers an immediate refresh of the Work Order reads
     } catch (err) {
       // Categorized, user-safe copy -- never a raw message or alert.
       console.error(err);

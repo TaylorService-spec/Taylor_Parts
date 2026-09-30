@@ -252,8 +252,11 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // catalog reconcile writes it to no Role.
 // 1764200000000 (lane IDENTITY, Controller ruling 2026-09-29): eos_policy.principal_identities -- the additive EOS
 // identity binding, EMPTY; no capability, no grant, no seed write.
-const PINNED_LAST_MIGRATION = "1764200000000_eos-principal-identities";
-const PINNED_MIGRATION_COUNT = 71;
+// 1764300000000 (the Work Order domain cutover, 2026-09-30): the Work Order execution facts + workOrder.execution.record,
+// granted to NO Role; the manifest vocabulary lists it and asserts it for no persona.
+// the Work Order cutover completion pass (2026-09-30): quarantine 1764310000000, availability 1764320000000, labor 1764330000000 (+workOrder.labor.correctEntry), inbound work 1764340000000 (+5 inboundWork.* capabilities) -- every new capability granted to NO Role; the manifest vocabulary lists the six new keys and asserts them for no persona.
+const PINNED_LAST_MIGRATION = "1764340000000_inbound-work-intake";
+const PINNED_MIGRATION_COUNT = 76;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

@@ -32,6 +32,8 @@ vi.mock("../src/hooks/useAssignedWorkOrders", () => ({
     ],
     loading: false,
     error: null,
+    // The Employee the SERVER resolved for this login -- the id every own row's assignedTechId carries.
+    employeeId: "TECH-1",
   }),
 }));
 
