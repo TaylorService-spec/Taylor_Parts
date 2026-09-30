@@ -537,6 +537,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/serviceActivationAuthorityDelta.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/workOrderCreateCommand.ts"
         ],
@@ -549,7 +550,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
@@ -681,6 +682,7 @@
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/adminPolicy/roleCapabilityAdministration.ts",
+          "functions/src/adminPolicy/serviceActivationAuthorityDelta.ts",
           "functions/src/eosOps/workOrderPartsPlanAuthority.ts",
           "functions/src/workOrderPartsPlan/setWorkOrderPartsPlan.ts"
         ],
@@ -689,7 +691,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/workOrderPartsPlanCapabilityAccess.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
