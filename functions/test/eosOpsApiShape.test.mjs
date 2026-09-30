@@ -194,3 +194,18 @@ test("until REORDER_POSTGRES_ACTIVE, EVERY Reorder operation refuses before any 
     assert.notEqual(r && r.code, "PRECONDITION_FAILED", `${operation} must not be gated by the Reorder activation`);
   }
 });
+
+// ════════════════ THE ACTIVATION SWITCHES (Catalog + Reorder activation preparation, reconciled onto main) ════════════════
+test("EVERY Catalog + Reorder activation switch is committed OFF: the package ships inert; activation is ONE separate change", async () => {
+  // Activation is a reviewed, separately-applied change (lane/catalog-reorder-activation-flip), never a runtime setting.
+  // Until it is taken: the PostgreSQL Catalog transport refuses (INACTIVE), every Reorder operation refuses, the
+  // standalone ORDERED -> RECEIVED closeout is still markReorderReceived's, and the client's Catalog-authority mirror
+  // (which is what arms the Data Import PARTS/INVENTORY refusal) says INACTIVE too.
+  const { CATALOG_WRITER_AUTHORITY } = await import("../lib/catalogMaster/catalogWriterState.js");
+  const { REORDER_POSTGRES_ACTIVE, RECEIVING_POSTGRES_ACTIVE } = await import("../lib/eosOps/reorderLifecycleCommands.js");
+  const { CATALOG_AUTHORITY_POSTGRES_ACTIVE } = await import("../../field-ops-app-vite/src/config/catalogAuthority.js");
+  assert.deepEqual({ ...CATALOG_WRITER_AUTHORITY }, { firestore: "FROZEN", postgres: "INACTIVE" });
+  assert.equal(REORDER_POSTGRES_ACTIVE, false);
+  assert.equal(RECEIVING_POSTGRES_ACTIVE, false);
+  assert.equal(CATALOG_AUTHORITY_POSTGRES_ACTIVE, false, "the client mirror must say what the server says");
+});
