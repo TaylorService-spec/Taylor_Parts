@@ -408,9 +408,11 @@ export default function WorkOrderDetailPage() {
             title="Parts"
             meta={
               <span className="ns-section__note">
-                {partsReadiness
-                  ? "· readiness covers reservation, warehouse and procurement evidence — truck stock is still unread"
-                  : "· readiness by source (truck / warehouse) isn’t recorded yet — quantities are planned demand"}
+                {readinessContext?.inventory?.state === "NOT_YET_ACTIVATED"
+                  ? "· Inventory readiness is not activated yet — quantities are planned demand, not stock"
+                  : partsReadiness
+                    ? "· readiness covers reservation, warehouse and procurement evidence — truck stock is still unread"
+                    : "· readiness by source (truck / warehouse) isn’t recorded yet — quantities are planned demand"}
                 {plan.length > 0 ? ` · ${plan.length} part${plan.length === 1 ? "" : "s"} planned` : ""}
               </span>
             }

@@ -1174,6 +1174,10 @@
       "runner": "node"
     },
     {
+      "file": "test/workOrderFieldExecutionClients.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/workOrderInstallCloseout.test.mjs",
       "runner": "node"
     },

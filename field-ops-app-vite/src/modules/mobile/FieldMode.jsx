@@ -239,6 +239,7 @@ export default function FieldMode({ deps } = {}) {
         <CurrentJob
           workOrder={current ?? null}
           job={job}
+          inventoryState={contextDenied ? null : fieldContext?.inventory?.state ?? null}
           pending={pending.id === job.workOrderId ? pending.action : null}
           failure={failure?.id === job.workOrderId ? failure : null}
           onAdvance={advance}
@@ -278,7 +279,7 @@ export default function FieldMode({ deps } = {}) {
 }
 
 /** Context -> State -> Attention -> Readiness -> Next Best Action, in that order. */
-function CurrentJob({ job, workOrder, pending, failure, onAdvance, technicianId, offline, deps }) {
+function CurrentJob({ job, workOrder, inventoryState = null, pending, failure, onAdvance, technicianId, offline, deps }) {
   // Scanning and note-taking are opened FROM the job, so both inherit its context. Collapsed by
   // default: the job's own answer -- where am I, what is wrong, what next -- must not be pushed off
   // the top of a phone by tools nobody has asked for yet.
@@ -291,7 +292,7 @@ function CurrentJob({ job, workOrder, pending, failure, onAdvance, technicianId,
       <CustomerContext context={job.context} reference={job.reference} />
       <JobState state={job.state} />
       <Attention items={job.attention} />
-      <Readiness readiness={job.readiness} />
+      <Readiness readiness={job.readiness} inventoryState={inventoryState} />
       <NextAction job={job} pending={pending} failure={failure} onAdvance={onAdvance} />
 
       <div className="fo-job__tools">
@@ -439,7 +440,7 @@ function Attention({ items }) {
 }
 
 /** "Are the necessary parts ready?" — the SHARED projection, presented for field use. */
-function Readiness({ readiness }) {
+function Readiness({ readiness, inventoryState = null }) {
   const { jobReadiness, counts, rows, plannedCount } = readiness;
   const label =
     jobReadiness === "NO_PLAN" ? "No parts planned"
@@ -457,6 +458,11 @@ function Readiness({ readiness }) {
           </span>
         )}
       </p>
+      {/* The governed field context states the Inventory boundary; it is said out loud rather than shown as a
+          stock figure nobody read. */}
+      {inventoryState === "NOT_YET_ACTIVATED" && (
+        <p className="fo-muted" role="note">Inventory readiness is not activated yet — stock on hand is not checked.</p>
+      )}
       {rows.length > 0 && (
         <ul className="fo-readiness__rows">
           {rows.map((row) => (
