@@ -543,4 +543,28 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
     await assert.rejects(life.createGovernedReorderRequest(deps, as(pPM, PM), {
       partId: "PART-SYN", warehouseId: "SC-WH-MAIN", requestedQuantity: 1, recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL" }), /not bound/);
   });
+  await t.test("XLF 2026-09-30: recording a PO writes exactly one audit event in its transaction; refusals and replays write none", async () => {
+    const poAudits = async (id) => (await q(`SELECT actor_uid, target_kind, target_id, before, after, reason FROM eos_policy.audit_events
+                                            WHERE action = 'reorder.request.recordPurchaseOrder' AND target_id = $1`, [id])).rows;
+    const id = (await raise()).reorderRequestId;
+    await life.reviewReorderRequest(deps, as(pPM, PM), { reorderRequestId: id, decision: "APPROVED" });
+    await authority.assignReorderRequestToEmployee(deps, as(pPM, PM), { reorderRequestId: id, employeeId: "e-pa" });
+    await life.startPurchasingOnReorder(deps, as(pPA, PA), { reorderRequestId: id });
+    const po = { reorderRequestId: id, supplierName: "SYNTHETIC Supplier", externalPoNumber: "CAC-PROOF-PO-AUDIT", orderedQuantity: 2, orderedDate: "2026-09-30" };
+    // A refused recording (not the assignee) writes nothing.
+    await assert.rejects(life.recordReorderPurchaseOrder(deps, as(pPM, new Set([...PM, life.REORDER_RECORD_PO])), po), /assigned to may record/);
+    assert.deepEqual(await poAudits(id), []);
+    await life.recordReorderPurchaseOrder(deps, as(pPA, PA), po);
+    const rows = await poAudits(id);
+    assert.equal(rows.length, 1);
+    assert.deepEqual([rows[0].actor_uid, rows[0].target_kind, rows[0].target_id, rows[0].reason], [pPA, "purchase_order", id, "purchase order recorded"]);
+    assert.deepEqual(rows[0].before, { status: "PURCHASING_IN_PROGRESS" });
+    assert.deepEqual(rows[0].after, { status: "ORDERED", reorderRequestId: id, purchaseOrderId: id, operatingCompanyKey: "taylor",
+      warehouseId: W, partId: "PART-SYN", actorEmployeeId: "e-pa", externalPoNumber: "CAC-PROOF-PO-AUDIT", orderedQuantity: 2, orderedDate: "2026-09-30" });
+    // The PO and its audit are one transaction: the audit names exactly the PO that exists.
+    assert.deepEqual((await q(`SELECT id, created_by, operating_company_key FROM eos_ops.purchase_orders WHERE id = $1`, [id])).rows, [{ id, created_by: pPA, operating_company_key: "taylor" }]);
+    // A replay is refused (the request is ORDERED) and adds no second audit event.
+    await assert.rejects(life.recordReorderPurchaseOrder(deps, as(pPA, PA), po));
+    assert.equal((await poAudits(id)).length, 1);
+  });
 });

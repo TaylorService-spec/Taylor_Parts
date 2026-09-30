@@ -4,8 +4,8 @@
 // lives in eos_commercial. Same `{ result } | { errorStatus }` contract; reads return the same { status, salesAgreement }
 // envelope through services/commercialEosAdapters.js. No fallback to the callables.
 // Never throws: { result } on success or { errorStatus } in the callable-era vocabulary the domain layer renders.
-// The ONE remaining Firebase call below (searchProductReferences, the product picker) is the held catalog boundary: it
-// moves when the PostgreSQL catalog authority is activated (Catalog lane), not before.
+// The product picker (searchProductReferences, below) reads the governed PostgreSQL Catalog through the Render Catalog
+// transport since the Catalog activation (2026-09-30); there is no Firebase call left in this module.
 import { commercialApiClient } from "./commercialApiClient.js";
 import { legacyErrorStatus, readErrorStatus, toSalesAgreementReadResult } from "./commercialEosAdapters.js";
 

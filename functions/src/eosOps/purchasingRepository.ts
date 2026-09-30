@@ -299,14 +299,14 @@ export async function recordPurchaseOrder(
     // recordings could both observe PURCHASING_IN_PROGRESS and one would then fail on the primary
     // key with an opaque error instead of the domain refusal.
     const { rows } = await client.query(
-      `SELECT operating_company_key, part_id, status
+      `SELECT operating_company_key, part_id, status, warehouse_id
          FROM ${SCHEMA}.reorder_requests WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
       [tenantId, reorderRequestId],
     );
     if (rows.length === 0) {
       throw new PurchasingRepositoryError("REQUEST_NOT_FOUND", `no reorder request ${reorderRequestId}`);
     }
-    const request = rows[0] as { operating_company_key: string; part_id: string; status: string };
+    const request = rows[0] as { operating_company_key: string; part_id: string; status: string; warehouse_id: string | null };
     if (request.status !== PO_RECORDABLE_STATUS) {
       throw new PurchasingRepositoryError(
         "REQUEST_STATE_INVALID",
@@ -345,6 +345,27 @@ export async function recordPurchaseOrder(
           SET status = 'ORDERED', updated_by = $3, updated_at = now()
         WHERE tenant_id = $1 AND id = $2`,
       [tenantId, reorderRequestId, actorPrincipalId],
+    );
+    // THE AUDIT, in the same transaction as the purchase order and the ORDERED transition: a recorded purchase order
+    // cannot exist without the evidence of who recorded it, for which request, under which company (XLF, 2026-09-30).
+    // A refusal above rolls back before this point, so a refused or replayed recording writes no audit event.
+    const assignee = await client.query(
+      `SELECT assigned_employee_id FROM ${SCHEMA}.reorder_request_assignments
+        WHERE tenant_id = $1 AND reorder_request_id = $2 AND effective_to IS NULL`,
+      [tenantId, reorderRequestId],
+    );
+    await client.query(
+      `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
+       VALUES ($1, $2, 'reorder.request.recordPurchaseOrder', $3, 'purchase_order', $4, $5::jsonb, $6::jsonb, now(), $7)`,
+      [`audit_${randomUUID()}`, tenantId, actorPrincipalId, reorderRequestId,
+        JSON.stringify({ status: PO_RECORDABLE_STATUS }),
+        JSON.stringify({
+          status: "ORDERED", reorderRequestId, purchaseOrderId: reorderRequestId, operatingCompanyKey: companyKey,
+          warehouseId: request.warehouse_id ?? null, partId: request.part_id,
+          actorEmployeeId: (assignee.rows[0]?.assigned_employee_id as string | undefined) ?? null,
+          externalPoNumber: input.externalPoNumber, orderedQuantity: input.orderedQuantity, orderedDate: input.orderedDate,
+        }),
+        "purchase order recorded"],
     );
 
     await client.query("COMMIT");

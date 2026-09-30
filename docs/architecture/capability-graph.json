@@ -1750,6 +1750,7 @@
           "functions/src/access/parityFixtures.ts",
           "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
+          "functions/src/eosOps/purchasingRepository.ts",
           "functions/src/eosOps/reorderLifecycleCommands.ts",
           "functions/src/reorderRequest/reorderCallables.ts"
         ],
@@ -1760,7 +1761,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 8,
+        "serverReferenceCount": 9,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },

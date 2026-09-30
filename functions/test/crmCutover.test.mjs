@@ -94,7 +94,7 @@ test("the exporter encodes Timestamps, tags unsupported Firestore types, and ref
 // ════════════════════ no Firebase on the census / copy side ════════════════════
 
 const FORBIDDEN = [/from\s+["']firebase/, /require\(\s*["']firebase/, /import\(\s*["']firebase/, /\bgetFirestore\s*\(/, /\bFieldValue\b/, /@google-cloud\/firestore/];
-const CUTOVER_SOURCES = ["src/crm/crmCutoverSnapshot.ts", "src/crm/crmCutoverTarget.ts", "src/crm/crmCutoverCopy.ts", "src/crm/crmWriterState.ts", "src/crm/postgresCustomerImport.ts"];
+const CUTOVER_SOURCES = ["src/crm/crmCutoverSnapshot.ts", "src/crm/crmCutoverTarget.ts", "src/crm/crmCutoverCopy.ts", "src/crm/crmWriterState.ts", "src/crm/postgresCustomerImport.ts", "src/crm/crmKnownFixtures.ts"];
 
 test("the CRM cutover modules and the copy tool import no Firebase and name no Firestore write", () => {
   for (const file of [...CUTOVER_SOURCES, "scripts/crmCutover.js"]) {
@@ -474,8 +474,8 @@ test("RULING 5: --retainDeclaredSyntheticSeedRows is refused for production and 
 
 const writerState = require("../lib/crm/crmWriterState.js");
 
-test("RULING 6: the committed CRM writer state is Firestore FROZEN / PostgreSQL INACTIVE, coherent, with the four legal moves only", () => {
-  assert.deepEqual({ ...writerState.CRM_WRITER_AUTHORITY }, { firestore: "FROZEN", postgres: "INACTIVE" });
+test("RULING 6: the committed CRM writer state is Firestore FROZEN / PostgreSQL ACTIVE (ACTIVATE_POSTGRES, 2026-09-30), coherent, with the four legal moves only", () => {
+  assert.deepEqual({ ...writerState.CRM_WRITER_AUTHORITY }, { firestore: "FROZEN", postgres: "ACTIVE" });
   assert.doesNotThrow(() => writerState.assertCrmWriterAuthorityCoherent(writerState.CRM_WRITER_AUTHORITY));
   const S = (firestore, postgres) => ({ firestore, postgres });
   assert.equal(writerState.assertCrmWriterTransition(S("OPEN", "INACTIVE"), S("FROZEN", "INACTIVE")), "FREEZE");
@@ -551,9 +551,84 @@ test("RULING 2: the PostgreSQL customer import refuses an ownerless row, a free-
   refusal({ ...ok, status: undefined }, "STATUS_REQUIRED");
 });
 
-test("RULING 2: the PostgreSQL customer import is unwired -- it refuses while PostgreSQL CRM writes are INACTIVE", async () => {
+test("RULING 2: the PostgreSQL customer import is still unwired after activation -- no runtime caller; it refuses while INACTIVE and refuses a malformed row before any write", async () => {
+  // Refuses while PostgreSQL CRM writes are INACTIVE (the explicit authority argument; the committed state is ACTIVE).
   await assert.rejects(
-    pgImport.importCustomerToPostgres({ pool: null }, { tenantId: "t", principalId: "p", capabilities: new Set() }, { row: {}, idempotencyKey: "k" }),
+    pgImport.importCustomerToPostgres({ pool: null }, { tenantId: "t", principalId: "p", capabilities: new Set() }, { row: {}, idempotencyKey: "k" },
+      { firestore: "FROZEN", postgres: "INACTIVE" }),
     (e) => e.code === "POSTGRES_CRM_WRITER_INACTIVE",
   );
+  // Under the committed ACTIVE state a malformed row is refused by the row gate, before any pool is touched (pool: null).
+  await assert.rejects(
+    pgImport.importCustomerToPostgres({ pool: null }, { tenantId: "t", principalId: "p", capabilities: new Set() }, { row: {}, idempotencyKey: "k" }),
+    (e) => e.code !== "POSTGRES_CRM_WRITER_INACTIVE",
+  );
+  // UNWIRED: no runtime module imports it -- Customer CSV import stays unavailable (the Firestore import is FROZEN).
+  const importers = [];
+  const walk = (dir) => { for (const f of readdirSync(dir)) { const p = join(dir, f); if (statSync(p).isDirectory()) walk(p); else if (/\.ts$/.test(f) && readFileSync(p, "utf8").includes("postgresCustomerImport")) importers.push(p); } };
+  walk("src");
+  assert.deepEqual(importers, [], "no runtime module references the PostgreSQL customer import");
+});
+// ════════ Controller rulings D1/D2/D3 (2026-09-30): pinned CRM fixtures ════════
+const pinned = require("../lib/crm/crmKnownFixtures.js");
+const PINNED = JSON.parse(readFileSync(resolve(import.meta.dirname, "fixtures/crmPinnedFixtures.json"), "utf8"));
+const pinnedSnapshot = (mutate = (x) => x) => mutate(JSON.parse(JSON.stringify({ ...PINNED.snapshotHeader, ...PINNED.source })));
+
+test("D1/D2: exactly 9 source records are pinned, each with its classification and ruling -- nothing wider", () => {
+  assert.deepEqual(pinned.PINNED_SOURCE_EXCLUSIONS.map((p) => [p.collection, p.id, p.classification, p.ruling]), [
+    ["accounts", "IMP-ACCEPTANCE-ICE-CO-NQX1QO-1OSKNMX", "DATA_IMPORT_ACCEPTANCE_FIXTURE", "D1"],
+    ["accounts", "IMP-ACCEPTANCE-ICE-CO-NUBQGX-0NLDR0W", "DATA_IMPORT_ACCEPTANCE_FIXTURE", "D1"],
+    ["locations", "acc-loc-NQX1QO", "DATA_IMPORT_ACCEPTANCE_FIXTURE", "D1"],
+    ["locations", "acc-loc-NUBQGX", "DATA_IMPORT_ACCEPTANCE_FIXTURE", "D1"],
+    ["contacts", "con-harbor-gm", "SANDBOX_SEED_FIXTURE", "D2"],
+    ["contacts", "con-summit-ops", "SANDBOX_SEED_FIXTURE", "D2"],
+    ["locations", "loc-harbor-airport", "SANDBOX_SEED_FIXTURE", "D2"],
+    ["locations", "loc-harbor-downtown", "SANDBOX_SEED_FIXTURE", "D2"],
+    ["locations", "loc-summit-flag", "SANDBOX_SEED_FIXTURE", "D2"],
+  ]);
+  assert.ok(pinned.PINNED_SOURCE_EXCLUSIONS.every((p) => /^[0-9a-f]{64}$/.test(p.fingerprint)));
+  // The parent Accounts are NOT pinned: they stay governed copy candidates under the ownerless-Account ruling.
+  assert.equal(pinned.pinnedSourceExclusion("accounts", "acct-harbor"), undefined);
+  assert.equal(pinned.pinnedSourceExclusion("accounts", "acct-summit"), undefined);
+});
+
+test("D1/D2: the pinned records are excluded by fingerprint; their ownerless parents remain COPY; the census is mutually exclusive", () => {
+  const r = snap.censusCrmSnapshot(snap.parseCrmSnapshot(pinnedSnapshot()));
+  assert.deepEqual(r.census.fixtureExcluded, { accounts: 2, contacts: 2, locations: 5 });
+  assert.deepEqual(r.crm.accounts.map((a) => a.id), ["acct-harbor", "acct-summit"]);
+  assert.deepEqual([r.crm.contacts.length, r.crm.locations.length], [0, 0]);
+  assert.deepEqual(r.census.findings.filter((f) => f.severity === "BLOCKING"), []);
+  for (const c of ["accounts", "contacts", "locations"]) {
+    assert.equal(r.census.counts[c], r.census.certificationExcluded[c] + r.census.fixtureExcluded[c] + r.census.selected[c], c);
+  }
+  assert.deepEqual(r.evidence.fixtureExcluded.map((x) => `${x.collection}/${x.id}/${x.classification}`).length, 9);
+});
+
+test("D1/D2: a pinned record whose data changed is a BLOCKING finding, never a silent exclusion", () => {
+  const r = snap.censusCrmSnapshot(snap.parseCrmSnapshot(pinnedSnapshot((s) => {
+    s.accounts.find((a) => a.id === "IMP-ACCEPTANCE-ICE-CO-NQX1QO-1OSKNMX").data.name = "Acceptance Ice Co RENAMED";
+    return s;
+  })));
+  assert.deepEqual(r.census.findings.filter((f) => f.severity === "BLOCKING").map((f) => [f.id, f.code]),
+    [["IMP-ACCEPTANCE-ICE-CO-NQX1QO-1OSKNMX", "PINNED_FIXTURE_DIVERGED"]]);
+  assert.equal(r.census.copyReady, false);
+  assert.equal(r.census.fixtureExcluded.accounts, 1);
+});
+
+test("D2: an UNPINNED ownerless child still blocks -- the ruling does not make real Contacts or sites ownerless", () => {
+  const r = snap.censusCrmSnapshot(snap.parseCrmSnapshot(pinnedSnapshot((s) => {
+    const c = JSON.parse(JSON.stringify(s.contacts.find((x) => x.id === "con-harbor-gm")));
+    c.id = "con-harbor-real"; c.data.contactId = "con-harbor-real";
+    s.contacts.push(c);
+    return s;
+  })));
+  assert.ok(r.census.findings.some((f) => f.id === "con-harbor-real" && f.code === "CHILD_OWNER_UNDERIVABLE" && f.severity === "BLOCKING"));
+});
+
+test("D3: exactly 14 pinned target fixtures, each declared by the manifest it names", () => {
+  assert.equal(pinned.PINNED_TARGET_FIXTURES.length, 14);
+  const ids = (m, c) => (JSON.parse(readFileSync(resolve(import.meta.dirname, "../scripts/fixtures", m), "utf8"))[c] ?? []).map((x) => x.id);
+  for (const p of pinned.PINNED_TARGET_FIXTURES) assert.ok(ids(p.manifest, p.collection).includes(p.id), `${p.id} declared by ${p.manifest}`);
+  assert.deepEqual(Object.values(pinned.pinnedTargetIds()).map((x) => x.length), [3, 6, 5]);
+  assert.equal(pinned.CRM_FIXTURE_TENANT_ID, "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25");
 });

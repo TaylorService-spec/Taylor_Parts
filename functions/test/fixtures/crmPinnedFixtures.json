@@ -1,0 +1,521 @@
+{
+ "_comment": "Controller rulings D1/D2/D3 2026-09-30. SOURCE: the exact FP-CRM-0 documents of the 9 pinned source exclusions plus their two sandbox-seed parent Accounts (synthetic). TARGET: the exact 14 nonprod eos_crm synthetic seed rows (to_jsonb), for fingerprint pinning tests.",
+ "snapshotHeader": {
+  "exporter": "FIREBASE_EXIT_MIGRATION_ONLY",
+  "format": "EOS_CRM_SNAPSHOT",
+  "source": {
+   "environmentId": "platform-sandbox",
+   "exportedAt": "2026-09-30T07:05:46.288Z",
+   "firebaseProjectId": "eos-platform-sandbox"
+  },
+  "version": 1
+ },
+ "source": {
+  "accounts": [
+   {
+    "data": {
+     "billingAddress": "1 Acceptance Way",
+     "createdAt": {
+      "$timestamp": {
+       "nanoseconds": 420000000,
+       "seconds": 1788574236
+      }
+     },
+     "name": "Acceptance Ice Co NQX1QO",
+     "nameLower": "acceptance ice co nqx1qo",
+     "status": "ACTIVE",
+     "updatedAt": {
+      "$timestamp": {
+       "nanoseconds": 420000000,
+       "seconds": 1788574236
+      }
+     }
+    },
+    "id": "IMP-ACCEPTANCE-ICE-CO-NQX1QO-1OSKNMX"
+   },
+   {
+    "data": {
+     "billingAddress": "1 Acceptance Way",
+     "createdAt": {
+      "$timestamp": {
+       "nanoseconds": 813000000,
+       "seconds": 1788579963
+      }
+     },
+     "name": "Acceptance Ice Co NUBQGX",
+     "nameLower": "acceptance ice co nubqgx",
+     "status": "ACTIVE",
+     "updatedAt": {
+      "$timestamp": {
+       "nanoseconds": 813000000,
+       "seconds": 1788579963
+      }
+     }
+    },
+    "id": "IMP-ACCEPTANCE-ICE-CO-NUBQGX-0NLDR0W"
+   },
+   {
+    "data": {
+     "accountId": "acct-harbor",
+     "accountOwner": null,
+     "accountingId": null,
+     "billingAddress": {
+      "city": "scottsdale",
+      "state": "az",
+      "street": "10001 test st",
+      "zip": ""
+     },
+     "billingContact": null,
+     "createdAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "createdBy": "sandbox-baseline-seed",
+     "customerNumber": null,
+     "defaultCurrency": null,
+     "erpId": null,
+     "invoiceDeliveryMethod": null,
+     "legacyId": null,
+     "lineOfBusiness": "TAYLOR",
+     "name": "Harbor Grill Restaurant Group",
+     "nameLower": "harbor grill restaurant group",
+     "notes": null,
+     "paymentTerms": null,
+     "purchaseOrderRequired": false,
+     "relationshipTypes": [],
+     "status": "ACTIVE",
+     "tags": [],
+     "taxStatus": null,
+     "updatedAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "updatedBy": "sandbox-baseline-seed"
+    },
+    "id": "acct-harbor"
+   },
+   {
+    "data": {
+     "accountId": "acct-summit",
+     "createdAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "createdBy": "sandbox-baseline-seed",
+     "lineOfBusiness": "TAYLOR",
+     "name": "Summit Convenience Stores",
+     "nameLower": "summit convenience stores",
+     "status": "ACTIVE",
+     "updatedAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "updatedBy": "sandbox-baseline-seed"
+    },
+    "id": "acct-summit"
+   }
+  ],
+  "contacts": [
+   {
+    "data": {
+     "accountId": "acct-harbor",
+     "contactId": "con-harbor-gm",
+     "createdAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "createdBy": "sandbox-baseline-seed",
+     "email": "dana.reyes@harborgrill.invalid",
+     "name": "Dana Reyes",
+     "title": "General Manager",
+     "updatedAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "updatedBy": "sandbox-baseline-seed"
+    },
+    "id": "con-harbor-gm"
+   },
+   {
+    "data": {
+     "accountId": "acct-summit",
+     "contactId": "con-summit-ops",
+     "createdAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "createdBy": "sandbox-baseline-seed",
+     "email": "alex.chen@summitstores.invalid",
+     "name": "Alex Chen",
+     "title": "Operations Lead",
+     "updatedAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "updatedBy": "sandbox-baseline-seed"
+    },
+    "id": "con-summit-ops"
+   }
+  ],
+  "locations": [
+   {
+    "data": {
+     "accountId": "IMP-ACCEPTANCE-ICE-CO-NQX1QO-1OSKNMX",
+     "name": "Acceptance Plant"
+    },
+    "id": "acc-loc-NQX1QO"
+   },
+   {
+    "data": {
+     "accountId": "IMP-ACCEPTANCE-ICE-CO-NUBQGX-0NLDR0W",
+     "name": "Acceptance Plant"
+    },
+    "id": "acc-loc-NUBQGX"
+   },
+   {
+    "data": {
+     "accountId": "acct-harbor",
+     "city": "Phoenix",
+     "createdAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "createdBy": "sandbox-baseline-seed",
+     "locationId": "loc-harbor-airport",
+     "name": "Harbor Grill \u2014 Airport",
+     "state": "AZ",
+     "updatedAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "updatedBy": "sandbox-baseline-seed"
+    },
+    "id": "loc-harbor-airport"
+   },
+   {
+    "data": {
+     "accountId": "acct-harbor",
+     "city": "Phoenix",
+     "createdAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "createdBy": "sandbox-baseline-seed",
+     "locationId": "loc-harbor-downtown",
+     "name": "Harbor Grill \u2014 Downtown",
+     "state": "AZ",
+     "updatedAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "updatedBy": "sandbox-baseline-seed"
+    },
+    "id": "loc-harbor-downtown"
+   },
+   {
+    "data": {
+     "accountId": "acct-summit",
+     "city": "Flagstaff",
+     "createdAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "createdBy": "sandbox-baseline-seed",
+     "locationId": "loc-summit-flag",
+     "name": "Summit #14 \u2014 Flagstaff",
+     "state": "AZ",
+     "updatedAt": {
+      "$timestamp": {
+       "nanoseconds": 404000000,
+       "seconds": 1786942056
+      }
+     },
+     "updatedBy": "sandbox-baseline-seed"
+    },
+    "id": "loc-summit-flag"
+   }
+  ]
+ },
+ "target": {
+  "account_locations": [
+   {
+    "access_notes": null,
+    "account_id": "synthetic-np-acct-national",
+    "address_city": "Sampleton",
+    "address_postal_code": "00000",
+    "address_state": "ZZ",
+    "address_street": "410 Example Industrial Loop",
+    "created_at": "2026-09-16T17:29:47.859157+00:00",
+    "created_by": "rudy",
+    "id": "sample-co-loc-national-north",
+    "name": "SYNTHETIC NONPROD National Site North (fixture)",
+    "owner_employee_id": "synthetic-np-emp-national-accounts-sales",
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-16T17:29:47.859157+00:00",
+    "updated_by": "rudy"
+   },
+   {
+    "access_notes": null,
+    "account_id": "synthetic-np-acct-national",
+    "address_city": "Sampleton",
+    "address_postal_code": "00000",
+    "address_state": "ZZ",
+    "address_street": "420 Example Industrial Loop",
+    "created_at": "2026-09-16T17:29:47.861861+00:00",
+    "created_by": "rudy",
+    "id": "sample-co-loc-national-south",
+    "name": "SYNTHETIC NONPROD National Site South (fixture)",
+    "owner_employee_id": "synthetic-np-emp-national-accounts-sales",
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-16T17:29:47.861861+00:00",
+    "updated_by": "rudy"
+   },
+   {
+    "access_notes": null,
+    "account_id": "sample-co-acct-retail-b",
+    "address_city": "Sampleton",
+    "address_postal_code": "00000",
+    "address_state": "ZZ",
+    "address_street": "500 Example Commerce Way",
+    "created_at": "2026-09-16T17:29:47.864462+00:00",
+    "created_by": "rudy",
+    "id": "sample-co-loc-retail-b",
+    "name": "SYNTHETIC NONPROD Retail B Site (fixture)",
+    "owner_employee_id": "synthetic-np-emp-retail-sales-b",
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-16T17:29:47.864462+00:00",
+    "updated_by": "rudy"
+   },
+   {
+    "access_notes": null,
+    "account_id": "synthetic-np-acct-national",
+    "address_city": null,
+    "address_postal_code": null,
+    "address_state": null,
+    "address_street": null,
+    "created_at": "2026-09-14T16:56:21.744233+00:00",
+    "created_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1",
+    "id": "synthetic-np-loc-national",
+    "name": "SYNTHETIC NONPROD National Account Site (fixture)",
+    "owner_employee_id": "synthetic-np-emp-national-accounts-sales",
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-14T16:56:21.744233+00:00",
+    "updated_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1"
+   },
+   {
+    "access_notes": null,
+    "account_id": "synthetic-np-acct-retail",
+    "address_city": null,
+    "address_postal_code": null,
+    "address_state": null,
+    "address_street": null,
+    "created_at": "2026-09-14T16:56:21.740606+00:00",
+    "created_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1",
+    "id": "synthetic-np-loc-retail",
+    "name": "SYNTHETIC NONPROD Retail Site (fixture)",
+    "owner_employee_id": "synthetic-np-emp-retail-sales-a",
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-14T16:56:21.740606+00:00",
+    "updated_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1"
+   }
+  ],
+  "accounts": [
+   {
+    "accounting_id": null,
+    "billing_address_city": null,
+    "billing_address_postal_code": null,
+    "billing_address_state": null,
+    "billing_address_street": null,
+    "billing_contact_id": null,
+    "created_at": "2026-09-16T17:29:47.843238+00:00",
+    "created_by": "rudy",
+    "customer_number": null,
+    "default_currency": null,
+    "erp_id": null,
+    "id": "sample-co-acct-retail-b",
+    "invoice_delivery_method": null,
+    "legacy_id": null,
+    "name": "SYNTHETIC NONPROD Retail Customer B (fixture)",
+    "notes": null,
+    "owner_employee_id": "synthetic-np-emp-retail-sales-b",
+    "payment_terms": null,
+    "purchase_order_required": null,
+    "status": "ACTIVE",
+    "tax_status": null,
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-16T17:29:47.843238+00:00",
+    "updated_by": "rudy"
+   },
+   {
+    "accounting_id": null,
+    "billing_address_city": null,
+    "billing_address_postal_code": null,
+    "billing_address_state": null,
+    "billing_address_street": null,
+    "billing_contact_id": null,
+    "created_at": "2026-09-14T16:56:21.66714+00:00",
+    "created_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1",
+    "customer_number": null,
+    "default_currency": null,
+    "erp_id": null,
+    "id": "synthetic-np-acct-national",
+    "invoice_delivery_method": null,
+    "legacy_id": null,
+    "name": "SYNTHETIC NONPROD National Account Customer (fixture)",
+    "notes": null,
+    "owner_employee_id": "synthetic-np-emp-national-accounts-sales",
+    "payment_terms": null,
+    "purchase_order_required": null,
+    "status": "ACTIVE",
+    "tax_status": null,
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-14T16:56:21.66714+00:00",
+    "updated_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1"
+   },
+   {
+    "accounting_id": null,
+    "billing_address_city": null,
+    "billing_address_postal_code": null,
+    "billing_address_state": null,
+    "billing_address_street": null,
+    "billing_contact_id": null,
+    "created_at": "2026-09-14T16:56:21.663732+00:00",
+    "created_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1",
+    "customer_number": null,
+    "default_currency": null,
+    "erp_id": null,
+    "id": "synthetic-np-acct-retail",
+    "invoice_delivery_method": null,
+    "legacy_id": null,
+    "name": "SYNTHETIC NONPROD Retail Customer (fixture)",
+    "notes": null,
+    "owner_employee_id": "synthetic-np-emp-retail-sales-a",
+    "payment_terms": null,
+    "purchase_order_required": null,
+    "status": "ACTIVE",
+    "tax_status": null,
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-14T16:56:21.663732+00:00",
+    "updated_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1"
+   }
+  ],
+  "contacts": [
+   {
+    "account_id": "synthetic-np-acct-national",
+    "contact_role": "Accounts Payable",
+    "created_at": "2026-09-16T17:29:47.852799+00:00",
+    "created_by": "rudy",
+    "email": "national.ap@sandbox.invalid",
+    "id": "sample-co-contact-national-ap",
+    "is_primary": false,
+    "name": "SYNTHETIC NONPROD National Accounts Payable Contact (fixture)",
+    "owner_employee_id": "synthetic-np-emp-national-accounts-sales",
+    "phone": "+1-555-0174",
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-16T17:29:47.852799+00:00",
+    "updated_by": "rudy"
+   },
+   {
+    "account_id": "synthetic-np-acct-national",
+    "contact_role": "Regional Operations",
+    "created_at": "2026-09-16T17:29:47.850085+00:00",
+    "created_by": "rudy",
+    "email": "national.regional@sandbox.invalid",
+    "id": "sample-co-contact-national-regional",
+    "is_primary": false,
+    "name": "SYNTHETIC NONPROD National Regional Contact (fixture)",
+    "owner_employee_id": "synthetic-np-emp-national-accounts-sales",
+    "phone": "+1-555-0173",
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-16T17:29:47.850085+00:00",
+    "updated_by": "rudy"
+   },
+   {
+    "account_id": "sample-co-acct-retail-b",
+    "contact_role": "Proprietor",
+    "created_at": "2026-09-16T17:29:47.855311+00:00",
+    "created_by": "rudy",
+    "email": "retailb.primary@sandbox.invalid",
+    "id": "sample-co-contact-retail-b",
+    "is_primary": true,
+    "name": "SYNTHETIC NONPROD Retail B Contact (fixture)",
+    "owner_employee_id": "synthetic-np-emp-retail-sales-b",
+    "phone": "+1-555-0175",
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-16T17:29:47.855311+00:00",
+    "updated_by": "rudy"
+   },
+   {
+    "account_id": "synthetic-np-acct-retail",
+    "contact_role": "Site Manager",
+    "created_at": "2026-09-16T17:29:47.846636+00:00",
+    "created_by": "rudy",
+    "email": "retail.secondary@sandbox.invalid",
+    "id": "sample-co-contact-retail-secondary",
+    "is_primary": false,
+    "name": "SYNTHETIC NONPROD Retail Secondary Contact (fixture)",
+    "owner_employee_id": "synthetic-np-emp-retail-sales-a",
+    "phone": "+1-555-0172",
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-16T17:29:47.846636+00:00",
+    "updated_by": "rudy"
+   },
+   {
+    "account_id": "synthetic-np-acct-national",
+    "contact_role": null,
+    "created_at": "2026-09-14T16:56:21.673275+00:00",
+    "created_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1",
+    "email": null,
+    "id": "synthetic-np-contact-national",
+    "is_primary": true,
+    "name": "SYNTHETIC NONPROD National Account Contact (fixture)",
+    "owner_employee_id": "synthetic-np-emp-national-accounts-sales",
+    "phone": null,
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-14T16:56:21.673275+00:00",
+    "updated_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1"
+   },
+   {
+    "account_id": "synthetic-np-acct-retail",
+    "contact_role": null,
+    "created_at": "2026-09-14T16:56:21.669638+00:00",
+    "created_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1",
+    "email": null,
+    "id": "synthetic-np-contact-retail",
+    "is_primary": true,
+    "name": "SYNTHETIC NONPROD Retail Contact (fixture)",
+    "owner_employee_id": "synthetic-np-emp-retail-sales-a",
+    "phone": null,
+    "tenant_id": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
+    "updated_at": "2026-09-14T16:56:21.669638+00:00",
+    "updated_by": "ZVu3lHTP1NQhj0Am04zTAGou0dx1"
+   }
+  ]
+ }
+}

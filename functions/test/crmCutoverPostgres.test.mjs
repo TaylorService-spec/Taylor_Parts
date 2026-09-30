@@ -330,7 +330,7 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
     const receipts = async () => Number((await q(`SELECT count(*)::int n FROM eos_crm.command_receipts WHERE tenant_id = 't1'`)).rows[0].n);
     const receiptsBefore = await receipts();
     const row = { name: "Imported Customer", status: "ACTIVE", ownerEmployeeId: "emp-owner-2", billingAddress: { street: "7 Import Rd", city: "Town", state: "AZ", zip: "85003" } };
-    await assert.rejects(importer.importCustomerToPostgres(deps, actor, { row, idempotencyKey: "imp:1" }), (e) => e.code === "POSTGRES_CRM_WRITER_INACTIVE");
+    await assert.rejects(importer.importCustomerToPostgres(deps, actor, { row, idempotencyKey: "imp:1" }, { firestore: "FROZEN", postgres: "INACTIVE" }), (e) => e.code === "POSTGRES_CRM_WRITER_INACTIVE");
     const refuse = async (r, expected) => assert.rejects(importer.importCustomerToPostgres(deps, actor, { row: r, idempotencyKey: `imp:${expected}` }, ACTIVE), (e) => e.code === expected, expected);
     await refuse({ ...row, ownerEmployeeId: undefined }, "OWNER_REQUIRED");
     await refuse({ ...row, billingAddress: "7 Import Rd, Town, AZ 85003" }, "BILLING_ADDRESS_UNSTRUCTURED");
@@ -361,5 +361,105 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
     // The legacy assigner/uids from the snapshot provenance are never the recorded actor.
     const raw = (await q(`SELECT row_to_json(h)::text AS j FROM eos_crm.account_ownership_history h WHERE account_id = 'acct-ownerless'`)).rows;
     for (const r of raw) for (const uid of [FAKE_UID_A, FAKE_UID_B, "emp-manager-1"]) assert.ok(!r.j.includes(uid), `history carries ${uid}`);
+  });
+});
+
+// ════════ Controller ruling D3 (2026-09-30): the 14 declared synthetic seed rows are pinned KNOWN_NON_MIGRATED_FIXTURE ════════
+// The target rows are the nonprod rows EXACTLY (to_jsonb dump, test/fixtures/crmPinnedFixtures.json), seeded with
+// session_replication_role = replica (their historical actor strings are not today's Principals), so the pinned
+// fingerprints are proved to BE those rows. The source is the pinned FP-CRM-0 documents (D1/D2 exclusions + parents).
+test("D3: pinned synthetic seed rows are retained only while exactly as pinned; everything else still refuses", { skip: SKIP, concurrency: 1 }, async (t) => {
+  const fixtures = require("../lib/crm/crmKnownFixtures.js");
+  const PINNED = JSON.parse(readFileSync(resolve(FUNCTIONS_DIR, "test/fixtures/crmPinnedFixtures.json"), "utf8"));
+  const name = `crm_d3_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const url = (() => { const u = new URL(URL_BASE); u.pathname = `/${name}`; return u.toString(); })();
+  await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
+  });
+  const pool = new pg.Pool({ connectionString: url, max: 4 });
+  t.after(async () => {
+    await pool.end();
+    await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
+  });
+  const q = (text, values = []) => pool.query(text, values);
+  const KT = fixtures.CRM_FIXTURE_TENANT_ID;
+  await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, 'taylor-nonprod', 'pinned')`, [KT]);
+  await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, status) VALUES ('p-d3','p-d3','proof','active')`);
+  await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ('m-d3', $1, 'p-d3')`, [KT]);
+  for (const e of ["synthetic-np-emp-retail-sales-a", "synthetic-np-emp-retail-sales-b", "synthetic-np-emp-national-accounts-sales"]) {
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ($1, $2, 'ACTIVE', 'taylor')`, [e, KT]);
+  }
+  const asReplica = async (fn) => {
+    const c = await pool.connect();
+    try { await c.query("SET session_replication_role = replica"); return await fn(c); } finally { await c.query("RESET session_replication_role"); c.release(); }
+  };
+  const seedRow = (c, table, row) => c.query(`INSERT INTO eos_crm.${table} SELECT * FROM jsonb_populate_record(NULL::eos_crm.${table}, $1::jsonb)`, [JSON.stringify(row)]);
+  await asReplica(async (c) => { for (const [table, rows] of Object.entries(PINNED.target)) for (const r of rows) await seedRow(c, table, r); });
+  const tamper = (sql, values = []) => asReplica((c) => c.query(sql, values));
+
+  const pre = censusCrmSnapshot(parseCrmSnapshot({ ...PINNED.snapshotHeader, ...PINNED.source }));
+  const census = await (async () => {
+    const c = await pool.connect();
+    try { await c.query("BEGIN READ ONLY"); const tg = await measureCrmTarget(c, KT, Object.keys(pre.census.ownerReferences)); await c.query("COMMIT");
+      return finalizeCrmCensus(pre, { ...tg.facts, declaredSyntheticIds: fixtures.pinnedTargetIds() }); } finally { c.release(); }
+  })();
+  const input = (over = {}) => ({ tenantId: KT, performedByPrincipalId: "p-d3", crm: census.crm, canonicalDigest: census.census.canonicalDigest,
+    snapshotSha256: "a".repeat(64), evidenceSha256: "b".repeat(64), ownerDerivations: census.evidence.ownerDerivations,
+    declaredSynthetic: fixtures.pinnedTargetIds(), retainDeclaredSynthetic: true, verifyPinnedTargets: true, ...over });
+  const excluded = { accounts: [], contacts: [], locations: [] };
+  for (const e of [...census.evidence.certificationExcluded, ...census.evidence.fixtureExcluded]) excluded[e.collection].push(e.id);
+  const verify = () => withPoolClient(pool, (c) => verifyCrm(c, { tenantId: KT, crm: census.crm, sample: "all", provenanceActors: provenanceActors(census.evidence),
+    excludedIds: excluded, declaredSynthetic: fixtures.pinnedTargetIds(), ownerDerivations: census.evidence.ownerDerivations, verifyPinnedTargets: true }));
+  const fixtureRows = async () => JSON.stringify((await q(`SELECT a.* FROM eos_crm.accounts a WHERE tenant_id = $1 ORDER BY id`, [KT])).rows.filter((r) => r.id !== "acct-harbor" && r.id !== "acct-summit"));
+
+  await t.test("the pinned fingerprints ARE the nonprod seed rows; the census is copy-ready with 2 governed Accounts and no child", async () => {
+    const c = await pool.connect();
+    try { await c.query("BEGIN READ ONLY"); assert.deepEqual(await fixtures.verifyPinnedTargetFixtures(c, KT), []); await c.query("COMMIT"); } finally { c.release(); }
+    assert.equal(census.census.copyReady, true, JSON.stringify(census.census.blockers));
+    assert.deepEqual(census.crm.accounts.map((a) => [a.id, a.ownerEmployeeId]), [["acct-harbor", null], ["acct-summit", null]]);
+    assert.deepEqual([census.crm.contacts.length, census.crm.locations.length], [0, 0]);
+  });
+
+  await t.test("a changed pinned fixture REFUSES the copy (KNOWN_FIXTURE_MISMATCH), nothing written", async () => {
+    await tamper(`UPDATE eos_crm.contacts SET name = 'renamed' WHERE id = 'sample-co-contact-retail-b'`);
+    await assert.rejects(withPoolClient(pool, (c) => copyCrm(c, input())), code("KNOWN_FIXTURE_MISMATCH"));
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_crm.accounts WHERE tenant_id = $1`, [KT])).rows[0].n, 3);
+    await tamper(`UPDATE eos_crm.contacts SET name = 'SYNTHETIC NONPROD Retail B Contact (fixture)' WHERE id = 'sample-co-contact-retail-b'`);
+  });
+
+  await t.test("an additional synthetic-looking row and an ordinary unknown row both REFUSE (TARGET_HAS_UNKNOWN_RECORDS)", async () => {
+    for (const extra of [{ id: "sample-co-acct-retail-c", name: "SYNTHETIC NONPROD Retail Customer C (fixture)" }, { id: "acct-ordinary-unknown", name: "Ordinary Co" }]) {
+      await asReplica((c) => seedRow(c, "accounts", { ...PINNED.target.accounts[0], ...extra }));
+      await assert.rejects(withPoolClient(pool, (c) => copyCrm(c, input())), code("TARGET_HAS_UNKNOWN_RECORDS"));
+      await tamper(`DELETE FROM eos_crm.accounts WHERE id = $1`, [extra.id]);
+    }
+  });
+
+  await t.test("a missing pinned fixture REFUSES", async () => {
+    const row = PINNED.target.account_locations.find((r) => r.id === "sample-co-loc-retail-b");
+    await tamper(`DELETE FROM eos_crm.account_locations WHERE id = 'sample-co-loc-retail-b'`);
+    await assert.rejects(withPoolClient(pool, (c) => copyCrm(c, input())), code("KNOWN_FIXTURE_MISMATCH"));
+    await asReplica((c) => seedRow(c, "account_locations", row));
+  });
+
+  await t.test("COPY writes exactly the 2 governed Accounts, retains the 14 fixtures byte-identical, verify reconciles, repeat is NO_CHANGES", async () => {
+    const before = await fixtureRows();
+    const r = await withPoolClient(pool, (c) => copyCrm(c, input()));
+    assert.equal(r.outcome, "COPIED");
+    assert.deepEqual([r.accounts.inserted, r.contacts.inserted, r.locations.inserted], [2, 0, 0]);
+    assert.deepEqual(Object.values(r.retainedDeclaredSyntheticRows).map((x) => x.length), [3, 6, 5]);
+    assert.equal(await fixtureRows(), before, "fixtures untouched");
+    const v = await verify();
+    assert.equal(v.reconciled, true, JSON.stringify(v));
+    assert.deepEqual(v.knownFixtureRefusals, []);
+    assert.equal(v.integrity.certificationExcludedPresent, 0, "no certification or pinned-excluded id is in the target");
+    const again = await withPoolClient(pool, (c) => copyCrm(c, input()));
+    assert.equal(again.outcome, "NO_CHANGES");
+    // A fixture changed AFTER the copy fails verify: the preserved set is re-proved, not assumed.
+    await tamper(`UPDATE eos_crm.account_locations SET name = 'renamed' WHERE id = 'synthetic-np-loc-retail'`);
+    const drifted = await verify();
+    assert.equal(drifted.reconciled, false);
+    assert.equal(drifted.knownFixtureRefusals.length, 1);
   });
 });

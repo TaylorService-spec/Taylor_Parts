@@ -32,8 +32,9 @@ export interface CrmWriterAuthority {
   readonly postgres: PostgresCrmWriterState;
 }
 
-/** THE COMMITTED STATE. Nonprod CRM source is frozen; PostgreSQL writes are not active yet. */
-export const CRM_WRITER_AUTHORITY: CrmWriterAuthority = Object.freeze({ firestore: "FROZEN", postgres: "INACTIVE" });
+/** THE COMMITTED STATE. ACTIVATE_POSTGRES (Controller overnight Commercial/CRM package, 2026-09-30): the nonprod CRM source is
+ * frozen and the governed PostgreSQL CRM authority is active, after the pinned-fixture COPY ONCE + VERIFY. */
+export const CRM_WRITER_AUTHORITY: CrmWriterAuthority = Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" });
 
 export const CRM_WRITER_TRANSITIONS = Object.freeze([
   Object.freeze({ name: "FREEZE", from: Object.freeze({ firestore: "OPEN", postgres: "INACTIVE" }), to: Object.freeze({ firestore: "FROZEN", postgres: "INACTIVE" }) }),

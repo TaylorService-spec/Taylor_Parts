@@ -144,11 +144,22 @@ function snapshotDigest(snapshotPath, requireSidecar) {
   return { bytes, sha256 };
 }
 
-/** The ids the governed synthetic nonprod seed manifest DECLARES (scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json). */
-function declaredSyntheticIds() {
-  const m = JSON.parse(fs.readFileSync(path.resolve(__dirname, "fixtures/syntheticNonprodWorkforceSeed.v1.json"), "utf8"));
+/**
+ * The ids the governed synthetic nonprod seed manifests DECLARE (scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json and,
+ * ruling D3 2026-09-30, scripts/fixtures/sampleCompany.v2.json) -- exactly the pinned target fixtures of
+ * lib/crm/crmKnownFixtures.js. Every pin must be declared by the manifest it names; anything else refuses here.
+ */
+function declaredSyntheticIds({ PINNED_TARGET_FIXTURES, pinnedTargetIds }) {
   const ids = (xs) => (Array.isArray(xs) ? xs.map((x) => x.id) : []);
-  return { accounts: ids(m.accounts), contacts: ids(m.contacts), locations: ids(m.locations) };
+  const manifests = {};
+  for (const name of ["syntheticNonprodWorkforceSeed.v1.json", "sampleCompany.v2.json"]) {
+    const m = JSON.parse(fs.readFileSync(path.resolve(__dirname, "fixtures", name), "utf8"));
+    manifests[name] = { accounts: ids(m.accounts), contacts: ids(m.contacts), locations: ids(m.locations) };
+  }
+  for (const p of PINNED_TARGET_FIXTURES) {
+    if (!manifests[p.manifest][p.collection].includes(p.id)) throw new Error(`pinned fixture ${p.collection} ${p.id} is not declared by ${p.manifest}; refused`);
+  }
+  return pinnedTargetIds();
 }
 
 /** Every legacy actor string (Firebase uid, seed actor) the provenance evidence names. None may become an attribution. */
@@ -165,6 +176,7 @@ function provenanceActorsOf(evidence) {
 function excludedIdsOf(evidence) {
   const out = { accounts: [], contacts: [], locations: [] };
   for (const e of evidence.certificationExcluded) out[e.collection].push(e.id);
+  for (const e of evidence.fixtureExcluded ?? []) out[e.collection].push(e.id);
   return out;
 }
 
@@ -198,7 +210,7 @@ async function main() {
     await client.query("BEGIN READ ONLY");
     const target = await measureCrmTarget(client, tenantId, Object.keys(snapshotResult.census.ownerReferences));
     await client.query("COMMIT");
-    const declaredSynthetic = declaredSyntheticIds();
+    const declaredSynthetic = declaredSyntheticIds(require("../lib/crm/crmKnownFixtures.js"));
     const { census, crm, evidence } = finalizeCrmCensus(snapshotResult, { ...target.facts, declaredSyntheticIds: declaredSynthetic });
 
     if (options.mode === "census") {
@@ -214,7 +226,7 @@ async function main() {
       process.exitCode = 2;
       return;
     }
-    const policy = { declaredSynthetic, retainDeclaredSynthetic: options.retainDeclaredSynthetic };
+    const policy = { declaredSynthetic, retainDeclaredSynthetic: options.retainDeclaredSynthetic, verifyPinnedTargets: options.retainDeclaredSynthetic === true };
     const { copyCrm, verifyCrm } = require("../lib/crm/crmCutoverCopy.js");
     if (options.mode === "copy") {
       // The evidence is written BEFORE the transaction: the uid provenance must exist whether or not the copy commits.
@@ -231,6 +243,7 @@ async function main() {
     }
     const report = await verifyCrm(client, {
       tenantId, crm, sample: options.sample, provenanceActors: provenanceActorsOf(evidence), excludedIds: excludedIdsOf(evidence), declaredSynthetic, ownerDerivations: evidence.ownerDerivations,
+      verifyPinnedTargets: true,
     });
     console.log(JSON.stringify({ ...header, canonicalDigest: census.canonicalDigest, report }, null, 2));
     process.exitCode = report.reconciled ? 0 : 1;
