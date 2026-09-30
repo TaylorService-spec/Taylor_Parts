@@ -654,7 +654,13 @@ export async function recordReorderPurchaseOrder(
   if (!(await isCallerTheAssignedEmployee(deps.pool, actor.tenantId, actor.principalId, i.reorderRequestId as string))) {
     refuse("NOT_THE_ASSIGNEE", "FORBIDDEN", "only the Employee the Reorder Request is assigned to may record its purchase order");
   }
-  const run = deps.recordPurchaseOrder ?? (await import("./purchasingRepository.js")).recordPurchaseOrder;
+  const repository = await import("./purchasingRepository.js");
+  const run = deps.recordPurchaseOrder ?? repository.recordPurchaseOrder;
+  // The repository's governed refusals ARE answers (XLF 2026-09-30): a replay onto an ORDERED request, a second PO, or an
+  // unknown request keep the repository's own code and are reported in the lifecycle's categories -- never a 500.
+  const REPOSITORY_CATEGORY: Readonly<Record<string, ReorderLifecycleCategory>> = Object.freeze({
+    REQUEST_STATE_INVALID: "PRECONDITION_FAILED", PO_ALREADY_EXISTS: "CONFLICT", REQUEST_NOT_FOUND: "NOT_FOUND",
+  });
   const record = await run(deps.pool, actor.tenantId, actor.principalId, i.reorderRequestId as string, {
     supplierName: supplierName as string, externalPoNumber: externalPoNumber as string,
     orderedQuantity: i.orderedQuantity as number,
@@ -662,6 +668,10 @@ export async function recordReorderPurchaseOrder(
     expectedArrivalDate: (i.expectedArrivalDate as string | null) ?? null,
     unitPriceMinor: hasAmount ? (i.unitPriceMinor as number) : null,
     currency: hasCurrency ? (i.currency as string) : null,
+  }).catch((err: unknown) => {
+    const category = err instanceof repository.PurchasingRepositoryError ? REPOSITORY_CATEGORY[err.code] : undefined;
+    if (category !== undefined) refuse((err as InstanceType<typeof repository.PurchasingRepositoryError>).code, category, (err as Error).message);
+    throw err;
   });
   // The purchase order's identity IS the request's (ruling R-16); it is returned rather than
   // restated so no caller can come to believe there are two ids.
