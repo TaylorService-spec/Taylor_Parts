@@ -50,15 +50,19 @@ test("offline: the CRM transport is a closed, authenticated envelope routed by s
   assert.equal(pre.headers["access-control-allow-origin"], "https://eos.example");
   const other = await http.handleCrmRequest(never, { method: "OPTIONS", url: "/crm/customer", headers: { origin: "https://evil.example" } });
   assert.equal(other.headers["access-control-allow-origin"], undefined);
-  // THE ACTIVATION GATE: while the committed CRM writer authority is PostgreSQL INACTIVE, an authenticated caller is
-  // refused 503 before the caller context is resolved or any table is read -- reader and pool here would throw.
-  assert.equal(CRM_WRITER_AUTHORITY.postgres, "INACTIVE", "PostgreSQL CRM was activated: replace this gate proof with the activation evidence");
+  // THE ACTIVATION GATE (ACTIVATE_POSTGRES committed 2026-09-30). The gate still exists: under an INACTIVE authority an
+  // authenticated caller is refused 503 before the caller context is resolved or any table is read -- reader and pool
+  // here would throw. The COMMITTED constant is ACTIVE, so the same request passes the gate.
+  assert.deepEqual({ ...CRM_WRITER_AUTHORITY }, { firestore: "FROZEN", postgres: "ACTIVE" });
   const authenticated = { reader: null, pool: null, verifyToken: async () => ({ externalSubject: "s", identityProvider: "firebase" }), allowedOrigins: [] };
   let gated = 0;
   for (const operation of http.CRM_OPERATIONS) {
     gated++;
-    const res = await http.handleCrmRequest(authenticated, { method: "POST", url: "/crm/customer", headers: { authorization: "Bearer ok" }, body: JSON.stringify({ operation, input: {} }) });
+    const res = await http.handleCrmRequest({ ...authenticated, writerAuthority: { firestore: "FROZEN", postgres: "INACTIVE" } },
+      { method: "POST", url: "/crm/customer", headers: { authorization: "Bearer ok" }, body: JSON.stringify({ operation, input: {} }) });
     assert.deepEqual([res.status, JSON.parse(res.body).code], [503, "POSTGRES_CRM_WRITER_INACTIVE"], operation);
+    const committed = await http.handleCrmRequest(authenticated, { method: "POST", url: "/crm/customer", headers: { authorization: "Bearer ok" }, body: JSON.stringify({ operation, input: {} }) });
+    assert.notEqual(JSON.parse(committed.body).code, "POSTGRES_CRM_WRITER_INACTIVE", `${operation}: the committed ACTIVE state passes the gate`);
   }
   assert.equal(gated, 14, "every CRM operation, including the ownership history read and the Contact import, is behind the gate");
   // Composition never supplies the test seam: the committed constant decides in the running API.
@@ -211,16 +215,28 @@ test("CRM transport end to end, in PostgreSQL", { skip: SKIP, concurrency: 1 }, 
     assert.equal((await call(other, "importAccountContacts", { idempotencyKey: key(), accountId: account.accountId, contacts: [{ name: "X" }] })).status, 404);
   });
 
-  await t.test("committed state: with the real database and a fully capable caller, nothing is read or written while INACTIVE", async () => {
+  await t.test("committed state ACTIVE: with the real database a capable caller writes (audited) and reads; INACTIVE still refuses both untouched", async () => {
     const committed = { ...deps, writerAuthority: undefined };
-    const before = (await q(`SELECT (SELECT count(*) FROM eos_crm.accounts)::int a, (SELECT count(*) FROM eos_crm.contacts)::int c, (SELECT count(*) FROM eos_policy.audit_events)::int e`)).rows[0];
-    const res = await http.handleCrmRequest(committed, { method: "POST", url: "/crm/customer", headers: { authorization: `Bearer ${editor.token}` },
+    const inactive = { ...deps, writerAuthority: { firestore: "FROZEN", postgres: "INACTIVE" } };
+    const count = async () => (await q(`SELECT (SELECT count(*) FROM eos_crm.accounts)::int a`)).rows[0];
+    const before = await count();
+    const refused = await http.handleCrmRequest(inactive, { method: "POST", url: "/crm/customer", headers: { authorization: `Bearer ${editor.token}` },
       body: JSON.stringify({ operation: "createAccount", input: { idempotencyKey: key(), ownerEmployeeId: "e-1", name: "Too Early", status: "ACTIVE" } }) });
-    assert.deepEqual([res.status, JSON.parse(res.body).code], [503, "POSTGRES_CRM_WRITER_INACTIVE"]);
+    assert.deepEqual([refused.status, JSON.parse(refused.body).code], [503, "POSTGRES_CRM_WRITER_INACTIVE"]);
+    assert.deepEqual(await count(), before, "the INACTIVE gate wrote nothing");
+    const res = await http.handleCrmRequest(committed, { method: "POST", url: "/crm/customer", headers: { authorization: `Bearer ${editor.token}` },
+      body: JSON.stringify({ operation: "createAccount", input: { idempotencyKey: key(), ownerEmployeeId: "e-1", name: "Activated Co", status: "ACTIVE" } }) });
+    assert.equal(res.status, 200, res.body);
+    const created = JSON.parse(res.body).result;
+    const after = await count();
+    assert.equal(after.a, before.a + 1);
+    // The CRM authority's audit trail is actor attribution on the row (an EOS Principal) plus the append-only ownership
+    // history; it writes no eos_policy.audit_events row on create (accepted D1-A design, recorded as a finding).
+    const row = (await q(`SELECT created_by, updated_by, owner_employee_id FROM eos_crm.accounts WHERE id = $1`, [created.accountId ?? created.id])).rows[0];
+    assert.equal(row.owner_employee_id, "e-1");
+    assert.ok(row.created_by && row.created_by === row.updated_by, "attributed to the performing Principal");
     const read = await http.handleCrmRequest(committed, { method: "POST", url: "/crm/customer", headers: { authorization: `Bearer ${reader.token}` },
-      body: JSON.stringify({ operation: "getAccount", input: { accountId: account.accountId } }) });
-    assert.equal(read.status, 503, "an un-activated PostgreSQL CRM answered a read");
-    const after = (await q(`SELECT (SELECT count(*) FROM eos_crm.accounts)::int a, (SELECT count(*) FROM eos_crm.contacts)::int c, (SELECT count(*) FROM eos_policy.audit_events)::int e`)).rows[0];
-    assert.deepEqual(after, before);
+      body: JSON.stringify({ operation: "getAccount", input: { accountId: created.accountId ?? created.id } }) });
+    assert.equal(read.status, 200, read.body);
   });
 });

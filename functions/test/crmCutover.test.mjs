@@ -474,8 +474,8 @@ test("RULING 5: --retainDeclaredSyntheticSeedRows is refused for production and 
 
 const writerState = require("../lib/crm/crmWriterState.js");
 
-test("RULING 6: the committed CRM writer state is Firestore FROZEN / PostgreSQL INACTIVE, coherent, with the four legal moves only", () => {
-  assert.deepEqual({ ...writerState.CRM_WRITER_AUTHORITY }, { firestore: "FROZEN", postgres: "INACTIVE" });
+test("RULING 6: the committed CRM writer state is Firestore FROZEN / PostgreSQL ACTIVE (ACTIVATE_POSTGRES, 2026-09-30), coherent, with the four legal moves only", () => {
+  assert.deepEqual({ ...writerState.CRM_WRITER_AUTHORITY }, { firestore: "FROZEN", postgres: "ACTIVE" });
   assert.doesNotThrow(() => writerState.assertCrmWriterAuthorityCoherent(writerState.CRM_WRITER_AUTHORITY));
   const S = (firestore, postgres) => ({ firestore, postgres });
   assert.equal(writerState.assertCrmWriterTransition(S("OPEN", "INACTIVE"), S("FROZEN", "INACTIVE")), "FREEZE");
@@ -551,11 +551,23 @@ test("RULING 2: the PostgreSQL customer import refuses an ownerless row, a free-
   refusal({ ...ok, status: undefined }, "STATUS_REQUIRED");
 });
 
-test("RULING 2: the PostgreSQL customer import is unwired -- it refuses while PostgreSQL CRM writes are INACTIVE", async () => {
+test("RULING 2: the PostgreSQL customer import is still unwired after activation -- no runtime caller; it refuses while INACTIVE and refuses a malformed row before any write", async () => {
+  // Refuses while PostgreSQL CRM writes are INACTIVE (the explicit authority argument; the committed state is ACTIVE).
   await assert.rejects(
-    pgImport.importCustomerToPostgres({ pool: null }, { tenantId: "t", principalId: "p", capabilities: new Set() }, { row: {}, idempotencyKey: "k" }),
+    pgImport.importCustomerToPostgres({ pool: null }, { tenantId: "t", principalId: "p", capabilities: new Set() }, { row: {}, idempotencyKey: "k" },
+      { firestore: "FROZEN", postgres: "INACTIVE" }),
     (e) => e.code === "POSTGRES_CRM_WRITER_INACTIVE",
   );
+  // Under the committed ACTIVE state a malformed row is refused by the row gate, before any pool is touched (pool: null).
+  await assert.rejects(
+    pgImport.importCustomerToPostgres({ pool: null }, { tenantId: "t", principalId: "p", capabilities: new Set() }, { row: {}, idempotencyKey: "k" }),
+    (e) => e.code !== "POSTGRES_CRM_WRITER_INACTIVE",
+  );
+  // UNWIRED: no runtime module imports it -- Customer CSV import stays unavailable (the Firestore import is FROZEN).
+  const importers = [];
+  const walk = (dir) => { for (const f of readdirSync(dir)) { const p = join(dir, f); if (statSync(p).isDirectory()) walk(p); else if (/\.ts$/.test(f) && readFileSync(p, "utf8").includes("postgresCustomerImport")) importers.push(p); } };
+  walk("src");
+  assert.deepEqual(importers, [], "no runtime module references the PostgreSQL customer import");
 });
 // ════════ Controller rulings D1/D2/D3 (2026-09-30): pinned CRM fixtures ════════
 const pinned = require("../lib/crm/crmKnownFixtures.js");

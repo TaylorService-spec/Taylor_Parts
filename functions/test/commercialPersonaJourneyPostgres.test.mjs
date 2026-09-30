@@ -357,13 +357,35 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     assert.deepEqual(receipts, [{ principal_id: retailA.principalId }]);
   });
 
-  await t.test("PRODUCT LINES: a PART or EQUIPMENT_MODEL line is the held catalog boundary (503 CATALOG_AUTHORITY_UNAVAILABLE) and writes nothing", async () => {
+  await t.test("PRODUCT LINES (NO composed Catalog authority): a PART or EQUIPMENT_MODEL line fails closed 503 CATALOG_AUTHORITY_UNAVAILABLE and writes nothing", async () => {
     const before = (await q(`SELECT count(*)::int n FROM eos_commercial.opportunities`)).rows[0].n;
     for (const kind of ["PART", "EQUIPMENT_MODEL"]) {
       refused(await call(retailA, "createOpportunity", { idempotencyKey: key(), accountId: "acct-retail", salesChannel: "RETAIL", operatingCompanyId: "taylor", lines: [{ kind, ref: "anything", qty: 1 }] }),
         503, "CATALOG_AUTHORITY_UNAVAILABLE", kind);
     }
     assert.equal((await q(`SELECT count(*)::int n FROM eos_commercial.opportunities`)).rows[0].n, before);
+  });
+
+  await t.test("PRODUCT LINES (server composition, Catalog ACTIVE 2026-09-30): retail-sales-a quotes a governed PostgreSQL Part; an unknown or certification Part refuses", async () => {
+    const { createPostgresCatalogReferenceAuthority } = require("../lib/catalogAuthority/postgresCatalogReferenceAuthority.js");
+    const composed = { ...deps, catalog: createPostgresCatalogReferenceAuthority() };
+    await q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
+               expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
+             VALUES ('PRT-1005', $1, 'x', 'PRT-1005', 'Water Filter Cartridge', 'ACTIVE', 'EACH', 'STANDARD', 'STOCKED', false, false, false, false, 1, 'x')
+             ON CONFLICT DO NOTHING`, [TENANT]);
+    const callComposed = async (actor, operation, input) => {
+      const res = await http.handleCommercialRequest(composed, { method: "POST", url: "/commercial/sales", headers: { authorization: `Bearer ${actor.token}` },
+        body: JSON.stringify({ operation, input }) });
+      return { status: res.status, body: JSON.parse(res.body) };
+    };
+    const created = ok(await callComposed(retailA, "createOpportunity", { idempotencyKey: key(), accountId: "acct-retail", salesChannel: "RETAIL",
+      operatingCompanyId: "taylor", lines: [{ kind: "PART", ref: "PRT-1005", qty: 2 }] }), "PART line on a governed Part");
+    assert.ok(created.opportunityId);
+    for (const ref of ["PRT-NOT-IN-CATALOG", "CW-P-0000"]) {
+      const res = await callComposed(retailA, "createOpportunity", { idempotencyKey: key(), accountId: "acct-retail", salesChannel: "RETAIL",
+        operatingCompanyId: "taylor", lines: [{ kind: "PART", ref, qty: 1 }] });
+      assert.notEqual(res.status, 200, `${ref} must not be accepted`);
+    }
   });
 
   // ════════════════════ NEARBY UNAUTHORIZED ════════════════════

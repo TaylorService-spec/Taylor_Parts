@@ -330,7 +330,7 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
     const receipts = async () => Number((await q(`SELECT count(*)::int n FROM eos_crm.command_receipts WHERE tenant_id = 't1'`)).rows[0].n);
     const receiptsBefore = await receipts();
     const row = { name: "Imported Customer", status: "ACTIVE", ownerEmployeeId: "emp-owner-2", billingAddress: { street: "7 Import Rd", city: "Town", state: "AZ", zip: "85003" } };
-    await assert.rejects(importer.importCustomerToPostgres(deps, actor, { row, idempotencyKey: "imp:1" }), (e) => e.code === "POSTGRES_CRM_WRITER_INACTIVE");
+    await assert.rejects(importer.importCustomerToPostgres(deps, actor, { row, idempotencyKey: "imp:1" }, { firestore: "FROZEN", postgres: "INACTIVE" }), (e) => e.code === "POSTGRES_CRM_WRITER_INACTIVE");
     const refuse = async (r, expected) => assert.rejects(importer.importCustomerToPostgres(deps, actor, { row: r, idempotencyKey: `imp:${expected}` }, ACTIVE), (e) => e.code === expected, expected);
     await refuse({ ...row, ownerEmployeeId: undefined }, "OWNER_REQUIRED");
     await refuse({ ...row, billingAddress: "7 Import Rd, Town, AZ 85003" }, "BILLING_ADDRESS_UNSTRUCTURED");
