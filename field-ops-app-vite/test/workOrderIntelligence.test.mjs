@@ -157,18 +157,46 @@ test("trusted source dimensions flow through the canonical readiness projection 
   assert.equal(signal.attentionItem.key, "parts-readiness-attention");
 });
 
-test("the client transport is fail-closed before Firebase loads and sends only workOrderId", () => {
+test("the client transport is the governed EOS Work Order route, sends only workOrderId, and never loads Firebase", () => {
   const source = readFileSync(
     new URL("../src/services/workOrderReadinessContextClient.js", import.meta.url),
     "utf8",
   );
-  const gate = source.indexOf("if (!WORK_ORDER_READINESS_CONTEXT_READY)");
-  const firebaseImport = source.indexOf('import("firebase/functions")');
-  assert.ok(gate >= 0 && firebaseImport > gate, "transport must refuse before dynamically loading Firebase");
-  assert.match(source, /callable\(\{ workOrderId: workOrderId\.trim\(\) \}\)/);
+  assert.doesNotMatch(source, /from\s+"[^"]*firebase[^"]*"|import\("firebase|httpsCallable/);
+  assert.match(source, /from "\.\/workOrderApiClient\.js"/);
+  assert.match(source, /call\(WORK_ORDER_READINESS_OPERATION, \{ workOrderId: workOrderId\.trim\(\) \}\)/);
   for (const forbidden of ["partId:", "customerId:", "warehouseId:", "reorderRequestId:"]) {
     assert.doesNotMatch(source, new RegExp(forbidden));
   }
+});
+
+test("the readiness client maps the governed route's answers and never falls back", async () => {
+  const { fetchWorkOrderReadinessContext, WORK_ORDER_READINESS_CONTEXT_NOT_READY } =
+    await import("../src/services/workOrderReadinessContextClient.js");
+  const seen = [];
+  const ok = await fetchWorkOrderReadinessContext(" wo-1 ", { call: async (op, input) => {
+    seen.push([op, input]);
+    return { ok: true, result: { schemaVersion: 1, plannedParts: [], inventory: { state: "NOT_YET_ACTIVATED" } } };
+  } });
+  assert.deepEqual(seen, [["readWorkOrderReadiness", { workOrderId: "wo-1" }]]);
+  assert.equal(ok.result.inventory.state, "NOT_YET_ACTIVATED");
+  const inactive = await fetchWorkOrderReadinessContext("wo-1", { call: async () => ({ ok: false, code: "NOT_ACTIVATED", reason: "NOT_ACTIVATED" }) });
+  assert.equal(inactive.errorStatus, WORK_ORDER_READINESS_CONTEXT_NOT_READY, "not activated is a readiness state, not an error");
+  const denied = await fetchWorkOrderReadinessContext("wo-1", { call: async () => ({ ok: false, code: "FORBIDDEN", reason: "NOT_ASSIGNED" }) });
+  assert.deepEqual(denied, { errorStatus: "permission-denied", errorDetail: "NOT_ASSIGNED" });
+  const thrown = await fetchWorkOrderReadinessContext("wo-1", { call: async () => { throw new Error("boom"); } });
+  assert.equal(thrown.errorStatus, "unavailable");
+});
+
+test("an EOS readiness context degrades honestly: warehouse unavailable is UNKNOWN, never a guessed shortage or READY", () => {
+  const projection = buildWorkOrderPartsReadiness({
+    workOrder: wo(),
+    plannedParts: [{ partId: "P1", name: "Filter", sku: "P1", qtyPlanned: 2, qtyUsed: 0, reservedForJob: null,
+      warehouse: { status: "UNAVAILABLE" }, truck: { status: "UNAVAILABLE" }, procurement: { status: "UNAVAILABLE" } }],
+    capabilities: { warehouse: false, truckInventory: false, purchasing: false, requestReorder: false },
+  });
+  assert.equal(projection.jobReadiness, "UNKNOWN");
+  assert.ok(projection.degraded.includes("warehouse"));
 });
 
 test("Work Order readiness transport is activated only in platform sandbox", () => {

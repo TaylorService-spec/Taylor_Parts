@@ -14,9 +14,10 @@
 //
 // ============================ FAIL CLOSED, AND SAY SO ============================
 //
-// Both labor capabilities are registered active:false and activated in no environment, so today this
-// surface denies for everybody. That is the correct state and it is rendered honestly -- a disabled
-// control with an explanation, never a form that accepts input and then throws it away.
+// Labor lives on the governed EOS Work Order route. Recording needs workOrder.execution.record on the
+// caller's OWN assigned job, and that capability is granted only through Administration -- so until it is,
+// this surface denies, and says so: a disabled control with an explanation, never a form that accepts
+// input and then throws it away. `canRecord` is the server's answer, never a client guess.
 import { useEffect, useMemo, useState } from "react";
 import {
   LABOR_TYPE_OPTIONS, LABOR_SUBMIT,

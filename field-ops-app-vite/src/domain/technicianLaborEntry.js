@@ -37,6 +37,11 @@ const FAILURE_MESSAGE = Object.freeze({
   INTERVAL_INVALID: "Those start and end times are not valid.",
   IDEMPOTENCY_CONFLICT: "A different entry was already recorded for this attempt.",
   PERMISSION_DENIED: "You are not authorized to record labor.",
+  // The governed EOS route's reasons for the same facts.
+  NOT_ASSIGNED: "This work order is not assigned to you.",
+  CAPABILITY_MISSING: "You are not authorized to record labor.",
+  EMPLOYEE_LINK_REQUIRED: "Your sign-in is not linked to an active employee record, so time cannot be recorded.",
+  NOT_ACTIVATED: "Work Orders are not activated on EOS yet, so time cannot be recorded here.",
 });
 
 const int = (v) => (typeof v === "number" && Number.isInteger(v) ? v : null);
