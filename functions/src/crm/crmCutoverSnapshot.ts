@@ -26,6 +26,7 @@
 //
 // Certification-world records (the `certificationWorld` marker of functions/scripts/certificationWorld/manifest.mjs)
 // are EXCLUDED from the copy with their ids and reason in the evidence; the Certification world is frozen.
+import { pinnedSourceExclusion, sourceFingerprint } from "./crmKnownFixtures";
 import { createHash } from "node:crypto";
 import {
   CRM_ACCOUNT_STATUSES,
@@ -318,6 +319,8 @@ export interface CrmEvidence {
   /** Single free-text billing addresses, verbatim. Reconciliation staging only -- never parsed, never a column. */
   readonly billingAddressResolution: readonly { readonly accountId: string; readonly freeText: string }[];
   readonly certificationExcluded: readonly { readonly collection: CrmCollection; readonly id: string; readonly reason: string }[];
+  /** Rulings D1/D2 (2026-09-30): pinned, fingerprint-matched fixtures excluded from the copy (crmKnownFixtures.ts). */
+  readonly fixtureExcluded: readonly { readonly collection: CrmCollection; readonly id: string; readonly classification: string; readonly ruling: string }[];
   readonly provenance: readonly ProvenanceEvidence[];
 }
 
@@ -327,6 +330,8 @@ export interface CrmCensus {
   readonly source: CrmSnapshotSource;
   readonly counts: Readonly<Record<CrmCollection, number>>;
   readonly certificationExcluded: Readonly<Record<CrmCollection, number>>;
+  /** Rulings D1/D2: pinned fixtures excluded (DATA_IMPORT_ACCEPTANCE_FIXTURE, SANDBOX_SEED_FIXTURE). */
+  readonly fixtureExcluded: Readonly<Record<CrmCollection, number>>;
   readonly selected: Readonly<Record<CrmCollection, number>>;
   readonly statusDistribution: Readonly<Record<string, number>>;
   readonly timestampShapes: Readonly<Record<CrmCollection, Readonly<Record<"createdAt" | "updatedAt", Readonly<Record<TimestampShape, number>>>>>>;
@@ -492,6 +497,8 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
   const notMigratedValues: { collection: CrmCollection; id: string; field: string; value: unknown }[] = [];
   const ownerDerivations: OwnerDerivationEvidence[] = [];
   const certificationExcluded: { collection: CrmCollection; id: string; reason: string }[] = [];
+  const fixtureExcluded: { collection: CrmCollection; id: string; classification: string; ruling: string }[] = [];
+  const fixtureExcludedCount = { accounts: 0, contacts: 0, locations: 0 };
   const provenance: ProvenanceEvidence[] = [];
 
   /** Shared per-document gate: id shape, duplicates, certification exclusion, field classification. */
@@ -503,6 +510,18 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
       for (const f of Object.keys(d.data)) fieldPresence[collection][f] = (fieldPresence[collection][f] ?? 0) + 1;
       if ((seen.get(d.id) ?? 0) > 1) {
         add(collection, d.id, "DUPLICATE_ID", "BLOCKING", null, `${seen.get(d.id)} snapshot documents claim this id`);
+        continue;
+      }
+      // Rulings D1/D2: a pinned fixture is excluded ONLY while its stored data is exactly the pinned data.
+      const pin = pinnedSourceExclusion(collection, d.id);
+      if (pin !== undefined) {
+        if (sourceFingerprint(d.data) === pin.fingerprint) {
+          fixtureExcludedCount[collection] += 1;
+          fixtureExcluded.push({ collection, id: d.id, classification: pin.classification, ruling: pin.ruling });
+        } else {
+          add(collection, d.id, "PINNED_FIXTURE_DIVERGED", "BLOCKING", null,
+            `declared ${pin.classification} (ruling ${pin.ruling}) but its stored data no longer matches the pinned fingerprint; a new ruling is needed, never a silent exclusion`);
+        }
         continue;
       }
       if (Object.prototype.hasOwnProperty.call(d.data, CERTIFICATION_MARKER_FIELD)) {
@@ -892,7 +911,7 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
     }
   }
   const census = assembleCensus({
-    source: snapshot.source, counts, excludedCount, crm, statusDistribution, timestampShapes, fieldPresence, addressShapes,
+    source: snapshot.source, counts, excludedCount, fixtureExcludedCount, crm, statusDistribution, timestampShapes, fieldPresence, addressShapes,
     billingAddressShapes, ownerReferences, ownerless, duplicateFoldedNames, findings,
     extraBlockers: ["OWNER_RESOLUTION_NOT_MEASURED"],
   });
@@ -906,6 +925,7 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
         .sort((a, b) => asciiSort(`${a.collection}|${a.id}`, `${b.collection}|${b.id}`)),
       notMigratedValues: notMigratedValues.sort((a, b) => asciiSort(`${a.collection}|${a.id}|${a.field}`, `${b.collection}|${b.id}|${b.field}`)),
       certificationExcluded: certificationExcluded.sort((a, b) => asciiSort(`${a.collection}|${a.id}`, `${b.collection}|${b.id}`)),
+      fixtureExcluded: fixtureExcluded.sort((a, b) => asciiSort(`${a.collection}|${a.id}`, `${b.collection}|${b.id}`)),
       provenance: provenance.sort((a, b) => asciiSort(`${a.collection}|${a.id}`, `${b.collection}|${b.id}`)),
     },
   };
@@ -915,6 +935,7 @@ interface AssembleInput {
   source: CrmSnapshotSource;
   counts: Record<CrmCollection, number>;
   excludedCount: Record<CrmCollection, number>;
+  fixtureExcludedCount: Record<CrmCollection, number>;
   crm: CanonicalCrm;
   statusDistribution: Record<string, number>;
   timestampShapes: CrmCensus["timestampShapes"];
@@ -937,6 +958,7 @@ function assembleCensus(i: AssembleInput): CrmCensus {
     source: i.source,
     counts: i.counts,
     certificationExcluded: i.excludedCount,
+    fixtureExcluded: i.fixtureExcludedCount,
     selected: { accounts: i.crm.accounts.length, contacts: i.crm.contacts.length, locations: i.crm.locations.length },
     statusDistribution: sortedBag(i.statusDistribution),
     timestampShapes: i.timestampShapes,
@@ -1006,7 +1028,7 @@ export function finalizeCrmCensus(result: CrmCensusResult, facts: CrmTargetFacts
   }
   const c = result.census;
   const census = assembleCensus({
-    source: c.source, counts: { ...c.counts }, excludedCount: { ...c.certificationExcluded }, crm: result.crm,
+    source: c.source, counts: { ...c.counts }, excludedCount: { ...c.certificationExcluded }, fixtureExcludedCount: { ...c.fixtureExcluded }, crm: result.crm,
     statusDistribution: { ...c.statusDistribution }, timestampShapes: c.timestampShapes,
     fieldPresence: { accounts: { ...c.fieldPresence.accounts }, contacts: { ...c.fieldPresence.contacts }, locations: { ...c.fieldPresence.locations } },
     addressShapes: c.addressShapes, billingAddressShapes: c.billingAddressShapes, ownerReferences: { ...c.ownerReferences },

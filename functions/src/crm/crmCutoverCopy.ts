@@ -25,6 +25,7 @@
 // READ ONLY, REPEATABLE READ. Counts, id sets, field-by-field reconciliation over a deterministic sample (or all), FK
 // integrity (children -> Account, billing contact on its Account, owners -> same-tenant Employees), Commercial / finance
 // Account references resolving, no Firebase uid in an attribution column, and no Certification-excluded id present.
+import { verifyPinnedTargetFixtures } from "./crmKnownFixtures";
 import type { PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { EMPLOYMENT_STATUS_VALUES } from "../employeeIdentity/employeeAuthority.js";
@@ -168,6 +169,8 @@ export interface CrmCopyInput {
   readonly retainDeclaredSynthetic?: boolean;
   /** Ruling 4: the census's per-record owner derivations. Checked against the records before anything is written. */
   readonly ownerDerivations: readonly OwnerDerivationEvidence[];
+  /** Ruling D3 (2026-09-30): re-prove every pinned target fixture (crmKnownFixtures.ts) inside the copy transaction. */
+  readonly verifyPinnedTargets?: boolean;
 }
 
 /**
@@ -223,6 +226,12 @@ export async function copyCrm(client: PoolClient, input: CrmCopyInput): Promise<
     );
     if (member.rows.length === 0) {
       throw new CrmCutoverError("PERFORMER_NOT_TENANT_PRINCIPAL", "the performing id is not an active EOS Principal with an active membership in the tenant");
+    }
+    if (input.verifyPinnedTargets === true) {
+      const pinRefusals = await verifyPinnedTargetFixtures(client, tenantId);
+      if (pinRefusals.length > 0) {
+        throw new CrmCutoverError("KNOWN_FIXTURE_MISMATCH", "the pinned synthetic seed fixtures are not exactly as pinned; nothing was written", pinRefusals);
+      }
     }
 
     // Owners, re-resolved in THIS transaction.
@@ -348,6 +357,8 @@ export interface CrmVerifyInput {
   readonly declaredSynthetic?: DeclaredSyntheticIds;
   /** Ruling 4: the census's owner derivations; each copied child must still carry exactly that owner on that Account. */
   readonly ownerDerivations?: readonly OwnerDerivationEvidence[];
+  /** Ruling D3: re-prove every pinned target fixture; any refusal leaves the verify unreconciled. */
+  readonly verifyPinnedTargets?: boolean;
 }
 
 export interface CrmVerifyReport {
@@ -369,6 +380,8 @@ export interface CrmVerifyReport {
     readonly ownerDerivationMismatches: number;
   };
   readonly commercialAccountReferences: readonly { readonly table: string; readonly rows: number; readonly unresolved: number }[];
+  /** Ruling D3: pinned target fixtures that are missing or changed. Must be empty. */
+  readonly knownFixtureRefusals: readonly string[];
 }
 
 const sampleOrder = (id: string) => createHash("sha256").update(id).digest("hex");
@@ -464,11 +477,12 @@ export async function verifyCrm(client: PoolClient, input: CrmVerifyInput): Prom
       );
       commercial.push({ table, rows: rows[0].rows, unresolved: rows[0].unresolved });
     }
+    const knownFixtureRefusals = input.verifyPinnedTargets === true ? await verifyPinnedTargetFixtures(client, tenantId) : [];
     await client.query("COMMIT");
 
     const reconciled = (Object.keys(counts) as CrmCollection[]).every((c) => missing[c].length === 0 && unexpected[c].length === 0)
-      && mismatches.length === 0 && Object.values(integrity).every((v) => v === 0) && commercial.every((c) => c.unresolved === 0);
-    return { reconciled, counts, missingInTarget: missing, unexpectedInTarget: unexpected, sampled, fieldMismatches: mismatches, integrity, commercialAccountReferences: commercial };
+      && mismatches.length === 0 && Object.values(integrity).every((v) => v === 0) && commercial.every((c) => c.unresolved === 0) && knownFixtureRefusals.length === 0;
+    return { reconciled, counts, missingInTarget: missing, unexpectedInTarget: unexpected, sampled, fieldMismatches: mismatches, integrity, commercialAccountReferences: commercial, knownFixtureRefusals };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw err;
