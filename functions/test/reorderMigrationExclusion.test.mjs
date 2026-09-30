@@ -90,3 +90,63 @@ test("the module is pure: no Firestore, no database, no file system", () => {
   const src = readFileSync(resolve(import.meta.dirname, "../src/eosOps/migration/reorderMigrationExclusion.ts"), "utf8");
   assert.doesNotMatch(src, /firebase|from "pg"|node:fs/);
 });
+
+// ============ Controller ruling 2026-09-30: CERTIFICATION_LIVE_PROOF and LEGACY_INCOMPLETE_OPERATING_CONTEXT ============
+const LIVE_PROOF_REQUESTS = ["8qKjYorWjvNyYRH53Uzy", "KuYv3Ld0pFSGBz3bHvpc", "P1Ia7fpUTKPq3RloYEvF", "Sz8QPa815EgkmvmObQ1K",
+  "YqD07rXiAE3jLoHf4q6x", "ggJNjr0LsxEEn7Hwc2zX", "kLbfmkzNcUGYITlWzFGG", "veqnZP7HHnaa09PgXTqe", "ywq7UpdczU1KZ6Z86ejS"];
+const HOLD = "eA7o3t8DyUXmtg8MCKjT";
+const liveReq = (id, over = {}) => ({ id, data: { partId: "CW-P-0000", warehouseId: "wh-main", operatingCompanyId: "taylor", status: "READY_FOR_PARTS_MANAGER", ...over } });
+const fullSource = (over = {}) => {
+  const c = merged();
+  c.reorder_requests = [...c.reorder_requests, ...LIVE_PROOF_REQUESTS.map((id) => liveReq(id, id === "Sz8QPa815EgkmvmObQ1K" ? { status: "ORDERED", purchaseOrderId: id } : {})),
+    { id: HOLD, data: { partId: "PRT-2001", status: "PENDING_REVIEW" } }, ...(over.requests ?? [])];
+  c.reorder_purchase_orders = [...c.reorder_purchase_orders, { id: "Sz8QPa815EgkmvmObQ1K", data: { partId: "CW-P-0000", reorderRequestId: "Sz8QPa815EgkmvmObQ1K" } }];
+  return c;
+};
+
+test("the manifest declares each class separately, with exact ids and reasons -- never inside the fixture bucket", () => {
+  const m = x.buildReorderExclusionManifest();
+  assert.equal(m.count, 8, "the SBX-SCN-001 fixture bucket is unchanged");
+  assert.equal(m.certificationLiveProof.classification, "CERTIFICATION_LIVE_PROOF");
+  assert.equal(m.certificationLiveProof.disposition, "EXCLUDED");
+  assert.match(m.certificationLiveProof.reason, /Decision #155.*CW-P-0000/s);
+  assert.deepEqual(m.certificationLiveProof.entries.filter((e) => e.collection === "reorder_requests").map((e) => e.id).sort(), [...LIVE_PROOF_REQUESTS].sort());
+  assert.deepEqual(m.certificationLiveProof.entries.filter((e) => e.collection === "reorder_purchase_orders").map((e) => e.id), ["Sz8QPa815EgkmvmObQ1K"]);
+  assert.equal(m.holds.classification, "LEGACY_INCOMPLETE_OPERATING_CONTEXT");
+  assert.equal(m.holds.disposition, "HOLD");
+  assert.deepEqual(m.holds.entries.map((e) => e.id), [HOLD]);
+  const ids = (list) => list.map((e) => `${e.collection}/${e.id}`);
+  const all = [...ids(m.entries), ...ids(m.certificationLiveProof.entries), ...ids(m.holds.entries)];
+  assert.equal(new Set(all).size, all.length, "the three classes are mutually exclusive");
+});
+
+test("the full 15-request source: 8 fixtures + 10 live-proof removed, 1 held, 0 operational retained, each once", () => {
+  const { snapshot, proof } = x.applyReorderExclusion(snapshotOf(fullSource()), x.buildReorderExclusionManifest(), sha);
+  assert.equal(proof.excluded.length, 8);
+  assert.equal(proof.certificationLiveProof.excluded.length, 10);
+  assert.deepEqual(proof.held.held.map((e) => e.id), [HOLD]);
+  assert.equal(proof.onlyDeclaredFixturesExcluded, true);
+  // REAL records (not declared anywhere) are retained: nothing operational is excluded by accident.
+  assert.deepEqual(snapshot.collections.reorder_requests.map((d) => d.id), ["rr-real-1"]);
+  assert.deepEqual(snapshot.collections.reorder_purchase_orders.map((d) => d.id), ["rr-real-1"]);
+  for (const [name, c] of Object.entries(proof.counts)) assert.equal(c.source, c.retained + c.excluded + c.held, name);
+});
+
+test("a declared live-proof id that no longer names CW-P-0000 REFUSES (it may have become real business data)", () => {
+  const c = fullSource();
+  c.reorder_requests = c.reorder_requests.map((d) => (d.id === "P1Ia7fpUTKPq3RloYEvF" ? liveReq(d.id, { partId: "PRT-1001" }) : d));
+  assert.throws(() => x.applyReorderExclusion(snapshotOf(c), x.buildReorderExclusionManifest(), sha), /CERTIFICATION_LIVE_PROOF but no longer matches/);
+});
+
+test("the held record REFUSES if it gains an operating context (a new ruling is needed, never a silent hold or inference)", () => {
+  const c = fullSource();
+  c.reorder_requests = c.reorder_requests.map((d) => (d.id === HOLD ? { id: HOLD, data: { ...d.data, warehouseId: "wh-main" } } : d));
+  assert.throws(() => x.applyReorderExclusion(snapshotOf(c), x.buildReorderExclusionManifest(), sha), /HELD as LEGACY_INCOMPLETE_OPERATING_CONTEXT but now states/);
+});
+
+test("exclusion never mutates the source snapshot", () => {
+  const src = snapshotOf(fullSource());
+  const before = JSON.stringify(src);
+  x.applyReorderExclusion(src, x.buildReorderExclusionManifest(), sha);
+  assert.equal(JSON.stringify(src), before);
+});

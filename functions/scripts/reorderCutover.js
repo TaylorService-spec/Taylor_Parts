@@ -82,7 +82,7 @@ function assertReorderCutoverInvocation(args, env) {
   if (!args.tenantKey || args.tenantKey === "true") throw new Error("--tenantKey is required: the tenant is named, never inferred.");
   if (!args.snapshot || args.snapshot === "true") throw new Error("--snapshot <file> is required: the copy consumes an exported snapshot, never a live Firestore read.");
   if (!args.exclusionManifest || args.exclusionManifest === "true") {
-    throw new Error("--exclusionManifest <file> is required: the DQ-032 manifest of the eight synthetic fixtures the COPY excludes (docs/architecture/reorder-migration-exclusion-manifest.json).");
+    throw new Error("--exclusionManifest <file> is required: the declared exclusion manifest (DQ-032 fixtures, CERTIFICATION_LIVE_PROOF, and LEGACY_INCOMPLETE_OPERATING_CONTEXT holds) (docs/architecture/reorder-migration-exclusion-manifest.json).");
   }
   if (args.mode === "copy") {
     if (!STAGES.includes(args.stage)) {

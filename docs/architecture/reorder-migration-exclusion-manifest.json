@@ -1,6 +1,6 @@
 {
   "format": "EOS_REORDER_MIGRATION_EXCLUSION",
-  "version": 1,
+  "version": 2,
   "ruling": "DQ-032",
   "scenarioId": "SBX-SCN-001",
   "reason": "Repository-authored SBX-SCN-001 scenario fixtures: excluded from the governed COPY, left unchanged in Firestore, removed only by the final Firebase retirement.",
@@ -38,5 +38,67 @@
       "collection": "reorder_requests",
       "id": "ro-sbx-006"
     }
-  ]
+  ],
+  "certificationLiveProof": {
+    "classification": "CERTIFICATION_LIVE_PROOF",
+    "disposition": "EXCLUDED",
+    "ruling": "Controller ruling 2026-09-30 (CW-P-0000 / Reorder migration)",
+    "reason": "Decision #155 / workstream 2C / R-34 live-proof evidence on certification part CW-P-0000, which the Catalog census excludes as a certification fixture. Excluded from the PostgreSQL business-data migration; retained unchanged in Firestore as historical evidence until the final Firebase retirement.",
+    "count": 10,
+    "entries": [
+      {
+        "collection": "reorder_purchase_orders",
+        "id": "Sz8QPa815EgkmvmObQ1K"
+      },
+      {
+        "collection": "reorder_requests",
+        "id": "8qKjYorWjvNyYRH53Uzy"
+      },
+      {
+        "collection": "reorder_requests",
+        "id": "KuYv3Ld0pFSGBz3bHvpc"
+      },
+      {
+        "collection": "reorder_requests",
+        "id": "P1Ia7fpUTKPq3RloYEvF"
+      },
+      {
+        "collection": "reorder_requests",
+        "id": "Sz8QPa815EgkmvmObQ1K"
+      },
+      {
+        "collection": "reorder_requests",
+        "id": "YqD07rXiAE3jLoHf4q6x"
+      },
+      {
+        "collection": "reorder_requests",
+        "id": "ggJNjr0LsxEEn7Hwc2zX"
+      },
+      {
+        "collection": "reorder_requests",
+        "id": "kLbfmkzNcUGYITlWzFGG"
+      },
+      {
+        "collection": "reorder_requests",
+        "id": "veqnZP7HHnaa09PgXTqe"
+      },
+      {
+        "collection": "reorder_requests",
+        "id": "ywq7UpdczU1KZ6Z86ejS"
+      }
+    ]
+  },
+  "holds": {
+    "classification": "LEGACY_INCOMPLETE_OPERATING_CONTEXT",
+    "disposition": "HOLD",
+    "ruling": "Controller ruling (LEGACY_INCOMPLETE_OPERATING_CONTEXT)",
+    "reason": "The source Reorder states no warehouse and no operating company. It is HELD: not copied, its company is never inferred, and the source is never mutated. It is not a fixture exclusion.",
+    "count": 1,
+    "entries": [
+      {
+        "collection": "reorder_requests",
+        "id": "eA7o3t8DyUXmtg8MCKjT"
+      }
+    ]
+  }
 }

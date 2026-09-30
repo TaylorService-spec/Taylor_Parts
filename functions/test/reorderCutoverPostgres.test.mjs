@@ -14,7 +14,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { hash, randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +34,28 @@ const SNAPSHOT_WITH_FIXTURES = () => {
   for (const f of REORDER_SCENARIO_FIXTURES) {
     collections[f.collection] = [...collections[f.collection], { id: f.id, data: { ...f.facts, scenarioId: SCENARIO_ID } }];
   }
+  return { ...base, collections, counts: Object.fromEntries(Object.entries(collections).map(([k, v]) => [k, v.length])) };
+};
+
+// Owner ruling 2026-09-29: the CW-P-0000 live-proof records (CERTIFICATION_LIVE_PROOF) and the held record
+// (LEGACY_INCOMPLETE_OPERATING_CONTEXT) are declared in the SAME committed manifest, each as its own class.
+const MANIFEST_JSON = JSON.parse(readFileSync(EXCLUSION_MANIFEST, "utf8"));
+const LIVE_PROOF_IDS = MANIFEST_JSON.certificationLiveProof.entries;
+const HELD_IDS = MANIFEST_JSON.holds.entries;
+/** The live-proof and held records, stated on the synthetic source warehouses EOS does not (and must not) hold. */
+const ruledClassDocs = () => {
+  const out = { reorder_requests: [], reorder_purchase_orders: [], reorder_purchase_order_voids: [] };
+  for (const e of LIVE_PROOF_IDS) {
+    if (e.collection === "reorder_requests") out.reorder_requests.push(reorder(e.id, { partId: "CW-P-0000", warehouseId: "wh-main", operatingCompanyId: "taylor" }));
+    else out.reorder_purchase_orders.push({ id: e.id, data: { ...order(e.id).data, partId: "CW-P-0000" } });
+  }
+  for (const e of HELD_IDS) out[e.collection].push(reorder(e.id, { warehouseId: null, operatingCompanyId: null }));
+  return out;
+};
+const withRuledClasses = (base, { operational = true } = {}) => {
+  const ruled = ruledClassDocs();
+  const collections = {};
+  for (const k of Object.keys(ruled)) collections[k] = [...base.collections[k].filter((d) => operational || !d.id.startsWith("rr-cut-")), ...ruled[k]];
   return { ...base, collections, counts: Object.fromEntries(Object.entries(collections).map(([k, v]) => [k, v.length])) };
 };
 
@@ -190,13 +212,32 @@ test("reorder cutover CLI, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async
     assert.deepEqual(x.absent, []);
     assert.equal(x.onlyDeclaredFixturesExcluded, true);
     assert.deepEqual(x.counts, {
-      reorder_requests: { source: 9, excluded: 5, retained: 4 },
-      reorder_purchase_orders: { source: 5, excluded: 3, retained: 2 },
-      reorder_purchase_order_voids: { source: 1, excluded: 0, retained: 1 },
+      reorder_requests: { source: 9, excluded: 5, held: 0, retained: 4 },
+      reorder_purchase_orders: { source: 5, excluded: 3, held: 0, retained: 2 },
+      reorder_purchase_order_voids: { source: 1, excluded: 0, held: 0, retained: 1 },
     });
     // Every later stage sees the retained population only: the same plan as the fixture-free snapshot.
     assert.deepEqual(r.out.evidence.snapshotCensus.counts, { reorder_requests: 4, reorder_purchase_orders: 2, reorder_purchase_order_voids: 1 });
     assert.equal(r.out.stages.objects.counts.MIGRATABLE, 4);
+    assert.deepEqual(await target(), EMPTY, "census wrote nothing");
+  });
+
+  await t.test("Owner 2026-09-29: the real source shape (8 fixtures, 10 live-proof, 1 held, 0 operational) censuses to an EMPTY queue", async () => {
+    const r = run("census", [], { snapshot: withRuledClasses(SNAPSHOT_WITH_FIXTURES(), { operational: false }) });
+    assert.equal(r.status, 0, r.err);
+    assert.equal(r.out.copyReady, true);
+    assert.deepEqual(r.out.blockers, []);
+    const x = r.out.evidence.exclusion;
+    assert.equal(x.manifestCount, 8, "the fixture bucket is still exactly eight");
+    assert.equal(x.certificationLiveProof.classification, "CERTIFICATION_LIVE_PROOF");
+    assert.equal(x.certificationLiveProof.excluded.length, 10);
+    assert.equal(x.held.classification, "LEGACY_INCOMPLETE_OPERATING_CONTEXT");
+    assert.deepEqual(x.held.held.map((e) => e.id), ["eA7o3t8DyUXmtg8MCKjT"]);
+    assert.equal(x.onlyDeclaredFixturesExcluded, true);
+    assert.deepEqual(x.counts.reorder_requests, { source: 15, excluded: 14, held: 1, retained: 0 });
+    // Every stage sees an empty population: no warehouse is resolved, translated or required.
+    assert.deepEqual(r.out.evidence.snapshotCensus.counts, { reorder_requests: 0, reorder_purchase_orders: 0, reorder_purchase_order_voids: 0 });
+    assert.ok(!JSON.stringify(r.out.warehouseIdentity).includes("wh-main"), "an excluded record's warehouse never reaches warehouse identity");
     assert.deepEqual(await target(), EMPTY, "census wrote nothing");
   });
 
@@ -355,6 +396,22 @@ test("reorder cutover CLI, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async
     assert.deepEqual(r.out.stages.purchasing.verify.incompleteLifecycles, []);
     assert.deepEqual(r.out.target, { reorderRequests: 4, reorderRequestsMigrated: 4, currentAssignments: 3, currentAssignmentsMigrated: 3, purchaseOrders: 2, purchaseOrderVoids: 1 });
     assert.deepEqual(await target(), before, "verify wrote nothing");
+  });
+
+  await t.test("Owner 2026-09-29: live-proof and held records never reach PG Reorder, and CW-P-0000 never reaches PG Catalog", async () => {
+    const snapshot = withRuledClasses(SNAPSHOT());
+    const before = await target();
+    for (const stage of ["objects", "assignments", "purchasing"]) {
+      const r = copy(stage, "p-executor", { snapshot });
+      assert.equal(r.status, 0, r.err);
+      assert.equal(r.out.outcome, "NO_CHANGES", `${stage}: only the already-copied operational records remain`);
+    }
+    assert.deepEqual(await target(), before, "nothing written");
+    const ids = [...LIVE_PROOF_IDS, ...HELD_IDS].map((e) => e.id);
+    assert.equal(await n(`SELECT count(*)::int n FROM eos_ops.reorder_requests WHERE id = ANY($1)`, [ids]), 0);
+    assert.equal(await n(`SELECT count(*)::int n FROM eos_ops.purchase_orders WHERE id = ANY($1)`, [ids]), 0);
+    assert.equal(await n(`SELECT count(*)::int n FROM eos_ops.reorder_requests WHERE part_id = 'CW-P-0000'`, []), 0);
+    assert.equal(await n(`SELECT count(*)::int n FROM eos_ops.parts WHERE id = 'CW-P-0000'`, []), 0);
   });
 
   await t.test("verify is NOT reconciled against a snapshot the target does not hold", async () => {

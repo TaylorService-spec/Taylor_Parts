@@ -28,11 +28,20 @@ import {
 } from "./reorderSnapshot.js";
 
 export const REORDER_EXCLUSION_FORMAT = "EOS_REORDER_MIGRATION_EXCLUSION";
-export const REORDER_EXCLUSION_VERSION = 1;
+export const REORDER_EXCLUSION_VERSION = 2;
 
 export interface ExclusionEntry {
   readonly collection: ReorderSnapshotCollection;
   readonly id: string;
+}
+
+export interface ClassifiedExclusionSection {
+  readonly classification: "CERTIFICATION_LIVE_PROOF" | "LEGACY_INCOMPLETE_OPERATING_CONTEXT";
+  readonly disposition: "EXCLUDED" | "HOLD";
+  readonly ruling: string;
+  readonly reason: string;
+  readonly count: number;
+  readonly entries: readonly ExclusionEntry[];
 }
 
 export interface ReorderExclusionManifest {
@@ -41,9 +50,24 @@ export interface ReorderExclusionManifest {
   readonly ruling: "DQ-032";
   readonly scenarioId: string;
   readonly reason: string;
+  /** The SBX-SCN-001 synthetic fixtures (DQ-032). `count` and `entries` keep their original meaning. */
   readonly count: number;
   readonly entries: readonly ExclusionEntry[];
+  /** Controller ruling 2026-09-30: the Decision #155 / 2C / R-34 live-proof records on certification part CW-P-0000. */
+  readonly certificationLiveProof: ClassifiedExclusionSection;
+  /** Controller ruling 2026-09-30: held, NOT a fixture exclusion -- never copied, never inferred, never mutated. */
+  readonly holds: ClassifiedExclusionSection;
 }
+
+/** The certification part the Catalog census excludes (CERTIFICATION_FIXTURE_EXCLUDED); live-proof records name it. */
+export const CERTIFICATION_LIVE_PROOF_PART_ID = "CW-P-0000";
+// Exact source ids, reconciled from the FP-0 snapshot (2026-09-30). Mutually exclusive with the fixtures and the hold.
+const CERTIFICATION_LIVE_PROOF_REQUEST_IDS = Object.freeze([
+  "8qKjYorWjvNyYRH53Uzy", "KuYv3Ld0pFSGBz3bHvpc", "P1Ia7fpUTKPq3RloYEvF", "Sz8QPa815EgkmvmObQ1K", "YqD07rXiAE3jLoHf4q6x",
+  "ggJNjr0LsxEEn7Hwc2zX", "kLbfmkzNcUGYITlWzFGG", "veqnZP7HHnaa09PgXTqe", "ywq7UpdczU1KZ6Z86ejS",
+]);
+const CERTIFICATION_LIVE_PROOF_PURCHASE_ORDER_IDS = Object.freeze(["Sz8QPa815EgkmvmObQ1K"]);
+const LEGACY_INCOMPLETE_REQUEST_IDS = Object.freeze(["eA7o3t8DyUXmtg8MCKjT"]);
 
 export class ReorderExclusionError extends Error {
   constructor(message: string) {
@@ -70,7 +94,27 @@ export function buildReorderExclusionManifest(): ReorderExclusionManifest {
       + "Firestore, removed only by the final Firebase retirement.",
     count: entries.length,
     entries: Object.freeze(entries),
+    certificationLiveProof: section("CERTIFICATION_LIVE_PROOF", "EXCLUDED",
+      "Controller ruling 2026-09-30 (CW-P-0000 / Reorder migration)",
+      "Decision #155 / workstream 2C / R-34 live-proof evidence on certification part CW-P-0000, which the Catalog census "
+        + "excludes as a certification fixture. Excluded from the PostgreSQL business-data migration; retained unchanged "
+        + "in Firestore as historical evidence until the final Firebase retirement.",
+      [...CERTIFICATION_LIVE_PROOF_REQUEST_IDS.map((id) => ({ collection: "reorder_requests" as const, id })),
+        ...CERTIFICATION_LIVE_PROOF_PURCHASE_ORDER_IDS.map((id) => ({ collection: "reorder_purchase_orders" as const, id }))]),
+    holds: section("LEGACY_INCOMPLETE_OPERATING_CONTEXT", "HOLD",
+      "Controller ruling (LEGACY_INCOMPLETE_OPERATING_CONTEXT)",
+      "The source Reorder states no warehouse and no operating company. It is HELD: not copied, its company is never "
+        + "inferred, and the source is never mutated. It is not a fixture exclusion.",
+      LEGACY_INCOMPLETE_REQUEST_IDS.map((id) => ({ collection: "reorder_requests" as const, id }))),
   });
+}
+
+function section(
+  classification: ClassifiedExclusionSection["classification"], disposition: ClassifiedExclusionSection["disposition"],
+  ruling: string, reason: string, list: ExclusionEntry[],
+): ClassifiedExclusionSection {
+  const entries = [...list].sort(byEntry).map((e) => Object.freeze({ collection: e.collection, id: e.id }));
+  return Object.freeze({ classification, disposition, ruling, reason, count: entries.length, entries: Object.freeze(entries) });
 }
 
 /** The canonical file text of the manifest (what is committed and checksummed). */
@@ -96,13 +140,18 @@ export interface ExcludedRecord {
 export interface ReorderExclusionProof {
   readonly ruling: "DQ-032";
   readonly manifestCount: number;
-  /** Per collection: source = retained + excluded. */
-  readonly counts: Readonly<Record<ReorderSnapshotCollection, { source: number; excluded: number; retained: number }>>;
+  /** Per collection: source = retained + excluded + held (excluded = fixtures + certification live proof). */
+  readonly counts: Readonly<Record<ReorderSnapshotCollection, { source: number; excluded: number; held: number; retained: number }>>;
+  /** The SBX-SCN-001 fixtures removed. */
   readonly excluded: readonly ExcludedRecord[];
   /** Declared fixtures the snapshot does not hold. Absence is a fact, never an error. */
   readonly absent: readonly ExclusionEntry[];
-  /** True iff every excluded record is a declared, fact-matching fixture and nothing else was removed. */
+  /** True iff every removed record is a declared, fact-matching record of its class and nothing else was removed. */
   readonly onlyDeclaredFixturesExcluded: boolean;
+  readonly certificationLiveProof: { readonly classification: "CERTIFICATION_LIVE_PROOF"; readonly reason: string;
+    readonly excluded: readonly ExclusionEntry[]; readonly absent: readonly ExclusionEntry[] };
+  readonly held: { readonly classification: "LEGACY_INCOMPLETE_OPERATING_CONTEXT"; readonly reason: string;
+    readonly held: readonly ExclusionEntry[]; readonly absent: readonly ExclusionEntry[] };
 }
 
 const REFERENCE_FIELDS: Readonly<Record<ReorderSnapshotCollection, readonly [string, ReorderSnapshotCollection][]>> = {
@@ -121,16 +170,46 @@ export function applyReorderExclusion(
   sha256Hex: (input: string) => string,
 ): { readonly snapshot: ReorderSnapshot; readonly proof: ReorderExclusionProof } {
   const declared = new Set(manifest.entries.map((e) => key(e.collection, e.id)));
+  const liveProof = new Set(manifest.certificationLiveProof.entries.map((e) => key(e.collection, e.id)));
+  const holdIds = new Set(manifest.holds.entries.map((e) => key(e.collection, e.id)));
+  const liveProofRequests = new Set(manifest.certificationLiveProof.entries
+    .filter((e) => e.collection === "reorder_requests").map((e) => e.id));
+  const liveRemoved: ExclusionEntry[] = [];
+  const heldRemoved: ExclusionEntry[] = [];
+  const blank = (v: unknown) => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
   const excluded: ExcludedRecord[] = [];
   const refusals: string[] = [];
   const collections = {} as Record<ReorderSnapshotCollection, readonly ReorderSnapshotDocument[]>;
-  const counts = {} as Record<ReorderSnapshotCollection, { source: number; excluded: number; retained: number }>;
+  const counts = {} as Record<ReorderSnapshotCollection, { source: number; excluded: number; held: number; retained: number }>;
 
   for (const name of REORDER_SNAPSHOT_COLLECTIONS) {
     const source = snapshot.collections[name];
     const retained: ReorderSnapshotDocument[] = [];
+    let heldHere = 0;
     for (const doc of source) {
-      if (!declared.has(key(name, doc.id))) {
+      const k = key(name, doc.id);
+      if (liveProof.has(k)) {
+        // It must still BE the live-proof record: it names the certification part (and a PO belongs to a live-proof request).
+        const partOk = doc.data.partId === CERTIFICATION_LIVE_PROOF_PART_ID;
+        const lineageOk = name !== "reorder_purchase_orders" || liveProofRequests.has(String(doc.data.reorderRequestId));
+        if (!partOk || !lineageOk) {
+          refusals.push(`${name}/${doc.id} is declared CERTIFICATION_LIVE_PROOF but no longer matches it (part/lineage diverged)`);
+          continue;
+        }
+        liveRemoved.push(Object.freeze({ collection: name, id: doc.id }));
+        continue;
+      }
+      if (holdIds.has(k)) {
+        // It must still lack its operating context; if it gained one, it needs a fresh ruling, not a silent hold.
+        if (!blank(doc.data.warehouseId) || !blank(doc.data.operatingCompanyId)) {
+          refusals.push(`${name}/${doc.id} is HELD as LEGACY_INCOMPLETE_OPERATING_CONTEXT but now states an operating context`);
+          continue;
+        }
+        heldRemoved.push(Object.freeze({ collection: name, id: doc.id }));
+        heldHere += 1;
+        continue;
+      }
+      if (!declared.has(k)) {
         retained.push(doc);
         continue;
       }
@@ -142,10 +221,10 @@ export function applyReorderExclusion(
       excluded.push(Object.freeze({ collection: name, id: doc.id, fingerprint: c.fingerprint }));
     }
     collections[name] = Object.freeze(retained);
-    counts[name] = { source: source.length, excluded: source.length - retained.length, retained: retained.length };
+    counts[name] = { source: source.length, excluded: source.length - retained.length - heldHere, held: heldHere, retained: retained.length };
   }
 
-  const excludedKeys = new Set(excluded.map((e) => key(e.collection, e.id)));
+  const excludedKeys = new Set([...excluded, ...liveRemoved, ...heldRemoved].map((e) => key(e.collection, e.id)));
   for (const name of REORDER_SNAPSHOT_COLLECTIONS) {
     for (const doc of collections[name]) {
       for (const [field, target] of REFERENCE_FIELDS[name]) {
@@ -162,7 +241,9 @@ export function applyReorderExclusion(
 
   const present = new Set(excluded.map((e) => key(e.collection, e.id)));
   const absent = manifest.entries.filter((e) => !present.has(key(e.collection, e.id)));
-  const totalRemoved = REORDER_SNAPSHOT_COLLECTIONS.reduce((n, c) => n + counts[c].excluded, 0);
+  const totalRemoved = REORDER_SNAPSHOT_COLLECTIONS.reduce((n, c) => n + counts[c].excluded + counts[c].held, 0);
+  const liveKeys = new Set(liveRemoved.map((e) => key(e.collection, e.id)));
+  const heldKeys = new Set(heldRemoved.map((e) => key(e.collection, e.id)));
 
   const filtered: ReorderSnapshot = Object.freeze({
     source: snapshot.source,
@@ -178,7 +259,17 @@ export function applyReorderExclusion(
       counts: Object.freeze(counts),
       excluded: Object.freeze(excluded.sort(byEntry)),
       absent: Object.freeze(absent),
-      onlyDeclaredFixturesExcluded: totalRemoved === excluded.length,
+      onlyDeclaredFixturesExcluded: totalRemoved === excluded.length + liveRemoved.length + heldRemoved.length,
+      certificationLiveProof: Object.freeze({
+        classification: "CERTIFICATION_LIVE_PROOF" as const, reason: manifest.certificationLiveProof.reason,
+        excluded: Object.freeze(liveRemoved.sort(byEntry)),
+        absent: Object.freeze(manifest.certificationLiveProof.entries.filter((e) => !liveKeys.has(key(e.collection, e.id)))),
+      }),
+      held: Object.freeze({
+        classification: "LEGACY_INCOMPLETE_OPERATING_CONTEXT" as const, reason: manifest.holds.reason,
+        held: Object.freeze(heldRemoved.sort(byEntry)),
+        absent: Object.freeze(manifest.holds.entries.filter((e) => !heldKeys.has(key(e.collection, e.id)))),
+      }),
     }),
   };
 }
