@@ -190,6 +190,11 @@ test("the Service activation authority delta, applied through Administration and
     let own; let other; let ventanaWo;
     const start = Date.now() + 2 * 24 * HOUR;
     await t.test("SERVICE OFFICE (both canonical roles) now plans and schedules; assignment is to an eligible Employee", async () => {
+      // DECISION 5: synthetic acceptance availability, configured explicitly through the governed route.
+      const ROUND_THE_CLOCK = Object.fromEntries(["0", "1", "2", "3", "4", "5", "6"].map((d) => [d, [{ start: "00:00", end: "24:00" }]]));
+      for (const employeeId of ["emp-sa-a", "emp-sa-b", "emp-sa-v"]) {
+        ok(await wo(dispatcher.subject, "setTechnicianWorkingHours", { employeeId, timeZone: "UTC", weeklyHours: ROUND_THE_CLOCK, reason: "synthetic acceptance availability" }), "hours");
+      }
       own = await mkWo();
       other = await mkWo();
       for (const [who, id, emp, offset] of [[dispatcher, own, "emp-sa-a", 0], [serviceManager, other, "emp-sa-b", 3 * HOUR]]) {

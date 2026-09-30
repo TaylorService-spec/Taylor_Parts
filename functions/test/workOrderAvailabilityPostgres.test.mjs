@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -467,7 +467,10 @@ test("technician availability", { skip: SKIP, concurrency: 1 }, async (t) => {
   });
 
   await t.test("the down migration REFUSES while availability history exists", async () => {
-    assert.throws(() => migrate("down", "1"), (e) => { assert.match(String(e.stderr ?? e.message), /TECHNICIAN_AVAILABILITY: refuses to reverse/); return true; });
+    // COMPUTED step count, never a bare `down 1`: every migration from this one onward is peeled, newest first; the
+    // later ones reverse cleanly on this database, and this one must refuse.
+    const steps = String(readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql") && Number(f.split("_")[0]) >= 1764320000000).length);
+    assert.throws(() => migrate("down", steps), (e) => { assert.match(String(e.stderr ?? e.message), /TECHNICIAN_AVAILABILITY: refuses to reverse/); return true; });
     const still = await q(`SELECT to_regclass('eos_workforce.technician_working_schedules') AS t`);
     assert.ok(still.rows[0].t);
   });

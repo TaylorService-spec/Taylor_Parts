@@ -40,6 +40,7 @@
 //     (authorizeWorkOrderRecordRead) before it is counted -- the listMyAssignedWorkOrders shape.
 //
 // Nothing here writes, and nothing here reads Firestore.
+import { notQuarantined } from "./workOrderQuarantine";
 import type { Pool } from "pg";
 import { WorkOrderLifecycleError } from "./workOrderLifecycle";
 import { WORK_ORDER_RECORD_READ, authorizeWorkOrderRecordRead } from "./workOrderRecordRead";
@@ -59,13 +60,12 @@ const SQL_ALIAS = /^[a-z_][a-z0-9_]*$/;
 /**
  * THE ACTIVE WORK ORDER SET, as a SQL boolean over the eos_ops.work_orders row aliased `alias`.
  *
- * The single definition every aggregate in this module uses. The integrator replaces this with the quarantine
- * exclusion (a NOT EXISTS against eos_ops.work_order_quarantine on (tenant_id, work_order_id)); until then every
- * Work Order row is in the active set.
+ * The single definition every aggregate in this module uses: every Work Order NOT under the pinned quarantine
+ * (Owner DECISION 3) -- quarantined rows never affect an operational KPI. Delegated to the ONE quarantine predicate.
  */
 export function activeWorkOrderPredicate(alias: string): string {
   if (!SQL_ALIAS.test(alias)) throw new Error(`activeWorkOrderPredicate: "${alias}" is not a SQL alias`);
-  return "TRUE";
+  return notQuarantined(alias);
 }
 
 function only(input: Record<string, unknown> | null | undefined, allowed: readonly string[]): Record<string, unknown> {

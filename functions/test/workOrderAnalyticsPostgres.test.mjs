@@ -46,7 +46,8 @@ test("THE ACTIVE SET is one predicate: every Work Order population in the module
   assert.ok(populations.length >= 3, "each aggregate reads work_orders");
   assert.equal(filtered.length, populations.length, "a work_orders population without the active-set predicate");
   assert.equal(/work_order_quarantine/.test(code), false, "the quarantine exclusion is wired by the integrator, in the predicate");
-  assert.equal(analytics.activeWorkOrderPredicate("w"), "TRUE");
+  // INTEGRATED: the active set IS the one quarantine exclusion (Owner DECISION 3) -- quarantined rows affect no KPI.
+  assert.equal(analytics.activeWorkOrderPredicate("w"), require("../lib/eosOps/workOrderQuarantine.js").notQuarantined("w"));
   assert.throws(() => analytics.activeWorkOrderPredicate("w; DROP"), /not a SQL alias/);
 });
 

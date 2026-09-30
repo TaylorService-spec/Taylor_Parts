@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { configureRoundTheClock } from "./support/syntheticAvailability.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -151,6 +152,7 @@ test("Work Order field context and readiness", { skip: SKIP, concurrency: 1 }, a
     return wo;
   };
 
+  await configureRoundTheClock(pool, caller(P.dispatcher).actor, ["emp-a", "emp-b"]);
   const woA = await scheduled("emp-a", 2, { equipmentId: "eq-1" });
   await q(`INSERT INTO eos_ops.work_order_parts_plan (tenant_id, work_order_id, part_id, qty_planned, planned_by, updated_by)
            VALUES ($1,$2,'PRT-1005',2,'prn-dispatcher','prn-dispatcher'), ($1,$2,'PRT-GONE',1,'prn-dispatcher','prn-dispatcher')`, [T, woA]);

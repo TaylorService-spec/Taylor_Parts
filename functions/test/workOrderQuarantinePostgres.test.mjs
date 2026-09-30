@@ -20,6 +20,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { configureRoundTheClock } from "./support/syntheticAvailability.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -167,6 +168,7 @@ test("the pinned quarantine, against PostgreSQL", { skip: SKIP, concurrency: 1 }
 
   await t.test("SCHEDULING CANDIDATES: a quarantined window never blocks a technician", async () => {
     const w = { scheduledStart: new Date(start.getTime() + HOUR / 2).toISOString(), scheduledEnd: new Date(end.getTime() - HOUR / 2).toISOString() };
+    await configureRoundTheClock(pool, actor("prn-disp"), ["emp-t"]);
     const r = await scheduling.scheduleWorkOrder({ pool }, actor("prn-disp"), { workOrderId: "wo-live", employeeId: "emp-t", ...w });
     assert.equal(r.transition.toStatus, "SCHEDULED", "the quarantined SCHEDULED row's overlapping window was not a conflict");
   });
