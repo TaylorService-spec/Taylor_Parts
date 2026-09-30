@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../../firebase/firebase";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import {
   fetchInventoryTransactions,
   fetchWarehouses,
@@ -27,7 +24,6 @@ import InventoryHealthPanel from "./panels/InventoryHealthPanel";
 import WarehousePanel from "./panels/WarehousePanel";
 import ProcurementPanel from "./panels/ProcurementPanel";
 import ExecutionInsightsPanel from "./panels/ExecutionInsightsPanel";
-import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
 // ROLE DEFINITION (load-bearing, don't blur this):
 // Operations is a READ-ONLY EXECUTIVE / MONITORING layer over Epics
@@ -96,9 +92,12 @@ export default function Operations({ accessVersion } = {}) {
       fetchSuppliers(),
       fetchSupplierCatalog(),
       fetchProcurementPurchaseOrders(),
-      getDocs(collection(db, TECHNICIANS_COLLECTION)),
-      getInventoryConsumptionSnapshot(),
-      getTechnicianVolumeBreakdown(),
+      // The governed Work Order aggregates, SETTLED: a refused or unavailable aggregate is said inside the
+      // Execution Insights panel, never by blanking the inventory / warehouse / procurement panels beside it.
+      Promise.all([getInventoryConsumptionSnapshot(), getTechnicianVolumeBreakdown()]).then(
+        ([consumption, volume]) => ({ consumption, volume, failure: null }),
+        (failure) => ({ consumption: null, volume: null, failure }),
+      ),
     ])
       .then(
         ([
@@ -108,13 +107,9 @@ export default function Operations({ accessVersion } = {}) {
           suppliers,
           supplierCatalog,
           purchaseOrders,
-          techniciansSnap,
-          consumptionSnapshot,
-          technicianVolume,
+          executionInsights,
         ]) => {
         if (cancelled) return;
-
-        const technicians = techniciansSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
         // DQ-027: partition first. Unreadable rows are never silently dropped: their parts are listed as
         // unavailable, and an unattributable one makes the inventory-derived panels unavailable.
@@ -150,9 +145,7 @@ export default function Operations({ accessVersion } = {}) {
             purchaseOrders,
             suppliers,
             procurementDrafts,
-            technicians,
-            consumptionSnapshot,
-            technicianVolume,
+            executionInsights,
           },
         });
       })
@@ -194,13 +187,8 @@ export default function Operations({ accessVersion } = {}) {
     purchaseOrders,
     suppliers,
     procurementDrafts,
-    technicians,
-    consumptionSnapshot,
-    technicianVolume,
+    executionInsights,
   } = state.data;
-  // Shared resolver -- see domain/actorDisplayName.js. Previously fell back to the raw technician
-  // document id, printing an opaque key where a person's name belongs.
-  const technicianName = (id) => resolveTechnicianIdentity(id, { technicians }).name;
 
   return (
     <div className="fo-panel">
@@ -228,9 +216,9 @@ export default function Operations({ accessVersion } = {}) {
       />
       <ProcurementPanel purchaseOrders={purchaseOrders} suppliers={suppliers} procurementDrafts={procurementDrafts} resolveName={resolveName} ledgerIntegrity={ledgerIntegrity} />
       <ExecutionInsightsPanel
-        consumptionSnapshot={consumptionSnapshot}
-        technicianVolume={technicianVolume}
-        technicianName={technicianName}
+        consumptionSnapshot={executionInsights.consumption}
+        technicianVolume={executionInsights.volume}
+        failure={executionInsights.failure}
         resolveName={resolveName}
       />
     </div>

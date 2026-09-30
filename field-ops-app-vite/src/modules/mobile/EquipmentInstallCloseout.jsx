@@ -31,10 +31,8 @@ import {
   deriveResumePlan,
   interpretInstallStep,
 } from "../../domain/workOrderInstallCloseout";
-import {
-  fetchInstallableEquipmentForWorkOrder,
-  recordWorkOrderEquipmentInstall,
-} from "../../services/workOrderInstallCallableClient";
+import { SERIALIZED_INSTALL_NOT_ACTIVATED, WORK_ORDER_BOUNDARY } from "../../domain/workOrderOutcome.js";
+import { WorkOrderBoundaryNotice } from "../../shared/ui/WorkOrderAuthorityNotice.jsx";
 import { Button } from "../../shared/ui/primitives";
 import { captureInstall, captureComplete } from "../../offline/technicianIntentCapture.js";
 import StructuredFields from "../../shared/ui/StructuredFields.jsx";
@@ -44,14 +42,24 @@ import { useProvidedOfflineRuntime } from "../../offline/OfflineRuntimeContext.j
 import { connectivityHint } from "../../offline/syncExecutor.js";
 import { classifyFailure, FAILURE_CLASS } from "../../offline/syncFailureClassification.js";
 
+// ============================ NOT ACTIVATED (2026-09-30) ============================
+//
+// Equipment install moves a serialized unit's custody into EQUIPMENT. The governed EOS route does not serve it
+// (the PostgreSQL serialized-custody authority is INACTIVE), and the Firebase install callables
+// (services/workOrderInstallCallableClient.js) are NOT invoked from here any more: a Firebase write behind a
+// Work Order that EOS governs is exactly the split authority the cutover ends. So the DEFAULT transports below
+// answer SERIALIZED_INSTALL / NOT_YET_ACTIVATED without calling anything, and the section says so. The flow
+// itself is kept, driven only by an injected transport (`deps`), for the day an EOS install authority exists.
+const notActivated = async () => ({ outcome: null, error: { ...SERIALIZED_INSTALL_NOT_ACTIVATED } });
+
 /** One attempt token per mount, so a retry of the same intent replays instead of installing twice. */
 function useAttemptToken(workOrderId) {
   return useMemo(() => `${workOrderId}-${Date.now().toString(36)}`, [workOrderId]);
 }
 
 export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOrder, offline: offlineProp = null, deps = {} }) {
-  const fetchUnits = deps.fetchUnits ?? fetchInstallableEquipmentForWorkOrder;
-  const recordInstall = deps.recordInstall ?? recordWorkOrderEquipmentInstall;
+  const fetchUnits = deps.fetchUnits ?? notActivated;
+  const recordInstall = deps.recordInstall ?? notActivated;
   const provided = useProvidedOfflineRuntime();
   const offline = offlineProp ?? provided;
 
@@ -71,6 +79,11 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
     setLoad({ status: "loading", data: null, message: null });
     fetchUnits({ workOrderId }).then((res) => {
       if (cancelled) return;
+      if (res.error?.boundary === WORK_ORDER_BOUNDARY.SERIALIZED_INSTALL) {
+        // A readiness STATE, not a denial and not a failure.
+        setLoad({ status: "not_activated", data: null, message: null });
+        return;
+      }
       if (res.error) {
         // A denial and a failure are different facts and are never collapsed into "nothing here".
         setLoad({ status: "denied", data: null, message: res.error.message ?? "This installation list could not be loaded." });
@@ -239,6 +252,14 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
   }
 
   if (load.status === "loading") return <p className="fo-muted">Loading installable equipment…</p>;
+  if (load.status === "not_activated") {
+    return (
+      <section className="fo-panel" aria-label="Equipment installation">
+        <h3>Equipment Installation</h3>
+        <WorkOrderBoundaryNotice boundary={WORK_ORDER_BOUNDARY.SERIALIZED_INSTALL} />
+      </section>
+    );
+  }
   if (load.status === "denied") {
     return <p className="fo-error" role="alert">{load.message}</p>;
   }

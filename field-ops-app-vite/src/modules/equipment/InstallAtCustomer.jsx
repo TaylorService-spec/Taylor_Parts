@@ -19,6 +19,14 @@
 //                                 again inside its transaction
 //
 // The server is the authority for all of it. This exists so a person is not walked into a refusal.
+//
+// ============================ NOT ACTIVATED (2026-09-30) ============================
+//
+// Serialized install is NOT_YET_ACTIVATED on EOS: the PostgreSQL serialized-custody authority is INACTIVE and the
+// Firebase install callable (services/equipmentInstallCallableClient.js) is no longer invoked from this surface.
+// With no `installTransport` the dialog says "Equipment install is not activated yet" and the confirm control is
+// disabled with that reason -- nothing is sent anywhere. The flow is kept, driven only by an injected transport,
+// for the day an EOS install authority exists.
 import { Fragment, useMemo, useState } from "react";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import {
@@ -27,7 +35,8 @@ import {
   selectCustomer, selectLocation, validateInstallForm,
 } from "../../domain/equipmentInstallForm";
 import { installConfirmationSummary, INSTALL_CONFIRMATION_CONSEQUENCE } from "../../domain/equipmentNorthStar";
-import { callInstallSerializedAsset } from "../../services/equipmentInstallCallableClient";
+import { SERIALIZED_INSTALL_NOT_ACTIVATED, WORK_ORDER_BOUNDARY } from "../../domain/workOrderOutcome.js";
+import { WorkOrderBoundaryNotice } from "../../shared/ui/WorkOrderAuthorityNotice.jsx";
 import { Button } from "../../shared/ui/primitives";
 
 /**
@@ -41,7 +50,8 @@ function useAttemptToken(seed) {
   return useMemo(() => `${seed}-${Date.now().toString(36)}`, [seed]);
 }
 
-export default function InstallAtCustomer({ unit, accounts, canInstall, onClose, onInstalled }) {
+export default function InstallAtCustomer({ unit, accounts, canInstall, onClose, onInstalled, installTransport = null }) {
+  const activated = typeof installTransport === "function";
   const [form, setForm] = useState(() => ({
     ...EMPTY_INSTALL_FORM,
     serializedAssetId: unit?.serializedAssetId ?? null,
@@ -54,13 +64,18 @@ export default function InstallAtCustomer({ unit, accounts, canInstall, onClose,
   const { data: locations, loading: locationsLoading } = useLocationsForAccount(form.accountId);
   const locationOptions = Array.isArray(locations) ? locations : [];
 
-  const action = deriveInstallAction({
+  const derived = deriveInstallAction({
     canInstall,
     form,
     locations: locationOptions,
     submitStatus: submit.status,
     unitAvailable: unit?.available !== false,
   });
+  // Not activated: never enabled. A more specific reason the form already has (not authorized, incomplete) is
+  // kept; otherwise the reason is the activation state itself.
+  const action = activated || !derived.enabled
+    ? derived
+    : { ...derived, enabled: false, reason: SERIALIZED_INSTALL_NOT_ACTIVATED.message };
   const { problems } = validateInstallForm(form, { locations: locationOptions });
   const problemFor = (field) => problems.find((p) => p.field === field)?.message ?? null;
 
@@ -85,7 +100,7 @@ export default function InstallAtCustomer({ unit, accounts, canInstall, onClose,
       setSubmit({ status: INSTALL_SUBMIT.FAILED, message: "That installation request is incomplete.", equipmentId: null });
       return;
     }
-    const result = interpretInstallResult(await callInstallSerializedAsset(request));
+    const result = interpretInstallResult(await installTransport(request));
     setSubmit(result);
     if (result.status === INSTALL_SUBMIT.INSTALLED && result.equipmentId) {
       onInstalled?.(result.equipmentId, { replayed: result.replayed });
@@ -95,6 +110,7 @@ export default function InstallAtCustomer({ unit, accounts, canInstall, onClose,
   return (
     <div className="fo-panel" role="dialog" aria-modal="true" aria-labelledby="install-title">
       <h3 id="install-title">Install at customer</h3>
+      {activated ? null : <WorkOrderBoundaryNotice boundary={WORK_ORDER_BOUNDARY.SERIALIZED_INSTALL} />}
 
       <dl className="fo-detail-list">
         <dt>Unit</dt>

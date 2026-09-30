@@ -10,8 +10,8 @@
 //
 // Epic 7 -- Inventory + Execution Analytics Foundation. A READ +
 // AGGREGATION LAYER only -- nothing in this file writes anywhere.
-// Every read here uses getDoc/getDocs (one-shot), never onSnapshot,
-// per this epic's Step 6 -- this is analytics, not a live board.
+// Every read here is one-shot, never a live subscription, per this
+// epic's Step 6 -- this is analytics, not a live board.
 //
 // Not a transactional inventory system: this only reads and
 // summarizes execution data already written by Epic 6.3's
@@ -31,36 +31,34 @@
 // "executionNotes" below is therefore derived FROM executionLog (each
 // entry's `.note`), not a distinct field being read.
 //
-// Read-access note: getWorkOrderExecutionSummary() (single-document
-// getDoc) works for both technician (their own assignment) and
-// admin/dispatcher roles, per firestore.rules' per-document
-// isOwnTechnician() check. getTechnicianExecutionStats() uses the same
-// assignedTechId-scoped query pattern as PT-002's
-// subscribeAssignedWorkOrders() (one-shot here, not live), so it also
-// works for a technician viewing their own stats.
-// getInventoryConsumptionSnapshot() and getTechnicianVolumeBreakdown()
-// do an UNFILTERED full-collection read -- per firestore.rules, that
-// only succeeds for admin/dispatcher roles (isAdminOrDispatcher()
-// doesn't depend on resource.data, so it's provable for every
-// document; a technician's isOwnTechnician() check depends on
-// per-document data an unfiltered query doesn't constrain, so Firestore
-// rejects the whole query for that role -- same reasoning documented
-// on subscribeAssignedWorkOrders()'s header comment). Do not wire
-// either of those two into a technician-facing screen.
+// Read-access note: getWorkOrderExecutionSummary() and getTechnicianExecutionStats() (own figures) work for a
+// technician on their own assignment and for the office. getInventoryConsumptionSnapshot() and
+// getTechnicianVolumeBreakdown() are OFFICE aggregates -- the server refuses a caller without
+// workOrder.record.read held unconditionally. Do not wire either of those two into a technician-facing screen.
 //
-// WORK ORDER CUTOVER STATUS. getWorkOrderExecutionSummary() reads the GOVERNED EOS detail
-// (readWorkOrder via services/workOrderService.ts). The three AGGREGATE reads below
-// (getTechnicianExecutionStats / getInventoryConsumptionSnapshot / getTechnicianVolumeBreakdown)
-// STILL read Firestore fieldops_wos: the governed route has no aggregate read, its list summary
-// carries neither lifecycle timestamps (workStartedAt/completedAt) nor part usage, and the
-// technician's own list excludes CLOSED Work Orders -- so no honest conversion exists without a
-// server read that does not exist yet. They are REMAINING Firestore Work Order readers, reported
-// as such; they are not a fallback for anything.
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { WORK_ORDERS_COLLECTION } from "../domain/constants";
-import { getWorkOrder } from "../services/workOrderService";
-import type { WorkOrder, InventorySnapshotItem, ExecutionLogEntry } from "../types/workOrder";
+// WORK ORDER CUTOVER STATUS (completed 2026-09-30 -- a DELIBERATE, EXPLICIT REVISION of this module's
+// contract, per the Owner ruling "replace the three remaining Firestore Work Order aggregate reads with
+// PostgreSQL queries over the active, non-quarantined Work Order set"). Nothing here reads Firestore now:
+//   * getWorkOrderExecutionSummary() reads the governed detail (readWorkOrder);
+//   * getTechnicianExecutionStats() / getInventoryConsumptionSnapshot() / getTechnicianVolumeBreakdown() call the
+//     governed aggregates (readTechnicianExecutionStats / readWorkOrderConsumptionSnapshot /
+//     readTechnicianVolumeBreakdown, functions/src/eosOps/workOrderAnalytics.ts), computed SERVER-side over the
+//     active Work Order set with the definitions below kept.
+// What changed, and why each is not a choice about the surface:
+//   * a technician is an EMPLOYEE id (never a fieldops_technicians id). getTechnicianExecutionStats() with no
+//     argument reads the CALLER'S OWN figures -- the server resolves the Employee from the login's link;
+//   * "parts consumed" is recorded execution ACTUALS (no stock moves on the governed route);
+//   * the two office aggregates need workOrder.record.read held unconditionally -- the server refuses anyone
+//     else (FORBIDDEN), exactly where firestore.rules used to refuse the unfiltered scan.
+// Failures THROW WorkOrderApiError (code = client category, reason = server code); a screen renders them through
+// domain/workOrderOutcome.js. There is no fallback of any kind.
+import {
+  getWorkOrder,
+  readTechnicianExecutionStats,
+  readWorkOrderConsumptionSnapshot,
+  readTechnicianVolumeBreakdown,
+} from "../services/workOrderService";
+import type { InventorySnapshotItem, ExecutionLogEntry } from "../types/workOrder";
 
 export interface NormalizedPartUsage {
   partId: string;
@@ -113,7 +111,9 @@ export async function getWorkOrderExecutionSummary(workOrderId: string): Promise
 }
 
 export interface TechnicianExecutionStats {
-  technicianId: string;
+  /** The EOS Employee these figures describe. */
+  employeeId: string;
+  displayName: string | null;
   totalWorkOrdersCompleted: number;
   totalPartsConsumed: number;
   averageCompletionTimeMs: number | null;
@@ -125,85 +125,38 @@ export interface TechnicianExecutionStats {
    * `missing` counts COMPLETED Work Orders outside the eligible duration population -- the one
    * this service has always defined as "only where both timestamps exist". Averaging over that
    * population is authorised, but it means "Avg. Job Duration" can describe fewer jobs than the
-   * completion count beside it. That gap is now COUNTED rather than silent: a partial figure may
-   * not wear a complete-population name without the reader being able to find out.
+   * completion count beside it. That gap is COUNTED rather than silent.
    */
   completionEvidence: { valid: number; inverted: number; missing: number };
   workOrderVolumeByStatus: Record<string, number>;
 }
 
-// 2. getTechnicianExecutionStats(technicianId) -- scoped query, same
-// pattern as PT-002's subscribeAssignedWorkOrders(), one-shot instead
-// of live. "Completed" is judged by whether completedAt was ever set
-// (the Complete action sets it once and it's never cleared), not by
-// current status -- a WO that's since been CLOSED by a dispatcher
-// still counts as completed by this technician.
-// averageCompletionTimeMs uses the real workStartedAt/completedAt
-// lifecycle timestamps (already written by transitionWorkOrder(), not
-// anything new) -- only over Work Orders where both exist.
-export async function getTechnicianExecutionStats(technicianId: string): Promise<TechnicianExecutionStats> {
-  const q = query(collection(db, WORK_ORDERS_COLLECTION), where("assignedTechId", "==", technicianId));
-  const snap = await getDocs(q);
-  const workOrders = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as WorkOrder);
-
-  const workOrderVolumeByStatus: Record<string, number> = {};
-  let totalPartsConsumed = 0;
-  let totalWorkOrdersCompleted = 0;
-  const completionDurations: number[] = [];
-  let invertedDurations = 0;
-  let missingDurationEvidence = 0;
-
-  for (const wo of workOrders) {
-    workOrderVolumeByStatus[wo.status] = (workOrderVolumeByStatus[wo.status] ?? 0) + 1;
-    totalPartsConsumed += normalizeQtyUsed(wo.inventorySnapshot).reduce((sum, p) => sum + p.quantity, 0);
-    if (wo.completedAt) totalWorkOrdersCompleted += 1;
-    // INVERTED EVIDENCE IS NOT A DURATION.
-    //
-    // This pushed the difference unconditionally, so a Work Order whose completedAt precedes its
-    // workStartedAt contributed a NEGATIVE number to the mean -- and the technician screen
-    // reported "-1686m" as a performance fact about a person. The direction of the subtraction was
-    // always right; what was missing is that the pair can contradict the lifecycle.
-    //
-    // Deliberately NOT Math.abs(), NOT Math.max(0, ...), and NOT a silent swap of the two
-    // timestamps. Each of those turns evidence the platform cannot explain into a plausible
-    // number, which is worse than showing nothing: it is unfalsifiable.
-    const startedAt = wo.workStartedAt?.toMillis?.();
-    const completedAtMs = wo.completedAt?.toMillis?.();
-    if (Number.isFinite(startedAt) && Number.isFinite(completedAtMs)) {
-      const ms = (completedAtMs as number) - (startedAt as number);
-      // Zero is a real measurement (start and completion recorded at the same instant) and is
-      // kept. Only a NEGATIVE span is contradictory.
-      if (ms < 0) invertedDurations += 1;
-      else completionDurations.push(ms);
-    } else if (wo.completedAt) {
-      // Completed, but outside the eligible duration population: it never recorded both
-      // timestamps. Absence of evidence, not contradictory evidence -- a different fact, and one
-      // the completion count alone would hide.
-      missingDurationEvidence += 1;
-    }
-  }
-
-  // ONE contradictory record withdraws the whole figure. Averaging the rest would report a number
-  // over a population this projection KNOWS is partly untrustworthy, under a name ("Avg. Job
-  // Duration") that claims to describe all of it -- the partial-figure-under-a-complete-name
-  // failure this platform has been bitten by before. N/A is the honest answer; the count below is
-  // what makes the reason recoverable instead of mysterious.
-  const averageCompletionTimeMs =
-    invertedDurations > 0 || completionDurations.length === 0
-      ? null
-      : completionDurations.reduce((a, b) => a + b, 0) / completionDurations.length;
-
+// 2. getTechnicianExecutionStats(employeeId?) -- the governed aggregate, definitions unchanged:
+//   * the population is the Employee's Work Orders on an OPEN governed assignment (the current assignee, as
+//     Firestore's assignedTechId was);
+//   * "Completed" is judged by whether completedAt was ever set (a Work Order since CLOSED still counts);
+//   * averageCompletionTimeMs = mean(completedAt - workStartedAt) over Work Orders carrying both -- and ONE
+//     inverted pair withdraws the whole figure (null), never abs(), never a clamp, never a swap;
+//   * completionEvidence counts valid / inverted / completed-without-a-start.
+// No employeeId: the caller's OWN figures.
+export async function getTechnicianExecutionStats(employeeId?: string | null): Promise<TechnicianExecutionStats> {
+  const s = await readTechnicianExecutionStats(employeeId ?? null);
   return {
-    technicianId,
-    totalWorkOrdersCompleted,
-    totalPartsConsumed,
-    averageCompletionTimeMs,
+    employeeId: s.employeeId,
+    displayName: s.displayName ?? null,
+    totalWorkOrdersCompleted: Number(s.totalWorkOrdersCompleted ?? 0),
+    totalPartsConsumed: Number(s.totalPartsConsumed ?? 0),
+    // A negative figure is contradictory evidence, not a duration: it is never passed through.
+    averageCompletionTimeMs:
+      typeof s.averageCompletionTimeMs === "number" && Number.isFinite(s.averageCompletionTimeMs) && s.averageCompletionTimeMs >= 0
+        ? s.averageCompletionTimeMs
+        : null,
     completionEvidence: {
-      valid: completionDurations.length,
-      inverted: invertedDurations,
-      missing: missingDurationEvidence,
+      valid: Number(s.completionEvidence?.valid ?? 0),
+      inverted: Number(s.completionEvidence?.inverted ?? 0),
+      missing: Number(s.completionEvidence?.missing ?? 0),
     },
-    workOrderVolumeByStatus,
+    workOrderVolumeByStatus: { ...(s.workOrderVolumeByStatus ?? {}) },
   };
 }
 
@@ -214,62 +167,35 @@ export interface PartConsumption {
 }
 
 export interface InventoryConsumptionSnapshot {
-  parts: PartConsumption[]; // sorted most-consumed first
+  parts: PartConsumption[]; // sorted most-consumed first (ties by partId)
   mostConsumedPartId: string | null;
 }
 
-// 3. getInventoryConsumptionSnapshot() -- ADMIN/DISPATCHER ONLY (see
-// header comment on why). Full collection scan -- acceptable for a
-// one-shot analytics read at this repo's current data scale; see Step 7
-// / this file's header for the future server-side-aggregation caveat
-// if that changes.
+// 3. getInventoryConsumptionSnapshot() -- OFFICE ONLY (workOrder.record.read held unconditionally). Recorded
+// execution actuals per Part across the active Work Order set: total used and the number of Work Orders.
 export async function getInventoryConsumptionSnapshot(): Promise<InventoryConsumptionSnapshot> {
-  const snap = await getDocs(collection(db, WORK_ORDERS_COLLECTION));
-  const totals = new Map<string, { totalQuantityUsed: number; frequency: number }>();
-
-  snap.docs.forEach((d) => {
-    const wo = d.data() as WorkOrder;
-    for (const { partId, quantity } of normalizeQtyUsed(wo.inventorySnapshot)) {
-      const entry = totals.get(partId) ?? { totalQuantityUsed: 0, frequency: 0 };
-      entry.totalQuantityUsed += quantity;
-      entry.frequency += 1;
-      totals.set(partId, entry);
-    }
-  });
-
-  const parts = [...totals.entries()]
-    .map(([partId, v]) => ({ partId, ...v }))
-    .sort((a, b) => b.totalQuantityUsed - a.totalQuantityUsed);
-
-  return { parts, mostConsumedPartId: parts[0]?.partId ?? null };
+  const r = await readWorkOrderConsumptionSnapshot();
+  const parts = (Array.isArray(r?.parts) ? r.parts : []).map((p) => ({
+    partId: String(p.partId), totalQuantityUsed: Number(p.totalQuantityUsed), frequency: Number(p.frequency),
+  }));
+  return { parts, mostConsumedPartId: r?.mostConsumedPartId ?? parts[0]?.partId ?? null };
 }
 
 export interface TechnicianWorkOrderVolume {
-  technicianId: string;
+  /** The EOS Employee. */
+  employeeId: string;
+  displayName: string | null;
+  /** Not yet completed (no completedAt) -- which includes a CANCELLED one, as it always did. */
   activeCount: number;
   completedCount: number;
 }
 
-// Additional helper beyond the 3 named functions the epic brief
-// requested -- supports Step 5's "busiest technicians" without a
-// second full-collection scan per technician (which N separate
-// getTechnicianExecutionStats() calls would require). Same
-// ADMIN/DISPATCHER-ONLY read-access restriction as
-// getInventoryConsumptionSnapshot(), same reason.
+// Supports "busiest technicians" -- OFFICE ONLY, same gate as the consumption snapshot. One governed read, not
+// one per technician.
 export async function getTechnicianVolumeBreakdown(): Promise<TechnicianWorkOrderVolume[]> {
-  const snap = await getDocs(collection(db, WORK_ORDERS_COLLECTION));
-  const byTech = new Map<string, { active: number; completed: number }>();
-
-  snap.docs.forEach((d) => {
-    const wo = d.data() as WorkOrder;
-    if (!wo.assignedTechId) return;
-    const entry = byTech.get(wo.assignedTechId) ?? { active: 0, completed: 0 };
-    if (wo.completedAt) entry.completed += 1;
-    else entry.active += 1;
-    byTech.set(wo.assignedTechId, entry);
-  });
-
-  return [...byTech.entries()]
-    .map(([technicianId, v]) => ({ technicianId, activeCount: v.active, completedCount: v.completed }))
-    .sort((a, b) => b.completedCount - a.completedCount);
+  const items = await readTechnicianVolumeBreakdown();
+  return items.map((t) => ({
+    employeeId: String(t.employeeId), displayName: t.displayName ?? null,
+    activeCount: Number(t.activeCount), completedCount: Number(t.completedCount),
+  }));
 }

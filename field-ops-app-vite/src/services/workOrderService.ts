@@ -64,7 +64,8 @@ export function onWorkOrderMutation(listener: (workOrderId: string | null) => vo
 }
 
 const READ_OPERATIONS = new Set(["readWorkOrder", "listWorkOrders", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
-  "listWorkOrderOperatingCompanies", "readWorkOrderAuthorityStatus"]);
+  "listWorkOrderOperatingCompanies", "readWorkOrderAuthorityStatus",
+  "readTechnicianExecutionStats", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown"]);
 
 async function run<T = unknown>(operation: string, input: Record<string, unknown> = {}): Promise<T> {
   const res = await activeCall(operation, input);
@@ -167,6 +168,12 @@ export interface TransitionWorkOrderResult {
   id: string;
   status: string;
   warnings?: SchedulingWarning[];
+  /**
+   * The inventory boundary the edge states, when it has one (RESERVE_NOT_APPLIED on dispatch, CONSUME_NOT_APPLIED
+   * on complete, RELEASE_NOT_APPLIED on cancel) -- a success that moved no stock says so; domain/workOrderOutcome.js
+   * turns it into a sentence. Null when the edge has none.
+   */
+  inventoryBoundary: string | null;
 }
 
 const EDGE_OPERATION: Record<string, string> = Object.freeze({
@@ -240,11 +247,13 @@ export async function transitionWorkOrder(
 ): Promise<TransitionWorkOrderResult> {
   const { operation, input } = buildTransitionRequest(workOrderId, action, extra);
   const result = await run<Record<string, unknown>>(operation, input);
-  const transition = (result?.transition ?? result) as { toStatus?: string } | undefined;
+  const transition = (result?.transition ?? result) as { toStatus?: string; inventoryBoundary?: unknown } | undefined;
+  const boundary = result?.inventoryBoundary ?? transition?.inventoryBoundary;
   return {
     id: workOrderId,
     status: String(transition?.toStatus ?? ""),
     warnings: adaptWarnings(result?.warnings),
+    inventoryBoundary: typeof boundary === "string" && boundary !== "" ? boundary : null,
   };
 }
 
@@ -521,4 +530,48 @@ export async function setWorkOrderPartsPlan(workOrderId: string, plan: PartsPlan
   const lines = (plan ?? []).map((l) => ({ partId: l.partId, qtyPlanned: l.qtyPlanned }));
   const result = await run<{ plan?: unknown[] }>("setWorkOrderPartsPlan", { workOrderId, plan: lines });
   return { success: true, workOrderId, plannedCount: Array.isArray(result?.plan) ? result.plan.length : lines.length };
+}
+
+// ─────────────────────────────────────── operational aggregates ───────────────────────────────────────
+//
+// The governed PostgreSQL aggregates over the ACTIVE Work Order set (functions/src/eosOps/workOrderAnalytics.ts).
+// Technicians are EMPLOYEES; consumption is RECORDED EXECUTION ACTUALS, not stock movement.
+
+export interface GovernedTechnicianExecutionStats {
+  employeeId: string;
+  displayName: string | null;
+  totalWorkOrdersCompleted: number;
+  totalPartsConsumed: number;
+  averageCompletionTimeMs: number | null;
+  completionEvidence: { valid: number; inverted: number; missing: number };
+  workOrderVolumeByStatus: Record<string, number>;
+}
+
+/** One Employee's execution figures. No employeeId: the caller's OWN, through their Employee link. */
+export async function readTechnicianExecutionStats(employeeId?: string | null): Promise<GovernedTechnicianExecutionStats> {
+  return run<GovernedTechnicianExecutionStats>("readTechnicianExecutionStats", employeeId ? { employeeId } : {});
+}
+
+export interface GovernedConsumptionSnapshot {
+  parts: { partId: string; totalQuantityUsed: number; frequency: number }[];
+  mostConsumedPartId: string | null;
+  basis: string;
+}
+
+/** Recorded actuals per Part across the active set, most-consumed first (office: workOrder.record.read). */
+export async function readWorkOrderConsumptionSnapshot(): Promise<GovernedConsumptionSnapshot> {
+  return run<GovernedConsumptionSnapshot>("readWorkOrderConsumptionSnapshot", {});
+}
+
+export interface GovernedTechnicianVolume {
+  employeeId: string;
+  displayName: string | null;
+  activeCount: number;
+  completedCount: number;
+}
+
+/** Completed vs not-completed Work Orders per assigned Employee, busiest first (office: workOrder.record.read). */
+export async function readTechnicianVolumeBreakdown(): Promise<GovernedTechnicianVolume[]> {
+  const result = await run<{ items?: GovernedTechnicianVolume[] }>("readTechnicianVolumeBreakdown", {});
+  return Array.isArray(result?.items) ? result.items : [];
 }

@@ -7,6 +7,7 @@ import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 import ScheduleWorkOrderForm from "../../shared/scheduling/ScheduleWorkOrderForm";
 import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
+import { inventoryBoundaryMessage } from "../../domain/workOrderOutcome";
 import { orderWorkflowActions } from "../../domain/workflowActionOrder";
 import { Button } from "../../shared/ui/primitives/index.js";
 
@@ -93,6 +94,9 @@ export default function WorkOrderActions({ workOrder, role, showStatus = true, e
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [confirmingUnschedule, setConfirmingUnschedule] = useState(false);
   const [actionError, setActionError] = useState(null);
+  // A SUCCESSFUL dispatch / cancel that moved no stock says so (RESERVE_NOT_APPLIED / RELEASE_NOT_APPLIED,
+  // domain/workOrderOutcome.js) -- a status, never styled as a failure, never dropped.
+  const [boundaryNotice, setBoundaryNotice] = useState(null);
   const [reassignReason, setReassignReason] = useState("");
   // The per-Work-Order picker, read only while a picker is open.
   const roster = useWorkOrderTechnicians(workOrder.id, { enabled: showTechPicker || showSchedulePicker });
@@ -113,8 +117,10 @@ export default function WorkOrderActions({ workOrder, role, showStatus = true, e
   async function runAction(action, extra = {}) {
     setSubmitting(true);
     setActionError(null);
+    setBoundaryNotice(null);
     try {
-      await transitionWorkOrder(workOrder.id, action, extra);
+      const result = await transitionWorkOrder(workOrder.id, action, extra);
+      setBoundaryNotice(inventoryBoundaryMessage(result?.inventoryBoundary));
       setShowTechPicker(false);
       setSelectedTechId("");
     } catch (err) {
@@ -219,6 +225,7 @@ const statusPill = (status) =>
       </div>
 
       <FormError role="alert" className="wo-action-error">{actionError}</FormError>
+      {boundaryNotice ? <p className="fo-muted" role="status" data-inventory-boundary="true">{boundaryNotice}</p> : null}
 
       {confirmingCancel && (
         <ConfirmDialog
@@ -228,7 +235,8 @@ const statusPill = (status) =>
           cancelLabel="Keep work order"
           onConfirm={async () => {
             // The status this dispatcher SAW travels with the cancel; the server refuses a stale one.
-            await transitionWorkOrder(workOrder.id, "Cancel", { expectedStatus: workOrder.status });
+            const result = await transitionWorkOrder(workOrder.id, "Cancel", { expectedStatus: workOrder.status });
+            setBoundaryNotice(inventoryBoundaryMessage(result?.inventoryBoundary));
             setConfirmingCancel(false); // success -- the live subscription re-renders the read-only status
           }}
           onClose={() => setConfirmingCancel(false)}

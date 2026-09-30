@@ -5,13 +5,35 @@
 // existing role (rule 8, docs/CLAUDE_CONTEXT.md): read-only executive/
 // monitoring, explicitly not a second dispatcher tool -- no action
 // buttons here, ever.
-export default function ExecutionInsightsPanel({ consumptionSnapshot, technicianVolume, technicianName, resolveName }) {
-  const topParts = consumptionSnapshot?.parts.slice(0, 5) ?? [];
+//
+// GOVERNED (Work Order cutover completion pass, 2026-09-30): both figures come from the PostgreSQL Work Order
+// aggregates over the active Work Order set. Technicians are EOS Employees, named by the server's display name
+// (never a fieldops technician document); "used" is recorded execution actuals, not stock movement. When the
+// aggregates could not be read, `failure` says WHICH of the four outcomes it was (domain/workOrderOutcome.js) --
+// the rest of the Operations dashboard is unaffected.
+import { loadErrorMessage } from "../../../domain/loadErrorMessage.js";
+import { classifyWorkOrderOutcome, WORK_ORDER_OUTCOME } from "../../../domain/workOrderOutcome.js";
+
+export default function ExecutionInsightsPanel({ consumptionSnapshot, technicianVolume, resolveName, failure = null }) {
+  const topParts = consumptionSnapshot?.parts?.slice(0, 5) ?? [];
   const topTechnicians = (technicianVolume ?? []).slice(0, 5);
+
+  if (failure) {
+    const kind = classifyWorkOrderOutcome(failure).kind;
+    return (
+      <div className="fo-card">
+        <h3>Execution Insights</h3>
+        <p className="fo-muted" role={kind === WORK_ORDER_OUTCOME.NOT_YET_ACTIVATED ? "status" : "alert"} data-work-order-outcome={kind}>
+          {loadErrorMessage(failure, { entity: "execution insights" })}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="fo-card">
       <h3>Execution Insights</h3>
+      <p className="fo-muted">Parts used are the technicians' recorded usage on Work Orders; no stock movement is implied.</p>
 
       <h4>Top Consumed Parts</h4>
       {topParts.length === 0 ? (
@@ -57,8 +79,8 @@ export default function ExecutionInsightsPanel({ consumptionSnapshot, technician
           </thead>
           <tbody>
             {topTechnicians.map((t) => (
-              <tr key={t.technicianId}>
-                <td>{technicianName(t.technicianId)}</td>
+              <tr key={t.employeeId}>
+                <td>{t.displayName ?? "Name unavailable"}</td>
                 <td>{t.completedCount}</td>
                 <td>{t.activeCount}</td>
               </tr>

@@ -148,10 +148,11 @@ describe("no authority widened by mounting the shell", () => {
       .filter(([, , from]) => from.includes("services/"))
       // A multi-line import ends with a trailing comma, which splits into an empty final entry.
       .flatMap(([, names]) => names.split(",").map((n) => n.trim()).filter(Boolean));
+    // NARROWED 2026-09-30: Equipment install is NOT_YET_ACTIVATED on EOS, so the Firebase install callables
+    // (fetchInstallableEquipmentForWorkOrder / recordWorkOrderEquipmentInstall) are no longer reachable from
+    // the queue -- the binding answers SERIALIZED_INSTALL_NOT_ACTIVATED unless a transport is injected.
     assert.deepEqual(imported.sort(), [
-      "fetchInstallableEquipmentForWorkOrder",
       "getWorkOrder",
-      "recordWorkOrderEquipmentInstall",
       "recordWorkOrderLabor",
       "transitionWorkOrder",
       "updateWorkOrderExecutionData",

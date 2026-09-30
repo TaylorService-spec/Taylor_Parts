@@ -190,7 +190,8 @@ export default function TechnicianDashboard() {
         <TechnicianWorkOrderDetail workOrder={selectedWorkOrder} onClose={() => setSelectedId(null)} />
       ) : (
         <>
-          {technician ? <PerformanceSnapshot technicianId={technician.id} /> : null}
+          {/* The caller's OWN figures: the server resolves the Employee from the login (never a technician id). */}
+          <PerformanceSnapshot />
           <Section
             title="Ready to Start"
             workOrders={buckets.readyToStart}

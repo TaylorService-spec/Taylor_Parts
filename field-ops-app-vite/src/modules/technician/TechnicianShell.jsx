@@ -69,7 +69,7 @@ export default function TechnicianShell({ deps = {} }) {
         {tab === "home" && (
           <HandheldHome
             home={home} loading={loading} onOpenJobs={() => setTab("jobs")}
-            offline={offline} onOpenSync={() => setTab("more")}
+            offline={offline} onOpenSync={() => setTab("more")} fieldModeDeps={deps.fieldMode}
           />
         )}
         {tab === "jobs" && <HandheldJobs cards={cards} loading={loading} />}
@@ -101,7 +101,7 @@ export default function TechnicianShell({ deps = {} }) {
 }
 
 /** "What do I need to do next?" — and nothing that does not answer it. */
-function HandheldHome({ home, loading, onOpenJobs, offline, onOpenSync }) {
+function HandheldHome({ home, loading, onOpenJobs, offline, onOpenSync, fieldModeDeps }) {
   if (loading) return <p className="fo-muted" role="status">Loading your day…</p>;
   const actionLabel = homePrimaryActionLabel(home);
 
@@ -134,7 +134,7 @@ function HandheldHome({ home, loading, onOpenJobs, offline, onOpenSync }) {
         <>
           <h2>Current job</h2>
           {/* The whole governed current-job composition, unchanged. */}
-          <FieldMode />
+          <FieldMode deps={fieldModeDeps} />
         </>
       ) : (
         <div className="fo-handheld__empty">

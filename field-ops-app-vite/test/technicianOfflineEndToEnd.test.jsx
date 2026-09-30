@@ -50,7 +50,11 @@ vi.mock("../src/services/workOrderLaborCallableClient", () => ({
   }),
 }));
 
-vi.mock("../src/services/workOrderInstallCallableClient", () => ({
+// EQUIPMENT INSTALL IS NOT ACTIVATED on EOS (2026-09-30): the shipping app invokes NO install transport (the
+// Firebase install callables are no longer called; see "Equipment install is NOT ACTIVATED" below). The offline
+// install runtime is kept for the day an EOS install authority exists, so these proofs drive it through an
+// INJECTED transport -- the same seam (FieldMode deps.install, the bindings' deps) that authority will use.
+const installTransport = {
   fetchInstallableEquipmentForWorkOrder: vi.fn(async () => {
     calls.installList += 1;
     return {
@@ -69,7 +73,7 @@ vi.mock("../src/services/workOrderInstallCallableClient", () => ({
       error: null,
     };
   }),
-}));
+};
 
 // ── identity and assigned work ───────────────────────────────────────────────────────────────────
 vi.mock("../src/auth/AuthContext", () => ({
@@ -97,6 +101,18 @@ vi.mock("../src/hooks/useWorkOrderFieldContext", () => ({
 vi.mock("../src/modules/scan/ScanWorkspace", () => ({ default: () => <div>Scan workspace</div> }));
 
 const { default: TechnicianShell } = await import("../src/modules/technician/TechnicianShell");
+const { createTechnicianBindings } = await import("../src/offline/technicianCommandBindings.js");
+/** The shell with the INJECTED install transport (both the online closeout and the offline bindings). */
+const SHELL_DEPS = Object.freeze({
+  offline: { bindings: createTechnicianBindings({
+    fetchInstallableEquipmentForWorkOrder: (...a) => installTransport.fetchInstallableEquipmentForWorkOrder(...a),
+    recordWorkOrderEquipmentInstall: (...a) => installTransport.recordWorkOrderEquipmentInstall(...a),
+  }) },
+  fieldMode: { install: {
+    fetchUnits: (...a) => installTransport.fetchInstallableEquipmentForWorkOrder(...a),
+    recordInstall: (...a) => installTransport.recordWorkOrderEquipmentInstall(...a),
+  } },
+});
 const { STORE_NAMESPACE } = await import("../src/offline/localIntentStore.js");
 
 // ── the network switch ───────────────────────────────────────────────────────────────────────────
@@ -162,7 +178,7 @@ const openSync = async () => {
 
 describe("the whole offline day, through the mounted shell", () => {
   it("captures, survives a restart, and syncs to EXACTLY the right server effects", async () => {
-    render(<TechnicianShell />);
+    render(<TechnicianShell deps={SHELL_DEPS} />);
 
     // ── 2. go offline ────────────────────────────────────────────────────────────────────────────
     setOnline(false);
@@ -196,7 +212,7 @@ describe("the whole offline day, through the mounted shell", () => {
       ["EQUIPMENT_INSTALL", "LABOR_RECORD", "NOTE_ADD", "WORK_ORDER_COMPLETE"],
     );
     cleanup();
-    render(<TechnicianShell />);
+    render(<TechnicianShell deps={SHELL_DEPS} />);
     // EVERYTHING IS STILL THERE, and Home says so without being asked.
     expect(await screen.findByText(/4 items waiting to sync/i)).toBeTruthy();
 
@@ -224,7 +240,7 @@ describe("the whole offline day, through the mounted shell", () => {
   }, 20000);
 
   it("a second sync pass repeats NOTHING", async () => {
-    render(<TechnicianShell />);
+    render(<TechnicianShell deps={SHELL_DEPS} />);
     setOnline(false);
     await addNote("One note.");
     await addTime("1");
@@ -254,7 +270,7 @@ describe("the whole offline day, through the mounted shell", () => {
 
 describe("when the installation is refused on reconnect", () => {
   it("the job is NOT completed, the hours still land, and the queue says why", async () => {
-    render(<TechnicianShell />);
+    render(<TechnicianShell deps={SHELL_DEPS} />);
     setOnline(false);
     await addTime("3");
     await installAndComplete();
@@ -280,7 +296,7 @@ describe("when the installation is refused on reconnect", () => {
   }, 20000);
 
   it("Home leads with the attention, not with a soothing pending count", async () => {
-    render(<TechnicianShell />);
+    render(<TechnicianShell deps={SHELL_DEPS} />);
     setOnline(false);
     await addNote("A note.");
     await installAndComplete();
@@ -298,7 +314,7 @@ describe("when the installation is refused on reconnect", () => {
 
 describe("when the installation lands but completion does not", () => {
   it("retrying sends ONLY the completion — never a second installation", async () => {
-    render(<TechnicianShell />);
+    render(<TechnicianShell deps={SHELL_DEPS} />);
     setOnline(false);
     await installAndComplete();
     await screen.findByText(/Installation pending sync/i);
@@ -338,7 +354,7 @@ describe("when the phone cannot save offline", () => {
       return setItem(k, v);
     });
     try {
-      render(<TechnicianShell />);
+      render(<TechnicianShell deps={SHELL_DEPS} />);
       setOnline(false);
       await addNote("This must not disappear.");
       // NOT held, NOT queued -- the note panel must not claim either.
@@ -358,14 +374,14 @@ describe("when the phone cannot save offline", () => {
 
 describe("after a restart", () => {
   it("Home, and More -> Sync, both show the outstanding work", async () => {
-    render(<TechnicianShell />);
+    render(<TechnicianShell deps={SHELL_DEPS} />);
     setOnline(false);
     await addNote("Survives.");
     await addTime("1");
     await waitFor(() => expect(storedIntents()).toHaveLength(2));
 
     cleanup();
-    render(<TechnicianShell />);
+    render(<TechnicianShell deps={SHELL_DEPS} />);
 
     // Home.
     expect(await screen.findByText(/2 items waiting to sync/i)).toBeTruthy();
@@ -385,7 +401,7 @@ describe("after a restart", () => {
       schemaVersion: 1, principalUid: "uid-someone-else", cache: {},
       intents: [{ intentId: "int_theirs", type: "NOTE_ADD", workOrderId: "WO-9", principalUid: "uid-someone-else", state: "PENDING_SYNC", dependsOn: [], attemptCount: 0, nextEligibleAt: 0, payload: { executionNote: "theirs" } }],
     }));
-    render(<TechnicianShell />);
+    render(<TechnicianShell deps={SHELL_DEPS} />);
     setOnline(true);
     await screen.findByText(/everything is saved/i);
     // There is no Sync now to press, and that is the assertion: this technician has nothing
@@ -403,7 +419,7 @@ describe("after a restart", () => {
 
 describe("the four tabs are reachable and do their job", () => {
   it("Home / Jobs / Scan / More all render something", async () => {
-    render(<TechnicianShell />);
+    render(<TechnicianShell deps={SHELL_DEPS} />);
     const nav = screen.getByRole("navigation", { name: /technician/i });
     for (const [label, expected] of [["Jobs", /WO-2026-0001/], ["Scan", /scan workspace/i], ["More", /sync status/i]]) {
       await act(async () => { fireEvent.click(within(nav).getByRole("button", { name: label })); });
@@ -412,4 +428,31 @@ describe("the four tabs are reachable and do their job", () => {
     await act(async () => { fireEvent.click(within(nav).getByRole("button", { name: "Home" })); });
     expect(await screen.findByRole("heading", { name: /current job/i })).toBeTruthy();
   }, 20000);
+});
+
+// =================================================================================================
+// EQUIPMENT INSTALL IS NOT ACTIVATED (Work Order cutover completion pass, 2026-09-30)
+// =================================================================================================
+
+describe("Equipment install is NOT ACTIVATED in the shipping app", () => {
+  it("the installation section says so, offers no install, and calls no install transport", async () => {
+    render(<TechnicianShell />);
+    expect(await screen.findByText(/Equipment install is not activated yet/i)).toBeTruthy();
+    expect(document.querySelector('[data-work-order-boundary="SERIALIZED_INSTALL"]')).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /install & complete work/i })).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(installTransport.fetchInstallableEquipmentForWorkOrder).not.toHaveBeenCalled();
+    expect(installTransport.recordWorkOrderEquipmentInstall).not.toHaveBeenCalled();
+  });
+
+  it("a queued installation intent is REFUSED as not activated -- never sent, never retried", async () => {
+    const bindings = createTechnicianBindings();
+    const pre = await bindings.prechecks.EQUIPMENT_INSTALL({ workOrderId: "WO-1", payload: { serializedAssetId: "sa-1" } });
+    expect(pre).toMatchObject({ proceed: false, code: "failed-precondition", details: "SERIALIZED_INSTALL_NOT_ACTIVATED" });
+    const sent = await bindings.commands.EQUIPMENT_INSTALL({ workOrderId: "WO-1", intentId: "i-1", payload: { serializedAssetId: "sa-1" } });
+    expect(sent).toMatchObject({ ok: false, details: "SERIALIZED_INSTALL_NOT_ACTIVATED" });
+    const { classifyFailure, FAILURE_CLASS } = await import("../src/offline/syncFailureClassification.js");
+    expect(classifyFailure({ code: sent.code, details: sent.details })).toBe(FAILURE_CLASS.REFUSED);
+    expect(installTransport.recordWorkOrderEquipmentInstall).not.toHaveBeenCalled();
+  });
 });
