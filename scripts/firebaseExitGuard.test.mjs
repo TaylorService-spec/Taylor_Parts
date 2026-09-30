@@ -985,7 +985,7 @@ test("classification is a strict SUPERSET: every file the specifier matcher alon
     SERVER_PROBE).has("server.firebase_admin_firestore"));
 });
 
-test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 323 " +
+test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 316 " +
   "guarded entries across four populated categories, nothing lost and nothing reclassified", () => {
   const scanResults = scan(REPO_ROOT);
   const baseline = loadCommittedBaseline(REPO_ROOT);
@@ -1002,13 +1002,17 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // readReorderPurchaseOrders on the EOS API instead -- 37 -> 34 (shrink-only).
     // Work Order domain cutover (2026-09-30): the Work Order service, detail/search/demand hooks, account Work
     // Orders and the Work Order type module read the EOS API instead of fieldops_wos -- 34 -> 28 (shrink-only).
-    "frontend.firestore_client": 28,
+    // Work Order cutover completion pass (2026-09-30): the execution analytics aggregates and the Operations panel read
+    // the EOS aggregates instead of fieldops_wos -- 28 -> 26 (shrink-only).
+    "frontend.firestore_client": 26,
     // Pass 11 Retail Sales: the 7 Opportunity / Sales Order read + command clients moved to the EOS Commercial API.
     // ... and their callable transports (Part / alias command clients, the Reorder callable client) -- 47 -> 44.
     // L0 Z3: product-reference search (salesAgreementCommandClient.js) left the searchProductReferences callable
     // for the PostgreSQL Catalog -- 42 -> 41.
     // Work Order domain cutover (2026-09-30): workOrderService left the Work Order callables -- 41 -> 40.
-    "frontend.firebase_functions_client": 40,
+    // Completion pass: labor, field context, readiness, technician availability / planning estimate and coordinated
+    // visits left their Firebase callables for the EOS API -- 40 -> 35.
+    "frontend.firebase_functions_client": 35,
     "server.firebase_admin_firestore": 183,
     "server.firebase_functions_server": 72,
   };
@@ -1021,5 +1025,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 323);
+  assert.equal(total, 316);
 });
