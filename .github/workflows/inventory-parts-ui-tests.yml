@@ -92,6 +92,9 @@ on:
       - "field-ops-app-vite/src/domain/partMasterWrite.js"
       - "field-ops-app-vite/test/partWriteModal.test.jsx"
       - "field-ops-app-vite/test/partsMasterDataEntryPoints.test.jsx"
+      # DQ-034 Catalog mutation hold: the client mirror + every editing surface that honours it.
+      - "field-ops-app-vite/src/config/catalogMutationHold.js"
+      - "field-ops-app-vite/test/catalogMutationHold.test.jsx"
       - "field-ops-app-vite/test/partMasterManufacturersNavHidden.test.mjs"
       # Parts structured-list migration: the field/query contract + the list screen.
       - "field-ops-app-vite/src/domain/partFields.js"
@@ -211,6 +214,9 @@ on:
       - "field-ops-app-vite/src/domain/partMasterWrite.js"
       - "field-ops-app-vite/test/partWriteModal.test.jsx"
       - "field-ops-app-vite/test/partsMasterDataEntryPoints.test.jsx"
+      # DQ-034 Catalog mutation hold: the client mirror + every editing surface that honours it.
+      - "field-ops-app-vite/src/config/catalogMutationHold.js"
+      - "field-ops-app-vite/test/catalogMutationHold.test.jsx"
       - "field-ops-app-vite/test/partMasterManufacturersNavHidden.test.mjs"
       # Parts structured-list migration: the field/query contract + the list screen.
       - "field-ops-app-vite/src/domain/partFields.js"

@@ -323,6 +323,7 @@ on:
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
       - "functions/test/catalogPartSearchPostgres.test.mjs"
+      - "functions/test/catalogReadAuthorizationPostgres.test.mjs"
       # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside
       # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
       # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.
@@ -921,6 +922,7 @@ on:
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
       - "functions/test/catalogPartSearchPostgres.test.mjs"
+      - "functions/test/catalogReadAuthorizationPostgres.test.mjs"
       # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside
       # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
       # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.

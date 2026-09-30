@@ -11,6 +11,9 @@
 //   * every source record present and identical            -> nothing (a rerun of the same snapshot writes nothing)
 //   * any source record present and DIFFERENT              -> REFUSE (DRIFT_DETECTED), roll back everything
 //   * any tenant row the snapshot does not contain         -> REFUSE (TARGET_HAS_UNKNOWN_RECORDS), roll back
+//     -- except the four PINNED Sample Company v2 fixture Equipment Models (catalogKnownFixtures.ts), which are
+//     KNOWN_NON_MIGRATED_FIXTURE: never written, never blocking, and REFUSE (KNOWN_FIXTURE_MISMATCH) if that set
+//     is not exactly the pinned one, unchanged
 // Drift is never overwritten: after the copy PostgreSQL is (or is about to become) the authority, and a changed
 // source is a finding for a person, not an update for a script. Equipment Models are written before Parts so the
 // Part -> Equipment Model foreign key holds row by row. A run that inserts anything appends ONE
@@ -52,6 +55,7 @@ import type { CanonicalCatalog, CatalogFinding, CanonicalPartAliasRecord } from 
 import { PART_ALIAS_DIGEST_FIELDS } from "./catalogSnapshot";
 import { ALIAS_SELECT, INSERT_ALIAS_SQL, aliasFromRow, insertAliasValues } from "./postgresPartAliasWriter";
 import { deriveAliasDocId } from "../partMaster/partAliasIdentity";
+import { classifyKnownFixtures, type KnownFixtureClassification } from "./catalogKnownFixtures";
 
 type Db = Pick<PoolClient, "query">;
 
@@ -123,6 +127,8 @@ export interface CopyReport {
   readonly partAliases: { readonly inserted: number; readonly unchanged: number };
   readonly cutoverPrincipalId: string;
   readonly certificationExcluded: { readonly count: number; readonly records: readonly CatalogFinding[] };
+  /** Target rows preserved untouched as pinned Sample Company v2 fixtures (never Taylor Catalog data). */
+  readonly knownNonMigratedFixtures: KnownFixtureClassification["known"];
 }
 
 export async function copyCatalog(
@@ -165,8 +171,12 @@ export async function copyCatalog(
       ...aliases.drift.map((d) => ({ kind: "part_alias", ...d })),
     ];
     if (drift.length > 0) throw new CatalogCutoverError("DRIFT_DETECTED", `${drift.length} source records differ from the copied records; nothing was written`, drift);
+    const fixtures = classifyKnownFixtures(tenantId, target.models, new Set(catalog.equipmentModels.map((m) => m.id)));
+    if (fixtures.refusals.length > 0) {
+      throw new CatalogCutoverError("KNOWN_FIXTURE_MISMATCH", `the pinned Sample Company fixture set is not exactly as pinned; nothing was written`, fixtures.refusals);
+    }
     const unknown = [
-      ...models.unknown.map((id) => ({ kind: "equipment_model", id })),
+      ...fixtures.unknown.map((id) => ({ kind: "equipment_model", id })),
       ...parts.unknown.map((id) => ({ kind: "part", id })),
       ...aliases.unknown.map((id) => ({ kind: "part_alias", id })),
     ];
@@ -206,6 +216,7 @@ export async function copyCatalog(
       partAliases: { inserted: aliases.insert.length, unchanged: aliases.unchanged },
       cutoverPrincipalId: actor,
       certificationExcluded: { count: excluded.length, records: excluded },
+      knownNonMigratedFixtures: fixtures.known,
     };
     if (inserted > 0) {
       await client.query(
@@ -271,6 +282,10 @@ export interface VerifyReport {
   readonly certificationExcluded: { readonly count: number; readonly records: readonly CatalogFinding[] };
   /** Excluded Certification fixture ids found in the target. Must be empty. */
   readonly certificationFixturesInTarget: readonly string[];
+  /** Pinned Sample Company v2 fixtures present and unchanged; not counted as target Catalog data. */
+  readonly knownNonMigratedFixtures: KnownFixtureClassification["known"];
+  /** The fixture set is not exactly as pinned. Must be empty. */
+  readonly knownFixtureRefusals: readonly string[];
 }
 
 /** Deterministic sample: ids ordered by sha256(id); `all` or the first N. */
@@ -297,7 +312,10 @@ export async function verifyCatalog(
     const aliasSchema = await partAliasSchemaPresent(client);
     const target = await tenantRows(client, tenantId, partSchema, aliasSchema);
     const idsOf = (rows: readonly { id: string }[]) => new Set(rows.map((r) => r.id));
-    const sModels = idsOf(catalog.equipmentModels), tModels = idsOf(target.models);
+    const fixtures = classifyKnownFixtures(tenantId, target.models, idsOf(catalog.equipmentModels));
+    const knownIds = new Set(fixtures.known.map((f) => f.id));
+    const catalogModels = target.models.filter((m) => !knownIds.has(m.id));
+    const sModels = idsOf(catalog.equipmentModels), tModels = idsOf(catalogModels);
     const sParts = idsOf(catalog.parts), tParts = idsOf(target.parts);
     const sAliases = idsOf(catalog.partAliases), tAliases = idsOf(target.partAliases);
     const missing = [
@@ -397,7 +415,7 @@ export async function verifyCatalog(
       reconciled: false,
       tenantId,
       counts: {
-        equipmentModels: { source: catalog.equipmentModels.length, target: target.models.length },
+        equipmentModels: { source: catalog.equipmentModels.length, target: catalogModels.length },
         parts: { source: catalog.parts.length, target: target.parts.length },
         partAliases: { source: catalog.partAliases.length, target: target.partAliases.length },
       },
@@ -411,6 +429,8 @@ export async function verifyCatalog(
       verdictChecks,
       certificationExcluded: { count: excluded.length, records: excluded },
       certificationFixturesInTarget: fixturesInTarget,
+      knownNonMigratedFixtures: fixtures.known,
+      knownFixtureRefusals: fixtures.refusals,
     };
     const reconciled =
       report.counts.equipmentModels.source === report.counts.equipmentModels.target &&
@@ -418,7 +438,7 @@ export async function verifyCatalog(
       report.counts.partAliases.source === report.counts.partAliases.target &&
       missing.length === 0 && extra.length === 0 && mismatches.length === 0 && duplicateIdentities.length === 0 &&
       dangling.length === 0 && danglingAliasPartReferences.length === 0 && aliasIdentityDisagreements.length === 0 &&
-      verdictChecks.every((c) => c.expected === c.actual) && fixturesInTarget.length === 0 &&
+      verdictChecks.every((c) => c.expected === c.actual) && fixturesInTarget.length === 0 && fixtures.refusals.length === 0 &&
       (catalog.parts.length === 0 || partSchema) && (catalog.partAliases.length === 0 || aliasSchema);
     return { ...report, reconciled };
   } catch (err) {

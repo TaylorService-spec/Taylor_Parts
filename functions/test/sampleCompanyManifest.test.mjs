@@ -751,8 +751,10 @@ test("the seed WRITES no Commercial record while the state is BLOCKED, and v3 sa
 });
 
 test("the committed catalog writer state is respected, not overridden", () => {
+  // Whatever the committed state -- ACTIVE after window step 18 -- the seed never writes Parts: they arrive by the governed
+  // COPY ONCE, never by a sample-company seed.
   const { CATALOG_WRITER_AUTHORITY } = require("../lib/catalogMaster/catalogWriterState.js");
-  assert.equal(CATALOG_WRITER_AUTHORITY.postgres, "INACTIVE");
+  assert.ok(["INACTIVE", "ACTIVE"].includes(CATALOG_WRITER_AUTHORITY.postgres));
   const source = readFileSync(resolve(FUNCTIONS_DIR, "scripts/seedSampleCompany.js"), "utf8");
   // The writers may be NAMED in a comment explaining why they are not used; they must never be REQUIRED.
   assert.ok(!/require\([^)]*catalogMaster[^)]*\)/.test(source),

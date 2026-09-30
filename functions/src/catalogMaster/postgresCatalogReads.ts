@@ -22,7 +22,10 @@
 // refuses to page at all.
 
 import type { PoolClient } from "pg";
-import { PART_SELECT, partFromRow, type CanonicalPart } from "./catalogRows.js";
+import {
+  PART_SELECT, partFromRow, type CanonicalPart,
+  EQUIPMENT_MODEL_SELECT, equipmentModelFromRow, type CanonicalEquipmentModel,
+} from "./catalogRows.js";
 import { refuse } from "./catalogMasterKernel.js";
 import { PART_STATUSES, STOCKING_CLASSES, CONTROL_TYPES } from "../partMaster/types";
 
@@ -352,4 +355,42 @@ export async function countParts(
   const where = buildFilterWhere(tenantId, filters ?? {});
   const { rows } = await client.query(`SELECT count(*)::int AS n FROM ${SCHEMA}.parts WHERE ${where.sql}`, where.values);
   return Number(rows[0].n);
+}
+
+// ════════════════════ EQUIPMENT MODELS (DQ-030) ════════════════════
+//
+// The Sales Agreement Equipment Model picker. Equipment Models are REFERENCE data -- one per model the company
+// sells -- so the picker LISTS them rather than searching; the retired Firebase `searchProductReferences`
+// listed the Firestore collection whole up to a cap of 200, and this is that read against the PostgreSQL
+// authority (eos_ops.equipment_models, populated by the Catalog COPY). It is still BOUNDED: the limit is clamped,
+// an id keyset cursor pages beyond it, and `nextCursor` says honestly whether more exist.
+
+export const EQUIPMENT_MODEL_LIST_MAX_LIMIT = 200;
+
+export interface EquipmentModelListPage {
+  readonly models: readonly CanonicalEquipmentModel[];
+  /** The last id of this page when more exist, else null. */
+  readonly nextCursor: string | null;
+  readonly limit: number;
+}
+
+export async function listEquipmentModels(
+  client: Pick<PoolClient, "query">, tenantId: string, input: { readonly limit?: number; readonly cursor?: string | null } = {},
+): Promise<EquipmentModelListPage> {
+  const requested = Number.isSafeInteger(input.limit) ? (input.limit as number) : EQUIPMENT_MODEL_LIST_MAX_LIMIT;
+  const limit = Math.min(Math.max(requested, 1), EQUIPMENT_MODEL_LIST_MAX_LIMIT);
+  const rawCursor = (input as Record<string, unknown>).cursor;
+  if (rawCursor !== undefined && rawCursor !== null && typeof rawCursor !== "string") {
+    invalid("LIST_CURSOR_MALFORMED", "cursor must be a string");
+  }
+  const cursor = typeof rawCursor === "string" && rawCursor.trim() !== "" ? rawCursor.trim() : null;
+  const values: unknown[] = [tenantId];
+  let keyset = "";
+  if (cursor !== null) { values.push(cursor); keyset = ` AND id > $${values.length}`; }
+  values.push(limit + 1);
+  const { rows } = await client.query(
+    `${EQUIPMENT_MODEL_SELECT} WHERE tenant_id = $1${keyset} ORDER BY id LIMIT $${values.length}`, values);
+  const page = rows.slice(0, limit).map(equipmentModelFromRow);
+  const nextCursor = rows.length > limit && page.length > 0 ? page[page.length - 1].id : null;
+  return Object.freeze({ models: page, nextCursor, limit });
 }

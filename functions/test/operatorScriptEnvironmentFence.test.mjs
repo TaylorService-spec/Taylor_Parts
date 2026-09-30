@@ -561,6 +561,29 @@ for (const [label, args, env, pattern] of [
   });
 }
 
+// ============================ THE SYNTHETIC TAYLOR ACCEPTANCE WAREHOUSE (ruling 2026-09-30, 2(a)) ============================
+//
+// scripts/syntheticAcceptanceWarehouseCli.js writes ONE pinned eos_ops.warehouses row. It must refuse before `pg` is
+// resolved, has no production mode, and exists only for the nonprod Taylor tenant.
+const SYN_WH = "scripts/syntheticAcceptanceWarehouseCli.js";
+const SYN_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "SYN_FENCE_DB", "--tenantKey", "taylor-nonprod", "--principalId", "p"];
+const SYN_ENV = { EOS_ENVIRONMENT: "nonprod", SYN_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--principalId", "p"], SYN_ENV, /--environment is required/],
+  ["production environment", SYN_ARGS.map((a) => (a === "platform-sandbox" ? "taylor-parts-production" : a)), SYN_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", [...SYN_ARGS, "--apply"], { ...SYN_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", SYN_ARGS.map((a) => (a === "platform-sandbox" ? "platform-certification" : a)), SYN_ENV, /Certification world, which is frozen/],
+  ["a tenant other than taylor-nonprod", SYN_ARGS.map((a) => (a === "taylor-nonprod" ? "some-other-tenant" : a)), SYN_ENV, /--tenantKey must be exactly 'taylor-nonprod'/],
+  ["no EOS principal", SYN_ARGS.slice(0, 6), SYN_ENV, /--principalId <EOS principal id> is required/],
+  ["--apply with a value", [...SYN_ARGS, "--apply", "yes"], SYN_ENV, /--apply is a bare flag/],
+]) {
+  test(`synthetic acceptance warehouse: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(SYN_WH, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `synthetic acceptance warehouse, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
 const EXPORT = "scripts/exportCatalogSnapshot.js";
 for (const [label, args, pattern] of [
   ["no project", ["--out", "/nonexistent/x.json"], /--projectId is required/],

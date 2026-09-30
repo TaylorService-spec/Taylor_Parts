@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader, SectionHeader, StatusIndicator, Button } from "../../shared/ui/primitives";
-import { buildDataImportView, rowTone, IMPORT_STAGE } from "../../domain/dataImportView";
+import { buildDataImportView, dataImportSubtitle, rowTone, IMPORT_STAGE } from "../../domain/dataImportView";
 import {
   stageDataImport,
   executeDataImport,
@@ -252,7 +252,9 @@ export default function AdminDataImport({ hasCapability }) {
     if (!jobId) return;
     setBusy(true);
     setError(null);
-    const res = await executeDataImport(jobId);
+    // The job's entity type travels with the approval so the client seam can refuse a catalog-bound import
+    // before the (pre-freeze) Firebase runtime is ever asked to execute it.
+    const res = await executeDataImport(jobId, staged?.job?.entityType ?? null);
     setBusy(false);
     if (res.ok) {
       setResult(res.data.job);
@@ -275,7 +277,7 @@ export default function AdminDataImport({ hasCapability }) {
     <div className="fo-data-import">
       <PageHeader
         title="Data Import"
-        subtitle="Load Parts, Customers, Equipment, Inventory and Service History from a CSV or Excel file."
+        description={dataImportSubtitle()}
       />
 
       {view.stage === IMPORT_STAGE.UNGATED ? (
@@ -308,6 +310,16 @@ export default function AdminDataImport({ hasCapability }) {
             <div className="fo-panel">
               <StatusIndicator tone="critical" label={view.headline} />
               <p className="fo-wizard-hint">{view.detail}</p>
+              <Button variant="secondary" onClick={onReset}>Start over</Button>
+            </div>
+          ) : null}
+
+          {view.stage === IMPORT_STAGE.CATALOG_REFUSED ? (
+            <div className="fo-panel">
+              <SectionHeader title="2. Not available" />
+              <StatusIndicator tone="critical" label={view.headline} />
+              <p className="fo-wizard-hint">{view.detail}</p>
+              <p className="fo-wizard-hint">Nothing from this file has been written.</p>
               <Button variant="secondary" onClick={onReset}>Start over</Button>
             </div>
           ) : null}

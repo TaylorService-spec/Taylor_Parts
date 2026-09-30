@@ -45,6 +45,8 @@ on:
       - "field-ops-app-vite/test/partsNorthStarProjection.test.mjs"
       - "field-ops-app-vite/test/partsNorthStarIdentity.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarRecord.test.jsx"
+      - "field-ops-app-vite/test/partDetailLedgerUnavailable.test.jsx"
+      - "field-ops-app-vite/src/hooks/useInventoryLedger.js"
       - "field-ops-app-vite/test/partsNorthStarWorkspace.test.mjs"
       - "field-ops-app-vite/test/partsReorderPointSemantics.test.jsx"
       - "field-ops-app-vite/test/partsCollectionFrame1a.test.jsx"
@@ -76,6 +78,8 @@ on:
       - "field-ops-app-vite/test/partsNorthStarProjection.test.mjs"
       - "field-ops-app-vite/test/partsNorthStarIdentity.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarRecord.test.jsx"
+      - "field-ops-app-vite/test/partDetailLedgerUnavailable.test.jsx"
+      - "field-ops-app-vite/src/hooks/useInventoryLedger.js"
       - "field-ops-app-vite/test/partsNorthStarWorkspace.test.mjs"
       - "field-ops-app-vite/test/partsReorderPointSemantics.test.jsx"
       - "field-ops-app-vite/test/partsCollectionFrame1a.test.jsx"
@@ -131,7 +135,7 @@ jobs:
         run: npx vitest run test/partsReorderPointSemantics.test.jsx
         working-directory: field-ops-app-vite
       - name: The existing Parts render gates still hold (vitest + jsdom)
-        run: npx vitest run test/partsListInvalid.test.jsx test/partDetailInvalid.test.jsx test/partsListHealthPanelNames.test.jsx
+        run: npx vitest run test/partsListInvalid.test.jsx test/partDetailInvalid.test.jsx test/partsListHealthPanelNames.test.jsx test/partDetailLedgerUnavailable.test.jsx
         working-directory: field-ops-app-vite
       - name: Lint the touched surfaces (oxlint)
         run: npx oxlint src/domain/partsNorthStar.js src/domain/partMasterView.js src/domain/partVocabulary.js src/domain/partDetailView.js src/domain/partsCatalogView.js src/domain/partsCompatibilityAdapter.js src/modules/inventory/PartsList.jsx src/modules/inventory/PartDetail.jsx

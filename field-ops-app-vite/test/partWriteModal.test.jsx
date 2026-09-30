@@ -14,10 +14,17 @@ vi.mock("../src/hooks/useManufacturerCatalog", () => ({
   useManufacturerCatalog: () => manufacturerCatalogState.current,
 }));
 
+// DQ-034: the Catalog mutation hold is a CODE constant and is ON in every build. These flows exercise the UNHELD
+// governed path, so the hold module is mocked with a mutable `held` (default false here); the held state has its own
+// block below, and the committed constant itself is pinned by test/catalogMutationHold.test.jsx.
+const hold = vi.hoisted(() => ({ held: false }));
+vi.mock("../src/config/catalogMutationHold.js", async (orig) => ({ ...(await orig()), CATALOG_MUTATION_HOLD: hold }));
+
 import PartWriteModal from "../src/shared/partMaster/PartWriteModal.jsx";
 
 afterEach(() => {
   cleanup();
+  hold.held = false;
   manufacturerCatalogState.current = { loading: true, errorStatus: null, result: null };
 });
 
@@ -170,5 +177,37 @@ describe("PartWriteModal -- Manufacturer field honors the trusted catalog read s
     const select = screen.getByLabelText(/^manufacturer$/i);
     expect(select.value).toBe("MFG-9-RETIRED");
     expect(screen.getByRole("option", { name: /MFG-9-RETIRED \(not currently active\)/i })).toBeTruthy();
+  });
+});
+
+describe("PartWriteModal -- DQ-034 hold: Catalog changes are paused during the migration", () => {
+  it("even readinessOverride:true cannot lift the hold: paused notice, every control disabled, zero client calls", () => {
+    hold.held = true;
+    for (const mode of ["create", "edit", "status"]) {
+      const client = mockClient();
+      render(<PartWriteModal mode={mode} part={PART} onClose={() => {}} onSaved={() => {}} writeDeps={{ readinessOverride: true, client }} />);
+      expect(screen.getByText(/catalog changes are paused during the migration/i)).toBeTruthy();
+      // The hold replaces the readiness notice rather than stacking on it.
+      expect(screen.queryByText(/editing isn't enabled in this environment yet/i)).toBeNull();
+      const buttons = mode === "status"
+        ? screen.getAllByRole("button", { name: /^→ /i })
+        : [screen.getByRole("button", { name: mode === "create" ? /create part/i : /save changes/i })];
+      for (const b of buttons) { expect(b.disabled).toBe(true); fireEvent.click(b); }
+      expect(client.createPart).not.toHaveBeenCalled();
+      expect(client.updatePart).not.toHaveBeenCalled();
+      expect(client.changePartStatus).not.toHaveBeenCalled();
+      cleanup();
+    }
+  });
+
+  it("a server CATALOG_MUTATION_HELD refusal (stale bundle) is reported as the pause, and onSaved is not called", async () => {
+    const client = mockClient();
+    client.changePartStatus = vi.fn().mockRejectedValue(Object.assign(new Error("held"), { code: "PRECONDITION_FAILED", reason: "CATALOG_MUTATION_HELD" }));
+    const onSaved = vi.fn();
+    render(<PartWriteModal mode="status" part={PART} onClose={() => {}} onSaved={onSaved} writeDeps={{ readinessOverride: true, client }} />);
+    fireEvent.click(screen.getByRole("button", { name: /→ INACTIVE/i }));
+    await waitFor(() => expect(client.changePartStatus).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/catalog changes are paused during the migration/i)).toBeTruthy();
+    expect(onSaved).not.toHaveBeenCalled();
   });
 });

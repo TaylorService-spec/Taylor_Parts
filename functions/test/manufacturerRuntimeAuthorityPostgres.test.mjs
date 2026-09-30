@@ -87,7 +87,9 @@ test("this change adds no migration: the applied set is the one the base commit 
   // Raised again for the direct-exception cell lock (1762992000000, lane DX), likewise unrelated.
   // Raised again for the Administrator staffing capability (1763078400000, Owner ruling R1), likewise unrelated.
   // Raised again for the Catalog + Reorder activation candidate (1763164800000 .. 1763596800000), likewise unrelated.
-  assert.ok(Number(newest.split("_")[0]) <= 1763596800000, `an unexpected newest migration ${newest}`);
+  // Raised again for accepted main (#2001 multilane 1763683200000 .. 1764129600000; #2002 EOS identity 1764200000000),
+  // likewise unrelated. The Catalog + Reorder reconciliation onto main adds no migration.
+  assert.ok(Number(newest.split("_")[0]) <= 1764200000000, `an unexpected newest migration ${newest}`);
 });
 
 // ════════════════════ no Firebase, no delete, not wired ════════════════════
@@ -141,9 +143,11 @@ test("the reconciliation reads and reports; it modifies no dependent data", () =
   }
 });
 
-test("the PostgreSQL Manufacturer writer stays unwired while the catalog writer state says INACTIVE", () => {
-  // The Firestore side is FROZEN by the activation window (step 2); what this lane pins is that PostgreSQL is INACTIVE.
-  assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "INACTIVE", "this lane does not activate the PostgreSQL writers");
+test("the PostgreSQL Manufacturer writer stays unwired -- even with the Catalog ACTIVE, it is a separate authorized step", () => {
+  // Window step 18 activates the PostgreSQL CATALOG (Parts, aliases). The Manufacturer writer is NOT part of it: wiring it
+  // remains its own authorized change, so while the legacy Firestore catalog writers are FROZEN, Manufacturer writes are
+  // unavailable rather than silently re-routed.
+  assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "ACTIVE");
   const importers = walk(resolve(FUNCTIONS_DIR, "src"))
     .filter((f) => !f.includes(`${"src"}/catalogMaster`) && !f.endsWith("catalogMaster"))
     .filter((f) => /postgresManufacturerWriter/.test(readFileSync(f, "utf8")));

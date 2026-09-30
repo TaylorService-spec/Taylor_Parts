@@ -148,7 +148,8 @@ test("ORDERING CONSTRAINT: while eos_ops.parts is empty, these commands are wire
   const state = readFileSync(join(FUNCTIONS_DIR, "src/catalogMaster/catalogWriterState.ts"), "utf8");
   const committed = /CATALOG_WRITER_AUTHORITY[^=]*=\s*Object\.freeze\(\{\s*firestore:\s*"(\w+)",\s*postgres:\s*"(\w+)"/.exec(state);
   assert.ok(committed, "the committed catalog writer state must remain readable");
-  assert.deepEqual([committed[1], committed[2]], ["FROZEN", "INACTIVE"],
+  // ACTIVATED (window step 18) only after the verified COPY -- the constraint this test exists for is satisfied by order.
+  assert.deepEqual([committed[1], committed[2]], ["FROZEN", "ACTIVE"],
     "PostgreSQL catalog was activated without this constraint being re-reasoned");
 });
 

@@ -447,7 +447,9 @@ export async function postPurchasingUpdate(
  * external caller gets an explicit refusal that names the replacement, rather than a 404 it might
  * read as a transient outage.
  */
-export const RECEIVING_POSTGRES_ACTIVE = false;
+// ACTIVATED with the PostgreSQL Reorder authority (window step 19; Owner ruling R2): ORDERED -> RECEIVED is now the
+// governed receipt's consequence, and markReorderReceived answers only with its explicit refusal.
+export const RECEIVING_POSTGRES_ACTIVE = true;
 
 /**
  * THE POSTGRESQL REORDER AUTHORITY'S ACTIVATION BOUNDARY (Controller ruling 2026-09-28, activation window step 19).
@@ -458,7 +460,8 @@ export const RECEIVING_POSTGRES_ACTIVE = false;
  * not contain. A code constant, like RECEIVING_POSTGRES_ACTIVE and the Catalog writer state: activation is a reviewed,
  * tested, deployed change, never a runtime setting.
  */
-export const REORDER_POSTGRES_ACTIVE = false;
+// ACTIVATED by window step 19, after the Reorder COPY is verified and the ruled Administration grants are applied.
+export const REORDER_POSTGRES_ACTIVE = true;
 
 export interface ReorderCloseoutInput {
   readonly tenantId: string;
@@ -936,6 +939,128 @@ export async function readReorderRequest(
     refuse("OUTSIDE_READ_REACH", "FORBIDDEN", "this Reorder Request is neither in the caller's queue reach nor assigned to them");
   }
   return row ? toItem(row, deriveReorderCurrentOwner(String(row.status)), mine) : null;
+}
+
+/** The most Reorder Purchase Orders one read may name. A page of the queue, never "all of them". */
+export const REORDER_PURCHASE_ORDER_READ_MAX_IDS = 100;
+
+/**
+ * A Reorder Purchase Order, with its append-only void record when it has one, as the screens read it.
+ *
+ * The field names are the ones the screens already render (supplierName, externalPoNumber,
+ * orderedQuantity, orderedDate, expectedArrivalDate), so moving the read changes the SOURCE and not
+ * the vocabulary. `status` is the record's own, immutable status -- ORDERED, the only value a Reorder
+ * Purchase Order has ever carried -- because the lifecycle (RECEIVED, VOIDED) lives on the Reorder
+ * Request and on the void record, never on the purchase order itself.
+ */
+export interface ReorderPurchaseOrderView {
+  readonly id: string;
+  readonly reorderRequestId: string;
+  readonly purchaseOrderId: string;
+  readonly partId: string;
+  readonly status: "ORDERED";
+  readonly supplierName: string;
+  readonly externalPoNumber: string;
+  readonly orderedQuantity: number;
+  readonly orderedDate: string;
+  readonly expectedArrivalDate: string | null;
+  readonly unitPriceMinor: number | null;
+  readonly currency: string | null;
+  readonly createdBy: string;
+  readonly createdAt: string | null;
+  readonly void: null | {
+    readonly reorderPurchaseOrderId: string;
+    readonly reason: string;
+    readonly voidedBy: string;
+    readonly createdAt: string | null;
+  };
+}
+
+/**
+ * The Reorder Purchase Orders (and their void records) of the Reorder Requests the caller names.
+ *
+ * THE GOVERNED REPLACEMENT for the browser's Firestore reads of `reorder_purchase_orders` and
+ * `reorder_purchase_order_voids`. Once PostgreSQL is the Reorder authority, those collections are a
+ * frozen snapshot, and a screen that kept reading them would present a purchase order the governed
+ * receipt or void has since moved on from as current truth.
+ *
+ * SAME AUTHORIZATION AS readReorderRequest, applied to EVERY id: reorder.request.read, and for each
+ * named Reorder Request either the REORDER_QUEUE scope for its operating company or an active
+ * assignment of that record to the caller's Employee. A purchase order's company IS its request's
+ * (inherited at recording), so reaching the request is reaching its purchase order.
+ *
+ * FAIL CLOSED, WHOLE. One id the caller cannot reach refuses the read -- it is never silently dropped
+ * from the answer, which would render as "no purchase order recorded" -- and a Reorder Request that
+ * does not exist is refused exactly like one out of reach, so the read is no existence oracle. A
+ * reachable request that simply has no purchase order is ABSENT from the answer: that is a real fact
+ * (the ORPHAN case the screens surface), not a refusal.
+ */
+export async function readReorderPurchaseOrders(
+  deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>,
+): Promise<{ readonly purchaseOrders: readonly ReorderPurchaseOrderView[] }> {
+  requireActor(actor, REORDER_READ);
+  const i = acceptOnly(input, ["reorderRequestIds"]);
+  const raw = i.reorderRequestIds;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > REORDER_PURCHASE_ORDER_READ_MAX_IDS
+      || raw.some((x) => !ID_SHAPE(x))) {
+    refuse("REORDER_REQUEST_IDS_INVALID", "INVALID_INPUT",
+      `reorderRequestIds must name between 1 and ${REORDER_PURCHASE_ORDER_READ_MAX_IDS} Reorder Request ids`);
+  }
+  const ids = [...new Set(raw as string[])];
+
+  const [{ rows: requestRows }, reachKeys] = await Promise.all([
+    deps.pool.query(
+      `SELECT id, operating_company_key FROM eos_ops.reorder_requests WHERE tenant_id = $1 AND id = ANY($2::text[])`,
+      [actor.tenantId, ids]),
+    queueReachKeys(deps.pool, actor),
+  ]);
+  const companyById = new Map(requestRows.map((r) => [r.id as string, String(r.operating_company_key)]));
+  for (const id of ids) {
+    const company = companyById.get(id);
+    const inQueueReach = company !== undefined && reachKeys.includes(company);
+    if (!inQueueReach && !(await isCallerTheAssignedEmployee(deps.pool, actor.tenantId, actor.principalId, id))) {
+      refuse("OUTSIDE_READ_REACH", "FORBIDDEN",
+        "a named Reorder Request is neither in the caller's queue reach nor assigned to them");
+    }
+  }
+
+  const { rows } = await deps.pool.query(
+    `SELECT p.id, p.part_id, p.supplier_name, p.external_po_number, p.ordered_quantity,
+            to_char(p.ordered_date, 'YYYY-MM-DD') AS ordered_date,
+            to_char(p.expected_arrival_date, 'YYYY-MM-DD') AS expected_arrival_date,
+            p.unit_price_minor, p.currency, p.created_by, p.created_at,
+            v.purchase_order_id AS void_id, v.reason AS void_reason, v.voided_by, v.voided_at
+       FROM eos_ops.purchase_orders p
+       LEFT JOIN eos_ops.purchase_order_voids v
+         ON v.tenant_id = p.tenant_id AND v.purchase_order_id = p.id
+      WHERE p.tenant_id = $1 AND p.id = ANY($2::text[])
+      ORDER BY p.id`,
+    [actor.tenantId, ids]);
+  return Object.freeze({
+    purchaseOrders: Object.freeze(rows.map((r) => Object.freeze({
+      id: r.id as string,
+      reorderRequestId: r.id as string,
+      purchaseOrderId: r.id as string,
+      partId: r.part_id as string,
+      status: "ORDERED" as const,
+      supplierName: r.supplier_name as string,
+      externalPoNumber: r.external_po_number as string,
+      orderedQuantity: Number(r.ordered_quantity),
+      orderedDate: r.ordered_date as string,
+      expectedArrivalDate: (r.expected_arrival_date as string | null) ?? null,
+      // BIGINT arrives as a string from `pg`; converted once, here.
+      unitPriceMinor: r.unit_price_minor === null || r.unit_price_minor === undefined ? null : Number(r.unit_price_minor),
+      currency: (r.currency as string | null) ?? null,
+      createdBy: r.created_by as string,
+      createdAt: iso(r.created_at),
+      void: r.void_id === null || r.void_id === undefined ? null : Object.freeze({
+        reorderPurchaseOrderId: r.void_id as string,
+        reason: r.void_reason as string,
+        voidedBy: r.voided_by as string,
+        createdAt: iso(r.voided_at),
+      }),
+    }))),
+  });
 }
 
 /**
