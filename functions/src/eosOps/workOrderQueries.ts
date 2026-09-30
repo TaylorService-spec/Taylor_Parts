@@ -23,10 +23,37 @@ import { readWorkOrderExecution } from "./workOrderExecution";
 import { WORK_ORDER_CREATE } from "./workOrderCreateCommand";
 import { WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES, WORK_ORDER_ASSIGNMENT_QUALIFICATION } from "./workOrderAssignmentAuthority";
 import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding";
-import { EMPLOYEE_DIRECTORY_COLUMNS, directoryItemOf, type EmployeeDirectoryItem } from "../eosWorkforce/reads/employeeRecordProjection";
 
 const SCHEMA = "eos_ops";
 export const WORK_ORDER_LIST_MAX = 200;
+
+/**
+ * The ASSIGNEE projection this module returns -- deliberately its own, and deliberately minimal. The Workforce read
+ * layer is imported by the Workforce transport alone (employeeRuntimeReads.test.mjs); a Work Order picker needs who
+ * the assignable technician is, not their Employee record, so it selects six columns and no contact or address data.
+ * The display name follows the same rule as the Employee directory: preferred, then display, then first + last.
+ */
+export interface WorkOrderTechnicianItem {
+  readonly employeeId: string;
+  readonly displayName: string | null;
+  readonly employeeNumber: string | null;
+  readonly employmentStatus: string;
+  readonly operatingCompanyId: string;
+  readonly jobTitle: string | null;
+}
+const TECHNICIAN_COLUMNS = `e.id, e.employment_status::text AS employment_status, e.operating_company_id, e.employee_number,
+  e.preferred_name, e.display_name, e.first_name, e.last_name, e.job_title`;
+const personName = (r: Record<string, unknown>): string | null => {
+  if (r.preferred_name) return String(r.preferred_name);
+  if (r.display_name) return String(r.display_name);
+  const joined = [r.first_name, r.last_name].filter((v) => typeof v === "string" && v !== "").join(" ");
+  return joined === "" ? null : joined;
+};
+const technicianOf = (r: Record<string, unknown>): WorkOrderTechnicianItem => Object.freeze({
+  employeeId: String(r.id), displayName: personName(r), employeeNumber: (r.employee_number as string | null) ?? null,
+  employmentStatus: String(r.employment_status), operatingCompanyId: String(r.operating_company_id),
+  jobTitle: (r.job_title as string | null) ?? null,
+});
 
 type Category = WorkOrderLifecycleError["category"];
 const refuse = (code: string, category: Category, message: string): never => {
@@ -65,7 +92,7 @@ const SUMMARY_SELECT = `
   SELECT w.id, w.work_order_number, w.status::text AS status, w.work_order_type::text AS work_order_type, w.priority,
          w.severity::text AS severity, w.operating_company_key, w.customer_id, acct.name AS customer_name, w.location_id,
          loc.name AS location_name, w.equipment_id, w.sales_order_id, w.scheduled_start, w.scheduled_end,
-         a.assignee_employee_id, e.display_name AS assignee_display_name, e.first_name AS assignee_first_name,
+         a.assignee_employee_id, e.preferred_name AS assignee_preferred_name, e.display_name AS assignee_display_name, e.first_name AS assignee_first_name,
          e.last_name AS assignee_last_name, w.complaint, w.provenance::text AS provenance, w.created_at, w.updated_at,
          w.dispatched_at, w.accepted_at, w.en_route_at, w.arrived_at, w.work_started_at, w.completed_at, w.closed_at,
          w.diagnosis, w.resolution, w.estimated_duration_minutes
@@ -77,8 +104,8 @@ const SUMMARY_SELECT = `
     LEFT JOIN eos_crm.account_locations loc ON loc.tenant_id = w.tenant_id AND loc.id = w.location_id`;
 
 function summaryOf(r: Record<string, unknown>): WorkOrderSummary {
-  const assigneeName = (r.assignee_display_name as string | null)
-    ?? ([r.assignee_first_name, r.assignee_last_name].filter(Boolean).join(" ") || null);
+  const assigneeName = personName({ preferred_name: r.assignee_preferred_name, display_name: r.assignee_display_name,
+    first_name: r.assignee_first_name, last_name: r.assignee_last_name });
   return Object.freeze({
     workOrderId: String(r.id), workOrderNumber: (r.work_order_number as string | null) ?? null,
     status: String(r.status), workOrderType: String(r.work_order_type), priority: Number(r.priority),
@@ -265,7 +292,7 @@ export async function listWorkOrderTechnicians(
   deps: { readonly pool: Pool },
   actor: LifecycleActor,
   input: unknown,
-): Promise<{ readonly workOrderId: string | null; readonly operatingCompanyId: string | null; readonly items: readonly EmployeeDirectoryItem[] }> {
+): Promise<{ readonly workOrderId: string | null; readonly operatingCompanyId: string | null; readonly items: readonly WorkOrderTechnicianItem[] }> {
   if (!(actor?.capabilities instanceof Set)
     || !(actor.capabilities.has(WORK_ORDER_LIFECYCLE_SCHEDULE) || actor.capabilities.has(WORK_ORDER_LIFECYCLE_DISPATCH))) {
     refuse("CAPABILITY_MISSING", "FORBIDDEN",
@@ -294,7 +321,7 @@ export async function listWorkOrderTechnicians(
     }
   }
   const { rows } = await deps.pool.query(
-    `SELECT ${EMPLOYEE_DIRECTORY_COLUMNS} FROM eos_workforce.employees e
+    `SELECT ${TECHNICIAN_COLUMNS} FROM eos_workforce.employees e
       WHERE e.tenant_id = $1 AND ($2::text IS NULL OR e.operating_company_id = $2) AND e.employment_status::text = ANY($3::text[])
         AND EXISTS (SELECT 1 FROM eos_policy.employee_principal_links l
                      WHERE l.tenant_id = e.tenant_id AND l.employee_id = e.id AND l.status = 'active')
@@ -303,7 +330,7 @@ export async function listWorkOrderTechnicians(
       ORDER BY e.display_name NULLS LAST, e.id LIMIT ${WORK_ORDER_LIST_MAX}`,
     [actor.tenantId, companyId, [...WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES], WORK_ORDER_ASSIGNMENT_QUALIFICATION]);
   return Object.freeze({ workOrderId: ID_SHAPE(workOrderId) ? workOrderId : null, operatingCompanyId: companyId,
-    items: Object.freeze(rows.map(directoryItemOf)) });
+    items: Object.freeze(rows.map(technicianOf)) });
 }
 
 /**

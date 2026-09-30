@@ -906,7 +906,9 @@ test("the real repository file that discusses firebase in PROSE while importing 
   assert.deepEqual([...classify(text, relativePath)], [], relativePath);
 });
 
-test("the two real files that mention admin.firestore in a COMMENT are classified by SPECIFIER " +
+// The client copy (field-ops-app-vite/src/types/workOrder.ts) left Firestore entirely in the Work Order domain
+// cutover (2026-09-30): it no longer imports the Timestamp type, so it is no Firestore entry and is not pinned here.
+test("the real file that mentions admin.firestore in a COMMENT is classified by SPECIFIER " +
   "only -- matchesSource adds nothing to them, so no entry is reclassified", () => {
   // Both import `type { Timestamp }` from the Firestore subpath, which the specifier matcher
   // deliberately matches (the `from` clause is unaffected by `type`), so both are already baseline
@@ -914,7 +916,6 @@ test("the two real files that mention admin.firestore in a COMMENT are classifie
   // NOTHING: the category set is exactly the one specifier matching alone produces.
   const expected = {
     "functions/src/types/workOrder.ts": ["server.firebase_admin_firestore"],
-    "field-ops-app-vite/src/types/workOrder.ts": ["frontend.firestore_client"],
   };
   for (const [relativePath, categories] of Object.entries(expected)) {
     const text = readSourceFile(join(REPO_ROOT, relativePath), "utf8");
@@ -984,7 +985,7 @@ test("classification is a strict SUPERSET: every file the specifier matcher alon
     SERVER_PROBE).has("server.firebase_admin_firestore"));
 });
 
-test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 330 " +
+test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 323 " +
   "guarded entries across four populated categories, nothing lost and nothing reclassified", () => {
   const scanResults = scan(REPO_ROOT);
   const baseline = loadCommittedBaseline(REPO_ROOT);
@@ -999,12 +1000,15 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // replaced by the PostgreSQL Commercial offer (hooks/useCommercialCapabilities) -- 39 -> 37 and 44 -> 42.
     // Catalog + Reorder activation, L0 Z3: the three Reorder Purchase Order / void hooks read the governed
     // readReorderPurchaseOrders on the EOS API instead -- 37 -> 34 (shrink-only).
-    "frontend.firestore_client": 34,
+    // Work Order domain cutover (2026-09-30): the Work Order service, detail/search/demand hooks, account Work
+    // Orders and the Work Order type module read the EOS API instead of fieldops_wos -- 34 -> 28 (shrink-only).
+    "frontend.firestore_client": 28,
     // Pass 11 Retail Sales: the 7 Opportunity / Sales Order read + command clients moved to the EOS Commercial API.
     // ... and their callable transports (Part / alias command clients, the Reorder callable client) -- 47 -> 44.
     // L0 Z3: product-reference search (salesAgreementCommandClient.js) left the searchProductReferences callable
     // for the PostgreSQL Catalog -- 42 -> 41.
-    "frontend.firebase_functions_client": 41,
+    // Work Order domain cutover (2026-09-30): workOrderService left the Work Order callables -- 41 -> 40.
+    "frontend.firebase_functions_client": 40,
     "server.firebase_admin_firestore": 183,
     "server.firebase_functions_server": 72,
   };
@@ -1017,5 +1021,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 330);
+  assert.equal(total, 323);
 });
