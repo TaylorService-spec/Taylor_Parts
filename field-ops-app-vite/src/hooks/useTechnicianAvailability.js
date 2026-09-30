@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { readTechnicianAvailability } from "../services/schedulingCommandClient.js";
 
-// The board's ONLY source of technician working hours and blocked time.
+// The board's ONLY source of technician working hours and unavailability: the GOVERNED PostgreSQL availability
+// authority on /operations/work-orders (DECISION 5), keyed by EMPLOYEE id, through
+// services/schedulingCommandClient.js. The Firebase readTechnicianAvailabilityCallable is retired and there is no
+// fallback to it.
 //
-// ════════════════════ WHY A CALLABLE AND NOT A SUBSCRIPTION ════════════════════
+// ════════════════════ WHY A READ AND NOT A SUBSCRIPTION ════════════════════
 //
-// `technician_working_availability` and `technician_blocked_time` DENY CLIENT READS -- deployed, and
-// proved live by the Scheduling Functional Gate (a dispatcher's own ID token gets 403 on both). There
-// is no onSnapshot to attach, and adding one would fail closed and look like a bug.
+// The governed route has no push channel.
 //
 // So availability is a windowed READ, refreshed when the window changes, while Work Orders stay on
 // their existing live subscription (useWorkOrders). That split is deliberate and worth being precise

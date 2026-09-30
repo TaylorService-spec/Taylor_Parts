@@ -306,7 +306,7 @@ export default function DispatcherBoard() {
         // The governed route's specific refusal rides on `reason` (WorkOrderApiError).
         const code = err?.reason ?? err?.details?.code ?? null;
         const message = code
-          ? schedulingRefusalMessage(code, stripPrefix(err?.code), context)
+          ? schedulingRefusalMessage(code, stripPrefix(err?.code), { ...context, serverMessage: err?.message ?? null })
           : workflowActionErrorMessage(err);
         setBoardMessage({ tone: "error", text: message });
         return { ok: false, message };
@@ -318,7 +318,7 @@ export default function DispatcherBoard() {
       }
 
       function refusal(res, ctx) {
-        const message = schedulingRefusalMessage(res.errorCode, res.errorStatus, ctx);
+        const message = schedulingRefusalMessage(res.errorCode, res.errorStatus, { ...ctx, serverMessage: res.errorMessage ?? null });
         setBoardMessage({ tone: "error", text: message });
         return { ok: false, message };
       }

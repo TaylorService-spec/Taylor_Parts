@@ -28,6 +28,9 @@ vi.mock("../src/services/workOrderService", () => ({
   subscribeAssignedWorkOrders: vi.fn(() => () => {}),
   listWorkOrderTechnicians: vi.fn(async () => ({ workOrderId: null, operatingCompanyId: null, items: [] })),
   onWorkOrderMutation: vi.fn(() => () => {}),
+  // DECISION 5: the board's availability read is the governed operation through this service (no Firebase
+  // callable); answered here so this suite's only alert is the dispatch failure it is about.
+  readTechnicianAvailability: vi.fn(async () => ({ startMillis: 0, endMillis: 1, technicians: [], notFoundEmployeeIds: [] })),
 }));
 
 vi.mock("../src/hooks/useCurrentTechnician", () => ({
