@@ -60,73 +60,9 @@ export const SANDBOX_REFRESH_EXCLUDED_FUNCTIONS = Object.freeze({
     "platform-sandbox would require provisioning Keystone credentials for a capability that " +
     "environment has not activated. Its non-secret sibling getWorkOrderReadinessContext is " +
     "unaffected and still deploys.",
-  // EMAIL CONNECTIONS PHASE 2. Eight Functions, one decision: this environment has no provider
-  // application registered, so it has none of the EMAIL_* secrets, and a general refresh must not be
-  // forced to invent them. This is the governed answer the mechanism asks for -- not a way around it.
-  startEmailConnectionAuthorization:
-    "Binds the four EMAIL_* provider OAuth secrets. platform-sandbox has no Microsoft 365 or " +
-    "Google Workspace application registered against it, so those secrets are intentionally absent " +
-    "and no mailbox is connected. Deploying this in a general refresh would demand provider " +
-    "credentials for a capability the environment has not activated. Its non-secret sibling " +
-    "getInboundWorkAttachment is unaffected and still deploys, as does every phase-1 inbound-work " +
-    "Function. REMOVE THIS ENTRY the moment a tenant is bound and the secrets exist -- the runbook " +
-    "is docs/deployment/email-provider-setup.md.",
-  completeEmailConnectionAuthorization:
-    "Binds the four EMAIL_* provider OAuth secrets. platform-sandbox has no Microsoft 365 or " +
-    "Google Workspace application registered against it, so those secrets are intentionally absent " +
-    "and no mailbox is connected. Deploying this in a general refresh would demand provider " +
-    "credentials for a capability the environment has not activated. Its non-secret sibling " +
-    "getInboundWorkAttachment is unaffected and still deploys, as does every phase-1 inbound-work " +
-    "Function. REMOVE THIS ENTRY the moment a tenant is bound and the secrets exist -- the runbook " +
-    "is docs/deployment/email-provider-setup.md.",
-  testEmailConnection:
-    "Binds the four EMAIL_* provider OAuth secrets. platform-sandbox has no Microsoft 365 or " +
-    "Google Workspace application registered against it, so those secrets are intentionally absent " +
-    "and no mailbox is connected. Deploying this in a general refresh would demand provider " +
-    "credentials for a capability the environment has not activated. Its non-secret sibling " +
-    "getInboundWorkAttachment is unaffected and still deploys, as does every phase-1 inbound-work " +
-    "Function. REMOVE THIS ENTRY the moment a tenant is bound and the secrets exist -- the runbook " +
-    "is docs/deployment/email-provider-setup.md.",
-  disconnectEmailConnection:
-    "Binds the four EMAIL_* provider OAuth secrets. platform-sandbox has no Microsoft 365 or " +
-    "Google Workspace application registered against it, so those secrets are intentionally absent " +
-    "and no mailbox is connected. Deploying this in a general refresh would demand provider " +
-    "credentials for a capability the environment has not activated. Its non-secret sibling " +
-    "getInboundWorkAttachment is unaffected and still deploys, as does every phase-1 inbound-work " +
-    "Function. REMOVE THIS ENTRY the moment a tenant is bound and the secrets exist -- the runbook " +
-    "is docs/deployment/email-provider-setup.md.",
-  getEmailProviderReadiness:
-    "Binds the four EMAIL_* provider OAuth secrets. platform-sandbox has no Microsoft 365 or " +
-    "Google Workspace application registered against it, so those secrets are intentionally absent " +
-    "and no mailbox is connected. Deploying this in a general refresh would demand provider " +
-    "credentials for a capability the environment has not activated. Its non-secret sibling " +
-    "getInboundWorkAttachment is unaffected and still deploys, as does every phase-1 inbound-work " +
-    "Function. REMOVE THIS ENTRY the moment a tenant is bound and the secrets exist -- the runbook " +
-    "is docs/deployment/email-provider-setup.md.",
-  pollEmailMailboxNow:
-    "Binds the four EMAIL_* provider OAuth secrets. platform-sandbox has no Microsoft 365 or " +
-    "Google Workspace application registered against it, so those secrets are intentionally absent " +
-    "and no mailbox is connected. Deploying this in a general refresh would demand provider " +
-    "credentials for a capability the environment has not activated. Its non-secret sibling " +
-    "getInboundWorkAttachment is unaffected and still deploys, as does every phase-1 inbound-work " +
-    "Function. REMOVE THIS ENTRY the moment a tenant is bound and the secrets exist -- the runbook " +
-    "is docs/deployment/email-provider-setup.md.",
-  retryEmailDelivery:
-    "Binds the four EMAIL_* provider OAuth secrets. platform-sandbox has no Microsoft 365 or " +
-    "Google Workspace application registered against it, so those secrets are intentionally absent " +
-    "and no mailbox is connected. Deploying this in a general refresh would demand provider " +
-    "credentials for a capability the environment has not activated. Its non-secret sibling " +
-    "getInboundWorkAttachment is unaffected and still deploys, as does every phase-1 inbound-work " +
-    "Function. REMOVE THIS ENTRY the moment a tenant is bound and the secrets exist -- the runbook " +
-    "is docs/deployment/email-provider-setup.md.",
-  pollEmailMailboxes:
-    "Binds the four EMAIL_* provider OAuth secrets. platform-sandbox has no Microsoft 365 or " +
-    "Google Workspace application registered against it, so those secrets are intentionally absent " +
-    "and no mailbox is connected. Deploying this in a general refresh would demand provider " +
-    "credentials for a capability the environment has not activated. Its non-secret sibling " +
-    "getInboundWorkAttachment is unaffected and still deploys, as does every phase-1 inbound-work " +
-    "Function. REMOVE THIS ENTRY the moment a tenant is bound and the secrets exist -- the runbook " +
-    "is docs/deployment/email-provider-setup.md.",
+  // The EMAIL CONNECTIONS PHASE 2 entries (eight EMAIL_*-secret-bound Functions) are gone: those Functions were retired
+  // from source with the Firebase inbound/email runtime (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30) -- the
+  // provider runtime is EOS / PostgreSQL. Nothing is excluded because nothing remains to exclude.
 });
 
 /**
