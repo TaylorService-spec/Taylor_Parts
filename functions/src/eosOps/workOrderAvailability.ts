@@ -49,6 +49,7 @@ import {
   WorkOrderLifecycleError, WORK_ORDER_LIFECYCLE_DISPATCH, WORK_ORDER_LIFECYCLE_SCHEDULE, type LifecycleActor,
 } from "./workOrderLifecycle";
 import type { WorkOrderOp } from "./workOrderOperationTypes";
+import { notQuarantined } from "./workOrderQuarantine";
 import {
   WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES, WORK_ORDER_ASSIGNMENT_QUALIFICATION,
 } from "./workOrderAssignmentAuthority";
@@ -391,7 +392,7 @@ const WINDOW_HOLDING_WORK_ORDERS_SQL = `
   SELECT w.id, a.assignee_employee_id, w.scheduled_start, w.scheduled_end
     FROM eos_ops.work_orders w
     JOIN eos_ops.work_order_assignments a ON a.tenant_id = w.tenant_id AND a.work_order_id = w.id AND a.effective_to IS NULL
-   WHERE w.tenant_id = $1 AND a.assignee_employee_id = ANY($2::text[])
+   WHERE w.tenant_id = $1 AND a.assignee_employee_id = ANY($2::text[]) AND ${notQuarantined("w")}
      AND w.status::text = ANY('{${WINDOW_HOLDING_STATUSES.join(",")}}'::text[])
      AND w.scheduled_start IS NOT NULL AND w.scheduled_start < $4 AND $3 < w.scheduled_end
    ORDER BY w.scheduled_start, w.id`;
