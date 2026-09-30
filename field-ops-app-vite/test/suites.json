@@ -270,6 +270,10 @@
       "runner": "node"
     },
     {
+      "file": "test/eosHarnessSession.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/equipmentCompatibility.test.mjs",
       "runner": "node"
     },

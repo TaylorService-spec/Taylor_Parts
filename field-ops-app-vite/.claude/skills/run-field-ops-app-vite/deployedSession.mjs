@@ -175,6 +175,26 @@ export const LOCAL_TO_EOS_PERSONA = Object.freeze({
 });
 
 /**
+ * OPEN A PAGE AS AN EOS PERSONA -- the one EOS entry point every browser harness shares.
+ *
+ * Issues the persona's EOS session (issueEosPersonaSession), seeds it before the first app script
+ * (seedEosSession), then loads `url`. A local driver key is mapped onto its canonical persona
+ * (LOCAL_TO_EOS_PERSONA); a canonical key passes through unchanged. `options` reaches the issuer
+ * unchanged (`env`, `credential`, `baseUrl`, `fetch`), so tests inject a fake issuer and no network.
+ *
+ * Nothing is attempted before the session exists: without the issuer credential, or on a refused
+ * issue, it throws EosPersonaSessionError and the page is never seeded or navigated. The return value
+ * names the persona and Principal only -- never the token.
+ */
+export async function openEosPersonaSession(page, url, personaKey, options = {}) {
+  const personaId = LOCAL_TO_EOS_PERSONA[personaKey] ?? personaKey;
+  const session = await issueEosPersonaSession(personaId, options);
+  await seedEosSession(page, session);
+  await page.goto(url, { waitUntil: "domcontentloaded", ...(options.timeout ? { timeout: options.timeout } : {}) });
+  return Object.freeze({ personaKey: session.personaKey, principalId: session.principalId, expiresAt: session.expiresAt });
+}
+
+/**
  * Establish an authenticated session for whichever target is in play.
  *
  * LOCAL keeps the real form login, deliberately: against the emulator that exercises Login.jsx
@@ -194,10 +214,7 @@ export async function establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, 
     await page.locator('button[type="submit"]').click();
   } else if (eosPersonaSessionAvailable()) {
     // EOS persona session: the canonical 16 persona keys, no SANDBOX_CREDENTIALS_FILE.
-    const personaId = LOCAL_TO_EOS_PERSONA[accountKey] ?? accountKey;
-    const session = await issueEosPersonaSession(personaId);
-    await seedEosSession(page, session);
-    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await openEosPersonaSession(page, `${BASE}/`, accountKey);
   } else {
     const personaId = LOCAL_TO_SANDBOX_PERSONA[accountKey] ?? accountKey;
     const session = await signInPersona(personaId);
