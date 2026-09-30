@@ -69,6 +69,30 @@ export const SERVICE_ACTIVATION_GRANTS: readonly ServiceGrantDecision[] = Object
   }),
 ]);
 
+const ACTIVATION_RULING = "Controller PR #2005 MERGE + SERVICE ACTIVATION AUTHORIZATION 2026-09-30";
+
+/** DECISION D (activation ruling): labor correction is the Service Manager's (fieldManager) authority ONLY. */
+export const LABOR_CORRECTION_GRANTS: readonly ServiceGrantDecision[] = Object.freeze([
+  Object.freeze({ roleKey: "fieldManager", objectKey: "workOrder", actionKey: "correctLabor", capabilityKey: "workOrder.labor.correctEntry",
+    reason: `${ACTIVATION_RULING}, D: labor correction is the Service Manager's authority only (append-only correction)` }),
+]);
+
+/**
+ * DECISION E (activation ruling): Inbound Work by least authority. Service Manager (fieldManager): full review and
+ * control, including intake configuration. Dispatcher: operational review and normal disposition. Office Manager:
+ * read only. Technician, Sales and Parts: none.
+ */
+export const INBOUND_WORK_GRANTS: readonly ServiceGrantDecision[] = Object.freeze([
+  ...(["read", "accept", "decline", "attach"] as const).map((a) => Object.freeze({ roleKey: "fieldManager", objectKey: "inboundWorkRequest", actionKey: a,
+    capabilityKey: `inboundWork.request.${a}`, reason: `${ACTIVATION_RULING}, E: Service Manager full Inbound Work review/control (${a})` })),
+  Object.freeze({ roleKey: "fieldManager", objectKey: "inboundMailbox", actionKey: "manage", capabilityKey: "inboundWork.intake.manage",
+    reason: `${ACTIVATION_RULING}, E: Service Manager full Inbound Work control includes intake configuration` }),
+  ...(["read", "accept", "attach", "decline"] as const).map((a) => Object.freeze({ roleKey: "dispatcher", objectKey: "inboundWorkRequest", actionKey: a,
+    capabilityKey: `inboundWork.request.${a}`, reason: `${ACTIVATION_RULING}, E: Dispatcher operational review and normal disposition (${a})` })),
+  Object.freeze({ roleKey: "officeManager", objectKey: "inboundWorkRequest", actionKey: "read", capabilityKey: "inboundWork.request.read",
+    reason: `${ACTIVATION_RULING}, E: Office Manager read/review visibility only` }),
+]);
+
 /** DECISION 2 (DQ-016): exactly one condition. */
 export const SERVICE_ACTIVATION_CONDITIONS: readonly ServiceConditionDecision[] = Object.freeze([
   Object.freeze({
@@ -93,7 +117,7 @@ export function serviceActivationOperations(): readonly { readonly operation: "g
       operation: "setGrantCondition" as const,
       input: Object.freeze({ objectKey: c.objectKey, actionKey: c.actionKey, roleKey: c.roleKey, condition: c.condition, reason: c.reason }),
     })),
-    ...SERVICE_ACTIVATION_GRANTS.map((g) => Object.freeze({
+    ...[...SERVICE_ACTIVATION_GRANTS, ...LABOR_CORRECTION_GRANTS, ...INBOUND_WORK_GRANTS].map((g) => Object.freeze({
       operation: "grantObjectActionToRole" as const,
       input: Object.freeze({ objectKey: g.objectKey, actionKey: g.actionKey, roleKey: g.roleKey, reason: g.reason }),
     })),

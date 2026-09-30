@@ -127,6 +127,9 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   surface("service.coordinatedVisits", "Coordinated Visits", [
     { capabilityKey: "fulfillment.coordinatedVisit.read" },
   ]),
+  // Inbound Work review (Work Order cutover activation, 2026-09-30): earned by the governed PostgreSQL read
+  // capability, replacing the Firebase-feed gate on service.inboundWork.read.
+  surface("service.inboundWork", "Inbound Work", [{ capabilityKey: "inboundWork.request.read" }]),
   // The technician's OWN work. The capability alone is not the surface: the governed model says field
   // work needs the SERVICE_TECHNICIAN qualification, and that is a different authority from the Role.
   surface("field.myWorkOrders", "My Work Orders", [

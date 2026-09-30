@@ -194,10 +194,10 @@ test("Inbound Work on PostgreSQL through /operations/inbound-work", { skip: SKIP
   const graph = (fixture, patch) => ({ ...fixture, message: { ...fixture.message, ...patch } });
 
   await t.test("fail-closed: while the Work Order authority is INACTIVE the route answers NOT_ACTIVATED and writes nothing", async () => {
-    assert.deepEqual(ok(await call(REVIEWER, "readWorkOrderAuthorityStatus", {}, null)), { postgres: "INACTIVE", readiness: "NOT_YET_ACTIVATED" });
-    refused(await call(REVIEWER, "listInboundWork", {}, null), 503, "NOT_ACTIVATED");
-    refused(await call(ADMIN, "deliverInboundMessage", { provider: "MICROSOFT_365", mailboxId: "x", message: {} }, null), 503, "NOT_ACTIVATED");
-    refused(await call(REVIEWER, "acceptInboundWork", {}, null), 503, "NOT_ACTIVATED");
+    assert.deepEqual(ok(await call(REVIEWER, "readWorkOrderAuthorityStatus", {}, "INACTIVE")), { postgres: "INACTIVE", readiness: "NOT_YET_ACTIVATED" });
+    refused(await call(REVIEWER, "listInboundWork", {}, "INACTIVE"), 503, "NOT_ACTIVATED");
+    refused(await call(ADMIN, "deliverInboundMessage", { provider: "MICROSOFT_365", mailboxId: "x", message: {} }, "INACTIVE"), 503, "NOT_ACTIVATED");
+    refused(await call(REVIEWER, "acceptInboundWork", {}, "INACTIVE"), 503, "NOT_ACTIVATED");
     assert.equal((await one(`SELECT count(*)::int n FROM eos_ops.inbound_work_requests`)).n, 0);
     refused(await call(REVIEWER, "createWorkOrderFromEmail"), 404, "UNKNOWN_OPERATION");
   });

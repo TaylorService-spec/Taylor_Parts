@@ -32,7 +32,9 @@ ok("Service -> Inbound Work exists at its own path with no legacyKey", () => {
   assert.ok(inbound, "the Inbound Work subnav item is present");
   assert.equal(inbound.path, "inbound-work");
   assert.equal(inbound.legacyKey, undefined);
-  assert.deepEqual(inbound.capabilityAccess, ["service.inboundWork.read"]);
+  // UPDATED DELIBERATELY (Work Order cutover activation, 2026-09-30): the gate is the governed PostgreSQL
+  // inboundWork.request.read (EOS surface service.inboundWork), not the Firebase-activated service.inboundWork.read.
+  assert.deepEqual(inbound.capabilityAccess, ["inboundWork.request.read"]);
 });
 
 ok("Inbound Work is CAPABILITY-gated, and fails closed for every role without it", () => {
@@ -44,7 +46,9 @@ ok("Inbound Work is CAPABILITY-gated, and fails closed for every role without it
       `${role} must not see Inbound Work without the governed capability`,
     );
   }
-  assert.equal(isNavItemVisible(inbound, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN), withCapability("service.inboundWork.read")), true);
+  assert.equal(isNavItemVisible(inbound, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN), withCapability("inboundWork.request.read")), true);
+  assert.equal(isNavItemVisible(inbound, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN), withCapability("service.inboundWork.read")), false,
+    "the Firebase-activated id no longer opens the destination");
 });
 
 ok("a loading or errored capability feed does not reveal the destination", () => {
@@ -71,7 +75,7 @@ ok("Administration -> Email & Communications is one destination, capability-gate
 ok("the Service capability does not open the Administration destination, and vice versa", () => {
   const inbound = item("service", "inboundWork");
   const email = item("administration", "emailCommunications");
-  assert.equal(isNavItemVisible(email, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN), withCapability("service.inboundWork.read")), false);
+  assert.equal(isNavItemVisible(email, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN), withCapability("inboundWork.request.read")), false);
   assert.equal(isNavItemVisible(inbound, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN), withCapability("administration.emailIntake.manage")), false);
 });
 

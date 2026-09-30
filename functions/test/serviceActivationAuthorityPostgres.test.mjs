@@ -45,7 +45,14 @@ test("DECISION 1: exactly nine grants on the canonical roles; the Technician get
       ["workOrder.lifecycle.close", "workOrder.lifecycle.ready", "workOrder.lifecycle.schedule", "workOrder.parts.plan"]);
   }
   // Every grant is an Administration command with a stated reason -- never a migration or a seed.
-  for (const op of delta.serviceActivationOperations()) assert.match(op.input.reason, /COMPLETION PASS 2026-09-30/);
+  for (const op of delta.serviceActivationOperations()) assert.match(op.input.reason, /COMPLETION PASS 2026-09-30|SERVICE ACTIVATION AUTHORIZATION 2026-09-30/);
+  // D: labor correction to the Service Manager ONLY; E: Inbound Work by least authority.
+  assert.deepEqual(delta.LABOR_CORRECTION_GRANTS.map((g) => [g.roleKey, g.capabilityKey]), [["fieldManager", "workOrder.labor.correctEntry"]]);
+  const inbound = (role) => delta.INBOUND_WORK_GRANTS.filter((g) => g.roleKey === role).map((g) => g.capabilityKey).sort();
+  assert.deepEqual(inbound("fieldManager"), ["inboundWork.intake.manage", "inboundWork.request.accept", "inboundWork.request.attach", "inboundWork.request.decline", "inboundWork.request.read"]);
+  assert.deepEqual(inbound("dispatcher"), ["inboundWork.request.accept", "inboundWork.request.attach", "inboundWork.request.decline", "inboundWork.request.read"]);
+  assert.deepEqual(inbound("officeManager"), ["inboundWork.request.read"]);
+  for (const role of ["technician", "salesperson", "partsAssociate", "partsManager"]) assert.deepEqual(inbound(role), [], role);
 });
 
 test("DECISION 2: DQ-016 is ONE condition on the technician's workOrder/read cell, applied FIRST", () => {
@@ -53,7 +60,7 @@ test("DECISION 2: DQ-016 is ONE condition on the technician's workOrder/read cel
   assert.equal(ops[0].operation, "setGrantCondition");
   assert.deepEqual(ops[0].input.condition, { paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "workOrder" });
   assert.deepEqual([ops[0].input.roleKey, ops[0].input.objectKey, ops[0].input.actionKey], ["technician", "workOrder", "read"]);
-  assert.equal(ops.length, 10);
+  assert.equal(ops.length, 21); // 1 condition + 9 (DECISION 1) + 1 (D) + 10 (E)
 });
 
 // ════════════════════ AGAINST REAL POSTGRESQL ════════════════════
@@ -172,19 +179,19 @@ test("the Service activation authority delta, applied through Administration and
     });
 
     const grantsBefore = await grantCount();
-    await t.test("APPLY the packet through the Administration API: +9 grants, +1 condition, every command audited", async () => {
+    await t.test("APPLY the packet through the Administration API: +20 grants, +1 condition, every command audited", async () => {
       const auditBefore = Number((await q(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id=$1`, [TENANT])).rows[0].n);
       for (const { operation, input } of delta.serviceActivationOperations()) {
         const res = await admin(operation, input);
         assert.equal(res.ok, true, `${operation} ${JSON.stringify(input)}: ${JSON.stringify(res)}`);
       }
-      assert.equal(await grantCount() - grantsBefore, 9);
+      assert.equal(await grantCount() - grantsBefore, 20);
       assert.equal(await conditionCount(), 1);
       const auditAfter = Number((await q(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id=$1`, [TENANT])).rows[0].n);
       assert.ok(auditAfter - auditBefore >= 10, "each Administration command is audited");
       // Idempotent: re-applying adds nothing.
       for (const { operation, input } of delta.serviceActivationOperations()) assert.equal((await admin(operation, input)).ok, true);
-      assert.equal(await grantCount() - grantsBefore, 9);
+      assert.equal(await grantCount() - grantsBefore, 20);
     });
 
     let own; let other; let ventanaWo;

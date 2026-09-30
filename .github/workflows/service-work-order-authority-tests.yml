@@ -46,6 +46,8 @@ on:
       - "functions/test/workOrderSnapshotExporter.test.mjs"
       - "functions/test/workOrderQuarantinePostgres.test.mjs"
       - "functions/test/serviceTechnicianJourneyPostgres.test.mjs"
+      - "functions/test/capabilityObjectAuthorityGuard.test.mjs"
+      - "functions/src/adminPolicy/seed/capabilityGovernedObjects.json"
       - "functions/test/serviceActivationAuthorityPostgres.test.mjs"
       - "functions/test/workOrderAvailabilityPostgres.test.mjs"
       - "functions/test/workOrderLaborPostgres.test.mjs"
@@ -155,6 +157,7 @@ jobs:
           test/workOrderJourneyAcceptancePostgres.test.mjs
           test/workOrderQuarantinePostgres.test.mjs
           test/serviceTechnicianJourneyPostgres.test.mjs
+          test/capabilityObjectAuthorityGuard.test.mjs
           test/serviceActivationAuthorityPostgres.test.mjs
           test/workOrderAvailabilityPostgres.test.mjs
           test/workOrderLaborPostgres.test.mjs

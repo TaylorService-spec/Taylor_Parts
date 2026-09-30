@@ -232,7 +232,8 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   // migration 1761955200000 under salesOrder as a BUSINESS_ACTION rather than retired with it.
   // 39 -> 40: `reportDefinition`, Reporting Slice 1 (migration 1762300800000). A capability names
   // it, so the governed catalog must declare it or the grant would be unadministrable.
-  assert.equal(first.seed.created.objects, 40, "40 canonical objects");
+  // 40 -> 42, and 6 -> 8 capability-authority: the Work Order cutover (2026-09-30) -- `inboundWorkRequest` and `inboundMailbox`, because the five inboundWork.* capabilities of migration 1764340000000 name them (object_key NOT NULL); without them every inbound grant was STRANDED (capabilityObjectAuthorityGuard).
+  assert.equal(first.seed.created.objects, 42, "42 canonical objects");
   // 394 -> 395: PR 1881 declared `payment.paymentId`. This is the THIRD independent copy of the
   // field census in the repository (the others are field-ops-app-vite/test/entityRegistry.test.mjs
   // and functions/test/adminPolicySeedCoverage.test.mjs); the lane updated the one it knew about.
@@ -255,7 +256,7 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   assert.equal(second.seed.created.fields, 0);
 
   const objects = await r.listObjects(first.tenant.id);
-  assert.equal(objects.length, 40, "still 40 after the rerun, not 80");
+  assert.equal(objects.length, 42, "still 42 after the rerun, not 84");
 });
 
 test("the seeded configuration version is recorded on the tenant", { skip: SKIP }, async () => {
@@ -1201,7 +1202,7 @@ test("RESTART: every pool and every in-process object is discarded, and the stat
 
     // Configuration survives.
     const objects = await restarted.listObjects(tenant.id);
-    assert.equal(objects.length, 40);
+    assert.equal(objects.length, 42);
 
     const read = await executeAdminOperation({ repo: restarted }, asAdmin("readObjectWithFields", {
       objectKey: "account",

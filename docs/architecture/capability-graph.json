@@ -4705,11 +4705,10 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
-          "field-ops-app-vite/src/access/inboundWorkSource.js",
-          "field-ops-app-vite/src/navigation/navConfig.js"
+          "field-ops-app-vite/src/access/inboundWorkSource.js"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

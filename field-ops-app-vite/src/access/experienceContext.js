@@ -63,6 +63,7 @@ export const EXPERIENCE_SURFACE_KEYS = Object.freeze([
   "receiving.checkIn",
   "service.coordinatedVisits",
   "service.dispatch",
+  "service.inboundWork",
   "service.workOrders",
   "warehouse.management",
   "warehouse.picking",
