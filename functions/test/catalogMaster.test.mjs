@@ -166,10 +166,10 @@ test("STRUCTURAL: no runtime code can import the exporter -- not src, not the cl
 
 const st = (firestore, postgres) => ({ firestore, postgres });
 
-test("the committed catalog writer state is FROZEN/INACTIVE: the legacy writers refuse, PostgreSQL writers not yet active", () => {
-  // Activation window step 2 (Controller ruling 2026-09-28): the FREEZE transition, taken before the snapshot export.
-  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("FROZEN", "INACTIVE"));
-  assert.equal(writerState.assertCatalogWriterTransition(st("OPEN", "INACTIVE"), writerState.CATALOG_WRITER_AUTHORITY), "FREEZE");
+test("the committed catalog writer state is FROZEN/ACTIVE: the legacy writers refuse, PostgreSQL is the authority", () => {
+  // Activation window step 18 (Controller ruling 2026-09-28): ACTIVATE_POSTGRES, after the verified Catalog COPY.
+  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("FROZEN", "ACTIVE"));
+  assert.equal(writerState.assertCatalogWriterTransition(st("FROZEN", "INACTIVE"), writerState.CATALOG_WRITER_AUTHORITY), "ACTIVATE_POSTGRES");
   assert.doesNotThrow(() => writerState.assertCatalogWriterAuthorityCoherent(writerState.CATALOG_WRITER_AUTHORITY));
   for (const id of Object.keys(writerState.FIRESTORE_CATALOG_WRITERS)) {
     assert.throws(() => writerState.assertFirestoreCatalogWriterOpen(id), (e) => e.code === "FIRESTORE_CATALOG_WRITER_FROZEN");
@@ -282,8 +282,8 @@ const CATALOG_WRITER_MODULES = /postgresPartMasterWriter|postgresEquipmentModelW
  */
 const reachesCatalogWriter = (source) => CATALOG_WRITER_MODULES.test(stripComments(source));
 
-test("while PostgreSQL is INACTIVE, nothing outside catalogMaster imports the PostgreSQL catalog writers", () => {
-  assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "INACTIVE");
+test("the PostgreSQL catalog writers are reached only inside catalogMaster (i.e. through the Render Catalog transport), even ACTIVE", () => {
+  assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "ACTIVE");
   const walk = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : /\.(ts|js|mjs)$/.test(f) ? [join(dir, f)] : []));
   const importers = walk("src").filter((f) => !f.startsWith(CATALOG_DIR) && reachesCatalogWriter(readFileSync(f, "utf8")));
   assert.deepEqual(importers, [], "activating PostgreSQL catalog writers is step 7 and must change CATALOG_WRITER_AUTHORITY in the same change");

@@ -2,8 +2,8 @@
 // consult before offering anything that would reach the retired Firestore catalog.
 //
 // It MIRRORS the committed server constant functions/src/catalogMaster/catalogWriterState.ts
-// CATALOG_WRITER_AUTHORITY -- today { firestore: FROZEN, postgres: INACTIVE }; the separate activation change
-// (ACTIVATE_POSTGRES) moves both to ACTIVE together. It is a committed constant, not a runtime probe and not a per-environment flag,
+// CATALOG_WRITER_AUTHORITY, which the activation change moved to { firestore: FROZEN, postgres: ACTIVE }
+// (ACTIVATE_POSTGRES) together with this mirror. It is a committed constant, not a runtime probe and not a per-environment flag,
 // for the same reason the server's is: the Catalog authority is one decision for the whole platform, and
 // the client already reads the Catalog ONLY through the PostgreSQL transport (services/catalogApiClient.js,
 // no Firestore path exists). test/catalogAuthorityClientGate.test.mjs pins this value to the server's, so
@@ -19,7 +19,7 @@
 // buildDataImportView, dataImportSubtitle): while PostgreSQL is INACTIVE the Firestore catalog is still the
 // current (frozen) catalog, so PARTS/INVENTORY are offered and executed exactly as before. It turns on with
 // the activation flip, in the same change as the server constant.
-export const CATALOG_AUTHORITY_POSTGRES_ACTIVE = false;
+export const CATALOG_AUTHORITY_POSTGRES_ACTIVE = true;
 
 /**
  * Data Import entity types whose EXECUTION on the deployed Firebase runtime depends on the Firestore catalog.

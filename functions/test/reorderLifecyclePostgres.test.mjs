@@ -234,15 +234,15 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     await life.postPurchasingUpdate(deps, actor(pAlice), { reorderRequestId: rr, vendorContacted: false });
   });
 
-  await t.test("receipt closes out from ORDERED only, and only by the assignee", async () => {
-    await assert.rejects(life.markReorderReceived(deps, actor(pAlice), { reorderRequestId: rr }), /has not been ordered/);
+  await t.test("RECEIVING IS ACTIVE (Owner ruling R2): markReorderReceived answers only with its explicit refusal", async () => {
+    // ORDERED -> RECEIVED is now the governed receipt's consequence (receiveReorderStockPostgres proves the closeout).
+    // The standalone operation stays callable so the refusal is explicit -- for the assignee and everyone else alike.
+    assert.equal(life.RECEIVING_POSTGRES_ACTIVE, true);
     await q(`UPDATE eos_ops.reorder_requests SET status='ORDERED' WHERE id=$1`, [rr]);
-    await assert.rejects(life.markReorderReceived(deps, actor(pBob), { reorderRequestId: rr }), /assigned to/);
-    const r = await life.markReorderReceived(deps, actor(pAlice), { reorderRequestId: rr });
-    assert.equal(r.status, "RECEIVED");
-    const { rows } = await q(`SELECT received_at, received_by_principal_id FROM eos_ops.reorder_requests WHERE id=$1`, [rr]);
-    assert.ok(rows[0].received_at, "the terminal status states when it happened");
-    assert.equal(rows[0].received_by_principal_id, pAlice);
+    for (const who of [pAlice, pBob]) {
+      await assert.rejects(life.markReorderReceived(deps, actor(who), { reorderRequestId: rr }), /closed out by receiving the stock/);
+    }
+    assert.equal((await q(`SELECT status::text s FROM eos_ops.reorder_requests WHERE id=$1`, [rr])).rows[0].s, "ORDERED", "nothing moved");
   });
 
   await t.test("cancellation is a management action, states a reason, and stops at ORDERED", async () => {

@@ -38,9 +38,8 @@ test("the committed hold is ON, names DQ-034, and says why", () => {
   assert.equal(STATE.CATALOG_MUTATION_HOLD.ruling, "DQ-034");
   assert.equal(STATE.CATALOG_MUTATION_HOLD.reason, "DQ-034: active release-journey readers still read the frozen Firebase catalog");
   assert.ok(Object.isFrozen(STATE.CATALOG_MUTATION_HOLD), "the hold is a frozen code constant");
-  // The hold sits ON TOP of an ACTIVE PostgreSQL read authority; it is not the INACTIVE gate under another name. The
-  // committed authority is still INACTIVE (the activation flip is a separate change), so the tests below inject ACTIVE.
-  assert.equal(STATE.CATALOG_WRITER_AUTHORITY.postgres, "INACTIVE");
+  // The hold sits ON TOP of an ACTIVE PostgreSQL read authority; it is not the INACTIVE gate under another name.
+  assert.equal(STATE.CATALOG_WRITER_AUTHORITY.postgres, "ACTIVE");
 });
 
 test("assertCatalogMutationNotHeld refuses while held, passes only on an explicit held:false, and fails closed otherwise", () => {

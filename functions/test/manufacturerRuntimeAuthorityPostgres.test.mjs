@@ -143,9 +143,11 @@ test("the reconciliation reads and reports; it modifies no dependent data", () =
   }
 });
 
-test("the PostgreSQL Manufacturer writer stays unwired while the catalog writer state says INACTIVE", () => {
-  // The Firestore side is FROZEN by the activation window (step 2); what this lane pins is that PostgreSQL is INACTIVE.
-  assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "INACTIVE", "this lane does not activate the PostgreSQL writers");
+test("the PostgreSQL Manufacturer writer stays unwired -- even with the Catalog ACTIVE, it is a separate authorized step", () => {
+  // Window step 18 activates the PostgreSQL CATALOG (Parts, aliases). The Manufacturer writer is NOT part of it: wiring it
+  // remains its own authorized change, so while the legacy Firestore catalog writers are FROZEN, Manufacturer writes are
+  // unavailable rather than silently re-routed.
+  assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "ACTIVE");
   const importers = walk(resolve(FUNCTIONS_DIR, "src"))
     .filter((f) => !f.includes(`${"src"}/catalogMaster`) && !f.endsWith("catalogMaster"))
     .filter((f) => /postgresManufacturerWriter/.test(readFileSync(f, "utf8")));

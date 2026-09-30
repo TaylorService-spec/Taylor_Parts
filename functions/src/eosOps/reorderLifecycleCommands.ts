@@ -447,7 +447,9 @@ export async function postPurchasingUpdate(
  * external caller gets an explicit refusal that names the replacement, rather than a 404 it might
  * read as a transient outage.
  */
-export const RECEIVING_POSTGRES_ACTIVE = false;
+// ACTIVATED with the PostgreSQL Reorder authority (window step 19; Owner ruling R2): ORDERED -> RECEIVED is now the
+// governed receipt's consequence, and markReorderReceived answers only with its explicit refusal.
+export const RECEIVING_POSTGRES_ACTIVE = true;
 
 /**
  * THE POSTGRESQL REORDER AUTHORITY'S ACTIVATION BOUNDARY (Controller ruling 2026-09-28, activation window step 19).
@@ -458,7 +460,8 @@ export const RECEIVING_POSTGRES_ACTIVE = false;
  * not contain. A code constant, like RECEIVING_POSTGRES_ACTIVE and the Catalog writer state: activation is a reviewed,
  * tested, deployed change, never a runtime setting.
  */
-export const REORDER_POSTGRES_ACTIVE = false;
+// ACTIVATED by window step 19, after the Reorder COPY is verified and the ruled Administration grants are applied.
+export const REORDER_POSTGRES_ACTIVE = true;
 
 export interface ReorderCloseoutInput {
   readonly tenantId: string;
