@@ -669,9 +669,6 @@
   "docs/research/domainGraph.test.mjs": [
    "docs/research/domainGraph.mjs"
   ],
-  "field-ops-app-vite/scripts/adminUserEditRolesProbe.mjs": [
-   "scripts/sandboxCredentials.mjs"
-  ],
   "field-ops-app-vite/scripts/adminUsersResponsiveProbe.mjs": [
    "scripts/sandboxCredentials.mjs"
   ],
@@ -9012,7 +9009,6 @@
    "docs/research/domainGraph.test.mjs"
   ],
   "scripts/sandboxCredentials.mjs": [
-   "field-ops-app-vite/scripts/adminUserEditRolesProbe.mjs",
    "field-ops-app-vite/scripts/adminUsersResponsiveProbe.mjs",
    "field-ops-app-vite/scripts/personaSweep.mjs",
    "field-ops-app-vite/test/sandboxCredentials.test.mjs",
@@ -28214,7 +28210,6 @@
    "docs/orchestration/lib/generateRoadmapViews.mjs",
    "docs/orchestration/lib/networkHealthLoader.mjs",
    "docs/orchestration/lib/renderMetadataProgramLedger.mjs",
-   "field-ops-app-vite/scripts/adminUserEditRolesProbe.mjs",
    "field-ops-app-vite/scripts/adminUsersResponsiveProbe.mjs",
    "field-ops-app-vite/scripts/buildForEnvironment.mjs",
    "field-ops-app-vite/scripts/c2LiveParity.mjs",

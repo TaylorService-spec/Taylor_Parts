@@ -204,7 +204,13 @@ export async function openEosPersonaSession(page, url, personaKey, options = {})
  * no password is ever typed into a field. The emulator's `@example.test` accounts do not exist in
  * the sandbox, so the form path could not authenticate there at all.
  */
-export async function establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, driverAccounts }) {
+// `auth` states WHICH authentication the harness exercises, and must match the backend it tests (Controller ruling
+// 2026-09-29): "firebase" for harnesses whose journeys still read Firestore or call Firebase Functions, "eos" for
+// genuinely EOS-backed ones. There is no silent fallback between the two: a harness pinned to one never gets the other.
+export async function establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, driverAccounts, auth }) {
+  if (auth !== "firebase" && auth !== "eos") {
+    throw new Error(`establishSession requires auth: "firebase" | "eos" (got ${JSON.stringify(auth)})`);
+  }
   if (IS_LOCAL) {
     const acct = driverAccounts[accountKey];
     if (!acct) throw new Error(`unknown driver account '${accountKey}'`);
@@ -212,8 +218,9 @@ export async function establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, 
     await page.locator('input[type="email"]').fill(acct.email);
     await page.locator('input[type="password"]').fill(acct.password);
     await page.locator('button[type="submit"]').click();
-  } else if (eosPersonaSessionAvailable()) {
-    // EOS persona session: the canonical 16 persona keys, no SANDBOX_CREDENTIALS_FILE.
+  } else if (auth === "eos") {
+    // EOS persona session: the canonical 16 persona keys, no SANDBOX_CREDENTIALS_FILE. Refuses without the credential.
+    if (!eosPersonaSessionAvailable()) throw new Error("auth \"eos\" requires EOS_PERSONA_ISSUER_CREDENTIAL");
     await openEosPersonaSession(page, `${BASE}/`, accountKey);
   } else {
     const personaId = LOCAL_TO_SANDBOX_PERSONA[accountKey] ?? accountKey;

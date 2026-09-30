@@ -8605,7 +8605,7 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
    somebody from every assignment picker. */
 /* OPERATIONAL ROLES IS ONE SELECTION GRID, NOT EIGHT PLACED CONTROLS.
    This was `display: flex; flex-wrap: wrap`, which lays each checkbox out at whatever x the
-   previous label happened to end at. Measured (scripts/adminUserEditRolesProbe.mjs), eight roles
+   previous label happened to end at. Measured (by a since-removed Operational Roles probe), eight roles
    in a 646px fieldset produced SEVEN distinct checkbox x positions -- every row starting somewhere
    new, because "Warehouse Associate" is wider than "Technician". Nothing was misaligned by hand;
    the layout simply had no columns to align to.

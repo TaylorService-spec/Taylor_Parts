@@ -121,7 +121,7 @@ test("a refused issue never seeds or navigates, and the error names no secret", 
 test("establishSession's deployed EOS branch goes through openEosPersonaSession and still asserts sign-in", () => {
   const src = readFileSync(join(SKILL, "deployedSession.mjs"), "utf8");
   const body = src.slice(src.indexOf("export async function establishSession"), src.indexOf("export async function assertSignedIn"));
-  assert.match(body, /eosPersonaSessionAvailable\(\)\) \{\s*\/\/[^\n]*\n\s*await openEosPersonaSession\(page, `\$\{BASE\}\/`, accountKey\);/);
+  assert.match(body, /auth === "eos"\) \{[\s\S]{0,300}await openEosPersonaSession\(page, `\$\{BASE\}\/`, accountKey\);/);
   assert.ok(body.includes("await assertSignedIn(page, accountKey)"));
 });
 
@@ -175,4 +175,44 @@ test("establishProbeSession refuses loudly when the page is the sign-in screen",
       { target: "https://app.test", persona: "administrator", env, baseUrl: BASE, fetch: issuer.fetch }),
     /NOT SIGNED IN/,
   );
+});
+
+// ============================ Controller rulings, 2026-09-29 (harness cutover close) ============================
+// Authentication must match the backend a harness tests. establishSession has NO implicit mode, so a Firebase-backed
+// sweep can never silently become an EOS run (and fail by design) just because the issuer credential is present.
+const skillFile = (name) => readFileSync(join(SKILL, name), "utf8");
+const repoRoot = join(APP, "..");
+
+test("establishSession requires an explicit auth mode and has no silent EOS/Firebase fallback", () => {
+  const src = skillFile("deployedSession.mjs");
+  assert.match(src, /establishSession requires auth: "firebase" \| "eos"/);
+  assert.match(src, /auth === "eos"[\s\S]{0,200}requires EOS_PERSONA_ISSUER_CREDENTIAL/);
+  // the old implicit switch on credential presence is gone
+  assert.doesNotMatch(src, /else if \(eosPersonaSessionAvailable\(\)\)/);
+});
+
+for (const harness of ["certify.mjs", "certifyDynamic.mjs", "createReach.mjs", "reachability.mjs"]) {
+  test(`${harness} is pinned to Firebase (its journeys still read Firestore / call Firebase Functions)`, () => {
+    const src = skillFile(harness);
+    const calls = src.match(/establishSession\(page, \{[^}]*\}\)/g) ?? [];
+    assert.ok(calls.length > 0, "calls establishSession");
+    for (const c of calls) assert.match(c, /auth: "firebase"/, c);
+  });
+}
+
+test("financialsNorthStarQuickGate and personaSweep stay Firebase-only (no EOS path)", () => {
+  const gate = skillFile("financialsNorthStarQuickGate.mjs");
+  const sweep = readFileSync(join(APP, "scripts", "personaSweep.mjs"), "utf8");
+  for (const src of [gate, sweep]) {
+    assert.doesNotMatch(src, /openEosPersonaSession|issueEosPersonaSession|seedEosSession|auth: "eos"/);
+  }
+});
+
+test("the obsolete adminUserEditRolesProbe is deleted and nothing references it", () => {
+  let exists = true;
+  try { readFileSync(join(APP, "scripts", "adminUserEditRolesProbe.mjs")); } catch { exists = false; }
+  assert.equal(exists, false);
+  for (const f of [join(repoRoot, "docs", "architecture", "repo-graph.json"), join(APP, "src", "index.css"), join(APP, "test", "suites.json")]) {
+    assert.doesNotMatch(readFileSync(f, "utf8"), /adminUserEditRolesProbe/, f);
+  }
 });
