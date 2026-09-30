@@ -533,6 +533,45 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     ok(await call(legacyGlobal, "transitionOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, toStage: "SOLUTION" }), "global salesperson (pre-rescoping)");
   });
 
+  await t.test("D-B OPTION A (2026-09-30): a principal holding ONLY Commercial Shared Context reads its context but can sell nothing", async () => {
+    // The nonprod Role exactly as Administration configured it: customer.record.read/create/update + inventory.catalog.read.
+    const SHARED = ["customer.record.read", "customer.record.create", "customer.record.update", "inventory.catalog.read"];
+    const role = await repo.transact(actorFor(TENANT), (tx) => tx.createRole({ key: "commercialSharedContext", name: "Commercial Shared Context", description: null, origin: "CUSTOM", protected: false }));
+    for (const capabilityKey of SHARED) {
+      const r = await q(`INSERT INTO eos_policy.role_capabilities (id, tenant_id, role_id, capability_id, granted_by, created_by, updated_by)
+               SELECT $1, $2, $3, c.id, 'admin', 'admin', 'admin' FROM eos_policy.capabilities c WHERE c.key = $4`, [`rc_${role.id}_${capabilityKey}`, TENANT, role.id, capabilityKey]);
+      assert.equal(r.rowCount, 1, `${capabilityKey} is registered`);
+    }
+    const subject = "uid-shared-context-only";
+    const principalId = await repo.transact(actorFor(TENANT), async (tx) => {
+      const principal = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
+      await tx.createTenantMembership(principal.id);
+      const accessVersion = await tx.bumpAccessVersion(principal.id);
+      await tx.createAssignment({ principalId: principal.id, roleId: role.id, scopeType: "global", scopeValue: null, status: "active", grantedBy: "fixture", grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion });
+      return principal.id;
+    });
+    TOKENS.set(`tok-${subject}`, subject);
+    const sharedOnly = { persona: "shared-context-only", principalId, token: `tok-${subject}`, channel: null };
+    const held = ok(await call(sharedOnly, "readMyCommercialCapabilities"), "own capabilities");
+    const heldKeys = JSON.stringify(held);
+    for (const selling of ["opportunity.write", "opportunity.createSalesOrder", "salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept", "salesOrder.write"]) {
+      assert.ok(!heldKeys.includes(`"${selling}"`), `the shared-context Role offers ${selling}`);
+    }
+    const o = ok(await call(retailA, "createOpportunity", { idempotencyKey: key(), accountId: "acct-retail", salesChannel: "RETAIL", operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", qty: 1 }] }), "a real Opportunity");
+    const before = (await q(`SELECT count(*)::int n FROM eos_commercial.command_receipts`)).rows[0].n;
+    for (const [operation, input] of [
+      ["createOpportunity", { idempotencyKey: key(), accountId: "acct-retail", salesChannel: "RETAIL", operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", qty: 1 }] }],
+      ["createOpportunity", { idempotencyKey: key(), accountId: "acct-national", salesChannel: "NATIONAL_ACCOUNTS", operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", qty: 1 }] }],
+      ["transitionOpportunity", { idempotencyKey: key(), opportunityId: o.opportunityId, toStage: "QUALIFYING" }],
+      ["createSalesAgreement", { idempotencyKey: key(), opportunityId: o.opportunityId, ownerEmployeeId: "e-retail-a", isLease: false, lines: [{ kind: "SERVICE", ref: "s", quantity: 1, unitPrice: 100, businessUnitId: "SERVICE" }] }],
+      ["closeOpportunityAsWon", { idempotencyKey: key(), opportunityId: o.opportunityId }],
+    ]) {
+      const res = await call(sharedOnly, operation, input);
+      assert.equal(res.status, 403, `${operation}: ${JSON.stringify(res.body)}`);
+    }
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_commercial.command_receipts`)).rows[0].n, before, "nothing was written");
+  });
+
   await t.test("FIREBASE: the journey loaded no Firebase module", () => {
     const loaded = Object.keys(require.cache).filter((p) => /[\\/]node_modules[\\/](firebase-admin|firebase-functions|@google-cloud[\\/]firestore)[\\/]/.test(p));
     assert.deepEqual(loaded, []);
