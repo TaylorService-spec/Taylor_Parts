@@ -383,7 +383,7 @@ export async function readSelfSchedulingSessions(deps: WorkOrderOperationDeps, a
   if (!ID_SHAPE(i.workOrderId)) refuse("WORK_ORDER_ID_REQUIRED", "INVALID_INPUT", "workOrderId is required");
   const now = (deps.now ?? (() => new Date()))();
   const { rows } = await deps.pool.query(
-    `SELECT s.*, (SELECT json_agg(json_build_object('kind', e.event_kind, 'at', e.occurred_at, 'detail', e.detail) ORDER BY e.occurred_at, e.id)
+    `SELECT s.*, (SELECT json_agg(json_build_object('kind', e.event_kind, 'at', e.occurred_at, 'detail', e.detail) ORDER BY e.occurred_at, e.event_seq)
                     FROM eos_ops.self_scheduling_session_events e WHERE e.tenant_id = s.tenant_id AND e.session_id = s.id) AS events
        FROM eos_ops.self_scheduling_sessions s WHERE s.tenant_id = $1 AND s.work_order_id = $2 ORDER BY s.issued_at DESC, s.id LIMIT 20`,
     [actor.tenantId, i.workOrderId]);

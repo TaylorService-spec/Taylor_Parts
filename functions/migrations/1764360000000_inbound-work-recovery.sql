@@ -51,6 +51,9 @@ ALTER TABLE inbound_work_requests
 
 CREATE TABLE inbound_work_claim_events (
     id                          TEXT        PRIMARY KEY,
+    -- Insertion order: one Accept records CLAIMED and COMPLETED at the same logical instant, so history is ordered by
+    -- (occurred_at, event_seq), never by the random id.
+    event_seq                   BIGINT      GENERATED ALWAYS AS IDENTITY,
     tenant_id                   TEXT        NOT NULL,
     request_id                  TEXT        NOT NULL,
     event_kind                  TEXT        NOT NULL,
@@ -73,7 +76,7 @@ CREATE TABLE inbound_work_claim_events (
         OR (event_kind = 'COMPLETED' AND from_principal_id IS NOT NULL)),
     CONSTRAINT inbound_claim_event_reason_bounded CHECK (reason IS NULL OR (btrim(reason) <> '' AND length(reason) <= 500))
 );
-CREATE INDEX inbound_claim_events_by_request ON inbound_work_claim_events (tenant_id, request_id, occurred_at, id);
+CREATE INDEX inbound_claim_events_by_request ON inbound_work_claim_events (tenant_id, request_id, occurred_at, event_seq);
 CREATE TRIGGER inbound_work_claim_events_append_only BEFORE UPDATE OR DELETE ON inbound_work_claim_events
     FOR EACH ROW EXECUTE FUNCTION inbound_work_refuse_change();
 

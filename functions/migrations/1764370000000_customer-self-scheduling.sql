@@ -121,6 +121,8 @@ CREATE UNIQUE INDEX self_sched_session_one_active ON self_scheduling_sessions (t
 
 CREATE TABLE self_scheduling_session_events (
     id             TEXT        PRIMARY KEY,
+    -- Insertion order breaks same-instant ties deterministically; the random id never orders history.
+    event_seq      BIGINT      GENERATED ALWAYS AS IDENTITY,
     tenant_id      TEXT        NOT NULL,
     session_id     TEXT        NOT NULL,
     event_kind     TEXT        NOT NULL,
@@ -129,7 +131,7 @@ CREATE TABLE self_scheduling_session_events (
     CONSTRAINT self_sched_event_session_fk FOREIGN KEY (tenant_id, session_id) REFERENCES self_scheduling_sessions (tenant_id, id),
     CONSTRAINT self_sched_event_kind_known CHECK (event_kind IN ('ISSUED', 'VIEWED', 'SELECTED', 'REFUSED', 'REVOKED', 'SUPERSEDED'))
 );
-CREATE INDEX self_sched_events_by_session ON self_scheduling_session_events (tenant_id, session_id, occurred_at, id);
+CREATE INDEX self_sched_events_by_session ON self_scheduling_session_events (tenant_id, session_id, occurred_at, event_seq);
 
 CREATE FUNCTION self_scheduling_refuse_change() RETURNS trigger AS $$
 BEGIN

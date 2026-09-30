@@ -252,7 +252,7 @@ export async function readInboundWorkRequest(deps: Deps, actor: LifecycleActor, 
                 WHERE l.tenant_id = e.tenant_id AND l.principal_id = e.to_principal_id AND l.status = 'active' ORDER BY l.employee_id LIMIT 1) AS to_name,
               (SELECT x.display_name FROM eos_policy.employee_principal_links l JOIN eos_workforce.employees x ON x.tenant_id = l.tenant_id AND x.id = l.employee_id
                 WHERE l.tenant_id = e.tenant_id AND l.principal_id = e.from_principal_id AND l.status = 'active' ORDER BY l.employee_id LIMIT 1) AS from_name
-         FROM eos_ops.inbound_work_claim_events e WHERE e.tenant_id = $1 AND e.request_id = $2 ORDER BY e.occurred_at, e.id LIMIT 200`,
+         FROM eos_ops.inbound_work_claim_events e WHERE e.tenant_id = $1 AND e.request_id = $2 ORDER BY e.occurred_at, e.event_seq LIMIT 200`,
       [actor.tenantId, r.id])).rows.map((e) => ({
         kind: e.event_kind, fromPrincipalId: e.from_principal_id ?? null, fromName: e.from_name ?? null,
         toPrincipalId: e.to_principal_id ?? null, toEmployeeId: e.to_employee_id ?? null, toName: e.to_name ?? null,

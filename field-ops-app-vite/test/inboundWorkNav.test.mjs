@@ -67,16 +67,17 @@ ok("Administration -> Email & Communications is one destination, capability-gate
   const email = item("administration", "emailCommunications");
   assert.ok(email, "the Email & Communications subnav item is present");
   assert.equal(email.path, "email-communications");
-  assert.deepEqual(email.capabilityAccess, ["administration.emailIntake.read"]);
+  // The EOS intake-administration capability (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30).
+  assert.deepEqual(email.capabilityAccess, ["inboundWork.intake.manage"]);
   assert.equal(isNavItemVisible(email, ROLES.ADMIN, allowed(ROLES.ADMIN), undefined), false);
-  assert.equal(isNavItemVisible(email, ROLES.ADMIN, allowed(ROLES.ADMIN), withCapability("administration.emailIntake.read")), true);
+  assert.equal(isNavItemVisible(email, ROLES.ADMIN, allowed(ROLES.ADMIN), withCapability("inboundWork.intake.manage")), true);
 });
 
 ok("the Service capability does not open the Administration destination, and vice versa", () => {
   const inbound = item("service", "inboundWork");
   const email = item("administration", "emailCommunications");
   assert.equal(isNavItemVisible(email, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN), withCapability("inboundWork.request.read")), false);
-  assert.equal(isNavItemVisible(inbound, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN), withCapability("administration.emailIntake.manage")), false);
+  assert.equal(isNavItemVisible(inbound, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN), withCapability("inboundWork.intake.manage")), false);
 });
 
 ok("neither destination steals a domain index route", () => {
@@ -90,7 +91,7 @@ ok("every capability decision a screen needs is resolved in ONE request", () => 
     [...INBOUND_WORK_CAPABILITY_REQUEST],
     ["service.inboundWork.read", "service.inboundWork.accept", "service.inboundWork.decline", "service.inboundWork.attachExisting"],
   );
-  assert.deepEqual([...EMAIL_INTAKE_CAPABILITY_REQUEST], ["administration.emailIntake.read", "administration.emailIntake.manage"]);
+  assert.deepEqual([...EMAIL_INTAKE_CAPABILITY_REQUEST], ["inboundWork.intake.manage"]);
 });
 
 ok("denied and unavailable stay distinguishable -- an unauthorized read is not an empty one", () => {
@@ -116,12 +117,12 @@ ok("callable error codes are normalized before anything branches on them", () =>
 // ── Two structural properties, asserted against the source rather than trusted ───────────────────
 const read = (relative) => readFileSync(new URL(relative, import.meta.url), "utf8");
 
-ok("the provider-boundary seam reaches its callables ONLY through trusted callables -- no direct Firestore access", () => {
-  const source = read("../src/access/inboundWorkSource.js");
-  for (const forbidden of ["firebase/firestore", "onSnapshot", "getDocs", "collection("]) {
+ok("the provider-boundary seam reaches ONLY the EOS API -- no Firestore, and no Firebase callable (Service Experience completion)", () => {
+  const source = read("../src/access/inboundWorkSource.js").replace(/^\s*\/\/.*$/gm, "");
+  for (const forbidden of ["firebase/firestore", "firebase/functions", "httpsCallable", "onSnapshot", "getDocs", "collection("]) {
     assert.equal(source.includes(forbidden), false, `the source seam must not use ${forbidden}`);
   }
-  assert.match(source, /httpsCallable/);
+  assert.match(source, /callInboundWorkApi/);
 });
 
 ok("inbound message content is never rendered as markup", () => {
