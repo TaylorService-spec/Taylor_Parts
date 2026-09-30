@@ -121,14 +121,19 @@ const rule = (
   command: WorkOrderEdgeCommand = "transition", inventoryBoundary: string | null = null,
 ): TransitionRule => Object.freeze({ from, to, action, disposition, capability, dependsOn, command, inventoryBoundary });
 
-/** The boundary each effect-bearing edge states. Firebase: inventoryService.ts STATE_TRIGGERS. */
+/**
+ * The boundary each effect-bearing edge states. Stock reservation, consumption and release are NOT_YET_ACTIVATED on
+ * EOS, and NO Firebase stock action occurs either: the Work Order authority is PostgreSQL and the Firebase Work Order
+ * writers are FROZEN. (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30: the earlier wording named a Firebase stock
+ * action that no longer happens; the codes are unchanged.)
+ */
 export const INVENTORY_BOUNDARY = Object.freeze({
-  DISPATCHED: "RESERVE_NOT_APPLIED: Firebase reserves the planned parts on DISPATCHED; the PostgreSQL Inventory "
-    + "commitment authority is not activated, so this dispatch reserves nothing",
-  COMPLETED: "CONSUME_NOT_APPLIED: Firebase consumes qtyUsed ?? qtyPlanned on COMPLETED; the actuals are recorded as "
-    + "execution facts and no stock is consumed until the Inventory authority is activated",
-  CANCELLED: "RELEASE_NOT_APPLIED: Firebase releases outstanding reservations on CANCELLED; this path never reserved, "
-    + "so there is nothing to release",
+  DISPATCHED: "RESERVE_NOT_APPLIED: stock reservation is NOT_YET_ACTIVATED; this dispatch reserved no parts, "
+    + "and no Firebase stock action occurs",
+  COMPLETED: "CONSUME_NOT_APPLIED: stock consumption is NOT_YET_ACTIVATED; the parts actuals are recorded as "
+    + "execution facts, no stock was consumed, and no Firebase stock action occurs",
+  CANCELLED: "RELEASE_NOT_APPLIED: stock release is NOT_YET_ACTIVATED; this path never reserved, so nothing was "
+    + "released, and no Firebase stock action occurs",
 } as const);
 
 /**

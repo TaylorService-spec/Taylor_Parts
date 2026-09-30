@@ -852,11 +852,54 @@ export const readTechnicianAvailability: WorkOrderOp = async (deps, caller, inpu
   });
 };
 
+// ════════════════════ THE SLOT COMPUTATION (one engine, every caller) ════════════════════
+
+export interface TechnicianSlot { readonly employeeId: string; readonly displayName: string | null; readonly start: number; readonly end: number }
+
+/**
+ * Every window the placement check would accept, for the schedulable technicians of one company and qualification:
+ * working, configured, not blocked, no window-holding Work Order, on the slot grid. The office slot query
+ * (findAvailableTechnicianSlots) and customer self-scheduling (selfScheduling.ts) BOTH ask this one function -- a
+ * second engine anywhere is the defect this module exists to prevent. `excludeWorkOrderId` ignores that Work Order's
+ * own hold (a reschedule never conflicts with itself).
+ */
+export async function computeTechnicianSlots(
+  db: Db,
+  input: { readonly tenantId: string; readonly companyId: string; readonly qualification: string; readonly durationMs: number;
+    readonly range: Interval; readonly incrementMs: number; readonly onlyIds: readonly string[] | null; readonly excludeWorkOrderId?: string | null },
+): Promise<{ slots: TechnicianSlot[]; notConfigured: string[] }> {
+  const { tenantId, companyId, qualification, durationMs, range, incrementMs } = input;
+  if (range.end <= range.start) return { slots: [], notConfigured: [] };
+  const employees = await schedulableEmployees(db, tenantId, companyId, qualification, input.onlyIds);
+  const ids = employees.map((e) => e.id);
+  // Sequential: one client runs one query at a time.
+  const schedules = await loadSchedules(db, tenantId, ids, range);
+  const blocks = await loadUnavailability(db, tenantId, ids, range);
+  const holds = (await loadWorkOrderHolds(db, tenantId, ids, range)).filter((h) => h.workOrderId !== (input.excludeWorkOrderId ?? null));
+  const slots: TechnicianSlot[] = [];
+  const notConfigured: string[] = [];
+  for (const e of employees) {
+    const calendar = effectiveCalendar(schedules.filter((s) => s.employeeId === e.id), companyId, range);
+    if (calendar.governed.length === 0) { notConfigured.push(e.id); continue; }
+    const busy = [
+      ...blocks.filter((b) => b.employeeId === e.id).map((b) => ({ start: b.start, end: b.end })),
+      ...holds.filter((h) => h.employeeId === e.id),
+    ];
+    for (const free of subtractIntervals(calendar.working, busy)) {
+      for (let s = Math.ceil(free.start / incrementMs) * incrementMs; s + durationMs <= free.end; s += incrementMs) {
+        slots.push({ employeeId: e.id, displayName: e.displayName, start: s, end: s + durationMs });
+      }
+    }
+  }
+  slots.sort((a, b) => a.start - b.start || (a.employeeId < b.employeeId ? -1 : a.employeeId > b.employeeId ? 1 : 0));
+  return { slots, notConfigured };
+}
+
 // ════════════════════ findAvailableTechnicianSlots (the self-scheduling FOUNDATION) ════════════════════
 
 /**
- * THE SELF-SCHEDULING FOUNDATION QUERY -- office use now; the customer selection experience is NOT built (DECISION
- * 5) and there is no customer-facing route. The next increment asks THIS query, so there is never a second engine.
+ * THE OFFICE SLOT QUERY. Customer self-scheduling (selfScheduling.ts, Controller SERVICE EXPERIENCE COMPLETION
+ * 2026-09-30) computes its offers through the SAME computeTechnicianSlots, so there is never a second engine.
  *
  * Input:  operatingCompanyId (required; ACTIVE and keyed), durationMinutes (1..1440), earliestDate (YYYY-MM-DD, the
  *         earliest allowed scheduling date, in `timeZone`), timeZone (IANA; how earliestDate and the horizon are
@@ -941,28 +984,9 @@ export const findAvailableTechnicianSlots: WorkOrderOp = async (deps, caller, in
     });
     if (range.end <= range.start) return Object.freeze({ ...base, slots: [], truncated: false, notConfiguredEmployeeIds: [] });
 
-    const employees = await schedulableEmployees(client, actor.tenantId, companyId, qualification, onlyIds);
-    const ids = employees.map((e) => e.id);
-    // Sequential: one client runs one query at a time.
-    const schedules = await loadSchedules(client, actor.tenantId, ids, range);
-    const blocks = await loadUnavailability(client, actor.tenantId, ids, range);
-    const holds = await loadWorkOrderHolds(client, actor.tenantId, ids, range);
-    const slots: { employeeId: string; displayName: string | null; start: number; end: number }[] = [];
-    const notConfigured: string[] = [];
-    for (const e of employees) {
-      const calendar = effectiveCalendar(schedules.filter((s) => s.employeeId === e.id), companyId, range);
-      if (calendar.governed.length === 0) { notConfigured.push(e.id); continue; }
-      const busy = [
-        ...blocks.filter((b) => b.employeeId === e.id).map((b) => ({ start: b.start, end: b.end })),
-        ...holds.filter((h) => h.employeeId === e.id),
-      ];
-      for (const free of subtractIntervals(calendar.working, busy)) {
-        for (let s = Math.ceil(free.start / incMs) * incMs; s + durMs <= free.end; s += incMs) {
-          slots.push({ employeeId: e.id, displayName: e.displayName, start: s, end: s + durMs });
-        }
-      }
-    }
-    slots.sort((a, b) => a.start - b.start || (a.employeeId < b.employeeId ? -1 : a.employeeId > b.employeeId ? 1 : 0));
+    const { slots, notConfigured } = await computeTechnicianSlots(client, {
+      tenantId: actor.tenantId, companyId, qualification, durationMs: durMs, range, incrementMs: incMs, onlyIds,
+    });
     return Object.freeze({
       ...base,
       slots: slots.slice(0, limit as number).map((s) => Object.freeze({ employeeId: s.employeeId, displayName: s.displayName, start: iso(s.start), end: iso(s.end) })),

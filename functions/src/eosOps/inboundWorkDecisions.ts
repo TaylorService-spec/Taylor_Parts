@@ -19,6 +19,11 @@
 // A create that FAILS releases the claim back to the prior status -- unless a Work Order under the key exists, in which
 // case the claim is kept so only the claimant can complete it (releasing it would let a second reviewer create twice).
 //
+// RECOVERY (inboundWorkRecovery.ts, Controller SERVICE EXPERIENCE COMPLETION 2026-09-30): a Service Manager may RELEASE
+// or REASSIGN a claim that never finished. Recovery CARRIES a Work Order the claimant already created
+// (accept_pending_work_order_id), and step 2 below LINKS that Work Order instead of creating another. Every claim,
+// release, reassignment and completion is an append-only inbound_work_claim_events row.
+//
 // ════════════════════ MASTER DATA IS NOT TOUCHED ════════════════════
 //
 // The reviewer's chosen customer / location / equipment are re-read and proven to belong together inside the claim
@@ -35,6 +40,7 @@ import {
   INBOUND_WORK_ATTACH,
   INBOUND_WORK_DECLINE,
   INBOUND_WORK_READ,
+  INBOUND_WORK_RECOVER,
   MAX_THREAD_MESSAGES,
   PG_INBOUND_WORK_STATUSES,
   inTransaction,
@@ -45,6 +51,23 @@ import {
   writeAudit,
 } from "./inboundWorkIntake";
 import { INBOUND_DECLINE_REASONS, INBOUND_REQUEST_TYPES, boundedString, toPlainText } from "../inboundWork/inboundWorkModel";
+import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
+
+/** Append one claim-history event. The table is append-only; nothing here or anywhere edits one. */
+export async function recordClaimEvent(
+  c: PoolClient, tenantId: string,
+  e: { requestId: string; kind: "CLAIMED" | "RELEASED" | "REASSIGNED" | "COMPLETED"; from: string | null; to: string | null;
+    toEmployeeId?: string | null; actor: string; reason?: string | null; carriedWorkOrderId?: string | null; at: Date; auditEventId?: string | null },
+): Promise<void> {
+  await c.query(
+    `INSERT INTO eos_ops.inbound_work_claim_events
+       (id, tenant_id, request_id, event_kind, from_principal_id, to_principal_id, to_employee_id, actor_principal_id, reason,
+        carried_work_order_id, occurred_at, audit_event_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [`iwc_${randomUUID()}`, tenantId, e.requestId, e.kind, e.from, e.to, e.toEmployeeId ?? null, e.actor, e.reason ?? null,
+      e.carriedWorkOrderId ?? null, e.at, e.auditEventId ?? null]);
+}
 
 type Deps = { readonly pool: Pool; readonly now?: () => Date };
 
@@ -93,8 +116,30 @@ function queueRow(r: Record<string, unknown>) {
     workItemId: (r.work_order_id as string | null) ?? null,
     workOrderId: (r.work_order_id as string | null) ?? null,
     duplicateOfRequestId: (r.duplicate_of_request_id as string | null) ?? null,
+    // ── what a reviewer needs to see at a glance (Controller SERVICE EXPERIENCE COMPLETION: final Service UX) ──
+    createdAt: millis(r.created_at),
+    sourceMailboxId: (r.source_mailbox_id as string | null) ?? null,
+    sourceMailboxName: (r.source_mailbox_name as string | null) ?? null,
+    destination: (r.destination as string | null) ?? null,
+    statusNote: (r.status_note as string | null) ?? null,
+    threadAssociation: (r.thread_association as string | null) ?? null,
+    threadMessageCount: r.thread_message_count === undefined ? 0 : Number(r.thread_message_count),
+    attachmentCustody: (r.attachment_custody as string | null) ?? "NONE",
+    claimedByPrincipalId: (r.accept_claimed_by_principal_id as string | null) ?? null,
+    claimedByEmployeeId: (r.claimed_by_employee_id as string | null) ?? null,
+    claimedByName: (r.claimed_by_name as string | null) ?? null,
+    claimedAt: r.accept_claimed_at ? millis(r.accept_claimed_at) : null,
+    pendingWorkOrderId: (r.accept_pending_work_order_id as string | null) ?? null,
   };
 }
+
+/** The reviewer projection: the claimant's Employee identity and display name, never inferred. */
+const CLAIMANT_COLUMNS = `
+  (SELECT l.employee_id FROM eos_policy.employee_principal_links l
+    WHERE l.tenant_id = r.tenant_id AND l.principal_id = r.accept_claimed_by_principal_id AND l.status = 'active' ORDER BY l.employee_id LIMIT 1) AS claimed_by_employee_id,
+  (SELECT e.display_name FROM eos_policy.employee_principal_links l JOIN eos_workforce.employees e ON e.tenant_id = l.tenant_id AND e.id = l.employee_id
+    WHERE l.tenant_id = r.tenant_id AND l.principal_id = r.accept_claimed_by_principal_id AND l.status = 'active' ORDER BY l.employee_id LIMIT 1) AS claimed_by_name,
+  (SELECT count(*)::int FROM eos_ops.inbound_work_messages m WHERE m.tenant_id = r.tenant_id AND m.request_id = r.id AND m.message_role = 'REPLY') AS thread_message_count`;
 
 export async function listInboundWork(deps: Deps, actor: LifecycleActor, input: Record<string, unknown>) {
   requireCapability(actor, INBOUND_WORK_READ);
@@ -112,12 +157,14 @@ export async function listInboundWork(deps: Deps, actor: LifecycleActor, input: 
     refuse("LIMIT_INVALID", "INVALID_INPUT", `limit is an integer 1-${MAX_QUEUE_LIMIT}`);
   }
   const { rows } = await deps.pool.query(
-    `SELECT id, status, received_at, sender, subject, request_type, priority, queue, suggested_operating_company_id,
-            operating_company_id, customer_candidate, equipment_candidate, attachment_refs, warnings, work_order_id,
-            duplicate_of_request_id
-       FROM eos_ops.inbound_work_requests
-      WHERE tenant_id = $1 AND status = ANY($2::text[])
-      ORDER BY received_at DESC NULLS LAST, created_at DESC, id LIMIT $3`,
+    `SELECT r.id, r.status, r.received_at, r.sender, r.subject, r.request_type, r.priority, r.queue, r.suggested_operating_company_id,
+            r.operating_company_id, r.customer_candidate, r.equipment_candidate, r.attachment_refs, r.warnings, r.work_order_id,
+            r.duplicate_of_request_id, r.created_at, r.source_mailbox_id, r.source_mailbox_name, r.destination, r.status_note,
+            r.thread_association, r.attachment_custody, r.accept_claimed_by_principal_id, r.accept_claimed_at, r.accept_pending_work_order_id,
+            ${CLAIMANT_COLUMNS}
+       FROM eos_ops.inbound_work_requests r
+      WHERE r.tenant_id = $1 AND r.status = ANY($2::text[])
+      ORDER BY r.received_at DESC NULLS LAST, r.created_at DESC, r.id LIMIT $3`,
     [actor.tenantId, statuses, (limit as number) + 1]);
   return { rows: rows.slice(0, limit as number).map(queueRow), truncated: rows.length > (limit as number) };
 }
@@ -128,7 +175,7 @@ export async function readInboundWorkRequest(deps: Deps, actor: LifecycleActor, 
   only(input, ["requestId"]);
   if (!isId(input.requestId)) refuse("REQUEST_ID_REQUIRED", "INVALID_INPUT", "requestId is required");
   const { rows } = await deps.pool.query(
-    `SELECT r.*, w.work_order_number, l.link_kind
+    `SELECT r.*, w.work_order_number, l.link_kind, ${CLAIMANT_COLUMNS}
        FROM eos_ops.inbound_work_requests r
        LEFT JOIN eos_ops.work_orders w ON w.tenant_id = r.tenant_id AND w.id = r.work_order_id
        LEFT JOIN eos_ops.inbound_work_order_links l ON l.tenant_id = r.tenant_id AND l.request_id = r.id
@@ -155,14 +202,18 @@ export async function readInboundWorkRequest(deps: Deps, actor: LifecycleActor, 
     // Converted again on the way out rather than trusted (parity with inboundWorkReadService).
     originalBodyText: normalizedBody || toPlainText(r.original_body, r.original_body_content_type === "text/plain" ? "text/plain" : "text/html"),
     normalizedBody,
-    // METADATA ONLY: the bytes stay with the provider runtime (attachment custody is the provider boundary).
+    // Custody per attachment: STORED bytes are read through readInboundAttachment (by attachmentId, through THIS
+    // request); PENDING / FAILED / REFUSED_UNSAFE / METADATA_ONLY say exactly why there are no bytes.
     attachmentRefs: ((r.attachment_refs as Record<string, unknown>[]) ?? []).map((a) => ({
       filename: String(a.filename ?? ""), mimeType: String(a.mimeType ?? ""), size: typeof a.size === "number" ? a.size : 0,
       contentHash: (a.contentHash as string | null) ?? null, providerAttachmentId: String(a.providerAttachmentId ?? ""),
       sourceMessageId: String(a.sourceMessageId ?? ""), receivedAt: typeof a.receivedAt === "number" ? a.receivedAt : 0,
-      custody: "METADATA_ONLY",
+      custody: typeof a.custody === "string" ? a.custody : "METADATA_ONLY",
+      custodyReason: (a.custodyReason as string | null) ?? null,
+      attachmentId: (a.attachmentId as string | null) ?? null,
+      failureCode: (a.failureCode as string | null) ?? null,
     })),
-    attachmentCustody: Array.isArray(r.attachment_refs) && r.attachment_refs.length ? "METADATA_ONLY" : "NONE",
+    attachmentCustody: (r.attachment_custody as string | null) ?? "NONE",
     threadMessages: replies.rows.map((m) => ({
       messageId: m.provider_message_id, receivedAt: millis(m.received_at), sender: m.sender, subject: m.subject,
       normalizedBody: toPlainText(m.normalized_body, "text/plain"), matchedOn: m.matched_on ?? null,
@@ -193,6 +244,21 @@ export async function readInboundWorkRequest(deps: Deps, actor: LifecycleActor, 
     equipmentId: r.equipment_id ?? null,
     workOrderNumber: r.work_order_number ?? null,
     workOrderLinkKind: r.link_kind ?? null,
+    // THE CLAIM HISTORY, oldest first -- original reviewer, releases, reassignments and completion, never rewritten.
+    claimHistory: (await deps.pool.query(
+      `SELECT e.event_kind, e.from_principal_id, e.to_principal_id, e.to_employee_id, e.actor_principal_id, e.reason, e.carried_work_order_id,
+              e.occurred_at,
+              (SELECT x.display_name FROM eos_policy.employee_principal_links l JOIN eos_workforce.employees x ON x.tenant_id = l.tenant_id AND x.id = l.employee_id
+                WHERE l.tenant_id = e.tenant_id AND l.principal_id = e.to_principal_id AND l.status = 'active' ORDER BY l.employee_id LIMIT 1) AS to_name,
+              (SELECT x.display_name FROM eos_policy.employee_principal_links l JOIN eos_workforce.employees x ON x.tenant_id = l.tenant_id AND x.id = l.employee_id
+                WHERE l.tenant_id = e.tenant_id AND l.principal_id = e.from_principal_id AND l.status = 'active' ORDER BY l.employee_id LIMIT 1) AS from_name
+         FROM eos_ops.inbound_work_claim_events e WHERE e.tenant_id = $1 AND e.request_id = $2 ORDER BY e.occurred_at, e.id LIMIT 200`,
+      [actor.tenantId, r.id])).rows.map((e) => ({
+        kind: e.event_kind, fromPrincipalId: e.from_principal_id ?? null, fromName: e.from_name ?? null,
+        toPrincipalId: e.to_principal_id ?? null, toEmployeeId: e.to_employee_id ?? null, toName: e.to_name ?? null,
+        actorPrincipalId: e.actor_principal_id, reason: e.reason ?? null, carriedWorkOrderId: e.carried_work_order_id ?? null,
+        at: millis(e.occurred_at),
+      })),
   };
 }
 
@@ -205,6 +271,7 @@ export function readInboundWorkAccess(actor: LifecycleActor) {
     canDecline: has(INBOUND_WORK_DECLINE),
     canAttach: has(INBOUND_WORK_ATTACH),
     canManageIntake: has(INBOUND_INTAKE_MANAGE),
+    canRecover: has(INBOUND_WORK_RECOVER),
   };
 }
 
@@ -284,8 +351,10 @@ export async function acceptInboundWork(deps: Deps, actor: LifecycleActor, input
     if (r.status !== "ACCEPTING") {
       await c.query(
         `UPDATE eos_ops.inbound_work_requests SET status = 'ACCEPTING', accept_claimed_by_principal_id = $3,
-                accept_claim_prior_status = status, updated_at = $4, version = version + 1
+                accept_claim_prior_status = status, accept_claimed_at = $4, updated_at = $4, version = version + 1
           WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, requestId, actor.principalId, now]);
+      await recordClaimEvent(c, actor.tenantId, { requestId: requestId as string, kind: "CLAIMED", from: null, to: actor.principalId,
+        actor: actor.principalId, at: now });
     }
     return { claim: { r, requestType, workOrderType, priority, complaint } } as const;
   });
@@ -299,9 +368,17 @@ export async function acceptInboundWork(deps: Deps, actor: LifecycleActor, input
   const { r, requestType, workOrderType, priority, complaint } = claim.claim;
   const key = acceptIdempotencyKey(requestId as string);
 
-  // ── 2. THE GOVERNED CREATE ──
-  let created;
-  try {
+  // ── 2. THE GOVERNED CREATE -- or the Work Order a recovered claim CARRIED (never a second one) ──
+  let created: { workOrderId: string; workOrderNumber: string | null; replayed: boolean } | undefined;
+  if (r.accept_pending_work_order_id) {
+    const carried = await deps.pool.query(`SELECT id, work_order_number, status::text AS status FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2`,
+      [actor.tenantId, r.accept_pending_work_order_id]);
+    if (carried.rows.length && !["CLOSED", "CANCELLED"].includes(carried.rows[0].status)
+      && !(await isQuarantined(deps.pool, actor.tenantId, carried.rows[0].id))) {
+      created = { workOrderId: carried.rows[0].id, workOrderNumber: carried.rows[0].work_order_number, replayed: true };
+    }
+  }
+  if (!created) try {
     created = await createWorkOrder({ pool: deps.pool, now: deps.now },
       { tenantId: actor.tenantId, principalId: actor.principalId, capabilities: actor.capabilities, operatingCompanyId },
       { customerId, locationId, workOrderType, priority, complaint, idempotencyKey: key, ...(equipmentId ? { equipmentId: equipmentId as string } : {}) });
@@ -310,22 +387,29 @@ export async function acceptInboundWork(deps: Deps, actor: LifecycleActor, input
       `SELECT 1 FROM eos_ops.work_orders WHERE tenant_id = $1 AND created_by_principal_id = $2 AND create_idempotency_key = $3`,
       [actor.tenantId, actor.principalId, key]);
     if (exists.rows.length === 0) {
-      await deps.pool.query(
-        `UPDATE eos_ops.inbound_work_requests SET status = accept_claim_prior_status, accept_claimed_by_principal_id = NULL,
-                accept_claim_prior_status = NULL, updated_at = $4, version = version + 1
-          WHERE tenant_id = $1 AND id = $2 AND status = 'ACCEPTING' AND accept_claimed_by_principal_id = $3`,
-        [actor.tenantId, requestId, actor.principalId, now]);
+      await inTransaction(deps.pool, async (c) => {
+        const released = await c.query(
+          `UPDATE eos_ops.inbound_work_requests SET status = accept_claim_prior_status, accept_claimed_by_principal_id = NULL,
+                  accept_claim_prior_status = NULL, accept_claimed_at = NULL, updated_at = $4, version = version + 1
+            WHERE tenant_id = $1 AND id = $2 AND status = 'ACCEPTING' AND accept_claimed_by_principal_id = $3`,
+          [actor.tenantId, requestId, actor.principalId, now]);
+        if (released.rowCount) {
+          await recordClaimEvent(c, actor.tenantId, { requestId: requestId as string, kind: "RELEASED", from: actor.principalId, to: null,
+            actor: actor.principalId, reason: boundedString(`Accept failed: ${(err as { code?: string })?.code ?? "ERROR"}`, 500), at: now });
+        }
+      });
     }
     throw err;
   }
+  const done = created as { workOrderId: string; workOrderNumber: string | null; replayed: boolean };
 
   // ── 3. RECORD ──
   return inTransaction(deps.pool, async (c) => {
     const { rows } = await c.query(`SELECT status, accept_claimed_by_principal_id, work_order_id FROM eos_ops.inbound_work_requests
                                      WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, requestId]);
     const cur = rows[0];
-    if (cur.status === "ACCEPTED" && cur.work_order_id === created.workOrderId) {
-      return { requestId, workOrderId: created.workOrderId, workItemId: created.workOrderId, workOrderNumber: created.workOrderNumber,
+    if (cur.status === "ACCEPTED" && cur.work_order_id === done.workOrderId) {
+      return { requestId, workOrderId: done.workOrderId, workItemId: done.workOrderId, workOrderNumber: done.workOrderNumber,
         operatingCompanyId, replayed: true };
     }
     if (cur.status !== "ACCEPTING" || cur.accept_claimed_by_principal_id !== actor.principalId) {
@@ -335,27 +419,30 @@ export async function acceptInboundWork(deps: Deps, actor: LifecycleActor, input
       `UPDATE eos_ops.inbound_work_requests SET status = 'ACCEPTED', decision = 'ACCEPTED', decision_reason = NULL,
               decision_by_principal_id = $3, decision_at = $4, customer_id = $5, customer_location_id = $6, equipment_id = $7,
               request_type = $8, priority = $9, problem_description = $10, work_order_id = $11, operating_company_id = $12,
-              accept_claimed_by_principal_id = NULL, accept_claim_prior_status = NULL, updated_at = $4, version = version + 1
+              accept_claimed_by_principal_id = NULL, accept_claim_prior_status = NULL, accept_claimed_at = NULL,
+              accept_pending_work_order_id = NULL, updated_at = $4, version = version + 1
         WHERE tenant_id = $1 AND id = $2`,
       [actor.tenantId, requestId, actor.principalId, now, customerId, locationId, equipmentId, requestType, priority, complaint,
-        created.workOrderId, operatingCompanyId]);
+        done.workOrderId, operatingCompanyId]);
     // TWO EVENTS, as the Firebase path wrote: the DECISION on the intake, and the CREATE under the Work Order's own id.
     const auditId = await writeAudit(c, actor, "inboundWork.request.accept", "inboundWorkRequest", requestId as string,
-      { status: r.status }, { status: "ACCEPTED", workOrderId: created.workOrderId, workOrderNumber: created.workOrderNumber,
+      { status: r.status }, { status: "ACCEPTED", workOrderId: done.workOrderId, workOrderNumber: done.workOrderNumber,
         operatingCompanyId, suggestedOperatingCompanyId: r.suggested_operating_company_id ?? null, customerId, locationId,
         equipmentId, requestType, priority }, null, now);
-    await writeAudit(c, actor, "workOrder.createFromInboundWork", "workOrder", created.workOrderId, null,
-      { inboundWorkRequestId: requestId, workOrderNumber: created.workOrderNumber, externalReference: r.external_reference ?? null,
+    await writeAudit(c, actor, "workOrder.createFromInboundWork", "workOrder", done.workOrderId, null,
+      { inboundWorkRequestId: requestId, workOrderNumber: done.workOrderNumber, externalReference: r.external_reference ?? null,
         authorizationNumber: r.authorization_number ?? null, idempotencyKey: key }, null, now);
+    await recordClaimEvent(c, actor.tenantId, { requestId: requestId as string, kind: "COMPLETED", from: actor.principalId, to: null,
+      actor: actor.principalId, carriedWorkOrderId: r.accept_pending_work_order_id ?? null, at: now, auditEventId: auditId });
     await c.query(
       `INSERT INTO eos_ops.inbound_work_order_links
          (id, tenant_id, request_id, work_order_id, link_kind, operating_company_id, external_reference, authorization_number,
           linked_by_principal_id, linked_at, audit_event_id)
        VALUES ($1,$2,$3,$4,'CREATED_BY_ACCEPT',$5,$6,$7,$8,$9,$10)`,
-      [`iwl_${requestId}`, actor.tenantId, requestId, created.workOrderId, operatingCompanyId, r.external_reference ?? null,
+      [`iwl_${requestId}`, actor.tenantId, requestId, done.workOrderId, operatingCompanyId, r.external_reference ?? null,
         r.authorization_number ?? null, actor.principalId, now, auditId]);
-    return { requestId, workOrderId: created.workOrderId, workItemId: created.workOrderId, workOrderNumber: created.workOrderNumber,
-      operatingCompanyId, replayed: created.replayed };
+    return { requestId, workOrderId: done.workOrderId, workItemId: done.workOrderId, workOrderNumber: done.workOrderNumber,
+      operatingCompanyId, replayed: done.replayed };
   });
 }
 

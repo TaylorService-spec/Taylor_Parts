@@ -1,12 +1,13 @@
 // Email Connections -- CREDENTIAL CUSTODY.
 //
-// THE RULE PR #1811 SET, KEPT: a connection document contains no secret. It never did, and this file is
-// what makes that survive real OAuth. `email_connections` gains only the NAME of where the credential
-// lives, a version number, and timestamps -- values a leaked read of the whole collection cannot be used
-// with.
+// THE RULE PR #1811 SET, KEPT: a connection record contains no secret. It never did, and this file is what
+// makes that survive real OAuth. The connection (eos_ops.inbound_provider_connections, EOS / PostgreSQL --
+// Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30) holds only the NAME of where the credential lives, a
+// version number, and timestamps -- values a leaked read of the whole table cannot be used with. This module
+// imports no Firebase and no database: the caller records the refreshed reference through `onRefreshed`.
 //
 // WHERE THE REFRESH TOKEN ACTUALLY LIVES: Google Secret Manager, one secret per connection, accessed by
-// the Functions runtime service account and by nothing else. That is the platform's own mechanism for
+// the EOS API's service identity and by nothing else. That is the platform's own mechanism for
 // exactly this, it is encrypted at rest and audited by the platform, and it means this repository writes
 // no cryptography of its own -- no key material, no cipher selection, no IV handling, no rotation scheme
 // invented here. A homemade vault is the one thing worse than the plaintext it replaces, because it looks
@@ -18,8 +19,6 @@
 //
 // NO SECRET VALUE IS EVER LOGGED, RETURNED TO A CLIENT, OR PUT IN AN ERROR MESSAGE. Every failure below
 // names the connection and the operation, never the material.
-import type { Firestore } from "firebase-admin/firestore";
-import { EMAIL_CONNECTIONS_COLLECTION } from "../constants/collections";
 import { ProviderTransportError, type EmailTransportAdapter, type ProviderTokenSet } from "./providerTransport";
 
 /** Stored on the connection: where the credential is, not what it is. */
@@ -141,6 +140,9 @@ export interface ConnectionCredentialContext {
   tenantOrWorkspace: string;
 }
 
+/** What the caller records after a refresh: the rotated credential's reference (or null when unrotated). */
+export type RefreshRecorder = (rotated: CredentialReference | null, at: number) => Promise<void>;
+
 /**
  * The one way any caller gets an access token.
  *
@@ -149,11 +151,10 @@ export interface ConnectionCredentialContext {
  * holding a credential the provider has already invalidated.
  */
 export async function resolveAccessToken(
-  db: Firestore,
   vault: CredentialVault,
   adapter: EmailTransportAdapter,
   connection: ConnectionCredentialContext,
-  deps: { now?: () => number } = {},
+  deps: { now?: () => number; onRefreshed?: RefreshRecorder } = {},
 ): Promise<string> {
   const now = (deps.now ?? Date.now)();
   const cached = accessTokens.get(connection.connectionId);
@@ -176,15 +177,8 @@ export async function resolveAccessToken(
     throw err;
   }
 
-  if (tokens.refreshToken && tokens.refreshToken !== refreshToken) {
-    const reference = await vault.put(connection.connectionId, tokens.refreshToken);
-    await db
-      .collection(EMAIL_CONNECTIONS_COLLECTION)
-      .doc(connection.connectionId)
-      .set({ credentialSecretName: reference.secretName, credentialVersion: reference.version, lastTokenRefreshAt: now }, { merge: true });
-  } else {
-    await db.collection(EMAIL_CONNECTIONS_COLLECTION).doc(connection.connectionId).set({ lastTokenRefreshAt: now }, { merge: true });
-  }
+  const rotated = tokens.refreshToken && tokens.refreshToken !== refreshToken ? await vault.put(connection.connectionId, tokens.refreshToken) : null;
+  await deps.onRefreshed?.(rotated, now);
 
   accessTokens.set(connection.connectionId, { accessToken: tokens.accessToken, expiresAt: tokens.expiresAt });
   return tokens.accessToken;

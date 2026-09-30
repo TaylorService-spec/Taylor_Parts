@@ -12,6 +12,7 @@
 // PostgreSQL serialized-custody authority is INACTIVE (Firestore custody is OPEN), so exposing it would be exactly
 // the hidden Inventory activation the ruling forbids. The built module (workOrderEquipmentInstall.ts) stays inert;
 // the Equipment on a Work Order is READ through readWorkOrder.
+import { SELF_SCHEDULING_READ_OPERATIONS, SELF_SCHEDULING_WORK_ORDER_OPERATIONS } from "./selfScheduling";
 import { createWorkOrder } from "./workOrderCreateCommand";
 import {
   transitionWorkOrder, WorkOrderLifecycleError, WORK_ORDER_STATUSES, type LifecycleActor, type WorkOrderStatus,
@@ -99,6 +100,13 @@ export const EOS_WORK_ORDER_OPERATIONS = Object.freeze({
   readWorkOrderConsumptionSnapshot: analytics.readWorkOrderConsumptionSnapshot,
   readTechnicianVolumeBreakdown: analytics.readTechnicianVolumeBreakdown,
   setWorkOrderEstimatedDuration: (deps, caller, input) => setWorkOrderEstimatedDuration({ pool: deps.pool, now: deps.now }, caller.actor, input),
+
+  // ── customer self-scheduling: policy, links and their history (selfScheduling.ts; the customer route is public) ──
+  saveSelfSchedulingPolicy: SELF_SCHEDULING_WORK_ORDER_OPERATIONS.saveSelfSchedulingPolicy,
+  listSelfSchedulingPolicies: SELF_SCHEDULING_WORK_ORDER_OPERATIONS.listSelfSchedulingPolicies,
+  issueSelfSchedulingLink: SELF_SCHEDULING_WORK_ORDER_OPERATIONS.issueSelfSchedulingLink,
+  revokeSelfSchedulingLink: SELF_SCHEDULING_WORK_ORDER_OPERATIONS.revokeSelfSchedulingLink,
+  readSelfSchedulingSessions: SELF_SCHEDULING_WORK_ORDER_OPERATIONS.readSelfSchedulingSessions,
 } satisfies Record<string, Op>);
 
 export type EosWorkOrderOperation = keyof typeof EOS_WORK_ORDER_OPERATIONS | "readWorkOrderAuthorityStatus";
@@ -108,6 +116,7 @@ export const WORK_ORDER_READ_OPERATIONS: readonly string[] = Object.freeze([
   "listWorkOrderOperatingCompanies",
   "readTechnicianAvailability", "findAvailableTechnicianSlots", "readWorkOrderLabor", "readWorkOrderFieldContext",
   "readWorkOrderReadiness", "readTechnicianExecutionStats", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown",
+  ...SELF_SCHEDULING_READ_OPERATIONS,
 ]);
 
 export const isWorkOrderOperation = (name: unknown): name is EosWorkOrderOperation =>

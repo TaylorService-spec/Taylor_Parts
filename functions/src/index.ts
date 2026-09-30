@@ -652,59 +652,12 @@ export {
 // the historical TEXT they were stored as.
 export { listImportedServiceHistoryCallable as listImportedServiceHistory } from "./dataImport/dataImportCallables";
 
-// --- Email Connections + Inbound Work (base EOS email intake) ---
+// --- Email Connections + Inbound Work: RETIRED FROM FIREBASE (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30) ---
 //
-// EXPORT != DEPLOY, REGISTER != GRANT. Ten callables covering the whole vertical slice: the Service
-// Inbound Work queue and its review detail, the three governed decisions (accept / decline / attach to
-// existing), the Administration configuration read and its three writes, and the non-production delivery
-// seam. All six capabilities (administration.emailIntake.read/manage, service.inboundWork.read/accept/
-// decline/attachExisting) are registered active:false, so every principal is denied in every environment
-// until a per-environment activation AND a governed roleAssignment exist -- production activation is
-// hard-blocked in environmentCapabilityOverrides.ts.
-//
-// NO RULES CHANGE. The four collections these read and write (email_connections, email_mailboxes,
-// email_routing_rules, inbound_work_requests) have no firestore.rules match block, so every client read and
-// write is denied by default and these trusted callables are the only path in or out.
-//
-// ACCEPT ADDS NO WRITE AUTHORITY: it creates the Work Order through the SAME governed createWorkOrderRecord
-// core the createWorkOrder callable uses, inside one transaction with its audit event.
-export {
-  listInboundWork,
-  getInboundWorkRequest,
-  acceptInboundWork,
-  declineInboundWork,
-  attachInboundWorkToWorkOrder,
-  getEmailIntakeConfiguration,
-  saveEmailConnection,
-  saveEmailMailbox,
-  saveEmailRoutingRule,
-  deliverInboundEmailMessage,
-} from "./inboundWork/inboundWorkCallables";
-
-// --- Email Connections: REAL provider delivery + attachment custody (phase 2 of the same capability) ---
-//
-// EXPORT != DEPLOY, and this group additionally REFUSES PRODUCTION at runtime: every callable below and
-// the schedule check the runtime's own project identity first, so production provider binding, production
-// polling and production attachment ingestion are impossible rather than merely unauthorized.
-//
-// It adds NO intake path and NO Work Order path. Delivery fetches a provider message, hands it to the
-// SAME normalizer and the SAME ingestInboundMessage phase 1 uses, and stops there; Accept still creates
-// the Work Order through createWorkOrderRecord exactly as before.
-//
-// Authority is phase 1's: connecting, testing, polling and retrying are administration.emailIntake.manage;
-// reading an attachment is service.inboundWork.read -- the same capability that opens the request it
-// belongs to. No new capability was introduced.
-export {
-  startEmailConnectionAuthorization,
-  completeEmailConnectionAuthorization,
-  testEmailConnection,
-  disconnectEmailConnection,
-  getEmailProviderReadiness,
-  pollEmailMailboxNow,
-  retryEmailDelivery,
-  getInboundWorkAttachment,
-} from "./inboundWork/emailTransportCallables";
-
-// The scheduled poller -- the thing that makes delivery automatic. Deploying it is what starts it; until
-// then nothing runs on any schedule anywhere.
-export { pollEmailMailboxes } from "./inboundWork/emailDeliverySchedule";
+// The Inbound Work queue, its three decisions, intake configuration, provider OAuth / connection lifecycle, mailbox
+// polling, delivery retry and attachment custody are served by the EOS API over PostgreSQL
+// (POST /operations/inbound-work; eosOps/inboundWork*.ts, eosOps/inboundProviderRuntime.ts). The eighteen Firebase
+// callables and the pollEmailMailboxes schedule that used to be exported here have NO caller and are no longer part of
+// this codebase. EXPORT != DEPLOY: nothing is deployed or undeployed by this change; the functions already deployed to
+// a Firebase project stay where they are until the Firebase retirement removes them
+// (docs/architecture/inbound-work-firebase-retirement-ledger.md).

@@ -123,3 +123,29 @@ export function serviceActivationOperations(): readonly { readonly operation: "g
     })),
   ]);
 }
+
+// ════════════════════ SERVICE EXPERIENCE COMPLETION (Controller, 2026-09-30) ════════════════════
+
+const SERVICE_EXPERIENCE_RULING = "Controller SERVICE EXPERIENCE COMPLETION 2026-09-30";
+
+/**
+ * B -- INBOUND WORK RECOVERY: the canonical Service Manager (fieldManager) may RELEASE and REASSIGN an accepted-but-
+ * unfinished Service Inbound Work item. The Dispatcher is NOT granted recovery (normal processing stays as governed);
+ * Office Manager, Technician and Sales hold none. A Parts-mailbox recovery authority is a separate, unruled boundary.
+ */
+export const INBOUND_RECOVERY_GRANTS: readonly ServiceGrantDecision[] = Object.freeze([
+  Object.freeze({ roleKey: "fieldManager", objectKey: "inboundWorkRequest", actionKey: "recover", capabilityKey: "inboundWork.request.recover",
+    reason: `${SERVICE_EXPERIENCE_RULING}, B: the Service Manager releases or reassigns an unfinished Service Inbound Work claim` }),
+]);
+
+/**
+ * The Administration API operations the NEXT activation window issues for this package (after merge, with the Owner's
+ * authorization). Self-scheduling capability holders (workOrder.selfScheduling.issue / .configure) are NOT here: they
+ * are an open Owner decision, and nothing is granted by assumption.
+ */
+export function serviceExperienceOperations(): readonly { readonly operation: "grantObjectActionToRole"; readonly input: Record<string, unknown> }[] {
+  return Object.freeze(INBOUND_RECOVERY_GRANTS.map((g) => Object.freeze({
+    operation: "grantObjectActionToRole" as const,
+    input: Object.freeze({ objectKey: g.objectKey, actionKey: g.actionKey, roleKey: g.roleKey, reason: g.reason }),
+  })));
+}

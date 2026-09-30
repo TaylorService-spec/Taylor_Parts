@@ -45,10 +45,15 @@ import { createPostgresCatalogReferenceAuthority } from "../catalogAuthority/pos
 import { EOS_AUTH_DISABLED, readEosAuthConfig, type EosAuthRuntime } from "../eosAuth/eosAuthConfig";
 import { EosAuthConfigError } from "../eosAuth/eosAccessToken";
 import { createCompositeTokenVerifier, createEosAuthHttpHandler } from "../eosAuth/eosAuthHttp";
+import { createSelfSchedulingHttpHandler } from "../eosOps/selfSchedulingHttp";
+import { SELF_SCHEDULING_ROUTE } from "../eosOps/selfScheduling";
+import { startInboundPollingIfEnabled } from "../eosOps/inboundProviderRuntime";
 
 /** Which domain transport answers a request path. Everything not Catalog, Operations, Commercial, Workforce or CRM is Administration. */
-export function eosApiDomainFor(url: string | undefined): "auth" | "catalog" | "crm" | "commercial" | "operations" | "workforce" | "administration" {
+export function eosApiDomainFor(url: string | undefined): "auth" | "catalog" | "crm" | "commercial" | "operations" | "workforce" | "selfScheduling" | "administration" {
   const path = (url ?? "").split("?")[0];
+  // THE ONE UNAUTHENTICATED ROUTE: customer self-scheduling, authorized by the scheduling token in the body alone.
+  if (path === SELF_SCHEDULING_ROUTE || path === `${SELF_SCHEDULING_ROUTE}/`) return "selfScheduling";
   // EOS session issuance. Only the nonprod persona route exists, and only when configured; otherwise 404.
   if (path.startsWith("/auth/")) return "auth";
   if (path.startsWith("/crm/")) return "crm";
@@ -283,8 +288,21 @@ export async function startEosApi(
     allowedOrigins: config.allowedOrigins,
   });
 
+  // A SEVENTH handler, and the only unauthenticated one: customer self-scheduling (selfScheduling.ts). The token in the
+  // body authorizes two operations on one Work Order; the booking runs under the issuing Principal's re-resolved authority.
+  const selfSchedulingHandler = createSelfSchedulingHttpHandler({ pool, reader: repo, allowedOrigins: config.allowedOrigins });
+
+  // THE EOS INBOUND MAIL POLLER (opt-in). Off unless EOS_INBOUND_POLLING=enabled; each tick runs one delivery cycle, and
+  // a cluster-wide advisory lock makes overlapping cycles (two instances, a slow tick) a no-op. The same cycle is the
+  // Render job scripts/pollInboundMailboxes.mjs.
+  const poller = startInboundPollingIfEnabled(pool);
+
   const server = createServer((req, res) => {
     const domain = eosApiDomainFor(req.url);
+    if (domain === "selfScheduling") {
+      void selfSchedulingHandler(req as never, res as never);
+      return;
+    }
     if (domain === "auth") {
       void authHandler(req, res);
       return;
@@ -321,6 +339,7 @@ export async function startEosApi(
     async close() {
       // ORDERLY: stop accepting, then let in-flight requests finish, then release the pool. Ending
       // the pool first would fail the requests that are still running.
+      if (poller) clearInterval(poller);
       await new Promise<void>((resolve, reject) =>
         server.close((err) => (err ? reject(err) : resolve())),
       );
