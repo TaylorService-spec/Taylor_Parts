@@ -45,6 +45,7 @@
 //
 // NOTHING HERE READS FIRESTORE, AND NOTHING HERE MOVES STOCK.
 import type { Pool, PoolClient } from "pg";
+import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 import { createHash, randomUUID } from "node:crypto";
 import { authorizeObjectAction, type ContextualReader } from "./contextualAuthorization";
 import {
@@ -314,6 +315,7 @@ async function recordOwnLabor(deps: Deps, actor: LifecycleActor, input: Record<s
       `SELECT status::text AS status FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
       [actor.tenantId, request.workOrderId]);
     if (wo.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
+    if (await isQuarantined(client, actor.tenantId, request.workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
     // IDEMPOTENCY, read first: a phone on a bad connection retries; hours must not double.
     const prior = await priorByKey(client, actor.tenantId, actor.principalId, request.idempotencyKey);
     if (prior) {
@@ -363,6 +365,7 @@ async function correctLabor(deps: Deps, actor: LifecycleActor, input: Record<str
     const wo = await client.query(
       `SELECT 1 FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, request.workOrderId]);
     if (wo.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
+    if (await isQuarantined(client, actor.tenantId, request.workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
     const original = (await client.query(
       `SELECT e.id, e.employee_id,
               EXISTS (SELECT 1 FROM ${SCHEMA}.work_order_labor_entries c WHERE c.tenant_id = e.tenant_id AND c.corrects_entry_id = e.id) AS reversed
@@ -432,6 +435,7 @@ export const readWorkOrderLabor: WorkOrderOp = async (deps, caller, input) => {
   const tenantId = caller.operational.tenantId;
   const wo = await deps.pool.query(`SELECT status::text AS status FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2`, [tenantId, workOrderId]);
   if (wo.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
+  if (await isQuarantined(deps.pool, tenantId, workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
 
   const { rows } = await deps.pool.query(
     `SELECT e.id, e.employee_id, e.labor_type, e.entry_kind, e.duration_minutes, to_char(e.work_date, 'YYYY-MM-DD') AS work_date,

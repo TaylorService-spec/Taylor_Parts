@@ -34,6 +34,7 @@ import type { Pool } from "pg";
 import type { ContextualReader } from "./contextualAuthorization";
 import type { OperationalActor } from "./entitledActionAuthority";
 import { WorkOrderLifecycleError } from "./workOrderLifecycle";
+import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 import { authorizeWorkOrderRecordRead, readWorkOrderPartsPlanGoverned } from "./workOrderRecordRead";
 import { readWorkOrderExecution } from "./workOrderExecution";
 import { readPartsByIds, PART_BY_IDS_MAX } from "../catalogMaster/postgresCatalogReads";
@@ -98,6 +99,7 @@ export async function readAuthorizedWorkOrderRow(
       WHERE w.tenant_id = $1 AND w.id = $2`,
     [actor.tenantId, workOrderId]);
   if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
+  if (await isQuarantined(deps.pool, actor.tenantId, workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
   return { workOrderId, row: rows[0] };
 }
 
