@@ -68,7 +68,8 @@ try {
   // Dual-target: the real form against the emulator (which certifies Login.jsx itself), a
   // token-seeded session against a deployed sandbox (whose accounts the emulator never seeds,
   // and where no password is typed into a field). See deployedSession.mjs.
-  await establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, driverAccounts: DRIVER_ACCOUNTS });
+  // Firebase-backed journeys (Controller ruling 2026-09-29): authentication matches the backend this harness tests.
+  await establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, driverAccounts: DRIVER_ACCOUNTS, auth: "firebase" });
 
   console.log(`\nCREATE -> REACH  persona=${accountKey}  record="${NAME}"`);
 

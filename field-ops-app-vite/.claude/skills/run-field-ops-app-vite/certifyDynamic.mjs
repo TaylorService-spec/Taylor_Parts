@@ -65,7 +65,8 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: widths[0], height: 900 } });
 
 try {
-  await establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, driverAccounts: DRIVER_ACCOUNTS });
+  // Firebase-backed journeys (Controller ruling 2026-09-29): authentication matches the backend this harness tests.
+  await establishSession(page, { BASE, IS_LOCAL, EMU, accountKey, driverAccounts: DRIVER_ACCOUNTS, auth: "firebase" });
 
   for (const entity of entities) {
     // ── resolve one representative record through the governed list ────────────────────────────
