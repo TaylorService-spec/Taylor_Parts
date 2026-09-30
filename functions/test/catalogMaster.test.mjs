@@ -491,3 +491,21 @@ test("migration 027 is applied, pinned by name, after 026, and extends 026's eos
   for (const key of Object.values(CATALOG_CAPABILITIES)) assert.match(up, new RegExp(`'${key.replace(/\./g, "\\.")}'`));
   assert.doesNotMatch(up, /role_capabilities/, "vocabulary only, never a grant");
 });
+
+test("1(b) 2026-09-30: exactly four pinned Sample Company v2 fixture models, one tenant, one classification -- nothing wider", () => {
+  const k = require("../lib/catalogMaster/catalogKnownFixtures.js");
+  assert.equal(k.KNOWN_NON_MIGRATED_FIXTURE, "KNOWN_NON_MIGRATED_FIXTURE");
+  assert.equal(k.SAMPLE_COMPANY_V2_SOURCE_AUTHORITY, "SAMPLE_COMPANY_V2");
+  assert.equal(k.KNOWN_FIXTURE_TENANT_ID, "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25");
+  assert.deepEqual(k.KNOWN_SAMPLE_COMPANY_EQUIPMENT_MODELS.map((f) => [f.kind, f.id, f.sourceAuthority]), [
+    ["equipment_model", "FIXTUREWORKS--FW-50", "SAMPLE_COMPANY_V2"], ["equipment_model", "FIXTUREWORKS--FW-OLD", "SAMPLE_COMPANY_V2"],
+    ["equipment_model", "SAMPLECO--SC-100", "SAMPLE_COMPANY_V2"], ["equipment_model", "SAMPLECO--SC-200", "SAMPLE_COMPANY_V2"],
+  ]);
+  assert.ok(k.KNOWN_SAMPLE_COMPANY_EQUIPMENT_MODELS.every((f) => /^[0-9a-f]{64}$/.test(f.fingerprint)));
+  assert.ok(Object.isFrozen(k.KNOWN_SAMPLE_COMPANY_EQUIPMENT_MODELS));
+  // No part or alias is ever a known fixture, and a non-pinned model in the pinned tenant stays unknown.
+  const model = { id: "ACME--X", manufacturerId: "ACME", manufacturerName: "A", modelNumber: "X", displayName: "X", family: null, subtype: null,
+    revision: null, status: "ACTIVE", sourceAuthority: "proof", version: 1, createdAt: "t", updatedAt: "t" };
+  const r = k.classifyKnownFixtures(k.KNOWN_FIXTURE_TENANT_ID, [model], new Set());
+  assert.deepEqual([r.known.length, r.unknown, r.refusals.length], [0, ["ACME--X"], 0]);
+});

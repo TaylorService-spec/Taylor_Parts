@@ -32,3 +32,18 @@ copied into `eos_ops.parts`. Of the source Catalog (54 parts, 48 equipment model
 - **Configuration backlog: the Ventana operating-company key binding.** `ventana` has no
   `tenant_operating_company_keys` row. The tooling exists
   (`operating-company-keys.sandbox.json` + `tenantOperatingCompanyKeyReconcileCli.js`) but is not run.
+
+## Fixture isolation for the activation window (Controller rulings 2026-09-30)
+
+- **1(b): preserve the four Sample Company v2 Equipment Models.** `taylor-nonprod` holds `FIXTUREWORKS--FW-50`,
+  `FIXTUREWORKS--FW-OLD`, `SAMPLECO--SC-100` and `SAMPLECO--SC-200` (sourceAuthority `SAMPLE_COMPANY_V2`, seeded
+  2026-09-16). The Catalog COPY treats exactly these as `KNOWN_NON_MIGRATED_FIXTURE`
+  (`functions/src/catalogMaster/catalogKnownFixtures.ts`). Each is pinned by tenant, id, classification and a
+  canonical fingerprint. The copy never writes them and verify does not count them as Taylor Catalog data. A fifth
+  fixture, a changed or missing one, or one in another tenant refuses with `KNOWN_FIXTURE_MISMATCH`. Every other
+  unknown target row is still `TARGET_HAS_UNKNOWN_RECORDS`.
+- **2(a): one synthetic Taylor acceptance warehouse.** `synthetic-np-wh-taylor-acceptance` sits under key `taylor`.
+  It is named `SYNTHETIC … (fixture)`, has no bin, and is audited as `NONPROD_SYNTHETIC_ACCEPTANCE`. It is created only by
+  `functions/scripts/syntheticAcceptanceWarehouseCli.js` through the governed `warehouseBinRepository.createWarehouse`.
+  It is acceptance infrastructure for the synthetic Reorder lifecycle proof, not Taylor master data. Sample Company
+  stays unbound (`sample-co-synthetic` is never mapped to Taylor).

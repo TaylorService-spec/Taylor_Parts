@@ -28,6 +28,8 @@ const eqWriter = require("../lib/catalogMaster/postgresEquipmentModelWriter.js")
 const partWriter = require("../lib/catalogMaster/postgresPartMasterWriter.js");
 const { copyCatalog, verifyCatalog, partMasterSchemaPresent, ABSENT_TENANT_PROBE } = require("../lib/catalogMaster/catalogCutover.js");
 const { parseCatalogSnapshot, censusCatalogSnapshot } = require("../lib/catalogMaster/catalogSnapshot.js");
+const knownFixtures = require("../lib/catalogMaster/catalogKnownFixtures.js");
+const catalogRows = require("../lib/catalogMaster/catalogRows.js");
 
 const MIGRATION_026 = "1759795200000_catalog-part-identity-reference-authority.sql";
 const MIGRATION_027 = "1759881600000_catalog-master-descriptive-authority.sql";
@@ -369,6 +371,107 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
     assert.equal(unrelated.counts.equipmentModels.target, 0);
     assert.equal(unrelated.identity.missingInTarget.length, catalog.equipmentModels.length + catalog.parts.length);
     assert.ok(unrelated.verdictChecks.every((v) => v.actual === "NOT_FOUND"), "nothing of t3/t4 is visible from t5");
+  });
+
+  // ════════ Controller ruling 2026-09-30, Option 1(b): the four PINNED Sample Company v2 fixture Equipment Models ════════
+  // They are stated here exactly as nonprod stores them (scripts/fixtures/sampleCompany.v2.json values, the 2026-09-16
+  // seed instants), so the pinned fingerprints are proved to BE those records, not arbitrary hashes.
+  const KT = knownFixtures.KNOWN_FIXTURE_TENANT_ID;
+  const SAMPLE_COMPANY_MODELS = [
+    ["FIXTUREWORKS--FW-50", "FIXTUREWORKS", "SYNTHETIC FixtureWorks Ltd (fixture)", "FW-50", "SYNTHETIC FixtureWorks FW-50 Grill (fixture)", "GRILL", "FLAT_TOP", null, "ACTIVE", "2026-09-16T17:29:47.941905Z"],
+    ["FIXTUREWORKS--FW-OLD", "FIXTUREWORKS", "SYNTHETIC FixtureWorks Ltd (fixture)", "FW-OLD", "SYNTHETIC FixtureWorks FW-OLD Retired Fryer (fixture)", "FRYER", null, null, "RETIRED", "2026-09-16T17:29:47.943796Z"],
+    ["SAMPLECO--SC-100", "SAMPLECO", "SYNTHETIC SampleCo Manufacturing (fixture)", "SC-100", "SYNTHETIC SampleCo SC-100 Soft Serve Freezer (fixture)", "FREEZER", "SOFT_SERVE", "A", "ACTIVE", "2026-09-16T17:29:47.868001Z"],
+    ["SAMPLECO--SC-200", "SAMPLECO", "SYNTHETIC SampleCo Manufacturing (fixture)", "SC-200", "SYNTHETIC SampleCo SC-200 Shake Machine (fixture)", "FREEZER", "SHAKE", "B", "ACTIVE", "2026-09-16T17:29:47.939745Z"],
+  ];
+  const insertSampleCompanyModel = (m, tenant = KT, over = {}) => q(
+    `INSERT INTO eos_ops.equipment_models (id, tenant_id, manufacturer_id, manufacturer_name, model_number, display_name, family, subtype, revision, status,
+       source_authority, version, created_by, updated_by, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1, 'rudy', 'rudy', $12, $12)`,
+    [m[0], tenant, m[1], m[2], m[3], over.displayName ?? m[4], m[5], m[6], m[7], m[8], over.sourceAuthority ?? "SAMPLE_COMPANY_V2", m[9]]);
+  const fixtureRows = async (tenant = KT) => JSON.stringify((await q(`SELECT * FROM eos_ops.equipment_models WHERE tenant_id = $1 AND source_authority = 'SAMPLE_COMPANY_V2' ORDER BY id`, [tenant])).rows);
+  const copyKt = async () => { const { census, catalog } = censusOf(COPY_SNAPSHOT()); return withPool((c) => copyCatalog(c, { tenantId: KT, principalId: "p-cutover-kt", catalog, canonicalDigest: census.canonicalDigest })); };
+  const verifyKt = async () => { const { catalog } = censusOf(COPY_SNAPSHOT()); return withPool((c) => verifyCatalog(c, { tenantId: KT, catalog, sample: "all" })); };
+  const refusedWithNothingWritten = async (expected) => {
+    const before = await fixtureRows(); const models = Number((await q(`SELECT count(*) FROM eos_ops.equipment_models WHERE tenant_id = $1`, [KT])).rows[0].count);
+    const audits = await auditCount(KT);
+    await assert.rejects(copyKt(), code(expected));
+    assert.equal(await fixtureRows(), before, "fixtures untouched");
+    assert.equal(Number((await q(`SELECT count(*) FROM eos_ops.equipment_models WHERE tenant_id = $1`, [KT])).rows[0].count), models, "nothing written");
+    assert.equal(await auditCount(KT), audits, "no audit row");
+  };
+
+  await t.test("1(b): the four pinned fingerprints ARE the Sample Company v2 models as nonprod stores them", async () => {
+    await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, 'taylor-nonprod', 'known fixture tenant')`, [KT]);
+    await principal("p-cutover-kt", KT);
+    for (const m of SAMPLE_COMPANY_MODELS) await insertSampleCompanyModel(m);
+    const rows = (await q(`${catalogRows.EQUIPMENT_MODEL_SELECT} WHERE tenant_id = $1 ORDER BY id`, [KT])).rows.map(catalogRows.equipmentModelFromRow);
+    assert.deepEqual(rows.map((m) => [m.id, m.sourceAuthority, knownFixtures.equipmentModelFingerprint(m)]),
+      knownFixtures.KNOWN_SAMPLE_COMPANY_EQUIPMENT_MODELS.map((f) => [f.id, f.sourceAuthority, f.fingerprint]));
+    assert.equal(knownFixtures.KNOWN_SAMPLE_COMPANY_EQUIPMENT_MODELS.length, 4);
+  });
+
+  await t.test("1(b): an unexpected fifth SAMPLE_COMPANY_V2 model REFUSES the copy, nothing written", async () => {
+    await insertSampleCompanyModel(["SAMPLECO--SC-999", "SAMPLECO", "SYNTHETIC SampleCo Manufacturing (fixture)", "SC-999", "SYNTHETIC fifth", null, null, null, "ACTIVE", "2026-09-16T17:29:47.999999Z"]);
+    await refusedWithNothingWritten("KNOWN_FIXTURE_MISMATCH");
+    await q(`DELETE FROM eos_ops.equipment_models WHERE tenant_id = $1 AND id = 'SAMPLECO--SC-999'`, [KT]);
+  });
+
+  await t.test("1(b): a pinned fixture whose content or classification changed REFUSES the copy, nothing written", async () => {
+    await q(`UPDATE eos_ops.equipment_models SET display_name = 'renamed' WHERE tenant_id = $1 AND id = 'SAMPLECO--SC-100'`, [KT]);
+    await refusedWithNothingWritten("KNOWN_FIXTURE_MISMATCH");
+    await q(`UPDATE eos_ops.equipment_models SET display_name = $2 WHERE tenant_id = $1 AND id = 'SAMPLECO--SC-100'`, [KT, SAMPLE_COMPANY_MODELS[2][4]]);
+    await q(`UPDATE eos_ops.equipment_models SET source_authority = 'NATIVE_EOS' WHERE tenant_id = $1 AND id = 'SAMPLECO--SC-200'`, [KT]);
+    await assert.rejects(copyKt(), code("KNOWN_FIXTURE_MISMATCH"));
+    await q(`UPDATE eos_ops.equipment_models SET source_authority = 'SAMPLE_COMPANY_V2' WHERE tenant_id = $1 AND id = 'SAMPLECO--SC-200'`, [KT]);
+  });
+
+  await t.test("1(b): a missing pinned fixture REFUSES the copy (the set is exact), nothing written", async () => {
+    await q(`DELETE FROM eos_ops.equipment_models WHERE tenant_id = $1 AND id = 'FIXTUREWORKS--FW-OLD'`, [KT]);
+    await refusedWithNothingWritten("KNOWN_FIXTURE_MISMATCH");
+    await insertSampleCompanyModel(SAMPLE_COMPANY_MODELS[1]);
+  });
+
+  await t.test("1(b): an unclassified target row is still TARGET_HAS_UNKNOWN_RECORDS -- no generic bypass", async () => {
+    await q(`INSERT INTO eos_ops.equipment_models (id, tenant_id, manufacturer_id, manufacturer_name, model_number, display_name, status, source_authority, version, created_by, updated_by)
+             VALUES ('ACME--UNKNOWN', $1, 'ACME', 'Acme', 'UNKNOWN', 'Unknown', 'ACTIVE', 'proof', 1, 'proof', 'proof')`, [KT]);
+    await refusedWithNothingWritten("TARGET_HAS_UNKNOWN_RECORDS");
+    await q(`DELETE FROM eos_ops.equipment_models WHERE tenant_id = $1 AND id = 'ACME--UNKNOWN'`, [KT]);
+  });
+
+  await t.test("1(b): SAMPLE_COMPANY_V2 models in ANY other tenant are never known fixtures -- the copy refuses", async () => {
+    await insertSampleCompanyModel(SAMPLE_COMPANY_MODELS[0], "t5");
+    const { census, catalog } = censusOf(COPY_SNAPSHOT());
+    await assert.rejects(withPool((c) => copyCatalog(c, { tenantId: "t5", principalId: "p-cutover-kt", catalog, canonicalDigest: census.canonicalDigest })));
+    const plan = knownFixtures.classifyKnownFixtures("t5", (await q(`${catalogRows.EQUIPMENT_MODEL_SELECT} WHERE tenant_id = 't5'`)).rows.map(catalogRows.equipmentModelFromRow), new Set());
+    assert.deepEqual(plan.known, []);
+    assert.ok(plan.refusals.length === 1 && plan.unknown.length === 1);
+    await q(`DELETE FROM eos_ops.equipment_models WHERE tenant_id = 't5'`);
+  });
+
+  await t.test("1(b): the copy preserves the four pinned fixtures byte-identical, verify reconciles, and a repeat copy is NO_CHANGES", async () => {
+    const before = await fixtureRows();
+    const report = await copyKt();
+    assert.equal(report.outcome, "COPIED");
+    assert.deepEqual(report.equipmentModels, { inserted: 3, unchanged: 0 });
+    assert.deepEqual(report.parts, { inserted: 4, unchanged: 0 });
+    assert.deepEqual(report.knownNonMigratedFixtures.map((f) => [f.id, f.classification]),
+      SAMPLE_COMPANY_MODELS.map((m) => [m[0], "KNOWN_NON_MIGRATED_FIXTURE"]));
+    assert.equal(await fixtureRows(), before, "the fixtures are untouched by the copy");
+    const verify = await verifyKt();
+    assert.equal(verify.reconciled, true);
+    assert.deepEqual(verify.counts.equipmentModels, { source: 3, target: 3 }, "fixtures are not counted as Taylor Catalog data");
+    assert.deepEqual(verify.identity.extraInTarget, []);
+    assert.deepEqual(verify.knownFixtureRefusals, []);
+    assert.equal(verify.knownNonMigratedFixtures.length, 4);
+    const again = await copyKt();
+    assert.equal(again.outcome, "NO_CHANGES");
+    assert.equal(await fixtureRows(), before);
+    // A fixture that changes AFTER the copy fails verify: the preserved set is re-proved, not assumed.
+    await q(`UPDATE eos_ops.equipment_models SET display_name = 'renamed' WHERE tenant_id = $1 AND id = 'SAMPLECO--SC-100'`, [KT]);
+    const drifted = await verifyKt();
+    assert.equal(drifted.reconciled, false);
+    assert.equal(drifted.knownFixtureRefusals.length, 1);
+    await q(`UPDATE eos_ops.equipment_models SET display_name = $2 WHERE tenant_id = $1 AND id = 'SAMPLECO--SC-100'`, [KT, SAMPLE_COMPANY_MODELS[2][4]]);
   });
 
   await t.test("a missing tenant is refused; the copy never creates one", async () => {

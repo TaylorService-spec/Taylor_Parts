@@ -373,3 +373,174 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     assert.equal(rows[0].n, 0);
   });
 });
+
+// ════════ Controller ruling 2026-09-30, Option 2(a): the ONE synthetic Taylor acceptance warehouse ════════
+// Established by scripts/syntheticAcceptanceWarehouseCli.js (the governed writer, one audit event), then the whole
+// synthetic lifecycle is driven against it with EXACTLY the ruled activation capability sets:
+//   Parts Manager   create.manual + read + assign (held before) + approve / reject / cancel / purchaseOrder.void (ruled)
+//   Parts Associate read / startPurchasing / postPurchasingUpdate / recordPurchaseOrder / markReceived (ruled)
+//                   + inventory.stock.receive (held before, through inventoryReceivingClerk)
+test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole synthetic Reorder lifecycle", { skip: SKIP, concurrency: 1 }, async (t) => {
+  const { spawnSync } = await import("node:child_process");
+  const acceptance = require("../lib/eosOps/syntheticAcceptanceWarehouse.js");
+  const receiving = require("../lib/eosOps/receiveReorderStockCommand.js");
+  const name = `rr_syn_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  let pool;
+  await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
+  t.after(async () => {
+    await pool?.end();
+    await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
+  });
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe",
+  });
+  pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 8 });
+  const q = (text, values = []) => pool.query(text, values);
+  const repo = new PostgresPolicyRepository(pool);
+  const T = "tenant-syn";
+  await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, 'taylor-nonprod', 'synthetic acceptance proof')`, [T]);
+  const principal = async (subject) => repo.transact({ tenantId: T, uid: "fixture" }, async (tx) => {
+    const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
+    await tx.createTenantMembership(p.id);
+    return p.id;
+  });
+  const pAdmin = await principal("uid-admin");
+  const pPM = await principal("uid-parts-manager");
+  const pPA = await principal("uid-parts-associate");
+  const pTech = await principal("uid-technician");
+  let n = 0;
+  for (const [emp, p] of [["e-pm", pPM], ["e-pa", pPA], ["e-tech", pTech]]) {
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ($1, $2, 'ACTIVE', 'taylor', '2020-01-01T00:00:00Z')`, [emp, T]);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+             VALUES ($1, $2, $3, $4, 'taylor', 'OPERATOR_ASSERTED', 'f', 'test', 'active')`, [`epl-${++n}`, T, p, emp]);
+  }
+  for (const emp of ["e-pm", "e-pa"]) {
+    await q(`INSERT INTO eos_workforce.employee_work_eligibility (id, tenant_id, employee_id, qualification_code, effective_from, assigned_by)
+             VALUES ($1, $2, $3, 'PARTS_OPERATIONS', now(), 'fixture')`, [`ewe-${emp}`, T, emp]);
+  }
+  await q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
+             expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
+           VALUES ('PART-SYN', $1, 'fixture', 'PART-SYN', 'PART-SYN', 'ACTIVE', 'EACH', 'STANDARD', 'STOCKED', false, false, false, false, 1, 'fixture')`, [T]);
+
+  const cli = (...extra) => {
+    const r = spawnSync(process.execPath, ["scripts/syntheticAcceptanceWarehouseCli.js", "--environment", "platform-sandbox", "--databaseUrlEnv", "SYN_DB",
+      "--tenantKey", "taylor-nonprod", "--principalId", pAdmin, ...extra], { cwd: FUNCTIONS_DIR, encoding: "utf8", env: { ...process.env, EOS_ENVIRONMENT: "nonprod", SYN_DB: dbUrlFor(name) } });
+    return { status: r.status, out: r.stdout ? JSON.parse(r.stdout) : null, err: r.stderr ? JSON.parse(r.stderr) : null };
+  };
+  const W = acceptance.SYNTHETIC_ACCEPTANCE_WAREHOUSE.warehouseId;
+  const audits = async () => (await q(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE action = 'warehouse.syntheticAcceptance.create'`)).rows[0].n;
+
+  await t.test("the pinned identity is unmistakably synthetic and is none of the forbidden warehouses", () => {
+    const w = acceptance.SYNTHETIC_ACCEPTANCE_WAREHOUSE;
+    assert.deepEqual([w.warehouseId, w.operatingCompanyKey, w.status, w.provenance], ["synthetic-np-wh-taylor-acceptance", "taylor", "ACTIVE", "NATIVE"]);
+    assert.match(w.name, /^SYNTHETIC .*\(fixture\)$/);
+    assert.match(w.siteLabel, /not a real site/);
+    assert.deepEqual([...acceptance.FORBIDDEN_WAREHOUSE_IDS], ["wh-main", "wh-north", "SC-WH-MAIN", "SC-WH-SERVICE"]);
+    assert.ok(!acceptance.FORBIDDEN_WAREHOUSE_IDS.includes(w.warehouseId));
+  });
+
+  await t.test("REFUSES while `taylor` does not resolve to exactly one ACTIVE binding (never binds anything itself)", async () => {
+    const r = cli("--apply");
+    assert.equal(r.status, 2);
+    assert.equal(r.err.code, "COMPANY_KEY_NOT_UNIQUE");
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.warehouses`)).rows[0].n, 0);
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES ($1, 'taylor', 'ACTIVE', 'fixture', 'f', 'f')`, [T]);
+    await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+             VALUES ($1, 'taylor', 'taylor', 'ACTIVE', 'NATIVE', 'fixture', 'f', 'f')`, [T]);
+    // Sample Company stays its own, unbound key -- nothing here maps it to Taylor.
+    await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
+             VALUES ('SC-WH-MAIN', $1, 'sample-co-synthetic', 'SYNTHETIC Sample Co Main Warehouse (fixture)', 'Sampleton', 'ACTIVE', 'NATIVE', 'f', 'f')`, [T]);
+  });
+
+  await t.test("dry run proves the id unused and unreferenced and writes nothing; apply creates it once with one audit event; a rerun is ALREADY_PRESENT", async () => {
+    const dry = cli();
+    assert.equal(dry.status, 0, JSON.stringify(dry.err));
+    assert.deepEqual([dry.out.outcome, dry.out.preflight.existing, dry.out.preflight.referencingRows, dry.out.preflight.companyKeyBindings, dry.out.preflight.operatingCompanyId],
+      ["DRY_RUN", "ABSENT", 0, 1, "taylor"]);
+    assert.ok(dry.out.preflight.referenceColumnsChecked > 5, "every eos_* warehouse / location reference column is probed");
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.warehouses WHERE id = $1`, [W])).rows[0].n, 0);
+    const applied = cli("--apply");
+    assert.equal(applied.status, 0, JSON.stringify(applied.err));
+    assert.equal(applied.out.outcome, "CREATED");
+    const row = (await q(`SELECT tenant_id, operating_company_key, name, site_label, status::text, provenance::text, created_by FROM eos_ops.warehouses WHERE id = $1`, [W])).rows;
+    assert.deepEqual(row, [{ tenant_id: T, operating_company_key: "taylor", name: "SYNTHETIC Taylor Acceptance Proof Warehouse (fixture)",
+      site_label: "SYNTHETIC nonprod acceptance proof -- not a real site", status: "ACTIVE", provenance: "NATIVE", created_by: pAdmin }]);
+    const audit = (await q(`SELECT actor_uid, target_kind, target_id, after FROM eos_policy.audit_events WHERE action = 'warehouse.syntheticAcceptance.create'`)).rows;
+    assert.equal(audit.length, 1);
+    assert.deepEqual([audit[0].actor_uid, audit[0].target_kind, audit[0].target_id, audit[0].after.dataProvenance], [pAdmin, "warehouse", W, "NONPROD_SYNTHETIC_ACCEPTANCE"]);
+    const again = cli("--apply");
+    assert.equal(again.out.outcome, "ALREADY_PRESENT");
+    assert.equal(await audits(), 1);
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.bins`)).rows[0].n, 0, "no bin: receiving lands on the WAREHOUSE location");
+  });
+
+  await t.test("a pinned id occupied by a DIFFERENT record is refused, never repaired", async () => {
+    await q(`UPDATE eos_ops.warehouses SET name = 'someone else' WHERE id = $1`, [W]);
+    const r = cli("--apply");
+    assert.equal(r.err.code, "IDENTITY_OCCUPIED");
+    await q(`UPDATE eos_ops.warehouses SET name = 'SYNTHETIC Taylor Acceptance Proof Warehouse (fixture)' WHERE id = $1`, [W]);
+  });
+
+  await t.test("the Parts Associate queue scope is written through the governed command against key `taylor`", async () => {
+    const scopes = require("../lib/eosWorkforce/commands/employeeOperationalScopeCommands.js");
+    const entitlement = require("../lib/eosOps/conditionalEntitlement.js");
+    const caps = new Set(["admin.employeeOperationalScope.write"]);
+    const admin = { tenantId: T, principalId: pAdmin, capabilities: caps,
+      entitlements: async () => entitlement.entitlementsFrom([...caps].map((capabilityKey) => ({ grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey }))) };
+    const r = await scopes.assignEmployeeOperationalScope({ pool }, admin,
+      { employeeId: "e-pa", scopeType: "REORDER_QUEUE", scopeId: "taylor", reason: "ruling 2026-09-30: Parts Associate Taylor Reorder queue" });
+    assert.equal(r.outcome, "ASSIGNED");
+    await scopes.assignEmployeeOperationalScope({ pool }, admin,
+      { employeeId: "e-pm", scopeType: "REORDER_QUEUE", scopeId: "taylor", reason: "fixture: Parts Manager Taylor Reorder queue (already held in nonprod)" });
+  });
+
+  const PM = new Set([life.REORDER_CREATE_MANUAL, life.REORDER_READ, authority.REORDER_REQUEST_ASSIGN, life.REORDER_APPROVE, life.REORDER_REJECT, life.REORDER_CANCEL, life.REORDER_PO_VOID]);
+  const PA = new Set([life.REORDER_READ, life.REORDER_START_PURCHASING, life.REORDER_POST_UPDATE, life.REORDER_RECORD_PO, life.REORDER_MARK_RECEIVED, "inventory.stock.receive"]);
+  const as = (principalId, caps) => ({ tenantId: T, principalId, capabilities: caps });
+  const deps = { pool };
+  const raise = () => life.createGovernedReorderRequest(deps, as(pPM, PM), {
+    partId: "PART-SYN", warehouseId: W, requestedQuantity: 2, recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL" });
+  const toOrdered = async (po) => {
+    const id = (await raise()).reorderRequestId;
+    await life.reviewReorderRequest(deps, as(pPM, PM), { reorderRequestId: id, decision: "APPROVED" });
+    await authority.assignReorderRequestToEmployee(deps, as(pPM, PM), { reorderRequestId: id, employeeId: "e-pa" });
+    await life.startPurchasingOnReorder(deps, as(pPA, PA), { reorderRequestId: id });
+    await life.postPurchasingUpdate(deps, as(pPA, PA), { reorderRequestId: id, vendorContacted: true });
+    const recorded = await life.recordReorderPurchaseOrder(deps, as(pPA, PA), { reorderRequestId: id, supplierName: "SYNTHETIC Supplier", externalPoNumber: po, orderedQuantity: 2, orderedDate: "2026-09-30" });
+    assert.equal(recorded.status, "ORDERED");
+    return id;
+  };
+
+  await t.test("create -> approve -> assign -> purchase -> PO -> RECEIVE, against the synthetic warehouse; company server-derived; lineage PO id == request id", async () => {
+    const id = await toOrdered("CAC-PROOF-PO-1");
+    const rr = (await q(`SELECT operating_company_key, warehouse_id, status::text s FROM eos_ops.reorder_requests WHERE id = $1`, [id])).rows[0];
+    assert.deepEqual(rr, { operating_company_key: "taylor", warehouse_id: W, s: "ORDERED" });
+    const po = (await q(`SELECT id, operating_company_key, part_id FROM eos_ops.purchase_orders WHERE id = $1`, [id])).rows;
+    assert.deepEqual(po, [{ id, operating_company_key: "taylor", part_id: "PART-SYN" }], "the PO carries the request's id and company");
+    const queue = await life.readReorderQueue(deps, as(pPA, PA), {});
+    assert.ok(JSON.stringify(queue).includes(id), "the Parts Associate sees the Taylor queue");
+    const receipt = await receiving.receiveReorderStock({ pool }, as(pPA, PA), {
+      source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: id, purchaseOrderId: id },
+      receivingLocation: { type: "WAREHOUSE", locationId: W },
+      lines: [{ lineId: "L1", partId: "PART-SYN", receivedQuantity: 2 }], idempotencyKey: "CAC-PROOF-RECEIVE-1" });
+    assert.ok(receipt);
+    assert.equal((await q(`SELECT status::text s FROM eos_ops.reorder_requests WHERE id = $1`, [id])).rows[0].s, "RECEIVED");
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.inventory_movements WHERE tenant_id = $1`, [T])).rows[0].n, 1);
+    await assert.rejects(q(`UPDATE eos_ops.purchase_orders SET id = 'rewritten' WHERE id = $1`, [id]), "PO identity is immutable");
+  });
+
+  await t.test("Parts Manager rejects; Parts Manager voids an ORDERED PO; the Parts Associate cannot void; the technician cannot create", async () => {
+    const r = (await raise()).reorderRequestId;
+    const rejected = await life.reviewReorderRequest(deps, as(pPM, PM), { reorderRequestId: r, decision: "REJECTED", reviewNotes: "CAC-PROOF synthetic reject" });
+    assert.equal(rejected.status, "REJECTED");
+    const v = await toOrdered("CAC-PROOF-PO-2");
+    await assert.rejects(life.voidReorderPurchaseOrder(deps, as(pPA, PA), { reorderRequestId: v, voidReason: "CAC-PROOF synthetic void" }), /requires reorder\.purchaseOrder\.void/);
+    const voided = await life.voidReorderPurchaseOrder(deps, as(pPM, PM), { reorderRequestId: v, voidReason: "CAC-PROOF synthetic void" });
+    assert.deepEqual([voided.status, voided.voidedBy], ["VOIDED", pPM]);
+    await assert.rejects(life.createGovernedReorderRequest(deps, as(pTech, new Set()), {
+      partId: "PART-SYN", warehouseId: W, requestedQuantity: 1, recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL" }), /requires reorder\.request\.create/);
+    // Sample Company's warehouse still cannot raise a Taylor Reorder: its key is not bound, and nothing bound it.
+    await assert.rejects(life.createGovernedReorderRequest(deps, as(pPM, PM), {
+      partId: "PART-SYN", warehouseId: "SC-WH-MAIN", requestedQuantity: 1, recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL" }), /not bound/);
+  });
+});
