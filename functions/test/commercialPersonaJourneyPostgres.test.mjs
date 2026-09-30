@@ -102,6 +102,10 @@ const OPERATIONS = Object.freeze({
   getAccountCommercialProjection: [["opportunity.read", "salesAgreement.read", "salesOrder.read"], () => ({ accountId: "acct-missing" })],
   // The caller's own capabilities: any active member may ask about itself.
   readMyCommercialCapabilities: [[], () => ({})],
+  // The coordinated-visits read (Work Order cutover completion pass, 2026-09-30): the Sales Order is the coordinator, so
+  // it is served here, under fulfillment.coordinatedVisit.read -- not a Commercial selling key, so the matrix below
+  // decides it from each persona's FULL baseline grants rather than the Commercial holdings pin.
+  listCoordinatedOperations: [["fulfillment.coordinatedVisit.read"], () => ({})],
 });
 
 // ════════════════════ PART 1 -- no database ════════════════════
@@ -225,7 +229,8 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
       for (const [operation, [required, input]] of Object.entries(OPERATIONS)) {
         // A channel-scoped seller is asked inside its own channel: this matrix proves the capability, the DQ-020 tests below the channel.
         const res = await call(personas[persona], operation, input(personas[persona].channel ?? undefined));
-        const authorized = required.every((c) => holdings.includes(c));
+        const allGrants = persona.startsWith("role:") ? grantsOf(persona.slice(5)) : rolesOf(persona).flatMap(grantsOf);
+        const authorized = required.every((c) => holdings.includes(c) || (!COMMERCIAL_KEYS.includes(c) && allGrants.includes(c)));
         if (authorized) {
           assert.notEqual(res.status, 403, `${persona} ${operation} was refused although it holds ${required.join("+")}: ${JSON.stringify(res.body)}`);
           assert.notEqual(res.status, 500, `${persona} ${operation}: ${JSON.stringify(res.body)}`);

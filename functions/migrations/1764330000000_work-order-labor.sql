@@ -28,7 +28,10 @@
 -- IDEMPOTENT BY KEY, per recording Principal, with the request fingerprint kept so a replay returns the recorded
 -- entry and a different request under a reused key refuses.
 --
--- ONE CAPABILITY, REGISTERED WITH NO GRANTS: workOrder.labor.correct (workOrder / correctLabor). Firebase kept
+-- DELIBERATELY NOT the Firebase id `workOrder.labor.correct`: that id is in the in-repo PERMISSION_CATALOG, which the
+-- compatibility admin Role composes whole, so registering it would let the catalog reconcile GRANT it to admin by
+-- default (measured: administrationControlPlanePostgres). A PostgreSQL-native key keeps definition != grant.
+-- ONE CAPABILITY, REGISTERED WITH NO GRANTS: workOrder.labor.correctEntry (workOrder / correctLabor). Firebase kept
 -- correcting labor -- including somebody else's -- as a SEPARATE authority from recording it ("a technician fixing
 -- their own typo and a manager adjusting a crew's hours are not the same authority even when the keystrokes
 -- match"). No existing PostgreSQL capability says that, so the smallest one is defined. Definition is not grant:
@@ -43,15 +46,15 @@ DECLARE
     v_n INT;
 BEGIN
     SELECT count(*) INTO v_n FROM capabilities
-     WHERE key = 'workOrder.labor.correct' OR (object_key = 'workOrder' AND action_key = 'correctLabor');
+     WHERE key = 'workOrder.labor.correctEntry' OR (object_key = 'workOrder' AND action_key = 'correctLabor');
     IF v_n > 0 THEN
-        RAISE EXCEPTION 'WORK_ORDER_LABOR: workOrder.labor.correct / workOrder.correctLabor is already registered';
+        RAISE EXCEPTION 'WORK_ORDER_LABOR: workOrder.labor.correctEntry / workOrder.correctLabor is already registered';
     END IF;
 END
 $$;
 
 INSERT INTO capabilities (id, key, description, object_key, action_key, action_kind, display_label) VALUES
-    ('cap_workOrder_labor_correct', 'workOrder.labor.correct',
+    ('cap_workOrder_labor_correct', 'workOrder.labor.correctEntry',
      'Correct a recorded Work Order labor entry -- including another Employee''s -- by appending a replacement that names the entry it corrects. The original is never edited. Records work performed only: no rate, cost or billable value. Granted only through Administration.',
      'workOrder', 'correctLabor', 'BUSINESS_ACTION', 'Correct Work Order Labor')
 ON CONFLICT (key) DO NOTHING;
@@ -119,16 +122,16 @@ DECLARE
 BEGIN
     SELECT count(*) INTO v_n FROM role_capabilities WHERE capability_id = 'cap_workOrder_labor_correct';
     IF v_n > 0 THEN
-        RAISE EXCEPTION 'WORK_ORDER_LABOR: refuses to reverse -- workOrder.labor.correct is held by % Role grant(s)', v_n;
+        RAISE EXCEPTION 'WORK_ORDER_LABOR: refuses to reverse -- workOrder.labor.correctEntry is held by % Role grant(s)', v_n;
     END IF;
     SELECT count(*) INTO v_n FROM principal_capabilities WHERE capability_id = 'cap_workOrder_labor_correct';
     IF v_n > 0 THEN
-        RAISE EXCEPTION 'WORK_ORDER_LABOR: refuses to reverse -- workOrder.labor.correct is held by % direct grant(s)', v_n;
+        RAISE EXCEPTION 'WORK_ORDER_LABOR: refuses to reverse -- workOrder.labor.correctEntry is held by % direct grant(s)', v_n;
     END IF;
     IF to_regclass('eos_policy.role_capability_decisions') IS NOT NULL THEN
-        SELECT count(*) INTO v_n FROM role_capability_decisions WHERE capability_key = 'workOrder.labor.correct';
+        SELECT count(*) INTO v_n FROM role_capability_decisions WHERE capability_key = 'workOrder.labor.correctEntry';
         IF v_n > 0 THEN
-            RAISE EXCEPTION 'WORK_ORDER_LABOR: refuses to reverse -- % Administration decision(s) name workOrder.labor.correct', v_n;
+            RAISE EXCEPTION 'WORK_ORDER_LABOR: refuses to reverse -- % Administration decision(s) name workOrder.labor.correctEntry', v_n;
         END IF;
     END IF;
     SELECT count(*) INTO v_n FROM eos_ops.work_order_labor_entries;

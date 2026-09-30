@@ -254,7 +254,7 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // identity binding, EMPTY; no capability, no grant, no seed write.
 // 1764300000000 (the Work Order domain cutover, 2026-09-30): the Work Order execution facts + workOrder.execution.record,
 // granted to NO Role; the manifest vocabulary lists it and asserts it for no persona.
-// the Work Order cutover completion pass (2026-09-30): quarantine 1764310000000, availability 1764320000000, labor 1764330000000 (+workOrder.labor.correct), inbound work 1764340000000 (+5 inboundWork.* capabilities) -- every new capability granted to NO Role; the manifest vocabulary lists the six new keys and asserts them for no persona.
+// the Work Order cutover completion pass (2026-09-30): quarantine 1764310000000, availability 1764320000000, labor 1764330000000 (+workOrder.labor.correctEntry), inbound work 1764340000000 (+5 inboundWork.* capabilities) -- every new capability granted to NO Role; the manifest vocabulary lists the six new keys and asserts them for no persona.
 const PINNED_LAST_MIGRATION = "1764340000000_inbound-work-intake";
 const PINNED_MIGRATION_COUNT = 76;
 

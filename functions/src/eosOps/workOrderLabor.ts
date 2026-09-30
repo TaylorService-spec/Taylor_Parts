@@ -20,7 +20,7 @@
 //   OVERLAP                 an INTERVAL may not overlap another ACTIVE INTERVAL of the same Employee. A DURATION
 //                           genuinely cannot be checked, and that limitation is stated, not hidden.
 //   IDEMPOTENCY             a key + request fingerprint: a retry replays, a different request under the key refuses.
-//   CORRECTION              a SEPARATE authority (workOrder.labor.correct): append a replacement naming the entry it
+//   CORRECTION              a SEPARATE authority (workOrder.labor.correctEntry): append a replacement naming the entry it
 //                           corrects; the original is never edited and is REVERSED by derivation; it keeps the
 //                           ORIGINAL Employee (a correction fixes what was recorded, it never moves labor between
 //                           people); an already-corrected entry refuses ENTRY_ALREADY_REVERSED.
@@ -58,7 +58,7 @@ import type { WorkOrderOp } from "./workOrderOperationTypes";
 const SCHEMA = "eos_ops";
 
 /** Correcting a labor entry -- including somebody else's. Registered by 1764330000000 with NO grant. */
-export const WORK_ORDER_LABOR_CORRECT = "workOrder.labor.correct";
+export const WORK_ORDER_LABOR_CORRECT = "workOrder.labor.correctEntry";
 /** Recording your own time on your own job: the technician's existing field-fact authority. */
 export const WORK_ORDER_LABOR_RECORD = WORK_ORDER_EXECUTION_RECORD;
 

@@ -45,6 +45,7 @@ on:
       - "functions/test/workOrderProtectedRows.test.mjs"
       - "functions/test/workOrderSnapshotExporter.test.mjs"
       - "functions/test/workOrderQuarantinePostgres.test.mjs"
+      - "functions/test/serviceTechnicianJourneyPostgres.test.mjs"
       - "functions/test/serviceActivationAuthorityPostgres.test.mjs"
       - "functions/test/workOrderAvailabilityPostgres.test.mjs"
       - "functions/test/workOrderLaborPostgres.test.mjs"
@@ -153,6 +154,7 @@ jobs:
           test/workOrderDomainCutoverPostgres.test.mjs
           test/workOrderJourneyAcceptancePostgres.test.mjs
           test/workOrderQuarantinePostgres.test.mjs
+          test/serviceTechnicianJourneyPostgres.test.mjs
           test/serviceActivationAuthorityPostgres.test.mjs
           test/workOrderAvailabilityPostgres.test.mjs
           test/workOrderLaborPostgres.test.mjs

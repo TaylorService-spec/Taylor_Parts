@@ -306,7 +306,12 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
                                                  'eos_ops.reorder_request_assignments'::regclass,
                                                  'eos_ops.work_order_assignments'::regclass,
                                                  -- The Functional Role assignment history (1762819200000): the Employee holds the responsibility.
-                                                 'eos_workforce.employee_functional_role_assignments'::regclass)`)).rows[0].n;
+                                                 'eos_workforce.employee_functional_role_assignments'::regclass,
+                                                 -- The Work Order cutover completion pass (2026-09-30): technician availability (DECISION 5)
+                                                 -- and labor -- the Employee IS the subject whose hours, time off and labor they are.
+                                                 'eos_workforce.technician_working_schedules'::regclass,
+                                                 'eos_workforce.technician_unavailability'::regclass,
+                                                 'eos_ops.work_order_labor_entries'::regclass)`)).rows[0].n;
     assert.equal(fks, 0);
   });
 });

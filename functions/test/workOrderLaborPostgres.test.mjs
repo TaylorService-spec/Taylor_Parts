@@ -1,7 +1,7 @@
 // WORK ORDER LABOR -- the ported Technician labor behavior, in the governed PostgreSQL Work Order domain (Owner
 // DECISION 7, 2026-09-30), against a real postgres:16.
 //
-// Recording labor reuses workOrder.execution.record + RECORD_ASSIGNMENT; correcting it is workOrder.labor.correct,
+// Recording labor reuses workOrder.execution.record + RECORD_ASSIGNMENT; correcting it is workOrder.labor.correctEntry,
 // registered by 1764330000000 with NO grant. Both are stated EXPLICITLY below as the pending Administration decisions
 // they are, and a baseline-only persona is proven refused first.
 //
@@ -49,11 +49,14 @@ test("labor is wired to the reserved operation names, and the module holds no Fi
 test("the migration: one capability defined with no grant, an append-only table, a guarded Down", () => {
   const sql = readFileSync(resolve(FUNCTIONS_DIR, MIGRATION), "utf8");
   const [up, down] = sql.split("-- Down Migration");
-  assert.match(up, /'workOrder\.labor\.correct'/);
+  assert.match(up, /'workOrder\.labor\.correctEntry'/);
+  // NOT the Firebase catalog id: the compatibility admin Role composes PERMISSION_CATALOG whole, so registering
+  // `workOrder.labor.correct` would let the catalog reconcile grant it to admin by default.
+  assert.equal(/'workOrder\.labor\.correct'/.test(up), false);
   assert.equal(/INSERT INTO (eos_policy\.)?(role_capabilities|principal_capabilities)/i.test(up), false, "definition is not grant");
-  assert.equal(BASELINE.grants.some((g) => g.capabilityKey === "workOrder.labor.correct"), false);
+  assert.equal(BASELINE.grants.some((g) => g.capabilityKey === "workOrder.labor.correctEntry"), false);
   assert.match(up, /BEFORE UPDATE OR DELETE ON work_order_labor_entries/);
-  assert.match(down, /refuses to reverse -- workOrder\.labor\.correct is held by/);
+  assert.match(down, /refuses to reverse -- workOrder\.labor\.correctEntry is held by/);
   assert.match(down, /labor entr\(ies\) are field history/);
 });
 
@@ -131,7 +134,7 @@ test("Work Order labor", { skip: SKIP, concurrency: 1 }, async (t) => {
   const OFFICE = ["workOrder.lifecycle.ready", "workOrder.lifecycle.schedule", "workOrder.lifecycle.close"];
   const P = Object.freeze({
     dispatcher: { principalId: "prn-dispatcher", caps: new Set([...capsOf("dispatcher"), ...OFFICE]) },
-    serviceManager: { principalId: "prn-svcmgr", caps: new Set([...capsOf("fieldManager"), "workOrder.labor.correct"]) },
+    serviceManager: { principalId: "prn-svcmgr", caps: new Set([...capsOf("fieldManager"), "workOrder.labor.correctEntry"]) },
     serviceManagerBaseline: { principalId: "prn-svcmgr", caps: capsOf("fieldManager") },
     techABaseline: { principalId: "prn-tech-a", caps: capsOf("technician") },
     techA: { principalId: "prn-tech-a", caps: new Set([...capsOf("technician"), "workOrder.execution.record"]) },
