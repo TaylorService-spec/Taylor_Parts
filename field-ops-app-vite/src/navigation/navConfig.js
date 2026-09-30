@@ -235,7 +235,9 @@ export const NAV_DOMAINS = [
       // environment, so an environment that has not activated email intake does not show a destination that
       // would refuse everyone who opened it. Nav visibility is not the security boundary -- the trusted
       // callables are.
-      { key: "inboundWork", label: "Inbound Work", path: "inbound-work", capabilityAccess: ["service.inboundWork.read"] },
+      // Work Order cutover activation (2026-09-30): gated by the governed PostgreSQL inboundWork.request.read (the EOS
+      // surface service.inboundWork, NAV_SURFACE_ACCESS below) -- no longer by the Firebase-activated id.
+      { key: "inboundWork", label: "Inbound Work", path: "inbound-work", capabilityAccess: ["inboundWork.request.read"] },
       // The legacy fieldops_jobs screen (Jobs.jsx), relocated from
       // the "Work Orders" slot above. Same legacyKey ("jobs") as
       // before, so existing role access (including technician) is
@@ -732,6 +734,7 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "service/dispatch": ["service.dispatch"],
   "service/dispatcherBoard": ["service.dispatch"],
   "service/coordinatedVisits": ["service.coordinatedVisits"],
+  "service/inboundWork": ["service.inboundWork"],
   // The technician's own work. `field.myWorkOrders` is earned by workOrder.transition AND the
   // SERVICE_TECHNICIAN Work Eligibility -- which is why a dispatcher holding the same capability
   // does not get the technician's workspace, and a technician on leave loses it without anyone
@@ -809,7 +812,6 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
  * (Inventory > Reorder Queue), and the key shape is now checked below so it cannot recur.
  */
 export const NAV_SURFACE_GAPS = Object.freeze({
-  "service/inboundWork": "service.inboundWork.read is a Firebase-activated capability id; eos_policy.capabilities does not declare it.",
   "service/scheduling": "dispatchSchedule was retired as a policy Object; no governed surface is distinct from service.dispatch.",
   "service/dispatchScheduling": "Same as scheduling -- a retired duplicate of the Dispatcher Board.",
   "service/warranty": "No warranty domain, no capability, no backend.",

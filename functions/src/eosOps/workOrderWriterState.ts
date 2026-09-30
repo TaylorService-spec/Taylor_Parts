@@ -18,7 +18,11 @@ export interface WorkOrderWriterAuthority {
   readonly postgres: PostgresWorkOrderWriterState;
 }
 
-export const WORK_ORDER_WRITER_AUTHORITY: WorkOrderWriterAuthority = Object.freeze({ firestore: "OPEN", postgres: "INACTIVE" });
+// ACTIVATED (Controller: PR #2005 MERGE + SERVICE ACTIVATION AUTHORIZATION, 2026-09-30, step G): PostgreSQL is the
+// Work Order authority and the Firestore Work Order writers are FROZEN -- no active client calls them (the cutover
+// removed every browser caller; docs/architecture/work-order-firebase-retirement-ledger.md), and no Firebase deploy
+// accompanies this change. There is no Firebase fallback.
+export const WORK_ORDER_WRITER_AUTHORITY: WorkOrderWriterAuthority = Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" });
 
 /** Two writable authorities at once is the one forbidden state. */
 export function assertWorkOrderWriterAuthorityCoherent(state: WorkOrderWriterAuthority): void {

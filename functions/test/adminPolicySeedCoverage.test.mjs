@@ -104,9 +104,10 @@ test("the reconciliation adds up: 28 entities and 389 fields, all seeded", () =>
   // NOT capabilities: `capabilities` has no field column and UNIQUE (object_key, action_key), so
   // they would have had to become 34 fake Objects to be registered at all. They belong to
   // eos_policy.role_field_permission_overrides.
-  assert.equal(ledger.seeded.objects, 40);
+  // 40 -> 42, objectsFromCapabilityAuthority 6 -> 8 (objectsWithoutAnEntity stays 6): the Work Order cutover (2026-09-30) -- `inboundWorkRequest` and `inboundMailbox`, because the five inboundWork.* capabilities of migration 1764340000000 name them (object_key NOT NULL); without them every inbound grant was STRANDED (capabilityObjectAuthorityGuard).
+  assert.equal(ledger.seeded.objects, 42);
   assert.equal(ledger.seeded.objectsWithoutAnEntity, 6);
-  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 6);
+  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 8);
   assert.equal(
     ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity + ledger.seeded.objectsFromCapabilityAuthority,
     ledger.seeded.objects,

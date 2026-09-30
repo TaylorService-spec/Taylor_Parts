@@ -130,11 +130,14 @@ test("Work Order journey acceptance through /operations/work-orders", { skip: SK
   const refused = (r, status, code) => { assert.equal(r.status, status, JSON.stringify(r.body)); assert.equal(r.body.code, code, JSON.stringify(r.body)); };
   const woCount = async () => (await q(`SELECT count(*)::int n FROM eos_ops.work_orders`)).rows[0].n;
 
-  await t.test("DQ-S4: the DEPLOYED default is NOT_YET_ACTIVATED -- every operation but the probe refuses, and nothing is written", async () => {
-    assert.deepEqual({ ...WORK_ORDER_WRITER_AUTHORITY }, { firestore: "OPEN", postgres: "INACTIVE" });
-    assert.deepEqual(ok(await call(SVC_MGR, "readWorkOrderAuthorityStatus", {}, null)), { postgres: "INACTIVE", readiness: "NOT_YET_ACTIVATED" });
-    refused(await call(SVC_MGR, "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-j", locationId: "loc-j", workOrderType: "SERVICE_CALL", priority: 2 }, null), 503, "NOT_ACTIVATED");
-    refused(await call(SVC_MGR, "listWorkOrders", {}, null), 503, "NOT_ACTIVATED");
+  await t.test("DQ-S4: fail-closed while INACTIVE; the DEPLOYED default is now ACTIVE -- every operation but the probe refuses, and nothing is written", async () => {
+    // UPDATED DELIBERATELY by the activation (Controller, 2026-09-30, step G): the DEPLOYED authority is PostgreSQL ACTIVE
+    // with the Firestore writers FROZEN. The fail-closed behaviour is still proven, with INACTIVE stated explicitly.
+    assert.deepEqual({ ...WORK_ORDER_WRITER_AUTHORITY }, { firestore: "FROZEN", postgres: "ACTIVE" });
+    assert.deepEqual(ok(await call(SVC_MGR, "readWorkOrderAuthorityStatus", {}, null)), { postgres: "ACTIVE", readiness: "ACTIVE" });
+    assert.deepEqual(ok(await call(SVC_MGR, "readWorkOrderAuthorityStatus", {}, "INACTIVE")), { postgres: "INACTIVE", readiness: "NOT_YET_ACTIVATED" });
+    refused(await call(SVC_MGR, "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-j", locationId: "loc-j", workOrderType: "SERVICE_CALL", priority: 2 }, "INACTIVE"), 503, "NOT_ACTIVATED");
+    refused(await call(SVC_MGR, "listWorkOrders", {}, "INACTIVE"), 503, "NOT_ACTIVATED");
     assert.equal(await woCount(), 0);
   });
 
