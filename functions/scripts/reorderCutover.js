@@ -312,19 +312,45 @@ async function main() {
     }
 
     // ---- verify: the three existing verifies, and the snapshot-vs-target reconciliation ----
+    // Ruling 2026-09-30 Option B: every target Reorder / PO / void is either in the (exclusion-filtered) snapshot or
+    // one of the five PINNED, unchanged Sample Company fixtures; anything else refuses. Only the proved fixture ids
+    // are passed to the purchasing verify, which stays fail-closed for every other row.
+    const fixtures = require("../lib/eosOps/migration/reorderKnownFixtures.js");
+    const idsOf = (docs) => new Set(docs.map((d) => d.id));
+    const voidIdsOf = (docs) => new Set(docs.map((d) => (d.data && typeof d.data.reorderPurchaseOrderId === "string" ? d.data.reorderPurchaseOrderId : d.id)));
+    const fixtureClient = await pool.connect();
+    let targetClassification;
+    try {
+      targetClassification = await fixtures.classifyReorderTarget(fixtureClient, tenantId, {
+        reorderRequests: idsOf(snapshot.collections.reorder_requests),
+        purchaseOrders: idsOf(snapshot.collections.reorder_purchase_orders),
+        voids: voidIdsOf(snapshot.collections.reorder_purchase_order_voids),
+      });
+    } finally {
+      fixtureClient.release();
+    }
+    const knownIds = (k) => targetClassification.known[k].map((x) => x.id);
     const objectVerify = await objects.verifyReorderObjectMigration(pool, tenantId);
     const assignmentVerify = await assignments.verifyReorderAssignmentMigration(pool, { tenantId, source: assignmentSource });
-    const purchasingVerify = await purchasing.verifyPurchaseOrderMigration(pool, tenantId);
+    const purchasingVerify = await purchasing.verifyPurchaseOrderMigration(pool, tenantId, {
+      reorderRequestIds: knownIds("reorderRequests"), purchaseOrderIds: knownIds("purchaseOrders"), voidIds: knownIds("voids"),
+    });
+    const unknownTargetRecords = targetClassification.unknown;
+    const targetAccounted = targetClassification.refusals.length === 0
+      && Object.values(unknownTargetRecords).every((ids) => ids.length === 0);
     const [objectPlan, assignmentPlan, purchasingPlan] = [await dryObjects(), await dryAssignments(), await dryPurchasing()];
     const reconciliation = {
       objectsAllPresent: objectsComplete(objectPlan),
       assignmentsAllPresent: assignmentsComplete(assignmentPlan),
       purchasingAllPresent: purchasingComplete(purchasingPlan),
     };
-    const reconciled = objectVerify.passed && assignmentVerify.passed && purchasingVerify.passed
+    const reconciled = objectVerify.passed && assignmentVerify.passed && purchasingVerify.passed && targetAccounted
       && reconciliation.objectsAllPresent && reconciliation.assignmentsAllPresent && reconciliation.purchasingAllPresent;
     console.log(JSON.stringify({
-      ...header, readOnly: true, reconciled, reconciliation,
+      ...header, readOnly: true, reconciled, reconciliation: { ...reconciliation, targetAccounted },
+      knownNonMigratedFixtures: targetClassification.known,
+      unknownTargetRecords,
+      fixtureRefusals: targetClassification.refusals,
       stages: {
         objects: { verify: objectVerify, notYetPresent: objectPlan.counts.MIGRATABLE, refused: objectPlan.counts.REFUSED },
         assignments: { verify: assignmentVerify, notYetPresent: assignmentPlan.copyable.length, blocked: assignmentPlan.blockedReorderIds.length },

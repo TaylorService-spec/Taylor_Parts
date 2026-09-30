@@ -310,7 +310,15 @@ export interface PurchasingVerifyResult {
  */
 export async function verifyPurchaseOrderMigration(
   pool: Pool, tenantId: string,
+  /**
+   * ONLY the ids reorderKnownFixtures.classifyReorderTarget has proved to be the pinned, unchanged Sample Company
+   * fixtures (ruling 2026-09-30, Option B). Nothing else may be passed here; absent, every row is checked.
+   */
+  knownFixtures: { readonly reorderRequestIds: readonly string[]; readonly purchaseOrderIds: readonly string[]; readonly voidIds: readonly string[] } =
+    { reorderRequestIds: [], purchaseOrderIds: [], voidIds: [] },
 ): Promise<PurchasingVerifyResult> {
+  const skip = { purchase_orders: [...knownFixtures.purchaseOrderIds], purchase_order_voids: [...knownFixtures.voidIds] };
+  const skipColumn = { purchase_orders: "id", purchase_order_voids: "purchase_order_id" } as const;
   const client = await pool.connect();
   try {
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -336,10 +344,10 @@ export async function verifyPurchaseOrderMigration(
     for (const [table, column] of [["purchase_orders", "created_by"], ["purchase_order_voids", "voided_by"]] as const) {
       const { rows } = await client.query(
         `SELECT count(*)::int AS n FROM eos_ops.${table} t
-          WHERE t.tenant_id = $1
+          WHERE t.tenant_id = $1 AND NOT (t.${skipColumn[table]} = ANY($2::text[]))
             AND NOT EXISTS (SELECT 1 FROM eos_policy.tenant_memberships m
                              WHERE m.tenant_id = t.tenant_id AND m.principal_id = t.${column} AND m.status = 'active')`,
-        [tenantId]);
+        [tenantId, skip[table]]);
       if (rows[0].n > 0) {
         findings.push({ code: "ACTOR_NOT_ACTIVE_MEMBER", count: Number(rows[0].n),
           detail: `${table}.${column} names a Principal with no active membership in this tenant` });
@@ -351,13 +359,13 @@ export async function verifyPurchaseOrderMigration(
     for (const table of ["purchase_orders", "purchase_order_voids"] as const) {
       const { rows } = await client.query(
         `SELECT count(*)::int AS n FROM eos_ops.${table} t
-          WHERE t.tenant_id = $1
+          WHERE t.tenant_id = $1 AND NOT (t.${skipColumn[table]} = ANY($2::text[]))
             AND NOT EXISTS (SELECT 1 FROM eos_policy.tenant_operating_company_keys b
                              JOIN eos_policy.tenant_operating_companies c
                                ON c.tenant_id = b.tenant_id AND c.operating_company_id = b.operating_company_id
                             WHERE b.tenant_id = t.tenant_id AND b.operating_company_key = t.operating_company_key
                               AND b.status = 'ACTIVE' AND c.status = 'ACTIVE')`,
-        [tenantId]);
+        [tenantId, skip[table]]);
       if (rows[0].n > 0) {
         findings.push({ code: "COMPANY_KEY_NOT_GOVERNED", count: Number(rows[0].n),
           detail: `${table}.operating_company_key is not bound to an ACTIVE operating company` });
@@ -369,8 +377,9 @@ export async function verifyPurchaseOrderMigration(
     const incoherentVoid = (await client.query(
       `SELECT count(*)::int AS n FROM eos_ops.purchase_order_voids v
          JOIN eos_ops.purchase_orders p ON p.id = v.purchase_order_id AND p.tenant_id = v.tenant_id
-        WHERE v.tenant_id = $1 AND (v.part_id <> p.part_id OR v.operating_company_key <> p.operating_company_key)`,
-      [tenantId])).rows[0].n;
+        WHERE v.tenant_id = $1 AND NOT (v.purchase_order_id = ANY($2::text[]))
+          AND (v.part_id <> p.part_id OR v.operating_company_key <> p.operating_company_key)`,
+      [tenantId, skip.purchase_order_voids])).rows[0].n;
     if (incoherentVoid > 0) {
       findings.push({ code: "VOID_DISAGREES_WITH_ORDER", count: Number(incoherentVoid),
         detail: "a void record and its purchase order name different parts or different companies" });
@@ -385,10 +394,10 @@ export async function verifyPurchaseOrderMigration(
          FROM eos_ops.reorder_requests r
          LEFT JOIN eos_ops.purchase_orders p ON p.id = r.id AND p.tenant_id = r.tenant_id
          LEFT JOIN eos_ops.purchase_order_voids v ON v.purchase_order_id = r.id AND v.tenant_id = r.tenant_id
-        WHERE r.tenant_id = $1 AND r.status::text = ANY($2::text[])
+        WHERE r.tenant_id = $1 AND r.status::text = ANY($2::text[]) AND NOT (r.id = ANY($3::text[]))
           AND (p.id IS NULL OR (r.status = 'VOIDED' AND v.purchase_order_id IS NULL))
         ORDER BY r.id`,
-      [tenantId, requiring])).rows.map((r) => Object.freeze({
+      [tenantId, requiring, [...knownFixtures.reorderRequestIds]])).rows.map((r) => Object.freeze({
       reorderRequestId: r.id as string,
       status: r.status as string,
       missing: r.missing_order
