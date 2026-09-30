@@ -39,7 +39,9 @@ const rel = (f) => relative(REPO, f).split("\\").join("/");
 const ALL_CAPS = [...Object.values(COMMERCIAL_CAPABILITIES), ...Object.values(COMMERCIAL_READ_CAPABILITIES)];
 const EXPECTED_READS = ["getOpportunityDetail", "listOpportunities", "getSalesAgreementDetail", "listSalesAgreements", "getSalesOrderDetail", "listSalesOrders", "getAccountCommercialProjection",
   // Pass 11 Retail Sales: the caller's own Commercial capabilities, so the screens offer controls from the authority that decides.
-  "readMyCommercialCapabilities"];
+  "readMyCommercialCapabilities",
+  // Work Order cutover completion pass (2026-09-30, DECISION 7): the coordinated-visits read, the Sales Order as coordinator.
+  "listCoordinatedOperations"];
 const EXPECTED_MUTATIONS = ["createOpportunity", "updateOpportunity", "transitionOpportunity", "closeOpportunityAsWon", "createSalesAgreement", "updateSalesAgreementDraft",
   "acceptSalesAgreement", "createSalesOrder", "createSalesOrderFromOpportunity", "transitionSalesOrder"];
 
@@ -97,7 +99,7 @@ const parsed = (res) => JSON.parse(res.body);
 
 // ════════════════════ closed surface ════════════════════
 
-test("(1)(23) the operation list is closed: exactly the 18 approved C2/C3 operations, no D2", () => {
+test("(1)(23) the operation list is closed: exactly the 19 approved operations (18 C2/C3 + the coordinated-visits read), no D2", () => {
   assert.deepEqual([...http.COMMERCIAL_READ_OPERATIONS], EXPECTED_READS);
   assert.deepEqual([...http.COMMERCIAL_MUTATION_OPERATIONS], EXPECTED_MUTATIONS);
   for (const name of [...EXPECTED_READS, ...EXPECTED_MUTATIONS]) assert.equal(http.isCommercialOperation(name), true);
@@ -296,6 +298,8 @@ const COMMERCIAL_TRANSPORT_CLIENT = "field-ops-app-vite/src/services/commercialA
  * each named, none by pattern.
  */
 const APPROVED_TRANSPORT_IMPORTERS = [
+  // Work Order cutover completion pass (2026-09-30): the coordinated-visits source, off the Firebase callable.
+  "field-ops-app-vite/src/access/coordinatedOperationsSource.js",
   "field-ops-app-vite/src/access/opportunitySource.js",
   // Pass 11 Retail Sales: the Commercial screens' OFFER (readMyCommercialCapabilities) -- a read of the caller's own
   // PostgreSQL capabilities, replacing the Firebase effective-access feed hooks for Opportunity / Sales Order.
