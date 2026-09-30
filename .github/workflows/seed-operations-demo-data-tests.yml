@@ -58,6 +58,12 @@ jobs:
         run: npm ci
         working-directory: functions
 
+      # The script's source-collection freeze guard (scripts/sourceCollectionFreeze.js) reads the compiled
+      # catalog writer state (lib/catalogMaster/catalogWriterState.js), so lib/ must exist.
+      - name: Build functions
+        run: npm run build
+        working-directory: functions
+
       - name: Offline environment-guard unit tests
         run: npm run test:seedOperationsDemoData
         working-directory: functions

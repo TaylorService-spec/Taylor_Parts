@@ -259,7 +259,11 @@ test("persona runtime matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
           if (diffs.length > 0) violations.push(`${key} ${status} (eligible) differs from ACTIVE on ${diffs.map(([op, v]) => `${op}=${v} vs ${baseline[op]}`).join("; ")}`);
           eligibilityGrid[key][status] = `unchanged (${cells.filter(([, v]) => /^2/.test(v)).length} ops answer 2xx)`;
         } else {
-          const open = cells.filter(([, v]) => !/^403 FORBIDDEN$/.test(v) && !/^404 UNKNOWN_OPERATION$/.test(v));
+          // DQ-034: while the Catalog compatibility hold exists, every PostgreSQL Catalog MUTATION is refused with
+          // 412 CATALOG_MUTATION_HELD before identity resolution and before any write (catalogHttp.ts) -- for every
+          // caller, eligible or not. That is a refusal too, and only for catalog.* operations.
+          const open = cells.filter(([op, v]) => !/^403 FORBIDDEN$/.test(v) && !/^404 UNKNOWN_OPERATION$/.test(v)
+            && !(/^catalog\./.test(op) && /^412 CATALOG_MUTATION_HELD$/.test(v)));
           if (open.length > 0) violations.push(`${key} ${status} (ineligible) not refused on ${open.map(([op, v]) => `${op}=${v}`).join("; ")}`);
           eligibilityGrid[key][status] = `refused on ${cells.length - open.length}/${cells.length} ops`;
         }
