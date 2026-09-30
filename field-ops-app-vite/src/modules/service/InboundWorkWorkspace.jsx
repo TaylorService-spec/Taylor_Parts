@@ -113,6 +113,47 @@ const WARNING_LABELS = {
 
 const formatWhen = (millis) => (millis ? new Date(millis).toLocaleString() : "—");
 
+/** How long a request has been waiting, as a person says it: "3 h", "2 d". */
+export function ageLabel(millis, now = Date.now()) {
+  if (!millis) return "—";
+  const minutes = Math.max(0, Math.round((now - millis) / 60_000));
+  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 48 * 60) return `${Math.round(minutes / 60)} h`;
+  return `${Math.round(minutes / (24 * 60))} d`;
+}
+
+/** The at-a-glance flags a reviewer needs: thread replies, duplicate content, quarantine, attachments. */
+export function queueFlags(row) {
+  const flags = [];
+  if (row.threadMessageCount > 0) flags.push(`${row.threadMessageCount} repl${row.threadMessageCount === 1 ? "y" : "ies"}`);
+  if (row.threadAssociation === "AMBIGUOUS") flags.push("Ambiguous thread");
+  if (row.duplicateOfRequestId) flags.push("Possible duplicate");
+  if (row.status === "QUARANTINED") flags.push("Quarantined");
+  if (row.attachmentCount > 0) flags.push(`${row.attachmentCount} attachment${row.attachmentCount === 1 ? "" : "s"}`);
+  if (row.attachmentCustody === "REFUSED_UNSAFE") flags.push("Unsafe attachment blocked");
+  return flags;
+}
+
+const CUSTODY_PILLS = {
+  STORED: ["positive", "Held in EOS"],
+  PENDING: ["info", "Being retrieved from the mailbox"],
+  FAILED: ["attention", "Could not be retrieved"],
+  REFUSED_UNSAFE: ["attention", "Blocked — unsafe attachment, never downloaded"],
+  METADATA_ONLY: ["info", "Held by the mailbox provider — not copied into EOS"],
+};
+
+/** Offer a custodied attachment as an opaque download. Never rendered, never opened as its declared type. */
+function downloadAttachment(payload) {
+  const bytes = Uint8Array.from(atob(payload.contentBase64), (c) => c.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = payload.filename || "attachment";
+  a.rel = "noopener";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function Fact({ label, children }) {
   return (
     <div className="fo-inbound-fact">
@@ -123,7 +164,8 @@ function Fact({ label, children }) {
 }
 
 /** The message as it arrived. Read-only evidence; never edited, never re-rendered as markup. */
-function OriginalMessage({ detail }) {
+function OriginalMessage({ detail, source }) {
+  const [downloadError, setDownloadError] = useState(null);
   return (
     <section className="fo-inbound-pane" aria-label="Original message">
       <h2 className="fo-inbound-pane__title">Original message</h2>
@@ -148,18 +190,26 @@ function OriginalMessage({ detail }) {
               <span className="fo-muted">
                 {a.mimeType} · {fileSize(a.size)}
               </span>{" "}
-              {/* CUSTODY IS STATED, NOT ASSUMED. The EOS intake preserves the attachment's identity and
-                  provenance; the BYTES stay with the mailbox provider (the provider runtime is a separate
-                  boundary), so there is nothing here to download and the screen says so. */}
-              {a.custody === "FAILED" ? (
-                <StatusPill tone="attention" label="Could not be retrieved" asText />
-              ) : (
-                <StatusPill tone="info" label="Held by the mailbox provider — not copied into EOS" asText />
+              {/* CUSTODY IS STATED, NOT ASSUMED: held in EOS (downloadable, through this request), still being
+                  retrieved, failed, blocked as unsafe, or metadata only -- each says so. */}
+              <StatusPill tone={(CUSTODY_PILLS[a.custody] ?? CUSTODY_PILLS.METADATA_ONLY)[0]}
+                label={(CUSTODY_PILLS[a.custody] ?? CUSTODY_PILLS.METADATA_ONLY)[1]} asText />
+              {a.custody === "STORED" && a.attachmentId && typeof source?.readAttachment === "function" && (
+                <Button variant="tertiary" className="fo-link-btn" onClick={async () => {
+                  setDownloadError(null);
+                  const res = await source.readAttachment({ requestId: detail.id, attachmentId: a.attachmentId });
+                  if (res.status === SOURCE_STATUS.READY) downloadAttachment(res.payload);
+                  else setDownloadError("That attachment could not be downloaded.");
+                }}>
+                  Download
+                </Button>
               )}
             </li>
           ))}
         </ul>
       )}
+      {downloadError && <p className="fo-inline-error" role="alert">{downloadError}</p>}
+      {detail.statusNote && <p className="fo-muted" role="note">{detail.statusNote}</p>}
       {detail.threadMessages.length > 0 && (
         <>
           <h3 className="fo-inbound-pane__subtitle">Later messages on this thread</h3>
@@ -434,6 +484,90 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
   );
 }
 
+const CLAIM_EVENT_LABELS = { CLAIMED: "Accepted by", RELEASED: "Released by recovery", REASSIGNED: "Reassigned", COMPLETED: "Completed by" };
+
+/**
+ * WHO HAS IT, AND WHAT HAPPENED TO IT. The claim history is shown to every reader; RELEASE / REASSIGN are offered only
+ * to a caller holding inboundWork.request.recover (the Service Manager), and only on an unfinished ACCEPTING claim. The
+ * server re-authorizes both and refuses anything outside Service intake.
+ */
+function ClaimPanel({ detail, capabilities, onRecovered }) {
+  const [reason, setReason] = useState("");
+  const [targets, setTargets] = useState({ status: "idle", items: [] });
+  const [target, setTarget] = useState("");
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const recoverable = detail.status === "ACCEPTING" && capabilities.canRecover;
+  useEffect(() => {
+    if (!recoverable || typeof capabilities.source.listRecoveryTargets !== "function") return;
+    let live = true;
+    setTargets({ status: "loading", items: [] });
+    capabilities.source.listRecoveryTargets(detail.id).then((res) => {
+      if (live) setTargets(res.status === SOURCE_STATUS.READY ? { status: "ready", items: res.payload.targets ?? [] } : { status: res.status, items: [] });
+    });
+    return () => { live = false; };
+  }, [recoverable, detail.id, capabilities.source]);
+  const history = detail.claimHistory ?? [];
+  if (detail.status !== "ACCEPTING" && history.length === 0) return null;
+  const act = async (fn) => {
+    setBusy(true);
+    setError(null);
+    const res = await fn();
+    setBusy(false);
+    if (!res.ok) setError(res.message);
+    else onRecovered?.();
+  };
+  return (
+    <section className="fo-inbound-pane" aria-label="Reviewer">
+      <h3 className="fo-inbound-pane__subtitle">Reviewer</h3>
+      {detail.status === "ACCEPTING" && (
+        <p>
+          Accepted by <strong>{detail.claimedByName ?? "another reviewer"}</strong> {formatWhen(detail.claimedAt)} — not yet finished.
+          {detail.pendingWorkOrderId ? " A Work Order was already created; finishing the acceptance links it." : ""}
+        </p>
+      )}
+      {history.length > 0 && (
+        <ol className="fo-inbound-thread" aria-label="Reviewer history">
+          {history.map((e, i) => (
+            <li key={`${e.kind}-${i}`}>
+              <span className="fo-muted">{formatWhen(e.at)}</span>{" "}
+              {CLAIM_EVENT_LABELS[e.kind] ?? e.kind}{" "}
+              {e.kind === "REASSIGNED" ? `from ${e.fromName ?? "a reviewer"} to ${e.toName ?? "a reviewer"}` : e.kind === "RELEASED" ? `(was ${e.fromName ?? "a reviewer"})` : e.toName ?? e.fromName ?? ""}
+              {e.reason ? ` — ${e.reason}` : ""}
+            </li>
+          ))}
+        </ol>
+      )}
+      {recoverable && (
+        <div className="fo-inbound-form">
+          {error && <p className="fo-inline-error" role="alert">{error}</p>}
+          <label className="fo-wizard-field">
+            <span>Reason (required)</span>
+            <input className="fo-wizard-control" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
+          </label>
+          <Button variant="secondary" disabled={busy || !reason.trim()}
+            onClick={() => act(() => capabilities.source.release({ requestId: detail.id, reason: reason.trim() }))}>
+            Release to queue
+          </Button>
+          <label className="fo-wizard-field">
+            <span>Reassign to</span>
+            <select className="fo-wizard-control" value={target} onChange={(e) => setTarget(e.target.value)} disabled={targets.status !== "ready"}>
+              <option value="">{targets.status === "loading" ? "Loading reviewers…" : "Choose a reviewer…"}</option>
+              {targets.items.map((t) => (
+                <option key={t.employeeId} value={t.employeeId}>{t.displayName ?? t.employeeId}</option>
+              ))}
+            </select>
+          </label>
+          <Button variant="secondary" disabled={busy || !reason.trim() || !target}
+            onClick={() => act(() => capabilities.source.reassign({ requestId: detail.id, employeeId: target, reason: reason.trim() }))}>
+            Reassign
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function InboundWorkWorkspace({ source = EOS_INBOUND_WORK_SOURCE } = {}) {
   const navigate = useNavigate();
   const [access, setAccess] = useState({ status: "loading", value: null });
@@ -505,6 +639,8 @@ export default function InboundWorkWorkspace({ source = EOS_INBOUND_WORK_SOURCE 
     return [
       { key: "awaiting", label: "Awaiting decision", value: by("AWAITING_DECISION") },
       { key: "review", label: "Needs review", value: by("NEEDS_REVIEW") },
+      { key: "accepting", label: "Accepted, unfinished", value: by("ACCEPTING") },
+      { key: "quarantined", label: "Quarantined", value: by("QUARANTINED") },
       { key: "accepted", label: "Accepted", value: by("ACCEPTED") },
       { key: "declined", label: "Declined", value: by("DECLINED") },
     ];
@@ -514,6 +650,7 @@ export default function InboundWorkWorkspace({ source = EOS_INBOUND_WORK_SOURCE 
     canAccept: access.value?.canAccept === true,
     canDecline: access.value?.canDecline === true,
     canAttach: access.value?.canAttach === true,
+    canRecover: access.value?.canRecover === true,
     source,
   }), [access.value, source]);
 
@@ -548,10 +685,14 @@ export default function InboundWorkWorkspace({ source = EOS_INBOUND_WORK_SOURCE 
             <thead>
               <tr>
                 <th>Received</th>
+                <th>Age</th>
+                <th>Mailbox</th>
                 <th>From</th>
                 <th>Subject</th>
                 <th>Type</th>
                 <th>Status</th>
+                <th>Reviewer</th>
+                <th>Flags</th>
               </tr>
             </thead>
             <tbody>
@@ -571,12 +712,16 @@ export default function InboundWorkWorkspace({ source = EOS_INBOUND_WORK_SOURCE 
                   }}
                 >
                   <td data-label="Received">{formatWhen(row.receivedAt)}</td>
+                  <td data-label="Age">{ageLabel(row.receivedAt || row.createdAt)}</td>
+                  <td data-label="Mailbox">{row.sourceMailboxName ?? "—"}</td>
                   <td data-label="From">{row.sender || "Unknown sender"}</td>
                   <td data-label="Subject">{row.subject || "(no subject)"}</td>
                   <td data-label="Type">{label(REQUEST_TYPE_LABELS, row.requestType)}</td>
                   <td data-label="Status">
                     <StatusPill tone={STATUS_TONE[row.status] ?? "unknown"} label={label(STATUS_LABELS, row.status)} asText />
                   </td>
+                  <td data-label="Reviewer">{row.status === "ACCEPTING" ? (row.claimedByName ?? "Another reviewer") : "—"}</td>
+                  <td data-label="Flags">{queueFlags(row).join(" · ") || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -592,7 +737,8 @@ export default function InboundWorkWorkspace({ source = EOS_INBOUND_WORK_SOURCE 
       )}
       {detail?.status === "ready" && (
         <div className="fo-inbound-review">
-          <OriginalMessage detail={detail.value} />
+          <OriginalMessage detail={detail.value} source={source} />
+          <ClaimPanel key={`claim-${detail.value.id}`} detail={detail.value} capabilities={capabilities} onRecovered={() => setReloadToken((t) => t + 1)} />
           <Interpretation
             key={detail.value.id}
             detail={detail.value}

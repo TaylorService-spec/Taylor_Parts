@@ -31,7 +31,7 @@ import {
   normalizeProviderMessage,
   EmailProviderError,
 } from "../lib/inboundWork/emailProvider.js";
-import { workOrderTypeForRequestType } from "../lib/inboundWork/inboundDecisionCommands.js";
+import { workOrderTypeForRequestType } from "../lib/eosOps/inboundWorkDecisions.js";
 
 // ── Untrusted content ────────────────────────────────────────────────────────────────────────────
 test("script and style CONTENT is dropped whole, not merely unwrapped", () => {

@@ -105,7 +105,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.notEqual(row.display_label, row.key, "a friendly label, not the key");
     }
     const total = (await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities")).rows[0].n;
-    assert.equal(total, 104, // 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (2026-09-30), granted to nobody. + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to nobody). INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability)
+    assert.equal(total, 107, // 104 -> 107: inboundWork.request.recover + workOrder.selfScheduling.issue/.configure (Service Experience completion 2026-09-30), granted to nobody. 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (2026-09-30), granted to nobody. + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to nobody). INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability)
       "+ 8 from migration 1763337600000, the Reorder lifecycle authority (Administration-grant-only) -- " +
       "49 + 8 + 13 + 3 + 1 + 1 (the re-homed coordinated-visit read) + 1 (admin.securityPolicy.read, " +
       "the Administration read authority -- rolesPermissions had two ADMIN_ACTION writes and no read) " +

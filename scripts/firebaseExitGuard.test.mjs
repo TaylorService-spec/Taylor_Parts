@@ -985,7 +985,7 @@ test("classification is a strict SUPERSET: every file the specifier matcher alon
     SERVER_PROBE).has("server.firebase_admin_firestore"));
 });
 
-test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 316 " +
+test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 300 " +
   "guarded entries across four populated categories, nothing lost and nothing reclassified", () => {
   const scanResults = scan(REPO_ROOT);
   const baseline = loadCommittedBaseline(REPO_ROOT);
@@ -1012,9 +1012,16 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // Work Order domain cutover (2026-09-30): workOrderService left the Work Order callables -- 41 -> 40.
     // Completion pass: labor, field context, readiness, technician availability / planning estimate and coordinated
     // visits left their Firebase callables for the EOS API -- 40 -> 35.
-    "frontend.firebase_functions_client": 35,
-    "server.firebase_admin_firestore": 183,
-    "server.firebase_functions_server": 72,
+    // Service Experience completion (2026-09-30): Administration -> Email & Communications left the eleven email
+    // intake callables for the EOS provider runtime (access/inboundWorkSource.js) -- 35 -> 34.
+    "frontend.firebase_functions_client": 34,
+    // Service Experience completion (2026-09-30): the Firebase inbound work / email provider runtime is retired from
+    // the codebase -- intake, decisions, reads, connection lifecycle, delivery service and schedule, attachment custody
+    // (12 files) -- and the credential vault no longer touches Firestore -- 183 -> 171 (shrink-only).
+    "server.firebase_admin_firestore": 171,
+    // ... and its three firebase-functions modules (the inbound callables, the transport callables, the schedule) --
+    // 72 -> 69.
+    "server.firebase_functions_server": 69,
   };
   let total = 0;
   for (const category of CATEGORIES) {
@@ -1025,5 +1032,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 316);
+  assert.equal(total, 300);
 });

@@ -7,10 +7,8 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
-vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "admin-uid" } }) }));
-vi.mock("../src/access/useGovernedCapabilities.js", () => ({
-  useGovernedCapabilities: () => ({ hasCapability: () => true, accessVersion: 1 }),
-}));
+// The screen's authority now comes from EOS (source.readAccess -> readInboundWorkAccess.canManageIntake; Controller
+// SERVICE EXPERIENCE COMPLETION 2026-09-30), not the Firebase capability feed -- so the fake source answers it.
 
 const AdminEmailCommunications = (await import("../src/modules/administration/AdminEmailCommunications.jsx")).default;
 const { SOURCE_STATUS } = await import("../src/access/inboundWorkSource.js");
@@ -55,6 +53,7 @@ const config = {
 };
 
 const source = {
+  readAccess: async () => ({ status: SOURCE_STATUS.READY, payload: { canManageIntake: true } }),
   getConfiguration: async () => ({ status: SOURCE_STATUS.READY, payload: config }),
   getProviderReadiness: async () => ({
     status: SOURCE_STATUS.READY,
@@ -108,5 +107,16 @@ describe("Mailboxes with no connection configured", () => {
     expect(screen.getByRole("button", { name: "Add a connection first" })).toBeTruthy();
     expect(screen.queryByText("Add a mailbox")).toBeNull();
     expect(screen.queryByText("Select a connection…")).toBeNull();
+  });
+});
+
+describe("Email & Communications authority comes from EOS", () => {
+  it("a caller without intake administration sees an honest denial and no configuration", async () => {
+    let asked = false;
+    const denied = { ...source, readAccess: async () => ({ status: SOURCE_STATUS.READY, payload: { canManageIntake: false } }),
+      getConfiguration: async () => { asked = true; return { status: SOURCE_STATUS.READY, payload: config }; } };
+    render(<AdminEmailCommunications source={denied} />);
+    expect(await screen.findByText(/isn't part of your role|not available to your role|isn.t available/i)).toBeTruthy();
+    expect(asked).toBe(false);
   });
 });

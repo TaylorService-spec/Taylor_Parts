@@ -49,7 +49,8 @@ async function withClient(url, fn) {
 }
 const T = "t-inbound";
 const FIXTURE_ACTOR = "fixture";
-const INBOUND_KEYS = ["inboundWork.request.read", "inboundWork.request.accept", "inboundWork.request.decline", "inboundWork.request.attach", "inboundWork.intake.manage"];
+// + inboundWork.request.recover (migration 1764360000000, Controller SERVICE EXPERIENCE COMPLETION): six, all ungranted.
+const INBOUND_KEYS = ["inboundWork.request.read", "inboundWork.request.accept", "inboundWork.request.decline", "inboundWork.request.attach", "inboundWork.intake.manage", "inboundWork.request.recover"];
 const REVIEW = ["inboundWork.request.read", "inboundWork.request.accept", "inboundWork.request.decline", "inboundWork.request.attach"];
 
 // ════════════════════ static: the EOS intake path imports no Firebase ════════════════════
@@ -80,7 +81,11 @@ test("static: the PostgreSQL Inbound Work modules reach no Firebase module, tran
     "acceptInboundWork", "attachInboundWork", "declineInboundWork", "deliverInboundMessage", "listInboundWork",
     "readInboundIntakeConfiguration", "readInboundWorkAccess", "readInboundWorkRequest", "readWorkOrderAuthorityStatus",
     "saveInboundMailbox", "saveInboundRoutingRule",
-  ]);
+    // The EOS provider runtime and recovery (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30).
+    "completeInboundConnectionAuthorization", "disconnectInboundConnection", "listInboundRecoveryTargets", "pollInboundMailboxNow",
+    "readInboundAttachment", "readInboundProviderReadiness", "reassignInboundWork", "releaseInboundWork", "retryInboundDelivery",
+    "saveInboundConnection", "startInboundConnectionAuthorization", "testInboundConnection",
+  ].sort());
 });
 
 test("Inbound Work on PostgreSQL through /operations/inbound-work", { skip: SKIP, concurrency: 1 }, async (t) => {
@@ -148,7 +153,7 @@ test("Inbound Work on PostgreSQL through /operations/inbound-work", { skip: SKIP
     return subject;
   };
 
-  await t.test("the migration registers exactly five inbound capabilities, granted to NO Role", async () => {
+  await t.test("the migrations register exactly six inbound capabilities, granted to NO Role", async () => {
     const { rows } = await q(`SELECT key, object_key, action_kind FROM eos_policy.capabilities WHERE key LIKE 'inboundWork.%' ORDER BY key`);
     assert.deepEqual(rows.map((r) => r.key), [...INBOUND_KEYS].sort());
     assert.deepEqual([...new Set(rows.map((r) => r.object_key))].sort(), ["inboundMailbox", "inboundWorkRequest"]);
@@ -252,8 +257,8 @@ test("Inbound Work on PostgreSQL through /operations/inbound-work", { skip: SKIP
     assert.match(stored.original_body, /<p>/, "the raw message is retained as evidence");
     assert.equal(stored.original_body_content_type, "text/html");
     assert.deepEqual(d.attachmentRefs.map((a) => [a.filename, a.mimeType, a.size, a.providerAttachmentId, a.sourceMessageId, a.custody]), [
-      ["warranty-authorization.pdf", "application/pdf", 20480, "sbx-att-1", "sbx-msg-warranty-1", "METADATA_ONLY"],
-      ["unit-photo.jpg", "image/jpeg", 51200, "sbx-att-2", "sbx-msg-warranty-1", "METADATA_ONLY"],
+      ["warranty-authorization.pdf", "application/pdf", 20480, "sbx-att-1", "sbx-msg-warranty-1", "PENDING"],
+      ["unit-photo.jpg", "image/jpeg", 51200, "sbx-att-2", "sbx-msg-warranty-1", "PENDING"],
     ]);
   });
 
@@ -350,10 +355,10 @@ test("Inbound Work on PostgreSQL through /operations/inbound-work", { skip: SKIP
     refused(await call(NOBODY, "listInboundWork"), 403, "CAPABILITY_MISSING");
     refused(await call(NOBODY, "readInboundWorkRequest", { requestId: warrantyId }), 403, "CAPABILITY_MISSING");
     refused(await call(READER, "readInboundWorkRequest", { requestId: "inbound_nope" }), 404, "INBOUND_REQUEST_NOT_FOUND");
-    assert.deepEqual(ok(await call(REVIEWER, "readInboundWorkAccess")), { canRead: true, canAccept: true, canDecline: true, canAttach: true, canManageIntake: false });
-    assert.deepEqual(ok(await call(ACCEPT_ONLY, "readInboundWorkAccess")), { canRead: true, canAccept: false, canDecline: false, canAttach: false, canManageIntake: false },
+    assert.deepEqual(ok(await call(REVIEWER, "readInboundWorkAccess")), { canRead: true, canAccept: true, canDecline: true, canAttach: true, canManageIntake: false, canRecover: false });
+    assert.deepEqual(ok(await call(ACCEPT_ONLY, "readInboundWorkAccess")), { canRead: true, canAccept: false, canDecline: false, canAttach: false, canManageIntake: false, canRecover: false },
       "Accept without workOrder.create is no Accept at all");
-    assert.deepEqual(ok(await call(NOBODY, "readInboundWorkAccess")), { canRead: false, canAccept: false, canDecline: false, canAttach: false, canManageIntake: false });
+    assert.deepEqual(ok(await call(NOBODY, "readInboundWorkAccess")), { canRead: false, canAccept: false, canDecline: false, canAttach: false, canManageIntake: false, canRecover: false });
   });
 
   let acceptedWo;

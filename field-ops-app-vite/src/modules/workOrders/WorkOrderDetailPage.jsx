@@ -15,6 +15,7 @@ import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import LifecycleBand from "../../shared/ui/LifecycleBand.jsx";
 import WorkOrderActions from "../controlTower/WorkOrderActions";
 import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
+import CustomerSchedulingLinkPanel from "./CustomerSchedulingLinkPanel.jsx";
 import { useWorkOrderPartsPlanCapability } from "../../access/useWorkOrderPartsPlanCapability.js";
 import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import { savedListState } from "../../navigation/listStateMemory.js";
@@ -317,6 +318,9 @@ export default function WorkOrderDetailPage() {
           </>
         }
       />
+
+      {/* CUSTOMER SELF-SCHEDULING: issue a link for an unscheduled job; the customer's booking lands on THIS record. */}
+      <CustomerSchedulingLinkPanel workOrder={workOrder} />
 
       {/* THE LIFECYCLE SPINE (NS-P1) — the single change the audits called critically absent.
           Rendered as the BAND rather than the row: on a record page the spine is the loudest
