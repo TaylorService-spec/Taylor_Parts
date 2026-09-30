@@ -390,6 +390,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/inboundWorkApiClient.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/inboundWorkNav.test.mjs",
       "runner": "node"
     },
