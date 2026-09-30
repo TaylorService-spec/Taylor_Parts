@@ -64,7 +64,7 @@ export function onWorkOrderMutation(listener: (workOrderId: string | null) => vo
 }
 
 const READ_OPERATIONS = new Set(["readWorkOrder", "listWorkOrders", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
-  "listWorkOrderOperatingCompanies", "readWorkOrderAuthorityStatus"]);
+  "listWorkOrderOperatingCompanies", "readWorkOrderAuthorityStatus", "readTechnicianAvailability", "findAvailableTechnicianSlots"]);
 
 async function run<T = unknown>(operation: string, input: Record<string, unknown> = {}): Promise<T> {
   const res = await activeCall(operation, input);
@@ -521,4 +521,76 @@ export async function setWorkOrderPartsPlan(workOrderId: string, plan: PartsPlan
   const lines = (plan ?? []).map((l) => ({ partId: l.partId, qtyPlanned: l.qtyPlanned }));
   const result = await run<{ plan?: unknown[] }>("setWorkOrderPartsPlan", { workOrderId, plan: lines });
   return { success: true, workOrderId, plannedCount: Array.isArray(result?.plan) ? result.plan.length : lines.length };
+}
+
+// ─────────────────────────────── planning estimate (ND-21) ───────────────────────────────
+
+/**
+ * Set (or clear with null) a Work Order's planning estimate in whole minutes (setWorkOrderEstimatedDuration,
+ * workOrder.lifecycle.schedule). A terminal Work Order refuses WORK_ORDER_TERMINAL.
+ */
+export async function setWorkOrderEstimatedDuration(
+  workOrderId: string, estimatedDurationMinutes: number | null,
+): Promise<{ workOrderId: string; estimatedDurationMinutes: number | null }> {
+  return run("setWorkOrderEstimatedDuration", { workOrderId, estimatedDurationMinutes });
+}
+
+// ─────────────────────────────── technician availability (DECISION 5) ───────────────────────────────
+//
+// The governed PostgreSQL availability authority, keyed by EMPLOYEE id (functions/src/eosOps/workOrderAvailability.ts).
+// Working hours and unavailability are configured and read ONLY here -- there is no Firebase technician-availability
+// callable left in the browser. A placement outside configured hours now REFUSES (AVAILABILITY_NOT_CONFIGURED /
+// OUTSIDE_WORKING_HOURS / TECHNICIAN_UNAVAILABLE), superseding the Firebase ND-20 warnings.
+
+export interface WeeklyHours { [weekday: string]: { start: string; end: string }[] }
+
+export interface TechnicianAvailabilityView {
+  employeeId: string;
+  displayName: string | null;
+  operatingCompanyId: string;
+  availabilityState: "CONFIGURED" | "NOT_CONFIGURED";
+  workingAvailability: { scheduleId: string; timeZone: string; weeklyHours: WeeklyHours; effectiveFrom: string;
+    effectiveTo: string | null; operatingCompanyId: string | null } | null;
+  workingIntervals: { startMillis: number; endMillis: number }[];
+  notConfiguredIntervals: { startMillis: number; endMillis: number }[];
+  blockedTime: { unavailabilityId: string; kind: string; startMillis: number; endMillis: number; ended: boolean; reason: string | null }[];
+  availableMinutes: number | null;
+}
+
+/** Working hours + unavailability for a range (at most 31 days). Omit employeeIds for every schedulable technician. */
+export async function readTechnicianAvailability(input: {
+  start: number | string; end: number | string; employeeIds?: string[]; operatingCompanyId?: string;
+}): Promise<{ startMillis: number; endMillis: number; technicians: TechnicianAvailabilityView[]; notFoundEmployeeIds: string[] }> {
+  const body: Record<string, unknown> = { start: input.start, end: input.end };
+  if (Array.isArray(input.employeeIds)) body.employeeIds = input.employeeIds;
+  if (input.operatingCompanyId) body.operatingCompanyId = input.operatingCompanyId;
+  return run("readTechnicianAvailability", body);
+}
+
+export async function setTechnicianWorkingHours(input: {
+  employeeId: string; timeZone: string; weeklyHours: WeeklyHours | null; effectiveFrom?: string;
+  operatingCompanyId?: string | null; reason?: string;
+}): Promise<unknown> {
+  return run("setTechnicianWorkingHours", { ...input });
+}
+
+export async function recordTechnicianUnavailability(input: {
+  employeeId: string; kind: string; start: number | string; end: number | string; reason?: string;
+}): Promise<{ unavailabilityId: string; overlappingWorkOrderIds: string[]; warnings: SchedulingWarning[] }> {
+  return run("recordTechnicianUnavailability", { ...input });
+}
+
+export async function endTechnicianUnavailability(input: {
+  unavailabilityId: string; reason: string; endAt?: number | string;
+}): Promise<{ unavailabilityId: string; endedAt: string; withdrawn: boolean }> {
+  return run("endTechnicianUnavailability", { ...input });
+}
+
+/** The self-scheduling FOUNDATION query (office use): candidate { employeeId, start, end } slots. */
+export async function findAvailableTechnicianSlots(input: {
+  operatingCompanyId: string; durationMinutes: number; earliestDate: string; timeZone: string; horizonDays?: number;
+  workOrderType?: WorkOrderType; employeeIds?: string[]; slotIncrementMinutes?: number; limit?: number;
+}): Promise<{ slots: { employeeId: string; displayName: string | null; start: string; end: string }[]; truncated: boolean;
+  notConfiguredEmployeeIds: string[] }> {
+  return run("findAvailableTechnicianSlots", { ...input });
 }

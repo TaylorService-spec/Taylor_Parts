@@ -1,55 +1,25 @@
-// Dispatch & Scheduling -- transport over the certified Scheduling domain.
+// Dispatch & Scheduling -- transport over the GOVERNED EOS Work Order route only.
 //
-// WORK ORDER CUTOVER: the three Work Order WRITES that lived here (rescheduleWorkOrderCallable,
-// reassignScheduledWorkOrderCallable, setWorkOrderEstimatedDurationCallable) no longer touch Firebase:
-// reschedule / reassign go through the governed EOS route, and the duration estimate is refused (no
-// governed operation exists). ONLY readTechnicianAvailability remains a Firebase callable -- it reads
-// technician working hours / blocked time, not a Work Order, and is keyed by fieldops_technicians ids.
+// WORK ORDER CUTOVER + DECISION 5 (2026-09-30): nothing here touches Firebase any more. Reschedule / reassign,
+// the planning estimate AND technician availability (working hours, unavailability) all go through
+// services/workOrderService.ts -> POST /operations/work-orders. The former Firebase readTechnicianAvailabilityCallable
+// (keyed by fieldops_technicians ids, over technician_working_availability / technician_blocked_time) is RETIRED:
+// availability is now the PostgreSQL authority keyed by EMPLOYEE id, and there is no fallback to the callable.
 //
-// Structure mirrors services/salesAgreementCommandClient.js exactly: firebase imported LAZILY (no
-// import-time initializeApp side effect), and this is the only place these callables are invoked.
-//
-// Never throws. Each method returns { result } on success or { errorStatus, errorCode } on failure.
-// `errorStatus` is the HttpsError code (functions/-prefix stripped); `errorCode` is the STABLE
-// governed code the server puts in `details.code` -- SCHEDULE_CONFLICT, BLOCKED_TIME_CONFLICT,
-// START_IN_PAST, TECHNICIAN_INELIGIBLE, STALE_WORK_ORDER. The board acts on `errorCode`; turning it
-// into a sentence belongs to domain/schedulingRefusal.js, not here. This file performs transport only.
-//
-// ════════════════════ WHY THE READ IS HERE AND NOT A FIRESTORE QUERY ════════════════════
-//
-// `technician_working_availability` and `technician_blocked_time` DENY CLIENT READS -- deployed, and
-// proved live by the Scheduling Functional Gate (a dispatcher's own ID token gets 403 on both). The
-// board therefore cannot query them, and readTechnicianAvailability is the only way lane shading,
-// blocked-time chips and capacity have anything behind them. Do not add a Firestore path to either
-// collection anywhere in this app; it would fail closed, which is correct, and look like a bug.
-import { rescheduleWorkOrder as rescheduleGoverned } from "./workOrderService";
-
-function mapError(err) {
-  const raw = err && typeof err.code === "string" ? err.code : "";
-  const status = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
-  // The server puts the stable governed code in details.code. It is the thing worth acting on: two
-  // different refusals both arrive as `failed-precondition` and mean entirely different things to a
-  // dispatcher.
-  const code = err?.details?.code ?? null;
-  return { errorStatus: status || "internal", errorCode: typeof code === "string" ? code : null };
-}
-
-async function invoke(name, payload) {
-  const [{ httpsCallable }, { functions }] = await Promise.all([
-    import("firebase/functions"),
-    import("../firebase/firebase.js"),
-  ]);
-  const res = await httpsCallable(functions, name)(payload);
-  return res?.data;
-}
-
-const call = async (name, payload) => {
-  try {
-    return { result: await invoke(name, payload) };
-  } catch (err) {
-    return mapError(err);
-  }
-};
+// Never throws. Each method returns { result } on success or { errorStatus, errorCode, errorMessage } on failure.
+// `errorStatus` is the client category lower-cased (e.g. "precondition_failed", "not_activated"); `errorCode` the
+// server's stable code (STALE_SCHEDULE, SCHEDULE_CONFLICT, DOUBLE_BOOKED, AVAILABILITY_NOT_CONFIGURED,
+// OUTSIDE_WORKING_HOURS, TECHNICIAN_UNAVAILABLE, ...). Turning a code into a sentence belongs to
+// domain/schedulingRefusal.js, not here. This file performs transport and shape adaptation only.
+import {
+  findAvailableTechnicianSlots as findSlotsGoverned,
+  readTechnicianAvailability as readAvailabilityGoverned,
+  recordTechnicianUnavailability as recordUnavailabilityGoverned,
+  endTechnicianUnavailability as endUnavailabilityGoverned,
+  rescheduleWorkOrder as rescheduleGoverned,
+  setTechnicianWorkingHours as setHoursGoverned,
+  setWorkOrderEstimatedDuration as setEstimateGoverned,
+} from "./workOrderService.ts";
 
 // ---------------------------------------------------------------------------------------------
 // Placement changes -- over the GOVERNED EOS Work Order route (services/workOrderService.ts ->
@@ -64,7 +34,11 @@ async function governed(fn) {
     return { result: await fn() };
   } catch (err) {
     const category = typeof err?.code === "string" ? err.code : "INTERNAL";
-    return { errorStatus: category.toLowerCase(), errorCode: typeof err?.reason === "string" ? err.reason : category };
+    return {
+      errorStatus: category.toLowerCase(),
+      errorCode: typeof err?.reason === "string" ? err.reason : category,
+      errorMessage: typeof err?.message === "string" ? err.message : null,
+    };
   }
 }
 
@@ -104,26 +78,71 @@ export const reassignScheduledWorkOrder = ({ workOrderId, scheduledTechId, reaso
 };
 
 /**
- * The planning estimate. The governed Work Order route has NO operation for it, and it must not fall
- * back to the Firebase callable -- so it is refused, visibly, until the server serves one.
+ * The planning estimate (ND-21): whole minutes, or null to clear. Governed setWorkOrderEstimatedDuration
+ * (workOrder.lifecycle.schedule); a terminal Work Order refuses WORK_ORDER_TERMINAL.
  */
-export const setWorkOrderEstimatedDuration = async () =>
-  ({ errorStatus: "unavailable", errorCode: "NOT_ON_GOVERNED_ROUTE" });
+export const setWorkOrderEstimatedDuration = ({ workOrderId, estimatedDurationMinutes }) =>
+  governed(() => setEstimateGoverned(workOrderId, estimatedDurationMinutes ?? null));
 
 // ---------------------------------------------------------------------------------------------
-// The trusted read
+// Technician availability -- the governed PostgreSQL authority (DECISION 5)
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Governed availability for a window. Omit `technicianIds` for the board's every-technician form.
- *
- * Returns { startMillis, endMillis, technicians: [{ technicianId, workingAvailability, blockedTime,
- * availableMinutes }] }. `workingAvailability: null` and `availableMinutes: null` mean UNRECORDED,
- * not zero, and every consumer must keep them apart -- see domain/dispatchBoardGeometry.js.
+ * One governed availability view in the board's lane shape. The lane key `technicianId` IS the Employee id (the
+ * board's technicians come from listWorkOrderTechnicians, which are Employees). `workingAvailability: null` and
+ * `availableMinutes: null` mean NOT CONFIGURED -- never zero -- exactly as before; every consumer keeps them apart
+ * (domain/dispatchBoardGeometry.js).
+ */
+export function adaptAvailabilityView(view) {
+  if (!view || typeof view.employeeId !== "string") return null;
+  return {
+    technicianId: view.employeeId,
+    employeeId: view.employeeId,
+    displayName: view.displayName ?? null,
+    availabilityState: view.availabilityState === "CONFIGURED" ? "CONFIGURED" : "NOT_CONFIGURED",
+    workingAvailability: view.workingAvailability ?? null,
+    workingIntervals: Array.isArray(view.workingIntervals) ? view.workingIntervals : [],
+    notConfiguredIntervals: Array.isArray(view.notConfiguredIntervals) ? view.notConfiguredIntervals : [],
+    blockedTime: (Array.isArray(view.blockedTime) ? view.blockedTime : []).map((b) => ({
+      blockId: b.unavailabilityId,
+      unavailabilityId: b.unavailabilityId,
+      kind: b.kind,
+      startMillis: b.startMillis,
+      endMillis: b.endMillis,
+      ...(b.reason ? { note: b.reason } : {}),
+    })),
+    availableMinutes: typeof view.availableMinutes === "number" ? view.availableMinutes : null,
+  };
+}
+
+/**
+ * Governed availability for a window, keyed by EMPLOYEE id. Omit `technicianIds` (Employee ids) for the board's
+ * every-schedulable-technician form. Returns { result: { startMillis, endMillis, technicians: [lane views] } }.
  */
 export const readTechnicianAvailability = ({ startMillis, endMillis, technicianIds }) =>
-  call("readTechnicianAvailabilityCallable", {
-    startMillis,
-    endMillis,
-    ...(Array.isArray(technicianIds) ? { technicianIds } : {}),
+  governed(async () => {
+    const res = await readAvailabilityGoverned({
+      start: startMillis,
+      end: endMillis,
+      ...(Array.isArray(technicianIds) ? { employeeIds: technicianIds } : {}),
+    });
+    return {
+      startMillis: res?.startMillis ?? startMillis,
+      endMillis: res?.endMillis ?? endMillis,
+      technicians: (res?.technicians ?? []).map(adaptAvailabilityView).filter(Boolean),
+      notFoundEmployeeIds: res?.notFoundEmployeeIds ?? [],
+    };
   });
+
+/** Set an Employee's weekly working hours (workOrder.lifecycle.schedule). */
+export const setTechnicianWorkingHours = (input) => governed(() => setHoursGoverned(input));
+
+/** Record a dated unavailability (PTO, TRAINING, ...). Never refuses over scheduled work; warns instead. */
+export const recordTechnicianUnavailability = (input) => governed(() => recordUnavailabilityGoverned(input));
+
+/** END an unavailability (never deleted): withdrawn if it has not started, else stopped at `endAt` / now. */
+export const endTechnicianUnavailability = (input) => governed(() => endUnavailabilityGoverned(input));
+
+/** The self-scheduling FOUNDATION query (office use now). */
+export const findAvailableTechnicianSlots = (input) => governed(() => findSlotsGoverned(input));

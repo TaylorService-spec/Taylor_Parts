@@ -1170,6 +1170,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/technicianAvailabilityClient.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/workOrderAttentionProjection.test.mjs",
       "runner": "node"
     },

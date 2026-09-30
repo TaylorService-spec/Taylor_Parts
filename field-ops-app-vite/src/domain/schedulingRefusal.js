@@ -41,11 +41,22 @@ export function blockedKindChipLabel(kind) {
 }
 
 /**
+ * The unavailability kind the server names in a TECHNICIAN_UNAVAILABLE refusal ("... is unavailable (PTO) from
+ * ..."), or null. Only a kind in the governed vocabulary is returned; anything else is not guessed at.
+ */
+export function unavailabilityKindFrom(serverMessage) {
+  if (typeof serverMessage !== "string") return null;
+  const m = /unavailable \(([A-Z_]+)\)/.exec(serverMessage);
+  return m && Object.prototype.hasOwnProperty.call(BLOCKED_KIND_WORDS, m[1]) ? m[1] : null;
+}
+
+/**
  * A sentence for a governed refusal.
  *
  * @param errorCode   the server's stable `details.code`, or null
  * @param errorStatus the HttpsError code, used only when there is no governed code
- * @param context     { technicianName, workOrderRef } — named where the server named them generically
+ * @param context     { technicianName, workOrderRef, serverMessage?, unavailabilityKind? } — named where the
+ *                    server named them generically
  */
 export function schedulingRefusalMessage(errorCode, errorStatus, context = {}) {
   const who = context.technicianName ? context.technicianName : "that technician";
@@ -79,6 +90,18 @@ export function schedulingRefusalMessage(errorCode, errorStatus, context = {}) {
       return "The schedule changed while you were moving this. The board has refreshed — try again.";
     case "DOUBLE_BOOKED":
       return `Refused — ${who} is already on an active work order.`;
+    // DECISION 5 (2026-09-30): the governed availability refusals. Three DIFFERENT facts, three different
+    // remedies -- configure hours, pick a time inside them, or pick a time the technician is not away -- so they
+    // are never collapsed into one sentence. Outside working hours REFUSES in EOS (the Firebase ND-20 warning is
+    // superseded).
+    case "AVAILABILITY_NOT_CONFIGURED":
+      return `Refused — ${who} has no working hours configured for that time. Set working hours first.`;
+    case "OUTSIDE_WORKING_HOURS":
+      return `Refused — that window falls outside ${who}'s working hours.`;
+    case "TECHNICIAN_UNAVAILABLE": {
+      const kind = context.unavailabilityKind ?? unavailabilityKindFrom(context.serverMessage);
+      return `Refused — ${who} is unavailable then (${kind ? blockedKindLabel(kind) : "recorded unavailable time"}).`;
+    }
     case "EMPLOYEE_NOT_ASSIGNABLE":
     case "EMPLOYEE_NOT_FOUND":
     case "EMPLOYEE_NOT_ELIGIBLE_FOR_OPERATING_COMPANY":
@@ -135,10 +158,6 @@ export function schedulingWarningMessage(code, context = {}) {
       return `Scheduled outside ${who}'s recorded working hours.`;
     case "NO_WORKING_AVAILABILITY_RECORDED":
       return `Scheduled — ${who} has no working hours recorded, so this could not be checked against a shift.`;
-    // The governed route says, on every placement, that working hours and blocked time have no
-    // PostgreSQL authority yet and were not consulted. Said, never dropped.
-    case "AVAILABILITY_NOT_MODELED":
-      return `Placed — ${who}'s working hours and blocked time were not checked (not yet modeled on EOS).`;
     default:
       return null;
   }
