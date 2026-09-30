@@ -43,6 +43,7 @@
 // Commercial read kernel takes, reproduced here rather than imported because
 // test/commercialReadProjections.test.mjs pins that kernel's importers to the Commercial transport
 // alone. Nothing in this file writes, and PostgreSQL itself refuses a write in the transaction.
+import { notQuarantined } from "./workOrderQuarantine";
 import type { Pool, PoolClient } from "pg";
 
 export type Queryable = Pick<PoolClient, "query">;
@@ -255,7 +256,7 @@ export async function readActiveCoordinatedWorkOrdersFromPostgres(
     `SELECT w.id, w.work_order_number, w.status::text AS status,
             w.customer_id, w.location_id, w.sales_order_id
        FROM eos_ops.work_orders w
-      WHERE w.tenant_id = $1
+      WHERE w.tenant_id = $1 AND ${notQuarantined("w")}
         AND w.status::text = ANY($2::text[])
       ORDER BY w.id COLLATE "C" ASC
       LIMIT $3`,

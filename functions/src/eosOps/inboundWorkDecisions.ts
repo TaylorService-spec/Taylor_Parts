@@ -27,6 +27,7 @@
 import type { Pool } from "pg";
 import type { LifecycleActor } from "./workOrderLifecycle";
 import { createWorkOrder, WORK_ORDER_CREATE } from "./workOrderCreateCommand";
+import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 import {
   DECIDABLE,
   INBOUND_INTAKE_MANAGE,
@@ -416,6 +417,8 @@ export async function attachInboundWork(deps: Deps, actor: LifecycleActor, input
     }
     if (!DECIDABLE.has(rows[0].status)) refuse("ALREADY_DECIDED", "PRECONDITION_FAILED", `this request is ${rows[0].status} and can no longer be attached`);
     if (wo.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "that Work Order does not exist");
+    // Owner DECISION 3: a quarantined Work Order is no operational target -- nothing new is attached to it.
+    if (await isQuarantined(c, actor.tenantId, String(input.workOrderId))) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
     const w = wo.rows[0];
     if (TERMINAL_WORK_ORDER_STATUSES.includes(w.status)) {
       refuse("WORK_ORDER_TERMINAL", "PRECONDITION_FAILED", `that Work Order is ${w.status}; inbound work is not filed against a finished job`);
