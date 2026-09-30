@@ -44,6 +44,7 @@ import {
   type ContextPredicate,
   type ContextualReader,
 } from "./contextualAuthorization";
+import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 
 const SCHEMA = "eos_ops";
 
@@ -467,6 +468,9 @@ export async function applyTransitionWithinTransaction(
     [actor.tenantId, input.workOrderId]);
   if (current.rows.length === 0) {
     refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", `no work order ${input.workOrderId} in this tenant`);
+  }
+  if (await isQuarantined(client, actor.tenantId, input.workOrderId)) {
+    refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
   }
   const observed = String(current.rows[0].status) as WorkOrderStatus;
   if (observed !== input.expectedStatus) {

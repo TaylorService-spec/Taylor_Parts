@@ -13,25 +13,35 @@
 //   * number, status, priority and location otherwise match, so these ARE copies of real source records, not
 //     independent native Work Orders -- which is why none is MATCHED_REAL_RECORD and none is SYNTHETIC_FIXTURE.
 //
-// This module encodes that classification and plans -- never performs -- what each Owner option would require.
-// It performs no I/O. Its CLI (scripts/workOrderProtectedRowsPlanCli.js) reads inside a READ ONLY transaction and
-// has no INSERT / UPDATE / DELETE anywhere; a test pins both facts.
+// OWNER DECISION 3 (WORK ORDER CUTOVER COMPLETION PASS, 2026-09-30): "C -- PINNED QUARANTINE". The rows are
+// PRESERVED for migration traceability and QUARANTINED from operations (migration 1764310000000 +
+// eosOps/workOrderQuarantine.ts). Each pin below is the id, the number and the FINGERPRINT observed by a read-only
+// job on 2026-09-30 under eos_ops.work_order_pin_fingerprint (sha256 over the original Work Order columns, epoch
+// timestamps). The quarantine relation's CHECK constraint names exactly these triples; a test asserts the two agree.
+//
+// This module performs no I/O. The read-only planner (scripts/workOrderProtectedRowsPlanCli.js) and the quarantine
+// CLI (scripts/workOrderQuarantineCli.js, plan by default, --apply writes all thirteen or none) read through it.
 
 export const PROTECTED_WORK_ORDERS = Object.freeze([
-  { number: "WO-2026-000001", id: "GN2tk1DgoxdOX0jMU7IO" },
-  { number: "WO-2026-000002", id: "yqFPzsUCs8XSvRUdSjTy" },
-  { number: "WO-2026-000003", id: "0XgbOsl56EJKBu7QNe8k" },
-  { number: "WO-2026-000004", id: "NEz9qGYpNLtrbFHfisXE" },
-  { number: "WO-2026-000005", id: "DxeWmMoTAgS7uMbo9l4U" },
-  { number: "WO-2026-000006", id: "FkA7SbwObO2tkORMgpCl" },
-  { number: "WO-2026-000007", id: "ckY5gqO26LdKBMASmo5g" },
-  { number: "WO-2026-000008", id: "Hdsqhww2bosPHalW04C1" },
-  { number: "WO-2026-000060", id: "rRTHrgl8Z667xFmyKuQ1" },
-  { number: "WO-2026-000061", id: "v6EsG4QU477L64QQerWC" },
-  { number: "WO-2026-000062", id: "g0SNuHqL41o0eGEgbXJ5" },
-  { number: "WO-2026-000063", id: "dDas6xXNgcPi3WYPPCIL" },
-  { number: "WO-2026-000064", id: "zcyG6tdnsgzOnjpMMnpS" },
+  { number: "WO-2026-000001", id: "GN2tk1DgoxdOX0jMU7IO", fingerprint: "2a794935df15ca40a21bf42a3a46ae7a2dc67661af6dd08913810f170b0df8f2" },
+  { number: "WO-2026-000002", id: "yqFPzsUCs8XSvRUdSjTy", fingerprint: "83b81368ee54d40ecff48fe69be98410a2e37ec604fed6fcebc571e71f086d89" },
+  { number: "WO-2026-000003", id: "0XgbOsl56EJKBu7QNe8k", fingerprint: "7d160b166df714b59b54caa0c39c445658b1392685a0f36f24a37f293b5d44c2" },
+  { number: "WO-2026-000004", id: "NEz9qGYpNLtrbFHfisXE", fingerprint: "c1f007c37a0069cc7107c49f5ba35ffd9d0e8d899f4a29c508a822c67912badb" },
+  { number: "WO-2026-000005", id: "DxeWmMoTAgS7uMbo9l4U", fingerprint: "c90b5e8e41cda102d192e24a33035f6d6e5a2e5a67e4889a919922a6e77e6d06" },
+  { number: "WO-2026-000006", id: "FkA7SbwObO2tkORMgpCl", fingerprint: "6e18fea984eecd09f81c0c97bc3e5218b9174deef4b4a72b2e160c72cec029c1" },
+  { number: "WO-2026-000007", id: "ckY5gqO26LdKBMASmo5g", fingerprint: "7d78fa6376fef3a25d6d3cc6f28b6bd6c57bed307ef00ee56db323f05b0f2650" },
+  { number: "WO-2026-000008", id: "Hdsqhww2bosPHalW04C1", fingerprint: "a790a437450a70d17bd2061f9061b3e3ba161a64c6aa789236a1c49157375259" },
+  { number: "WO-2026-000060", id: "rRTHrgl8Z667xFmyKuQ1", fingerprint: "abcffc10ee2cf5e3560a1cb99b090bdac690c77e5eac7a39e3fff7bc3bdb5170" },
+  { number: "WO-2026-000061", id: "v6EsG4QU477L64QQerWC", fingerprint: "4492d39266548ca9477c20318bf219acbdc38c89e3ef2dce5f5871ee4edb8cd1" },
+  { number: "WO-2026-000062", id: "g0SNuHqL41o0eGEgbXJ5", fingerprint: "74d28fe92a5ce184044dcad6eed67ca0de5f57a4b2e3ef1313be74ce6de2938a" },
+  { number: "WO-2026-000063", id: "dDas6xXNgcPi3WYPPCIL", fingerprint: "c5e9810715abee0327b62684795b914cada23ada609321bd278b4ef7c4516009" },
+  { number: "WO-2026-000064", id: "zcyG6tdnsgzOnjpMMnpS", fingerprint: "34c81767678cc556f33fd18e75df523651cd24d0240ae4fd1e5ab06d88f49d49" },
 ].map((w) => Object.freeze(w)));
+
+/** The Owner's ruled option. */
+export const OWNER_DECISION = "C_QUARANTINE" as const;
+export const QUARANTINE_REASON = "Owner DECISION 3 (2026-09-30): pinned quarantine of an OBSOLETE/BAD_COPY migrated Work Order -- preserved for traceability, excluded from operations";
+export const QUARANTINE_PROVENANCE = "DQ-S2 reconciliation vs fieldops_wos snapshot FP-WO-0; fingerprint by read-only job 2026-09-30";
 
 export type ProtectedClassification = "MATCHED_REAL_RECORD" | "SYNTHETIC_FIXTURE" | "OBSOLETE/BAD_COPY" | "UNKNOWN";
 
@@ -61,7 +71,7 @@ export interface ObservedProtectedRow {
   readonly number: string | null;
   readonly status: string;
   readonly provenance: string;
-  /** sha256 of to_jsonb(row)::text under TimeZone UTC -- the pin any later destructive step must present. */
+  /** eos_ops.work_order_pin_fingerprint(row) as observed NOW -- compared to the pin; a mismatch refuses. */
   readonly fingerprint: string;
   readonly dependents: Readonly<Record<string, number>>;
 }
@@ -104,6 +114,10 @@ export function planProtectedWorkOrders(observed: readonly ObservedProtectedRow[
     }
     if (row.provenance !== "MIGRATED") throw new ProtectedRowsError("PROVENANCE_MISMATCH", `row ${row.id} is ${row.provenance}, not MIGRATED`);
     if (!/^[0-9a-f]{64}$/.test(row.fingerprint)) throw new ProtectedRowsError("FINGERPRINT_INVALID", `row ${row.id} has no sha256 fingerprint`);
+    const pin = PROTECTED_WORK_ORDERS.find((w) => w.id === row.id)!.fingerprint;
+    if (row.fingerprint !== pin) {
+      throw new ProtectedRowsError("FINGERPRINT_MISMATCH", `row ${row.id} (${row.number}) changed since it was pinned: ${row.fingerprint} != ${pin}`);
+    }
   }
   const missing = PROTECTED_WORK_ORDERS.filter((w) => !seen.has(w.id)).map((w) => w.number);
   if (missing.length > 0) throw new ProtectedRowsError("PINNED_ROW_MISSING", `pinned rows not observed: ${missing.join(", ")}`);

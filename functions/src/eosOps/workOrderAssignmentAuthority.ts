@@ -32,6 +32,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding";
+import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 
 /** Already in the Role catalog; this command does not invent a capability. */
 export const WORK_ORDER_ASSIGN = "workOrder.lifecycle.dispatch";
@@ -197,6 +198,9 @@ export async function assignWithinTransaction(
   );
   if (wo.rows.length === 0) {
     refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
+  }
+  if (await isQuarantined(client, actor.tenantId, workOrderId)) {
+    refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
   }
   const status = wo.rows[0].status as string;
   if (!(ASSIGNABLE_WORK_ORDER_STATUSES as readonly string[]).includes(status)) {

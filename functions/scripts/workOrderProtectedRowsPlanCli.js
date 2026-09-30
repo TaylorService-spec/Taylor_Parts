@@ -33,7 +33,7 @@ async function main() {
     const ids = PROTECTED_WORK_ORDERS.map((w) => w.id);
     const rows = await client.query(
       `SELECT id, work_order_number, status::text AS status, provenance::text AS provenance,
-              encode(sha256(convert_to(to_jsonb(w)::text, 'UTF8')), 'hex') AS fingerprint
+              eos_ops.work_order_pin_fingerprint(w) AS fingerprint
          FROM eos_ops.work_orders w WHERE tenant_id = $1 AND (id = ANY($2::text[]) OR work_order_number = ANY($3::text[]))`,
       [tenantId, ids, PROTECTED_WORK_ORDERS.map((w) => w.number)]);
     const observed = [];

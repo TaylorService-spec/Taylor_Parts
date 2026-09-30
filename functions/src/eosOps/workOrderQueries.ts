@@ -20,6 +20,7 @@ import { WORK_ORDER_RECORD_READ, authorizeWorkOrderRecordRead, readWorkOrderTran
 import { WorkOrderLifecycleError, WORK_ORDER_LIFECYCLE_DISPATCH, WORK_ORDER_LIFECYCLE_SCHEDULE,
   WORK_ORDER_STATUSES, TERMINAL_STATUSES, type LifecycleActor } from "./workOrderLifecycle";
 import { readWorkOrderExecution } from "./workOrderExecution";
+import { isQuarantined, notQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 import { WORK_ORDER_CREATE } from "./workOrderCreateCommand";
 import { WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES, WORK_ORDER_ASSIGNMENT_QUALIFICATION } from "./workOrderAssignmentAuthority";
 import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding";
@@ -146,6 +147,9 @@ export async function readWorkOrderDetail(
   if (!decision.allowed) refuse(String(decision.outcome), "FORBIDDEN", "this Work Order may not be read by this caller");
   const { rows } = await deps.pool.query(`${SUMMARY_SELECT} WHERE w.tenant_id = $1 AND w.id = $2`, [actor.tenantId, workOrderId]);
   if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
+  if (await isQuarantined(deps.pool, actor.tenantId, workOrderId as string)) {
+    refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
+  }
   const r = rows[0];
   const loc = await deps.pool.query(
     `SELECT address_street, address_city, address_state, address_postal_code, access_notes
@@ -232,7 +236,7 @@ export async function listWorkOrders(
   if (!Number.isInteger(limit) || limit < 1 || limit > WORK_ORDER_LIST_MAX) refuse("LIMIT_INVALID", "INVALID_INPUT", `limit is 1..${WORK_ORDER_LIST_MAX}`);
   const { rows } = await deps.pool.query(
     `${SUMMARY_SELECT}
-      WHERE w.tenant_id = $1
+      WHERE w.tenant_id = $1 AND ${notQuarantined("w")}
         AND ($2::text[] IS NULL OR w.status::text = ANY($2::text[]))
         AND ($3::timestamptz IS NULL OR w.scheduled_end > $3)
         AND ($4::timestamptz IS NULL OR w.scheduled_start < $4)
@@ -269,7 +273,7 @@ export async function listMyAssignedWorkOrders(
   const excluded = i.includeCompleted === true ? ["CLOSED", "CANCELLED"] : [...TERMINAL_STATUSES];
   const { rows } = await deps.pool.query(
     `${SUMMARY_SELECT}
-      WHERE w.tenant_id = $1 AND a.assignee_employee_id = $2 AND NOT (w.status::text = ANY($3::text[]))
+      WHERE w.tenant_id = $1 AND a.assignee_employee_id = $2 AND ${notQuarantined("w")} AND NOT (w.status::text = ANY($3::text[]))
       ORDER BY w.scheduled_start NULLS LAST, w.priority, w.id
       LIMIT ${WORK_ORDER_LIST_MAX}`,
     [actor.tenantId, employeeId, excluded]);

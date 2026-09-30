@@ -44,6 +44,7 @@
 // exists to fit.
 import type { Pool, PoolClient } from "pg";
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";
+import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine.js";
 
 const SCHEMA = "eos_ops";
 
@@ -210,6 +211,7 @@ export async function setPartsPlan(
     if (wo.rows.length === 0) {
       refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", `no work order ${workOrderId} in this tenant`);
     }
+    if (await isQuarantined(client, tenantId, workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
     const status = String(wo.rows[0].status);
     if ((TERMINAL_WORK_ORDER_STATUSES as readonly string[]).includes(status)) {
       refuse("TERMINAL_WORK_ORDER", "PRECONDITION_FAILED",

@@ -11,9 +11,8 @@ const require = createRequire(import.meta.url);
 const m = require("../lib/eosOps/migration/workOrderProtectedRows.js");
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
 
-const FP = "a".repeat(64);
 const observedAll = (over = {}) => m.PROTECTED_WORK_ORDERS.map((w) => ({
-  id: w.id, number: w.number, status: "CANCELLED", provenance: "MIGRATED", fingerprint: FP,
+  id: w.id, number: w.number, status: "CANCELLED", provenance: "MIGRATED", fingerprint: w.fingerprint,
   dependents: { work_order_transitions: 0, work_order_assignments: 0, work_order_parts_plan: 0 }, ...(over[w.id] ?? {}),
 }));
 
@@ -36,6 +35,9 @@ test("the plan refuses anything outside the pinned set, a missing pin, a number 
   assert.throws(() => m.planProtectedWorkOrders(observedAll({ [all[0].id]: { number: "WO-2026-000099" } })), (e) => e.code === "NUMBER_MISMATCH");
   assert.throws(() => m.planProtectedWorkOrders(observedAll({ [all[0].id]: { provenance: "NATIVE" } })), (e) => e.code === "PROVENANCE_MISMATCH");
   assert.throws(() => m.planProtectedWorkOrders(observedAll({ [all[0].id]: { fingerprint: "x" } })), (e) => e.code === "FINGERPRINT_INVALID");
+  // DECISION 3: a row that changed since it was pinned refuses -- fail closed.
+  assert.throws(() => m.planProtectedWorkOrders(observedAll({ [all[0].id]: { fingerprint: "b".repeat(64) } })), (e) => e.code === "FINGERPRINT_MISMATCH");
+  assert.ok(m.PROTECTED_WORK_ORDERS.every((w) => /^[0-9a-f]{64}$/.test(w.fingerprint)), "every pin carries its observed fingerprint");
 });
 
 test("the plan names what blocks a delete, and offers options without executing any", () => {

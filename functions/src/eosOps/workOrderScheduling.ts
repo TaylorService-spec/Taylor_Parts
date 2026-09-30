@@ -38,6 +38,7 @@ import {
   assertEmployeeAssignable, assignWithinTransaction, type WorkOrderAssignmentResult,
 } from "./workOrderAssignmentAuthority";
 import { checkTechnicianAvailability } from "./workOrderAvailability";
+import { isQuarantined, notQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 
 const SCHEMA = "eos_ops";
 
@@ -136,7 +137,7 @@ async function findScheduleConflict(
     `SELECT w.id FROM ${SCHEMA}.work_orders w
        JOIN ${SCHEMA}.work_order_assignments a
          ON a.tenant_id = w.tenant_id AND a.work_order_id = w.id AND a.effective_to IS NULL
-      WHERE w.tenant_id = $1 AND a.assignee_employee_id = $2 AND w.id <> $3
+      WHERE w.tenant_id = $1 AND a.assignee_employee_id = $2 AND w.id <> $3 AND ${notQuarantined("w")}
         AND w.status::text = ANY($4::text[])
         AND w.scheduled_start IS NOT NULL AND w.scheduled_start < $6 AND $5 < w.scheduled_end
       ORDER BY w.id LIMIT 1`,
@@ -150,7 +151,8 @@ async function findDoubleBooking(client: PoolClient, tenantId: string, employeeI
     `SELECT w.id FROM ${SCHEMA}.work_orders w
        JOIN ${SCHEMA}.work_order_assignments a
          ON a.tenant_id = w.tenant_id AND a.work_order_id = w.id AND a.effective_to IS NULL
-      WHERE w.tenant_id = $1 AND a.assignee_employee_id = $2 AND w.id <> $3 AND w.status::text = ANY($4::text[])
+      WHERE w.tenant_id = $1 AND a.assignee_employee_id = $2 AND w.id <> $3 AND ${notQuarantined("w")}
+        AND w.status::text = ANY($4::text[])
       ORDER BY w.id LIMIT 1`,
     [tenantId, employeeId, workOrderId, [...OCCUPYING_STATUSES]]);
   return rows[0]?.id ?? null;
@@ -171,6 +173,7 @@ async function lockWorkOrder(client: PoolClient, tenantId: string, workOrderId: 
        FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
     [tenantId, workOrderId]);
   if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", `no work order ${workOrderId} in this tenant`);
+  if (await isQuarantined(client, tenantId, workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
   if (rows[0].status !== expectedStatus) {
     refuse("STALE_WORK_ORDER_STATE", "CONFLICT", `the work order is ${rows[0].status}, not ${expectedStatus}. Another transition won this race.`);
   }
@@ -501,6 +504,7 @@ export async function setWorkOrderEstimatedDuration(
       `SELECT status::text AS status, estimated_duration_minutes FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
       [actor.tenantId, workOrderId]);
     if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
+    if (await isQuarantined(client, actor.tenantId, workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
     if (["COMPLETED", "CLOSED", "CANCELLED"].includes(rows[0].status)) {
       refuse("WORK_ORDER_TERMINAL", "PRECONDITION_FAILED", `a ${rows[0].status} Work Order is not re-planned`);
     }
