@@ -24,6 +24,7 @@ const scheduling = require("../lib/eosOps/workOrderScheduling.js");
 const execution = require("../lib/eosOps/workOrderExecution.js");
 const queries = require("../lib/eosOps/workOrderQueries.js");
 const partsPlan = require("../lib/eosOps/workOrderPartsPlanAuthority.js");
+const availability = require("../lib/eosOps/workOrderAvailability.js");
 const ctx = require("../lib/eosOps/contextualAuthorization.js");
 const model = require("../lib/eosOps/conditionalEntitlement.js");
 
@@ -148,6 +149,14 @@ test("the Work Order domain cutover", { skip: SKIP, concurrency: 1 }, async (t) 
   };
   const reader = ctx.postgresContextualReader(pool);
   const deps = { pool };
+  // DECISION 5 (Owner, 2026-09-30): a placement REFUSES AVAILABILITY_NOT_CONFIGURED when the technician has no working
+  // hours -- EOS never assumes 24/7. These proofs are about the lifecycle, not the calendar, so each schedulable
+  // technician is given EXPLICIT synthetic round-the-clock hours through the governed command (never raw SQL).
+  // The calendar itself is proven in workOrderAvailabilityPostgres.test.mjs.
+  const ROUND_THE_CLOCK = Object.fromEntries(["0", "1", "2", "3", "4", "5", "6"].map((d) => [d, [{ start: "00:00", end: "24:00" }]]));
+  const configureHours = (employeeId) => availability.setTechnicianWorkingHours(deps, { actor: actor(P.dispatcher) },
+    { employeeId, timeZone: "UTC", weeklyHours: ROUND_THE_CLOCK, reason: "synthetic acceptance availability" });
+  for (const e of ["emp-a", "emp-b", "emp-c"]) await configureHours(e);
   let seq = 0;
   const newWo = async (status = "READY_TO_DISPATCH", extra = {}) => {
     const id = `wo-${++seq}`;
@@ -186,7 +195,9 @@ test("the Work Order domain cutover", { skip: SKIP, concurrency: 1 }, async (t) 
     assert.equal(r.transition.toStatus, "SCHEDULED");
     assert.equal(r.assignment.outcome, "ASSIGNED");
     assert.equal(r.scheduledStart, w.scheduledStart);
-    assert.deepEqual(r.warnings.map((x) => x.code), ["AVAILABILITY_NOT_MODELED"], "the calendar was not consulted, and it says so");
+    // DECISION 5: the calendar IS consulted now (emp-a has explicit synthetic hours), and a clean placement carries no
+    // warning -- the former AVAILABILITY_NOT_MODELED warning is gone, and outside-hours refuses rather than warns.
+    assert.deepEqual(r.warnings.map((x) => x.code), [], "the calendar was consulted and the placement is inside it");
     const { rows } = await q(`SELECT w.status::text AS s, w.scheduled_start, a.assignee_employee_id, a.source
                                 FROM eos_ops.work_orders w JOIN eos_ops.work_order_assignments a ON a.work_order_id=w.id AND a.effective_to IS NULL
                                WHERE w.id=$1`, [wo]);
@@ -321,6 +332,7 @@ test("the Work Order domain cutover", { skip: SKIP, concurrency: 1 }, async (t) 
 
   await t.test("DQ-014: dispatch re-checks the scheduled Employee's eligibility NOW", async () => {
     await employee("emp-leaver"); await principal("prn-leaver"); await link("prn-leaver", "emp-leaver");
+    await configureHours("emp-leaver");
     const wo = await newWo();
     await scheduling.scheduleWorkOrder(deps, actor(P.dispatcher), { workOrderId: wo, employeeId: "emp-leaver", ...future(22) });
     await q(`UPDATE eos_workforce.employees SET employment_status='TERMINATED' WHERE id='emp-leaver'`);
