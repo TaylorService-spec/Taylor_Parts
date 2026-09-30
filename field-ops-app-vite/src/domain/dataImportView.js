@@ -10,8 +10,18 @@
 // mappable columns, a file whose every row failed. Rendering any of them as "nothing to
 // import" is the failure mode; each gets its own state and its own sentence.
 
+import {
+  CATALOG_AUTHORITY_POSTGRES_ACTIVE,
+  CATALOG_BOUND_IMPORT_ENTITY_TYPES,
+  CATALOG_IMPORT_REFUSAL_MESSAGE,
+} from "../config/catalogAuthority.js";
+
 export const IMPORT_STAGE = Object.freeze({
   UNGATED: "UNGATED",
+  // The file was staged, but its entity type cannot be executed under the current Catalog authority.
+  // Its own stage, not a PREVIEWED with a disabled button: the preview was built against the retired
+  // Firestore catalog, so showing it as "what would be written" would present that snapshot as current.
+  CATALOG_REFUSED: "CATALOG_REFUSED",
   IDLE: "IDLE",
   STAGING: "STAGING",
   MAPPING_INCOMPLETE: "MAPPING_INCOMPLETE",
@@ -21,6 +31,10 @@ export const IMPORT_STAGE = Object.freeze({
   FAILED: "FAILED",
 });
 
+const IMPORT_ENTITY_LABEL = Object.freeze({
+  PARTS: "Part", CUSTOMERS: "Customer", EQUIPMENT: "Equipment", INVENTORY: "Inventory", SERVICE_HISTORY: "Service History",
+});
+
 export function buildDataImportView({
   canStage = false,
   canExecute = false,
@@ -28,6 +42,7 @@ export function buildDataImportView({
   staged = null,
   result = null,
   error = null,
+  catalogAuthorityPostgresActive = CATALOG_AUTHORITY_POSTGRES_ACTIVE,
 } = {}) {
   if (!canStage) {
     return {
@@ -84,6 +99,24 @@ export function buildDataImportView({
       canExecute,
       headline: "Choose a file to import.",
       detail: "The file is read, mapped and checked first. Nothing is written until you approve the preview.",
+    };
+  }
+
+  // Checked BEFORE the mapping and preview states: fixing the columns of a file that can never be
+  // executed would send an administrator round a loop that ends in the same refusal.
+  const stagedEntityType = staged.job?.entityType ?? staged.entityType ?? null;
+  // Only the KNOWN catalog-bound types are refused here. An unrecognised type still previews (its
+  // consequence sentence says so honestly); the EXECUTION seam (access/dataImportClient.js) is what
+  // refuses an unknown type, fail closed, before any call.
+  if (catalogAuthorityPostgresActive === true && CATALOG_BOUND_IMPORT_ENTITY_TYPES.includes(stagedEntityType)) {
+    return {
+      stage: IMPORT_STAGE.CATALOG_REFUSED,
+      canExecute: false,
+      entityType: stagedEntityType,
+      headline: `${IMPORT_ENTITY_LABEL[stagedEntityType] ?? "This"} import is not available.`,
+      detail:
+        CATALOG_IMPORT_REFUSAL_MESSAGE[stagedEntityType],
+      approvalBlockedReason: "This import cannot be executed under the current Catalog authority.",
     };
   }
 
@@ -151,6 +184,19 @@ export const APPROVAL_CONSEQUENCE = Object.freeze({
   SERVICE_HISTORY:
     "Approving records these as historical service performed in another system. They are not Work Orders and nothing is scheduled.",
 });
+
+/**
+ * The page's own statement of what it imports, which must not offer what it will refuse. Under an ACTIVE
+ * PostgreSQL catalog the catalog-bound entity types are named as unavailable rather than listed as offered.
+ */
+export function dataImportSubtitle(catalogAuthorityPostgresActive = CATALOG_AUTHORITY_POSTGRES_ACTIVE) {
+  if (catalogAuthorityPostgresActive !== true) {
+    return "Load Parts, Customers, Equipment, Inventory and Service History from a CSV or Excel file.";
+  }
+  const refused = CATALOG_BOUND_IMPORT_ENTITY_TYPES.map((t) => (t === "PARTS" ? "Parts" : "Inventory")).join(" and ");
+  return `Load Customers, Equipment and Service History from a CSV or Excel file. ${refused} import are unavailable: `
+    + "the Catalog authority has moved to PostgreSQL.";
+}
 
 /** Row tone for the preview table. One vocabulary, shared with the rest of the app. */
 export function rowTone(classification) {

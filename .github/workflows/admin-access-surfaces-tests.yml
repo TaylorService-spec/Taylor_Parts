@@ -61,6 +61,10 @@ on:
       - "field-ops-app-vite/test/binLabelsIntegration.test.jsx"
       - "field-ops-app-vite/test/roleAccessModel.test.jsx"
       - "field-ops-app-vite/test/dataImportSurfaceAccess.test.jsx"
+      - "field-ops-app-vite/test/dataImportCatalogGate.test.jsx"
+      - "field-ops-app-vite/src/access/dataImportClient.js"
+      - "field-ops-app-vite/src/domain/dataImportView.js"
+      - "field-ops-app-vite/src/config/catalogAuthority.js"
       - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
       - "field-ops-app-vite/src/access/reportCapabilityAccess.js"
       - "field-ops-app-vite/src/navigation/navConfig.js"
@@ -105,6 +109,10 @@ on:
       - "field-ops-app-vite/test/binLabelsIntegration.test.jsx"
       - "field-ops-app-vite/test/roleAccessModel.test.jsx"
       - "field-ops-app-vite/test/dataImportSurfaceAccess.test.jsx"
+      - "field-ops-app-vite/test/dataImportCatalogGate.test.jsx"
+      - "field-ops-app-vite/src/access/dataImportClient.js"
+      - "field-ops-app-vite/src/domain/dataImportView.js"
+      - "field-ops-app-vite/src/config/catalogAuthority.js"
       - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
       - "field-ops-app-vite/src/access/reportCapabilityAccess.js"
       - "field-ops-app-vite/src/navigation/navConfig.js"
@@ -159,6 +167,7 @@ jobs:
           test/roleAccessModel.test.jsx
           test/adminRolesPermissions.test.jsx
           test/dataImportSurfaceAccess.test.jsx
+          test/dataImportCatalogGate.test.jsx
           test/adminRolesPermissionsDeclined.test.jsx
           test/adminPermissionPreview.test.jsx
           test/adminUiTruthfulness.test.jsx

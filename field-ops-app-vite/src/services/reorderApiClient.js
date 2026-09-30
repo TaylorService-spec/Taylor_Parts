@@ -34,6 +34,7 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "readReorderRequest",
   "readMyReorderHistory",
   "listReorderWarehouseOptions",
+  "readReorderPurchaseOrders",
 ]);
 
 /** Mirrors the server's OPERATIONS_MUTATION_OPERATIONS. */
@@ -47,6 +48,8 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   "cancelReorderRequest",
   "recordReorderPurchaseOrder",
   "voidReorderPurchaseOrder",
+  // The governed Reorder receipt (REORDER_PURCHASE_ORDER sources only). See services/reorderReceivingClient.js.
+  "receiveReorderStock",
 ]);
 
 /** Reads that take no input. */

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { partAliasCallableClient, NOT_READY_STATUS } from "../services/partAliasCallableClient.js";
 import { outcomeFromErrorCode } from "../domain/partIdentifiers.js";
+import {
+  CATALOG_MUTATION_HOLD, CATALOG_MUTATION_HELD_CODE, CATALOG_MUTATION_HELD_OUTCOME,
+} from "../config/catalogMutationHold.js";
 
 function newIdempotencyKey(prefix) {
   const uuid =
@@ -26,9 +29,14 @@ function newIdempotencyKey(prefix) {
  * IDEMPOTENCY. A key is generated once per user intent and reused across a RETRY of that intent, so
  * a double-click or a reconnect cannot apply twice. It is discarded once the intent resolves in a
  * way there is nothing left to retry — success, or a conflict the user must resolve differently.
+ *
+ * DQ-034 HOLD. While the Catalog mutation hold is on, `mutationHeld` is true and add / deactivate / reactivate
+ * resolve to CATALOG_MUTATION_HELD_OUTCOME with ZERO client calls; a server CATALOG_MUTATION_HELD refusal maps to the
+ * same outcome. The list and the scan-test probe are READS and are unaffected.
  */
 export function usePartIdentifiers(partId, deps) {
   const client = deps?.client ?? partAliasCallableClient;
+  const mutationHeld = CATALOG_MUTATION_HOLD.held !== false;
   const [state, setState] = useState({ status: "loading", aliases: [], truncated: false });
   const [pending, setPending] = useState({});
   const [outcome, setOutcome] = useState(null);
@@ -72,6 +80,10 @@ export function usePartIdentifiers(partId, deps) {
 
   const run = useCallback(
     async (intentKey, call) => {
+      if (mutationHeld) {
+        setOutcome(CATALOG_MUTATION_HELD_OUTCOME);
+        return CATALOG_MUTATION_HELD_OUTCOME;
+      }
       setPending((p) => ({ ...p, [intentKey]: true }));
       setOutcome(null);
       try {
@@ -81,6 +93,11 @@ export function usePartIdentifiers(partId, deps) {
           const o = { kind: "unavailable", message: "Identifier administration is not switched on in this environment." };
           setOutcome(o);
           return o;
+        }
+        if (errorDetail === CATALOG_MUTATION_HELD_CODE) {
+          delete keysRef.current[intentKey];
+          setOutcome(CATALOG_MUTATION_HELD_OUTCOME);
+          return CATALOG_MUTATION_HELD_OUTCOME;
         }
         if (errorStatus) {
           const mapped = outcomeFromErrorCode(errorStatus, errorDetail);
@@ -108,7 +125,7 @@ export function usePartIdentifiers(partId, deps) {
         });
       }
     },
-    [load]
+    [load, mutationHeld]
   );
 
   const addIdentifier = useCallback(
@@ -155,5 +172,5 @@ export function usePartIdentifiers(partId, deps) {
     [client]
   );
 
-  return { ...state, pending, outcome, clearOutcome, reload: load, addIdentifier, deactivate, reactivate, probe };
+  return { ...state, mutationHeld, pending, outcome, clearOutcome, reload: load, addIdentifier, deactivate, reactivate, probe };
 }

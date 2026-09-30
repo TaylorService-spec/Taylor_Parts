@@ -55,6 +55,18 @@ on:
       - "functions/scripts/commercialC5.js"
       - "functions/scripts/exportCommercialSnapshot.js"
       - "functions/test/operatorScriptEnvironmentFence.test.mjs"
+      # FROZEN SOURCE COLLECTIONS: operator scripts that could write the Firestore Catalog / Reorder
+      # source collections ask scripts/sourceCollectionFreeze.js first (operatorScriptSourceFreeze.test.mjs).
+      - "functions/scripts/sourceCollectionFreeze.js"
+      - "functions/scripts/seedSandboxBaseline.js"
+      - "functions/scripts/seedSandboxPerformanceStory.mjs"
+      - "functions/scripts/seedOperationsDemoData.js"
+      - "functions/scripts/certificationWorld.mjs"
+      - "functions/scripts/certificationWorld/migrateEquipmentModelIdentity.mjs"
+      - "functions/scripts/backfillOperationalNumbering.mjs"
+      - "functions/src/catalogMaster/catalogWriterState.ts"
+      - "functions/src/reorderRequest/reorderSourceFreeze.ts"
+      - "functions/test/operatorScriptSourceFreeze.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -91,6 +103,18 @@ on:
       - "functions/scripts/commercialC5.js"
       - "functions/scripts/exportCommercialSnapshot.js"
       - "functions/test/operatorScriptEnvironmentFence.test.mjs"
+      # FROZEN SOURCE COLLECTIONS: operator scripts that could write the Firestore Catalog / Reorder
+      # source collections ask scripts/sourceCollectionFreeze.js first (operatorScriptSourceFreeze.test.mjs).
+      - "functions/scripts/sourceCollectionFreeze.js"
+      - "functions/scripts/seedSandboxBaseline.js"
+      - "functions/scripts/seedSandboxPerformanceStory.mjs"
+      - "functions/scripts/seedOperationsDemoData.js"
+      - "functions/scripts/certificationWorld.mjs"
+      - "functions/scripts/certificationWorld/migrateEquipmentModelIdentity.mjs"
+      - "functions/scripts/backfillOperationalNumbering.mjs"
+      - "functions/src/catalogMaster/catalogWriterState.ts"
+      - "functions/src/reorderRequest/reorderSourceFreeze.ts"
+      - "functions/test/operatorScriptSourceFreeze.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -145,6 +169,13 @@ jobs:
       # emulator and no build: every case is a refusal, so nothing is ever contacted.
       - name: Operator environment fence (no emulator, contacts nothing)
         run: npm run test:operatorEnvironmentFence
+        working-directory: functions
+
+      # FROZEN SOURCE COLLECTIONS. Every operator script that could write a Firestore Catalog or Reorder
+      # source collection refuses (or skips) it under the committed freeze constants. Builds lib (the gate
+      # reads the compiled constants); injected stores only -- contacts nothing.
+      - name: Operator-script source freeze (build, no emulator, contacts nothing)
+        run: npm run test:operatorSourceFreeze
         working-directory: functions
 
       - name: Start Firestore + Auth emulators (background)

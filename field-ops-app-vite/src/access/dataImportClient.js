@@ -11,6 +11,11 @@
 // a document nobody had checked.
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
+import {
+  CATALOG_AUTHORITY_MOVED,
+  CATALOG_IMPORT_REFUSAL_MESSAGE,
+  importRefusedByCatalogAuthority,
+} from "../config/catalogAuthority.js";
 
 const STAGE_CALLABLE = "stageDataImport";
 const EXECUTE_CALLABLE = "executeDataImport";
@@ -47,10 +52,35 @@ export function stageDataImport({ fileName, fileText = null, fileBase64 = null, 
 }
 
 /**
+ * The client-side Catalog-authority refusal for an import of `entityType`, or null when it may proceed.
+ * Exported so the screen and this seam state ONE answer.
+ */
+export function catalogImportRefusal(entityType) {
+  if (!importRefusedByCatalogAuthority(entityType)) return null;
+  return {
+    ok: false,
+    code: CATALOG_AUTHORITY_MOVED,
+    message:
+      CATALOG_IMPORT_REFUSAL_MESSAGE[entityType]
+      ?? "This import cannot be executed: its entity type is not one this client can confirm is safe under the current Catalog authority.",
+    details: null,
+  };
+}
+
+/**
  * Execute a staged job. `approved: true` is sent explicitly and is required by the backend:
  * an execute request that merely names a job is not an approval of it.
+ *
+ * THE CATALOG ACTIVATION GATE, BEFORE ANY CALL. The Firebase executeDataImport deployed in nonprod pre-dates
+ * the Catalog freeze: it would write a PARTS job into the retired Firestore `parts` collection, and it would
+ * resolve an INVENTORY job's Part references against that frozen snapshot as if it were current. The
+ * refusal that stops it (CATALOG_AUTHORITY_MOVED) exists only in undeployed code, and Firebase is
+ * retirement-only. So the job's entity type is REQUIRED here and a catalog-bound (or unknown) one is refused
+ * without the callable ever being invoked.
  */
-export function executeDataImport(jobId) {
+export function executeDataImport(jobId, entityType) {
+  const refusal = catalogImportRefusal(entityType);
+  if (refusal) return Promise.resolve(refusal);
   return call(EXECUTE_CALLABLE, { jobId, approved: true });
 }
 

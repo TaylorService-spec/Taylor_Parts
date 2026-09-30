@@ -984,7 +984,7 @@ test("classification is a strict SUPERSET: every file the specifier matcher alon
     SERVER_PROBE).has("server.firebase_admin_firestore"));
 });
 
-test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 334 " +
+test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 330 " +
   "guarded entries across four populated categories, nothing lost and nothing reclassified", () => {
   const scanResults = scan(REPO_ROOT);
   const baseline = loadCommittedBaseline(REPO_ROOT);
@@ -997,10 +997,14 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // Reorder domain cutover (#1961) move their Firestore readers to the EOS API -- 45 -> 39 (shrink-only).
     // Pass 11 Retail Sales: the Opportunity / Sales Order capability hooks (Firestore accessVersion + Firebase feed) were
     // replaced by the PostgreSQL Commercial offer (hooks/useCommercialCapabilities) -- 39 -> 37 and 44 -> 42.
-    "frontend.firestore_client": 37,
+    // Catalog + Reorder activation, L0 Z3: the three Reorder Purchase Order / void hooks read the governed
+    // readReorderPurchaseOrders on the EOS API instead -- 37 -> 34 (shrink-only).
+    "frontend.firestore_client": 34,
     // Pass 11 Retail Sales: the 7 Opportunity / Sales Order read + command clients moved to the EOS Commercial API.
     // ... and their callable transports (Part / alias command clients, the Reorder callable client) -- 47 -> 44.
-    "frontend.firebase_functions_client": 42,
+    // L0 Z3: product-reference search (salesAgreementCommandClient.js) left the searchProductReferences callable
+    // for the PostgreSQL Catalog -- 42 -> 41.
+    "frontend.firebase_functions_client": 41,
     "server.firebase_admin_firestore": 183,
     "server.firebase_functions_server": 72,
   };
@@ -1013,5 +1017,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 334);
+  assert.equal(total, 330);
 });

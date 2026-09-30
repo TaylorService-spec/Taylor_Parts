@@ -102,10 +102,15 @@ test("the Catalog route requires authentication, a tenant context and a governed
   });
   assert.equal(wrongRoute.status, 404);
 
-  // The capability itself is checked by the COMMAND, not the transport: one place decides.
+  // A WRITE's capability is checked by its COMMAND, not the transport: one place decides.
   const kernel = code("functions/src/catalogMaster/catalogMasterKernel.ts");
   assert.ok(kernel.includes("ACTOR_NOT_TENANT_MEMBER"), "membership is proved in the command");
   const http = code("functions/src/catalogMaster/catalogHttp.ts");
+  // A READ has no command around it, so its capability is decided by the transport (DQ-031) -- once, from
+  // CATALOG_READ_REQUIREMENTS, for every read. Membership alone is not authority to read the Catalog.
+  const { CATALOG_READ_OPERATIONS, CATALOG_READ_REQUIREMENTS } = await import("../lib/catalogMaster/catalogHttp.js");
+  for (const op of CATALOG_READ_OPERATIONS) assert.ok(CATALOG_READ_REQUIREMENTS[op]?.includes("inventory.catalog.read"), op);
+  assert.ok(/READS\.has\(request\.operation\)[\s\S]{0,200}CATALOG_READ_REQUIREMENTS/.test(http), "the transport enforces the table");
   assert.ok(http.includes("resolveOperationalContext"), "identity resolves to an EOS Principal");
   assert.ok(/principalId:\s*ctx\.principalContext\.uid/.test(http), "and the actor IS that Principal");
 });
@@ -205,19 +210,19 @@ test("DATA_IMPORT: it does NOT bypass the Part authority, and has no Render runt
 });
 
 // ════════════════ the PostgreSQL Catalog activation boundary (Controller ruling 2026-09-28, window step 18) ════════════════
-test("until the ACTIVATE_POSTGRES transition, the Catalog transport refuses every operation before any database work", async () => {
+test("the Catalog transport is gated on ACTIVATE_POSTGRES: committed ACTIVE opens it; INACTIVE refuses every operation", async () => {
   const { executeCatalogOperation, CATALOG_READ_OPERATIONS, CATALOG_MUTATION_OPERATIONS } = await import("../lib/catalogMaster/catalogHttp.js");
   const writerState = await import("../lib/catalogMaster/catalogWriterState.js");
-  assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "INACTIVE");
+  assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "ACTIVE", "the activation package opens the PostgreSQL Catalog");
   const untouchable = new Proxy({}, { get: () => { throw new Error("DEPS_TOUCHED"); } });
   for (const operation of [...CATALOG_READ_OPERATIONS, ...CATALOG_MUTATION_OPERATIONS]) {
-    const r = await executeCatalogOperation({ reader: untouchable, pool: untouchable },
+    const r = await executeCatalogOperation({ reader: untouchable, pool: untouchable, writerAuthority: { firestore: "FROZEN", postgres: "INACTIVE" } },
       { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });
     assert.deepEqual([r.ok, r.code], [false, "PRECONDITION_FAILED"], operation);
     assert.match(r.message, /not active yet/);
   }
   // ACTIVE is what opens it: with the transition injected, the gate passes and identity resolution is reached.
-  const r = await executeCatalogOperation({ reader: untouchable, pool: untouchable, writerAuthority: { firestore: "FROZEN", postgres: "ACTIVE" } },
+  const r = await executeCatalogOperation({ reader: untouchable, pool: untouchable },
     { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation: "readPart", input: {} }).catch((e) => e);
   assert.match(String(r && (r.message ?? r)), /DEPS_TOUCHED|could not be completed/);
 });

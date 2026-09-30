@@ -129,7 +129,8 @@ for (const [state, code] of [[st("FROZEN", "INACTIVE"), "FIRESTORE_CATALOG_WRITE
 test("under OPEN/INACTIVE (the rollback-before-PostgreSQL-writes state) every catalog master command is UNCHANGED -- the guard is a no-op", async () => {
   // COMMITTED STATE: FROZEN/INACTIVE (activation window step 2). OPEN remains the declared rollback target, so its
   // behaviour is still proven -- injected, never assumed from the committed constant.
-  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("FROZEN", "INACTIVE"));
+  // COMMITTED STATE after activation (window step 18): FROZEN/ACTIVE. The Firestore writers stay refused.
+  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("FROZEN", "ACTIVE"));
   for (const { writerId, call, openMarker } of INVOCATIONS) {
     const err = await withAuthority(st("OPEN", "INACTIVE"), () => call().then(() => null, (e) => e));
     assert.ok(!(err instanceof FirestoreCatalogWriterClosedError), `${writerId} must NOT refuse on freeze grounds while OPEN`);

@@ -13,7 +13,8 @@ import {
   validateReceiveResponse,
   mapCallableErrorToStatus,
 } from "../src/domain/receivingTransport.js";
-import { fetchReceivingLocationOptions, submitReceiveInventoryStock } from "../src/services/receivingCallableClient.js";
+import { fetchReceivingLocationOptions } from "../src/services/receivingCallableClient.js";
+import { submitReorderReceipt, receiveOutcomeForFailure } from "../src/services/reorderReceivingClient.js";
 
 // Hoisted, mutable control for the mocked readiness + firebase transport.
 const H = vi.hoisted(() => ({ ready: false, respond: () => ({}), calls: [] }));
@@ -205,8 +206,10 @@ describe("export surface -- no bypass", () => {
       "fetchReceivablePurchaseOrders",
       "fetchReceivingLocationOptions",
       "submitCanonicalReceive",
-      "submitReceiveInventoryStock",
     ]);
+    // THE REORDER ACTIVATION: the legacy REORDER_PURCHASE_ORDER submit is gone from the Firebase
+    // transport entirely, not merely unused -- an unused wrapper is a second authority one import away.
+    expect(ns.submitReceiveInventoryStock).toBeUndefined();
   });
   it("receivingReadiness exposes ONLY the constant (no runtime override/resolver)", async () => {
     const real = await vi.importActual("../src/config/receivingReadiness.js");
@@ -219,10 +222,6 @@ describe("export surface -- no bypass", () => {
 describe("public API -- readiness false gate", () => {
   it("fetchReceivingLocationOptions() -> UNAVAILABLE, zero callable attempts", async () => {
     expect(await fetchReceivingLocationOptions()).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] });
-    expect(H.calls).toEqual([]);
-  });
-  it("submitReceiveInventoryStock(request) -> UNAVAILABLE, zero callable attempts", async () => {
-    expect(await submitReceiveInventoryStock(RECEIVE_REQ())).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE });
     expect(H.calls).toEqual([]);
   });
 
@@ -252,7 +251,6 @@ describe("public API -- readiness false gate", () => {
   });
   it("extra arguments cannot enable invocation while readiness is false", async () => {
     await fetchReceivingLocationOptions({ readyOverride: true, invoke: () => ({ options: [] }) });
-    await submitReceiveInventoryStock(RECEIVE_REQ(), { readyOverride: true, invoke: () => ({ outcome: "applied" }) });
     expect(H.calls).toEqual([]); // extra args are ignored; the governed constant still gates
   });
 });
@@ -282,51 +280,81 @@ describe("public API -- ready branch (readiness mocked true)", () => {
     expect(await fetchReceivingLocationOptions()).toEqual({ status: RECEIVING_OUTCOME.DENIED, options: [] });
   });
 
-  it("submit: malformed request -> INVALID, zero callable attempts", async () => {
-    expect(await submitReceiveInventoryStock({ ...RECEIVE_REQ(), extra: 1 })).toEqual({ status: RECEIVING_OUTCOME.INVALID });
+  it("the canonical submit refuses a REORDER_PURCHASE_ORDER source client-side, with zero callable attempts", async () => {
+    // The ONE client path that still names receiveInventoryStock cannot carry a Reorder source to it.
+    const { submitCanonicalReceive } = await import("../src/services/receivingCallableClient.js");
+    expect(await submitCanonicalReceive(RECEIVE_REQ())).toEqual({ status: RECEIVING_OUTCOME.INVALID, receipt: null });
     expect(H.calls).toEqual([]);
   });
-  it("submit: applied -> exact name + sanitized payload, APPLIED + receipt", async () => {
-    H.respond = () => ({ outcome: "applied", receivingId: "RCV-9", ledgerEventId: "LE-9" });
-    const r = await submitReceiveInventoryStock(RECEIVE_REQ());
-    expect(H.calls).toEqual([["receiveInventoryStock", RECEIVE_REQ()]]);
-    expect(r).toEqual({ status: RECEIVING_OUTCOME.APPLIED, receipt: { outcome: "applied", receivingId: "RCV-9", ledgerEventId: "LE-9" } });
+});
+
+// A REORDER PURCHASE ORDER is received through the governed PostgreSQL Receiving authority
+// (services/reorderReceivingClient.js -> receiveReorderStock), never the Firebase callable -- even with the
+// Firebase receiving readiness TRUE.
+describe("submitReorderReceipt -- the governed PostgreSQL receipt", () => {
+  beforeEach(() => { H.ready = true; });
+  const clientAnswering = (answer) => {
+    const calls = [];
+    return { calls, client: { call: async (operation, input) => { calls.push([operation, input]); return typeof answer === "function" ? answer() : answer; } } };
+  };
+  const APPLIED = { ok: true, operation: "receiveReorderStock", result: {
+    outcome: "applied", receivingId: "RCV-9", receivingOrderNumber: "RO-0009", sourceKind: "REORDER_PURCHASE_ORDER",
+    purchaseOrderId: "PO-1", reorderRequestId: "RR-1", movementIds: ["m1"], lines: [], reorderStatus: "RECEIVED" } };
+
+  it("malformed request -> INVALID, zero calls of any kind", async () => {
+    const { calls, client } = clientAnswering(APPLIED);
+    expect(await submitReorderReceipt({ ...RECEIVE_REQ(), extra: 1 }, { client })).toEqual({ status: RECEIVING_OUTCOME.INVALID });
+    expect(calls).toEqual([]);
+    expect(H.calls).toEqual([]);
   });
-  it("submit: replayed -> REPLAYED", async () => {
-    H.respond = () => ({ outcome: "replayed", receivingId: "RCV-9", ledgerEventId: "LE-9" });
-    expect((await submitReceiveInventoryStock(RECEIVE_REQ())).status).toBe(RECEIVING_OUTCOME.REPLAYED);
+  it("a canonical PURCHASE_ORDER source is refused client-side -- it has its own authority", async () => {
+    const { calls, client } = clientAnswering(APPLIED);
+    const canonical = { ...RECEIVE_REQ(), source: { type: "PURCHASE_ORDER", reorderRequestId: "RR-1", purchaseOrderId: "PO-1" } };
+    expect(await submitReorderReceipt(canonical, { client })).toEqual({ status: RECEIVING_OUTCOME.INVALID });
+    expect(calls).toEqual([]);
   });
-  it("submit: preserves the SAME idempotencyKey across retries", async () => {
-    H.respond = () => ({ outcome: "applied", receivingId: "R", ledgerEventId: "L" });
+  it("applied -> receiveReorderStock with the exact frozen payload; the Firebase callable is never invoked", async () => {
+    const { calls, client } = clientAnswering(APPLIED);
+    const r = await submitReorderReceipt(RECEIVE_REQ(), { client });
+    expect(calls).toEqual([["receiveReorderStock", RECEIVE_REQ()]]);
+    expect(H.calls).toEqual([]);
+    expect(r).toEqual({ status: RECEIVING_OUTCOME.APPLIED, receipt: { outcome: "applied", receivingId: "RCV-9", receivingOrderNumber: "RO-0009" } });
+  });
+  it("replayed -> REPLAYED", async () => {
+    const { client } = clientAnswering({ ok: true, result: { ...APPLIED.result, outcome: "replayed" } });
+    expect((await submitReorderReceipt(RECEIVE_REQ(), { client })).status).toBe(RECEIVING_OUTCOME.REPLAYED);
+  });
+  it("preserves the SAME idempotencyKey across retries", async () => {
+    const { calls, client } = clientAnswering(APPLIED);
     const req = RECEIVE_REQ();
-    await submitReceiveInventoryStock(req);
-    await submitReceiveInventoryStock(req);
-    const [k1, k2] = H.calls.map((c) => c[1].idempotencyKey);
-    expect(k1).toBe("recv-key-123");
-    expect(k2).toBe("recv-key-123");
-    expect(k1).toBe(k2);
+    await submitReorderReceipt(req, { client });
+    await submitReorderReceipt(req, { client });
+    expect(calls.map((c) => c[1].idempotencyKey)).toEqual(["recv-key-123", "recv-key-123"]);
   });
-  it("submit: malformed response (unknown field) -> UNAVAILABLE", async () => {
-    H.respond = () => ({ outcome: "applied", receivingId: "R", ledgerEventId: "L", extra: 1 });
-    expect(await submitReceiveInventoryStock(RECEIVE_REQ())).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE });
+  it("a malformed success is not trusted as a receipt -> UNAVAILABLE", async () => {
+    const { client } = clientAnswering({ ok: true, result: { outcome: "done" } });
+    expect(await submitReorderReceipt(RECEIVE_REQ(), { client })).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE });
   });
   it.each([
-    ["functions/unauthenticated", RECEIVING_OUTCOME.UNAUTHENTICATED],
-    ["functions/permission-denied", RECEIVING_OUTCOME.DENIED],
-    ["functions/invalid-argument", RECEIVING_OUTCOME.INVALID],
-    ["functions/not-found", RECEIVING_OUTCOME.NOT_FOUND],
-    ["functions/failed-precondition", RECEIVING_OUTCOME.CONFLICT],
-    ["functions/internal", RECEIVING_OUTCOME.UNAVAILABLE],
-  ])("submit: maps callable error %s", async (code, status) => {
-    H.respond = () => { throw { code, message: "RAW-BACKEND-DETAIL", details: { path: "warehouses/secret" } }; };
-    expect(await submitReceiveInventoryStock(RECEIVE_REQ())).toEqual({ status });
+    ["NOT_SIGNED_IN", RECEIVING_OUTCOME.UNAUTHENTICATED],
+    ["UNAUTHENTICATED", RECEIVING_OUTCOME.UNAUTHENTICATED],
+    ["FORBIDDEN", RECEIVING_OUTCOME.DENIED],
+    ["INVALID_INPUT", RECEIVING_OUTCOME.INVALID],
+    ["NOT_FOUND", RECEIVING_OUTCOME.NOT_FOUND],
+    ["CONFLICT", RECEIVING_OUTCOME.CONFLICT],
+    ["PRECONDITION_FAILED", RECEIVING_OUTCOME.CONFLICT],
+    ["NOT_CONFIGURED", RECEIVING_OUTCOME.UNAVAILABLE],
+    ["UNREACHABLE", RECEIVING_OUTCOME.UNAVAILABLE],
+    ["INTERNAL", RECEIVING_OUTCOME.UNAVAILABLE],
+  ])("maps the governed refusal %s", async (code, status) => {
+    const { client } = clientAnswering({ ok: false, code, reason: "RAW-SERVER-CODE", status: 409, message: "RAW-BACKEND-DETAIL warehouses/secret" });
+    const r = await submitReorderReceipt(RECEIVE_REQ(), { client });
+    expect(r).toEqual({ status });
+    expect(JSON.stringify(r)).not.toMatch(/RAW-BACKEND-DETAIL|warehouses\/secret|RAW-SERVER-CODE/);
+    expect(receiveOutcomeForFailure({ code })).toBe(status);
   });
-  it("submit: never returns raw backend message/details/path on error", async () => {
-    H.respond = () => { throw { code: "functions/internal", message: "RAW-BACKEND-DETAIL", details: { path: "warehouses/secret" } }; };
-    const r = await submitReceiveInventoryStock(RECEIVE_REQ());
-    const json = JSON.stringify(r);
-    expect(json.includes("RAW-BACKEND-DETAIL")).toBe(false);
-    expect(json.includes("warehouses/secret")).toBe(false);
-    expect(Object.keys(r)).toEqual(["status"]);
+  it("a transport that throws is UNAVAILABLE, never an unhandled rejection", async () => {
+    const { client } = clientAnswering(() => { throw new Error("boom"); });
+    expect(await submitReorderReceipt(RECEIVE_REQ(), { client })).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE });
   });
 });

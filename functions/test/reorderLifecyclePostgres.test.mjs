@@ -234,15 +234,15 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     await life.postPurchasingUpdate(deps, actor(pAlice), { reorderRequestId: rr, vendorContacted: false });
   });
 
-  await t.test("receipt closes out from ORDERED only, and only by the assignee", async () => {
-    await assert.rejects(life.markReorderReceived(deps, actor(pAlice), { reorderRequestId: rr }), /has not been ordered/);
+  await t.test("RECEIVING IS ACTIVE (Owner ruling R2): markReorderReceived answers only with its explicit refusal", async () => {
+    // ORDERED -> RECEIVED is now the governed receipt's consequence (receiveReorderStockPostgres proves the closeout).
+    // The standalone operation stays callable so the refusal is explicit -- for the assignee and everyone else alike.
+    assert.equal(life.RECEIVING_POSTGRES_ACTIVE, true);
     await q(`UPDATE eos_ops.reorder_requests SET status='ORDERED' WHERE id=$1`, [rr]);
-    await assert.rejects(life.markReorderReceived(deps, actor(pBob), { reorderRequestId: rr }), /assigned to/);
-    const r = await life.markReorderReceived(deps, actor(pAlice), { reorderRequestId: rr });
-    assert.equal(r.status, "RECEIVED");
-    const { rows } = await q(`SELECT received_at, received_by_principal_id FROM eos_ops.reorder_requests WHERE id=$1`, [rr]);
-    assert.ok(rows[0].received_at, "the terminal status states when it happened");
-    assert.equal(rows[0].received_by_principal_id, pAlice);
+    for (const who of [pAlice, pBob]) {
+      await assert.rejects(life.markReorderReceived(deps, actor(who), { reorderRequestId: rr }), /closed out by receiving the stock/);
+    }
+    assert.equal((await q(`SELECT status::text s FROM eos_ops.reorder_requests WHERE id=$1`, [rr])).rows[0].s, "ORDERED", "nothing moved");
   });
 
   await t.test("cancellation is a management action, states a reason, and stops at ORDERED", async () => {
@@ -295,6 +295,35 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     // Valid lifecycle state only: a second void (the request is now VOIDED) is refused, and still audited once.
     await assert.rejects(voidOf(pManager, [life.REORDER_PO_VOID]));
     assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.purchase_order_voids WHERE purchase_order_id=$1`, [v])).rows[0].n, 1);
+
+    // ── THE PURCHASE ORDER READ (readReorderPurchaseOrders): same reach as readReorderRequest, for every id ──
+    const pending = (await create()).reorderRequestId; // reachable, but no purchase order recorded
+    const read = (who, ids, caps = ALL) => life.readReorderPurchaseOrders(deps, actor(who, caps), { reorderRequestIds: ids });
+    // The queue scope reaches the request, so it reaches its purchase order AND its void record.
+    const byManager = await read(pManager, [v, pending, v]);
+    assert.equal(byManager.purchaseOrders.length, 1, "a reachable request with no purchase order is ABSENT, not refused");
+    const po = byManager.purchaseOrders[0];
+    assert.deepEqual(
+      [po.id, po.reorderRequestId, po.purchaseOrderId, po.status, po.supplierName, po.externalPoNumber, po.orderedQuantity, po.orderedDate, po.expectedArrivalDate],
+      [v, v, v, "ORDERED", "Acme", "PO-V1", 4, "2026-03-01", null]);
+    assert.equal(po.createdBy, pAlice);
+    assert.deepEqual([po.void.reorderPurchaseOrderId, po.void.reason, po.void.voidedBy], [v, "supplier discontinued the part", pManager]);
+    assert.ok(po.void.createdAt && po.createdAt);
+    // The assignee reaches the record assigned to her, without any queue scope.
+    assert.equal((await read(pAlice, [v])).purchaseOrders[0].id, v);
+    // FAIL CLOSED, WHOLE: one unreachable id refuses the read rather than vanishing from it.
+    await assert.rejects(read(pAlice, [v, pending]), /neither in the caller's queue reach nor assigned/);
+    await assert.rejects(read(pBob, [v]), /neither in the caller's queue reach nor assigned/);
+    await assert.rejects(read(pUnlinked, [v]), /neither in the caller's queue reach nor assigned/);
+    // A request that does not exist is refused exactly like one out of reach: no existence oracle.
+    await assert.rejects(read(pManager, ["rr-does-not-exist"]), /neither in the caller's queue reach nor assigned/);
+    // Capability first.
+    await assert.rejects(read(pManager, [v], [life.REORDER_PO_VOID]), /requires reorder\.request\.read\b/);
+    // A bounded, well-formed question only.
+    await assert.rejects(read(pManager, []), /between 1 and 100/);
+    await assert.rejects(read(pManager, Array.from({ length: 101 }, (_, k) => `rr-${k}`)), /between 1 and 100/);
+    await assert.rejects(read(pManager, ["a/b"]), /between 1 and 100/);
+    await assert.rejects(life.readReorderPurchaseOrders(deps, actor(pManager), { reorderRequestIds: [v], tenantId: "t2" }), /does not accept: tenantId/);
   });
 
   await t.test("'my assigned work' is scoped by EMPLOYEE, not by a Firebase uid", async () => {

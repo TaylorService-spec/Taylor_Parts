@@ -4,14 +4,12 @@
 // Cloud-Function-only writes (firestore.rules denies create/update/
 // delete unconditionally) -- this file never writes to any of them,
 // it only reads what an admin/dispatcher is allowed to see.
-import { collection, getDocs, query, where, documentId, orderBy, limit, Timestamp } from "firebase/firestore";
+import { collection, getDocs, query, documentId, orderBy, limit, Timestamp } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import {
-  REORDER_REQUEST_STATUS,
-  PURCHASE_ORDERS_COLLECTION as LIVE_REORDER_PURCHASE_ORDERS_COLLECTION,
-} from "../domain/constants";
+import { REORDER_REQUEST_STATUS } from "../domain/constants";
 import { buildPurchaseOrdersView } from "../domain/purchaseOrdersView.js";
 import { reorderApiClient } from "./reorderApiClient.js";
+import { fetchReorderPurchaseOrdersByIds } from "./reorderPurchaseOrderReads.js";
 
 const INVENTORY_TRANSACTIONS_COLLECTION = "inventory_transactions";
 const WAREHOUSES_COLLECTION = "warehouses";
@@ -176,51 +174,63 @@ export const fetchSupplierCatalog = () => listCollection<RawSupplierCatalogItem>
 export const fetchPurchaseOrders = () => listCollection<RawPurchaseOrder>(PURCHASE_ORDERS_COLLECTION);
 
 // INV-CONVERGENCE-E Stage A completion -- one-shot read-only lists of the reorder
-// workflow collections for the shadow-parity diagnostic. These two collections ARE
-// client-writable elsewhere (the reorder lifecycle), but this file only READS them
-// (getDocs, no subscription, no filter/index/query-shape change). The PO list is the
-// LIVE `reorder_purchase_orders`, NOT the dormant Epic-5 `purchase_orders` above.
-const REORDER_PURCHASE_ORDERS_COLLECTION = "reorder_purchase_orders";
-
+// workflow objects for the shadow-parity diagnostic (modules/inventory/partsShadowParityReaders.js).
+// Both sides read the GOVERNED PostgreSQL Reorder authority: a parity diagnostic that still read the
+// retired Firestore source would be comparing the new world against a snapshot nobody writes to any
+// more, and would report drift forever. The PO list is the Reorder Purchase Order, NOT the dormant
+// Epic-5 `purchase_orders` above.
 export interface RawReorderRequest { id: string; partId: string; status: string; }
 export interface RawReorderPurchaseOrder { id: string; partId: string; status: string; }
 
-// The shadow-parity diagnostic's Reorder side. It reads the GOVERNED authority now -- a parity
-// diagnostic that still read the retired source would be comparing the new world against a window
-// nobody writes to any more, and would report drift forever.
-export const fetchReorderRequests = async (): Promise<RawReorderRequest[]> => {
-  const res = await reorderApiClient.call("readReorderQueue");
-  if (!res.ok) throw new Error(res.message ?? "the Reorder requests could not be read");
-  return (Array.isArray(res.result) ? res.result : []) as RawReorderRequest[];
+const readReorderQueueOrThrow = async (input?: Record<string, unknown>): Promise<(Record<string, unknown> & { id: string })[]> => {
+  const res = await reorderApiClient.call("readReorderQueue", input);
+  if (!res.ok) {
+    // Thrown rather than returned empty: an empty list and an unreadable one are different facts.
+    const err = new Error(res.message ?? "the Reorder requests could not be read");
+    (err as Error & { code?: string }).code = res.reason ?? res.code;
+    throw err;
+  }
+  return (Array.isArray(res.result) ? res.result : []) as (Record<string, unknown> & { id: string })[];
 };
-export const fetchReorderPurchaseOrders = () => listCollection<RawReorderPurchaseOrder>(REORDER_PURCHASE_ORDERS_COLLECTION);
+
+const readPurchaseOrdersOrThrow = async (ids: string[]): Promise<Record<string, Record<string, unknown>>> => {
+  const res = await fetchReorderPurchaseOrdersByIds(ids);
+  if (!res.ok) {
+    const err = new Error("the Reorder purchase orders could not be read");
+    (err as Error & { code?: string }).code = res.error;
+    throw err;
+  }
+  return res.purchaseOrdersById as Record<string, Record<string, unknown>>;
+};
+
+export const fetchReorderRequests = async (): Promise<RawReorderRequest[]> =>
+  (await readReorderQueueOrThrow()) as unknown as RawReorderRequest[];
+
+// The purchase orders of the Reorder Requests the caller's governed queue reach covers -- the same
+// population fetchReorderRequests returns, so the two sides of the diagnostic describe one set.
+export const fetchReorderPurchaseOrders = async (): Promise<RawReorderPurchaseOrder[]> => {
+  const requests = await readReorderQueueOrThrow();
+  const byId = await readPurchaseOrdersOrThrow(requests.map((r) => r.id));
+  return Object.values(byId).map((po) => ({
+    id: String(po.id), partId: String(po.partId), status: String(po.status),
+  }));
+};
 
 // site-work r4 item A: the Operations dashboard's Procurement panel was reading the
 // dormant Epic-5 `purchase_orders` collection above (fetchPurchaseOrders) -- its only
 // writer is a demo seed script, no deployed callable writes it, so the panel was
-// permanently empty/stale. The LIVE purchase orders (written by
-// domain/reorderPurchaseOrders.js's recordPurchaseOrder()/voidPurchaseOrder()) live in
-// `reorder_purchase_orders`, keyed 1:1 by reorderRequestId, exactly as Purchasing >
-// Purchase Orders (modules/purchasing/PurchaseOrders.jsx) already reads them.
+// permanently empty/stale. The LIVE purchase orders are the Reorder Purchase Orders, keyed 1:1 by
+// reorderRequestId, exactly as Purchasing > Purchase Orders (modules/purchasing/PurchaseOrders.jsx)
+// reads them -- and, since the Reorder activation, read from the governed PostgreSQL authority.
 //
-// This reuses that same read shape and the SAME pure field-mapping domain module
-// (domain/purchaseOrdersView.js's buildPurchaseOrdersView/buildPurchaseOrderRow --
-// already unit-tested in test/purchaseOrdersView.test.mjs) instead of inventing a
-// second mapping -- only the read mechanics differ: PurchaseOrders.jsx subscribes live
-// via a live onSnapshot subscription (hooks/useReorderRequestsByStatuses.js, hooks/usePurchaseOrdersByIds.js),
-// this is a one-shot getDocs read, matching every other fetch* in this file (module
-// header comment above: "one-shot reads only").
+// This reuses the SAME pure field-mapping domain module (domain/purchaseOrdersView.js's
+// buildPurchaseOrdersView/buildPurchaseOrderRow -- already unit-tested in
+// test/purchaseOrdersView.test.mjs) instead of inventing a second mapping.
 const PROCUREMENT_PO_REQUEST_STATUSES = [
   REORDER_REQUEST_STATUS.ORDERED,
   REORDER_REQUEST_STATUS.RECEIVED,
   REORDER_REQUEST_STATUS.VOIDED,
 ];
-
-function chunkIds(ids: string[], size: number): string[][] {
-  const out: string[][] = [];
-  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
-  return out;
-}
 
 export interface ProcurementPurchaseOrderRow {
   reorderRequestId: string;
@@ -239,31 +249,13 @@ export interface ProcurementPurchaseOrderRow {
 }
 
 export const fetchProcurementPurchaseOrders = async (): Promise<ProcurementPurchaseOrderRow[]> => {
-  // THE REORDER REQUESTS COME FROM THE GOVERNED POSTGRESQL AUTHORITY. The purchase orders below are
-  // still Firestore's -- reorder_purchase_orders is a DIFFERENT object with its own cutover -- so
-  // this function deliberately reads two sources for two objects. That is not a dual read of one
-  // authority: no Reorder fact here comes from Firestore any more.
-  const res = await reorderApiClient.call("readReorderQueue", { statuses: PROCUREMENT_PO_REQUEST_STATUSES });
-  if (!res.ok) {
-    // Thrown rather than returned empty: an empty procurement panel and an unreadable one are
-    // different facts, and the caller already renders a failure.
-    const err = new Error(res.message ?? "the Reorder requests could not be read");
-    (err as Error & { code?: string }).code = res.reason ?? res.code;
-    throw err;
-  }
-  const requests = (Array.isArray(res.result) ? res.result : []) as (Record<string, unknown> & { id: string })[];
-
-  const ids = requests.map((r) => r.id);
-  const purchaseOrdersById: Record<string, Record<string, unknown>> = {};
-  for (const idChunk of chunkIds(ids, 10)) {
-    if (idChunk.length === 0) continue;
-    const snap = await getDocs(
-      query(collection(db, LIVE_REORDER_PURCHASE_ORDERS_COLLECTION), where(documentId(), "in", idChunk))
-    );
-    snap.forEach((d) => {
-      purchaseOrdersById[d.id] = { id: d.id, ...d.data() };
-    });
-  }
+  // BOTH SIDES COME FROM THE GOVERNED POSTGRESQL REORDER AUTHORITY: the Reorder Requests from
+  // readReorderQueue and their purchase orders from readReorderPurchaseOrders. At the Reorder
+  // activation the Firestore reorder_purchase_orders collection became a frozen snapshot, so it is
+  // no longer read here at all. A failed read of either is thrown, never returned empty: an empty
+  // procurement panel and an unreadable one are different facts, and the caller renders a failure.
+  const requests = await readReorderQueueOrThrow({ statuses: PROCUREMENT_PO_REQUEST_STATUSES });
+  const purchaseOrdersById = await readPurchaseOrdersOrThrow(requests.map((r) => r.id));
 
   const view = buildPurchaseOrdersView({
     requestsRead: { data: requests, loading: false, error: null },
