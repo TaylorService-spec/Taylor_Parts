@@ -43,6 +43,15 @@ export const WORK_ORDER_READ_OPERATIONS = Object.freeze([
   // The tenant's ACTIVE operating companies with an ACTIVE key binding -- the governed choice a create
   // states (workOrder.create). Never inferred.
   "listWorkOrderOperatingCompanies",
+  // The completion pass (2026-09-30).
+  "readTechnicianAvailability",
+  "findAvailableTechnicianSlots",
+  "readWorkOrderLabor",
+  "readWorkOrderFieldContext",
+  "readWorkOrderReadiness",
+  "readTechnicianExecutionStats",
+  "readWorkOrderConsumptionSnapshot",
+  "readTechnicianVolumeBreakdown",
 ]);
 
 /** Mirrors every other key of the server's EOS_WORK_ORDER_OPERATIONS, in the server's order. */
@@ -62,6 +71,11 @@ export const WORK_ORDER_COMMAND_OPERATIONS = Object.freeze([
   "startWorkOrderWork",
   "recordWorkOrderExecution",
   "completeWorkOrder",
+  "setTechnicianWorkingHours",
+  "recordTechnicianUnavailability",
+  "endTechnicianUnavailability",
+  "recordWorkOrderLabor",
+  "setWorkOrderEstimatedDuration",
 ]);
 
 const OPERATIONS = new Set([...WORK_ORDER_READ_OPERATIONS, ...WORK_ORDER_COMMAND_OPERATIONS]);

@@ -42,6 +42,8 @@ import { ReorderAssignmentError, assignReorderRequestToEmployee } from "./reorde
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import { EOS_WORK_ORDER_OPERATIONS, isWorkOrderOperation, type EosWorkOrderOperation } from "./workOrderOperations";
+import { EOS_INBOUND_WORK_OPERATIONS, INBOUND_WORK_ROUTE, isInboundWorkOperation } from "./inboundWorkOperations";
+import type { WorkOrderOp } from "./workOrderOperationTypes";
 import { WORK_ORDER_WRITER_AUTHORITY, type PostgresWorkOrderWriterState } from "./workOrderWriterState";
 import { postgresContextualReader } from "./contextualAuthorization";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
@@ -189,7 +191,7 @@ export const WORK_ORDER_ROUTE = "/operations/work-orders";
 
 export const OPERATIONS_ROUTES: readonly string[] =
   Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE, RELOCATION_ROUTE, TRANSFER_ROUTE,
-    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE, WORK_ORDER_ROUTE])].sort());
+    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE, WORK_ORDER_ROUTE, INBOUND_WORK_ROUTE])].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(OPERATIONS_MUTATION_OPERATIONS);
@@ -537,9 +539,11 @@ export async function executeWorkOrderOperation(
   deps: OperationsApiDeps,
   request: {
     readonly caller: { readonly externalSubject: string; readonly identityProvider: string; readonly requestedTenantId: string | null };
-    readonly operation: EosWorkOrderOperation;
+    readonly operation: EosWorkOrderOperation | string;
     readonly input: Record<string, unknown>;
   },
+  /** The closed table this route serves: the Work Order table, or the Inbound Work table on its own route. */
+  table: Readonly<Record<string, WorkOrderOp>> = EOS_WORK_ORDER_OPERATIONS,
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const { operation } = request;
   const postgresState = deps.workOrderPostgresState ?? WORK_ORDER_WRITER_AUTHORITY.postgres;
@@ -566,7 +570,7 @@ export async function executeWorkOrderOperation(
       operational: Object.freeze({ tenantId, principalId, capabilities: ctx.capabilities, conditionallyHeld: ctx.conditionallyHeld,
         scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements }),
     });
-    const result = await EOS_WORK_ORDER_OPERATIONS[operation](
+    const result = await table[operation](
       { pool: deps.pool, reader: postgresContextualReader(deps.pool), postgresState }, caller, request.input);
     return { status: 200, body: { ok: true, operation, result } };
   } catch (err) {
@@ -683,8 +687,11 @@ export async function handleOperationsRequest(
     return json(out.status, out.body, origin);
   }
 
-  if (path === WORK_ORDER_ROUTE) {
-    if (!isWorkOrderOperation(operation)) return json(404, notFound(String(operation ?? "")), origin);
+  if (path === WORK_ORDER_ROUTE || path === INBOUND_WORK_ROUTE) {
+    const inbound = path === INBOUND_WORK_ROUTE;
+    if (inbound ? !isInboundWorkOperation(operation) : !isWorkOrderOperation(operation)) {
+      return json(404, notFound(String(operation ?? "")), origin);
+    }
     const input = payload.input === undefined ? {} : payload.input;
     if (!input || typeof input !== "object" || Array.isArray(input)) {
       return json(400, { ok: false, operation, code: "INVALID_INPUT", message: "input must be a JSON object" }, origin);
@@ -703,9 +710,9 @@ export async function handleOperationsRequest(
         identityProvider: woIdentity.identityProvider,
         requestedTenantId: singleHeader(header(request, "x-eos-tenant")),
       },
-      operation,
+      operation: operation as string,
       input: input as Record<string, unknown>,
-    });
+    }, inbound ? EOS_INBOUND_WORK_OPERATIONS : EOS_WORK_ORDER_OPERATIONS);
     return json(out.status, out.body, origin);
   }
 

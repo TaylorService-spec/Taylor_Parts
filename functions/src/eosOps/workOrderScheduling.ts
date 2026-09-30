@@ -37,6 +37,7 @@ import {
 import {
   assertEmployeeAssignable, assignWithinTransaction, type WorkOrderAssignmentResult,
 } from "./workOrderAssignmentAuthority";
+import { checkTechnicianAvailability } from "./workOrderAvailability";
 
 const SCHEMA = "eos_ops";
 
@@ -51,11 +52,6 @@ export const OCCUPYING_STATUSES = Object.freeze(["DISPATCHED", "ACCEPTED", "EN_R
 /** workOrderAvailability.ts blocksSchedule: a placed, not-yet-finished job holds its window. */
 export const WINDOW_HOLDING_STATUSES = Object.freeze(["SCHEDULED", ...OCCUPYING_STATUSES] as const);
 
-export const AVAILABILITY_NOT_MODELED = "AVAILABILITY_NOT_MODELED";
-const AVAILABILITY_WARNING = Object.freeze({
-  code: AVAILABILITY_NOT_MODELED,
-  message: "technician working hours and blocked time have no PostgreSQL authority; neither was consulted for this placement",
-});
 
 type Category = WorkOrderLifecycleError["category"];
 const refuse = (code: string, category: Category, message: string): never => {
@@ -253,13 +249,15 @@ export async function scheduleWorkOrder(deps: SchedulingDeps, actor: LifecycleAc
     if (conflict) refuse("SCHEDULE_CONFLICT", "PRECONDITION_FAILED", `the Employee is already scheduled for overlapping Work Order ${conflict}`);
     const assignment = await assignWithinTransaction(client, actor,
       { workOrderId: edge.workOrderId, employeeId, source: repoints ? "REASSIGN_SCHEDULED" : "SCHEDULE", reason }, now);
+    const warnings = await checkTechnicianAvailability(client,
+      { tenantId: actor.tenantId, employeeId, operatingCompanyKey: wo.operatingCompanyKey, start: window.start, end: window.end });
     const transition = await applyTransitionWithinTransaction(client, actor,
       { ...edge, placement: { start: window.start, end: window.end } }, now);
     await recordScheduleHistory(client, actor, edge.workOrderId, { start: wo.scheduledStart, end: wo.scheduledEnd },
       { start: window.start, end: window.end }, reason, now);
     return Object.freeze({
       transition, assignment, scheduledStart: window.start.toISOString(), scheduledEnd: window.end.toISOString(),
-      warnings: Object.freeze([AVAILABILITY_WARNING]),
+      warnings,
     });
   });
 }
@@ -356,6 +354,8 @@ export async function rescheduleWorkOrder(deps: SchedulingDeps, actor: Lifecycle
     } else {
       await assertEmployeeAssignable(client, actor.tenantId, employeeId!, wo.operatingCompanyKey);
     }
+    const warnings = await checkTechnicianAvailability(client,
+      { tenantId: actor.tenantId, employeeId: employeeId!, operatingCompanyKey: wo.operatingCompanyKey, start: window.start, end: window.end });
     await client.query(
       `UPDATE ${SCHEMA}.work_orders SET scheduled_start = $3, scheduled_end = $4, updated_at = $5, updated_by_principal_id = $6
         WHERE tenant_id = $1 AND id = $2`,
@@ -364,7 +364,7 @@ export async function rescheduleWorkOrder(deps: SchedulingDeps, actor: Lifecycle
       { start: window.start, end: window.end }, reason, now);
     return Object.freeze({
       workOrderId, scheduledStart: window.start.toISOString(), scheduledEnd: window.end.toISOString(), assignment,
-      warnings: Object.freeze([AVAILABILITY_WARNING]),
+      warnings,
     });
   });
 }
@@ -411,10 +411,15 @@ export async function dispatchWorkOrder(deps: SchedulingDeps, actor: LifecycleAc
       const conflict = await findScheduleConflict(client, actor.tenantId, target!, edge.workOrderId, wo.scheduledStart, wo.scheduledEnd);
       if (conflict) refuse("SCHEDULE_CONFLICT", "PRECONDITION_FAILED", `the Employee is already scheduled for overlapping Work Order ${conflict}`);
     }
+    // DQ-014: the dispatched Employee's availability over the job's own window (dispatch takes no window).
+    const warnings = wo.scheduledStart && wo.scheduledEnd
+      ? await checkTechnicianAvailability(client,
+        { tenantId: actor.tenantId, employeeId: target!, operatingCompanyKey: wo.operatingCompanyKey, start: wo.scheduledStart, end: wo.scheduledEnd })
+      : Object.freeze([]);
     const transition = await applyTransitionWithinTransaction(client, actor, edge, now);
     return Object.freeze({
       transition, assigneeEmployeeId: target!, reassignment, inventoryBoundary: transition.inventoryBoundary,
-      warnings: Object.freeze([AVAILABILITY_WARNING]),
+      warnings,
     });
   });
 }
@@ -461,5 +466,54 @@ export async function completeWorkOrder(deps: SchedulingDeps, actor: LifecycleAc
     }
     const transition = await applyTransitionWithinTransaction(client, actor, edge, now);
     return Object.freeze({ transition, inventoryBoundary: transition.inventoryBoundary, fulfillment: "NOT_APPLICABLE" as const });
+  });
+}
+
+// ════════════════════ the planning estimate (ND-21) ════════════════════
+
+/** scheduling/validation.ts MAX_ESTIMATED_DURATION_MINUTES: the longest planning estimate, the same two weeks. */
+export const MAX_ESTIMATED_DURATION_MINUTES = 14 * 24 * 60;
+
+/**
+ * Set or clear a Work Order's planning estimate (Firebase setWorkOrderEstimatedDuration, ND-21). A dispatcher-bucket
+ * act, so it is governed by workOrder.lifecycle.schedule. Deliberately NOT restricted to SCHEDULED work, and
+ * deliberately clearable (null): "we do not know" is absence, not zero. Terminal Work Orders are not re-planned.
+ * Audited in eos_policy.audit_events with the prior and new values, in the same transaction.
+ */
+export async function setWorkOrderEstimatedDuration(
+  deps: SchedulingDeps, actor: LifecycleActor, input: unknown,
+): Promise<{ readonly workOrderId: string; readonly estimatedDurationMinutes: number | null }> {
+  const i = acceptOnly(input, ["workOrderId", "estimatedDurationMinutes"]);
+  if (!ID_SHAPE(actor?.tenantId) || !ID_SHAPE(actor?.principalId)) refuse("ACTOR_INVALID", "INVALID_INPUT", "an actor is a Principal within a tenant");
+  if (!(actor.capabilities instanceof Set) || !actor.capabilities.has(WORK_ORDER_LIFECYCLE_SCHEDULE)) {
+    refuse("CAPABILITY_MISSING", "FORBIDDEN", `setting a planning estimate requires ${WORK_ORDER_LIFECYCLE_SCHEDULE}`);
+  }
+  if (!ID_SHAPE(i.workOrderId)) refuse("WORK_ORDER_ID_INVALID", "INVALID_INPUT", "a workOrderId is required");
+  const raw = i.estimatedDurationMinutes;
+  const minutes = raw === undefined || raw === null ? null : (raw as number);
+  if (minutes !== null && (typeof minutes !== "number" || !Number.isSafeInteger(minutes) || minutes <= 0 || minutes > MAX_ESTIMATED_DURATION_MINUTES)) {
+    refuse("ESTIMATED_DURATION_INVALID", "INVALID_INPUT", `estimatedDurationMinutes is a whole number of minutes, 1..${MAX_ESTIMATED_DURATION_MINUTES}, or null to clear`);
+  }
+  const workOrderId = i.workOrderId as string;
+  const now = (deps.now ?? (() => new Date()))();
+  return inTransaction(deps.pool, async (client) => {
+    const { rows } = await client.query(
+      `SELECT status::text AS status, estimated_duration_minutes FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+      [actor.tenantId, workOrderId]);
+    if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
+    if (["COMPLETED", "CLOSED", "CANCELLED"].includes(rows[0].status)) {
+      refuse("WORK_ORDER_TERMINAL", "PRECONDITION_FAILED", `a ${rows[0].status} Work Order is not re-planned`);
+    }
+    const prior = rows[0].estimated_duration_minutes === null ? null : Number(rows[0].estimated_duration_minutes);
+    await client.query(
+      `UPDATE ${SCHEMA}.work_orders SET estimated_duration_minutes = $3, updated_at = $4, updated_by_principal_id = $5
+        WHERE tenant_id = $1 AND id = $2`,
+      [actor.tenantId, workOrderId, minutes, now, actor.principalId]);
+    await client.query(
+      `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at)
+       VALUES ($1,$2,'setWorkOrderEstimatedDuration',$3,'workOrder',$4,$5,$6,$7)`,
+      [`aud_${randomUUID()}`, actor.tenantId, actor.principalId, workOrderId,
+       JSON.stringify({ estimatedDurationMinutes: prior }), JSON.stringify({ estimatedDurationMinutes: minutes }), now]);
+    return Object.freeze({ workOrderId, estimatedDurationMinutes: minutes });
   });
 }

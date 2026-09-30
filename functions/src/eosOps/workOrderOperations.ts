@@ -12,35 +12,23 @@
 // PostgreSQL serialized-custody authority is INACTIVE (Firestore custody is OPEN), so exposing it would be exactly
 // the hidden Inventory activation the ruling forbids. The built module (workOrderEquipmentInstall.ts) stays inert;
 // the Equipment on a Work Order is READ through readWorkOrder.
-import type { Pool } from "pg";
-import type { ContextualReader } from "./contextualAuthorization";
-import type { OperationalActor } from "./entitledActionAuthority";
 import { createWorkOrder } from "./workOrderCreateCommand";
 import {
   transitionWorkOrder, WorkOrderLifecycleError, WORK_ORDER_STATUSES, type LifecycleActor, type WorkOrderStatus,
 } from "./workOrderLifecycle";
 import {
-  scheduleWorkOrder, unscheduleWorkOrder, rescheduleWorkOrder, dispatchWorkOrder, completeWorkOrder,
+  scheduleWorkOrder, unscheduleWorkOrder, rescheduleWorkOrder, dispatchWorkOrder, completeWorkOrder, setWorkOrderEstimatedDuration,
 } from "./workOrderScheduling";
 import { recordWorkOrderExecution } from "./workOrderExecution";
 import { setPartsPlan } from "./workOrderPartsPlanAuthority";
 import { readWorkOrderDetail, listWorkOrders, listMyAssignedWorkOrders, listWorkOrderTechnicians, listWorkOrderOperatingCompanies } from "./workOrderQueries";
-import type { PostgresWorkOrderWriterState } from "./workOrderWriterState";
-
-export interface WorkOrderOperationDeps {
-  readonly pool: Pool;
-  readonly reader: ContextualReader;
-  readonly postgresState: PostgresWorkOrderWriterState;
-  readonly now?: () => Date;
-}
-
-/** Both views of one caller: the flat set (conditioned keys withheld) and the entitled actor for record reads. */
-export interface WorkOrderCaller {
-  readonly actor: LifecycleActor;
-  readonly operational: OperationalActor;
-}
-
-type Op = (deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) => Promise<unknown>;
+import type { WorkOrderOp as Op } from "./workOrderOperationTypes";
+import * as availability from "./workOrderAvailability";
+import * as labor from "./workOrderLabor";
+import * as fieldContext from "./workOrderFieldContext";
+import * as readiness from "./workOrderReadiness";
+import * as analytics from "./workOrderAnalytics";
+export type { WorkOrderOperationDeps, WorkOrderCaller } from "./workOrderOperationTypes";
 
 const refuse = (code: string, category: WorkOrderLifecycleError["category"], message: string): never => {
   throw new WorkOrderLifecycleError(code, category, message);
@@ -96,6 +84,21 @@ export const EOS_WORK_ORDER_OPERATIONS = Object.freeze({
   startWorkOrderWork: edge("ARRIVED", "WORK_IN_PROGRESS"),
   recordWorkOrderExecution: (deps, caller, input) => recordWorkOrderExecution({ pool: deps.pool, now: deps.now }, caller.actor, input),
   completeWorkOrder: (deps, caller, input) => completeWorkOrder({ pool: deps.pool, now: deps.now }, caller.actor, input),
+
+  // ── the completion pass (2026-09-30): each implemented in its own module ──
+  readTechnicianAvailability: availability.readTechnicianAvailability,
+  setTechnicianWorkingHours: availability.setTechnicianWorkingHours,
+  recordTechnicianUnavailability: availability.recordTechnicianUnavailability,
+  endTechnicianUnavailability: availability.endTechnicianUnavailability,
+  findAvailableTechnicianSlots: availability.findAvailableTechnicianSlots,
+  readWorkOrderLabor: labor.readWorkOrderLabor,
+  recordWorkOrderLabor: labor.recordWorkOrderLabor,
+  readWorkOrderFieldContext: fieldContext.readWorkOrderFieldContext,
+  readWorkOrderReadiness: readiness.readWorkOrderReadiness,
+  readTechnicianExecutionStats: analytics.readTechnicianExecutionStats,
+  readWorkOrderConsumptionSnapshot: analytics.readWorkOrderConsumptionSnapshot,
+  readTechnicianVolumeBreakdown: analytics.readTechnicianVolumeBreakdown,
+  setWorkOrderEstimatedDuration: (deps, caller, input) => setWorkOrderEstimatedDuration({ pool: deps.pool, now: deps.now }, caller.actor, input),
 } satisfies Record<string, Op>);
 
 export type EosWorkOrderOperation = keyof typeof EOS_WORK_ORDER_OPERATIONS | "readWorkOrderAuthorityStatus";
@@ -103,6 +106,8 @@ export type EosWorkOrderOperation = keyof typeof EOS_WORK_ORDER_OPERATIONS | "re
 export const WORK_ORDER_READ_OPERATIONS: readonly string[] = Object.freeze([
   "readWorkOrderAuthorityStatus", "readWorkOrder", "listWorkOrders", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
   "listWorkOrderOperatingCompanies",
+  "readTechnicianAvailability", "findAvailableTechnicianSlots", "readWorkOrderLabor", "readWorkOrderFieldContext",
+  "readWorkOrderReadiness", "readTechnicianExecutionStats", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown",
 ]);
 
 export const isWorkOrderOperation = (name: unknown): name is EosWorkOrderOperation =>
