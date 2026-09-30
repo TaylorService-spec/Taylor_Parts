@@ -602,6 +602,7 @@ export async function findAvailableTechnicianSlots(input: {
 }): Promise<{ slots: { employeeId: string; displayName: string | null; start: string; end: string }[]; truncated: boolean;
   notConfiguredEmployeeIds: string[] }> {
   return run("findAvailableTechnicianSlots", { ...input });
+}
 
 // ─────────────────────────────────────── operational aggregates ───────────────────────────────────────
 //
