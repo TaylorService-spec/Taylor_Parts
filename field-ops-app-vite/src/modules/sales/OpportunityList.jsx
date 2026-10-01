@@ -98,7 +98,7 @@ const VIEW_ORDER = [
   OPPORTUNITY_VIEW.ALL,
 ];
 
-export default function OpportunityList({ source, readiness, createDeps, viewerUid = null } = {}) {
+export default function OpportunityList({ source, readiness, createDeps, viewerUid = null, authorizedChannels = [] } = {}) {
   const navigate = useNavigate();
   // `null` closed, `true` open. Local to the page and deliberately NOT in the URL: a half-filled
   // create form is not a place somebody should be able to link to or reload back into.
@@ -219,6 +219,7 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
       {creating ? (
         <NewOpportunityForm
           readiness={writeReadiness}
+          authorizedChannels={authorizedChannels}
           deps={createDeps}
           onClose={() => setCreating(false)}
           onCreated={(opportunityId) => {

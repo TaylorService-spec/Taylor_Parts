@@ -392,3 +392,24 @@ export async function requireTenantAccount(
   if (rows.length === 0) fail("ACCOUNT_NOT_FOUND", "NOT_FOUND", `no Account ${accountId} in this tenant`);
   return { id: rows[0].id, ownerEmployeeId: rows[0].owner_employee_id };
 }
+
+/**
+ * NEW COMMERCIAL WORK REQUIRES AN ACTIVE CUSTOMER (Controller DQ-5, 2026-09-30). Opening an Opportunity, moving one onto
+ * another customer, or booking a direct Sales Order refuses an Account whose CRM status is not ACTIVE (PROSPECT, INACTIVE,
+ * ARCHIVED) with ACCOUNT_NOT_ACTIVE. Channel-blind: RETAIL and NATIONAL_ACCOUNTS alike. It governs only the act of
+ * starting work -- records already on a customer that later goes inactive stay governed history and continue their
+ * lifecycle; nothing is rewritten. Unknown / other-tenant Accounts remain ACCOUNT_NOT_FOUND (non-disclosing).
+ */
+export async function requireActiveTenantAccount(
+  db: Queryable,
+  tenantId: string,
+  accountId: string,
+): Promise<{ id: string; ownerEmployeeId: string | null }> {
+  const { rows } = await db.query<{ id: string; owner_employee_id: string | null; status: string }>(
+    `SELECT id, owner_employee_id, status::text AS status FROM eos_crm.accounts WHERE tenant_id = $1 AND id = $2`,
+    [tenantId, accountId],
+  );
+  if (rows.length === 0) fail("ACCOUNT_NOT_FOUND", "NOT_FOUND", `no Account ${accountId} in this tenant`);
+  if (rows[0].status !== "ACTIVE") fail("ACCOUNT_NOT_ACTIVE", "PRECONDITION_FAILED", "new Commercial work requires an ACTIVE customer");
+  return { id: rows[0].id, ownerEmployeeId: rows[0].owner_employee_id };
+}

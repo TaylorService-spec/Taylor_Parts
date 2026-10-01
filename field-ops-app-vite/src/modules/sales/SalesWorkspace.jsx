@@ -333,7 +333,7 @@ function PipelineRow({ row, selected, onSelect }) {
 // `hasCapability` defaults to fail-closed for every caller that injects none -- the same discipline
 // `readiness` already follows, and the reason SalesOrderActions' live-but-unauthorized buttons were
 // a defect rather than a cosmetic issue.
-export default function SalesWorkspace({ readiness, onSaveSection, source, createDeps, saveDeps, directory, hasCapability = () => false } = {}) {
+export default function SalesWorkspace({ readiness, onSaveSection, source, createDeps, saveDeps, directory, hasCapability = () => false, authorizedChannels = [] } = {}) {
   const { opportunities, accountNameById, status, synthetic, loading, error, refetch } = useOpportunities(source);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -452,6 +452,7 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
       {creating && (
         <NewOpportunityForm
           readiness={writeReadiness}
+          authorizedChannels={authorizedChannels}
           deps={createDeps}
           onClose={() => setCreating(false)}
           onCreated={(opportunityId) => {

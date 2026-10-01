@@ -287,7 +287,7 @@ describe("SalesWorkspace (New Opportunity create flow)", () => {
           };
     };
     const client = { createOpportunity: vi.fn().mockResolvedValue({ result: { success: true, replayed: false, opportunityId: "NEW-OPP-1", stage: "IDENTIFIED" } }) };
-    render(<SalesWorkspace readiness={ENABLED} source={source} createDeps={createDepsFor(client)} />);
+    render(<SalesWorkspace readiness={ENABLED} source={source} createDeps={createDepsFor(client)} authorizedChannels={["NATIONAL_ACCOUNTS", "RETAIL"]} />);
 
     fireEvent.click(screen.getByRole("button", { name: /^new opportunity$/i }));
     fireEvent.change(screen.getByLabelText(/customer account/i), { target: { value: "A1" } });

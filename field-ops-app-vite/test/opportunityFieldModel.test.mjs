@@ -9,6 +9,7 @@ import {
   editableSectionIds,
   sectionDraft,
   channelOptions,
+  offeredChannelOptions,
   OPPORTUNITY_DATA_CLASS,
 } from "../src/domain/opportunityFieldModel.js";
 import { SALES_CHANNELS } from "../src/domain/opportunityLifecycle.js";
@@ -138,4 +139,14 @@ test("injected formatters produce display strings deterministically", () => {
   const s = sectionById(model, "commercial");
   assert.equal(fieldByKey(s, "expectedValue").display, "$18500");
   assert.equal(fieldByKey(s, "expectedCloseAt").display, "AUG");
+});
+
+test("AUTHORIZED CHANNELS ONLY (DQ-4): the Channel edit offers the caller's authorized channels plus the record's current value -- nothing else", () => {
+  const values = (opts) => fieldByKey(opportunityDetailModel(ROW, opts).sections.find((x) => x.id === "commercial"), "channel").options.map((o) => o.value);
+  assert.deepEqual(values({ authorizedChannels: ["RETAIL"] }), ["RETAIL"], "a Retail seller on a Retail record");
+  assert.deepEqual(values({ authorizedChannels: ["NATIONAL_ACCOUNTS", "RETAIL"] }), ["NATIONAL_ACCOUNTS", "RETAIL"], "a two-channel holder");
+  assert.deepEqual(values({}), ["RETAIL"], "none injected: only the stored value is shown, no channel is offered (fail closed)");
+  assert.deepEqual(offeredChannelOptions(["MADE_UP", "RETAIL"]).map((o) => o.value), ["RETAIL"], "unknown values are dropped");
+  assert.deepEqual(offeredChannelOptions([]).map((o) => o.value), [], "no authority: no option");
+  assert.deepEqual(offeredChannelOptions(["NATIONAL_ACCOUNTS"], "RETAIL").map((o) => o.value), ["NATIONAL_ACCOUNTS", "RETAIL"], "the current value stays visible");
 });
