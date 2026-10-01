@@ -57,20 +57,43 @@ const INVOICES = [
   invoice("inv-legacy", { attribution: null, lines: [{}] }),
 ];
 
-function fakeDb(collections) {
-  const make = (rows) => ({
+// The fake models exactly the query shapes the read issues: an optional equality filter and a
+// limit, read through ONE read-only transaction. It records every read (collection, requested
+// limit, whether it ran inside the transaction), and can inject a failure on a collection's read.
+function fakeDb(collections, { failOn = null } = {}) {
+  const calls = [];
+  const make = (name, rows) => ({
     _rows: rows,
     where(field, _op, value) {
-      return make(rows.filter((r) => r.data[field] === value));
+      return make(name, rows.filter((r) => r.data[field] === value));
     },
     limit(n) {
-      return make(rows.slice(0, n));
+      const q = make(name, rows.slice(0, n));
+      q._limit = n;
+      return q;
     },
     async get() {
+      calls.push({ collection: name, limit: this._limit ?? null, returned: rows.length, inTx: db._inTx === true });
+      if (failOn && failOn.collection === name) throw failOn.error;
       return { size: rows.length, docs: rows.map((r) => ({ id: r.id, data: () => r.data })) };
     },
   });
-  return { collection: (name) => make(collections[name] ?? []) };
+  const db = {
+    calls,
+    transactions: [],
+    collection: (name) => make(name, collections[name] ?? []),
+    // A read-only transaction: every read of one call goes through `tx`, never the db directly.
+    async runTransaction(fn, options) {
+      db.transactions.push(options ?? null);
+      db._inTx = true;
+      try {
+        return await fn({ get: (q) => q.get() });
+      } finally {
+        db._inTx = false;
+      }
+    },
+  };
+  return db;
 }
 
 const db = fakeDb({
@@ -265,6 +288,7 @@ test("19. an unattributed fact is reported as unattributed, not as a zero bucket
 test("20. a truncated page is unavailable — never a confident partial summary", async () => {
   const r = await readFinancialFacts(db, CONSOLIDATED, {}, 2);
   assert.equal(r.status, "unavailable");
+  assert.deepEqual({ status: r.completeness.status, reason: r.completeness.reason }, { status: "PARTIAL", reason: "READ_LIMIT_REACHED" });
   assert.deepEqual(r.invoices, []);
   assert.deepEqual(r.summary.outstandingByCurrency, {});
 });
@@ -273,6 +297,8 @@ test("21. truncation is judged before scope filtering, so a narrow scope cannot 
   // SELF_034 can see 3 of 5; a limit of 4 still truncates the underlying query and must stay honest.
   const r = await readFinancialFacts(db, SELF_034, {}, 4);
   assert.equal(r.status, "unavailable");
+  assert.equal(r.completeness.reason, "READ_LIMIT_REACHED");
+  assert.deepEqual(r.invoices, []);
 });
 
 test("22. payments and applications appear only for invoices the principal can see", async () => {
@@ -468,4 +494,202 @@ test("39. NO 61-90 / 91+ SPLIT is invented — the approved bucket set is exactl
     "currentMinor", "days1to30Minor", "days31to60Minor", "days61PlusMinor", "totalOutstandingMinor", "unagedMinor",
   ]);
   assert.equal(a.days61PlusMinor, 10, "a 400-day-old invoice stays in 61+, not a bucket nobody ruled");
+});
+
+// ═══════════════ 8. Variant A′ — accuracy-only repair inside the EXISTING bounds ═══════════════
+//
+// No availability is added: the bounds are the ones this read already had (invoices ≤ `limit`;
+// applications and receipts ≤ MAX_REPORTING_LIMIT). What these pin is honesty inside them — the
+// completeness contract, one snapshot, and missing receipts.
+
+const { MAX_REPORTING_LIMIT, DEFAULT_REPORTING_LIMIT } = await import("../lib/finance/financialReportingRead.js");
+
+const bulkInvoice = (i, over = {}) =>
+  invoice(`inv-${String(i).padStart(5, "0")}`, { totalMinor: 100, appliedMinor: 0, ...over });
+const bulk = (n, over) => Array.from({ length: n }, (_, i) => bulkInvoice(i, over));
+const app = (id, invoiceId, paymentId) => ({ id, data: { invoiceId, paymentId, companyId: "taylor", currency: "USD", appliedAmountMinor: 1, appliedAtMillis: T0 } });
+const pay = (id) => ({ id, data: { companyId: "taylor", currency: "USD", amountMinor: 1, receivedAtMillis: T0 } });
+
+test("40. the bounds are UNCHANGED: server maximum 500, callable default 200", () => {
+  assert.equal(MAX_REPORTING_LIMIT, 500);
+  assert.equal(DEFAULT_REPORTING_LIMIT, 200);
+});
+
+test("41. EXACTLY the bound (500 invoices at limit 500) is COMPLETE, with the total over all 500", async () => {
+  const big = fakeDb({ invoices: bulk(500) });
+  const r = await readFinancialFacts(big, CONSOLIDATED, { factTypes: ["INVOICE"] }, 500);
+  assert.equal(r.status, "ready");
+  assert.deepEqual({ status: r.completeness.status, reason: r.completeness.reason }, { status: "COMPLETE", reason: null });
+  assert.equal(r.invoices.length, 500);
+  assert.equal(r.summary.outstandingByCurrency.USD, 500 * 100);
+  const inv = r.completeness.reads.find((x) => x.collection === "invoices");
+  assert.deepEqual({ read: inv.documentsRead, bound: inv.bound, exhausted: inv.exhausted, tenantWide: inv.tenantWide }, { read: 500, bound: 500, exhausted: true, tenantWide: true });
+});
+
+test("42. ONE past the bound (501 invoices) is PARTIAL / READ_LIMIT_REACHED with counts and NO rows and NO figures", async () => {
+  const r = await readFinancialFacts(fakeDb({ invoices: bulk(501) }), CONSOLIDATED, {}, 500);
+  assert.equal(r.status, "unavailable");
+  assert.deepEqual({ status: r.completeness.status, reason: r.completeness.reason }, { status: "PARTIAL", reason: "READ_LIMIT_REACHED" });
+  const inv = r.completeness.reads.find((x) => x.collection === "invoices");
+  assert.deepEqual({ read: inv.documentsRead, bound: inv.bound, exhausted: inv.exhausted }, { read: 501, bound: 500, exhausted: false });
+  assert.deepEqual(r.invoices, []);
+  assert.deepEqual(r.payments, []);
+  assert.deepEqual(r.applications, []);
+  assert.deepEqual(r.summary.outstandingByCurrency, {});
+  assert.deepEqual(r.agingByCurrency, {});
+  assert.deepEqual(r.agingByCompany, {});
+  assert.deepEqual(r.byCompany, []);
+  assert.deepEqual(r.byCreditedSalesperson, []);
+});
+
+test("43. no read pages past its bound: each collection is ONE request for bound + 1 rows", async () => {
+  const one = fakeDb({ invoices: bulk(3), payment_applications: [app("app-1", "inv-00000", "pay-1")], payments: [pay("pay-1")] });
+  const r = await readFinancialFacts(one, CONSOLIDATED, {}, 200);
+  assert.equal(r.completeness.status, "COMPLETE");
+  assert.deepEqual(
+    one.calls.map((c) => [c.collection, c.limit]),
+    [["invoices", 201], ["payment_applications", MAX_REPORTING_LIMIT + 1], ["payments", MAX_REPORTING_LIMIT + 1]],
+  );
+});
+
+test("44. applications past their bound (501) make the WHOLE answer PARTIAL — invoices are not served beside it", async () => {
+  const apps = Array.from({ length: 501 }, (_, i) => app(`app-${String(i).padStart(4, "0")}`, "inv-a", "pay-1"));
+  const r = await readFinancialFacts(fakeDb({ invoices: INVOICES, payment_applications: apps, payments: [pay("pay-1")] }), CONSOLIDATED, {}, 50);
+  assert.equal(r.status, "unavailable");
+  assert.deepEqual({ status: r.completeness.status, reason: r.completeness.reason }, { status: "PARTIAL", reason: "READ_LIMIT_REACHED" });
+  const appRead = r.completeness.reads.find((x) => x.collection === "payment_applications");
+  assert.deepEqual({ read: appRead.documentsRead, bound: appRead.bound, exhausted: appRead.exhausted, tenantWide: appRead.tenantWide }, { read: 501, bound: 500, exhausted: false, tenantWide: true });
+  assert.deepEqual(r.invoices, []);
+  assert.deepEqual(r.summary.outstandingByCurrency, {});
+});
+
+test("45. receipts past their bound (501) are PARTIAL / READ_LIMIT_REACHED; exactly 500 is COMPLETE", async () => {
+  const receipts = (n) => Array.from({ length: n }, (_, i) => pay(`pay-${String(i).padStart(4, "0")}`));
+  const at = (n) => fakeDb({ invoices: [INVOICES[0]], payment_applications: [app("app-1", "inv-a", "pay-0007")], payments: receipts(n) });
+  const over = await readFinancialFacts(at(501), CONSOLIDATED, {}, 50);
+  assert.deepEqual({ status: over.completeness.status, reason: over.completeness.reason }, { status: "PARTIAL", reason: "READ_LIMIT_REACHED" });
+  assert.deepEqual(over.payments, []);
+  const exact = await readFinancialFacts(at(500), CONSOLIDATED, {}, 50);
+  assert.equal(exact.completeness.status, "COMPLETE");
+  assert.deepEqual(exact.payments.map((p) => p.paymentId), ["pay-0007"]);
+});
+
+test("46. an application naming a MISSING receipt is PARTIAL / DANGLING_REFERENCE with the count — never ready", async () => {
+  const r = await readFinancialFacts(
+    fakeDb({
+      invoices: INVOICES,
+      payment_applications: [app("app-1", "inv-c", "pay-1"), app("app-2", "inv-c", "pay-gone"), app("app-3", "inv-a", "pay-gone-too")],
+      payments: [pay("pay-1")],
+    }),
+    CONSOLIDATED,
+    {},
+    50,
+  );
+  assert.equal(r.status, "unavailable");
+  assert.deepEqual({ status: r.completeness.status, reason: r.completeness.reason }, { status: "PARTIAL", reason: "DANGLING_REFERENCE" });
+  const payRead = r.completeness.reads.find((x) => x.collection === "payments");
+  assert.deepEqual({ dangling: payRead.danglingIds, read: payRead.documentsRead }, { dangling: 2, read: 1 });
+  assert.deepEqual(r.payments, []);
+  assert.deepEqual(r.invoices, []);
+  assert.deepEqual(r.summary.outstandingByCurrency, {});
+});
+
+test("47. a missing receipt behind an application the principal CANNOT see does not affect their answer", async () => {
+  // inv-b belongs to cw-emp-035; SELF_034 cannot see it, so its broken link is not part of this answer.
+  const r = await readFinancialFacts(
+    fakeDb({ invoices: INVOICES, payment_applications: [app("a-own", "inv-c", "p1"), app("a-other", "inv-b", "p-gone")], payments: [pay("p1")] }),
+    SELF_034,
+    {},
+    50,
+  );
+  assert.equal(r.completeness.status, "COMPLETE");
+  assert.deepEqual(r.payments.map((p) => p.paymentId), ["p1"]);
+});
+
+test("48. every read of one call runs inside ONE read-only transaction (a single consistent snapshot)", async () => {
+  const one = fakeDb({ invoices: INVOICES, payment_applications: [app("app-1", "inv-c", "pay-1")], payments: [pay("pay-1")] });
+  const r = await readFinancialFacts(one, CONSOLIDATED, {}, 50);
+  assert.deepEqual(one.transactions, [{ readOnly: true }]);
+  assert.equal(r.completeness.consistency, "SINGLE_SNAPSHOT");
+  assert.equal(one.calls.length, 3);
+  assert.ok(one.calls.every((c) => c.inTx), "no read escapes the snapshot");
+});
+
+test("49. no reach is NOT_READ / NO_REACH — zero reads, no transaction", async () => {
+  const quiet = fakeDb({ invoices: INVOICES });
+  const r = await readFinancialFacts(quiet, authority([]), {}, 50);
+  assert.equal(r.status, "unavailable");
+  assert.deepEqual({ status: r.completeness.status, reason: r.completeness.reason }, { status: "NOT_READ", reason: "NO_REACH" });
+  assert.equal(quiet.calls.length, 0);
+  assert.equal(quiet.transactions.length, 0);
+});
+
+test("50. a failing FIRST read is NOT_READ / READ_FAILED; a failing LATER read is PARTIAL / READ_FAILED — nothing served", async () => {
+  const first = await readFinancialFacts(fakeDb({ invoices: INVOICES }, { failOn: { collection: "invoices", error: new Error("deadline") } }), CONSOLIDATED, {}, 50);
+  assert.deepEqual({ status: first.completeness.status, reason: first.completeness.reason }, { status: "NOT_READ", reason: "READ_FAILED" });
+  const later = await readFinancialFacts(
+    fakeDb({ invoices: INVOICES, payment_applications: [app("app-1", "inv-c", "pay-1")] }, { failOn: { collection: "payment_applications", error: new Error("unavailable") } }),
+    CONSOLIDATED,
+    {},
+    50,
+  );
+  assert.deepEqual({ status: later.completeness.status, reason: later.completeness.reason }, { status: "PARTIAL", reason: "READ_FAILED" });
+  assert.deepEqual(later.invoices, []);
+});
+
+test("51. SELF reach regression: within the bound a SELF principal sees only their own, and applications/receipts only through the ONE predicate", async () => {
+  const mixed = Array.from({ length: 300 }, (_, i) =>
+    bulkInvoice(i, { attribution: { creditedSalespersonId: i % 3 === 0 ? "cw-emp-034" : "cw-emp-035" } }),
+  );
+  const r = await readFinancialFacts(
+    fakeDb({
+      invoices: mixed,
+      payment_applications: [app("a-own", "inv-00000", "p1"), app("a-other", "inv-00001", "p2")],
+      payments: [pay("p1"), pay("p2")],
+    }),
+    SELF_034,
+    {},
+    500,
+  );
+  assert.equal(r.completeness.status, "COMPLETE");
+  assert.equal(r.invoices.length, 100);
+  assert.ok(r.invoices.every((i) => i.creditedSalespersonId === "cw-emp-034"));
+  assert.equal(r.summary.outstandingByCurrency.USD, 100 * 100);
+  assert.deepEqual(r.applications.map((a) => a.applicationId), ["a-own"]);
+  assert.deepEqual(r.payments.map((p) => p.paymentId), ["p1"]);
+});
+
+test("52. SELF reach over the bound is still PARTIAL — completeness is a fact about the read, not the scope", async () => {
+  const r = await readFinancialFacts(fakeDb({ invoices: bulk(501, { attribution: { creditedSalespersonId: "cw-emp-035" } }) }), SELF_034, {}, 500);
+  assert.deepEqual({ status: r.completeness.status, reason: r.completeness.reason }, { status: "PARTIAL", reason: "READ_LIMIT_REACHED" });
+  assert.deepEqual(r.invoices, []);
+});
+
+test("53. an account narrowing is pushed into the invoice query and is NOT tenant-wide", async () => {
+  const rows = [...bulk(600, { accountId: "acct-big" }), ...bulk(3, { accountId: "acct-small" }).map((d, i) => ({ ...d, id: `zz-${i}` }))];
+  const r = await readFinancialFacts(fakeDb({ invoices: rows }), CONSOLIDATED, { accountId: "acct-small", factTypes: ["INVOICE"] }, 500);
+  assert.equal(r.completeness.status, "COMPLETE");
+  const inv = r.completeness.reads.find((x) => x.collection === "invoices");
+  assert.deepEqual({ read: inv.documentsRead, tenantWide: inv.tenantWide }, { read: 3, tenantWide: false });
+});
+
+test("54. NO availability extension in the source: no cursor paging, no by-id fetch, no `in` query, no scan ceiling", () => {
+  const src = readFileSync(new URL("../src/finance/financialReportingRead.ts", import.meta.url), "utf8");
+  const code = src.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*\*)/.test(l)).join("\n");
+  for (const forbidden of [/\.startAfter\(/, /\.orderBy\(/, /getAll\(/, /"in"/, /SCAN_CEILING/, /FieldPath/]) {
+    assert.ok(!forbidden.test(code), `forbidden availability mechanism present: ${forbidden}`);
+  }
+  assert.match(code, /runTransaction\(\(tx\) => readAll\(tx\), \{ readOnly: true \}\)/);
+  const callable = src.slice(src.indexOf("export const listFinancialFacts"));
+  assert.match(callable, /\(data\.limit as number\) > MAX_REPORTING_LIMIT/, "the callable still refuses a limit above the maximum");
+  assert.match(callable, /return readFinancialFacts\(db, authority, filters, limit\);/);
+  assert.ok(!/isInvoiceVisible|grantedScopes\.includes/.test(callable), "no second visibility predicate at the callable");
+});
+
+test("55. the file header records the temporary repair, its replacement and the deletion condition", () => {
+  const src = readFileSync(new URL("../src/finance/financialReportingRead.ts", import.meta.url), "utf8");
+  assert.match(src, /TEMPORARY FIREBASE REPAIR/);
+  assert.match(src, /REPLACEMENT: an EOS\/PostgreSQL finance aggregate read/);
+  assert.match(src, /DELETION CONDITION/);
+  assert.match(src, /zero `listFinancialFacts` callers remain \(static census AND runtime census\)/);
 });

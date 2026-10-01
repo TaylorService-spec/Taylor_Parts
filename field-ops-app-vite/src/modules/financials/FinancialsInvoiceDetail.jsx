@@ -32,7 +32,6 @@ import { useAccountNames } from "../../hooks/useAccountNames.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import {
   FACTS_STATE,
-  FACTS_DETAIL,
   financialFactsState,
   invoiceRow,
   formatByCurrency,
@@ -48,7 +47,7 @@ export default function FinancialsInvoiceDetail() {
   // single-invoice read. Correct and cheap at this collection's size; when the set outgrows one
   // page the read gains an invoiceId filter — the seam is the request, not this component.
   const read = useFinancialFacts({});
-  const { state, result } = financialFactsState(read);
+  const { state, result, detail } = financialFactsState(read);
   const answered = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY;
 
   const { byEmployeeId, loading: dirLoading, error: dirError } = useEmployeeDirectory();
@@ -83,7 +82,7 @@ export default function FinancialsInvoiceDetail() {
   // matches nothing is either outside this principal's visibility or not an invoice at all — and
   // the page cannot tell which, so it says exactly that instead of guessing.
   const honest = !answered
-    ? { state, detail: FACTS_DETAIL[state] ?? null }
+    ? { state, detail: detail ?? null }
     : found
       ? { state: null }
       : {
