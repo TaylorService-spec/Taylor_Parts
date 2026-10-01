@@ -146,7 +146,11 @@ test("Work Order journey acceptance through /operations/work-orders", { skip: SK
       { method: "POST", url: WORK_ORDER_ROUTE, headers: { authorization: "Bearer x" }, body: JSON.stringify({ operation: "listWorkOrders" }) });
     assert.equal(res.status, 401);
     refused(await call(SVC_MGR, "setWorkOrderStatus", {}), 404, "UNKNOWN_OPERATION");
-    refused(await call(SVC_MGR, "recordWorkOrderEquipmentInstall", {}), 404, "UNKNOWN_OPERATION");
+    // Equipment install IS a Work Order operation since the Equipment activation (OD-5, 2026-10-01): a Service Manager
+    // without equipment.install is refused by authority, not told the operation does not exist.
+    refused(await call(SVC_MGR, "recordWorkOrderEquipmentInstall", { workOrderId: "wo-x", partId: "p", serialNumber: "s", idempotencyKey: "k", equipmentName: "n" }),
+      403, "CAPABILITY_MISSING");
+    refused(await call(SVC_MGR, "installSerializedAsset", {}), 404, "UNKNOWN_OPERATION");
   });
 
   await t.test("SERVICE OFFICE: the company picker is governed -- ACTIVE and keyed only; create is idempotent by key", async () => {
