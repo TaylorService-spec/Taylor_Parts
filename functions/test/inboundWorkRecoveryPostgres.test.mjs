@@ -78,6 +78,8 @@ test("Inbound Work recovery through /operations/inbound-work", { skip: SKIP, con
 
   await q(`INSERT INTO eos_crm.accounts (id,tenant_id,name,status,created_by,updated_by) VALUES ('acct-r',$1,'Summit Grill','ACTIVE','f','f')`, [TENANT]);
   await q(`INSERT INTO eos_crm.account_locations (id,tenant_id,account_id,name,created_by,updated_by) VALUES ('loc-r',$1,'acct-r','Summit Kitchen','f','f')`, [TENANT]);
+  await q(`INSERT INTO eos_crm.accounts (id,tenant_id,name,status,created_by,updated_by) VALUES ('acct-r2',$1,'Ridge Diner','ACTIVE','f','f')`, [TENANT]);
+  await q(`INSERT INTO eos_crm.account_locations (id,tenant_id,account_id,name,created_by,updated_by) VALUES ('loc-r2',$1,'acct-r2','Ridge Kitchen','f','f')`, [TENANT]);
 
   const sm = await person("uid-rec-sm", ["fieldManager"], { id: "emp-rec-sm", name: "Sam Manager" });
   const disp = await person("uid-rec-disp", ["dispatcher"], { id: "emp-rec-disp", name: "Dana Dispatch" });
@@ -193,6 +195,53 @@ test("Inbound Work recovery through /operations/inbound-work", { skip: SKIP, con
     refused(await iw(sm, "releaseInboundWork", { requestId: item1, reason: "x" }), 412, "RECOVERY_NOT_APPLICABLE", "ACCEPTED is a decision");
     await assert.rejects(q(`UPDATE eos_ops.inbound_work_claim_events SET reason = 'rewritten'`), /append-only/);
     await assert.rejects(q(`DELETE FROM eos_ops.inbound_work_claim_events`), /append-only/);
+  });
+
+  // ════════ RECOVERED_ACCEPT_WORK_ORDER_CONTEXT_VALIDATION (Controller SERVICE EXPERIENCE ACTIVATION CLOSURE) ════════
+  const stuckAfterCreate = async (id) => {
+    await assert.rejects(decisions.acceptInboundWork({ pool: crashingPool(pool, [/SET status = 'ACCEPTED'/]) }, dispActor, ACCEPT(id)), (e) => e.code === "SIMULATED_CRASH");
+    return ok(await iw(sm, "releaseInboundWork", { requestId: id, reason: "interrupted accept" })).carriedWorkOrderId;
+  };
+  const historyKinds = async (id) => ok(await iw(sm, "readInboundWorkRequest", { requestId: id })).claimHistory.map((e) => e.kind);
+
+  await t.test("CARRIED WORK ORDER: a conflicting customer/site REFUSES -- nothing linked, no second Work Order, claim and history kept; the matching decision completes", async () => {
+    const id = await deliver("mb-service", "rec-ctx-1", "walk-in cooler warm");
+    const carried = await stuckAfterCreate(id);
+    const before = await woCount();
+    const r = await iw(disp2, "acceptInboundWork", { requestId: id, operatingCompanyId: "taylor", customerId: "acct-r2", locationId: "loc-r2" });
+    refused(r, 412, "RECOVERED_WORK_ORDER_CONTEXT_MISMATCH", "different customer");
+    assert.match(r.body.message, /customer differs/);
+    assert.equal(await woCount(), before, "no second Work Order");
+    const row = await one(`SELECT status, accept_claimed_by_principal_id, accept_pending_work_order_id, work_order_id FROM eos_ops.inbound_work_requests WHERE id = $1`, [id]);
+    assert.deepEqual([row.status, row.accept_claimed_by_principal_id, row.accept_pending_work_order_id, row.work_order_id], ["ACCEPTING", disp2.principalId, carried, null],
+      "the claim is held by the reviewer who must resolve it; the carried Work Order is kept, not replaced");
+    assert.equal((await one(`SELECT count(*)::int n FROM eos_ops.inbound_work_order_links WHERE request_id = $1`, [id])).n, 0);
+    const done = ok(await iw(disp2, "acceptInboundWork", ACCEPT(id)), "the matching decision");
+    assert.deepEqual([done.workOrderId, await woCount()], [carried, before]);
+    assert.deepEqual(await historyKinds(id), ["CLAIMED", "RELEASED", "CLAIMED", "COMPLETED"]);
+  });
+
+  await t.test("CARRIED WORK ORDER: a Work Order not created for this intake REFUSES (linkage), and so does a CANCELLED one", async () => {
+    const id = await deliver("mb-service", "rec-ctx-2", "fryer cold");
+    await stuckAfterCreate(id);
+    const stranger = ok(await call(disp, "/operations/work-orders", "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-r", locationId: "loc-r",
+      workOrderType: "SERVICE_CALL", priority: 3, complaint: "unrelated job" })).workOrderId;
+    await q(`UPDATE eos_ops.inbound_work_requests SET accept_pending_work_order_id = $2 WHERE id = $1`, [id, stranger]); // a corrupted association, as a fixture
+    const before = await woCount();
+    const r = await iw(disp2, "acceptInboundWork", ACCEPT(id));
+    refused(r, 412, "RECOVERED_WORK_ORDER_CONTEXT_MISMATCH", "linkage");
+    assert.match(r.body.message, /not created for this intake/);
+    assert.equal(await woCount(), before);
+
+    const id2 = await deliver("mb-service", "rec-ctx-3", "ice machine leaking");
+    const carried = await stuckAfterCreate(id2);
+    ok(await call(disp, "/operations/work-orders", "cancelWorkOrder", { workOrderId: carried, expectedStatus: "CREATED", note: "cancelled meanwhile" }), "cancel");
+    const before2 = await woCount();
+    const r2 = await iw(disp2, "acceptInboundWork", ACCEPT(id2));
+    refused(r2, 412, "RECOVERED_WORK_ORDER_CONTEXT_MISMATCH", "cancelled carried Work Order");
+    assert.match(r2.body.message, /CANCELLED/);
+    assert.equal(await woCount(), before2, "a cancelled carried Work Order is never silently replaced by a new one");
+    assert.deepEqual(await historyKinds(id2), ["CLAIMED", "RELEASED", "CLAIMED"]);
   });
 
   await t.test("VISIBILITY: the queue shows reviewer, age, mailbox, duplicate/thread and quarantine state", async () => {

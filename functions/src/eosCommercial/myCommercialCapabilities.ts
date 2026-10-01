@@ -12,12 +12,19 @@
 // role_capabilities, grant conditions withheld) and hands this read that actor. Nothing is re-resolved here: the answer
 // is `actor.capabilities` -- the exact set every Commercial command re-checks -- intersected with the closed list below.
 //
-// WHAT IT RETURNS. { capabilities: [...], channelScoped: [...] }
+// WHAT IT RETURNS. { capabilities: [...], channelScoped: [...], channelOffers: {...} }
 //   capabilities    held flat (every channel), in the closed list's order;
 //   channelScoped   the Commercial keys held ONLY within a sales-channel scope (lane GA reads; DQ-020 writes). Such a
 //                   caller may be offered the control; every read filters, and every command decides, against the
 //                   record's own channel -- so the offer never widens anything.
-// Nothing else: no Role, Principal, tenant, subject, channel list, or capability outside the list.
+//   channelOffers   AUTHORIZED CHANNELS ONLY (Controller DQ-4, 2026-09-30): for each Commercial write in which the caller
+//                   CHOOSES a channel (CHANNEL_CHOOSING_CAPABILITY_IDS), the channels THIS caller may choose -- the
+//                   tenant's ACTIVE channels, narrowed to the caller's own salesChannel scope values when the key is held
+//                   only scoped; a flat holding admits every ACTIVE channel; no holding admits none. Derived from the
+//                   caller's resolved holdings, never from a persona or Role name. It discloses only what the caller
+//                   could already learn by trying: no other Principal's authority, and no inactive channel. The server
+//                   stays authoritative -- a forged channel is still refused OUTSIDE_SALES_CHANNEL_SCOPE.
+// Nothing else: no Role, Principal, tenant, subject, or capability outside the list.
 //
 // CAPABILITY. None beyond an active Principal with an active membership (the read kernel checks both inside its
 // read-only snapshot). It describes only the caller, accepts no selector, and confers nothing -- every command re-checks.
@@ -40,9 +47,13 @@ export const COMMERCIAL_OFFER_CAPABILITY_IDS = Object.freeze([
 ] as const);
 
 
+/** The Commercial writes in which the caller CHOOSES the channel (create / move): the picker's governed keys. */
+export const CHANNEL_CHOOSING_CAPABILITY_IDS = Object.freeze(["opportunity.write", "salesOrder.write"] as const);
+
 export interface MyCommercialCapabilities {
   readonly capabilities: readonly string[];
   readonly channelScoped: readonly string[];
+  readonly channelOffers: Readonly<Record<(typeof CHANNEL_CHOOSING_CAPABILITY_IDS)[number], readonly string[]>>;
 }
 
 export function readMyCommercialCapabilities(deps: CommercialReadDeps, actor: CommercialReadActor, input?: Record<string, unknown>): Promise<MyCommercialCapabilities> {
@@ -52,8 +63,22 @@ export function readMyCommercialCapabilities(deps: CommercialReadDeps, actor: Co
       if (extra.length > 0) fail("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `this read accepts no input: ${extra.sort().join(", ")}`);
     },
     // Runs only after the kernel confirmed the active Principal + active membership in the snapshot.
-    async () => ({
-      capabilities: COMMERCIAL_OFFER_CAPABILITY_IDS.filter((id) => actor.capabilities.has(id)),
-      channelScoped: COMMERCIAL_OFFER_CAPABILITY_IDS.filter((id) => !actor.capabilities.has(id) && admittedScopeValues(actor.scopedHeld, id, "salesChannel").length > 0),
-    }));
+    async (client, tenantId) => {
+      const { rows } = await client.query<{ sales_channel: string }>(
+        `SELECT sales_channel::text AS sales_channel FROM eos_policy.tenant_sales_channels
+          WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY sales_channel::text`,
+        [tenantId],
+      );
+      const active = rows.map((r) => r.sales_channel);
+      const offers = (id: string): readonly string[] => {
+        if (actor.capabilities.has(id)) return Object.freeze([...active]);
+        const scoped = new Set(admittedScopeValues(actor.scopedHeld, id, "salesChannel"));
+        return Object.freeze(active.filter((c) => scoped.has(c)));
+      };
+      return {
+        capabilities: COMMERCIAL_OFFER_CAPABILITY_IDS.filter((id) => actor.capabilities.has(id)),
+        channelScoped: COMMERCIAL_OFFER_CAPABILITY_IDS.filter((id) => !actor.capabilities.has(id) && admittedScopeValues(actor.scopedHeld, id, "salesChannel").length > 0),
+        channelOffers: Object.freeze(Object.fromEntries(CHANNEL_CHOOSING_CAPABILITY_IDS.map((id) => [id, offers(id)]))) as MyCommercialCapabilities["channelOffers"],
+      };
+    });
 }

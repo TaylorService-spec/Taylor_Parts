@@ -250,7 +250,13 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
       const scopedPersona = Boolean(personas[persona].channel);
       assert.deepEqual([...(scopedPersona ? answer.channelScoped : answer.capabilities)].sort(), [...holdings].sort(), `${persona}: the offer disagrees with the authority`);
       assert.deepEqual(scopedPersona ? answer.capabilities : answer.channelScoped, [], `${persona}: global and channel-scoped holdings mixed`);
-      assert.deepEqual(Object.keys(answer).sort(), ["capabilities", "channelScoped"], "the answer discloses nothing else");
+      assert.deepEqual(Object.keys(answer).sort(), ["capabilities", "channelOffers", "channelScoped"], "the answer discloses nothing else");
+      // DQ-4: the channel offer follows the same holding -- the persona's own channel when scoped, none without the key.
+      for (const id of ["opportunity.write", "salesOrder.write"]) {
+        const expected = !holdings.includes(id) ? [] : scopedPersona ? [personas[persona].channel] : answer.channelOffers[id];
+        assert.deepEqual(answer.channelOffers[id], expected, `${persona}: ${id} channel offer`);
+        if (!scopedPersona && holdings.includes(id)) assert.ok(answer.channelOffers[id].length > 0, `${persona}: a global holder is offered the ACTIVE channels`);
+      }
     }
     // A salesManager holding its Role ONLY at salesChannel=RETAIL: everything it holds is offered as channel-scoped, and the
     // server decides each record against its channel (DQ-020).
@@ -265,7 +271,8 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     TOKENS.set(`tok-${scopedSubject}`, scopedSubject);
     const scoped = { persona: "scoped", principalId: scopedPrincipal, token: `tok-${scopedSubject}` };
     const scopedAnswer = ok(await call(scoped, "readMyCommercialCapabilities"), "scoped");
-    assert.deepEqual(scopedAnswer, { capabilities: [], channelScoped: [...COMMERCIAL_HOLDINGS["role:salesManager"]].sort((a, b) => COMMERCIAL_KEYS.indexOf(a) - COMMERCIAL_KEYS.indexOf(b)) });
+    assert.deepEqual(scopedAnswer, { capabilities: [], channelScoped: [...COMMERCIAL_HOLDINGS["role:salesManager"]].sort((a, b) => COMMERCIAL_KEYS.indexOf(a) - COMMERCIAL_KEYS.indexOf(b)),
+      channelOffers: { "opportunity.write": ["RETAIL"], "salesOrder.write": ["RETAIL"] } });
     ok(await call(scoped, "listOpportunities"), "the offered read is served");
     refused(await call(scoped, "createOpportunity", { ...OPERATIONS.createOpportunity[1]("NATIONAL_ACCOUNTS"), accountId: "acct-national" }), 403, "OUTSIDE_SALES_CHANNEL_SCOPE", "scoped write outside its channel");
 
@@ -558,7 +565,8 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     TOKENS.set(`tok-${subject}`, subject);
     const sharedOnly = { persona: "shared-context-only", principalId, token: `tok-${subject}`, channel: null };
     const held = ok(await call(sharedOnly, "readMyCommercialCapabilities"), "own capabilities");
-    const heldKeys = JSON.stringify(held);
+    const heldKeys = JSON.stringify([held.capabilities, held.channelScoped]);
+    assert.deepEqual(held.channelOffers, { "opportunity.write": [], "salesOrder.write": [] }, "no selling authority: no channel to choose");
     for (const selling of ["opportunity.write", "opportunity.createSalesOrder", "salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept", "salesOrder.write"]) {
       assert.ok(!heldKeys.includes(`"${selling}"`), `the shared-context Role offers ${selling}`);
     }

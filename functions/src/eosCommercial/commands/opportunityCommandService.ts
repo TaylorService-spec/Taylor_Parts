@@ -17,7 +17,7 @@ import { isCommercialHandoffSource } from "../commercialOwnershipAuthority";
 import { stageCommercialOwnershipTransfer } from "../commercialOwnershipRepository";
 import { allocateCommercialNumber } from "../commercialNumbering";
 import {
-  ADMINISTRATIVE_HANDOFF_SOURCES, COMMERCIAL_CAPABILITIES, OWNERSHIP_HANDOFF_CORRECT_CAPABILITY, fail, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
+  ADMINISTRATIVE_HANDOFF_SOURCES, COMMERCIAL_CAPABILITIES, OWNERSHIP_HANDOFF_CORRECT_CAPABILITY, fail, requireCatalogReferences, requireActiveTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -41,7 +41,7 @@ export function createOpportunity(deps: CommercialCommandDeps, actor: Commercial
   return runCommercialCommand(deps, actor, "opportunity.create", [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE], input?.idempotencyKey, async (db, now, scope) => {
     if (typeof input.accountId !== "string" || input.accountId.trim() === "") fail("ACCOUNT_REQUIRED", "INVALID_INPUT", "accountId is required");
     if ("inheritedOwner" in input) fail("FIELD_NOT_ACCEPTED", "INVALID_INPUT", "inheritedOwner is server-derived");
-    const account = await requireTenantAccount(db, actor.tenantId, (input.accountId as string).trim());
+    const account = await requireActiveTenantAccount(db, actor.tenantId, (input.accountId as string).trim());
     const { idempotencyKey: _k, accountableEmployeeId, ...fields } = input;
     const built = buildCreateOpportunity(
       { ...(fields as Record<string, unknown>), accountId: account.id, inheritedOwner: deriveEmployeeRefOwner({ ownerEmployeeId: account.ownerEmployeeId }) } as never,
@@ -110,7 +110,7 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
     for (const [field, column] of Object.entries(UPDATE_COLUMNS)) {
       if (!(field in patch)) continue;
       let value = patch[field];
-      if (field === "accountId") await requireTenantAccount(db, actor.tenantId, value as string);
+      if (field === "accountId") await requireActiveTenantAccount(db, actor.tenantId, value as string);
       if (field === "creditedSalespersonId") await requireTenantEmployee(db, actor.tenantId, value as string, "CREDITED_SALESPERSON");
       if (field === "expectedCloseAt") value = typeof value === "number" ? new Date(value) : null;
       values.push(value);

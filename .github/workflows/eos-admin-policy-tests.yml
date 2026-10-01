@@ -204,6 +204,9 @@ on:
       - "functions/test/commercialTransport.test.mjs"
       - "functions/test/commercialTransportPostgres.test.mjs"
       - "functions/test/commercialPersonaJourneyPostgres.test.mjs"
+      # NATIONAL ACCOUNTS SALES: the NA journey, channel isolation, site integrity and the DQ-021 packet.
+      - "functions/src/adminPolicy/salesManagerParityDelta.ts"
+      - "functions/test/nationalAccountsSalesPostgres.test.mjs"
       # EMPLOYEE RUNTIME READS: the governed PostgreSQL Workforce transport (test:adminPolicy / test:adminPolicyPostgres).
       - "functions/src/eosWorkforce/**"
       - "functions/test/employeeRuntimeReads.test.mjs"
@@ -803,6 +806,9 @@ on:
       - "functions/test/commercialTransport.test.mjs"
       - "functions/test/commercialTransportPostgres.test.mjs"
       - "functions/test/commercialPersonaJourneyPostgres.test.mjs"
+      # NATIONAL ACCOUNTS SALES: the NA journey, channel isolation, site integrity and the DQ-021 packet.
+      - "functions/src/adminPolicy/salesManagerParityDelta.ts"
+      - "functions/test/nationalAccountsSalesPostgres.test.mjs"
       # EMPLOYEE RUNTIME READS: the governed PostgreSQL Workforce transport (test:adminPolicy / test:adminPolicyPostgres).
       - "functions/src/eosWorkforce/**"
       - "functions/test/employeeRuntimeReads.test.mjs"

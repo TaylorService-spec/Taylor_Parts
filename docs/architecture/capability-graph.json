@@ -724,10 +724,11 @@
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/opportunityCapabilityAccess.js"
+          "field-ops-app-vite/src/access/opportunityCapabilityAccess.js",
+          "field-ops-app-vite/src/modules/sales/NewOpportunityForm.jsx"
         ],
         "serverReferenceCount": 7,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -796,6 +797,7 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/adminPolicy/assignmentScopeRuntime.ts",
+          "functions/src/adminPolicy/salesManagerParityDelta.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/eosCommercial/myCommercialCapabilities.ts",
@@ -808,7 +810,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/opportunityCapabilityAccess.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 5,
         "evidence": "EXPORTED"
       },
@@ -901,6 +903,7 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/adminPolicy/assignmentScopeRuntime.ts",
+          "functions/src/adminPolicy/salesManagerParityDelta.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/eosCommercial/commands/salesAgreementCommandService.ts",
@@ -914,7 +917,7 @@
           "field-ops-app-vite/src/access/policyObjectRegistry.js",
           "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js"
         ],
-        "serverReferenceCount": 8,
+        "serverReferenceCount": 9,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3535,6 +3538,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/recordChangeHistoryReadService.ts",
           "functions/src/adminPolicy/administrationSurfaceAuthority.ts",
+          "functions/src/adminPolicy/salesManagerParityDelta.ts",
           "functions/src/eosOps/experienceAuthority.ts"
         ],
         "clientReferences": [
@@ -3542,7 +3546,7 @@
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },

@@ -12,7 +12,7 @@ import type { SalesAgreementState } from "../../salesAgreement/salesAgreementLif
 import { deriveEmployeeRefOwner } from "../../ownership/typedOwner";
 import { allocateCommercialNumber } from "../commercialNumbering";
 import {
-  COMMERCIAL_CAPABILITIES, fail, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
+  COMMERCIAL_CAPABILITIES, fail, requireAccountLocation, requireActiveTenantAccount, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -98,6 +98,7 @@ async function stageBuiltSalesOrder(
   source: { opportunityId: string | null; salesAgreementId: string | null }, explicitAccountable: unknown,
 ): Promise<SalesOrderCreated> {
   await requireTenantAccount(db, actor.tenantId, built.accountId);
+  await requireAccountLocation(db, actor.tenantId, built.accountId, built.locationId);
   await requireTenantEmployee(db, actor.tenantId, built.ownerEmployeeId, "OWNER");
   await requireTenantEmployee(db, actor.tenantId, built.creditedSalespersonId, "CREDITED_SALESPERSON");
   const established = await resolveCreationAccountablePerson(db, actor.tenantId, "salesOrder", explicitAccountable, built.ownerEmployeeId);
@@ -144,6 +145,9 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
       }
       opportunityId = opportunity!.id;
     }
+    // A direct Order with no source Opportunity is NEW Commercial work: its customer must be ACTIVE (DQ-5). With a WON
+    // source it continues that Opportunity's lifecycle, which a later customer status never rewrites.
+    if (opportunityId === null) await requireActiveTenantAccount(db, actor.tenantId, built.accountId);
     // A direct Order carries NEW product references: they pass the catalog authority before any number or row.
     await requireCatalogReferences(deps, db, actor.tenantId, built.lines);
     const created = await stageBuiltSalesOrder(db, actor, now, built, { opportunityId, salesAgreementId: null }, accountableEmployeeId);

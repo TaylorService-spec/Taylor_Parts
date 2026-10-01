@@ -356,13 +356,14 @@ function CrashTrailRecorder() {
 // capability at all, and asking for one would imply a read this page never performs.
 function OpportunityListConnected() {
   const { user } = useAuth();
-  const { hasCapability } = useCommercialCapabilities(user);
+  const { hasCapability, channelsFor } = useCommercialCapabilities(user);
   const granted = hasCapability(OPPORTUNITY_WRITE_CAPABILITY);
   const readiness = opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted });
   // The viewer's uid is threaded so "My opportunities" can resolve WHO is looking, from the
   // employee directory the page already subscribes to for owner names. No extra read, and an
   // account with no linked employee record gets that view's honest unresolved state.
-  return <OpportunityList source={governedOpportunitySource} readiness={readiness} viewerUid={user?.uid ?? null} />;
+  // AUTHORIZED CHANNELS ONLY (DQ-4): the create picker offers the channels the caller's governed authority admits.
+  return <OpportunityList source={governedOpportunitySource} readiness={readiness} viewerUid={user?.uid ?? null} authorizedChannels={channelsFor(OPPORTUNITY_WRITE_CAPABILITY)} />;
 }
 
 // Fixes the known defect (SalesOrderActions.jsx) where the Sales Order Advance/Cancel/Allocate/
@@ -381,7 +382,7 @@ function OpportunityListConnected() {
 // unit/component test still gets the fail-closed default (no `readiness` injected).
 function OpportunityDetailConnected() {
   const { user } = useAuth();
-  const { hasCapability } = useCommercialCapabilities(user);
+  const { hasCapability, channelsFor } = useCommercialCapabilities(user);
   const granted = hasCapability(OPPORTUNITY_WRITE_CAPABILITY);
   // `hasCapability` MUST be threaded, not merely resolved.
   //
@@ -404,6 +405,7 @@ function OpportunityDetailConnected() {
     <OpportunityDetail
       readiness={opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted })}
       hasCapability={hasCapability}
+      authorizedChannels={channelsFor(OPPORTUNITY_WRITE_CAPABILITY)}
     />
   );
 }

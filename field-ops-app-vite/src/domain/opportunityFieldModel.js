@@ -59,6 +59,16 @@ const defaultFormat = {
 // automatically widens when #15 lands, without a workspace change.
 export const channelOptions = () => SALES_CHANNELS.map((c) => ({ value: c, label: channelLabel(c) }));
 
+// AUTHORIZED CHANNELS ONLY (Controller DQ-4, 2026-09-30). The options a picker OFFERS are the channels the caller's
+// governed authority admits (useCommercialCapabilities().channelsFor(capability)) -- never the whole vocabulary, and
+// never decided by persona. `current` (an edit's stored value) is kept so the select can show what the record holds;
+// choosing it changes nothing. Unknown values are dropped. No authorized channel -> no option (fail closed).
+export const offeredChannelOptions = (authorized, current = null) => {
+  const allowed = new Set(Array.isArray(authorized) ? authorized : []);
+  if (typeof current === "string" && current !== "") allowed.add(current);
+  return SALES_CHANNELS.filter((c) => allowed.has(c)).map((c) => ({ value: c, label: channelLabel(c) }));
+};
+
 // Build the editable/detail section model for one pipeline row. Returns an ordered list of sections; each
 // section declares its data class + whether it is editable-by-design (contains USER_MAINTAINED fields), and
 // each field carries { key, label, value, display, dataClass, control, governed }. `editable`/`governed` are
@@ -82,7 +92,7 @@ export function opportunityDetailModel(row, opts = {}) {
       fields: [
         // Channel = applicable commercial context. USER_MAINTAINED via a bounded select (not free text).
         field({ key: "channel", label: "Channel", value: row.channel, display: channelLabel(row.channel),
-          dataClass: U, control: "select", options: channelOptions() }),
+          dataClass: U, control: "select", options: offeredChannelOptions(opts.authorizedChannels, row.channel) }),
         field({ key: "expectedValue", label: "Estimated value", value: row.expectedValue,
           display: fmt.currency(row.expectedValue), dataClass: U, control: "currency" }),
         field({ key: "expectedCloseAt", label: "Expected close", value: row.expectedCloseAt,

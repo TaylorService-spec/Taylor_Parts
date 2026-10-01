@@ -71,7 +71,7 @@ import {
 // row, acceptance never moves the opportunity's stage, and an agreement is never a prerequisite for
 // Won — all four are repository truth (decision O6), and all four are asserted by the test suite.
 
-export default function OpportunityDetail({ readiness, hasCapability = () => false, actionDeps, saveDeps } = {}) {
+export default function OpportunityDetail({ readiness, hasCapability = () => false, authorizedChannels = [], actionDeps, saveDeps } = {}) {
   const { opportunityId } = useParams();
   const { loading, errorStatus, result, refetch } = useOpportunity(opportunityId);
   const view = opportunityView({ loading, errorStatus, result });
@@ -124,9 +124,11 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
       ? opportunityDetailModel(commandRow(view), {
         resolveOwnerName: (id) => resolveOwnerName(id, directory),
         format: { currency: formatValue, date: shortDate },
+        // DQ-4: the Channel edit offers only the channels the caller may move the record into.
+        authorizedChannels,
       })
       : { sections: [] }),
-    [ready, view, directory],
+    [ready, view, directory, authorizedChannels],
   );
   const bySlot = useMemo(() => Object.fromEntries((model.sections ?? []).map((s) => [s.id, s])), [model]);
 

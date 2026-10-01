@@ -24,7 +24,7 @@ function fillMinimalValidForm() {
 describe("NewOpportunityForm -- validation", () => {
   it("does not submit (does not call the client) when required fields are missing", () => {
     const client = { createOpportunity: vi.fn() };
-    render(<NewOpportunityForm readiness={ENABLED} onClose={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
+    render(<NewOpportunityForm authorizedChannels={["NATIONAL_ACCOUNTS", "RETAIL"]} readiness={ENABLED} onClose={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
     fireEvent.click(screen.getByRole("button", { name: /create opportunity/i }));
     expect(client.createOpportunity).not.toHaveBeenCalled();
     expect(screen.getByText("Select a customer account.")).toBeTruthy();
@@ -34,7 +34,7 @@ describe("NewOpportunityForm -- validation", () => {
 
   it("disables submit entirely (honest, no submit attempt) when write-readiness is disabled", () => {
     const client = { createOpportunity: vi.fn() };
-    render(<NewOpportunityForm readiness={DISABLED} onClose={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
+    render(<NewOpportunityForm authorizedChannels={["NATIONAL_ACCOUNTS", "RETAIL"]} readiness={DISABLED} onClose={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
     const submit = screen.getByRole("button", { name: /create opportunity/i });
     expect(submit.disabled).toBe(true);
     expect(screen.getByText(DISABLED.reason)).toBeTruthy();
@@ -45,7 +45,7 @@ describe("NewOpportunityForm -- successful create calls the callable with the ex
   it("submits accountId/ownerEmployeeId/salesChannel + null-normalized optional fields + an idempotencyKey", async () => {
     const onCreated = vi.fn();
     const client = { createOpportunity: vi.fn().mockResolvedValue({ result: { success: true, replayed: false, opportunityId: "OPP-9", stage: "IDENTIFIED" } }) };
-    render(<NewOpportunityForm readiness={ENABLED} onClose={vi.fn()} onCreated={onCreated} deps={{ client, useAccounts: fakeUseAccounts() }} />);
+    render(<NewOpportunityForm authorizedChannels={["NATIONAL_ACCOUNTS", "RETAIL"]} readiness={ENABLED} onClose={vi.fn()} onCreated={onCreated} deps={{ client, useAccounts: fakeUseAccounts() }} />);
     fillMinimalValidForm();
     fireEvent.click(screen.getByRole("button", { name: /create opportunity/i }));
 
@@ -64,7 +64,7 @@ describe("NewOpportunityForm -- successful create calls the callable with the ex
 
   it("includes need/expectedValue/expectedCloseAt when provided", async () => {
     const client = { createOpportunity: vi.fn().mockResolvedValue({ result: { success: true, replayed: false, opportunityId: "OPP-9", stage: "IDENTIFIED" } }) };
-    render(<NewOpportunityForm readiness={ENABLED} onClose={vi.fn()} onCreated={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
+    render(<NewOpportunityForm authorizedChannels={["NATIONAL_ACCOUNTS", "RETAIL"]} readiness={ENABLED} onClose={vi.fn()} onCreated={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
     fillMinimalValidForm();
     fireEvent.change(screen.getByLabelText(/customer need/i), { target: { value: "Freezer replacement" } });
     fireEvent.change(screen.getByLabelText(/estimated value/i), { target: { value: "5000" } });
@@ -84,7 +84,7 @@ describe("NewOpportunityForm -- retry reuses the same idempotency key", () => {
         .mockResolvedValueOnce({ errorStatus: "internal" })
         .mockResolvedValueOnce({ result: { success: true, replayed: false, opportunityId: "OPP-9", stage: "IDENTIFIED" } }),
     };
-    render(<NewOpportunityForm readiness={ENABLED} onClose={vi.fn()} onCreated={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
+    render(<NewOpportunityForm authorizedChannels={["NATIONAL_ACCOUNTS", "RETAIL"]} readiness={ENABLED} onClose={vi.fn()} onCreated={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
     fillMinimalValidForm();
     fireEvent.click(screen.getByRole("button", { name: /create opportunity/i }));
     await waitFor(() => expect(client.createOpportunity).toHaveBeenCalledTimes(1));
@@ -103,7 +103,7 @@ describe("NewOpportunityForm -- honest denied/unavailable/error states", () => {
   it("a denied actor sees the safe denial message, and onCreated is never called", async () => {
     const onCreated = vi.fn();
     const client = { createOpportunity: vi.fn().mockResolvedValue({ errorStatus: "permission-denied" }) };
-    render(<NewOpportunityForm readiness={ENABLED} onClose={vi.fn()} onCreated={onCreated} deps={{ client, useAccounts: fakeUseAccounts() }} />);
+    render(<NewOpportunityForm authorizedChannels={["NATIONAL_ACCOUNTS", "RETAIL"]} readiness={ENABLED} onClose={vi.fn()} onCreated={onCreated} deps={{ client, useAccounts: fakeUseAccounts() }} />);
     fillMinimalValidForm();
     fireEvent.click(screen.getByRole("button", { name: /create opportunity/i }));
     await waitFor(() => expect(screen.getByText(/not authorized/i)).toBeTruthy());
@@ -113,7 +113,7 @@ describe("NewOpportunityForm -- honest denied/unavailable/error states", () => {
   it("an account-list read failure shows an honest error, not an empty-looking select", () => {
     const client = { createOpportunity: vi.fn() };
     const useAccounts = () => ({ data: [], loading: false, error: new Error("denied") });
-    render(<NewOpportunityForm readiness={ENABLED} onClose={vi.fn()} deps={{ client, useAccounts }} />);
+    render(<NewOpportunityForm authorizedChannels={["NATIONAL_ACCOUNTS", "RETAIL"]} readiness={ENABLED} onClose={vi.fn()} deps={{ client, useAccounts }} />);
     expect(screen.getByText(/could not load customer accounts/i)).toBeTruthy();
     expect(screen.queryByLabelText(/customer account/i)).toBeNull();
   });
@@ -122,8 +122,38 @@ describe("NewOpportunityForm -- honest denied/unavailable/error states", () => {
 describe("NewOpportunityForm -- never renders a raw uid", () => {
   it("no 32+ char hex/base64-looking uid string appears anywhere in the rendered form", () => {
     const client = { createOpportunity: vi.fn() };
-    render(<NewOpportunityForm readiness={ENABLED} onClose={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
+    render(<NewOpportunityForm authorizedChannels={["NATIONAL_ACCOUNTS", "RETAIL"]} readiness={ENABLED} onClose={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
     const text = document.body.textContent;
     expect(text).not.toMatch(/[A-Za-z0-9]{28,}/);
+  });
+});
+
+describe("NewOpportunityForm -- AUTHORIZED CHANNELS ONLY (Controller DQ-4)", () => {
+  const channelValues = () => [...screen.getByLabelText(/^channel$/i).querySelectorAll("option")].map((o) => o.value).filter(Boolean);
+
+  it("offers only the channels the caller's governed authority admits -- a Retail seller sees RETAIL only, preselected", () => {
+    render(<NewOpportunityForm authorizedChannels={["RETAIL"]} readiness={ENABLED} onClose={vi.fn()} deps={{ client: { createOpportunity: vi.fn() }, useAccounts: fakeUseAccounts() }} />);
+    expect(channelValues()).toEqual(["RETAIL"]);
+    expect(screen.getByLabelText(/^channel$/i).value).toBe("RETAIL");
+  });
+
+  it("a National Accounts seller sees NATIONAL_ACCOUNTS only; a two-channel manager sees exactly both; STRATEGIC_ACCOUNTS never appears unless authorized", () => {
+    const { unmount } = render(<NewOpportunityForm authorizedChannels={["NATIONAL_ACCOUNTS"]} readiness={ENABLED} onClose={vi.fn()} deps={{ client: { createOpportunity: vi.fn() }, useAccounts: fakeUseAccounts() }} />);
+    expect(channelValues()).toEqual(["NATIONAL_ACCOUNTS"]);
+    unmount();
+    render(<NewOpportunityForm authorizedChannels={["RETAIL", "NATIONAL_ACCOUNTS"]} readiness={ENABLED} onClose={vi.fn()} deps={{ client: { createOpportunity: vi.fn() }, useAccounts: fakeUseAccounts() }} />);
+    expect(channelValues()).toEqual(["NATIONAL_ACCOUNTS", "RETAIL"]);
+    expect(screen.getByLabelText(/^channel$/i).value).toBe("", "two choices: none preselected");
+  });
+
+  it("no authorized channel: no selectable channel, an honest note, and nothing is submitted (fail closed by default)", () => {
+    const client = { createOpportunity: vi.fn() };
+    render(<NewOpportunityForm readiness={ENABLED} onClose={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
+    expect(channelValues()).toEqual([]);
+    expect(screen.getByText("No sales channel is available to you")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/customer account/i), { target: { value: "A1" } });
+    fireEvent.change(screen.getByLabelText(/owner \(employee id\)/i), { target: { value: "EMP-1" } });
+    fireEvent.click(screen.getByRole("button", { name: /create opportunity/i }));
+    expect(client.createOpportunity).not.toHaveBeenCalled();
   });
 });

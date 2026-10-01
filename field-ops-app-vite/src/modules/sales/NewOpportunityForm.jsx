@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import Modal from "../../shared/ui/Modal.jsx";
 import { useAccountPicker } from "../../hooks/useAccountPicker.js";
-import { channelOptions } from "../../domain/opportunityFieldModel.js";
+import { offeredChannelOptions } from "../../domain/opportunityFieldModel.js";
 import { validateOpportunityCreateInput, buildOpportunityCreatePayload } from "../../domain/opportunityCreateForm.js";
 import { useOpportunityCreate } from "../../hooks/useOpportunityCreate.js";
 import { isoDate, parseLocalDate } from "../../domain/localDateInput.js";
@@ -19,7 +19,12 @@ const EMPTY_DRAFT = { accountId: "", ownerEmployeeId: "", salesChannel: "", need
 //
 // `deps.useAccounts` / `deps.client` let tests inject fakes without touching firebase (mirrors every other
 // governed-write surface's `deps` seam in this codebase).
-export default function NewOpportunityForm({ onClose, onCreated, readiness, deps = {} }) {
+//
+// `authorizedChannels` -- the channels THIS caller may create in (useCommercialCapabilities().channelsFor(
+// "opportunity.write"), Controller DQ-4). Only those are offered; none injected offers none (fail closed). One channel
+// is preselected. The server remains authoritative: a forged channel is still refused.
+export default function NewOpportunityForm({ onClose, onCreated, readiness, authorizedChannels = [], deps = {} }) {
+  const offeredChannels = useMemo(() => offeredChannelOptions(authorizedChannels), [authorizedChannels]);
   // BOUNDED (§9): the default read is capped and discloses truncation. The deps seam is
   // untouched, so every injected test fake keeps working -- the swap is the DEFAULT only.
   const useAccounts = deps.useAccounts ?? (() => {
@@ -29,7 +34,7 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, deps
   const { data: accounts, loading: accountsLoading, error: accountsError, pickerMessage } = useAccounts();
   const { pending, runCreate, discardIntent } = useOpportunityCreate(deps.client ? { client: deps.client } : undefined);
 
-  const [draft, setDraft] = useState(EMPTY_DRAFT);
+  const [draft, setDraft] = useState(() => (offeredChannels.length === 1 ? { ...EMPTY_DRAFT, salesChannel: offeredChannels[0].value } : EMPTY_DRAFT));
   const [fieldErrors, setFieldErrors] = useState({});
   const [submitError, setSubmitError] = useState(null);
 
@@ -120,8 +125,8 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, deps
         <div className="fo-sales-editform__field">
           <label htmlFor="new-opp-channel">Channel</label>
           <select id="new-opp-channel" className="fo-input" value={draft.salesChannel} onChange={(e) => set("salesChannel", e.target.value)}>
-            <option value="">Select a channel</option>
-            {channelOptions().map((o) => (
+            <option value="">{offeredChannels.length === 0 ? "No sales channel is available to you" : "Select a channel"}</option>
+            {offeredChannels.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
