@@ -148,15 +148,18 @@ describe("no authority widened by mounting the shell", () => {
       .filter(([, , from]) => from.includes("services/"))
       // A multi-line import ends with a trailing comma, which splits into an empty final entry.
       .flatMap(([, names]) => names.split(",").map((n) => n.trim()).filter(Boolean));
-    // NARROWED 2026-09-30: Equipment install is NOT_YET_ACTIVATED on EOS, so the Firebase install callables
-    // (fetchInstallableEquipmentForWorkOrder / recordWorkOrderEquipmentInstall) are no longer reachable from
-    // the queue -- the binding answers SERIALIZED_INSTALL_NOT_ACTIVATED unless a transport is injected.
+    // NARROWED 2026-09-30: Equipment install was NOT_YET_ACTIVATED on EOS, so the Firebase install callables left the queue.
+    // REVIEWED 2026-10-01 (Controller EQUIPMENT ACTIVATION, OD-1 / OD-5): the install is back, as the governed EOS Work
+    // Order route (services/workOrderEquipmentInstallClient.js) -- never a Firebase callable.
     assert.deepEqual(imported.sort(), [
+      "fetchInstallableEquipmentForWorkOrder",
       "getWorkOrder",
+      "recordWorkOrderEquipmentInstall",
       "recordWorkOrderLabor",
       "transitionWorkOrder",
       "updateWorkOrderExecutionData",
     ]);
+    assert.match(bindings, /from "\.\.\/services\/workOrderEquipmentInstallClient\.js"/, "the install comes from the EOS adapter, nothing else");
   });
 
   test("install NEVER sends a client-chosen customer or location", () => {

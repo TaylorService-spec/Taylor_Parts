@@ -116,8 +116,11 @@ test("every shared-writer store was found", () => {
   // FLOOR LOWERED 2 -> 1 (Catalog + Reorder activation candidate): the CRM floor of 2 still counted reorderRequestsStore,
   // which the Reorder Domain Cutover (5 -> 4 above) removed on its own lineage. Integrated, the only remaining store is
   // equipmentStore -- asserted by name so the floor cannot be satisfied by some other store appearing.
-  assert.ok(stores.length >= 1, `expected the known stores, found ${stores.length}`);
-  assert.ok(stores.some((s) => s.file === "domain/equipmentRepository.js"), "equipmentStore is the remaining shared-writer store");
+  // FLOOR LOWERED 1 -> 0 (Equipment activation, Controller 2026-10-01): equipmentStore was the last shared-writer store; the
+  // Equipment register writes the governed PostgreSQL register through the EOS API, so no Firestore store remains. The
+  // census itself must stay EMPTY now -- a store appearing is a new Firestore writer, which the exit ratchet forbids.
+  assert.equal(stores.length, 0, `a Firestore shared-writer store is back: ${JSON.stringify(stores)}`);
+  assert.equal(stores.some((s) => s.collection === "equipment" || s.file === "domain/equipmentRepository.js"), false, "the retired Equipment Firestore store is back");
   assert.equal(stores.some((s) => s.collection === "reorderRequests" || /reorder/i.test(s.file)), false, "a retired Reorder Firestore store is back");
   assert.equal(stores.some((s) => ["accounts", "contacts", "locations"].includes(s.collection)), false, "a retired CRM Firestore store is back");
   assert.ok(stores.every((s) => s.collection), `a store's collection could not be resolved: ${JSON.stringify(stores.filter((s) => !s.collection))}`);
