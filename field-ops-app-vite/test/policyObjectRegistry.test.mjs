@@ -166,8 +166,9 @@ test("an object no capability governs is present with every verb ungrantable", (
     const object = findGovernableObject(key);
     assert.ok(object, `${key} is present`);
     const governed = governedVerbs(object);
-    // manufacturer declares its own readCapability; the others declare nothing.
-    if (key === "manufacturer") assert.equal(governed.R, true, "its entity declares a read capability");
+    // manufacturer and supplier declare their own readCapability (supplier.record.read, 2026-10-01); the others
+    // declare nothing. Neither has any write capability.
+    if (key === "manufacturer" || key === "supplier") assert.equal(governed.R, true, "its entity declares a read capability");
     else assert.equal(governed.R, false, `${key} has no governing read capability`);
     assert.equal(governed.C, false);
     assert.equal(governed.E, false);
