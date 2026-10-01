@@ -31,7 +31,7 @@ things and this document never fuses them into one verdict.
 - **catalogInactive**: 151
 - **eligibleForEnvironmentActivation**: 92
 - **activatedInSomeEnvironment**: 92
-- **callableExports**: 36
+- **callableExports**: 33
 - **destinations**: 95
 - **destinationsHidden**: 19
 - **guides**: 0
