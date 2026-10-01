@@ -79,6 +79,8 @@ const PRN = {
   [TECHNICIAN_A]: "prn-service-technician-a",
 };
 const PRN_WORKFORCE_ADMIN = "prn-workforce-admin";
+// G8 (Controller 2026-10-01): assignment is a management decision made inside the assigner's REORDER_QUEUE reach for the
+// request's company -- the Parts Manager persona, who holds REORDER_QUEUE:taylor in nonprod, is the assigner, as live.
 const PRN_REORDER_ASSIGNER = "prn-reorder-assigner";
 // RR-2026-000901 is ORDERED in nonprod. Under the governed lifecycle an ORDERED Reorder is not assignable (the legacy
 // Assign arm fired only from READY_FOR_PARTS_MANAGER, and #1961 preserves it), so this throwaway database seeds the same
@@ -338,7 +340,7 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
 
     await t.test("AC5: the governed command assigns the Reorder Request to Parts Associate", async () => {
       const result = await reorderAssignment.assignReorderRequestToEmployee(
-        { pool }, actorWith(PRN_REORDER_ASSIGNER, caps(reorderAssignment.REORDER_REQUEST_ASSIGN)),
+        { pool }, actorWith(PRN[PARTS_MANAGER], caps(reorderAssignment.REORDER_REQUEST_ASSIGN)),
         { reorderRequestId: RR, employeeId: PARTS_ASSOCIATE,
           reason: "Persona acceptance: Reorder assignment to the Parts Associate execution persona" });
       assert.equal(result.outcome, "ASSIGNED");
@@ -348,7 +350,7 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
            FROM eos_ops.reorder_request_assignments
           WHERE tenant_id=$1 AND reorder_request_id=$2 AND effective_to IS NULL`, [T, RR]);
       assert.deepEqual(rows, [{
-        assigned_employee_id: PARTS_ASSOCIATE, provenance: "NATIVE", assigned_by_principal_id: PRN_REORDER_ASSIGNER,
+        assigned_employee_id: PARTS_ASSOCIATE, provenance: "NATIVE", assigned_by_principal_id: PRN[PARTS_MANAGER],
       }], "the ASSIGNEE is an Employee and the ACTOR is a Principal -- two columns, two concepts");
       assert.ok(await reorderAssignment.isCallerTheAssignedEmployee(pool, T, PRN[PARTS_ASSOCIATE], RR));
     });
@@ -361,7 +363,7 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
       // is reached the same way: by putting RR back in that status.
       await q(`UPDATE eos_ops.reorder_requests SET status='READY_FOR_PARTS_MANAGER' WHERE id=$1`, [RR]);
       const result = await reorderAssignment.assignReorderRequestToEmployee(
-        { pool }, actorWith(PRN_REORDER_ASSIGNER, caps(reorderAssignment.REORDER_REQUEST_ASSIGN)),
+        { pool }, actorWith(PRN[PARTS_MANAGER], caps(reorderAssignment.REORDER_REQUEST_ASSIGN)),
         { reorderRequestId: RR, employeeId: PARTS_MANAGER,
           reason: "Persona acceptance: oversight handoff to the Parts Manager persona" });
       assert.equal(result.outcome, "REASSIGNED");
@@ -388,7 +390,7 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
     await t.test("AC3: the governed command REFUSES the Technician, naming the qualification", async () => {
       await assert.rejects(
         () => reorderAssignment.assignReorderRequestToEmployee(
-          { pool }, actorWith(PRN_REORDER_ASSIGNER, caps(reorderAssignment.REORDER_REQUEST_ASSIGN)),
+          { pool }, actorWith(PRN[PARTS_MANAGER], caps(reorderAssignment.REORDER_REQUEST_ASSIGN)),
           { reorderRequestId: RR_OTHER, employeeId: TECHNICIAN_A }),
         (err) => err.code === "EMPLOYEE_NOT_ASSIGNABLE" && err.category === "PRECONDITION_FAILED"
           && err.message.includes("PARTS_OPERATIONS"));
@@ -457,7 +459,7 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
       // its own path to the record, which is why a scope refusal must not be reported as a denial of
       // the capability itself.
       await reorderAssignment.assignReorderRequestToEmployee(
-        { pool }, actorWith(PRN_REORDER_ASSIGNER, caps(reorderAssignment.REORDER_REQUEST_ASSIGN)),
+        { pool }, actorWith(PRN[PARTS_MANAGER], caps(reorderAssignment.REORDER_REQUEST_ASSIGN)),
         { reorderRequestId: RR_OTHER, employeeId: PARTS_ASSOCIATE,
           reason: "Persona acceptance: the OWN-record path for the unscoped execution persona" });
       const own = await ctx.authorizeObjectAction(reader, {

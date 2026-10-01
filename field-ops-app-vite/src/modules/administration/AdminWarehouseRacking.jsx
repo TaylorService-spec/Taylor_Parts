@@ -5,6 +5,7 @@ import { binCommandClient } from "../../services/binCommandClient";
 import { WAREHOUSE_RACKING_GATE } from "../../access/shellCapabilityGates.js";
 import BinLabelsAndExport from "./BinLabelsAndExport";
 import TruckLocationScopeBindings from "./TruckLocationScopeBindings";
+import WarehouseMasters from "./WarehouseMasters";
 import { fetchWarehouses } from "../../services/operationsQueries";
 import { applyProposals, summarizeApply, APPLY_CONCURRENCY } from "../../services/rackingApply";
 import {
@@ -571,6 +572,9 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
       {/* DQ-029: truck location -> warehouse scope. NOT gated on the bin capabilities above or on the Firebase
           feed: the server gates it on inventory.location.scopeBinding.manage and the section renders its answer. */}
       <TruckLocationScopeBindings callApi={scopeBindingApi} warehouseOptions={warehouses} />
+
+      {/* DQ-E: the governed PostgreSQL Warehouse and Bin masters (warehouse.record.manage, decided by the server). */}
+      <WarehouseMasters callApi={scopeBindingApi} />
     </div>
   );
 }

@@ -86,6 +86,8 @@ import { closeOutReorderAsReceived } from "./reorderLifecycleCommands.js";
 import { resolveOpsLocation, LocationAuthorityError } from "./warehouseBinRepository.js";
 import { readMobileLocation } from "./truckFleetRepository.js";
 import { insertReceivingOrder, type OpsTrackingMode } from "./purchasingRepository.js";
+import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
+import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import type { OpsLocationType } from "./operatingCompanyCustody.js";
 
 // Named SCHEMA, matching every other eos_ops repository -- and matching the form the Reorder
@@ -225,16 +227,17 @@ interface LockedReorder {
   readonly id: string;
   readonly status: string;
   readonly operatingCompanyKey: string;
+  readonly warehouseId: string;
 }
 
 async function lockReorder(client: PoolClient, tenantId: string, id: string): Promise<LockedReorder> {
   const { rows } = await client.query(
-    `SELECT id, status::text AS status, operating_company_key
+    `SELECT id, status::text AS status, operating_company_key, warehouse_id
        FROM ${SCHEMA}.reorder_requests WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
     [tenantId, id],
   );
   if (rows.length === 0) refuse("REORDER_NOT_FOUND", "NOT_FOUND", `no Reorder Request ${id} in this tenant`);
-  return { id: rows[0].id, status: rows[0].status, operatingCompanyKey: rows[0].operating_company_key };
+  return { id: rows[0].id, status: rows[0].status, operatingCompanyKey: rows[0].operating_company_key, warehouseId: rows[0].warehouse_id };
 }
 
 interface LegacyPurchaseOrderRow {
@@ -501,6 +504,34 @@ export async function receiveReorderStock(
     }
     const locationRef = { type: (loc as Record<string, unknown>).type as string, locationId: (loc as Record<string, unknown>).locationId as string };
     await requireActiveLocation(client, actor.tenantId, locationRef);
+    // WAREHOUSE SCOPE IS DECIDED BY EOS, SERVER-SIDE (Controller DQ-017: "no launch limitation, no interim Firebase/legacy
+    // check"). A receipt is a DESTINATION act (DQ-024: receive / put-away decide against the destination), so the receiver's
+    // Employee must hold the WAREHOUSE Operational Scope over the receiving location's governing warehouse -- a WAREHOUSE
+    // itself, a BIN's parent warehouse, a MOBILE location only through its explicit governed binding (never inferred).
+    // Only the ruled predicate: no work-eligibility rule exists for receiving, so none is invented here.
+    let scopeWarehouseId: string;
+    try {
+      scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, locationRef)).scopeWarehouseId;
+    } catch (err) {
+      if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receiving location has no governing warehouse: ${err.message}`);
+      throw err;
+    }
+    // DQ-C (Controller 2026-10-01): A REORDER PO IS RECEIVED INTO ITS GOVERNED DESTINATION WAREHOUSE. Receiving fulfils
+    // the purchasing decision; it never redirects purchased stock elsewhere, even where the receiver has scope. The
+    // destination may be the warehouse or one of its bins (same governing warehouse); anything else refuses. A later
+    // move is Inventory Control's (governed relocation / transfer), and the Reorder's destination is never rewritten.
+    if (scopeWarehouseId !== reorder.warehouseId) {
+      refuse("DESTINATION_NOT_REORDER_WAREHOUSE", "PRECONDITION_FAILED",
+        "a Reorder purchase order is received into its own destination warehouse (or one of its bins)");
+    }
+    const scoped = await authorizeObjectAction(postgresContextualReader(client), {
+      actor, capabilityKey: RECEIVE_STOCK_CAPABILITY,
+      predicates: [{ kind: "OPERATIONAL_SCOPE" as const, scopeType: "WAREHOUSE", scopeId: scopeWarehouseId }],
+    });
+    if (!scoped.allowed) {
+      refuse(scoped.reason, "FORBIDDEN", scoped.reason === "OUTSIDE_OPERATIONAL_SCOPE" ? "this receiving location is outside your warehouse scope"
+        : scoped.reason === "EMPLOYEE_LINK_REQUIRED" ? "only an Employee can receive stock" : "not authorized to receive here");
+    }
 
     // ---- 6. VALIDATE THE WHOLE BATCH, before any write ----
     const validated = validateReceivingBatch(input, { resolved, partsByPartId });

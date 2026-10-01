@@ -1273,6 +1273,8 @@
       "salesAgreement.updateDraft",
       "salesOrder.read",
       "salesOrder.write",
+      "supplier.record.read",
+      "warehouse.record.manage",
       "warehouse.record.read",
       "warehouse.transferOrder.read",
       "workOrder.create",

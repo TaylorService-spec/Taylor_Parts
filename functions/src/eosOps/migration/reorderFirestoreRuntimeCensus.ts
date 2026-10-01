@@ -202,9 +202,10 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
     path: "functions/src/reorderRequest/reorderCallables.ts", object: "REORDER_REQUEST",
     classification: "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
     consumer: "createReorderRequest and recordReorderPurchaseOrder write the Reorder Request. No "
-      + "repository caller remains, but both are exported from index.ts and therefore deployed and "
-      + "externally invokable. Both persist functions are GATED by reorderSourceFreeze, which is the "
-      + "half of the freeze that Rules cannot provide: firestore.rules do not constrain the Admin SDK.",
+      + "repository caller remains, and the REPOSITORY export was removed from index.ts (Controller PARTS / "
+      + "PURCHASING / RECEIVING RULINGS, 2026-10-01) -- but the Functions DEPLOYED in nonprod still carry them, "
+      + "externally invokable, until a Firebase deploy carries the removal (none is authorized). Both persist "
+      + "functions are GATED by reorderSourceFreeze, the half of the freeze Rules cannot provide.",
     occurrences: 1,
   }),
   e({

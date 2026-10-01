@@ -69,6 +69,28 @@ test("the Reorder scenario builds through the GOVERNED PostgreSQL commands, and 
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
            VALUES ('wh-main','t1','sbx-co','wh-main','Sandbox Main','ACTIVE','NATIVE','fixture','fixture')`);
 
+  // WAREHOUSE SCOPE (Controller DQ-017 / DQ-024): the receiver is an Employee holding the WAREHOUSE Operational Scope over
+  // the destination's governing warehouse.
+  await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ('e-receiver','t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`);
+  await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+           VALUES ('epl-receiver','t1',$1,'e-receiver','taylor','OPERATOR_ASSERTED','f','test','active')`, [receiverId]);
+  await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+           VALUES ('os-receiver','t1','e-receiver','WAREHOUSE',$1, now(), 'fixture')`, ["wh-main"]);
+
+  // G4 / G8 (Controller 2026-10-01): the requester raises inside its WAREHOUSE scope over the destination and reviews inside
+  // its REORDER_QUEUE reach for the company key; the Parts Manager assigns inside that same queue reach.
+  const scopedEmployee = async (employeeId, principalId, scopes) => {
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ($1,'t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`, [employeeId]);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+             VALUES ($1,'t1',$2,$3,'taylor','OPERATOR_ASSERTED','f','test','active')`, [`epl-${employeeId}`, principalId, employeeId]);
+    for (const [type, id] of scopes) {
+      await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+               VALUES ($1,'t1',$2,$3,$4, now(), 'fixture')`, [`os-${employeeId}-${type}`, employeeId, type, id]);
+    }
+  };
+  await scopedEmployee("e-requester", requesterId, [["WAREHOUSE", "wh-main"], ["REORDER_QUEUE", "sbx-co"]]);
+  await scopedEmployee("e-manager", managerId, [["REORDER_QUEUE", "sbx-co"]]);
+
   // The GOVERNED PART AUTHORITY. The scenario consumes Parts; it never creates them, which is why
   // this fixture has to provide them and why an empty catalog blocks the scenario outright.
   const part = (id, controlType) => q(

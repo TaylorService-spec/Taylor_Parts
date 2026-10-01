@@ -53,10 +53,24 @@ export interface ReorderTargetClassification {
   readonly refusals: readonly string[];
 }
 
+/**
+ * Columns ADDED to a pinned table after the pins were measured. Each is left out of the fingerprint ONLY while it is NULL
+ * on the row -- the value every pre-existing row carries -- so an additive migration does not silently invalidate the
+ * pins, while ANY value written into such a column still changes the fingerprint and refuses. Additive only: a column
+ * is listed here when a migration adds it, never to excuse a changed pinned column.
+ *   reorder_requests: create_idempotency_key, create_request_fingerprint (migration 1764380000000, G2).
+ */
+export const POST_PIN_NULLABLE_COLUMNS: Readonly<Record<Kind, readonly string[]>> = Object.freeze({
+  reorderRequests: Object.freeze(["create_idempotency_key", "create_request_fingerprint"]),
+  purchaseOrders: Object.freeze([]),
+  voids: Object.freeze([]),
+});
+
 /** The canonical fingerprint, computed by PostgreSQL. The caller's transaction must run with TimeZone UTC. */
 const fingerprintSql = (table: string, idColumn: string): string =>
   `SELECT t.${idColumn} AS id, t.operating_company_key AS key,
-          encode(sha256(convert_to(to_jsonb(t)::text, 'UTF8')), 'hex') AS fingerprint
+          encode(sha256(convert_to((to_jsonb(t) - COALESCE((SELECT array_agg(c) FROM unnest($2::text[]) c
+                                                             WHERE to_jsonb(t) -> c = 'null'::jsonb), '{}'::text[]))::text, 'UTF8')), 'hex') AS fingerprint
      FROM eos_ops.${table} t WHERE t.tenant_id = $1 ORDER BY 1`;
 
 /**
@@ -78,7 +92,7 @@ export async function classifyReorderTarget(
     const present: Record<Kind, Set<string>> = { reorderRequests: new Set(), purchaseOrders: new Set(), voids: new Set() };
     for (const kind of Object.keys(TABLES) as Kind[]) {
       const pins = new Map(KNOWN_REORDER_FIXTURES[kind].map((p) => [p.id, p.fingerprint]));
-      const rows = (await client.query(fingerprintSql(TABLES[kind].table, TABLES[kind].idColumn), [tenantId])).rows as { id: string; key: string; fingerprint: string }[];
+      const rows = (await client.query(fingerprintSql(TABLES[kind].table, TABLES[kind].idColumn), [tenantId, POST_PIN_NULLABLE_COLUMNS[kind]])).rows as { id: string; key: string; fingerprint: string }[];
       for (const r of rows) {
         present[kind].add(r.id);
         if (sourceIds[kind].has(r.id)) continue;

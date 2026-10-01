@@ -372,14 +372,16 @@ test("SANDBOX: an unresolved EOS authority grants nothing and does NOT fall thro
 //                      THE RATCHET -- WHAT EACH OF THE THREE CONSTANTS GUARANTEES
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 
-test("RATCHET: the register partitions into 20 + 42 = 62, derived from NAV_SURFACE_ACCESS", () => {
+// 2026-10-01: 20 + 42 became 21 + 41 when the EXISTING `purchasing/suppliers` row earned purchasing.suppliers. The total
+// did not move; only the row's kind did (navConfig's ceiling note).
+test("RATCHET: the register partitions into 21 + 41 = 62, derived from NAV_SURFACE_ACCESS", () => {
   assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
-  assert.equal(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.length, 20);
-  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.length, 42);
+  assert.equal(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.length, 21);
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.length, 41);
   assert.equal(NAV_GOVERNED_PLACEHOLDER_DESTINATIONS.length, 0);
   assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 62);
-  assert.equal(NAV_CUTOVER_PLACEHOLDER_CEILING, 20);
-  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_CEILING, 42);
+  assert.equal(NAV_CUTOVER_PLACEHOLDER_CEILING, 21);
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_CEILING, 41);
 
   // The partition is a partition: disjoint, exhaustive, and computed from the criterion rather than
   // from two hand-maintained lists.
@@ -410,7 +412,7 @@ test("RATCHET: a 63rd legacy row is refused, and so is a reintroduced governed r
     register: [...register, "reporting/aBrandNewUngovernedDoor"],
   });
   assert.ok(ungovernedGrowth.some((p) => p.includes("above the shrink-only ceiling of 62")));
-  assert.ok(ungovernedGrowth.some((p) => p.includes("NO governed surface, above the shrink-only ceiling of 42")));
+  assert.ok(ungovernedGrowth.some((p) => p.includes("NO governed surface, above the shrink-only ceiling of 41")));
 
   // (b) A 63rd row on a destination that ALREADY holds a governed surface -- the exact shape of
   // "put the rows back" going one row too far. Sales Agreements is the live example: it earned its
@@ -419,7 +421,7 @@ test("RATCHET: a 63rd legacy row is refused, and so is a reintroduced governed r
     register: [...register, "customers/salesAgreements"],
   });
   assert.ok(governedGrowth.some((p) => p.includes("above the shrink-only ceiling of 62")));
-  assert.ok(governedGrowth.some((p) => p.includes("ALREADY holds a governed surface, above the shrink-only ceiling of 20")));
+  assert.ok(governedGrowth.some((p) => p.includes("ALREADY holds a governed surface, above the shrink-only ceiling of 21")));
 
   // (c) THE COUNT-PRESERVING SWAP, which a single total ceiling cannot see. Drop an ungoverned row,
   // add a governed one: still 62, still refused, because the partition ceilings move independently.
@@ -470,4 +472,47 @@ test("PLACEHOLDER_DEFAULT_ROLES is unchanged -- the registers moved, the mechani
   assert.deepEqual(PLACEHOLDER_DEFAULT_ROLES, ["admin", "dispatcher"]);
   assert.equal(isNavItemVisible(itemAt("administration/vehicles"), ROLES.ADMIN, [], legacy), true);
   assert.equal(isNavItemVisible(itemAt("administration/vehicles"), ROLES.TECHNICIAN, [], legacy), false);
+});
+
+// ════════ CONTROLLER PR #2010 INTERIM RULING 1 (2026-10-01): A CLASSIFICATION TRANSITION, NOT GROWTH ════════
+//
+// `purchasing/suppliers` moved WAITING (ungoverned) -> GOVERNED because the Supplier PostgreSQL cutover declared the
+// `purchasing.suppliers` surface. Pinned as exactly that one transition; the shrink-only invariant is not weakened.
+const CUTOVER_BEFORE_SUPPLIER_TRANSITION = Object.freeze([
+  "customers/customers", "customers/opportunities", "customers/salesOrders", "equipment/equipment",
+  "service/workOrders", "service/coordinatedVisits", "inventory/partMaster", "inventory/warehouses",
+  "inventory/truckInventory", "inventory/receiving", "purchasing/purchaseOrders", "purchasing/receipts",
+  "financials/invoices", "financials/payments", "administration/users", "administration/rolesPermissions",
+  "administration/objects", "administration/workflows", "administration/permissionPreview", "administration/auditLogs",
+]);
+
+test("TRANSITION: purchasing/suppliers is the ONE row that changed kind, and nothing was added", () => {
+  // total remains 62; no new destination was introduced -- the row was already in the register.
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
+  assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 62);
+  assert.ok(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("purchasing/suppliers"));
+  assert.ok(destinations().some(([key]) => key === "purchasing/suppliers"), "an existing destination, not a new one");
+
+  // attributable: exactly one row crossed, and it is the Supplier one.
+  const crossed = NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.filter((d) => !CUTOVER_BEFORE_SUPPLIER_TRANSITION.includes(d));
+  assert.deepEqual(crossed, ["purchasing/suppliers"]);
+  assert.deepEqual(CUTOVER_BEFORE_SUPPLIER_TRANSITION.filter((d) => !NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.includes(d)), []);
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.includes("purchasing/suppliers"), false);
+  assert.equal(NAV_CUTOVER_PLACEHOLDER_CEILING + NAV_UNGOVERNED_PLACEHOLDER_CEILING, NAV_LEGACY_PLACEHOLDER_CEILING,
+    "the two partition ceilings moved by one row in opposite directions; the total did not move");
+
+  // the governed surface it crossed to, and the ONE capability that earns it (server catalog source).
+  assert.deepEqual(NAV_SURFACE_ACCESS["purchasing/suppliers"], ["purchasing.suppliers"]);
+  const server = readFileSync(join(repoRoot, "functions/src/eosOps/experienceAuthority.ts"), "utf8");
+  assert.match(server, /surface\("purchasing\.suppliers", "Suppliers", \[\{ capabilityKey: "supplier\.record\.read" \}\]\)/);
+
+  // registering the surface grants nothing: the migration that registers supplier.record.read writes no grant.
+  const up = readFileSync(join(repoRoot, "functions/migrations/1764380000000_parts-purchasing-receiving-completion.sql"), "utf8")
+    .split("-- Down Migration")[0];
+  assert.doesNotMatch(up, /INSERT INTO\s+(eos_policy\.)?(role_capabilities|principal_capabilities)/);
+
+  // Supplier access still requires the governed capability: under the EOS source, no surface -> no door.
+  const item = destinations().find(([key]) => key === "purchasing/suppliers")[1];
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority([]))), false, "visible without the surface");
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority(["purchasing.suppliers"]))), true, "the surface opens it");
 });

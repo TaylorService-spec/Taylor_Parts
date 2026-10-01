@@ -162,9 +162,10 @@ export interface ScenarioSeedActors {
 /**
  * Seed the Reorder portion of SBX-SCN-001 into PostgreSQL, through the governed commands.
  *
- * NOT idempotent by id, because governed creates assign their own ids -- running it twice seeds the
- * scenario twice. The caller decides whether the scenario is already present; inventing a
- * "find the one that looks like this" rule here would be a second identity authority.
+ * Governed creates assign their own ids. Each create carries a deterministic idempotency key (scenario, role, warehouse),
+ * so a rerun by the same requester REPLAYS the existing requests rather than seeding the scenario twice -- and then fails
+ * closed at the first advance step whose state has already moved. The caller still decides whether the scenario is
+ * already present; inventing a "find the one that looks like this" rule here would be a second identity authority.
  */
 export async function seedReorderScenarioIntoPostgres(
   deps: ScenarioSeedDeps,
@@ -183,6 +184,9 @@ export async function seedReorderScenarioIntoPostgres(
       quantitySource: "RECOMMENDED",
       urgency: spec.urgency,
       manual: true,
+      // G2 (2026-10-01): deterministic per scenario role + warehouse, so a retried seed replays its own create instead
+      // of raising a second request (which DQ-B would refuse anyway as duplicate open demand).
+      idempotencyKey: `${SCENARIO_ID}:${spec.role}:${warehouseId}`,
     });
     const id = created.reorderRequestId;
     let status = "PENDING_REVIEW";

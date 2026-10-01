@@ -183,7 +183,8 @@ test("the experience surface catalog satisfies its own invariants", () => {
   // below as a gap whose stated reason was measurably false -- and built its destination.
   // 30 -> 31: `service.inboundWork` (Work Order cutover activation, 2026-09-30), earned by inboundWork.request.read.
   // 31 -> 32: `administration.emailCommunications` (Service Experience completion, 2026-09-30), earned by inboundWork.intake.manage.
-  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 32);
+  // 32 -> 33: `purchasing.suppliers` (Parts / Purchasing / Receiving, 2026-10-01), earned by supplier.record.read.
+  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 33);
   assert.equal(EXPERIENCE_SURFACE_KEYS.includes("commercial.agreements"), true);
 });
 
@@ -281,7 +282,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 71 -> 72: 1764300000000, the Work Order execution facts (the cutover, 2026-09-30) -- +1 capability, granted to NO Role.
   // 72 -> 76: the Work Order cutover completion pass (2026-09-30): quarantine 1764310000000, availability 1764320000000, labor 1764330000000 (+workOrder.labor.correctEntry), inbound work 1764340000000 (+5 inboundWork.* capabilities) -- every new capability granted to NO Role.
   // 76 -> 79: the Service Experience completion (2026-09-30): provider runtime 1764350000000 (schema), recovery 1764360000000 (+inboundWork.request.recover), self-scheduling 1764370000000 (+workOrder.selfScheduling.issue/.configure) -- every new capability granted to NO Role.
-  assert.equal(files.length, 79, "the migration chain moved; re-measure before trusting anything below");
+  // 79 -> 80: the Parts / Purchasing / Receiving completion (2026-10-01): 1764380000000 -- Reorder create integrity + RR numbering (schema) and warehouse.record.manage + supplier.record.read, granted to NO Role.
+  assert.equal(files.length, 80, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -383,7 +385,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 107); // 104 -> 107: recover + selfScheduling.issue/.configure (2026-09-30), granted to NO Role; // 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (the completion pass 2026-09-30), granted to NO Role; // + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to NO Role) // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): + inventory.serializedAsset.acquire (1764129600000, DQ-036(b), Administration-grant-only), + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011), + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 109); // 107 -> 109: warehouse.record.manage + supplier.record.read (1764380000000, 2026-10-01), granted to NO Role. // 104 -> 107: recover + selfScheduling.issue/.configure (2026-09-30), granted to NO Role; // 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (the completion pass 2026-09-30), granted to NO Role; // + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to NO Role) // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): + inventory.serializedAsset.acquire (1764129600000, DQ-036(b), Administration-grant-only), + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011), + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.
@@ -1148,8 +1150,10 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // `administration.emailCommunications` joins it BY DESIGN (Service Experience completion, 2026-09-30): it is earned by
     // inboundWork.intake.manage, whose holder (fieldManager) is a LIVE Administration grant (INBOUND_WORK_GRANTS), not
     // the baseline.
+    // `purchasing.suppliers` joins it BY DESIGN (Parts / Purchasing / Receiving, 2026-10-01): supplier.record.read is
+    // registered ungranted, and its holders are the LIVE Administration delta (partsPurchasingReceivingDelta.ts).
     assert.deepEqual(EXPERIENCE_SURFACE_KEYS.filter((k) => !granted.has(k)).sort(),
-      ["administration.emailCommunications", "service.inboundWork", "warehouse.picking"]);
+      ["administration.emailCommunications", "purchasing.suppliers", "service.inboundWork", "warehouse.picking"]);
 
     // ── THE EOS NAVIGATION SOURCE HAS NO FIREBASE FALLBACK ──
     // When the EOS authority is answering, the LEGACY path must not run at all. Measured through the

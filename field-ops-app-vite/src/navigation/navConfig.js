@@ -768,6 +768,7 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   // Purchasing
   "purchasing/purchaseOrders": ["purchasing.purchaseOrders"],
   "purchasing/receipts": ["receiving.checkIn"],
+  "purchasing/suppliers": ["purchasing.suppliers"],
   // Financials
   "financials/invoices": ["financials.invoices"],
   "financials/payments": ["financials.payments"],
@@ -823,7 +824,6 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   "inventoryRole/manager": "THIS DOMAIN IS THE LEGACY CONSTRUCT ITSELF. `operationalRoleAccess` reads employees/{id}.operationalRoles, the exact Firebase business authority the Work Eligibility / Operational Scope decomposition replaces. It is deliberately NOT given a governed surface: reproducing it would reproduce the thing being retired.",
   "inventoryRole/warehouse": "See inventoryRole/manager.",
   "inventoryRole/mine": "See inventoryRole/manager.",
-  "purchasing/suppliers": "No supplier.* capability is registered; supplier master is Firestore-authoritative.",
   "purchasing/quotes": "No quote domain exists.",
   "purchasing/demandPlanning": "No demand-planning domain exists.",
   "administration/integrations": "No integrations domain exists.",
@@ -1064,7 +1064,7 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   "inventory/receiving", // (CUTOVER) receiving.checkIn
   "inventory/backOrders",
   "purchasing/purchaseOrders", // (CUTOVER) purchasing.purchaseOrders
-  "purchasing/suppliers",
+  "purchasing/suppliers", // (CUTOVER) purchasing.suppliers -- re-partitioned 2026-10-01, see the ceiling note
   "purchasing/quotes",
   "purchasing/receipts", // (CUTOVER) receiving.checkIn
   "purchasing/demandPlanning",
@@ -1265,9 +1265,17 @@ export function effectivePlaceholderRegister(operationalContext) {
 // any one number: an unmapped row trips 42 (and 62), a mapped row trips 20 (and 62), and a mapped
 // row on a DERIVED surface -- `administration/overview`, the one that keeps being argued for --
 // trips rule 2 as well, which is not a count at all.
+//
+// ════════ 2026-10-01 -- ONE ROW CHANGED KIND; NO ROW WAS ADDED (PARTS / PURCHASING / RECEIVING) ════════
+//
+// `purchasing/suppliers` was an UNGOVERNED row (no supplier.* capability existed). supplier.record.read is now
+// registered and its list reads eos_ops.suppliers, so the destination earned `purchasing.suppliers` and the SAME row is
+// now a CUTOVER row. The register stays 62 (production's legacy destination set is unchanged, per Lane BR); the
+// ungoverned ceiling FALLS 42 -> 41; the cutover ceiling moves 20 -> 21 because the row that crossed over is not new
+// -- a 63rd row is still refused whichever kind it is. Recorded for Controller confirmation in the package return.
 export const NAV_LEGACY_PLACEHOLDER_CEILING = 62;
-export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 42;
-export const NAV_CUTOVER_PLACEHOLDER_CEILING = 20;
+export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 41;
+export const NAV_CUTOVER_PLACEHOLDER_CEILING = 21;
 
 // The derived-surface mirror now lives ABOVE the container table, because the container table is
 // COMPUTED FROM IT. See "THE CLIENT MIRROR OF THE SERVER CATALOG'S CONTAINERS" earlier in this file.

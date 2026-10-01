@@ -3,9 +3,9 @@ import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useReorderRequestsByStatus, useReorderRequestsByStatuses, useReviewedRequestsHistory } from "../../hooks/useReorderRequests";
-import { useAssignableEmployees } from "../../hooks/useAssignableEmployees";
+import { useReorderAssignmentTargets } from "../../hooks/useReorderAssignmentTargets.js";
 import { getDisplayQty } from "../../domain/inventoryReorderRequests";
-import { REORDER_REQUEST_STATUS, OPERATIONAL_ROLE } from "../../domain/constants";
+import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import { formatTimestamp } from "../../domain/displayTimestamp.js";
@@ -74,12 +74,13 @@ export default function PartsManagerHome({ accessVersion, title = "Parts Manager
     employees: assignableEmployees,
     loading: assigneesLoading,
     error: assigneesError,
-  } = useAssignableEmployees({ requiredOperationalRole: OPERATIONAL_ROLE.PARTS_ASSOCIATE });
+  } = useReorderAssignmentTargets();
 
+  // Keyed by the governed Employee id the EOS Reorder read returns (assignedEmployeeId) -- never a Firebase uid.
   const employeesByUserId = useMemo(() => {
     const map = new Map();
     for (const employee of assignableEmployees) {
-      if (employee.userId) map.set(employee.userId, employee);
+      if (employee.employeeId) map.set(employee.employeeId, employee);
     }
     return map;
   }, [assignableEmployees]);

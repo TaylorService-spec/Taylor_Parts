@@ -86,11 +86,13 @@ test("DQ-029: the configuration operations mirror the server's closed table, and
   const clientStart = SOURCE.indexOf("export const ADMIN_CONFIGURATION_OPERATIONS");
   const clientNames = [...SOURCE.slice(clientStart, SOURCE.indexOf("]", clientStart)).matchAll(/"([a-zA-Z]+)"/g)].map((m) => m[1]).sort();
   assert.deepEqual(clientNames, serverNames);
-  assert.deepEqual(clientNames, ["listMobileLocationScopeBindings", "readMobileLocationScopeBinding",
-    "removeMobileLocationScopeBinding", "setMobileLocationScopeBinding"]);
+  assert.deepEqual(clientNames, ["createBin", "createWarehouse", "listMobileLocationScopeBindings", "listWarehouseBins", "listWarehouses",
+    "readMobileLocationScopeBinding", "relabelBin", "removeMobileLocationScopeBinding", "setBinStatus", "setMobileLocationScopeBinding",
+    "setWarehouseStatus", "updateWarehouse"]);
   // Reachable through the one endpoint, and holding no capability name: the gate is the server's.
   assert.match(SOURCE, /\.\.\.ADMIN_CONFIGURATION_OPERATIONS\]\)/);
   assert.equal(SOURCE.includes("inventory.location.scopeBinding.manage\""), false, "the client names no capability to decide on");
+  assert.equal(SOURCE.includes("warehouse.record.manage\""), false, "nor the warehouse-master capability");
 });
 
 test("the four Object-owned security reads have a named wrapper, each on the one endpoint", () => {

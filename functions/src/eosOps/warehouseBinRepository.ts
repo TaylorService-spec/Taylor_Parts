@@ -165,6 +165,28 @@ if (!STATUS_VOCABULARIES_AGREE) {
 
 // ═══════════════════════════════════ warehouses ═══════════════════════════════════
 
+/**
+ * Run `fn` in a transaction: the repository's own, or the CALLER's when it hands in a client it already opened
+ * (a PoolClient carries `release`, a Pool does not). The governed Administration commands
+ * (warehouseBinAdministration.ts) pass their client so the master-data write and its audit event commit together;
+ * every other caller is unchanged.
+ */
+async function inTransactionOf<T>(pool: Pool | PoolClient, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  if (typeof (pool as PoolClient).release === "function") return fn(pool as PoolClient);
+  const client = await (pool as Pool).connect();
+  try {
+    await client.query("BEGIN");
+    const out = await fn(client);
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export interface WarehouseDraft {
   readonly warehouseId: string;
   /** MANDATORY. The Warehouse IS the company root, so this is stated here or the call fails. */
@@ -176,7 +198,7 @@ export interface WarehouseDraft {
 }
 
 export async function createWarehouse(
-  pool: Pool,
+  pool: Pool | PoolClient,
   tenantId: string,
   actorId: string,
   draft: WarehouseDraft,
@@ -229,7 +251,7 @@ export async function readWarehouse(
  * reassigning it would silently restate who owned every past receipt.
  */
 export async function setWarehouseStatus(
-  pool: Pool,
+  pool: Pool | PoolClient,
   tenantId: string,
   actorId: string,
   warehouseId: string,
@@ -298,7 +320,7 @@ function normalizeRacking(draft: BinDraft, policy: BinCodeFormatPolicy): {
  * crash between the two would produce exactly one of those, so they are never two round trips.
  */
 export async function createBin(
-  pool: Pool,
+  pool: Pool | PoolClient,
   tenantId: string,
   actorId: string,
   draft: BinDraft,
@@ -311,9 +333,7 @@ export async function createBin(
   const id = deriveBinId(idempotencyKey);
   const name = draft.name === undefined || draft.name === null || draft.name.trim() === "" ? null : draft.name.trim();
 
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  await inTransactionOf(pool, async (client) => {
     // Scope validation is not optional: a bin in a warehouse that does not exist is a place nobody
     // can go. The composite foreign key would refuse it anyway; this makes the refusal legible.
     const parent = await readWarehouse(client, tenantId, warehouseId);
@@ -333,13 +353,7 @@ export async function createBin(
        VALUES ($1, $2, $3, $4, 'HELD', $5)`,
       [tenantId, warehouseId, racking.code, id, actorId],
     );
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
+  });
 
   return {
     id, tenantId, warehouseId, area: racking.area, aisle: racking.aisle, bay: racking.bay,
@@ -357,7 +371,7 @@ export async function createBin(
  * The warehouse is not a parameter. A rename never moves a bin.
  */
 export async function renameBin(
-  pool: Pool,
+  pool: Pool | PoolClient,
   tenantId: string,
   actorId: string,
   binId: string,
@@ -370,9 +384,7 @@ export async function renameBin(
   }
   const id = requireSafeSegment(binId, "binId");
 
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  await inTransactionOf(pool, async (client) => {
     const existing = await selectBin(client, tenantId, id);
     if (!existing) throw new LocationAuthorityError("BIN_NOT_FOUND", "bin not found");
     const racking = normalizeRacking({ ...attrs, warehouseId: existing.warehouseId, idempotencyKey: existing.idempotencyKey }, policy);
@@ -407,13 +419,7 @@ export async function renameBin(
         WHERE tenant_id = $1 AND id = $2`,
       [tenantId, id, racking.area, racking.aisle, racking.bay, racking.position, racking.code, name, actorId],
     );
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
+  });
 
   const result = await selectBin(pool, tenantId, id);
   if (!result) throw new LocationAuthorityError("BIN_NOT_FOUND", "bin disappeared after commit");
@@ -421,7 +427,7 @@ export async function renameBin(
 }
 
 export async function setBinStatus(
-  pool: Pool,
+  pool: Pool | PoolClient,
   tenantId: string,
   actorId: string,
   binId: string,

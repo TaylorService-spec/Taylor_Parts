@@ -179,7 +179,10 @@ test("the activation migration was APPENDED: only the later Administration and w
     "1764310000000_work-order-quarantine.sql", "1764320000000_technician-availability.sql",
     "1764330000000_work-order-labor.sql", "1764340000000_inbound-work-intake.sql",
     // Service Experience completion (2026-09-30): provider runtime (schema), recovery (+1 cap), self-scheduling (+2 caps); no grant.
-    "1764350000000_inbound-provider-runtime.sql", "1764360000000_inbound-work-recovery.sql", "1764370000000_customer-self-scheduling.sql"],
+    "1764350000000_inbound-provider-runtime.sql", "1764360000000_inbound-work-recovery.sql", "1764370000000_customer-self-scheduling.sql",
+    // Parts / Purchasing / Receiving completion (2026-10-01): Reorder create integrity + RR numbering (schema) and two
+    // capabilities (warehouse.record.manage, supplier.record.read); no grant.
+    "1764380000000_parts-purchasing-receiving-completion.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -401,7 +404,10 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // grant. It is peeled first so the reversal below is THIS migration's and nothing else's.
     // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): 97 = 90 + 1 (L1) + 4 (L2) + 2 (L3).
     // Peeled NEWEST FIRST. None of the seven wrote a grant, so only the capability count moves.
-    // Service Experience completion, newest first: self-scheduling (-2), recovery (-1), provider runtime (schema).
+    // Parts / Purchasing / Receiving completion first (-2 capabilities, no grant), then the Service Experience completion,
+    // newest first: self-scheduling (-2), recovery (-1), provider runtime (schema).
+    assert.deepEqual(await counts(), { caps: 109, grants: 415, mine: 26 });
+    runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 107, grants: 415, mine: 26 });
     runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 105, grants: 415, mine: 26 });
@@ -488,7 +494,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 3); // peel the Service Experience completion (1764370000000 .. 1764350000000) first, newest first
+    runMigrate(url, "down", 1); // peel the Parts / Purchasing / Receiving completion (1764380000000) first
+    runMigrate(url, "down", 3); // then the Service Experience completion (1764370000000 .. 1764350000000), newest first
     runMigrate(url, "down", 4); // then the completion pass (1764340000000 .. 1764310000000) first, newest first
     runMigrate(url, "down", 1); // then the Work Order execution facts (1764300000000)
     runMigrate(url, "down", 1); // then the EOS identity binding table (1764200000000)

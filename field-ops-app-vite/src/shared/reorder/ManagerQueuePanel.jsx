@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { assignReorderRequest, getDisplayQty } from "../../domain/inventoryReorderRequests.js";
-import { OPERATIONAL_ROLE } from "../../domain/constants.js";
 import EmployeeAssignmentPicker from "../assignment/EmployeeAssignmentPicker.jsx";
 import LoadingEmptyState from "../ui/LoadingEmptyState.jsx";
 import OperationalCard, { OperationalCardGrid } from "../ui/OperationalCard.jsx";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 import { formatTimestamp } from "../../domain/displayTimestamp.js";
 import { Button } from "../ui/primitives/index.js";
+import { useReorderAssignmentTargets } from "../../hooks/useReorderAssignmentTargets.js";
 
 // Wave 6 -- queue consolidation (Owner directive, Option A: Parts -> WORK becomes the
 // primary actionable Parts workspace; extract/reuse the existing actionable components
@@ -72,7 +72,7 @@ function AssignPanel({ request, resolveName, onAssigned, onClose }) {
       <form className="fo-form" onSubmit={handleAssign}>
         {error && <p className="fo-muted">{error}</p>}
         <EmployeeAssignmentPicker
-          requiredOperationalRole={OPERATIONAL_ROLE.PARTS_ASSOCIATE}
+          useEmployees={useReorderAssignmentTargets}
           selectedEmployeeId={selectedEmployeeId}
           onSelect={handleEmployeeSelect}
           disabled={submitting}

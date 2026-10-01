@@ -25,9 +25,9 @@ test("the entity id is exactly \"supplier\", collection is the live `suppliers` 
   assert.equal(supplierEntity.collection, "suppliers");
 });
 
-test("read is CLIENT_DIRECT with no capability -- Rules gate by role, not by capability", () => {
-  assert.equal(supplierEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(supplierEntity.readCapability, null);
+test("read is the governed EOS Supplier read, gated by supplier.record.read on the server (2026-10-01)", () => {
+  assert.equal(supplierEntity.readVia, "EOS_API");
+  assert.equal(supplierEntity.readCapability, "supplier.record.read");
 });
 
 test("identity is a nameField only -- vendorNumber is optional/unenforced and is not promoted (DECISIONS #106)", () => {

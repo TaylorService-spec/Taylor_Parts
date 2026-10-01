@@ -30,8 +30,8 @@
     "ok": true
   },
   "implementationEvidence": {
-    "EXPORTED": 20,
-    "SERVER_REFERENCED": 128,
+    "EXPORTED": 21,
+    "SERVER_REFERENCED": 127,
     "NO_IMPLEMENTATION_EVIDENCE": 3
   },
   "guideStatuses": {},
@@ -709,7 +709,9 @@
       "description": "Create or advance a Sales Opportunity (lifecycle transition) via the governed opportunity command. Pre-commitment only; does not create Work Orders, inventory movement, or invoices.",
       "catalogActive": false,
       "implementation": {
-        "exportedCallables": [],
+        "exportedCallables": [
+          "searchProductReferences"
+        ],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
@@ -729,7 +731,7 @@
         ],
         "serverReferenceCount": 7,
         "clientReferenceCount": 6,
-        "evidence": "SERVER_REFERENCED"
+        "evidence": "EXPORTED"
       },
       "environmentActivation": {
         "eligible": true,
@@ -1590,6 +1592,7 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/adminPolicy/partsPurchasingReceivingDelta.ts",
           "functions/src/eosOps/reorderLifecycleCommands.ts",
           "functions/src/performance/performanceGoalAuthority.ts",
           "functions/src/reorderRequest/reorderCallables.ts"
@@ -1600,7 +1603,7 @@
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2046,7 +2049,8 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
-          "functions/src/eosOps/experienceAuthority.ts"
+          "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/partsReads.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -2055,7 +2059,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3933,6 +3937,7 @@
           "functions/src/adminPolicy/migration/credEquivalence.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
+          "functions/src/eosOps/partsReads.ts",
           "functions/src/eosOps/receiveReorderStockCommand.ts",
           "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts",
           "functions/src/inventoryReceiving/receivingCallableWiring.ts",
@@ -3948,7 +3953,7 @@
           "field-ops-app-vite/src/domain/dashboardComposition.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 10,
+        "serverReferenceCount": 11,
         "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4863,12 +4868,13 @@
       ],
       "module": "./salesAgreement/productReferenceSearchService",
       "capabilityHints": [
+        "opportunity.write",
         "opportunity.read",
         "opportunity.read",
         "opportunity.createSalesOrder",
         "salesOrder.read"
       ],
-      "comment": "Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability `opportunity.read` registered active:false (REGISTER != GRANT). PASS 11 RETAIL SALES: listOpportunityContext / listOpportunitiesForAccount RETIRED -- the client reads the governed PostgreSQL Comm"
+      "comment": "Sales Opportunity governed write callables (Cycle 3). EXPORT != DEPLOY, REGISTER != GRANT: exported for build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing runs in production until a separate deploy + Owner grant. PASS 11 RETAIL SALES: createOppor"
     },
     {
       "names": [

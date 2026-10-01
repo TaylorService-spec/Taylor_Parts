@@ -102,6 +102,14 @@ test("legacy Reorder purchase order copy: completeness, resolved identity, all-o
 
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
            VALUES ('wh-1','t1','sample-co','wh-1','Sampleton','ACTIVE','NATIVE','fixture','fixture')`);
+
+  // WAREHOUSE SCOPE (Controller DQ-017 / DQ-024): the receiver is an Employee holding the WAREHOUSE Operational Scope over
+  // the destination's governing warehouse.
+  await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ('e-receiver','t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`);
+  await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+           VALUES ('epl-receiver','t1',$1,'e-receiver','taylor','OPERATOR_ASSERTED','f','test','active')`, [receiver]);
+  await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+           VALUES ('os-receiver','t1','e-receiver','WAREHOUSE',$1, now(), 'fixture')`, ["wh-1"]);
   const part = (id, controlType = "STANDARD") => q(
     `INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit,
                                 control_type, stocking_class, expiry_tracked, consumable, returnable_core,

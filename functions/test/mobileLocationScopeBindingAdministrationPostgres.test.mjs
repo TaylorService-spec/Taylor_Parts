@@ -30,7 +30,8 @@ const require = createRequire(import.meta.url);
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
 const { bootstrapTenant, bootstrapAdministrator, ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
 const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
-const { MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, ADMIN_CONFIGURATION_OPERATIONS } = require("../lib/adminPolicy/configurationOperations.js");
+const { MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, WAREHOUSE_MASTER_CAPABILITY, ADMIN_CONFIGURATION_OPERATIONS } = require("../lib/adminPolicy/configurationOperations.js");
+const { WAREHOUSE_ADMIN_OPERATIONS } = require("../lib/eosOps/warehouseBinAdministration.js");
 const { createMobileLocationScopeBindingAdministration } = require("../lib/eosOps/mobileLocationScopeBindingAdministration.js");
 const { resolveScopeLocation } = require("../lib/eosOps/inventoryScopeAuthority.js");
 const { explainEffectiveAccess } = require("../lib/eosOps/effectiveAccessExplanation.js");
@@ -46,9 +47,17 @@ async function withClient(url, fn) {
 
 test("the capability is one closed constant, and stays out of both PERMISSION_CATALOGs", () => {
   assert.equal(MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, CAP);
-  for (const op of Object.values(ADMIN_CONFIGURATION_OPERATIONS)) assert.equal(op.capability, CAP);
+  // The configuration surface now also carries the Warehouse / Bin master operations (DQ-E, 2026-10-01), each under its
+  // own closed constant; every OTHER configuration operation is the binding capability.
+  assert.equal(WAREHOUSE_MASTER_CAPABILITY, "warehouse.record.manage");
+  const warehouseOps = new Set(WAREHOUSE_ADMIN_OPERATIONS);
+  for (const [name, op] of Object.entries(ADMIN_CONFIGURATION_OPERATIONS)) {
+    assert.equal(op.capability, warehouseOps.has(name) ? WAREHOUSE_MASTER_CAPABILITY : CAP, name);
+  }
   for (const p of ["src/access/permissionCatalog.ts", "../field-ops-app-vite/src/access/permissionCatalog.ts"]) {
-    assert.equal(readFileSync(resolve(FUNCTIONS_DIR, p), "utf8").includes(CAP), false, `${p} must not carry ${CAP}: admin composes the whole catalog`);
+    for (const c of [CAP, WAREHOUSE_MASTER_CAPABILITY]) {
+      assert.equal(readFileSync(resolve(FUNCTIONS_DIR, p), "utf8").includes(c), false, `${p} must not carry ${c}: admin composes the whole catalog`);
+    }
   }
   const sql = readFileSync(resolve(FUNCTIONS_DIR, "migrations/1764118800000_mobile-location-scope-binding-capability.sql"), "utf8").split("-- Down Migration")[0];
   assert.doesNotMatch(sql, /INSERT INTO (role_capabilities|principal_capabilities|eos_policy\.role_capabilities|eos_policy\.principal_capabilities)/, "the migration grants nothing");

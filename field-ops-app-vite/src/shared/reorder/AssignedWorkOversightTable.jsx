@@ -80,7 +80,7 @@ export default function AssignedWorkOversightTable({
                   <td className="fo-muted">
                     {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? "In Progress" : "Waiting"}
                   </td>
-                  <td className="fo-muted">{resolveAssigneeDisplay(request.assignedToUserId)}</td>
+                  <td className="fo-muted">{resolveAssigneeDisplay(request.assignedEmployeeId ?? request.assignedToUserId)}</td>
                   <td className="fo-muted">{formatAssignmentAge(request.assignedAt)}</td>
                 </tr>
               ))}

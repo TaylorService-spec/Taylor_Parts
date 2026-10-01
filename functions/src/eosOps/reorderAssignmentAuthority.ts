@@ -41,6 +41,7 @@
 // `assignedToUserId`, is a separate reviewed step.
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
+import { postgresPrincipalDimensionReader } from "./contextualAuthorization.js";
 
 /** The EXISTING capability for this action (access/permissionCatalog.ts). Not a new one invented for the seam. */
 export const REORDER_REQUEST_ASSIGN = "reorder.request.assign";
@@ -214,11 +215,21 @@ export async function assignReorderRequestToEmployee(
     // assignee), and splitting them across two commands would let a Reorder sit assigned-but-not-
     // advanced, which is a state the lifecycle has no name for.
     const target = await client.query(
-      `SELECT status::text AS status FROM eos_ops.reorder_requests
+      `SELECT status::text AS status, operating_company_key FROM eos_ops.reorder_requests
         WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
       [actor.tenantId, reorderRequestId],
     );
     if (target.rows.length === 0) {
+      refuse("REORDER_NOT_FOUND", "NOT_FOUND", "the Reorder Request does not exist in this tenant");
+    }
+    // G8 (Controller 2026-10-01): assignment is a management decision, reachable only inside the caller's REORDER_QUEUE
+    // Operational Scope for the request's own operating company -- the same queue scope review, cancel and void use.
+    // Outside reach answers exactly as missing (no existence oracle).
+    const reader = postgresPrincipalDimensionReader(client);
+    const actorEmployeeId = await reader.linkedEmployeeId(actor.tenantId, actor.principalId);
+    const reach = actorEmployeeId === null ? [] : (await reader.listOperationalScopes(actor.tenantId, actorEmployeeId))
+      .filter((x) => x.scopeType === "REORDER_QUEUE").map((x) => x.scopeId);
+    if (!reach.includes(String(target.rows[0].operating_company_key))) {
       refuse("REORDER_NOT_FOUND", "NOT_FOUND", "the Reorder Request does not exist in this tenant");
     }
     const targetStatus = target.rows[0].status as string;
@@ -328,4 +339,41 @@ export async function isCallerTheAssignedEmployee(
   const row = rows[0];
   if (!row) return false;
   return row.caller_employee_id === row.assigned_employee_id;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Assignment targets (the picker's read)
+// ---------------------------------------------------------------------------------------------
+
+export interface ReorderAssignmentTarget {
+  readonly employeeId: string;
+  readonly displayName: string | null;
+  readonly operatingCompanyId: string | null;
+}
+
+/**
+ * WHO THE ASSIGN COMMAND WILL ACCEPT, offered to the Parts Manager's picker (Controller 2026-10-01: "Move the Reorder
+ * assignment picker off Firestore employees ... Targets must satisfy existing eligibility"). It is the command's own
+ * policy, read: an ACTIVE Employee of this tenant with an active governed login and the current PARTS_OPERATIONS Work
+ * Eligibility -- the same three facts assignReorderRequestToEmployee refuses on. Gated by reorder.request.assign, because
+ * only a caller who may assign needs to know who is assignable; no uid or external subject is ever returned.
+ */
+export async function listReorderAssignmentTargets(
+  deps: { readonly pool: Pool },
+  actor: ReorderAssignmentActor,
+  input: Record<string, unknown> | undefined,
+): Promise<{ readonly items: readonly ReorderAssignmentTarget[] }> {
+  if (!actor || !(actor.capabilities instanceof Set) || !actor.capabilities.has(REORDER_REQUEST_ASSIGN)) {
+    throw new ReorderAssignmentError("CAPABILITY_MISSING", "FORBIDDEN", `listing assignable Employees requires ${REORDER_REQUEST_ASSIGN}`);
+  }
+  acceptOnly(input, []);
+  const { rows } = await deps.pool.query(
+    `SELECT e.id, e.display_name, e.operating_company_id FROM eos_workforce.employees e
+      WHERE e.tenant_id = $1 AND e.employment_status::text = 'ACTIVE'
+        AND EXISTS (SELECT 1 FROM eos_policy.employee_principal_links l WHERE l.tenant_id = e.tenant_id AND l.employee_id = e.id AND l.status = 'active')
+        AND EXISTS (SELECT 1 FROM eos_workforce.employee_work_eligibility w WHERE w.tenant_id = e.tenant_id AND w.employee_id = e.id
+                     AND w.qualification_code = $2 AND w.effective_to IS NULL)
+      ORDER BY e.display_name NULLS LAST, e.id LIMIT 500`,
+    [actor.tenantId, REORDER_ASSIGNMENT_QUALIFICATION]);
+  return { items: rows.map((r) => ({ employeeId: r.id, displayName: r.display_name ?? null, operatingCompanyId: r.operating_company_id ?? null })) };
 }

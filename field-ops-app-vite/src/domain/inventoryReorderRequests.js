@@ -65,7 +65,7 @@ import { reorderApiClient } from "../services/reorderApiClient.js";
 // server-side enforcement (PR 2) -- fails fast client-side, exactly
 // the same "validated here, not just in the UI, since this is the
 // sole write path" posture reviewReorderRequest() already uses below.
-export function createReorderRequest({ partId, warehouseId, urgency, recommendedQty, recommendationStatus, requestedQty, quantitySource, workOrderId = null }) {
+export function createReorderRequest({ partId, warehouseId, urgency, recommendedQty, recommendationStatus, requestedQty, quantitySource, workOrderId = null, idempotencyKey = null }) {
   if (recommendationStatus !== "READY" && recommendationStatus !== "NEEDS_PLANNING") {
     throw new Error(`Invalid recommendationStatus: ${recommendationStatus}`);
   }
@@ -134,7 +134,16 @@ export function createReorderRequest({ partId, warehouseId, urgency, recommended
     requestedQuantity: requestedQty,
     workOrderId: workOrderId ?? null,
     manual: quantitySource === QUANTITY_SOURCE.MANUAL_ZERO_HISTORY,
+    // G2 (Controller 2026-10-01): the governed create is idempotent per key. One key per submitted intent; a retry that
+    // follows a create which did land is answered by the server's open-demand guard (CONFLICT, naming the existing
+    // request), so a retry can never raise a second open request for the same Part + warehouse.
+    idempotencyKey: idempotencyKey ?? newIdempotencyKey(),
   });
+}
+
+function newIdempotencyKey() {
+  return typeof globalThis.crypto?.randomUUID === "function" ? `rr-create-${globalThis.crypto.randomUUID()}`
+    : `rr-create-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 // Shared "Request Reorder" orchestrator -- builds the correct

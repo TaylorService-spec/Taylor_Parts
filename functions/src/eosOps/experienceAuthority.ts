@@ -216,6 +216,9 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
 
   // ── Purchasing
   surface("purchasing.purchaseOrders", "Purchase Orders", [{ capabilityKey: "reorder.purchaseOrder.read" }]),
+  // The Supplier master read moved to PostgreSQL (eos_ops.suppliers, supplier.record.read -- PARTS / PURCHASING /
+  // RECEIVING RULINGS, 2026-10-01), which closed the purchasing.suppliers VOCABULARY gap; the door already existed.
+  surface("purchasing.suppliers", "Suppliers", [{ capabilityKey: "supplier.record.read" }]),
 
   // ── Equipment
   surface("equipment.register", "Equipment", [
@@ -347,8 +350,8 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
  * The kinds are:
  *
  *   VOCABULARY    no capability exists that could earn the surface, so no grant could ever open it.
- *                 The fix is a capability decision. crm.contacts, service.scheduling and
- *                 purchasing.suppliers are these.
+ *                 The fix is a capability decision. crm.contacts and service.scheduling are these
+ *                 (purchasing.suppliers was, until supplier.record.read was registered, 2026-10-01).
  *   DESTINATION   the capability exists AND IS GRANTED, and the product has no door to offer. The
  *                 fix is a product decision about information architecture, not a policy one, and
  *                 the grant population is evidence FOR building the door rather than against it.
@@ -450,12 +453,8 @@ export const EXPERIENCE_SURFACE_GAPS: readonly ExperienceSurfaceGap[] = Object.f
     absentCapabilityPrefixes: Object.freeze(["dispatchSchedule.", "schedule."]),
     reason: "dispatchSchedule was retired as a policy Object; no capability governs a Scheduling destination distinct from service.dispatch.",
   }),
-  Object.freeze({
-    key: "purchasing.suppliers",
-    kind: "VOCABULARY" as const,
-    absentCapabilityPrefixes: Object.freeze(["supplier."]),
-    reason: "Supplier master reads are Firestore-authoritative and no supplier.* capability is registered.",
-  }),
+  // `purchasing.suppliers` WAS HERE and is CLOSED (2026-10-01): supplier.record.read is registered, the Supplier list
+  // reads eos_ops.suppliers through the EOS API, and the surface is declared above with its existing door.
 ]);
 
 /**

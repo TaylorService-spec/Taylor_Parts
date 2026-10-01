@@ -966,6 +966,14 @@ async function dispatch(
     case "readMobileLocationScopeBinding":
     case "setMobileLocationScopeBinding":
     case "removeMobileLocationScopeBinding":
+    case "listWarehouses":
+    case "listWarehouseBins":
+    case "createWarehouse":
+    case "updateWarehouse":
+    case "setWarehouseStatus":
+    case "createBin":
+    case "relabelBin":
+    case "setBinStatus":
       throw new Error(`${operation} is a configuration operation`);
 
     default: {

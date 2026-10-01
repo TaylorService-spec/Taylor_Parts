@@ -39,10 +39,10 @@ import { SUPPLIER_STATUSES, SUPPLIER_STATUS_META } from "../../domain/suppliersV
 // named here as a known gap instead, the same restraint applied to Part's deliberately-absent ledger
 // fields.
 //
-// NO CAPABILITY GATES THIS COLLECTION. firestore.rules' `suppliers/{supplierId}` admits
-// isAdminOrDispatcher() only, unconditional read/deny-write — a role check, never a capability id.
-// There is no `supplier.read` in the capability catalog. readCapability is therefore null, the same
-// finding every role-gated collection in this program already records.
+// GOVERNED READ (Controller PARTS / PURCHASING / RECEIVING RULINGS, 2026-10-01). The Supplier master is eos_ops.suppliers,
+// read through the EOS listSuppliers operation, which the server gates on `supplier.record.read` (registered by
+// migration 1764380000000, granted only through Administration). Formerly firestore.rules' `suppliers/{supplierId}`
+// admitted isAdminOrDispatcher() only -- a role check with no capability id.
 //
 // IDENTITY IS A nameField ONLY. `name` (GovernedSupplier's "canonical display name") is what
 // suppliersView.js falls back to `.id` for when missing, the exact identity-gap pattern
@@ -73,10 +73,11 @@ export const supplierEntity = makeEntityDefinition({
   // inside services/operationsQueries.ts) — the literal here matches that local const and
   // functions/src/constants/collections.ts's own SUPPLIERS_COLLECTION = "suppliers".
   collection: "suppliers",
-  readVia: "CLIENT_DIRECT",
+  // EOS_API (Controller 2026-10-01): the Supplier master is eos_ops.suppliers, read through listSuppliers.
+  readVia: "EOS_API",
   // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null rather than
   // invented — see the header.
-  readCapability: null,
+  readCapability: "supplier.record.read",
   identity: makeIdentity({ nameField: "name" }),
   description:
     "A governed vendor record (Supplier Master, functions/src/supplierMaster) — or, on a document predating that " +

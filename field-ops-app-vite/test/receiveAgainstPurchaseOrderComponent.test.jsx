@@ -27,7 +27,8 @@ vi.mock("../src/domain/purchaseOrdersView", () => ({
 }));
 // The receipt goes to the governed PostgreSQL authority (reorderReceivingClient); the Firebase receiving
 // client serves only the location options. submitReceiveInventoryStock no longer exists to be called.
-vi.mock("../src/services/receivingCallableClient", () => ({ fetchReceivingLocationOptions: (...a) => fetchLocations(...a) }));
+// EOS (2026-10-01): the destination comes from the governed PostgreSQL read for the chosen Reorder, not the Firebase callable.
+vi.mock("../src/services/partsOperationsReads.js", () => ({ fetchReorderReceivingLocationOptions: (...a) => fetchLocations(...a) }));
 vi.mock("../src/services/reorderReceivingClient", () => ({ submitReorderReceipt: (...a) => submitReceipt(...a) }));
 vi.mock("../src/services/partMasterQueries", () => ({ readPartsForView: (...a) => fetchParts(...a) }));
 

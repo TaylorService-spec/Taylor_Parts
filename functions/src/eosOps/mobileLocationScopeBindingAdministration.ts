@@ -261,10 +261,8 @@ export function createMobileLocationScopeBindingAdministration(pool: Pool) {
       case "readMobileLocationScopeBinding": return readOne(pool, actor.tenantId, requiredText(input, "locationId"));
       case "setMobileLocationScopeBinding": return setBinding(pool, actor, input, reason);
       case "removeMobileLocationScopeBinding": return removeBinding(pool, actor, input, reason);
-      default: {
-        const never: never = operation;
-        throw new Error(`unknown configuration operation ${String(never)}`);
-      }
+      default:
+        throw new Error(`not a truck-location scope binding operation: ${String(operation)}`);
     }
   };
 }

@@ -4,7 +4,7 @@ import { usePurchaseOrdersByIds } from "../../hooks/usePurchaseOrdersByIds";
 import { buildPurchaseOrdersView, PURCHASE_ORDERS_STATUS } from "../../domain/purchaseOrdersView";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
-import { fetchReceivingLocationOptions } from "../../services/receivingCallableClient";
+import { fetchReorderReceivingLocationOptions } from "../../services/partsOperationsReads.js";
 import { submitReorderReceipt } from "../../services/reorderReceivingClient";
 import { readPartsForView } from "../../services/partMasterQueries";
 import {
@@ -108,7 +108,9 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
     setPartTracking({ status: "loading", trackingMode: null });
     // Fetch the receiving locations AND resolve this part's tracking mode in parallel -- the
     // tracking mode isn't needed until Continue, but reading it now avoids a second spinner.
-    const [locationsRes, partsRes] = await Promise.all([fetchReceivingLocationOptions(), readPartsForView([c.partId])]);
+    // EOS (Controller 2026-10-01): the Reorder's own governed destination, from PostgreSQL -- never the Firebase
+    // listReceivingLocationOptions callable, which read Firestore warehouses the PostgreSQL receipt does not accept.
+    const [locationsRes, partsRes] = await Promise.all([fetchReorderReceivingLocationOptions(c.receiptSource?.reorderRequestId), readPartsForView([c.partId])]);
     if (!mountedRef.current || generation !== locationRequestGenerationRef.current) return;
     setLocations({ status: locationsRes.status, options: locationsRes.options ?? [] });
     setPartTracking(resolvePartTrackingMode({ partsFetchResult: partsRes, partId: c.partId }));

@@ -86,7 +86,17 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
   await employee("e-assignee");  await link("e-assignee", assigneePrincipal);
   await employee("e-other");     await link("e-other", otherPrincipal);
   await employee("e-unlinked");
-  await employee("e-onleave", "t1", "ON_LEAVE"); await link("e-onleave", actorPrincipal);
+  // The ON_LEAVE refusal target is linked to its OWN Principal; the assigning manager is an ACTIVE Employee holding the
+  // REORDER_QUEUE reach for the requests' company (G8, 2026-10-01: assignment is a management decision inside that reach).
+  const onLeavePrincipal = await principal("t1", "uid-onleave");
+  await employee("e-onleave", "t1", "ON_LEAVE"); await link("e-onleave", onLeavePrincipal);
+  await employee("e-manager");   await link("e-manager", actorPrincipal);
+  await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by)
+           VALUES ('t1','taylor','ACTIVE','fixture','f','f') ON CONFLICT DO NOTHING`);
+  await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+           VALUES ('t1','taylor','sample-co','ACTIVE','NATIVE','fixture','f','f') ON CONFLICT DO NOTHING`);
+  await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+           VALUES ('os-q-manager', 't1', 'e-manager', 'REORDER_QUEUE', 'sample-co', now(), 'fixture')`);
   await employee("e-t2", "t2");  await link("e-t2", t2Principal, "t2");
 
   // Every Employee the existing proofs assign must now hold the qualification the OPERATION requires.
@@ -317,7 +327,14 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
     // "may they be given this kind of work". The command never reads employee_operational_scopes at all.
     const src = readFileSync(join(FUNCTIONS_DIR, "src/eosOps/reorderAssignmentAuthority.ts"), "utf8");
     assert.equal(/employee_operational_scopes/.test(src), false, "the assignment command consulted an Operational Scope");
-    assert.equal(/REORDER_QUEUE/.test(src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "")), false,
+    // G8 (Controller 2026-10-01) adds the queue scope to the ACTOR's management reach -- who may assign this request --
+    // never to the TARGET's qualification. So REORDER_QUEUE may appear only where the actor's own Employee scopes are read,
+    // and the target is still decided by the work-eligibility qualification alone.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const queueLines = code.split("\n").filter((l) => /REORDER_QUEUE/.test(l));
+    assert.ok(queueLines.length > 0 && queueLines.every((l) => /scopeType === "REORDER_QUEUE"/.test(l)), `the queue scope is read only as the actor's reach: ${queueLines.join(" | ")}`);
+    assert.match(code, /listOperationalScopes\(actor\.tenantId, actorEmployeeId\)/, "the reach is the ACTOR's Employee scope");
+    assert.match(code, /qualification_code = \$3 AND effective_to IS NULL`,\s*\[actor\.tenantId, employeeId, REORDER_ASSIGNMENT_QUALIFICATION\]/,
       "the queue scope leaked into the qualification authority");
   });
 

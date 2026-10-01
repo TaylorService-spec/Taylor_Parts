@@ -1,3 +1,4 @@
+import { useReorderAssignmentTargets } from "../../hooks/useReorderAssignmentTargets.js";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
@@ -35,7 +36,7 @@ import { recordPurchaseOrder, voidPurchaseOrder } from "../../domain/reorderPurc
 import { useSuppliers } from "../../hooks/useSuppliers";
 import SupplierPicker from "../../shared/supplier/SupplierPicker";
 import { isSelectableSupplier } from "../../domain/supplierPicker";
-import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, OPERATIONAL_ROLE } from "../../domain/constants";
+import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import FailureState from "../../shared/ui/FailureState";
@@ -380,7 +381,7 @@ function ReorderRequestReview({ request, onReviewed }) {
 // Employee by display name; the canonical User ID remains internal and
 // is passed to the existing assignment domain function.
 //
-// requiredOperationalRole: OPERATIONAL_ROLE.PARTS_ASSOCIATE (added
+// (formerly the legacy operational-role filter; now the governed EOS Reorder assignment targets, added
 // after PR #105 -- governance correction) restricts selectable
 // employees to those actually meant to receive assignments. Before
 // this, the picker had no eligibility filter at all: any ACTIVE
@@ -460,7 +461,7 @@ function ReorderRequestAssignment({ request, onAssigned }) {
 
       <form className="fo-form" onSubmit={handleAssign}>
         <EmployeeAssignmentPicker
-          requiredOperationalRole={OPERATIONAL_ROLE.PARTS_ASSOCIATE}
+          useEmployees={useReorderAssignmentTargets}
           selectedEmployeeId={selectedEmployeeId}
           onSelect={handleEmployeeSelect}
           disabled={submitting}
