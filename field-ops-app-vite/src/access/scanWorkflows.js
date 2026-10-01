@@ -55,7 +55,8 @@ export const RECEIVE_CAPABILITY = "inventory.stock.receive";
  * who holds only one of them can still do useful work. So the workflow is offered when EITHER is
  * held, and the screen then offers only the action the selected transfer is actually waiting for.
  *
- * Both are registered active:false and granted to no Role today, so this denies for everyone.
+ * Both are PostgreSQL capabilities granted through Administration since the Inventory / Warehouse activation
+ * (2026-10-01): dispatch to inventoryTransferOperator, receive to inventoryTransferReceiver. A caller without either is denied.
  */
 export const TRANSFER_DISPATCH_CAPABILITY = "inventory.transfer.dispatch";
 export const TRANSFER_RECEIVE_CAPABILITY = "inventory.transfer.receive";
