@@ -1,11 +1,11 @@
 // WHICH STORE IS THE WORK ORDER AUTHORITY -- one constant, the same shape as Cycle Count, Relocation, Transfer and
 // Placement, so activation is a single reviewed change.
 //
-// WORK ORDER DOMAIN CUTOVER AUTHORIZATION (2026-09-30), DQ-S4: readiness stays FAIL-CLOSED. The governed PostgreSQL
-// Work Order domain (create, reads, assignment, scheduling, dispatch, the technician lifecycle, execution facts,
-// completion, parts plan, equipment install) is BUILT and served on /operations/work-orders, and every operation but
-// the readiness probe refuses NOT_ACTIVATED while `postgres` is INACTIVE. The client reads the probe and shows
-// NOT_YET_ACTIVATED rather than a half-working screen.
+// WORK ORDER DOMAIN CUTOVER AUTHORIZATION (2026-09-30), DQ-S4. The governed PostgreSQL Work Order domain (create,
+// reads, assignment, scheduling, dispatch, the technician lifecycle, execution facts, completion, parts plan) is
+// served on /operations/work-orders and is ACTIVE below. Equipment install is built (workOrderEquipmentInstall.ts)
+// but NOT on that route. While `postgres` is INACTIVE every operation but the readiness probe refuses NOT_ACTIVATED,
+// and the client reads the probe and shows NOT_YET_ACTIVATED rather than a half-working screen.
 //
 // Activation: freeze the Firebase Work Order callables (transitionWorkOrder, createWorkOrder, the scheduling and
 // execution callables), flip this to { firestore: "FROZEN", postgres: "ACTIVE" }, then cut the client over. The

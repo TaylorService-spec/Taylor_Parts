@@ -21,8 +21,9 @@
 //   the state      the Work Order is an INSTALL Work Order, WORK_IN_PROGRESS (install first, then complete)
 //   the facts      customer, site and operating company come FROM THE WORK ORDER, never from the caller
 //
-// INERT. No transport routes to it; the PG Work Order activation stays HELD. It is built so that the
-// activation, when authorized, has a PG-catalog install path to switch to.
+// INERT. No transport routes to it. The PG Work Order domain is ACTIVE (2026-09-30) and PG serialized custody is
+// certified per tenant (2026-10-01), but Equipment activation is a separate, unauthorized package: until it is
+// ruled, install stays off /operations/work-orders and this is the PG install path that activation switches to.
 import { createHash } from "node:crypto";
 import type { Pool } from "pg";
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";

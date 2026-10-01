@@ -8,10 +8,10 @@
 // NOT_ACTIVATED before it resolves anyone or reads anything -- except `readWorkOrderAuthorityStatus`, which exists
 // so the client can say NOT_YET_ACTIVATED instead of guessing.
 //
-// NOT ON THIS ROUTE, deliberately: Equipment INSTALL. It moves a serialized unit's custody into EQUIPMENT, and the
-// PostgreSQL serialized-custody authority is INACTIVE (Firestore custody is OPEN), so exposing it would be exactly
-// the hidden Inventory activation the ruling forbids. The built module (workOrderEquipmentInstall.ts) stays inert;
-// the Equipment on a Work Order is READ through readWorkOrder.
+// NOT ON THIS ROUTE, deliberately: Equipment INSTALL. It moves a serialized unit's custody into EQUIPMENT, which is
+// the Equipment activation -- a separate package not yet authorized (the Work Order and Inventory activations did
+// not include it). The built module (workOrderEquipmentInstall.ts) stays inert; the Equipment on a Work Order is READ
+// through readWorkOrder.
 import { SELF_SCHEDULING_READ_OPERATIONS, SELF_SCHEDULING_WORK_ORDER_OPERATIONS } from "./selfScheduling";
 import { createWorkOrder } from "./workOrderCreateCommand";
 import {
