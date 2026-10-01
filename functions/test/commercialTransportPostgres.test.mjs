@@ -139,6 +139,10 @@ test("Commercial transport end to end over the real policy and Commercial author
   const withCatalog = { ...bare, catalog }; // TEST-ONLY governed catalog authority
 
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  // The tenant's sales channels, as Administration setTenantSalesChannelStatus records them: new Commercial work requires an ACTIVE channel.
+  for (const tenant of ["t1", "t2"]) for (const channel of ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"]) {
+    await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1, $2, 'ACTIVE', 'fixture', 'fixture', 'fixture')`, [tenant, channel]);
+  }
   await bindOperatingCompany(q, "t1", "taylor"); // governed key binding, explicit (never inferred from the id)
   await bindOperatingCompany(q, "t2", "taylor"); // governed key binding, explicit (never inferred from the id)
   assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.role_capabilities`)).rows[0].n, 0, "the migrated database already carried grants");

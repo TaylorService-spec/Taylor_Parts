@@ -21,6 +21,10 @@ const key = () => `l5-${randomUUID()}`;
 test("operating-company binding matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { pool } = await freshMigratedDatabase(t, "l5opco");
   await pool.query(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  // The tenants' sales channels, as Administration setTenantSalesChannelStatus records them: new Commercial work requires an ACTIVE channel.
+  for (const tenant of ["t1", "t2"]) for (const channel of ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"]) {
+    await pool.query(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1, $2, 'ACTIVE', 'fixture', 'fixture', 'fixture')`, [tenant, channel]);
+  }
   // t1: taylor ACTIVE (bound to key sample-co-synthetic); ventana INACTIVE. t2: ventana ACTIVE only.
   await pool.query(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES
     ('t1','taylor','ACTIVE','l5','l5','l5'), ('t2','ventana','ACTIVE','l5','l5','l5')`);

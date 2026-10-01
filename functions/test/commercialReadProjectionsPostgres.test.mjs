@@ -80,6 +80,10 @@ test("governed PostgreSQL Commercial read projections, in PostgreSQL", { skip: S
 
   // ── the world ──
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  // The tenant's sales channels, as Administration setTenantSalesChannelStatus records them: new Commercial work requires an ACTIVE channel.
+  for (const tenant of ["t1", "t2"]) for (const channel of ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"]) {
+    await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1, $2, 'ACTIVE', 'fixture', 'fixture', 'fixture')`, [tenant, channel]);
+  }
   await bindOperatingCompany(q, "t1", "taylor"); // governed key binding, explicit (never inferred from the id)
   await bindOperatingCompany(q, "t2", "taylor"); // governed key binding, explicit (never inferred from the id)
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, owner_employee_id, created_by, updated_by) VALUES

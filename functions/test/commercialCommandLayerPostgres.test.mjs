@@ -76,6 +76,10 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
 
   // ── the world ──
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  // The tenant's sales channels, as Administration setTenantSalesChannelStatus records them: new Commercial work requires an ACTIVE channel.
+  for (const tenant of ["t1", "t2"]) for (const channel of ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"]) {
+    await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1, $2, 'ACTIVE', 'fixture', 'fixture', 'fixture')`, [tenant, channel]);
+  }
   // t1 binds Taylor to a DELIBERATELY DIFFERENT key: every write below must store the bound key, and every read must map it
   // back to the company id -- proof that nothing assumes operatingCompanyKey == operatingCompanyId.
   await bindOperatingCompany(q, "t1", "taylor", "taylor-ops-t1");
@@ -416,6 +420,29 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     assert.equal(results.filter((r) => !r.replayed).length, 1);
     assert.equal(await count("opportunities", "sales_channel='STRATEGIC_ACCOUNTS'"), 1);
     assert.equal(await count("accountability_handoffs", "opportunity_id=$1", [results[0].opportunityId]), 1);
+  });
+
+  await t.test("ACTIVE SALES CHANNEL: a GLOBAL writer cannot create in, move into, or directly order in a channel the tenant has not activated; existing work continues", async () => {
+    // Created while STRATEGIC_ACCOUNTS is ACTIVE; then the tenant deactivates it (Administration's own status column).
+    const existing = await opp.createOpportunity(deps, ACTOR, { idempotencyKey: key(), accountId: "acct-1", salesChannel: "STRATEGIC_ACCOUNTS", lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] });
+    const retailOpp = await opp.createOpportunity(deps, ACTOR, { idempotencyKey: key(), accountId: "acct-1", salesChannel: "RETAIL", lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] });
+    await q(`UPDATE eos_policy.tenant_sales_channels SET status = 'INACTIVE', updated_by = 'fixture', updated_at = now() WHERE tenant_id = 't1' AND sales_channel = 'STRATEGIC_ACCOUNTS'`);
+    try {
+      const before = await count("opportunities");
+      await assert.rejects(opp.createOpportunity(deps, ACTOR, { idempotencyKey: key(), accountId: "acct-1", salesChannel: "STRATEGIC_ACCOUNTS", lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] }),
+        code("SALES_CHANNEL_NOT_ACTIVE"), "create in an inactive channel");
+      await assert.rejects(opp.updateOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: retailOpp.opportunityId, expectedEditVersion: 1, salesChannel: "STRATEGIC_ACCOUNTS" }),
+        code("SALES_CHANNEL_NOT_ACTIVE"), "move into an inactive channel");
+      const orders = await count("sales_orders");
+      await assert.rejects(so.createSalesOrder(deps, ACTOR, { idempotencyKey: key(), accountId: "acct-1", ownerEmployeeId: "e-national", operatingCompanyId: "taylor",
+        salesChannel: "STRATEGIC_ACCOUNTS", lines: [{ kind: "SERVICE", ref: "svc", orderedQty: 1, unitPrice: 100, businessUnitId: "SERVICE" }] }), code("SALES_CHANNEL_NOT_ACTIVE"), "direct order in an inactive channel");
+      assert.equal(await count("sales_orders"), orders);
+      assert.equal(await count("opportunities"), before, "nothing written");
+      // Work already in the channel continues: it is governed history, not new work.
+      await opp.transitionOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: existing.opportunityId, toStage: "QUALIFYING" });
+    } finally {
+      await q(`UPDATE eos_policy.tenant_sales_channels SET status = 'ACTIVE', updated_by = 'fixture', updated_at = now() WHERE tenant_id = 't1' AND sales_channel = 'STRATEGIC_ACCOUNTS'`);
+    }
   });
 
   await t.test("(37)(38) a failed command leaves no receipt, and a failed receipt leaves no business mutation", async () => {

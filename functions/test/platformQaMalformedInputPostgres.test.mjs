@@ -32,6 +32,10 @@ const HOSTILE = {
 test("malformed input matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { pool } = await freshMigratedDatabase(t, "l5fuzz");
   await pool.query(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1')`);
+  // The tenants' sales channels, as Administration setTenantSalesChannelStatus records them: new Commercial work requires an ACTIVE channel.
+  for (const tenant of ["t1"]) for (const channel of ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"]) {
+    await pool.query(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1, $2, 'ACTIVE', 'fixture', 'fixture', 'fixture')`, [tenant, channel]);
+  }
   await bindOperatingCompany((text, values) => pool.query(text, values), 't1', 'taylor'); // company ACTIVE + key bound (DQ-008)
   const tokens = tokenRegistry();
   const { repo, transports } = composeTransports(pool, tokens.verifyToken);
