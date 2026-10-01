@@ -4,8 +4,13 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, waitFor, renderHook } from "@testing-library/react";
 
-const rows = vi.hoisted(() => ({ value: [] }));
-vi.mock("../src/services/operationsQueries", () => ({ fetchInventoryTransactions: vi.fn(async () => rows.value) }));
+// EOS (Controller PARTS / PURCHASING / RECEIVING RULINGS, 2026-10-01): the hook reads the governed PostgreSQL reads, never
+// Firestore inventory_transactions. The panels' DQ-027 disclosures are unchanged and still proven below.
+const eos = vi.hoisted(() => ({ onHand: { scopedWarehouseIds: [], rows: [], totals: [] }, history: { items: [] }, fail: null }));
+vi.mock("../src/services/partsOperationsReads.js", () => ({
+  fetchInventoryPosition: vi.fn(async () => { if (eos.fail) throw eos.fail; return eos.onHand; }),
+  fetchInventoryMovements: vi.fn(async () => { if (eos.fail) throw eos.fail; return eos.history; }),
+}));
 
 import InventoryHealthPanel from "../src/modules/operations/panels/InventoryHealthPanel.jsx";
 import ProcurementPanel from "../src/modules/operations/panels/ProcurementPanel.jsx";
@@ -44,26 +49,43 @@ describe("ProcurementPanel integrity", () => {
   });
 });
 
-describe("useInventoryLedger integrity", () => {
-  it("DEFAULT: an unreadable row FAILS the read (the old contract cannot say 'some parts')", async () => {
-    rows.value = [good("A"), { ...good("B"), quantity: "oops" }];
+describe("useInventoryLedger over the governed PostgreSQL reads", () => {
+  const movement = (partId, quantityDelta, type = "RECEIVED") => ({ movementId: `m-${partId}-${quantityDelta}`, partId, movementType: type, quantityDelta,
+    locationType: "WAREHOUSE", locationId: "wh-phx", warehouseId: "wh-phx", sourceKind: "RECEIVING_ORDER", sourceId: "rcv-1", serialNumber: null,
+    occurredAt: "2026-10-01T15:00:00.000Z" });
+
+  it("STOCK is the server's authoritative on-hand -- never re-derived client-side from the movement rows", async () => {
+    eos.fail = null;
+    eos.onHand = { scopedWarehouseIds: ["wh-phx"], rows: [], totals: [{ partId: "PRT-FAN", onHand: 6 }] };
+    eos.history = { items: [movement("PRT-FAN", 6), movement("PRT-FAN", 99, "ADJUSTED")] }; // a history that would sum differently
     const { result } = renderHook(() => useInventoryLedger());
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.error?.code).toBe("LEDGER_ROW_UNREADABLE");
+    expect(result.current.error).toBeNull();
+    expect(result.current.healthEntries.map((e) => [e.partId, e.stock.availableStock])).toEqual([["PRT-FAN", 6]]);
+    expect(result.current.transactions.map((t) => [t.partId, t.type, t.quantity])).toEqual([["PRT-FAN", "RECEIVED", 6], ["PRT-FAN", "ADJUSTED", 99]]);
+    expect(result.current.integrity.state).toBe("COMPLETE");
+  });
+
+  it("no warehouse scope is an honest empty answer, not an error", async () => {
+    eos.fail = null;
+    eos.onHand = { scopedWarehouseIds: [], rows: [], totals: [] };
+    eos.history = { items: [] };
+    const { result } = renderHook(() => useInventoryLedger({ allowPartial: true }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect([result.current.error, result.current.healthEntries]).toEqual([null, []]);
+  });
+
+  it("a refused or failed read is a FAILED read -- never a silent empty list", async () => {
+    eos.fail = Object.assign(new Error("denied"), { code: "FORBIDDEN" });
+    const { result } = renderHook(() => useInventoryLedger());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error?.code).toBe("FORBIDDEN");
     expect(result.current.healthEntries).toEqual([]);
   });
-  it("OPTED IN: unaffected parts keep true figures; the affected part is disclosed, not dropped", async () => {
-    rows.value = [good("A", 5), { ...good("B"), quantity: "oops" }];
-    const { result } = renderHook(() => useInventoryLedger({ allowPartial: true }));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.error).toBeNull();
-    expect(result.current.healthEntries.map((e) => [e.partId, e.stock.availableStock])).toEqual([["A", 5]]);
-    expect(result.current.integrity.unavailablePartIds).toEqual(["B"]);
-  });
-  it("OPTED IN but unattributable: still a failed read", async () => {
-    rows.value = [good("A"), { schemaVersion: 2, type: "TRANSFER_OUT", quantity: 1 }];
-    const { result } = renderHook(() => useInventoryLedger({ allowPartial: true }));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.error?.integrity?.state).toBe("UNAVAILABLE");
+
+  it("imports no Firestore read", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("src/hooks/useInventoryLedger.js", "utf8");
+    expect(src).not.toMatch(/operationsQueries|firebase\/firestore|inventory_transactions"/);
   });
 });

@@ -124,6 +124,15 @@ export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze([
   "readMobileLocationScopeBinding",
   "setMobileLocationScopeBinding",
   "removeMobileLocationScopeBinding",
+  // DQ-E (Controller 2026-10-01): Warehouse and Bin master administration, gated on the server by warehouse.record.manage.
+  "listWarehouses",
+  "listWarehouseBins",
+  "createWarehouse",
+  "updateWarehouse",
+  "setWarehouseStatus",
+  "createBin",
+  "relabelBin",
+  "setBinStatus",
 ]);
 
 const ALL_OPERATIONS = new Set([...ADMIN_READ_OPERATIONS, ...ADMIN_MUTATION_OPERATIONS, ...ADMIN_CONFIGURATION_OPERATIONS]);

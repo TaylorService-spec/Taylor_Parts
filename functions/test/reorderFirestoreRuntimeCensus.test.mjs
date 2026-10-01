@@ -387,11 +387,14 @@ test("an exported Firebase callable is DEPLOYED legacy authority, never DEAD", (
   const callables = byPath.get("functions/src/reorderRequest/reorderCallables.ts|REORDER_REQUEST");
   assert.equal(callables.classification, "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
     "a callable with no repository callers is still deployed and externally invokable; DEAD would be a lie");
-  // The claim is checked: it must actually still be exported from the Functions entry point.
+  // REPOSITORY RETIREMENT (2026-10-01): the export is gone from the Functions entry point, so no future deploy carries
+  // these callables -- but the copies DEPLOYED in nonprod remain invokable until a Firebase deploy carries the removal,
+  // which is why the classification stays DEPLOYED (never DEAD, never RETIRED) until that deploy.
   const index = strip(readFileSync(join(REPO, "functions/src/index.ts"), "utf8"));
   for (const name of REORDER_CALLABLES) {
-    assert.ok(index.includes(name), `${name} is no longer exported -- reclassify it as retired`);
+    assert.ok(!new RegExp(`\\b${name}\\b`).test(index), `${name} is exported again -- the repository retirement regressed`);
   }
+  assert.match(callables.consumer, /DEPLOYED in nonprod still carry them/);
 });
 
 test("THE HARD GATE: activation requires ZERO Reorder runtime consumers of any kind, on every Reorder object", () => {

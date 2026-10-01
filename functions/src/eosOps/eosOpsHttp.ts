@@ -38,7 +38,8 @@ import {
   listReorderWarehouseOptions, readReorderPurchaseOrders,
   recordReorderPurchaseOrder, voidReorderPurchaseOrder, REORDER_POSTGRES_ACTIVE, type ReorderActor,
 } from "./reorderLifecycleCommands.js";
-import { ReorderAssignmentError, assignReorderRequestToEmployee } from "./reorderAssignmentAuthority.js";
+import { ReorderAssignmentError, assignReorderRequestToEmployee, listReorderAssignmentTargets } from "./reorderAssignmentAuthority.js";
+import { listReceipts, listReceivingLocationOptions, listSuppliers, readInventoryMovements, readInventoryOnHand, readReceipt } from "./partsReads.js";
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import { EOS_WORK_ORDER_OPERATIONS, isWorkOrderOperation, type EosWorkOrderOperation } from "./workOrderOperations";
@@ -83,6 +84,16 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   // Same reach as readReorderRequest, applied to every id. It replaces the browser's Firestore reads of
   // reorder_purchase_orders / reorder_purchase_order_voids, which stop being current at activation.
   "readReorderPurchaseOrders",
+  // PARTS / PURCHASING / RECEIVING (Controller 2026-10-01): the PostgreSQL reads that replace the journey's Firebase reads
+  // -- on-hand derived from the movement ledger, receipts, the governed receiving destinations, the Supplier master and
+  // the Reorder assignment targets (eosOps/partsReads.ts, reorderAssignmentAuthority.ts).
+  "readInventoryOnHand",
+  "readInventoryMovements",
+  "listReceipts",
+  "readReceipt",
+  "listReceivingLocationOptions",
+  "listSuppliers",
+  "listReorderAssignmentTargets",
 ] as const);
 export type OperationsReadOperation = (typeof OPERATIONS_READ_OPERATIONS)[number];
 
@@ -128,6 +139,13 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   readMyReorderHistory: "/operations/inventory",
   listReorderWarehouseOptions: "/operations/inventory",
   readReorderPurchaseOrders: "/operations/inventory",
+  readInventoryOnHand: "/operations/inventory",
+  readInventoryMovements: "/operations/inventory",
+  listReceipts: "/operations/inventory",
+  readReceipt: "/operations/inventory",
+  listReceivingLocationOptions: "/operations/inventory",
+  listSuppliers: "/operations/inventory",
+  listReorderAssignmentTargets: "/operations/inventory",
   createReorderRequest: "/operations/inventory",
   reviewReorderRequest: "/operations/inventory",
   assignReorderRequest: "/operations/inventory",
@@ -229,6 +247,9 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "readReorderPurchaseOrders",
   "createReorderRequest", "reviewReorderRequest", "assignReorderRequest", "startPurchasingOnReorder", "postPurchasingUpdate",
   "markReorderReceived", "cancelReorderRequest", "recordReorderPurchaseOrder", "voidReorderPurchaseOrder", "receiveReorderStock",
+  // The Parts / Purchasing / Receiving reads (2026-10-01) sit behind the same activation boundary.
+  "readInventoryOnHand", "readInventoryMovements", "listReceipts", "readReceipt", "listReceivingLocationOptions",
+  "listSuppliers", "listReorderAssignmentTargets",
 ]);
 
 export type OperationsApiFailureCode =
@@ -243,7 +264,9 @@ export type OperationsApiFailureCode =
 
 export type OperationsApiResult =
   | { readonly ok: true; readonly operation: OperationsOperation; readonly result: unknown }
-  | { readonly ok: false; readonly operation: string; readonly code: OperationsApiFailureCode; readonly message: string };
+  | { readonly ok: false; readonly operation: string; readonly code: OperationsApiFailureCode; readonly message: string;
+      /** Present only when the refusal states facts the caller may act on (e.g. the open Reorder Request to continue). */
+      readonly details?: Readonly<Record<string, unknown>> };
 
 /**
  * Execute one named operational read.
@@ -345,6 +368,34 @@ export async function executeOperation(
         const { actor, pool } = await reorderActor();
         return ok(await readMyAssignedReorders({ pool }, actor));
       }
+      case "readInventoryOnHand": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readInventoryOnHand({ pool }, actor, request.input ?? {}));
+      }
+      case "readInventoryMovements": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readInventoryMovements({ pool }, actor, request.input ?? {}));
+      }
+      case "listReceipts": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listReceipts({ pool }, actor, request.input ?? {}));
+      }
+      case "readReceipt": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readReceipt({ pool }, actor, request.input ?? {}));
+      }
+      case "listReceivingLocationOptions": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listReceivingLocationOptions({ pool }, actor, request.input ?? {}));
+      }
+      case "listSuppliers": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listSuppliers({ pool }, actor, request.input ?? {}));
+      }
+      case "listReorderAssignmentTargets": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listReorderAssignmentTargets({ pool }, actor, request.input ?? {}));
+      }
       case "createReorderRequest": {
         const { actor, pool } = await reorderActor();
         return ok(await createGovernedReorderRequest({ pool }, actor, request.input ?? {}));
@@ -399,7 +450,9 @@ export async function executeOperation(
     // with the command's own category preserved rather than flattened to 500.
     if (err instanceof ReorderLifecycleError || err instanceof ReorderAssignmentError || err instanceof ReceiveStockError) {
       const code: OperationsApiFailureCode = err.category === "FAILED" ? "INTERNAL" : err.category;
-      return { ok: false, operation: request.operation, code, message: err.message };
+      const details = err instanceof ReorderLifecycleError ? err.details : undefined;
+      return details === undefined ? { ok: false, operation: request.operation, code, message: err.message }
+        : { ok: false, operation: request.operation, code, message: err.message, details };
     }
     // eslint-disable-next-line no-console -- same posture as adminPolicyHttp.ts's unhandled-error log
     console.error("[eosOpsHttp] unhandled", err);

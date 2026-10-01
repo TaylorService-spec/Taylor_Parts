@@ -80,6 +80,16 @@ test("legacy Reorder assignment copy: exact Employee or refuse, truthful provena
   await qualify("e-alice");
   await qualify("e-bob");
 
+  // G8 (Controller 2026-10-01): the governed assign is a management decision inside the assigner's REORDER_QUEUE reach,
+  // so the manager who assigns THROUGH the command is an ACTIVE Employee holding that reach for the request's company key.
+  await employee("e-manager"); await link("e-manager", pManager);
+  await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by)
+           VALUES ('t1','taylor','ACTIVE','fixture','f','f') ON CONFLICT DO NOTHING`);
+  await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+           VALUES ('t1','taylor','sample-co','ACTIVE','NATIVE','fixture','f','f') ON CONFLICT DO NOTHING`);
+  await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+           VALUES ('os-q-manager', 't1', 'e-manager', 'REORDER_QUEUE', 'sample-co', now(), 'fixture')`);
+
   const src = (reorderRequestId, assignedToUserId, assignedBy = "uid-manager") => ({ reorderRequestId, assignedToUserId, assignedBy });
 
   // The governed assign command now targets a real Reorder row (the domain cutover moved the object

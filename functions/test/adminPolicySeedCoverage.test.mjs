@@ -190,14 +190,18 @@ test("the twelve previously-missed entities that remain are seeded, by name", ()
 // ============================ D-2, at the object level ============================
 
 test("an object no capability governs is SEEDED, with every verb ungrantable", () => {
-  // The honest state for Supplier, Truck and the rest: the object exists and an administrator sees
-  // it, and nothing can be granted on it until a capability names it. Seeding it with a fabricated
-  // grant, or omitting it, would both be worse.
-  const supplier = snapshot.objects.find((o) => o.key === "supplier");
-  assert.ok(supplier, "supplier is seeded");
+  // The honest state for Truck and the rest: the object exists and an administrator sees it, and
+  // nothing can be granted on it until a capability names it. Seeding it with a fabricated grant, or
+  // omitting it, would both be worse. (Supplier was the example until supplier.record.read was
+  // registered, 2026-10-01 -- it is now governed for R only; see the next assertion.)
+  const truck = snapshot.objects.find((o) => o.key === "truck");
+  assert.ok(truck, "truck is seeded");
   for (const verb of ["C", "R", "E", "D"]) {
-    assert.deepEqual(supplier.capabilitiesByVerb[verb], [], `${verb} is ungoverned`);
+    assert.deepEqual(truck.capabilitiesByVerb[verb], [], `${verb} is ungoverned`);
   }
+  const supplier = snapshot.objects.find((o) => o.key === "supplier");
+  assert.deepEqual(supplier.capabilitiesByVerb, { C: [], R: ["supplier.record.read"], E: [], D: [] },
+    "supplier is governed for READ only -- no supplier write capability exists");
 });
 
 test("the capability gaps that WERE fillable are filled", () => {

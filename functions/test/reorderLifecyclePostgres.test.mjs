@@ -99,7 +99,7 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
                   ('os-queue-b', 't1', 'e-bob', 'REORDER_QUEUE', 'other-co', now(), 'fixture')`);
   // The governed catalog Parts these requests name: a Reorder is refused for a Part the tenant does not hold or that is
   // not ACTIVE (R-15; receiving refuses both), so the fixture states them.
-  for (const partId of ["PART-1", "PART-SYN", "P"]) {
+  for (const partId of ["PART-1", "PART-SYN", "P", ...Array.from({ length: 40 }, (_, i) => `PART-L${i + 1}`)]) {
     await q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
                expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
              VALUES ($1,'t1','fixture',$1,$1,'ACTIVE','EACH','STANDARD','STOCKED',false,false,false,false,1,'fixture')`, [partId]);
@@ -110,9 +110,16 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
 
   const actor = (principalId, caps = ALL) => ({ tenantId: "t1", principalId, capabilities: new Set(caps) });
   const deps = { pool };
+  // G4 (2026-10-01): a creator raises demand only for a warehouse inside its WAREHOUSE Operational Scope. The manager holds
+  // wh-1 (and the inactive / ungoverned ones, so those refusals stay about the warehouse, not the scope).
+  await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+           VALUES ('os-wh-m-1', 't1', 'e-manager', 'WAREHOUSE', 'wh-1', now(), 'fixture'), ('os-wh-m-idle', 't1', 'e-manager', 'WAREHOUSE', 'wh-idle', now(), 'fixture'),
+                  ('os-wh-m-ungov', 't1', 'e-manager', 'WAREHOUSE', 'wh-ungoverned', now(), 'fixture')`);
+  let createSeq = 0;
+  // Each create states its idempotency key (G2) and, by default, a Part of its own: one open demand per Part + warehouse (DQ-B).
   const create = (over = {}) => life.createGovernedReorderRequest(deps, actor(pManager), {
-    partId: "PART-1", warehouseId: "wh-1", requestedQuantity: 4,
-    recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL", ...over,
+    partId: `PART-L${++createSeq}`, warehouseId: "wh-1", requestedQuantity: 4,
+    recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL", idempotencyKey: `idem-create-${createSeq}`, ...over,
   });
 
   await t.test("creation reads the company FROM the warehouse and never from the caller", async () => {
@@ -140,7 +147,7 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     // A system recommendation may legitimately be zero, and needs its own capability.
     const r = await life.createGovernedReorderRequest(deps, actor(pManager), {
       partId: "PART-1", warehouseId: "wh-1", requestedQuantity: 0, manual: false,
-      recommendationStatus: "OK", quantitySource: "SYSTEM",
+      recommendationStatus: "OK", quantitySource: "SYSTEM", idempotencyKey: "idem-system-1",
     });
     assert.ok(r.reorderRequestId);
   });
@@ -499,16 +506,24 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
     assert.equal(r.outcome, "ASSIGNED");
     await scopes.assignEmployeeOperationalScope({ pool }, admin,
       { employeeId: "e-pm", scopeType: "REORDER_QUEUE", scopeId: "taylor", reason: "fixture: Parts Manager Taylor Reorder queue (already held in nonprod)" });
+    // THE ACTIVATION PREREQUISITE, through the same governed writer (G4 / DQ-017, 2026-10-01): the Parts Manager raises demand
+    // for, and the Parts Associate receives into, a warehouse inside their WAREHOUSE Operational Scope.
+    for (const employeeId of ["e-pm", "e-pa"]) {
+      const w = await scopes.assignEmployeeOperationalScope({ pool }, admin,
+        { employeeId, scopeType: "WAREHOUSE", scopeId: W, reason: "fixture: WAREHOUSE scope over the receiving warehouse (activation prerequisite)" });
+      assert.equal(w.outcome, "ASSIGNED");
+    }
   });
 
   const PM = new Set([life.REORDER_CREATE_MANUAL, life.REORDER_READ, authority.REORDER_REQUEST_ASSIGN, life.REORDER_APPROVE, life.REORDER_REJECT, life.REORDER_CANCEL, life.REORDER_PO_VOID]);
   const PA = new Set([life.REORDER_READ, life.REORDER_START_PURCHASING, life.REORDER_POST_UPDATE, life.REORDER_RECORD_PO, life.REORDER_MARK_RECEIVED, "inventory.stock.receive"]);
   const as = (principalId, caps) => ({ tenantId: T, principalId, capabilities: caps });
   const deps = { pool };
-  const raise = () => life.createGovernedReorderRequest(deps, as(pPM, PM), {
-    partId: "PART-SYN", warehouseId: W, requestedQuantity: 2, recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL" });
-  const toOrdered = async (po) => {
-    const id = (await raise()).reorderRequestId;
+  let raiseSeq = 0;
+  const raise = (partId = "PART-SYN") => life.createGovernedReorderRequest(deps, as(pPM, PM), {
+    partId, warehouseId: W, requestedQuantity: 2, recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL", idempotencyKey: `idem-syn-${++raiseSeq}` });
+  const toOrdered = async (po, partId = "PART-SYN") => {
+    const id = (await raise(partId)).reorderRequestId;
     await life.reviewReorderRequest(deps, as(pPM, PM), { reorderRequestId: id, decision: "APPROVED" });
     await authority.assignReorderRequestToEmployee(deps, as(pPM, PM), { reorderRequestId: id, employeeId: "e-pa" });
     await life.startPurchasingOnReorder(deps, as(pPA, PA), { reorderRequestId: id });
@@ -529,8 +544,6 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
     // DQ-017: the receiving Parts Associate holds the WAREHOUSE scope over the acceptance warehouse. NONPROD ACTIVATION
     // PREREQUISITE -- the live Parts Associate holds no WAREHOUSE scope today; it is assigned through the governed
     // assignEmployeeOperationalScope writer, never by migration.
-    await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
-             VALUES ('os-pa-acceptance', $1, 'e-pa', 'WAREHOUSE', $2, now(), 'fixture')`, [T, W]);
     const receipt = await receiving.receiveReorderStock({ pool }, as(pPA, PA), {
       source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: id, purchaseOrderId: id },
       receivingLocation: { type: "WAREHOUSE", locationId: W },
@@ -550,10 +563,10 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
     const voided = await life.voidReorderPurchaseOrder(deps, as(pPM, PM), { reorderRequestId: v, voidReason: "CAC-PROOF synthetic void" });
     assert.deepEqual([voided.status, voided.voidedBy], ["VOIDED", pPM]);
     await assert.rejects(life.createGovernedReorderRequest(deps, as(pTech, new Set()), {
-      partId: "PART-SYN", warehouseId: W, requestedQuantity: 1, recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL" }), /requires reorder\.request\.create/);
+      partId: "PART-SYN", warehouseId: W, requestedQuantity: 1, recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL", idempotencyKey: "idem-tech" }), /requires reorder\.request\.create/);
     // Sample Company's warehouse still cannot raise a Taylor Reorder: its key is not bound, and nothing bound it.
     await assert.rejects(life.createGovernedReorderRequest(deps, as(pPM, PM), {
-      partId: "PART-SYN", warehouseId: "SC-WH-MAIN", requestedQuantity: 1, recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL" }), /not bound/);
+      partId: "PART-SYN", warehouseId: "SC-WH-MAIN", requestedQuantity: 1, recommendationStatus: "BELOW_MIN", quantitySource: "MANUAL", idempotencyKey: "idem-sc" }), /not bound/);
   });
   await t.test("XLF 2026-09-30: recording a PO writes exactly one audit event in its transaction; refusals and replays write none", async () => {
     const poAudits = async (id) => (await q(`SELECT actor_uid, target_kind, target_id, before, after, reason FROM eos_policy.audit_events

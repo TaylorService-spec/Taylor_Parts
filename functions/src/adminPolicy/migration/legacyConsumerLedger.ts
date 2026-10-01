@@ -303,27 +303,6 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
   // 1761696000000, which says in its own words "NOT WAREHOUSE_OPERATIONS". Reorder assignment is Parts/Reorder
   // operational work; a Warehouse employee performs it only when independently assigned PARTS_OPERATIONS. The two
   // codes stay distinct and neither is inferred from the other.
-  entry({
-    path: "field-ops-app-vite/src/shared/reorder/ManagerQueuePanel.jsx",
-    consumer: "asks the picker for PARTS_ASSOCIATE candidates to assign a reorder request",
-    terms: ["OPERATIONAL_ROLE"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${ELIGIBILITY} (PARTS_OPERATIONS) + eligible employment status`,
-    replacementPr: null, status: "NOT_STARTED", blockedReason: null,
-  }),
-  entry({
-    path: "field-ops-app-vite/src/modules/inventoryRole/PartsManagerHome.jsx",
-    consumer: "asks the assignable-Employee hook for PARTS_ASSOCIATE candidates",
-    terms: ["OPERATIONAL_ROLE"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${ELIGIBILITY} (PARTS_OPERATIONS) + eligible employment status`,
-    replacementPr: null, status: "NOT_STARTED", blockedReason: null,
-  }),
-  entry({
-    path: "field-ops-app-vite/src/modules/inventory/PartDetail.jsx",
-    consumer: "passes PARTS_ASSOCIATE to the assignment picker on the Part record",
-    terms: ["OPERATIONAL_ROLE"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${ELIGIBILITY} (PARTS_OPERATIONS) + eligible employment status`,
-    replacementPr: null, status: "NOT_STARTED", blockedReason: null,
-  }),
 
   // ── migration EVIDENCE: survives J and K by design ──
   entry({

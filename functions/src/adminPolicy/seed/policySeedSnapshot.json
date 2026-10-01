@@ -5779,7 +5779,9 @@
       "supportsDelete": false,
       "capabilitiesByVerb": {
         "C": [],
-        "R": [],
+        "R": [
+          "supplier.record.read"
+        ],
         "E": [],
         "D": []
       },

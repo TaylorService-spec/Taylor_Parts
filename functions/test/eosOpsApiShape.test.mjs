@@ -26,7 +26,10 @@ import {
 test("both Operations lists are closed, every entry is routed, and they name exactly what the transport serves", () => {
   assert.deepEqual(OPERATIONS_READ_OPERATIONS,
     ["resolveMyCapabilities", "resolveMyExperienceContext", "readReorderQueue", "readMyAssignedReorders",
-      "readReorderRequest", "readMyReorderHistory", "listReorderWarehouseOptions", "readReorderPurchaseOrders"]);
+      "readReorderRequest", "readMyReorderHistory", "listReorderWarehouseOptions", "readReorderPurchaseOrders",
+      // Parts / Purchasing / Receiving completion (2026-10-01): the PostgreSQL reads replacing the journey's Firebase reads.
+      "readInventoryOnHand", "readInventoryMovements", "listReceipts", "readReceipt", "listReceivingLocationOptions",
+      "listSuppliers", "listReorderAssignmentTargets"]);
   assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
@@ -181,7 +184,8 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   assert.equal(REORDER_POSTGRES_ACTIVE, true, "the activation package opens the PostgreSQL Reorder authority");
   const untouchable = new Proxy({}, { get: () => { throw new Error("DEPS_TOUCHED"); } });
   const reorderOps = [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].filter((o) => !/^resolveMy/.test(o));
-  assert.equal(reorderOps.length, 16);
+  // 16 + the seven Parts / Purchasing / Receiving reads (2026-10-01), all behind the same activation boundary.
+  assert.equal(reorderOps.length, 23);
   for (const operation of reorderOps) {
     const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },
       { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });

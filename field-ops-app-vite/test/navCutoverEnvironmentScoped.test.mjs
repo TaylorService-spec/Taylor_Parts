@@ -372,14 +372,16 @@ test("SANDBOX: an unresolved EOS authority grants nothing and does NOT fall thro
 //                      THE RATCHET -- WHAT EACH OF THE THREE CONSTANTS GUARANTEES
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 
-test("RATCHET: the register partitions into 20 + 42 = 62, derived from NAV_SURFACE_ACCESS", () => {
+// 2026-10-01: 20 + 42 became 21 + 41 when the EXISTING `purchasing/suppliers` row earned purchasing.suppliers. The total
+// did not move; only the row's kind did (navConfig's ceiling note).
+test("RATCHET: the register partitions into 21 + 41 = 62, derived from NAV_SURFACE_ACCESS", () => {
   assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
-  assert.equal(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.length, 20);
-  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.length, 42);
+  assert.equal(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.length, 21);
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.length, 41);
   assert.equal(NAV_GOVERNED_PLACEHOLDER_DESTINATIONS.length, 0);
   assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 62);
-  assert.equal(NAV_CUTOVER_PLACEHOLDER_CEILING, 20);
-  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_CEILING, 42);
+  assert.equal(NAV_CUTOVER_PLACEHOLDER_CEILING, 21);
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_CEILING, 41);
 
   // The partition is a partition: disjoint, exhaustive, and computed from the criterion rather than
   // from two hand-maintained lists.
@@ -410,7 +412,7 @@ test("RATCHET: a 63rd legacy row is refused, and so is a reintroduced governed r
     register: [...register, "reporting/aBrandNewUngovernedDoor"],
   });
   assert.ok(ungovernedGrowth.some((p) => p.includes("above the shrink-only ceiling of 62")));
-  assert.ok(ungovernedGrowth.some((p) => p.includes("NO governed surface, above the shrink-only ceiling of 42")));
+  assert.ok(ungovernedGrowth.some((p) => p.includes("NO governed surface, above the shrink-only ceiling of 41")));
 
   // (b) A 63rd row on a destination that ALREADY holds a governed surface -- the exact shape of
   // "put the rows back" going one row too far. Sales Agreements is the live example: it earned its
@@ -419,7 +421,7 @@ test("RATCHET: a 63rd legacy row is refused, and so is a reintroduced governed r
     register: [...register, "customers/salesAgreements"],
   });
   assert.ok(governedGrowth.some((p) => p.includes("above the shrink-only ceiling of 62")));
-  assert.ok(governedGrowth.some((p) => p.includes("ALREADY holds a governed surface, above the shrink-only ceiling of 20")));
+  assert.ok(governedGrowth.some((p) => p.includes("ALREADY holds a governed surface, above the shrink-only ceiling of 21")));
 
   // (c) THE COUNT-PRESERVING SWAP, which a single total ceiling cannot see. Drop an ungoverned row,
   // add a governed one: still 62, still refused, because the partition ceilings move independently.

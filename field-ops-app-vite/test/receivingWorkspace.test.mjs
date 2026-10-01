@@ -76,9 +76,12 @@ check("GOVERNANCE: neither the workspace nor the canonical workflow bypasses the
     assert.ok(!/RECEIVING_TRANSPORT_READY/.test(src), `${rel} does not read/override the readiness constant`);
     assert.ok(!/from "firebase\/functions"/.test(src), `${rel} does not import firebase functions directly`);
   }
-  // the workflow reaches the callables ONLY through the readiness-gated client
+  // The Reorder receive workflow reaches NO Firebase callable at all (2026-10-01): its destination comes from the governed
+  // EOS read and its receipt from the governed EOS command.
   const wf = read("modules/receiving/ReceiveAgainstPurchaseOrder.jsx");
-  assert.match(wf, /from "\.\.\/\.\.\/services\/receivingCallableClient"/);
+  assert.ok(!/receivingCallableClient/.test(wf), "the Reorder receive workflow no longer touches the Firebase receiving client");
+  assert.match(wf, /from "\.\.\/\.\.\/services\/partsOperationsReads\.js"/);
+  assert.match(wf, /from "\.\.\/\.\.\/services\/reorderReceivingClient/);
 });
 
 console.log(`\n${passed} passed, 0 failed`);

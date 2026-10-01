@@ -41,17 +41,11 @@ export {
 // runs in production until a separate deploy + Owner grant.
 // PASS 11 RETAIL SALES: createOpportunity / transitionOpportunity / updateOpportunity RETIRED from the Firebase runtime --
 // the governed PostgreSQL Commercial transport (POST /commercial/sales) owns them. Frozen Firestore records are untouched.
-// Workstream 2B -- the two reorder writes that author a governed company fact. EXPORT != DEPLOY:
-// these are exported for build and test, and deployment is NOT authorized. They are half of a
-// three-part activation (Functions + Rules + Hosting) that must land together, because the Rules
-// retirement below removes the client-direct path these replace.
-export {
-  createReorderRequest,
-  recordReorderPurchaseOrder,
-  // R-17. The trusted warehouse projection the reorder picker reads, INSTEAD of a `warehouses`
-  // collection LIST. Same capability as the create it serves; no warehouse.list capability exists.
-  listReorderWarehouseOptions,
-} from "./reorderRequest/reorderCallables";
+// RETIRED (Controller PARTS / PURCHASING / RECEIVING RULINGS, 2026-10-01): createReorderRequest, recordReorderPurchaseOrder
+// and listReorderWarehouseOptions are no longer exported. The governed EOS Operations commands on /operations/inventory
+// own Reorder creation, the PO record and the warehouse options; the census proves no active client caller, and the two
+// writers were already refused by REORDER_SOURCE_FROZEN. reorderRequest/reorderCallables.ts remains as retired source the
+// Firestore runtime census and its tests still read; nothing exports it, so a deploy carries none of the three.
 // Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability
 // `opportunity.read` registered active:false (REGISTER != GRANT).
 // PASS 11 RETAIL SALES: listOpportunityContext / listOpportunitiesForAccount RETIRED -- the client reads the governed PostgreSQL

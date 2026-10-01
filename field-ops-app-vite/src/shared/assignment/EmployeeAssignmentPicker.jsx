@@ -41,16 +41,20 @@ export function filterEmployeesBySearch(employees, searchText) {
 //     exactly this shape, no department/companyId/job-title field,
 //     matching the Phase 3 schema this component is built against.
 //   disabled, label, placeholder -- standard form-field ergonomics.
+//   useEmployees -- OPTIONAL employee-source hook with useAssignableEmployees' result shape. A workflow whose
+//     command owns its own eligibility (Reorder assignment: hooks/useReorderAssignmentTargets.js, the governed EOS
+//     read) injects it; every other caller keeps useAssignableEmployees. Must be stable for the component's lifetime.
 export default function EmployeeAssignmentPicker({
   requiredOperationalRole,
   requireLinkedUser = true,
+  useEmployees = useAssignableEmployees,
   selectedEmployeeId,
   onSelect,
   disabled = false,
   label,
   placeholder = "Search by name...",
 }) {
-  const { employees, loading, error, securityRoleWarningCount } = useAssignableEmployees({
+  const { employees, loading, error, securityRoleWarningCount } = useEmployees({
     requiredOperationalRole,
     requireLinkedUser,
   });

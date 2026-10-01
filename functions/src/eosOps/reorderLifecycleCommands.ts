@@ -20,10 +20,10 @@
 // Every key below already exists in access/permissionCatalog.ts and is already held by the Roles
 // that should hold it. Migration 036 registers them in the PostgreSQL vocabulary; registration is
 // not a grant.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { isCallerTheAssignedEmployee } from "./reorderAssignmentAuthority.js";
-import { postgresPrincipalDimensionReader } from "./contextualAuthorization.js";
+import { authorizeObjectAction, postgresContextualReader, postgresPrincipalDimensionReader } from "./contextualAuthorization.js";
 import { NATIVE_REORDER_PROVENANCE } from "./purchasingRepository.js";
 import { deriveReorderCurrentOwner } from "./migration/reorderObjectMigration.js";
 
@@ -54,14 +54,30 @@ export type ReorderLifecycleCategory =
   | "INVALID_INPUT" | "NOT_FOUND" | "PRECONDITION_FAILED" | "CONFLICT" | "FORBIDDEN" | "FAILED";
 
 export class ReorderLifecycleError extends Error {
-  constructor(readonly code: string, readonly category: ReorderLifecycleCategory, message: string) {
+  constructor(readonly code: string, readonly category: ReorderLifecycleCategory, message: string,
+    /** Optional, non-sensitive facts the caller may act on (e.g. the existing open request it should continue). */
+    readonly details?: Readonly<Record<string, unknown>>) {
     super(message);
     this.name = "ReorderLifecycleError";
   }
 }
-const refuse = (code: string, category: ReorderLifecycleCategory, message: string): never => {
-  throw new ReorderLifecycleError(code, category, message);
+const refuse = (code: string, category: ReorderLifecycleCategory, message: string, details?: Readonly<Record<string, unknown>>): never => {
+  throw new ReorderLifecycleError(code, category, message, details);
 };
+
+/**
+ * THE ACTIONABLE LIFECYCLE STATES (Controller DQ-B, 2026-10-01): a Reorder in any of these is open demand for its Part at
+ * its destination warehouse, and a second one is refused; REJECTED / RECEIVED / CANCELLED / VOIDED are terminal and
+ * never block future demand. Decided by the create command under a per-(tenant, part, warehouse) advisory lock.
+ */
+export const OPEN_REORDER_STATUSES = Object.freeze([
+  "PENDING_REVIEW", "APPROVED", "READY_FOR_PARTS_MANAGER", "ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS", "ORDERED",
+] as const);
+
+/** RR-YYYY-NNNNNN, allocated from eos_ops.reorder_request_number_counters inside the create transaction (G5). */
+export function formatReorderRequestNumber(year: number, sequence: number): string {
+  return `RR-${year}-${String(sequence).padStart(6, "0")}`;
+}
 
 export interface ReorderActor {
   readonly tenantId: string;
@@ -117,6 +133,20 @@ async function lockReorder(client: PoolClient, tenantId: string, id: string): Pr
   );
   if (rows.length === 0) refuse("REORDER_NOT_FOUND", "NOT_FOUND", `no Reorder Request ${id} in this tenant`);
   return { id: rows[0].id, status: rows[0].status, operatingCompanyKey: rows[0].operating_company_key };
+}
+
+/**
+ * G8 (Controller 2026-10-01): a MANAGEMENT decision on a Reorder -- review, cancel (and assign, in
+ * reorderAssignmentAuthority) -- is reachable only inside the caller's governed REORDER_QUEUE Operational Scope for the
+ * request's own operating company: capability alone is not enough. The existing queue scope, not a second system. A
+ * request outside reach answers exactly as a missing one, so the command is no existence oracle.
+ */
+async function lockReorderInQueueReach(client: PoolClient, actor: ReorderActor, id: string): Promise<LockedReorder> {
+  const current = await lockReorder(client, actor.tenantId, id);
+  if (!(await queueReachKeys(client, actor)).includes(current.operatingCompanyKey)) {
+    refuse("REORDER_NOT_FOUND", "NOT_FOUND", `no Reorder Request ${id} in this tenant`);
+  }
+  return current;
 }
 
 async function audit(
@@ -191,6 +221,9 @@ async function requireQueueReach(db: Pick<PoolClient, "query">, actor: ReorderAc
 export interface CreateGovernedReorderResult {
   readonly reorderRequestId: string;
   readonly status: string;
+  readonly reorderRequestNumber: string | null;
+  /** True when this call returned an earlier create made under the same idempotency key. */
+  readonly replayed: boolean;
 }
 
 /**
@@ -210,7 +243,7 @@ export async function createGovernedReorderRequest(
 ): Promise<CreateGovernedReorderResult> {
   const i = acceptOnly(input, [
     "partId", "warehouseId", "requestedQuantity", "recommendedQuantity",
-    "recommendationStatus", "quantitySource", "urgency", "workOrderId", "manual",
+    "recommendationStatus", "quantitySource", "urgency", "workOrderId", "manual", "idempotencyKey",
   ]);
   const manual = i.manual !== false;
   requireActor(actor, manual ? REORDER_CREATE_MANUAL : REORDER_CREATE_SYSTEM);
@@ -241,7 +274,29 @@ export async function createGovernedReorderRequest(
   const workOrderId = i.workOrderId === undefined || i.workOrderId === null ? null : i.workOrderId;
   if (workOrderId !== null && !ID_SHAPE(workOrderId)) refuse("WORK_ORDER_ID_INVALID", "INVALID_INPUT", "workOrderId must be a governed id");
 
+  // IDEMPOTENCY (G2, the governed command pattern): the caller's key, keyed per creator, with the fingerprint of the
+  // VALIDATED request. Same key + same request replays the original; same key + a different request is a conflict.
+  const idempotencyKey = i.idempotencyKey;
+  if (typeof idempotencyKey !== "string" || idempotencyKey.trim() === "" || idempotencyKey.length > 200) {
+    refuse("IDEMPOTENCY_KEY_REQUIRED", "INVALID_INPUT", "idempotencyKey is required (a non-empty string of at most 200 characters)");
+  }
+  const fingerprint = createHash("sha256").update(JSON.stringify({
+    partId: i.partId, warehouseId: i.warehouseId, requestedQuantity: requested, recommendedQuantity: recommended ?? null,
+    recommendationStatus, quantitySource, urgency, workOrderId, manual,
+  })).digest("hex");
+
   return inTransaction(deps.pool, async (client) => {
+    const prior = await client.query(
+      `SELECT id, status::text AS status, reorder_request_number, create_request_fingerprint FROM eos_ops.reorder_requests
+        WHERE tenant_id = $1 AND requested_by = $2 AND create_idempotency_key = $3`,
+      [actor.tenantId, actor.principalId, idempotencyKey]);
+    if (prior.rows.length > 0) {
+      if (prior.rows[0].create_request_fingerprint !== fingerprint) {
+        refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key was already used for a different Reorder Request");
+      }
+      return { reorderRequestId: prior.rows[0].id as string, status: prior.rows[0].status as string,
+        reorderRequestNumber: (prior.rows[0].reorder_request_number as string | null) ?? null, replayed: true };
+    }
     // THE PART IS A GOVERNED CATALOG PART (R-15, fail closed). A Reorder names what is to be bought; one for a Part this
     // tenant does not hold, or one that is no longer ACTIVE, could never be received -- receiving refuses both
     // (receiveReorderStockCommand.resolvePart) -- so it is refused here, in the same vocabulary, before anything is written.
@@ -282,24 +337,56 @@ export async function createGovernedReorderRequest(
         + "company this tenant is authorized to operate as");
     }
 
+    // G4: THE DESTINATION WAREHOUSE MUST BE INSIDE THE CALLER'S GOVERNED WAREHOUSE SCOPE -- the same Operational Scope the
+    // warehouse picker (listReorderWarehouseOptions) offers, decided here so a bypassed picker changes nothing.
+    const scoped = await authorizeObjectAction(postgresContextualReader(client), {
+      actor, capabilityKey: manual ? REORDER_CREATE_MANUAL : REORDER_CREATE_SYSTEM,
+      predicates: [{ kind: "OPERATIONAL_SCOPE" as const, scopeType: "WAREHOUSE", scopeId: i.warehouseId as string }],
+    });
+    if (!scoped.allowed) {
+      refuse(scoped.reason, "FORBIDDEN", scoped.reason === "OUTSIDE_OPERATIONAL_SCOPE" ? "this warehouse is outside your warehouse scope"
+        : scoped.reason === "EMPLOYEE_LINK_REQUIRED" ? "only an Employee can raise a Reorder Request" : "not authorized to raise a Reorder Request here");
+    }
+    // DQ-B: ONE OPEN DEMAND PER PART + DESTINATION WAREHOUSE. Serialized on the (tenant, part, warehouse) advisory lock
+    // so two simultaneous creates cannot both pass the check (the command is the only writer of new requests). The caller
+    // is in scope for this warehouse, so the existing request may be named -- to continue it, not duplicate it.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`reorder-open-demand:${actor.tenantId}:${String(i.partId)}:${String(i.warehouseId)}`]);
+    const open = await client.query(
+      `SELECT id, reorder_request_number, status::text AS status FROM eos_ops.reorder_requests
+        WHERE tenant_id = $1 AND part_id = $2 AND warehouse_id = $3 AND status::text = ANY($4::text[]) LIMIT 1`,
+      [actor.tenantId, i.partId, i.warehouseId, OPEN_REORDER_STATUSES]);
+    if (open.rows.length > 0) {
+      refuse("OPEN_REORDER_REQUEST_EXISTS", "CONFLICT",
+        "an open Reorder Request already exists for this Part at this warehouse; continue that request rather than raising another",
+        { existingReorderRequestId: open.rows[0].id, existingReorderRequestNumber: open.rows[0].reorder_request_number ?? null, existingStatus: open.rows[0].status });
+    }
+
     const id = `rr_${randomUUID()}`;
     const at = deps.now?.() ?? new Date();
+    const year = at.getUTCFullYear();
+    const counter = await client.query(
+      `INSERT INTO eos_ops.reorder_request_number_counters (tenant_id, year, last_value) VALUES ($1, $2, 1)
+       ON CONFLICT (tenant_id, year) DO UPDATE SET last_value = eos_ops.reorder_request_number_counters.last_value + 1, updated_at = now()
+       RETURNING last_value`, [actor.tenantId, year]);
+    const reorderRequestNumber = formatReorderRequestNumber(year, Number(counter.rows[0].last_value));
     await client.query(
       `INSERT INTO eos_ops.reorder_requests
          (id, tenant_id, operating_company_key, part_id, warehouse_id, status,
           requested_quantity, recommended_quantity, work_order_id,
           requested_by, updated_by, provenance, created_at, updated_at,
-          recommendation_status, quantity_source, urgency)
-       VALUES ($1, $2, $3, $4, $5, 'PENDING_REVIEW', $6, $7, $8, $9, $9, $10, $11, $11, $12, $13, $14)`,
+          recommendation_status, quantity_source, urgency,
+          reorder_request_number, create_idempotency_key, create_request_fingerprint)
+       VALUES ($1, $2, $3, $4, $5, 'PENDING_REVIEW', $6, $7, $8, $9, $9, $10, $11, $11, $12, $13, $14, $15, $16, $17)`,
       [id, actor.tenantId, companyKey, i.partId, i.warehouseId,
         requested, recommended ?? null, workOrderId,
         actor.principalId, NATIVE_REORDER_PROVENANCE, at,
-        recommendationStatus, quantitySource, urgency],
+        recommendationStatus, quantitySource, urgency,
+        reorderRequestNumber, idempotencyKey, fingerprint],
     );
     await audit(client, actor.tenantId, "reorder.request.create", actor.principalId, id,
       { partId: i.partId, warehouseId: i.warehouseId, requestedQuantity: requested, manual }, at,
       manual ? "manual reorder request" : "system reorder request");
-    return { reorderRequestId: id, status: "PENDING_REVIEW" };
+    return { reorderRequestId: id, status: "PENDING_REVIEW", reorderRequestNumber, replayed: false };
   });
 }
 
@@ -333,7 +420,7 @@ export async function reviewReorderRequest(
   }
 
   return inTransaction(deps.pool, async (client) => {
-    const current = await lockReorder(client, actor.tenantId, i.reorderRequestId as string);
+    const current = await lockReorderInQueueReach(client, actor, i.reorderRequestId as string);
     if (current.status !== "PENDING_REVIEW") {
       refuse("STATUS_NOT_REVIEWABLE", "PRECONDITION_FAILED", `a Reorder Request in ${current.status} is not under review`);
     }
@@ -579,7 +666,7 @@ export async function cancelReorderRequest(
   const reason: string = maybeReason as string;
 
   return inTransaction(deps.pool, async (client) => {
-    const current = await lockReorder(client, actor.tenantId, i.reorderRequestId as string);
+    const current = await lockReorderInQueueReach(client, actor, i.reorderRequestId as string);
     if (!(CANCELLABLE_STATUSES as readonly string[]).includes(current.status)) {
       refuse("STATUS_NOT_CANCELLABLE", "PRECONDITION_FAILED",
         `a Reorder Request in ${current.status} cannot be cancelled; an ORDERED request is voided instead`);

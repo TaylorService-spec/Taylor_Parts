@@ -214,7 +214,10 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // workOrder.execution.record, registered with no grant.
   // 72 -> 76: the Work Order cutover completion pass (2026-09-30): quarantine 1764310000000, availability 1764320000000, labor 1764330000000 (+workOrder.labor.correctEntry), inbound work 1764340000000 (+5 inboundWork.* capabilities) -- every new capability granted to NO Role.
   // 76 -> 79: the Service Experience completion (2026-09-30): provider runtime 1764350000000 (schema), recovery 1764360000000 (+inboundWork.request.recover), self-scheduling 1764370000000 (+workOrder.selfScheduling.issue/.configure) -- every new capability granted to NO Role.
-  assert.equal(migrations.length, 79, "a migration was added or removed by the read enforcement");
+  // 79 -> 80: the Parts / Purchasing / Receiving completion (2026-10-01): 1764380000000 -- Reorder create idempotency, the
+  // one-open-demand index, RR numbering, and two capabilities granted to NO Role (warehouse.record.manage, configuration;
+  // supplier.record.read, a business READ -- not an Administration surface key, so the read gate is unchanged).
+  assert.equal(migrations.length, 80, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

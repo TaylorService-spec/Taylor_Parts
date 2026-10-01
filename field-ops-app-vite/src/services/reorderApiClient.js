@@ -35,6 +35,14 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "readMyReorderHistory",
   "listReorderWarehouseOptions",
   "readReorderPurchaseOrders",
+  // Parts / Purchasing / Receiving (Controller 2026-10-01): the PostgreSQL reads that replace the journey's Firebase reads.
+  "readInventoryOnHand",
+  "readInventoryMovements",
+  "listReceipts",
+  "readReceipt",
+  "listReceivingLocationOptions",
+  "listSuppliers",
+  "listReorderAssignmentTargets",
 ]);
 
 /** Mirrors the server's OPERATIONS_MUTATION_OPERATIONS. */
@@ -58,6 +66,11 @@ export const REORDER_OPTIONAL_INPUT_OPERATIONS = Object.freeze([
   "readMyAssignedReorders",
   "readMyReorderHistory",
   "listReorderWarehouseOptions",
+  "readInventoryOnHand",
+  "readInventoryMovements",
+  "listReceipts",
+  "listSuppliers",
+  "listReorderAssignmentTargets",
 ]);
 
 const OPERATIONS = new Set([...REORDER_READ_OPERATIONS, ...REORDER_COMMAND_OPERATIONS]);
@@ -93,7 +106,9 @@ const CATEGORY_BY_STATUS = Object.freeze({
 });
 
 const failure = (code, message, extra = {}) =>
-  Object.freeze({ ok: false, code, message, reason: extra.reason ?? null, status: extra.status ?? null });
+  Object.freeze({ ok: false, code, message, reason: extra.reason ?? null, status: extra.status ?? null,
+    // Facts the server states for the caller to act on (e.g. the open Reorder Request to continue). Absent otherwise.
+    ...(extra.details && typeof extra.details === "object" ? { details: Object.freeze({ ...extra.details }) } : {}) });
 
 /** Map an HTTP status and the server's body code to one failure category. Pure; exported for tests. */
 export function reorderFailureCategory(status, serverCode) {
@@ -164,7 +179,7 @@ export async function callReorderApi(operation, input = undefined, options = {})
   return failure(
     reorderFailureCategory(response.status, serverCode),
     body && typeof body.message === "string" ? body.message : `the Reorder service returned ${response.status}`,
-    { reason: serverCode, status: response.status },
+    { reason: serverCode, status: response.status, details: body && body.details },
   );
 }
 

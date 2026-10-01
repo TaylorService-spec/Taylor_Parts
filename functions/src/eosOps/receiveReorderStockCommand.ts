@@ -227,16 +227,17 @@ interface LockedReorder {
   readonly id: string;
   readonly status: string;
   readonly operatingCompanyKey: string;
+  readonly warehouseId: string;
 }
 
 async function lockReorder(client: PoolClient, tenantId: string, id: string): Promise<LockedReorder> {
   const { rows } = await client.query(
-    `SELECT id, status::text AS status, operating_company_key
+    `SELECT id, status::text AS status, operating_company_key, warehouse_id
        FROM ${SCHEMA}.reorder_requests WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
     [tenantId, id],
   );
   if (rows.length === 0) refuse("REORDER_NOT_FOUND", "NOT_FOUND", `no Reorder Request ${id} in this tenant`);
-  return { id: rows[0].id, status: rows[0].status, operatingCompanyKey: rows[0].operating_company_key };
+  return { id: rows[0].id, status: rows[0].status, operatingCompanyKey: rows[0].operating_company_key, warehouseId: rows[0].warehouse_id };
 }
 
 interface LegacyPurchaseOrderRow {
@@ -514,6 +515,14 @@ export async function receiveReorderStock(
     } catch (err) {
       if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receiving location has no governing warehouse: ${err.message}`);
       throw err;
+    }
+    // DQ-C (Controller 2026-10-01): A REORDER PO IS RECEIVED INTO ITS GOVERNED DESTINATION WAREHOUSE. Receiving fulfils
+    // the purchasing decision; it never redirects purchased stock elsewhere, even where the receiver has scope. The
+    // destination may be the warehouse or one of its bins (same governing warehouse); anything else refuses. A later
+    // move is Inventory Control's (governed relocation / transfer), and the Reorder's destination is never rewritten.
+    if (scopeWarehouseId !== reorder.warehouseId) {
+      refuse("DESTINATION_NOT_REORDER_WAREHOUSE", "PRECONDITION_FAILED",
+        "a Reorder purchase order is received into its own destination warehouse (or one of its bins)");
     }
     const scoped = await authorizeObjectAction(postgresContextualReader(client), {
       actor, capabilityKey: RECEIVE_STOCK_CAPABILITY,

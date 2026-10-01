@@ -30,8 +30,8 @@
     "ok": true
   },
   "implementationEvidence": {
-    "EXPORTED": 20,
-    "SERVER_REFERENCED": 128,
+    "EXPORTED": 21,
+    "SERVER_REFERENCED": 127,
     "NO_IMPLEMENTATION_EVIDENCE": 3
   },
   "guideStatuses": {},
@@ -709,7 +709,9 @@
       "description": "Create or advance a Sales Opportunity (lifecycle transition) via the governed opportunity command. Pre-commitment only; does not create Work Orders, inventory movement, or invoices.",
       "catalogActive": false,
       "implementation": {
-        "exportedCallables": [],
+        "exportedCallables": [
+          "searchProductReferences"
+        ],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
@@ -729,7 +731,7 @@
         ],
         "serverReferenceCount": 7,
         "clientReferenceCount": 6,
-        "evidence": "SERVER_REFERENCED"
+        "evidence": "EXPORTED"
       },
       "environmentActivation": {
         "eligible": true,
@@ -4863,12 +4865,13 @@
       ],
       "module": "./salesAgreement/productReferenceSearchService",
       "capabilityHints": [
+        "opportunity.write",
         "opportunity.read",
         "opportunity.read",
         "opportunity.createSalesOrder",
         "salesOrder.read"
       ],
-      "comment": "Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability `opportunity.read` registered active:false (REGISTER != GRANT). PASS 11 RETAIL SALES: listOpportunityContext / listOpportunitiesForAccount RETIRED -- the client reads the governed PostgreSQL Comm"
+      "comment": "Sales Opportunity governed write callables (Cycle 3). EXPORT != DEPLOY, REGISTER != GRANT: exported for build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing runs in production until a separate deploy + Owner grant. PASS 11 RETAIL SALES: createOppor"
     },
     {
       "names": [

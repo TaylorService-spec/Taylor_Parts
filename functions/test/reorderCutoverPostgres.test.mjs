@@ -659,6 +659,12 @@ test("Option B: pinned Sample Company purchasing fixtures are KNOWN_NON_MIGRATED
     [`UPDATE eos_ops.reorder_requests SET requested_quantity = 5 WHERE id = $1`, [RR_ORDERED]],
     [`UPDATE eos_ops.reorder_requests SET requested_quantity = 4 WHERE id = $1`, [RR_ORDERED]]));
 
+  // Migration 1764380000000 (G2) added two nullable columns AFTER the pins were measured. They leave the fingerprint only
+  // while NULL; a value written into one is a changed fixture like any other column.
+  await t.test("a value in a post-pin column (create idempotency) refuses", () => refusedThenRestored("post-pin column",
+    [`UPDATE eos_ops.reorder_requests SET create_idempotency_key = 'k', create_request_fingerprint = 'f' WHERE id = $1`, [RR_ORDERED]],
+    [`UPDATE eos_ops.reorder_requests SET create_idempotency_key = NULL, create_request_fingerprint = NULL WHERE id = $1`, [RR_ORDERED]]));
+
   await t.test("a missing pinned fixture refuses: the set is exact", () => refusedThenRestored("missing",
     [`DELETE FROM eos_ops.purchase_order_voids WHERE purchase_order_id = $1`, [RR_VOIDED]],
     [`INSERT INTO eos_ops.purchase_order_voids SELECT * FROM jsonb_populate_record(NULL::eos_ops.purchase_order_voids, $1::jsonb)`, [JSON.stringify(SAMPLE_COMPANY_PURCHASING.purchase_order_voids[0])]]));

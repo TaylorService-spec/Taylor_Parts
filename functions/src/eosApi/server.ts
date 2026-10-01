@@ -35,6 +35,7 @@ import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicy
 import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
 import { explainEffectiveAccess } from "../eosOps/effectiveAccessExplanation";
 import { createMobileLocationScopeBindingAdministration } from "../eosOps/mobileLocationScopeBindingAdministration";
+import { createWarehouseBinAdministration, isWarehouseAdminOperation } from "../eosOps/warehouseBinAdministration";
 import { createCommercialHttpHandler } from "../eosCommercial/commercialHttp";
 import { createWorkforceHttpHandler } from "../eosWorkforce/workforceHttp";
 import { createCrmHttpHandler } from "../eosCrm/crmHttp";
@@ -209,7 +210,12 @@ export async function startEosApi(
     explainEffectiveAccess: (tenantId, principalId) => explainEffectiveAccess(repo, pool, { tenantId, principalId }),
     // DQ-029: the Administration configuration operations (truck location -> warehouse scope), over the same pool.
     // Gated in executeAdminOperation on inventory.location.scopeBinding.manage before this is ever reached.
-    configuration: createMobileLocationScopeBindingAdministration(pool),
+    // DQ-E: Warehouse and Bin master administration (warehouse.record.manage), routed by operation name.
+    configuration: (() => {
+      const bindings = createMobileLocationScopeBindingAdministration(pool);
+      const warehouses = createWarehouseBinAdministration(pool);
+      return (operation, actor, input, reason) => (isWarehouseAdminOperation(operation) ? warehouses : bindings)(operation, actor, input, reason);
+    })(),
     verifyToken,
     allowedOrigins: config.allowedOrigins,
     health: async () => {

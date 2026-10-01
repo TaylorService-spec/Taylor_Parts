@@ -25,11 +25,26 @@
 /** ADMINISTRATIVE CONFIGURATION authority for truck-location -> warehouse scope bindings. Held by no one by default. */
 export const MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY = "inventory.location.scopeBinding.manage";
 
+/**
+ * ADMINISTRATIVE CONFIGURATION authority for Warehouse and Bin master data (Controller DQ-E, 2026-10-01). Held by no one by
+ * default; granted only through Administration. Not operational authority (receive / transfer / relocate / count).
+ */
+export const WAREHOUSE_MASTER_CAPABILITY = "warehouse.record.manage";
+
 export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze({
   listMobileLocationScopeBindings: Object.freeze({ capability: MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, mutation: false }),
   readMobileLocationScopeBinding: Object.freeze({ capability: MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, mutation: false }),
   setMobileLocationScopeBinding: Object.freeze({ capability: MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, mutation: true }),
   removeMobileLocationScopeBinding: Object.freeze({ capability: MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, mutation: true }),
+  // Warehouse and Bin master data (eosOps/warehouseBinAdministration.ts).
+  listWarehouses: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: false }),
+  listWarehouseBins: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: false }),
+  createWarehouse: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
+  updateWarehouse: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
+  setWarehouseStatus: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
+  createBin: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
+  relabelBin: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
+  setBinStatus: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
 } as const);
 
 export type AdminConfigurationOperation = keyof typeof ADMIN_CONFIGURATION_OPERATIONS;

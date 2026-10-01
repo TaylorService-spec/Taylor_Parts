@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchSuppliersPage } from "../services/operationsQueries";
+import { fetchSupplierList } from "../services/partsOperationsReads.js";
 
 // Purchasing > Suppliers -- read hook for the Suppliers registry workspace. REUSES the shared
 // operationsQueries.fetchSuppliers read (the same `suppliers` read the Operations dashboard's
@@ -19,9 +19,10 @@ export function useSuppliers(accessVersion) {
     // fetcher also feeds the Operations dashboard's netted totals, and capping it there
     // would make an aggregate mathematically false while still presenting it as complete.
     // The bound belongs at the call site for exactly that reason.
-    fetchSuppliersPage()
-      .then(({ items, truncated }) => {
-        if (!cancelled) setState({ loading: false, error: null, suppliers: items, truncated });
+    // EOS (Controller 2026-10-01): the governed Supplier master, eos_ops.suppliers -- never Firestore `suppliers`.
+    fetchSupplierList()
+      .then((items) => {
+        if (!cancelled) setState({ loading: false, error: null, suppliers: items, truncated: false });
       })
       .catch((err) => {
         if (!cancelled) setState({ loading: false, error: err?.code ?? "unknown", suppliers: [], truncated: false });

@@ -102,14 +102,14 @@ test("PostgreSQL Receiving: one transaction, the whole business closure or none 
   const chain = async (over = {}) => {
     const id = `rr-${++seq}`;
     const o = {
-      partId: "PART-NONE", quantity: 4, companyKey: "sample-co",
+      partId: "PART-NONE", quantity: 4, companyKey: "sample-co", warehouseId: "wh-1",
       unitPriceMinor: null, currency: null, priceAuthorityVersion: null, status: "ORDERED", ...over,
     };
     await q(
       `INSERT INTO eos_ops.reorder_requests (id, tenant_id, operating_company_key, part_id, warehouse_id,
                                              status, requested_quantity, requested_by, updated_by, provenance)
-       VALUES ($1,'t1',$2,$3,'wh-1',$4,$5,$6,$6,'NATIVE')`,
-      [id, o.companyKey, o.partId, o.status, o.quantity, receiver]);
+       VALUES ($1,'t1',$2,$3,$7,$4,$5,$6,$6,'NATIVE')`,
+      [id, o.companyKey, o.partId, o.status, o.quantity, receiver, o.warehouseId]);
     await q(
       `INSERT INTO eos_ops.purchase_orders (id, tenant_id, operating_company_key, part_id, supplier_name,
                                             external_po_number, ordered_quantity, ordered_date,
@@ -384,7 +384,7 @@ test("PostgreSQL Receiving: one transaction, the whole business closure or none 
     // The receiver is in scope for it: the refusal under test is the company binding, not the warehouse scope.
     await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
              VALUES ('os-r-dormant','t1','e-receiver','WAREHOUSE','wh-dormant', now(), 'fixture')`);
-    const id = await chain({ companyKey: "dormant-co", unitPriceMinor: 900, currency: "USD" });
+    const id = await chain({ companyKey: "dormant-co", unitPriceMinor: 900, currency: "USD", warehouseId: "wh-dormant" });
     const before = await counts();
     const err = await refusal(() => run(receipt(id, {
       receivingLocation: { type: "WAREHOUSE", locationId: "wh-dormant" },
@@ -395,9 +395,13 @@ test("PostgreSQL Receiving: one transaction, the whole business closure or none 
 
   await t.test("DQ-017: the receiver must hold the WAREHOUSE scope over the destination -- out of scope, unlinked or not an Employee refuses, writing nothing", async () => {
     await warehouse("wh-unscoped", "sample-co");
+    // DQ-C: a Reorder PO is received into ITS destination warehouse -- never redirected, even where the receiver has scope.
+    const elsewhere = await chain({ warehouseId: "wh-unscoped" });
+    assert.equal((await refusal(() => run(receipt(elsewhere)))).code, "DESTINATION_NOT_REORDER_WAREHOUSE", "a Reorder bound for wh-unscoped is not received into wh-1");
     const id = await chain();
     const before = await counts();
-    assert.equal((await refusal(() => run(receipt(id, { receivingLocation: { type: "WAREHOUSE", locationId: "wh-unscoped" } })))).code, "OUTSIDE_OPERATIONAL_SCOPE");
+    const unscoped = await chain({ warehouseId: "wh-unscoped" });
+    assert.equal((await refusal(() => run(receipt(unscoped, { receivingLocation: { type: "WAREHOUSE", locationId: "wh-unscoped" } })))).code, "OUTSIDE_OPERATIONAL_SCOPE");
     assert.equal((await refusal(() => run(receipt(id), actor([RECEIVE], assignee)))).code, "OUTSIDE_OPERATIONAL_SCOPE", "a linked Employee with no scope");
     const stranger = await principal("uid-stranger");
     assert.equal((await refusal(() => run(receipt(id), actor([RECEIVE], stranger)))).code, "EMPLOYEE_LINK_REQUIRED", "no Employee, no receipt");

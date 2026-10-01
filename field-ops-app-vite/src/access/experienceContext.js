@@ -61,6 +61,7 @@ export const EXPERIENCE_SURFACE_KEYS = Object.freeze([
   "inventory.reorderQueue",
   "inventory.transfers",
   "purchasing.purchaseOrders",
+  "purchasing.suppliers",
   "receiving.checkIn",
   "service.coordinatedVisits",
   "service.dispatch",
