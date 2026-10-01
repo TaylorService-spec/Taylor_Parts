@@ -268,15 +268,17 @@ test("every scanner callable is EXPORTED — export is not deployment, but a mis
   const index = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
   const required = [
     "receiveInventoryStock", "getPurchaseOrderReceivingProgress", "listReceivablePurchaseOrders",
-    "resolveScannedPartIdentifier", "getPartBalance", "getAvailableEquipment", "getLocationDisplay",
+    "resolveScannedPartIdentifier", "getPartBalance",
     "createBin", "resolveBin", "listBins", "recordReturnIntake",
     // RETIRED from this list (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): recordPutAway,
     // dispatchTransferOrder, receiveTransferOrder, the Cycle Count sheet/line callables and relocateStock. The scanner now
     // reaches the EOS writers (/operations/placement, /relocation, /transfer, /cycle-count); their Firebase exports are
     // retired from index.ts and must NOT come back (asserted below).
+    // RETIRED (Controller EQUIPMENT ACTIVATION, 2026-10-01): getAvailableEquipment / getLocationDisplay -- the scanner reads
+    // serialized units and location labels from EOS (/operations/equipment, /operations/inventory).
   ];
   for (const retired of ["recordPutAway", "dispatchTransferOrder", "receiveTransferOrder", "createCycleCountSheet", "openCycleCountLine",
-    "submitCycleCountLine", "getCycleCountSheet", "relocateStock", "acquireSerializedAsset"]) {
+    "submitCycleCountLine", "getCycleCountSheet", "relocateStock", "acquireSerializedAsset", "getAvailableEquipment", "getLocationDisplay"]) {
     assert.doesNotMatch(index, new RegExp(`(\\bas ${retired}\\b|export \\{[^}]*\\b${retired}\\b)`), `${retired} is retired to EOS and must not be re-exported`);
   }
   for (const name of required) {

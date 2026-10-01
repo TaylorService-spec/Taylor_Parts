@@ -192,6 +192,22 @@ test("Equipment activation over the Operations transport", { skip: SKIP, concurr
     const caps = (await q(`SELECT key, object_key, action_key, action_kind FROM eos_policy.capabilities WHERE object_key = 'equipment' ORDER BY key`)).rows;
     assert.deepEqual(caps.map((c) => `${c.key}=${c.object_key}.${c.action_key}:${c.action_kind}`),
       ["equipment.install=equipment.install:BUSINESS_ACTION", "equipment.record.manage=equipment.manage:EDIT", "equipment.record.read=equipment.read:READ"]);
+    // ADMINISTRATION CONFORMANCE, read back THROUGH Administration (the Object Security surface): the equipment Object
+    // carries all three actions, and every ruled holder is an ordinary ADMIN_GRANTED cell an administrator can change.
+    const objects = await admin("listObjectsWithActions", {});
+    assert.equal(objects.ok, true, JSON.stringify(objects).slice(0, 300));
+    const eqObject = objects.data.find((o) => o.key === "equipment");
+    assert.ok(eqObject, "the equipment Object is registered for this tenant");
+    assert.deepEqual(eqObject.actions.map((a) => a.actionKey).sort(), ["install", "manage", "read"]);
+    const matrix = await admin("getObjectActionGrantMatrix", { objectKey: "equipment" });
+    assert.equal(matrix.ok, true, JSON.stringify(matrix).slice(0, 300));
+    const cell = (actionKey, roleKey) => matrix.data.actions.find((a) => a.actionKey === actionKey)?.roles.find((r) => r.roleKey === roleKey);
+    for (const roleKey of equipmentDelta.EQUIPMENT_READ_ROLES) assert.equal(cell("read", roleKey)?.source, "ADMIN_GRANTED", `read ${roleKey}`);
+    assert.equal(cell("manage", "equipmentRegisterManager")?.source, "ADMIN_GRANTED");
+    assert.equal(cell("install", "equipmentInstaller")?.source, "ADMIN_GRANTED");
+    for (const [actionKey, roleKey] of [["read", "warehouseAssociate"], ["read", "technician"], ["manage", "owner"], ["install", "owner"], ["manage", "technician"]]) {
+      assert.notEqual(cell(actionKey, roleKey)?.source, "ADMIN_GRANTED", `${roleKey} ${actionKey}`);
+    }
   });
 
   await t.test("2. FAIL CLOSED: register NOT_ACTIVATED when the constant is not ACTIVE; install NOT_ACTIVATED before the baseline is certified", async () => {

@@ -181,8 +181,11 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
     const empty = ok(await call("admin-a", "listSupportedAssignmentScopes", {})).scopeTypes.find((s) => s.scopeType === "salesChannel");
     assert.deepEqual([empty.supported, empty.label, empty.contextKey, empty.values], [true, "Sales Channel", "salesChannel", []]);
     // The three reads (lane GA) and, since DQ-020, the six Commercial writes -- each decided against the record's channel.
+    // + the Equipment register read (Controller EQUIPMENT ACTIVATION OD-3, 2026-10-01): a seller reads customer Equipment only
+    // through its channel's commercial relationship.
     assert.deepEqual(empty.capabilities.map((c) => c.capabilityKey), ["opportunity.read", "salesAgreement.read", "salesOrder.read",
-      "opportunity.write", "opportunity.createSalesOrder", "salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept", "salesOrder.write"]);
+      "opportunity.write", "opportunity.createSalesOrder", "salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept", "salesOrder.write",
+      "equipment.record.read"]);
     // With nothing activated, no channel can be assigned -- there is no value to name.
     refusedWith(await assign("admin-a", retailMgr, lead, "salesChannel", "RETAIL"), "SCOPE_VALUE_INVALID");
 
