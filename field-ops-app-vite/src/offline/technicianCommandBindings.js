@@ -100,6 +100,7 @@ export function createTechnicianBindings(deps = {}) {
       try {
         const result = await executionData(intent.workOrderId, {
           qtyUsedUpdates: intent.payload.qtyUsedUpdates, idempotencyKey: intent.intentId,
+          ...(intent.payload.consumeFrom ? { consumeFrom: intent.payload.consumeFrom } : {}),
         });
         return { ok: true, serverIds: { workOrderId: result?.workOrderId ?? intent.workOrderId } };
       } catch (err) { return failureFrom(err); }

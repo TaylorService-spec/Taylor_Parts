@@ -140,7 +140,7 @@ export const CONDITIONABLE_GRANTS: readonly {
  * eosWorkforce may import it; administrationControlPlane.test.mjs proves it EQUALS
  * eosWorkforce/operationalScopeVocabulary OPERATIONAL_SCOPE_TYPES.
  */
-export const CONDITION_OPERATIONAL_SCOPE_TYPES: readonly string[] = Object.freeze(["WAREHOUSE", "REORDER_QUEUE"]);
+export const CONDITION_OPERATIONAL_SCOPE_TYPES: readonly string[] = Object.freeze(["WAREHOUSE", "REORDER_QUEUE", "MOBILE"]);
 
 /** May this capability carry a condition at all? */
 export const conditionIsEvaluableFor = (capabilityKey: string): boolean =>
@@ -178,6 +178,10 @@ export const ADMINISTRATION_GRANT_ONLY_CAPABILITIES: ReadonlySet<string> = new S
   // it on admin (whole-catalog composition) and on inventorySerializedAssetAcquirer; neither is a default. Its Taylor
   // holders (Parts Associate, Parts Manager, Warehouse Associate, Warehouse Manager) are Administration grants.
   "inventory.serializedAsset.acquire",
+  // Controller TRUCK INVENTORY ACTIVATION OD-T6 (2026-10-01; migration 1764410000000): resolve a scanned identifier. The
+  // compiled catalog declares it on admin (whole-catalog composition) and on the lookup Role; neither is a default. Its
+  // holders are the inventoryLookupReader composition, granted through Administration.
+  "inventory.catalog.alias.read",
 ]);
 
 export type GrantAuthoritySource =

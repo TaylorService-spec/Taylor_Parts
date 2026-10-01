@@ -259,8 +259,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 79 -> 80: the Parts / Purchasing / Receiving completion (2026-10-01): 1764380000000 -- Reorder create integrity + RR numbering (schema) and warehouse.record.manage + supplier.record.read, granted to NO Role.
 // 80 -> 81: the Inventory / Warehouse completion (2026-10-01): 1764390000000 -- the inventory baseline cutover certification (schema).
 // 81 -> 82: the Equipment activation (2026-10-01): 1764400000000 -- two register capabilities (no grant) + equipment events.
-const PINNED_LAST_MIGRATION = "1764400000000_equipment-activation";
-const PINNED_MIGRATION_COUNT = 82;
+// 82 -> 83: the Truck Inventory activation (2026-10-01): 1764410000000 -- inventory.catalog.alias.read + inventory.truckRegistry.manage (granted to NO Role), MOBILE operational scope, receipt-into-MOBILE CHECK.
+const PINNED_LAST_MIGRATION = "1764410000000_truck-inventory-activation";
+const PINNED_MIGRATION_COUNT = 83;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

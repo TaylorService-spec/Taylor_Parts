@@ -110,9 +110,6 @@ const PartMasterList = lazy(() => import("./modules/inventory/PartMasterList"));
 const Manufacturers = lazy(() => import("./modules/inventory/Manufacturers"));
 const TruckInventory = lazy(() => import("./modules/inventory/TruckInventory"));
 import { useTruckRegistrySource } from "./hooks/useTruckRegistrySource";
-import { useTruckManagement } from "./hooks/useTruckManagement";
-import { useDriverOptions } from "./hooks/useDriverOptions";
-import { useWarehouseOptions } from "./hooks/useWarehouseOptions";
 const PartDetail = lazy(() => import("./modules/inventory/PartDetail"));
 const WarehouseManagerHome = lazy(() => import("./modules/inventoryRole/WarehouseManagerHome"));
 const PartsManagerHome = lazy(() => import("./modules/inventoryRole/PartsManagerHome"));
@@ -262,29 +259,19 @@ function DashboardIndex({ role, allowedLegacyKeys, operationalContext }) {
   );
 }
 
-// EI-P1d-2-2b -- connects the client-direct Truck Registry reads to the frozen EI-P1d-1
-// TruckInventory workspace. renderSubnavItem is a plain function (not a component), so the
-// producer hook lives here in a real component; it threads the one accessVersion into both the
-// producer and the workspace so their boundary keys match.
-// EI Truck Management UI -- the same connector now also supplies the management surface.
-// canManage is the client-side admin/dispatcher SECURITY-ROLE gate (defense-in-depth; the
-// route is already admin/dispatcher-only and the trusted service re-checks the role). The
-// write-readiness seam (config/truckManagementReadiness.js) is fail-closed by default, so
-// useTruckManagement invokes NO callable today -- the controls render for review with the
-// "not yet enabled" notice. onReconcile re-reads the registry after a (future) successful
-// command. The option hooks (drivers/warehouses) hold the only firebase reads and are gated
-// to fetch nothing until management is authorized AND write-ready.
-function TruckInventoryConnected({ accessVersion, role }) {
+// The Truck Inventory workspace over the governed EOS reads (Truck Inventory activation, 2026-10-01): the roster and each
+// reachable truck's stock from PostgreSQL (hooks/useTruckRegistrySource -> services/truckRegistryQueries). The producer hook
+// lives here in a real component and threads the one accessVersion into both the producer and the workspace.
+// The workspace is READ-ONLY here: truck / MOBILE-location registry administration is an Administration act (Warehouse
+// racking -> Truck registry, inventory.truckRegistry.manage) and truck assignment is an Employee's MOBILE scope, so no
+// management seam is supplied (canManage false -> no Add / Manage controls, no command).
+function TruckInventoryConnected({ accessVersion }) {
   const { source, managementRecords, reload } = useTruckRegistrySource(accessVersion);
-  const canManage = role === ROLES.ADMIN || role === ROLES.DISPATCHER;
-  const isAdmin = role === ROLES.ADMIN; // admin-only capabilities (Created-in-Error delete)
-  const { enabled, writeReady, commands } = useTruckManagement({ accessVersion, canManage, onReconcile: reload });
-  const management = { canManage, isAdmin, writeReady, enabled, commands, useDriverOptions, useWarehouseOptions };
   return (
     <TruckInventory
       source={source}
       accessVersion={accessVersion}
-      management={management}
+      management={{ canManage: false }}
       managementRecords={managementRecords}
       onReconcile={reload}
     />
@@ -558,7 +545,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // desktop user is not demoted to a phone shell, and a phone user does not gain or lose a single
   // permission by rotating the device.
   if (domain.key === "service" && item.key === "technicianWorkspace") {
-    return <TechnicianWorkspaceSurface />;
+    return <TechnicianWorkspaceSurface operationalContext={operationalContext} role={role} />;
   }
   // THE WAREHOUSE / PARTS HANDHELD, composed for the device it is opened on -- the same rule the
   // technician workspace follows, for the same reason. Both branches reach the SAME governed
@@ -618,7 +605,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // PartsList/Operations/EquipmentWorkspace). Fail-closed: no governed records -> honest
   // empty/not-connected; a denied/failed read -> the workspace's denied/error surface.
   if (domain.key === "inventory" && item.key === "truckInventory") {
-    return <TruckInventoryConnected accessVersion={operationalContext?.accessVersion} role={role} />;
+    return <TruckInventoryConnected accessVersion={operationalContext?.accessVersion} />;
   }
   // THE REORDER QUEUE'S OWN DESTINATION (navigation blocker #4). navConfig.js's
   // `inventory.reorderQueue` surface was earnable and had no door: the queue was reachable only as a
@@ -891,8 +878,11 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
  * shell genuinely UNMOUNTS at desktop widths: a hidden-but-mounted shell would still hold an offline
  * runtime, still sit in the tab order, and still run its effects.
  */
-function TechnicianWorkspaceSurface() {
-  return useIsPhone() ? <TechnicianShell /> : <FieldMode />;
+function TechnicianWorkspaceSurface({ operationalContext, role }) {
+  // Truck Inventory activation (2026-10-01, Package G): the phone Scan tab gets the same trusted capability gate and role
+  // the desktop scanner has, so a Technician's truck workflows (receive into the truck, look up a Part) are offered.
+  const scanDeps = { hasCapability: operationalContext?.hasCapability, role };
+  return useIsPhone() ? <TechnicianShell deps={{ scan: scanDeps }} /> : <FieldMode />;
 }
 
 /**

@@ -28,7 +28,9 @@ test("the scope-type vocabulary is exactly the ruled types, and is immutable", (
   // visibility an Operational Scope -- that consumer. REORDER_QUEUE's scope_id is the governed
   // operating company KEY, and a trigger added by migration 1761696000000 validates it, so the
   // guarantee the dropped warehouse foreign key carried is preserved per type rather than lost.
-  assert.deepEqual([...vocab.OPERATIONAL_SCOPE_TYPES], ["WAREHOUSE", "REORDER_QUEUE"]);
+  // + MOBILE (migration 1764410000000, Controller TRUCK INVENTORY ACTIVATION OD-T1, 2026-10-01): an Employee's relationship
+  // to a truck is a MOBILE scope over its inventory location; a trigger branch validates the target per type.
+  assert.deepEqual([...vocab.OPERATIONAL_SCOPE_TYPES], ["WAREHOUSE", "REORDER_QUEUE", "MOBILE"]);
   assert.ok(Object.isFrozen(vocab.OPERATIONAL_SCOPE_TYPES));
   assert.ok(Object.isFrozen(vocab.OPERATIONAL_SCOPE_TYPE_LABEL));
   // The module vocabulary and the database CHECK must be changed together.
@@ -36,7 +38,7 @@ test("the scope-type vocabulary is exactly the ruled types, and is immutable", (
   // replaced the constraint, and comparing against the original would pin the vocabulary to a
   // statement the database no longer has.
   const scopeSql = readFileSync(join(FUNCTIONS_DIR, "migrations",
-    "1761696000000_parts-associate-eligibility-and-reorder-queue-scope.sql"), "utf8")
+    "1764410000000_truck-inventory-activation.sql"), "utf8")
     .split("-- Down Migration")[0].split("\n").map((l) => l.replace(/--.*$/, "")).join("\n");
   const checked = scopeSql.match(/operational_scope_type_known\s+CHECK \(scope_type IN \(([^)]*)\)\)/);
   assert.ok(checked, "the closed scope-type CHECK must exist");

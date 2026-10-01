@@ -36,8 +36,9 @@ import {
 //
 // ONE read: the governed EOS list (useTransferOrders -> listTransferOrders), which already holds only the transfers
 // whose origin or destination warehouse is in the caller's WAREHOUSE scope (Controller INVENTORY / WAREHOUSE
-// COMPLETION RULINGS, 2026-10-01). The technician-truck read (listMyReceivableTransfers) is NOT carried over: truck
-// transfers belong to the separate Truck Inventory journey.
+// COMPLETION RULINGS, 2026-10-01). Since the Truck Inventory activation (2026-10-01, OD-T3) the same read also returns,
+// to a Technician holding inventory.transfer.receive, the transfers INTO a truck it holds MOBILE scope over -- and only
+// those -- so the receive-into-my-truck job is this screen too. (The Firebase listMyReceivableTransfers read stays retired.)
 //
 // ============================ THE SERVER DECIDES ============================
 //

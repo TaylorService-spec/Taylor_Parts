@@ -112,3 +112,29 @@ describe("useTruckRegistrySource", () => {
     expect(readTruckInventorySource(result.current.source, 1).status).toBe("loading");
   });
 });
+
+// Truck Inventory activation (2026-10-01, Package I): the PRODUCTION read is one EOS roster read plus each reachable
+// truck's stock -- no Firestore, no driver resolution. Proven through the injected fetchTruckRegistry seam.
+describe("useTruckRegistrySource over the EOS registry read", () => {
+  it("composes the roster pairs and attaches each reachable truck's stock to its row", async () => {
+    const fetchTruckRegistry = vi.fn(async () => ({
+      mobileLocationDocs: [locDoc()],
+      truckDocs: [truckDoc({ assignedDriverEmployeeId: null })],
+      stockByTruck: new Map([["TRK-204", { parts: [{ internalSku: "PRT-FILTER", onHand: 4, available: 4 }], serializedEquipment: [] }]]),
+    }));
+    const { result } = renderHook(() => useTruckRegistrySource(1, { fetchTruckRegistry }));
+    await waitFor(() => expect(result.current.source.status).toBe("ready"));
+    expect(fetchTruckRegistry).toHaveBeenCalledTimes(1);
+    const [row] = result.current.source.trucks;
+    expect(row.id).toBe("TRK-204");
+    expect(row.technician).toBe(null); // no driver field: MOBILE scope is the relationship
+    expect(row.parts).toEqual([{ internalSku: "PRT-FILTER", onHand: 4, available: 4 }]);
+  });
+
+  it("a FORBIDDEN EOS read is the sanitized denied state", async () => {
+    const fetchTruckRegistry = vi.fn(async () => { throw Object.assign(new Error("no"), { code: "FORBIDDEN", category: "FORBIDDEN" }); });
+    const { result } = renderHook(() => useTruckRegistrySource(4, { fetchTruckRegistry }));
+    await waitFor(() => expect(result.current.source.status).toBe("denied"));
+    expect(result.current.source).toEqual({ connected: false, status: "denied", accessVersion: 4, trucks: [] });
+  });
+});

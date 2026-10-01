@@ -90,7 +90,7 @@ const scopeConflict = (_err: { constraint?: string }) =>
  *   REORDER_QUEUE   eos_policy.tenant_operating_company_keys (the queue is a company's queue, keyed by its eos_ops key)
  */
 async function requireActiveScopeTarget(
-  db: PoolClient, tenantId: string, scopeType: OperationalScopeType, scopeId: string,
+  db: PoolClient, tenantId: string, scopeType: OperationalScopeType, scopeId: string, employeeId: string,
 ): Promise<void> {
   if (scopeType === "REORDER_QUEUE") {
     const { rows } = await db.query(
@@ -99,6 +99,27 @@ async function requireActiveScopeTarget(
     );
     if (rows.length === 0) refuse("REORDER_QUEUE_NOT_FOUND", "NOT_FOUND", "no governed operating company key names this queue in this tenant");
     if (rows[0].status !== "ACTIVE") refuse("REORDER_QUEUE_INACTIVE", "PRECONDITION_FAILED", "an inactive operating company key cannot receive a new queue scope");
+    return;
+  }
+  if (scopeType === "MOBILE") {
+    // OD-T1: the truck's MOBILE location -- ACTIVE, of the Employee's own operating company (a technician never gains a truck
+    // of another company), and not the location of an inactive truck.
+    const { rows } = await db.query(
+      `SELECT m.active, m.operating_company_key,
+              (SELECT t.active FROM eos_ops.trucks t WHERE t.tenant_id = m.tenant_id AND t.mobile_location_type = 'MOBILE' AND t.mobile_location_id = m.location_id) AS truck_active
+         FROM eos_ops.mobile_locations m WHERE m.tenant_id = $1 AND m.location_type = 'MOBILE' AND m.location_id = $2 FOR SHARE OF m`,
+      [tenantId, scopeId]);
+    if (rows.length === 0) refuse("MOBILE_LOCATION_NOT_FOUND", "NOT_FOUND", "the truck location does not exist in this tenant");
+    if (rows[0].active !== true) refuse("MOBILE_LOCATION_INACTIVE", "PRECONDITION_FAILED", "an inactive truck location cannot receive a new operational scope");
+    if (rows[0].truck_active === false) refuse("TRUCK_INACTIVE", "PRECONDITION_FAILED", "the truck linked to this location is inactive");
+    const company = await db.query(
+      `SELECT 1 FROM eos_workforce.employees e
+         JOIN eos_policy.tenant_operating_company_keys k ON k.tenant_id = e.tenant_id AND k.operating_company_id = e.operating_company_id AND k.status = 'ACTIVE'
+        WHERE e.tenant_id = $1 AND e.id = $2 AND k.operating_company_key = $3`,
+      [tenantId, employeeId, rows[0].operating_company_key]);
+    if (company.rows.length === 0) {
+      refuse("MOBILE_LOCATION_COMPANY_MISMATCH", "PRECONDITION_FAILED", "the truck belongs to another operating company than the Employee");
+    }
     return;
   }
   if (scopeType !== "WAREHOUSE") refuse("OPERATIONAL_SCOPE_TYPE_INVALID", "INVALID_INPUT", `scopeType must be one of ${OPERATIONAL_SCOPE_TYPES.join(", ")}`);
@@ -135,7 +156,7 @@ export function assignEmployeeOperationalScope(
       await takeGovernanceLock(db, actor.tenantId);
       await lockEmployee(db, actor.tenantId, p.employeeId);
       await refuseSelfScope(db, actor, p.employeeId);
-      await requireActiveScopeTarget(db, actor.tenantId, p.scopeType, p.scopeId);
+      await requireActiveScopeTarget(db, actor.tenantId, p.scopeType, p.scopeId, p.employeeId);
       const { rows } = await db.query(
         `SELECT id FROM eos_workforce.employee_operational_scopes
           WHERE tenant_id = $1 AND employee_id = $2 AND scope_type = $3 AND scope_id = $4 AND effective_to IS NULL FOR UPDATE`,

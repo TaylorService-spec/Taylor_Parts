@@ -221,7 +221,8 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // (schema; the fail-closed gate the activated Inventory writers read). No capability, no grant.
   // 81 -> 82: the Equipment activation (2026-10-01): 1764400000000 -- equipment.record.read + equipment.record.manage (granted to
   // NO Role), equipment.version and the append-only equipment_events history.
-  assert.equal(migrations.length, 82, "a migration was added or removed by the read enforcement");
+  // 82 -> 83: the Truck Inventory activation (2026-10-01): 1764410000000 -- inventory.catalog.alias.read + inventory.truckRegistry.manage (granted to NO Role), MOBILE operational scope, receipt-into-MOBILE CHECK.
+  assert.equal(migrations.length, 83, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

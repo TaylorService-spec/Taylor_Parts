@@ -40,6 +40,7 @@
 //
 // While CYCLE_COUNT_WRITER_AUTHORITY.postgres is INACTIVE every operation refuses NOT_ACTIVATED before it
 // touches anything (the transport passes the constant; tests pass ACTIVE explicitly).
+import { lockStockLocation } from "./stockLocationLock.js";
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -430,6 +431,21 @@ export async function reconcileEosCycleCountLine(deps: CycleCountOperationDeps, 
       : (line.variance ?? 0) !== 0;
     // A discrepancy needs a reason for EITHER decision (the Firestore engine's rule).
     if (discrepant && !reason) refuse("REASON_REQUIRED", "INVALID_INPUT", "a reason is required when the count differs from what was expected");
+    // PACKAGE H (Truck Inventory activation, 2026-10-01): the variance was measured against the blind snapshot taken from the
+    // ledger when the line opened. Under the shared stock location lock (the one relocation, transfer dispatch and truck
+    // consumption take), the balance NOW must still be that snapshot; if stock moved in between, posting the old variance
+    // would misstate the location (or drive it negative), so the count is refused as stale -- cancel the line and count
+    // again. Never clamped, never re-derived. Same transaction as the adjustment the repository then posts.
+    if (decision === "APPROVE" && line.trackingMode === "NONE" && (line.variance ?? 0) !== 0) {
+      await lockStockLocation(db, actor.tenantId, line.partId, sheet.location.type, sheet.location.id);
+      const { rows: bal } = await db.query<{ total: string | null }>(
+        `SELECT COALESCE(SUM(quantity_delta), 0)::bigint AS total FROM eos_ops.inventory_movements
+          WHERE tenant_id = $1 AND part_id = $2 AND tracking_mode = 'NONE' AND location_type = $3 AND location_id = $4`,
+        [actor.tenantId, line.partId, sheet.location.type, sheet.location.id]);
+      if (Number(bal[0]?.total ?? 0) !== line.expectedQuantity) {
+        refuse("COUNT_STALE", "CONFLICT", "stock moved at this location after the count opened; cancel this line and count it again");
+      }
+    }
     const decided = await reconcileLineInTransaction(db, actor.tenantId, actor.principalId, line.id, decision, reason);
     await audit(db, actor, decision === "APPROVE" ? "cycleCount.line.reconcile" : "cycleCount.line.reject", "cycleCountLine", line.id,
       { status: "COUNTED", variance: line.variance }, { status: decided.status, ledgerMovementId: decided.ledgerMovementId }, reason);

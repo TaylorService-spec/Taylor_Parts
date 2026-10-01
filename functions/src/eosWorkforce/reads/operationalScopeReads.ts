@@ -136,6 +136,17 @@ const TARGET_SOURCES: Readonly<Record<OperationalScopeType, { readonly valueSour
             FROM eos_policy.tenant_operating_company_keys
            WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY operating_company_id, operating_company_key`,
   }),
+  // OD-T1: a truck's MOBILE location (labelled with its truck when one is linked). Only ACTIVE locations, and never one whose
+  // linked truck is inactive -- the same rule the writer enforces.
+  MOBILE: Object.freeze({
+    valueSource: "eos_ops.mobile_locations (ACTIVE, this tenant; a linked truck must be active)",
+    sql: `SELECT m.location_id AS value,
+                 coalesce(t.display_label || ' (' || t.vehicle_number || ')', m.display_label) AS label
+            FROM eos_ops.mobile_locations m
+            LEFT JOIN eos_ops.trucks t ON t.tenant_id = m.tenant_id AND t.mobile_location_type = m.location_type AND t.mobile_location_id = m.location_id
+           WHERE m.tenant_id = $1 AND m.active AND (t.truck_id IS NULL OR t.active)
+           ORDER BY lower(coalesce(t.display_label, m.display_label)), m.location_id`,
+  }),
 });
 
 /** The governed, tenant-scoped values each Operational Scope type may take. Gate: employee.record.read. */

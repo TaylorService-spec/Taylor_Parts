@@ -31,6 +31,13 @@ export const MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY = "inventory.location.scop
  */
 export const WAREHOUSE_MASTER_CAPABILITY = "warehouse.record.manage";
 
+/**
+ * ADMINISTRATIVE CONFIGURATION authority for the truck / MOBILE-location registry (Controller OD-T7, 2026-10-01). Held by no
+ * one by default; the ruled holder is the Operational Configuration Administrator Role. Confers no inventory movement, no
+ * warehouse binding and no Employee MOBILE scope.
+ */
+export const TRUCK_REGISTRY_CAPABILITY = "inventory.truckRegistry.manage";
+
 export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze({
   listMobileLocationScopeBindings: Object.freeze({ capability: MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, mutation: false }),
   readMobileLocationScopeBinding: Object.freeze({ capability: MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, mutation: false }),
@@ -45,6 +52,16 @@ export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze({
   createBin: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
   relabelBin: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
   setBinStatus: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
+  // Truck / MOBILE-location registry (eosOps/truckRegistryAdministration.ts).
+  listTrucks: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: false }),
+  readTruck: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: false }),
+  listMobileLocations: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: false }),
+  createMobileLocation: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
+  createTruck: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
+  linkTruck: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
+  relinkTruck: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
+  unlinkTruck: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
+  changeTruckStatus: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
 } as const);
 
 export type AdminConfigurationOperation = keyof typeof ADMIN_CONFIGURATION_OPERATIONS;

@@ -657,6 +657,10 @@ export async function insertReceivingOrder(
       "a receipt states when the goods arrived; it is never inferred from when the row was written",
     );
   }
+  if (row.receivingLocation?.type === "MOBILE") {
+    // OD-T5: purchased stock is received at a WAREHOUSE or BIN, never a truck (receiving_destination_not_mobile).
+    throw new PurchasingRepositoryError("RECEIPT_TO_MOBILE_REFUSED", "a receipt's destination is a WAREHOUSE or BIN, never a MOBILE location");
+  }
   const legacy = row.sourceKind === "REORDER_PURCHASE_ORDER";
   const reorderRequestId = row.reorderRequestId ?? null;
   if (legacy && reorderRequestId !== row.purchaseOrderId) {

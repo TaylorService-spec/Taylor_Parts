@@ -50,6 +50,9 @@ on:
   pull_request:
     paths:
       - "functions/src/adminPolicy/**"
+      # OD-T7 (2026-10-01): the truck registry Administration section and its suite (the guard AND its subject).
+      - "field-ops-app-vite/src/modules/administration/TruckRegistry.jsx"
+      - "field-ops-app-vite/test/truckRegistryAdministration.test.jsx"
       - "functions/test/adminPolicyAuthorization.test.mjs"
       - "functions/test/adminPolicyWorkflow.test.mjs"
       - "functions/test/adminPolicyNoFirebase.test.mjs"
@@ -236,6 +239,8 @@ on:
       - "functions/test/reorderLifecyclePostgres.test.mjs"
       - "functions/test/partsPurchasingReceivingJourneyPostgres.test.mjs"
       - "functions/test/inventoryWarehouseJourneyPostgres.test.mjs"
+      - "functions/test/equipmentActivationJourneyPostgres.test.mjs"
+      - "functions/test/truckInventoryActivationJourneyPostgres.test.mjs"
       - "functions/test/reorderLifecycleAuthorityRegistrationPostgres.test.mjs"
       - "functions/test/reorderFieldParityMatrix.test.mjs"
       - "functions/test/reorderFirestoreRetirementGate.test.mjs"
@@ -663,6 +668,8 @@ on:
   push:
     branches: [main]
     paths:
+      - "field-ops-app-vite/src/modules/administration/TruckRegistry.jsx"
+      - "field-ops-app-vite/test/truckRegistryAdministration.test.jsx"
       - "functions/src/adminPolicy/**"
       - "functions/test/adminPolicyAuthorization.test.mjs"
       - "functions/test/adminPolicyWorkflow.test.mjs"
@@ -840,6 +847,8 @@ on:
       - "functions/test/reorderLifecyclePostgres.test.mjs"
       - "functions/test/partsPurchasingReceivingJourneyPostgres.test.mjs"
       - "functions/test/inventoryWarehouseJourneyPostgres.test.mjs"
+      - "functions/test/equipmentActivationJourneyPostgres.test.mjs"
+      - "functions/test/truckInventoryActivationJourneyPostgres.test.mjs"
       - "functions/test/reorderLifecycleAuthorityRegistrationPostgres.test.mjs"
       - "functions/test/reorderFieldParityMatrix.test.mjs"
       - "functions/test/reorderFirestoreRetirementGate.test.mjs"
@@ -1276,6 +1285,12 @@ jobs:
 
       - name: Rendered Roles & Permissions grid (vitest + jsdom)
         run: npx vitest run test/adminRolesPermissions.test.jsx
+        working-directory: field-ops-app-vite
+
+      # OD-T7 (Truck Inventory activation, 2026-10-01): the Administration truck registry section sends every change with its
+      # reason to /admin/policy and renders a refusal as the server's answer.
+      - name: Truck registry Administration section (vitest + jsdom)
+        run: npx vitest run test/truckRegistryAdministration.test.jsx
         working-directory: field-ops-app-vite
 
       # THE BROWSER'S ROUTE TO THE OBJECT-OWNED SECURITY READ MODEL. Proved through an injected

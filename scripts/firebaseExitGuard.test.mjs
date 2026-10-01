@@ -1008,7 +1008,9 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // callable) is deleted; the server's refusal decides -- 26 -> 25 (shrink-only).
     // Equipment activation (2026-10-01): the Equipment register hooks read the EOS register, the dead installed-page hook and
     // the install capability pre-gate are deleted -- 25 -> 22 (shrink-only).
-    "frontend.firestore_client": 22,
+    // Truck Inventory activation (2026-10-01): the truck registry reads are EOS and the truck command client is retired --
+    // 22 -> 20 (shrink-only).
+    "frontend.firestore_client": 20,
     // Pass 11 Retail Sales: the 7 Opportunity / Sales Order read + command clients moved to the EOS Commercial API.
     // ... and their callable transports (Part / alias command clients, the Reorder callable client) -- 47 -> 44.
     // L0 Z3: product-reference search (salesAgreementCommandClient.js) left the searchProductReferences callable
@@ -1022,7 +1024,8 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // their Firebase callables for the EOS API, and the acquire capability pre-gate is deleted -- 34 -> 29 (shrink-only).
     // Equipment activation (2026-10-01): the install (x2), available-equipment and location-display callable clients and the
     // install capability pre-gate are deleted; the reads and the install are EOS -- 29 -> 24 (shrink-only).
-    "frontend.firebase_functions_client": 24,
+    // Truck Inventory activation (2026-10-01): the nine truck callables are no longer called by the client -- 24 -> 23.
+    "frontend.firebase_functions_client": 23,
     // Service Experience completion (2026-09-30): the Firebase inbound work / email provider runtime is retired from
     // the codebase -- intake, decisions, reads, connection lifecycle, delivery service and schedule, attachment custody
     // (12 files) -- and the credential vault no longer touches Firestore -- 183 -> 171 (shrink-only).
@@ -1040,5 +1043,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 286); // 300 -> 294: the Inventory / Warehouse completion (2026-10-01), six client entries; 294 -> 286: the Equipment activation (2026-10-01), eight client entries
+  assert.equal(total, 283); // 286 -> 283: the Truck Inventory activation (2026-10-01), three client entries; 300 -> 294: the Inventory / Warehouse completion (2026-10-01), six client entries; 294 -> 286: the Equipment activation (2026-10-01), eight client entries
 });

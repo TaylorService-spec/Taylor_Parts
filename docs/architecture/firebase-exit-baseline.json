@@ -29,8 +29,6 @@
         "field-ops-app-vite/src/metadata/definitions/accountPageComponents.js",
         "field-ops-app-vite/src/metadata/firestoreListSource.js",
         "field-ops-app-vite/src/services/operationsQueries.ts",
-        "field-ops-app-vite/src/services/truckRegistryCommandClient.js",
-        "field-ops-app-vite/src/services/truckRegistryQueries.js",
         "field-ops-app-vite/src/types/access.ts"
       ],
       "firebase_functions_client": [
@@ -56,8 +54,7 @@
         "field-ops-app-vite/src/services/performanceGoalClient.js",
         "field-ops-app-vite/src/services/privilegedApprovalClient.js",
         "field-ops-app-vite/src/services/receivingCallableClient.js",
-        "field-ops-app-vite/src/services/returnCommandClient.js",
-        "field-ops-app-vite/src/services/truckRegistryCommandClient.js"
+        "field-ops-app-vite/src/services/returnCommandClient.js"
       ],
       "firebase_auth": [
         "field-ops-app-vite/src/auth/AuthContext.jsx",

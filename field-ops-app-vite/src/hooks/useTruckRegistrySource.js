@@ -13,29 +13,25 @@
 //   * STALE-ACCESS: a read that resolves after accessVersion has changed is discarded (the
 //     cancelled flag), and the stamped accessVersion additionally lets the workspace downgrade
 //     any prior-version READY source to LOADING synchronously.
-// Reads are injectable (deps) so the behavior is unit-testable without Firestore.
+// Reads are injectable (deps) so the behavior is unit-testable without the network. The production read is EOS PostgreSQL.
 import { useCallback, useEffect, useState } from "react";
 import { buildTruckInventorySourceFromRegistry } from "../access/truckRegistrySource.js";
 import { projectManagementRecords } from "../domain/truckManagement.js";
-import {
-  fetchTruckDocs as defaultFetchTruckDocs,
-  fetchMobileLocationDocs as defaultFetchMobileLocationDocs,
-  fetchDriverNames as defaultFetchDriverNames,
-} from "../services/truckRegistryQueries.js";
+import { fetchTruckRegistry as defaultFetchTruckRegistry } from "../services/truckRegistryQueries.js";
 
 const LOADING_SOURCE = (accessVersion) => ({ status: "loading", accessVersion });
 
 function isPermissionDenied(error) {
   const code = error && typeof error === "object" ? error.code : undefined;
-  return code === "permission-denied" || code === "firestore/permission-denied";
+  return code === "permission-denied" || code === "firestore/permission-denied" || code === "FORBIDDEN" || error?.category === "FORBIDDEN";
 }
 
 export function useTruckRegistrySource(accessVersion, deps = {}) {
-  const {
-    fetchTruckDocs = defaultFetchTruckDocs,
-    fetchMobileLocationDocs = defaultFetchMobileLocationDocs,
-    fetchDriverNames = defaultFetchDriverNames,
-  } = deps;
+  // PRODUCTION: one EOS roster read (+ each reachable truck's stock) -- services/truckRegistryQueries.js (Truck Inventory
+  // activation, 2026-10-01; no Firestore). The three injected seams remain for the composer's unit tests: when any is
+  // injected, they are used instead.
+  const { fetchTruckDocs, fetchMobileLocationDocs, fetchDriverNames, fetchTruckRegistry = defaultFetchTruckRegistry } = deps;
+  const seams = Boolean(fetchTruckDocs || fetchMobileLocationDocs || fetchDriverNames);
 
   // Start (and re-scope on any access change) in a sanitized LOADING state -- never a prior
   // access version's data. The bridge is fed a message-less non-ready read.
@@ -56,19 +52,23 @@ export function useTruckRegistrySource(accessVersion, deps = {}) {
       try {
         // Locations first, then trucks; driver names resolved for ONLY the referenced
         // drivers (bounded, no N+1) via the trucks read.
-        const [mobileLocationDocs, truckDocs] = await Promise.all([
-          fetchMobileLocationDocs(),
-          fetchTruckDocs(),
-        ]);
-        const driverNames = await fetchDriverNames(truckDocs);
+        let mobileLocationDocs, truckDocs, resolveDriverName, stockByTruck = new Map();
+        if (seams) {
+          [mobileLocationDocs, truckDocs] = await Promise.all([fetchMobileLocationDocs(), fetchTruckDocs()]);
+          const driverNames = await fetchDriverNames(truckDocs);
+          resolveDriverName = (id) => driverNames.get(id) ?? null;
+        } else {
+          ({ mobileLocationDocs, truckDocs, stockByTruck } = await fetchTruckRegistry());
+          resolveDriverName = () => null; // no driver field (OD-T1): MOBILE scope is the relationship
+        }
         if (cancelled) return;
-        const resolveDriverName = (id) => driverNames.get(id) ?? null;
         setRead({
           status: "ready",
           accessVersion,
           mobileLocationDocs,
           truckDocs,
           resolveDriverName,
+          stockByTruck,
           // equipmentCondition stays DEFERRED/empty in this gate.
           equipmentConditionOptions: [],
         });
@@ -83,9 +83,13 @@ export function useTruckRegistrySource(accessVersion, deps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [accessVersion, reloadToken, fetchTruckDocs, fetchMobileLocationDocs, fetchDriverNames]);
+  }, [accessVersion, reloadToken, seams, fetchTruckDocs, fetchMobileLocationDocs, fetchDriverNames, fetchTruckRegistry]);
 
-  const source = buildTruckInventorySourceFromRegistry(read);
+  const built = buildTruckInventorySourceFromRegistry(read);
+  // Each truck's EOS stock (when this person can reach it) rides on its row: the detail view's parts / serialized lists.
+  const source = built.connected && read.stockByTruck instanceof Map && read.stockByTruck.size > 0
+    ? { ...built, trucks: built.trucks.map((t) => ({ ...t, ...(read.stockByTruck.get(t.id) ?? {}) })) }
+    : built;
   // Governed management projection (truckId + version + governed ids) for the Manage
   // drawer's optimistic-concurrency writes. Derived from the SAME truck docs (zero extra
   // reads); empty unless the read is READY. Never surfaced to the frozen inventory view.

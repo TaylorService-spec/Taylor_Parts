@@ -11,16 +11,35 @@
 //
 // AUTHORITY: workOrder.execution.record (registered with no grants) + RECORD_ASSIGNMENT -- the capability first,
 // then the relation, through the ONE contextual authorization path the lifecycle uses.
+//
+// TRUCK CONSUMPTION (Controller OD-T4, 2026-10-01). When the request states `consumeFrom: { type: "MOBILE", locationId }`,
+// the usage IS consumption: every positive applied delta posts the existing WORK_ORDER_CONSUMPTION movement (-applied)
+// from that truck location IN THE SAME TRANSACTION as the usage record -- both commit or neither does. Additionally required
+// then: inventory.workOrderConsumption.record, SERVICE_TECHNICIAN eligibility and a current MOBILE scope over the truck
+// (mobileStockAuthority.ts, revalidated here), an ACTIVE truck of the Work Order's operating company, a WORK_IN_PROGRESS
+// Work Order, a certified baseline, a quantity-tracked Part, and enough stock at the truck under the shared stock location
+// lock (never negative). A replay of the same key returns the original outcome and moves nothing. A correction (negative
+// delta) never moves stock and may not take the recorded usage below what has already been consumed.
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { authorizeObjectAction, postgresContextualReader, type ContextualReader } from "./contextualAuthorization";
 import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 import { TERMINAL_STATUSES, WorkOrderLifecycleError, lifecycleContextPredicates, WORK_ORDER_LIFECYCLE_COMPLETE, type LifecycleActor } from "./workOrderLifecycle";
+import { authorizeMobileAct, MobileStockRefusal } from "./mobileStockAuthority";
+import { lockStockLocation } from "./stockLocationLock";
+import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority";
+import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate";
 
 const SCHEMA = "eos_ops";
 export const WORK_ORDER_EXECUTION_RECORD = "workOrder.execution.record";
 export const MAX_EXECUTION_NOTE = 2000;
 export const MAX_USAGE_LINES = 100;
+/** OD-T4: the capability that turns recorded usage into consumption from a truck. */
+export const WORK_ORDER_CONSUMPTION_RECORD = "inventory.workOrderConsumption.record";
+export const TRUCK_CONSUMPTION_SOURCE_KIND = "WORK_ORDER_TRUCK_CONSUMPTION";
+export const CONSUMABLE_WORK_ORDER_STATUSES: readonly string[] = Object.freeze(["WORK_IN_PROGRESS"]);
+export const truckConsumptionMovementKey = (workOrderId: string, idempotencyKey: string, partId: string): string =>
+  `woConsume:${workOrderId}:${idempotencyKey}#part:${partId}`;
 
 type Category = WorkOrderLifecycleError["category"];
 const refuse = (code: string, category: Category, message: string): never => {
@@ -35,12 +54,14 @@ export interface ExecutionRequest {
   readonly idempotencyKey: string;
   readonly partUsage: readonly UsageLine[];
   readonly note: string | null;
+  /** OD-T4: the truck the used Parts came out of; absent, nothing moves (NO_STOCK_MOVEMENT). */
+  readonly consumeFrom: { readonly type: "MOBILE"; readonly locationId: string } | null;
 }
 
 export function validateExecutionRequest(input: unknown): ExecutionRequest {
   if (!input || typeof input !== "object" || Array.isArray(input)) refuse("INPUT_INVALID", "INVALID_INPUT", "input must be an object");
   const d = input as Record<string, unknown>;
-  const extra = Object.keys(d).filter((k) => !["workOrderId", "idempotencyKey", "partUsage", "note"].includes(k));
+  const extra = Object.keys(d).filter((k) => !["workOrderId", "idempotencyKey", "partUsage", "note", "consumeFrom"].includes(k));
   if (extra.length > 0) refuse("INPUT_FIELD_NOT_ACCEPTED", "INVALID_INPUT", `this command does not accept: ${extra.sort().join(", ")}`);
   if (!ID_SHAPE(d.workOrderId)) refuse("WORK_ORDER_ID_INVALID", "INVALID_INPUT", "a workOrderId is required");
   if (typeof d.idempotencyKey !== "string" || d.idempotencyKey.trim() === "" || d.idempotencyKey.length > 150) {
@@ -69,14 +90,27 @@ export function validateExecutionRequest(input: unknown): ExecutionRequest {
     note = (d.note as string).trim();
   }
   if (lines.length === 0 && note === null) refuse("EXECUTION_EMPTY", "INVALID_INPUT", "record at least one usage line or a note");
+  let consumeFrom: ExecutionRequest["consumeFrom"] = null;
+  if (d.consumeFrom !== undefined && d.consumeFrom !== null) {
+    const c = d.consumeFrom as Record<string, unknown>;
+    if (!c || typeof c !== "object" || Array.isArray(c) || Object.keys(c).some((k) => k !== "type" && k !== "locationId") || !ID_SHAPE(c.locationId)) {
+      refuse("CONSUME_FROM_INVALID", "INVALID_INPUT", "consumeFrom is { type: \"MOBILE\", locationId }");
+    }
+    // OD-T4 / OD-T3: consumption is from the Technician's truck. Warehouse issue is not a Technician act.
+    if (c.type !== "MOBILE") refuse("CONSUME_FROM_NOT_MOBILE", "INVALID_INPUT", "Work Order consumption is recorded from a truck (MOBILE) location");
+    if (lines.length === 0) refuse("CONSUME_FROM_WITHOUT_USAGE", "INVALID_INPUT", "consumeFrom needs at least one usage line");
+    consumeFrom = Object.freeze({ type: "MOBILE" as const, locationId: c.locationId as string });
+  }
   return Object.freeze({
     workOrderId: d.workOrderId as string, idempotencyKey: (d.idempotencyKey as string).trim(),
-    partUsage: Object.freeze(lines.sort((a, b) => a.partId.localeCompare(b.partId))), note,
+    partUsage: Object.freeze(lines.sort((a, b) => a.partId.localeCompare(b.partId))), note, consumeFrom,
   });
 }
 
+// The fingerprint of a request WITHOUT consumeFrom is unchanged, so every record written before OD-T4 still replays.
 const fingerprintOf = (r: ExecutionRequest): string =>
-  createHash("sha256").update(JSON.stringify({ w: r.workOrderId, u: r.partUsage, n: r.note })).digest("hex");
+  createHash("sha256").update(JSON.stringify(r.consumeFrom === null ? { w: r.workOrderId, u: r.partUsage, n: r.note }
+    : { w: r.workOrderId, u: r.partUsage, n: r.note, c: r.consumeFrom })).digest("hex");
 
 export interface AppliedUsage {
   readonly partId: string;
@@ -84,14 +118,17 @@ export interface AppliedUsage {
   readonly appliedDelta: number;
   readonly qtyUsed: number;
   readonly qtyPlanned: number;
+  /** OD-T4: the ledger row this line posted at the truck, when it consumed. */
+  readonly movementId?: string;
 }
 export interface ExecutionResult {
   readonly outcome: "RECORDED" | "REPLAYED";
   readonly workOrderId: string;
   readonly usage: readonly AppliedUsage[];
   readonly noteRecorded: boolean;
-  /** Stated on every result: nothing here moved stock. */
-  readonly inventoryBoundary: "NO_STOCK_MOVEMENT";
+  /** Stated on every result: NO_STOCK_MOVEMENT, or TRUCK_CONSUMPTION when consumeFrom moved stock out of a truck. */
+  readonly inventoryBoundary: "NO_STOCK_MOVEMENT" | "TRUCK_CONSUMPTION";
+  readonly consumedFrom?: { readonly type: "MOBILE"; readonly locationId: string };
 }
 
 /** Record actuals and/or a note on the caller's OWN, non-terminal Work Order. Idempotent by key. */
@@ -119,6 +156,11 @@ export async function recordWorkOrderExecution(
       : "only the assigned Employee records this Work Order's execution");
   }
   const request = validateExecutionRequest(input);
+  if (request.consumeFrom !== null && !actor.capabilities.has(WORK_ORDER_CONSUMPTION_RECORD)) {
+    refuse("CAPABILITY_MISSING", "FORBIDDEN", `consuming from a truck requires ${WORK_ORDER_CONSUMPTION_RECORD}`);
+  }
+  const boundary = request.consumeFrom === null ? ("NO_STOCK_MOVEMENT" as const) : ("TRUCK_CONSUMPTION" as const);
+  const consumedFrom = request.consumeFrom === null ? {} : { consumedFrom: request.consumeFrom };
   const fingerprint = fingerprintOf(request);
   const now = (deps.now ?? (() => new Date()))();
   const keys = [
@@ -146,12 +188,14 @@ export async function recordWorkOrderExecution(
       return Object.freeze({
         outcome: "REPLAYED" as const, workOrderId: request.workOrderId,
         usage: await currentUsage(client, actor.tenantId, request.workOrderId, request.partUsage.map((l) => l.partId)),
-        noteRecorded: request.note !== null, inventoryBoundary: "NO_STOCK_MOVEMENT" as const,
+        noteRecorded: request.note !== null, inventoryBoundary: boundary, ...consumedFrom,
       });
     }
     if ((TERMINAL_STATUSES as readonly string[]).includes(wo.rows[0].status)) {
       refuse("WORK_ORDER_TERMINAL", "PRECONDITION_FAILED", `a ${wo.rows[0].status} Work Order's execution is closed`);
     }
+    const consume = request.consumeFrom === null ? null
+      : await authorizeTruckConsumption(client, actor, request.workOrderId, wo.rows[0], request.consumeFrom.locationId, request.partUsage);
 
     const applied: AppliedUsage[] = [];
     for (const line of request.partUsage) {
@@ -171,6 +215,18 @@ export async function recordWorkOrderExecution(
         [actor.tenantId, request.workOrderId, line.partId])).rows[0].used);
       const next = Math.min(planned, Math.max(0, used + line.qtyDelta));
       const appliedDelta = next - used;
+      // Usage may never fall below what has already been physically consumed for this Part on this Work Order.
+      if (appliedDelta < 0) {
+        const consumed = await consumedQuantity(client, actor.tenantId, request.workOrderId, line.partId);
+        if (next < consumed) {
+          refuse("USAGE_BELOW_CONSUMED", "PRECONDITION_FAILED",
+            `Part ${line.partId}: ${consumed} were already consumed from a truck; recorded usage cannot go below that`);
+        }
+      }
+      let movementId: string | undefined;
+      if (consume && appliedDelta > 0) {
+        movementId = await postTruckConsumption(client, actor, request, consume, line.partId, appliedDelta);
+      }
       await client.query(
         `INSERT INTO ${SCHEMA}.work_order_execution_records
            (id, tenant_id, work_order_id, kind, part_id, requested_delta, applied_delta, note, idempotency_key,
@@ -178,7 +234,8 @@ export async function recordWorkOrderExecution(
          VALUES ($1,$2,$3,'PART_USAGE',$4,$5,$6,NULL,$7,$8,$9,$10)`,
         [`woe_${randomUUID()}`, actor.tenantId, request.workOrderId, line.partId, line.qtyDelta, appliedDelta,
          `${request.idempotencyKey}#part:${line.partId}`, fingerprint, actor.principalId, now]);
-      applied.push(Object.freeze({ partId: line.partId, requestedDelta: line.qtyDelta, appliedDelta, qtyUsed: next, qtyPlanned: planned }));
+      applied.push(Object.freeze({ partId: line.partId, requestedDelta: line.qtyDelta, appliedDelta, qtyUsed: next, qtyPlanned: planned,
+        ...(movementId ? { movementId } : {}) }));
     }
     if (request.note !== null) {
       await client.query(
@@ -192,7 +249,7 @@ export async function recordWorkOrderExecution(
     await client.query("COMMIT");
     return Object.freeze({
       outcome: "RECORDED" as const, workOrderId: request.workOrderId, usage: Object.freeze(applied),
-      noteRecorded: request.note !== null, inventoryBoundary: "NO_STOCK_MOVEMENT" as const,
+      noteRecorded: request.note !== null, inventoryBoundary: boundary, ...consumedFrom,
     });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
@@ -203,6 +260,78 @@ export async function recordWorkOrderExecution(
   } finally {
     client.release();
   }
+}
+
+interface TruckConsumption {
+  readonly locationId: string;
+  readonly operatingCompanyKey: string;
+}
+
+/**
+ * OD-T4 preconditions, inside the transaction that holds the Work Order row: the truck path (eligibility + current MOBILE
+ * scope + usable truck + the Employee's company), the truck is the Work Order's company, the Work Order is in progress,
+ * the baseline is certified and every consumed Part is quantity-tracked in the catalog.
+ */
+async function authorizeTruckConsumption(client: PoolClient, actor: LifecycleActor, workOrderId: string,
+  wo: { readonly status: string }, locationId: string, usage: readonly UsageLine[]): Promise<TruckConsumption> {
+  if (!CONSUMABLE_WORK_ORDER_STATUSES.includes(wo.status)) {
+    refuse("WORK_ORDER_STATE_INVALID", "PRECONDITION_FAILED", `parts are consumed while the job is in progress; this Work Order is ${wo.status}`);
+  }
+  let mobile;
+  try {
+    mobile = await authorizeMobileAct(client, actor, WORK_ORDER_CONSUMPTION_RECORD, locationId, { lock: true });
+  } catch (err) {
+    if (err instanceof MobileStockRefusal) refuse(err.code, err.category === "NOT_FOUND" ? "PRECONDITION_FAILED" : err.category, err.message);
+    throw err;
+  }
+  if (!mobile.allowed) return refuse(mobile.decision.reason, "FORBIDDEN", "that truck is outside your current MOBILE scope");
+  const { rows } = await client.query(`SELECT operating_company_key FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, workOrderId]);
+  if (String(rows[0]?.operating_company_key) !== mobile.location.operatingCompanyKey) {
+    refuse("OPERATING_COMPANY_MISMATCH", "PRECONDITION_FAILED", "the truck belongs to another operating company than the Work Order's");
+  }
+  if (!(await isInventoryBaselineCertified(client, actor.tenantId))) refuse("NOT_ACTIVATED", "UNAVAILABLE", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
+  const consumed = usage.filter((l) => l.qtyDelta > 0).map((l) => l.partId);
+  const policies = await createPostgresPartPolicyAuthority().readPartPolicies(client, actor.tenantId, consumed);
+  for (const p of policies) {
+    if (!p.found) refuse("PART_NOT_FOUND", "PRECONDITION_FAILED", `Part ${p.partId} is not in the catalog`);
+    if (p.trackingMode !== "NONE") {
+      refuse("SERIALIZED_CONSUMPTION_NOT_SUPPORTED", "PRECONDITION_FAILED",
+        `Part ${p.partId} is serialized; a serialized whole unit leaves a truck through Equipment installation`);
+    }
+  }
+  return Object.freeze({ locationId, operatingCompanyKey: mobile.location.operatingCompanyKey });
+}
+
+/** One WORK_ORDER_CONSUMPTION row at the truck, under the shared stock location lock, never driving the balance negative. */
+async function postTruckConsumption(client: PoolClient, actor: LifecycleActor, request: ExecutionRequest, consume: TruckConsumption,
+  partId: string, quantity: number): Promise<string> {
+  await lockStockLocation(client, actor.tenantId, partId, "MOBILE", consume.locationId);
+  const { rows } = await client.query(
+    `SELECT COALESCE(SUM(quantity_delta), 0)::bigint AS total FROM ${SCHEMA}.inventory_movements
+      WHERE tenant_id = $1 AND part_id = $2 AND tracking_mode = 'NONE' AND location_type = 'MOBILE' AND location_id = $3`,
+    [actor.tenantId, partId, consume.locationId]);
+  const onHand = Number(rows[0]?.total ?? 0);
+  if (onHand < quantity) {
+    refuse("INSUFFICIENT_TRUCK_STOCK", "PRECONDITION_FAILED", `the truck holds ${onHand} of Part ${partId}; ${quantity} cannot be consumed`);
+  }
+  const movementId = `mov_${randomUUID()}`;
+  await client.query(
+    `INSERT INTO ${SCHEMA}.inventory_movements
+       (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
+        movement_type, quantity_delta, source_kind, source_id, idempotency_key, created_by)
+     VALUES ($1, $2, $3, $4, 'NONE', 'MOBILE', $5, 'WORK_ORDER_CONSUMPTION', $6, $7, $8, $9, $10)`,
+    [movementId, actor.tenantId, consume.operatingCompanyKey, partId, consume.locationId, -quantity, TRUCK_CONSUMPTION_SOURCE_KIND,
+      request.workOrderId, truckConsumptionMovementKey(request.workOrderId, request.idempotencyKey, partId), actor.principalId]);
+  return movementId;
+}
+
+/** What has physically left a truck for this Part on this Work Order (positive). */
+async function consumedQuantity(db: Pick<PoolClient, "query">, tenantId: string, workOrderId: string, partId: string): Promise<number> {
+  const { rows } = await db.query(
+    `SELECT COALESCE(-SUM(quantity_delta), 0)::int AS consumed FROM ${SCHEMA}.inventory_movements
+      WHERE tenant_id = $1 AND source_kind = $2 AND source_id = $3 AND part_id = $4 AND movement_type = 'WORK_ORDER_CONSUMPTION'`,
+    [tenantId, TRUCK_CONSUMPTION_SOURCE_KIND, workOrderId, partId]);
+  return Number(rows[0]?.consumed ?? 0);
 }
 
 async function currentUsage(

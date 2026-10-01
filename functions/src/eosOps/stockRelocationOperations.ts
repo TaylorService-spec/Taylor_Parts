@@ -38,6 +38,7 @@
 //     RELOCATION_WRITER_AUTHORITY.postgres is INACTIVE.
 //
 // PURE PostgreSQL: no Firebase import, no Firestore fallback, no dual write.
+import { lockStockLocation } from "./stockLocationLock.js";
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
@@ -352,8 +353,7 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
     } else {
       // Serialize concurrent relocations out of the SAME source for the SAME part: two moves that each see
       // enough stock must not both commit against it (the Firestore command gets this from its transaction reads).
-      await db.query(`SELECT pg_advisory_xact_lock(hashtext($1))`,
-        [`eos-relocation:${actor.tenantId}:${req.partId}:${req.source.type}:${req.source.locationId}`]);
+      await lockStockLocation(db, actor.tenantId, req.partId, req.source.type, req.source.locationId);
       const { rows } = await db.query<{ total: string | null }>(
         `SELECT COALESCE(SUM(quantity_delta), 0)::bigint AS total FROM eos_ops.inventory_movements
           WHERE tenant_id = $1 AND part_id = $2 AND tracking_mode = 'NONE' AND location_type = $3 AND location_id = $4`,

@@ -235,7 +235,7 @@ test("OWNER holds the scanner READS and none of the scanner WRITES, by its own c
 
 // ═══════════════════════════════════════════ readiness gates
 
-test("the three readiness gates are FALSE everywhere except receiving in the sandbox", () => {
+test("the three readiness gates are FALSE everywhere except the Part identifier transport in the sandbox", () => {
   const registry = JSON.parse(readFileSync(new URL("../../config/environments.json", import.meta.url), "utf8"));
   const environments = registry.environments;
   assert.ok(Array.isArray(environments) && environments.length > 0, "the environment registry should be a non-empty list");
@@ -250,7 +250,9 @@ test("the three readiness gates are FALSE everywhere except receiving in the san
   // NO flip exists anywhere. The sandbox's canonical supplier-PO receiving transport was the one flip, and it is now gated OFF
   // explicitly (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01, DQ-034: canonical PO data is empty in nonprod;
   // the domain is kept, not deleted). Reorder-PO receiving is EOS and does not read this flag.
-  assert.deepEqual(ready, []);
+  // OD-T6 (Controller TRUCK INVENTORY ACTIVATION, 2026-10-01): the Part identifier transport -- the scanner's governed EOS
+  // Catalog lookup, now in its corrected { parts, alias, aliasDenied } contract -- is switched ON in the nonprod sandbox only.
+  assert.deepEqual(ready, ["platform-sandbox.PART_IDENTIFIER_TRANSPORT_READY"]);
 });
 
 test("every readiness key the scanner reads is REQUIRED of every environment", () => {

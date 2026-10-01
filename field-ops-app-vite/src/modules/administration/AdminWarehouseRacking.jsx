@@ -6,6 +6,7 @@ import { WAREHOUSE_RACKING_GATE } from "../../access/shellCapabilityGates.js";
 import BinLabelsAndExport from "./BinLabelsAndExport";
 import TruckLocationScopeBindings from "./TruckLocationScopeBindings";
 import WarehouseMasters from "./WarehouseMasters";
+import TruckRegistry from "./TruckRegistry";
 import { fetchWarehouses } from "../../services/operationsQueries";
 import { applyProposals, summarizeApply, APPLY_CONCURRENCY } from "../../services/rackingApply";
 import {
@@ -575,6 +576,9 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
 
       {/* DQ-E: the governed PostgreSQL Warehouse and Bin masters (warehouse.record.manage, decided by the server). */}
       <WarehouseMasters callApi={scopeBindingApi} />
+
+      {/* OD-T7: the governed PostgreSQL truck / MOBILE-location registry (inventory.truckRegistry.manage, decided by the server). */}
+      <TruckRegistry callApi={scopeBindingApi} />
     </div>
   );
 }

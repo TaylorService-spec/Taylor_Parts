@@ -7,7 +7,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, renderHook, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 const h = vi.hoisted(() => ({ call: null }));
@@ -83,54 +83,23 @@ describe("after the lift, the hold no longer stands between a Part change and th
   });
 });
 
-// ═══════════════════════════════════════════ the scanner stays INACTIVE (ruled)
 
-function walk(dir, out = []) {
-  for (const e of readdirSync(dir)) {
-    const p = path.join(dir, e);
-    if (statSync(p).isDirectory()) walk(p, out); else if (/\.(jsx?|tsx?)$/.test(e)) out.push(p);
-  }
-  return out;
-}
-function resolveImport(from, spec) {
-  if (!spec.startsWith(".")) return null;
-  const base = path.resolve(path.dirname(from), spec);
-  for (const c of [base, `${base}.js`, `${base}.jsx`, `${base}.ts`, `${base}.tsx`, path.join(base, "index.js")]) {
-    if (existsSync(c) && statSync(c).isFile()) return c;
-  }
-  return null;
-}
-/** Every src file a scan screen can reach through static or dynamic relative imports. */
-function reachableFromScanner() {
-  const seen = new Set();
-  const stack = walk(path.join(APP, "src/modules/scan"));
-  while (stack.length) {
-    const f = stack.pop();
-    if (seen.has(f)) continue;
-    seen.add(f);
-    const src = readFileSync(f, "utf8");
-    for (const m of src.matchAll(/(?:from\s+|import\s*\(\s*)["']([^"']+)["']/g)) {
-      const r = resolveImport(f, m[1]);
-      if (r && !seen.has(r)) stack.push(r);
-    }
-  }
-  return seen;
-}
-
-describe("PART_IDENTIFIER_TRANSPORT_READY stays false while the client scanner path calls Firebase", () => {
-  it("the scanner still reaches Firebase callables, so the identifier transport is false in every environment and in tests", () => {
-    const firebaseReachers = [...reachableFromScanner()]
-      .filter((f) => /from\s+["']firebase\/functions["']|httpsCallable\s*\(/.test(readFileSync(f, "utf8")))
-      .map((f) => path.relative(APP, f));
-    // The condition of the pin. When the scanner no longer reaches Firebase, this pin is re-decided -- not before.
-    expect(firebaseReachers.length).toBeGreaterThan(0);
-
+describe("PART_IDENTIFIER_TRANSPORT_READY: ON in the nonprod sandbox only, and the identifier transport reaches no Firebase", () => {
+  // RE-DECIDED by the Controller (TRUCK INVENTORY ACTIVATION OD-T6, 2026-10-01: "Correct the EOS response contract and activate
+  // the transport. No new scanner."). The flag gates ONLY the Part identifier transport (services/partAliasCallableClient.js),
+  // which now calls the governed EOS Catalog transport -- so what must hold is that THAT module reaches no Firebase, that the
+  // flip is the nonprod sandbox's alone, and that tests stay fail-closed. Other scanner modules that still reach Firebase are
+  // governed by their own readiness flags and by the Firebase exit ratchet, not by this one.
+  it("the identifier transport imports no Firebase; only platform-sandbox flips it; tests stay false", () => {
+    const transport = readFileSync(path.join(APP, "src/services/partAliasCallableClient.js"), "utf8");
+    expect(transport).not.toMatch(/from\s+["']firebase\//);
+    expect(transport).not.toMatch(/httpsCallable\s*\(/);
+    expect(transport).toMatch(/catalogApiClient/);
     const registry = JSON.parse(read("config/environments.json"));
     const flipped = registry.environments
       .filter((env) => (env.readiness ?? {}).PART_IDENTIFIER_TRANSPORT_READY !== false)
       .map((env) => env.id);
-    expect(flipped).toEqual([]);
+    expect(flipped).toEqual(["platform-sandbox"]);
     expect(readFileSync(path.join(APP, "vitest.config.js"), "utf8")).toMatch(/PART_IDENTIFIER_TRANSPORT_READY:\s*false/);
-    // The DQ-034 hold is lifted (2026-10-01), so this readiness pin is now the scanner's only fence -- and it holds.
   });
 });

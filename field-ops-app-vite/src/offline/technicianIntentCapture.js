@@ -105,14 +105,15 @@ export function captureLabor({
  * anybody investigates, nobody remembers which it was.
  */
 export function capturePartsUsage({
-  workOrderId, principalUid, sku, delta, provenance = "MANUAL", captureKey, at = 0, offline = false,
+  workOrderId, principalUid, sku, delta, provenance = "MANUAL", captureKey, at = 0, offline = false, consumeFrom = null,
 }) {
   return makeIntent({
     type: INTENT_TYPE.PARTS_USAGE,
     workOrderId, principalUid, captureKey, createdAtLocal: at,
     deviceReportedAtMillis: deviceClaim(offline, at),
     describe: `Parts used — ${sku}`,
-    payload: { workOrderId, qtyUsedUpdates: [{ sku, delta }], provenance },
+    // consumeFrom (OD-T4): the truck the parts came out of; absent, the usage moves no stock.
+    payload: { workOrderId, qtyUsedUpdates: [{ sku, delta }], provenance, ...(consumeFrom ? { consumeFrom } : {}) },
   });
 }
 

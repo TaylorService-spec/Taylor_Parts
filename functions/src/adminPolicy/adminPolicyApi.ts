@@ -974,6 +974,15 @@ async function dispatch(
     case "createBin":
     case "relabelBin":
     case "setBinStatus":
+    case "listTrucks":
+    case "readTruck":
+    case "listMobileLocations":
+    case "createMobileLocation":
+    case "createTruck":
+    case "linkTruck":
+    case "relinkTruck":
+    case "unlinkTruck":
+    case "changeTruckStatus":
       throw new Error(`${operation} is a configuration operation`);
 
     default: {

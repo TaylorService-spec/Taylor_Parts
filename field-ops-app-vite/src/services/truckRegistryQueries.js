@@ -1,64 +1,44 @@
-// EI-P1d-2-2b -- client-direct, one-shot reads (getDocs, not onSnapshot) for the Truck
-// Registry: the `trucks` and `mobile_locations` collections. Same precedent as
-// services/operationsQueries.js and hooks/useInstalledEquipmentPage.js's bounded name reads.
+// TRUCK REGISTRY READS -- from PostgreSQL through the EOS operations transport (Controller TRUCK INVENTORY ACTIVATION,
+// 2026-10-01, Package I). Replaces the client-direct Firestore reads of `trucks`, `mobile_locations` and `employees`.
 //
-// These are governed backend collections: firestore.rules grants admin/dispatcher READ and
-// denies ALL client create/update/delete (writes are a separately-gated trusted-Function
-// concern). This file never writes; it only reads what an admin/dispatcher is allowed to see,
-// and returns { docId, data } pairs so the authoritative Firestore id stays SEPARATE from the
-// stored data (the registry contract fails closed on a stored-id conflict) -- exactly the
-// shape services/operationsQueries.js's fetchTransferOrderDocs uses.
-import { collection, getDocs, query, where, documentId } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { EMPLOYEES_COLLECTION } from "../domain/constants";
-import { collectDriverEmployeeIds } from "../domain/truckRegistryDrivers.js";
-
-export const TRUCKS_COLLECTION = "trucks";
-export const MOBILE_LOCATIONS_COLLECTION = "mobile_locations";
-
-// Firestore `in` supports at most 10 values -> resolve driver names in bounded batches.
-const NAME_BATCH = 10;
-
-// --- Read shapes (documented; validated downstream by domain/truckRegistry.js) ---
+//   listTruckRoster {}                   the trucks this person may see: the tenant roster for warehouse readers,
+//                                        dispatchers and registry administrators; only their own scoped trucks for a
+//                                        Technician (decided by the SERVER, never here)
+//   readTruckStock  { mobileLocationId } one truck's stock -- quantities from the movement ledger and serialized units --
+//                                        reachable through the caller's MOBILE scope or warehouse scope; NOT_FOUND otherwise
 //
-// A `mobile_locations/{locationId}` document (docId IS the inventory locationId):
-//   { locationId: string, type: "MOBILE", displayLabel?: string, active?: boolean }
-// A `trucks/{truckId}` document (docId IS the business truckId):
-//   { truckId: string, locationId: string, vehicleNumber?: string, displayLabel?: string,
-//     status?: "ACTIVE"|"IDLE"|"OUT_OF_SERVICE", homeWarehouseId: string,
-//     assignedDriverEmployeeId?: string|null }
-// Both are returned as { docId, data } so nothing trusts a stored id over the document id.
-/** @typedef {{ docId: string, data: Record<string, unknown> }} RegistryDoc */
+// The answer is adapted into the registry's existing { docId, data } pairs so the workspace's validators and composer
+// keep one code path. There is NO driver field any more (OD-T1): who works from a truck is an Employee's MOBILE scope.
+import { EOS_OPERATIONS_ROUTES, eosOperationOrThrow } from "./eosOperationsClient.js";
 
-/** @returns {Promise<RegistryDoc[]>} one-shot read of every mobile_locations doc. */
-export async function fetchMobileLocationDocs() {
-  const snap = await getDocs(collection(db, MOBILE_LOCATIONS_COLLECTION));
-  return snap.docs.map((d) => ({ docId: d.id, data: d.data() }));
-}
+const INVENTORY = EOS_OPERATIONS_ROUTES.INVENTORY;
+const OPTS = Object.freeze({ serviceLabel: "the truck inventory service" });
 
-/** @returns {Promise<RegistryDoc[]>} one-shot read of every trucks doc. */
-export async function fetchTruckDocs() {
-  const snap = await getDocs(collection(db, TRUCKS_COLLECTION));
-  return snap.docs.map((d) => ({ docId: d.id, data: d.data() }));
-}
-
-// Resolve Employee display names for ONLY the driver ids the given trucks reference, in
-// bounded batches -> NO N+1 (one batched pass over a de-duplicated id set, never one read per
-// truck). Reads employees/{employeeId} by documentId -- the same unfiltered admin/dispatcher
-// directory read hooks/useEmployeeDirectory already relies on (no new permission, no index).
-// Returns a Map<employeeId, displayName>; an id with no readable/named Employee simply has no
-// entry, and the registry-source resolver maps that to a null driver (never a raw id).
-export async function fetchDriverNames(truckDocs) {
-  const ids = collectDriverEmployeeIds(truckDocs);
-  const map = new Map();
-  for (let i = 0; i < ids.length; i += NAME_BATCH) {
-    const batch = ids.slice(i, i + NAME_BATCH);
-    if (batch.length === 0) continue;
-    const snap = await getDocs(query(collection(db, EMPLOYEES_COLLECTION), where(documentId(), "in", batch)));
-    snap.docs.forEach((d) => {
-      const name = d.data()?.displayName;
-      if (typeof name === "string" && name.trim() !== "") map.set(d.id, name);
-    });
+/** The registry pairs for the workspace, from one roster read, plus each reachable truck's stock (keyed by truck id). */
+export async function fetchTruckRegistry(call = eosOperationOrThrow) {
+  const roster = await call(INVENTORY, "listTruckRoster", {}, OPTS);
+  const trucks = Array.isArray(roster?.trucks) ? roster.trucks : [];
+  const mobileLocationDocs = [];
+  const truckDocs = [];
+  for (const t of trucks) {
+    if (!t?.mobileLocation?.locationId) continue; // an unlinked truck has no stock location to show
+    const loc = t.mobileLocation;
+    mobileLocationDocs.push({ docId: loc.locationId, data: { type: "MOBILE", locationId: loc.locationId, displayLabel: loc.displayLabel ?? loc.locationId, active: loc.active === true } });
+    truckDocs.push({ docId: t.truckId, data: { truckId: t.truckId, locationId: loc.locationId, vehicleNumber: t.vehicleNumber, displayLabel: t.displayLabel,
+      status: t.status, homeWarehouseId: t.homeWarehouseId, assignedDriverEmployeeId: null } });
   }
-  return map;
+  const stockByTruck = new Map();
+  await Promise.all(trucks.filter((t) => t?.mobileLocation?.locationId).map(async (t) => {
+    try {
+      const s = await call(INVENTORY, "readTruckStock", { mobileLocationId: t.mobileLocation.locationId }, OPTS);
+      stockByTruck.set(t.truckId, {
+        parts: (s?.quantities ?? []).map((q) => ({ internalSku: q.partId, onHand: q.onHand, available: q.onHand })),
+        serializedEquipment: (s?.serializedUnits ?? []).map((u) => ({ assetId: `${u.partId}/${u.serialNumber}`, internalSku: u.partId, serial: u.serialNumber,
+          status: u.status, currentLocation: t.mobileLocation.displayLabel ?? t.mobileLocation.locationId })),
+      });
+    } catch (err) {
+      if (err?.category !== "NOT_FOUND" && err?.code !== "NOT_FOUND") throw err; // not reachable by this person: no stock shown
+    }
+  }));
+  return { mobileLocationDocs, truckDocs, stockByTruck };
 }

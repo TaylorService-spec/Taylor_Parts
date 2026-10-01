@@ -35,6 +35,17 @@ export async function listInventoryLocations(input = {}, call = eosOperationOrTh
   return Array.isArray(res?.items) ? res.items : [];
 }
 
+/**
+ * Trucks a warehouse operator may send stock to (Truck Inventory activation, 2026-10-01): the ACTIVE MOBILE locations the
+ * server returned in listInventoryLocations -- those bound to a warehouse the caller is scoped over. `{ locationId, label }`.
+ * Sending to a truck is always a governed Transfer (create + dispatch), never a relocation.
+ */
+export async function fetchTruckDestinations(call = eosOperationOrThrow) {
+  return (await listInventoryLocations({}, call))
+    .filter((l) => l.type === "MOBILE" && l.status === "ACTIVE")
+    .map((l) => Object.freeze({ locationId: l.locationId, label: l.code ? `${l.name} (${l.code})` : (l.name || l.locationId) }));
+}
+
 /** The `{ id, name }` picker shape the warehouse screens use (also exposes status / site for display). */
 export async function fetchInventoryWarehouseOptions(call = eosOperationOrThrow) {
   return (await listInventoryWarehouses(call)).map((w) => Object.freeze({
@@ -71,6 +82,7 @@ export const inventoryLocationClient = Object.freeze({
   listInventoryWarehouses: () => listInventoryWarehouses(),
   listInventoryLocations: (input) => listInventoryLocations(input),
   fetchWarehouseOptions: () => fetchInventoryWarehouseOptions(),
+  fetchTruckDestinations: () => fetchTruckDestinations(),
   resolveBin: (request) => resolveBin(request),
   resolveBinToken: (request) => resolveBinToken(request),
 });

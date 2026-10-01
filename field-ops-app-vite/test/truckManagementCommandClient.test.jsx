@@ -1,76 +1,24 @@
-// EI Truck Registry -- proves the thin command client sends the EXACT payload each merged
-// callable reads, targets the right callable name, and NEVER includes actorUid (derived
-// server-side from request.auth). firebase is fully mocked so no backend is touched.
-import { describe, it, expect, beforeEach, vi } from "vitest";
+// Truck Inventory activation (2026-10-01, OD-T7 / Package J): the workspace's truck command client is RETIRED. Every command
+// refuses with where the act now lives (Administration -> Truck registry; Employee MOBILE scope) and sends NOTHING -- no
+// Firebase callable, no network. Warehouse options come from eos_ops.
+import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { truckRegistryCommandClient, fetchWarehouseOptions, TRUCK_REGISTRY_ADMINISTRATION_MOVED } from "../src/services/truckRegistryCommandClient.js";
 
-const calls = [];
-vi.mock("../src/firebase/firebase", () => ({ functions: {}, db: {} }));
-vi.mock("firebase/functions", () => ({
-  httpsCallable: (_functions, name) => (payload) => {
-    calls.push({ name, payload });
-    return Promise.resolve({ data: { name } });
-  },
-}));
-vi.mock("firebase/firestore", () => ({
-  collection: (_db, name) => ({ name }),
-  getDocs: async () => ({
-    docs: [
-      { id: "WH-2", data: () => ({ name: "Beta" }) },
-      { id: "WH-1", data: () => ({ name: "Alpha" }) },
-    ],
-  }),
-}));
-
-import { truckRegistryCommandClient, fetchWarehouseOptions, TRUCK_CALLABLES } from "../src/services/truckRegistryCommandClient.js";
-
-beforeEach(() => {
-  calls.length = 0;
-});
-
-describe("truckRegistryCommandClient payloads", () => {
-  it("createTruck -> createTruckCallable with the governed fields, actorUid never sent", async () => {
-    await truckRegistryCommandClient.createTruck({
-      idempotencyKey: "k", truckId: "T1", locationId: "L1", homeWarehouseId: "W1",
-      status: "ACTIVE", displayLabel: "d", vehicleNumber: "v",
-    });
-    expect(calls[0].name).toBe(TRUCK_CALLABLES.create);
-    expect(calls[0].payload).toEqual({
-      idempotencyKey: "k", truckId: "T1", locationId: "L1", homeWarehouseId: "W1",
-      status: "ACTIVE", assignedDriverEmployeeId: null, displayLabel: "d", vehicleNumber: "v",
-    });
-    expect("actorUid" in calls[0].payload).toBe(false);
+describe("truckRegistryCommandClient (retired)", () => {
+  it("every command refuses FAILED_PRECONDITION with the Administration pointer, and imports no Firebase", async () => {
+    for (const [name, fn] of Object.entries(truckRegistryCommandClient)) {
+      await expect(fn({ truckId: "T" })).rejects.toMatchObject({ code: "failed-precondition", message: TRUCK_REGISTRY_ADMINISTRATION_MOVED }, name);
+    }
+    const src = readFileSync(resolve(process.cwd(), "src/services/truckRegistryCommandClient.js"), "utf8");
+    expect(src).not.toMatch(/from "firebase\//);
+    expect(src).not.toMatch(/Callable"/);
   });
 
-  it("mutation commands send truckId + expectedVersion (+ their governed arg) only", async () => {
-    await truckRegistryCommandClient.assignDriver({ idempotencyKey: "k", truckId: "T", employeeId: "E", expectedVersion: 4 });
-    expect(calls[0]).toEqual({ name: TRUCK_CALLABLES.assign, payload: { idempotencyKey: "k", truckId: "T", employeeId: "E", expectedVersion: 4 } });
-
-    await truckRegistryCommandClient.unassignDriver({ idempotencyKey: "k", truckId: "T", expectedVersion: 4 });
-    expect(calls[1]).toEqual({ name: TRUCK_CALLABLES.unassign, payload: { idempotencyKey: "k", truckId: "T", expectedVersion: 4 } });
-
-    await truckRegistryCommandClient.changeStatus({ idempotencyKey: "k", truckId: "T", status: "IDLE", expectedVersion: 4 });
-    expect(calls[2]).toEqual({ name: TRUCK_CALLABLES.changeStatus, payload: { idempotencyKey: "k", truckId: "T", status: "IDLE", expectedVersion: 4 } });
-
-    await truckRegistryCommandClient.changeHomeWarehouse({ idempotencyKey: "k", truckId: "T", homeWarehouseId: "W2", expectedVersion: 4 });
-    expect(calls[3]).toEqual({ name: TRUCK_CALLABLES.changeHomeWarehouse, payload: { idempotencyKey: "k", truckId: "T", homeWarehouseId: "W2", expectedVersion: 4 } });
-
-    await truckRegistryCommandClient.deactivateTruck({ idempotencyKey: "k", truckId: "T", expectedVersion: 4 });
-    expect(calls[4]).toEqual({ name: TRUCK_CALLABLES.deactivate, payload: { idempotencyKey: "k", truckId: "T", expectedVersion: 4 } });
-
-    await truckRegistryCommandClient.reactivateTruck({ idempotencyKey: "k", truckId: "T", targetStatus: "ACTIVE", expectedVersion: 4 });
-    expect(calls[5]).toEqual({ name: TRUCK_CALLABLES.reactivate, payload: { idempotencyKey: "k", truckId: "T", targetStatus: "ACTIVE", expectedVersion: 4 } });
-
-    await truckRegistryCommandClient.deleteTruckCreatedInError({ idempotencyKey: "k", truckId: "T", expectedVersion: 4, deletionReason: "created in error" });
-    expect(calls[6]).toEqual({ name: TRUCK_CALLABLES.deleteCreatedInError, payload: { idempotencyKey: "k", truckId: "T", expectedVersion: 4, deletionReason: "created in error" } });
-
-    for (const c of calls) expect("actorUid" in c.payload).toBe(false);
-  });
-
-  it("fetchWarehouseOptions returns sorted { value/id, label } from a single read", async () => {
-    const opts = await fetchWarehouseOptions();
-    expect(opts).toEqual([
-      { id: "WH-1", label: "Alpha" },
-      { id: "WH-2", label: "Beta" },
-    ]);
+  it("fetchWarehouseOptions reads the governed EOS warehouses, sorted by label", async () => {
+    const call = vi.fn(async () => ({ items: [{ warehouseId: "WH-2", name: "Beta" }, { warehouseId: "WH-1", name: "Alpha" }] }));
+    expect(await fetchWarehouseOptions(call)).toEqual([{ id: "WH-1", label: "Alpha" }, { id: "WH-2", label: "Beta" }]);
+    expect(call.mock.calls[0][1]).toBe("listInventoryWarehouses");
   });
 });
