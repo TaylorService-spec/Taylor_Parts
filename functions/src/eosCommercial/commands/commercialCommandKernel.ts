@@ -364,6 +364,22 @@ export async function requireTenantEmployee(
 }
 
 /** The Account row, read in THIS tenant only. */
+/**
+ * A customer SITE stated on an Agreement or Sales Order must be one of THAT record's Account's governed sites
+ * (eos_crm.account_locations). A National Accounts customer has many sites; a site id is never free text, never another
+ * customer's site, and never a site that does not exist -- the read projection would otherwise silently show none.
+ * (National Accounts reconciliation, 2026-09-30: the location was stored unvalidated.) null / absent states no site.
+ */
+export async function requireAccountLocation(db: Queryable, tenantId: string, accountId: string, locationId: unknown): Promise<void> {
+  if (locationId === null || locationId === undefined) return;
+  if (typeof locationId !== "string" || locationId.trim() === "" || locationId.length > 255) {
+    fail("LOCATION_INVALID", "INVALID_INPUT", "locationId, when stated, is a customer site id");
+  }
+  const { rows } = await db.query(`SELECT 1 FROM eos_crm.account_locations WHERE tenant_id = $1 AND account_id = $2 AND id = $3`,
+    [tenantId, accountId, locationId]);
+  if (rows.length === 0) fail("LOCATION_NOT_FOR_ACCOUNT", "PRECONDITION_FAILED", "that site is not one of this customer's sites");
+}
+
 export async function requireTenantAccount(
   db: Queryable,
   tenantId: string,

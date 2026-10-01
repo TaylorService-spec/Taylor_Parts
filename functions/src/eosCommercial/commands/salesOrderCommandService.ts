@@ -12,7 +12,7 @@ import type { SalesAgreementState } from "../../salesAgreement/salesAgreementLif
 import { deriveEmployeeRefOwner } from "../../ownership/typedOwner";
 import { allocateCommercialNumber } from "../commercialNumbering";
 import {
-  COMMERCIAL_CAPABILITIES, fail, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
+  COMMERCIAL_CAPABILITIES, fail, requireAccountLocation, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -98,6 +98,7 @@ async function stageBuiltSalesOrder(
   source: { opportunityId: string | null; salesAgreementId: string | null }, explicitAccountable: unknown,
 ): Promise<SalesOrderCreated> {
   await requireTenantAccount(db, actor.tenantId, built.accountId);
+  await requireAccountLocation(db, actor.tenantId, built.accountId, built.locationId);
   await requireTenantEmployee(db, actor.tenantId, built.ownerEmployeeId, "OWNER");
   await requireTenantEmployee(db, actor.tenantId, built.creditedSalespersonId, "CREDITED_SALESPERSON");
   const established = await resolveCreationAccountablePerson(db, actor.tenantId, "salesOrder", explicitAccountable, built.ownerEmployeeId);

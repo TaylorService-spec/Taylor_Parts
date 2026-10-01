@@ -71,6 +71,14 @@ export async function recordClaimEvent(
 
 type Deps = { readonly pool: Pool; readonly now?: () => Date };
 
+/** The ACTIVE key binding of a governed operating company, or null (the carried-Work-Order comparison only). */
+async function operatingCompanyKeyOrNull(pool: Pool, tenantId: string, companyId: string): Promise<string | null> {
+  const { rows } = await pool.query(
+    `SELECT operating_company_key FROM eos_policy.tenant_operating_company_keys WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE'`,
+    [tenantId, companyId]);
+  return rows.length === 1 ? String(rows[0].operating_company_key) : null;
+}
+
 /** The deterministic create key: one intake, one Work Order. */
 export const acceptIdempotencyKey = (requestId: string): string => `inbound-accept:${requestId}`;
 
@@ -371,12 +379,34 @@ export async function acceptInboundWork(deps: Deps, actor: LifecycleActor, input
   // ── 2. THE GOVERNED CREATE -- or the Work Order a recovered claim CARRIED (never a second one) ──
   let created: { workOrderId: string; workOrderNumber: string | null; replayed: boolean } | undefined;
   if (r.accept_pending_work_order_id) {
-    const carried = await deps.pool.query(`SELECT id, work_order_number, status::text AS status FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2`,
-      [actor.tenantId, r.accept_pending_work_order_id]);
-    if (carried.rows.length && !["CLOSED", "CANCELLED"].includes(carried.rows[0].status)
-      && !(await isQuarantined(deps.pool, actor.tenantId, carried.rows[0].id))) {
-      created = { workOrderId: carried.rows[0].id, workOrderNumber: carried.rows[0].work_order_number, replayed: true };
+    // RECOVERED_ACCEPT_WORK_ORDER_CONTEXT_VALIDATION (Controller SERVICE EXPERIENCE ACTIVATION CLOSURE, 2026-09-30): the
+    // carried Work Order is linked ONLY if it is still the valid Work Order for THIS intake and THIS decision -- created
+    // under the intake's own derived create key, for the customer / site / type / operating company the completing
+    // reviewer stated, and still operational. Any conflict REFUSES: the carried Work Order is never silently replaced,
+    // no second one is created, and the claim and its history stay exactly as they are for a governed human resolution.
+    const carried = await deps.pool.query(
+      `SELECT id, work_order_number, status::text AS status, customer_id, location_id, work_order_type::text AS work_order_type,
+              operating_company_key, create_idempotency_key
+         FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, r.accept_pending_work_order_id]);
+    const w = carried.rows[0];
+    const conflicts: string[] = [];
+    if (!w) conflicts.push("the carried Work Order no longer exists");
+    else {
+      if (w.create_idempotency_key !== acceptIdempotencyKey(requestId as string)) conflicts.push("it was not created for this intake");
+      if (w.customer_id !== customerId) conflicts.push("its customer differs from the stated customer");
+      if (w.location_id !== locationId) conflicts.push("its site differs from the stated site");
+      if (w.work_order_type !== workOrderType) conflicts.push(`its type (${w.work_order_type}) differs from the decided type (${workOrderType})`);
+      const statedKey = await operatingCompanyKeyOrNull(deps.pool, actor.tenantId, operatingCompanyId);
+      if (w.operating_company_key !== statedKey) conflicts.push("its operating company differs from the stated operating company");
+      if (["CLOSED", "CANCELLED"].includes(w.status)) conflicts.push(`it is ${w.status}`);
+      if (await isQuarantined(deps.pool, actor.tenantId, w.id)) conflicts.push("it is quarantined");
     }
+    if (conflicts.length) {
+      refuse("RECOVERED_WORK_ORDER_CONTEXT_MISMATCH", "PRECONDITION_FAILED",
+        `the Work Order carried from the interrupted Accept is not valid for this decision (${conflicts.join("; ")}); `
+        + "nothing was linked or created -- resolve it (correct the decision, or release the claim) before accepting");
+    }
+    created = { workOrderId: w.id, workOrderNumber: w.work_order_number, replayed: true };
   }
   if (!created) try {
     created = await createWorkOrder({ pool: deps.pool, now: deps.now },

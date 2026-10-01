@@ -116,11 +116,13 @@ test("governed PostgreSQL Commercial read projections, in PostgreSQL", { skip: S
   const draftBeforeAccept = await saRead.getSalesAgreementDetail(readDeps, READER, { salesAgreementId: a1.salesAgreementId });
   await sa.acceptSalesAgreement(writeDeps, WRITER_T1, { idempotencyKey: key(), salesAgreementId: a1.salesAgreementId });
   const won = await opp.closeOpportunityAsWon(writeDeps, WRITER_T1, { idempotencyKey: key(), opportunityId: o1.opportunityId, salesChannel: "RETAIL" });
-  // A direct Order on the second Account, with a Location that has no eos_crm row.
+  // A direct Order on the second Account. Commands now refuse a site that is not the Account's
+  // (LOCATION_NOT_FOR_ACCOUNT), so the dangling Location is a pre-existing / copied row, stated directly below.
   const direct = await so.createSalesOrder(writeDeps, WRITER_T1, {
     idempotencyKey: key(), accountId: "acct-2", ownerEmployeeId: "e-national", operatingCompanyId: "taylor", salesChannel: "NATIONAL_ACCOUNTS",
-    notes: "Direct", locationId: "loc-unknown", lines: [{ kind: "PART", ref: "part-b", orderedQty: 3, unitPrice: 2500 }, { kind: "SERVICE", ref: "svc-x", orderedQty: 1, unitPrice: 4000, businessUnitId: "SERVICE" }],
+    notes: "Direct", lines: [{ kind: "PART", ref: "part-b", orderedQty: 3, unitPrice: 2500 }, { kind: "SERVICE", ref: "svc-x", orderedQty: 1, unitPrice: 4000, businessUnitId: "SERVICE" }],
   });
+  await q(`UPDATE eos_commercial.sales_orders SET location_id = 'loc-unknown' WHERE tenant_id = 't1' AND id = $1`, [direct.salesOrderId]);
   // More complete Opportunities on acct-1 for paging, and one on acct-2.
   const extra = [];
   for (let i = 0; i < 4; i++) extra.push(await newOpportunity(WRITER_T1, { need: `Extra ${i}` }));

@@ -9,7 +9,7 @@ import {
 } from "../../salesAgreement/salesAgreementCommands";
 import { allocateCommercialNumber } from "../commercialNumbering";
 import {
-  COMMERCIAL_CAPABILITIES, fail, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
+  COMMERCIAL_CAPABILITIES, fail, requireCatalogReferences, requireAccountLocation, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -70,6 +70,7 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
         inheritedCreditedSalespersonId: opportunity.creditedSalespersonId,
       } as never, { actorUid: actor.principalId, nowMillis: now.getTime() });
       await requireTenantAccount(db, actor.tenantId, built.accountId);
+      await requireAccountLocation(db, actor.tenantId, built.accountId, built.locationId);
       await requireTenantEmployee(db, actor.tenantId, built.ownerEmployeeId, "OWNER");
       await requireTenantEmployee(db, actor.tenantId, built.creditedSalespersonId, "CREDITED_SALESPERSON");
       await requireCatalogReferences(deps, db, actor.tenantId, built.lines);
@@ -125,6 +126,7 @@ export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: Co
       for (const [field, column] of Object.entries(DRAFT_COLUMNS)) {
         if (!(field in patch)) continue;
         if (field === "creditedSalespersonId") await requireTenantEmployee(db, actor.tenantId, patch[field] as string, "CREDITED_SALESPERSON");
+        if (field === "locationId") await requireAccountLocation(db, actor.tenantId, current.accountId, patch[field]);
         values.push(patch[field]);
         sets.push(`${column} = $${values.length}`);
       }
