@@ -3879,6 +3879,7 @@
         ],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosOps/equipmentOperations.ts",
           "functions/src/serializedAsset/serializedAssetReadService.ts"
         ],
         "clientReferences": [
@@ -3886,7 +3887,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/domain/partLookup.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 3,
         "evidence": "EXPORTED"
       },
@@ -4374,6 +4375,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/equipmentActivationDelta.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
           "functions/src/eosOps/workOrderEquipmentInstall.ts",
@@ -4384,7 +4386,7 @@
           "field-ops-app-vite/src/access/equipmentInstallCapabilityAccess.js",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },

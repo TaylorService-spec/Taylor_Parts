@@ -51,9 +51,12 @@ test("the command modules never write status: applyTransitionWithinTransaction i
   }
 });
 
-test("equipment INSTALL is not on the Work Order route: it would move serialized custody (a hidden Inventory activation)", () => {
+test("equipment INSTALL is on the Work Order route, and ONLY there (Controller EQUIPMENT ACTIVATION, OD-5): the governed INSTALL Work Order is the one installation workflow", () => {
   const ops = require("../lib/eosOps/workOrderOperations.js");
-  assert.equal(Object.keys(ops.EOS_WORK_ORDER_OPERATIONS).some((k) => /install/i.test(k)), false);
+  assert.deepEqual(Object.keys(ops.EOS_WORK_ORDER_OPERATIONS).filter((k) => /install/i.test(k)).sort(),
+    ["listInstallableEquipmentForWorkOrder", "recordWorkOrderEquipmentInstall"]);
+  const equipment = require("../lib/eosOps/equipmentOperations.js");
+  assert.deepEqual(Object.keys(equipment.EOS_EQUIPMENT_OPERATIONS).filter((k) => /install/i.test(k)), [], "the register route never installs");
 });
 
 test("DQ-010: exactly one new capability, registered with no grant", () => {

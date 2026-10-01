@@ -209,6 +209,8 @@ test("Equipment activation over the Operations transport", { skip: SKIP, concurr
   await t.test("3. REGISTER CREATE: the Office Manager registers a customer machine; the relationships fail closed", async () => {
     const input = { operatingCompanyId: "taylor", accountId: "acct-r", customerLocationId: "loc-r2", name: "Walk-in Cooler", equipmentModelId: MODEL,
       serialNumber: "CUST-1", assetTag: "AT-1", installedOn: "2024-05-01", idempotencyKey: "reg-1" };
+    assert.deepEqual(ok(await call(office, EQ, "listEquipmentOperatingCompanies", {})).items.map((c) => c.operatingCompanyId), ["taylor", "ventana"]);
+    refused(await call(dispatcher, EQ, "listEquipmentOperatingCompanies", {}), 403, "CAPABILITY_MISSING", "the choice is the manager's");
     const created = ok(await call(office, EQ, "createEquipment", input), "create");
     assert.equal(created.outcome, "created");
     registered = created.equipment;

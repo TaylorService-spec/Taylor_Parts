@@ -30,9 +30,12 @@ test("the runtime decides operatingCompany and salesChannel; businessUnit and lo
     ["salesChannel", "opportunity.read"], ["salesChannel", "salesAgreement.read"], ["salesChannel", "salesOrder.read"],
     // DQ-020: the Commercial writes, decided against the governing channel of the record each command writes.
     ["salesChannel", "opportunity.write"], ["salesChannel", "opportunity.createSalesOrder"], ["salesChannel", "salesAgreement.create"],
-    ["salesChannel", "salesAgreement.updateDraft"], ["salesChannel", "salesAgreement.accept"], ["salesChannel", "salesOrder.write"]]);
+    ["salesChannel", "salesAgreement.updateDraft"], ["salesChannel", "salesAgreement.accept"], ["salesChannel", "salesOrder.write"],
+    // EQUIPMENT ACTIVATION (OD-3): a seller reads customer Equipment only through its channel's commercial relationship.
+    ["salesChannel", "equipment.record.read"]]);
   for (const g of scope.SCOPE_EVALUABLE_GRANTS.filter((x) => x.scopeType === "salesChannel")) {
-    assert.ok(g.consumers.length > 0 && g.consumers.every((c) => c.startsWith("commercial.")), g.capabilityKey);
+    const domain = g.capabilityKey.startsWith("equipment.") ? "equipment." : "commercial.";
+    assert.ok(g.consumers.length > 0 && g.consumers.every((c) => c.startsWith(domain)), g.capabilityKey);
   }
   assert.deepEqual(Object.fromEntries(Object.entries(scope.ASSIGNMENT_SCOPE_DIMENSIONS).map(([k, d]) => [k, [d.label, d.contextKey]])),
     { operatingCompany: ["Company", "operatingCompanyId"], businessUnit: ["Business Unit", "businessUnit"], location: ["Warehouse", "warehouseId"],

@@ -258,8 +258,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 76 -> 79: the Service Experience completion (2026-09-30): provider runtime 1764350000000 (schema), recovery 1764360000000 (+inboundWork.request.recover), self-scheduling 1764370000000 (+workOrder.selfScheduling.issue/.configure) -- every new capability granted to NO Role.
 // 79 -> 80: the Parts / Purchasing / Receiving completion (2026-10-01): 1764380000000 -- Reorder create integrity + RR numbering (schema) and warehouse.record.manage + supplier.record.read, granted to NO Role.
 // 80 -> 81: the Inventory / Warehouse completion (2026-10-01): 1764390000000 -- the inventory baseline cutover certification (schema).
-const PINNED_LAST_MIGRATION = "1764390000000_inventory-baseline-cutover";
-const PINNED_MIGRATION_COUNT = 81;
+// 81 -> 82: the Equipment activation (2026-10-01): 1764400000000 -- two register capabilities (no grant) + equipment events.
+const PINNED_LAST_MIGRATION = "1764400000000_equipment-activation";
+const PINNED_MIGRATION_COUNT = 82;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

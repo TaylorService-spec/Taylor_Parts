@@ -303,6 +303,27 @@ export interface InstallResult {
   readonly unit: InstalledUnitRecord;
 }
 
+/** The request's own shape, refused before any connection is taken. */
+function requireInstallRequest(request: InstallRequest) {
+  const tenantId = requireText(request?.tenantId, "tenantId");
+  const actorId = requireText(request.actorId, "actorId");
+  const companyKey = requireOperatingCompanyKey(request.operatingCompanyKey);
+  const partId = requireText(request.partId, "partId");
+  const serialNumber = requireText(request.serialNumber, "serialNumber");
+  const equipmentId = requireText(request.equipmentId, "equipmentId");
+  const accountId = requireText(request.accountId, "accountId");
+  const attributes = request.equipment ?? ({} as EquipmentAttributes);
+  requireText(attributes.name, "equipment name");
+  if (request.customerLocation?.namespace !== "CRM_LOCATION") {
+    throw new EquipmentCustodyError(
+      "REQUEST_INVALID",
+      "customerLocation must be a CRM_LOCATION ref -- an inventory location is not a customer site",
+    );
+  }
+  const customerLocationId = requireText(request.customerLocation.id, "customer location id");
+  return { tenantId, actorId, companyKey, partId, serialNumber, equipmentId, accountId, attributes, customerLocationId };
+}
+
 /**
  * Install one serialized unit as customer Equipment.
  *
@@ -320,6 +341,7 @@ export async function installSerializedUnitAsEquipment(
   pool: Pool,
   request: InstallRequest,
 ): Promise<InstallResult> {
+  requireInstallRequest(request);
   const client: PoolClient = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -348,22 +370,8 @@ export async function installSerializedUnitAsEquipmentOn(
   client: Pick<PoolClient, "query">,
   request: InstallRequest,
 ): Promise<InstallOutcome> {
-  const tenantId = requireText(request?.tenantId, "tenantId");
-  const actorId = requireText(request.actorId, "actorId");
-  const companyKey = requireOperatingCompanyKey(request.operatingCompanyKey);
-  const partId = requireText(request.partId, "partId");
-  const serialNumber = requireText(request.serialNumber, "serialNumber");
-  const equipmentId = requireText(request.equipmentId, "equipmentId");
-  const accountId = requireText(request.accountId, "accountId");
-  const attributes = request.equipment ?? ({} as EquipmentAttributes);
-  requireText(attributes.name, "equipment name");
-  if (request.customerLocation?.namespace !== "CRM_LOCATION") {
-    throw new EquipmentCustodyError(
-      "REQUEST_INVALID",
-      "customerLocation must be a CRM_LOCATION ref -- an inventory location is not a customer site",
-    );
-  }
-  const customerLocationId = requireText(request.customerLocation.id, "customer location id");
+  const { tenantId, actorId, companyKey, partId, serialNumber, equipmentId, accountId, attributes, customerLocationId } =
+    requireInstallRequest(request);
 
   // FOR UPDATE: a concurrent install of the same unit waits here rather than racing the status
   // check, which is the only reason the ALREADY_INSTALLED refusal below means anything.

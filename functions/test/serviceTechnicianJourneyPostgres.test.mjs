@@ -278,14 +278,17 @@ test("the Service Office + Technician journey through the EOS API", { skip: SKIP
     assert.equal((await q(`SELECT count(*)::int n FROM eos_commercial.sales_order_lines`)).rows[0].n, commercialBefore, "no Commercial mutation");
   });
 
-  await t.test("HELD BOUNDARIES: inventory mutation and serialized install answer NOT_ACTIVATED; no Firebase fallback exists", async () => {
+  await t.test("HELD BOUNDARIES: inventory mutation answers NOT_ACTIVATED; installation is governed authority, not a technician default", async () => {
     const reloc = await call(parts, http.RELOCATION_ROUTE, "relocateStock", {}, {});
     refused(reloc, 503, "NOT_ACTIVATED", "stock relocation while Inventory authority is inactive");
     const transfer = await call(parts, http.TRANSFER_ROUTE, "createTransfer", {}, {});
     refused(transfer, 503, "NOT_ACTIVATED", "transfer while Inventory authority is inactive");
     const acquire = await call(parts, http.SERIALIZED_ASSET_ROUTE, "acquireSerializedAsset", {}, {});
     refused(acquire, 503, "NOT_ACTIVATED", "serialized custody while Inventory authority is inactive");
-    refused(await wo(techA, "recordWorkOrderEquipmentInstall", { workOrderId: woId }), 404, "UNKNOWN_OPERATION", "no serialized install on the Work Order route");
+    // EQUIPMENT ACTIVATION (Controller OD-2 / OD-5, 2026-10-01): installation IS on the Work Order route now, and a
+    // Technician installs only through the equipmentInstaller Role -- the technician Role alone is refused first.
+    refused(await wo(techA, "recordWorkOrderEquipmentInstall", { workOrderId: woId, partId: "p", serialNumber: "s", idempotencyKey: "k", equipmentName: "n" }),
+      403, "CAPABILITY_MISSING", "install needs equipment.install");
   });
 
   await t.test("QUARANTINE: a pinned Work Order is in no queue, search or technician list, and refuses every operation", async () => {

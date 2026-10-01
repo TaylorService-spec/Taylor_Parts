@@ -39,6 +39,13 @@
    "depth": "top-level documents",
    "consumer": "functions/scripts/inventoryCutover.js",
    "purpose": "Controller INVENTORY / WAREHOUSE COMPLETION RULINGS (2026-10-01): location identity PROOF only -- a manifest-mapped legacy warehouse must carry the EOS warehouse's operatingCompanyId; nothing is copied from it"
+  },
+  {
+   "collection": "equipment",
+   "snapshotKey": "equipment",
+   "depth": "top-level documents",
+   "consumer": "functions/scripts/equipmentSampleSeed.js",
+   "purpose": "Controller EQUIPMENT ACTIVATION AUTHORIZED (2026-10-01): the Firebase Equipment register is SAMPLE data (GLOBAL OWNER RULING 2026-10-01) -- census, classify, SAMPLE_DATA_SEED copy and verify into eos_ops.equipment; customers / sites resolved against PostgreSQL CRM, unresolvable documents EXCLUDED_SAMPLE and reported"
   }
  ],
  "explicitlyNotIncluded": [

@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import pg from "pg";
+import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -59,6 +60,10 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
 
   await q(`INSERT INTO eos_policy.tenants (id,key,name) VALUES ($1,$1,$1)`, [T]);
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-1',$1,'Cust','ACTIVE','f','f')`, [T]);
+  // The Work Order's site is a governed CRM site of its customer (an install verifies it -- Controller OD-1, 2026-10-01).
+  await q(`INSERT INTO eos_crm.account_locations (id, tenant_id, account_id, name, created_by, updated_by) VALUES ('crmloc-1',$1,'acct-1','Site','f','f')`, [T]);
+  // An install moves stock, so it waits on the tenant's certified inventory baseline.
+  await certifyInventoryBaselineFixture(q, T);
   const principal = async (pid) => {
     await q(`INSERT INTO eos_policy.principals (id,external_subject,identity_provider,status) VALUES ($1,$2,'firebase','active')`, [pid, `uid-${pid}`]);
     await q(`INSERT INTO eos_policy.tenant_memberships (id,tenant_id,principal_id,status) VALUES ($1,$2,$3,'active')`, [`mem-${pid}`, T, pid]);
@@ -78,9 +83,15 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
   await part("p-component", { control: "SERIALIZED", whole: false });
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, status) VALUES ('wh-1',$1,'taylor','WH','ACTIVE')`, [T]).catch(() => undefined);
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, status) VALUES ('wh-v',$1,'ventana','WHV','ACTIVE')`, [T]).catch(() => undefined);
-  const custody = (partId, serial, company = "taylor", wh = "wh-1", status = "AVAILABLE") => q(
-    `INSERT INTO eos_ops.serialized_custody (id, tenant_id, part_id, serial_number, operating_company_key, status, location_type, location_id, updated_by)
+  // Custody AND its ledger receipt: the install's consequence is a ledger movement out of the source (OD-1), and it
+  // refuses to move a unit whose ledger disagrees with its custody.
+  const custody = async (partId, serial, company = "taylor", wh = "wh-1", status = "AVAILABLE") => {
+    await q(`INSERT INTO eos_ops.serialized_custody (id, tenant_id, part_id, serial_number, operating_company_key, status, location_type, location_id, updated_by)
      VALUES ($6, $5, $1, $2, $3, $4, 'WAREHOUSE', $7, 'seed')`, [partId, serial, company, status, T, `cust-${partId}-${serial}`, wh]);
+    await q(`INSERT INTO eos_ops.inventory_movements (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
+       movement_type, quantity_delta, serial_number, source_kind, source_id, created_by)
+     VALUES ($1, $2, $3, $4, 'SERIAL', 'WAREHOUSE', $5, 'RECEIVED', 1, $6, 'FIXTURE', 'seed', 'seed')`, [`mov-${partId}-${serial}`, T, company, partId, wh, serial]);
+  };
   await custody("p-unit", "SN-1");
   await custody("p-unit", "SN-2");
   await custody("p-component", "SN-C1");
@@ -93,7 +104,8 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
   await wo("wo-inst");
   await wo("wo-svc", { type: "SERVICE_CALL" });
   await wo("wo-ready", { status: "READY_TO_DISPATCH" });
-  for (const [aid, w, e] of [["woa-1", "wo-inst", "emp-a"], ["woa-2", "wo-svc", "emp-a"], ["woa-3", "wo-ready", "emp-a"]]) {
+  await wo("wo-inst-2");
+  for (const [aid, w, e] of [["woa-1", "wo-inst", "emp-a"], ["woa-2", "wo-svc", "emp-a"], ["woa-3", "wo-ready", "emp-a"], ["woa-4", "wo-inst-2", "emp-a"]]) {
     await q(`INSERT INTO eos_ops.work_order_assignments (id,tenant_id,work_order_id,assignee_employee_id,source,effective_from,assigned_by_principal_id,provenance)
              VALUES ($1,$2,$3,$4,'SCHEDULE',now() - interval '1 hour','prn-admin','NATIVE')`, [aid, T, w, e]);
   }
@@ -139,7 +151,7 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
       (e) => e.code === "WORK_ORDER_STATE_INVALID");
   });
 
-  await t.test("RECORD: installs with the Work Order's customer, site and company; a retry reports done, installs nothing twice", async () => {
+  await t.test("RECORD: installs with the Work Order's customer, site and company; a retry returns the original, installs nothing twice", async () => {
     const input = { workOrderId: "wo-inst", partId: "p-unit", serialNumber: "SN-1", idempotencyKey: "k-1", equipmentName: "Taylor C713" };
     const r = await woInstall.recordWorkOrderEquipmentInstall(deps, actor("prn-tech-a"), input);
     assert.equal(r.outcome, "installed");
@@ -147,7 +159,7 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
     assert.deepEqual(rows.map((e) => [e.id, e.account_id, e.customer_location_id, e.operating_company_key]),
       [[woInstall.workOrderInstallEquipmentId("k-1"), "acct-1", "crmloc-1", "taylor"]]);
     const again = await woInstall.recordWorkOrderEquipmentInstall(deps, actor("prn-tech-a"), input);
-    assert.equal(again.outcome, "already_installed_for_this_work_order");
+    assert.deepEqual([again.outcome, again.equipment.id, again.movementId], ["replayed", r.equipment.id, r.movementId]);
     assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.equipment WHERE tenant_id=$1`, [T])).rows[0].n, 1);
   });
 
@@ -174,10 +186,10 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
 
   await t.test("RECORD: a serialized COMPONENT is refused by the catalog, and another company's unit by custody", async () => {
     await assert.rejects(woInstall.recordWorkOrderEquipmentInstall(deps, actor("prn-tech-a"),
-      { workOrderId: "wo-inst", partId: "p-component", serialNumber: "SN-C1", idempotencyKey: "k-c", equipmentName: "x" }),
+      { workOrderId: "wo-inst-2", partId: "p-component", serialNumber: "SN-C1", idempotencyKey: "k-c", equipmentName: "x" }),
     (e) => e.code === "PART_NOT_WHOLE_UNIT");
     await assert.rejects(woInstall.recordWorkOrderEquipmentInstall(deps, actor("prn-tech-a"),
-      { workOrderId: "wo-inst", partId: "p-unit", serialNumber: "SN-V", idempotencyKey: "k-v", equipmentName: "x" }),
+      { workOrderId: "wo-inst-2", partId: "p-unit", serialNumber: "SN-V", idempotencyKey: "k-v", equipmentName: "x" }),
     (e) => e.code === "OPERATING_COMPANY_MISMATCH");
     assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.equipment WHERE tenant_id=$1`, [T])).rows[0].n, 1, "nothing minted");
   });

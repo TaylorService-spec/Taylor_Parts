@@ -269,6 +269,23 @@ async function listAvailableEquipmentUnits(deps: Deps, caller: WorkOrderCaller, 
   });
 }
 
+/** The governed operating-company choice a create states (the tenant's ACTIVE companies with an ACTIVE key). Never inferred. */
+async function listEquipmentOperatingCompanies(deps: Deps, caller: WorkOrderCaller, input: Record<string, unknown>) {
+  only(input, []);
+  requireActive(deps);
+  requireManage(caller);
+  const { rows } = await deps.pool.query(
+    `SELECT c.operating_company_id, b.operating_company_key
+       FROM eos_policy.tenant_operating_companies c
+       JOIN eos_policy.tenant_operating_company_keys b
+         ON b.tenant_id = c.tenant_id AND b.operating_company_id = c.operating_company_id AND b.status = 'ACTIVE'
+      WHERE c.tenant_id = $1 AND c.status = 'ACTIVE'
+      ORDER BY c.operating_company_id`,
+    [caller.actor.tenantId]);
+  return Object.freeze({ items: Object.freeze(rows.map((r) => Object.freeze({
+    operatingCompanyId: String(r.operating_company_id), operatingCompanyKey: String(r.operating_company_key) }))) });
+}
+
 // ════════════════════ writes ════════════════════
 
 function requireManage(caller: WorkOrderCaller): void {
@@ -500,11 +517,13 @@ export const EOS_EQUIPMENT_OPERATIONS = Object.freeze({
   readEquipment: readEquipmentRecord,
   readWorkOrderEquipment,
   listAvailableEquipmentUnits,
+  listEquipmentOperatingCompanies,
   createEquipment,
   updateEquipment,
 } satisfies Record<string, Op>);
 
 export type EosEquipmentOperation = keyof typeof EOS_EQUIPMENT_OPERATIONS;
-export const EQUIPMENT_READ_OPERATIONS: readonly string[] = Object.freeze(["listEquipment", "readEquipment", "readWorkOrderEquipment", "listAvailableEquipmentUnits"]);
+export const EQUIPMENT_READ_OPERATIONS: readonly string[] = Object.freeze(["listEquipment", "readEquipment", "readWorkOrderEquipment",
+  "listAvailableEquipmentUnits", "listEquipmentOperatingCompanies"]);
 export const isEquipmentOperation = (name: unknown): name is EosEquipmentOperation =>
   typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_EQUIPMENT_OPERATIONS, name);
