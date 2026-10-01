@@ -190,7 +190,7 @@ export const RELOCATION_OPERATIONS: readonly EosRelocationOperation[] =
 export const isRelocationOperation = (name: unknown): name is EosRelocationOperation =>
   typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_RELOCATION_OPERATIONS, name);
 
-// ════════════════════ the Transfer command route (DQ-024 / DQ-026; HELD) ════════════════════
+// ════════════════════ the Transfer command route (DQ-024 / DQ-026; ACTIVE since 2026-10-01) ════════════════════
 export const TRANSFER_ROUTE = "/operations/transfer";
 export const TRANSFER_OPERATIONS: readonly EosTransferOperation[] =
   Object.freeze(Object.keys(EOS_TRANSFER_OPERATIONS) as EosTransferOperation[]);

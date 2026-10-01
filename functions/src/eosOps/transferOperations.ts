@@ -1,5 +1,5 @@
 // EOS TRANSFER -- the EXISTING Transfer lifecycle (inventoryTransfer/transferOrderCommand.ts) on the EOS operations
-// transport, over the PostgreSQL inventory authority. HELD (inventoryTransfer/transferWriterState.ts).
+// transport, over the PostgreSQL inventory authority. ACTIVE since the Inventory / Warehouse activation (2026-10-01; inventoryTransfer/transferWriterState.ts), gated per tenant by the certified inventory baseline.
 //
 // ════════════════════ THE SAME LIFECYCLE ════════════════════
 //
