@@ -20,6 +20,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { readFileSync } from "node:fs";
 import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
@@ -49,6 +50,18 @@ test("the fence: acquire is Administration-grant-only", () => {
   assert.equal(ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(CAP), true);
   // ACTIVATED (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01), gated per tenant by the baseline certification.
   assert.deepEqual({ ...ACQUIRE_WRITER_AUTHORITY }, { firestore: "FROZEN", postgres: "ACTIVE" });
+});
+
+test("FINAL CORRECTION: acquire's predicate is the WAREHOUSE scope only; every other warehouse writer keeps Warehouse Operations eligibility", () => {
+  const acq = require("../lib/eosOps/serializedAssetAcquireOperations.js");
+  const cc = require("../lib/eosOps/cycleCountOperations.js");
+  assert.deepEqual(acq.acquirePredicates("W").map((p) => p.kind), ["OPERATIONAL_SCOPE"]);
+  assert.deepEqual(cc.warehousePredicates("W").map((p) => [p.kind, p.qualificationCode ?? p.scopeType]), [["WORK_ELIGIBILITY", "WAREHOUSE_OPERATIONS"], ["OPERATIONAL_SCOPE", "WAREHOUSE"]]);
+  const src = (f) => readFileSync(resolve(FUNCTIONS_DIR, f), "utf8");
+  assert.doesNotMatch(src("src/eosOps/serializedAssetAcquireOperations.ts"), /warehousePredicates\(/, "acquire no longer borrows the sheet-level predicates");
+  for (const f of ["src/eosOps/binPlacementOperations.ts", "src/eosOps/stockRelocationOperations.ts", "src/eosOps/transferOperations.ts", "src/eosOps/cycleCountOperations.ts"]) {
+    assert.match(src(f), /predicates: warehousePredicates\(/, `${f} keeps the Warehouse Operations eligibility`);
+  }
 });
 
 test("DQ-036(b): acquire-existing-unit on EOS", { skip: SKIP, concurrency: 1 }, async (t) => {

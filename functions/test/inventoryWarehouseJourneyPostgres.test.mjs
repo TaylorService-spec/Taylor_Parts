@@ -115,7 +115,10 @@ test("Inventory / Warehouse over the Operations transport (writers injected ACTI
   const elig = (e, code) => q(`INSERT INTO eos_workforce.employee_work_eligibility (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by) VALUES ($1,$2,$3,$4,now(),'fixture')`, [`we-${e}-${code}`, TENANT, e, code]);
   const scope = (e, type, id) => q(`INSERT INTO eos_workforce.employee_operational_scopes (id,tenant_id,employee_id,scope_type,scope_id,effective_from,assigned_by) VALUES ($1,$2,$3,$4,$5,now(),'fixture')`, [`os-${e}-${type}-${id}`, TENANT, e, type, id]);
   for (const e of ["e-pa", "e-pm"]) { await elig(e, "PARTS_OPERATIONS"); await scope(e, "REORDER_QUEUE", "taylor"); }
-  for (const e of ["e-wa", "e-wm", "e-pa"]) { await elig(e, "WAREHOUSE_OPERATIONS"); await scope(e, "WAREHOUSE", WH); }
+  for (const e of ["e-wa", "e-wm"]) { await elig(e, "WAREHOUSE_OPERATIONS"); await scope(e, "WAREHOUSE", WH); }
+  // The Parts Associate exactly as nonprod holds it (FINAL CORRECTION, 2026-10-01): PARTS_OPERATIONS + WAREHOUSE taylor-main,
+  // and NO Warehouse Operations eligibility.
+  await scope("e-pa", "WAREHOUSE", WH);
   await scope("e-wm", "WAREHOUSE", WH2);
   await scope("e-wa", "WAREHOUSE", "taylor-closed"); // so the INACTIVE-warehouse refusals are reached past scope
   await scope("e-owner", "WAREHOUSE", WH); // Owner HAS scope but no eligibility: scope alone is never authority
@@ -414,6 +417,25 @@ test("Inventory / Warehouse over the Operations transport (writers injected ACTI
     const atBin = await call(pa, ACQ, "acquireSerializedAsset", { partId: "PRT-UNIT", serialNo: "UNIT-2", locationId: BIN_A, reason: "OPENING_BALANCE", idempotencyKey: key("acq3") });
     assert.ok(atBin.status >= 400 && atBin.status < 500, "acquire lands on a WAREHOUSE");
     refused(await call(tech, ACQ, "acquireSerializedAsset", { ...input, idempotencyKey: key("x") }), 403, "PERMISSION_DENIED", "technician");
+
+    // FINAL CORRECTION (Controller, 2026-10-01): the Parts Associate exercised the governed DQ-036b capability above WITHOUT
+    // Warehouse Operations eligibility -- acquire is capability + WAREHOUSE scope only. Its warehouse operations stay refused:
+    // no relocation, put-away, placement, cycle count or transfer authority came with it.
+    assert.equal((await one(`SELECT count(*)::int n FROM eos_workforce.employee_work_eligibility WHERE tenant_id=$1 AND employee_id='e-pa' AND qualification_code='WAREHOUSE_OPERATIONS'`, [TENANT])).n, 0, "the Parts Associate holds no Warehouse Operations eligibility");
+    for (const [route, op, inp] of [
+      [REL, "relocateStock", { partId: "PRT-FAN", source: { type: "WAREHOUSE", locationId: WH }, destination: { type: "BIN", locationId: BIN_A }, quantity: 1, idempotencyKey: key("pa-n") }],
+      [REL, "relocateStock", { partId: "PRT-FAN", source: { type: "WAREHOUSE", locationId: WH }, destination: { type: "BIN", locationId: BIN_A }, quantity: 1, recordPlacement: true, idempotencyKey: key("pa-n") }],
+      [PLC, "recordPutAway", { warehouseId: WH, partId: "PRT-FAN", binId: BIN_A, quantity: 1, idempotencyKey: key("pa-n") }],
+      [CC, "createCycleCountSheet", { location: { type: "WAREHOUSE", locationId: WH }, idempotencyKey: key("pa-n") }],
+      [TRF, "createTransfer", { partId: "PRT-FAN", quantity: 1, origin: { type: "WAREHOUSE", locationId: WH }, destination: { type: "WAREHOUSE", locationId: WH2 }, idempotencyKey: key("pa-n") }],
+      [TRF, "dispatchTransfer", { transferOrderId: "trf_none" }],
+      [TRF, "receiveTransfer", { transferOrderId: "trf_none" }],
+    ]) {
+      const r = await call(pa, route, op, inp);
+      assert.equal(r.status, 403, `the Parts Associate ${op}: ${JSON.stringify(r.body)}`);
+    }
+    // The acquire scope still binds: a warehouse outside the Parts Associate's scope is refused.
+    refused(await call(pa, ACQ, "acquireSerializedAsset", { partId: "PRT-UNIT", serialNo: "UNIT-OUT", locationId: WH2, reason: "OPENING_BALANCE", idempotencyKey: key("pa-out") }), 403, "OUTSIDE_OPERATIONAL_SCOPE", "acquire outside scope");
     assert.deepEqual((await onHand(wa, ["PRT-UNIT"])).totals, [{ partId: "PRT-UNIT", onHand: 2 }], "the copied legacy unit + the acquired unit");
     refused(await call(pa, ACQ, "acquireSerializedAsset", { partId: "PRT-UNIT", serialNo: "UNIT-9", locationId: "taylor-closed", reason: "OPENING_BALANCE", idempotencyKey: key("acq-closed") }), 403, ["OUTSIDE_OPERATIONAL_SCOPE", "PERMISSION_DENIED"], "an out-of-scope (and inactive) warehouse");
   });

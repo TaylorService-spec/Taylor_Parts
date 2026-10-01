@@ -40,7 +40,7 @@
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
-import { warehousePredicates } from "./cycleCountOperations.js";
+import type { ContextPredicate } from "./contextualAuthorization.js";
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding.js";
@@ -129,6 +129,11 @@ async function inTransaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<
   }
 }
 
+/** Acquisition's contextual authority: the WAREHOUSE operational scope over the receiving warehouse -- nothing more. */
+export function acquirePredicates(warehouseId: string): readonly ContextPredicate[] {
+  return Object.freeze([Object.freeze({ kind: "OPERATIONAL_SCOPE" as const, scopeType: "WAREHOUSE", scopeId: warehouseId })]);
+}
+
 export async function acquireEosSerializedAsset(deps: AcquireOperationDeps, actor: AcquireActor, input: Record<string, unknown>) {
   if (deps.postgresState !== "ACTIVE") {
     refuse("NOT_ACTIVATED", "NOT_ACTIVATED", "EOS serialized asset acquisition is not activated in this environment; units are still acquired on the current system");
@@ -153,14 +158,19 @@ export async function acquireEosSerializedAsset(deps: AcquireOperationDeps, acto
       if (err instanceof InventoryScopeError) return refuse("LOCATION_INVALID", "PRECONDITION_FAILED", `${req.locationId} is not an active governed company location`);
       throw err;
     }
+    // THE ACQUIRE PREDICATE IS THE WAREHOUSE SCOPE ONLY (Controller INVENTORY/WAREHOUSE FINAL CORRECTION, 2026-10-01).
+    // DQ-036b rules inventory.serializedAsset.acquire for the Parts AND Warehouse personas. Acquisition used to borrow the
+    // sheet-level warehousePredicates (WORK_ELIGIBILITY WAREHOUSE_OPERATIONS + scope), which no Parts persona holds -- so
+    // the ruled grant could never be exercised by them. The governed authority here is the Administration-grant-only
+    // capability plus OPERATIONAL_SCOPE WAREHOUSE over the warehouse the unit enters (which also requires a linked
+    // Employee). Every other warehouse act (placement, relocation, transfer, cycle count) keeps warehousePredicates.
     const decision = await authorizeObjectAction(postgresContextualReader(db), {
-      actor, capabilityKey: EOS_SERIALIZED_ASSET_ACQUIRE_CAPABILITY, predicates: warehousePredicates(warehouse.scopeWarehouseId),
+      actor, capabilityKey: EOS_SERIALIZED_ASSET_ACQUIRE_CAPABILITY, predicates: acquirePredicates(warehouse.scopeWarehouseId),
     });
     if (!decision.allowed) {
       refuse(decision.reason, "FORBIDDEN",
         decision.reason === "OUTSIDE_OPERATIONAL_SCOPE" ? "this warehouse is outside your operational scope"
-          : decision.reason === "WORK_ELIGIBILITY_MISSING" ? "acquiring a unit requires the Warehouse Operations work eligibility"
-            : decision.reason === "EMPLOYEE_LINK_REQUIRED" ? "only an Employee can acquire a unit" : "not authorized");
+          : decision.reason === "EMPLOYEE_LINK_REQUIRED" ? "only an Employee can acquire a unit" : "not authorized");
     }
 
     // ---- 2. THE UNIT FIRST: identity -> replay -> gates ----
