@@ -86,9 +86,12 @@ describe("the closed operation list", () => {
     assert.deepEqual([...WORK_ORDER_COMMAND_OPERATIONS], keys.filter((k) => !serverReads.includes(k)));
     assert.ok(WORK_ORDER_READ_OPERATIONS.includes("listWorkOrderOperatingCompanies"));
     for (const name of [...WORK_ORDER_READ_OPERATIONS, ...WORK_ORDER_COMMAND_OPERATIONS]) assert.equal(isWorkOrderOperation(name), true, name);
-    // No install, no consumption-source picking, no raw transition verb is a name the browser can send.
+    // Installation IS a governed Work Order operation now (Controller EQUIPMENT ACTIVATION, OD-5, 2026-10-01) -- the INSTALL
+    // Work Order is the only installation workflow. No standalone install, no consumption-source picking, no raw transition.
+    assert.equal(isWorkOrderOperation("recordWorkOrderEquipmentInstall"), true);
+    assert.ok(WORK_ORDER_READ_OPERATIONS.includes("listInstallableEquipmentForWorkOrder"));
     for (const name of ["transitionWorkOrder", "updateWorkOrderExecutionData", "listWorkOrderConsumptionSources",
-      "recordWorkOrderEquipmentInstall", "installEquipment", "", null, 42]) {
+      "installSerializedAsset", "installEquipment", "", null, 42]) {
       assert.equal(isWorkOrderOperation(name), false, String(name));
     }
   });

@@ -37,11 +37,7 @@
 // renders "Location unavailable" and never the raw key, and never a guessed type (EQ-G2). The
 // resolver still fails closed to DENIED, which reaches the reader as that same absence.
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../auth/AuthContext";
 import { readSerializedAssetSource } from "../../access/serializedAssetSource";
-import { useEquipmentInstallCapability } from "../../access/useEquipmentInstallCapability";
-import { useAccountPicker } from "../../hooks/useAccountPicker";
 import { useWholeUnitParts } from "../../hooks/useWholeUnitParts";
 import {
   composeWholeUnitAssetRows,
@@ -50,9 +46,7 @@ import {
   LINE_LABEL,
   LINE_OF_BUSINESS,
 } from "../../domain/wholeUnitAssetDisplay";
-import InstallAtCustomer from "./InstallAtCustomer";
 import { useAvailableEquipmentSource } from "../../hooks/useAvailableEquipmentSource";
-import { useLocationDisplaySource } from "../../hooks/useLocationDisplaySource";
 import {
   AVAILABLE_FILTER_NOTE,
   AVAILABLE_STATE,
@@ -62,7 +56,6 @@ import {
   deriveAvailableState,
   anyAvailableFilterActive,
 } from "../../domain/availableEquipmentCatalogView";
-import { distinctLocationIds, applyLocationDisplay } from "../../domain/locationDisplayProjection";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import LoadingState from "../../shared/ui/LoadingState";
@@ -77,14 +70,12 @@ import { availableRowCells } from "../../domain/equipmentNorthStar";
 const EMPTY_FILTERS = { term: "", category: "", manufacturer: "", model: "", status: "", location: "" };
 
 export default function AvailableEquipment() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
   const liveSource = useAvailableEquipmentSource();
   const { status: sourceStatus, assets: rawAssets } = readSerializedAssetSource(liveSource);
 
-  const requestedLocationIds = useMemo(() => distinctLocationIds(rawAssets), [rawAssets]);
-  const { displayMap } = useLocationDisplaySource(requestedLocationIds);
-  const assets = useMemo(() => applyLocationDisplay(rawAssets, displayMap), [rawAssets, displayMap]);
+  // The governed EOS read returns each unit's warehouse / bin label with it (listAvailableEquipmentUnits), so no second
+  // location resolver is consulted; an unlabelled unit still renders as an absence, never the raw key.
+  const assets = rawAssets;
 
   // PRODUCT WORDS. The governed read returns ids; the Part is where the canonical equipmentModelId
   // lives, and manufacturer / model / business line are derived from that one identity rather than
@@ -93,15 +84,9 @@ export default function AvailableEquipment() {
   const unitRows = useMemo(() => composeWholeUnitAssetRows(assets, wholeUnitParts), [assets, wholeUnitParts]);
   const availableByLine = useMemo(() => countAvailableByLine(unitRows), [unitRows]);
 
-  // Install is gated on the capability, resolved through the trusted feed and fail-closed while it
-  // loads. The server checks again inside its transaction; this only decides what to render.
-  const { canInstall } = useEquipmentInstallCapability(user);
-  // The app's EXISTING bounded customer picker, not a fresh read of the accounts collection.
-  // `options` is already truncated and ordered by that hook, and its truncation notice is the one
-  // users see everywhere else a customer is chosen.
-  const { options: accountOptions, message: accountsMessage } = useAccountPicker();
-  const [installing, setInstalling] = useState(null);   // the unit whose dialog is open
-
+  // OD-5 (Controller EQUIPMENT ACTIVATION, 2026-10-01): installation is NOT an action on this list. A unit is installed
+  // on its governed INSTALL Work Order (customer, site, company, the assigned Employee, audit and history all come from
+  // the Work Order); Available Equipment is the discovery surface.
   const [filters, setFilters] = useState(EMPTY_FILTERS);
 
   const options = useMemo(() => buildAvailableFilterOptions(assets), [assets]);
@@ -194,16 +179,9 @@ export default function AvailableEquipment() {
           : ""}
       </p>
 
-      {installing ? (
-        <InstallAtCustomer
-          unit={installing}
-          accounts={accountOptions}
-          canInstall={canInstall}
-          onClose={() => setInstalling(null)}
-          onInstalled={(equipmentId) => navigate(`/equipment/${equipmentId}`)}
-        />
-      ) : null}
-      {installing && accountsMessage ? <p className="fo-muted">{accountsMessage}</p> : null}
+      <p className="fo-muted" data-install-via-work-order>
+        Installing a unit is recorded on its INSTALL Work Order, by the assigned technician.
+      </p>
 
       {state === AVAILABLE_STATE.EMPTY ? (
         <EmptyState
@@ -242,7 +220,6 @@ export default function AvailableEquipment() {
                     <th scope="col">Model</th>
                     <th scope="col">Condition</th>
                     <th scope="col">Location</th>
-                    {canInstall ? <th scope="col" className="fo-sr-only">Actions</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -269,13 +246,6 @@ export default function AvailableEquipment() {
                         <td data-label="Location">
                           {cells.location ?? <span className="ns-state--na">{cells.locationAbsence}</span>}
                         </td>
-                        {canInstall ? (
-                          <td data-label="Actions">
-                            <Button variant="secondary" onClick={() => setInstalling(r)} disabled={!r.available}>
-                              Install at customer
-                            </Button>
-                          </td>
-                        ) : null}
                       </tr>
                     );
                   })}

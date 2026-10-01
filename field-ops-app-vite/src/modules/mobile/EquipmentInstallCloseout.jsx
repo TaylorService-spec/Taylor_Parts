@@ -31,35 +31,30 @@ import {
   deriveResumePlan,
   interpretInstallStep,
 } from "../../domain/workOrderInstallCloseout";
-import { SERIALIZED_INSTALL_NOT_ACTIVATED, WORK_ORDER_BOUNDARY } from "../../domain/workOrderOutcome.js";
+import { WORK_ORDER_BOUNDARY } from "../../domain/workOrderOutcome.js";
 import { WorkOrderBoundaryNotice } from "../../shared/ui/WorkOrderAuthorityNotice.jsx";
 import { Button } from "../../shared/ui/primitives";
 import { captureInstall, captureComplete } from "../../offline/technicianIntentCapture.js";
 import StructuredFields from "../../shared/ui/StructuredFields.jsx";
 import { serializedUnitFields } from "../../domain/structuredFields.js";
-import { useLocationDisplaySource } from "../../hooks/useLocationDisplaySource.js";
+import { fetchInstallableEquipmentForWorkOrder, recordWorkOrderEquipmentInstall } from "../../services/workOrderEquipmentInstallClient.js";
 import { useProvidedOfflineRuntime } from "../../offline/OfflineRuntimeContext.jsx";
 import { connectivityHint } from "../../offline/syncExecutor.js";
 import { classifyFailure, FAILURE_CLASS } from "../../offline/syncFailureClassification.js";
 
-// ============================ NOT ACTIVATED (2026-09-30) ============================
+// ============================ THE GOVERNED INSTALL (Controller EQUIPMENT ACTIVATION, 2026-10-01) ============================
 //
-// Equipment install moves a serialized unit's custody into EQUIPMENT. The governed EOS route does not serve it
-// (the PostgreSQL serialized-custody authority is INACTIVE), and the Firebase install callables
-// (services/workOrderInstallCallableClient.js) are NOT invoked from here any more: a Firebase write behind a
-// Work Order that EOS governs is exactly the split authority the cutover ends. So the DEFAULT transports below
-// answer SERIALIZED_INSTALL / NOT_YET_ACTIVATED without calling anything, and the section says so. The flow
-// itself is kept, driven only by an injected transport (`deps`), for the day an EOS install authority exists.
-const notActivated = async () => ({ outcome: null, error: { ...SERIALIZED_INSTALL_NOT_ACTIVATED } });
-
+// The default transports are the EOS Work Order route (services/workOrderEquipmentInstallClient.js): the installable
+// units of THIS Work Order, and the one-transaction install. Never a Firebase callable. A server NOT_ACTIVATED (the
+// tenant's inventory baseline not yet certified) still renders as the SERIALIZED_INSTALL readiness state, not a failure.
 /** One attempt token per mount, so a retry of the same intent replays instead of installing twice. */
 function useAttemptToken(workOrderId) {
   return useMemo(() => `${workOrderId}-${Date.now().toString(36)}`, [workOrderId]);
 }
 
 export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOrder, offline: offlineProp = null, deps = {} }) {
-  const fetchUnits = deps.fetchUnits ?? notActivated;
-  const recordInstall = deps.recordInstall ?? notActivated;
+  const fetchUnits = deps.fetchUnits ?? fetchInstallableEquipmentForWorkOrder;
+  const recordInstall = deps.recordInstall ?? recordWorkOrderEquipmentInstall;
   const provided = useProvidedOfflineRuntime();
   const offline = offlineProp ?? provided;
 
@@ -96,15 +91,9 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
 
   const units = load.data?.units ?? [];
 
-  // LOCATIONS RESOLVE THROUGH THE GOVERNED PROJECTION, never by showing the id. `wh-main` is
-  // unreadable, unsearchable by the name anybody actually uses, and teaches people to memorise
-  // internal keys. An id that will not resolve renders as "Unavailable" -- an honest absence rather
-  // than a raw key dressed up as information.
-  const { displayMap } = useLocationDisplaySource(units.map((u) => u.currentLocationId));
-  const locationNameFor = (u) => {
-    const entry = displayMap?.get?.(u.currentLocationId);
-    return entry && entry.type !== "UNRESOLVED" ? entry.label : null;
-  };
+  // LOCATIONS ARE THE GOVERNED LABEL the server returns with each unit (warehouse name, bin code) -- never the raw
+  // internal key. A unit with no resolvable label renders as "Unavailable": an honest absence.
+  const locationNameFor = (u) => u.locationLabel ?? null;
   const wo = load.data?.workOrder ?? null;
   const scanned = scan.trim()
     ? units.filter((u) => u.serialNo?.toLowerCase().includes(scan.trim().toLowerCase()))

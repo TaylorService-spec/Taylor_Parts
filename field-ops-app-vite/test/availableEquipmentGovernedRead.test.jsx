@@ -27,9 +27,6 @@ import { render, screen, cleanup } from "@testing-library/react";
 // canInstall is FALSE so this suite keeps testing exactly what it was written to test: the governed
 // read's own states, with no install control in the way.
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "test-uid" } }) }));
-vi.mock("../src/access/useEquipmentInstallCapability", () => ({
-  useEquipmentInstallCapability: () => ({ canInstall: false }),
-}));
 vi.mock("../src/hooks/useWholeUnitParts", () => ({
   useWholeUnitParts: () => ({ parts: [], loading: false, denied: false, unavailable: false }),
 }));

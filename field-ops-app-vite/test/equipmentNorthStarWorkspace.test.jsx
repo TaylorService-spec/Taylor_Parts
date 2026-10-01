@@ -23,9 +23,6 @@ let mockEquipmentList = {
 };
 
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
-vi.mock("../src/access/useEquipmentInstallCapability", () => ({
-  useEquipmentInstallCapability: () => ({ canInstall: false }),
-}));
 vi.mock("../src/hooks/useWholeUnitParts", () => ({
   useWholeUnitParts: () => ({ parts: [], loading: false, denied: false, unavailable: false }),
 }));
@@ -35,9 +32,6 @@ vi.mock("react-router-dom", async (importOriginal) => ({
 }));
 vi.mock("../src/hooks/useAvailableEquipmentSource", () => ({
   useAvailableEquipmentSource: () => mockAvailableEquipmentSource,
-}));
-vi.mock("../src/hooks/useLocationDisplaySource", () => ({
-  useLocationDisplaySource: () => ({ displayMap: {} }),
 }));
 vi.mock("../src/hooks/useMetadataList", () => ({ useMetadataList: () => mockEquipmentList }));
 vi.mock("../src/hooks/useAccountReferenceResolver", () => ({
@@ -61,14 +55,11 @@ vi.mock("../src/hooks/useEquipment", () => ({ useEquipmentForAccount: () => ({ d
 vi.mock("../src/hooks/useLocationsForAccount", () => ({
   useLocationsForAccount: () => ({ data: [{ id: "loc_broadway", accountId: "acct_desert_sun", name: "Broadway Plant" }], loading: false, error: null, retry: vi.fn() }),
 }));
-vi.mock("../src/services/equipmentInstallCallableClient", () => ({ callInstallSerializedAsset: vi.fn() }));
 
 import EquipmentWorkspace from "../src/modules/equipment/EquipmentWorkspace";
 import AvailableEquipment from "../src/modules/equipment/AvailableEquipment";
-import InstallAtCustomer from "../src/modules/equipment/InstallAtCustomer";
 import { buildListPresentation } from "../src/metadata/listPresentation.js";
 import { equipmentEntity, equipmentIndexList } from "../src/metadata/definitions/equipment.js";
-import { callInstallSerializedAsset } from "../src/services/equipmentInstallCallableClient";
 
 const withRouter = (ui) => render(<MemoryRouter>{ui}</MemoryRouter>);
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -221,80 +212,22 @@ describe("Available Equipment renders the locked 1b table", () => {
     expect(status.textContent).toMatch(/Ventana \/ Icetro: 0/);
   });
 
-  it("hides the Install action entirely for a caller without the capability", () => {
+  it("offers NO install action at all -- installing is the INSTALL Work Order's (OD-5, 2026-10-01)", () => {
     mockAvailableEquipmentSource = { connected: true, status: "ready", assets: [TAYLOR_ASSET] };
-    const table = withRouter(<AvailableEquipment />).container.querySelector("table");
+    const { container } = withRouter(<AvailableEquipment />);
+    const table = container.querySelector("table");
     expect(within(table).queryByRole("button")).toBeNull();
+    expect(container.querySelector("[data-install-via-work-order]").textContent).toMatch(/INSTALL Work Order/);
     // The inventory is still visible — seeing what the company owns is a different question.
     expect(within(table).getByText("CW-C161-0001")).toBeTruthy();
   });
 });
 
-// ═════════════════════════════════ 1b — the install read-back
-
-describe("the install confirmation", () => {
-  const unit = {
-    serializedAssetId: "sa_1", serialNo: "CW-C161-0001", title: "Taylor C161",
-    manufacturer: "Taylor", modelNumber: "C161", lineLabel: "Taylor", location: "Main warehouse",
-    available: true,
-  };
-  const accounts = [{ id: "acct_desert_sun", name: "Desert Sun" }];
-
-  function choose() {
-    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall onClose={() => {}} />);
-    fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct_desert_sun" } });
-    fireEvent.change(screen.getByRole("combobox", { name: /Customer location/i }), { target: { value: "loc_broadway" } });
-  }
-
-  it("reads back the unit, the serial, the customer and the installation location", () => {
-    choose();
-    const value = (key) => document.querySelector(`[data-install-confirm="${key}"]`).textContent;
-    expect(value("unit")).toBe("Taylor C161");
-    expect(value("serial")).toBe("CW-C161-0001");
-    expect(value("customer")).toBe("Desert Sun");
-    expect(value("location")).toBe("Broadway Plant");
-    // Labels, not a sentence a reader skims.
-    expect(screen.getByText("Installation location")).toBeTruthy();
-  });
-
-  it("does not appear until BOTH choices are made", () => {
-    render(<InstallAtCustomer unit={unit} accounts={accounts} installTransport={callInstallSerializedAsset} canInstall onClose={() => {}} />);
-    expect(document.querySelector("[data-install-confirm]")).toBeNull();
-    fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct_desert_sun" } });
-    expect(document.querySelector("[data-install-confirm]")).toBeNull();
-  });
-
-  it("says what confirming does, and does not imply it can be undone", () => {
-    choose();
-    expect(screen.getByText(/takes it out of available stock/i)).toBeTruthy();
-    expect(screen.getByText(/cannot be undone/i)).toBeTruthy();
-  });
-
-  it("offers Confirm installation as the primary and Cancel as the secondary", () => {
-    choose();
-    const confirm = screen.getByRole("button", { name: /Confirm installation/i });
-    expect(confirm.disabled).toBe(false);
-    expect(screen.getByRole("button", { name: /^Cancel$/i })).toBeTruthy();
-  });
-
-  it("confirming calls the EXISTING governed command — no second install path", () => {
-    callInstallSerializedAsset.mockResolvedValue({ outcome: { outcome: "installed", equipmentId: "eq_1" }, error: null });
-    choose();
-    fireEvent.click(screen.getByRole("button", { name: /Confirm installation/i }));
-    expect(callInstallSerializedAsset).toHaveBeenCalledTimes(1);
-    const [request] = callInstallSerializedAsset.mock.calls[0];
-    expect(request.serializedAssetId).toBe("sa_1");
-    expect(request.accountId).toBe("acct_desert_sun");
-    expect(request.locationId).toBe("loc_broadway");
-  });
-
-  it("offers no uninstall, recover, return-to-stock or reassign action", () => {
-    choose();
-    for (const forbidden of [/uninstall/i, /recover/i, /return to stock/i, /move to another customer/i, /change account/i]) {
-      expect(screen.queryByRole("button", { name: forbidden })).toBeNull();
-    }
-  });
-});
+// ═════════════════════════════════ 1b — the standalone install confirmation is RETIRED
+//
+// Controller EQUIPMENT ACTIVATION AUTHORIZED, OD-5 (2026-10-01): installation requires a governed INSTALL Work Order. The
+// InstallAtCustomer dialog (and its Firebase transport) is removed; the technician closeout is the one install surface
+// (equipmentInstallCloseout.test.jsx).
 
 // ══════════════════════ THE PAGE IS A PAGE, NOT A CARD ══════════════════════
 //

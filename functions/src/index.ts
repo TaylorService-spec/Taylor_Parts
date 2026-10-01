@@ -76,7 +76,10 @@ export { searchProductReferences } from "./salesAgreement/productReferenceSearch
 export { getManufacturerCatalog } from "./partMaster/manufacturerReadService";
 // Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability
 // `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role.
-export { getAvailableEquipment } from "./serializedAsset/serializedAssetReadService";
+// RETIRED FROM THE REPOSITORY (Controller EQUIPMENT ACTIVATION AUTHORIZED, 2026-10-01): the client reads the governed EOS
+// register / Work Order route instead and no caller remains (census). The deployed copies stay DEPLOYED_NOT_CALLED until the
+// bounded Firebase removal window -- tracked, not deleted by deploy here.
+//   getAvailableEquipment   (-> /operations/equipment listAvailableEquipmentUnits)
 // Coordinated Operations trusted read (fidelity fix, 2026-08-15) -- serves the existing coordinatedVisit/
 // coordinatedFieldMission pure projections from real fieldops_wos data. EXPORT != DEPLOY; capability
 // `fulfillment.coordinatedVisit.read` registered active:false (REGISTER != GRANT), granted to NO Role.
@@ -84,7 +87,10 @@ export { listCoordinatedOperations } from "./fulfillment/coordinatedVisitReadSer
 // Location-DISPLAY trusted resolver (sandbox-fidelity package PART 11A) -- id -> { type, label } for
 // WAREHOUSE/MOBILE only, backing Available Equipment's location column. EXPORT != DEPLOY; capability
 // `inventory.location.display.read` registered active:false (REGISTER != GRANT), granted to NO Role.
-export { getLocationDisplay } from "./inventoryLocation/locationDisplayReadService";
+// RETIRED FROM THE REPOSITORY (Controller EQUIPMENT ACTIVATION AUTHORIZED, 2026-10-01): the client reads the governed EOS
+// register / Work Order route instead and no caller remains (census). The deployed copies stay DEPLOYED_NOT_CALLED until the
+// bounded Firebase removal window -- tracked, not deleted by deploy here.
+//   getLocationDisplay      (-> governed labels on the EOS reads; /operations/inventory listInventoryLocations)
 // Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered
 // active:false (REGISTER != GRANT).
 // PASS 11 RETAIL SALES: createSalesOrder / transitionSalesOrder RETIRED (EOS owns them).
@@ -449,7 +455,11 @@ export { recordReturnIntakeCallable as recordReturnIntake } from "./inventoryRet
 // Gated on equipment.install, registered active:false and carried by exactly one Role
 // (equipmentInstaller) -- deliberately NOT the same Role that may acquire units, so no single person
 // can take a machine from non-existence to a customer. EXPORT != DEPLOY.
-export { installSerializedAssetCallable as installSerializedAsset } from "./equipmentInstall/installCallables";
+// RETIRED FROM THE REPOSITORY (Controller EQUIPMENT ACTIVATION AUTHORIZED, 2026-10-01): the client reads the governed EOS
+// register / Work Order route instead and no caller remains (census). The deployed copies stay DEPLOYED_NOT_CALLED until the
+// bounded Firebase removal window -- tracked, not deleted by deploy here.
+// OD-5: standalone installation is retired as a business action; installation is the INSTALL Work Order's.
+//   installSerializedAsset
 
 // --- NON-PO SERIALIZED ASSET ACQUISITION (ND-33) ---
 //
@@ -494,10 +504,13 @@ export { installSerializedAssetCallable as installSerializedAsset } from "./equi
 // function reads on the technician's behalf after checking the job is theirs.
 //
 // SCAN IS NOT INSTALL: the read writes nothing, including when resolving a scanned serial.
-export {
-  getInstallableEquipmentForWorkOrder,
-  recordWorkOrderEquipmentInstallCallable as recordWorkOrderEquipmentInstall,
-} from "./workOrderInstall/workOrderInstallCallables";
+// RETIRED FROM THE REPOSITORY (Controller EQUIPMENT ACTIVATION AUTHORIZED, 2026-10-01): the client reads the governed EOS
+// register / Work Order route instead and no caller remains (census). The deployed copies stay DEPLOYED_NOT_CALLED until the
+// bounded Firebase removal window -- tracked, not deleted by deploy here.
+// The governed equivalents are listInstallableEquipmentForWorkOrder / recordWorkOrderEquipmentInstall on
+// /operations/work-orders (eosOps/workOrderEquipmentInstall.ts).
+//   getInstallableEquipmentForWorkOrder
+//   recordWorkOrderEquipmentInstall
 
 // --- TECHNICIAN LABOR (Labor Domain V1) ---
 // The canonical record of work performed. NOT workOrder.laborHours -- that field is a single mutable

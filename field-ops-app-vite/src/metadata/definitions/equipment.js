@@ -106,10 +106,10 @@ export const equipmentEntity = makeEntityDefinition({
   label: "Equipment",
   labelPlural: "Equipment",
   collection: EQUIPMENT_COLLECTION,
-  readVia: "CLIENT_DIRECT",
-  // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null
-  // rather than invented — see the header.
-  readCapability: null,
+  // EQUIPMENT ACTIVATION (Controller 2026-10-01): the governed EOS register (/operations/equipment listEquipment),
+  // authorized server-side by equipment.record.read -- no longer a Firestore read gated by Rules.
+  readVia: "EOS_API",
+  readCapability: "equipment.record.read",
   identity: makeIdentity({ nameField: "name" }),
   description: "An installed, customer-serviceable asset at one Account Location, moving through a governed ACTIVE/INACTIVE/RETIRED lifecycle. Not the equipment_models compatibility catalog — see the file header.",
   fields: [

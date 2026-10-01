@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Modal from "../../shared/ui/Modal";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
@@ -26,11 +26,22 @@ import { Button } from "../../shared/ui/primitives";
 // status: null or status: "" would be rejected as an invalid status for a control this
 // form does not even offer. Reaching INACTIVE/RETIRED is a lifecycle action (§3/§5),
 // never a create-time choice.
-export default function EquipmentCreateModal({ accountName, locations, locationsError, onRetryLocations, onCreate, onClose }) {
+//
+// THE GOVERNED REGISTER (Controller EQUIPMENT ACTIVATION AUTHORIZED, 2026-10-01): the create is the EOS
+// createEquipment command. Two governed facts the Firestore document never carried are STATED here: the
+// operating company (from the governed choice list -- preselected only when there is exactly one) and,
+// optionally, the catalog Equipment Model. Free-text manufacturer / model is not a model authority and is
+// no longer offered.
+export default function EquipmentCreateModal({ accountName, locations, locationsError, onRetryLocations, onCreate, onClose,
+  companyOptions = [], companiesError = null, modelOptions = [], modelsError = null }) {
   const [name, setName] = useState("");
   const [locationId, setLocationId] = useState("");
-  const [manufacturer, setManufacturer] = useState("");
-  const [model, setModel] = useState("");
+  const [operatingCompanyId, setOperatingCompanyId] = useState(companyOptions.length === 1 ? companyOptions[0].operatingCompanyId : "");
+  const [equipmentModelId, setEquipmentModelId] = useState("");
+  // The choice list arrives after the modal opens; exactly one governed company is preselected, never more.
+  useEffect(() => {
+    if (operatingCompanyId === "" && companyOptions.length === 1) setOperatingCompanyId(companyOptions[0].operatingCompanyId);
+  }, [companyOptions, operatingCompanyId]);
   const [serialNumber, setSerialNumber] = useState("");
   const [assetTag, setAssetTag] = useState("");
   const [installedDate, setInstalledDate] = useState("");
@@ -45,6 +56,7 @@ export default function EquipmentCreateModal({ accountName, locations, locations
   // Local required-field feedback before submit; the server-side result can add more.
   const nameError = (submitAttempted && !name.trim() ? "Enter an equipment name." : null) ?? fieldErrors.name ?? null;
   const locationError = (submitAttempted && !locationId ? "Select a location." : null) ?? fieldErrors.locationId ?? null;
+  const companyError = (submitAttempted && !operatingCompanyId ? "Select an operating company." : null) ?? fieldErrors.operatingCompanyId ?? null;
 
   // Drop a field's SERVER error as soon as the user edits that field. Without this it
   // survived until the next submit: after a refused cross-Account destination, picking
@@ -81,7 +93,7 @@ export default function EquipmentCreateModal({ accountName, locations, locations
     setSubmitAttempted(true);
     setSaveError(null);
     setFieldErrors({});
-    if (!name.trim() || !locationId) return;
+    if (!name.trim() || !locationId || !operatingCompanyId) return;
 
     // The chosen Location document -- E2's createEquipment requires it to PROVE the
     // Account/Location relationship rather than take the id on trust. It is always
@@ -92,8 +104,6 @@ export default function EquipmentCreateModal({ accountName, locations, locations
     const values = {
       locationId,
       name: name.trim(),
-      manufacturer: manufacturer.trim() || null,
-      model: model.trim() || null,
       serialNumber: serialNumber.trim() || null,
       assetTag: assetTag.trim() || null,
       installedDate: installedDate.trim() || null,
@@ -106,7 +116,7 @@ export default function EquipmentCreateModal({ accountName, locations, locations
     try {
       // E2's write path RESOLVES a safe result rather than throwing; a raw error can
       // never reach here, so there is nothing to map or accidentally render.
-      const result = await onCreate(values, location);
+      const result = await onCreate(values, location, { operatingCompanyId, equipmentModelId: equipmentModelId || null });
       if (!result?.ok) {
         setFieldErrors(result?.errors ?? {});
         setSaveError(result?.message ?? "Could not save this equipment. Nothing was saved — please try again.");
@@ -178,14 +188,21 @@ export default function EquipmentCreateModal({ accountName, locations, locations
           </Field>
         )}
 
-        <Field id="equipment-create-manufacturer" label="Manufacturer">
-          <input id="equipment-create-manufacturer" className="fo-wizard-control" value={manufacturer}
-            onChange={(e) => setManufacturer(e.target.value)} />
+        <Field id="equipment-create-company" label="Operating company" required error={companiesError ?? companyError}>
+          <select id="equipment-create-company" className="fo-wizard-control" value={operatingCompanyId}
+            aria-invalid={companyError ? true : undefined}
+            onChange={(e) => { setOperatingCompanyId(e.target.value); clearFieldError("operatingCompanyId"); }}>
+            <option value="">Select an operating company…</option>
+            {companyOptions.map((c) => <option key={c.operatingCompanyId} value={c.operatingCompanyId}>{c.operatingCompanyId}</option>)}
+          </select>
         </Field>
 
-        <Field id="equipment-create-model" label="Model">
-          <input id="equipment-create-model" className="fo-wizard-control" value={model}
-            onChange={(e) => setModel(e.target.value)} />
+        <Field id="equipment-create-model" label="Equipment model" error={modelsError} hint="From the catalog (optional)">
+          <select id="equipment-create-model" className="fo-wizard-control" value={equipmentModelId}
+            onChange={(e) => setEquipmentModelId(e.target.value)}>
+            <option value="">No catalog model</option>
+            {modelOptions.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
         </Field>
 
         <Field id="equipment-create-serial" label="Serial number">

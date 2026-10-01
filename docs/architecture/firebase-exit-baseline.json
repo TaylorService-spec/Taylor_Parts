@@ -11,7 +11,6 @@
     "frontend": {
       "firestore_client": [
         "field-ops-app-vite/src/access/parityFixtures.ts",
-        "field-ops-app-vite/src/access/useEquipmentInstallCapability.js",
         "field-ops-app-vite/src/access/useGovernedCapabilities.js",
         "field-ops-app-vite/src/access/useReportCapabilities.js",
         "field-ops-app-vite/src/access/useWorkOrderPartsPlanCapability.js",
@@ -23,9 +22,7 @@
         "field-ops-app-vite/src/hooks/useAssignableEmployees.js",
         "field-ops-app-vite/src/hooks/useCurrentTechnician.js",
         "field-ops-app-vite/src/hooks/useEmployeeDirectory.js",
-        "field-ops-app-vite/src/hooks/useEquipment.js",
         "field-ops-app-vite/src/hooks/useFirestoreCollection.js",
-        "field-ops-app-vite/src/hooks/useInstalledEquipmentPage.js",
         "field-ops-app-vite/src/hooks/useInventoryActions.js",
         "field-ops-app-vite/src/hooks/useListViewChrome.js",
         "field-ops-app-vite/src/lib/firebaseSafe.js",
@@ -41,7 +38,6 @@
         "field-ops-app-vite/src/access/administrationUsersClient.js",
         "field-ops-app-vite/src/access/dataImportClient.js",
         "field-ops-app-vite/src/access/importedServiceHistorySource.js",
-        "field-ops-app-vite/src/access/useEquipmentInstallCapability.js",
         "field-ops-app-vite/src/access/useGovernedCapabilities.js",
         "field-ops-app-vite/src/access/useReportCapabilities.js",
         "field-ops-app-vite/src/access/useWorkOrderPartsPlanCapability.js",
@@ -53,19 +49,15 @@
         "field-ops-app-vite/src/services/binCommandClient.js",
         "field-ops-app-vite/src/services/completionService.js",
         "field-ops-app-vite/src/services/crmActivityCallableClient.js",
-        "field-ops-app-vite/src/services/equipmentInstallCallableClient.js",
         "field-ops-app-vite/src/services/financeReadCallableClient.js",
         "field-ops-app-vite/src/services/inventoryBalanceCallableClient.js",
-        "field-ops-app-vite/src/services/locationDisplayReadCallableClient.js",
         "field-ops-app-vite/src/services/manufacturerCommandClient.js",
         "field-ops-app-vite/src/services/manufacturerReadCallableClient.js",
         "field-ops-app-vite/src/services/performanceGoalClient.js",
         "field-ops-app-vite/src/services/privilegedApprovalClient.js",
         "field-ops-app-vite/src/services/receivingCallableClient.js",
         "field-ops-app-vite/src/services/returnCommandClient.js",
-        "field-ops-app-vite/src/services/serializedAssetReadCallableClient.js",
-        "field-ops-app-vite/src/services/truckRegistryCommandClient.js",
-        "field-ops-app-vite/src/services/workOrderInstallCallableClient.js"
+        "field-ops-app-vite/src/services/truckRegistryCommandClient.js"
       ],
       "firebase_auth": [
         "field-ops-app-vite/src/auth/AuthContext.jsx",

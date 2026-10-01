@@ -338,6 +338,10 @@
       "runner": "node"
     },
     {
+      "file": "test/equipmentEosClient.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/fieldArchitectureV2.test.mjs",
       "runner": "node --test"
     },
@@ -441,10 +445,7 @@
       "file": "test/ledgerRowIntegrity.test.mjs",
       "runner": "node --test"
     },
-    {
-      "file": "test/locationDisplayReadChunking.test.mjs",
-      "runner": "node --test"
-    },
+    
     {
       "file": "test/locationSubscription.test.mjs",
       "runner": "node"

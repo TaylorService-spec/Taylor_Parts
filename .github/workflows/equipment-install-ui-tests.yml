@@ -43,18 +43,13 @@ on:
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
-      - "field-ops-app-vite/src/services/workOrderInstallCallableClient.js"
       - "field-ops-app-vite/src/domain/availableEquipmentGovernedProjection.js"
       - "field-ops-app-vite/src/domain/availableEquipmentCatalogView.js"
       - "field-ops-app-vite/src/modules/equipment/AvailableEquipment.jsx"
-      - "field-ops-app-vite/src/modules/equipment/InstallAtCustomer.jsx"
       - "field-ops-app-vite/src/hooks/useWholeUnitParts.js"
       - "field-ops-app-vite/src/access/equipmentInstallCapabilityAccess.js"
-      - "field-ops-app-vite/src/access/useEquipmentInstallCapability.js"
-      - "field-ops-app-vite/src/services/equipmentInstallCallableClient.js"
       - "field-ops-app-vite/test/wholeUnitAssetDisplay.test.mjs"
       - "field-ops-app-vite/test/equipmentInstallForm.test.mjs"
-      - "field-ops-app-vite/test/availableEquipmentInstall.test.jsx"
       - "field-ops-app-vite/test/workOrderInstallCloseout.test.mjs"
       - "field-ops-app-vite/test/equipmentInstallCloseout.test.jsx"
       - "field-ops-app-vite/src/domain/technicianHandheld.js"
@@ -121,13 +116,8 @@ on:
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
-      - "field-ops-app-vite/src/services/workOrderInstallCallableClient.js"
       - "field-ops-app-vite/src/modules/equipment/AvailableEquipment.jsx"
-      - "field-ops-app-vite/src/modules/equipment/InstallAtCustomer.jsx"
       - "field-ops-app-vite/src/hooks/useWholeUnitParts.js"
-      - "field-ops-app-vite/src/access/useEquipmentInstallCapability.js"
-      - "field-ops-app-vite/src/services/equipmentInstallCallableClient.js"
-      - "field-ops-app-vite/test/availableEquipmentInstall.test.jsx"
       - "field-ops-app-vite/test/workOrderInstallCloseout.test.mjs"
       - "field-ops-app-vite/test/equipmentInstallCloseout.test.jsx"
       - "field-ops-app-vite/src/domain/technicianHandheld.js"
@@ -222,7 +212,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Rendered surfaces — manager list, technician closeout, handheld shell
-        run: npx vitest run test/availableEquipmentInstall.test.jsx test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx test/jobLabor.test.jsx
+        run: npx vitest run test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx test/jobLabor.test.jsx
         working-directory: field-ops-app-vite
 
       # ND-33 acquisition, at the render. The pure suite above proves what the request may

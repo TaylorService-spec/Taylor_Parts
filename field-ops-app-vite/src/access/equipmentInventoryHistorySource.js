@@ -33,3 +33,23 @@ export function readInventoryHistorySource(source = inertInventoryHistorySource)
   const events = connected && Array.isArray(source.events) ? source.events : [];
   return { status, events };
 }
+
+/**
+ * The governed Equipment history (eos_ops.equipment_events: CREATED / UPDATED / INSTALLED, read with the record through
+ * /operations/equipment readEquipment) as a CONNECTED inventory-history source -- Controller EQUIPMENT ACTIVATION,
+ * 2026-10-01. An INSTALLED event carries the Work Order, the serial and the ledger movement it was recorded with.
+ */
+export function equipmentEventHistorySource(events) {
+  if (!Array.isArray(events)) return inertInventoryHistorySource;
+  return Object.freeze({
+    connected: true,
+    status: INVENTORY_HISTORY_STATUS.READY,
+    events: Object.freeze(events
+      .map((e) => Object.freeze({
+        at: typeof e?.occurredAt === "string" ? Date.parse(e.occurredAt) : null,
+        kind: typeof e?.eventType === "string" ? e.eventType : null,
+        workOrderId: e?.workOrderId ?? null, serialNumber: e?.serialNumber ?? null, source: e?.source ?? null, reason: e?.reason ?? null,
+      }))
+      .filter((e) => Number.isFinite(e.at))),
+  });
+}

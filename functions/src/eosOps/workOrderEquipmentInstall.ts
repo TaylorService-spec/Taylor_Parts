@@ -152,6 +152,8 @@ export interface InstallableUnit {
   readonly status: string;
   readonly locationType: string;
   readonly locationId: string;
+  /** The governed warehouse name (and bin code) -- so a technician never reads an internal location key. */
+  readonly locationLabel: string | null;
 }
 
 /**
@@ -172,12 +174,16 @@ export async function listInstallableUnitsForWorkOrder(
   // Candidates by CUSTODY first (the operating company and installable statuses are custody facts), over-
   // fetched because some candidates will not be whole units; then the CATALOG decides which are.
   const { rows } = await deps.pool.query(
-    `SELECT part_id, serial_number, status::text AS status, location_type::text AS location_type, location_id
-       FROM eos_ops.serialized_custody
-      WHERE tenant_id = $1 AND operating_company_key = $2 AND status::text = ANY($3::text[])
-        AND location_type::text = ANY($6::text[])
-        AND ($4::text IS NULL OR serial_number = $4)
-      ORDER BY part_id, serial_number
+    `SELECT c.part_id, c.serial_number, c.status::text AS status, c.location_type::text AS location_type, c.location_id,
+            CASE WHEN c.location_type = 'BIN' THEN concat_ws(' / ', bw.name, b.code) ELSE w.name END AS location_label
+       FROM eos_ops.serialized_custody c
+       LEFT JOIN eos_ops.warehouses w ON c.location_type = 'WAREHOUSE' AND w.tenant_id = c.tenant_id AND w.id = c.location_id
+       LEFT JOIN eos_ops.bins b ON c.location_type = 'BIN' AND b.tenant_id = c.tenant_id AND b.id = c.location_id
+       LEFT JOIN eos_ops.warehouses bw ON bw.tenant_id = b.tenant_id AND bw.id = b.warehouse_id
+      WHERE c.tenant_id = $1 AND c.operating_company_key = $2 AND c.status::text = ANY($3::text[])
+        AND c.location_type::text = ANY($6::text[])
+        AND ($4::text IS NULL OR c.serial_number = $4)
+      ORDER BY c.part_id, c.serial_number
       LIMIT $5`,
     [actor.tenantId, wo.operatingCompanyKey, [...INSTALLABLE_CUSTODY_STATUSES], serial, INSTALLABLE_LIST_CAP * 4,
       [...INSTALL_SOURCE_LOCATION_TYPES]]);
@@ -187,6 +193,7 @@ export async function listInstallableUnitsForWorkOrder(
   const units = rows.filter((r) => wholeUnit.has(String(r.part_id))).map((r) => Object.freeze({
     partId: String(r.part_id), serialNumber: String(r.serial_number), status: String(r.status),
     locationType: String(r.location_type), locationId: String(r.location_id),
+    locationLabel: r.location_label == null || r.location_label === "" ? null : String(r.location_label),
   }));
   return Object.freeze({
     units: Object.freeze(units.slice(0, INSTALLABLE_LIST_CAP)),
