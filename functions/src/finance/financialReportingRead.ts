@@ -28,8 +28,38 @@
 //   · no external reconciliation and no IN_SYNC/DRIFT — FIN-010 has no results surface;
 //   · no cross-currency summation — balances stay per currency, as the account read already does;
 //   · no client Firestore access — the collections remain deny-all to clients.
+//
+// ════════════════════ ONE SNAPSHOT ════════════════════
+//
+// Every read of one call (invoices, applications, receipts) runs inside ONE read-only Firestore
+// transaction (`runTransaction(fn, { readOnly: true })`, firebase-admin 12.7 / @google-cloud/firestore
+// 7.11). A read-only transaction takes no locks and reads every document at the same consistent
+// read time, so a COMPLETE answer cannot pair an invoice balance from before a payment with the
+// application recorded after it. Bounds: Firestore expires a transaction after 270 s (60 s idle);
+// at the ceiling (up to 3 × 5,000 docs, 500 per page: 11 invoice pages, up to 30 application
+// `in`-chunks or 11 tenant-wide pages, up to 10 receipt batches — roughly 30 to 60 sequential round
+// trips) the call is expected to stay inside that and inside the callable's default 60 s timeout.
+// That expectation is NOT measured against live Firestore. A transaction that expires surfaces as
+// READ_FAILED — never as a ready answer.
+//
+// ════════════════════ TEMPORARY FIREBASE-ERA READ ════════════════════
+//
+// This callable is a narrow accuracy repair to a live Firestore read ahead of the Firebase
+// retirement. It is NOT the scale solution: EOS/PostgreSQL (eos_finance, behind Render) must own
+// finance facts and aggregates, with FIN-004 reach applied server-side. The page size and the
+// REPORTING_SCAN_CEILING below are temporary Firebase-era bounds. Thresholds, failure behaviour,
+// the PostgreSQL path and the delete condition for this file:
+// docs/financials/financial-facts-read-temporary-firebase-limit-2026-09-25.md
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import {
+  FieldPath,
+  getFirestore,
+  type Firestore,
+  type Query,
+  type DocumentSnapshot,
+  type DocumentReference,
+  type QuerySnapshot,
+} from "firebase-admin/firestore";
 import {
   INVOICES_COLLECTION,
   PAYMENTS_COLLECTION,
@@ -50,8 +80,92 @@ import { loadFinancialVisibilityAuthority } from "./financeReadCallables";
 export const REPORTING_FACT_TYPES = ["INVOICE", "PAYMENT_RECEIPT", "PAYMENT_APPLICATION"] as const;
 export type ReportingFactType = (typeof REPORTING_FACT_TYPES)[number];
 
+/**
+ * PAGE SIZE bound. `limit` used to be the whole answer: a collection with one row more than it made
+ * the read `unavailable` — at 201 invoices under the client's default — so every Financials page
+ * went dark the moment the business grew past a few hundred facts. It is now the size of ONE cursor
+ * page of a complete read; the read keeps paging until the collection is exhausted.
+ */
 export const MAX_REPORTING_LIMIT = 500;
-export const DEFAULT_REPORTING_LIMIT = 200;
+export const DEFAULT_REPORTING_LIMIT = MAX_REPORTING_LIMIT;
+
+/**
+ * HARD CEILING on documents read per fact collection in ONE call. Past it the read does not guess:
+ * it stops, returns NO rows and NO figures, and says PARTIAL with the counts. Bounded so one call
+ * stays inside the callable's memory, time and response-size budget (unmeasured at the ceiling).
+ *
+ * TEMPORARY FIREBASE-ERA BOUND, not a scale target. It is counted per collection, per call, BEFORE
+ * FIN-004 visibility filtering for the invoice scan — so past it every persona's unnarrowed pages
+ * go dark regardless of scope. The replacement is a PostgreSQL aggregate read; see
+ * docs/financials/financial-facts-read-temporary-firebase-limit-2026-09-25.md.
+ */
+export const REPORTING_SCAN_CEILING = 5_000;
+
+/**
+ * ════════ THE COMPLETENESS CONTRACT ════════
+ *
+ *   COMPLETE  every document in every scanned collection was read. Only then is `status` "ready",
+ *             and only then does the payload carry rows, summaries, aging and rollups.
+ *   PARTIAL   some documents were read but not all (the scan ceiling was reached, or a page failed
+ *             after earlier pages succeeded). NOTHING derived from the partial set is returned —
+ *             a partial total is never presented as a total, not even labelled.
+ *   NOT_READ  nothing was read (no reach, a missing index, or the first page failed).
+ *
+ * A non-COMPLETE answer always names its `reason` and carries the per-collection counts, so a page
+ * can say "5,000 of more than 5,000 invoices were read; nothing is shown" instead of an empty page.
+ */
+export type ReportingCompletenessStatus = "COMPLETE" | "PARTIAL" | "NOT_READ";
+export type ReportingIncompleteReason =
+  | "NO_REACH"
+  | "SCAN_CEILING_REACHED"
+  | "INDEX_MISSING"
+  | "READ_FAILED"
+  /** An authorized payment application names a receipt that does not exist. */
+  | "DANGLING_REFERENCE";
+
+/**
+ * How a collection was read:
+ *   CURSOR_SCAN    the whole collection (or its accountId-narrowed query), paged by document id;
+ *   BY_INVOICE_ID  only the applications whose invoiceId is in the AUTHORIZED invoice set, queried
+ *                  in `in` chunks — bounded by the caller's own reach, not by the tenant;
+ *   BY_ID          exactly the named documents (receipts), fetched with getAll.
+ */
+export type ReportingScanMode = "CURSOR_SCAN" | "BY_INVOICE_ID" | "BY_ID";
+
+export interface ReportingCollectionScan {
+  collection: string;
+  /** Documents actually read from this collection by this call. */
+  documentsRead: number;
+  pages: number;
+  /** True only when the collection (or its account-narrowed query) was read to exhaustion. */
+  exhausted: boolean;
+  mode: ReportingScanMode;
+  /**
+   * True when this read was over the WHOLE tenant's collection rather than a set bounded by the
+   * request — so a ceiling hit here is a fact about the tenant's size, not about this request.
+   */
+  tenantWide: boolean;
+  /** BY_ID only: ids that were named but not found. Any dangling id makes the answer non-COMPLETE. */
+  danglingIds: number;
+}
+
+export interface FinancialFactsCompleteness {
+  status: ReportingCompletenessStatus;
+  reason: ReportingIncompleteReason | null;
+  pageSize: number;
+  scanCeiling: number;
+  /** Every read of the call shares one read-only transaction snapshot (see ONE SNAPSHOT). */
+  consistency: "SINGLE_SNAPSHOT";
+  scans: ReportingCollectionScan[];
+}
+
+/**
+ * Applications are read BY_INVOICE_ID when the authorized invoice set has at most this many ids
+ * (30 `in`-chunks of 30). Above it, a per-id query fan-out would cost more round trips than paging
+ * the collection, so the read falls back to a tenant-wide CURSOR_SCAN and says so (`tenantWide`).
+ */
+export const APPLICATIONS_BY_INVOICE_MAX = 900;
+const IN_CHUNK = 30;
 
 export interface FinancialFactsFilters {
   companyId?: string | null;
@@ -102,7 +216,9 @@ export interface PaymentApplicationReportRead {
 }
 
 export interface FinancialFactsResult {
+  /** "ready" if and only if `completeness.status` is COMPLETE. Kept for deployed clients. */
   status: "ready" | "unavailable";
+  completeness: FinancialFactsCompleteness;
   invoices: InvoiceReportRead[];
   payments: PaymentReportRead[];
   applications: PaymentApplicationReportRead[];
@@ -225,19 +341,146 @@ export function rollup(reads: InvoiceReportRead[], keyOf: (r: InvoiceReportRead)
   return [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
+class IncompleteRead extends Error {
+  constructor(readonly reason: ReportingIncompleteReason, readonly cause?: unknown) {
+    super(reason);
+  }
+}
+
+/** A Firestore "requires an index" refusal (FAILED_PRECONDITION), named — never folded into a generic failure. */
+function isMissingIndexError(err: unknown): boolean {
+  const e = err as { code?: unknown; message?: unknown } | null;
+  if (!e) return false;
+  if (e.code === 9 || e.code === "failed-precondition" || e.code === "FAILED_PRECONDITION") return true;
+  return typeof e.message === "string" && /requires an index|FAILED_PRECONDITION/i.test(e.message);
+}
+
 /**
- * The bounded reporting read. Exported so tests exercise it with an injected Firestore and an
- * injected authority — no live grant needed to prove the scope rules.
+ * Read a query to EXHAUSTION in document-id order, one bounded cursor page at a time.
+ *
+ * The cursor is the document id (`orderBy(__name__)` + `startAfter(lastId)`): unique, immutable and
+ * already indexed, so a page boundary can never skip or repeat a fact, and no composite index is
+ * needed (an equality filter plus `__name__` ordering is served by the automatic single-field index).
+ * Throws IncompleteRead — never returns a short list as if it were the whole collection.
+ */
+/** The two read shapes the core uses — satisfied by a Firestore Transaction. */
+interface SnapshotReader {
+  get(query: Query): Promise<QuerySnapshot>;
+  getAll(...refs: DocumentReference[]): Promise<DocumentSnapshot[]>;
+}
+
+async function scanToExhaustion(
+  reader: SnapshotReader,
+  query: Query,
+  scan: ReportingCollectionScan,
+  pageSize: number,
+  ceiling: number,
+  // Accumulates across several queries into one collection (BY_INVOICE_ID chunks), so the ceiling
+  // bounds the collection's total for the call, not each chunk separately.
+  into: DocumentSnapshot[] = [],
+): Promise<DocumentSnapshot[]> {
+  let cursor: string | null = null;
+  for (;;) {
+    // One row past the ceiling is requested on the final page, so "exactly the ceiling" (complete)
+    // and "more than the ceiling" (partial) are distinguishable without a second query.
+    const take = Math.min(pageSize, ceiling - into.length + 1);
+    let page = query.orderBy(FieldPath.documentId());
+    if (cursor !== null) page = page.startAfter(cursor);
+    let snap: QuerySnapshot;
+    try {
+      snap = await reader.get(page.limit(take));
+    } catch (err) {
+      throw new IncompleteRead(isMissingIndexError(err) ? "INDEX_MISSING" : "READ_FAILED", err);
+    }
+    scan.pages += 1;
+    scan.documentsRead += snap.size;
+    if (into.length + snap.size > ceiling) throw new IncompleteRead("SCAN_CEILING_REACHED");
+    into.push(...snap.docs);
+    if (snap.size < take) return into;
+    cursor = snap.docs[snap.docs.length - 1].id;
+  }
+}
+
+/**
+ * Fetch exactly the named documents, in bounded batches. A named id that does not exist is COUNTED
+ * (`danglingIds`) and makes the read DANGLING_REFERENCE — a receipt an authorized application points
+ * at is part of the answer, so its absence means the answer is not whole.
+ */
+async function readByIds(
+  reader: SnapshotReader,
+  db: Firestore,
+  collection: string,
+  ids: string[],
+  scan: ReportingCollectionScan,
+  pageSize: number,
+  ceiling: number,
+): Promise<DocumentSnapshot[]> {
+  if (ids.length > ceiling) throw new IncompleteRead("SCAN_CEILING_REACHED");
+  const out: DocumentSnapshot[] = [];
+  for (let i = 0; i < ids.length; i += pageSize) {
+    const refs = ids.slice(i, i + pageSize).map((id) => db.collection(collection).doc(id));
+    let snaps: DocumentSnapshot[];
+    try {
+      snaps = await reader.getAll(...refs);
+    } catch (err) {
+      throw new IncompleteRead(isMissingIndexError(err) ? "INDEX_MISSING" : "READ_FAILED", err);
+    }
+    scan.pages += 1;
+    for (const d of snaps) {
+      if (!d.exists) {
+        scan.danglingIds += 1;
+        continue;
+      }
+      scan.documentsRead += 1;
+      out.push(d);
+    }
+  }
+  if (scan.danglingIds > 0) throw new IncompleteRead("DANGLING_REFERENCE");
+  scan.exhausted = true;
+  return out;
+}
+
+export interface ReadFinancialFactsOptions {
+  /** Override the per-collection hard ceiling (tests only; the callable always uses the constant). */
+  scanCeiling?: number;
+}
+
+/**
+ * The complete, cursor-paged reporting read. Exported so tests exercise it with an injected
+ * Firestore and an injected authority — no live grant needed to prove the scope rules.
+ *
+ * `pageSize` bounds each page; it no longer bounds the answer. The answer is COMPLETE or it carries
+ * nothing (see THE COMPLETENESS CONTRACT).
  */
 export async function readFinancialFacts(
   db: Firestore,
   authority: FinancialVisibilityAuthority,
   filters: FinancialFactsFilters,
-  limit: number,
+  pageSize: number,
+  options: ReadFinancialFactsOptions = {},
 ): Promise<FinancialFactsResult> {
   const now = Date.now();
-  const empty: FinancialFactsResult = {
+  const size = Number.isSafeInteger(pageSize) && pageSize > 0 ? Math.min(pageSize, MAX_REPORTING_LIMIT) : DEFAULT_REPORTING_LIMIT;
+  const ceiling =
+    Number.isSafeInteger(options.scanCeiling) && (options.scanCeiling as number) > 0
+      ? (options.scanCeiling as number)
+      : REPORTING_SCAN_CEILING;
+  const scans: ReportingCollectionScan[] = [];
+  const newScan = (collection: string, mode: ReportingScanMode, tenantWide: boolean): ReportingCollectionScan => {
+    const s = { collection, documentsRead: 0, pages: 0, exhausted: false, mode, tenantWide, danglingIds: 0 };
+    scans.push(s);
+    return s;
+  };
+  const withheld = (reason: ReportingIncompleteReason): FinancialFactsResult => ({
     status: "unavailable",
+    completeness: {
+      status: scans.some((s) => s.documentsRead > 0) ? "PARTIAL" : "NOT_READ",
+      reason,
+      pageSize: size,
+      scanCeiling: ceiling,
+      consistency: "SINGLE_SNAPSHOT",
+      scans: scans.map((s) => ({ ...s })),
+    },
     invoices: [],
     payments: [],
     applications: [],
@@ -249,28 +492,32 @@ export async function readFinancialFacts(
     byCreditedSalesperson: [],
     grantedScopes: [...authority.grantedScopes],
     unattributed: { businessUnit: 0, creditedSalesperson: 0 },
-  };
+  });
   const wants = (t: ReportingFactType): boolean =>
     !Array.isArray(filters.factTypes) || filters.factTypes.length === 0 || filters.factTypes.includes(t);
 
   // Fail closed HERE too, not only at the callable. A principal with no reach must never receive a
   // "ready" empty page — "ready, nothing outstanding" and "you cannot see this" are different facts,
   // and only the second one is true.
-  if (!authority.anyReach) return empty;
+  if (!authority.anyReach) return withheld("NO_REACH");
 
-  try {
+  // ONE read-only transaction: every read below shares one consistent snapshot (see ONE SNAPSHOT).
+  // `scans` is reset at the top so a transport-level retry of the function starts its counts clean.
+  const readAll = async (reader: SnapshotReader): Promise<FinancialFactsResult> => {
+    scans.length = 0;
     // An accountId narrowing is pushed into the query so a single-account view stays cheap; every
-    // other narrowing happens after authorization, in memory, on the bounded page.
+    // other narrowing happens after authorization, in memory, on the COMPLETE set.
     const base = db.collection(INVOICES_COLLECTION);
-    const query = nonEmpty(filters.accountId) ? base.where("accountId", "==", filters.accountId) : base;
-    const snap = await query.limit(limit + 1).get();
-    // BOUNDED-READ HONESTY, same rule as the account read: a truncated page is never "ready",
-    // because a partial set summarized confidently is worse than no set. The check runs on the
-    // UNFILTERED page — completeness is a fact about the query, not about what survived scope.
-    if (snap.size > limit) return empty;
+    const accountNarrowed = nonEmpty(filters.accountId);
+    const query = accountNarrowed ? base.where("accountId", "==", filters.accountId) : base;
+    // COMPLETENESS IS JUDGED ON THE UNFILTERED QUERY — a fact about what was read, not about what
+    // survived scope — so a narrow scope can never mask an incomplete read.
+    const invoiceScan = newScan(INVOICES_COLLECTION, "CURSOR_SCAN", !accountNarrowed);
+    const invoiceDocs = await scanToExhaustion(reader, query, invoiceScan, size, ceiling);
+    invoiceScan.exhausted = true;
 
     // ── AUTHORIZATION FIRST. Requested filters are not consulted until after this line. ──
-    const visibleDocs = snap.docs.filter((d) => authority.isInvoiceVisible(invoiceVisibilityFacts(d.data() ?? {})));
+    const visibleDocs = invoiceDocs.filter((d) => authority.isInvoiceVisible(invoiceVisibilityFacts(d.data() ?? {})));
 
     // ── Then the caller's narrowing, over the already-authorized set. ──
     const invoices: InvoiceReportRead[] = [];
@@ -296,9 +543,27 @@ export async function readFinancialFacts(
     let payments: PaymentReportRead[] = [];
     let applications: PaymentApplicationReportRead[] = [];
     if (visibleInvoiceIds.size > 0 && (wants("PAYMENT_APPLICATION") || wants("PAYMENT_RECEIPT"))) {
-      const appSnap = await db.collection(PAYMENT_APPLICATIONS_COLLECTION).limit(MAX_REPORTING_LIMIT + 1).get();
-      if (appSnap.size > MAX_REPORTING_LIMIT) return empty;
-      const visibleApps = appSnap.docs.filter((d) => visibleInvoiceIds.has(String((d.data() ?? {}).invoiceId ?? "")));
+      // BOUNDED BY REACH when it can be: applications are fetched only for the AUTHORIZED invoice
+      // ids (the same set that authorizes them below — not the caller-narrowed one), so a tenant
+      // with more applications than the ceiling no longer makes a single-account read partial.
+      // Above APPLICATIONS_BY_INVOICE_MAX ids the read pages the whole collection and marks the
+      // scan tenantWide. Either way the visibility filter below is the same one line.
+      const appsCollection = db.collection(PAYMENT_APPLICATIONS_COLLECTION);
+      let appDocs: DocumentSnapshot[];
+      if (visibleInvoiceIds.size <= APPLICATIONS_BY_INVOICE_MAX) {
+        const appScan = newScan(PAYMENT_APPLICATIONS_COLLECTION, "BY_INVOICE_ID", false);
+        const ids = [...visibleInvoiceIds].sort();
+        appDocs = [];
+        for (let i = 0; i < ids.length; i += IN_CHUNK) {
+          await scanToExhaustion(reader, appsCollection.where("invoiceId", "in", ids.slice(i, i + IN_CHUNK)), appScan, size, ceiling, appDocs);
+        }
+        appScan.exhausted = true;
+      } else {
+        const appScan = newScan(PAYMENT_APPLICATIONS_COLLECTION, "CURSOR_SCAN", true);
+        appDocs = await scanToExhaustion(reader, appsCollection, appScan, size, ceiling);
+        appScan.exhausted = true;
+      }
+      const visibleApps = appDocs.filter((d) => visibleInvoiceIds.has(String((d.data() ?? {}).invoiceId ?? "")));
       // Every application the caller may see, before any period narrowing — this is what authorizes
       // a receipt, so a receipt stays judged on its own received date.
       const allVisibleApplicationPaymentIds = visibleApps
@@ -324,13 +589,13 @@ export async function readFinancialFacts(
       if (wants("PAYMENT_RECEIPT")) {
         // Receipt visibility follows the applications over ALL authorized invoices — not the
         // period-filtered applications above, or a receipt would be hidden by the application
-        // date rather than judged on its own received date.
-        const paymentIds = new Set(allVisibleApplicationPaymentIds);
-        if (paymentIds.size > 0) {
-          const paySnap = await db.collection(PAYMENTS_COLLECTION).limit(MAX_REPORTING_LIMIT + 1).get();
-          if (paySnap.size > MAX_REPORTING_LIMIT) return empty;
-          payments = paySnap.docs
-            .filter((d) => paymentIds.has(d.id))
+        // date rather than judged on its own received date. Receipts are fetched BY ID: only the
+        // receipts an authorized application names are read, so the size of the payments
+        // collection as a whole can neither truncate nor widen this answer.
+        const paymentIds = [...new Set(allVisibleApplicationPaymentIds)].sort();
+        if (paymentIds.length > 0) {
+          const payDocs = await readByIds(reader, db, PAYMENTS_COLLECTION, paymentIds, newScan(PAYMENTS_COLLECTION, "BY_ID", false), size, ceiling);
+          payments = payDocs
             .map((d) => {
               const x = d.data() ?? {};
               return {
@@ -356,6 +621,7 @@ export async function readFinancialFacts(
 
     return {
       status: "ready",
+      completeness: { status: "COMPLETE", reason: null, pageSize: size, scanCeiling: ceiling, consistency: "SINGLE_SNAPSHOT", scans: scans.map((x) => ({ ...x })) },
       invoices: wants("INVOICE") ? invoices : [],
       payments,
       applications: wants("PAYMENT_APPLICATION") ? applications : [],
@@ -374,9 +640,17 @@ export async function readFinancialFacts(
         creditedSalesperson: invoices.filter((r) => !nonEmpty(r.creditedSalespersonId)).length,
       },
     };
+  };
+
+  try {
+    return await db.runTransaction((tx) => readAll(tx), { readOnly: true });
   } catch (err) {
+    if (err instanceof IncompleteRead) {
+      if (err.reason !== "SCAN_CEILING_REACHED") console.error(`[readFinancialFacts] ${err.reason}`, err.cause);
+      return withheld(err.reason);
+    }
     console.error("[readFinancialFacts] read failed", err);
-    return empty;
+    return withheld("READ_FAILED");
   }
 }
 
@@ -423,7 +697,7 @@ export const listFinancialFacts = onCall({ region: "us-central1" }, async (reque
   let limit = DEFAULT_REPORTING_LIMIT;
   if (data.limit !== undefined) {
     if (!Number.isSafeInteger(data.limit) || (data.limit as number) <= 0 || (data.limit as number) > MAX_REPORTING_LIMIT) {
-      throw new HttpsError("invalid-argument", `limit must be a positive integer no greater than ${MAX_REPORTING_LIMIT}.`);
+      throw new HttpsError("invalid-argument", `limit (the page size) must be a positive integer no greater than ${MAX_REPORTING_LIMIT}.`);
     }
     limit = data.limit as number;
   }

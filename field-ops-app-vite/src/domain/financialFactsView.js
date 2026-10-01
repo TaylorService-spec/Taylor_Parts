@@ -34,11 +34,30 @@ export const FACTS_STATE = Object.freeze({
  * label a truncated page "ready" rather than summarizing a partial set confidently. It maps to
  * UNAVAILABLE for exactly that reason — the page must not present it as "nothing here".
  */
-export function financialFactsState({ loading, errorStatus, result }) {
-  if (loading) return { state: FACTS_STATE.LOADING };
-  if (errorStatus === "denied") return { state: FACTS_STATE.DENIED };
-  if (errorStatus === "unavailable" || result == null) return { state: FACTS_STATE.UNAVAILABLE };
-  if (result.status !== "ready") return { state: FACTS_STATE.UNAVAILABLE };
+/*
+ * `detail` is the ONE honest-state sentence every page renders for a non-ready read. For an
+ * incomplete read it is the server's named reason and counts (incompleteReadNote), falling back to
+ * the generic FACTS_DETAIL sentence only when the server named nothing. `accountSelector` is true
+ * only on a page that actually offers a single-account choice, so the sentence never advises a
+ * narrowing the page cannot perform.
+ */
+export function financialFactsState({ loading, errorStatus, result }, { accountSelector = false } = {}) {
+  if (loading) return { state: FACTS_STATE.LOADING, detail: null };
+  if (errorStatus === "denied") return { state: FACTS_STATE.DENIED, detail: FACTS_DETAIL[FACTS_STATE.DENIED] };
+  if (errorStatus === "unavailable" || result == null) {
+    return { state: FACTS_STATE.UNAVAILABLE, detail: FACTS_DETAIL[FACTS_STATE.UNAVAILABLE] };
+  }
+  const incomplete = (completeness) => ({
+    state: FACTS_STATE.UNAVAILABLE,
+    completeness,
+    detail: incompleteReadNote(completeness, { accountSelector }) ?? FACTS_DETAIL[FACTS_STATE.UNAVAILABLE],
+  });
+  // An incomplete read is UNAVAILABLE, and it carries the server's named reason and counts so a
+  // page can say WHY — never rendered as empty, never as a total.
+  const completeness = financialFactsCompleteness(result);
+  if (result.status !== "ready") return incomplete(completeness);
+  // Defence in depth: a "ready" status beside a non-COMPLETE contract is treated as incomplete.
+  if (completeness.status !== "COMPLETE") return incomplete(completeness);
   // EMPTINESS IS ABOUT THE WHOLE ANSWER, NOT ABOUT INVOICES.
   //
   // This used to test `result.invoices` alone, which quietly broke Payments: that page requests
@@ -47,8 +66,79 @@ export function financialFactsState({ loading, errorStatus, result }) {
   // the records it was asked to show. A read that returned facts must never render as "no records".
   const returned =
     (result.invoices?.length ?? 0) + (result.payments?.length ?? 0) + (result.applications?.length ?? 0);
-  if (returned === 0) return { state: FACTS_STATE.EMPTY, result };
-  return { state: FACTS_STATE.READY, result };
+  if (returned === 0) return { state: FACTS_STATE.EMPTY, result, detail: FACTS_DETAIL[FACTS_STATE.EMPTY] };
+  return { state: FACTS_STATE.READY, result, detail: null };
+}
+
+/**
+ * THE COMPLETENESS CONTRACT, read — never inferred beyond what the server said.
+ *
+ * The server returns `completeness: { status: COMPLETE | PARTIAL | NOT_READ, reason, pageSize,
+ * scanCeiling, scans: [{ collection, documentsRead, pages, exhausted }] }`. Rows and figures are
+ * only ever present when it is COMPLETE. A deployed function older than this bundle sends no
+ * `completeness`; its `status: "ready"` already meant "not truncated" (it refused truncated pages),
+ * so that — and only that — maps to COMPLETE, labelled as the legacy contract. Anything else with
+ * no contract is UNKNOWN, which is not complete.
+ */
+export function financialFactsCompleteness(result) {
+  const c = result?.completeness;
+  if (c && typeof c === "object" && typeof c.status === "string") {
+    return {
+      status: c.status,
+      reason: c.reason ?? null,
+      scanCeiling: typeof c.scanCeiling === "number" ? c.scanCeiling : null,
+      scans: Array.isArray(c.scans) ? c.scans : [],
+      legacy: false,
+    };
+  }
+  if (result?.status === "ready") return { status: "COMPLETE", reason: null, scanCeiling: null, scans: [], legacy: true };
+  return { status: "UNKNOWN", reason: null, scanCeiling: null, scans: [], legacy: true };
+}
+
+const COLLECTION_WORDS = Object.freeze({
+  invoices: "invoices",
+  payment_applications: "payment applications",
+  payments: "payment receipts",
+});
+
+/**
+ * The sentence for an incomplete read, or null when the read was complete. States the reason and
+ * the counts the server reported; never estimates what the unread remainder would have added.
+ */
+export function incompleteReadNote(completeness, { accountSelector = false } = {}) {
+  if (!completeness || completeness.status === "COMPLETE") return null;
+  const scans = completeness.scans ?? [];
+  const over = scans.find((s) => s && s.exhausted === false);
+  const what = over ? COLLECTION_WORDS[over.collection] ?? over.collection : "records";
+  const withheld = "Nothing is shown: a total over part of the records would read as a total over all of them.";
+  switch (completeness.reason) {
+    case "SCAN_CEILING_REACHED": {
+      const limit = completeness.scanCeiling ?? "the maximum number of";
+      if (over?.tenantWide) {
+        // Company, period and unit filters narrow AFTER the read, so they cannot help here; only an
+        // account narrows the read itself, and only where the page offers one is it suggested.
+        const advice = accountSelector ? " Select a single account to see a complete answer for it." : "";
+        return `This tenant holds more than ${limit} ${what}, which is more than one governed read can complete. ${withheld}${advice}`;
+      }
+      return `More than ${limit} ${what} fall under this request, which is more than one governed read can complete. ${withheld}`;
+    }
+    case "DANGLING_REFERENCE": {
+      // A count of missing RECORDS the server reported — not money.
+      let n = 0;
+      for (const s of scans) if (typeof s?.danglingIds === "number") n += s.danglingIds;
+      return `${n || "Some"} payment receipt${n === 1 ? "" : "s"} named by a payment application could not be found. Nothing is shown: an answer with a broken link between its records is not complete.`;
+    }
+    case "INDEX_MISSING":
+      return "The governed read could not run because a required database index is not deployed. Nothing is shown; this is a deployment fact, not an absence of records.";
+    case "READ_FAILED":
+      return completeness.status === "PARTIAL"
+        ? `The governed read failed part-way (after ${over?.documentsRead ?? "some"} ${what}). Nothing is shown, because the records already read are not the whole answer.`
+        : "The governed read failed before any record was read. Nothing is shown; this is not an absence of records.";
+    case "NO_REACH":
+      return "No financial visibility scope confers reach for your principal, so nothing was read.";
+    default:
+      return null;
+  }
 }
 
 /** The honest-state detail sentence for each non-ready state. Contract copy — states the fact, only. */
@@ -179,14 +269,15 @@ export const LIFECYCLE_ABSENCE = Object.freeze({
     "The governed read returns this figure per operating company and no consolidated total. This page will not add the companies together: a total assembled here from a scoped slice would read as a statement about the whole book. Select a single company to see it, or use Company & Business Unit Performance.",
 });
 
-export function lifecycleScorecard(state, result) {
+export function lifecycleScorecard(state, result, stateDetail = null) {
   const absent = (detail) => ({ valueText: null, absence: "Not supplied by this read", detail });
   const value = (byCurrency) => ({ valueText: formatByCurrency(byCurrency), absence: null, detail: null });
 
   // Nothing is a figure until the read is READY. A denied or failed read must never show a
   // number — least of all $0.00, which would assert a balance nobody reported.
   if (state !== FACTS_STATE.READY && state !== FACTS_STATE.EMPTY) {
-    const detail = FACTS_DETAIL[state] ?? null;
+    // `stateDetail` is financialFactsState's own sentence — the named reason for an incomplete read.
+    const detail = stateDetail ?? FACTS_DETAIL[state] ?? null;
     const stateAbsence = state === FACTS_STATE.LOADING ? "Reading…" : state === FACTS_STATE.DENIED ? "Withheld" : "Unavailable";
     return Object.fromEntries(
       ["booked", "billable", "billed", "collected", "arOutstanding", "unbilled"].map((k) => [

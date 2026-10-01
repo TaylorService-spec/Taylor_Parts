@@ -20,7 +20,7 @@ import { LIFECYCLE_SCORECARD_SLOTS } from "../../domain/financialsSurface.js";
 import { OPERATING_COMPANY_IDS } from "../../domain/operatingCompanyAuthority.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
-import { FACTS_STATE, FACTS_DETAIL, financialFactsState, formatByCurrency } from "../../domain/financialFactsView.js";
+import { FACTS_STATE, financialFactsState, formatByCurrency } from "../../domain/financialFactsView.js";
 
 const VIEW_OPTIONS = [
   { key: "metrics", label: "Metrics table" },
@@ -50,7 +50,7 @@ export default function FinancialsCompanyPerformance() {
     { factTypes: ["INVOICE"], ...period.requestFields },
     { enabled: !period.blocked },
   );
-  const { state, result } = financialFactsState(read);
+  const { state, result, detail } = financialFactsState(read);
   const ready = state === FACTS_STATE.READY;
   const rollups = ready ? (view === "byUnit" ? result.byBusinessUnit : result.byCompany) : [];
 
@@ -92,7 +92,7 @@ export default function FinancialsCompanyPerformance() {
       </div>
 
       {ready ? null : (
-        <p className="ns-state ns-state--na">{FACTS_DETAIL[state] ?? "The governed read has not answered yet."}</p>
+        <p className="ns-state ns-state--na">{detail ?? "The governed read has not answered yet."}</p>
       )}
 
       <section className="ns-section" aria-label="Metric by company">
