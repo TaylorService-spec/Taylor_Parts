@@ -44,6 +44,20 @@
 // existing row with the same key but different content is a CONFLICT, never overwritten. A rerun writes nothing. CERTIFY
 // writes the two eos_ops.inventory_baseline_cutovers rows ONLY when VERIFY finds every planned movement and custody unit
 // present and ZERO blocking refusals; that certification is what opens the Inventory writers for the tenant.
+// ════════════════════ SAMPLE_DATA_SEED (GLOBAL OWNER RULING, 2026-10-01) ════════════════════
+//
+// "NOTHING CURRENTLY STORED IN FIREBASE IS REAL TAYLOR BUSINESS DATA." A manifest may therefore declare
+// seedKind = SAMPLE_DATA_SEED: the legacy sample inventory SEEDS a nonprod EOS warehouse for testing. It is NOT a
+// PRODUCTION_IDENTITY_MAPPING (the default, unchanged and strict): a seed source may be a fixture identity (wh-main), but the
+// seed establishes no identity -- its rows carry `sample-seed:` lineage and its certification evidence says SAMPLE_DATA_SEED.
+// In seed mode only:
+//   * deterministic corrections of malformed sample records: a custody record naming a legacy WAREHOUSE id without its
+//     location type is that warehouse; a RECEIVED (not yet put away) unit is AVAILABLE stock;
+//   * a record that cannot be seeded coherently is EXCLUDED_SAMPLE (its original code preserved) instead of blocking --
+//     commitment rows, Parts outside the governed catalog, open sample transfers, held groups;
+//   * the written set still keeps every invariant: no negative balance (groups held whole), one custody location per unit,
+//     custody <-> ledger agreement (a serial's ledger rows are never written without its custody), company match,
+//     receipt-created custody never overwritten, replay safety.
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { planLegacyInventoryMovementRun, migrationIdempotencyKey, type PlannedMovement } from "./legacyInventoryMovementRun";
@@ -57,13 +71,22 @@ interface Doc { readonly id: string; readonly data: Record<string, unknown> }
 export const INVENTORY_BASELINE_MANIFEST_FORMAT = "EOS_INVENTORY_BASELINE_MANIFEST";
 
 export interface WarehouseIdentityEntry { readonly legacyWarehouseId: string; readonly eosWarehouseId: string; readonly evidence: string }
+export const SEED_KINDS = Object.freeze(["PRODUCTION_IDENTITY_MAPPING", "SAMPLE_DATA_SEED"] as const);
+export type SeedKind = (typeof SEED_KINDS)[number];
+
 export interface InventoryBaselineManifest {
   readonly format: typeof INVENTORY_BASELINE_MANIFEST_FORMAT;
   readonly version: 1;
   readonly ruling: string;
+  /** Absent = PRODUCTION_IDENTITY_MAPPING (strict). SAMPLE_DATA_SEED requires the global Owner ruling and seeds nonprod only. */
+  readonly seedKind?: SeedKind;
   readonly warehouseIdentity: readonly WarehouseIdentityEntry[];
+  /** SAMPLE_DATA_SEED only: legacy sample warehouses seeding an EOS warehouse. Not an identity. */
+  readonly sampleSeedWarehouses?: readonly WarehouseIdentityEntry[];
   readonly excludedLegacyWarehouses: readonly { readonly legacyWarehouseId: string; readonly reason: string }[];
 }
+export const SAMPLE_SEED_KEY_PREFIX = "sample-seed:";
+const seedKindOf = (m: InventoryBaselineManifest): SeedKind => m.seedKind ?? "PRODUCTION_IDENTITY_MAPPING";
 
 export interface InventoryBaselineSnapshot {
   readonly sha256: string;
@@ -74,7 +97,7 @@ export interface InventoryBaselineSnapshot {
   readonly transferOrders: readonly Doc[];
 }
 
-export type Disposition = "PLANNED" | "EXCLUDED_FIXTURE" | "DEFERRED_TRUCK" | "DEFERRED_EQUIPMENT" | "REFUSED" | "HELD" | "ALREADY_PRESENT";
+export type Disposition = "PLANNED" | "EXCLUDED_FIXTURE" | "EXCLUDED_SAMPLE" | "DEFERRED_TRUCK" | "DEFERRED_EQUIPMENT" | "REFUSED" | "HELD" | "ALREADY_PRESENT";
 
 export interface RecordFinding { readonly kind: "LEDGER" | "CUSTODY" | "GATE"; readonly id: string; readonly disposition: Disposition; readonly code: string }
 
@@ -84,6 +107,9 @@ export interface PlannedCustody {
 }
 
 export interface InventoryBaselinePlan {
+  readonly seedKind: SeedKind;
+  /** Deterministic sample corrections applied (seed mode only): legacy id -> correction code. */
+  readonly corrections: readonly { readonly id: string; readonly code: string }[];
   readonly manifestSha256: string;
   readonly snapshotSha256: string;
   readonly movements: readonly (PlannedMovement & { readonly createdBy: string })[];
@@ -121,7 +147,17 @@ export function validateManifest(raw: unknown): InventoryBaselineManifest {
   const m = raw as unknown as InventoryBaselineManifest;
   if (!text(m.ruling)) fail("MANIFEST_INVALID", "the manifest names the ruling it executes");
   if (!Array.isArray(m.warehouseIdentity) || !Array.isArray(m.excludedLegacyWarehouses)) fail("MANIFEST_INVALID", "warehouseIdentity and excludedLegacyWarehouses are lists");
-  const sources = new Set<string>();
+  if (m.seedKind !== undefined && !(SEED_KINDS as readonly string[]).includes(m.seedKind)) fail("MANIFEST_INVALID", `seedKind is one of ${SEED_KINDS.join(", ")}`);
+  const seed = seedKindOf(m) === "SAMPLE_DATA_SEED";
+  if (seed && m.warehouseIdentity.length > 0) fail("MANIFEST_SEED_IS_NOT_IDENTITY", "a SAMPLE_DATA_SEED establishes no warehouse identity; use sampleSeedWarehouses");
+  if (!seed && (m.sampleSeedWarehouses ?? []).length > 0) fail("MANIFEST_INVALID", "sampleSeedWarehouses require seedKind SAMPLE_DATA_SEED");
+  const seedSources = new Set<string>();
+  for (const e of m.sampleSeedWarehouses ?? []) {
+    if (!text(e.legacyWarehouseId) || !text(e.eosWarehouseId) || !text(e.evidence)) fail("MANIFEST_INVALID", "every sample seed entry states legacy id, EOS id and the ruling it rests on");
+    if (seedSources.has(e.legacyWarehouseId)) fail("MANIFEST_AMBIGUOUS", `${e.legacyWarehouseId} seeds more than once`);
+    seedSources.add(e.legacyWarehouseId);
+  }
+  const sources = new Set<string>(seedSources);
   for (const e of m.warehouseIdentity) {
     if (!text(e.legacyWarehouseId) || !text(e.eosWarehouseId) || !text(e.evidence)) fail("MANIFEST_INVALID", "every identity entry states legacy id, EOS id and its evidence");
     if (FORBIDDEN_WAREHOUSE_IDS.includes(e.legacyWarehouseId) || e.legacyWarehouseId === SYNTHETIC_ACCEPTANCE_WAREHOUSE.warehouseId) {
@@ -139,7 +175,7 @@ export function validateManifest(raw: unknown): InventoryBaselineManifest {
 
 // The target balances the plan adds legacy deltas to EXCLUDE rows this cutover itself already wrote (their keys are
 // migrationIdempotencyKey(...)), so a replan after a COPY -- VERIFY, a rerun -- never counts a copied movement twice.
-const NOT_LEGACY_COPY = `(idempotency_key IS NULL OR idempotency_key NOT LIKE '${migrationIdempotencyKey("")}%')`;
+const NOT_LEGACY_COPY = `(idempotency_key IS NULL OR (idempotency_key NOT LIKE '${migrationIdempotencyKey("")}%' AND idempotency_key NOT LIKE '${SAMPLE_SEED_KEY_PREFIX}%'))`;
 
 /** Everything the plan needs from PostgreSQL, read inside the caller's snapshot. */
 export async function readTargetState(db: Queryable, tenantId: string): Promise<TargetState> {
@@ -176,8 +212,11 @@ type Resolved =
 
 /** The ONE location-identity rule, shared by the ledger and custody stages. */
 function locationResolver(manifest: InventoryBaselineManifest, target: TargetState, legacyWarehouses: ReadonlyMap<string, Record<string, unknown>>) {
-  const excluded = new Set<string>([...FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE.warehouseId, ...manifest.excludedLegacyWarehouses.map((x) => x.legacyWarehouseId)]);
-  const identity = new Map(manifest.warehouseIdentity.map((e) => [e.legacyWarehouseId, e.eosWarehouseId]));
+  const sources = seedKindOf(manifest) === "SAMPLE_DATA_SEED" ? (manifest.sampleSeedWarehouses ?? []) : manifest.warehouseIdentity;
+  const identity = new Map(sources.map((e) => [e.legacyWarehouseId, e.eosWarehouseId]));
+  // A fixture is excluded unless a SAMPLE seed names it explicitly (a production mapping never can: validateManifest).
+  const excluded = new Set<string>([...FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE.warehouseId, ...manifest.excludedLegacyWarehouses.map((x) => x.legacyWarehouseId)]
+    .filter((id) => !identity.has(id)));
   const warehouse = (legacyId: string): Resolved => {
     if (excluded.has(legacyId)) return { ok: false, disposition: "EXCLUDED_FIXTURE", code: "EXCLUDED_FIXTURE_WAREHOUSE" };
     const eosId = identity.get(legacyId);
@@ -201,7 +240,7 @@ function locationResolver(manifest: InventoryBaselineManifest, target: TargetSta
       const parentEos = target.bins.get(l);
       if (!parentEos) return { ok: false, disposition: "REFUSED", code: "BIN_NOT_IN_EOS" };
       // The bin's EOS warehouse must itself be the PROVEN target of some mapped legacy warehouse.
-      const source = manifest.warehouseIdentity.find((e) => e.eosWarehouseId === parentEos);
+      const source = sources.find((e) => e.eosWarehouseId === parentEos);
       if (!source) return { ok: false, disposition: "REFUSED", code: "BIN_WAREHOUSE_NOT_MAPPED" };
       const w = warehouse(source.legacyWarehouseId);
       if (!w.ok) return w;
@@ -214,6 +253,8 @@ function locationResolver(manifest: InventoryBaselineManifest, target: TargetSta
 /** PURE: the whole plan from the snapshot, the manifest and the target state. */
 export function planInventoryBaseline(snapshot: InventoryBaselineSnapshot, manifest: InventoryBaselineManifest, target: TargetState): InventoryBaselinePlan {
   const findings: RecordFinding[] = [];
+  const seed = seedKindOf(manifest) === "SAMPLE_DATA_SEED";
+  const corrections: { id: string; code: string }[] = [];
   const legacyWarehouses = new Map(snapshot.warehouses.map((d) => [d.id, d.data]));
   const resolve = locationResolver(manifest, target, legacyWarehouses);
 
@@ -291,12 +332,18 @@ export function planInventoryBaseline(snapshot: InventoryBaselineSnapshot, manif
   const seen = new Map<string, number>();
   for (const a of snapshot.serializedAssets) { const k = `${text(a.data.partId)}|${text(a.data.serialNo)}`; seen.set(k, (seen.get(k) ?? 0) + 1); }
   for (const a of snapshot.serializedAssets) {
-    const partId = text(a.data.partId), serial = text(a.data.serialNo), state = text(a.data.inventoryState);
+    const partId = text(a.data.partId), serial = text(a.data.serialNo);
+    let state = text(a.data.inventoryState);
+    let locType: unknown = a.data.currentLocationType;
+    if (seed && !text(locType) && text(a.data.currentLocationId) && legacyWarehouses.has(text(a.data.currentLocationId) as string)) {
+      locType = "WAREHOUSE"; corrections.push({ id: a.id, code: "LOCATION_TYPE_FROM_LEGACY_WAREHOUSE_ID" });
+    }
+    if (seed && state === "RECEIVED") { state = "AVAILABLE"; corrections.push({ id: a.id, code: "RECEIVED_UNIT_IS_AVAILABLE" }); }
     const add = (disposition: Disposition, code: string) => findings.push({ kind: "CUSTODY", id: a.id, disposition, code });
     if (!partId || !serial) { add("REFUSED", "UNIT_IDENTITY_MISSING"); continue; }
     if ((seen.get(`${partId}|${serial}`) ?? 0) > 1) { add("REFUSED", "DUPLICATE_SERIAL"); continue; }
     if (state === "INSTALLED") { add("DEFERRED_EQUIPMENT", "INSTALLED_UNIT_EQUIPMENT_CUSTODY"); continue; }
-    const r = resolve(a.data.currentLocationType, a.data.currentLocationId);
+    const r = resolve(locType, a.data.currentLocationId);
     if (!r.ok) { add(r.disposition, r.code); continue; }
     if (state !== "AVAILABLE") { add("REFUSED", `UNIT_STATE_${state ?? "MISSING"}`); continue; }
     const part = target.parts.get(partId);
@@ -313,11 +360,31 @@ export function planInventoryBaseline(snapshot: InventoryBaselineSnapshot, manif
     add("PLANNED", "PLANNED");
   }
 
+  let finalMovements = withActor;
+  let finalFindings = findings;
+  if (seed) {
+    // COHERENCE: a serial's ledger rows are written only with its custody (planned here, or already in PostgreSQL at
+    // that location). Anything else would leave a unit in the ledger with no custody record.
+    const custodyKeys = new Set(custody.map((u) => `${u.partId}|${u.serialNumber}`));
+    finalMovements = withActor.filter((p) => {
+      if (p.candidate.trackingMode !== "SERIAL") return true;
+      const k = `${p.candidate.partId}|${p.candidate.serialNumber}`;
+      if (custodyKeys.has(k) || target.custody.has(k)) return true;
+      findings.push({ kind: "LEDGER", id: p.candidate.sourceTransactionId as string, disposition: "HELD", code: "SERIAL_LEDGER_WITHOUT_CUSTODY" });
+      return false;
+    }).map((p) => ({ ...p, idempotencyKey: `${SAMPLE_SEED_KEY_PREFIX}${p.idempotencyKey}` }));
+    const kept = new Set(finalMovements.map((p) => p.candidate.sourceTransactionId));
+    // A record that cannot be seeded coherently is EXCLUDED_SAMPLE, never written, its reason preserved.
+    finalFindings = findings
+      .filter((f) => !(f.kind === "LEDGER" && f.disposition === "PLANNED" && !kept.has(f.id)))
+      .map((f) => (f.disposition === "REFUSED" || f.disposition === "HELD" ? { ...f, disposition: "EXCLUDED_SAMPLE" as const } : f));
+  }
   const counts: Record<string, number> = {};
-  for (const f of findings) counts[`${f.kind}:${f.disposition}`] = (counts[`${f.kind}:${f.disposition}`] ?? 0) + 1;
+  for (const f of finalFindings) counts[`${f.kind}:${f.disposition}`] = (counts[`${f.kind}:${f.disposition}`] ?? 0) + 1;
   return Object.freeze({
-    manifestSha256: manifestSha256(manifest), snapshotSha256: snapshot.sha256, movements: withActor, custody, findings,
-    blocking: findings.filter((f) => f.disposition === "REFUSED" || f.disposition === "HELD").length, counts,
+    seedKind: seedKindOf(manifest), corrections,
+    manifestSha256: manifestSha256(manifest), snapshotSha256: snapshot.sha256, movements: finalMovements, custody, findings: finalFindings,
+    blocking: finalFindings.filter((f) => f.disposition === "REFUSED" || f.disposition === "HELD").length, counts,
   });
 }
 
@@ -375,14 +442,14 @@ export async function copyInventoryBaselineOnce(pool: Pool, input: CutoverInput)
       const r = await c.query(
         `INSERT INTO eos_ops.serialized_custody (id, tenant_id, part_id, serial_number, status, location_type, location_id, operating_company_key, updated_by)
          VALUES ($1,$2,$3,$4,'AVAILABLE',$5,$6,$7,$8) ON CONFLICT (tenant_id, part_id, serial_number) DO NOTHING`,
-        [`cst_${randomUUID()}`, input.tenantId, u.partId, u.serialNumber, u.locationType, u.locationId, u.operatingCompanyKey, input.performedBy]);
+        [`${plan.seedKind === "SAMPLE_DATA_SEED" ? "cst_sampleseed_" : "cst_"}${randomUUID()}`, input.tenantId, u.partId, u.serialNumber, u.locationType, u.locationId, u.operatingCompanyKey, input.performedBy]);
       if (r.rowCount === 1) custodyInserted += 1;
     }
     await c.query(
       `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
        VALUES ($1, $2, 'inventory.baseline.copy', $3, 'inventoryBaseline', $4, NULL, $5, $6)`,
       [`audit_${randomUUID()}`, input.tenantId, input.performedBy, input.tenantId,
-        JSON.stringify({ snapshotSha256: plan.snapshotSha256, manifestSha256: plan.manifestSha256, movementsInserted: inserted, movementsPresent: present,
+        JSON.stringify({ seedKind: plan.seedKind, corrections: plan.corrections.length, snapshotSha256: plan.snapshotSha256, manifestSha256: plan.manifestSha256, movementsInserted: inserted, movementsPresent: present,
           custodyInserted, blocking: plan.blocking, counts: plan.counts }), input.manifest.ruling]);
     return { outcome: inserted + custodyInserted === 0 ? "NO_CHANGES" as const : "APPLIED" as const, movementsInserted: inserted, movementsPresent: present, custodyInserted, plan };
   });
@@ -409,7 +476,7 @@ export async function certifyInventoryBaseline(pool: Pool, input: CutoverInput) 
   const v = await verifyInventoryBaseline(pool, input);
   if (v.verdict !== "VERIFIED") fail("BASELINE_NOT_VERIFIED", `the baseline is not verified (blocking ${v.plan.blocking}, movements ${v.movementsFound}/${v.movementsExpected}, custody missing ${v.custodyMissing}); nothing is certified`);
   return inTx(pool, async (c) => {
-    const evidence = JSON.stringify({ counts: v.plan.counts, movements: v.movementsExpected, ruling: input.manifest.ruling });
+    const evidence = JSON.stringify({ seedKind: v.plan.seedKind, corrections: v.plan.corrections, counts: v.plan.counts, movements: v.movementsExpected, ruling: input.manifest.ruling });
     for (const stage of INVENTORY_BASELINE_STAGES) {
       const prior = (await c.query<{ s: string; m: string }>(
         `SELECT snapshot_sha256 AS s, manifest_sha256 AS m FROM eos_ops.inventory_baseline_cutovers WHERE tenant_id = $1 AND stage = $2`, [input.tenantId, stage])).rows[0];

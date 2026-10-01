@@ -33,8 +33,13 @@ const ACTIVE = Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" });
 
 // ═══════════════════════════════════════════ the committed hold
 
-test("the committed hold is ON, names DQ-034, and says why", () => {
-  assert.equal(STATE.CATALOG_MUTATION_HOLD.held, true);
+// LIFTED 2026-10-01 by the reviewed change the procedure requires (catalog-cutover-plan.md §5.4 STATUS: (a) no deployed
+// release-journey client reaches a Firebase Catalog reader; (b) fresh VERIFY --sample all == the activation digest).
+// The MECHANISM stays proven below with an explicit held state, so re-imposing the hold remains one reviewed edit.
+const HELD = Object.freeze({ held: true, ruling: "DQ-034", reason: STATE.CATALOG_MUTATION_HOLD_REASON });
+
+test("the committed hold is LIFTED, still names DQ-034, and keeps its reason for the record", () => {
+  assert.equal(STATE.CATALOG_MUTATION_HOLD.held, false);
   assert.equal(STATE.CATALOG_MUTATION_HOLD.ruling, "DQ-034");
   assert.equal(STATE.CATALOG_MUTATION_HOLD.reason, "DQ-034: active release-journey readers still read the frozen Firebase catalog");
   assert.ok(Object.isFrozen(STATE.CATALOG_MUTATION_HOLD), "the hold is a frozen code constant");
@@ -43,34 +48,32 @@ test("the committed hold is ON, names DQ-034, and says why", () => {
 });
 
 test("assertCatalogMutationNotHeld refuses while held, passes only on an explicit held:false, and fails closed otherwise", () => {
-  assert.throws(() => STATE.assertCatalogMutationNotHeld("x"), (e) => e instanceof STATE.CatalogMutationHeldError && e.code === "CATALOG_MUTATION_HELD");
+  assert.doesNotThrow(() => STATE.assertCatalogMutationNotHeld("x"), "the committed (lifted) hold passes");
+  assert.throws(() => STATE.assertCatalogMutationNotHeld("x", HELD), (e) => e instanceof STATE.CatalogMutationHeldError && e.code === "CATALOG_MUTATION_HELD");
   assert.doesNotThrow(() => STATE.assertCatalogMutationNotHeld("x", { held: false, ruling: "DQ-034", reason: "lifted" }));
-  for (const malformed of [undefined, null, {}, { held: "false" }, { held: 0 }]) {
+  for (const malformed of [null, {}, { held: "false" }, { held: 0 }]) { // (undefined now means the committed, lifted hold)
     assert.throws(() => STATE.assertCatalogMutationNotHeld("x", malformed), /paused during the migration/, JSON.stringify(malformed));
   }
 });
 
 // ═══════════════════════════════════════════ every mutation in the TABLE is held
 
-test("EVERY operation in CATALOG_MUTATION_OPERATIONS is refused CATALOG_MUTATION_HELD before identity, connection or write", async () => {
+test("LIFTED: EVERY operation in CATALOG_MUTATION_OPERATIONS passes the hold and reaches identity resolution (its own gates follow)", async () => {
   assert.ok(CATALOG_MUTATION_OPERATIONS.length > 0, "non-vacuous: the transport's mutation table is not empty");
   for (const operation of CATALOG_MUTATION_OPERATIONS) {
-    const r = await executeCatalogOperation({ reader: untouchable(), pool: untouchable(), writerAuthority: ACTIVE }, { caller: CALLER, operation, input: { partId: "P-1", part: {} } });
-    assert.deepEqual([r.ok, r.code], [false, "CATALOG_MUTATION_HELD"], operation);
-    assert.match(r.message, /Catalog changes are paused during the migration/, operation);
-    assert.match(r.message, /DQ-034: active release-journey readers still read the frozen Firebase catalog/, operation);
+    const r = await executeCatalogOperation({ reader: untouchable(), pool: untouchable(), writerAuthority: ACTIVE }, { caller: CALLER, operation, input: { partId: "P-1", part: {} } }).catch((e) => e);
+    assert.notEqual(r?.code, "CATALOG_MUTATION_HELD", operation);
+    assert.match(String(r?.message ?? r), /DEPS_TOUCHED|could not be completed/, operation);
   }
 });
 
-test("over HTTP the refusal is 412 with the stable body code CATALOG_MUTATION_HELD", async () => {
+test("over HTTP a mutation is no longer refused 412 CATALOG_MUTATION_HELD", async () => {
   const opts = { reader: untouchable(), pool: untouchable(), writerAuthority: ACTIVE, verifyToken: async () => ({ externalSubject: "x", identityProvider: "firebase" }) };
   for (const operation of CATALOG_MUTATION_OPERATIONS) {
     const res = await handleCatalogRequest(opts, {
       method: "POST", url: CATALOG_ROUTE, headers: { authorization: "Bearer t" }, body: JSON.stringify({ operation, input: {} }),
     });
-    assert.equal(res.status, 412, operation);
-    const body = JSON.parse(res.body);
-    assert.deepEqual([body.ok, body.code, body.operation], [false, "CATALOG_MUTATION_HELD", operation]);
+    assert.notEqual(JSON.parse(res.body).code, "CATALOG_MUTATION_HELD", operation);
   }
 });
 
@@ -138,7 +141,7 @@ test("there is no runtime flag, env override, dep or input that lifts the hold",
   for (const [name, src] of [["catalogHttp.ts", http], ["catalogWriterState.ts", state]]) {
     assert.equal(/process\.env|import\.meta\.env/.test(src), false, `${name} reads no environment`);
   }
-  assert.match(state, /CATALOG_MUTATION_HOLD: CatalogMutationHold = Object\.freeze\(\{\s*held: true,/);
+  assert.match(state, /CATALOG_MUTATION_HOLD: CatalogMutationHold = Object\.freeze\(\{\s*held: false,/);
   assert.equal(/mutationHold|CATALOG_MUTATION_HOLD/.test(code("functions/src/eosApi/server.ts")), false, "the server composes no hold");
   assert.equal(/mutationHold/.test(http), false, "CatalogApiDeps carries no hold seam");
 });

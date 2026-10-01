@@ -61,6 +61,7 @@ function parseInventorySnapshot(raw, sha256) {
 
 function summarize(plan) {
   return {
+    seedKind: plan.seedKind, corrections: plan.corrections.length,
     snapshotSha256: plan.snapshotSha256, manifestSha256: plan.manifestSha256, blocking: plan.blocking, counts: plan.counts,
     plannedMovements: plan.movements.length, plannedCustody: plan.custody.length,
     findings: plan.findings.filter((f) => f.disposition !== "PLANNED").map((f) => ({ kind: f.kind, id: f.id, disposition: f.disposition, code: f.code })),

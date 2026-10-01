@@ -38,12 +38,13 @@ const read = (p) => readFileSync(path.join(REPO, p), "utf8");
 afterEach(cleanup);
 
 describe("the client hold mirrors the server's committed hold", () => {
-  it("is ON, names DQ-034, and carries the server's exact reason", () => {
-    expect(CATALOG_MUTATION_HOLD.held).toBe(true);
+  // LIFTED 2026-10-01 on BOTH sides by one reviewed change (catalog-cutover-plan.md §5.4 STATUS).
+  it("is LIFTED, still names DQ-034, and carries the server's exact reason", () => {
+    expect(CATALOG_MUTATION_HOLD.held).toBe(false);
     expect(CATALOG_MUTATION_HOLD.ruling).toBe("DQ-034");
     expect(Object.isFrozen(CATALOG_MUTATION_HOLD)).toBe(true);
     const server = read("functions/src/catalogMaster/catalogWriterState.ts");
-    expect(server).toMatch(/CATALOG_MUTATION_HOLD: CatalogMutationHold = Object\.freeze\(\{\s*held: true,/);
+    expect(server).toMatch(/CATALOG_MUTATION_HOLD: CatalogMutationHold = Object\.freeze\(\{\s*held: false,/);
     expect(server).toContain(`export const CATALOG_MUTATION_HOLD_REASON = "${CATALOG_MUTATION_HOLD.reason}"`);
   });
 
@@ -63,41 +64,22 @@ describe("the client hold mirrors the server's committed hold", () => {
   });
 });
 
-describe("under the committed hold, no Part change reaches the Catalog API", () => {
-  it("usePartMasterWrite: even readinessOverride:true is held; every action is the paused outcome, zero calls", async () => {
-    const client = { createPart: vi.fn(), updatePart: vi.fn(), changePartStatus: vi.fn() };
+describe("after the lift, the hold no longer stands between a Part change and the Catalog API", () => {
+  it("usePartMasterWrite: the hold is off -- a write reaches the client (the server's own capability gates still decide)", async () => {
+    const client = { createPart: vi.fn(() => Promise.resolve({ ok: true, result: { id: "P" } })), updatePart: vi.fn(), changePartStatus: vi.fn() };
     const { result } = renderHook(() => usePartMasterWrite({ readinessOverride: true, client }));
-    expect(result.current.mutationHeld).toBe(true);
-    expect(result.current.writeReady).toBe(false);
-    let outcomes;
-    await act(async () => {
-      outcomes = [
-        await result.current.runCreate({ partId: "P" }),
-        await result.current.runUpdate("P", 1, { name: "x" }, { name: "y" }),
-        await result.current.runChangeStatus("P", 1, "INACTIVE"),
-      ];
-    });
-    for (const o of outcomes) expect(o).toBe(CATALOG_MUTATION_HELD_OUTCOME);
-    expect(client.createPart).not.toHaveBeenCalled();
-    expect(client.updatePart).not.toHaveBeenCalled();
-    expect(client.changePartStatus).not.toHaveBeenCalled();
+    expect(result.current.mutationHeld).toBe(false);
+    let outcome;
+    await act(async () => { outcome = await result.current.runCreate({ partId: "P" }); });
+    expect(outcome).not.toBe(CATALOG_MUTATION_HELD_OUTCOME);
+    expect(client.createPart).toHaveBeenCalledTimes(1);
   });
 
-  it("Part Master: reads from the Catalog API, states the pause, and offers no create / edit / status", async () => {
+  it("Part Master: reads from the Catalog API and no longer states the migration pause", async () => {
     render(<MemoryRouter><PartMasterList /></MemoryRouter>);
-    expect(await screen.findByText(/catalog changes are paused during the migration\. you can still/i)).toBeTruthy();
-    const newPart = screen.getByRole("button", { name: /new part/i });
-    expect(newPart.disabled).toBe(true);
-    fireEvent.click(newPart);
-    for (const name of [/^edit$/i, /^status$/i]) {
-      const b = screen.getByRole("button", { name });
-      expect(b.disabled).toBe(true);
-      fireEvent.click(b);
-    }
-    expect(screen.queryByRole("dialog")).toBeNull();
-    const ops = h.call.mock.calls.map(([op]) => op);
-    expect(ops).toContain("searchParts");
-    expect(ops.filter((op) => CATALOG_MUTATION_OPERATIONS.includes(op))).toEqual([]);
+    await screen.findAllByText(/PRT-1001|Beater/);
+    expect(screen.queryByText(/catalog changes are paused during the migration\. you can still/i)).toBeNull();
+    expect(h.call.mock.calls.map(([op]) => op)).toContain("searchParts");
   });
 });
 
@@ -149,7 +131,6 @@ describe("PART_IDENTIFIER_TRANSPORT_READY stays false while the client scanner p
       .map((env) => env.id);
     expect(flipped).toEqual([]);
     expect(readFileSync(path.join(APP, "vitest.config.js"), "utf8")).toMatch(/PART_IDENTIFIER_TRANSPORT_READY:\s*false/);
-    // And the alias MUTATIONS behind that transport are held besides: lifting readiness would still change nothing.
-    expect(CATALOG_MUTATION_HOLD.held).toBe(true);
+    // The DQ-034 hold is lifted (2026-10-01), so this readiness pin is now the scanner's only fence -- and it holds.
   });
 });

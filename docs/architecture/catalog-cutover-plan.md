@@ -382,6 +382,10 @@ PostgreSQL *equal* to the frozen source: any difference is `DRIFT_DETECTED` and 
 4. **Any divergence is STOP**: a verify mismatch, drift, unknown target records, a digest that differs from the recorded
    snapshot, or a copy rerun that is not `NO_CHANGES`. Nothing is repaired in the tool. Do not activate.
 
+**STATUS: LIFTED (2026-10-01).** DQ-034 LIFTED 2026-10-01 (Owner rulings INVENTORY / WAREHOUSE ACTIVATION + GLOBAL FIREBASE DATA CLASSIFICATION): (a) the deployed client ce2a890 reaches no Firebase Catalog reader in any release journey -- Transfer / relocation / cycle count / acquire are EOS, canonical Receiving, the scanner lookup and part balance are gated OFF everywhere, the Work Order install client has no caller; (b) a fresh read-only export (sha256 310b34be...) VERIFIES --sample all with canonical digest a2a30e3c... == the activation digest. The remaining Firebase Catalog readers are deployed-but-uncalled (runtime-stale until the
+Firebase removal window): canonical receiving (gated off), the scanner lookup (gated off), part balance (gated off), the Work
+Order install callables (no client caller) and the Sales Agreement line references (client on EOS).
+
 **Lifting the hold.** The hold is lifted only by a reviewed code change that sets `held: false` in **both** the server
 constant and the client mirror. No runtime flag, environment variable, request field or deploy-time override exists.
 The change requires both of these:
