@@ -473,3 +473,46 @@ test("PLACEHOLDER_DEFAULT_ROLES is unchanged -- the registers moved, the mechani
   assert.equal(isNavItemVisible(itemAt("administration/vehicles"), ROLES.ADMIN, [], legacy), true);
   assert.equal(isNavItemVisible(itemAt("administration/vehicles"), ROLES.TECHNICIAN, [], legacy), false);
 });
+
+// ════════ CONTROLLER PR #2010 INTERIM RULING 1 (2026-10-01): A CLASSIFICATION TRANSITION, NOT GROWTH ════════
+//
+// `purchasing/suppliers` moved WAITING (ungoverned) -> GOVERNED because the Supplier PostgreSQL cutover declared the
+// `purchasing.suppliers` surface. Pinned as exactly that one transition; the shrink-only invariant is not weakened.
+const CUTOVER_BEFORE_SUPPLIER_TRANSITION = Object.freeze([
+  "customers/customers", "customers/opportunities", "customers/salesOrders", "equipment/equipment",
+  "service/workOrders", "service/coordinatedVisits", "inventory/partMaster", "inventory/warehouses",
+  "inventory/truckInventory", "inventory/receiving", "purchasing/purchaseOrders", "purchasing/receipts",
+  "financials/invoices", "financials/payments", "administration/users", "administration/rolesPermissions",
+  "administration/objects", "administration/workflows", "administration/permissionPreview", "administration/auditLogs",
+]);
+
+test("TRANSITION: purchasing/suppliers is the ONE row that changed kind, and nothing was added", () => {
+  // total remains 62; no new destination was introduced -- the row was already in the register.
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
+  assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 62);
+  assert.ok(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("purchasing/suppliers"));
+  assert.ok(destinations().some(([key]) => key === "purchasing/suppliers"), "an existing destination, not a new one");
+
+  // attributable: exactly one row crossed, and it is the Supplier one.
+  const crossed = NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.filter((d) => !CUTOVER_BEFORE_SUPPLIER_TRANSITION.includes(d));
+  assert.deepEqual(crossed, ["purchasing/suppliers"]);
+  assert.deepEqual(CUTOVER_BEFORE_SUPPLIER_TRANSITION.filter((d) => !NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.includes(d)), []);
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.includes("purchasing/suppliers"), false);
+  assert.equal(NAV_CUTOVER_PLACEHOLDER_CEILING + NAV_UNGOVERNED_PLACEHOLDER_CEILING, NAV_LEGACY_PLACEHOLDER_CEILING,
+    "the two partition ceilings moved by one row in opposite directions; the total did not move");
+
+  // the governed surface it crossed to, and the ONE capability that earns it (server catalog source).
+  assert.deepEqual(NAV_SURFACE_ACCESS["purchasing/suppliers"], ["purchasing.suppliers"]);
+  const server = readFileSync(join(repoRoot, "functions/src/eosOps/experienceAuthority.ts"), "utf8");
+  assert.match(server, /surface\("purchasing\.suppliers", "Suppliers", \[\{ capabilityKey: "supplier\.record\.read" \}\]\)/);
+
+  // registering the surface grants nothing: the migration that registers supplier.record.read writes no grant.
+  const up = readFileSync(join(repoRoot, "functions/migrations/1764380000000_parts-purchasing-receiving-completion.sql"), "utf8")
+    .split("-- Down Migration")[0];
+  assert.doesNotMatch(up, /INSERT INTO\s+(eos_policy\.)?(role_capabilities|principal_capabilities)/);
+
+  // Supplier access still requires the governed capability: under the EOS source, no surface -> no door.
+  const item = destinations().find(([key]) => key === "purchasing/suppliers")[1];
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority([]))), false, "visible without the surface");
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority(["purchasing.suppliers"]))), true, "the surface opens it");
+});
