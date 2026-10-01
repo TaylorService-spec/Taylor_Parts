@@ -17,6 +17,8 @@ export interface WorkOrderOperationDeps {
    * reassignment target; a self-scheduling issuer re-checked at selection). Never authentication.
    */
   readonly policyReader?: PolicyReader;
+  /** The Equipment register state, for the /operations/equipment table (EQUIPMENT_WRITER_AUTHORITY otherwise). */
+  readonly equipmentPostgresState?: "INACTIVE" | "ACTIVE";
 }
 
 /** Both views of one caller: the flat set (conditioned keys withheld) and the entitled actor for record reads. */

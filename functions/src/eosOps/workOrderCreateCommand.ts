@@ -198,6 +198,24 @@ export async function createWorkOrder(
       throw err;
     }
 
+    // THE EQUIPMENT IS PROVEN, NOT ACCEPTED (Controller EQUIPMENT ACTIVATION, 2026-10-01). A picker is not integrity:
+    // the stated Equipment must exist in the PostgreSQL register, be ACTIVE, and belong to THIS Work Order's operating
+    // company, customer and site. Read FOR SHARE so it cannot be retired or moved under the create.
+    if (input.equipmentId !== undefined) {
+      const { rows: eq } = await client.query(
+        `SELECT status::text AS status, operating_company_key, account_id, customer_location_id
+           FROM ${SCHEMA}.equipment WHERE tenant_id = $1 AND id = $2 FOR SHARE`,
+        [actor.tenantId, input.equipmentId]);
+      if (eq.length === 0) refuse("EQUIPMENT_NOT_FOUND", "NOT_FOUND", "no such Equipment in this tenant");
+      const e = eq[0];
+      if (e.status !== "ACTIVE") refuse("EQUIPMENT_NOT_ACTIVE", "PRECONDITION_FAILED", `the Equipment is ${String(e.status)}`);
+      if (e.operating_company_key !== operatingCompanyKey) {
+        refuse("EQUIPMENT_COMPANY_MISMATCH", "PRECONDITION_FAILED", "the Equipment belongs to another operating company");
+      }
+      if (e.account_id !== input.customerId) refuse("EQUIPMENT_CUSTOMER_MISMATCH", "PRECONDITION_FAILED", "the Equipment belongs to another customer");
+      if (e.customer_location_id !== input.locationId) refuse("EQUIPMENT_SITE_MISMATCH", "PRECONDITION_FAILED", "the Equipment is at another site");
+    }
+
     const allocated = await allocateWorkOrderNumber(client, actor.tenantId, now);
     const workOrderId = `wo_${randomUUID()}`;
 

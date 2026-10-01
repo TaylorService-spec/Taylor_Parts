@@ -52,6 +52,17 @@ import {
 
 const SCHEMA = "eos_ops";
 
+/** Every column a register read projects -- ONE list, so a read and a write can never disagree about a record's shape. */
+export function equipmentColumns(alias = ""): string {
+  const a = alias === "" ? "" : `${alias}.`;
+  return `${a}id, ${a}tenant_id, ${a}operating_company_key, ${a}account_id, ${a}customer_location_id,
+  ${a}equipment_model_id, ${a}name, ${a}status::text AS status, ${a}serial_number, ${a}asset_tag,
+  ${a}installed_from_location_type::text AS installed_from_location_type, ${a}installed_from_location_id,
+  to_char(${a}installed_on, 'YYYY-MM-DD') AS installed_on, to_char(${a}warranty_expires_on, 'YYYY-MM-DD') AS warranty_expires_on,
+  ${a}notes, ${a}version, ${a}created_at, ${a}updated_at`;
+}
+export const EQUIPMENT_COLUMNS = equipmentColumns();
+
 // ════════════════════ vocabulary ════════════════════
 
 /** `eos_ops.ops_equipment_status`. The client's EQUIPMENT_STATUS, unchanged. */
@@ -117,6 +128,13 @@ export interface EquipmentRecord {
   readonly assetTag: string | null;
   /** Where the unit came from, TYPED — or null for a machine with no company origin. */
   readonly installedFrom: InstallOriginRef | null;
+  readonly installedOn: string | null;
+  readonly warrantyExpiresOn: string | null;
+  readonly notes: string | null;
+  /** The optimistic-concurrency token an update states (migration 1764400000000). */
+  readonly version: number;
+  readonly createdAt: string | null;
+  readonly updatedAt: string | null;
 }
 
 /** The custody side of the relationship, as it reads after installation. */
@@ -302,6 +320,34 @@ export async function installSerializedUnitAsEquipment(
   pool: Pool,
   request: InstallRequest,
 ): Promise<InstallResult> {
+  const client: PoolClient = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { equipment, unit } = await installSerializedUnitAsEquipmentOn(client, request);
+    await client.query("COMMIT");
+    return { equipment, unit };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Where the unit was held when it was installed -- the ledger consequence's source. */
+export interface InstallOutcome extends InstallResult {
+  readonly origin: { readonly type: OpsLocationType; readonly id: string };
+}
+
+/**
+ * The installation ITSELF, on a transaction the caller owns (Controller OD-1, 2026-10-01): the Work Order install
+ * composes it with the ledger consequence, the Work Order link and the Equipment event, and all of them commit or
+ * none does. Opens no transaction and never commits.
+ */
+export async function installSerializedUnitAsEquipmentOn(
+  client: Pick<PoolClient, "query">,
+  request: InstallRequest,
+): Promise<InstallOutcome> {
   const tenantId = requireText(request?.tenantId, "tenantId");
   const actorId = requireText(request.actorId, "actorId");
   const companyKey = requireOperatingCompanyKey(request.operatingCompanyKey);
@@ -319,150 +365,136 @@ export async function installSerializedUnitAsEquipment(
   }
   const customerLocationId = requireText(request.customerLocation.id, "customer location id");
 
-  const client: PoolClient = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    // FOR UPDATE: a concurrent install of the same unit waits here rather than racing the status
-    // check, which is the only reason the ALREADY_INSTALLED refusal below means anything.
-    const unit = await client.query(
-      `SELECT id, operating_company_key, status::text AS status,
-              location_type::text AS location_type, location_id
-         FROM ${SCHEMA}.serialized_custody
-        WHERE tenant_id = $1 AND part_id = $2 AND serial_number = $3
-        FOR UPDATE`,
-      [tenantId, partId, serialNumber],
-    );
-    if (unit.rows.length === 0) {
-      throw new EquipmentCustodyError("UNIT_NOT_FOUND", `no serialized custody row for ${partId}/${serialNumber}`);
-    }
-    const held = unit.rows[0];
-
-    // Checked on the STATUS here rather than on a link field, because in this schema they are the
-    // same fact: migration 007's biconditional makes INSTALLED and EQUIPMENT custody equivalent,
-    // and the generated equipment_id is a projection of the location, not an independent column
-    // that could disagree with it.
-    if (held.status === "INSTALLED") {
-      throw new EquipmentCustodyError(
-        "ALREADY_INSTALLED",
-        `serialized unit is already installed as equipment ${String(held.location_id)}`,
-      );
-    }
-    if (!INSTALLABLE_CUSTODY_STATUSES.includes(held.status as OpsSerialStatus)) {
-      throw new EquipmentCustodyError(
-        "STATUS_NOT_INSTALLABLE",
-        `unit is ${String(held.status)}; installable statuses are ${INSTALLABLE_CUSTODY_STATUSES.join("/")}`,
-      );
-    }
-    // VERIFIED, NOT ADOPTED. The custody row already carries an operating company; taking it from
-    // there would let a caller install into a company it never named, and taking only the caller's
-    // would let an install cross companies silently. Both are stated, and they must agree.
-    if (held.operating_company_key !== companyKey) {
-      throw new EquipmentCustodyError(
-        "OPERATING_COMPANY_MISMATCH",
-        `unit is held by operating company ${String(held.operating_company_key)}, not ${companyKey}`,
-      );
-    }
-
-    // ════════ WHOLE-UNIT IS A CATALOG FACT, NOT A CLAIM ════════
-    //
-    // WHY IT IS ASKED AT ALL. A serialized custody row proves a unit of this Part is held here. It says
-    // nothing about whether this Part is the kind of thing that becomes customer Equipment: a serialized
-    // service component -- a tracked compressor motor, say -- has custody rows exactly like a whole unit's,
-    // and installing one as Equipment would mint a customer asset for a part inside a machine.
-    //
-    // WHY IT IS NOT AN INPUT. `wholeUnit` is deliberately absent from InstallRequest and must stay absent.
-    // A caller that states it can state it wrongly, and this is precisely the field that decides whether a
-    // customer ends up with an Equipment record that should never have existed.
-    //
-    // WHY HERE AND NOT EARLIER. After the custody refusals, so UNIT_NOT_FOUND / ALREADY_INSTALLED /
-    // STATUS_NOT_INSTALLABLE keep the precedence they have today, and before the first write, so no
-    // Equipment row is ever created for a Part that fails this test.
-    const [partPolicy] = await createPostgresPartPolicyAuthority().readPartPolicies(client, tenantId, [partId]);
-    if (!partPolicy.found) {
-      throw new EquipmentCustodyError(
-        "PART_NOT_FOUND",
-        `part ${partId} is not a Part of this tenant's catalog; an install cannot resolve what it is installing`,
-      );
-    }
-    if (partPolicy.wholeUnit !== true) {
-      throw new EquipmentCustodyError(
-        "PART_NOT_WHOLE_UNIT",
-        `part ${partId} is not a whole unit (control type ${String(partPolicy.controlType)}); only a whole unit becomes customer Equipment`,
-      );
-    }
-
-    let equipment: EquipmentRecord;
-    try {
-      const created = await client.query(
-        `INSERT INTO ${SCHEMA}.equipment
-           (id, tenant_id, operating_company_key, account_id, customer_location_id,
-            equipment_model_id, name, status, serial_number, asset_tag, installed_on,
-            warranty_expires_on, notes, installed_from_location_type, installed_from_location_id,
-            created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE', $8, $9, $10, $11, $12, $13, $14, $15, $15)
-         RETURNING id, tenant_id, operating_company_key, account_id, customer_location_id,
-                   equipment_model_id, name, status::text AS status, serial_number, asset_tag,
-                   installed_from_location_type::text AS installed_from_location_type,
-                   installed_from_location_id`,
-        [
-          equipmentId, tenantId, companyKey, accountId, customerLocationId,
-          attributes.equipmentModelId ?? null, attributes.name,
-          // The serial is carried onto the register the way the Firestore command carries it: from
-          // the unit, not from the request, so the two records cannot name different serials.
-          attributes.serialNumber ?? serialNumber,
-          attributes.assetTag ?? null, attributes.installedOn ?? null,
-          attributes.warrantyExpiresOn ?? null, attributes.notes ?? null,
-          held.location_type, held.location_id, actorId,
-        ],
-      );
-      equipment = equipmentRow(created.rows[0]);
-    } catch (error) {
-      if (sqlState(error) === UNIQUE_VIOLATION) {
-        throw new EquipmentCustodyError("EQUIPMENT_EXISTS", `equipment ${equipmentId} already exists`);
-      }
-      if (sqlState(error) === FOREIGN_KEY_VIOLATION && constraintName(error) === "equipment_model_same_tenant") {
-        throw new EquipmentCustodyError(
-          "MODEL_NOT_FOUND",
-          `equipment model ${String(attributes.equipmentModelId)} is not in this tenant's catalog`,
-        );
-      }
-      throw error;
-    }
-
-    let installed: InstalledUnitRecord;
-    try {
-      const moved = await client.query(
-        `UPDATE ${SCHEMA}.serialized_custody
-            SET status = 'INSTALLED', location_type = 'EQUIPMENT', location_id = $1,
-                updated_by = $2, updated_at = now()
-          WHERE id = $3
-        RETURNING id, tenant_id, part_id, serial_number, status::text AS status,
-                  location_type::text AS location_type, equipment_id`,
-        [equipmentId, actorId, held.id],
-      );
-      installed = installedUnitRow(moved.rows[0]);
-    } catch (error) {
-      // ADR-010 §3's "exactly one Serialized Asset", arriving from the index rather than from a
-      // read this command would otherwise have had to remember to do.
-      if (sqlState(error) === UNIQUE_VIOLATION
-        && constraintName(error) === "serialized_custody_one_unit_per_equipment") {
-        throw new EquipmentCustodyError(
-          "EQUIPMENT_ALREADY_HAS_UNIT",
-          `equipment ${equipmentId} already has an installed serialized unit`,
-        );
-      }
-      throw error;
-    }
-
-    await client.query("COMMIT");
-    return { equipment, unit: installed };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
+  // FOR UPDATE: a concurrent install of the same unit waits here rather than racing the status
+  // check, which is the only reason the ALREADY_INSTALLED refusal below means anything.
+  const unit = await client.query(
+    `SELECT id, operating_company_key, status::text AS status,
+            location_type::text AS location_type, location_id
+       FROM ${SCHEMA}.serialized_custody
+      WHERE tenant_id = $1 AND part_id = $2 AND serial_number = $3
+      FOR UPDATE`,
+    [tenantId, partId, serialNumber],
+  );
+  if (unit.rows.length === 0) {
+    throw new EquipmentCustodyError("UNIT_NOT_FOUND", `no serialized custody row for ${partId}/${serialNumber}`);
   }
+  const held = unit.rows[0];
+
+  // Checked on the STATUS here rather than on a link field, because in this schema they are the
+  // same fact: migration 007's biconditional makes INSTALLED and EQUIPMENT custody equivalent,
+  // and the generated equipment_id is a projection of the location, not an independent column
+  // that could disagree with it.
+  if (held.status === "INSTALLED") {
+    throw new EquipmentCustodyError(
+      "ALREADY_INSTALLED",
+      `serialized unit is already installed as equipment ${String(held.location_id)}`,
+    );
+  }
+  if (!INSTALLABLE_CUSTODY_STATUSES.includes(held.status as OpsSerialStatus)) {
+    throw new EquipmentCustodyError(
+      "STATUS_NOT_INSTALLABLE",
+      `unit is ${String(held.status)}; installable statuses are ${INSTALLABLE_CUSTODY_STATUSES.join("/")}`,
+    );
+  }
+  // VERIFIED, NOT ADOPTED. The custody row already carries an operating company; taking it from
+  // there would let a caller install into a company it never named, and taking only the caller's
+  // would let an install cross companies silently. Both are stated, and they must agree.
+  if (held.operating_company_key !== companyKey) {
+    throw new EquipmentCustodyError(
+      "OPERATING_COMPANY_MISMATCH",
+      `unit is held by operating company ${String(held.operating_company_key)}, not ${companyKey}`,
+    );
+  }
+
+  // ════════ WHOLE-UNIT IS A CATALOG FACT, NOT A CLAIM ════════
+  //
+  // WHY IT IS ASKED AT ALL. A serialized custody row proves a unit of this Part is held here. It says
+  // nothing about whether this Part is the kind of thing that becomes customer Equipment: a serialized
+  // service component -- a tracked compressor motor, say -- has custody rows exactly like a whole unit's,
+  // and installing one as Equipment would mint a customer asset for a part inside a machine.
+  //
+  // WHY IT IS NOT AN INPUT. `wholeUnit` is deliberately absent from InstallRequest and must stay absent.
+  // A caller that states it can state it wrongly, and this is precisely the field that decides whether a
+  // customer ends up with an Equipment record that should never have existed.
+  //
+  // WHY HERE AND NOT EARLIER. After the custody refusals, so UNIT_NOT_FOUND / ALREADY_INSTALLED /
+  // STATUS_NOT_INSTALLABLE keep the precedence they have today, and before the first write, so no
+  // Equipment row is ever created for a Part that fails this test.
+  const [partPolicy] = await createPostgresPartPolicyAuthority().readPartPolicies(client, tenantId, [partId]);
+  if (!partPolicy.found) {
+    throw new EquipmentCustodyError(
+      "PART_NOT_FOUND",
+      `part ${partId} is not a Part of this tenant's catalog; an install cannot resolve what it is installing`,
+    );
+  }
+  if (partPolicy.wholeUnit !== true) {
+    throw new EquipmentCustodyError(
+      "PART_NOT_WHOLE_UNIT",
+      `part ${partId} is not a whole unit (control type ${String(partPolicy.controlType)}); only a whole unit becomes customer Equipment`,
+    );
+  }
+
+  let equipment: EquipmentRecord;
+  try {
+    const created = await client.query(
+      `INSERT INTO ${SCHEMA}.equipment
+         (id, tenant_id, operating_company_key, account_id, customer_location_id,
+          equipment_model_id, name, status, serial_number, asset_tag, installed_on,
+          warranty_expires_on, notes, installed_from_location_type, installed_from_location_id,
+          created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE', $8, $9, $10, $11, $12, $13, $14, $15, $15)
+       RETURNING ${EQUIPMENT_COLUMNS}`,
+      [
+        equipmentId, tenantId, companyKey, accountId, customerLocationId,
+        attributes.equipmentModelId ?? partPolicy.equipmentModelId ?? null, attributes.name,
+        // The serial is carried onto the register the way the Firestore command carries it: from
+        // the unit, not from the request, so the two records cannot name different serials.
+        attributes.serialNumber ?? serialNumber,
+        attributes.assetTag ?? null, attributes.installedOn ?? null,
+        attributes.warrantyExpiresOn ?? null, attributes.notes ?? null,
+        held.location_type, held.location_id, actorId,
+      ],
+    );
+    equipment = equipmentRow(created.rows[0]);
+  } catch (error) {
+    if (sqlState(error) === UNIQUE_VIOLATION) {
+      throw new EquipmentCustodyError("EQUIPMENT_EXISTS", `equipment ${equipmentId} already exists`);
+    }
+    if (sqlState(error) === FOREIGN_KEY_VIOLATION && constraintName(error) === "equipment_model_same_tenant") {
+      throw new EquipmentCustodyError(
+        "MODEL_NOT_FOUND",
+        `equipment model ${String(attributes.equipmentModelId)} is not in this tenant's catalog`,
+      );
+    }
+    throw error;
+  }
+
+  let installed: InstalledUnitRecord;
+  try {
+    const moved = await client.query(
+      `UPDATE ${SCHEMA}.serialized_custody
+          SET status = 'INSTALLED', location_type = 'EQUIPMENT', location_id = $1,
+              updated_by = $2, updated_at = now()
+        WHERE id = $3
+      RETURNING id, tenant_id, part_id, serial_number, status::text AS status,
+                location_type::text AS location_type, equipment_id`,
+      [equipmentId, actorId, held.id],
+    );
+    installed = installedUnitRow(moved.rows[0]);
+  } catch (error) {
+    // ADR-010 §3's "exactly one Serialized Asset", arriving from the index rather than from a
+    // read this command would otherwise have had to remember to do.
+    if (sqlState(error) === UNIQUE_VIOLATION
+      && constraintName(error) === "serialized_custody_one_unit_per_equipment") {
+      throw new EquipmentCustodyError(
+        "EQUIPMENT_ALREADY_HAS_UNIT",
+        `equipment ${equipmentId} already has an installed serialized unit`,
+      );
+    }
+    throw error;
+  }
+
+  return { equipment, unit: installed, origin: { type: held.location_type as OpsLocationType, id: String(held.location_id) } };
 }
 
 export async function readEquipment(
@@ -471,10 +503,7 @@ export async function readEquipment(
   equipmentId: string,
 ): Promise<EquipmentRecord | null> {
   const result = await pool.query(
-    `SELECT id, tenant_id, operating_company_key, account_id, customer_location_id,
-            equipment_model_id, name, status::text AS status, serial_number, asset_tag,
-            installed_from_location_type::text AS installed_from_location_type,
-            installed_from_location_id
+    `SELECT ${EQUIPMENT_COLUMNS}
        FROM ${SCHEMA}.equipment WHERE tenant_id = $1 AND id = $2`,
     [tenantId, equipmentId],
   );
@@ -513,10 +542,7 @@ export async function readEquipmentAtCustomerLocation(
     throw new EquipmentCustodyError("REQUEST_INVALID", "a CRM_LOCATION ref is required");
   }
   const result = await pool.query(
-    `SELECT id, tenant_id, operating_company_key, account_id, customer_location_id,
-            equipment_model_id, name, status::text AS status, serial_number, asset_tag,
-            installed_from_location_type::text AS installed_from_location_type,
-            installed_from_location_id
+    `SELECT ${EQUIPMENT_COLUMNS}
        FROM ${SCHEMA}.equipment
       WHERE tenant_id = $1 AND customer_location_id = $2
       ORDER BY name`,
@@ -544,7 +570,7 @@ function modelRow(row: Record<string, any>): EquipmentModelRecord {
   };
 }
 
-function equipmentRow(row: Record<string, any>): EquipmentRecord {
+export function equipmentRow(row: Record<string, any>): EquipmentRecord {
   return {
     id: row.id,
     tenantId: row.tenant_id,
@@ -563,6 +589,12 @@ function equipmentRow(row: Record<string, any>): EquipmentRecord {
         type: row.installed_from_location_type as OpsLocationType,
         id: row.installed_from_location_id,
       },
+    installedOn: row.installed_on ?? null,
+    warrantyExpiresOn: row.warranty_expires_on ?? null,
+    notes: row.notes ?? null,
+    version: row.version == null ? 1 : Number(row.version),
+    createdAt: row.created_at == null ? null : new Date(row.created_at).toISOString(),
+    updatedAt: row.updated_at == null ? null : new Date(row.updated_at).toISOString(),
   };
 }
 

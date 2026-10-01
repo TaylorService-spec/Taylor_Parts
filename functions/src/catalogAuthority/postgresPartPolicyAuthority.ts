@@ -55,6 +55,8 @@ export interface PartPolicy {
   readonly controlType: string | null;
   /** The ledger vocabulary, through THE shared mapping. Null when not found. */
   readonly trackingMode: ControlTypeTrackingMode | null;
+  /** The governed Equipment Model this Part is a unit of (parts.equipment_model_id). Null when none or not found. */
+  readonly equipmentModelId: string | null;
 }
 
 export type PartPolicyAuthorityErrorCode = "INVALID_TENANT" | "INVALID_PART_ID" | "AUTHORITY_ANSWER_MISMATCH";
@@ -83,7 +85,8 @@ SELECT r.ordinal,
        p.id IS NOT NULL                AS found,
        p.status::text                  AS status,
        p.whole_unit                    AS whole_unit,
-       p.control_type::text            AS control_type
+       p.control_type::text            AS control_type,
+       p.equipment_model_id            AS equipment_model_id
   FROM unnest($2::text[]) WITH ORDINALITY AS r(part_id, ordinal)
   LEFT JOIN eos_ops.parts p ON p.tenant_id = $1 AND p.id = r.part_id
  ORDER BY r.ordinal`;
@@ -109,7 +112,7 @@ async function readPartPolicies(
   const result = await db.query(READ_PART_POLICIES_SQL, [tenantId, [...partIds]]);
   const rows = result.rows as {
     ordinal: string | number; part_id: string; found: boolean;
-    status: string | null; whole_unit: boolean | null; control_type: string | null;
+    status: string | null; whole_unit: boolean | null; control_type: string | null; equipment_model_id: string | null;
   }[];
   // The same one-row-per-input check the reference authority makes, for the same reason: a silently
   // shorter or reordered answer would attach one Part's policy to another Part's id.
@@ -125,6 +128,7 @@ async function readPartPolicies(
     trackingMode: row.found === true && typeof row.control_type === "string"
       ? controlTypeToTrackingMode(row.control_type)
       : null,
+    equipmentModelId: row.found === true && typeof row.equipment_model_id === "string" ? row.equipment_model_id : null,
   }));
 }
 
