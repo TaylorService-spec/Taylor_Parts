@@ -74,6 +74,14 @@ on:
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
+      - "functions/src/eosOps/inboundProviderRuntime.ts"
+      - "functions/src/eosOps/selfScheduling*.ts"
+      - "functions/src/eosApi/server.ts"
+      - "functions/src/inboundWork/**"
+      - "functions/test/support/serviceBaselineTenant.mjs"
+      - "functions/test/inboundProviderRuntimePostgres.test.mjs"
+      - "functions/test/inboundWorkRecoveryPostgres.test.mjs"
+      - "functions/test/customerSelfSchedulingPostgres.test.mjs"
       - ".github/workflows/service-work-order-authority-tests.yml"
   push:
     branches: [main]
@@ -99,6 +107,14 @@ on:
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
+      - "functions/src/eosOps/inboundProviderRuntime.ts"
+      - "functions/src/eosOps/selfScheduling*.ts"
+      - "functions/src/eosApi/server.ts"
+      - "functions/src/inboundWork/**"
+      - "functions/test/support/serviceBaselineTenant.mjs"
+      - "functions/test/inboundProviderRuntimePostgres.test.mjs"
+      - "functions/test/inboundWorkRecoveryPostgres.test.mjs"
+      - "functions/test/customerSelfSchedulingPostgres.test.mjs"
       - ".github/workflows/service-work-order-authority-tests.yml"
   workflow_dispatch:
 
@@ -165,6 +181,9 @@ jobs:
           test/workOrderAnalyticsPostgres.test.mjs
           test/inboundWorkPostgres.test.mjs
           test/coordinatedVisitPostgresParity.test.mjs
+          test/inboundProviderRuntimePostgres.test.mjs
+          test/inboundWorkRecoveryPostgres.test.mjs
+          test/customerSelfSchedulingPostgres.test.mjs
         working-directory: functions
         env:
           POLICY_TEST_DATABASE_URL: postgres://eos:eos@localhost:5432/eos_policy

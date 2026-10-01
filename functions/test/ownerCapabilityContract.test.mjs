@@ -325,7 +325,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // Owner's governed set is unchanged.
   // 97 -> 98 (the Work Order domain cutover, 2026-09-30): workOrder.execution.record (1764300000000), granted to no Role.
   // 98 -> 104: workOrder.labor.correctEntry (1764330000000) + five inboundWork.* (1764340000000), granted to no Role.
-  assert.equal(VOCABULARY.size, 104);
+  // 104 -> 107: inboundWork.request.recover (1764360000000) + workOrder.selfScheduling.issue/.configure (1764370000000), granted to no Role.
+  assert.equal(VOCABULARY.size, 107);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

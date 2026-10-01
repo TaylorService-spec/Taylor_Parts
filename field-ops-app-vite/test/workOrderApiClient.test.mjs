@@ -70,6 +70,13 @@ describe("the closed operation list", () => {
     assert.ok(keys.length > 15, `parsed ${keys.length} server operations`);
     const readsBlock = server.match(/WORK_ORDER_READ_OPERATIONS[^=]*=\s*Object\.freeze\(\[([^\]]*)\]/)[1];
     const serverReads = readsBlock.match(/"([a-zA-Z]+)"/g).map((s) => s.slice(1, -1));
+    // Customer self-scheduling (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30) SPREADS its reads from its own
+    // module; the spread is resolved from that module's source so the mirror stays exact.
+    if (/\.\.\.SELF_SCHEDULING_READ_OPERATIONS/.test(readsBlock)) {
+      const ss = read("../functions/src/eosOps/selfScheduling.ts");
+      serverReads.push(...ss.match(/SELF_SCHEDULING_READ_OPERATIONS[^=]*=\s*Object\.freeze\(\[([^\]]*)\]/)[1]
+        .match(/"([a-zA-Z]+)"/g).map((q) => q.slice(1, -1)));
+    }
 
     assert.deepEqual([...WORK_ORDER_READ_OPERATIONS].sort(), [...serverReads].sort());
     assert.deepEqual(

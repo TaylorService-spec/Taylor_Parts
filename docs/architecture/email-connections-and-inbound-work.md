@@ -1,5 +1,17 @@
 # Email Connections + Inbound Work
 
+> **Current runtime (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30).**
+>
+> - **Provider runtime:** now EOS / PostgreSQL.
+>   - This covers connections, OAuth, polling, delivery failures and attachment custody.
+>   - The code is `functions/src/eosOps/inboundProviderRuntime.ts`, served on `POST /operations/inbound-work`.
+> - **Intake and decisions:** already EOS (Owner ruling W9).
+> - **Firebase implementation:** the one described below (Firestore collections, callables, `pollEmailMailboxes`, Cloud Storage custody) is **retired from source**.
+> - **Recovery:** release / reassign of an unfinished accept is `eosOps/inboundWorkRecovery.ts`.
+> - **Where to look:**
+>   - what replaced each piece: [the retirement ledger](inbound-work-firebase-retirement-ledger.md);
+>   - the unchanged product rules: the sections below (untrusted email, one Work Order per intake, separate authorities, base EOS).
+
 **Status:** SANDBOX BUILD — implemented, tested, and activated in non-production environments only.
 Phase 2 (real Microsoft 365 / Google Workspace delivery and attachment byte custody) is implemented and
 proven against scripted providers and the Firestore emulator; binding a real tenant is an external

@@ -33,15 +33,16 @@ import {
   forgetAccessToken,
   resolveAccessToken,
 } from "../lib/inboundWork/providerCredentialVault.js";
+// The custody RULES (pure) outlived the retired Firebase custody path; the bytes now live in PostgreSQL
+// (eos_ops.inbound_work_attachments -- proven by inboundProviderRuntimePostgres.test.mjs).
 import {
   MAX_ATTACHMENT_BYTES,
   assertStorableAttachment,
-  attachmentStorageKey,
-  createInMemoryAttachmentStore,
+  attachmentCustodyId,
   safeAttachmentFilename,
   summarizeCustody,
   AttachmentRefusal,
-} from "../lib/inboundWork/attachmentCustody.js";
+} from "../lib/inboundWork/attachmentCustodyRules.js";
 import { providerClientConfigured, transportFor } from "../lib/inboundWork/providerTransportFactory.js";
 
 const NOW = 1_757_000_000_000;
@@ -373,8 +374,15 @@ test("the credential secret name is derived from the connection, and a hostile i
   assert.throws(() => credentialSecretName("proj", "../../etc/passwd"), ProviderTransportError);
 });
 
-test("resolveAccessToken refreshes, caches, and writes NO token to the database", async () => {
-  const db = recordingDb();
+// The vault is Firestore-free (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30): the caller records the refresh
+// through onRefreshed, and what it is handed is a REFERENCE, never a token.
+const recorder = () => {
+  const writes = [];
+  return { writes, onRefreshed: async (rotated, at) => { writes.push({ rotated, lastTokenRefreshAt: at }); } };
+};
+
+test("resolveAccessToken refreshes, caches, and hands the caller NO token to record", async () => {
+  const db = recorder();
   const vault = createInMemoryVault({ "conn-1": "refresh-1" });
   let refreshes = 0;
   const adapter = {
@@ -386,36 +394,36 @@ test("resolveAccessToken refreshes, caches, and writes NO token to the database"
   };
   forgetAccessToken("conn-1");
 
-  const first = await resolveAccessToken(db, vault, adapter, { connectionId: "conn-1", tenantOrWorkspace: "t" }, { now: () => NOW });
-  const second = await resolveAccessToken(db, vault, adapter, { connectionId: "conn-1", tenantOrWorkspace: "t" }, { now: () => NOW + 1000 });
+  const first = await resolveAccessToken(vault, adapter, { connectionId: "conn-1", tenantOrWorkspace: "t" }, { now: () => NOW, onRefreshed: db.onRefreshed });
+  const second = await resolveAccessToken(vault, adapter, { connectionId: "conn-1", tenantOrWorkspace: "t" }, { now: () => NOW + 1000, onRefreshed: db.onRefreshed });
   assert.equal(first, "access-token-value");
   assert.equal(second, "access-token-value");
   assert.equal(refreshes, 1, "the second call came from the cache");
 
   const persisted = JSON.stringify(db.writes);
   assert.equal(persisted.includes("access-token-value"), false, "an access token is never persisted");
-  assert.equal(persisted.includes("refresh-1"), false, "a refresh token is never persisted in Firestore");
+  assert.equal(persisted.includes("refresh-1"), false, "a refresh token is never handed to the caller to persist");
   assert.match(persisted, /lastTokenRefreshAt/);
 });
 
 test("a ROTATED refresh token is stored in the vault before the access token is handed out", async () => {
-  const db = recordingDb();
+  const db = recorder();
   const vault = createInMemoryVault({ "conn-2": "old-refresh" });
   const adapter = {
     provider: "MICROSOFT_365",
     refreshAccessToken: async () => ({ accessToken: "at", refreshToken: "new-refresh", expiresAt: NOW + 600_000, scope: "" }),
   };
   forgetAccessToken("conn-2");
-  await resolveAccessToken(db, vault, adapter, { connectionId: "conn-2", tenantOrWorkspace: "t" }, { now: () => NOW });
+  await resolveAccessToken(vault, adapter, { connectionId: "conn-2", tenantOrWorkspace: "t" }, { now: () => NOW, onRefreshed: db.onRefreshed });
   assert.equal(vault.store.get("conn-2"), "new-refresh");
+  assert.deepEqual(db.writes[0].rotated, { secretName: "memory://conn-2", version: "1" }, "the caller records the rotated REFERENCE");
   assert.equal(JSON.stringify(db.writes).includes("new-refresh"), false);
 });
 
 test("a connection with no stored credential, and one the provider refuses, both require reauthorization", async () => {
-  const db = recordingDb();
   forgetAccessToken("conn-3");
   await assert.rejects(
-    () => resolveAccessToken(db, createInMemoryVault(), { provider: "X", refreshAccessToken: async () => ({}) }, { connectionId: "conn-3", tenantOrWorkspace: "t" }, { now: () => NOW }),
+    () => resolveAccessToken(createInMemoryVault(), { provider: "X", refreshAccessToken: async () => ({}) }, { connectionId: "conn-3", tenantOrWorkspace: "t" }, { now: () => NOW }),
     (err) => err.code === "AUTH_REVOKED",
   );
 
@@ -427,7 +435,7 @@ test("a connection with no stored credential, and one the provider refuses, both
     },
   };
   await assert.rejects(
-    () => resolveAccessToken(db, createInMemoryVault({ "conn-4": "rt" }), refusing, { connectionId: "conn-4", tenantOrWorkspace: "t" }, { now: () => NOW }),
+    () => resolveAccessToken(createInMemoryVault({ "conn-4": "rt" }), refusing, { connectionId: "conn-4", tenantOrWorkspace: "t" }, { now: () => NOW }),
     (err) => err.code === "AUTH_REVOKED" && /Reauthorize/i.test(err.message),
   );
 });
@@ -442,15 +450,13 @@ test("a hostile filename is data, and is defanged", () => {
   assert.equal(safeAttachmentFilename("x".repeat(400)).length <= 255, true);
 });
 
-test("the storage key comes from ids and a hash -- never from the sender's filename", () => {
-  const key = attachmentStorageKey("req-1", "msg-1", "att-1");
-  assert.match(key, /^email-intake\/req-1\/[0-9a-f]{40}$/);
-  assert.equal(key, attachmentStorageKey("req-1", "msg-1", "att-1"), "deterministic, so a retry cannot double-store");
-  assert.notEqual(key, attachmentStorageKey("req-1", "msg-1", "att-2"));
-  // A request id that is not id-shaped is stripped to something safe rather than becoming a path: the
-  // key can never climb out of its prefix, whatever the caller passed.
-  assert.equal(attachmentStorageKey("../evil", "m", "a").startsWith("email-intake/evil/"), true);
-  assert.throws(() => attachmentStorageKey("///", "m", "a"), AttachmentRefusal);
+test("the custody id comes from ids and a hash -- never from the sender's filename", () => {
+  const key = attachmentCustodyId("req-1", "msg-1", "att-1");
+  assert.match(key, /^iwa_[0-9a-f]{40}$/);
+  assert.equal(key, attachmentCustodyId("req-1", "msg-1", "att-1"), "deterministic, so a retry cannot double-store");
+  assert.notEqual(key, attachmentCustodyId("req-1", "msg-1", "att-2"));
+  assert.notEqual(key, attachmentCustodyId("req-2", "msg-1", "att-1"), "scoped to its request");
+  assert.throws(() => attachmentCustodyId("///", "m", "a"), AttachmentRefusal);
 });
 
 test("size is bounded before anything is written, and a zero-byte attachment is kept", () => {
@@ -469,11 +475,3 @@ test("custody is COMPLETE only when every file is actually held", () => {
   assert.equal(summarizeCustody([{ custody: "PENDING" }]), "PENDING");
 });
 
-test("the same bytes stored twice occupy one object", async () => {
-  const store = createInMemoryAttachmentStore();
-  const key = attachmentStorageKey("req-1", "msg-1", "att-1");
-  await store.put(key, Buffer.from("hello"), {});
-  await store.put(key, Buffer.from("hello"), {});
-  assert.equal(store.objects.size, 1);
-  assert.equal((await store.get(key)).toString(), "hello");
-});

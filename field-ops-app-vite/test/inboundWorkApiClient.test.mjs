@@ -38,12 +38,25 @@ const opts = (fetchImpl, extra = {}) => ({ baseUrl: "https://eos.example.test/",
 describe("the closed operation list", () => {
   it("mirrors the server's EOS_INBOUND_WORK_OPERATIONS and INBOUND_WORK_READ_OPERATIONS exactly", () => {
     const server = read("../functions/src/eosOps/inboundWorkOperations.ts");
-    const start = server.indexOf("export const EOS_INBOUND_WORK_OPERATIONS");
-    const block = server.slice(start, server.indexOf("});", start));
-    const keys = [...block.matchAll(/^ {2}([a-zA-Z]+):/gm)].map((m) => m[1]);
-    assert.ok(keys.length >= 10, `parsed ${keys.length} server operations`);
-    const serverReads = server.match(/INBOUND_WORK_READ_OPERATIONS[^=]*=\s*Object\.freeze\(\[([^\]]*)\]/)[1]
-      .match(/"([a-zA-Z]+)"/g).map((s) => s.slice(1, -1));
+    // The table SPREADS the provider-runtime and recovery tables (Controller SERVICE EXPERIENCE COMPLETION,
+    // 2026-09-30); each spread is resolved from ITS module's source, so the mirror stays exact.
+    const modules = [server, read("../functions/src/eosOps/inboundProviderRuntime.ts"), read("../functions/src/eosOps/inboundWorkRecovery.ts")];
+    const tableKeys = (name) => {
+      const src = modules.find((m) => m.includes(`export const ${name}`));
+      const start = src.indexOf(`export const ${name}`);
+      const block = src.slice(start, src.indexOf("});", start));
+      return [...block.matchAll(/^ {2}([a-zA-Z]+):/gm)].map((m) => m[1])
+        .concat(...[...block.matchAll(/^ {2}\.\.\.([A-Z_]+),/gm)].map((m) => tableKeys(m[1])));
+    };
+    const listItems = (name) => {
+      const src = modules.find((m) => m.includes(`export const ${name}`));
+      const body = src.match(new RegExp(`${name}[^=]*=\\s*Object\\.freeze\\(\\[([^\\]]*)\\]`))[1];
+      return (body.match(/"([a-zA-Z]+)"/g) ?? []).map((q) => q.slice(1, -1))
+        .concat(...[...body.matchAll(/\.\.\.([A-Z_]+)/g)].map((m) => listItems(m[1])));
+    };
+    const keys = tableKeys("EOS_INBOUND_WORK_OPERATIONS");
+    assert.ok(keys.length >= 20, `parsed ${keys.length} server operations`);
+    const serverReads = listItems("INBOUND_WORK_READ_OPERATIONS");
     assert.deepEqual([...INBOUND_WORK_READ_OPERATIONS].sort(), [...serverReads].sort());
     assert.deepEqual([...INBOUND_WORK_READ_OPERATIONS, ...INBOUND_WORK_COMMAND_OPERATIONS].sort(), [...keys].sort());
     for (const name of keys) assert.equal(isInboundWorkOperation(name), true, name);

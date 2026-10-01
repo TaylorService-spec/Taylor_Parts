@@ -498,7 +498,6 @@ test("RULING 6: every server-side legacy CRM writer calls the guard with its own
   const cases = [
     ["account.import", "src/account/accountImportCommand.ts", [/\bgetFirestore\(/, /runTransaction\(/, /txn\.set\(/]],
     ["crm.sandboxBaselineSeed", "scripts/seedSandboxBaseline.js", [/initializeApp\(\{/, /await upsert\(/]],
-    ["crm.sandboxInboundSeed", "scripts/seedSandboxInboundWork.mjs", [/initializeApp\(\{/, /\.set\(data\)/]],
     ["crm.ownershipBackfill", "scripts/ownershipSandboxBackfill.js", [/tx\.set\(/, /runTransaction\(/]],
     ["crm.certificationAccountOwners", "scripts/certificationWorld/seedAccountOwners.mjs", [/batch\.set\(/, /batch\.commit\(/]],
     // Pass 11 CRM writer census: the three operator scripts that were unfenced.

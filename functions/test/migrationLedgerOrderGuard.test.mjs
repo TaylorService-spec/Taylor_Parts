@@ -187,8 +187,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // DOMAIN CUTOVER AUTHORIZATION, 2026-09-30) -- APPENDED after the chain, an EXPLAINED pending migration; the ledger
 // model is not extended.
 // 72 -> 76 runnable: the Work Order cutover completion pass (2026-09-30): quarantine 1764310000000, availability 1764320000000, labor 1764330000000 (+workOrder.labor.correctEntry), inbound work 1764340000000 (+5 inboundWork.* capabilities) -- every new capability granted to NO Role. APPENDED, each an EXPLAINED pending migration; the ledger model is not extended.
-const RUNNABLE_MIGRATION_COUNT = 76;
-const TRACKED_MIGRATION_COUNT = 77; // the 76 runnable + the one deferred file
+// 76 -> 79 runnable: the Service Experience completion (2026-09-30): provider runtime 1764350000000 (schema), recovery 1764360000000 (+inboundWork.request.recover), self-scheduling 1764370000000 (+workOrder.selfScheduling.issue/.configure) -- every new capability granted to NO Role.
+const RUNNABLE_MIGRATION_COUNT = 79;
+const TRACKED_MIGRATION_COUNT = 80; // the 79 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -216,6 +217,9 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764320000000_technician-availability",
   "1764330000000_work-order-labor",
   "1764340000000_inbound-work-intake",
+  "1764350000000_inbound-provider-runtime",
+  "1764360000000_inbound-work-recovery",
+  "1764370000000_customer-self-scheduling",
 ]);
 
 const repoMigrations = () =>

@@ -4,13 +4,8 @@ import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import { Button } from "../../shared/ui/primitives";
-import { useAuth } from "../../auth/AuthContext";
-import { useGovernedCapabilities } from "../../access/useGovernedCapabilities.js";
 import {
   DEFAULT_EMAIL_INTAKE_SOURCE,
-  EMAIL_INTAKE_CAPABILITY_REQUEST,
-  ADMIN_EMAIL_INTAKE_READ,
-  ADMIN_EMAIL_INTAKE_MANAGE,
   SOURCE_STATUS,
 } from "../../access/inboundWorkSource.js";
 
@@ -598,14 +593,23 @@ function RequestsTable({ rows, empty, labels = STATUS_LABELS, heading = "Status"
   );
 }
 
-export default function AdminEmailCommunications({
-  source = DEFAULT_EMAIL_INTAKE_SOURCE,
-  capabilityRequest = EMAIL_INTAKE_CAPABILITY_REQUEST,
-} = {}) {
-  const { user } = useAuth();
-  const { hasCapability, accessVersion } = useGovernedCapabilities(user, capabilityRequest);
-  const canRead = hasCapability(ADMIN_EMAIL_INTAKE_READ);
-  const canManage = hasCapability(ADMIN_EMAIL_INTAKE_MANAGE);
+export default function AdminEmailCommunications({ source = DEFAULT_EMAIL_INTAKE_SOURCE } = {}) {
+  // THE CALLER'S OWN AUTHORITY COMES FROM EOS (readInboundWorkAccess.canManageIntake -- inboundWork.intake.manage),
+  // decided by the same server that answers every operation below; the Firebase capability feed is not consulted.
+  const [access, setAccess] = useState({ status: "loading", canManage: false });
+  useEffect(() => {
+    let live = true;
+    source.readAccess().then((res) => {
+      if (!live) return;
+      setAccess(res.status === SOURCE_STATUS.READY
+        ? { status: "ready", canManage: res.payload?.canManageIntake === true }
+        : { status: res.status, canManage: false });
+    });
+    return () => { live = false; };
+  }, [source]);
+  const canRead = access.canManage;
+  const canManage = access.canManage;
+  const accessVersion = access.status;
   const [tab, setTab] = useState("overview");
   const [state, setState] = useState({ status: "loading", config: null });
   const [readiness, setReadiness] = useState(null);
@@ -621,8 +625,9 @@ export default function AdminEmailCommunications({
   }, [source]);
 
   useEffect(() => {
+    if (access.status === "loading") return;
     if (!canRead) {
-      setState({ status: SOURCE_STATUS.DENIED, config: null });
+      setState({ status: access.status === "ready" ? SOURCE_STATUS.DENIED : SOURCE_STATUS.UNAVAILABLE, config: null });
       return;
     }
     setState({ status: "loading", config: null });

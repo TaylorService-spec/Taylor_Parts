@@ -26,6 +26,9 @@ export const INBOUND_WORK_READ_OPERATIONS = Object.freeze([
   "listInboundWork",
   "readInboundWorkRequest",
   "readInboundIntakeConfiguration",
+  "readInboundProviderReadiness",
+  "readInboundAttachment",
+  "listInboundRecoveryTargets",
 ]);
 
 /** Mirrors every other key of the server's EOS_INBOUND_WORK_OPERATIONS. */
@@ -36,6 +39,17 @@ export const INBOUND_WORK_COMMAND_OPERATIONS = Object.freeze([
   "saveInboundMailbox",
   "saveInboundRoutingRule",
   "deliverInboundMessage",
+  // The EOS provider runtime (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30).
+  "saveInboundConnection",
+  "startInboundConnectionAuthorization",
+  "completeInboundConnectionAuthorization",
+  "testInboundConnection",
+  "disconnectInboundConnection",
+  "pollInboundMailboxNow",
+  "retryInboundDelivery",
+  // Recovery of an unfinished accept claim.
+  "releaseInboundWork",
+  "reassignInboundWork",
 ]);
 
 const OPERATIONS = new Set([...INBOUND_WORK_READ_OPERATIONS, ...INBOUND_WORK_COMMAND_OPERATIONS]);
@@ -162,6 +176,12 @@ export function createEosInboundWorkSource({ client = inboundWorkApiClient, work
     accept: async (input) => mapInboundWrite(await client.call("acceptInboundWork", input)),
     decline: async (input) => mapInboundWrite(await client.call("declineInboundWork", input)),
     attach: async (input) => mapInboundWrite(await client.call("attachInboundWork", input)),
+    // RECOVERY (inboundWork.request.recover): release / reassign an accepted-but-unfinished claim; reviewers by Employee.
+    release: async (input) => mapInboundWrite(await client.call("releaseInboundWork", input)),
+    reassign: async (input) => mapInboundWrite(await client.call("reassignInboundWork", input)),
+    listRecoveryTargets: async (requestId) => mapInboundRead(await client.call("listInboundRecoveryTargets", { requestId })),
+    // A custodied attachment, read THROUGH its request (inboundWork.request.read).
+    readAttachment: async (input) => mapInboundRead(await client.call("readInboundAttachment", input)),
     // The governed company choice Accept STATES: ACTIVE and keyed only (requires workOrder.create, as Accept does).
     listOperatingCompanies: async () => mapInboundRead(await workOrderCall("listWorkOrderOperatingCompanies", {})),
   });

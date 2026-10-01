@@ -249,3 +249,63 @@ describe("Inbound Work review", () => {
     expect(decline.mock.calls[0][0].reason).toBe("CAPACITY");
   });
 });
+
+// ── Controller SERVICE EXPERIENCE COMPLETION (2026-09-30): reviewer visibility and RELEASE / REASSIGN ──
+describe("Inbound Work reviewer, history and recovery", () => {
+  const stuck = {
+    ...detail, status: "ACCEPTING", claimedByPrincipalId: "p-dana", claimedByName: "Dana Dispatch", claimedAt: 1756742700000,
+    pendingWorkOrderId: "wo-carried",
+    claimHistory: [{ kind: "CLAIMED", fromPrincipalId: null, fromName: null, toPrincipalId: "p-dana", toName: "Dana Dispatch", reason: null, at: 1756742700000 }],
+  };
+  const stuckRow = { ...row, status: "ACCEPTING", claimedByName: "Dana Dispatch", sourceMailboxName: "Warranty", threadMessageCount: 2, attachmentCount: 1, createdAt: 1756742640000 };
+
+  it("the queue names the reviewer, the mailbox and the flags", async () => {
+    render(<InboundWorkWorkspace source={makeSource({ listQueue: async () => ({ status: "ready", payload: { rows: [stuckRow], truncated: false }, error: null }) })} />);
+    expect(await screen.findByText("Dana Dispatch")).toBeTruthy();
+    expect(screen.getAllByText("Warranty", { selector: "td" }).some((td) => td.getAttribute("data-label") === "Mailbox")).toBe(true);
+    expect(screen.getByText(/2 replies/)).toBeTruthy();
+  });
+
+  it("a Service Manager releases an unfinished accept with a reason; history is shown", async () => {
+    access.value = { ...FULL_ACCESS, canRecover: true };
+    const released = [];
+    const source = makeSource({
+      listQueue: async () => ({ status: "ready", payload: { rows: [stuckRow], truncated: false }, error: null }),
+      getRequest: async () => ({ status: "ready", payload: stuck, error: null }),
+      listRecoveryTargets: async () => ({ status: "ready", payload: { targets: [{ employeeId: "emp-drew", displayName: "Drew Dispatch" }] }, error: null }),
+      release: async (input) => { released.push(input); return { ok: true, data: { status: "NEEDS_REVIEW" } }; },
+      reassign: async () => ({ ok: true, data: {} }),
+    });
+    render(<InboundWorkWorkspace source={source} />);
+    fireEvent.click(await screen.findByText("Warranty service required"));
+    expect(await screen.findByText(/not yet finished/)).toBeTruthy();
+    expect(screen.getByText(/A Work Order was already created/)).toBeTruthy();
+    const release = screen.getByRole("button", { name: "Release to queue" });
+    expect(release.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: "session ended" } });
+    fireEvent.click(release);
+    await waitFor(() => expect(released).toEqual([{ requestId: "req-1", reason: "session ended" }]));
+    expect(await screen.findByRole("option", { name: "Drew Dispatch" })).toBeTruthy();
+  });
+
+  it("without recovery authority the history shows and no recovery control does", async () => {
+    access.value = { ...FULL_ACCESS, canRecover: false };
+    render(<InboundWorkWorkspace source={makeSource({ getRequest: async () => ({ status: "ready", payload: stuck, error: null }) })} />);
+    fireEvent.click(await screen.findByText("Warranty service required"));
+    expect(await screen.findByLabelText("Reviewer history")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Release to queue" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reassign" })).toBeNull();
+  });
+
+  it("custodied attachments say where the bytes are; an unsafe one says it was blocked", async () => {
+    const withCustody = { ...detail, attachmentRefs: [
+      { ...detail.attachmentRefs[0], custody: "STORED", attachmentId: "iwa_1" },
+      { filename: "run.exe", mimeType: "application/octet-stream", size: 10, providerAttachmentId: "att-x", sourceMessageId: "msg-1", custody: "REFUSED_UNSAFE" },
+    ] };
+    render(<InboundWorkWorkspace source={makeSource({ getRequest: async () => ({ status: "ready", payload: withCustody, error: null }), readAttachment: async () => ({ status: "ready", payload: {} }) })} />);
+    fireEvent.click(await screen.findByText("Warranty service required"));
+    expect(await screen.findByText("Held in EOS")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+    expect(screen.getByText(/Blocked — unsafe attachment/)).toBeTruthy();
+  });
+});

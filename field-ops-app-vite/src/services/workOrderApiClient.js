@@ -52,6 +52,9 @@ export const WORK_ORDER_READ_OPERATIONS = Object.freeze([
   "readTechnicianExecutionStats",
   "readWorkOrderConsumptionSnapshot",
   "readTechnicianVolumeBreakdown",
+  // Customer self-scheduling (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30).
+  "listSelfSchedulingPolicies",
+  "readSelfSchedulingSessions",
 ]);
 
 /** Mirrors every other key of the server's EOS_WORK_ORDER_OPERATIONS, in the server's order. */
@@ -76,6 +79,9 @@ export const WORK_ORDER_COMMAND_OPERATIONS = Object.freeze([
   "endTechnicianUnavailability",
   "recordWorkOrderLabor",
   "setWorkOrderEstimatedDuration",
+  "saveSelfSchedulingPolicy",
+  "issueSelfSchedulingLink",
+  "revokeSelfSchedulingLink",
 ]);
 
 const OPERATIONS = new Set([...WORK_ORDER_READ_OPERATIONS, ...WORK_ORDER_COMMAND_OPERATIONS]);

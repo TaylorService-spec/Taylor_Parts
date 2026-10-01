@@ -78,7 +78,8 @@ export function assertCrmWriterTransition(from: CrmWriterAuthority, to: CrmWrite
 export const FIRESTORE_CRM_WRITERS = Object.freeze({
   "account.import": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/src/account/accountImportCommand.ts", entry: "createAccountFromImport; callable executeDataImport refuses a CUSTOMERS job before claiming it (dataImport/dataImportCallables.ts)" }),
   "crm.sandboxBaselineSeed": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/seedSandboxBaseline.js", entry: "main (accounts, locations, contacts upserts)" }),
-  "crm.sandboxInboundSeed": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/seedSandboxInboundWork.mjs", entry: "main (accounts, locations, contacts create-if-absent)" }),
+  // crm.sandboxInboundSeed (functions/scripts/seedSandboxInboundWork.mjs) is RETIRED with the Firebase inbound runtime
+  // (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30): the script no longer exists, so it writes nothing.
   "crm.ownershipBackfill": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/ownershipSandboxBackfill.js", entry: "main --apply (contacts / locations typed owner)" }),
   "crm.certificationAccountOwners": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/certificationWorld/seedAccountOwners.mjs", entry: "main --apply (the Account owner assignment map)" }),
   // Pass 11 CRM writer census (2026-09-28): three operator scripts that could still write the CRM collections of a

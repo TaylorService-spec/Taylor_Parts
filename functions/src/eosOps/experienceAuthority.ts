@@ -303,6 +303,10 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   surface("administration.permissionPreview", "Permission Preview", [
     { capabilityKey: "admin.principalAccess.read" },
   ]),
+  // Email & Communications (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30): the EOS provider runtime's
+  // administration -- connections, OAuth, mailboxes, routing, delivery failures -- earned by the governed PostgreSQL
+  // intake-administration capability, replacing the Firebase-feed gate on administration.emailIntake.read.
+  surface("administration.emailCommunications", "Email & Communications", [{ capabilityKey: "inboundWork.intake.manage" }]),
   // ── THE CONTAINER, AND WHY IT IS NOT A DOOR
   //
   // Administration's index reads no governed data of its own -- it lists the destinations above. So

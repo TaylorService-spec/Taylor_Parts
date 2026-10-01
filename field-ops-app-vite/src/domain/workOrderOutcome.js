@@ -153,7 +153,7 @@ export const INVENTORY_BOUNDARY_MESSAGES = Object.freeze({
 });
 
 /**
- * The boundary CODE carried by a result's `inventoryBoundary` ("CONSUME_NOT_APPLIED: Firebase consumes ..." or a
+ * The boundary CODE carried by a result's `inventoryBoundary` ("CONSUME_NOT_APPLIED: stock consumption is NOT_YET_ACTIVATED ..." or a
  * bare "NO_STOCK_MOVEMENT"), or null. Only a known code is returned: an unknown string is not guessed at.
  */
 export function inventoryBoundaryCode(value) {

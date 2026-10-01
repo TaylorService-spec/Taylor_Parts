@@ -21,10 +21,17 @@
 //
 // ════════════════════ THE PROVIDER BOUNDARY ════════════════════
 //
-// Polling a real mailbox (OAuth, delivery cursors, attachment byte custody) is the Firebase provider runtime, which
-// cannot reach this database. What enters here is a NORMALIZED message, from the non-production delivery seam
-// (deliverInboundMessage) or -- after an Owner ruling on the provider-runtime cutover -- from an EOS-side poller
-// calling ingestInboundMessage with a system Principal that holds inboundWork.intake.manage.
+// Polling a real mailbox (OAuth, delivery cursors, attachment byte custody) is the EOS provider runtime
+// (inboundProviderRuntime.ts -- Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30); the Firebase provider runtime is
+// retired. What enters here is a NORMALIZED message, from that poller (as the system delivery actor, which holds only
+// inboundWork.intake.manage) or from the non-production delivery seam (deliverInboundMessage) -- the same path.
+//
+// ════════════════════ MALFORMED OR UNSAFE IS QUARANTINED, NOT DROPPED ════════════════════
+//
+// A provider message that cannot be normalized is retained as a QUARANTINED intake keyed by its provider id
+// (quarantineMalformedMessage), so a poll never stalls behind it and nothing is lost. A NEW intake carrying an
+// executable / script / oversized attachment is QUARANTINED with the reason, and that attachment's bytes are never
+// fetched (attachmentCustodyRules.unsafeAttachmentReason).
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { WorkOrderLifecycleError, type LifecycleActor, type LifecycleCategory } from "./workOrderLifecycle";
@@ -50,6 +57,7 @@ import {
 } from "../inboundWork/inboundProcessing";
 import { associateInboundMessage, type ExistingIntakeRef } from "../inboundWork/inboundThreading";
 import { isEmailProviderId, normalizeProviderMessage } from "../inboundWork/emailProvider";
+import { summarizeCustody, unsafeAttachmentReason, safeAttachmentFilename } from "../inboundWork/attachmentCustodyRules";
 
 // ════════════════════ capabilities (migration 1764340000000, registered with NO grants) ════════════════════
 export const INBOUND_WORK_READ = "inboundWork.request.read";
@@ -57,6 +65,8 @@ export const INBOUND_WORK_ACCEPT = "inboundWork.request.accept";
 export const INBOUND_WORK_DECLINE = "inboundWork.request.decline";
 export const INBOUND_WORK_ATTACH = "inboundWork.request.attach";
 export const INBOUND_INTAKE_MANAGE = "inboundWork.intake.manage";
+/** RELEASE / REASSIGN an unfinished accept claim (migration 1764360000000). Service-domain intake only. */
+export const INBOUND_WORK_RECOVER = "inboundWork.request.recover";
 
 /** The statuses a PostgreSQL intake can hold. ACCEPTING is the in-flight Accept claim (see inboundWorkDecisions.ts). */
 export const PG_INBOUND_WORK_STATUSES = Object.freeze([
@@ -193,7 +203,18 @@ export interface MailboxRow {
   readonly inboundEnabled: boolean;
   readonly threadingEnabled: boolean;
   readonly version: number;
+  /** The provider connection this mailbox is read through (null: deliverable only through the non-production seam). */
+  readonly connectionId: string | null;
+  readonly attachmentPolicy: "STORE" | "PRESERVE_METADATA" | "IGNORE";
+  readonly lastPolledAt: number | null;
+  readonly lastSuccessfulDeliveryAt: number | null;
+  readonly lastMessageReceivedAt: number | null;
+  readonly mailboxReadable: boolean | null;
+  readonly mailboxValidationDetail: string | null;
+  readonly deliveryConnected: boolean;
 }
+
+const epochOrNull = (v: unknown): number | null => (v ? new Date(v as string).getTime() : null);
 
 const mailboxFromRow = (r: Record<string, unknown>): MailboxRow => Object.freeze({
   id: String(r.id), displayName: String(r.display_name), emailAddress: (r.email_address as string | null) ?? null,
@@ -201,6 +222,13 @@ const mailboxFromRow = (r: Record<string, unknown>): MailboxRow => Object.freeze
   suggestedOperatingCompanyId: (r.suggested_operating_company_id as string | null) ?? null,
   status: r.status === "DISABLED" ? "DISABLED" : "ACTIVE", inboundEnabled: r.inbound_enabled === true,
   threadingEnabled: r.threading_enabled === true, version: Number(r.version),
+  connectionId: (r.connection_id as string | null) ?? null,
+  attachmentPolicy: (r.attachment_policy === "PRESERVE_METADATA" || r.attachment_policy === "IGNORE" ? r.attachment_policy : "STORE") as MailboxRow["attachmentPolicy"],
+  lastPolledAt: epochOrNull(r.last_polled_at), lastSuccessfulDeliveryAt: epochOrNull(r.last_successful_delivery_at),
+  lastMessageReceivedAt: epochOrNull(r.last_message_received_at),
+  mailboxReadable: r.mailbox_readable === null || r.mailbox_readable === undefined ? null : r.mailbox_readable === true,
+  mailboxValidationDetail: (r.mailbox_validation_detail as string | null) ?? null,
+  deliveryConnected: Boolean(r.connection_id) && r.status === "ACTIVE" && r.inbound_enabled === true,
 });
 
 async function readMailbox(db: Pool | PoolClient, tenantId: string, mailboxId: string): Promise<MailboxRow | null> {
@@ -221,7 +249,8 @@ async function readRules(db: Pool | PoolClient, tenantId: string): Promise<Routi
 }
 
 const MAILBOX_INPUT = ["mailboxId", "displayName", "emailAddress", "purpose", "destination", "defaultQueue",
-  "suggestedOperatingCompanyId", "status", "inboundEnabled", "threadingEnabled"];
+  "suggestedOperatingCompanyId", "status", "inboundEnabled", "threadingEnabled", "connectionId", "attachmentPolicy"];
+const ATTACHMENT_POLICIES = ["STORE", "PRESERVE_METADATA", "IGNORE"];
 const MAILBOX_PURPOSES = ["SERVICE", "WARRANTY", "PARTS", "OTHER"];
 
 async function assertGovernedCompany(db: PoolClient, tenantId: string, companyId: string): Promise<void> {
@@ -266,6 +295,8 @@ export async function saveInboundMailbox(
 ): Promise<MailboxRow> {
   requireCapability(actor, INBOUND_INTAKE_MANAGE);
   only(input, MAILBOX_INPUT);
+  // A NEW mailbox may leave its id to EOS; an existing one is named.
+  if (input.mailboxId === undefined || input.mailboxId === null || input.mailboxId === "") input = { ...input, mailboxId: `mbx_${randomUUID()}` };
   if (!isId(input.mailboxId)) refuse("MAILBOX_ID_REQUIRED", "INVALID_INPUT", "mailboxId is required");
   const displayName = optionalText(input.displayName, 120, "displayName");
   if (!displayName) refuse("DISPLAY_NAME_REQUIRED", "INVALID_INPUT", "displayName is required");
@@ -283,18 +314,28 @@ export async function saveInboundMailbox(
   const company = optionalText(input.suggestedOperatingCompanyId, 120, "suggestedOperatingCompanyId");
   const inboundEnabled = optionalBool(input.inboundEnabled, true, "inboundEnabled");
   const threadingEnabled = optionalBool(input.threadingEnabled, true, "threadingEnabled");
+  const connectionId = optionalText(input.connectionId, 180, "connectionId");
+  const attachmentPolicy = input.attachmentPolicy === undefined ? "STORE" : input.attachmentPolicy;
+  if (!ATTACHMENT_POLICIES.includes(attachmentPolicy as string)) {
+    refuse("ATTACHMENT_POLICY_INVALID", "INVALID_INPUT", `attachmentPolicy is one of ${ATTACHMENT_POLICIES.join(", ")}`);
+  }
   const now = (deps.now ?? (() => new Date()))();
 
   return inTransaction(deps.pool, async (c) => {
     if (company) await assertGovernedCompany(c, actor.tenantId, company);
+    if (connectionId) {
+      const conn = await c.query(`SELECT 1 FROM eos_ops.inbound_provider_connections WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, connectionId]);
+      if (conn.rows.length === 0) refuse("CONNECTION_NOT_FOUND", "NOT_FOUND", "that provider connection does not exist in this tenant");
+    }
     const before = await c.query(`SELECT * FROM eos_ops.inbound_mailboxes WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
       [actor.tenantId, input.mailboxId]);
     const { rows } = await c.query(
       `INSERT INTO eos_ops.inbound_mailboxes
          (tenant_id, id, display_name, email_address, purpose, destination, default_queue, suggested_operating_company_id,
-          status, inbound_enabled, threading_enabled, updated_by_principal_id, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13)
+          status, inbound_enabled, threading_enabled, updated_by_principal_id, created_at, updated_at, connection_id, attachment_policy)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13,$14,$15)
        ON CONFLICT (tenant_id, id) DO UPDATE SET display_name = EXCLUDED.display_name, email_address = EXCLUDED.email_address,
+         connection_id = EXCLUDED.connection_id, attachment_policy = EXCLUDED.attachment_policy,
          purpose = EXCLUDED.purpose, destination = EXCLUDED.destination, default_queue = EXCLUDED.default_queue,
          suggested_operating_company_id = EXCLUDED.suggested_operating_company_id, status = EXCLUDED.status,
          inbound_enabled = EXCLUDED.inbound_enabled, threading_enabled = EXCLUDED.threading_enabled,
@@ -302,7 +343,7 @@ export async function saveInboundMailbox(
          version = inbound_mailboxes.version + 1
        RETURNING *`,
       [actor.tenantId, input.mailboxId, displayName, emailAddress, purpose, destination, defaultQueue, company, status,
-        inboundEnabled, threadingEnabled, actor.principalId, now]);
+        inboundEnabled, threadingEnabled, actor.principalId, now, connectionId, attachmentPolicy]);
     const saved = mailboxFromRow(rows[0]);
     await writeAudit(c, actor, "inboundWork.mailbox.save", "inboundMailbox", saved.id,
       before.rows.length ? mailboxFromRow(before.rows[0]) : null, saved, null, now);
@@ -379,18 +420,58 @@ export async function saveInboundRoutingRule(
   });
 }
 
-/** The configuration an intake administrator sees: mailboxes, rules, and the intake counts by status. */
+/** A provider connection as Administration sees it: identity, status and health -- never a credential value. */
+export function connectionView(r: Record<string, unknown>) {
+  return Object.freeze({
+    id: String(r.id), connectionName: String(r.connection_name), provider: String(r.provider),
+    tenantOrWorkspace: String(r.tenant_or_workspace ?? ""), connectedAccount: String(r.connected_account ?? ""),
+    inboundEnabled: r.inbound_enabled === true, oauthStatus: String(r.oauth_status), connectionStatus: String(r.connection_status),
+    health: String(r.health),
+    // WHETHER a credential is held, never where or what: the reference is operator custody.
+    credentialHeld: Boolean(r.credential_secret_name),
+    grantedScopes: (r.granted_scopes as string | null) ?? null,
+    authorizedAt: epochOrNull(r.authorized_at), lastTokenRefreshAt: epochOrNull(r.last_token_refresh_at),
+    lastHealthCheckAt: epochOrNull(r.last_health_check_at), lastSuccessfulSync: epochOrNull(r.last_successful_sync_at),
+    lastMessageReceived: epochOrNull(r.last_message_received_at), lastProviderErrorAt: epochOrNull(r.last_provider_error_at),
+    providerErrorCode: (r.provider_error_code as string | null) ?? null, version: Number(r.version),
+  });
+}
+
+/** One delivery failure, as the Exceptions surface shows it. */
+export function failureView(r: Record<string, unknown>) {
+  return Object.freeze({
+    id: String(r.id), connectionId: String(r.connection_id), mailboxId: String(r.mailbox_id), subjectId: String(r.subject_id),
+    code: String(r.code), detail: String(r.detail ?? ""), disposition: String(r.disposition), attempts: Number(r.attempts),
+    exhausted: r.exhausted === true, status: String(r.status), nextAttemptAt: epochOrNull(r.next_attempt_at),
+    firstFailedAt: epochOrNull(r.first_failed_at), lastFailedAt: epochOrNull(r.last_failed_at),
+  });
+}
+
+/** The configuration an intake administrator sees: connections, mailboxes, rules, open failures and the counts. */
 export async function readInboundIntakeConfiguration(deps: { readonly pool: Pool }, actor: LifecycleActor): Promise<unknown> {
   requireCapability(actor, INBOUND_INTAKE_MANAGE);
-  const [mailboxes, rules, counts] = await Promise.all([
+  const [mailboxes, rules, counts, custody, connections, failures] = await Promise.all([
     deps.pool.query(`SELECT * FROM eos_ops.inbound_mailboxes WHERE tenant_id = $1 ORDER BY id`, [actor.tenantId]),
     readRules(deps.pool, actor.tenantId),
     deps.pool.query(`SELECT status, count(*)::int n FROM eos_ops.inbound_work_requests WHERE tenant_id = $1 GROUP BY status`, [actor.tenantId]),
+    deps.pool.query(`SELECT attachment_custody, count(*)::int n FROM eos_ops.inbound_work_requests
+                      WHERE tenant_id = $1 AND attachment_custody <> 'NONE' GROUP BY attachment_custody`, [actor.tenantId]),
+    deps.pool.query(`SELECT * FROM eos_ops.inbound_provider_connections WHERE tenant_id = $1 ORDER BY connection_name, id`, [actor.tenantId]),
+    deps.pool.query(`SELECT * FROM eos_ops.inbound_delivery_failures WHERE tenant_id = $1 AND status <> 'RESOLVED'
+                      ORDER BY last_failed_at DESC, id LIMIT 200`, [actor.tenantId]),
   ]);
   const byStatus: Record<string, number> = {};
   let total = 0;
   for (const r of counts.rows) { byStatus[r.status] = r.n; total += r.n; }
-  return { mailboxes: mailboxes.rows.map(mailboxFromRow), rules, overview: { total, byStatus } };
+  const attachmentCustody: Record<string, number> = {};
+  for (const r of custody.rows) attachmentCustody[r.attachment_custody] = r.n;
+  return {
+    connections: connections.rows.map(connectionView),
+    mailboxes: mailboxes.rows.map(mailboxFromRow),
+    rules,
+    exceptions: failures.rows.map(failureView),
+    overview: { total, byStatus, attachmentCustody },
+  };
 }
 
 // ════════════════════ intake ════════════════════
@@ -410,6 +491,28 @@ export interface IngestInput {
 }
 
 const PROCESSING_PROVIDERS = ["EOS_NATIVE", "VDX", "EXTERNAL"];
+
+/** The custody an attachment starts with: unsafe is refused, else the mailbox's attachment policy decides. */
+export function initialAttachmentRefs(
+  attachments: readonly Record<string, unknown>[], policy: MailboxRow["attachmentPolicy"] | null,
+): { refs: Record<string, unknown>[]; unsafe: string[] } {
+  const unsafe: string[] = [];
+  const refs = attachments.map((a) => {
+    const why = unsafeAttachmentReason(a as never);
+    if (why) unsafe.push(`${safeAttachmentFilename(a.filename)}: ${why}`);
+    return {
+      ...a,
+      filename: safeAttachmentFilename(a.filename),
+      custody: why ? "REFUSED_UNSAFE" : policy === "STORE" ? "PENDING" : "METADATA_ONLY",
+      custodyReason: why,
+      attachmentId: null,
+      attempts: 0,
+      failureCode: null,
+      storedAt: null,
+    };
+  });
+  return { refs, unsafe };
+}
 
 async function insertMessage(
   c: PoolClient, actor: LifecycleActor, requestId: string, message: NormalizedInboundMessage, normalizedBody: string,
@@ -495,13 +598,15 @@ export async function ingestInboundMessage(
   }
   const cKey = contentKey(message, normalizedBody);
 
+  const quarantineRefs = initialAttachmentRefs(message.attachments as unknown as Record<string, unknown>[], null).refs;
   const retained = (status: PgInboundWorkStatus, note: string | null) => ({
     source_provider: message.provider, source_connection_id: message.connectionId, source_mailbox_id: message.mailboxId,
     source_message_id: message.messageId, source_thread_id: message.threadId, content_key: cKey,
     received_at: toTimestamp(message.receivedAt), sender: message.sender, recipients: JSON.stringify(message.recipients),
     cc: JSON.stringify(message.cc), subject: message.subject, original_body: message.originalBody,
     original_body_content_type: message.originalBodyContentType, normalized_body: normalizedBody,
-    attachment_refs: JSON.stringify(message.attachments), status, status_note: note,
+    // Without a mailbox's policy (unknown / disabled mailbox) attachments are metadata only; unsafe ones are refused.
+    attachment_refs: JSON.stringify(quarantineRefs), attachment_custody: summarizeCustody(quarantineRefs as never), status, status_note: note,
   });
   const insertRequest = async (c: PoolClient, fields: Record<string, unknown>) => {
     const cols = ["tenant_id", "id", "ingested_by_principal_id", "created_at", "updated_at", ...Object.keys(fields)];
@@ -548,11 +653,13 @@ export async function ingestInboundMessage(
         const target = association.requestId as string;
         const { rows } = await c.query(
           `SELECT status, attachment_refs FROM eos_ops.inbound_work_requests WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, target]);
-        const attachments = ((rows[0].attachment_refs as unknown[]) ?? []).concat(message.attachments).slice(0, MAX_ATTACHMENTS * 4);
+        // A reply's unsafe attachment is refused custody; the reply itself is preserved on the thread.
+        const replyRefs = initialAttachmentRefs(message.attachments as unknown as Record<string, unknown>[], mailbox.attachmentPolicy).refs;
+        const attachments = ((rows[0].attachment_refs as Record<string, unknown>[]) ?? []).concat(replyRefs).slice(0, MAX_ATTACHMENTS * 4);
         await insertMessage(c, actor, target, message, normalizedBody, "REPLY", association.matchedOn, now);
         await c.query(
-          `UPDATE eos_ops.inbound_work_requests SET attachment_refs = $3::jsonb, updated_at = $4, version = version + 1
-            WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, target, JSON.stringify(attachments), now]);
+          `UPDATE eos_ops.inbound_work_requests SET attachment_refs = $3::jsonb, attachment_custody = $5, updated_at = $4, version = version + 1
+            WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, target, JSON.stringify(attachments), now, summarizeCustody(attachments as never)]);
         await writeAudit(c, actor, "inboundWork.request.linkThreadMessage", "inboundWorkRequest", target, null,
           { providerMessageId: message.messageId, matchedOn: association.matchedOn }, null, now);
         return { requestId: target, outcome: "THREAD_MATCH", status: rows[0].status, duplicateOfRequestId: null } as IngestOutcome;
@@ -565,6 +672,20 @@ export async function ingestInboundMessage(
         hasAttachments: message.attachments.length > 0,
       });
       const ambiguous = association.outcome === "AMBIGUOUS";
+      const screened = initialAttachmentRefs(message.attachments as unknown as Record<string, unknown>[], mailbox.attachmentPolicy);
+      if (screened.unsafe.length > 0) {
+        const note = boundedString(`Unsafe attachment(s) -- never fetched: ${screened.unsafe.join("; ")}`, 500);
+        await insertRequest(c, {
+          ...retained("QUARANTINED", note), source_mailbox_name: boundedString(mailbox.displayName, 120) || null,
+          attachment_refs: JSON.stringify(screened.refs), attachment_custody: summarizeCustody(screened.refs as never),
+          destination: mailbox.destination ?? "SERVICE",
+        });
+        await insertMessage(c, actor, requestId, message, normalizedBody, "ORIGINAL", null, now);
+        await writeAudit(c, actor, "inboundWork.request.quarantine", "inboundWorkRequest", requestId, null,
+          { status: "QUARANTINED", mailboxId: message.mailboxId, sourceMessageId: message.messageId, sender: message.sender,
+            unsafeAttachments: screened.unsafe }, note, now);
+        return { requestId, outcome: "QUARANTINED", status: "QUARANTINED", duplicateOfRequestId: null } as IngestOutcome;
+      }
       const sameContent = await c.query(
         `SELECT id FROM eos_ops.inbound_work_requests WHERE tenant_id = $1 AND content_key = $2 ORDER BY created_at, id LIMIT 1`,
         [actor.tenantId, cKey]);
@@ -603,6 +724,8 @@ export async function ingestInboundMessage(
         processing_provider: provider,
         processing_metadata: JSON.stringify(processing.providerMetadata),
         processing_error: processingError || null,
+        attachment_refs: JSON.stringify(screened.refs),
+        attachment_custody: summarizeCustody(screened.refs as never),
       });
       await insertMessage(c, actor, requestId, message, normalizedBody, "ORIGINAL", null, now);
       await writeAudit(c, actor, processingError ? "inboundWork.request.fail" : "inboundWork.request.create", "inboundWorkRequest", requestId, null,
@@ -649,11 +772,68 @@ export async function deliverInboundMessage(
       connectionId: boundedString(input.connectionId, 255), mailboxId: input.mailboxId as string,
     });
   } catch (err) {
-    return refuse("MESSAGE_INVALID", "INVALID_INPUT", boundedString((err as Error).message, 300) || "the provider message could not be read");
+    // A message the provider can identify is RETAINED as quarantined evidence (the same as a poll); one with no
+    // provider id at all cannot be keyed, deduplicated or retained, and is refused.
+    const providerMessageId = boundedString((input.message as { id?: unknown } | null)?.id, 255);
+    if (!providerMessageId) {
+      return refuse("MESSAGE_INVALID", "INVALID_INPUT", boundedString((err as Error).message, 300) || "the provider message could not be read");
+    }
+    return quarantineMalformedMessage(deps, actor, {
+      provider: input.provider as string, mailboxId: input.mailboxId as string, connectionId: boundedString(input.connectionId, 255),
+      providerMessageId, reason: boundedString((err as Error).message, 300) || "the provider message could not be read", raw: input.message,
+    });
   }
   return ingestInboundMessage(deps, actor, {
     message,
     processingProvider: input.processingProvider as InboundProcessingProvider | undefined,
     providerResult: input.providerResult,
+  });
+}
+
+/**
+ * RETAIN A MALFORMED PROVIDER MESSAGE AS QUARANTINED EVIDENCE. Keyed exactly like any intake (tenant, mailbox,
+ * provider message id), so a re-poll of the same message converges (DUPLICATE) instead of stalling the mailbox
+ * behind it. The raw payload is retained as bounded plain text; nothing from it is interpreted.
+ */
+export async function quarantineMalformedMessage(
+  deps: { readonly pool: Pool; readonly now?: () => Date },
+  actor: LifecycleActor,
+  input: { provider: string; mailboxId: string; connectionId: string; providerMessageId: string; reason: string; raw: unknown },
+): Promise<IngestOutcome> {
+  requireCapability(actor, INBOUND_INTAKE_MANAGE);
+  if (!isEmailProviderId(input.provider)) refuse("PROVIDER_INVALID", "INVALID_INPUT", "provider must be MICROSOFT_365 or GOOGLE_WORKSPACE");
+  if (!isId(input.mailboxId) || !isId(input.providerMessageId)) refuse("MESSAGE_INVALID", "INVALID_INPUT", "a quarantined message still names its mailbox and provider id");
+  const now = (deps.now ?? (() => new Date()))();
+  const requestId = inboundRequestId(actor.tenantId, input.mailboxId, input.providerMessageId);
+  let excerpt: string;
+  try { excerpt = boundedString(JSON.stringify(input.raw), 20000); } catch { excerpt = ""; }
+  const note = boundedString(`Malformed provider message: ${input.reason}`, 500);
+  return inTransaction(deps.pool, async (c) => {
+    await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`inbound|${actor.tenantId}|${input.mailboxId}|${input.providerMessageId}`]);
+    const seen = await c.query(
+      `SELECT request_id FROM eos_ops.inbound_work_messages WHERE tenant_id = $1 AND mailbox_id = $2 AND provider_message_id = $3`,
+      [actor.tenantId, input.mailboxId, input.providerMessageId]);
+    if (seen.rows.length) {
+      const r = await c.query(`SELECT status FROM eos_ops.inbound_work_requests WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, seen.rows[0].request_id]);
+      return { requestId: String(seen.rows[0].request_id), outcome: "DUPLICATE", status: r.rows[0]?.status, duplicateOfRequestId: null } as IngestOutcome;
+    }
+    const mailbox = await readMailbox(c, actor.tenantId, input.mailboxId);
+    await c.query(
+      `INSERT INTO eos_ops.inbound_work_requests
+         (tenant_id, id, source_provider, source_connection_id, source_mailbox_id, source_mailbox_name, source_message_id, content_key,
+          subject, original_body, original_body_content_type, normalized_body, status, status_note, destination, ingested_by_principal_id,
+          created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'(malformed provider message)',$9,'text/plain','',
+               'QUARANTINED',$10,$11,$12,$13,$13)`,
+      [actor.tenantId, requestId, input.provider, input.connectionId, input.mailboxId, mailbox?.displayName ?? null, input.providerMessageId,
+        createHash("sha256").update(`malformed|${input.mailboxId}|${input.providerMessageId}`).digest("hex"), excerpt, note,
+        mailbox?.destination ?? "SERVICE", actor.principalId, now]);
+    await c.query(
+      `INSERT INTO eos_ops.inbound_work_messages (id, tenant_id, request_id, mailbox_id, provider_message_id, message_role, recorded_by_principal_id, recorded_at)
+       VALUES ($1,$2,$3,$4,$5,'ORIGINAL',$6,$7)`,
+      [`ibm_${randomUUID()}`, actor.tenantId, requestId, input.mailboxId, input.providerMessageId, actor.principalId, now]);
+    await writeAudit(c, actor, "inboundWork.request.quarantine", "inboundWorkRequest", requestId, null,
+      { status: "QUARANTINED", mailboxId: input.mailboxId, sourceMessageId: input.providerMessageId, malformed: true }, note, now);
+    return { requestId, outcome: "QUARANTINED", status: "QUARANTINED", duplicateOfRequestId: null } as IngestOutcome;
   });
 }

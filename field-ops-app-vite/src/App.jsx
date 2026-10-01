@@ -15,6 +15,7 @@ import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { recordNavigation, recordIdentity, diagnosticsVisible } from "./diagnostics/crashDiagnostics.js";
 import { routerBasenameFrom } from "./routerBasename";
+import { customerSchedulingToken } from "./services/selfSchedulingApiClient.js";
 const ControlTower = lazy(() => import("./modules/controlTower/ControlTower"));
 import Jobs from "./modules/jobs/Jobs";
 import Technicians from "./modules/technicians/Technicians";
@@ -88,6 +89,7 @@ const UserDetail = lazy(() => import("./modules/administration/UserDetail.jsx"))
 const MyEmployeeProfile = lazy(() => import("./modules/employees/MyEmployeeProfile.jsx"));
 const IntegrationsFaq = lazy(() => import("./modules/administration/IntegrationsFaq"));
 const AdminEmailCommunications = lazy(() => import("./modules/administration/AdminEmailCommunications.jsx"));
+const CustomerSchedulingPage = lazy(() => import("./modules/selfScheduling/CustomerSchedulingPage.jsx"));
 const InboundWorkWorkspace = lazy(() => import("./modules/service/InboundWorkWorkspace.jsx"));
 const PurchaseOrders = lazy(() => import("./modules/purchasing/PurchaseOrders"));
 const Receipts = lazy(() => import("./modules/purchasing/Receipts"));
@@ -1299,6 +1301,18 @@ export default function App() {
     eosIsNavigationSource ? NO_LEGACY_KEYS : allowedLegacyKeys,
     operationalContext,
   ));
+
+  // CUSTOMER SELF-SCHEDULING (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30): the ONE page reachable with no
+  // sign-in. The token in the link is its only credential, and it is sent to EOS in a request body -- nothing here
+  // consults the signed-in user, the navigation authority or Firebase.
+  const selfScheduleToken = customerSchedulingToken(typeof window === "undefined" ? "" : window.location.pathname, ROUTER_BASENAME);
+  if (selfScheduleToken) {
+    return (
+      <Suspense fallback={<div className="fo-panel">Loading...</div>}>
+        <CustomerSchedulingPage token={selfScheduleToken} />
+      </Suspense>
+    );
+  }
 
   if (loading) return <div className="fo-panel">Loading...</div>;
 

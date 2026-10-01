@@ -12,9 +12,9 @@ name: Email Connections and Inbound Work Tests
 #   4. BASE EOS NEEDS NO ADD-ON. Native processing extracts and suggests with no VDX and no external
 #      provider configured -- and an EXTERNAL provider changes nothing about Work Order creation.
 #
-# THREE JOBS, SPLIT BY COST. The offline suite is pure and runs first, so a broken invariant fails in
-# seconds. The client suite covers navigation gating and the review screen. The emulator suite proves the
-# wiring, which is the one thing fakes cannot.
+# TWO JOBS, SPLIT BY COST. The offline suite is pure and runs first, so a broken invariant fails in
+# seconds. The client suite covers navigation gating and the review screen. The wiring is proven against
+# PostgreSQL (the Firebase emulator job retired with the Firebase inbound runtime, 2026-09-30).
 #
 # NO production, NO deployment, NO credentials, NO repository secrets. The emulator runs as project
 # "eos-platform-sandbox" on loopback -- deliberately NOT "taylor-parts", because the capability activation
@@ -36,7 +36,6 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/index.ts"
       - "functions/scripts/fixtures/inboundWorkFixtures.mjs"
-      - "functions/scripts/seedSandboxInboundWork.mjs"
       - "functions/test/inboundWork*.test.mjs"
       - "functions/test/emailTransport*.test.mjs"
       - "functions/package.json"
@@ -44,6 +43,11 @@ on:
       - "firebase.json"
       - "config/environments.json"
       - "field-ops-app-vite/src/access/inboundWorkSource.js"
+      - "field-ops-app-vite/src/services/selfSchedulingApiClient.js"
+      - "field-ops-app-vite/src/modules/selfScheduling/**"
+      - "field-ops-app-vite/test/emailIntakeSourceEos.test.mjs"
+      - "field-ops-app-vite/test/selfSchedulingApiClient.test.mjs"
+      - "field-ops-app-vite/test/customerSchedulingPage.test.jsx"
       - "field-ops-app-vite/src/access/useGovernedCapabilities.js"
       - "field-ops-app-vite/src/modules/service/InboundWorkWorkspace.jsx"
       - "field-ops-app-vite/src/modules/administration/AdminEmailCommunications.jsx"
@@ -65,7 +69,6 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/index.ts"
       - "functions/scripts/fixtures/inboundWorkFixtures.mjs"
-      - "functions/scripts/seedSandboxInboundWork.mjs"
       - "functions/test/inboundWork*.test.mjs"
       - "functions/test/emailTransport*.test.mjs"
       - "functions/package.json"
@@ -73,6 +76,11 @@ on:
       - "firebase.json"
       - "config/environments.json"
       - "field-ops-app-vite/src/access/inboundWorkSource.js"
+      - "field-ops-app-vite/src/services/selfSchedulingApiClient.js"
+      - "field-ops-app-vite/src/modules/selfScheduling/**"
+      - "field-ops-app-vite/test/emailIntakeSourceEos.test.mjs"
+      - "field-ops-app-vite/test/selfSchedulingApiClient.test.mjs"
+      - "field-ops-app-vite/test/customerSchedulingPage.test.jsx"
       - "field-ops-app-vite/src/access/useGovernedCapabilities.js"
       - "field-ops-app-vite/src/modules/service/InboundWorkWorkspace.jsx"
       - "field-ops-app-vite/src/modules/administration/AdminEmailCommunications.jsx"
@@ -175,63 +183,18 @@ jobs:
         run: npx vitest run test/adminEmailCommunications.test.jsx
         working-directory: field-ops-app-vite
 
-  inbound-work-emulator:
-    name: Intake to Work Order, end to end (Firestore emulator)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      # Firebase test-safety guard (functions/test/support/firebaseTestGuard.cjs): emulator suites
-      # refuse to run unless the emulator is named explicitly -- never a silent fallback to Google.
-      FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
-    steps:
-      - uses: actions/checkout@v4
+      # Service Experience completion (2026-09-30): the email intake source is EOS end to end, and the customer
+      # self-scheduling client and page need no login, no Firebase, and say every refusal in plain words.
+      - name: EOS email intake source + public self-scheduling client
+        run: node --test test/emailIntakeSourceEos.test.mjs test/selfSchedulingApiClient.test.mjs
+        working-directory: field-ops-app-vite
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: functions/package-lock.json
+      - name: Customer scheduling page (jsdom)
+        run: npx vitest run test/customerSchedulingPage.test.jsx
+        working-directory: field-ops-app-vite
 
-      - name: Install functions dependencies (reproducible)
-        run: npm ci
-        working-directory: functions
-
-      - name: Build (TypeScript)
-        run: npm run build
-        working-directory: functions
-
-      - name: Start Firestore emulator (background)
-        run: |
-          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project demo-eos-test --config ../firebase.json > /tmp/inbound-work-emulator.log 2>&1 &
-          for i in $(seq 1 60); do
-            if grep -q "All emulators ready" /tmp/inbound-work-emulator.log 2>/dev/null; then exit 0; fi
-            sleep 1
-          done
-          echo "Emulator did not become ready in time"
-          cat /tmp/inbound-work-emulator.log
-          exit 1
-        working-directory: functions
-
-      # A provider message goes in through the real adapter and one governed Work Order comes out, carrying
-      # the customer, site, unit, warranty authorization and problem the message described -- with the
-      # intake linked to it, an audit event beside it, and a reply on the thread creating nothing.
-      - name: Inbound work end to end (intake, accept, decline, attach, threading, authority)
-        run: node --test test/inboundWorkEmulator.test.mjs
-        working-directory: functions
-
-      # Real delivery end to end against a scripted provider: the connection lifecycle, the poll, the
-      # cursor, duplicate safety, threading, attachment custody, retry, provider parity, and Accept
-      # still producing exactly one governed Work Order.
-      - name: Provider delivery end to end (connect, poll, attachments, retry, parity)
-        run: node --test test/emailTransportEmulator.test.mjs
-        working-directory: functions
-
-      - name: Upload emulator debug logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: inbound-work-emulator-logs
-          path: |
-            /tmp/inbound-work-emulator.log
-            functions/firestore-debug.log
+  # THE FIRESTORE EMULATOR JOB IS RETIRED (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30): the Firebase intake,
+  # decisions and provider runtime it exercised are gone from the codebase. The same journey -- provider message in,
+  # connection lifecycle, poll, cursor, duplicate safety, threading, attachment custody, retry, Accept -> ONE Work
+  # Order -- is proven against PostgreSQL by functions/test/inboundProviderRuntimePostgres.test.mjs (Service Work
+  # Order Authority Tests workflow).

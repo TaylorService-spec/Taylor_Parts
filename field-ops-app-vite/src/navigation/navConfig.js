@@ -680,7 +680,9 @@ export const NAV_DOMAINS = [
       // exceptions. ONE destination carrying the seven-section information architecture as tabs: Administration
       // already holds fifteen items, and the parts of one configuration subject belong under the subject.
       // Capability-gated for the same reason Data Import is.
-      { key: "emailCommunications", label: "Email & Communications", path: "email-communications", capabilityAccess: ["administration.emailIntake.read"] },
+      // Governed by the EOS intake-administration capability (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30:
+      // the provider runtime moved to EOS / PostgreSQL) -- surface administration.emailCommunications below.
+      { key: "emailCommunications", label: "Email & Communications", path: "email-communications", capabilityAccess: ["inboundWork.intake.manage"] },
       { key: "integrations", label: "Integrations", path: "integrations" },
       { key: "auditLogs", label: "Audit Logs", path: "audit-logs" },
     ],
@@ -772,6 +774,7 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   // Administration
   "administration/users": ["administration.users"],
   "administration/dataImport": ["administration.dataImport"],
+  "administration/emailCommunications": ["administration.emailCommunications"],
   "administration/auditLogs": ["administration.auditLogs"],
   // The governed-configuration half, mapped once the reads that govern them made them earnable
   // (Owner ruling, Wave 9 / Lane AH). These rows are read ONLY on the EOS branch of
@@ -827,7 +830,6 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   "administration/duplicateRules": "No capability governs duplicate-rule administration.",
   "administration/warehouseRacking": "Gated today by the Firebase capability feed; inventory.location.bin.* is not in eos_policy.capabilities.",
   "administration/financialPolicy": "Gated today by the Firebase capability feed; no registered financial-policy capability.",
-  "administration/emailCommunications": "administration.emailIntake.read is a Firebase-activated id, not a registered EOS capability.",
   "administration/vehicles": "Hidden placeholder, no backend.",
   "administration/regions": "Hidden placeholder, no backend.",
   "administration/companySettings": "Hidden placeholder, no backend.",

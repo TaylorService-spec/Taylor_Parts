@@ -571,7 +571,7 @@ export async function executeWorkOrderOperation(
         scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements }),
     });
     const result = await table[operation](
-      { pool: deps.pool, reader: postgresContextualReader(deps.pool), postgresState }, caller, request.input);
+      { pool: deps.pool, reader: postgresContextualReader(deps.pool), postgresState, policyReader: deps.reader }, caller, request.input);
     return { status: 200, body: { ok: true, operation, result } };
   } catch (err) {
     if (err instanceof PrincipalContextError) return { status: 403, body: { ok: false, operation, code: "FORBIDDEN", message: err.refusal } };
