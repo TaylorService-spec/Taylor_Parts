@@ -323,14 +323,7 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
     if (value.trackingMode === "SERIAL") {
       await requireSerialsAt(db, actor.tenantId, part.partId, serials, value.origin, "AVAILABLE", true);
     } else {
-      await db.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`eos-relocation:${actor.tenantId}:${part.partId}:${value.origin.type}:${value.origin.locationId}`]);
-      const { rows } = await db.query<{ total: string | null }>(
-        `SELECT COALESCE(SUM(quantity_delta), 0)::bigint AS total FROM eos_ops.inventory_movements
-          WHERE tenant_id = $1 AND part_id = $2 AND tracking_mode = 'NONE' AND location_type = $3 AND location_id = $4`,
-        [actor.tenantId, part.partId, value.origin.type, value.origin.locationId]);
-      const onHand = Number(rows[0]?.total ?? 0);
-      if (!Number.isSafeInteger(onHand) || onHand < 0) refuse("TRANSFER_INTEGRITY", "PRECONDITION_FAILED", "on-hand at the origin cannot be derived: the ledger balance is impossible");
-      if (onHand < value.quantity) refuse("INSUFFICIENT_STOCK", "PRECONDITION_FAILED", `origin on-hand (${onHand}) is less than the requested quantity (${value.quantity})`);
+      await requireOriginStock(db, actor.tenantId, part.partId, value.origin, value.quantity);
     }
 
     const year = (deps.now ? deps.now() : new Date()).getUTCFullYear();
@@ -350,6 +343,21 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
   });
 }
 
+/**
+ * NONE-tracked sufficiency AT the origin location, under the per-(part, location) lock the relocation also takes, so a
+ * concurrent relocation / transfer cannot interleave between the sum and the write. Used at create AND at dispatch.
+ */
+async function requireOriginStock(db: Queryable, tenantId: string, partId: string, origin: { type: string; locationId: string }, quantity: number): Promise<void> {
+  await db.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`eos-relocation:${tenantId}:${partId}:${origin.type}:${origin.locationId}`]);
+  const { rows } = await db.query<{ total: string | null }>(
+    `SELECT COALESCE(SUM(quantity_delta), 0)::bigint AS total FROM eos_ops.inventory_movements
+      WHERE tenant_id = $1 AND part_id = $2 AND tracking_mode = 'NONE' AND location_type = $3 AND location_id = $4`,
+    [tenantId, partId, origin.type, origin.locationId]);
+  const onHand = Number(rows[0]?.total ?? 0);
+  if (!Number.isSafeInteger(onHand) || onHand < 0) refuse("TRANSFER_INTEGRITY", "PRECONDITION_FAILED", "on-hand at the origin cannot be derived: the ledger balance is impossible");
+  if (onHand < quantity) refuse("INSUFFICIENT_STOCK", "PRECONDITION_FAILED", `origin on-hand (${onHand}) is less than the requested quantity (${quantity})`);
+}
+
 // ════════════════════ dispatch / receive / cancel ════════════════════
 
 export async function dispatchEosTransfer(deps: TransferOperationDeps, actor: TransferOperationActor, input: Record<string, unknown>) {
@@ -363,6 +371,11 @@ export async function dispatchEosTransfer(deps: TransferOperationDeps, actor: Tr
     if (t.trackingMode === "SERIAL") {
       // Re-verified at dispatch: a unit could have moved between create and dispatch.
       await requireSerialsAt(db, actor.tenantId, t.partId, t.serialNumbers, toRef(t.origin), "AVAILABLE", true);
+    } else {
+      // Re-verified at dispatch too (Controller INVENTORY reconciliation, 2026-10-01: no negative stock unless governed).
+      // The create-time check only proves stock existed THEN; a relocation or another transfer may have taken it since, and
+      // dispatch is the act that writes TRANSFER_OUT. Same per-location lock as the relocation, so they serialize.
+      await requireOriginStock(db, actor.tenantId, t.partId, toRef(t.origin), t.quantity);
     }
     const ledgerEventIds = await writeLeg(db, actor, t, "out");
     if (t.trackingMode === "SERIAL") {
