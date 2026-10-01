@@ -394,6 +394,22 @@ export async function requireTenantAccount(
 }
 
 /**
+ * NEW COMMERCIAL WORK REQUIRES AN ACTIVE SALES CHANNEL (Controller NATIONAL ACCOUNTS ACTIVATION, 2026-09-30: "Inactive
+ * STRATEGIC_ACCOUNTS: not offered and not writable"). The channel a record is CREATED in, or MOVED into, must be one this
+ * tenant has made ACTIVE (eos_policy.tenant_sales_channels, set through Administration setTenantSalesChannelStatus) --
+ * for EVERY writer: a channel-scoped holder could never be assigned an inactive channel, but a GLOBAL holder's
+ * admitChannel admits any channel, so this is the gate that closes it. SALES_CHANNEL_NOT_ACTIVE. Records already in a
+ * channel that is later deactivated stay governed history and continue their lifecycle; nothing is rewritten.
+ */
+export async function requireActiveSalesChannel(db: Queryable, tenantId: string, salesChannel: unknown): Promise<void> {
+  const { rows } = await db.query(
+    `SELECT 1 FROM eos_policy.tenant_sales_channels WHERE tenant_id = $1 AND sales_channel::text = $2 AND status = 'ACTIVE'`,
+    [tenantId, salesChannel],
+  );
+  if (rows.length === 0) fail("SALES_CHANNEL_NOT_ACTIVE", "PRECONDITION_FAILED", `sales channel ${String(salesChannel)} is not active for this tenant`);
+}
+
+/**
  * NEW COMMERCIAL WORK REQUIRES AN ACTIVE CUSTOMER (Controller DQ-5, 2026-09-30). Opening an Opportunity, moving one onto
  * another customer, or booking a direct Sales Order refuses an Account whose CRM status is not ACTIVE (PROSPECT, INACTIVE,
  * ARCHIVED) with ACCOUNT_NOT_ACTIVE. Channel-blind: RETAIL and NATIONAL_ACCOUNTS alike. It governs only the act of

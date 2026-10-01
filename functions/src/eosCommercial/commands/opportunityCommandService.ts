@@ -17,7 +17,7 @@ import { isCommercialHandoffSource } from "../commercialOwnershipAuthority";
 import { stageCommercialOwnershipTransfer } from "../commercialOwnershipRepository";
 import { allocateCommercialNumber } from "../commercialNumbering";
 import {
-  ADMINISTRATIVE_HANDOFF_SOURCES, COMMERCIAL_CAPABILITIES, OWNERSHIP_HANDOFF_CORRECT_CAPABILITY, fail, requireCatalogReferences, requireActiveTenantAccount, requireTenantEmployee, runCommercialCommand,
+  ADMINISTRATIVE_HANDOFF_SOURCES, COMMERCIAL_CAPABILITIES, OWNERSHIP_HANDOFF_CORRECT_CAPABILITY, fail, requireCatalogReferences, requireActiveSalesChannel, requireActiveTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -48,6 +48,7 @@ export function createOpportunity(deps: CommercialCommandDeps, actor: Commercial
       { actorUid: actor.principalId, nowMillis: now.getTime() },
     );
     scope.admitChannel(built.salesChannel); // DQ-020: the channel it is created in
+    await requireActiveSalesChannel(db, actor.tenantId, built.salesChannel);
     await requireTenantEmployee(db, actor.tenantId, built.ownerEmployeeId, "OWNER");
     if (built.creditedSalespersonId !== null) await requireTenantEmployee(db, actor.tenantId, built.creditedSalespersonId, "CREDITED_SALESPERSON");
     // New product references pass the catalog authority before any number is allocated or row written.
@@ -101,7 +102,10 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
       { actorUid: actor.principalId, nowMillis: now.getTime() },
     );
     // A channel move must land inside the caller's reach too: a scoped seller can neither pull a record in nor push it out.
-    if ("salesChannel" in patch) scope.admitChannel(patch.salesChannel as string);
+    if ("salesChannel" in patch) {
+      scope.admitChannel(patch.salesChannel as string);
+      await requireActiveSalesChannel(db, actor.tenantId, patch.salesChannel);
+    }
     // Replacement lines are NEW product references: they pass the catalog authority before anything is written.
     if ("lines" in patch) await requireCatalogReferences(deps, db, actor.tenantId, patch.lines as { kind: string; ref: string }[]);
 

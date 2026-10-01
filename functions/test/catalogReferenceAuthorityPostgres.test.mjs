@@ -63,6 +63,10 @@ test("PostgreSQL catalog reference authority, in PostgreSQL", { skip: SKIP, conc
 
   // ── the world ──
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
+  // The tenant's sales channels, as Administration setTenantSalesChannelStatus records them: new Commercial work requires an ACTIVE channel.
+  for (const tenant of ["t1", "t2"]) for (const channel of ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"]) {
+    await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1, $2, 'ACTIVE', 'fixture', 'fixture', 'fixture')`, [tenant, channel]);
+  }
   // The commercial writers resolve operating_company_key only through the governed binding -- never key = id.
   await bindOperatingCompany(q, "t1", "taylor", "taylor-ops-t1");
   await bindOperatingCompany(q, "t2", "taylor", "taylor-ops-t2");

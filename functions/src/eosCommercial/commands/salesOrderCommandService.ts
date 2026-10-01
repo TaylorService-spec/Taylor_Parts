@@ -12,7 +12,7 @@ import type { SalesAgreementState } from "../../salesAgreement/salesAgreementLif
 import { deriveEmployeeRefOwner } from "../../ownership/typedOwner";
 import { allocateCommercialNumber } from "../commercialNumbering";
 import {
-  COMMERCIAL_CAPABILITIES, fail, requireAccountLocation, requireActiveTenantAccount, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
+  COMMERCIAL_CAPABILITIES, fail, requireAccountLocation, requireActiveSalesChannel, requireActiveTenantAccount, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -147,7 +147,10 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
     }
     // A direct Order with no source Opportunity is NEW Commercial work: its customer must be ACTIVE (DQ-5). With a WON
     // source it continues that Opportunity's lifecycle, which a later customer status never rewrites.
-    if (opportunityId === null) await requireActiveTenantAccount(db, actor.tenantId, built.accountId);
+    if (opportunityId === null) {
+      await requireActiveTenantAccount(db, actor.tenantId, built.accountId);
+      await requireActiveSalesChannel(db, actor.tenantId, built.salesChannel);
+    }
     // A direct Order carries NEW product references: they pass the catalog authority before any number or row.
     await requireCatalogReferences(deps, db, actor.tenantId, built.lines);
     const created = await stageBuiltSalesOrder(db, actor, now, built, { opportunityId, salesAgreementId: null }, accountableEmployeeId);

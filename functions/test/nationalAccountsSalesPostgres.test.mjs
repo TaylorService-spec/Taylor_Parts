@@ -267,6 +267,9 @@ test("National Accounts Sales over the Commercial transport", { skip: SKIP, conc
     // The offer narrows the UI; the server still decides: a forged out-of-scope channel refuses.
     refused(await com(retail, "createOpportunity", opp("acct-deli", "NATIONAL_ACCOUNTS")), 403, "OUTSIDE_SALES_CHANNEL_SCOPE", "forged channel");
     refused(await com(retail, "createOpportunity", opp("acct-deli", "STRATEGIC_ACCOUNTS")), 403, "OUTSIDE_SALES_CHANNEL_SCOPE", "forged inactive channel");
+    // NOT WRITABLE for anyone: a GLOBAL holder's scope admits every channel, so the ACTIVE-channel gate refuses it.
+    refused(await com(managerGlobal, "createOpportunity", opp("acct-deli", "STRATEGIC_ACCOUNTS")), 412, "SALES_CHANNEL_NOT_ACTIVE", "global holder, inactive channel");
+    refused(await com(managerGlobal, "createSalesOrder", directOrder("acct-deli", "STRATEGIC_ACCOUNTS")), 412, "SALES_CHANNEL_NOT_ACTIVE", "global holder, direct order");
     // The answer names only the caller's own channels: no Role, Principal, other holder, or unrelated tenant authority.
     const full = ok(await com(retail, "readMyCommercialCapabilities"), "offer");
     assert.deepEqual(Object.keys(full).sort(), ["capabilities", "channelOffers", "channelScoped"]);

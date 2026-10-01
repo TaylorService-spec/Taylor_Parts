@@ -139,6 +139,13 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
     idempotencyKey: key(), accountId, ownerEmployeeId: owner, operatingCompanyId: "taylor", salesChannel: channel,
     lines: [{ kind: "SERVICE", ref: "svc", orderedQty: 1, unitPrice: 100, businessUnitId: "SERVICE" }] });
 
+  // The migration activates nothing (pinned here, before any fixture). The fixture records below are created while the
+  // channels are ACTIVE -- new Commercial work requires an ACTIVE channel -- and the channels are then set INACTIVE again,
+  // so section A starts from a tenant with NO active channel and activates them through Administration.
+  const migratedChannelRows = (await q(`SELECT count(*)::int n FROM eos_policy.tenant_sales_channels`)).rows[0].n;
+  for (const tenant of [T.a, T.b]) for (const channel of ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"]) {
+    await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1, $2, 'ACTIVE', 'fixture', 'fixture', 'fixture')`, [tenant, channel]);
+  }
   const R = { opp: await newOpp(WA, "RETAIL") };
   const N = { opp: await newOpp(WA, "NATIONAL_ACCOUNTS") };
   const S = { opp: await newOpp(WA, "STRATEGIC_ACCOUNTS") };
@@ -151,6 +158,7 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
   const spineAgreement = await createCommercialRecord(pool, T.a, "seed", { kind: "SALES_AGREEMENT", recordNumber: "SEED-SA-1", accountId: "acct-1", ownerEmployeeId: "e-1", operatingCompanyId: "taylor", createdBy: "seed", opportunityId: spineOpp.id });
   const spineOrder = await createCommercialRecord(pool, T.a, "seed", { kind: "SALES_ORDER", recordNumber: "SEED-SO-1", accountId: "acct-1", ownerEmployeeId: "e-1", operatingCompanyId: "taylor", createdBy: "seed", opportunityId: spineOpp.id, salesAgreementId: spineAgreement.id });
   const B = { opp: await newOpp(WB, "RETAIL", "acct-b") };
+  await q(`UPDATE eos_policy.tenant_sales_channels SET status = 'INACTIVE', updated_by = 'fixture', updated_at = now()`);
 
   const retailMgr = await person(T.a, "retail-mgr");
   const nationalMgr = await person(T.a, "national-mgr");
@@ -168,7 +176,8 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
 
   // ════════════════════ A. the governed value source ════════════════════
   await t.test("A: tenant sales channels start EMPTY; activation is governed, audited, gated, tenant-scoped", async () => {
-    assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.tenant_sales_channels`)).rows[0].n, 0, "the migration activated a channel");
+    assert.equal(migratedChannelRows, 0, "the migration activated a channel");
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.tenant_sales_channels WHERE status = 'ACTIVE'`)).rows[0].n, 0, "a channel is active before Administration activates it");
     const empty = ok(await call("admin-a", "listSupportedAssignmentScopes", {})).scopeTypes.find((s) => s.scopeType === "salesChannel");
     assert.deepEqual([empty.supported, empty.label, empty.contextKey, empty.values], [true, "Sales Channel", "salesChannel", []]);
     // The three reads (lane GA) and, since DQ-020, the six Commercial writes -- each decided against the record's channel.
@@ -382,6 +391,10 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
 
   // ════════════════════ F. Pass 10 P10-3 / P10-4 / P10-5 ════════════════════
   await t.test("F (P10-3): a channel-scoped reader cannot read an Account's name, nor tell it from a missing one, without an admitted record", async () => {
+    // D deactivated NATIONAL_ACCOUNTS. New Commercial work in it is refused even for a GLOBAL writer, until Administration
+    // re-activates it.
+    await assert.rejects(newOpp(WA, "NATIONAL_ACCOUNTS"), (err) => err.code === "SALES_CHANNEL_NOT_ACTIVE");
+    ok(await call("admin-a", "setTenantSalesChannelStatus", { salesChannel: "NATIONAL_ACCOUNTS", status: "ACTIVE", reason: "selling national accounts again" }));
     await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, owner_employee_id, created_by, updated_by) VALUES
       ('acct-n',$1,'NATIONAL ONLY SECRET CO','ACTIVE','e-1','x','x'), ('acct-empty',$1,'NO RECORDS CO','ACTIVE','e-1','x','x')`, [T.a]);
     await newOpp(WA, "NATIONAL_ACCOUNTS", "acct-n");
@@ -440,6 +453,8 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
   });
 
   await t.test("F (P10-5): the database refuses a stranded scope in both directions, and serializes with the command", async () => {
+    // Back to D's state: NATIONAL_ACCOUNTS INACTIVE (F re-activated it only to create its fixtures).
+    ok(await call("admin-a", "setTenantSalesChannelStatus", { salesChannel: "NATIONAL_ACCOUNTS", status: "INACTIVE", reason: "stop again" }));
     // RETAIL is ACTIVE and retail-mgr holds an ACTIVE assignment scoped to it: a raw deactivation is refused.
     await assert.rejects(q(`UPDATE eos_policy.tenant_sales_channels SET status='INACTIVE', updated_by='raw' WHERE tenant_id=$1 AND sales_channel='RETAIL'`, [T.a]),
       /SALES_CHANNEL_HAS_SCOPED_ASSIGNMENTS/);

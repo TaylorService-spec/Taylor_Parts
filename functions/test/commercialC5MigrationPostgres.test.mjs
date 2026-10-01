@@ -65,6 +65,10 @@ test("commercial C5, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) =
 
   // ── the world: tenants, Principals, Employees, Accounts, sites, catalog
   for (const tenant of ["t1", "t2", "t3", "tcli"]) await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1)`, [tenant]);
+  // The tenant's sales channels, as Administration setTenantSalesChannelStatus records them: new Commercial work requires an ACTIVE channel.
+  for (const tenant of ["t1", "t2", "t3", "tcli"]) for (const channel of ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"]) {
+    await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1, $2, 'ACTIVE', 'fixture', 'fixture', 'fixture')`, [tenant, channel]);
+  }
   for (const [p, tenant] of [["p1", "t1"], ["p2", "t2"], ["p3", "t3"], ["pcli", "tcli"]]) {
     await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, status) VALUES ($1, $1, 'proof', 'active')`, [p]);
     await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ($1, $2, $3)`, [`m-${p}`, tenant, p]);
