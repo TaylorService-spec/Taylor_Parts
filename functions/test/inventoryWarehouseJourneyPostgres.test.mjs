@@ -234,6 +234,41 @@ test("Inventory / Warehouse over the Operations transport (writers injected ACTI
     assert.equal(g("cycle_counts").disposition, "REFUSED");
     assert.deepEqual([g("to-open").disposition, g("to-open").code], ["REFUSED", "OPEN_LEGACY_TRANSFER"]);
     assert.deepEqual([g("sa-clash").disposition, g("sa-clash").code], ["REFUSED", "CUSTODY_CONFLICT_EOS_AUTHORITATIVE"], "receipt-created custody stays authoritative");
+
+    // SAMPLE_DATA_SEED (GLOBAL OWNER RULING 2026-10-01: nothing in Firebase is real Taylor data). A fixture (wh-main) may SEED
+    // taylor-main for nonprod testing -- never as a production identity -- with deterministic corrections and every
+    // unseedable record EXCLUDED_SAMPLE (reason kept), while the written set keeps the invariants.
+    const seedManifest = cutover.validateManifest({ format: "EOS_INVENTORY_BASELINE_MANIFEST", version: 1, ruling: "GLOBAL OWNER RULING 2026-10-01",
+      seedKind: "SAMPLE_DATA_SEED", warehouseIdentity: [],
+      sampleSeedWarehouses: [{ legacyWarehouseId: "wh-main", eosWarehouseId: WH, evidence: "sample seed, not identity" }], excludedLegacyWarehouses: [] });
+    assert.throws(() => cutover.validateManifest({ ...seedManifest, warehouseIdentity: [{ legacyWarehouseId: "legacy-taylor-yard", eosWarehouseId: WH, evidence: "x" }] }), /SEED_IS_NOT_IDENTITY|establishes no warehouse identity/);
+    assert.throws(() => cutover.validateManifest({ ...manifest(), sampleSeedWarehouses: seedManifest.sampleSeedWarehouses }), /SAMPLE_DATA_SEED/);
+    const sampleSnap = { ...snapshot, sha256: "b".repeat(64),
+      warehouses: [{ id: "wh-main", data: { operatingCompanyId: "taylor" } }, { id: "wh-north", data: { operatingCompanyId: "ventana" } }],
+      inventoryTransactions: [
+        tx("s-1", { location: { type: "WAREHOUSE", locationId: "wh-main" } }),
+        tx("s-cw", { partId: "CW-P-0001", location: { type: "WAREHOUSE", locationId: "wh-main" } }),
+        tx("s-unit", { partId: "PRT-UNIT", trackingMode: "SERIAL", quantity: 1, serialNo: "SEED-U-1", location: { type: "WAREHOUSE", locationId: "wh-main" } }),
+        tx("s-orphan", { partId: "PRT-UNIT", trackingMode: "SERIAL", quantity: 1, serialNo: "SEED-U-ORPHAN", location: { type: "WAREHOUSE", locationId: "wh-main" } }),
+        tx("s-commit", { type: "RESERVED", location: undefined }),
+        tx("s-ventana", { location: { type: "WAREHOUSE", locationId: "wh-north" } }),
+      ],
+      serializedAssets: [{ id: "sa-seed", data: { serialNo: "SEED-U-1", partId: "PRT-UNIT", currentLocationId: "wh-main", inventoryState: "RECEIVED" } }],
+      transferOrders: [{ id: "to-sample", data: { status: "REQUESTED", origin: { type: "WAREHOUSE", locationId: "wh-main" }, destination: { type: "WAREHOUSE", locationId: "wh-north" } } }],
+    };
+    const sp = cutover.planInventoryBaseline(sampleSnap, seedManifest, target);
+    const sf = (id) => sp.findings.find((f) => f.id === id);
+    assert.equal(sp.seedKind, "SAMPLE_DATA_SEED");
+    assert.equal(sp.blocking, 0);
+    assert.deepEqual(sp.corrections.map((c) => c.code).sort(), ["LOCATION_TYPE_FROM_LEGACY_WAREHOUSE_ID", "RECEIVED_UNIT_IS_AVAILABLE"]);
+    assert.deepEqual(sp.movements.map((m) => m.candidate.sourceTransactionId).sort(), ["s-1", "s-unit"], "only coherent, catalog-backed sample rows seed");
+    assert.ok(sp.movements.every((m) => m.idempotencyKey.startsWith("sample-seed:")), "seed lineage on every row");
+    assert.deepEqual(sp.custody.map((u) => [u.serialNumber, u.locationId, u.operatingCompanyKey]), [["SEED-U-1", WH, "taylor"]]);
+    assert.deepEqual([sf("s-cw").disposition, sf("s-cw").code], ["EXCLUDED_SAMPLE", "PART_NOT_IN_EOS"]);
+    assert.deepEqual([sf("s-orphan").disposition, sf("s-orphan").code], ["EXCLUDED_SAMPLE", "SERIAL_LEDGER_WITHOUT_CUSTODY"], "no ledger serial without custody");
+    assert.equal(sf("s-commit").disposition, "EXCLUDED_SAMPLE");
+    assert.equal(sf("s-ventana").disposition, "EXCLUDED_FIXTURE", "Ventana is never seeded into Taylor");
+    assert.equal(sf("to-sample").disposition, "EXCLUDED_SAMPLE");
   });
 
   await t.test("A. STOCK VISIBILITY: warehouse / bin rows, totals, serialized quantity, history, scope + company isolation", async () => {

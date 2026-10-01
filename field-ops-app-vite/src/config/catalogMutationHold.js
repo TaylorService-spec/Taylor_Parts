@@ -13,8 +13,9 @@
 //
 // Consumers read `CATALOG_MUTATION_HOLD.held` at render/call time (never a copy taken at import), so a module mock
 // is honoured.
+// DQ-034 LIFTED 2026-10-01 (Owner rulings INVENTORY / WAREHOUSE ACTIVATION + GLOBAL FIREBASE DATA CLASSIFICATION): (a) the deployed client ce2a890 reaches no Firebase Catalog reader in any release journey -- Transfer / relocation / cycle count / acquire are EOS, canonical Receiving, the scanner lookup and part balance are gated OFF everywhere, the Work Order install client has no caller; (b) a fresh read-only export (sha256 310b34be...) VERIFIES --sample all with canonical digest a2a30e3c... == the activation digest.
 export const CATALOG_MUTATION_HOLD = Object.freeze({
-  held: true,
+  held: false,
   ruling: "DQ-034",
   reason: "DQ-034: active release-journey readers still read the frozen Firebase catalog",
 });
