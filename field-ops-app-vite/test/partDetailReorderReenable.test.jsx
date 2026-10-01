@@ -50,6 +50,17 @@ vi.mock("../src/hooks/useReorderRequests", () => ({
 vi.mock("../src/hooks/useInventoryActions", () => ({ useInventoryActionsForPart: () => ({ data: [], loading: false }) }));
 vi.mock("../src/hooks/useReorderPurchaseOrders", () => ({ usePurchaseOrderForReorderRequest: () => ({ data: null, loading: false }) }));
 vi.mock("../src/hooks/useReorderPurchaseOrderVoids", () => ({ useReorderPurchaseOrderVoid: () => ({ data: null, loading: false }) }));
+// The EOS Reorder assignment-target read and the Part's Work Order demand read are real async network reads; left unmocked
+// they resolve as failures DURING a test and add a SECOND role="alert" ("Work Order demand is temporarily unavailable") --
+// a timing-dependent flake (CI, 2026-10-01). Both are stubbed to their settled empty state so these assertions see only the
+// reorder-request read they are about.
+vi.mock("../src/hooks/usePartWorkOrderDemand", async (orig) => ({
+  ...(await orig()),
+  usePartWorkOrderDemand: () => ({ status: "READY", workOrders: [], scannedCount: 0, truncated: false, totalOpenWorkOrders: null }),
+}));
+vi.mock("../src/hooks/useReorderAssignmentTargets", () => ({
+  useReorderAssignmentTargets: () => ({ employees: [], loading: false, error: null, securityRoleWarningCount: 0 }),
+}));
 vi.mock("../src/hooks/useEmployeeDirectory", () => ({
   useEmployeeDirectory: () => ({ byUserId: {}, loading: false }),
   resolveActorDisplayName: (id) => id,

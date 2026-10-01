@@ -23,7 +23,6 @@ export const BIN_CALLABLES = Object.freeze({
   // it answers what createBin WOULD do and writes nothing.
   preview: "previewBinCreates",
   list: "listBins",
-  putAway: "recordPutAway",
 });
 
 const call = (name, payload) => httpsCallable(functions, name)(payload).then((res) => res?.data);
@@ -37,5 +36,5 @@ export const binCommandClient = Object.freeze({
   resolveBinToken: (request) => call(BIN_CALLABLES.resolveToken, request),
   previewBinCreates: (request) => call(BIN_CALLABLES.preview, request),
   listBins: (request) => call(BIN_CALLABLES.list, request),
-  recordPutAway: (request) => call(BIN_CALLABLES.putAway, request),
+  // recordPutAway RETIRED (2026-10-01): put-away is EOS (services/placementClient.js). Bin ADMIN stays here (Warehouse Racking).
 });

@@ -25,9 +25,9 @@ test("the entity id is exactly \"warehouse\", collection is the live `warehouses
   assert.equal(warehouseEntity.collection, "warehouses");
 });
 
-test("read is CLIENT_DIRECT with no capability -- Rules gate by role/relationship, not by capability", () => {
-  assert.equal(warehouseEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(warehouseEntity.readCapability, null);
+test("read is the governed EOS Warehouse read (eos_ops.warehouses), gated by warehouse.record.read on the server (2026-10-01)", () => {
+  assert.equal(warehouseEntity.readVia, "EOS_API");
+  assert.equal(warehouseEntity.readCapability, "warehouse.record.read");
 });
 
 test("identity is a nameField only -- no reference number exists anywhere in this schema", () => {

@@ -19,6 +19,7 @@ import { resolvePolicyDatabaseConfig } from "../lib/adminPolicy/policyDatabase.j
 import { createBin } from "../lib/eosOps/warehouseBinRepository.js";
 import { handleOperationsRequest, CYCLE_COUNT_ROUTE } from "../lib/eosOps/eosOpsHttp.js";
 import { CYCLE_COUNT_WRITER_AUTHORITY } from "../lib/cycleCount/cycleCountWriterState.js";
+import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
 
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -51,6 +52,7 @@ async function reset() {
     { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   await q("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1)", [TENANT]);
+  await certifyInventoryBaselineFixture(q, TENANT); // the writer gate (inventoryBaselineGate.ts) -- this suite proves the writer itself
   await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by)
            VALUES ($1, $2, 'ACTIVE', 'l3-test', $3, $3)`, [TENANT, COMPANY_ID, ACTOR]);
   await q(`INSERT INTO eos_policy.tenant_operating_company_keys
@@ -156,12 +158,15 @@ test("world", { skip: SKIP }, async () => {
   await receive(PART, "BIN", BIN_A, 4, "mv-bin-a-1");
 });
 
-test("the DEPLOYED default is NOT_ACTIVATED: every operation refuses before it reads or writes", { skip: SKIP }, async () => {
-  assert.equal(CYCLE_COUNT_WRITER_AUTHORITY.postgres, "INACTIVE");
-  assert.equal(CYCLE_COUNT_WRITER_AUTHORITY.firestore, "OPEN");
+test("the DEPLOYED constant is { FROZEN, ACTIVE }; an INACTIVE state still refuses every operation before it reads or writes", { skip: SKIP }, async () => {
+  // ACTIVATED (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the deployed constant is { FROZEN, ACTIVE };
+  // the uncertified-tenant refusal (inventoryBaselineGate.ts) is proven by inventoryWarehouseJourneyPostgres. The switch
+  // itself still holds: an INACTIVE state refuses before anything is read or written.
+  assert.equal(CYCLE_COUNT_WRITER_AUTHORITY.postgres, "ACTIVE");
+  assert.equal(CYCLE_COUNT_WRITER_AUTHORITY.firestore, "FROZEN");
   const before = await count("SELECT count(*) AS n FROM eos_ops.cycle_count_sheets");
   const res = await handleOperationsRequest({
-    reader: repo(), pool: repoPool(), // NO state injected: the governed constant decides
+    reader: repo(), pool: repoPool(), cycleCountPostgresState: "INACTIVE",
     verifyToken: async (t) => ({ externalSubject: t, identityProvider: "firebase" }),
   }, { method: "POST", url: CYCLE_COUNT_ROUTE, headers: { authorization: `Bearer ${COUNTER}` },
     body: JSON.stringify({ operation: "createCycleCountSheet", input: { location: { type: "WAREHOUSE", locationId: WH_A }, idempotencyKey: "k-inactive" } }) });

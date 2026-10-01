@@ -39,6 +39,7 @@ import { validateCreateTransferInput } from "../inventoryTransfer/transferOrderV
 import type { TransferLocationRef } from "../inventoryTransfer/transferOrderTypes.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { PostgresTransferWriterState } from "../inventoryTransfer/transferWriterState.js";
+import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -104,10 +105,12 @@ async function inTransaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<
   }
 }
 
-function requireActive(deps: TransferOperationDeps): void {
+async function requireActive(deps: TransferOperationDeps, tenantId: string): Promise<void> {
   if (deps.postgresState !== "ACTIVE") {
     refuse("NOT_ACTIVATED", "NOT_ACTIVATED", "EOS Transfer is not activated in this environment; transfers still run on the current system");
   }
+  // The cutover fails closed until the tenant's legacy baseline is CERTIFIED (inventoryBaselineGate.ts).
+  if (!(await isInventoryBaselineCertified(deps.pool, tenantId))) refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
 }
 
 function requireCapability(actor: TransferOperationActor, act: keyof typeof EOS_TRANSFER_CAPABILITY): void {
@@ -273,7 +276,7 @@ async function requireSerialsAt(db: Queryable, tenantId: string, partId: string,
 // ════════════════════ create ════════════════════
 
 export async function createEosTransfer(deps: TransferOperationDeps, actor: TransferOperationActor, input: Record<string, unknown>) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "create");
     if (!input || typeof input !== "object" || typeof input.partId !== "string" || input.partId.trim() === "") refuse("PART_INVALID", "INVALID_INPUT", "partId missing");
@@ -323,14 +326,7 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
     if (value.trackingMode === "SERIAL") {
       await requireSerialsAt(db, actor.tenantId, part.partId, serials, value.origin, "AVAILABLE", true);
     } else {
-      await db.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`eos-relocation:${actor.tenantId}:${part.partId}:${value.origin.type}:${value.origin.locationId}`]);
-      const { rows } = await db.query<{ total: string | null }>(
-        `SELECT COALESCE(SUM(quantity_delta), 0)::bigint AS total FROM eos_ops.inventory_movements
-          WHERE tenant_id = $1 AND part_id = $2 AND tracking_mode = 'NONE' AND location_type = $3 AND location_id = $4`,
-        [actor.tenantId, part.partId, value.origin.type, value.origin.locationId]);
-      const onHand = Number(rows[0]?.total ?? 0);
-      if (!Number.isSafeInteger(onHand) || onHand < 0) refuse("TRANSFER_INTEGRITY", "PRECONDITION_FAILED", "on-hand at the origin cannot be derived: the ledger balance is impossible");
-      if (onHand < value.quantity) refuse("INSUFFICIENT_STOCK", "PRECONDITION_FAILED", `origin on-hand (${onHand}) is less than the requested quantity (${value.quantity})`);
+      await requireOriginStock(db, actor.tenantId, part.partId, value.origin, value.quantity);
     }
 
     const year = (deps.now ? deps.now() : new Date()).getUTCFullYear();
@@ -350,10 +346,25 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
   });
 }
 
+/**
+ * NONE-tracked sufficiency AT the origin location, under the per-(part, location) lock the relocation also takes, so a
+ * concurrent relocation / transfer cannot interleave between the sum and the write. Used at create AND at dispatch.
+ */
+async function requireOriginStock(db: Queryable, tenantId: string, partId: string, origin: { type: string; locationId: string }, quantity: number): Promise<void> {
+  await db.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`eos-relocation:${tenantId}:${partId}:${origin.type}:${origin.locationId}`]);
+  const { rows } = await db.query<{ total: string | null }>(
+    `SELECT COALESCE(SUM(quantity_delta), 0)::bigint AS total FROM eos_ops.inventory_movements
+      WHERE tenant_id = $1 AND part_id = $2 AND tracking_mode = 'NONE' AND location_type = $3 AND location_id = $4`,
+    [tenantId, partId, origin.type, origin.locationId]);
+  const onHand = Number(rows[0]?.total ?? 0);
+  if (!Number.isSafeInteger(onHand) || onHand < 0) refuse("TRANSFER_INTEGRITY", "PRECONDITION_FAILED", "on-hand at the origin cannot be derived: the ledger balance is impossible");
+  if (onHand < quantity) refuse("INSUFFICIENT_STOCK", "PRECONDITION_FAILED", `origin on-hand (${onHand}) is less than the requested quantity (${quantity})`);
+}
+
 // ════════════════════ dispatch / receive / cancel ════════════════════
 
 export async function dispatchEosTransfer(deps: TransferOperationDeps, actor: TransferOperationActor, input: Record<string, unknown>) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "dispatch");
     const t = await lockTransfer(db, actor, input);
@@ -363,6 +374,11 @@ export async function dispatchEosTransfer(deps: TransferOperationDeps, actor: Tr
     if (t.trackingMode === "SERIAL") {
       // Re-verified at dispatch: a unit could have moved between create and dispatch.
       await requireSerialsAt(db, actor.tenantId, t.partId, t.serialNumbers, toRef(t.origin), "AVAILABLE", true);
+    } else {
+      // Re-verified at dispatch too (Controller INVENTORY reconciliation, 2026-10-01: no negative stock unless governed).
+      // The create-time check only proves stock existed THEN; a relocation or another transfer may have taken it since, and
+      // dispatch is the act that writes TRANSFER_OUT. Same per-location lock as the relocation, so they serialize.
+      await requireOriginStock(db, actor.tenantId, t.partId, toRef(t.origin), t.quantity);
     }
     const ledgerEventIds = await writeLeg(db, actor, t, "out");
     if (t.trackingMode === "SERIAL") {
@@ -377,7 +393,7 @@ export async function dispatchEosTransfer(deps: TransferOperationDeps, actor: Tr
 }
 
 export async function receiveEosTransfer(deps: TransferOperationDeps, actor: TransferOperationActor, input: Record<string, unknown>) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "receive");
     const t = await lockTransfer(db, actor, input);
@@ -401,7 +417,7 @@ export async function receiveEosTransfer(deps: TransferOperationDeps, actor: Tra
 }
 
 export async function cancelEosTransfer(deps: TransferOperationDeps, actor: TransferOperationActor, input: Record<string, unknown>) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "cancel");
     const t = await lockTransfer(db, actor, input);

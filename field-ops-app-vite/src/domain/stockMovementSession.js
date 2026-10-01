@@ -209,6 +209,9 @@ export const FAILURE = Object.freeze({
   SERIAL_NOT_AT_SOURCE: "SERIAL_NOT_AT_SOURCE",
   IDEMPOTENCY_CONFLICT: "IDEMPOTENCY_CONFLICT",
   INTEGRITY: "INTEGRITY",
+  // The EOS writer is not switched on in this environment (HTTP 503 NOT_ACTIVATED). Not retried automatically: it
+  // will not change by retrying, and it is never sent anywhere else instead.
+  NOT_ACTIVATED: "NOT_ACTIVATED",
   RETRYABLE_TECHNICAL_FAILURE: "RETRYABLE_TECHNICAL_FAILURE",
 });
 
@@ -224,6 +227,7 @@ export const FAILURE_TEXT = Object.freeze({
   [FAILURE.SERIAL_NOT_AT_SOURCE]: "That serial is not available at the source location.",
   [FAILURE.IDEMPOTENCY_CONFLICT]: "This line was already submitted with different details.",
   [FAILURE.INTEGRITY]: "The stored records for this line are inconsistent. Ask an administrator.",
+  [FAILURE.NOT_ACTIVATED]: "Moving stock is not switched on in this environment yet. Nothing was changed.",
   [FAILURE.RETRYABLE_TECHNICAL_FAILURE]: "This did not go through. It is safe to try again.",
 });
 

@@ -1,8 +1,10 @@
 // PUT-AWAY BY SCAN — the mounted surface (vitest + jsdom).
 //
 // The stow rules are proved pure in test/putAwaySession.test.mjs. These cover what only the screen
-// can show: that the bin is validated by the server before anything can go in it, that a stow says
-// out loud it changed no counts, and that each bin refusal reaches the operator in its own words.
+// can show: that the bin is validated by the server before anything can go in it, that a put-away says
+// out loud the stock moved into the bin (warehouse total unchanged), and that each bin refusal reaches the
+// operator in its own words. ON EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the
+// put-away is the relocation that records the placement (placementClient.putAwayStock), keyed by the bin id.
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import PutAwayScan from "../src/modules/scan/PutAwayScan.jsx";
@@ -17,7 +19,7 @@ const session = (over = {}) => ({ warehouseId: "WH-1", partId: "PRT-1001", seria
 
 const client = (over = {}) => ({
   resolveBin: vi.fn().mockResolvedValue({ result: "FOUND", code: "A-14", warehouseId: "WH-1", binId: "bin_WH-1__A-14" }),
-  recordPutAway: vi.fn().mockResolvedValue({ outcome: "recorded", binCode: "A-14", partId: "PRT-1001", placementIds: ["plc_1"] }),
+  putAwayStock: vi.fn().mockResolvedValue({ outcome: "relocated", relocationId: "srl_1", partId: "PRT-1001" }),
   ...over,
 });
 
@@ -119,9 +121,9 @@ describe("Put-away (what goes in)", () => {
     scanInto(/scan item/i, "PRT-1001");
     scanInto(/scan item/i, "PRT-1001");
     fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
-    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalled());
-    expect(c.recordPutAway).toHaveBeenCalledWith(expect.objectContaining({
-      warehouseId: "WH-1", binCode: "A-14", partId: "PRT-1001", quantity: 2,
+    await waitFor(() => expect(c.putAwayStock).toHaveBeenCalled());
+    expect(c.putAwayStock).toHaveBeenCalledWith(expect.objectContaining({
+      warehouseId: "WH-1", binId: "bin_WH-1__A-14", partId: "PRT-1001", quantity: 2,
     }));
   });
 
@@ -146,8 +148,8 @@ describe("Put-away (what goes in)", () => {
     scanInto(/scan item/i, "SN-1");
     scanInto(/scan item/i, "SN-2");
     fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
-    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalled());
-    const payload = c.recordPutAway.mock.calls[0][0];
+    await waitFor(() => expect(c.putAwayStock).toHaveBeenCalled());
+    const payload = c.putAwayStock.mock.calls[0][0];
     expect(payload.serialNumbers).toEqual(["SN-1", "SN-2"]);
     expect(payload.quantity).toBeUndefined();
   });
@@ -164,17 +166,15 @@ describe("Put-away (what goes in)", () => {
 
 // ────────────────────────────────────────────── it says what it did NOT do
 
-describe("Put-away (it records where, not what)", () => {
-  it("says on success that stock counts are UNCHANGED", async () => {
-    // An operator could reasonably assume a stow moved something. DECISIONS #116 says it did not,
-    // and the screen has to say so rather than leave them to assume.
+describe("Put-away (the stock moves into the bin; the warehouse total does not change)", () => {
+  it("says on success the stock is now in the bin and the warehouse total is unchanged", async () => {
     mount();
     await scanBin();
     scanInto(/scan item/i, "PRT-1001");
     fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
     // Scoped past the shared input's own aria-live announcement to the outcome notice.
-    const ok = await screen.findByText(/stock counts are unchanged/i);
-    expect(ok.textContent).toMatch(/where it is, not what there is/i);
+    const ok = await screen.findByText(/warehouse total is unchanged/i);
+    expect(ok.textContent).toMatch(/now in A-14/i);
   });
 
   it("a NEW stow gets a NEW idempotency key, so it records rather than replaying", async () => {
@@ -183,14 +183,14 @@ describe("Put-away (it records where, not what)", () => {
     scanInto(/scan item/i, "PRT-1001");
     fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
     await screen.findByRole("status");
-    const firstKey = c.recordPutAway.mock.calls[0][0].idempotencyKey;
+    const firstKey = c.putAwayStock.mock.calls[0][0].idempotencyKey;
 
     fireEvent.click(screen.getByRole("button", { name: /stow something else/i }));
     await scanBin();
     scanInto(/scan item/i, "PRT-1001");
     fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
-    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalledTimes(2));
-    expect(c.recordPutAway.mock.calls[1][0].idempotencyKey).not.toBe(firstKey);
+    await waitFor(() => expect(c.putAwayStock).toHaveBeenCalledTimes(2));
+    expect(c.putAwayStock.mock.calls[1][0].idempotencyKey).not.toBe(firstKey);
   });
 
   it("the SAME stow reuses its key, so a retry replays rather than doubling", async () => {
@@ -200,7 +200,7 @@ describe("Put-away (it records where, not what)", () => {
     const confirm = screen.getByRole("button", { name: /confirm put-away/i });
     fireEvent.click(confirm);
     await screen.findByRole("status");
-    expect(c.recordPutAway.mock.calls[0][0].idempotencyKey).toBeTruthy();
+    expect(c.putAwayStock.mock.calls[0][0].idempotencyKey).toBeTruthy();
   });
 });
 
@@ -209,18 +209,17 @@ describe("Put-away (it records where, not what)", () => {
 describe("Put-away (refusals are told truthfully)", () => {
   it("a DENIED placement says so, and does not look like a failed scan", async () => {
     const err = Object.assign(new Error("denied"), { code: "functions/permission-denied" });
-    mount(client({ recordPutAway: vi.fn().mockRejectedValue(err) }));
+    mount(client({ putAwayStock: vi.fn().mockRejectedValue(err) }));
     await scanBin();
     scanInto(/scan item/i, "PRT-1001");
     fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/not authorized to put stock away/i);
-    expect(alert.textContent).toMatch(/not been granted or switched on/i);
   });
 
   it("a bin that went bad between scanning and confirming keeps the bin's own words", async () => {
     const err = Object.assign(new Error("bad bin"), { code: "functions/failed-precondition", details: "INACTIVE" });
-    mount(client({ recordPutAway: vi.fn().mockRejectedValue(err) }));
+    mount(client({ putAwayStock: vi.fn().mockRejectedValue(err) }));
     await scanBin();
     scanInto(/scan item/i, "PRT-1001");
     fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
@@ -236,7 +235,7 @@ describe("Put-away (refusals are told truthfully)", () => {
     // What did NOT change: a refusal the server MEANT is still surfaced as an error rather than
     // queued (see the two tests above, and test/putAwayOfflineAdoption.test.jsx).
     const err = Object.assign(new Error("boom"), { code: "functions/internal" });
-    mount(client({ recordPutAway: vi.fn().mockRejectedValue(err) }));
+    mount(client({ putAwayStock: vi.fn().mockRejectedValue(err) }));
     await scanBin();
     scanInto(/scan item/i, "PRT-1001");
     fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
@@ -249,6 +248,20 @@ describe("Put-away (refusals are told truthfully)", () => {
     expect(notice.textContent).toMatch(/has not reached the server/i);
   });
 
+  it("NOT_ACTIVATED says the put-away is not switched on yet -- never a Firebase retry", async () => {
+    const err = Object.assign(new Error("off"), { code: "failed-precondition", details: { code: "NOT_ACTIVATED" } });
+    mount(client({ putAwayStock: vi.fn().mockRejectedValue(err) }));
+    await scanBin();
+    scanInto(/scan item/i, "PRT-1001");
+    fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
+    const shown = await waitFor(() => {
+      const n = document.querySelector('[role="alert"], .fo-scan__notice');
+      expect(n).toBeTruthy();
+      return n;
+    });
+    expect(shown.textContent).toMatch(/not switched on in this environment yet/i);
+  });
+
   it("without a starting part it explains what it needs rather than showing an empty form", () => {
     render(<PutAwayScan deps={{ binClient: client(), session: null, scanInputDeps }} />);
     expect(screen.getByText(/starts from a part you have just received/i)).toBeTruthy();
@@ -258,41 +271,10 @@ describe("Put-away (refusals are told truthfully)", () => {
 
 // ────────────────────────────────────────────── exception notes (Phase N)
 
-describe("Put-away (an exception note, typed or dictated)", () => {
-  it("offers a note only once there is something to stow into", async () => {
-    // A note field above the scan input would make every routine stow look like it wanted a comment.
+describe("Put-away (no note: the relocation carries none)", () => {
+  it("offers no note field -- a put-away is a governed stock move, and the move has no free-text field", async () => {
     mount();
+    await scanBin();
     expect(screen.queryByLabelText(/note/i)).toBeNull();
-    await scanBin();
-    expect(screen.getByLabelText(/note \(optional\)/i)).toBeTruthy();
-  });
-
-  it("sends the note with the stow when there is one", async () => {
-    const c = mount();
-    await scanBin();
-    scanInto(/scan item/i, "PRT-1001");
-    fireEvent.change(screen.getByLabelText(/note \(optional\)/i), { target: { value: "  Box was crushed.  " } });
-    fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
-    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalled());
-    expect(c.recordPutAway.mock.calls[0][0].note).toBe("Box was crushed.");
-  });
-
-  it("sends NO note when there is nothing to say", async () => {
-    const c = mount();
-    await scanBin();
-    scanInto(/scan item/i, "PRT-1001");
-    fireEvent.change(screen.getByLabelText(/note \(optional\)/i), { target: { value: "   " } });
-    fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
-    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalled());
-    expect(c.recordPutAway.mock.calls[0][0].note).toBeUndefined();
-  });
-
-  it("a note never blocks the stow — it is optional in both directions", async () => {
-    const c = mount();
-    await scanBin();
-    scanInto(/scan item/i, "PRT-1001");
-    expect(screen.getByRole("button", { name: /confirm put-away/i }).disabled).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: /confirm put-away/i }));
-    await waitFor(() => expect(c.recordPutAway).toHaveBeenCalled());
   });
 });

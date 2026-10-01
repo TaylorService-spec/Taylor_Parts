@@ -314,46 +314,34 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
     owningDomain: "cycleCount (Inventory Operations)",
     currentRuntime: "FIREBASE_FUNCTIONS",
     catalogFact: "Part identity, status, and controlType -> trackingMode, which decides whether a count line snapshots a quantity or a blind serial set",
-    classification: "ACTIVE_DEPLOYED_BUSINESS_PATH",
-    deployedReachable: true,
-    replacementAuthority: "eos_ops.parts via eosOps/cycleCountRepository.ts -- composed by eosOps/cycleCountOperations.ts on /operations/cycle-count; writer INACTIVE (cycleCount/cycleCountWriterState.ts)",
-    activationBlocking: true,
+    classification: "INTERNAL_UNDEPLOYED",
+    deployedReachable: false,
+    replacementAuthority: "eos_ops.parts via eosOps/cycleCountRepository.ts -- eosOps/cycleCountOperations.ts on /operations/cycle-count; writer ACTIVE, gated by the inventory baseline certification (cycleCount/cycleCountWriterState.ts)",
+    activationBlocking: false,
     retirementBlocking: true,
-    disposition: "CONSUME_POSTGRES_CATALOG",
+    disposition: "LEGACY_RETIREMENT_ONLY",
     reason:
-      "CYCLE_COUNT_DOMAIN_RECONCILIATION_REQUIRED. Reached by the DEPLOYED v2 sheet callables "
-      + "(index.ts -> cycleCountSheetCallables.ts -> resolveCycleCountPartThroughTxn -> "
-      + "buildFirestorePartRepository), and live rather than dormant: inventory.cycleCount.* is activated "
-      + "in platform-sandbox and a governed Role carrying it exists. It cannot be wired to PostgreSQL "
-      + "Catalog here -- the enclosing command is a Firebase transaction, so that is the forbidden bridge "
-      + "-- and it cannot move yet: eosOps/cycleCountRepository.ts is now composed by eosOps/cycleCountOperations.ts "
-      + "on /operations/cycle-count, but that writer is INACTIVE (CYCLE_COUNT_WRITER_AUTHORITY), and there is no mapper, DRY RUN, COPY or VERIFY for cycle_counts in either "
-      + "direction. The trackingMode fact is the sharp end: a stale controlType makes a count snapshot the "
-      + "wrong KIND of expectation, and a blind serial count against a quantity expectation is not a "
-      + "smaller error than a wrong number.",
+      "RETIRED FROM THE REPOSITORY (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01). The client Cycle Count screens are "
+      + "cut over to /operations/cycle-count, the Firestore writer is FROZEN, and index.ts no longer exports the sheet/line callables, "
+      + "so nothing in this repository reaches this wiring. The DEPLOYED copies stay runtime-stale until the bounded Firebase "
+      + "removal window -- tracked there, not here",
   }),
   d({
     consumer: "functions/src/inventoryTransfer/transferCallableWiring.ts",
     owningDomain: "inventoryTransfer (Inventory Operations)",
     currentRuntime: "FIREBASE_FUNCTIONS",
     catalogFact: "Part identity, status, and controlType -> trackingMode, which decides serial sufficiency versus quantity sufficiency",
-    classification: "ACTIVE_DEPLOYED_BUSINESS_PATH",
-    deployedReachable: true,
-    replacementAuthority: "eos_ops.transfer_orders via eosOps/purchasingRepository.ts -- composed by eosOps/transferOperations.ts on /operations/transfer; writer INACTIVE, HELD (inventoryTransfer/transferWriterState.ts)",
-    activationBlocking: true,
+    classification: "INTERNAL_UNDEPLOYED",
+    deployedReachable: false,
+    replacementAuthority: "eos_ops.transfer_orders via eosOps/purchasingRepository.ts -- eosOps/transferOperations.ts on /operations/transfer (and the relocation on /operations/relocation); writers ACTIVE, gated by the inventory baseline certification",
+    activationBlocking: false,
     retirementBlocking: true,
-    disposition: "CONSUME_POSTGRES_CATALOG",
+    disposition: "LEGACY_RETIREMENT_ONLY",
     reason:
-      "TRANSFER_DOMAIN_RECONCILIATION_REQUIRED. Serves BOTH deployed Transfer callables and "
-      + "inventoryLocation/stockRelocationCallables.ts, which imports resolveTransferPartThroughTxn "
-      + "directly -- one wiring module, two deployed operations. Further along than Cycle Count and still "
-      + "not ready: eos_ops.transfer_orders exists, purchasingRepository.createTransferOrder/readTransferOrder "
-      + "exist, and purchasingMigrationMapping.mapLegacyTransferOrder exists -- the repository is now "
-      + "composed by eosOps/transferOperations.ts on /operations/transfer, but that writer is INACTIVE and HELD "
-      + "(TRANSFER_WRITER_AUTHORITY), and the mapper has no DRY RUN / COPY / "
-      + "VERIFY runner behind it. A mapper is not a migration. Per the Owner ruling, caller-supplied "
-      + "tracking mode is NOT an option here: the Part authority owns trackingMode, and the command already "
-      + "takes it from the authority rather than the request.",
+      "RETIRED FROM THE REPOSITORY (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01). Transfers and relocations are cut "
+      + "over to /operations/transfer and /operations/relocation, both Firestore writers are FROZEN, and index.ts no longer exports "
+      + "the Transfer callables or relocateStock, so nothing in this repository reaches this wiring. The DEPLOYED copies stay "
+      + "runtime-stale until the bounded Firebase removal window",
   }),
   d({
     consumer: "functions/src/inventory/partBalanceReadService.ts",

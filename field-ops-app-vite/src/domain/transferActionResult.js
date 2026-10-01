@@ -24,6 +24,12 @@ const DETAIL_MESSAGE = Object.freeze({
   SERIAL_INVALID: "One or more serial numbers are not valid for this transfer.",
   STATUS_INVALID: "This transfer is not in a state that allows that action.",
   IDEMPOTENCY_CONFLICT: "This request conflicts with an earlier one sent under the same key. Start the action again.",
+  // EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the server's own specific codes.
+  NOT_ACTIVATED: "Transfers are not switched on in this environment yet. Nothing was changed.",
+  OUTSIDE_OPERATIONAL_SCOPE: "That warehouse is outside your operational scope.",
+  WORK_ELIGIBILITY_MISSING: "Transfers require the Warehouse Operations work eligibility.",
+  CAPABILITY_MISSING: "You are not authorized to perform this transfer action.",
+  EMPLOYEE_LINK_REQUIRED: "Only an Employee can perform transfer actions.",
 });
 
 export function mapTransferActionError(err) {

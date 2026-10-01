@@ -24,7 +24,7 @@ import { useProvidedOfflineRuntime } from "../../offline/OfflineRuntimeContext.j
 import { captureCycleCountSubmit } from "../../offline/warehouseIntent.js";
 import { PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
 
-// SCAN · CYCLE COUNT -- count a Bin (or a warehouse or truck) part by part (BIN-P8, Cycle Count A2).
+// SCAN · CYCLE COUNT -- count a Bin (or a whole warehouse) part by part (BIN-P8, Cycle Count A2).
 //
 // Scan the bin label once: the count sheet is locked to that Bin. Then scan everything on it -- many
 // Parts, repeat scans of the same Part, serial numbers -- review the lines, correct them, and submit.
@@ -47,20 +47,13 @@ import { PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit
 // stored counter-completion state on the server, and this screen must never claim one). "Hidden until
 // submitted" is the one literal blind-cell string (domain/cycleCountNorthStar.js's `blindCellText`).
 //
-// TECHNICIAN MOBILE FLOW: the handoff describes a "Truck 7" header sourced from a governed
-// technician-to-truck assignment. That assignment DOES already exist -- the same one Transfer
-// discovery uses (trucks.assignedDriverEmployeeId, resolved server-side by
-// readAssignedMobileLocation, functions/src/workOrderConsumption/consumptionSourceService.ts) --
-// it was simply not yet exposed for Cycle Count. `getCycleCountAssignedMobileLocation`
-// (functions/src/cycleCount/cycleCountSheetCallables.ts) reuses that SAME resolver: it is a narrow
-// projection of the caller's own already-governed assignment, not a new authority. See
-// `StartOrResume`/`useAssignedMobileLocation`/`MyTruckCount` below: a technician sees their own
-// truck and nothing else (never a company-wide picker); a warehouse-persona counter keeps the
-// manual Warehouse/Bin form. Counter authority (create+submit) is required either way, checked one
-// level up by scanWorkflows.js before this screen is ever reached.
+// ON EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): every call goes to POST
+// /operations/cycle-count through services/cycleCountCommandClient.js, re-authorized server-side (counter capability,
+// Warehouse Operations eligibility, WAREHOUSE scope). TRUCKS ARE OUT OF SCOPE -- Truck Inventory is a separate
+// journey -- so the technician "my truck" count and the Truck choice are not offered: a Bin or a whole Warehouse only.
 
 const CONCURRENCY = 4;
-const LOCATION_LABEL = { BIN: "Bin", WAREHOUSE: "Warehouse", MOBILE: "Truck" };
+const LOCATION_LABEL = { BIN: "Bin", WAREHOUSE: "Warehouse" };
 const DONE_STATES = new Set([COUNT_LINE_STATE.SUBMITTED, COUNT_LINE_STATE.DECIDED, COUNT_LINE_STATE.REMOVED]);
 
 export default function CycleCountScan({ deps }) {
@@ -463,89 +456,11 @@ function SubmittedFigures({ line }) {
   );
 }
 
-// TECHNICIAN MOBILE FLOW -- "which truck is mine?" answered by the governed server read
-// (getCycleCountAssignedMobileLocation, reusing the SAME truck-assignment resolver Transfer
-// discovery uses: trucks.assignedDriverEmployeeId). Two independent facts, never conflated:
-// (1) does this account hold Cycle Count counter authority at all -- already gated one level up,
-// by scanWorkflows.js's CYCLE_COUNT availability check, before this screen is ever reached;
-// (2) where may THIS technician count -- their own governed truck, resolved server-side, never a
-// company-wide truck picker. `client.getCycleCountAssignedMobileLocation` is optional-chained
-// (absent in tests that don't implement it, and for the WAREHOUSE-persona manual flow below,
-// which stays exactly as it was) so this is additive, not a breaking change to the manual path.
-const MOBILE_ASSIGNMENT_STATE = Object.freeze({
-  LOADING: "LOADING",
-  ASSIGNED: "ASSIGNED",
-  NOT_A_TECHNICIAN: "NOT_A_TECHNICIAN", // falls back to the manual Warehouse/Truck form below
-  NO_TRUCK: "NO_TRUCK",
-  AMBIGUOUS: "AMBIGUOUS",
-});
-
-function useAssignedMobileLocation(client) {
-  const [state, setState] = useState({ status: MOBILE_ASSIGNMENT_STATE.LOADING });
-  useEffect(() => {
-    let live = true;
-    if (typeof client.getCycleCountAssignedMobileLocation !== "function") {
-      setState({ status: MOBILE_ASSIGNMENT_STATE.NOT_A_TECHNICIAN });
-      return undefined;
-    }
-    client.getCycleCountAssignedMobileLocation()
-      .then((out) => { if (live) setState({ status: MOBILE_ASSIGNMENT_STATE.ASSIGNED, location: out.location, label: out.label }); })
-      .catch((err) => {
-        if (!live) return;
-        const code = err?.details?.code;
-        if (code === "NO_TRUCK_ASSIGNMENT") setState({ status: MOBILE_ASSIGNMENT_STATE.NO_TRUCK });
-        else if (code === "TRUCK_ASSIGNMENT_AMBIGUOUS") setState({ status: MOBILE_ASSIGNMENT_STATE.AMBIGUOUS });
-        // TECHNICIAN_IDENTITY_UNAVAILABLE (this account is not a technician), PERMISSION_DENIED
-        // (should not occur here -- the workflow chooser already required counter authority) and
-        // any transport failure all resolve the same way: this is not the technician MOBILE
-        // persona on this device, so the manual Warehouse/Bin flow is what applies instead.
-        else setState({ status: MOBILE_ASSIGNMENT_STATE.NOT_A_TECHNICIAN });
-      });
-    return () => { live = false; };
-  }, [client]);
-  return state;
-}
-
-function MyTruckCount({ assignment, busy, onStart }) {
-  if (assignment.status === MOBILE_ASSIGNMENT_STATE.NO_TRUCK) {
-    return (
-      <section className="fo-receiving-session__section" aria-label="My truck">
-        <p className="fo-receiving-session__kicker">My truck</p>
-        <p className="fo-muted">No active truck is assigned to you. Ask your dispatcher to correct the assignment.</p>
-      </section>
-    );
-  }
-  if (assignment.status === MOBILE_ASSIGNMENT_STATE.AMBIGUOUS) {
-    return (
-      <section className="fo-receiving-session__section" aria-label="My truck">
-        <p className="fo-receiving-session__kicker">My truck</p>
-        <p className="fo-warning" role="alert">More than one truck is assigned to you, so none can be used here until that is corrected.</p>
-      </section>
-    );
-  }
-  if (assignment.status !== MOBILE_ASSIGNMENT_STATE.ASSIGNED) return null;
-  return (
-    <section className="fo-receiving-session__section" aria-label="My truck">
-      <p className="fo-receiving-session__kicker">{assignment.label ?? assignment.location.locationId} · Cycle Count</p>
-      <Button
-        variant="primary"
-        disabled={busy}
-        onClick={() => onStart("MOBILE", assignment.location.locationId, assignment.label ?? assignment.location.locationId)}
-      >
-        Start Count
-      </Button>
-    </section>
-  );
-}
-
 function StartOrResume({ client, busy, notice, onScanBin, onStart, onResume, deps }) {
   const [openSheets, setOpenSheets] = useState(null);
   const [listError, setListError] = useState(null);
   const [locationType, setLocationType] = useState("WAREHOUSE");
   const [locationId, setLocationId] = useState("");
-  const mobileAssignment = useAssignedMobileLocation(client);
-  const isTechnicianPersona = mobileAssignment.status !== MOBILE_ASSIGNMENT_STATE.LOADING
-    && mobileAssignment.status !== MOBILE_ASSIGNMENT_STATE.NOT_A_TECHNICIAN;
 
   const loadOpen = async () => {
     setListError(null);
@@ -583,31 +498,22 @@ function StartOrResume({ client, busy, notice, onScanBin, onStart, onResume, dep
         )}
       </section>
 
-      {isTechnicianPersona ? (
-        // Technician MOBILE persona: the governed assigned truck, never a company-wide picker.
-        <MyTruckCount assignment={mobileAssignment} busy={busy} onStart={onStart} />
-      ) : (
-        // Warehouse-persona manual selection -- unchanged. Location eligibility (active Warehouse,
-        // active Bin behind its conversion gate) is the SERVER's decision at sheet creation; this
-        // screen does not pre-judge it and needs no warehouse/bin read of its own.
-        <section className="fo-receiving-session__section" aria-label="Count a warehouse or truck">
-          <p className="fo-receiving-session__kicker">Count a whole warehouse or truck</p>
-          <form onSubmit={(e) => { e.preventDefault(); onStart(locationType, locationId, locationId); }}>
-            <label>
-              Where
-              <select className="fo-input" value={locationType} onChange={(e) => setLocationType(e.target.value)} aria-label="Location type">
-                <option value="WAREHOUSE">Warehouse</option>
-                <option value="MOBILE">Truck</option>
-              </select>
-            </label>
-            <label>
-              Location
-              <input className="fo-input" value={locationId} onChange={(e) => setLocationId(e.target.value)} aria-label="Location" />
-            </label>
-            <Button type="submit" variant="secondary" disabled={busy || locationId.trim() === ""}>Start counting</Button>
-          </form>
-        </section>
-      )}
+      <section className="fo-receiving-session__section" aria-label="Count a warehouse">
+        <p className="fo-receiving-session__kicker">Count a whole warehouse</p>
+        <form onSubmit={(e) => { e.preventDefault(); onStart(locationType, locationId, locationId); }}>
+          <label>
+            Where
+            <select className="fo-input" value={locationType} onChange={(e) => setLocationType(e.target.value)} aria-label="Location type">
+              <option value="WAREHOUSE">Warehouse</option>
+            </select>
+          </label>
+          <label>
+            Location
+            <input className="fo-input" value={locationId} onChange={(e) => setLocationId(e.target.value)} aria-label="Location" />
+          </label>
+          <Button type="submit" variant="secondary" disabled={busy || locationId.trim() === ""}>Start counting</Button>
+        </form>
+      </section>
     </div>
   );
 }

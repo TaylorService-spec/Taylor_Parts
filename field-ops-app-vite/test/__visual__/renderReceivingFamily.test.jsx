@@ -20,8 +20,8 @@ vi.mock("../../src/hooks/useReorderRequests", () => ({ useReorderRequestsByStatu
 vi.mock("../../src/hooks/usePurchaseOrdersByIds", () => ({ usePurchaseOrdersByIds: () => purchaseOrdersById }));
 vi.mock("../../src/hooks/useSuppliers", () => ({ useSuppliers: () => suppliers }));
 vi.mock("../../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
-vi.mock("../../src/access/useSerializedAssetAcquireCapability", () => ({
-  useSerializedAssetAcquireCapability: () => ({ canAcquire: true }),
+vi.mock("../../src/services/inventoryLocationClient.js", () => ({
+  fetchAcquireWarehouseOptions: (...a) => mockFetchLocations(...a),
 }));
 vi.mock("../../src/hooks/useSerialTrackedParts", async (orig) => {
   const actual = await orig();

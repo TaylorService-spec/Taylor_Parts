@@ -47,6 +47,7 @@ import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from ".
 import { serializedAssetDocId } from "../serializedAsset/serializedAssetRegistration.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { PostgresAcquireWriterState } from "../serializedAsset/acquireWriterState.js";
+import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 
 export const EOS_SERIALIZED_ASSET_ACQUIRE_CAPABILITY = "inventory.serializedAsset.acquire";
 /** Mirrors ACQUISITION_REASONS. */
@@ -132,6 +133,8 @@ export async function acquireEosSerializedAsset(deps: AcquireOperationDeps, acto
   if (deps.postgresState !== "ACTIVE") {
     refuse("NOT_ACTIVATED", "NOT_ACTIVATED", "EOS serialized asset acquisition is not activated in this environment; units are still acquired on the current system");
   }
+  // The cutover fails closed until the tenant's legacy baseline is CERTIFIED (inventoryBaselineGate.ts).
+  if (!(await isInventoryBaselineCertified(deps.pool, actor.tenantId))) refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
   const validated = validateEosAcquireRequest(input);
   if (!validated.valid) return refuse("REQUEST_INVALID", "INVALID_INPUT", validated.message);
   const req = validated.value;

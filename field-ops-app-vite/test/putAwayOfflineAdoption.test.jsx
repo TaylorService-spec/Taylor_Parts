@@ -53,10 +53,10 @@ function fakeRuntime({ durable = true } = {}) {
   };
 }
 
-function mount({ recordPutAway, runtime = fakeRuntime() } = {}) {
+function mount({ putAwayStock, runtime = fakeRuntime() } = {}) {
   const binClient = {
     resolveBin: vi.fn().mockResolvedValue({ result: "FOUND", code: "A-14", warehouseId: "WH-1", binId: "bin_WH-1__A-14" }),
-    recordPutAway,
+    putAwayStock,
   };
   render(<PutAwayScan deps={{
     binClient,
@@ -87,11 +87,11 @@ describe("finishing a stow while disconnected", () => {
     // The scenario the module was written for: the steel rack the operator is stowing into is the
     // thing between their phone and the access point.
     setOnline(true);
-    const recordPutAway = vi.fn().mockRejectedValue(offline());
-    const { runtime } = mount({ recordPutAway });
+    const putAwayStock = vi.fn().mockRejectedValue(offline());
+    const { runtime } = mount({ putAwayStock });
     await stowOneItem();
 
-    expect(recordPutAway).toHaveBeenCalledTimes(1);
+    expect(putAwayStock).toHaveBeenCalledTimes(1);
     expect(runtime.enqueued, "the stow must survive the app being closed").toHaveLength(1);
     expect(runtime.enqueued[0].type).toBe(WAREHOUSE_INTENT.PUT_AWAY);
   });
@@ -100,34 +100,34 @@ describe("finishing a stow while disconnected", () => {
     // The single most important assertion in this file. An operator who believes a stow committed
     // and walks away has left the warehouse in a state nobody recorded.
     setOnline(true);
-    mount({ recordPutAway: vi.fn().mockRejectedValue(offline()) });
+    mount({ putAwayStock: vi.fn().mockRejectedValue(offline()) });
     await stowOneItem();
 
     const notice = document.querySelector(".fo-scan__notice");
     expect(notice.textContent).toMatch(/has not reached the server/i);
     expect(notice.textContent).toMatch(/do not assume it is done/i);
-    expect(notice.textContent, "a queued stow must never claim to be recorded").not.toMatch(/✓ Recorded/);
+    expect(notice.textContent, "a queued stow must never claim to be put away").not.toMatch(/✓ Put away/);
     expect(notice.className).toMatch(/warn/);
   });
 
-  it("a stow that DOES reach the server says Recorded, and says the counts did not move", async () => {
+  it("a stow that DOES reach the server says Put away, and says the warehouse total did not move", async () => {
     setOnline(true);
-    mount({ recordPutAway: vi.fn().mockResolvedValue({ outcome: "recorded", binCode: "A-14", placementIds: ["plc_1"] }) });
+    mount({ putAwayStock: vi.fn().mockResolvedValue({ outcome: "relocated", relocationId: "srl_1" }) });
     await stowOneItem();
     const notice = document.querySelector(".fo-scan__notice");
-    expect(notice.textContent).toMatch(/Recorded/);
-    // DECISIONS #116, still said out loud on the happy path.
-    expect(notice.textContent).toMatch(/Stock counts are unchanged/i);
+    expect(notice.textContent).toMatch(/Put away/);
+    // EOS put-away (Controller INVENTORY / WAREHOUSE 2026-10-01): stock moves into the bin inside one warehouse.
+    expect(notice.textContent).toMatch(/warehouse total is unchanged/i);
   });
 
   it("A DEVICE THAT KNOWS IT IS OFFLINE DOES NOT EVEN TRY", async () => {
     // The one signal trustworthy in the negative direction. Attempting into a known-dead network
     // costs a request and a delay for nothing.
     setOnline(false);
-    const recordPutAway = vi.fn();
-    const { runtime } = mount({ recordPutAway });
+    const putAwayStock = vi.fn();
+    const { runtime } = mount({ putAwayStock });
     await stowOneItem();
-    expect(recordPutAway).not.toHaveBeenCalled();
+    expect(putAwayStock).not.toHaveBeenCalled();
     expect(runtime.enqueued).toHaveLength(1);
     setOnline(true);
   });
@@ -140,7 +140,7 @@ describe("a refusal is not a connectivity problem", () => {
     // Queueing a permission-denied would turn a clear "no" into a "maybe" that retries forever and
     // leaves the operator believing the work is still in flight.
     setOnline(true);
-    const { runtime } = mount({ recordPutAway: vi.fn().mockRejectedValue(refused()) });
+    const { runtime } = mount({ putAwayStock: vi.fn().mockRejectedValue(refused()) });
     await stowOneItem();
 
     expect(screen.queryByText(/has not reached the server/i)).toBeNull();
@@ -163,7 +163,7 @@ describe("a refusal is not a connectivity problem", () => {
 describe("when the phone cannot keep it", () => {
   it("the work is NOT called pending, and the destination stays on screen", async () => {
     setOnline(false);
-    mount({ recordPutAway: vi.fn(), runtime: fakeRuntime({ durable: false }) });
+    mount({ putAwayStock: vi.fn(), runtime: fakeRuntime({ durable: false }) });
     await stowOneItem();
     // Telling somebody a stow is queued on a phone that cannot store it is the one lie this whole
     // runtime exists to prevent.
@@ -177,17 +177,17 @@ describe("when the phone cannot keep it", () => {
 
 describe("a retry lands on the same placement", () => {
   it("the queued intent replays the ONLINE attempt's own request under the ONLINE attempt's key", async () => {
-    // The whole safety argument rests on this: `plc_<key>` means a replay lands on the same document
+    // The whole safety argument rests on this: `srl_<sha256(key)>` means a replay lands on the same relocation
     // rather than recording a second stow. The attempt that failed may have committed with only its
     // response lost, so the replay must carry THAT attempt's key -- a different key (the intent id,
     // as this once asserted) would record the stow a second time. And it must be THAT attempt's
-    // request: a differently-shaped payload is refused by recordPutAway at sync.
+    // request: a differently-shaped payload is refused by putAwayStock at sync.
     setOnline(true);
-    const recordPutAway = vi.fn().mockRejectedValue(offline());
-    const { runtime } = mount({ recordPutAway });
+    const putAwayStock = vi.fn().mockRejectedValue(offline());
+    const { runtime } = mount({ putAwayStock });
     await stowOneItem();
 
-    const attempted = recordPutAway.mock.calls[0][0];
+    const attempted = putAwayStock.mock.calls[0][0];
     const intent = runtime.enqueued[0];
     expect(typeof intent.payload.idempotencyKey).toBe("string");
     expect(intent.payload.idempotencyKey).toBe(attempted.idempotencyKey);

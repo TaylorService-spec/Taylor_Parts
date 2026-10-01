@@ -2,7 +2,14 @@ import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../enti
 import { makeColumn, makeFilter, makeListViewDefinition, makeSavedView, makeSort } from "../listViewDefinition.js";
 import { WAREHOUSE_STATUSES, WAREHOUSE_STATUS_META } from "../../domain/warehousesView.js";
 
-// Warehouse — S-INV-WAREHOUSE-SUPPLIER-DEFINITIONS. Describes the LIVE `warehouses` collection
+// Warehouse — S-INV-WAREHOUSE-SUPPLIER-DEFINITIONS.
+//
+// NOW READ FROM EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the list runs over
+// eos_ops.warehouses through listInventoryWarehouses (metadata/warehouseListSource.js), and the governed masters are
+// written only by the EOS Warehouse Administration. The history below describes the retired Firestore source and is
+// kept as the record of why the definition is shaped as it is.
+//
+// Formerly: described the LIVE `warehouses` collection
 // (Epic 4 Warehouse + Fulfillment System, functions/src/types/warehouse.ts's plain `Warehouse`
 // interface: { id, name, location }), read by the Operations Warehouses workspace through
 // domain/warehousesView.js (buildWarehousesView) over services/operationsQueries.ts's
@@ -78,11 +85,12 @@ export const warehouseEntity = makeEntityDefinition({
   // const inside services/operationsQueries.ts) — the literal here matches that local const and
   // functions/src/constants/collections.js's own WAREHOUSES_COLLECTION = "warehouses".
   collection: "warehouses",
-  readVia: "CLIENT_DIRECT",
-  // Rules gate this by role/relationship (admin/dispatcher, or a WAREHOUSE_MANAGER assigned to
-  // this specific warehouse), not by a capability. Recorded as null rather than invented — see
-  // the header.
-  readCapability: null,
+  // EOS_API (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the Warehouse master is
+  // eos_ops.warehouses, read through listInventoryWarehouses -- the caller's WAREHOUSE-scoped governed warehouses,
+  // fixtures excluded by the server -- gated on `warehouse.record.read`. Formerly a client Firestore read gated by
+  // Rules role/relationship with no capability id.
+  readVia: "EOS_API",
+  readCapability: "warehouse.record.read",
   identity: makeIdentity({ nameField: "name" }),
   description:
     "A physical stock-holding location (Epic 4 Warehouse + Fulfillment) — a bin-level inventory registry, " +
@@ -96,7 +104,7 @@ export const warehouseEntity = makeEntityDefinition({
       entityId: "warehouse",
       label: "Warehouse ID",
       type: "ID",
-      description: "The Firestore document id. Nothing in this collection's write paths re-asserts it inside the document body.",
+      description: "The governed warehouse id (eos_ops.warehouses.id), stable for the life of the master.",
     }),
     makeFieldDefinition({
       id: "name",
@@ -111,7 +119,7 @@ export const warehouseEntity = makeEntityDefinition({
       entityId: "warehouse",
       label: "Location",
       type: "STRING",
-      description: "Free-text description (functions/src/types/warehouse.ts Warehouse.location), not a pointer to the registered `location` entity — see the file header.",
+      description: "The site label of the governed master (eos_ops.warehouses.site_label), not a pointer to the registered `location` entity — see the file header.",
     }),
     // Optional — see the file header for why a missing value is a real, undeclared state rather
     // than an enum member, and why the seven other §3A governed fields are not declared at all.

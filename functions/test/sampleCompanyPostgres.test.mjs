@@ -257,8 +257,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // the Work Order cutover completion pass (2026-09-30): quarantine 1764310000000, availability 1764320000000, labor 1764330000000 (+workOrder.labor.correctEntry), inbound work 1764340000000 (+5 inboundWork.* capabilities) -- every new capability granted to NO Role; the manifest vocabulary lists the six new keys and asserts them for no persona.
 // 76 -> 79: the Service Experience completion (2026-09-30): provider runtime 1764350000000 (schema), recovery 1764360000000 (+inboundWork.request.recover), self-scheduling 1764370000000 (+workOrder.selfScheduling.issue/.configure) -- every new capability granted to NO Role.
 // 79 -> 80: the Parts / Purchasing / Receiving completion (2026-10-01): 1764380000000 -- Reorder create integrity + RR numbering (schema) and warehouse.record.manage + supplier.record.read, granted to NO Role.
-const PINNED_LAST_MIGRATION = "1764380000000_parts-purchasing-receiving-completion";
-const PINNED_MIGRATION_COUNT = 80;
+// 80 -> 81: the Inventory / Warehouse completion (2026-10-01): 1764390000000 -- the inventory baseline cutover certification (schema).
+const PINNED_LAST_MIGRATION = "1764390000000_inventory-baseline-cutover";
+const PINNED_MIGRATION_COUNT = 81;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

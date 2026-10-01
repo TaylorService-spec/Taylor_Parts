@@ -283,7 +283,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 72 -> 76: the Work Order cutover completion pass (2026-09-30): quarantine 1764310000000, availability 1764320000000, labor 1764330000000 (+workOrder.labor.correctEntry), inbound work 1764340000000 (+5 inboundWork.* capabilities) -- every new capability granted to NO Role.
   // 76 -> 79: the Service Experience completion (2026-09-30): provider runtime 1764350000000 (schema), recovery 1764360000000 (+inboundWork.request.recover), self-scheduling 1764370000000 (+workOrder.selfScheduling.issue/.configure) -- every new capability granted to NO Role.
   // 79 -> 80: the Parts / Purchasing / Receiving completion (2026-10-01): 1764380000000 -- Reorder create integrity + RR numbering (schema) and warehouse.record.manage + supplier.record.read, granted to NO Role.
-  assert.equal(files.length, 80, "the migration chain moved; re-measure before trusting anything below");
+  // 80 -> 81: the Inventory / Warehouse completion (2026-10-01): 1764390000000 -- the inventory baseline cutover certification
+  // (schema; the fail-closed gate the activated Inventory writers read). No capability, no grant.
+  assert.equal(files.length, 81, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

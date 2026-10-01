@@ -33,6 +33,7 @@ import { warehousePredicates } from "./cycleCountOperations.js";
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import { isSafeIdSegment, normalizeBinCode } from "../inventoryLocation/binRegistry.js";
 import type { PostgresPlacementWriterState } from "../inventoryLocation/placementWriterState.js";
+import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -139,6 +140,9 @@ export function validateEosPutAwayRequest(input: unknown): { valid: true; value:
     },
   };
 }
+
+/** Every field an EOS put-away accepts. */
+const EOS_PUT_AWAY_FIELDS: ReadonlySet<string> = new Set(["warehouseId", "binCode", "binId", "partId", "quantity", "serialNumbers", "idempotencyKey", "pickedForWorkOrderId", "note"]);
 
 /** The deterministic placement id -- identical to derivePlacementId. */
 export function eosPlacementId(idempotencyKey: string, discriminator: string): string {
@@ -253,6 +257,15 @@ export async function recordEosPutAway(deps: PlacementOperationDeps, actor: Plac
   if (deps.postgresState !== "ACTIVE") {
     refuse("NOT_ACTIVATED", "NOT_ACTIVATED", "EOS put-away is not activated in this environment; placements are still recorded on the current system");
   }
+  // The cutover fails closed until the tenant's legacy baseline is CERTIFIED (inventoryBaselineGate.ts).
+  if (!(await isInventoryBaselineCertified(deps.pool, actor.tenantId))) refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
+  // The EOS request is CLOSED (Controller INVENTORY reconciliation, 2026-10-01; DQ-038 "no company inference"): a field the
+  // put-away does not define -- an operating company above all -- is refused, never silently ignored. Checked before the
+  // shared shape validator, which stays the Firestore command's rules verbatim (binPlacementParity.test.mjs).
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    const extra = Object.keys(input).filter((k) => !EOS_PUT_AWAY_FIELDS.has(k));
+    if (extra.length > 0) return refuse("INVALID", "INVALID_INPUT", "unknown_field");
+  }
   const validated = validateEosPutAwayRequest(input);
   if (!validated.valid) return refuse("INVALID", "INVALID_INPUT", validated.reason);
   const req = validated.value;
@@ -301,15 +314,35 @@ export async function recordEosPutAway(deps: PlacementOperationDeps, actor: Plac
 
     const bin = await resolveBin(db, actor.tenantId, req);
 
-    // A serial must be a real unit OF THIS part.
+    // FAIL CLOSED ON THE GOVERNED MASTERS (Controller INVENTORY reconciliation, 2026-10-01; DQ-038 "the server validates"):
+    // a stow into a warehouse that is not ACTIVE, or of a Part the governed Part authority does not hold ACTIVE, is refused.
+    // A SERIALIZED Part is stowed by serial, never by an anonymous quantity, so serial custody is never bypassed.
+    if (!warehouse.active) refuse("WAREHOUSE_NOT_ACTIVE", "PRECONDITION_FAILED", "the warehouse is not ACTIVE");
+    const partRows = (await db.query<{ status: string; control_type: string }>(
+      `SELECT status::text AS status, control_type::text AS control_type FROM eos_ops.parts WHERE tenant_id = $1 AND id = $2`,
+      [actor.tenantId, req.partId])).rows;
+    if (partRows.length === 0) refuse("PART_NOT_FOUND", "NOT_FOUND", "no governed Part with that id");
+    if (partRows[0].status !== "ACTIVE") refuse("PART_NOT_ACTIVE", "PRECONDITION_FAILED", "a placement may only stow an ACTIVE Part");
+    if (partRows[0].control_type === "SERIALIZED" && serials.length === 0) refuse("SERIALS_REQUIRED", "INVALID_INPUT", "a serialized Part is stowed by serial number");
+
+    // A serial must be a real unit OF THIS part, in custody INSIDE this warehouse (the warehouse itself or one of its bins)
+    // and not installed: a placement records where a unit the warehouse holds was put, never a unit held elsewhere.
     if (serials.length > 0) {
-      const { rows } = await db.query<{ part_id: string; serial_number: string }>(
-        `SELECT part_id, serial_number FROM eos_ops.serialized_custody WHERE tenant_id = $1 AND serial_number = ANY($2)`,
+      const { rows } = await db.query<{ part_id: string; serial_number: string; status: string; custody_warehouse_id: string | null }>(
+        `SELECT c.part_id, c.serial_number, c.status::text AS status,
+                CASE WHEN c.location_type = 'WAREHOUSE' THEN c.location_id
+                     WHEN c.location_type = 'BIN' THEN (SELECT b.warehouse_id FROM eos_ops.bins b WHERE b.tenant_id = c.tenant_id AND b.id = c.location_id)
+                     ELSE NULL END AS custody_warehouse_id
+           FROM eos_ops.serialized_custody c WHERE c.tenant_id = $1 AND c.serial_number = ANY($2)`,
         [actor.tenantId, serials]);
       for (const s of serials) {
         const units = rows.filter((r) => r.serial_number === s);
         if (units.length === 0) refuse("INVALID", "INVALID_INPUT", "serial_unknown");
-        if (!units.some((u) => u.part_id === req.partId)) refuse("INVALID", "INVALID_INPUT", "serial_wrong_part");
+        const unit = units.find((u) => u.part_id === req.partId);
+        if (!unit) refuse("INVALID", "INVALID_INPUT", "serial_wrong_part");
+        if (unit!.custody_warehouse_id !== req.warehouseId || unit!.status === "INSTALLED") {
+          refuse("SERIAL_NOT_IN_WAREHOUSE", "PRECONDITION_FAILED", "this unit is not in custody in this warehouse");
+        }
       }
     }
 

@@ -1,37 +1,26 @@
 import { useEffect, useState } from "react";
-import { fetchTransferOrderDocsPage, fetchWarehousesPage } from "../services/operationsQueries";
+import { listTransferOrderDocs } from "../services/transferCommandClient.js";
+import { fetchInventoryWarehouseOptions } from "../services/inventoryLocationClient.js";
 
-// Inventory > Transfers -- read hook for the Transfers workspace. It REUSES the existing shared
-// operationsQueries BOUNDED page fetchers (transfer_orders + warehouses, both read-only /
-// Admin-SDK-write-only collections) rather than issuing its own Firestore reads -- so there is
-// one read path, not a parallel one. It returns the raw inputs the canonical view-model
-// (modules/operations/transferOrdersViewModel.buildTransferOrdersView) needs; it does NOT itself
-// shape rows (single source of truth stays with that view-model).
+// Inventory > Transfers -- read hook for the Transfers workspace and the transfer scan.
 //
-// BOUNDED (X-TRANSFER-ORDERS-UNBOUNDED-READ remediation). This hook previously called the
-// UNBOUNDED fetchTransferOrderDocs/fetchWarehouses -- a plain getDocs over the whole collection,
-// no cap, no truncated flag, nothing to disclose. It now calls the PAGE variants
-// (fetchTransferOrderDocsPage/fetchWarehousesPage, both capped at operationsQueries.LIST_READ_CAP)
-// and surfaces each read's own `truncated` flag separately as transferOrdersTruncated/
-// warehousesTruncated, so a caller CAN disclose a capped list honestly. The unbounded originals
-// are left untouched and still feed the Operations dashboard's WarehousePanel display -- capping
-// the shared fetcher there was rejected (see operationsQueries.ts's fetchTransferOrderDocsPage
-// comment); the bound belongs at this call site only.
+// THE READ MOVED TO EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01). It used to page the
+// Firestore `transfer_orders` and `warehouses` collections (operationsQueries); it now asks the governed PostgreSQL
+// reads -- listTransferOrders (transfers whose origin or destination warehouse is in the caller's WAREHOUSE scope)
+// and listInventoryWarehouses (the caller's governed warehouses, for endpoint names). There is no Firestore read and
+// no merge of the two stores.
 //
-// modules/inventory/Transfers.jsx DOES read both flags (transferOrdersTruncated / warehousesTruncated)
-// and renders a disclosure banner for each -- see Transfers.jsx around its `read.transferOrdersTruncated`
-// / `read.warehousesTruncated` blocks. This is wired, not the "computed and discarded" gap that was
-// found and fixed for Suppliers (modules/purchasing/Suppliers.jsx's TRUNCATION comment).
+// It returns the SAME raw inputs the canonical view-model (modules/operations/transferOrdersViewModel.js) takes --
+// transfer rows as { docId, data } and warehouses as { id, name } -- so there is one row shape, not a second one.
+// Each read discloses its own cap: the transfer list states `truncated`; the warehouse list is the caller's whole
+// scoped set, never capped.
 //
-// Fail-closed: a denied/unavailable read resolves to an error code (never a partial/fabricated
-// list); the workspace renders an honest FailureState. One-shot fetch (transfer_orders + warehouses
-// change rarely and both are write-closed to clients), re-run when accessVersion changes -- the
-// same access-freshness convention the Operations dashboard uses.
-// `refreshKey` is an OPTIONAL second trigger (e.g. bumped after a successful write from
-// useTransferActions) so the workspace can re-fetch on demand without a full accessVersion churn.
-// Omitted callers are unaffected -- undefined !== undefined is false, so the effect still only
-// re-runs on an actual accessVersion change unless a caller opts in by bumping refreshKey.
-export function useTransferOrders(accessVersion, refreshKey) {
+// Fail-closed: a refused / unavailable read resolves to an error code (never a partial or fabricated list). The code
+// is the transport code the screens already render (`permission-denied`, `unavailable`, ...). `refreshKey` is an
+// optional second trigger bumped after a successful write.
+export function useTransferOrders(accessVersion, refreshKey, deps = {}) {
+  const listOrders = deps.listTransferOrderDocs ?? listTransferOrderDocs;
+  const listWarehouses = deps.fetchWarehouseOptions ?? fetchInventoryWarehouseOptions;
   const [state, setState] = useState({
     loading: true,
     error: null,
@@ -44,16 +33,16 @@ export function useTransferOrders(accessVersion, refreshKey) {
   useEffect(() => {
     let cancelled = false;
     setState((prev) => ({ ...prev, loading: true, error: null }));
-    Promise.all([fetchTransferOrderDocsPage(), fetchWarehousesPage()])
-      .then(([transferOrdersPage, warehousesPage]) => {
+    Promise.all([listOrders({}), listWarehouses()])
+      .then(([orders, warehouses]) => {
         if (!cancelled) {
           setState({
             loading: false,
             error: null,
-            transferOrderDocs: transferOrdersPage.items,
-            warehouses: warehousesPage.items,
-            transferOrdersTruncated: transferOrdersPage.truncated,
-            warehousesTruncated: warehousesPage.truncated,
+            transferOrderDocs: orders.items,
+            warehouses: warehouses.map((w) => ({ id: w.id, name: w.name })),
+            transferOrdersTruncated: orders.truncated === true,
+            warehousesTruncated: false,
           });
         }
       })
@@ -72,6 +61,8 @@ export function useTransferOrders(accessVersion, refreshKey) {
     return () => {
       cancelled = true;
     };
+    // listOrders / listWarehouses are stable module functions unless a test injects them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessVersion, refreshKey]);
 
   return state;

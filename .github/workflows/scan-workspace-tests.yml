@@ -131,6 +131,11 @@ on:
       - "field-ops-app-vite/src/domain/cycleCountCommandRequest.js"
       - "field-ops-app-vite/src/services/cycleCountCommandClient.js"
       - "field-ops-app-vite/src/services/transferCommandClient.js"
+      - "field-ops-app-vite/src/services/eosOperationsClient.js"
+      - "field-ops-app-vite/src/services/inventoryLocationClient.js"
+      - "field-ops-app-vite/src/services/placementClient.js"
+      - "field-ops-app-vite/src/services/stockMovementClient.js"
+      - "field-ops-app-vite/src/metadata/warehouseListSource.js"
       - "field-ops-app-vite/src/hooks/useTransferOrders.js"
       - "field-ops-app-vite/src/config/inventoryBalanceReadiness.js"
       - "field-ops-app-vite/src/services/inventoryBalanceCallableClient.js"
@@ -194,6 +199,7 @@ on:
       - "field-ops-app-vite/test/operationsTransferOrders.test.jsx"
       - "field-ops-app-vite/test/stockLocationSurfaceRetired.test.jsx"
       - "field-ops-app-vite/test/useTransferOrders.test.jsx"
+      - "field-ops-app-vite/test/inventoryEosTransports.test.jsx"
       - "field-ops-app-vite/test/operationsQueriesTransferOrdersPage.test.jsx"
       - "functions/test/scannerReleaseReadiness.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
@@ -273,6 +279,11 @@ on:
       - "field-ops-app-vite/src/domain/cycleCountCommandRequest.js"
       - "field-ops-app-vite/src/services/cycleCountCommandClient.js"
       - "field-ops-app-vite/src/services/transferCommandClient.js"
+      - "field-ops-app-vite/src/services/eosOperationsClient.js"
+      - "field-ops-app-vite/src/services/inventoryLocationClient.js"
+      - "field-ops-app-vite/src/services/placementClient.js"
+      - "field-ops-app-vite/src/services/stockMovementClient.js"
+      - "field-ops-app-vite/src/metadata/warehouseListSource.js"
       - "field-ops-app-vite/src/hooks/useTransferOrders.js"
       - "field-ops-app-vite/src/config/inventoryBalanceReadiness.js"
       - "field-ops-app-vite/src/services/inventoryBalanceCallableClient.js"
@@ -336,6 +347,7 @@ on:
       - "field-ops-app-vite/test/operationsTransferOrders.test.jsx"
       - "field-ops-app-vite/test/stockLocationSurfaceRetired.test.jsx"
       - "field-ops-app-vite/test/useTransferOrders.test.jsx"
+      - "field-ops-app-vite/test/inventoryEosTransports.test.jsx"
       - "field-ops-app-vite/test/operationsQueriesTransferOrdersPage.test.jsx"
       - "functions/test/scannerReleaseReadiness.test.mjs"
       - "field-ops-app-vite/test/partLookup.test.mjs"
@@ -507,5 +519,5 @@ jobs:
 
       # Named explicitly: an unnamed vitest suite does not run in this repository's CI at all.
       - name: Scan workspace + lookup + multi-scan receiving journey + transport (vitest + jsdom)
-        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/dictatableNote.test.jsx test/submissionQueue.test.jsx test/scanMobileRegression.test.jsx test/putAwayOfflineAdoption.test.jsx test/technicianHandheld.test.jsx test/returnIntakeScan.test.jsx test/mobileTabBar.test.jsx test/partsScannerJobContext.test.jsx test/partsScannerQtyReset.test.jsx test/receivingLocationOptionAdapter.test.jsx test/cycleCountsBlindReview.test.jsx test/operationsTransferOrders.test.jsx test/stockLocationSurfaceRetired.test.jsx test/useTransferOrders.test.jsx test/operationsQueriesTransferOrdersPage.test.jsx test/putAwayScan.test.jsx test/moveStockScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx test/receivingWorkspaceComposition.test.jsx test/warehouseSyncQueueHonesty.test.jsx test/transferOrderFormTruckStatus.test.jsx
+        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/dictatableNote.test.jsx test/submissionQueue.test.jsx test/scanMobileRegression.test.jsx test/putAwayOfflineAdoption.test.jsx test/technicianHandheld.test.jsx test/returnIntakeScan.test.jsx test/mobileTabBar.test.jsx test/partsScannerJobContext.test.jsx test/partsScannerQtyReset.test.jsx test/receivingLocationOptionAdapter.test.jsx test/cycleCountsBlindReview.test.jsx test/operationsTransferOrders.test.jsx test/stockLocationSurfaceRetired.test.jsx test/useTransferOrders.test.jsx test/inventoryEosTransports.test.jsx test/operationsQueriesTransferOrdersPage.test.jsx test/putAwayScan.test.jsx test/moveStockScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx test/receivingWorkspaceComposition.test.jsx test/warehouseSyncQueueHonesty.test.jsx test/transferOrderFormTruckStatus.test.jsx
         working-directory: field-ops-app-vite

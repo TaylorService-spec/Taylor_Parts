@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import ScanInput from "../../shared/ui/ScanInput.jsx";
 import DictatableNote from "../../shared/ui/DictatableNote.jsx";
-import { binCommandClient } from "../../services/binCommandClient.js";
+import { placementClient } from "../../services/placementClient.js";
 import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
 import { capturePickStage } from "../../offline/warehouseIntent.js";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
@@ -34,6 +34,10 @@ import {
 // THE SCREEN SAYS THIS. Picked stock stays available to other orders until the job dispatches, and
 // an operator who assumes otherwise will be surprised at exactly the wrong moment.
 //
+// ON EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the staging bin is resolved from the
+// governed locations (listInventoryLocations) and the pick is the EOS placement event (POST /operations/placement
+// recordPutAway) -- the same request it always sent, now re-authorized by PostgreSQL. No Firebase call.
+//
 // ============================ THE DEMAND IS THE JOB'S ============================
 //
 // Lines come from the Work Order's own `inventorySnapshot`. This surface reads them and compares;
@@ -50,7 +54,7 @@ const BLOCKER_TEXT = Object.freeze({
 const newPickKey = () => `pick_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
 export default function PickScan({ deps }) {
-  const client = deps?.binClient ?? binCommandClient;
+  const client = deps?.binClient ?? placementClient;
   // ONE submit policy, shared with every other warehouse screen.
   const warehouse = useWarehouseSubmit({ offline: deps?.offline });
   const workOrder = deps?.workOrder ?? null;
@@ -79,7 +83,7 @@ export default function PickScan({ deps }) {
     const raw = typeof err?.code === "string" ? err.code : "";
     setError({
       code: raw.startsWith("functions/") ? raw.slice("functions/".length) : (raw || "internal"),
-      detail: typeof err?.details === "string" ? err.details : null,
+      detail: typeof err?.details === "string" ? err.details : (typeof err?.details?.code === "string" ? err.details.code : null),
     });
   }, []);
 
@@ -314,8 +318,10 @@ function PickError({ error }) {
   const binReason = BIN_RESULT_TEXT[error.detail];
   const message = binReason
     ? binReason
-    : error.code === "permission-denied"
-      ? "You are not authorized to stage picked stock. Picking is built and governed; it has not been granted or switched on."
+    : error.detail === "NOT_ACTIVATED"
+      ? "Pick staging is not switched on in this environment yet. Nothing was changed."
+      : error.code === "permission-denied"
+      ? "You are not authorized to stage picked stock here."
       : error.code === "invalid-argument"
         ? "That pick could not be accepted. Check what was scanned."
         : "That could not be recorded. Nothing was changed.";

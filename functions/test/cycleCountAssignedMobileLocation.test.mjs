@@ -128,7 +128,9 @@ await check("the new read rides the existing Cycle Count capability pair, not a 
   assert.match(src, /getCycleCountAssignedMobileLocationCallable[\s\S]*?runGetCycleCountAssignedMobileLocation/);
   assert.match(src, /permissionIds:\s*\[CYCLE_COUNT_CAPABILITY\.create,\s*CYCLE_COUNT_CAPABILITY\.submit\]/);
   const index = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
-  assert.match(index, /getCycleCountAssignedMobileLocationCallable as getCycleCountAssignedMobileLocation/);
+  // RETIRED from the repository (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): Cycle Count is EOS and
+  // trucks are a later journey; the deployed copy stays runtime-stale until the Firebase removal window.
+  assert.doesNotMatch(index, /getCycleCountAssignedMobileLocationCallable as getCycleCountAssignedMobileLocation/);
 });
 await check("no client-side trucks collection browse was introduced by this file", async () => {
   const src = readFileSync(new URL("../src/cycleCount/cycleCountSheetCallables.ts", import.meta.url), "utf8");

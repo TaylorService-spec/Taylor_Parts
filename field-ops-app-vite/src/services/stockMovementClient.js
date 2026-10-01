@@ -1,21 +1,19 @@
-// Stock relocation -- thin httpsCallable transport over the BIN-P6 `relocateStock` command.
+// Stock relocation -- the EOS transport (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01).
 //
-// Builds nothing and decides nothing: the server derives custody, checks the exact source and owns
-// idempotency. `inventory.stock.relocate` is registered active:false and granted to no Role, so today
-// every real call is refused server-side, and the screen renders that refusal as a refusal.
-import { httpsCallable } from "firebase/functions";
-import { functions } from "../firebase/firebase";
+// WAS a thin httpsCallable transport over the Firebase `relocateStock` / `listStockMovementLocations` callables. The
+// authority moved to PostgreSQL: POST /operations/relocation `relocateStock` (functions/src/eosOps/stockRelocationOperations.ts)
+// decides custody, exact-source sufficiency, scope and idempotency; the screen's request shape is unchanged (the EOS
+// validator mirrors the Firestore one). Warehouses come from eos_ops through listInventoryWarehouses.
+//
+// No Firebase fallback: a refusal (NOT_ACTIVATED included) is thrown as the platform's answer.
+import { EOS_OPERATIONS_ROUTES, eosOperationOrThrow } from "./eosOperationsClient.js";
+import { fetchInventoryWarehouseOptions } from "./inventoryLocationClient.js";
 
-export const STOCK_MOVEMENT_CALLABLES = Object.freeze({ relocate: "relocateStock", locations: "listStockMovementLocations" });
-
-const call = (name, payload) => httpsCallable(functions, name)(payload).then((res) => res?.data);
+export const STOCK_MOVEMENT_OPERATIONS = Object.freeze({ relocate: "relocateStock" });
 
 export const stockMovementClient = Object.freeze({
-  relocateStock: (request) => call(STOCK_MOVEMENT_CALLABLES.relocate, request),
-  /**
-   * The warehouses this operator may move stock in -- from the server, not a client `warehouses` read
-   * (Rules admit that read only for managers). Shaped as {id, name} for the screen's picker.
-   */
-  listWarehouses: () => call(STOCK_MOVEMENT_CALLABLES.locations, {})
-    .then((res) => (res?.warehouses ?? []).map((w) => ({ id: w.warehouseId, name: w.name }))),
+  relocateStock: (request) => eosOperationOrThrow(EOS_OPERATIONS_ROUTES.RELOCATION, STOCK_MOVEMENT_OPERATIONS.relocate, request,
+    { serviceLabel: "the stock movement service" }),
+  /** The warehouses this operator may move stock in, from eos_ops (scope-filtered by the server). Shaped {id, name}. */
+  listWarehouses: () => fetchInventoryWarehouseOptions().then((rows) => rows.map((w) => ({ id: w.id, name: w.name }))),
 });

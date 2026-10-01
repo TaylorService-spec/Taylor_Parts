@@ -1,86 +1,56 @@
-// Inventory > Transfers -- hook tests for the X-TRANSFER-ORDERS-UNBOUNDED-READ remediation.
+// Inventory > Transfers -- the read hook on EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01).
 //
-// hooks/useTransferOrders.js used to call the UNBOUNDED operationsQueries.fetchTransferOrderDocs/
-// fetchWarehouses -- a plain getDocs over the whole collection, no cap, no truncated flag at all.
-// It now calls the PAGE variants (fetchTransferOrderDocsPage/fetchWarehousesPage) and must surface
-// each read's own truncation fact separately, never silently drop rows past the cap without saying
-// so. These tests pin: the hook calls the PAGE functions (not the unbounded originals), returns the
-// capped items, and reports transferOrdersTruncated/warehousesTruncated independently per source.
+// hooks/useTransferOrders.js reads the governed PostgreSQL list (listTransferOrders) and the caller's governed
+// warehouses (listInventoryWarehouses) -- never Firestore `transfer_orders` / `warehouses`. These tests pin: the EOS
+// reads are the only sources, rows keep the { docId, data } shape the canonical view-model validates, the transfer
+// list's own truncation is disclosed, and a refusal is an error code, never an empty list.
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 
 const h = vi.hoisted(() => ({
-  transferOrdersPage: () => Promise.resolve({ items: [], truncated: false }),
-  warehousesPage: () => Promise.resolve({ items: [], truncated: false }),
+  orders: () => Promise.resolve({ items: [], truncated: false }),
+  warehouses: () => Promise.resolve([]),
 }));
-
-const fetchTransferOrderDocsPage = vi.fn(() => h.transferOrdersPage());
-const fetchWarehousesPage = vi.fn(() => h.warehousesPage());
-// The unbounded originals must NEVER be called by this hook -- a call proves a regression back
-// to the defect this remediation fixes.
-const fetchTransferOrderDocs = vi.fn(() => Promise.reject(new Error("unbounded fetch must not be called")));
-const fetchWarehouses = vi.fn(() => Promise.reject(new Error("unbounded fetch must not be called")));
-
-vi.mock("../src/services/operationsQueries", () => ({
-  fetchTransferOrderDocsPage: (...args) => fetchTransferOrderDocsPage(...args),
-  fetchWarehousesPage: (...args) => fetchWarehousesPage(...args),
-  fetchTransferOrderDocs: (...args) => fetchTransferOrderDocs(...args),
-  fetchWarehouses: (...args) => fetchWarehouses(...args),
-}));
+const listTransferOrderDocs = vi.fn((...a) => h.orders(...a));
+const fetchInventoryWarehouseOptions = vi.fn(() => h.warehouses());
+// Firestore must never be touched by this hook.
+const firestoreTouched = vi.fn();
+vi.mock("../src/services/operationsQueries", () => new Proxy({}, { get: () => firestoreTouched }));
+vi.mock("../src/services/transferCommandClient.js", () => ({ listTransferOrderDocs: (...a) => listTransferOrderDocs(...a) }));
+vi.mock("../src/services/inventoryLocationClient.js", () => ({ fetchInventoryWarehouseOptions: (...a) => fetchInventoryWarehouseOptions(...a) }));
 
 const { useTransferOrders } = await import("../src/hooks/useTransferOrders.js");
 
 const doc = (docId) => ({ docId, data: { partId: "PART-1", status: "REQUESTED" } });
-const wh = (id) => ({ id, name: `Warehouse ${id}` });
 
-describe("useTransferOrders -- bounded reads", () => {
-  it("calls the PAGE fetchers, never the unbounded originals", async () => {
+describe("useTransferOrders -- EOS reads", () => {
+  it("reads the governed transfer list and warehouses, never Firestore", async () => {
+    h.orders = () => Promise.resolve({ items: [doc("trf_1")], truncated: false });
+    h.warehouses = () => Promise.resolve([{ id: "taylor-main", name: "Taylor Main Warehouse", status: "ACTIVE" }]);
     const { result } = renderHook(() => useTransferOrders(1));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(fetchTransferOrderDocsPage).toHaveBeenCalled();
-    expect(fetchWarehousesPage).toHaveBeenCalled();
-    expect(fetchTransferOrderDocs).not.toHaveBeenCalled();
-    expect(fetchWarehouses).not.toHaveBeenCalled();
-  });
-
-  it("reports transferOrdersTruncated=false and warehousesTruncated=false when neither page is capped", async () => {
-    h.transferOrdersPage = () => Promise.resolve({ items: [doc("to-1")], truncated: false });
-    h.warehousesPage = () => Promise.resolve({ items: [wh("wh-1")], truncated: false });
-    const { result } = renderHook(() => useTransferOrders(1));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.transferOrderDocs).toEqual([doc("to-1")]);
-    expect(result.current.warehouses).toEqual([wh("wh-1")]);
+    expect(listTransferOrderDocs).toHaveBeenCalled();
+    expect(fetchInventoryWarehouseOptions).toHaveBeenCalled();
+    expect(firestoreTouched).not.toHaveBeenCalled();
+    expect(result.current.transferOrderDocs).toEqual([doc("trf_1")]);
+    expect(result.current.warehouses).toEqual([{ id: "taylor-main", name: "Taylor Main Warehouse" }]);
     expect(result.current.transferOrdersTruncated).toBe(false);
-    expect(result.current.warehousesTruncated).toBe(false);
   });
 
-  it("reports transferOrdersTruncated=true independently when only the transfer_orders page is capped", async () => {
-    h.transferOrdersPage = () => Promise.resolve({ items: [doc("to-1")], truncated: true });
-    h.warehousesPage = () => Promise.resolve({ items: [wh("wh-1")], truncated: false });
-    const { result } = renderHook(() => useTransferOrders(1));
+  it("discloses the transfer list's own truncation", async () => {
+    h.orders = () => Promise.resolve({ items: [doc("trf_1")], truncated: true });
+    h.warehouses = () => Promise.resolve([]);
+    const { result } = renderHook(() => useTransferOrders(2));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.transferOrdersTruncated).toBe(true);
     expect(result.current.warehousesTruncated).toBe(false);
   });
 
-  it("reports warehousesTruncated=true independently when only the warehouses page is capped", async () => {
-    h.transferOrdersPage = () => Promise.resolve({ items: [], truncated: false });
-    h.warehousesPage = () => Promise.resolve({ items: [wh("wh-1")], truncated: true });
-    const { result } = renderHook(() => useTransferOrders(1));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.transferOrdersTruncated).toBe(false);
-    expect(result.current.warehousesTruncated).toBe(true);
-  });
-
-  it("fails closed on a denied read -- error code surfaced, both truncated flags reset to false", async () => {
-    h.transferOrdersPage = () => Promise.reject(Object.assign(new Error("nope"), { code: "permission-denied" }));
-    h.warehousesPage = () => Promise.resolve({ items: [], truncated: false });
-    const { result } = renderHook(() => useTransferOrders(1));
+  it("a refused read is an error code, never an empty list", async () => {
+    h.orders = () => Promise.reject(Object.assign(new Error("no"), { code: "permission-denied" }));
+    const { result } = renderHook(() => useTransferOrders(3));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe("permission-denied");
     expect(result.current.transferOrderDocs).toEqual([]);
-    expect(result.current.warehouses).toEqual([]);
-    expect(result.current.transferOrdersTruncated).toBe(false);
-    expect(result.current.warehousesTruncated).toBe(false);
   });
 });

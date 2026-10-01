@@ -6325,7 +6325,7 @@
         {
           "key": "warehouseId",
           "label": "Warehouse ID",
-          "description": "The Firestore document id. Nothing in this collection's write paths re-asserts it inside the document body.",
+          "description": "The governed warehouse id (eos_ops.warehouses.id), stable for the life of the master.",
           "dataType": "ID",
           "required": false,
           "allowedValues": [],
@@ -6353,7 +6353,7 @@
         {
           "key": "location",
           "label": "Location",
-          "description": "Free-text description (functions/src/types/warehouse.ts Warehouse.location), not a pointer to the registered `location` entity — see the file header.",
+          "description": "The site label of the governed master (eos_ops.warehouses.site_label), not a pointer to the registered `location` entity — see the file header.",
           "dataType": "STRING",
           "required": false,
           "allowedValues": [],

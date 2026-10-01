@@ -46,11 +46,11 @@ const scanInputDeps = { now: () => { clock += 1000; return clock; } };
 // ═══════════════════════════════════════════ PUT-AWAY
 
 describe("put-away, through the real form", () => {
-  const mount = (recordPutAway, rt = runtime()) => {
+  const mount = (putAwayStock, rt = runtime()) => {
     render(<PutAwayScan deps={{
       binClient: {
         resolveBin: vi.fn().mockResolvedValue({ result: "FOUND", code: "A-14", warehouseId: "WH-1", binId: "bin_WH-1__A-14" }),
-        recordPutAway,
+        putAwayStock,
       },
       session: { warehouseId: "WH-1", partId: "PRT-1001", serialTracked: false },
       scanInputDeps,
@@ -72,31 +72,31 @@ describe("put-away, through the real form", () => {
 
   it("OFFLINE: pressing the real button queues a PUT_AWAY and says the stock has not moved", async () => {
     setOnline(false);
-    const recordPutAway = vi.fn();
-    const rt = mount(recordPutAway);
+    const putAwayStock = vi.fn();
+    const rt = mount(putAwayStock);
     await stow();
 
-    expect(recordPutAway, "a device that knows it is offline does not attempt").not.toHaveBeenCalled();
+    expect(putAwayStock, "a device that knows it is offline does not attempt").not.toHaveBeenCalled();
     expect(rt.enqueued).toHaveLength(1);
     expect(rt.enqueued[0].type).toBe(WAREHOUSE_INTENT.PUT_AWAY);
-    // The queued payload IS the put-away command's own request -- the shape recordPutAway validates
-    // (warehouseId + binCode + partId + quantity), under the stow's own key -- never a second,
+    // The queued payload IS the put-away command's own request -- the EOS put-away (warehouseId + partId + binId +
+    // quantity; Controller INVENTORY / WAREHOUSE 2026-10-01), under the stow's own key -- never a second,
     // differently-shaped "offline payload" the server would refuse at sync.
     const { idempotencyKey, ...queuedRequest } = rt.enqueued[0].payload;
-    expect(queuedRequest).toEqual({ warehouseId: "WH-1", binCode: "A-14", partId: "PRT-1001", quantity: 1 });
+    expect(queuedRequest).toEqual({ warehouseId: "WH-1", partId: "PRT-1001", binId: "bin_WH-1__A-14", quantity: 1 });
     expect(typeof idempotencyKey).toBe("string");
     // The words that must appear, and the one that must not.
     expect(document.body.textContent).toMatch(/has not reached the server/i);
-    expect(document.body.textContent).not.toMatch(/✓ Recorded/);
+    expect(document.body.textContent).not.toMatch(/✓ Put away/);
   });
 
   it("ONLINE: the canonical command is called and nothing is queued", async () => {
-    const recordPutAway = vi.fn().mockResolvedValue({ outcome: "recorded", binCode: "A-14", placementIds: ["plc_1"] });
-    const rt = mount(recordPutAway);
+    const putAwayStock = vi.fn().mockResolvedValue({ outcome: "relocated", relocationId: "srl_1" });
+    const rt = mount(putAwayStock);
     await stow();
-    expect(recordPutAway).toHaveBeenCalledTimes(1);
+    expect(putAwayStock).toHaveBeenCalledTimes(1);
     expect(rt.enqueued).toHaveLength(0);
-    expect(document.body.textContent).toMatch(/Recorded/);
+    expect(document.body.textContent).toMatch(/Put away/);
   });
 
   it("A REFUSAL IS NEVER QUEUED", async () => {

@@ -20,6 +20,9 @@ on:
       - "functions/scripts/exportInventorySnapshot.js"
       - "functions/scripts/inventorySnapshotFile.js"
       - "functions/test/inventorySnapshotExport.test.mjs"
+      - "functions/test/inventoryCutoverScript.test.mjs"
+      - "functions/scripts/inventoryCutover.js"
+      - "functions/src/eosOps/migration/inventoryBaselineCutover.ts"
       - "docs/architecture/inventory-snapshot-export-evidence.json"
       - "field-ops-app-vite/src/domain/ledgerRowIntegrity.js"
       - "functions/scripts/inventoryLedgerCensus.js"
@@ -44,6 +47,9 @@ on:
       - "functions/scripts/exportInventorySnapshot.js"
       - "functions/scripts/inventorySnapshotFile.js"
       - "functions/test/inventorySnapshotExport.test.mjs"
+      - "functions/test/inventoryCutoverScript.test.mjs"
+      - "functions/scripts/inventoryCutover.js"
+      - "functions/src/eosOps/migration/inventoryBaselineCutover.ts"
       - "docs/architecture/inventory-snapshot-export-evidence.json"
       - "field-ops-app-vite/src/domain/ledgerRowIntegrity.js"
       - "functions/scripts/inventoryLedgerCensus.js"
@@ -97,5 +103,5 @@ jobs:
         working-directory: functions
 
       - name: DQ-019 authoritative ledger rows fail closed + pre-activation census (offline)
-        run: node --test test/authoritativeLedgerRows.test.mjs test/ledgerRowIntegrityParity.test.mjs test/inventorySnapshotExport.test.mjs
+        run: node --test test/authoritativeLedgerRows.test.mjs test/ledgerRowIntegrityParity.test.mjs test/inventorySnapshotExport.test.mjs test/inventoryCutoverScript.test.mjs
         working-directory: functions

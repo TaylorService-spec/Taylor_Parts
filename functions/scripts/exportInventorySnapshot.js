@@ -13,13 +13,15 @@
 //   cycle_counts            -> scripts/cycleCountActivationCensus.js   (Cycle Count activation gate 1: zero population)
 //   inventory_transactions  -> scripts/inventoryLedgerCensus.js        (DQ-019 malformed-row census; baseline/ledger COPY input)
 //   transfer_orders         -> scripts/transferCopyCensus.js           (Transfer COPY-lane census; IN_TRANSIT ledger agreement)
+//   serialized_assets       -> scripts/inventoryCutover.js             (baseline custody COPY; INVENTORY COMPLETION RULINGS 2026-10-01)
+//   warehouses              -> scripts/inventoryCutover.js             (location identity proof for the baseline COPY)
 //
 // Conditions, each enforced here or by functions/test/inventorySnapshotExport.test.mjs and
 // functions/test/operatorScriptEnvironmentFence.test.mjs:
 //
 //   * READ ONLY. The only Firestore calls are `collection(name).get()`; no write verb appears in the code (static
 //     test). One-time: no sync, no schedule, no refresh. No Rules, Functions, config or runtime change.
-//   * EXACT SOURCE ALLOWLIST: the three collections above and nothing else (SOURCE_COLLECTIONS + assertAllowlisted).
+//   * EXACT SOURCE ALLOWLIST: the five collections above and nothing else (SOURCE_COLLECTIONS + assertAllowlisted).
 //     Top-level documents only -- a v2 cycle-count sheet's `lines` subcollection is deliberately NOT read: any v2
 //     sheet is already a STOP at gate 1, and reading its lines would widen the exception.
 //   * NOT RUNTIME. No module under functions/src, field-ops-app-vite/src or integrations references it; not in
@@ -52,6 +54,11 @@ const SOURCE_COLLECTIONS = Object.freeze({
   cycleCounts: "cycle_counts",
   inventoryTransactions: "inventory_transactions",
   transferOrders: "transfer_orders",
+  // Widened by the Controller INVENTORY / WAREHOUSE COMPLETION RULINGS (2026-10-01) for the governed baseline COPY
+  // (src/eosOps/migration/inventoryBaselineCutover.ts): serialized custody, and the warehouse masters the location
+  // identity proof reads (a legacy warehouse's operatingCompanyId must equal the mapped EOS warehouse's company).
+  serializedAssets: "serialized_assets",
+  warehouses: "warehouses",
 });
 const FROZEN_PROJECTS = Object.freeze(["eos-platform-certification"]);
 const SNAPSHOT_FORMAT = "EOS_INVENTORY_SNAPSHOT";

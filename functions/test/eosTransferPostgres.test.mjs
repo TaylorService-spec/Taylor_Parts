@@ -21,6 +21,7 @@ import { resolvePolicyDatabaseConfig } from "../lib/adminPolicy/policyDatabase.j
 import { createBin } from "../lib/eosOps/warehouseBinRepository.js";
 import { handleOperationsRequest, TRANSFER_ROUTE } from "../lib/eosOps/eosOpsHttp.js";
 import { TRANSFER_WRITER_AUTHORITY } from "../lib/inventoryTransfer/transferWriterState.js";
+import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
 
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -54,6 +55,7 @@ async function reset() {
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"],
     { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
   await q("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1)", [TENANT]);
+  await certifyInventoryBaselineFixture(q, TENANT); // the writer gate (inventoryBaselineGate.ts) -- this suite proves the writer itself
   await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by)
            VALUES ($1, $2, 'ACTIVE', 'l3-test', $3, $3)`, [TENANT, COMPANY_ID, ACTOR]);
   await q(`INSERT INTO eos_policy.tenant_operating_company_keys
@@ -184,10 +186,13 @@ test("world", { skip: SKIP }, async () => {
   await receiveSerial("SN-2", "WAREHOUSE", WH_A);
 });
 
-test("the DEPLOYED default is NOT_ACTIVATED (HELD): refused before anything is read or written", { skip: SKIP }, async () => {
-  assert.deepEqual({ ...TRANSFER_WRITER_AUTHORITY }, { firestore: "OPEN", postgres: "INACTIVE" });
+test("the DEPLOYED constant is { FROZEN, ACTIVE }; an INACTIVE state still refuses before anything is read or written", { skip: SKIP }, async () => {
+  // ACTIVATED (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the deployed constant is { FROZEN, ACTIVE };
+  // the uncertified-tenant refusal (inventoryBaselineGate.ts) is proven by inventoryWarehouseJourneyPostgres. The switch
+  // itself still holds: an INACTIVE state refuses before anything is read or written.
+  assert.deepEqual({ ...TRANSFER_WRITER_AUTHORITY }, { firestore: "FROZEN", postgres: "ACTIVE" });
   for (const op of ["createTransfer", "dispatchTransfer", "receiveTransfer", "cancelTransfer"]) {
-    refused(await call(OP_A, op, {}, { state: null }), 503, "NOT_ACTIVATED");
+    refused(await call(OP_A, op, {}, { state: "INACTIVE" }), 503, "NOT_ACTIVATED");
   }
   assert.equal(await count("SELECT count(*) AS n FROM eos_ops.transfer_orders"), 0);
 });

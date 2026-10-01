@@ -3,13 +3,11 @@ import { Button } from "../../shared/ui/primitives/index.js";
 import ScanInput from "../../shared/ui/ScanInput.jsx";
 import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
 import { capturePutAway } from "../../offline/warehouseIntent.js";
-import DictatableNote from "../../shared/ui/DictatableNote.jsx";
-import { binCommandClient } from "../../services/binCommandClient.js";
+import { placementClient } from "../../services/placementClient.js";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import {
   addStowScan,
   buildStowSession,
-  toPutAwayRequest,
   BIN_RESULT,
   BIN_RESULT_TEXT,
   STOW_STEP,
@@ -22,25 +20,20 @@ import {
 //
 // Scan the bin you are standing at, scan what is going into it, confirm.
 //
-// ============================ IT RECORDS WHERE, NOT WHAT ============================
+// ============================ IT MOVES THE STOCK INTO THE BIN, AND RECORDS IT ============================
 //
-// DECISIONS #116. The warehouse still owns the stock; the bin says where inside it the stock sits.
-// The command writes a placement record and no ledger event, so a stow can never remove anything
-// from warehouse on-hand, transfer sufficiency or cycle-count expected quantity.
-//
-// The screen says this out loud rather than leaving an operator to assume a stow "moved" something.
+// ON EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): put-away of received stock is the EXISTING
+// relocation + placement model -- POST /operations/relocation `relocateStock` from the warehouse's unbinned stock to
+// the scanned bin with recordPlacement:true. In ONE server transaction the stock's location changes (a paired
+// RELOCATION_OUT / RELOCATION_IN in the ledger; a serial's custody moves with it) and the placement is recorded. The
+// warehouse total does not change -- the stock is where it was received, now in a bin. There is no put-away ledger
+// of its own and no Firebase call.
 //
 // ============================ THE BIN IS VALIDATED BY THE SERVER ============================
 //
-// `resolveBin` is the authority on whether a scanned code is a real, active bin at THIS warehouse.
-// This surface renders its answer and never second-guesses it — in particular WRONG_WAREHOUSE keeps
-// its own words, because it means the operator is in the wrong building, which is a different
-// problem from a code nobody registered.
-//
-// ============================ INERT TODAY ============================
-//
-// `inventory.placement.record` and `inventory.location.bin.read` are both registered active:false
-// and granted to no Role, so both calls resolve permission-denied. Rendered as refusals.
+// The scanned code is resolved against the governed locations this person may see (listInventoryLocations): a real,
+// ACTIVE bin of THIS warehouse, or the reason it is not. The relocation re-validates everything again (bin of this
+// warehouse, ACTIVE, scope, Part, exact-source sufficiency) and its refusal is rendered as a refusal.
 
 const BLOCKER_TEXT = Object.freeze({
   [STOW_BLOCKED.NO_BIN]: "Scan the bin you are putting this into.",
@@ -61,11 +54,9 @@ function newStowKey() {
 // between their phone and the access point, so the confirm press that fails is not an edge case here
 // — it is the normal case in the back aisles.
 //
-// PUT-AWAY IS THE ONE SCANNER WRITE SAFE TO QUEUE, and the reason is DECISIONS #116 rather than
-// anything about connectivity: a stow writes no ledger event, changes no quantity and touches no
-// balance. A placement that lands twenty minutes late therefore changes NOTHING about what the
-// company has — only about where it says something was put. There is no window in which the queue
-// can make inventory wrong, because the queue is not carrying inventory.
+// PUT-AWAY STAYS SAFE TO QUEUE: it moves stock only WITHIN one warehouse (warehouse -> bin), never changes the
+// warehouse's total, and the server replays it by its idempotency key -- a late flush lands once or is refused
+// (insufficient stock at the source, a retired bin), and that refusal is shown, never retried elsewhere.
 //
 // Every other workflow was considered and deliberately NOT adopted:
 //
@@ -96,12 +87,11 @@ function newStowKey() {
 // an operator who believes a stow committed and walks away has left the warehouse in a state nobody
 // recorded.
 export default function PutAwayScan({ deps }) {
-  const client = deps?.binClient ?? binCommandClient;
+  const client = deps?.binClient ?? placementClient;
   const session = deps?.session ?? null;
 
   const [bin, setBin] = useState(null);
   const [observations, setObservations] = useState(Object.freeze([]));
-  const [note, setNote] = useState("");
   const [outcome, setOutcome] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -119,7 +109,7 @@ export default function PutAwayScan({ deps }) {
     const raw = typeof err?.code === "string" ? err.code : "";
     setError({
       code: raw.startsWith("functions/") ? raw.slice("functions/".length) : (raw || "internal"),
-      detail: typeof err?.details === "string" ? err.details : null,
+      detail: typeof err?.details === "string" ? err.details : (typeof err?.details?.code === "string" ? err.details.code : null),
     });
   }, []);
 
@@ -163,19 +153,21 @@ export default function PutAwayScan({ deps }) {
     if (!state.canSubmit || busy) return;
     setBusy(true);
     setError(null);
-    const payload = {
-      ...toPutAwayRequest({ session, bin, state, idempotencyKey: stowKey.current }),
-      // Only sent when there is something to say. An empty note is not a fact worth storing.
-      ...(note.trim() ? { note: note.trim() } : {}),
-    };
+    const payload = Object.freeze({
+      warehouseId: session.warehouseId,
+      partId: session.partId,
+      binId: bin.binId,
+      ...(state.serialTracked ? { serialNumbers: [...state.serialNumbers] } : { quantity: state.quantity }),
+      idempotencyKey: stowKey.current,
+    });
     try {
       // ONE POLICY, shared with every other warehouse screen. A refusal the server MEANT is never
       // queued -- that would turn a clear "no" into an indefinite "maybe".
       const outcomeState = await warehouse.submit(
         async () => {
           try {
-            const result = await client.recordPutAway(payload);
-            return { ok: true, serverIds: { placementId: result?.placementId ?? null }, result };
+            const result = await client.putAwayStock(payload);
+            return { ok: true, serverIds: { relocationId: result?.relocationId ?? null }, result };
           } catch (err) {
             return { ok: false, error: { code: err?.code ?? null, details: err?.details ?? null }, thrown: err };
           }
@@ -215,7 +207,7 @@ export default function PutAwayScan({ deps }) {
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [state, busy, client, session, bin, note, fail, warehouse]);
+  }, [state, busy, client, session, bin, fail, warehouse]);
 
   const startAnother = useCallback(() => {
     // A NEW key: the next stow is a different event, and reusing the key would make it replay the
@@ -223,7 +215,6 @@ export default function PutAwayScan({ deps }) {
     stowKey.current = newStowKey();
     setBin(null);
     setObservations(Object.freeze([]));
-    setNote("");
     setOutcome(null);
     setError(null);
   }, []);
@@ -250,9 +241,9 @@ export default function PutAwayScan({ deps }) {
           </p>
         ) : (
           <p className="fo-scan__notice fo-scan__notice--ok" role="status">
-            ✓ Recorded — {session.partId} is in {outcome.binCode}.{" "}
-            {/* Said plainly, because an operator could reasonably assume a stow moved something. */}
-            Stock counts are unchanged: putting it away records where it is, not what there is.
+            ✓ Put away — {session.partId} is now in {outcome.binCode}.{" "}
+            {/* Said plainly: the stock moved inside the warehouse; the warehouse holds the same amount. */}
+            The bin's stock went up and the warehouse total is unchanged.
           </p>
         )}
         <Button type="button" variant="primary" onClick={startAnother}>Stow something else</Button>
@@ -321,18 +312,6 @@ export default function PutAwayScan({ deps }) {
         </>
       )}
 
-      {state.step === STOW_STEP.CONTENTS && (
-        // Optional, and last: most stows need no explaining, and putting a note above the scan field
-        // would make every routine stow look like it wanted one.
-        <DictatableNote
-          value={note}
-          onChange={setNote}
-          label="Note (optional)"
-          placeholder="Anything unusual about this stow?"
-          deps={deps?.noteDeps}
-        />
-      )}
-
       {state.blockers.length > 0 && (
         <ul className="fo-list fo-transfer-scan__blockers" aria-label="Before you can confirm">
           {state.blockers.map((b) => <li key={b} className="fo-muted">{BLOCKER_TEXT[b]}</li>)}
@@ -359,8 +338,10 @@ function PutAwayError({ error }) {
   const binReason = BIN_RESULT_TEXT[error.detail];
   const message = binReason
     ? binReason
-    : error.code === "permission-denied"
-      ? "You are not authorized to put stock away. Put-away is built and governed; it has not been granted or switched on."
+    : error.detail === "NOT_ACTIVATED"
+      ? "Put-away is not switched on in this environment yet. Nothing was changed."
+      : error.code === "permission-denied"
+      ? "You are not authorized to put stock away here."
       : error.code === "invalid-argument"
         ? "That put-away could not be accepted. Check what was scanned."
         : "That could not be recorded. Nothing was changed.";

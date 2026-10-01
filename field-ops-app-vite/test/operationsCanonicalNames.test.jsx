@@ -15,6 +15,13 @@ vi.mock("../src/data/partsCatalog", () => ({
   getCatalogItem: () => undefined,
 }));
 vi.mock("../src/services/partMasterQueries", () => { const searchParts = vi.fn(); return { searchParts, readPartsForView: (partIds) => searchParts({ partIds }), isCatalogReadRefused: (code) => code === "FORBIDDEN" || code === "NOT_SIGNED_IN" }; });
+// The dashboard's INVENTORY truth is EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): stock
+// health from the governed on-hand / movement loader, warehouses from eos_ops, transfer orders from the EOS list.
+vi.mock("../src/hooks/useInventoryLedger.js", () => ({
+  loadEosInventoryHealth: async () => ({ transactions: [], healthEntries: [], integrity: { state: "COMPLETE", reason: null, unavailablePartIds: [] } }),
+}));
+vi.mock("../src/services/inventoryLocationClient.js", () => ({ fetchInventoryWarehouseOptions: async () => [] }));
+vi.mock("../src/services/transferCommandClient.js", () => ({ listTransferOrderDocs: async () => ({ items: [], truncated: false }) }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({ collection: () => ({}), getDocs: async () => ({ docs: [] }) }));
