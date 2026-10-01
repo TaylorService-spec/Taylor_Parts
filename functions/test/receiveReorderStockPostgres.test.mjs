@@ -77,6 +77,15 @@ test("PostgreSQL Receiving: one transaction, the whole business closure or none 
   await warehouse("wh-1", "sample-co");
   await warehouse("wh-closed", "sample-co", "INACTIVE");
 
+  // WAREHOUSE SCOPE (Controller DQ-017, DQ-024): the receiver is an Employee holding the WAREHOUSE Operational Scope over the
+  // destination's governing warehouse. The assignee is linked too, and holds no scope -- the receipt is not theirs to make.
+  await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at)
+           VALUES ('e-receiver','t1','ACTIVE','taylor','2020-01-01T00:00:00Z'), ('e-assignee','t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`);
+  await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+           VALUES ('epl-r','t1',$1,'e-receiver','taylor','OPERATOR_ASSERTED','f','test','active'), ('epl-a','t1',$2,'e-assignee','taylor','OPERATOR_ASSERTED','f','test','active')`, [receiver, assignee]);
+  await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+           VALUES ('os-r-wh1','t1','e-receiver','WAREHOUSE','wh-1', now(), 'fixture'), ('os-r-closed','t1','e-receiver','WAREHOUSE','wh-closed', now(), 'fixture')`);
+
   const part = (id, controlType, status = "ACTIVE") => q(
     `INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit,
                                 control_type, stocking_class, expiry_tracked, consumable, returnable_core,
@@ -372,6 +381,9 @@ test("PostgreSQL Receiving: one transaction, the whole business closure or none 
     // cannot say whose acquisition this was, so the whole receipt is refused -- after the receipt,
     // the number, the line and the movement have already been written.
     await warehouse("wh-dormant", "dormant-co");
+    // The receiver is in scope for it: the refusal under test is the company binding, not the warehouse scope.
+    await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+             VALUES ('os-r-dormant','t1','e-receiver','WAREHOUSE','wh-dormant', now(), 'fixture')`);
     const id = await chain({ companyKey: "dormant-co", unitPriceMinor: 900, currency: "USD" });
     const before = await counts();
     const err = await refusal(() => run(receipt(id, {
@@ -379,6 +391,18 @@ test("PostgreSQL Receiving: one transaction, the whole business closure or none 
     })));
     assert.equal(err.code, "OPERATING_COMPANY_NOT_GOVERNED");
     assert.deepEqual(await counts(), before, "no receipt, no movement, no number, no closeout");
+  });
+
+  await t.test("DQ-017: the receiver must hold the WAREHOUSE scope over the destination -- out of scope, unlinked or not an Employee refuses, writing nothing", async () => {
+    await warehouse("wh-unscoped", "sample-co");
+    const id = await chain();
+    const before = await counts();
+    assert.equal((await refusal(() => run(receipt(id, { receivingLocation: { type: "WAREHOUSE", locationId: "wh-unscoped" } })))).code, "OUTSIDE_OPERATIONAL_SCOPE");
+    assert.equal((await refusal(() => run(receipt(id), actor([RECEIVE], assignee)))).code, "OUTSIDE_OPERATIONAL_SCOPE", "a linked Employee with no scope");
+    const stranger = await principal("uid-stranger");
+    assert.equal((await refusal(() => run(receipt(id), actor([RECEIVE], stranger)))).code, "EMPLOYEE_LINK_REQUIRED", "no Employee, no receipt");
+    assert.deepEqual(await counts(), before, "no receipt, no movement, no number, no closeout");
+    assert.equal((await run(receipt(id))).outcome, "applied", "the scoped receiver receives into its warehouse");
   });
 
   // ════════════════════════════ IDEMPOTENCY ════════════════════════════

@@ -97,6 +97,13 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
   await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
            VALUES ('os-queue-m', 't1', 'e-manager', 'REORDER_QUEUE', 'sample-co', now(), 'fixture'),
                   ('os-queue-b', 't1', 'e-bob', 'REORDER_QUEUE', 'other-co', now(), 'fixture')`);
+  // The governed catalog Parts these requests name: a Reorder is refused for a Part the tenant does not hold or that is
+  // not ACTIVE (R-15; receiving refuses both), so the fixture states them.
+  for (const partId of ["PART-1", "PART-SYN", "P"]) {
+    await q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
+               expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
+             VALUES ($1,'t1','fixture',$1,$1,'ACTIVE','EACH','STANDARD','STOCKED',false,false,false,false,1,'fixture')`, [partId]);
+  }
   // A warehouse whose key nobody governs. Creating against it must refuse.
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
            VALUES ('wh-ungoverned','t1','not-a-bound-key','WH3','Sampleton','ACTIVE','NATIVE','f','f')`);
@@ -519,6 +526,11 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
     assert.deepEqual(po, [{ id, operating_company_key: "taylor", part_id: "PART-SYN" }], "the PO carries the request's id and company");
     const queue = await life.readReorderQueue(deps, as(pPA, PA), {});
     assert.ok(JSON.stringify(queue).includes(id), "the Parts Associate sees the Taylor queue");
+    // DQ-017: the receiving Parts Associate holds the WAREHOUSE scope over the acceptance warehouse. NONPROD ACTIVATION
+    // PREREQUISITE -- the live Parts Associate holds no WAREHOUSE scope today; it is assigned through the governed
+    // assignEmployeeOperationalScope writer, never by migration.
+    await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+             VALUES ('os-pa-acceptance', $1, 'e-pa', 'WAREHOUSE', $2, now(), 'fixture')`, [T, W]);
     const receipt = await receiving.receiveReorderStock({ pool }, as(pPA, PA), {
       source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: id, purchaseOrderId: id },
       receivingLocation: { type: "WAREHOUSE", locationId: W },

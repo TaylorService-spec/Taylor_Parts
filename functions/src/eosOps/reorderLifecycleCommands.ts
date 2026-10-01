@@ -242,6 +242,12 @@ export async function createGovernedReorderRequest(
   if (workOrderId !== null && !ID_SHAPE(workOrderId)) refuse("WORK_ORDER_ID_INVALID", "INVALID_INPUT", "workOrderId must be a governed id");
 
   return inTransaction(deps.pool, async (client) => {
+    // THE PART IS A GOVERNED CATALOG PART (R-15, fail closed). A Reorder names what is to be bought; one for a Part this
+    // tenant does not hold, or one that is no longer ACTIVE, could never be received -- receiving refuses both
+    // (receiveReorderStockCommand.resolvePart) -- so it is refused here, in the same vocabulary, before anything is written.
+    const part = await client.query(`SELECT status::text AS status FROM eos_ops.parts WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, i.partId]);
+    if (part.rows.length === 0) refuse("PART_NOT_FOUND", "NOT_FOUND", "the request names a Part this tenant does not hold");
+    if (part.rows[0].status !== "ACTIVE") refuse("PART_NOT_ACTIVE", "PRECONDITION_FAILED", "a reorder may only be raised for an ACTIVE Part");
     const { rows } = await client.query(
       `SELECT operating_company_key, status::text AS status FROM eos_ops.warehouses
         WHERE tenant_id = $1 AND id = $2`,
@@ -731,9 +737,20 @@ export async function voidReorderPurchaseOrder(
     refuse("OUTSIDE_VOID_REACH", "FORBIDDEN",
       "voiding requires the REORDER_QUEUE Operational Scope for this Purchase Order's operating company");
   }
-  const run = deps.voidPurchaseOrder
-    ?? (await import("./purchasingRepository.js")).voidPurchaseOrder;
-  const record = await run(deps.pool, actor.tenantId, actor.principalId, reorderRequestId, reason);
+  const repository = await import("./purchasingRepository.js");
+  const run = deps.voidPurchaseOrder ?? repository.voidPurchaseOrder;
+  // The repository's governed refusals ARE answers, exactly as for recordPurchaseOrder (XLF 2026-09-30): a second void, a
+  // void of a request no longer ORDERED, or a vanished record is a business refusal in the lifecycle's categories, with no
+  // mutation and no audit -- never a 500.
+  const VOID_CATEGORY: Readonly<Record<string, ReorderLifecycleCategory>> = Object.freeze({
+    PO_ALREADY_VOIDED: "PRECONDITION_FAILED", REQUEST_STATE_INVALID: "PRECONDITION_FAILED",
+    REQUEST_NOT_FOUND: "NOT_FOUND", PO_NOT_FOUND: "NOT_FOUND", VOID_REASON_REQUIRED: "INVALID_INPUT",
+  });
+  const record = await run(deps.pool, actor.tenantId, actor.principalId, reorderRequestId, reason).catch((err: unknown) => {
+    const category = err instanceof repository.PurchasingRepositoryError ? VOID_CATEGORY[err.code] : undefined;
+    if (category !== undefined) refuse((err as InstanceType<typeof repository.PurchasingRepositoryError>).code, category, (err as Error).message);
+    throw err;
+  });
   return { reorderRequestId, status: "VOIDED", voidedBy: record.voidedBy, reason: record.reason };
 }
 
