@@ -3907,6 +3907,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/inventoryWarehouseActivationDelta.ts",
           "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/serializedAssetAcquireOperations.ts",
           "functions/src/serializedAsset/acquireSerializedAssetCommand.ts"
@@ -3915,7 +3916,7 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/serializedAssetAcquireCapabilityAccess.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4009,6 +4010,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/inventoryWarehouseActivationDelta.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
           "functions/src/eosOps/partsReads.ts",
@@ -4024,7 +4026,7 @@
           "field-ops-app-vite/src/modules/scan/MoveStockScan.jsx",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4045,6 +4047,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/inventoryWarehouseActivationDelta.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
           "functions/src/eosOps/partsReads.ts",
@@ -4059,7 +4062,7 @@
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4080,6 +4083,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/inventoryWarehouseActivationDelta.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
           "functions/src/eosOps/partsReads.ts",
           "functions/src/eosOps/transferOperations.ts",
@@ -4091,7 +4095,7 @@
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },

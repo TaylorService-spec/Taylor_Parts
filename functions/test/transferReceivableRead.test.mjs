@@ -194,7 +194,9 @@ await check("no Rules change and no new capability: the read rides inventory.tra
   const src = readFileSync(new URL("../src/inventoryTransfer/transferCallables.ts", import.meta.url), "utf8");
   assert.match(src, /listMyReceivableTransfersCallable[\s\S]*resolveReceivePermission: wiring\.resolveReceivePermission/);
   const index = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
-  assert.match(index, /listMyReceivableTransfersCallable as listMyReceivableTransfers/);
+  // RETIRED from the repository (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): Transfers run on EOS
+  // (/operations/transfer + listTransferOrders); the deployed copy stays runtime-stale until the Firebase removal window.
+  assert.doesNotMatch(index, /listMyReceivableTransfersCallable as listMyReceivableTransfers/);
   const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
   assert.match(rules, /match \/transfer_orders\/\{transferOrderId\} \{\s*allow read: if isAdminOrDispatcher\(\)\s*\|\| isAssignedToWarehouse\(resource\.data\.fromWarehouseId\)\s*\|\| isAssignedToWarehouse\(resource\.data\.toWarehouseId\);/);
 });

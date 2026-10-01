@@ -1004,7 +1004,9 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // Orders and the Work Order type module read the EOS API instead of fieldops_wos -- 34 -> 28 (shrink-only).
     // Work Order cutover completion pass (2026-09-30): the execution analytics aggregates and the Operations panel read
     // the EOS aggregates instead of fieldops_wos -- 28 -> 26 (shrink-only).
-    "frontend.firestore_client": 26,
+    // Inventory / Warehouse completion (2026-10-01): the serialized-acquire capability pre-gate (Firestore users read +
+    // callable) is deleted; the server's refusal decides -- 26 -> 25 (shrink-only).
+    "frontend.firestore_client": 25,
     // Pass 11 Retail Sales: the 7 Opportunity / Sales Order read + command clients moved to the EOS Commercial API.
     // ... and their callable transports (Part / alias command clients, the Reorder callable client) -- 47 -> 44.
     // L0 Z3: product-reference search (salesAgreementCommandClient.js) left the searchProductReferences callable
@@ -1014,7 +1016,9 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // visits left their Firebase callables for the EOS API -- 40 -> 35.
     // Service Experience completion (2026-09-30): Administration -> Email & Communications left the eleven email
     // intake callables for the EOS provider runtime (access/inboundWorkSource.js) -- 35 -> 34.
-    "frontend.firebase_functions_client": 34,
+    // Inventory / Warehouse completion (2026-10-01): cycle count, relocation, transfer and serialized-acquire clients left
+    // their Firebase callables for the EOS API, and the acquire capability pre-gate is deleted -- 34 -> 29 (shrink-only).
+    "frontend.firebase_functions_client": 29,
     // Service Experience completion (2026-09-30): the Firebase inbound work / email provider runtime is retired from
     // the codebase -- intake, decisions, reads, connection lifecycle, delivery service and schedule, attachment custody
     // (12 files) -- and the credential vault no longer touches Firestore -- 183 -> 171 (shrink-only).
@@ -1032,5 +1036,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 300);
+  assert.equal(total, 294); // 300 -> 294: the Inventory / Warehouse completion (2026-10-01), six client entries
 });

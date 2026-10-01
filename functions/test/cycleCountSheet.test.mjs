@@ -426,8 +426,11 @@ await check("v1 is unreachable from any deployed function: index.ts exports only
   for (const v1 of ["createCycleCountCallable", "submitCycleCountCallable", "reconcileCycleCountCallable", "cancelCycleCountCallable", "cycleCount/cycleCountCallables\""]) {
     assert.ok(!index.includes(v1), `index.ts must not export ${v1}`);
   }
+  // The v2 sheet/line family is ALSO retired from the repository now (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS,
+  // 2026-10-01): Cycle Count runs on EOS (/operations/cycle-count) and the Firestore writer is FROZEN. Its commands stay
+  // here as the frozen legacy implementation these emulator checks still exercise; nothing exports them.
   for (const v2 of ["createCycleCountSheet", "openCycleCountLine", "submitCycleCountLine", "reconcileCycleCountLine", "listCycleCountSheets", "getCycleCountSheet"]) {
-    assert.ok(index.includes(`as ${v2}`), `index.ts must export ${v2}`);
+    assert.ok(!index.includes(`as ${v2}`), `index.ts must no longer export ${v2} (retired to EOS)`);
   }
 });
 
