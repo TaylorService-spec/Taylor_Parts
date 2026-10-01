@@ -219,7 +219,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // supplier.record.read, a business READ -- not an Administration surface key, so the read gate is unchanged).
   // 80 -> 81: the Inventory / Warehouse completion (2026-10-01): 1764390000000 -- the inventory baseline cutover certification
   // (schema; the fail-closed gate the activated Inventory writers read). No capability, no grant.
-  assert.equal(migrations.length, 81, "a migration was added or removed by the read enforcement");
+  // 81 -> 82: the Equipment activation (2026-10-01): 1764400000000 -- equipment.record.read + equipment.record.manage (granted to
+  // NO Role), equipment.version and the append-only equipment_events history.
+  assert.equal(migrations.length, 82, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

@@ -41,8 +41,9 @@ test("serialNumber and assetTag are declared, but not as identity", () => {
   assert.notEqual(equipmentEntity.identity.referenceField, "assetTag");
 });
 
-test("no capability gates this collection -- Rules admit by ROLE, not by capability", () => {
-  assert.equal(equipmentEntity.readCapability, null);
+test("the register is the governed EOS read (Controller EQUIPMENT ACTIVATION, 2026-10-01): equipment.record.read, never Firestore", () => {
+  assert.equal(equipmentEntity.readVia, "EOS_API");
+  assert.equal(equipmentEntity.readCapability, "equipment.record.read");
 });
 
 test("X-EQUIPMENT-PROVENANCE-GAP: createdAt/updatedAt are declared NUMBER, and no actor fields exist", () => {

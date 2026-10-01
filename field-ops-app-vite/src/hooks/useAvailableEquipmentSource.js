@@ -1,36 +1,43 @@
-import { useEffect, useState } from "react";
-import { fetchAvailableEquipment } from "../services/serializedAssetReadCallableClient.js";
-import { mapAvailableEquipmentProjectionToAssets } from "../domain/availableEquipmentGovernedProjection.js";
+import { useEffect, useRef, useState } from "react";
+import { callEquipmentApi, EQUIPMENT_LIST_MAX } from "../services/equipmentApiClient.js";
 import { SERIALIZED_ASSET_SOURCE_STATUS } from "../access/serializedAssetSource.js";
 
-// One-shot read of the governed Available Equipment projection (the REAL default source for
-// modules/equipment/AvailableEquipment.jsx -- see access/serializedAssetSource.js's header). Own
-// loading/error state (mirrors hooks/useManufacturerCatalog.js's shape), resolved into the SAME
-// {connected, status, assets} envelope access/serializedAssetSource.js's inert default already used,
-// so the consuming component's state-derivation logic (domain/availableEquipmentCatalogView.js) does
-// not need to know whether it is reading a live or an injected source.
-//
-// `inventory.serializedAsset.read` is registered `active:false` and granted to no Role as of this
-// build (access/permissionCatalog.ts) -- until a later, separately authorized grant + per-environment
-// activation, this read fails closed with a DENIED status in every environment. That is the expected,
-// correct behavior: the surface must render an honest "not authorized" state, never fabricated
-// inventory and never a silent fallback to the inert "registry doesn't exist" copy.
-export function useAvailableEquipmentSource() {
+// One-shot read of the company-held whole units available to install -- the GOVERNED EOS read
+// (/operations/equipment listAvailableEquipmentUnits, inventory.serializedAsset.read; Controller EQUIPMENT ACTIVATION,
+// 2026-10-01), never the Firebase getAvailableEquipment callable. Resolved into the SAME { connected, status, assets }
+// envelope access/serializedAssetSource.js defines, so the consuming component's state derivation
+// (domain/availableEquipmentCatalogView.js) is unchanged. A refused read is DENIED, a failed one UNAVAILABLE -- never an
+// empty list pretending there is nothing in stock.
+export function toAvailableAsset(u) {
+  return Object.freeze({
+    serialNo: u.serialNumber,
+    partId: u.partId,
+    currentEquipmentId: null,
+    availableForAssignment: u.status === "AVAILABLE",
+    status: u.status ?? null,
+    location: u.locationId ?? null,
+    locationLabel: u.binCode ? [u.warehouseName, u.binCode].filter(Boolean).join(" / ") : (u.warehouseName ?? null),
+  });
+}
+
+export function useAvailableEquipmentSource({ call = callEquipmentApi } = {}) {
   const [state, setState] = useState({ status: SERIALIZED_ASSET_SOURCE_STATUS.LOADING, assets: [] });
+  // ONE read per mount: the transport is held, not a dependency, so a caller passing a fresh function never re-reads.
+  const callRef = useRef(call);
 
   useEffect(() => {
     let cancelled = false;
     setState({ status: SERIALIZED_ASSET_SOURCE_STATUS.LOADING, assets: [] });
-    fetchAvailableEquipment().then(({ result, errorStatus }) => {
+    callRef.current("listAvailableEquipmentUnits", { limit: EQUIPMENT_LIST_MAX }).then((res) => {
       if (cancelled) return;
-      if (errorStatus) {
+      if (!res.ok) {
         setState({
-          status: errorStatus === "denied" ? SERIALIZED_ASSET_SOURCE_STATUS.DENIED : SERIALIZED_ASSET_SOURCE_STATUS.UNAVAILABLE,
+          status: res.code === "FORBIDDEN" ? SERIALIZED_ASSET_SOURCE_STATUS.DENIED : SERIALIZED_ASSET_SOURCE_STATUS.UNAVAILABLE,
           assets: [],
         });
         return;
       }
-      setState({ status: SERIALIZED_ASSET_SOURCE_STATUS.READY, assets: mapAvailableEquipmentProjectionToAssets(result) });
+      setState({ status: SERIALIZED_ASSET_SOURCE_STATUS.READY, assets: (res.result?.units ?? []).map(toAvailableAsset) });
     });
     return () => {
       cancelled = true;

@@ -276,7 +276,8 @@ test("the discovered registry is EXACTLY the four transitional shims, with two t
     "functions/src/scheduling/schedulingRepository.ts",
   ], "a fifth shim is either a real new re-export or a rule that started over-discovering again");
   // CRM cutover: domain/accounts.js, contacts.js and locations.js no longer use collectionStore (5 -> 2).
-  assert.equal(live.shims.reduce((sum, shim) => sum + shim.consumers.length, 0), 2);
+  // EQUIPMENT ACTIVATION (2026-10-01): domain/equipmentRepository.js writes the EOS register, not collectionStore (2 -> 1).
+  assert.equal(live.shims.reduce((sum, shim) => sum + shim.consumers.length, 0), 1);
   assert.ok(live.shims.length < 21,
     "21 / 65 / 190 were the counts of three successive over-wide rules; see this file's header");
 });
@@ -302,7 +303,9 @@ test("all 34 importers of the frontend handle shim's db/functions also import th
   // context, readiness, availability, analytics, coordinated visits) left the shim AND the fenced dependency together (48 -> 39).
   // Inventory / Warehouse completion (2026-10-01): the cycle count, relocation, transfer and serialized-acquire clients and the
   // acquire capability pre-gate left the shim AND the fenced dependency together (39 -> 34).
-  assert.equal(live.observed.alreadyFencedConsumers, 34,
+  // Equipment activation (2026-10-01): the Equipment register hooks, the install / available / location-display clients and
+  // the install pre-gate left the shim AND the fenced dependency together (34 -> 29).
+  assert.equal(live.observed.alreadyFencedConsumers, 29,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });

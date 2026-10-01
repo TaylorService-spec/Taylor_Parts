@@ -78,6 +78,19 @@
   },
   "domainMigrationWaveModel": {
     "description": "Each baseline file belongs to exactly one domain: the first path segment beneath field-ops-app-vite/src or functions/src (for example functions/src/cycleCount/cycleCountCallables.ts belongs to domain 'cycleCount'). A migration wave groups one or more domains that move to the Render EOS API / PostgreSQL together. This manifest defines the model only -- it does not assign domains to waves, order waves, or assert a disposition per domain, because that scheduling decision belongs to the engineers and owners doing the migration work, not to this control document. Once a wave is scheduled, it is recorded here as an entry below with the domain names, its disposition (one of the values in `dispositions`), and its migrationState (one of the values in `migrationStates`).",
-    "waves": []
+    "waves": [
+      {
+        "wave": "EQUIPMENT",
+        "ruling": "Controller EQUIPMENT ACTIVATION AUTHORIZED (2026-10-01)",
+        "domains": ["equipment (client modules/equipment, hooks/useEquipment, domain/equipmentRepository)", "equipmentInstall", "workOrderInstall", "serializedAsset", "inventoryLocation (getLocationDisplay)"],
+        "disposition": "MIGRATE_TO_POSTGRES_RENDER",
+        "migrationState": "CUTOVER",
+        "eosEquivalent": "/operations/equipment (register, reads, available units) + /operations/work-orders listInstallableEquipmentForWorkOrder / recordWorkOrderEquipmentInstall -> eos_ops.equipment, equipment_events, serialized_custody, inventory_movements",
+        "retiredClientDependencies": ["hooks/useEquipment.js (Firestore)", "hooks/useInstalledEquipmentPage.js", "access/useEquipmentInstallCapability.js", "services/equipmentInstallCallableClient.js", "services/workOrderInstallCallableClient.js", "services/serializedAssetReadCallableClient.js", "services/locationDisplayReadCallableClient.js", "hooks/useLocationDisplaySource.js"],
+        "retiredExports": ["installSerializedAsset", "getInstallableEquipmentForWorkOrder", "recordWorkOrderEquipmentInstall", "getAvailableEquipment", "getLocationDisplay"],
+        "deployedNotCalledPendingRemovalWindow": ["installSerializedAsset", "getInstallableEquipmentForWorkOrder", "recordWorkOrderEquipmentInstall", "getAvailableEquipment", "getLocationDisplay"],
+        "remainingFirebase": "Firestore Rules /equipment (deploy-bound; not redeployed in Pass 11), the Firestore equipment collection (FROZEN, SAMPLE data -- seeded by equipmentSampleSeed), the equipment report source and the Data Import equipment adapter (MIGRATION_TOOL, inactive)"
+      }
+    ]
   }
 }

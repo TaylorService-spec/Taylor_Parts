@@ -183,7 +183,7 @@ export const COORDINATED_VISIT_RUNTIME_CUTOVER_BLOCKER = Object.freeze({
   postgresSeam: "functions/src/eosOps/coordinatedVisitPostgresRead.ts",
   parityProof: "functions/test/coordinatedVisitPostgresParity.test.mjs",
   // NAMES THE MECHANISM, NOT THE VENDOR, for the same reason `sourceCollection` does.
-  remaining: "the client read is switched to the seam on the Commercial transport (Work Order cutover completion pass, 2026-09-30: an EOS Principal caller, eos_ops.work_orders with the pinned quarantine excluded); what is left is retiring the undeployed Firebase listCoordinatedOperations callable with the final Firebase retirement",
+  remaining: "the client read is switched to the seam on the Commercial transport (Work Order cutover completion pass, 2026-09-30: an EOS Principal caller, eos_ops.work_orders with the pinned quarantine excluded); what is left is retiring the undeployed legacy listCoordinatedOperations callable with the final legacy retirement",
 });
 
 /** Every cell that blocks cutover, whatever the reason. */

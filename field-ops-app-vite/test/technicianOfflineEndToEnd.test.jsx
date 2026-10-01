@@ -431,28 +431,27 @@ describe("the four tabs are reachable and do their job", () => {
 });
 
 // =================================================================================================
-// EQUIPMENT INSTALL IS NOT ACTIVATED (Work Order cutover completion pass, 2026-09-30)
+// EQUIPMENT INSTALL IS THE GOVERNED EOS WORK ORDER ROUTE (Controller EQUIPMENT ACTIVATION, 2026-10-01)
 // =================================================================================================
 
-describe("Equipment install is NOT ACTIVATED in the shipping app", () => {
-  it("the installation section says so, offers no install, and calls no install transport", async () => {
+describe("Equipment install defaults to the governed EOS Work Order route", () => {
+  it("the shipping closeout asks EOS -- with no EOS API configured it says so, offers no install, and calls no injected transport", async () => {
     render(<TechnicianShell />);
-    expect(await screen.findByText(/Equipment install is not activated yet/i)).toBeTruthy();
-    expect(document.querySelector('[data-work-order-boundary="SERIALIZED_INSTALL"]')).toBeTruthy();
+    expect(await screen.findByText(/no EOS API is configured/i)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /install & complete work/i })).toBeNull();
     expect(screen.queryByRole("radio")).toBeNull();
     expect(installTransport.fetchInstallableEquipmentForWorkOrder).not.toHaveBeenCalled();
     expect(installTransport.recordWorkOrderEquipmentInstall).not.toHaveBeenCalled();
   });
 
-  it("a queued installation intent is REFUSED as not activated -- never sent, never retried", async () => {
+  it("a queued installation intent goes to the EOS adapter: an unresolvable unit is REFUSED, never sent, never retried", async () => {
     const bindings = createTechnicianBindings();
-    const pre = await bindings.prechecks.EQUIPMENT_INSTALL({ workOrderId: "WO-1", payload: { serializedAssetId: "sa-1" } });
-    expect(pre).toMatchObject({ proceed: false, code: "failed-precondition", details: "SERIALIZED_INSTALL_NOT_ACTIVATED" });
     const sent = await bindings.commands.EQUIPMENT_INSTALL({ workOrderId: "WO-1", intentId: "i-1", payload: { serializedAssetId: "sa-1" } });
-    expect(sent).toMatchObject({ ok: false, details: "SERIALIZED_INSTALL_NOT_ACTIVATED" });
+    expect(sent).toMatchObject({ ok: false, code: "failed-precondition", details: "ASSET_NOT_FOUND" });
     const { classifyFailure, FAILURE_CLASS } = await import("../src/offline/syncFailureClassification.js");
-    expect(classifyFailure({ code: sent.code, details: sent.details })).toBe(FAILURE_CLASS.REFUSED);
+    // A refusal is never queued work: whatever attention class the classifier names, it is NOT retryable.
+    expect(classifyFailure({ code: sent.code, details: sent.details })).not.toBe(FAILURE_CLASS.RETRYABLE);
     expect(installTransport.recordWorkOrderEquipmentInstall).not.toHaveBeenCalled();
   });
 });
+

@@ -221,8 +221,12 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   surface("purchasing.suppliers", "Suppliers", [{ capabilityKey: "supplier.record.read" }]),
 
   // ── Equipment
+  // EQUIPMENT ACTIVATION (Controller OD-3, 2026-10-01): the register door is earned by the REGISTER authority. Installing
+  // is not browsing: equipment.install opens no register (a Technician installs on the assigned INSTALL Work Order and
+  // reads only that Work Order's Equipment). A seller's channel-scoped read is reached through the customer, not this door.
   surface("equipment.register", "Equipment", [
-    { capabilityKey: "equipment.install" },
+    { capabilityKey: "equipment.record.read" },
+    { capabilityKey: "equipment.record.manage" },
     { capabilityKey: "equipment.model.manage" },
     { capabilityKey: "equipment.compatibility.view" },
   ]),

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEquipmentDoc, useWorkOrdersForEquipment } from "../../hooks/useEquipment";
+import { useEquipmentModelOptions } from "../../hooks/useEquipmentOptions";
 import { useAccount } from "../../hooks/useAccount";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { isRetired, equipmentStatusTone } from "../../domain/equipment";
@@ -14,6 +15,7 @@ import {
 import { updateEquipment } from "../../domain/equipmentRepository";
 import EquipmentEditModal from "./EquipmentEditModal";
 import EquipmentTimeline from "./EquipmentTimeline";
+import { equipmentEventHistorySource } from "../../access/equipmentInventoryHistorySource";
 import InventoryControlSection from "./InventoryControlSection";
 import { buildEquipmentInventoryControlView } from "../../domain/equipmentInventoryControlAdapter";
 import LoadingState from "../../shared/ui/LoadingState";
@@ -55,7 +57,7 @@ const recordShell = equipmentRecordShellDefinition(equipmentRecordPage);
 export default function EquipmentDetail() {
   const { equipmentId } = useParams();
   const navigate = useNavigate();
-  const { equipment, loading, error } = useEquipmentDoc(equipmentId);
+  const { equipment, installedUnit, events, loading, error } = useEquipmentDoc(equipmentId);
   // `loading` on each of these is load-bearing, not decoration. The equipment document
   // and everything keyed off it are INDEPENDENT subscriptions, and the doc always wins
   // (a single-doc read resolves before a collection query, and the Account/Location
@@ -72,6 +74,7 @@ export default function EquipmentDetail() {
   // E8. Declared with the other hooks, above this component's early returns -- a
   // useState after them would run conditionally.
   const [editing, setEditing] = useState(false);
+  const models = useEquipmentModelOptions(editing);
 
   // Close the editor when the route moves to a DIFFERENT asset. Without this, browser
   // Back between two detail pages re-opens the modal unrequested on the new record --
@@ -86,8 +89,8 @@ export default function EquipmentDetail() {
   // it freezes the record it seeded from and diffs against that, so a save is a
   // field-level merge rather than an overwrite. See EquipmentEditModal's header.
   // Closing is this component's single decision; the modal never closes itself (E6's rule).
-  const handleSave = useCallback(async (changed, before) => {
-    const result = await updateEquipment(equipmentId, changed, { before });
+  const handleSave = useCallback(async (changed, before, governed = {}) => {
+    const result = await updateEquipment(equipmentId, changed, { before, ...governed });
     if (result?.ok) setEditing(false);
     return result;
   }, [equipmentId]);
@@ -217,6 +220,7 @@ export default function EquipmentDetail() {
         <EquipmentTimeline
           workOrders={workOrders}
           equipmentId={equipmentId}
+          inventorySource={equipmentEventHistorySource(events)}
           workOrdersLoading={woLoading}
           workOrdersError={woError}
         />
@@ -277,7 +281,10 @@ export default function EquipmentDetail() {
             close). The sale-close signal is a separate Sales Order authority not available on
             this surface and D-5 is unratified, so this renders an honest UNKNOWN with the reason
             rather than a fabricated state — see domain/equipmentInventoryControlAdapter.js. */}
-        <InventoryControlSection view={buildEquipmentInventoryControlView(equipment)} />
+        {/* The installed unit is the PostgreSQL custody link (eos_ops.serialized_custody, EQUIPMENT): a record with one
+            came from company stock through a governed INSTALL Work Order. */}
+        <InventoryControlSection view={buildEquipmentInventoryControlView({ ...equipment,
+          serializedAssetId: installedUnit ? `${installedUnit.partId}::${installedUnit.serialNumber}` : (equipment.serializedAssetId ?? null) })} />
 
         {/* §8 lifecycle actions, each per §5 gating.
             Edit is NOT among them and is not disabled: it is an ordinary write Rules
@@ -311,6 +318,8 @@ export default function EquipmentDetail() {
           locationName={locationName}
           onSave={handleSave}
           onClose={() => setEditing(false)}
+          modelOptions={models.options}
+          modelsError={models.error}
         />
       ) : null}
     </div>

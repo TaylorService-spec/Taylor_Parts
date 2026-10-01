@@ -190,8 +190,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 76 -> 79 runnable: the Service Experience completion (2026-09-30): provider runtime 1764350000000 (schema), recovery 1764360000000 (+inboundWork.request.recover), self-scheduling 1764370000000 (+workOrder.selfScheduling.issue/.configure) -- every new capability granted to NO Role.
 // 79 -> 80: the Parts / Purchasing / Receiving completion (2026-10-01): 1764380000000 -- Reorder create integrity + RR numbering (schema) and warehouse.record.manage + supplier.record.read, granted to NO Role.
 // 80 -> 81: the Inventory / Warehouse completion (2026-10-01): 1764390000000 -- the inventory baseline cutover certification (schema).
-const RUNNABLE_MIGRATION_COUNT = 81;
-const TRACKED_MIGRATION_COUNT = 82; // the 81 runnable + the one deferred file
+// 81 -> 82: the Equipment activation (2026-10-01): 1764400000000 -- equipment.record.read / .manage (no grant), equipment events.
+const RUNNABLE_MIGRATION_COUNT = 82;
+const TRACKED_MIGRATION_COUNT = 83; // the 82 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -224,6 +225,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764370000000_customer-self-scheduling",
   "1764380000000_parts-purchasing-receiving-completion",
   "1764390000000_inventory-baseline-cutover",
+  "1764400000000_equipment-activation",
 ]);
 
 const repoMigrations = () =>

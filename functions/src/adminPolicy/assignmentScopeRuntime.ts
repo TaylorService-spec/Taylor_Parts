@@ -157,6 +157,14 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
     capabilityKey: "salesOrder.write",
     consumers: Object.freeze(["commercial.createSalesOrder", "commercial.transitionSalesOrder"]),
   }),
+  // EQUIPMENT ACTIVATION (Controller OD-3, 2026-10-01): a seller reads customer Equipment ONLY through the governed
+  // commercial relationship -- an Equipment record is admitted when its Account has an Opportunity or a Sales Order whose
+  // STORED channel the holding admits, decided in the register read's own query (eosOps/equipmentOperations.ts).
+  Object.freeze({
+    scopeType: "salesChannel" as const,
+    capabilityKey: "equipment.record.read",
+    consumers: Object.freeze(["equipment.listEquipment", "equipment.readEquipment"]),
+  }),
 ]);
 
 /** Why a scope type is not assignable, when it is not. */

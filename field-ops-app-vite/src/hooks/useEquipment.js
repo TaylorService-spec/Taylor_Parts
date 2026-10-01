@@ -1,101 +1,65 @@
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { EQUIPMENT_COLLECTION } from "../domain/constants";
 import { subscribeToWorkOrders } from "../services/workOrderService";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
+import { equipmentApiClient, EQUIPMENT_LIST_MAX, onEquipmentChanged, toEquipmentView } from "../services/equipmentApiClient.js";
 
-// Issue #232 unit E2 -- the Equipment read path.
+// THE EQUIPMENT READ PATH IS THE GOVERNED POSTGRESQL REGISTER (Controller EQUIPMENT ACTIVATION AUTHORIZED, 2026-10-01).
 //
-// Three scoped listeners, following the useLocationsForAccount() / useAccount()
-// precedent rather than modifying the generic useFirestoreCollection(). Each one is a
-// SINGLE bounded query -- never an unbounded collection read, and never a per-record
-// loop (no query-per-row): an Account's or Location's equipment arrives in one
-// server-side filtered subscription. Both are single-field equality queries, so
-// neither needs a composite index.
-//
-// Unlike the older read hooks these also return a safe `error` string. E2 requires a
-// failed read to be reportable without leaking a Firebase code, path, or document id,
-// so the onSnapshot error callback maps through loadErrorMessage() -- the same
-// discipline the write path uses via equipmentSaveErrorMessage(). Until E3's Rules are
-// deployed these subscriptions are expected to fail permission-denied in production
-// and will surface as "You do not have permission to view this equipment."
+// Every read is ONE bounded, server-authorized call on /operations/equipment -- never a Firestore query, never a
+// per-record loop. The server decides what this caller may see (operational readers: the register; a seller: its
+// channel's customers; anyone else: nothing), so a refused read is rendered as refused, never as "no equipment".
+// A successful write anywhere in the app notifies (onEquipmentChanged) and every mounted read re-reads.
 
-const ENTITY = "equipment";
-
-// Bounded Account-scoped query: the equipment installed anywhere at one customer.
-export function useEquipmentForAccount(accountId) {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (!accountId) {
-      setData([]);
-      setError(null);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    const q = query(collection(db, EQUIPMENT_COLLECTION), where("accountId", "==", accountId));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setData(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        // Fail closed: surface nothing rather than a stale/partial list.
-        setData([]);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
-        setLoading(false);
-      }
-    );
-
-    return () => unsub();
-  }, [accountId]);
-
-  return { data, loading, error };
+/** A safe, user-facing sentence for a failed register read. Never a code path or an id. */
+export function equipmentReadErrorMessage(res) {
+  if (!res || res.ok) return null;
+  if (res.code === "NOT_ACTIVATED") return "The Equipment register is not yet activated on EOS (NOT_YET_ACTIVATED).";
+  if (res.code === "FORBIDDEN") return "You do not have permission to view this equipment.";
+  if (res.code === "NOT_FOUND") return "This equipment could not be found.";
+  if (res.code === "NOT_CONFIGURED" || res.code === "NOT_SIGNED_IN" || res.code === "UNREACHABLE") return "The Equipment register could not be reached.";
+  return "Equipment could not be loaded.";
 }
 
-// Bounded Location-scoped query: the equipment installed at one location.
-export function useEquipmentForLocation(locationId) {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
+function useRegisterRead(operation, input, enabled, project, client = equipmentApiClient) {
+  const key = JSON.stringify(input ?? null);
+  const [state, setState] = useState({ value: null, loading: Boolean(enabled), error: null, failure: null });
+  const [tick, setTick] = useState(0);
+  useEffect(() => onEquipmentChanged(() => setTick((n) => n + 1)), []);
   useEffect(() => {
-    if (!locationId) {
-      setData([]);
-      setError(null);
-      setLoading(false);
-      return;
+    if (!enabled) {
+      setState({ value: null, loading: false, error: null, failure: null });
+      return undefined;
     }
+    let live = true;
+    // A re-read after a change keeps the record on screen (no loading flash); only a first read is LOADING.
+    setState((s) => ({ ...s, loading: s.value === null, error: null }));
+    client.call(operation, JSON.parse(key)).then((res) => {
+      if (!live) return;
+      if (res.ok) setState({ value: project(res.result), loading: false, error: null, failure: null });
+      else setState({ value: null, loading: false, error: equipmentReadErrorMessage(res), failure: res });
+    });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` is the input, serialized
+  }, [operation, key, enabled, tick, client]);
+  return state;
+}
 
-    setLoading(true);
-    setError(null);
-    const q = query(collection(db, EQUIPMENT_COLLECTION), where("locationId", "==", locationId));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setData(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        setData([]);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
-        setLoading(false);
-      }
-    );
+// Account-scoped: the equipment installed anywhere at one customer (one bounded server-filtered read).
+export function useEquipmentForAccount(accountId, { client } = {}) {
+  const { value, loading, error } = useRegisterRead("listEquipment", { accountId, limit: EQUIPMENT_LIST_MAX }, Boolean(accountId),
+    (r) => (r.equipment ?? []).map(toEquipmentView), client);
+  return { data: value ?? [], loading, error };
+}
 
-    return () => unsub();
-  }, [locationId]);
-
-  return { data, loading, error };
+// The tenant register, filtered and searched SERVER-side (Customer Equipment).
+export function useEquipmentRegister({ search, status, accountId } = {}, { client } = {}) {
+  const input = { limit: EQUIPMENT_LIST_MAX };
+  if (typeof search === "string" && search.trim() !== "") input.search = search.trim();
+  if (status) input.status = status;
+  if (accountId) input.accountId = accountId;
+  const { value, loading, error } = useRegisterRead("listEquipment", input, true,
+    (r) => ({ rows: (r.equipment ?? []).map(toEquipmentView), hasMore: r.nextCursor != null }), client);
+  return { data: value?.rows ?? [], hasMore: value?.hasMore ?? false, loading, error };
 }
 
 // Issue #232 unit E7 -- the Work Orders linked to ONE piece of equipment, for the
@@ -150,38 +114,16 @@ export function useWorkOrdersForEquipment(equipmentId) {
   return { data, loading, error, truncated, notActivated };
 }
 
-// Single-document live subscription for the detail surface (E7).
-export function useEquipmentDoc(equipmentId) {
-  const [equipment, setEquipment] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+// One register record, its installed unit and its history (the detail surface).
+export function useEquipmentDoc(equipmentId, { client } = {}) {
+  const { value, loading, error } = useRegisterRead("readEquipment", { equipmentId }, Boolean(equipmentId),
+    (r) => ({ equipment: toEquipmentView(r.equipment), installedUnit: r.installedUnit ?? null, events: r.events ?? [] }), client);
+  return { equipment: value?.equipment ?? null, installedUnit: value?.installedUnit ?? null, events: value?.events ?? [], loading, error };
+}
 
-  useEffect(() => {
-    if (!equipmentId) {
-      setEquipment(null);
-      setError(null);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    const unsub = onSnapshot(
-      doc(db, EQUIPMENT_COLLECTION, equipmentId),
-      (snap) => {
-        setEquipment(snap.exists() ? { id: snap.id, ...snap.data() } : null);
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        setEquipment(null);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
-        setLoading(false);
-      }
-    );
-
-    return () => unsub();
-  }, [equipmentId]);
-
-  return { equipment, loading, error };
+// The Equipment of ONE Work Order -- the server answers for a register reader, or for the Technician ASSIGNED to it.
+export function useWorkOrderEquipment(workOrderId, { client } = {}) {
+  const { value, loading, error } = useRegisterRead("readWorkOrderEquipment", { workOrderId }, Boolean(workOrderId),
+    (r) => ({ equipment: toEquipmentView(r.equipment), installedUnit: r.installedUnit ?? null }), client);
+  return { equipment: value?.equipment ?? null, installedUnit: value?.installedUnit ?? null, loading, error };
 }

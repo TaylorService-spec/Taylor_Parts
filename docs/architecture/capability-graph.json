@@ -17,7 +17,7 @@
     "catalogInactive": 151,
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
-    "callableExports": 36,
+    "callableExports": 33,
     "destinations": 95,
     "destinationsHidden": 19,
     "guides": 0,
@@ -3875,10 +3875,11 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [
-          "getAvailableEquipment"
+          "listCoordinatedOperations"
         ],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosOps/equipmentOperations.ts",
           "functions/src/serializedAsset/serializedAssetReadService.ts"
         ],
         "clientReferences": [
@@ -3886,7 +3887,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/domain/partLookup.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 3,
         "evidence": "EXPORTED"
       },
@@ -4374,7 +4375,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/adminPolicy/equipmentActivationDelta.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
           "functions/src/eosOps/workOrderEquipmentInstall.ts",
           "functions/src/equipmentInstall/equipmentImportCommand.ts",
@@ -4500,7 +4501,7 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [
-          "getLocationDisplay"
+          "allocateSalesOrder"
         ],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
@@ -4897,33 +4898,14 @@
     },
     {
       "names": [
-        "getAvailableEquipment"
-      ],
-      "module": "./serializedAsset/serializedAssetReadService",
-      "capabilityHints": [
-        "inventory.serializedAsset.read"
-      ],
-      "comment": "Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role."
-    },
-    {
-      "names": [
         "listCoordinatedOperations"
       ],
       "module": "./fulfillment/coordinatedVisitReadService",
       "capabilityHints": [
+        "inventory.serializedAsset.read",
         "fulfillment.coordinatedVisit.read"
       ],
-      "comment": "Coordinated Operations trusted read (fidelity fix, 2026-08-15) -- serves the existing coordinatedVisit/ coordinatedFieldMission pure projections from real fieldops_wos data. EXPORT != DEPLOY; capability `fulfillment.coordinatedVisit.read` registered active:false (REGISTER != GRANT), granted to NO Ro"
-    },
-    {
-      "names": [
-        "getLocationDisplay"
-      ],
-      "module": "./inventoryLocation/locationDisplayReadService",
-      "capabilityHints": [
-        "inventory.location.display.read"
-      ],
-      "comment": "Location-DISPLAY trusted resolver (sandbox-fidelity package PART 11A) -- id -> { type, label } for WAREHOUSE/MOBILE only, backing Available Equipment's location column. EXPORT != DEPLOY; capability `inventory.location.display.read` registered active:false (REGISTER != GRANT), granted to NO Role."
+      "comment": "Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role. RETIRED FROM THE REPOSITORY (Controller EQUIPMENT ACTIVATION AUTHORIZED, 2026-10-01): the client reads th"
     },
     {
       "names": [
@@ -4931,10 +4913,11 @@
       ],
       "module": "./fulfillment/allocateSalesOrder",
       "capabilityHints": [
+        "inventory.location.display.read",
         "salesOrder.write",
         "salesOrder.fulfill"
       ],
-      "comment": "Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered active:false (REGISTER != GRANT). PASS 11 RETAIL SALES: createSalesOrder / transitionSalesOrder RETIRED (EOS owns them). Fulfillment allocation (Cycle 5 live). EXPORT != DEPLOY; capability `sal"
+      "comment": "Location-DISPLAY trusted resolver (sandbox-fidelity package PART 11A) -- id -> { type, label } for WAREHOUSE/MOBILE only, backing Available Equipment's location column. EXPORT != DEPLOY; capability `inventory.location.display.read` registered active:false (REGISTER != GRANT), granted to NO Role. RET"
     },
     {
       "names": [
@@ -5080,14 +5063,6 @@
       "module": "./inventoryReturns/returnCallables",
       "capabilityHints": [],
       "comment": "--- Returns INTAKE (Scanner Phase Q; DECISIONS #118) --- Intake and disposition are SEPARATE authorities. This records that something came back and writes NO ledger event -- which is exactly why `RETURNED` still has no writer. Gated on inventory.returns.intake, registered INERT and granted to nobody"
-    },
-    {
-      "names": [
-        "installSerializedAssetCallable as installSerializedAsset"
-      ],
-      "module": "./equipmentInstall/installCallables",
-      "capabilityHints": [],
-      "comment": "--- Equipment INSTALL (serialized asset -> customer Equipment) --- The only path that can put a unit into a customer's hands. `serialized_assets` is deny-all to every client and the LINK between an asset and its Equipment cannot be written from a browser at all, so without this callable the authorit"
     },
     {
       "names": [

@@ -15,13 +15,14 @@
 //   transfer_orders         -> scripts/transferCopyCensus.js           (Transfer COPY-lane census; IN_TRANSIT ledger agreement)
 //   serialized_assets       -> scripts/inventoryCutover.js             (baseline custody COPY; INVENTORY COMPLETION RULINGS 2026-10-01)
 //   warehouses              -> scripts/inventoryCutover.js             (location identity proof for the baseline COPY)
+//   equipment               -> scripts/equipmentSampleSeed.js          (Equipment register SAMPLE_DATA_SEED; EQUIPMENT ACTIVATION 2026-10-01)
 //
 // Conditions, each enforced here or by functions/test/inventorySnapshotExport.test.mjs and
 // functions/test/operatorScriptEnvironmentFence.test.mjs:
 //
 //   * READ ONLY. The only Firestore calls are `collection(name).get()`; no write verb appears in the code (static
 //     test). One-time: no sync, no schedule, no refresh. No Rules, Functions, config or runtime change.
-//   * EXACT SOURCE ALLOWLIST: the five collections above and nothing else (SOURCE_COLLECTIONS + assertAllowlisted).
+//   * EXACT SOURCE ALLOWLIST: the six collections above and nothing else (SOURCE_COLLECTIONS + assertAllowlisted).
 //     Top-level documents only -- a v2 cycle-count sheet's `lines` subcollection is deliberately NOT read: any v2
 //     sheet is already a STOP at gate 1, and reading its lines would widen the exception.
 //   * NOT RUNTIME. No module under functions/src, field-ops-app-vite/src or integrations references it; not in
@@ -59,6 +60,7 @@ const SOURCE_COLLECTIONS = Object.freeze({
   // identity proof reads (a legacy warehouse's operatingCompanyId must equal the mapped EOS warehouse's company).
   serializedAssets: "serialized_assets",
   warehouses: "warehouses",
+  equipment: "equipment",
 });
 const FROZEN_PROJECTS = Object.freeze(["eos-platform-certification"]);
 const SNAPSHOT_FORMAT = "EOS_INVENTORY_SNAPSHOT";

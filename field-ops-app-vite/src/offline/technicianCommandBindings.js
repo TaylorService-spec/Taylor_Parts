@@ -21,18 +21,13 @@ import { INTENT_TYPE } from "./technicianIntent.js";
 import { workOrderSyncError } from "./workOrderSyncError.js";
 import { updateWorkOrderExecutionData, transitionWorkOrder, getWorkOrder } from "../services/workOrderService";
 import { recordWorkOrderLabor } from "../services/workOrderLaborCallableClient";
-import { SERIALIZED_INSTALL_NOT_ACTIVATED } from "../domain/workOrderOutcome.js";
+import { fetchInstallableEquipmentForWorkOrder, recordWorkOrderEquipmentInstall } from "../services/workOrderEquipmentInstallClient.js";
 
-/**
- * EQUIPMENT INSTALL IS NOT ACTIVATED (2026-09-30). The governed EOS route does not serve it (serialized custody
- * is INACTIVE in PostgreSQL) and the Firebase install callables are no longer invoked from the technician's
- * runtime. The default transport answers NOT_YET_ACTIVATED without calling anything -- a REFUSAL, never queued
- * work to retry; only an injected transport (deps) can drive the binding.
+/*
+ * EQUIPMENT INSTALL (Controller EQUIPMENT ACTIVATION AUTHORIZED, 2026-10-01): the default transport is the governed EOS
+ * Work Order route (services/workOrderEquipmentInstallClient.js) -- never a Firebase callable. A server refusal stays a
+ * REFUSAL, never queued work to retry.
  */
-const installNotActivated = async () => ({
-  outcome: null,
-  error: { code: "failed-precondition", details: SERIALIZED_INSTALL_NOT_ACTIVATED.reason, message: SERIALIZED_INSTALL_NOT_ACTIVATED.message },
-});
 
 /** Work Order statuses at or past completion — the intended end state of a completion intent. */
 const COMPLETED_OR_BEYOND = Object.freeze(["COMPLETED", "CLOSED"]);
@@ -57,8 +52,8 @@ export function createTechnicianBindings(deps = {}) {
   const labor = (...a) => (deps.recordWorkOrderLabor ?? recordWorkOrderLabor)(...a);
   const transition = (...a) => (deps.transitionWorkOrder ?? transitionWorkOrder)(...a);
   const readWorkOrder = (...a) => (deps.getWorkOrder ?? getWorkOrder)(...a);
-  const listInstallable = (...a) => (deps.fetchInstallableEquipmentForWorkOrder ?? installNotActivated)(...a);
-  const recordInstall = (...a) => (deps.recordWorkOrderEquipmentInstall ?? installNotActivated)(...a);
+  const listInstallable = (...a) => (deps.fetchInstallableEquipmentForWorkOrder ?? fetchInstallableEquipmentForWorkOrder)(...a);
+  const recordInstall = (...a) => (deps.recordWorkOrderEquipmentInstall ?? recordWorkOrderEquipmentInstall)(...a);
 
   const commands = {
     /**

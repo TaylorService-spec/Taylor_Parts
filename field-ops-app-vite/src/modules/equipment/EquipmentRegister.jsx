@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAccountPicker } from "../../hooks/useAccountPicker";
 import { EQUIPMENT_STATUS } from "../../domain/constants";
 import { useEquipmentForAccount } from "../../hooks/useEquipment";
+import { useEquipmentModelOptions, useEquipmentOperatingCompanies } from "../../hooks/useEquipmentOptions";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { searchEquipment, equipmentDisplayName, equipmentSummary } from "../../domain/equipment";
 import { createEquipment } from "../../domain/equipmentRepository";
@@ -55,6 +56,8 @@ export default function EquipmentRegister() {
   const focusRowRef = useRef(null);
 
   const { data: equipment, loading, error } = useEquipmentForAccount(accountId || null);
+  const companies = useEquipmentOperatingCompanies(showCreate);
+  const models = useEquipmentModelOptions(showCreate);
   const { data: locations, error: locationsError, retry: retryLocations } =
     useLocationsForAccount(accountId || null);
 
@@ -98,9 +101,11 @@ export default function EquipmentRegister() {
     }
   }, [focusRowId, results]);
 
-  async function handleCreate(values, location) {
-    // The Account is fixed by the register's selection -- the modal never chooses it.
-    const result = await createEquipment({ ...values, accountId }, { location });
+  async function handleCreate(values, location, governed = {}) {
+    // The Account is fixed by the register's selection -- the modal never chooses it. The operating company and the
+    // catalog model are the modal's governed choices (EOS createEquipment).
+    const result = await createEquipment({ ...values, accountId }, { location, operatingCompanyId: governed.operatingCompanyId,
+      equipmentModelId: governed.equipmentModelId ?? undefined });
     if (result.ok) {
       focusedOnceRef.current = false;
       setFocusRowId(result.equipment.id);
@@ -200,6 +205,10 @@ export default function EquipmentRegister() {
           onRetryLocations={retryLocations}
           onCreate={handleCreate}
           onClose={closeCreate}
+          companyOptions={companies.options}
+          companiesError={companies.error}
+          modelOptions={models.options}
+          modelsError={models.error}
         />
       )}
 

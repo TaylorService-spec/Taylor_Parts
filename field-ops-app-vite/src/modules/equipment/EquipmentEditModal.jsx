@@ -42,7 +42,7 @@ import { Button } from "../../shared/ui/primitives";
 // corrections to descriptive fields remain allowed on a retired asset, while status,
 // accountId and locationId stay unchanged and hard deletion stays denied. A typo in a
 // serial number is still worth fixing after the asset leaves service.
-export default function EquipmentEditModal({ equipment, accountName, locationName, onSave, onClose }) {
+export default function EquipmentEditModal({ equipment, accountName, locationName, onSave, onClose, modelOptions = [], modelsError = null }) {
   // THE FORM AND ITS DIFF BASIS ARE FROZEN TOGETHER, at open. `equipment` arrives from a
   // LIVE onSnapshot subscription, so its identity changes whenever anyone writes this
   // record -- including another session, while this modal sits open.
@@ -92,6 +92,8 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
   // through trimmedOrNull: the control and the comparison must agree about what the
   // record says. Seeding raw put a non-canonical value into the <select>, matching no
   // <option>, so React rendered a BLANK status on a legitimately active asset.
+  // The catalog Equipment Model (EOS register, 2026-10-01): a governed reference, not free text. Sent only when it moved.
+  const [equipmentModelId, setEquipmentModelId] = useState(() => base.equipmentModelId ?? "");
   const storedStatus = canonicalEquipmentStatus(base.status);
   // Only RETIRED here. A non-canonical status (storedStatus === null) is handled by the
   // whole-record lock below, which returns before this form renders -- so folding it into
@@ -188,7 +190,8 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
       // It still also does the defensive job it was added for (#287): a governed key that
       // ever reached E2 from here would be refused as a proven change rather than
       // silently unprovable.
-      const result = await onSave(changed, base);
+      const modelMoved = (equipmentModelId || null) !== (base.equipmentModelId ?? null);
+      const result = await onSave(changed, base, modelMoved ? { equipmentModelId: equipmentModelId || null } : {});
       if (!result?.ok) {
         setFieldErrors(result?.errors ?? {});
         setSaveError(result?.message ?? "Could not save this equipment. Nothing was saved — please try again.");
@@ -286,14 +289,14 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
           />
         </Field>
 
-        <Field id="equipment-edit-manufacturer" label="Manufacturer">
-          <input id="equipment-edit-manufacturer" className="fo-wizard-control" value={values.manufacturer}
-            onChange={(e) => setField("manufacturer", e.target.value)} />
-        </Field>
-
-        <Field id="equipment-edit-model" label="Model">
-          <input id="equipment-edit-model" className="fo-wizard-control" value={values.model}
-            onChange={(e) => setField("model", e.target.value)} />
+<Field id="equipment-edit-model" label="Equipment model" error={modelsError} hint="From the catalog (optional)">
+          <select id="equipment-edit-model" className="fo-wizard-control" value={equipmentModelId}
+            onChange={(e) => setEquipmentModelId(e.target.value)}>
+            <option value="">No catalog model</option>
+            {base.equipmentModelId && !modelOptions.some((m) => m.id === base.equipmentModelId)
+              ? <option value={base.equipmentModelId}>{base.equipmentModelId}</option> : null}
+            {modelOptions.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
         </Field>
 
         <Field id="equipment-edit-serial" label="Serial number">

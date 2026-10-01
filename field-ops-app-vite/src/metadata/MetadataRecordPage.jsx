@@ -10,6 +10,7 @@ import { buildQueryDescriptor } from "./listRuntime.js";
 import { buildListPresentation, cellValue, buildRowHref } from "./listPresentation.js";
 import { ABSENCE, ABSENCE_TEXT } from "./absence.js";
 import { fetchPage as fetchFirestorePage } from "./firestoreListSource.js";
+import { fetchPage as fetchEquipmentPage } from "./equipmentListSource.js";
 import { fetchPage as fetchCallablePage } from "./callableListSource.js";
 import MetadataListGrid from "./MetadataListGrid.jsx";
 import FailureState from "../shared/ui/FailureState";
@@ -354,6 +355,8 @@ function resolveReadCallable(listDef, entity) {
 }
 
 function selectListSource(entity, listDef) {
+  // EQUIPMENT ACTIVATION (Controller 2026-10-01): a customer's RELATED Equipment is the governed EOS register.
+  if (entity?.readVia === "EOS_API" && entity?.id === "equipment") return fetchEquipmentPage;
   if (entity?.readVia === "CLIENT_DIRECT") return fetchFirestorePage;
   if (entity?.readVia === "CALLABLE" && resolveReadCallable(listDef, entity)) return fetchCallablePage;
   // UNKNOWN readVia, or CALLABLE with no readCallable resolved (neither the list view nor

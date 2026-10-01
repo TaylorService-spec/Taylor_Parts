@@ -8,10 +8,10 @@
 // NOT_ACTIVATED before it resolves anyone or reads anything -- except `readWorkOrderAuthorityStatus`, which exists
 // so the client can say NOT_YET_ACTIVATED instead of guessing.
 //
-// NOT ON THIS ROUTE, deliberately: Equipment INSTALL. It moves a serialized unit's custody into EQUIPMENT, and the
-// PostgreSQL serialized-custody authority is INACTIVE (Firestore custody is OPEN), so exposing it would be exactly
-// the hidden Inventory activation the ruling forbids. The built module (workOrderEquipmentInstall.ts) stays inert;
-// the Equipment on a Work Order is READ through readWorkOrder.
+// EQUIPMENT INSTALL IS ON THIS ROUTE (Controller EQUIPMENT ACTIVATION AUTHORIZED, 2026-10-01; OD-5): the governed INSTALL
+// Work Order is the ONLY installation workflow. workOrderEquipmentInstall.ts owns it -- equipment.install + the assigned
+// Employee + an INSTALL Work Order in WORK_IN_PROGRESS, and one transaction for ledger, custody, Equipment, the Work
+// Order link and the Equipment event.
 import { SELF_SCHEDULING_READ_OPERATIONS, SELF_SCHEDULING_WORK_ORDER_OPERATIONS } from "./selfScheduling";
 import { createWorkOrder } from "./workOrderCreateCommand";
 import {
@@ -29,6 +29,7 @@ import * as labor from "./workOrderLabor";
 import * as fieldContext from "./workOrderFieldContext";
 import * as readiness from "./workOrderReadiness";
 import * as analytics from "./workOrderAnalytics";
+import { listInstallableUnitsForWorkOrder, recordWorkOrderEquipmentInstall } from "./workOrderEquipmentInstall";
 export type { WorkOrderOperationDeps, WorkOrderCaller } from "./workOrderOperationTypes";
 
 const refuse = (code: string, category: WorkOrderLifecycleError["category"], message: string): never => {
@@ -85,6 +86,11 @@ export const EOS_WORK_ORDER_OPERATIONS = Object.freeze({
   startWorkOrderWork: edge("ARRIVED", "WORK_IN_PROGRESS"),
   recordWorkOrderExecution: (deps, caller, input) => recordWorkOrderExecution({ pool: deps.pool, now: deps.now }, caller.actor, input),
   completeWorkOrder: (deps, caller, input) => completeWorkOrder({ pool: deps.pool, now: deps.now }, caller.actor, input),
+  // ── equipment installation on the assigned INSTALL Work Order (OD-1 / OD-2 / OD-5) ──
+  listInstallableEquipmentForWorkOrder: (deps, caller, input) => (only(input, ["workOrderId", "serialNumber"]),
+    listInstallableUnitsForWorkOrder({ pool: deps.pool, reader: deps.reader }, caller.actor, input as never)),
+  recordWorkOrderEquipmentInstall: (deps, caller, input) =>
+    recordWorkOrderEquipmentInstall({ pool: deps.pool }, caller.actor, input as never),
 
   // ── the completion pass (2026-09-30): each implemented in its own module ──
   readTechnicianAvailability: availability.readTechnicianAvailability,
@@ -115,7 +121,7 @@ export const WORK_ORDER_READ_OPERATIONS: readonly string[] = Object.freeze([
   "readWorkOrderAuthorityStatus", "readWorkOrder", "listWorkOrders", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
   "listWorkOrderOperatingCompanies",
   "readTechnicianAvailability", "findAvailableTechnicianSlots", "readWorkOrderLabor", "readWorkOrderFieldContext",
-  "readWorkOrderReadiness", "readTechnicianExecutionStats", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown",
+  "readWorkOrderReadiness", "readTechnicianExecutionStats", "listInstallableEquipmentForWorkOrder", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown",
   ...SELF_SCHEDULING_READ_OPERATIONS,
 ]);
 

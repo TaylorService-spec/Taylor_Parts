@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { lookupScannedPart } from "../../services/partAliasCallableClient.js";
 import { fetchPartBalance } from "../../services/inventoryBalanceCallableClient.js";
-import { fetchAvailableEquipment } from "../../services/serializedAssetReadCallableClient.js";
-import { fetchLocationDisplay } from "../../services/locationDisplayReadCallableClient.js";
+import { fetchLocationLabels, fetchSerializedUnits } from "../../services/scanEquipmentReads.js";
 import { mapLocationDisplayResultToMap } from "../../domain/locationDisplayProjection.js";
 import {
   buildPartLookup,
@@ -71,8 +70,9 @@ export default function LookupScan({ deps }) {
   // Move stock uses. It replaced a whole-`parts`-collection client read a Parts Associate was refused.
   const lookupPart = deps?.lookupPart ?? lookupScannedPart;
   const readBalance = deps?.fetchBalance ?? fetchPartBalance;
-  const readSerialized = deps?.fetchSerialized ?? fetchAvailableEquipment;
-  const readLocations = deps?.fetchLocations ?? fetchLocationDisplay;
+  // EOS reads (Controller EQUIPMENT ACTIVATION, 2026-10-01) -- never the Firebase serialized-asset / location callables.
+  const readSerialized = deps?.fetchSerialized ?? fetchSerializedUnits;
+  const readLocations = deps?.fetchLocations ?? fetchLocationLabels;
 
   const [query, setQuery] = useState("");
   const [result, setResult] = useState({ state: LOOKUP_STATE.IDLE, token: "", rows: [], candidates: [], message: null, part: null });
@@ -179,7 +179,7 @@ async function loadPartDetailReads(part, { readBalance, readSerialized, readLoca
     Promise.resolve().then(() => readBalance({ partId: part.partId, serialTracked }))
       .catch(() => ({ errorStatus: "internal" })),
     serialTracked
-      ? Promise.resolve().then(() => readSerialized()).catch(() => ({ errorStatus: "internal" }))
+      ? Promise.resolve().then(() => readSerialized({ partId: part.partId })).catch(() => ({ errorStatus: "internal" }))
       // A non-serialized part has no registry entries to read. Not asking is not a gap: the row
       // reports NOT_APPLICABLE, which is the true answer.
       : Promise.resolve({ result: { availableEquipment: [] } }),

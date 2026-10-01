@@ -45,6 +45,8 @@ import { PrincipalContextError } from "../adminPolicy/principalContext";
 import { EOS_WORK_ORDER_OPERATIONS, isWorkOrderOperation, type EosWorkOrderOperation } from "./workOrderOperations";
 import { EOS_INBOUND_WORK_OPERATIONS, INBOUND_WORK_ROUTE, isInboundWorkOperation } from "./inboundWorkOperations";
 import type { WorkOrderOp } from "./workOrderOperationTypes";
+import { EOS_EQUIPMENT_OPERATIONS, isEquipmentOperation } from "./equipmentOperations";
+import type { PostgresEquipmentWriterState } from "./equipmentWriterState";
 import { WORK_ORDER_WRITER_AUTHORITY, type PostgresWorkOrderWriterState } from "./workOrderWriterState";
 import { postgresContextualReader } from "./contextualAuthorization";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
@@ -213,9 +215,15 @@ export const isSerializedAssetOperation = (name: unknown): name is EosAcquireOpe
 // Fail-closed until WORK_ORDER_WRITER_AUTHORITY.postgres is ACTIVE (DQ-S4); only the readiness probe answers before.
 export const WORK_ORDER_ROUTE = "/operations/work-orders";
 
+// ════════════════════ the Equipment register route (Controller EQUIPMENT ACTIVATION AUTHORIZED, 2026-10-01) ════════════════════
+//
+// The PostgreSQL Equipment register on its OWN route with its OWN closed table (equipmentOperations.ts), resolved exactly
+// as the Work Order route resolves its caller (the flat set AND the scoped holdings a seller's read is decided by).
+export const EQUIPMENT_ROUTE = "/operations/equipment";
+
 export const OPERATIONS_ROUTES: readonly string[] =
   Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE, RELOCATION_ROUTE, TRANSFER_ROUTE,
-    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE, WORK_ORDER_ROUTE, INBOUND_WORK_ROUTE])].sort());
+    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE, WORK_ORDER_ROUTE, INBOUND_WORK_ROUTE, EQUIPMENT_ROUTE])].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(OPERATIONS_MUTATION_OPERATIONS);
@@ -245,6 +253,8 @@ export interface OperationsApiDeps {
   readonly acquirePostgresState?: PostgresAcquireWriterState;
   /** TEST INJECTION ONLY: the Work Order activation state (WORK_ORDER_WRITER_AUTHORITY.postgres, INACTIVE, otherwise). */
   readonly workOrderPostgresState?: PostgresWorkOrderWriterState;
+  /** TEST INJECTION ONLY: the Equipment register state (EQUIPMENT_WRITER_AUTHORITY.postgres otherwise). */
+  readonly equipmentPostgresState?: PostgresEquipmentWriterState;
 }
 
 /** Every operation of the PostgreSQL Reorder authority: all but the two principal-context resolvers. */
@@ -600,6 +610,7 @@ const STATUS_BY_WORK_ORDER_CATEGORY: Readonly<Record<string, number>> = Object.f
 /** Every governed Work Order refusal class carries { code, category }; each is answered with its own category. */
 const WORK_ORDER_ERROR_NAMES: ReadonlySet<string> = new Set([
   "WorkOrderLifecycleError", "WorkOrderAssignmentError", "WorkOrderCreateError", "WorkOrderPartsPlanError", "WorkOrderReadError",
+  "WorkOrderEquipmentInstallError", "EquipmentOperationError",
 ]);
 
 /**
@@ -642,7 +653,8 @@ export async function executeWorkOrderOperation(
         scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements }),
     });
     const result = await table[operation](
-      { pool: deps.pool, reader: postgresContextualReader(deps.pool), postgresState, policyReader: deps.reader }, caller, request.input);
+      { pool: deps.pool, reader: postgresContextualReader(deps.pool), postgresState, policyReader: deps.reader,
+        equipmentPostgresState: deps.equipmentPostgresState }, caller, request.input);
     return { status: 200, body: { ok: true, operation, result } };
   } catch (err) {
     if (err instanceof PrincipalContextError) return { status: 403, body: { ok: false, operation, code: "FORBIDDEN", message: err.refusal } };
@@ -758,9 +770,10 @@ export async function handleOperationsRequest(
     return json(out.status, out.body, origin);
   }
 
-  if (path === WORK_ORDER_ROUTE || path === INBOUND_WORK_ROUTE) {
+  if (path === WORK_ORDER_ROUTE || path === INBOUND_WORK_ROUTE || path === EQUIPMENT_ROUTE) {
     const inbound = path === INBOUND_WORK_ROUTE;
-    if (inbound ? !isInboundWorkOperation(operation) : !isWorkOrderOperation(operation)) {
+    const equipment = path === EQUIPMENT_ROUTE;
+    if (equipment ? !isEquipmentOperation(operation) : inbound ? !isInboundWorkOperation(operation) : !isWorkOrderOperation(operation)) {
       return json(404, notFound(String(operation ?? "")), origin);
     }
     const input = payload.input === undefined ? {} : payload.input;
@@ -783,7 +796,8 @@ export async function handleOperationsRequest(
       },
       operation: operation as string,
       input: input as Record<string, unknown>,
-    }, inbound ? EOS_INBOUND_WORK_OPERATIONS : EOS_WORK_ORDER_OPERATIONS);
+    }, equipment ? EOS_EQUIPMENT_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
+      : inbound ? EOS_INBOUND_WORK_OPERATIONS : EOS_WORK_ORDER_OPERATIONS);
     return json(out.status, out.body, origin);
   }
 

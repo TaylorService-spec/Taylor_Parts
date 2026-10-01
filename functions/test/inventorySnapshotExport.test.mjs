@@ -17,7 +17,7 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s
 test("marked as the migration-only exception; allowlist is EXACTLY the enumerated evidence", () => {
   assert.equal(ex.FIREBASE_EXIT_MIGRATION_ONLY, "FIREBASE_EXIT_MIGRATION_ONLY");
   assert.match(readFileSync(EXPORTER, "utf8").split("\n")[0], /^\/\/ FIREBASE_EXIT_MIGRATION_ONLY$/);
-  assert.deepEqual(Object.values(ex.SOURCE_COLLECTIONS), ["cycle_counts", "inventory_transactions", "transfer_orders", "serialized_assets", "warehouses"]);
+  assert.deepEqual(Object.values(ex.SOURCE_COLLECTIONS), ["cycle_counts", "inventory_transactions", "transfer_orders", "serialized_assets", "warehouses", "equipment"]);
   const evidence = JSON.parse(readFileSync("../docs/architecture/inventory-snapshot-export-evidence.json", "utf8"));
   assert.deepEqual(evidence.collections.map((c) => [c.snapshotKey, c.collection]), Object.entries(ex.SOURCE_COLLECTIONS));
   assert.equal(evidence.executionStatus, "NOT_EXECUTED");

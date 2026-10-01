@@ -85,6 +85,9 @@ test("the catalog authority is composed ONLY by the Work Order/ops commands that
     // activation gate, which follows the Catalog COPY (cycleCount/cycleCountWriterState.ts).
     "eosOps/cycleCountOperations.ts",
     "eosOps/equipmentCustody.ts",
+    // Controller EQUIPMENT ACTIVATION (2026-10-01): a register edit of a record WITH an installed unit refuses a model that
+    // disagrees with the installed unit's catalog Part (parts.equipment_model_id) -- the catalog's fact, never the caller's.
+    "eosOps/equipmentOperations.ts",
     "eosOps/inventoryCommitmentRepository.ts",
     // Controller ruling DQ-036(b): acquire-existing-unit reads Catalog identity (ACTIVE + SERIAL) from the catalog,
     // never the caller. INACTIVE until activation (serializedAsset/acquireWriterState.ts).
@@ -96,7 +99,8 @@ test("the catalog authority is composed ONLY by the Work Order/ops commands that
     // The EOS Transfer lifecycle (HELD) resolves the transferred Part the same way (inventoryTransfer/transferWriterState.ts).
     "eosOps/transferOperations.ts",
     // DQ-034 (Controller 2026-09-28): the EOS Work Order equipment-install boundary (J5) reads whole_unit / catalog
-    // identity from the PG Catalog through the Part policy authority; built inert, no transport.
+    // identity from the PG Catalog through the Part policy authority; ROUTED on /operations/work-orders by the Equipment
+    // activation (2026-10-01).
     "eosOps/workOrderEquipmentInstall.ts",
     "eosOps/workOrderPartsPlanAuthority.ts",
   ], "a NEW module composes the catalog authority -- name it here and say why it may");
