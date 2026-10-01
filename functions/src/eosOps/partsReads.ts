@@ -15,6 +15,7 @@
 import type { Pool, PoolClient } from "pg";
 import { postgresPrincipalDimensionReader } from "./contextualAuthorization.js";
 import { ReorderLifecycleError, type ReorderActor } from "./reorderLifecycleCommands.js";
+import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./syntheticAcceptanceWarehouse.js";
 
 export const INVENTORY_ON_HAND_READ = "inventory.transaction.read";
 export const RECEIPT_READ = "receivingOrder.record.read";
@@ -251,5 +252,105 @@ export async function readInventoryMovements(deps: { readonly pool: Pool }, acto
         sourceKind: r.source_kind, sourceId: r.source_id, serialNumber: r.serial_number ?? null,
         occurredAt: r.occurred_at instanceof Date ? r.occurred_at.toISOString() : r.occurred_at })),
     };
+  });
+}
+
+// ════════════════════ INVENTORY / WAREHOUSE reads (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01) ════════════════════
+//
+// The employee screens cut over to EOS (Put-Away, Move Stock, Cycle Counts, Transfers, Warehouse list) need the governed
+// warehouses and locations they may work in, and the transfer orders they may see -- from eos_ops, never a Firestore list
+// merged with a PostgreSQL one. They are not a second stock read model: no quantity is here (stock stays readInventoryOnHand).
+//
+//   listInventoryWarehouses   the caller's WAREHOUSE-scoped governed warehouses (fixture identities never presented)
+//   listInventoryLocations    those warehouses and their bins, for the location pickers
+//   listTransferOrders        transfer orders whose origin OR destination governs into the caller's scope
+//
+// Fixture identities (FORBIDDEN_WAREHOUSE_IDS and the synthetic acceptance warehouse) are excluded from these employee
+// presentations even where a fixture scope exists, per the existing fixture rule (syntheticAcceptanceWarehouse.ts).
+
+
+export const WAREHOUSE_READ = "warehouse.record.read";
+export const TRANSFER_ORDER_READ = "warehouse.transferOrder.read";
+const TRANSFER_ACT_CAPABILITIES = ["inventory.transfer.create", "inventory.transfer.dispatch", "inventory.transfer.receive", "inventory.transfer.cancel"];
+const PRESENTATION_EXCLUDED: readonly string[] = Object.freeze([...FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE.warehouseId]);
+
+function requireAnyCapability(actor: ReorderActor, keys: readonly string[]): void {
+  if (!actor || !(actor.capabilities instanceof Set) || !keys.some((k) => actor.capabilities.has(k))) {
+    refuse("CAPABILITY_MISSING", "FORBIDDEN", `this read requires one of ${keys.join(", ")}`);
+  }
+}
+
+async function presentableScope(c: PoolClient, actor: ReorderActor): Promise<string[]> {
+  return (await scopedWarehouseIds(c, actor)).filter((w) => !PRESENTATION_EXCLUDED.includes(w));
+}
+
+export async function listInventoryWarehouses(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
+  requireAnyCapability(actor, [WAREHOUSE_READ, INVENTORY_ON_HAND_READ]);
+  acceptOnly(input, []);
+  return withReadSnapshot(deps.pool, async (c) => {
+    const scope = await presentableScope(c, actor);
+    if (scope.length === 0) return { items: [] };
+    const { rows } = await c.query(
+      `SELECT w.id, w.name, w.site_label, w.status::text AS status, k.operating_company_id,
+              (SELECT count(*)::int FROM eos_ops.bins b WHERE b.tenant_id = w.tenant_id AND b.warehouse_id = w.id AND b.status = 'ACTIVE') AS bin_count
+         FROM eos_ops.warehouses w
+         LEFT JOIN eos_policy.tenant_operating_company_keys k
+           ON k.tenant_id = w.tenant_id AND k.operating_company_key = w.operating_company_key AND k.status = 'ACTIVE'
+        WHERE w.tenant_id = $1 AND w.id = ANY($2::text[]) ORDER BY w.name, w.id`, [actor.tenantId, scope]);
+    return { items: rows.map((r) => ({ warehouseId: r.id, name: r.name, siteLabel: r.site_label, status: r.status,
+      operatingCompanyId: r.operating_company_id ?? null, binCount: Number(r.bin_count) })) };
+  });
+}
+
+export async function listInventoryLocations(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
+  requireAnyCapability(actor, [WAREHOUSE_READ, INVENTORY_ON_HAND_READ]);
+  const i = acceptOnly(input, ["warehouseId"]);
+  const warehouseId = i.warehouseId === undefined || i.warehouseId === null ? null : i.warehouseId;
+  if (warehouseId !== null && !ID(warehouseId)) refuse("WAREHOUSE_ID_INVALID", "INVALID_INPUT", "warehouseId must be a governed id");
+  return withReadSnapshot(deps.pool, async (c) => {
+    const scope = await presentableScope(c, actor);
+    const visible = warehouseId === null ? scope : scope.filter((w) => w === warehouseId);
+    if (visible.length === 0) return { items: [] };
+    const wh = (await c.query(`SELECT id, name, status::text AS status FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = ANY($2::text[]) ORDER BY name, id`,
+      [actor.tenantId, visible])).rows;
+    const bins = (await c.query(
+      `SELECT b.id, b.warehouse_id, b.name, b.code, b.status::text AS status
+         FROM eos_ops.bins b WHERE b.tenant_id = $1 AND b.warehouse_id = ANY($2::text[]) ORDER BY b.warehouse_id, b.id`, [actor.tenantId, visible])).rows;
+    return { items: [
+      ...wh.map((w) => ({ type: "WAREHOUSE", locationId: w.id, warehouseId: w.id, code: null, name: w.name, status: w.status })),
+      ...bins.map((b) => ({ type: "BIN", locationId: b.id, warehouseId: b.warehouse_id, code: b.code ?? null, name: b.name ?? null, status: b.status })),
+    ] };
+  });
+}
+
+const TRANSFER_STATUSES = ["REQUESTED", "IN_TRANSIT", "COMPLETED", "CANCELLED"];
+
+export async function listTransferOrders(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
+  requireAnyCapability(actor, [TRANSFER_ORDER_READ, ...TRANSFER_ACT_CAPABILITIES]);
+  const i = acceptOnly(input, ["status", "limit"]);
+  const status = i.status === undefined || i.status === null ? null : i.status;
+  if (status !== null && !TRANSFER_STATUSES.includes(status as string)) refuse("STATUS_INVALID", "INVALID_INPUT", `status is one of ${TRANSFER_STATUSES.join(", ")}`);
+  const limit = i.limit === undefined || i.limit === null ? 200 : i.limit;
+  if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 500) refuse("LIMIT_INVALID", "INVALID_INPUT", "limit is an integer 1..500");
+  return withReadSnapshot(deps.pool, async (c) => {
+    const scope = await scopedWarehouseIds(c, actor);
+    if (scope.length === 0) return { items: [] };
+    const { rows } = await c.query(
+      `SELECT * FROM (
+         SELECT t.id, t.transfer_order_number, t.status::text AS status, t.part_id, t.tracking_mode::text AS tracking_mode, t.quantity,
+                t.serial_numbers, t.origin_location_type::text AS ot, t.origin_location_id AS oi,
+                t.destination_location_type::text AS dt, t.destination_location_id AS di, t.created_at, t.created_by,
+                ${GOVERNING_WAREHOUSE("t.tenant_id", "t.origin_location_type", "t.origin_location_id")} AS ow,
+                ${GOVERNING_WAREHOUSE("t.tenant_id", "t.destination_location_type", "t.destination_location_id")} AS dw
+           FROM eos_ops.transfer_orders t WHERE t.tenant_id = $1 AND ($2::text IS NULL OR t.status::text = $2)) x
+        WHERE ow = ANY($3::text[]) OR dw = ANY($3::text[])
+        ORDER BY created_at DESC, id LIMIT $4`, [actor.tenantId, status, scope, limit]);
+    return { items: rows.map((r) => ({
+      transferOrderId: r.id, transferOrderNumber: r.transfer_order_number, status: r.status, partId: r.part_id, trackingMode: r.tracking_mode,
+      quantity: Number(r.quantity), serialNumbers: r.serial_numbers ?? [],
+      origin: { type: r.ot, locationId: r.oi, warehouseId: r.ow ?? null }, destination: { type: r.dt, locationId: r.di, warehouseId: r.dw ?? null },
+      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at, createdBy: r.created_by,
+      canReceive: r.status === "IN_TRANSIT" && r.dw !== null && scope.includes(r.dw),
+    })) };
   });
 }

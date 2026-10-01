@@ -1,11 +1,10 @@
 // DQ-036(b): the client's acquire-existing-unit transport is picked by ONE governed switch that mirrors the server's.
-// INACTIVE (today): the Firebase callable, unchanged. ACTIVE: the EOS API only -- no Firebase fallback, the command's
-// code carried in `details` exactly as the callable carried it, so the screen's interpretation is unchanged.
+// ACTIVATED (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): { FROZEN, ACTIVE } on both sides -- the
+// EOS API only, no Firebase fallback, the command's code carried in `details` exactly as the callable carried it, so
+// the screen's interpretation is unchanged. A state other than ACTIVE refuses locally; the Firebase callable is gone.
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
-vi.mock("../src/firebase/firebase", () => ({ functions: {}, auth: { currentUser: null } }));
-vi.mock("firebase/functions", () => ({ httpsCallable: () => async () => ({ data: { outcome: "acquired", serializedAssetId: "sa_fb" } }) }));
 
 const { callAcquireSerializedAsset, callAcquireSerializedAssetOnEos, EOS_SERIALIZED_ASSET_ROUTE } =
   await import("../src/services/serializedAssetAcquireCallableClient.js");
@@ -16,16 +15,21 @@ const REQ = { partId: "P", serialNo: "S", locationId: "WH-A", reason: "OPENING_B
 const fetchReturning = (status, body) => vi.fn(async () => ({ ok: status < 300, status, json: async () => body }));
 
 describe("serialized asset acquire transport switch", () => {
-  it("the client mirror equals the server's governed constant, and both are INACTIVE", () => {
-    expect({ ...SERIALIZED_ASSET_ACQUIRE_WRITER_AUTHORITY }).toEqual({ firestore: "OPEN", postgres: "INACTIVE" });
+  it("the client mirror equals the server's governed constant, and both are { FROZEN, ACTIVE }", () => {
+    expect({ ...SERIALIZED_ASSET_ACQUIRE_WRITER_AUTHORITY }).toEqual({ firestore: "FROZEN", postgres: "ACTIVE" });
     const server = readFileSync("../functions/src/serializedAsset/acquireWriterState.ts", "utf8");
-    expect(server).toMatch(/ACQUIRE_WRITER_AUTHORITY: AcquireWriterAuthority = Object\.freeze\(\{ firestore: "OPEN", postgres: "INACTIVE" \}\)/);
+    expect(server).toMatch(/ACQUIRE_WRITER_AUTHORITY: AcquireWriterAuthority = Object\.freeze\(\{ firestore: "FROZEN", postgres: "ACTIVE" \}\)/);
   });
 
-  it("INACTIVE: the Firebase callable path, and the EOS API is never called", async () => {
+  it("the client carries no Firebase acquire path at all", () => {
+    const src = readFileSync("src/services/serializedAssetAcquireCallableClient.js", "utf8");
+    expect(src).not.toMatch(/firebase\/functions|httpsCallable/);
+  });
+
+  it("not ACTIVE: refused locally as NOT_ACTIVATED, and nothing is sent anywhere", async () => {
     const fetchImpl = vi.fn();
-    const r = await callAcquireSerializedAsset(REQ, { fetchImpl, call: async () => ({ data: { outcome: "acquired", serializedAssetId: "sa_fb" } }) });
-    expect(r.outcome.serializedAssetId).toBe("sa_fb");
+    const r = await callAcquireSerializedAsset(REQ, { writerAuthority: { firestore: "OPEN", postgres: "INACTIVE" }, fetchImpl });
+    expect(r.error.details).toBe("NOT_ACTIVATED");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 

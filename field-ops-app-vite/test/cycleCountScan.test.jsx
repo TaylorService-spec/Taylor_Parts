@@ -213,41 +213,19 @@ describe("Cycle count · async result survives StrictMode's phantom mount/unmoun
   });
 });
 
-describe("Cycle count · technician MOBILE flow (governed assigned truck)", () => {
-  it("a technician with exactly one assigned truck sees it and only it -- never a picker", async () => {
-    const c = client({
-      getCycleCountAssignedMobileLocation: vi.fn().mockResolvedValue({ location: { type: "MOBILE", locationId: "loc_truck7" }, label: "Truck 7" }),
-    });
+describe("Cycle count · trucks are out of scope (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01)", () => {
+  it("never asks for an assigned truck, even when a client could answer, and offers no Truck choice", async () => {
+    const assigned = vi.fn().mockResolvedValue({ location: { type: "MOBILE", locationId: "loc_truck7" }, label: "Truck 7" });
+    const c = client({ getCycleCountAssignedMobileLocation: assigned });
     render(<CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps }} />);
-    await screen.findByText(/truck 7/i);
-    expect(screen.queryByLabelText(/location type/i)).toBeNull();
-    expect(screen.queryByRole("button", { name: /start counting/i })).toBeNull();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^start count$/i })); });
-    expect(c.createCycleCountSheet).toHaveBeenCalledWith(expect.objectContaining({ location: { type: "MOBILE", locationId: "loc_truck7" } }));
+    await screen.findByRole("button", { name: /start counting/i });
+    expect(assigned).not.toHaveBeenCalled();
+    expect(screen.queryByText(/truck 7/i)).toBeNull();
+    const type = screen.getByLabelText(/location type/i);
+    expect([...type.querySelectorAll("option")].map((o) => o.value)).toEqual(["WAREHOUSE"]);
   });
 
-  it("counter authority with no assigned truck is a truthful no-assignment state, not an error page", async () => {
-    const c = client({
-      getCycleCountAssignedMobileLocation: vi.fn().mockRejectedValue({ code: "functions/failed-precondition", details: { code: "NO_TRUCK_ASSIGNMENT" } }),
-    });
-    render(<CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps }} />);
-    expect(await screen.findByText(/no active truck is assigned to you/i)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /^start count$/i })).toBeNull();
-  });
-
-  it("an ambiguous truck assignment fails visibly -- never guesses one", async () => {
-    const c = client({
-      getCycleCountAssignedMobileLocation: vi.fn().mockRejectedValue({ code: "functions/failed-precondition", details: { code: "TRUCK_ASSIGNMENT_AMBIGUOUS" } }),
-    });
-    render(<CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps }} />);
-    expect((await screen.findByRole("alert")).textContent).toMatch(/more than one truck/i);
-    expect(screen.queryByRole("button", { name: /^start count$/i })).toBeNull();
-  });
-
-  it("a non-technician (or environment without the read) sees the unchanged manual Warehouse/Bin flow", async () => {
-    // The default `client()` fixture does not implement getCycleCountAssignedMobileLocation at all --
-    // exactly the TECHNICIAN_IDENTITY_UNAVAILABLE-equivalent fallback, and mirrors any warehouse-
-    // persona account. No new authority path, no company-wide truck browse.
-    await startBin(); // exercises the BIN path directly to confirm it is entirely untouched
+  it("the Bin and Warehouse flows are unchanged", async () => {
+    await startBin();
   });
 });

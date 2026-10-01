@@ -7,8 +7,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 import ReceiveAgainstPurchaseOrder from "../receiving/ReceiveAgainstPurchaseOrder";
 import MultiScanReceiving from "../receiving/MultiScanReceiving";
 import AcquireExistingUnit from "../receiving/AcquireExistingUnit";
-import { useAuth } from "../../auth/AuthContext";
-import { useSerializedAssetAcquireCapability } from "../../access/useSerializedAssetAcquireCapability";
+import { fetchAcquireWarehouseOptions } from "../../services/inventoryLocationClient.js";
 import { useReorderRequestsByStatuses } from "../../hooks/useReorderRequests";
 import { usePurchaseOrdersByIds } from "../../hooks/usePurchaseOrdersByIds";
 import { useSuppliers } from "../../hooks/useSuppliers";
@@ -19,7 +18,7 @@ import {
   QUEUE_STATE,
   RECEIVING_JOURNEY,
 } from "../../domain/receivingWorkspaceQueue";
-import { fetchReceivablePurchaseOrders, fetchReceivingLocationOptions } from "../../services/receivingCallableClient";
+import { fetchReceivablePurchaseOrders } from "../../services/receivingCallableClient";
 import { RECEIVING_OUTCOME } from "../../domain/receivingTransport";
 
 // Inventory > Receiving — the Receiving workspace, recomposed to the North Star P1 design
@@ -103,15 +102,19 @@ export default function Receiving({ deps }) {
 
   // ── ND-33 acquire path (unchanged behaviour, relocated composition) ──────────────────
   const [acquiring, setAcquiring] = useState(false);
-  const { user } = useAuth();
-  const { canAcquire } = useSerializedAssetAcquireCapability(user);
+  // ON EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01; DQ-036b): acquisition is POST
+  // /operations/serialized-asset, authorized SERVER-side (inventory.serializedAsset.acquire + Warehouse Operations
+  // eligibility + WAREHOUSE scope). The Firebase effective-access feed that used to pre-gate this control is retired
+  // with the Firebase acquire path; the server's refusal is shown as a refusal. Locations are the caller's ACTIVE
+  // governed warehouses from eos_ops, never the canonical-receiving callable.
+  const canAcquire = true;
   const [locations, setLocations] = useState({ status: null, options: [] });
   const [locationAttempt, setLocationAttempt] = useState(0);
   useEffect(() => {
     if (!acquiring) return undefined;
     let cancelled = false;
     setLocations({ status: null, options: [] });
-    (deps?.fetchReceivingLocationOptions ?? fetchReceivingLocationOptions)()
+    (deps?.fetchReceivingLocationOptions ?? fetchAcquireWarehouseOptions)()
       .then((res) => { if (!cancelled) setLocations({ status: res.status, options: res.options ?? [] }); })
       // The transport's own vocabulary, not a hand-typed string (the exact defect ND-33 closed on).
       .catch(() => { if (!cancelled) setLocations({ status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] }); });

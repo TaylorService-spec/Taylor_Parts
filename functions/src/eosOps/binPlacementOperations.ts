@@ -33,6 +33,7 @@ import { warehousePredicates } from "./cycleCountOperations.js";
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import { isSafeIdSegment, normalizeBinCode } from "../inventoryLocation/binRegistry.js";
 import type { PostgresPlacementWriterState } from "../inventoryLocation/placementWriterState.js";
+import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -256,6 +257,8 @@ export async function recordEosPutAway(deps: PlacementOperationDeps, actor: Plac
   if (deps.postgresState !== "ACTIVE") {
     refuse("NOT_ACTIVATED", "NOT_ACTIVATED", "EOS put-away is not activated in this environment; placements are still recorded on the current system");
   }
+  // The cutover fails closed until the tenant's legacy baseline is CERTIFIED (inventoryBaselineGate.ts).
+  if (!(await isInventoryBaselineCertified(deps.pool, actor.tenantId))) refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
   // The EOS request is CLOSED (Controller INVENTORY reconciliation, 2026-10-01; DQ-038 "no company inference"): a field the
   // put-away does not define -- an operating company above all -- is refused, never silently ignored. Checked before the
   // shared shape validator, which stays the Firestore command's rules verbatim (binPlacementParity.test.mjs).

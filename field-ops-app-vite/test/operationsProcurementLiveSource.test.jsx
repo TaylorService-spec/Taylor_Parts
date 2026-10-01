@@ -107,6 +107,13 @@ describe("operationsQueries.fetchProcurementPurchaseOrders (site-work r4 item A)
 });
 
 // ---- Part 2: Operations.jsx wires the live fetch into ProcurementPanel ----------
+// The dashboard's INVENTORY truth is EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): stock
+// health from the governed on-hand / movement loader, warehouses from eos_ops, transfer orders from the EOS list.
+vi.mock("../src/hooks/useInventoryLedger.js", () => ({
+  loadEosInventoryHealth: async () => ({ transactions: [], healthEntries: [], integrity: { state: "COMPLETE", reason: null, unavailablePartIds: [] } }),
+}));
+vi.mock("../src/services/inventoryLocationClient.js", () => ({ fetchInventoryWarehouseOptions: async () => [] }));
+vi.mock("../src/services/transferCommandClient.js", () => ({ listTransferOrderDocs: async () => ({ items: [], truncated: false }) }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
 vi.mock("../src/hooks/useCanonicalPartNames", () => ({
   useCanonicalPartNames: () => ({ resolveName: (id) => id, namesUnavailable: false }),

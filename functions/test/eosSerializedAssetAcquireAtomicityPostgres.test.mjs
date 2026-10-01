@@ -23,6 +23,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -58,6 +59,7 @@ test("DQ-019: acquire-existing-unit atomicity, idempotency and concurrency", { s
   const n = async (sql, v = []) => Number((await q(sql, v)).rows[0].n);
 
   const { tenant } = await bootstrapTenant(repo, { key: "acqatom", name: "acqatom", actorUid: OP });
+  await certifyInventoryBaselineFixture((sql, v) => pool.query(sql, v), tenant.id); // the writer gate (inventoryBaselineGate.ts)
   const T = tenant.id;
   await bootstrapAdministrator(repo, { tenantId: T, externalSubject: "admin", performedBy: OP, reason: "boot" });
 

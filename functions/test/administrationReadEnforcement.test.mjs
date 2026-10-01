@@ -217,7 +217,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 79 -> 80: the Parts / Purchasing / Receiving completion (2026-10-01): 1764380000000 -- Reorder create idempotency, the
   // one-open-demand index, RR numbering, and two capabilities granted to NO Role (warehouse.record.manage, configuration;
   // supplier.record.read, a business READ -- not an Administration surface key, so the read gate is unchanged).
-  assert.equal(migrations.length, 80, "a migration was added or removed by the read enforcement");
+  // 80 -> 81: the Inventory / Warehouse completion (2026-10-01): 1764390000000 -- the inventory baseline cutover certification
+  // (schema; the fail-closed gate the activated Inventory writers read). No capability, no grant.
+  assert.equal(migrations.length, 81, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

@@ -69,6 +69,7 @@ import {
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import type { PostgresCycleCountWriterState } from "../cycleCount/cycleCountWriterState.js";
+import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 
 // ════════════════════ vocabulary ════════════════════
 
@@ -175,10 +176,12 @@ async function audit(
 
 // ════════════════════ authority ════════════════════
 
-function requireActive(deps: CycleCountOperationDeps): void {
+async function requireActive(deps: CycleCountOperationDeps, tenantId: string): Promise<void> {
   if (deps.postgresState !== "ACTIVE") {
     refuse("NOT_ACTIVATED", "NOT_ACTIVATED", "EOS Cycle Count is not activated in this environment; counts are still taken on the current system");
   }
+  // The cutover fails closed until the tenant's legacy baseline is CERTIFIED (inventoryBaselineGate.ts).
+  if (!(await isInventoryBaselineCertified(deps.pool, tenantId))) refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
 }
 
 async function authorizeAtWarehouse(db: Queryable, actor: CycleCountActor, capabilityKey: string, warehouseId: string): Promise<void> {
@@ -302,7 +305,7 @@ function mapRepositoryError(err: unknown): never {
 // ════════════════════ commands ════════════════════
 
 export async function createEosCycleCountSheet(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   onlyKeys(input, ["location", "idempotencyKey"]);
   const location = input.location;
   if (!isPlain(location)) return refuse("INVALID_INPUT", "INVALID_INPUT", "location is required");
@@ -334,7 +337,7 @@ export async function createEosCycleCountSheet(deps: CycleCountOperationDeps, ac
 }
 
 export async function openEosCycleCountLine(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   onlyKeys(input, ["sheetId", "partId"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   const partId = requireId(input.partId, "partId");
@@ -362,7 +365,7 @@ export async function openEosCycleCountLine(deps: CycleCountOperationDeps, actor
 }
 
 export async function submitEosCycleCountLine(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   onlyKeys(input, ["sheetId", "partId", "countedQuantity", "countedSerialNumbers"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   const partId = requireId(input.partId, "partId");
@@ -399,7 +402,7 @@ export async function submitEosCycleCountLine(deps: CycleCountOperationDeps, act
 }
 
 export async function reconcileEosCycleCountLine(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   onlyKeys(input, ["sheetId", "partId", "decision", "reason"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   const partId = requireId(input.partId, "partId");
@@ -435,7 +438,7 @@ export async function reconcileEosCycleCountLine(deps: CycleCountOperationDeps, 
 }
 
 export async function cancelEosCycleCountLine(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   onlyKeys(input, ["sheetId", "partId"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   const partId = requireId(input.partId, "partId");
@@ -453,7 +456,7 @@ export async function cancelEosCycleCountLine(deps: CycleCountOperationDeps, act
 }
 
 export async function closeEosCycleCountSheet(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   onlyKeys(input, ["sheetId"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   return inTransaction(deps.pool, async (db) => {
@@ -468,7 +471,7 @@ export async function closeEosCycleCountSheet(deps: CycleCountOperationDeps, act
 }
 
 export async function cancelEosCycleCountSheet(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   onlyKeys(input, ["sheetId"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   return inTransaction(deps.pool, async (db) => {
@@ -485,7 +488,7 @@ export async function cancelEosCycleCountSheet(deps: CycleCountOperationDeps, ac
 // ════════════════════ reads ════════════════════
 
 export async function getEosCycleCountSheet(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   onlyKeys(input, ["sheetId"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   const client = await deps.pool.connect();
@@ -508,7 +511,7 @@ const SHEET_STATUSES: readonly CycleCountSheetStatus[] = ["OPEN", "CLOSED", "CAN
  * is a refusal -- not an empty list, which would read as "there are no counts".
  */
 export async function listEosCycleCountSheets(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   onlyKeys(input ?? {}, ["status"]);
   const status = (input ?? {}).status ?? null;
   if (status !== null && !SHEET_STATUSES.includes(status as CycleCountSheetStatus)) refuse("INVALID_INPUT", "INVALID_INPUT", "status must be OPEN, CLOSED or CANCELLED");

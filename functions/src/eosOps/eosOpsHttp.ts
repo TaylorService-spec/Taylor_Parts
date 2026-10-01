@@ -39,7 +39,7 @@ import {
   recordReorderPurchaseOrder, voidReorderPurchaseOrder, REORDER_POSTGRES_ACTIVE, type ReorderActor,
 } from "./reorderLifecycleCommands.js";
 import { ReorderAssignmentError, assignReorderRequestToEmployee, listReorderAssignmentTargets } from "./reorderAssignmentAuthority.js";
-import { listReceipts, listReceivingLocationOptions, listSuppliers, readInventoryMovements, readInventoryOnHand, readReceipt } from "./partsReads.js";
+import { listInventoryLocations, listInventoryWarehouses, listReceipts, listReceivingLocationOptions, listSuppliers, listTransferOrders, readInventoryMovements, readInventoryOnHand, readReceipt } from "./partsReads.js";
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import { EOS_WORK_ORDER_OPERATIONS, isWorkOrderOperation, type EosWorkOrderOperation } from "./workOrderOperations";
@@ -93,6 +93,9 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "readReceipt",
   "listReceivingLocationOptions",
   "listSuppliers",
+  "listInventoryWarehouses",
+  "listInventoryLocations",
+  "listTransferOrders",
   "listReorderAssignmentTargets",
 ] as const);
 export type OperationsReadOperation = (typeof OPERATIONS_READ_OPERATIONS)[number];
@@ -145,6 +148,9 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   readReceipt: "/operations/inventory",
   listReceivingLocationOptions: "/operations/inventory",
   listSuppliers: "/operations/inventory",
+  listInventoryWarehouses: "/operations/inventory",
+  listInventoryLocations: "/operations/inventory",
+  listTransferOrders: "/operations/inventory",
   listReorderAssignmentTargets: "/operations/inventory",
   createReorderRequest: "/operations/inventory",
   reviewReorderRequest: "/operations/inventory",
@@ -249,7 +255,7 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "markReorderReceived", "cancelReorderRequest", "recordReorderPurchaseOrder", "voidReorderPurchaseOrder", "receiveReorderStock",
   // The Parts / Purchasing / Receiving reads (2026-10-01) sit behind the same activation boundary.
   "readInventoryOnHand", "readInventoryMovements", "listReceipts", "readReceipt", "listReceivingLocationOptions",
-  "listSuppliers", "listReorderAssignmentTargets",
+  "listSuppliers", "listReorderAssignmentTargets", "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
 ]);
 
 export type OperationsApiFailureCode =
@@ -391,6 +397,18 @@ export async function executeOperation(
       case "listSuppliers": {
         const { actor, pool } = await reorderActor();
         return ok(await listSuppliers({ pool }, actor, request.input ?? {}));
+      }
+      case "listInventoryWarehouses": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listInventoryWarehouses({ pool }, actor, request.input ?? {}));
+      }
+      case "listInventoryLocations": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listInventoryLocations({ pool }, actor, request.input ?? {}));
+      }
+      case "listTransferOrders": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listTransferOrders({ pool }, actor, request.input ?? {}));
       }
       case "listReorderAssignmentTargets": {
         const { actor, pool } = await reorderActor();

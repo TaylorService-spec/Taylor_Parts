@@ -21,6 +21,9 @@ import { serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
 
 const require = createRequire(import.meta.url);
 const delta = require("../lib/adminPolicy/partsPurchasingReceivingDelta.js");
+const inventoryDelta = require("../lib/adminPolicy/inventoryWarehouseActivationDelta.js");
+const cutover = require("../lib/eosOps/migration/inventoryBaselineCutover.js");
+const { MOVEMENT_DIRECTION, MOVEMENT_SOURCE_TYPE } = require("../lib/inventoryLedger/operationalMovementTypes.js");
 const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
 const { createWarehouseBinAdministration, isWarehouseAdminOperation } = require("../lib/eosOps/warehouseBinAdministration.js");
 const { createMobileLocationScopeBindingAdministration } = require("../lib/eosOps/mobileLocationScopeBindingAdministration.js");
@@ -31,8 +34,10 @@ const TENANT = "t-inventory";
 const WH = "taylor-main";
 // A LOCAL-ONLY second Taylor warehouse: a transfer needs two custody warehouses, and nonprod holds exactly one real one.
 const WH2 = "taylor-transfer-fixture";
-const ACTIVE = { cycleCountPostgresState: "ACTIVE", relocationPostgresState: "ACTIVE", transferPostgresState: "ACTIVE",
-  placementPostgresState: "ACTIVE", acquirePostgresState: "ACTIVE", workOrderPostgresState: "ACTIVE" };
+// THE PRODUCTION CONSTANTS. The five Inventory writers are { firestore: FROZEN, postgres: ACTIVE } in code (Controller
+// INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01); nothing is injected for them here. They still FAIL CLOSED until the
+// tenant's legacy baseline is CERTIFIED -- step 0 proves the gate and then certifies through the governed cutover.
+const ACTIVE = { workOrderPostgresState: "ACTIVE" };
 
 const LIVE_REORDER_GRANTS = {
   partsManager: ["reorder.purchaseOrder.void", "reorder.request.approve", "reorder.request.assign", "reorder.request.cancel",
@@ -71,12 +76,11 @@ test("Inventory / Warehouse over the Operations transport (writers injected ACTI
   for (const [roleKey, keys] of Object.entries(LIVE_REORDER_GRANTS)) for (const key of keys) await grant(roleKey, key);
   await admin("createRole", { key: "operationalConfigurationAdministrator", name: "Operational Configuration Administrator", reason: "DQ-033" });
   for (const { operation, input } of delta.partsPurchasingReceivingOperations()) assert.equal((await admin(operation, input)).ok, true);
-  // DQ-036b as ruled (Parts Associate, Parts Manager, Warehouse Associate, Warehouse Manager) -- prepared, not live.
-  for (const roleKey of ["partsAssociate", "partsManager", "warehouseAssociate", "warehouseManager"]) await grant(roleKey, "inventory.serializedAsset.acquire");
-  // Transfer: the legacy catalog's operator / receiver authority that PostgreSQL never received (pendingAuthorityCorrections
-  // "RECORDED, NOT GRANTED") -- a PROPOSED parity delta, exercised here only so the existing writer can be proven.
-  for (const key of ["inventory.transfer.dispatch", "inventory.transfer.receive", "inventory.transfer.cancel"]) await grant("inventoryTransferOperator", key);
-  await grant("inventoryTransferReceiver", "inventory.transfer.receive");
+  // The PREPARED Inventory / Warehouse delta (inventoryWarehouseActivationDelta.ts), exactly as the activation window issues it:
+  // DQ-036b acquire to the four ruled Roles, and the designed Transfer operator / receiver split.
+  for (const { operation, input } of inventoryDelta.inventoryWarehouseGrantOperations()) {
+    assert.equal((await admin(operation, input)).ok, true, `${operation} ${input.roleKey} ${input.objectKey}.${input.actionKey}`);
+  }
 
   // ── people, as the nonprod personas hold their Security Roles today (+ the proposed operator assignments) ──
   const pa = await person("uid-pa", ["partsAssociate", "inventoryReceivingClerk"], { id: "e-pa", name: "Pat Parts" });
@@ -113,6 +117,7 @@ test("Inventory / Warehouse over the Operations transport (writers injected ACTI
   for (const e of ["e-pa", "e-pm"]) { await elig(e, "PARTS_OPERATIONS"); await scope(e, "REORDER_QUEUE", "taylor"); }
   for (const e of ["e-wa", "e-wm", "e-pa"]) { await elig(e, "WAREHOUSE_OPERATIONS"); await scope(e, "WAREHOUSE", WH); }
   await scope("e-wm", "WAREHOUSE", WH2);
+  await scope("e-wa", "WAREHOUSE", "taylor-closed"); // so the INACTIVE-warehouse refusals are reached past scope
   await scope("e-owner", "WAREHOUSE", WH); // Owner HAS scope but no eligibility: scope alone is never authority
   await scope("e-dispatcher", "WAREHOUSE", WH);
 
@@ -146,6 +151,90 @@ test("Inventory / Warehouse over the Operations transport (writers injected ACTI
   };
   await received("PRT-FAN", 10);
   await received("PRT-COMP", 3, ["CMP-1", "CMP-2", "CMP-3"]);
+
+  await t.test("0. BASELINE CUTOVER: writers fail closed until the governed COPY certifies the legacy baseline", async () => {
+    // Before certification every Inventory writer answers NOT_ACTIVATED -- the flipped constants alone open nothing.
+    for (const [route, op, input] of [
+      [REL, "relocateStock", { partId: "PRT-FAN", source: { type: "WAREHOUSE", locationId: WH }, destination: { type: "BIN", locationId: BIN_A }, quantity: 1, idempotencyKey: key("pre") }],
+      [PLC, "recordPutAway", { warehouseId: WH, partId: "PRT-FAN", binId: BIN_A, quantity: 1, idempotencyKey: key("pre") }],
+      [TRF, "createTransfer", { partId: "PRT-FAN", quantity: 1, origin: { type: "WAREHOUSE", locationId: WH }, destination: { type: "WAREHOUSE", locationId: WH2 }, idempotencyKey: key("pre") }],
+      [CC, "createCycleCountSheet", { location: { type: "BIN", locationId: BIN_A }, idempotencyKey: key("pre") }],
+      [ACQ, "acquireSerializedAsset", { partId: "PRT-UNIT", serialNo: "PRE-1", locationId: WH, reason: "OPENING_BALANCE", idempotencyKey: key("pre") }],
+    ]) refused(await call(op === "acquireSerializedAsset" ? pa : wa, route, op, input), 503, "NOT_ACTIVATED", `${op} before certification`);
+
+    // The LEGACY snapshot: one real legacy warehouse PROVEN to be taylor-main (same governed company), fixture rows,
+    // truck rows, an unmapped warehouse, and serialized custody -- the shape the fenced exporter produces.
+    const at0 = 1_727_000_000_000;
+    const tx = (id, over = {}) => { const type = over.type ?? "RECEIVED"; return { id, data: { type, direction: MOVEMENT_DIRECTION[type], partId: "PRT-COIL", trackingMode: "NONE", quantity: 5,
+      location: { type: "WAREHOUSE", locationId: "legacy-taylor-yard" }, sourceObject: { type: MOVEMENT_SOURCE_TYPE[type], id: `src-${id}` },
+      actor: { kind: "USER", id: "legacy-user-1" }, occurredAt: at0, ...over } }; };
+    const snapshot = {
+      sha256: "a".repeat(64),
+      warehouses: [{ id: "legacy-taylor-yard", data: { name: "Taylor Yard", operatingCompanyId: "taylor" } },
+                   { id: "legacy-ventana", data: { name: "Ventana", operatingCompanyId: "ventana" } }],
+      inventoryTransactions: [
+        tx("lt-1"), tx("lt-2", { type: "RELOCATION_OUT", quantity: 2 }),
+        tx("lt-3", { partId: "PRT-UNIT", trackingMode: "SERIAL", quantity: 1, serialNo: "LEG-UNIT-1" }),
+        tx("lt-fixture", { location: { type: "WAREHOUSE", locationId: "wh-main" } }),
+        tx("lt-truck", { location: { type: "MOBILE", locationId: "truck-7" } }),
+        tx("lt-unmapped", { location: { type: "WAREHOUSE", locationId: "legacy-unknown-site" } }),
+      ],
+      serializedAssets: [
+        { id: "sa-1", data: { serialNo: "LEG-UNIT-1", partId: "PRT-UNIT", currentLocationType: "WAREHOUSE", currentLocationId: "legacy-taylor-yard", inventoryState: "AVAILABLE" } },
+        { id: "sa-installed", data: { serialNo: "LEG-INST-1", partId: "PRT-UNIT", currentLocationType: "WAREHOUSE", currentLocationId: "legacy-taylor-yard", inventoryState: "INSTALLED" } },
+      ],
+      cycleCounts: [], transferOrders: [],
+    };
+    const manifest = (extraExcluded = []) => cutover.validateManifest({
+      format: "EOS_INVENTORY_BASELINE_MANIFEST", version: 1, ruling: "Controller INVENTORY / WAREHOUSE COMPLETION RULINGS (2026-10-01)",
+      warehouseIdentity: [{ legacyWarehouseId: "legacy-taylor-yard", eosWarehouseId: WH, evidence: "Owner-confirmed master record: the Taylor yard IS taylor-main" }],
+      excludedLegacyWarehouses: extraExcluded });
+    // A fixture can never be a mapping SOURCE, and a mapping must be unambiguous.
+    assert.throws(() => cutover.validateManifest({ ...manifest(), warehouseIdentity: [{ legacyWarehouseId: "wh-main", eosWarehouseId: WH, evidence: "x" }] }), /MANIFEST_FIXTURE_MAPPED|fixture/);
+    const performedBy = owner.principalId;
+    const input = (m) => ({ tenantId: TENANT, snapshot, manifest: m, performedBy });
+
+    const census = await cutover.censusInventoryBaseline(pool, input(manifest()));
+    const code = (id) => census.findings.find((f) => f.id === id);
+    assert.equal(code("lt-fixture").disposition, "EXCLUDED_FIXTURE");
+    assert.equal(code("lt-truck").disposition, "DEFERRED_TRUCK");
+    assert.deepEqual([code("lt-unmapped").disposition, code("lt-unmapped").code], ["REFUSED", "UNMAPPED_WAREHOUSE"], "an unproven warehouse is STOPPED, never invented");
+    assert.equal(code("sa-installed").disposition, "DEFERRED_EQUIPMENT");
+    assert.equal(census.blocking, 1);
+
+    // COPY writes what is proven; VERIFY refuses to certify while a blocking refusal stands.
+    const copied = await cutover.copyInventoryBaselineOnce(pool, input(manifest()));
+    assert.deepEqual([copied.outcome, copied.movementsInserted, copied.custodyInserted], ["APPLIED", 3, 1]);
+    assert.equal((await cutover.copyInventoryBaselineOnce(pool, input(manifest()))).outcome, "NO_CHANGES", "replay-safe");
+    await assert.rejects(cutover.certifyInventoryBaseline(pool, input(manifest())), { code: "BASELINE_NOT_VERIFIED" });
+    refused(await call(wa, REL, "relocateStock", { partId: "PRT-FAN", source: { type: "WAREHOUSE", locationId: WH }, destination: { type: "BIN", locationId: BIN_A }, quantity: 1, idempotencyKey: key("pre") }), 503, "NOT_ACTIVATED", "still closed");
+
+    // The operator classifies the unmapped site (here: a declared retired legacy site) -> VERIFIED -> CERTIFIED.
+    const governed = manifest([{ legacyWarehouseId: "legacy-unknown-site", reason: "retired legacy site with no Taylor stock (fixture in this proof)" }]);
+    const v = await cutover.verifyInventoryBaseline(pool, input(governed));
+    assert.equal(v.verdict, "VERIFIED", JSON.stringify(v.plan.findings.filter((f) => f.disposition === "REFUSED" || f.disposition === "HELD")));
+    assert.equal((await cutover.certifyInventoryBaseline(pool, input(governed))).outcome, "CERTIFIED");
+    assert.equal((await cutover.certifyInventoryBaseline(pool, input(governed))).outcome, "CERTIFIED", "re-certifying the same evidence is a no-op");
+    await assert.rejects(cutover.certifyInventoryBaseline(pool, input(manifest([{ legacyWarehouseId: "legacy-unknown-site", reason: "different words" }]))), { code: "CERTIFICATION_CONFLICT" });
+    await assert.rejects(q(`DELETE FROM eos_ops.inventory_baseline_cutovers WHERE tenant_id = $1`, [TENANT]), /APPEND_ONLY/);
+
+    // The copied baseline is employee-visible PostgreSQL stock and custody, at taylor-main, company taylor.
+    assert.equal(at((await onHand(wa, ["PRT-COIL"])).rows, "WAREHOUSE", WH), 3);
+    assert.deepEqual(await one(`SELECT location_id l, operating_company_key c, status::text s FROM eos_ops.serialized_custody WHERE tenant_id=$1 AND serial_number='LEG-UNIT-1'`, [TENANT]), { l: WH, c: "taylor", s: "AVAILABLE" });
+
+    // PLAN-ONLY gates: a v2 legacy cycle-count sheet and an open legacy transfer at a real location both STOP certification;
+    // a legacy unit colliding with receipt-created PostgreSQL custody is never overwritten.
+    const target = await (async () => { const c = await pool.connect(); try { return await cutover.readTargetState(c, TENANT); } finally { c.release(); } })();
+    const gated = cutover.planInventoryBaseline({ ...snapshot,
+      cycleCounts: [{ id: "cc-v2", data: { schemaVersion: 2, status: "OPEN" } }],
+      transferOrders: [{ id: "to-open", data: { status: "IN_TRANSIT", origin: { type: "WAREHOUSE", locationId: "legacy-taylor-yard" }, destination: { type: "WAREHOUSE", locationId: "legacy-ventana" } } }],
+      serializedAssets: [{ id: "sa-clash", data: { serialNo: "CMP-3", partId: "PRT-COMP", currentLocationType: "BIN", currentLocationId: BIN_B, inventoryState: "AVAILABLE" } }],
+    }, governed, target);
+    const g = (id) => gated.findings.find((f) => f.id === id);
+    assert.equal(g("cycle_counts").disposition, "REFUSED");
+    assert.deepEqual([g("to-open").disposition, g("to-open").code], ["REFUSED", "OPEN_LEGACY_TRANSFER"]);
+    assert.deepEqual([g("sa-clash").disposition, g("sa-clash").code], ["REFUSED", "CUSTODY_CONFLICT_EOS_AUTHORITATIVE"], "receipt-created custody stays authoritative");
+  });
 
   await t.test("A. STOCK VISIBILITY: warehouse / bin rows, totals, serialized quantity, history, scope + company isolation", async () => {
     const fan = await onHand(wa, ["PRT-FAN"]);
@@ -234,7 +323,8 @@ test("Inventory / Warehouse over the Operations transport (writers injected ACTI
     const short = await call(wa, TRF, "createTransfer", { ...input, quantity: 50, idempotencyKey: key("x") });
     assert.ok(short.status === 409 || short.status === 412, `insufficient ${JSON.stringify(short.body)}`);
     ok(await call(wa, TRF, "dispatchTransfer", { transferOrderId: transferId }), "dispatch");
-    refused(await call(wa, TRF, "receiveTransfer", { transferOrderId: transferId }), 403, "OUTSIDE_OPERATIONAL_SCOPE", "the origin-only associate cannot receive at the destination");
+    refused(await call(wa, TRF, "receiveTransfer", { transferOrderId: transferId }), 403, "CAPABILITY_MISSING", "the Transfer OPERATOR does not receive (designed split)");
+    refused(await call(wm, TRF, "dispatchTransfer", { transferOrderId: transferId }), 403, "CAPABILITY_MISSING", "the Transfer RECEIVER does not dispatch");
     ok(await call(wm, TRF, "receiveTransfer", { transferOrderId: transferId }), "receive at destination");
     assert.equal(at((await onHand(wm, ["PRT-FAN"])).rows, "WAREHOUSE", WH2), 2);
     assert.equal(await total("PRT-FAN"), 10, "quantity conserved across the transfer");
@@ -289,7 +379,42 @@ test("Inventory / Warehouse over the Operations transport (writers injected ACTI
     const atBin = await call(pa, ACQ, "acquireSerializedAsset", { partId: "PRT-UNIT", serialNo: "UNIT-2", locationId: BIN_A, reason: "OPENING_BALANCE", idempotencyKey: key("acq3") });
     assert.ok(atBin.status >= 400 && atBin.status < 500, "acquire lands on a WAREHOUSE");
     refused(await call(tech, ACQ, "acquireSerializedAsset", { ...input, idempotencyKey: key("x") }), 403, "PERMISSION_DENIED", "technician");
-    assert.deepEqual((await onHand(wa, ["PRT-UNIT"])).totals, [{ partId: "PRT-UNIT", onHand: 1 }]);
+    assert.deepEqual((await onHand(wa, ["PRT-UNIT"])).totals, [{ partId: "PRT-UNIT", onHand: 2 }], "the copied legacy unit + the acquired unit");
+    refused(await call(pa, ACQ, "acquireSerializedAsset", { partId: "PRT-UNIT", serialNo: "UNIT-9", locationId: "taylor-closed", reason: "OPENING_BALANCE", idempotencyKey: key("acq-closed") }), 403, ["OUTSIDE_OPERATIONAL_SCOPE", "PERMISSION_DENIED"], "an out-of-scope (and inactive) warehouse");
+  });
+
+  await t.test("G. EOS READS (warehouse list / locations / transfer orders) + extra ledger-integrity negatives", async () => {
+    const whs = ok(await call(wa, INV, "listInventoryWarehouses", {}), "warehouses").items;
+    assert.deepEqual(whs.map((w) => [w.warehouseId, w.operatingCompanyId, w.status]).sort(), [["taylor-closed", "taylor", "INACTIVE"], [WH, "taylor", "ACTIVE"]],
+      "the caller's scoped governed warehouses from eos_ops.warehouses -- never Ventana, never a fixture");
+    const locs = ok(await call(wa, INV, "listInventoryLocations", { warehouseId: WH }), "locations").items;
+    assert.ok(locs.some((l) => l.type === "WAREHOUSE" && l.locationId === WH) && locs.some((l) => l.type === "BIN" && l.locationId === BIN_A && l.code));
+    assert.deepEqual(ok(await call(wa, INV, "listInventoryLocations", { warehouseId: "ventana-wh" }), "x").items, [], "no cross-company location");
+    const gen = await call(general, INV, "listInventoryWarehouses", {});
+    assert.ok(gen.status === 403 || (gen.status === 200 && gen.body.result.items.length === 0), `general employee sees no warehouse ${JSON.stringify(gen.body)}`);
+    const transfers = ok(await call(wm, INV, "listTransferOrders", {}), "transfers").items;
+    assert.ok(transfers.length >= 2 && transfers.every((x) => /^TO-/.test(x.transferOrderNumber)));
+    refused(await call(tech, INV, "listTransferOrders", {}), 403, "FORBIDDEN", "technician sees no transfer orders");
+    // inactive warehouse: placement and relocation refuse new work there
+    const pClosed = await call(wa, PLC, "recordPutAway", { warehouseId: "taylor-closed", partId: "PRT-FAN", binCode: "A-1-1", quantity: 1, idempotencyKey: key("closed") });
+    assert.ok(pClosed.status >= 400 && pClosed.status < 500, `placement into an inactive warehouse ${JSON.stringify(pClosed.body)}`);
+    // inactive Part cannot be relocated
+    const rOld = await call(wa, REL, "relocateStock", { partId: "PRT-OLD", source: { type: "WAREHOUSE", locationId: WH }, destination: { type: "BIN", locationId: BIN_A }, quantity: 1, idempotencyKey: key("old") });
+    assert.ok(rOld.status >= 400 && rOld.status < 500, `inactive Part ${JSON.stringify(rOld.body)}`);
+    // CONCURRENT DISPATCH: the same transfer dispatched twice at once applies once; two transfers competing for the same
+    // stock at dispatch cannot both take it.
+    const stock = at((await onHand(wa, ["PRT-FAN"])).rows, "BIN", BIN_B);
+    assert.ok(stock >= 2, `fixture stock at BIN_B: ${stock}`);
+    const mk = async (qty) => ok(await call(wa, TRF, "createTransfer", { partId: "PRT-FAN", quantity: qty, origin: { type: "BIN", locationId: BIN_B }, destination: { type: "WAREHOUSE", locationId: WH2 }, idempotencyKey: key("cd") }), "create").transferOrderId;
+    const one1 = await mk(1);
+    const same = await Promise.all([1, 2].map(() => call(wa, TRF, "dispatchTransfer", { transferOrderId: one1 })));
+    assert.deepEqual(same.map((r) => r.status), [200, 200]);
+    assert.deepEqual(same.map((r) => r.body.result.outcome).sort(), ["applied", "replayed"]);
+    const left = at((await onHand(wa, ["PRT-FAN"])).rows, "BIN", BIN_B);
+    const [a, b] = [await mk(left), await mk(left)];
+    const race = await Promise.all([a, b].map((id) => call(wa, TRF, "dispatchTransfer", { transferOrderId: id })));
+    assert.equal(race.filter((r) => r.status === 200).length, 1, JSON.stringify(race.map((r) => [r.status, r.body.code])));
+    assert.ok((await ledger("PRT-FAN")).every((r) => r.n > 0), "no negative location after the race");
   });
 
   await t.test("NEGATIVE PERSONAS: no inventory-changing act from title, Owner status, scope alone, sales, technician, dispatcher, configuration", async () => {

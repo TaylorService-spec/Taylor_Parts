@@ -20,11 +20,10 @@
 // submitted twice returns `outcome: "replayed"` through the SUCCESS path. The caller presents that
 // as completion, not as a second acquisition.
 //
-// DQ-036(b): THE EOS PATH IS PREPARED BEHIND THE GOVERNED SWITCH. SERIALIZED_ASSET_ACQUIRE_WRITER_AUTHORITY mirrors the
-// server's ACQUIRE_WRITER_AUTHORITY: INACTIVE -> the Firebase callable below, unchanged; ACTIVE -> the EOS API only
-// (callAcquireSerializedAssetOnEos), with NO Firebase fallback of any kind. The switch flips only at activation.
-import { httpsCallable } from "firebase/functions";
-import { functions } from "../firebase/firebase";
+// DQ-036(b), ACTIVATED (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): SERIALIZED_ASSET_ACQUIRE_WRITER_AUTHORITY
+// mirrors the server's ACQUIRE_WRITER_AUTHORITY and is now { FROZEN, ACTIVE }: the EOS API only
+// (callAcquireSerializedAssetOnEos), with NO Firebase fallback of any kind. The Firebase callable path is retired from
+// this client; a state other than postgres ACTIVE refuses locally rather than reaching for Firebase.
 import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
 import { SERIALIZED_ASSET_ACQUIRE_WRITER_AUTHORITY } from "./serializedAssetAcquireWriterState.js";
 
@@ -67,17 +66,6 @@ export async function callAcquireSerializedAssetOnEos(request, deps = {}) {
 export async function callAcquireSerializedAsset(request, deps = {}) {
   const authority = deps.writerAuthority ?? SERIALIZED_ASSET_ACQUIRE_WRITER_AUTHORITY;
   if (authority.postgres === "ACTIVE") return callAcquireSerializedAssetOnEos(request, deps);
-  const call = deps.call ?? ((data) => httpsCallable(functions, ACQUIRE_CALLABLE)(data));
-  try {
-    const res = await call(request);
-    return { outcome: res?.data ?? null, error: null };
-  } catch (err) {
-    return {
-      outcome: null,
-      // firebase-functions puts the command's own failure code in `details`; `code` is the HTTPS
-      // status. Both are carried so the caller can branch on the specific one and fall back to the
-      // general one.
-      error: { code: err?.code ?? null, details: err?.details ?? null, message: err?.message ?? null },
-    };
-  }
+  // Not switched on: refused here, never sent to the retired Firebase callable.
+  return { outcome: null, error: { code: "NOT_ACTIVATED", details: "NOT_ACTIVATED", message: "acquiring an existing unit is not switched on" } };
 }

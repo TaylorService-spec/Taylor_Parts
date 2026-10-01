@@ -39,6 +39,7 @@ import { validateCreateTransferInput } from "../inventoryTransfer/transferOrderV
 import type { TransferLocationRef } from "../inventoryTransfer/transferOrderTypes.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { PostgresTransferWriterState } from "../inventoryTransfer/transferWriterState.js";
+import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -104,10 +105,12 @@ async function inTransaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<
   }
 }
 
-function requireActive(deps: TransferOperationDeps): void {
+async function requireActive(deps: TransferOperationDeps, tenantId: string): Promise<void> {
   if (deps.postgresState !== "ACTIVE") {
     refuse("NOT_ACTIVATED", "NOT_ACTIVATED", "EOS Transfer is not activated in this environment; transfers still run on the current system");
   }
+  // The cutover fails closed until the tenant's legacy baseline is CERTIFIED (inventoryBaselineGate.ts).
+  if (!(await isInventoryBaselineCertified(deps.pool, tenantId))) refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
 }
 
 function requireCapability(actor: TransferOperationActor, act: keyof typeof EOS_TRANSFER_CAPABILITY): void {
@@ -273,7 +276,7 @@ async function requireSerialsAt(db: Queryable, tenantId: string, partId: string,
 // ════════════════════ create ════════════════════
 
 export async function createEosTransfer(deps: TransferOperationDeps, actor: TransferOperationActor, input: Record<string, unknown>) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "create");
     if (!input || typeof input !== "object" || typeof input.partId !== "string" || input.partId.trim() === "") refuse("PART_INVALID", "INVALID_INPUT", "partId missing");
@@ -361,7 +364,7 @@ async function requireOriginStock(db: Queryable, tenantId: string, partId: strin
 // ════════════════════ dispatch / receive / cancel ════════════════════
 
 export async function dispatchEosTransfer(deps: TransferOperationDeps, actor: TransferOperationActor, input: Record<string, unknown>) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "dispatch");
     const t = await lockTransfer(db, actor, input);
@@ -390,7 +393,7 @@ export async function dispatchEosTransfer(deps: TransferOperationDeps, actor: Tr
 }
 
 export async function receiveEosTransfer(deps: TransferOperationDeps, actor: TransferOperationActor, input: Record<string, unknown>) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "receive");
     const t = await lockTransfer(db, actor, input);
@@ -414,7 +417,7 @@ export async function receiveEosTransfer(deps: TransferOperationDeps, actor: Tra
 }
 
 export async function cancelEosTransfer(deps: TransferOperationDeps, actor: TransferOperationActor, input: Record<string, unknown>) {
-  requireActive(deps);
+  await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "cancel");
     const t = await lockTransfer(db, actor, input);

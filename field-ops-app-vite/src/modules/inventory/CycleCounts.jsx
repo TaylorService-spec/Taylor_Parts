@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchWarehouses } from "../../services/operationsQueries";
-import { fetchMobileLocationDocs } from "../../services/truckRegistryQueries";
+import { fetchInventoryWarehouseOptions } from "../../services/inventoryLocationClient.js";
 import { cycleCountCommandClient } from "../../services/cycleCountCommandClient";
 import { useAuth } from "../../auth/AuthContext";
 import {
@@ -41,6 +40,17 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // client-side COURTESY pre-disable computed from `submittedBy` on the line the server already sent --
 // the server remains the actual separation-of-duties enforcement (see the SoD test in
 // cycleCountsBlindReview.test.jsx, which asserts the SERVER's own refusal surfaces on the line).
+//
+// ============================ ON EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01) ============================
+//
+// Every read and command goes to POST /operations/cycle-count (services/cycleCountCommandClient.js); the warehouse
+// choices come from eos_ops (listInventoryWarehouses), never the Firestore `warehouses` read. Trucks are out of scope
+// (Truck Inventory is a separate journey), so a count is of a Warehouse here or of a Bin from Scan → Cycle count.
+//
+// SERIALIZED VARIANCE IS NOT CORRECTED HERE. The server adjusts a quantity line's approved variance with one ADJUSTED
+// movement, but it cannot stage a per-unit custody correction, so it refuses to APPROVE a serialized line whose counted
+// serials differ from the expected ones. A matching serialized line may be approved; a differing one may only be
+// rejected (and recounted) -- the screen offers exactly that and says why.
 
 const FILTERS = [
   { value: "OPEN", label: "Open" },
@@ -48,7 +58,7 @@ const FILTERS = [
   { value: "CANCELLED", label: "Cancelled" },
   { value: "", label: "All" },
 ];
-const TYPE_LABEL = { BIN: "Bin", WAREHOUSE: "Warehouse", MOBILE: "Truck" };
+const TYPE_LABEL = { BIN: "Bin", WAREHOUSE: "Warehouse" };
 const STATUS_TEXT = { OPEN: "Not counted", COUNTED: "Counted -- awaiting review", RECONCILED: "Approved", REJECTED: "Rejected", CANCELLED: "Removed" };
 
 export default function CycleCounts({ deps }) {
@@ -143,7 +153,7 @@ export default function CycleCounts({ deps }) {
                   <button type="button" className="fo-link-btn" onClick={() => setSelected(s.sheetId)}>
                     {TYPE_LABEL[s.location?.type] ?? "Location"} {s.locationLabel ?? s.location?.locationId}
                   </button>{" "}
-                  <span className="fo-muted">· {s.status} · started {new Date(s.createdAt).toLocaleString()}</span>
+                  <span className="fo-muted">· {s.status}{s.createdAt ? ` · started ${new Date(s.createdAt).toLocaleString()}` : ""}</span>
                 </li>
               ))}
             </ul>
@@ -158,27 +168,20 @@ export default function CycleCounts({ deps }) {
 function CreateSheetForm({ client, onCancel, onCreated }) {
   const [locationType, setLocationType] = useState("WAREHOUSE");
   const [locationId, setLocationId] = useState("");
-  const [options, setOptions] = useState({ loading: true, warehouses: [], trucks: [], warehousesError: null, trucksError: null });
+  const [options, setOptions] = useState({ loading: true, warehouses: [], warehousesError: null });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let live = true;
-    Promise.allSettled([fetchWarehouses(), fetchMobileLocationDocs()]).then(([w, t]) => {
-      if (!live) return;
-      setOptions({
-        loading: false,
-        warehousesError: w.status === "rejected" ? w.reason : null,
-        trucksError: t.status === "rejected" ? t.reason : null,
-        warehouses: (w.status === "fulfilled" && Array.isArray(w.value) ? w.value : []).map((x) => ({ id: x.id, label: x.name || x.id })),
-        trucks: (t.status === "fulfilled" && Array.isArray(t.value) ? t.value : []).filter((d) => d?.data?.active !== false).map((d) => ({ id: d.docId, label: d.data?.displayLabel || d.docId })),
-      });
-    });
+    fetchInventoryWarehouseOptions()
+      .then((rows) => { if (live) setOptions({ loading: false, warehousesError: null, warehouses: rows.map((x) => ({ id: x.id, label: x.name || x.id })) }); })
+      .catch((err) => { if (live) setOptions({ loading: false, warehousesError: err, warehouses: [] }); });
     return () => { live = false; };
   }, []);
 
-  const list = locationType === "MOBILE" ? options.trucks : options.warehouses;
-  const listError = locationType === "MOBILE" ? options.trucksError : options.warehousesError;
+  const list = options.warehouses;
+  const listError = options.warehousesError;
 
   return (
     <form className="fo-form" onSubmit={async (e) => {
@@ -194,7 +197,6 @@ function CreateSheetForm({ client, onCancel, onCreated }) {
         Where
         <select value={locationType} onChange={(e) => { setLocationType(e.target.value); setLocationId(""); }}>
           <option value="WAREHOUSE">Warehouse</option>
-          <option value="MOBILE">Truck</option>
         </select>
       </label>
       <label>
@@ -205,7 +207,7 @@ function CreateSheetForm({ client, onCancel, onCreated }) {
             {list.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </select>
         )}
-        {listError && <span className="fo-form-error" role="alert">{loadErrorMessage(listError, { entity: locationType === "MOBILE" ? "trucks" : "warehouses" })}</span>}
+        {listError && <span className="fo-form-error" role="alert">{loadErrorMessage(listError, { entity: "warehouses" })}</span>}
       </label>
       {error && <p className="fo-form-error" role="alert">{error}</p>}
       <div className="fo-form-actions">
@@ -375,6 +377,9 @@ function ReviewLine({ line, busy, selfSubmitted, onDecide }) {
     ? ((line.serialVariance?.missing?.length ?? 0) + (line.serialVariance?.unexpected?.length ?? 0)) > 0
     : line.variance !== 0;
   const needsReason = differs && reason.trim() === "";
+  // A serialized discrepancy cannot be adjusted on this platform (the server refuses SERIAL_VARIANCE_NOT_RECONCILABLE):
+  // only Reject is offered, so the screen never implies a custody correction it cannot make.
+  const serialDiffers = line.trackingMode === "SERIAL" && differs;
   // Client-side courtesy only (CC-D7: a disabled control states its reason) -- the server is the
   // actual separation-of-duties enforcement and refuses this regardless of what renders here.
   const locked = selfSubmitted;
@@ -382,11 +387,14 @@ function ReviewLine({ line, busy, selfSubmitted, onDecide }) {
     <form className="fo-inline-form fo-inline-form--stacked" onSubmit={(e) => e.preventDefault()}>
       <DictatableNote value={reason} onChange={setReason} label="Review reason" placeholder={differs ? "Reason (required)" : "Reason (optional)"} />
       <div className="fo-form-actions">
-        <button type="button" className="fo-transfer-action-btn" disabled={busy || needsReason || locked} onClick={() => onDecide(reason, "APPROVE")}>
-          {differs ? "Approve and adjust" : "Approve"}
-        </button>
+        {serialDiffers ? null : (
+          <button type="button" className="fo-transfer-action-btn" disabled={busy || needsReason || locked} onClick={() => onDecide(reason, "APPROVE")}>
+            {differs ? "Approve and adjust" : "Approve"}
+          </button>
+        )}
         <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={busy || needsReason || locked} onClick={() => onDecide(reason, "REJECT")}>Reject</button>
         {locked && <span className="fo-cc-disabled-reason">Needs another reviewer — you submitted this count.</span>}
+        {serialDiffers && <span className="fo-cc-disabled-reason">Serialized differences cannot be adjusted here. Reject this line and recount it.</span>}
       </div>
     </form>
   );

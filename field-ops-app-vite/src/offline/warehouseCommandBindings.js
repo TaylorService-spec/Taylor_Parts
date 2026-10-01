@@ -13,7 +13,8 @@
 // a guess with a warehouse on the other end:
 //
 //   receiving        per-line sha256 ledger key + receivingOrderDocId(idempotencyKey)
-//   put-away / pick  derivePlacementId(idempotencyKey, serial-or-part)
+//   put-away         srl_<sha256(idempotencyKey)> -- the EOS relocation (+ its placement) replays by intent
+//   pick             derivePlacementId(idempotencyKey, serial-or-part)
 //   transfer create  transferOrderDocId(idempotencyKey) + payload fingerprint
 //   dispatch         accepts REQUESTED *or* IN_TRANSIT; the already-dispatched path requires the
 //                    ledger effects to have replayed coherently or it throws
@@ -36,7 +37,7 @@ import { RECEIVING_OUTCOME } from "../domain/receivingTransport.js";
 import { transferCommandClient } from "../services/transferCommandClient.js";
 import { cycleCountCommandClient } from "../services/cycleCountCommandClient.js";
 import { returnCommandClient } from "../services/returnCommandClient.js";
-import { binCommandClient } from "../services/binCommandClient.js";
+import { placementClient } from "../services/placementClient.js";
 
 /** A thrown callable error, reduced to the shape the shared executor classifies. */
 const failureFrom = (err) => ({ ok: false, code: err?.code ?? null, details: err?.details ?? null });
@@ -48,7 +49,10 @@ export function createWarehouseBindings(deps = {}) {
   // Resolved AT CALL TIME so building the bindings touches no service export — a screen that never
   // syncs pays nothing, and a caller substituting one command is not forced to supply the rest.
   const receive = (...a) => (deps.submitCanonicalReceive ?? submitCanonicalReceive)(...a);
-  const putAway = (...a) => (deps.recordPutAway ?? binCommandClient.recordPutAway)(...a);
+  // EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): a put-away is the relocation that records
+  // the placement (POST /operations/relocation); a staged pick is the placement event (POST /operations/placement).
+  const putAway = (...a) => (deps.putAwayStock ?? deps.recordPutAway ?? placementClient.putAwayStock)(...a);
+  const pickStage = (...a) => (deps.recordPutAway ?? placementClient.recordPutAway)(...a);
   const transfer = deps.transferCommandClient ?? transferCommandClient;
   const cycleCount = deps.cycleCountCommandClient ?? cycleCountCommandClient;
   const returns = deps.returnCommandClient ?? returnCommandClient;
@@ -87,11 +91,11 @@ export function createWarehouseBindings(deps = {}) {
       } catch (err) { return failureFrom(err); }
     },
 
-    /** A placement. Records WHERE stock goes; creates none. */
+    /** A put-away: the stock moves from the warehouse into the bin (same warehouse; total unchanged), and is placed. */
     async [WAREHOUSE_INTENT.PUT_AWAY](intent) {
       try {
         const data = await putAway(intent.payload);
-        return { ok: true, replayed: data?.outcome === "replayed", serverIds: { placementId: data?.placementId ?? null } };
+        return { ok: true, replayed: data?.outcome === "replayed", serverIds: { relocationId: data?.relocationId ?? null } };
       } catch (err) { return failureFrom(err); }
     },
 
@@ -104,7 +108,7 @@ export function createWarehouseBindings(deps = {}) {
      */
     async [WAREHOUSE_INTENT.PICK_STAGE](intent) {
       try {
-        const data = await putAway(intent.payload);
+        const data = await pickStage(intent.payload);
         return { ok: true, replayed: data?.outcome === "replayed", serverIds: { placementId: data?.placementId ?? null } };
       } catch (err) { return failureFrom(err); }
     },

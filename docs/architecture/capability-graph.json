@@ -17,7 +17,7 @@
     "catalogInactive": 151,
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
-    "callableExports": 38,
+    "callableExports": 36,
     "destinations": 95,
     "destinationsHidden": 19,
     "guides": 0,
@@ -2137,15 +2137,17 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/eosOps/experienceAuthority.ts"
+          "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/partsReads.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/policyObjectRegistry.js"
+          "field-ops-app-vite/src/access/policyObjectRegistry.js",
+          "field-ops-app-vite/src/metadata/definitions/warehouse.js"
         ],
-        "serverReferenceCount": 3,
-        "clientReferenceCount": 3,
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -2189,14 +2191,15 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/eosOps/experienceAuthority.ts"
+          "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/partsReads.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3974,6 +3977,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
+          "functions/src/eosOps/partsReads.ts",
           "functions/src/eosOps/transferOperations.ts",
           "functions/src/inventoryTransfer/transferCallables.ts",
           "functions/src/inventoryTransfer/transferOrderCommand.ts"
@@ -3984,7 +3988,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/modules/scan/MoveStockScan.jsx"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4007,6 +4011,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
+          "functions/src/eosOps/partsReads.ts",
           "functions/src/eosOps/transferOperations.ts",
           "functions/src/inventoryTransfer/transferCallables.ts",
           "functions/src/inventoryTransfer/transferOrderCommand.ts"
@@ -4019,7 +4024,7 @@
           "field-ops-app-vite/src/modules/scan/MoveStockScan.jsx",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4042,6 +4047,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
+          "functions/src/eosOps/partsReads.ts",
           "functions/src/eosOps/transferOperations.ts",
           "functions/src/inventoryTransfer/transferCallables.ts",
           "functions/src/inventoryTransfer/transferOrderCommand.ts"
@@ -4053,7 +4059,7 @@
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4075,6 +4081,7 @@
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
+          "functions/src/eosOps/partsReads.ts",
           "functions/src/eosOps/transferOperations.ts",
           "functions/src/inventoryTransfer/transferCallables.ts",
           "functions/src/inventoryTransfer/transferOrderCommand.ts"
@@ -4084,7 +4091,7 @@
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -5077,25 +5084,6 @@
       "module": "./equipmentInstall/installCallables",
       "capabilityHints": [],
       "comment": "--- Equipment INSTALL (serialized asset -> customer Equipment) --- The only path that can put a unit into a customer's hands. `serialized_assets` is deny-all to every client and the LINK between an asset and its Equipment cannot be written from a browser at all, so without this callable the authorit"
-    },
-    {
-      "names": [
-        "acquireSerializedAssetCallable as acquireSerializedAsset"
-      ],
-      "module": "./serializedAsset/acquireCallables",
-      "capabilityHints": [
-        "acquireCallableWiring.ts"
-      ],
-      "comment": "--- NON-PO SERIALIZED ASSET ACQUISITION (ND-33) ---  The other end of the same story the block above tells. Installing puts a unit the company already holds into a customer's hands; this brings a unit the company ALREADY OWNS onto the books without a purchase — an opening balance, a legacy migration"
-    },
-    {
-      "names": [
-        "relocateStockCallable as relocateStock",
-        "listStockMovementLocationsCallable as listStockMovementLocations"
-      ],
-      "module": "./inventoryLocation/stockRelocationCallables.js",
-      "capabilityHints": [],
-      "comment": "BIN-P6 / Decision #170 -- same-Warehouse stock relocation (RELOCATION_OUT / RELOCATION_IN). Gated on inventory.stock.relocate, registered inert; BIN-P4 owns activation."
     },
     {
       "names": [

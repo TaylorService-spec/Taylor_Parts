@@ -31,6 +31,20 @@ const toLedgerTransaction = (m) => ({
 
 const COMPLETE = Object.freeze({ state: LEDGER_INTEGRITY_STATE.COMPLETE, reason: null, unavailablePartIds: Object.freeze([]), unreadableRows: 0, unattributableRows: 0 });
 
+/**
+ * The governed stock picture -- on-hand totals and movement history from the EOS reads, and the health analytics over
+ * them -- as one pure loader, so every surface that shows inventory truth (this hook; the Operations dashboard) uses the
+ * SAME reads and the SAME derivation. `{ transactions, healthEntries, integrity }`; rejects on a failed read.
+ */
+export async function loadEosInventoryHealth(deps = {}) {
+  const position = deps.fetchInventoryPosition ?? fetchInventoryPosition;
+  const movements = deps.fetchInventoryMovements ?? fetchInventoryMovements;
+  const [onHand, history] = await Promise.all([position({}), movements({})]);
+  const transactions = (history?.items ?? []).map(toLedgerTransaction);
+  const stockSnapshots = (onHand?.totals ?? []).map((t) => ({ partId: t.partId, availableStock: t.onHand }));
+  return { transactions, healthEntries: generateInventoryHealthDashboard(transactions, stockSnapshots), integrity: COMPLETE };
+}
+
 export function useInventoryLedger({ allowPartial = false, deps = {} } = {}) {
   void allowPartial; // the governed read is always COMPLETE; kept so existing callers need no change
   const [state, setState] = useState({ transactions: [], healthEntries: [], loading: true, error: null, integrity: null });
@@ -39,13 +53,10 @@ export function useInventoryLedger({ allowPartial = false, deps = {} } = {}) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([position({}), movements({})])
-      .then(([onHand, history]) => {
+    loadEosInventoryHealth({ fetchInventoryPosition: position, fetchInventoryMovements: movements })
+      .then(({ transactions, healthEntries, integrity }) => {
         if (cancelled) return;
-        const transactions = (history?.items ?? []).map(toLedgerTransaction);
-        const stockSnapshots = (onHand?.totals ?? []).map((t) => ({ partId: t.partId, availableStock: t.onHand }));
-        const healthEntries = generateInventoryHealthDashboard(transactions, stockSnapshots);
-        setState({ transactions, healthEntries, loading: false, error: null, integrity: COMPLETE });
+        setState({ transactions, healthEntries, loading: false, error: null, integrity });
       })
       .catch((err) => {
         if (!cancelled) setState({ transactions: [], healthEntries: [], loading: false, error: err, integrity: null });

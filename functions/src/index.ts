@@ -337,37 +337,16 @@ export {
   listReceivingLocationOptionsCallable as listReceivingLocationOptions,
 } from "./inventoryReceiving/receivingCallables";
 
-// --- Enterprise Inventory Phase 4 -- Transfer operating authority (functions/src/inventoryTransfer/*) ---
-// Every inventory.transfer.* capability is registered `active: false` and granted to NO Role, so every
-// principal is denied `noQualifyingGrant` until a later, separately-authorized grant + activation gate.
-// Exporting a callable is not deployment authorization by itself -- see receiveInventoryStock above.
-export {
-  createTransferOrderCallable as createTransferOrder,
-  dispatchTransferOrderCallable as dispatchTransferOrder,
-  receiveTransferOrderCallable as receiveTransferOrder,
-  cancelTransferOrderCallable as cancelTransferOrder,
-  // The technician's command-scoped read of IN_TRANSIT Transfers bound for their own truck
-  // (inventory.transfer.receive; no Rules change, no new capability).
-  listMyReceivableTransfersCallable as listMyReceivableTransfers,
-} from "./inventoryTransfer/transferCallables";
+// RETIRED FROM THE REPOSITORY (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the client is cut over to
+// EOS (/operations/transfer) and the Firestore writer is FROZEN; no caller remains (census). The deployed copies stay
+// RUNTIME-STALE until the bounded Firebase removal window -- tracked, not deleted by deploy here.
+//   createTransferOrder, dispatchTransferOrder, receiveTransferOrder, cancelTransferOrder, listMyReceivableTransfers
 
-// --- Enterprise Inventory -- Cycle Count: the A1 SHEET / LINE model (schema v2) + A4 durable reads ---
-// Decision #179. These are the ONLY callables that create or read cycle counts. The v1 single-part
-// callables (createCycleCount / submitCycleCount / reconcileCycleCount / cancelCycleCount) are NO LONGER
-// exported: v1 records are retired in place (M-1) and the v1 modules survive only as frozen Certification
-// tooling. A release that drops them must also delete the four deployed v1 functions (operator action).
-export {
-  createCycleCountSheetCallable as createCycleCountSheet,
-  openCycleCountLineCallable as openCycleCountLine,
-  submitCycleCountLineCallable as submitCycleCountLine,
-  reconcileCycleCountLineCallable as reconcileCycleCountLine,
-  cancelCycleCountLineCallable as cancelCycleCountLine,
-  cancelCycleCountSheetCallable as cancelCycleCountSheet,
-  closeCycleCountSheetCallable as closeCycleCountSheet,
-  listCycleCountSheetsCallable as listCycleCountSheets,
-  getCycleCountSheetCallable as getCycleCountSheet,
-  getCycleCountAssignedMobileLocationCallable as getCycleCountAssignedMobileLocation,
-} from "./cycleCount/cycleCountSheetCallables";
+// RETIRED FROM THE REPOSITORY (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the client is cut over to
+// EOS (/operations/cycle-count) and the Firestore writer is FROZEN; no caller remains (census). The deployed copies stay
+// RUNTIME-STALE until the bounded Firebase removal window -- tracked, not deleted by deploy here.
+//   createCycleCountSheet, openCycleCountLine, submitCycleCountLine, reconcileCycleCountLine, cancelCycleCountLine,
+//   cancelCycleCountSheet, closeCycleCountSheet, listCycleCountSheets, getCycleCountSheet, getCycleCountAssignedMobileLocation
 
 // --- Supplier Master (DECISIONS #78): trusted Supplier command callables ---
 // Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
@@ -496,7 +475,10 @@ export { installSerializedAssetCallable as installSerializedAsset } from "./equi
 // nothing exposed them; `acquireCallableWiring.ts` holds dependency resolvers, not a callable, and
 // an earlier claim that it was "wired" was wrong. EXPORT != DEPLOY — the sandbox Functions deploy
 // remains a separate Owner gate.
-export { acquireSerializedAssetCallable as acquireSerializedAsset } from "./serializedAsset/acquireCallables";
+// RETIRED FROM THE REPOSITORY (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the client is cut over to
+// EOS (/operations/serialized-asset) and the Firestore writer is FROZEN; no caller remains (census). The deployed copies stay
+// RUNTIME-STALE until the bounded Firebase removal window -- tracked, not deleted by deploy here.
+//   acquireSerializedAsset
 
 // --- Equipment install AT WORK ORDER CLOSEOUT (WO-01A) ---
 // The technician's path to the SAME equipment.install authority. Not a second install command: it
@@ -557,13 +539,15 @@ export {
   // the list -- it answers what createBin WOULD do, and writes nothing.
   previewBinCreatesCallable as previewBinCreates,
   listBinsCallable as listBins,
-  // Scanner Phase L. Gated on inventory.placement.record -- its own capability. Writes a placement
-  // record and nothing else: no ledger event, no quantity change, no balance (DECISIONS #116).
-  recordPutAwayCallable as recordPutAway,
+  // The put-away callable is RETIRED (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): put-away is EOS
+  // (/operations/placement, /operations/relocation); the deployed copy stays runtime-stale until the Firebase removal window.
 } from "./inventoryLocation/binCallables";
 // BIN-P6 / Decision #170 -- same-Warehouse stock relocation (RELOCATION_OUT / RELOCATION_IN).
 // Gated on inventory.stock.relocate, registered inert; BIN-P4 owns activation.
-export { relocateStockCallable as relocateStock, listStockMovementLocationsCallable as listStockMovementLocations } from "./inventoryLocation/stockRelocationCallables.js";
+// RETIRED FROM THE REPOSITORY (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the client is cut over to
+// EOS (/operations/relocation) and the Firestore writer is FROZEN; no caller remains (census). The deployed copies stay
+// RUNTIME-STALE until the bounded Firebase removal window -- tracked, not deleted by deploy here.
+//   relocateStock, listStockMovementLocations
 
 // --- Shared inventory BALANCE read (Scanner Phase H, general-purpose) ---
 // Gated on `inventory.balance.read`, registered INERT and granted to nobody, so it denies for every

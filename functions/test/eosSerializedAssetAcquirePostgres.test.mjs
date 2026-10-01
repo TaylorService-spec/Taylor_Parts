@@ -20,6 +20,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -46,7 +47,8 @@ async function withClient(url, fn) {
 
 test("the fence: acquire is Administration-grant-only", () => {
   assert.equal(ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(CAP), true);
-  assert.deepEqual({ ...ACQUIRE_WRITER_AUTHORITY }, { firestore: "OPEN", postgres: "INACTIVE" });
+  // ACTIVATED (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01), gated per tenant by the baseline certification.
+  assert.deepEqual({ ...ACQUIRE_WRITER_AUTHORITY }, { firestore: "FROZEN", postgres: "ACTIVE" });
 });
 
 test("DQ-036(b): acquire-existing-unit on EOS", { skip: SKIP, concurrency: 1 }, async (t) => {
@@ -65,6 +67,7 @@ test("DQ-036(b): acquire-existing-unit on EOS", { skip: SKIP, concurrency: 1 }, 
   const count = async (sql, v = []) => Number((await q(sql, v)).rows[0].n);
 
   const { tenant } = await bootstrapTenant(repo, { key: "dq036b", name: "dq036b", actorUid: OP });
+  await certifyInventoryBaselineFixture((sql, v) => pool.query(sql, v), tenant.id); // the writer gate (inventoryBaselineGate.ts)
   const T = tenant.id;
   await bootstrapAdministrator(repo, { tenantId: T, externalSubject: "admin", performedBy: OP, reason: "boot" });
   const admin = (op, input) => executeAdminOperation({ repo }, { caller: { externalSubject: "admin", identityProvider: "firebase" }, operation: op, input, requestId: `r-${op}` });
@@ -135,8 +138,8 @@ test("DQ-036(b): acquire-existing-unit on EOS", { skip: SKIP, concurrency: 1 }, 
     assert.deepEqual(await holders(), []);
   });
 
-  await t.test("NOT_ACTIVATED by default, before anything is read or written", async () => {
-    refused(await call("p-partsAssociate", req("SN-0"), { state: null }), 503, "NOT_ACTIVATED");
+  await t.test("an INACTIVE state refuses NOT_ACTIVATED before anything is read or written", async () => {
+    refused(await call("p-partsAssociate", req("SN-0"), { state: "INACTIVE" }), 503, "NOT_ACTIVATED");
   });
 
   await t.test("before the packet every persona is refused", async () => {

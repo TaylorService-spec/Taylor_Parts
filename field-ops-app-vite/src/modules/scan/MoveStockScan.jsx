@@ -14,7 +14,7 @@ import {
   resultFromResponse, resultFromError, LINE_RESULT, FAILURE_TEXT, summarizeBatch, retryableLines,
   binScanRequest, endpointFromBinResolution, warehouseEndpoint,
 } from "../../domain/stockMovementSession.js";
-import { binCommandClient } from "../../services/binCommandClient.js";
+import { inventoryLocationClient } from "../../services/inventoryLocationClient.js";
 import { stockMovementClient } from "../../services/stockMovementClient.js";
 import { transferCommandClient } from "../../services/transferCommandClient.js";
 import { lookupScannedPart } from "../../services/partAliasCallableClient.js";
@@ -101,10 +101,11 @@ export default function MoveStockScan({ deps }) {
   const canPlace = holds("inventory.placement.record");
   const canSendToTruck = holds("inventory.transfer.create") && holds("inventory.transfer.dispatch");
 
-  // Warehouses come from the server (listStockMovementLocations, relocate + bin.read), not a client
-  // `warehouses` read -- firestore.rules admit that only for managers, and this screen is for associates.
+  // Warehouses and bins come from the governed EOS reads (listInventoryWarehouses / listInventoryLocations: the
+  // caller's WAREHOUSE-scoped eos_ops masters), never a client Firestore read; the relocation itself is POST
+  // /operations/relocation (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01). No Firebase call.
   const loadWarehouses = deps?.fetchWarehouses ?? stockMovementClient.listWarehouses;
-  const binClient = deps?.binClient ?? binCommandClient;
+  const binClient = deps?.binClient ?? inventoryLocationClient;
   // The scanner's ONE governed Part read (shared with Lookup): the <=3 Parts a scan names, never the
   // whole catalogue, and never a client-direct `parts` read.
   const lookupPart = deps?.lookupPart ?? lookupScannedPart;
@@ -178,7 +179,7 @@ export default function MoveStockScan({ deps }) {
       setter(endpoint);
       return FEEDBACK.ACCEPTED;
     } catch (err) {
-      if (alive.current) setNotice(err?.code === "functions/permission-denied" ? "You are not authorized to look up bins." : "The bin could not be checked. Try again.");
+      if (alive.current) setNotice(err?.code === "functions/permission-denied" || err?.code === "permission-denied" ? "You are not authorized to look up bins." : "The bin could not be checked. Try again.");
       return FEEDBACK.REJECTED;
     }
   }, [resolveBinEndpoint]);

@@ -1,13 +1,24 @@
-// Cycle Count -- thin httpsCallable transport for the A1 SHEET / LINE command family and the A4 durable
-// reads (functions/src/cycleCount/cycleCountSheetCallables.ts, Decision #179). Builds nothing and decides
-// nothing: request shaping is domain/cycleCountCommandRequest.js, and every call is re-authorized server-side.
+// Cycle Count -- the EOS transport (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01).
 //
-// The v1 single-part callables (createCycleCount / submitCycleCount / ...) are gone from the backend; this
-// client does not name them.
-import { httpsCallable } from "firebase/functions";
-import { functions } from "../firebase/firebase";
+// WAS a thin httpsCallable transport over the Firebase sheet / line callables. The authority moved to PostgreSQL:
+// POST /operations/cycle-count (functions/src/eosOps/cycleCountOperations.ts). The SAME method names and the SAME
+// request shapes (domain/cycleCountCommandRequest.js builds them); the server re-authorizes every call (capability +
+// Warehouse Operations eligibility + WAREHOUSE scope) and owns the blind rule, the separation of duties and the
+// governed ADJUSTED movement. This module only adapts the EOS projection to the shape the screens already render:
+//
+//   * createCycleCountSheet answers { outcome, sheet }; the screens read the sheet's own fields (sheetId, location).
+//   * getCycleCountSheet answers { sheet, lines } in one read (no cursor).
+//   * a SERIAL line's missing / unexpected serials are derived from the expected and counted serials the server
+//     revealed for a SUBMITTED line -- the same two lists, never an invented figure.
+//
+// TRUCKS ARE OUT OF SCOPE (Controller: Truck Inventory is a separate journey). The Firebase
+// `getCycleCountAssignedMobileLocation` read is not carried over, so the scan screen's technician-truck branch stays
+// dormant (it is optional-chained on the client) and counting is WAREHOUSE / BIN only.
+//
+// No Firebase fallback: a refusal (NOT_ACTIVATED included) is thrown as the platform's answer.
+import { EOS_OPERATIONS_ROUTES, eosOperationOrThrow } from "./eosOperationsClient.js";
 
-export const CYCLE_COUNT_CALLABLES = Object.freeze({
+export const CYCLE_COUNT_OPERATIONS = Object.freeze({
   createSheet: "createCycleCountSheet",
   openLine: "openCycleCountLine",
   submitLine: "submitCycleCountLine",
@@ -17,24 +28,48 @@ export const CYCLE_COUNT_CALLABLES = Object.freeze({
   closeSheet: "closeCycleCountSheet",
   listSheets: "listCycleCountSheets",
   getSheet: "getCycleCountSheet",
-  // TECHNICIAN MOBILE FLOW: "which truck is mine?" -- reuses the SAME governed truck-assignment
-  // resolver Transfer discovery uses (readAssignedMobileLocation); a narrow projection of the
-  // caller's own already-governed assignment, not a new authority. Requires the SAME counter
-  // capability pair (create + submit) the client's own scanWorkflows.js gate uses.
-  getAssignedMobileLocation: "getCycleCountAssignedMobileLocation",
 });
 
-const call = (name, payload) => httpsCallable(functions, name)(payload).then((res) => res?.data);
+const call = (operation, input) => eosOperationOrThrow(EOS_OPERATIONS_ROUTES.CYCLE_COUNT, operation, input, { serviceLabel: "the cycle count service" });
+
+/** Missing / unexpected serials of a revealed SERIAL line. Pure; exported for tests. */
+export function withSerialVariance(line) {
+  if (!line || line.trackingMode !== "SERIAL" || !Array.isArray(line.expectedSerialNumbers)) return line;
+  const counted = new Set(line.countedSerialNumbers ?? []);
+  const expected = new Set(line.expectedSerialNumbers);
+  return Object.freeze({
+    ...line,
+    serialVariance: Object.freeze({
+      missing: line.expectedSerialNumbers.filter((s) => !counted.has(s)),
+      unexpected: (line.countedSerialNumbers ?? []).filter((s) => !expected.has(s)),
+    }),
+  });
+}
 
 export const cycleCountCommandClient = Object.freeze({
-  createCycleCountSheet: (request) => call(CYCLE_COUNT_CALLABLES.createSheet, request),
-  openCycleCountLine: (request) => call(CYCLE_COUNT_CALLABLES.openLine, request),
-  submitCycleCountLine: (request) => call(CYCLE_COUNT_CALLABLES.submitLine, request),
-  reconcileCycleCountLine: (request) => call(CYCLE_COUNT_CALLABLES.reconcileLine, request),
-  cancelCycleCountLine: (request) => call(CYCLE_COUNT_CALLABLES.cancelLine, request),
-  cancelCycleCountSheet: (request) => call(CYCLE_COUNT_CALLABLES.cancelSheet, request),
-  closeCycleCountSheet: (request) => call(CYCLE_COUNT_CALLABLES.closeSheet, request),
-  listCycleCountSheets: (request = {}) => call(CYCLE_COUNT_CALLABLES.listSheets, request),
-  getCycleCountSheet: (request) => call(CYCLE_COUNT_CALLABLES.getSheet, request),
-  getCycleCountAssignedMobileLocation: () => call(CYCLE_COUNT_CALLABLES.getAssignedMobileLocation, {}),
+  createCycleCountSheet: async (request) => {
+    const out = await call(CYCLE_COUNT_OPERATIONS.createSheet, request);
+    return Object.freeze({ ...(out?.sheet ?? {}), outcome: out?.outcome ?? null });
+  },
+  openCycleCountLine: async (request) => {
+    const out = await call(CYCLE_COUNT_OPERATIONS.openLine, request);
+    return Object.freeze({ ...out, line: withSerialVariance(out?.line) });
+  },
+  submitCycleCountLine: async (request) => {
+    const out = await call(CYCLE_COUNT_OPERATIONS.submitLine, request);
+    return Object.freeze({ ...out, status: out?.line?.status ?? null, line: withSerialVariance(out?.line) });
+  },
+  reconcileCycleCountLine: (request) => call(CYCLE_COUNT_OPERATIONS.reconcileLine, request),
+  cancelCycleCountLine: (request) => call(CYCLE_COUNT_OPERATIONS.cancelLine, request),
+  cancelCycleCountSheet: (request) => call(CYCLE_COUNT_OPERATIONS.cancelSheet, request),
+  closeCycleCountSheet: (request) => call(CYCLE_COUNT_OPERATIONS.closeSheet, request),
+  // The EOS list is one scope-filtered page (cap 200, `truncated` disclosed); there is no cursor to follow.
+  listCycleCountSheets: async (request = {}) => {
+    const out = await call(CYCLE_COUNT_OPERATIONS.listSheets, request.status ? { status: request.status } : {});
+    return Object.freeze({ sheets: out?.sheets ?? [], nextCursor: null, truncated: out?.truncated === true });
+  },
+  getCycleCountSheet: async (request) => {
+    const out = await call(CYCLE_COUNT_OPERATIONS.getSheet, { sheetId: request.sheetId });
+    return Object.freeze({ sheet: out?.sheet ?? null, lines: (out?.lines ?? []).map(withSerialVariance), nextCursor: null });
+  },
 });

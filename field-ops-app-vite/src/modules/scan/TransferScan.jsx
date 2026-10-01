@@ -6,8 +6,6 @@ import { transferCommandClient } from "../../services/transferCommandClient.js";
 import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
 import { captureTransferDispatch, captureTransferReceive } from "../../offline/warehouseIntent.js";
 import { useTransferOrders } from "../../hooks/useTransferOrders";
-import { useMyReceivableTransfers } from "../../hooks/useMyReceivableTransfers.js";
-import { TRANSFER_DISPATCH_CAPABILITY } from "../../access/scanWorkflows.js";
 import {
   buildTransferVerification,
   classifyObservation,
@@ -36,20 +34,16 @@ import {
 //
 // ============================ WHICH READ LISTS THE ORDERS ============================
 //
-// Two reads, chosen by who is holding the device -- never widening either audience:
+// ONE read: the governed EOS list (useTransferOrders -> listTransferOrders), which already holds only the transfers
+// whose origin or destination warehouse is in the caller's WAREHOUSE scope (Controller INVENTORY / WAREHOUSE
+// COMPLETION RULINGS, 2026-10-01). The technician-truck read (listMyReceivableTransfers) is NOT carried over: truck
+// transfers belong to the separate Truck Inventory journey.
 //
-//   - A TECHNICIAN WHO ONLY RECEIVES (a linked technician without dispatch authority) gets the trusted
-//     listMyReceivableTransfers read: IN_TRANSIT transfers bound for THEIR OWN truck, resolved by the
-//     server from auth. The client `transfer_orders` read is never issued for them -- Rules deny it,
-//     which is exactly the gap that left a receive grant with nothing to receive.
-//   - EVERYONE ELSE keeps useTransferOrders, the same authorized `transfer_orders` read the
-//     Operations surface uses, unchanged.
+// ============================ THE SERVER DECIDES ============================
 //
-// ============================ INERT TODAY ============================
-//
-// Every inventory.transfer.* capability is registered active:false and granted to no Role, so a real
-// submission resolves permission-denied server-side. This surface does not hide that: it renders the
-// refusal as a refusal, never as a fabricated success and never as "nothing to transfer".
+// Dispatch and receive go to POST /operations/transfer. Each is re-authorized there (capability, Warehouse
+// Operations eligibility, WAREHOUSE scope over the end being acted on) and a refusal -- "not switched on yet"
+// included -- is rendered as a refusal, never as a fabricated success and never as "nothing to transfer".
 
 const BLOCKER_TEXT = Object.freeze({
   [BLOCKED_REASON.NOT_ACTIONABLE]: "This transfer is not waiting for anything right now.",
@@ -82,33 +76,13 @@ const ACTION_LABEL = Object.freeze({
   [TRANSFER_ACTION.RECEIVE]: "Receive this transfer",
 });
 
-const TRANSFER_LIST_SOURCE = Object.freeze({
-  INJECTED: "INJECTED",
-  PENDING: "PENDING",
-  MY_TRUCK: "MY_TRUCK",
-  SHARED: "SHARED",
-});
-
-/**
- * Which read lists the transfers, from facts the shell already resolved: the capability gate and the
- * technician mapping (the same users/{uid}.technicianId the server resolves). A holder of dispatch
- * authority keeps the shared read -- they send transfers, and the truck read would hide those.
- */
-function transferListSource(deps) {
-  if (deps?.orders) return TRANSFER_LIST_SOURCE.INJECTED;
-  if (deps?.technicianLoading) return TRANSFER_LIST_SOURCE.PENDING;
-  let dispatches = false;
-  try { dispatches = typeof deps?.hasCapability === "function" && deps.hasCapability(TRANSFER_DISPATCH_CAPABILITY) === true; } catch { dispatches = false; }
-  return deps?.technicianId && !dispatches ? TRANSFER_LIST_SOURCE.MY_TRUCK : TRANSFER_LIST_SOURCE.SHARED;
-}
-
 export default function TransferScan({ deps }) {
-  const source = transferListSource(deps);
-  if (source === TRANSFER_LIST_SOURCE.PENDING) return <p className="fo-muted" role="status">Loading transfers…</p>;
-  if (source === TRANSFER_LIST_SOURCE.MY_TRUCK) return <MyTruckTransfers deps={deps} />;
-  if (source === TRANSFER_LIST_SOURCE.INJECTED) return <TransferFlow deps={deps} orders={deps.orders} />;
+  if (deps?.orders) return <TransferFlow deps={deps} orders={deps.orders} />;
   return <SharedTransfers deps={deps} />;
 }
+
+/** A { docId, data } row of the governed list as the flat order this screen works with. */
+const flatOrder = (row) => (row && row.data ? { transferOrderId: row.docId, ...row.data } : row);
 
 function SharedTransfers({ deps }) {
   const live = useTransferOrders(deps?.accessVersion ?? null, 0);
@@ -122,40 +96,9 @@ function SharedTransfers({ deps }) {
   // slice must not be presented as "no transfers are waiting".
   return (
     <TransferFlow
-      deps={deps} orders={live.transferOrderDocs} loading={live.loading} failureText={failureText}
+      deps={deps} orders={(live.transferOrderDocs ?? []).map(flatOrder)} loading={live.loading} failureText={failureText}
       more={live.transferOrdersTruncated === true}
       moreText="Not every transfer order could be listed here, so some waiting transfers may not appear."
-    />
-  );
-}
-
-/** Why the truck list could not be shown -- each its own sentence, never "nothing incoming". */
-function myTruckFailureText({ code, detail }) {
-  if (code === "permission-denied") return "You are not authorized to receive transfers.";
-  if (detail === "NO_TRUCK_ASSIGNMENT") return "No active truck is assigned to you, so there is nothing to receive onto. A dispatcher can assign your truck.";
-  if (detail === "TRUCK_ASSIGNMENT_AMBIGUOUS") return "More than one truck is assigned to you. Nothing can be received until a dispatcher corrects that.";
-  if (detail === "TECHNICIAN_IDENTITY_UNAVAILABLE") return "This account is not linked to a technician, so it has no truck to receive onto.";
-  if (detail === "MALFORMED_STORED_RECORD") return "A transfer bound for your truck could not be read, so the list cannot be shown. Report it to a dispatcher.";
-  if (code === "unavailable" || (typeof navigator !== "undefined" && navigator.onLine === false)) {
-    return "You are offline. Incoming transfers need a connection to load.";
-  }
-  return "Incoming transfers could not be loaded right now. Nothing has been lost.";
-}
-
-function MyTruckTransfers({ deps }) {
-  const mine = useMyReceivableTransfers(deps?.transferClient ?? transferCommandClient);
-  return (
-    <TransferFlow
-      deps={deps}
-      orders={mine.orders}
-      loading={mine.loading}
-      failureText={mine.failure ? myTruckFailureText(mine.failure) : null}
-      onRetry={mine.retry}
-      heading={`Incoming to ${mine.truck?.label ?? "your truck"}`}
-      emptyText="Nothing is on its way to your truck right now."
-      more={mine.more}
-      // Back from a transfer re-reads: a receipt just made, or one made elsewhere, leaves the list.
-      onReturn={mine.retry}
     />
   );
 }

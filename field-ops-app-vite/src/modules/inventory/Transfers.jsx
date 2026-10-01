@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTransferOrders } from "../../hooks/useTransferOrders";
 import { useTransferActions } from "../../hooks/useTransferActions";
-import { fetchMobileLocationDocs } from "../../services/truckRegistryQueries";
 import { buildTransferOrdersView } from "../operations/transferOrdersViewModel";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import {
@@ -25,19 +24,18 @@ import EmptyState from "../../shared/ui/EmptyState";
 import TransferOrderForm from "./TransferOrderForm";
 import { Button } from "../../shared/ui/primitives/index.js";
 
-// Inventory > Transfers -- the operating workspace for the governed Transfer command family
-// (functions/src/inventoryTransfer/*). It REUSES the shared read (useTransferOrders ->
-// operationsQueries) and the CANONICAL view-model (buildTransferOrdersView -- the same one the
-// Operations dashboard uses) for display, then adds New Transfer / Dispatch / Receive / Cancel
-// actions through useTransferActions -> services/transferCommandClient (the four onCall
-// createTransferOrder/dispatchTransferOrder/receiveTransferOrder/cancelTransferOrder exports).
+// Inventory > Transfers -- the operating workspace for the governed Transfer command family, now on
+// EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the read is the governed
+// PostgreSQL list (useTransferOrders -> listTransferOrders + listInventoryWarehouses) shaped by the
+// CANONICAL view-model (buildTransferOrdersView), and New Transfer / Dispatch / Receive / Cancel go
+// through useTransferActions -> services/transferCommandClient -> POST /operations/transfer. No
+// Firestore read, no Firebase callable, no fallback. Truck endpoints are out of scope here.
 //
-// HONEST POSTURE: every inventory.transfer.* capability is registered `active: false` and granted
-// to NO Role today, so every real action attempt resolves `permission-denied` server-side. The
-// controls render (so the workspace is reviewable and ready for the day the grant lands) but every
-// call is re-authorized by the trusted backend regardless of what this UI shows -- there is no
-// client-side bypass. A denied action surfaces the honest mapped message, never a fabricated
-// success.
+// HONEST POSTURE: every call is re-authorized by the EOS server (the transfer capability for that act,
+// Warehouse Operations eligibility, and WAREHOUSE scope over the ORIGIN for create / dispatch / cancel
+// and over the DESTINATION for receive) regardless of what this UI shows -- there is no client-side
+// bypass. A refused action (including "not switched on yet") surfaces the server's mapped message,
+// never a fabricated success and never a retry against another system.
 //
 // Access: the Inventory > Transfers nav item is admin/dispatcher (PLACEHOLDER_DEFAULT_ROLES),
 // matching the transfer_orders read rule's common path; a denied read fails closed to a
@@ -71,26 +69,6 @@ export default function Transfers({ accessVersion }) {
     () => (Array.isArray(read.warehouses) ? read.warehouses : []).map((w) => ({ id: w.id, label: w.name || w.id })),
     [read.warehouses],
   );
-  const [truckLocations, setTruckLocations] = useState({ loading: true, failed: false, options: [] });
-  useEffect(() => {
-    let cancelled = false;
-    fetchMobileLocationDocs()
-      .then((docs) => {
-        if (cancelled) return;
-        const options = docs
-          .filter((d) => d?.data?.active !== false)
-          .map((d) => ({ id: d.docId, label: d.data?.displayLabel || d.docId }));
-        setTruckLocations({ loading: false, failed: false, options });
-      })
-      .catch(() => {
-        // A failed read is FAILED, not an empty fleet -- the form says so next to the Truck select.
-        if (!cancelled) setTruckLocations({ loading: false, failed: true, options: [] });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshKey]);
-
   const intro = <p className="fo-muted">Track inventory moving between locations — what's in transit, where from and to, and for which part.</p>;
 
   // THE AUTHORITY NOTICE BELONGS WITH THE CONTROLS, not on a loading or error screen.
@@ -166,8 +144,6 @@ export default function Transfers({ accessVersion }) {
       {showForm && (
         <TransferOrderForm
           warehouseOptions={warehouseOptions}
-          truckOptions={truckLocations.options}
-          truckOptionsStatus={truckLocations.loading ? "loading" : truckLocations.failed ? "failed" : "ready"}
           submitting={busyId === "create"}
           onCancel={() => setShowForm(false)}
           onSubmit={async (draft) => {

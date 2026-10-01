@@ -6,7 +6,11 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // the governed createTransferOrder command re-validates everything authoritatively (Part authority,
 // origin/destination active-ness, on-hand/SERIAL-availability sufficiency). This form only shapes the
 // request; it never decides whether the transfer is actually legal.
-export default function TransferOrderForm({ warehouseOptions, truckOptions, truckOptionsStatus = "ready", submitting, onSubmit, onCancel }) {
+//
+// WAREHOUSE ENDPOINTS ONLY (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): truck transfers belong to
+// the separate Truck Inventory journey, so the Truck choice is not offered. The locations are the caller's governed
+// warehouses from eos_ops (listInventoryWarehouses), never the Firestore `warehouses` / `mobile_locations` reads.
+export default function TransferOrderForm({ warehouseOptions, submitting, onSubmit, onCancel }) {
   const [draft, setDraft] = useState({
     partId: "",
     quantity: "1",
@@ -18,13 +22,7 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions, truc
   });
   const [errors, setErrors] = useState({});
 
-  const locationOptions = (type) => (type === "WAREHOUSE" ? warehouseOptions : truckOptions);
-  // A truck list that is still loading, or could not be read, is NOT "no trucks": an empty Truck
-  // select with no explanation is indistinguishable from a fleet with nothing in it.
-  const truckNotice = (type) => (type !== "MOBILE" ? null
-    : truckOptionsStatus === "loading" ? "Trucks are still loading…"
-      : truckOptionsStatus === "failed" ? "Trucks could not be loaded, so a truck cannot be chosen right now."
-        : null);
+  const locationOptions = () => warehouseOptions ?? [];
 
   function set(field, value) {
     setDraft((prev) => ({ ...prev, [field]: value }));
@@ -58,7 +56,6 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions, truc
         <div className="fo-form-row">
           <select aria-label="Origin type" value={draft.originType} onChange={(e) => set("originType", e.target.value)} disabled={submitting}>
             <option value="WAREHOUSE">Warehouse</option>
-            <option value="MOBILE">Truck</option>
           </select>
           <select aria-label="Origin location" value={draft.originLocationId} onChange={(e) => set("originLocationId", e.target.value)} disabled={submitting} required>
             <option value="">Select…</option>
@@ -67,7 +64,6 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions, truc
             ))}
           </select>
         </div>
-        {truckNotice(draft.originType) && <p className="fo-muted" role="status">{truckNotice(draft.originType)}</p>}
         {errors.originType && <span className="fo-form-error" role="alert">{errors.originType}</span>}
         {errors.originLocationId && <span className="fo-form-error" role="alert">{errors.originLocationId}</span>}
       </fieldset>
@@ -77,7 +73,6 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions, truc
         <div className="fo-form-row">
           <select aria-label="Destination type" value={draft.destinationType} onChange={(e) => set("destinationType", e.target.value)} disabled={submitting}>
             <option value="WAREHOUSE">Warehouse</option>
-            <option value="MOBILE">Truck</option>
           </select>
           <select aria-label="Destination location" value={draft.destinationLocationId} onChange={(e) => set("destinationLocationId", e.target.value)} disabled={submitting} required>
             <option value="">Select…</option>
@@ -86,7 +81,6 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions, truc
             ))}
           </select>
         </div>
-        {truckNotice(draft.destinationType) && <p className="fo-muted" role="status">{truckNotice(draft.destinationType)}</p>}
         {errors.destinationType && <span className="fo-form-error" role="alert">{errors.destinationType}</span>}
         {errors.destinationLocationId && <span className="fo-form-error" role="alert">{errors.destinationLocationId}</span>}
       </fieldset>

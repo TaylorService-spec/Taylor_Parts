@@ -247,8 +247,10 @@ test("the three readiness gates are FALSE everywhere except receiving in the san
       if (r[key] === true) ready.push(`${env.id}.${key}`);
     }
   }
-  // Exactly one flip exists anywhere, and it is the sandbox's receiving transport.
-  assert.deepEqual(ready, ["platform-sandbox.RECEIVING_TRANSPORT_READY"]);
+  // NO flip exists anywhere. The sandbox's canonical supplier-PO receiving transport was the one flip, and it is now gated OFF
+  // explicitly (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01, DQ-034: canonical PO data is empty in nonprod;
+  // the domain is kept, not deleted). Reorder-PO receiving is EOS and does not read this flag.
+  assert.deepEqual(ready, []);
 });
 
 test("every readiness key the scanner reads is REQUIRED of every environment", () => {
@@ -267,13 +269,16 @@ test("every scanner callable is EXPORTED — export is not deployment, but a mis
   const required = [
     "receiveInventoryStock", "getPurchaseOrderReceivingProgress", "listReceivablePurchaseOrders",
     "resolveScannedPartIdentifier", "getPartBalance", "getAvailableEquipment", "getLocationDisplay",
-    "createBin", "resolveBin", "listBins", "recordPutAway", "recordReturnIntake",
-    "dispatchTransferOrder", "receiveTransferOrder",
-    // Cycle Count A1 (Decision #179): the sheet/line callables replaced the v1 single-part pair.
-    "createCycleCountSheet", "openCycleCountLine", "submitCycleCountLine", "getCycleCountSheet",
-    // The scanner's governed reads (Decision #179).
-    "relocateStock",
+    "createBin", "resolveBin", "listBins", "recordReturnIntake",
+    // RETIRED from this list (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): recordPutAway,
+    // dispatchTransferOrder, receiveTransferOrder, the Cycle Count sheet/line callables and relocateStock. The scanner now
+    // reaches the EOS writers (/operations/placement, /relocation, /transfer, /cycle-count); their Firebase exports are
+    // retired from index.ts and must NOT come back (asserted below).
   ];
+  for (const retired of ["recordPutAway", "dispatchTransferOrder", "receiveTransferOrder", "createCycleCountSheet", "openCycleCountLine",
+    "submitCycleCountLine", "getCycleCountSheet", "relocateStock", "acquireSerializedAsset"]) {
+    assert.doesNotMatch(index, new RegExp(`(\\bas ${retired}\\b|export \\{[^}]*\\b${retired}\\b)`), `${retired} is retired to EOS and must not be re-exported`);
+  }
   for (const name of required) {
     // Matched as an EXPORT binding (`as name` or `export { name`), never a word in a comment.
     assert.match(index, new RegExp(`(\\bas ${name}\\b|export \\{[^}]*\\b${name}\\b)`), `${name} must be exported from functions/src/index.ts`);

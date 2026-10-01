@@ -17,11 +17,11 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s
 test("marked as the migration-only exception; allowlist is EXACTLY the enumerated evidence", () => {
   assert.equal(ex.FIREBASE_EXIT_MIGRATION_ONLY, "FIREBASE_EXIT_MIGRATION_ONLY");
   assert.match(readFileSync(EXPORTER, "utf8").split("\n")[0], /^\/\/ FIREBASE_EXIT_MIGRATION_ONLY$/);
-  assert.deepEqual(Object.values(ex.SOURCE_COLLECTIONS), ["cycle_counts", "inventory_transactions", "transfer_orders"]);
+  assert.deepEqual(Object.values(ex.SOURCE_COLLECTIONS), ["cycle_counts", "inventory_transactions", "transfer_orders", "serialized_assets", "warehouses"]);
   const evidence = JSON.parse(readFileSync("../docs/architecture/inventory-snapshot-export-evidence.json", "utf8"));
   assert.deepEqual(evidence.collections.map((c) => [c.snapshotKey, c.collection]), Object.entries(ex.SOURCE_COLLECTIONS));
   assert.equal(evidence.executionStatus, "NOT_EXECUTED");
-  for (const other of ["serialized_assets", "warehouses", "parts", "users", "cycle_counts/x/lines", ""]) assert.throws(() => ex.assertAllowlisted(other), /not an allowlisted/);
+  for (const other of ["bins", "trucks", "parts", "users", "cycle_counts/x/lines", ""]) assert.throws(() => ex.assertAllowlisted(other), /not an allowlisted/);
 });
 
 test("READ ONLY: collection reads only, every read through the allowlist, never overwritten", () => {

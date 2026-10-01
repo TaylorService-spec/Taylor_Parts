@@ -48,6 +48,7 @@ import { isSafeIdSegment } from "../inventoryLocation/binRegistry.js";
 import type { PostgresRelocationWriterState } from "../inventoryLocation/stockRelocationWriterState.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import { EOS_PLACEMENT_RECORD_CAPABILITY, insertPlacements, planPlacements, readPlacements } from "./binPlacementOperations.js";
+import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -223,6 +224,8 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
   if (deps.postgresState !== "ACTIVE") {
     refuse("NOT_ACTIVATED", "NOT_ACTIVATED", "EOS stock relocation is not activated in this environment; relocations still run on the current system");
   }
+  // The cutover fails closed until the tenant's legacy baseline is CERTIFIED (inventoryBaselineGate.ts).
+  if (!(await isInventoryBaselineCertified(deps.pool, actor.tenantId))) refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
   const validated = validateEosRelocationRequest(input);
   if (!validated.valid) return refuse("INVALID", "INVALID_INPUT", validated.reason);
   const req = validated.value;

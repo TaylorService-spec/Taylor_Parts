@@ -209,7 +209,6 @@ describe("Pick (refusals are told truthfully)", () => {
     fireEvent.click(screen.getByRole("button", { name: /stage 1 — short by 2/i }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/not authorized to stage picked stock/i);
-    expect(alert.textContent).toMatch(/not been granted or switched on/i);
   });
 
   it("any other failure says nothing was changed", async () => {

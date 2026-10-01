@@ -2,19 +2,13 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import {
-  fetchInventoryTransactions,
-  fetchWarehouses,
-  fetchTransferOrderDocs,
   fetchSuppliers,
   fetchSupplierCatalog,
   fetchProcurementPurchaseOrders,
 } from "../../services/operationsQueries";
-import {
-  normalizeLedgerTransaction,
-  generateInventoryHealthDashboard,
-  computeAvailableStockByPart,
-} from "../../domain/inventoryAnalyticsEngine";
-import { partitionLedgerIntegrity } from "../../domain/ledgerRowIntegrity.js";
+import { loadEosInventoryHealth } from "../../hooks/useInventoryLedger.js";
+import { fetchInventoryWarehouseOptions } from "../../services/inventoryLocationClient.js";
+import { listTransferOrderDocs } from "../../services/transferCommandClient.js";
 import { generateProcurementDrafts } from "../../domain/procurementDraftEngine";
 import {
   getInventoryConsumptionSnapshot,
@@ -85,10 +79,15 @@ export default function Operations({ accessVersion } = {}) {
   useEffect(() => {
     let cancelled = false;
 
+    // INVENTORY TRUTH IS EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): stock health from the
+    // PostgreSQL on-hand / movement reads (the same loader useInventoryLedger uses), warehouses from eos_ops, transfer
+    // orders from the governed EOS list. No Firebase stock dashboard remains. The PROCUREMENT panel (canonical
+    // supplier POs, supplier catalog, supplier list) still reads its Firestore sources -- procurement, not inventory
+    // truth, and outside this package; recorded as a remaining dependency.
     Promise.all([
-      fetchInventoryTransactions(),
-      fetchWarehouses(),
-      fetchTransferOrderDocs(),
+      loadEosInventoryHealth(),
+      fetchInventoryWarehouseOptions(),
+      listTransferOrderDocs({}).then((page) => page.items),
       fetchSuppliers(),
       fetchSupplierCatalog(),
       fetchProcurementPurchaseOrders(),
@@ -101,7 +100,7 @@ export default function Operations({ accessVersion } = {}) {
     ])
       .then(
         ([
-          rawTransactions,
+          inventoryHealth,
           warehouses,
           transferOrderDocs,
           suppliers,
@@ -113,16 +112,7 @@ export default function Operations({ accessVersion } = {}) {
 
         // DQ-027: partition first. Unreadable rows are never silently dropped: their parts are listed as
         // unavailable, and an unattributable one makes the inventory-derived panels unavailable.
-        const ledgerIntegrity = partitionLedgerIntegrity(rawTransactions);
-        const transactions = ledgerIntegrity.readable.map(normalizeLedgerTransaction);
-        const availableByPart = computeAvailableStockByPart(transactions);
-
-        const stockSnapshots = [...availableByPart.entries()].map(([partId, availableStock]) => ({
-          partId,
-          availableStock,
-        }));
-
-        const healthEntries = generateInventoryHealthDashboard(transactions, stockSnapshots);
+        const { healthEntries, integrity: ledgerIntegrity } = inventoryHealth;
 
         const procurementRecommendations = healthEntries
           .filter((entry) => entry.recommendation.recommendedOrderQty > 0)

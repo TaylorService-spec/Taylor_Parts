@@ -134,7 +134,7 @@
         "notes": "The one deployed EOS trusted API. Declared by render.yaml (service eos-api-nonprod, healthCheckPath /health) and measured live at this URL. The browser origin it accepts is NOT repeated here -- it is a hostname carrying brand identity, which this registry is guarded against declaring (scripts/deploymentDrift.test.mjs), and it already has exactly one home in render.yaml's EOS_ALLOWED_ORIGINS. That is one stable origin; a per-deployment Vercel preview URL is a DIFFERENT origin and is refused, so a preview build reaches this API only to be turned away by CORS. The frontend receives the base URL through VITE_EOS_API_BASE_URL, set in the Vercel project and inlined by Vite at build time; this entry RECORDS that value, it does not supply it."
       },
       "readiness": {
-        "RECEIVING_TRANSPORT_READY": true,
+        "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
         "INVENTORY_BALANCE_READ_READY": false,
         "WORK_ORDER_READINESS_CONTEXT_READY": true,
@@ -261,7 +261,7 @@
           "notes": "Firebase Hosting review surface. STILL DEPLOYED and still the target of scripts/_sandboxRefresh.run.sh and the browser certification gates under field-ops-app-vite/.claude/skills/, which is why it is RECORDED rather than removed -- deleting the entry would hide infrastructure that exists. It is NOT the EOS application target: its origin is not in render.yaml EOS_ALLOWED_ORIGINS, so an EOS read attempted from this surface is refused by CORS. It was the sole surface declared here until Wave 14 / Lane AZ, which is how this registry came to name a non-EOS surface as the environment's only frontend. Stable Owner review URL; rebuilt freely; no delete protection, PITR or backups by design."
         }
       ],
-      "notes": "Provisioned 2026-08-06 (O-1..O-8). Complete platform estate: 35 Functions (13 more than production, which has never deployed the Enterprise Access + Supplier Master callables), full Rules, all 6 indexes."
+      "notes": "Provisioned 2026-08-06 (O-1..O-8). Complete platform estate: 35 Functions (13 more than production, which has never deployed the Enterprise Access + Supplier Master callables), full Rules, all 6 indexes. RECEIVING_TRANSPORT_READY is FALSE here by Controller ruling (INVENTORY / WAREHOUSE COMPLETION, DQ-034, 2026-10-01): the canonical supplier-PO Receiving path (Firebase receiveInventoryStock / listReceivingLocationOptions) is unused in nonprod -- its canonical purchase-order data is empty -- so it is gated OFF explicitly rather than left as an active Firebase Part/Catalog reader. The domain is kept, not deleted. Reorder-PO receiving is EOS (receiveReorderStock) and is unaffected."
     },
     {
       "id": "platform-certification",

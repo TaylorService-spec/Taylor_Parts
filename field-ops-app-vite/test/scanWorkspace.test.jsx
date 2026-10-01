@@ -446,17 +446,22 @@ describe("Scan workspace (it remembers where you were)", () => {
   });
 });
 
-// ────────────────────────────────────────────── transfers: the technician gets their own truck
+// ────────────────────────────────────────────── transfers: one governed EOS read, no truck read
+//
+// Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01: truck transfers belong to the separate Truck
+// Inventory journey, so the Transfer workflow no longer routes a receive-only technician to a truck read. Every person
+// gets the ONE governed EOS list (listTransferOrders), scoped server-side to their WAREHOUSE scope.
 
-describe("Scan workspace (a receive-only technician is routed to their own truck read)", () => {
-  it("threads the technician link and the capability gate into Transfer, so it asks the server, not transfer_orders", async () => {
+describe("Scan workspace (Transfer uses the governed EOS list; no truck read)", () => {
+  it("a receive-only technician is NOT routed to a truck read", async () => {
     const listMyReceivableTransfers = vi.fn().mockResolvedValue({ truck: { locationId: "TRK-1", label: "Van 1" }, transfers: [], nextCursor: null });
     render(<ScanWorkspace deps={technicianUser({
       hasCapability: (id) => id === "inventory.transfer.receive",
       initialWorkflow: "TRANSFER",
       transferDeps: { transferClient: { listMyReceivableTransfers } },
     })} />);
-    expect(await screen.findByText(/nothing is on its way to your truck/i)).toBeTruthy();
-    expect(listMyReceivableTransfers).toHaveBeenCalledWith(null);
+    expect(await screen.findByText(/transfer orders could not be loaded|no transfers|nothing/i)).toBeTruthy();
+    expect(listMyReceivableTransfers).not.toHaveBeenCalled();
+    expect(screen.queryByText(/your truck/i)).toBeNull();
   });
 });

@@ -17,7 +17,6 @@ import { RECEIVING_OUTCOME } from "../src/domain/receivingTransport.js";
 let reorderRequests = { data: [], loading: false };
 let purchaseOrdersById = { purchaseOrdersById: {}, loading: false };
 let suppliers = { loading: false, error: null, suppliers: [], truncated: false };
-let canAcquire = false;
 const fetchReceivable = vi.fn();
 const journeyProps = { supplier: [], reorder: [] };
 
@@ -25,9 +24,6 @@ vi.mock("../src/hooks/useReorderRequests", () => ({ useReorderRequestsByStatuses
 vi.mock("../src/hooks/usePurchaseOrdersByIds", () => ({ usePurchaseOrdersByIds: () => purchaseOrdersById }));
 vi.mock("../src/hooks/useSuppliers", () => ({ useSuppliers: () => suppliers }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
-vi.mock("../src/access/useSerializedAssetAcquireCapability", () => ({
-  useSerializedAssetAcquireCapability: () => ({ canAcquire }),
-}));
 vi.mock("../src/modules/receiving/MultiScanReceiving", () => ({
   default: (props) => { journeyProps.supplier.push(props); return <div data-testid="multi-scan-journey" />; },
 }));
@@ -44,7 +40,6 @@ afterEach(() => {
   reorderRequests = { data: [], loading: false };
   purchaseOrdersById = { purchaseOrdersById: {}, loading: false };
   suppliers = { loading: false, error: null, suppliers: [], truncated: false };
-  canAcquire = false;
   journeyProps.supplier.length = 0;
   journeyProps.reorder.length = 0;
 });
@@ -214,11 +209,10 @@ describe("row navigation", () => {
 // ── the exceptional path and the held slot ──────────────────────────────────────────────
 
 describe("beside the queue", () => {
-  it("Add existing unit is ABSENT without the acquire capability, present with it", async () => {
-    await renderReady([]);
-    expect(screen.queryByRole("button", { name: "Add existing unit" })).toBeNull();
-    cleanup();
-    canAcquire = true;
+  it("Add existing unit is offered; the EOS server is the authority on who may acquire (DQ-036b, 2026-10-01)", async () => {
+    // The Firebase effective-access feed that pre-gated this control retired with the Firebase acquire path; the
+    // acquisition is authorized server-side (inventory.serializedAsset.acquire + eligibility + WAREHOUSE scope) and a
+    // refusal is rendered as a refusal.
     await renderReady([]);
     expect(screen.getByRole("button", { name: "Add existing unit" })).toBeTruthy();
   });
