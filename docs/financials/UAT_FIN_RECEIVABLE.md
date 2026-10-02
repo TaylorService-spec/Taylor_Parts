@@ -21,7 +21,7 @@ All data is SAMPLE/UAT.
 | UAT-FIN-AR-010 | Legacy ambiguous zero | **PASS.** A pre-evidence Agreement is LEGACY_UNVERIFIED with tax 0; its package is HELD with [TAX_NOT_DETERMINED] and records `tax_evidence_status = LEGACY_UNVERIFIED`. |
 | UAT-FIN-AR-011 | Tax evidence validation | **PASS.** A negative or fractional amount, a missing amount and an unknown status are all refused (TAX_EVIDENCE_INVALID). A non-USD currency is refused (TAX_CURRENCY_MISMATCH), and the database also refuses it. A disagreeing bare `taxMinor` is refused (TAX_EVIDENCE_CONFLICT). A changed bare amount on a draft resets the status to NOT_DETERMINED. |
 | UAT-FIN-AR-012 | Package supersession | **PASS.** The superseded version's receivable is VOID, with its origination kept and an equal reversal fact (net 0). The new version has its own OPEN receivable (12500), and the old handoff is SUPERSEDED. |
-| UAT-FIN-AR-013 | Pre-activation READY package | **PASS.** Recovery establishes its receivable once; a second recovery establishes nothing. |
+| UAT-FIN-AR-013 | Pre-evidence READY package (Controller correction) | **PASS.** A package that was READY under the pre-evidence rules (no tax-evidence state) is SKIPPED by recovery, and establishing a receivable from it is refused (TAX_NOT_DETERMINED). The row stays unchanged and no evidence is fabricated. A current DETERMINED package whose receivable is missing is recovered exactly once. |
 | UAT-FIN-AR-014 | Wrong company / CONSOLIDATED | **PASS (fail closed).** OPERATING_COMPANY_UNRESOLVED and CONSOLIDATED_NOT_A_COMPANY. |
 
 ## Dependencies

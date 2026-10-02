@@ -6829,4 +6829,8 @@ remain governing. Resolves the obligation HOLD of #196 §7.
    receivable: the handoff is PENDING_DESTINATION with ACCOUNTING_DESTINATION_MISSING and attaches when a destination is
    configured. Nothing is delivered; no credential; no provider-specific schema.
 6. **No capability, no grant;** no client operation creates a receivable, package or handoff. Recovery:
-   `establishReceivablesForReadyPackages` (READY packages from before this activation), `refreshAccountingHandoffs`.
+   `establishReceivablesForReadyPackages`, `refreshAccountingHandoffs`.
+7. **Legacy protection (Controller correction).** Only a package whose tax came from DETERMINED evidence establishes a
+   receivable. A package READY under the pre-evidence rules (no tax-evidence state; its Agreement LEGACY_UNVERIFIED — e.g.
+   nonprod `bpk_a0c72734`) stays immutable history: recovery skips it, establishing refuses (TAX_NOT_DETERMINED), nothing is
+   rewritten and no DETERMINED evidence is fabricated.

@@ -131,7 +131,8 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
     [actor.tenantId, input.salesOrderId]);
   if (current[0] && current[0].content_fingerprint === fingerprint) {
     // A replay re-asserts the READY consequence (idempotent: the same receivable and handoff, never a second).
-    const consequence = current[0].status === "READY" ? await establishPackageReceivableOn(c, actor, String(current[0].id)) : null;
+    const consequence = current[0].status === "READY" && (await isCurrentAuthoritative(c, actor, String(current[0].id)))
+      ? await establishPackageReceivableOn(c, actor, String(current[0].id)) : null;
     return Object.freeze({ outcome: "replayed" as const, packageId: String(current[0].id), version: Number(current[0].version),
       status: current[0].status, readinessExceptions: Object.freeze([...current[0].readiness_exceptions]), totalMinor: current[0].total_minor ?? null, consequence });
   }
@@ -194,6 +195,13 @@ export async function establishPackageReceivableOn(c: Queryable, actor: FinanceA
   if (p.obligor_basis !== "DIRECT_SALE_CUSTOMER" || p.counterparty_id === null) {
     throw new FinanceFoundationError("UNSUPPORTED_FINANCIAL_OBLIGOR", "PRECONDITION_FAILED", "only a supported direct sale establishes a customer receivable");
   }
+  // CURRENT AUTHORITATIVE REQUIREMENTS ONLY (Controller correction 2026-10-02): a package READY under the pre-evidence rules
+  // (tax_evidence_status NULL -- e.g. a LEGACY_UNVERIFIED Agreement's stored 0) is historical and immutable; it never becomes
+  // receivable truth. Only a package whose tax came from DETERMINED evidence establishes one.
+  if (p.tax_evidence_status !== "DETERMINED") {
+    throw new FinanceFoundationError("TAX_NOT_DETERMINED", "PRECONDITION_FAILED",
+      "the package's tax is not from governed DETERMINED evidence; it establishes no receivable");
+  }
   const total = BigInt(p.total_minor);
   if (total === 0n) return Object.freeze({ receivable: Object.freeze({ outcome: "NOT_REQUIRED_ZERO_TOTAL" as const }), handoff: null });
   const opened = await openObligationOn(c, actor, {
@@ -219,6 +227,11 @@ export async function establishPackageReceivableOn(c: Queryable, actor: FinanceA
   });
 }
 
+async function isCurrentAuthoritative(c: Queryable, actor: FinanceActor, packageId: string): Promise<boolean> {
+  const { rows } = await c.query(`SELECT tax_evidence_status, obligor_basis FROM eos_finance.billing_packages WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, packageId]);
+  return rows[0]?.tax_evidence_status === "DETERMINED" && rows[0]?.obligor_basis === "DIRECT_SALE_CUSTOMER";
+}
+
 /** A superseded package's receivable is VOIDED (reversing facts; refused once settled) and its handoff SUPERSEDED. */
 async function retirePackageReceivableOn(c: Queryable, actor: FinanceActor, packageId: string, reason: string): Promise<void> {
   const { rows } = await c.query(`SELECT id FROM eos_finance.obligations WHERE tenant_id = $1 AND source_domain = 'BILLING_PACKAGE' AND source_record_id = $2`,
@@ -242,13 +255,15 @@ export async function refreshAccountingHandoffs(pool: Pool, actor: FinanceActor)
 }
 
 /**
- * DETERMINISTIC RECOVERY: every READY direct-sale package without its receivable (e.g. READY before this activation) gets it,
- * idempotently, each in its own transaction. Server-side only; no route.
+ * DETERMINISTIC RECOVERY: every READY direct-sale package whose tax is from DETERMINED evidence and that lacks its receivable
+ * gets it, idempotently, each in its own transaction. A package READY under the pre-evidence rules is SKIPPED -- it stays
+ * immutable history and is never promoted into receivable truth (Controller correction 2026-10-02). Server-side only; no route.
  */
 export async function establishReceivablesForReadyPackages(pool: Pool, actor: FinanceActor) {
   const { rows } = await pool.query(
     `SELECT p.id FROM eos_finance.billing_packages p
       WHERE p.tenant_id = $1 AND p.status = 'READY' AND p.obligor_basis = 'DIRECT_SALE_CUSTOMER' AND p.total_minor > 0
+        AND p.tax_evidence_status = 'DETERMINED'  -- a pre-evidence (legacy) READY package is skipped, never promoted
         AND NOT EXISTS (SELECT 1 FROM eos_finance.obligations o WHERE o.tenant_id = p.tenant_id AND o.source_domain = 'BILLING_PACKAGE' AND o.source_record_id = p.id)
       ORDER BY p.prepared_at, p.id`, [actor.tenantId]);
   const out = [];

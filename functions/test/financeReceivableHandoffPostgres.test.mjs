@@ -272,15 +272,30 @@ test("Finance Activation 2: tax evidence -> READY package -> EOS receivable -> a
     await q(`INSERT INTO eos_commercial.sales_order_fulfillments (id, tenant_id, sales_order_id, line_number, line_kind, line_ref, quantity, source_kind, source_work_order_id,
         evidence_kind, operating_company_key, operating_company_id, account_id, fulfilled_at, recorded_by)
         VALUES ($1,$2,$3,1,'SERVICE','INSTALL-STANDARD',1,'WORK_ORDER_COMPLETION','wo-legacy','SERVICE_PERFORMED','taylor','taylor','acct-r',now(),'fixture')`, [`sof-r-${so}`, TENANT, so]);
-    // A package that became READY BEFORE this activation carries no receivable (nonprod has exactly such a package). Emulated
-    // faithfully: the READY row as the pre-activation code wrote it (no tax-evidence column value, no obligation, no handoff).
+    // T 1-4 (Controller correction): a package READY under the PRE-EVIDENCE rules (as nonprod's bpk_a0c72734: no tax-evidence
+    // state, its Agreement LEGACY_UNVERIFIED) is historical -- recovery SKIPS it, establishing refuses, nothing is rewritten.
     const cpId = readyPkg.counterparty_id;
     await q(`INSERT INTO eos_finance.billing_packages (id, tenant_id, source_kind, sales_order_id, version, status, operating_company_id, operating_company_key,
         commercial_customer_account_id, counterparty_id, obligor_basis, commercial_disposition, currency, subtotal_minor, tax_minor, total_minor, content_fingerprint, prepared_by)
-        VALUES ('bpk-pre-activation',$1,'SALES_ORDER',$2,1,'READY','taylor','taylor','acct-r',$3,'DIRECT_SALE_CUSTOMER','SALE','USD',12000,0,12000,'pre','fixture')`, [TENANT, so, cpId]);
+        VALUES ('bpk-legacy',$1,'SALES_ORDER',$2,1,'READY','taylor','taylor','acct-r',$3,'DIRECT_SALE_CUSTOMER','SALE','USD',12000,0,12000,'pre','fixture')`, [TENANT, so, cpId]);
+    const before = await one(`SELECT * FROM eos_finance.billing_packages WHERE id='bpk-legacy'`);
+    assert.deepEqual(await pkg.establishReceivablesForReadyPackages(pool, sys), [], "2: recovery skips a package lacking current authoritative tax evidence");
+    const c1 = await pool.connect();
+    try {
+      await c1.query("BEGIN");
+      await assert.rejects(pkg.establishPackageReceivableOn(c1, sys, "bpk-legacy"), code("TAX_NOT_DETERMINED"), "1: never silently converted into AR");
+    } finally { await c1.query("ROLLBACK"); c1.release(); }
+    assert.equal(await receivableOf("bpk-legacy"), undefined);
+    assert.deepEqual(await one(`SELECT * FROM eos_finance.billing_packages WHERE id='bpk-legacy'`), before, "3: the old package is unchanged");
+    assert.equal((await evidenceOf((await one(`SELECT sales_agreement_id FROM eos_commercial.sales_orders WHERE id=$1`, [so])).sales_agreement_id)).tax_evidence_status,
+      "DETERMINED", "4: (this fixture's own Agreement was DETERMINED -- nothing created or altered evidence)");
+    // A CURRENT package (DETERMINED tax) whose receivable is missing IS recovered, once.
+    await q(`INSERT INTO eos_finance.billing_packages (id, tenant_id, source_kind, sales_order_id, version, status, operating_company_id, operating_company_key,
+        commercial_customer_account_id, counterparty_id, obligor_basis, commercial_disposition, currency, subtotal_minor, tax_minor, total_minor, content_fingerprint, prepared_by,
+        tax_evidence_status) VALUES ('bpk-current-missing',$1,'SALES_ORDER','so-other-1',1,'READY','taylor','taylor','acct-r',$2,'DIRECT_SALE_CUSTOMER','SALE','USD',12000,0,12000,'cur','fixture','DETERMINED')`,
+      [TENANT, cpId]);
     const r1 = await pkg.establishReceivablesForReadyPackages(pool, sys);
-    assert.deepEqual(r1.map((x) => [x.packageId, x.receivable.outcome]), [["bpk-pre-activation", "recorded"]], "the missing receivable is established once");
-    assert.equal(String((await fin.readObligationBalance(pool, TENANT, (await receivableOf("bpk-pre-activation")).id)).outstandingMinor), "12000");
+    assert.deepEqual(r1.map((x) => [x.packageId, x.receivable.outcome]), [["bpk-current-missing", "recorded"]]);
     assert.deepEqual(await pkg.establishReceivablesForReadyPackages(pool, sys), [], "a second recovery establishes nothing");
   });
 
