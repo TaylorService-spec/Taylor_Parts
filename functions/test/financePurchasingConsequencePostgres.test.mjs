@@ -71,6 +71,9 @@ test("Finance Activation 1 over the governed purchasing / receiving path", { ski
                expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
              VALUES ($1,$2,'fixture',$1,$1,'ACTIVE','EACH','STANDARD','STOCKED',false,false,false,false,1,'fixture')`, [p, TENANT]);
   }
+  // The governed supplier every new PO names (DECISIONS #193). Deliberately NOT linked to a CRM organization here.
+  await q(`INSERT INTO eos_ops.suppliers (tenant_id, supplier_id, name, normalized_key, status, version, created_by, updated_by)
+           VALUES ($1,'SUP-DESERT','Desert Refrigeration Supply','desert refrigeration supply','ACTIVE',1,'fixture','fixture')`, [TENANT]);
 
   let n = 0;
   const purchased = async ({ partId, warehouseId, qty = 4, unitPriceMinor, currency }) => {
@@ -79,7 +82,7 @@ test("Finance Activation 1 over the governed purchasing / receiving path", { ski
     ok(await inv(pm, "reviewReorderRequest", { reorderRequestId: rr, decision: "APPROVED" }), "approve");
     ok(await inv(pm, "assignReorderRequest", { reorderRequestId: rr, employeeId: "e-pa" }), "assign");
     ok(await inv(pa, "startPurchasingOnReorder", { reorderRequestId: rr }), "start");
-    ok(await inv(pa, "recordReorderPurchaseOrder", { reorderRequestId: rr, supplierName: "Desert Refrigeration Supply", externalPoNumber: `PO-${n}`,
+    ok(await inv(pa, "recordReorderPurchaseOrder", { reorderRequestId: rr, supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-DESERT" }, externalPoNumber: `PO-${n}`,
       orderedQuantity: qty, orderedDate: "2026-10-01", expectedArrivalDate: "2026-10-08",
       ...(unitPriceMinor !== undefined ? { unitPriceMinor, currency } : {}) }), "PO");
     return rr;
@@ -104,7 +107,7 @@ test("Finance Activation 1 over the governed purchasing / receiving path", { ski
     assert.equal(String(f.amount_minor), String(evidence[0].extended_cost_minor), "the amount IS the governed evidence's amount");
     assert.equal(new Date(f.effective_at).toISOString(), new Date(evidence[0].received_at).toISOString(), "effective at the receipt's business time");
     assert.equal(f.created_by, pa.principalId, "audited as the receiver's server-side consequence");
-    assert.equal(f.counterparty_id, null, "a Reorder PO names its supplier by NAME only -- the counterparty is not guessed");
+    assert.equal(f.counterparty_id, null, "the governed supplier is not linked to a CRM organization, so the counterparty stays unresolved -- never guessed");
     // 16. the receiver holds no Finance write authority at all.
     const caps = (await q(`SELECT DISTINCT c.key FROM eos_policy.user_role_assignments a JOIN eos_policy.role_capabilities rc ON rc.tenant_id=a.tenant_id AND rc.role_id=a.role_id
         JOIN eos_policy.capabilities c ON c.id=rc.capability_id WHERE a.tenant_id=$1 AND a.principal_id=$2 AND a.status='active' AND c.key LIKE 'finance.%'`, [TENANT, pa.principalId])).rows.map((x) => x.key);

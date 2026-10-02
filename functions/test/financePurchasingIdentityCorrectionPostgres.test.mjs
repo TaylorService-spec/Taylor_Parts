@@ -18,6 +18,10 @@ const fin = require("../lib/eosFinance/financeFoundation.js");
 const authority = require("../lib/eosOps/reorderAssignmentAuthority.js");
 const http = require("../lib/eosOps/eosOpsHttp.js");
 const { PERMISSION_CATALOG } = require("../lib/access/permissionCatalog.js");
+const closure = require("../lib/adminPolicy/purchasingFinanceClosureDelta.js");
+const partsDelta = require("../lib/adminPolicy/partsPurchasingReceivingDelta.js");
+const purchasing = require("../lib/eosOps/purchasingRepository.js");
+const { capabilitiesForRoleKeys } = require("../lib/eosOps/capabilityAuthority.js");
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -57,19 +61,32 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
   for (const key of ["reorder.request.approve", "reorder.request.assign", "reorder.request.read"]) await grant("partsManager", key);
   for (const key of ["reorder.request.create.manual", "reorder.request.markReceived", "reorder.request.postPurchasingUpdate", "reorder.request.read",
     "reorder.request.recordPurchaseOrder", "reorder.request.startPurchasing"]) await grant("partsAssociate", key);
-  // The correction authority is granted to NOBODY by the migration. This LOCAL test tenant grants it to one Role so the command
-  // can be exercised -- the holder in any real tenant is a Controller decision applied through Administration.
-  await grant("warehouseManager", "inventory.receipt.correct");
+  // The correction authority is granted to NOBODY by the migration. The OWNER-RULED holders (Warehouse Manager, Parts Manager)
+  // and the Parts Manager finance-defect revocation arrive exactly as an activation window issues them: the reviewed
+  // Administration delta, through ordinary Administration operations (purchasingFinanceClosureDelta.ts).
+  // The LIVE Parts / Purchasing / Receiving delta (supplier.record.read for the purchasing Roles) -- what nonprod already holds.
+  // (Only its supplier rows: the Operational Configuration Administrator Role it also grants is a nonprod Administration Role.)
+  for (const { operation, input } of partsDelta.partsPurchasingReceivingOperations().filter((o) => o.input.objectKey === "supplier")) {
+    const r = await admin(operation, input);
+    assert.equal(r.ok, true, `${operation} ${JSON.stringify(input)} ${JSON.stringify(r).slice(0, 200)}`);
+  }
+  const partsManagerFinanceBefore = await capabilitiesForRoleKeys(pool, TENANT, ["partsManager"]);
+  for (const { operation, input } of closure.purchasingFinanceClosureOperations()) {
+    const r = await admin(operation, input);
+    assert.equal(r.ok, true, `${operation} ${JSON.stringify(input)} ${JSON.stringify(r).slice(0, 200)}`);
+  }
 
   const pa = await person("uid-pa", ["partsAssociate", "inventoryReceivingClerk"], { id: "e-pa", name: "Pat Parts" });
   const pm = await person("uid-pm", ["partsManager", "purchasingManager"], { id: "e-pm", name: "Morgan Manager" });
   const corrector = await person("uid-corr", ["warehouseManager", "inventoryReceivingClerk"], { id: "e-corr", name: "Casey Corrector" });
+  const partsMgr = await person("uid-pmgr", ["partsManager"], { id: "e-pmgr", name: "Parker Parts-Manager" });
+  const whAssoc = await person("uid-wa", ["warehouseAssociate"], { id: "e-wa", name: "Wren Warehouse" });
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
            VALUES ('wh-t',$1,'taylor','Shared Building -- Taylor','Shared Building','ACTIVE','NATIVE','fixture','fixture'),
                   ('wh-v',$1,'ventana','Shared Building -- Ventana','Shared Building','ACTIVE','NATIVE','fixture','fixture')`, [TENANT]);
   await q(`INSERT INTO eos_ops.bins (id, tenant_id, warehouse_id, area, aisle, bay, position, code, status, idempotency_key, created_by, updated_by)
            VALUES ('bin_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',$1,'wh-t','MAIN','A',1,1,'MAIN-A-1-1','ACTIVE','bin_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','fixture','fixture')`, [TENANT]);
-  for (const e of ["e-pa", "e-pm", "e-corr"]) {
+  for (const e of ["e-pa", "e-pm", "e-corr", "e-pmgr", "e-wa"]) {
     await q(`INSERT INTO eos_workforce.employee_work_eligibility (id, tenant_id, employee_id, qualification_code, effective_from, assigned_by)
              VALUES ($1,$2,$3,$4,now(),'fixture')`, [`ewe-${e}`, TENANT, e, authority.REORDER_ASSIGNMENT_QUALIFICATION]);
     for (const [kind, id] of [["REORDER_QUEUE", "taylor"], ["REORDER_QUEUE", "ventana"], ["WAREHOUSE", "wh-t"], ["WAREHOUSE", "wh-v"]]) {
@@ -77,7 +94,7 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
                VALUES ($1,$2,$3,$4,$5,now(),'fixture')`, [`os-${e}-${kind}-${id}`, TENANT, e, kind, id]);
     }
   }
-  const PARTS = ["P-EXT", "P-T2V", "P-V2T", "P-SELF", "P-LEG", "P-VOID", "P-CORR", "P-USED", "P-WCO", "P-UNP"];
+  const PARTS = ["P-EXT", "P-T2V", "P-V2T", "P-SELF", "P-LEG", "P-VOID", "P-CORR", "P-USED", "P-WCO", "P-UNP", "P-AUTH1", "P-AUTH2", "P-AUTH3", "P-OPT-T", "P-OPT-V", "P-SELF-V"];
   for (const p of PARTS) {
     await q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
                expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
@@ -125,7 +142,9 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
   await t.test("1 / 2 / 7 / 10. UAT-FIN-PUR-009: an EXTERNAL supplier PO carries stable identity and resolves to its CRM organization", async () => {
     const rr = await toPurchasing("P-EXT", "wh-t", 2);
     refused(await inv(pa, "recordReorderPurchaseOrder", { ...poInput(rr, 2, EXT, 5000), supplierName: "Some Other Vendor" }), 400, "INVALID_INPUT",
-      /carries its own name/, "display text cannot ride along with -- or override -- identity");
+      /never supplier text/, "display text cannot ride along with -- or override -- identity");
+    refused(await inv(pa, "recordReorderPurchaseOrder", poInput(rr, 2, { supplierName: "Acme Refrigeration" }, 5000)), 400, "INVALID_INPUT",
+      /never supplier text/, "a NEW purchase order cannot be created with supplier text alone");
     refused(await inv(pa, "recordReorderPurchaseOrder", poInput(rr, 2, { supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-NOBODY" } }, 5000)),
       404, "NOT_FOUND", /no governed supplier/);
     ok(await inv(pa, "recordReorderPurchaseOrder", poInput(rr, 2, EXT, 5000)), "external PO");
@@ -168,10 +187,24 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
     assert.deepEqual([fact.operating_company_id, fact.amount_minor, cp.kind, cp.operatingCompanyId], ["ventana", "19800", "INTERNAL_OPERATING_COMPANY", "taylor"]);
   });
 
+  await t.test("UAT-FIN-PUR-019: the governed supplier SELECTION offers names, never ids to type -- and never the buyer itself or CONSOLIDATED", async () => {
+    const forTaylor = ok(await inv(pa, "listPurchaseOrderSupplierOptions", { reorderRequestId: await toPurchasing("P-OPT-T", "wh-t", 1) }), "taylor options");
+    assert.deepEqual(forTaylor.items.map((o) => [o.kind, o.name]), [["EXTERNAL_ORGANIZATION", "Acme Refrigeration"], ["INTERNAL_OPERATING_COMPANY", "Ventana"]],
+      "Taylor sees the governed supplier and Ventana -- never Taylor, never CONSOLIDATED");
+    const forVentana = ok(await inv(pa, "listPurchaseOrderSupplierOptions", { reorderRequestId: await toPurchasing("P-OPT-V", "wh-v", 1) }), "ventana options");
+    assert.deepEqual(forVentana.items.map((o) => [o.kind, o.name]), [["EXTERNAL_ORGANIZATION", "Acme Refrigeration"], ["INTERNAL_OPERATING_COMPANY", "Taylor Freezer of Arizona"]],
+      "Ventana sees Taylor -- never Ventana");
+    assert.equal([...forTaylor.items, ...forVentana.items].some((o) => /consolidated/i.test(`${o.operatingCompanyId} ${o.name}`)), false);
+    refused(await inv(whAssoc, "listPurchaseOrderSupplierOptions", { reorderRequestId: "x" }), 403, "FORBIDDEN", /requires/, "only those who record POs");
+  });
+
   await t.test("6. UAT-FIN-PUR-012: a company cannot purchase from itself as an internal supplier -- fail closed", async () => {
     const rr = await toPurchasing("P-SELF", "wh-t", 1);
     refused(await inv(pa, "recordReorderPurchaseOrder", poInput(rr, 1, INTERNAL("taylor"), 100)), 412, "PRECONDITION_FAILED", /cannot purchase from itself/);
     refused(await inv(pa, "recordReorderPurchaseOrder", poInput(rr, 1, INTERNAL("consolidated"), 100)), 412, "PRECONDITION_FAILED", /not an ACTIVE operating company/);
+    const rv = await toPurchasing("P-SELF-V", "wh-v", 1);
+    refused(await inv(pa, "recordReorderPurchaseOrder", poInput(rv, 1, INTERNAL("ventana"), 100)), 412, "PRECONDITION_FAILED", /cannot purchase from itself/,
+      "Ventana cannot select Ventana");
     assert.equal(await count(`SELECT count(*)::int n FROM eos_ops.purchase_orders WHERE tenant_id=$1 AND id=$2`, [TENANT, rr]), 0, "nothing recorded");
     assert.equal((await one(`SELECT status::text AS s FROM eos_ops.reorder_requests WHERE tenant_id=$1 AND id=$2`, [TENANT, rr])).s, "PURCHASING_IN_PROGRESS");
     // ...and structurally: the database refuses a self-purchase row even from a writer that skipped the command.
@@ -181,7 +214,13 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
   });
 
   await t.test("8 / 9. UAT-FIN-PUR-013: legacy text-only supplier -- even text naming Ventana, in a Ventana warehouse -- is never guessed", async () => {
-    const rr = await ordered({ partId: "P-LEG", warehouseId: "wh-v", qty: 1, supplier: { supplierName: "Taylor Freezer of Arizona" }, price: 700 });
+    // A NEW text-only PO is refused (above); a HISTORICAL one exists only through the legacy import writer -- the repository the
+    // Firestore copy and the Sample Company fixtures use -- and stays valid, unchanged and readable.
+    const rr = await toPurchasing("P-LEG", "wh-v", 1);
+    await purchasing.recordPurchaseOrder(pool, TENANT, pa.principalId, rr, { supplierName: "Taylor Freezer of Arizona", externalPoNumber: "LEGACY-1",
+      orderedQuantity: 1, orderedDate: "2026-09-01", unitPriceMinor: 700, currency: "USD" });
+    const read = ok(await inv(pa, "readReorderPurchaseOrders", { reorderRequestIds: [rr] }), "legacy PO readable");
+    assert.equal(read.purchaseOrders[0].supplierName, "Taylor Freezer of Arizona", "legacy supplier text is displayed as it was recorded");
     const row = await po(rr);
     assert.deepEqual([row.supplier_kind, row.supplier_id, row.supplier_operating_company_id, row.purchasing_operating_company_id, row.supplier_name],
       [null, null, null, null, "Taylor Freezer of Arizona"], "legacy supplier text kept for display, nothing more");
@@ -318,6 +357,57 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
     await assert.rejects(q(`INSERT INTO eos_finance.cost_evidence_exception_resolutions (exception_id, tenant_id, resolution, receiving_correction_id, reason, resolved_by)
         VALUES ($1,$2,'COST_EVIDENCE_ESTABLISHED',$3,'x','x')`, [exception.id, TENANT, out.correctionId]));
     await assert.rejects(q(`UPDATE eos_ops.receiving_corrections SET reason='rewritten' WHERE id=$1`, [out.correctionId]), /RECEIVING_CORRECTION_IMMUTABLE/);
+  });
+
+  await t.test("UAT-FIN-PUR-020: authority -- Warehouse / Parts Manager correct within WAREHOUSE scope; associates are refused", async () => {
+    const receipt = async (partId) => {
+      const rr = await ordered({ partId, warehouseId: "wh-t", qty: 1, supplier: EXT, price: 100 });
+      return ok(await receive(rr, partId, WH_T, 1), "receive").receivingId;
+    };
+    const voidOf = (receivingId, key) => ({ receivingId, correction: "VOID", reason: "authority acceptance", idempotencyKey: key });
+    const r1 = await receipt("P-AUTH1");
+    refused(await correct(whAssoc, voidOf(r1, "auth-wa")), 403, "FORBIDDEN", /requires inventory\.receipt\.correct/, "Warehouse Associate");
+    refused(await correct(pa, voidOf(r1, "auth-pa")), 403, "FORBIDDEN", /requires inventory\.receipt\.correct/, "Parts Associate (an ordinary receiver)");
+    assert.equal(ok(await correct(partsMgr, voidOf(r1, "auth-pm")), "Parts Manager").outcome, "applied");
+    const r2 = await receipt("P-AUTH2");
+    assert.equal(ok(await correct(corrector, voidOf(r2, "auth-wm")), "Warehouse Manager").outcome, "applied");
+    // WAREHOUSE scope is preserved: the Parts Manager without scope over the receipt location is refused.
+    await q(`UPDATE eos_workforce.employee_operational_scopes SET effective_to = now(), ended_by = 'fixture', ended_at = now()
+        WHERE tenant_id=$1 AND employee_id='e-pmgr' AND scope_type='WAREHOUSE'`, [TENANT]);
+    const r3 = await receipt("P-AUTH3");
+    refused(await correct(partsMgr, voidOf(r3, "auth-pm-noscope")), 403, "FORBIDDEN", /outside your warehouse scope/, "Parts Manager outside its warehouse scope");
+    // Receipt correction stays DISTINCT from receipt: the receivers hold inventory.stock.receive without the correction.
+    const holders = async (key) => (await q(`SELECT r.key FROM eos_policy.role_capabilities rc JOIN eos_policy.roles r ON r.id = rc.role_id AND r.tenant_id = rc.tenant_id
+        JOIN eos_policy.capabilities c ON c.id = rc.capability_id WHERE rc.tenant_id = $1 AND c.key = $2 ORDER BY 1`, [TENANT, key])).rows.map((x) => x.key);
+    assert.deepEqual(await holders("inventory.receipt.correct"), ["partsManager", "warehouseManager"]);
+    for (const excluded of closure.RECEIPT_CORRECTION_EXCLUDED_ROLE_KEYS) assert.equal((await holders("inventory.receipt.correct")).includes(excluded), false, excluded);
+    assert.ok((await holders("inventory.stock.receive")).includes("inventoryReceivingClerk"));
+    // MANAGEABLE THROUGH ADMINISTRATION, no source edit: revoke -> refused; re-grant -> allowed again.
+    const wmCorrect = { roleKey: "warehouseManager", objectKey: "receivingOrder", actionKey: "correct" };
+    assert.equal((await admin("revokeObjectActionFromRole", { ...wmCorrect, reason: "administration acceptance" })).ok, true);
+    refused(await correct(corrector, voidOf(r3, "auth-wm-revoked")), 403, "FORBIDDEN", /requires inventory\.receipt\.correct/, "after an Administration revoke");
+    assert.equal((await admin("grantObjectActionToRole", { ...wmCorrect, reason: "administration acceptance" })).ok, true);
+    assert.equal(ok(await correct(corrector, voidOf(r3, "auth-wm-regranted")), "after an Administration re-grant").outcome, "applied");
+  });
+
+  await t.test("UAT-FIN-PUR-021: the Parts Manager finance AUTHORITY DEFECT is corrected through Administration -- nothing else moves", async () => {
+    const after = await capabilitiesForRoleKeys(pool, TENANT, ["partsManager"]);
+    assert.ok(partsManagerFinanceBefore.has("finance.invoice.issue") && partsManagerFinanceBefore.has("finance.adjustment.record"), "the defect was present");
+    const fin = (set) => [...set].filter((k) => k.startsWith("finance.")).sort();
+    assert.deepEqual(fin(after), ["finance.invoice.read", "finance.payment.read"], "Parts Manager keeps only the finance READS");
+    const removed = [...partsManagerFinanceBefore].filter((k) => !after.has(k)).sort();
+    const added = [...after].filter((k) => !partsManagerFinanceBefore.has(k)).sort();
+    assert.deepEqual([removed, added], [["finance.adjustment.record", "finance.invoice.issue"], ["inventory.receipt.correct"]]);
+    // The capabilities themselves remain, held by the finance Roles -- Finance authority is not weakened.
+    for (const key of ["finance.invoice.issue", "finance.adjustment.record"]) {
+      assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.capabilities WHERE key=$1`, [key]), 1);
+      for (const role of ["controller", "accountingManager", "financeManager"]) {
+        assert.ok((await capabilitiesForRoleKeys(pool, TENANT, [role])).has(key), `${role} keeps ${key}`);
+      }
+    }
+    // A normal purchasing employee needs no Finance authority to buy and receive.
+    const paCaps = await capabilitiesForRoleKeys(pool, TENANT, ["partsAssociate", "inventoryReceivingClerk"]);
+    assert.equal([...paCaps].some((k) => /^finance\.(invoice\.issue|adjustment|payment\.apply|refund)/.test(k)), false);
   });
 
   await t.test("25 / 26. no client writes Finance truth; the corrector holds no Finance write capability", async () => {

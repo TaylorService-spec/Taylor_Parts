@@ -1,4 +1,5 @@
 import { fromMajorString } from "./money.js";
+import { supplierIdentityFromOption } from "./supplierPicker.js";
 import { isWriteBlocked } from "../config/env";
 // No Firestore collection-name constant is imported: both writes reach the governed PostgreSQL Reorder
 // authority, and the Reorder runtime census counts every importer that uses one.
@@ -39,7 +40,8 @@ export function recordPurchaseOrder(
   // second, forgeable answer to a question the request already answers.
   {
     partId: _partId,
-    supplierName,
+    // DECISIONS #193: the SELECTED governed supplier option (from usePurchaseOrderSupplierOptions), never a typed name.
+    supplier,
     externalPoNumber,
     orderedQuantity,
     orderedDate,
@@ -56,12 +58,14 @@ export function recordPurchaseOrder(
     return Promise.resolve({ blocked: true });
   }
 
-  const trimmedSupplier = supplierName?.trim() || "";
+  // A NEW purchase order names a governed supplier IDENTITY. Supplier text alone is legacy compatibility for HISTORICAL
+  // purchase orders only and is never sent: the server authors the display name from the identity.
+  const supplierIdentity = supplierIdentityFromOption(supplier);
   const trimmedPoNumber = externalPoNumber?.trim() || "";
   const numericQty = Number(orderedQuantity);
 
-  if (!trimmedSupplier) {
-    throw new Error("Supplier name is required.");
+  if (supplierIdentity === null) {
+    throw new Error("Select a supplier from the list before recording the purchase order.");
   }
   if (!trimmedPoNumber) {
     throw new Error("External PO/reference number is required.");
@@ -128,7 +132,7 @@ export function recordPurchaseOrder(
   // two write authorities for one command is what this cutover exists to end.
   return reorderApiClient.call("recordReorderPurchaseOrder", {
     reorderRequestId,
-    supplierName: trimmedSupplier,
+    supplier: supplierIdentity,
     externalPoNumber: trimmedPoNumber,
     orderedQuantity: numericQty,
     orderedDate,

@@ -6708,3 +6708,25 @@ are not rewritten. Migration `1764430000000_purchasing-supplier-identity-and-rec
 7. **Recorded dependencies (not implemented here):** a governed price amendment / later cost-evidence path (the unpriced
    PO policy remains deferred, #191 correction 3); serialized receipt correction; employee supplier selection via the
    governed picker (requires a supplier-read grant decision for the purchasing employee) before identity becomes mandatory.
+
+## #194 — OWNER RULINGS: Purchasing → Finance final closure — correction holders, supplier identity required, Parts Manager finance defect (2026-10-02)
+
+**Status.** Recorded with the local closure package. #193 remains governing; this tightens it.
+
+1. **`inventory.receipt.correct` holders:** the Warehouse Manager and Parts Manager Security Roles, through ordinary
+   Administration grants (`functions/src/adminPolicy/purchasingFinanceClosureDelta.ts`), WAREHOUSE operational scope
+   preserved. **Not** Warehouse Associate, Parts Associate, Technician, Dispatcher or ordinary receiving users. No job-role
+   bypass in code; a future Administrator changes holders without a source edit.
+2. **Supplier identity is REQUIRED for every NEW Purchase Order** (supersedes #193 §3's "not yet mandatory"): exactly one of
+   EXTERNAL_ORGANIZATION / INTERNAL_OPERATING_COMPANY. The employee command refuses supplier text, alone or alongside
+   identity. Employees select by name (`listPurchaseOrderSupplierOptions`: ACTIVE suppliers + the OTHER operating companies;
+   never the buyer, never CONSOLIDATED); the server persists identity and authors the display name. Free-text-only is
+   LEGACY COMPATIBILITY for historical / imported purchase orders only; they stay valid, unchanged, readable and are never
+   guessed into identity. No second supplier master.
+3. **Parts Manager `finance.invoice.issue` + `finance.adjustment.record` = AUTHORITY DEFECT.** Archaeology: written by
+   migration `1761609600000` from the Firebase-era Role catalog (`PARTS_MANAGER_ROLE`), which took them in #1399
+   (`27a6307b`, 2026-08-21) from the workbook row "Parts Manager / Invoices / AR / CRE" whose Design Status is **Proposed**.
+   #151 only *classified* them (OTHER_TARGET_TYPE); no accepted Decision authorizes them. Both grants are revoked through
+   Administration (same delta); the capabilities remain, every finance Role keeps them, and Parts Manager keeps only the
+   finance READS. The Firebase-era Role catalog still declares them for the retiring Firebase finance path (recorded, not
+   changed here — retirement-only).

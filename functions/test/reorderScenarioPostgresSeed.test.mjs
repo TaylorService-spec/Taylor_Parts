@@ -102,6 +102,12 @@ test("the Reorder scenario builds through the GOVERNED PostgreSQL commands, and 
   for (const id of seed.REORDER_SCENARIO_SPECS.map((s) => s.partId)) {
     await part(id, id === "PRT-2001" ? "SERIALIZED" : "STANDARD");
   }
+  // The GOVERNED SUPPLIERS the ORDERED scenarios name (DECISIONS #193: a new PO carries supplier identity). Consumed, like
+  // the Parts -- the seed never creates a supplier.
+  for (const supplierId of [...new Set(seed.REORDER_SCENARIO_SPECS.filter((s) => s.purchaseOrder).map((s) => s.purchaseOrder.supplierId))]) {
+    await q(`INSERT INTO eos_ops.suppliers (tenant_id, supplier_id, name, normalized_key, status, version, created_by, updated_by)
+             VALUES ('t1',$1,$1,$1,'ACTIVE',1,'fixture','fixture')`, [supplierId]);
+  }
 
   // The purchasing Employee, linked to the associate Principal -- the governed assignee commands
   // compare Employee to Employee, so the seeder must act as the person it assigned the work to.

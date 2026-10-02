@@ -50,6 +50,9 @@ They have **not** been executed on nonprod; that needs a separate authorization.
 | UAT-FIN-PUR-016 | Unsafe correction after downstream consumption | **PASS (fail closed).** 2 of 3 units were consumed, so the void is refused ("only 1 of the 3 received remain"). Nothing is written and stock is never negative. |
 | UAT-FIN-PUR-017 | Wrong-company correction | **PASS (fail closed).** A replacement in Ventana's warehouse is refused (the replacement must be in the Reorder's own destination warehouse), and a supplied `operatingCompanyKey` is refused. The original receipt, stock and fact are untouched. |
 | UAT-FIN-PUR-018 | Unpriced receipt corrected | **PASS.** Voiding an unpriced receipt reverses nothing and resolves its `COST_EVIDENCE_MISSING` exception with an append-only `RECEIPT_VOIDED` row linked to the correction. The exception row itself is unchanged and no zero-cost fact is created. There is no governed later-price path, and the vocabulary refuses one (dependency). |
+| UAT-FIN-PUR-019 | Governed supplier selection by name (#194) | **PASS.** A Taylor Reorder is offered "Acme Refrigeration" (external) and "Ventana" (internal), never Taylor. A Ventana Reorder is offered "Acme Refrigeration" and "Taylor Freezer of Arizona", never Ventana. CONSOLIDATED is never offered. Someone who does not record POs is refused. A new PO with supplier text alone is refused, and so is text sent alongside an identity. Both PO screens use the governed picker and send only `{kind, id}`. |
+| UAT-FIN-PUR-020 | Receipt-correction authority (#194) | **PASS.** Warehouse Manager can correct within its WAREHOUSE scope, and so can Parts Manager. Parts Manager is refused outside its scope. Warehouse Associate and Parts Associate are refused. Holders are exactly partsManager and warehouseManager, and receivers keep `inventory.stock.receive` without the correction right. An Administration revoke makes the Warehouse Manager refused; a re-grant makes it allowed again, with no source change. |
+| UAT-FIN-PUR-021 | Parts Manager finance defect corrected (#194) | **PASS.** Applying the Administration delta removes `finance.invoice.issue` and `finance.adjustment.record` from partsManager and adds `inventory.receipt.correct`; nothing else changes. Parts Manager keeps `finance.invoice.read` and `finance.payment.read`. controller, accountingManager and financeManager keep both capabilities. The purchasing employee holds no finance execution right. |
 
 ## Held / dependencies
 
@@ -60,8 +63,8 @@ They have **not** been executed on nonprod; that needs a separate authorization.
 - **Vendor payable is DEFERRED.** No accepted obligation trigger exists. Commitment, cost evidence and obligation stay
   distinct.
 - **Receipt correction ≠ vendor return.** Vendor return / RMA is a future workflow and is not implemented.
+- **Supplier identity is now REQUIRED for new purchase orders (#194).** Legacy text-only purchase orders remain valid only as
+  history or imports.
 - **Dependencies:**
   - a governed price amendment, or a later cost-evidence path (the unpriced-PO policy is still deferred);
   - serialized receipt correction (refused today);
-  - the employee supplier picker on the PO screen (it needs a supplier-read grant decision) before identity becomes
-    mandatory for new POs.

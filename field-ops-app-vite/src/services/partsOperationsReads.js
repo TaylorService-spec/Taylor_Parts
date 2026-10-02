@@ -4,6 +4,7 @@
 // tenant -- is decided by the server, and a refusal is surfaced as a code, never a partial list.
 //
 //   fetchSupplierList()                     listSuppliers                 eos_ops.suppliers (was Firestore `suppliers`)
+//   fetchPurchaseOrderSupplierOptions(id)   listPurchaseOrderSupplierOptions  what a new PO may name: ACTIVE suppliers + the OTHER operating companies
 //   fetchInventoryPosition({partIds})       readInventoryOnHand           on-hand derived from eos_ops.inventory_movements
 //   fetchInventoryMovements({partIds})      readInventoryMovements        the scoped movement history behind it
 //   fetchReceivingLocationOptions(id)       listReceivingLocationOptions  the Reorder's own destination warehouse + bins
@@ -24,6 +25,18 @@ async function call(operation, input, options) {
 export async function fetchSupplierList(options) {
   const result = await call("listSuppliers", {}, options);
   return (result?.items ?? []).map((s) => Object.freeze({ id: s.supplierId, ...s }));
+}
+
+/**
+ * The governed supplier SELECTION for one Reorder's new PO (DECISIONS #193): picker rows keyed by `optionId`
+ * ("KIND:id"), named for people. The server already excluded the buying company and never offers CONSOLIDATED.
+ */
+export async function fetchPurchaseOrderSupplierOptions(reorderRequestId, options) {
+  const result = await call("listPurchaseOrderSupplierOptions", { reorderRequestId }, options);
+  return (result?.items ?? []).map((o) => Object.freeze({
+    id: o.optionId, name: o.name, status: "ACTIVE", kind: o.kind,
+    vendorNumber: o.kind === "INTERNAL_OPERATING_COMPANY" ? "Operating company" : (o.vendorNumber ?? null),
+  }));
 }
 
 export const fetchInventoryPosition = ({ partIds = null, warehouseId = null } = {}, options) =>

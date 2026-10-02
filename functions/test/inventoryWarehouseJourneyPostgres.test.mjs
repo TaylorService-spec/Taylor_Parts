@@ -148,7 +148,7 @@ test("Inventory / Warehouse over the Operations transport (writers injected ACTI
     ok(await call(pm, INV, "reviewReorderRequest", { reorderRequestId: rr, decision: "APPROVED" }), "approve");
     ok(await call(pm, INV, "assignReorderRequest", { reorderRequestId: rr, employeeId: "e-pa" }), "assign");
     ok(await call(pa, INV, "startPurchasingOnReorder", { reorderRequestId: rr }), "start");
-    ok(await call(pa, INV, "recordReorderPurchaseOrder", { reorderRequestId: rr, supplierName: "Desert Supply", externalPoNumber: `PO-${partId}`, orderedQuantity: qty, orderedDate: "2026-10-01", expectedArrivalDate: "2026-10-08" }), "PO");
+    ok(await call(pa, INV, "recordReorderPurchaseOrder", { reorderRequestId: rr, supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-1" }, externalPoNumber: `PO-${partId}`, orderedQuantity: qty, orderedDate: "2026-10-01", expectedArrivalDate: "2026-10-08" }), "PO");
     ok(await call(pa, INV, "receiveReorderStock", { source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: rr, purchaseOrderId: rr },
       receivingLocation: { type: "WAREHOUSE", locationId: WH }, lines: [{ lineId: "L1", partId, receivedQuantity: qty, ...(serials ? { serialNumbers: serials } : {}) }], idempotencyKey: key("rcv") }), "receive");
   };

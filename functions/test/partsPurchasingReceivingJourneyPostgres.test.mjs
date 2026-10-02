@@ -171,7 +171,7 @@ test("Parts / Purchasing / Receiving over the Operations transport", { skip: SKI
     ok(await inv(pm, "reviewReorderRequest", { reorderRequestId: rr, decision: "APPROVED" }), "approve");
     ok(await inv(pm, "assignReorderRequest", { reorderRequestId: rr, employeeId: "e-pa" }), "assign");
     ok(await inv(pa, "startPurchasingOnReorder", { reorderRequestId: rr }), "start");
-    ok(await inv(pa, "recordReorderPurchaseOrder", { reorderRequestId: rr, supplierName: "Desert Refrigeration Supply", externalPoNumber: `PO-${partId}`,
+    ok(await inv(pa, "recordReorderPurchaseOrder", { reorderRequestId: rr, supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-DESERT" }, externalPoNumber: `PO-${partId}`,
       orderedQuantity: qty, orderedDate: "2026-10-01", expectedArrivalDate: "2026-10-08" }), "PO");
     return rr;
   };
@@ -197,7 +197,12 @@ test("Parts / Purchasing / Receiving over the Operations transport", { skip: SKI
     const suppliers = ok(await inv(pa, "listSuppliers", {}), "Supplier master from PostgreSQL");
     assert.deepEqual(suppliers.items.map((s) => [s.supplierId, s.name, s.status, s.vendorNumber, s.contactName]),
       [["SUP-DESERT", "Desert Refrigeration Supply", "ACTIVE", "V-1001", "Dana Desert"]]);
-    ok(await inv(pa, "recordReorderPurchaseOrder", { reorderRequestId: rr, supplierName: suppliers.items[0].name, externalPoNumber: "PO-77001",
+    // DECISIONS #193 (2026-10-02): the Parts Associate PICKS the supplier BY NAME from the governed selection; the identity
+    // behind the name is what the PO stores -- never text the employee typed.
+    const choices = ok(await inv(pa, "listPurchaseOrderSupplierOptions", { reorderRequestId: rr }), "governed supplier selection");
+    const desert = choices.items.find((o) => o.name === "Desert Refrigeration Supply");
+    assert.deepEqual([desert.kind, desert.supplierId], ["EXTERNAL_ORGANIZATION", "SUP-DESERT"]);
+    ok(await inv(pa, "recordReorderPurchaseOrder", { reorderRequestId: rr, supplier: { kind: desert.kind, supplierId: desert.supplierId }, externalPoNumber: "PO-77001",
       orderedQuantity: 6, orderedDate: "2026-10-01", expectedArrivalDate: "2026-10-08", unitPriceMinor: 4100, currency: "USD" }), "record PO");
     const options = ok(await inv(pa, "listReceivingLocationOptions", { reorderRequestId: rr }), "receiving destinations from PostgreSQL");
     assert.equal(options.receivable, true);
@@ -328,7 +333,7 @@ test("Parts / Purchasing / Receiving over the Operations transport", { skip: SKI
     for (const [who, what] of [[tech, "technician"], [retail, "retail sales"], [national, "national accounts sales"], [nobody, "general employee"], [owner, "Owner"], [wa, "warehouse associate"], [wm, "warehouse manager"], [config, "configuration administrator"]]) {
       refused(await inv(who, "reviewReorderRequest", { reorderRequestId: r, decision: "APPROVED" }), 403, "FORBIDDEN", `${what} approve`);
       refused(await inv(who, "assignReorderRequest", { reorderRequestId: r, employeeId: "e-pa" }), 403, "FORBIDDEN", `${what} assign`);
-      refused(await inv(who, "recordReorderPurchaseOrder", { reorderRequestId: r, supplierName: "x", externalPoNumber: "x", orderedQuantity: 1, orderedDate: "2026-10-01" }), 403, "FORBIDDEN", `${what} record PO`);
+      refused(await inv(who, "recordReorderPurchaseOrder", { reorderRequestId: r, supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-DESERT" }, externalPoNumber: "x", orderedQuantity: 1, orderedDate: "2026-10-01" }), 403, "FORBIDDEN", `${what} record PO`);
       assert.equal((await inv(who, "receiveReorderStock", receipt(r, "PRT-COIL", 6))).status, 403, `${what} receive`);
     }
     for (const who of [tech, retail, national, nobody, wa, config]) {

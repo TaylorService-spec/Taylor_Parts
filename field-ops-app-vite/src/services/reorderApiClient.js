@@ -42,6 +42,8 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "readReceipt",
   "listReceivingLocationOptions",
   "listSuppliers",
+  // DECISIONS #193: the governed supplier selection for a new PO.
+  "listPurchaseOrderSupplierOptions",
   "listReorderAssignmentTargets",
 ]);
 
@@ -58,6 +60,8 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   "voidReorderPurchaseOrder",
   // The governed Reorder receipt (REORDER_PURCHASE_ORDER sources only). See services/reorderReceivingClient.js.
   "receiveReorderStock",
+  // DECISIONS #193: the governed receipt correction (VOID / CORRECTED).
+  "correctReorderReceipt",
 ]);
 
 /** Reads that take no input. */

@@ -896,6 +896,10 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // `finance.payment.apply` nor `finance.refund.record`, so this is not a finance bundle; it is two
     // rows. The subset property above still holds, so no guard catches it. Whether a Parts Manager
     // should be able to ISSUE AN INVOICE and RECORD A FINANCIAL ADJUSTMENT is an Owner question.
+    // RULED 2026-10-02 (Controller PURCHASING -> FINANCE FINAL CLOSURE, R3): AUTHORITY DEFECT -- no accepted Decision
+    // authorizes it. The correction is an ADMINISTRATION act (purchasingFinanceClosureDelta.ts revokes both grants), proven in
+    // financePurchasingIdentityCorrectionPostgres UAT-FIN-PUR-021. This suite measures the MIGRATION baseline, which still
+    // carries the grants until an authorized window applies the delta -- so the pin below stays a true statement about it.
     assert.ok((await holdersOf("finance.invoice.issue")).includes("partsManager"));
     assert.ok((await holdersOf("finance.adjustment.record")).includes("partsManager"));
     assert.equal((await holdersOf("finance.payment.apply")).includes("partsManager"), false);

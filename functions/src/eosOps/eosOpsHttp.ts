@@ -39,7 +39,7 @@ import {
   recordReorderPurchaseOrder, voidReorderPurchaseOrder, REORDER_POSTGRES_ACTIVE, type ReorderActor,
 } from "./reorderLifecycleCommands.js";
 import { ReorderAssignmentError, assignReorderRequestToEmployee, listReorderAssignmentTargets } from "./reorderAssignmentAuthority.js";
-import { listInventoryLocations, listInventoryWarehouses, listReceipts, listReceivingLocationOptions, listSuppliers, listTransferOrders, listTruckRoster, readInventoryMovements, readInventoryOnHand, readReceipt, readTruckStock } from "./partsReads.js";
+import { listInventoryLocations, listInventoryWarehouses, listPurchaseOrderSupplierOptions, listReceipts, listReceivingLocationOptions, listSuppliers, listTransferOrders, listTruckRoster, readInventoryMovements, readInventoryOnHand, readReceipt, readTruckStock } from "./partsReads.js";
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
 import { correctReorderReceipt } from "./receiptCorrectionCommand.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
@@ -96,6 +96,8 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "readReceipt",
   "listReceivingLocationOptions",
   "listSuppliers",
+  // DECISIONS #193: the governed supplier SELECTION for a new PO -- ACTIVE suppliers + the OTHER operating companies, by name.
+  "listPurchaseOrderSupplierOptions",
   "listInventoryWarehouses",
   "listInventoryLocations",
   "listTransferOrders",
@@ -158,6 +160,7 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   readReceipt: "/operations/inventory",
   listReceivingLocationOptions: "/operations/inventory",
   listSuppliers: "/operations/inventory",
+  listPurchaseOrderSupplierOptions: "/operations/inventory",
   listInventoryWarehouses: "/operations/inventory",
   listInventoryLocations: "/operations/inventory",
   listTransferOrders: "/operations/inventory",
@@ -277,7 +280,7 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "correctReorderReceipt",
   // The Parts / Purchasing / Receiving reads (2026-10-01) sit behind the same activation boundary.
   "readInventoryOnHand", "readInventoryMovements", "listReceipts", "readReceipt", "listReceivingLocationOptions",
-  "listSuppliers", "listReorderAssignmentTargets", "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
+  "listSuppliers", "listPurchaseOrderSupplierOptions", "listReorderAssignmentTargets", "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
   "listTruckRoster", "readTruckStock",
 ]);
 
@@ -420,6 +423,10 @@ export async function executeOperation(
       case "listSuppliers": {
         const { actor, pool } = await reorderActor();
         return ok(await listSuppliers({ pool }, actor, request.input ?? {}));
+      }
+      case "listPurchaseOrderSupplierOptions": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listPurchaseOrderSupplierOptions({ pool }, actor, request.input ?? {}));
       }
       case "listInventoryWarehouses": {
         const { actor, pool } = await reorderActor();

@@ -33,7 +33,7 @@ import {
   getDisplayQty,
 } from "../../domain/inventoryReorderRequests";
 import { recordPurchaseOrder, voidPurchaseOrder } from "../../domain/reorderPurchaseOrders";
-import { useSuppliers } from "../../hooks/useSuppliers";
+import { usePurchaseOrderSupplierOptions } from "../../hooks/usePurchaseOrderSupplierOptions";
 import SupplierPicker from "../../shared/supplier/SupplierPicker";
 import { isSelectableSupplier } from "../../domain/supplierPicker";
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE } from "../../domain/constants";
@@ -697,16 +697,13 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
   // read resolves the caller to an Employee through an active employee_principal_link and compares
   // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
   const isAssignee = request.isAssignee === true;
-  // Governed supplier SELECTION (admin/dispatcher PO path): the supplier comes from the ONE governed
-  // Supplier read model, not free text. `selectedSupplier` holds the chosen governed ENTITY; only its
-  // NAME is persisted for now (existing supplierName schema), and the entity-based state keeps the future
-  // supplierId + supplierNameSnapshot evolution from needing an interaction redesign. FAIL-CLOSED: if the
-  // supplier read is denied/unavailable, the picker says so and there is no free-text fallback -- submit
-  // stays disabled. NOTE: `suppliers` read is Rules-gated to admin/dispatcher; a PARTS_ASSOCIATE assignee
-  // gets a denied state here (the separately-governed PARTS_ASSOCIATE PO surface is a future follow-on --
-  // it must NOT widen the legacy supplier read; it awaits the governed catalog-read/purchasing model).
+  // Governed supplier SELECTION: the supplier is picked BY NAME from the governed options, never typed. `selectedSupplier`
+  // holds the chosen option ENTITY and the PO is recorded with the IDENTITY behind it (DECISIONS #193). FAIL-CLOSED: a denied
+  // or unavailable read shows an honest state with no free-text fallback, and submit stays disabled.
   const [selectedSupplier, setSelectedSupplier] = useState(null);
-  const suppliersRead = useSuppliers(accessVersion);
+  // DECISIONS #193 (Owner 2026-10-02): the governed SELECTION for THIS Reorder -- ACTIVE suppliers and the OTHER operating
+  // companies, by name. The PO stores the identity behind the chosen name; the server authors the display text.
+  const suppliersRead = usePurchaseOrderSupplierOptions(request.id, accessVersion);
   const [externalPoNumber, setExternalPoNumber] = useState("");
   const [orderedQuantity, setOrderedQuantity] = useState("");
   const [orderedDate, setOrderedDate] = useState("");
@@ -742,7 +739,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
     try {
       await recordPurchaseOrder(request.id, {
         partId: request.partId,
-        supplierName: selectedSupplier.name,
+        supplier: selectedSupplier,
         externalPoNumber,
         orderedQuantity,
         orderedDate,

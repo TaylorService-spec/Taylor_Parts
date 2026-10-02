@@ -61,7 +61,12 @@ export interface ScenarioReorderSpec {
   readonly reviewNotes?: string;
   readonly purchasingNotes?: string;
   readonly purchaseOrder?: {
-    readonly supplierName: string;
+    /**
+     * The GOVERNED supplier (eos_ops.suppliers) the PO names -- DECISIONS #193: a new PO carries supplier identity, never
+     * supplier text. Like the Parts, a prerequisite this seed CONSUMES and does not create: a supplier that is not in
+     * eos_ops.suppliers makes the governed recording refuse (SUPPLIER_NOT_FOUND), which is the correct failure.
+     */
+    readonly supplierId: string;
     readonly externalPoNumber: string;
     readonly orderedDate: string;
     readonly expectedArrivalDate?: string;
@@ -86,7 +91,7 @@ export const REORDER_SCENARIO_SPECS: readonly ScenarioReorderSpec[] = Object.fre
     reviewNotes: "Shortage confirmed; unit down at Harbor Grill Downtown.",
     purchasingNotes: "Arctic Parts Supply confirmed availability.",
     purchaseOrder: {
-      supplierName: "Arctic Parts Supply", externalPoNumber: "po-sbx-001",
+      supplierId: "sup-arcticparts", externalPoNumber: "po-sbx-001",
       orderedDate: "2026-09-01", expectedArrivalDate: "2026-09-08",
     },
     purpose: "the STANDARD-part receiving candidate; receiving it posts a quantity movement",
@@ -97,7 +102,7 @@ export const REORDER_SCENARIO_SPECS: readonly ScenarioReorderSpec[] = Object.fre
     reviewNotes: "Two compressor units required for scheduled ice-machine replacements.",
     purchasingNotes: "ColdChain Components confirmed serial-tracked units.",
     purchaseOrder: {
-      supplierName: "ColdChain Components", externalPoNumber: "po-sbx-003",
+      supplierId: "sup-coldchain", externalPoNumber: "po-sbx-003",
       orderedDate: "2026-09-01", expectedArrivalDate: "2026-09-10",
     },
     purpose: "the SERIALIZED receiving candidate; the quantity binds the serial count a receipt must supply",
@@ -215,7 +220,7 @@ export async function seedReorderScenarioIntoPostgres(
         }
         const recorded = await recordReorderPurchaseOrder(deps, actors.partsAssociate, {
           reorderRequestId: id,
-          supplierName: spec.purchaseOrder.supplierName,
+          supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: spec.purchaseOrder.supplierId },
           externalPoNumber: spec.purchaseOrder.externalPoNumber,
           orderedQuantity: spec.quantity,
           orderedDate: spec.purchaseOrder.orderedDate,

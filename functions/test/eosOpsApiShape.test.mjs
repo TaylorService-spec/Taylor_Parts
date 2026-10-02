@@ -30,6 +30,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
       // Parts / Purchasing / Receiving completion (2026-10-01): the PostgreSQL reads replacing the journey's Firebase reads.
       "readInventoryOnHand", "readInventoryMovements", "listReceipts", "readReceipt", "listReceivingLocationOptions",
       "listSuppliers",
+      // DECISIONS #193 (2026-10-02): the governed supplier selection for a new PO.
+      "listPurchaseOrderSupplierOptions",
       // Inventory / Warehouse completion (2026-10-01): the governed warehouse / location / transfer-order reads the cut-over
       // employee screens need (no quantity: stock stays readInventoryOnHand).
       "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
@@ -196,7 +198,8 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   // the same activation boundary.
   // + the two Truck Inventory reads (listTruckRoster, readTruckStock; 2026-10-01).
   // + correctReorderReceipt (the governed receipt correction, DECISIONS #193; 2026-10-01).
-  assert.equal(reorderOps.length, 29);
+  // + listPurchaseOrderSupplierOptions (the governed supplier selection, DECISIONS #193; 2026-10-02).
+  assert.equal(reorderOps.length, 30);
   for (const operation of reorderOps) {
     const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },
       { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });

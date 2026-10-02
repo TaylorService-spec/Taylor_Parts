@@ -726,16 +726,20 @@ export async function recordReorderPurchaseOrder(
   const i = acceptOnly(input, ["reorderRequestId", "supplier", "supplierName", "externalPoNumber", "orderedQuantity",
     "orderedDate", "expectedArrivalDate", "unitPriceMinor", "currency"]);
   if (!ID_SHAPE(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
-  // EXPLICIT SUPPLIER IDENTITY (DECISIONS #193): { kind: EXTERNAL_ORGANIZATION, supplierId } or
-  // { kind: INTERNAL_OPERATING_COMPANY, operatingCompanyId }. The employee picks a supplier by name; the client sends the
-  // governed id behind it. Supplier TEXT alongside identity is refused -- display text never overrides identity. Text alone
-  // is the legacy text-only shape, kept compatible and never converted into counterparty truth.
-  const supplierIdentity = parseSupplierIdentity(i.supplier);
-  if (supplierIdentity !== null && i.supplierName !== undefined && i.supplierName !== null) {
-    refuse("SUPPLIER_TEXT_WITH_IDENTITY", "INVALID_INPUT", "a governed supplier carries its own name; do not also send supplierName");
+  // EXPLICIT SUPPLIER IDENTITY IS REQUIRED FOR EVERY NEW PURCHASE ORDER (DECISIONS #193; Owner ruling 2026-10-02):
+  // { kind: EXTERNAL_ORGANIZATION, supplierId } or { kind: INTERNAL_OPERATING_COMPANY, operatingCompanyId }. The employee
+  // picks a supplier BY NAME (listPurchaseOrderSupplierOptions); the client sends the governed identity behind it and the
+  // server authors the display name. Supplier TEXT is never accepted here -- not alone (legacy compatibility is for
+  // HISTORICAL purchase orders only, which this command never creates) and not alongside identity (text never overrides it).
+  if (i.supplierName !== undefined && i.supplierName !== null) {
+    refuse(i.supplier === undefined || i.supplier === null ? "SUPPLIER_IDENTITY_REQUIRED" : "SUPPLIER_TEXT_WITH_IDENTITY", "INVALID_INPUT",
+      "a new purchase order names a governed supplier (selected by name), never supplier text");
   }
-  const supplierName = supplierIdentity !== null ? "" : optionalText(i.supplierName, "supplierName", 200);
-  if (supplierName === null) refuse("SUPPLIER_REQUIRED", "INVALID_INPUT", "a supplier is required");
+  const supplierIdentity = parseSupplierIdentity(i.supplier);
+  if (supplierIdentity === null) {
+    refuse("SUPPLIER_IDENTITY_REQUIRED", "INVALID_INPUT", "a new purchase order names a governed supplier: an external supplier or another operating company");
+  }
+  const supplierName = "";
   const externalPoNumber = optionalText(i.externalPoNumber, "externalPoNumber", 100);
   if (externalPoNumber === null) refuse("PO_NUMBER_REQUIRED", "INVALID_INPUT", "externalPoNumber is required");
   if (!Number.isSafeInteger(i.orderedQuantity) || (i.orderedQuantity as number) <= 0) {
