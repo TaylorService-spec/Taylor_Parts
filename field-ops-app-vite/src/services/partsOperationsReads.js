@@ -4,6 +4,7 @@
 // tenant -- is decided by the server, and a refusal is surfaced as a code, never a partial list.
 //
 //   fetchSupplierList()                     listSuppliers                 eos_ops.suppliers (was Firestore `suppliers`)
+//   fetchPurchaseOrderSupplierOptions(id)   listPurchaseOrderSupplierOptions  what a new PO may name: ACTIVE suppliers + the OTHER operating companies
 //   fetchInventoryPosition({partIds})       readInventoryOnHand           on-hand derived from eos_ops.inventory_movements
 //   fetchInventoryMovements({partIds})      readInventoryMovements        the scoped movement history behind it
 //   fetchReceivingLocationOptions(id)       listReceivingLocationOptions  the Reorder's own destination warehouse + bins
@@ -25,6 +26,27 @@ export async function fetchSupplierList(options) {
   const result = await call("listSuppliers", {}, options);
   return (result?.items ?? []).map((s) => Object.freeze({ id: s.supplierId, ...s }));
 }
+
+/**
+ * The governed supplier SELECTION for one Reorder's new PO (DECISIONS #193): picker rows keyed by `optionId`
+ * ("KIND:id"), named for people. The server already excluded the buying company and never offers CONSOLIDATED.
+ */
+export async function fetchPurchaseOrderSupplierOptions(reorderRequestId, options) {
+  const result = await call("listPurchaseOrderSupplierOptions", { reorderRequestId }, options);
+  return (result?.items ?? []).map((o) => Object.freeze({
+    id: o.optionId, name: o.name, status: "ACTIVE", kind: o.kind,
+    vendorNumber: o.kind === "INTERNAL_OPERATING_COMPANY" ? "Operating company" : (o.vendorNumber ?? null),
+  }));
+}
+
+// ── GOVERNED SUPPLIER ADMINISTRATION (DECISIONS #196) -- the server decides authority (inventory.catalog.manage for create /
+// update, inventory.catalog.activate for status) and authors the supplier's name from its CRM organization.
+export async function fetchSupplierOrganizationOptions(options) {
+  return (await call("listSupplierOrganizationOptions", {}, options))?.items ?? [];
+}
+export const createSupplierRelationship = (input, options) => call("createSupplier", input, options);
+export const updateSupplierFields = (input, options) => call("updateSupplier", input, options);
+export const setSupplierRelationshipStatus = (input, options) => call("setSupplierStatus", input, options);
 
 export const fetchInventoryPosition = ({ partIds = null, warehouseId = null } = {}, options) =>
   call("readInventoryOnHand", { ...(partIds ? { partIds } : {}), ...(warehouseId ? { warehouseId } : {}) }, options);

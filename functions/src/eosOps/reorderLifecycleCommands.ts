@@ -689,6 +689,21 @@ export async function cancelReorderRequest(
 // Record the purchase order
 // ---------------------------------------------------------------------------------------------
 
+function parseSupplierIdentity(raw: unknown): import("./purchasingRepository.js").SupplierIdentityInput | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) refuse("SUPPLIER_INVALID", "INVALID_INPUT", "supplier names its kind and its governed identity");
+  const s = raw as Record<string, unknown>;
+  const keys = Object.keys(s).sort().join(",");
+  if (s.kind === "EXTERNAL_ORGANIZATION" && keys === "kind,supplierId" && ID_SHAPE(s.supplierId)) {
+    return { kind: "EXTERNAL_ORGANIZATION", supplierId: s.supplierId as string };
+  }
+  if (s.kind === "INTERNAL_OPERATING_COMPANY" && keys === "kind,operatingCompanyId" && ID_SHAPE(s.operatingCompanyId)) {
+    return { kind: "INTERNAL_OPERATING_COMPANY", operatingCompanyId: s.operatingCompanyId as string };
+  }
+  return refuse("SUPPLIER_INVALID", "INVALID_INPUT",
+    "supplier is { kind: EXTERNAL_ORGANIZATION, supplierId } or { kind: INTERNAL_OPERATING_COMPANY, operatingCompanyId }");
+}
+
 /**
  * Record the purchase order, which is what moves a Reorder to ORDERED.
  *
@@ -708,11 +723,23 @@ export async function recordReorderPurchaseOrder(
   input: Record<string, unknown>,
 ): Promise<{ readonly reorderRequestId: string; readonly status: string; readonly purchaseOrderId: string }> {
   requireActor(actor, REORDER_RECORD_PO);
-  const i = acceptOnly(input, ["reorderRequestId", "supplierName", "externalPoNumber", "orderedQuantity",
+  const i = acceptOnly(input, ["reorderRequestId", "supplier", "supplierName", "externalPoNumber", "orderedQuantity",
     "orderedDate", "expectedArrivalDate", "unitPriceMinor", "currency"]);
   if (!ID_SHAPE(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
-  const supplierName = optionalText(i.supplierName, "supplierName", 200);
-  if (supplierName === null) refuse("SUPPLIER_REQUIRED", "INVALID_INPUT", "supplierName is required");
+  // EXPLICIT SUPPLIER IDENTITY IS REQUIRED FOR EVERY NEW PURCHASE ORDER (DECISIONS #193; Owner ruling 2026-10-02):
+  // { kind: EXTERNAL_ORGANIZATION, supplierId } or { kind: INTERNAL_OPERATING_COMPANY, operatingCompanyId }. The employee
+  // picks a supplier BY NAME (listPurchaseOrderSupplierOptions); the client sends the governed identity behind it and the
+  // server authors the display name. Supplier TEXT is never accepted here -- not alone (legacy compatibility is for
+  // HISTORICAL purchase orders only, which this command never creates) and not alongside identity (text never overrides it).
+  if (i.supplierName !== undefined && i.supplierName !== null) {
+    refuse(i.supplier === undefined || i.supplier === null ? "SUPPLIER_IDENTITY_REQUIRED" : "SUPPLIER_TEXT_WITH_IDENTITY", "INVALID_INPUT",
+      "a new purchase order names a governed supplier (selected by name), never supplier text");
+  }
+  const supplierIdentity = parseSupplierIdentity(i.supplier);
+  if (supplierIdentity === null) {
+    refuse("SUPPLIER_IDENTITY_REQUIRED", "INVALID_INPUT", "a new purchase order names a governed supplier: an external supplier or another operating company");
+  }
+  const supplierName = "";
   const externalPoNumber = optionalText(i.externalPoNumber, "externalPoNumber", 100);
   if (externalPoNumber === null) refuse("PO_NUMBER_REQUIRED", "INVALID_INPUT", "externalPoNumber is required");
   if (!Number.isSafeInteger(i.orderedQuantity) || (i.orderedQuantity as number) <= 0) {
@@ -753,9 +780,11 @@ export async function recordReorderPurchaseOrder(
   // unknown request keep the repository's own code and are reported in the lifecycle's categories -- never a 500.
   const REPOSITORY_CATEGORY: Readonly<Record<string, ReorderLifecycleCategory>> = Object.freeze({
     REQUEST_STATE_INVALID: "PRECONDITION_FAILED", PO_ALREADY_EXISTS: "CONFLICT", REQUEST_NOT_FOUND: "NOT_FOUND",
+    SUPPLIER_NOT_FOUND: "NOT_FOUND", SUPPLIER_INACTIVE: "PRECONDITION_FAILED", SUPPLIER_COMPANY_UNRESOLVED: "PRECONDITION_FAILED",
+    SELF_PURCHASE_REFUSED: "PRECONDITION_FAILED", PURCHASING_COMPANY_UNRESOLVED: "PRECONDITION_FAILED",
   });
   const record = await run(deps.pool, actor.tenantId, actor.principalId, i.reorderRequestId as string, {
-    supplierName: supplierName as string, externalPoNumber: externalPoNumber as string,
+    supplierName: supplierName as string, supplierIdentity, externalPoNumber: externalPoNumber as string,
     orderedQuantity: i.orderedQuantity as number,
     orderedDate: i.orderedDate as string,
     expectedArrivalDate: (i.expectedArrivalDate as string | null) ?? null,

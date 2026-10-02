@@ -29,3 +29,18 @@ export function rankSupplierMatches(rows, query, limit = 8) {
 export function isSelectableSupplier(entity) {
   return !!entity && entity.status === "ACTIVE" && typeof entity.name === "string" && entity.name.length > 0;
 }
+
+// DECISIONS #193 -- a new PO stores the governed IDENTITY behind the name the employee picked, never the name. The picker
+// row's id is the server's optionId ("EXTERNAL_ORGANIZATION:<supplierId>" | "INTERNAL_OPERATING_COMPANY:<companyId>").
+// Anything else -- a bare string, a legacy Supplier row id, a missing selection -- yields null and the PO is not sent.
+export function supplierIdentityFromOption(entity) {
+  if (!isSelectableSupplier(entity) || typeof entity.id !== "string") return null;
+  const at = entity.id.indexOf(":");
+  if (at <= 0) return null;
+  const kind = entity.id.slice(0, at);
+  const id = entity.id.slice(at + 1);
+  if (id.length === 0) return null;
+  if (kind === "EXTERNAL_ORGANIZATION") return { kind, supplierId: id };
+  if (kind === "INTERNAL_OPERATING_COMPANY") return { kind, operatingCompanyId: id };
+  return null;
+}

@@ -187,8 +187,13 @@ test("financial authority lives in eos_finance, and does not leak into eos_ops",
   // produced it. It is the reason the ruling also says the fact carries `operating_company_id` --
   // the governed business company -- rather than the operational `operating_company_key` every
   // eos_ops row carries.
-  const FINANCIAL_TABLES = ["inventory_acquisition_costs", "invoice_lines", "invoices", "payment_applications", "payments"];
-  const FINANCIAL_VIEWS = ["invoice_application_totals", "invoice_totals", "payment_balances"];
+  // + the Finance foundation (DECISIONS #191, migration 1764420000000): counterparties, company profiles, immutable financial
+  // facts, obligations (+ the derived obligation_balances view), cost-evidence exceptions and accounting destinations.
+  // + DECISIONS #193 (migration 1764430000000): the append-only resolution of a missing-cost exception by a receipt correction.
+  // + DECISIONS #196 (migration 1764450000000): the Operational Billing Package and its lines.
+  const FINANCIAL_TABLES = ["accounting_destinations", "billing_package_lines", "billing_packages", "cost_evidence_exception_resolutions", "cost_evidence_exceptions", "counterparty_company_profiles", "financial_counterparties",
+    "financial_facts", "inventory_acquisition_costs", "invoice_lines", "invoices", "obligations", "payment_applications", "payments"];
+  const FINANCIAL_VIEWS = ["invoice_application_totals", "invoice_totals", "obligation_balances", "payment_balances"];
 
   // (1) The schema exists and holds EXACTLY the seven objects the ruling names -- derived from the
   // migration files, in the same directory-derived way the eos_ops census above is derived, so a
@@ -261,7 +266,8 @@ test("financial authority lives in eos_finance, and does not leak into eos_ops",
         AND t.table_type = 'BASE TABLE'
       ORDER BY 1`,
   );
-  assert.deepEqual(company.rows.map((r) => r.table_name), ["invoices", "payments"]);
+  // + billing_packages (DECISIONS #196): the package states its company key beside the resolved company id.
+  assert.deepEqual(company.rows.map((r) => r.table_name), ["billing_packages", "invoices", "payments"]);
   for (const row of company.rows) {
     assert.equal(row.is_nullable, "NO", `${row.table_name}.operating_company_key must be NOT NULL`);
     assert.equal(row.column_default, null, `${row.table_name}.operating_company_key must have no default`);

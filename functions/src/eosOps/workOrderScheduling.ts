@@ -38,6 +38,9 @@ import {
   assertEmployeeAssignable, assignWithinTransaction, type WorkOrderAssignmentResult,
 } from "./workOrderAssignmentAuthority";
 import { checkTechnicianAvailability } from "./workOrderAvailability";
+import { CommercialFulfillmentError, recordWorkOrderFulfillmentOn, type WorkOrderFulfillmentOutcome } from "../eosCommercial/fulfillment/salesOrderFulfillmentAuthority";
+import { prepareBillingPackageOn, type BillingPackageOutcome } from "../eosFinance/billingPackage";
+import { FinanceFoundationError } from "../eosFinance/financeFoundation";
 import { isQuarantined, notQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 
 const SCHEMA = "eos_ops";
@@ -429,25 +432,29 @@ export async function dispatchWorkOrder(deps: SchedulingDeps, actor: LifecycleAc
 
 // ════════════════════ Complete (DQ-015) ════════════════════
 
+/** Retained for the record: the refusal DQ-015 imposed until the Commercial fulfillment authority existed (now retired). */
 export const FULFILLMENT_AUTHORITY_UNAVAILABLE = "SALES_ORDER_FULFILLMENT_AUTHORITY_UNAVAILABLE";
 
 export interface CompleteResult {
   readonly transition: TransitionResult;
   readonly inventoryBoundary: string | null;
-  /** Always NOT_APPLICABLE today: a Sales-Order-linked completion is refused (DQ-015, below). */
-  readonly fulfillment: "NOT_APPLICABLE";
+  /** NOT_APPLICABLE for a Work Order with no Sales Order; RECORDED with the governed Commercial fulfillment otherwise. */
+  readonly fulfillment: WorkOrderFulfillmentOutcome;
+  /** The Finance consequence (DECISIONS #196): the Operational Billing Package when the Sales Order is now ELIGIBLE in full. */
+  readonly billingPackage: BillingPackageOutcome | null;
 }
 
 /**
  * WORK_IN_PROGRESS -> COMPLETED, by the ASSIGNED Employee (workOrder.lifecycle.complete + RECORD_ASSIGNMENT).
  *
- * DQ-015 (Controller ruling 2026-09-28): completion drives the Sales Order's fulfillment acceptance ONLY when the
- * governed prerequisites pass, and idempotently. The prerequisite that cannot pass today is the AUTHORITY itself:
- * PostgreSQL Commercial fulfillment is held (eos_commercial.sales_order_lines carries no fulfillment columns and the
- * FULFILLED transition refuses FULFILLMENT_AUTHORITY_UNAVAILABLE). So a Sales-Order-linked Work Order is REFUSED
- * rather than completed without its write-back -- completing it silently is exactly the defect DQ-015 exists to
- * close (the Sales Order wedged in IN_FULFILLMENT). A Work Order with no Sales Order completes normally, and it
- * is idempotent by construction: COMPLETED is one-way, so a replay is a STALE_WORK_ORDER_STATE conflict.
+ * DQ-015 END STATE (Controller COMMERCIAL FINANCE ACTIVATION, 2026-10-02; DECISIONS #195): completing a Sales-Order-linked
+ * Work Order invokes the Commercial fulfillment authority SERVER-SIDE, in THIS transaction, which records the fulfillment
+ * the completion proves (eosCommercial/fulfillment/salesOrderFulfillmentAuthority.ts). The employee's authority stays
+ * authority to complete their own assigned work -- no Commercial capability is asked of them. If the fulfillment cannot be
+ * recorded (a missing or mismatched Sales Order, an unresolved company, an overage) the COMPLETION IS REFUSED and rolls back:
+ * a completed Work Order whose fulfillment vanished, or a fulfillment whose evidence never committed, cannot exist. A Work
+ * Order with no Sales Order completes normally. Idempotent by construction: COMPLETED is one-way, so a replay is a
+ * STALE_WORK_ORDER_STATE conflict, and every fulfillment row is unique per (Work Order, Sales Order line).
  */
 export async function completeWorkOrder(deps: SchedulingDeps, actor: LifecycleActor, input: unknown): Promise<CompleteResult> {
   const i = acceptOnly(input, ["workOrderId", "note"]);
@@ -457,18 +464,35 @@ export async function completeWorkOrder(deps: SchedulingDeps, actor: LifecycleAc
   const now = (deps.now ?? (() => new Date()))();
 
   return inTransaction(deps.pool, async (client) => {
-    const wo = await lockWorkOrder(client, actor.tenantId, edge.workOrderId, edge.expectedStatus);
-    const lines = await client.query(
-      `SELECT 1 FROM ${SCHEMA}.work_order_sales_order_lines WHERE tenant_id = $1 AND work_order_id = $2 LIMIT 1`,
-      [actor.tenantId, edge.workOrderId]);
-    if (wo.salesOrderId !== null || lines.rows.length > 0) {
-      refuse(FULFILLMENT_AUTHORITY_UNAVAILABLE, "UNAVAILABLE",
-        "this Work Order fulfils a Sales Order, and completing it must record that fulfillment (DQ-015). The "
-        + "PostgreSQL Commercial fulfillment authority is not active, so completion is refused rather than "
-        + "performed without its write-back");
-    }
+    await lockWorkOrder(client, actor.tenantId, edge.workOrderId, edge.expectedStatus);
     const transition = await applyTransitionWithinTransaction(client, actor, edge, now);
-    return Object.freeze({ transition, inventoryBoundary: transition.inventoryBoundary, fulfillment: "NOT_APPLICABLE" as const });
+    let fulfillment: WorkOrderFulfillmentOutcome;
+    try {
+      fulfillment = await recordWorkOrderFulfillmentOn(client, { tenantId: actor.tenantId, principalId: actor.principalId },
+        { workOrderId: edge.workOrderId, completedAt: now });
+    } catch (err) {
+      if (err instanceof CommercialFulfillmentError) {
+        refuse(err.code, err.category === "NOT_FOUND" ? "NOT_FOUND" : "PRECONDITION_FAILED",
+          `this Work Order fulfils a Sales Order and its completion must record that fulfillment (DQ-015): ${err.message}`);
+      }
+      throw err;
+    }
+    // THE FINANCE CONSEQUENCE (DECISIONS #196), same transaction: when the fulfillment leaves the Sales Order ELIGIBLE in full,
+    // the Operational Billing Package is prepared (READY, or HELD with its explicit evidence exceptions). Not an invoice, not a
+    // receivable, not a posting, nothing sent; no Finance capability is asked of the technician.
+    let billingPackage: BillingPackageOutcome | null = null;
+    if (fulfillment.status === "RECORDED") {
+      try {
+        billingPackage = await prepareBillingPackageOn(client, { tenantId: actor.tenantId, principalId: actor.principalId },
+          { salesOrderId: fulfillment.salesOrderId });
+      } catch (err) {
+        if (err instanceof FinanceFoundationError) {
+          refuse(err.code, "PRECONDITION_FAILED", `the Sales Order's billing package could not be prepared: ${err.message}`);
+        }
+        throw err;
+      }
+    }
+    return Object.freeze({ transition, inventoryBoundary: transition.inventoryBoundary, fulfillment, billingPackage });
   });
 }
 

@@ -104,6 +104,9 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
                expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
              VALUES ($1,'t1','fixture',$1,$1,'ACTIVE','EACH','STANDARD','STOCKED',false,false,false,false,1,'fixture')`, [partId]);
   }
+  // The governed supplier a new PO names (DECISIONS #193: supplier identity, never text).
+  await q(`INSERT INTO eos_ops.suppliers (tenant_id, supplier_id, name, normalized_key, status, version, created_by, updated_by)
+           VALUES ('t1','SUP-ACME','Acme','acme','ACTIVE',1,'fixture','fixture')`);
   // A warehouse whose key nobody governs. Creating against it must refuse.
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
            VALUES ('wh-ungoverned','t1','not-a-bound-key','WH3','Sampleton','ACTIVE','NATIVE','f','f')`);
@@ -203,7 +206,7 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
   });
 
   await t.test("recording the purchase order is the ASSIGNEE's, even for a caller holding every capability", async () => {
-    const po = { reorderRequestId: rr, supplierName: "Acme", externalPoNumber: "PO-1", orderedQuantity: 4, orderedDate: "2026-03-01" };
+    const po = { reorderRequestId: rr, supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-ACME" }, externalPoNumber: "PO-1", orderedQuantity: 4, orderedDate: "2026-03-01" };
     await assert.rejects(life.recordReorderPurchaseOrder(deps, actor(pBob), po), /assigned to may record its purchase order/);
     await assert.rejects(life.recordReorderPurchaseOrder(deps, actor(pUnlinked), po), /assigned to may record/);
     await assert.rejects(life.recordReorderPurchaseOrder(deps, actor(pManager), po), /assigned to may record/,
@@ -282,7 +285,7 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     await authority.assignReorderRequestToEmployee(deps, actor(pManager), { reorderRequestId: v, employeeId: "e-alice" });
     await life.startPurchasingOnReorder(deps, actor(pAlice), { reorderRequestId: v });
     const recorded = await life.recordReorderPurchaseOrder(deps, actor(pAlice), {
-      reorderRequestId: v, supplierName: "Acme", externalPoNumber: "PO-V1", orderedQuantity: 4, orderedDate: "2026-03-01" });
+      reorderRequestId: v, supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-ACME" }, externalPoNumber: "PO-V1", orderedQuantity: 4, orderedDate: "2026-03-01" });
     assert.equal(recorded.status, "ORDERED");
     const voidOf = (who, caps, voidReason = "supplier discontinued the part") =>
       life.voidReorderPurchaseOrder(deps, actor(who, caps), { reorderRequestId: v, voidReason });
@@ -435,6 +438,8 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
   await q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
              expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
            VALUES ('PART-SYN', $1, 'fixture', 'PART-SYN', 'PART-SYN', 'ACTIVE', 'EACH', 'STANDARD', 'STOCKED', false, false, false, false, 1, 'fixture')`, [T]);
+  await q(`INSERT INTO eos_ops.suppliers (tenant_id, supplier_id, name, normalized_key, status, version, created_by, updated_by)
+           VALUES ($1,'SUP-SYN','SYNTHETIC Supplier','synthetic supplier','ACTIVE',1,'fixture','fixture')`, [T]);
 
   const cli = (...extra) => {
     const r = spawnSync(process.execPath, ["scripts/syntheticAcceptanceWarehouseCli.js", "--environment", "platform-sandbox", "--databaseUrlEnv", "SYN_DB",
@@ -528,7 +533,7 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
     await authority.assignReorderRequestToEmployee(deps, as(pPM, PM), { reorderRequestId: id, employeeId: "e-pa" });
     await life.startPurchasingOnReorder(deps, as(pPA, PA), { reorderRequestId: id });
     await life.postPurchasingUpdate(deps, as(pPA, PA), { reorderRequestId: id, vendorContacted: true });
-    const recorded = await life.recordReorderPurchaseOrder(deps, as(pPA, PA), { reorderRequestId: id, supplierName: "SYNTHETIC Supplier", externalPoNumber: po, orderedQuantity: 2, orderedDate: "2026-09-30" });
+    const recorded = await life.recordReorderPurchaseOrder(deps, as(pPA, PA), { reorderRequestId: id, supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-SYN" }, externalPoNumber: po, orderedQuantity: 2, orderedDate: "2026-09-30" });
     assert.equal(recorded.status, "ORDERED");
     return id;
   };
@@ -575,7 +580,7 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
     await life.reviewReorderRequest(deps, as(pPM, PM), { reorderRequestId: id, decision: "APPROVED" });
     await authority.assignReorderRequestToEmployee(deps, as(pPM, PM), { reorderRequestId: id, employeeId: "e-pa" });
     await life.startPurchasingOnReorder(deps, as(pPA, PA), { reorderRequestId: id });
-    const po = { reorderRequestId: id, supplierName: "SYNTHETIC Supplier", externalPoNumber: "CAC-PROOF-PO-AUDIT", orderedQuantity: 2, orderedDate: "2026-09-30" };
+    const po = { reorderRequestId: id, supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-SYN" }, externalPoNumber: "CAC-PROOF-PO-AUDIT", orderedQuantity: 2, orderedDate: "2026-09-30" };
     // A refused recording (not the assignee) writes nothing.
     await assert.rejects(life.recordReorderPurchaseOrder(deps, as(pPM, new Set([...PM, life.REORDER_RECORD_PO])), po), /assigned to may record/);
     assert.deepEqual(await poAudits(id), []);
@@ -585,7 +590,9 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
     assert.deepEqual([rows[0].actor_uid, rows[0].target_kind, rows[0].target_id, rows[0].reason], [pPA, "purchase_order", id, "purchase order recorded"]);
     assert.deepEqual(rows[0].before, { status: "PURCHASING_IN_PROGRESS" });
     assert.deepEqual(rows[0].after, { status: "ORDERED", reorderRequestId: id, purchaseOrderId: id, operatingCompanyKey: "taylor",
-      warehouseId: W, partId: "PART-SYN", actorEmployeeId: "e-pa", externalPoNumber: "CAC-PROOF-PO-AUDIT", orderedQuantity: 2, orderedDate: "2026-09-30" });
+      warehouseId: W, partId: "PART-SYN", actorEmployeeId: "e-pa", externalPoNumber: "CAC-PROOF-PO-AUDIT", orderedQuantity: 2, orderedDate: "2026-09-30",
+      // DECISIONS #193: the audit states the governed supplier identity every new PO carries, and the buying company.
+      supplierKind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-SYN", supplierOperatingCompanyId: null, purchasingOperatingCompanyId: "taylor" });
     // The PO and its audit are one transaction: the audit names exactly the PO that exists.
     assert.deepEqual((await q(`SELECT id, created_by, operating_company_key FROM eos_ops.purchase_orders WHERE id = $1`, [id])).rows, [{ id, created_by: pPA, operating_company_key: "taylor" }]);
     // A replay is refused (the request is ORDERED) and adds no second audit event. XLF 2026-09-30: it is the SAME

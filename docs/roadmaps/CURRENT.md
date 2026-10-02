@@ -49,6 +49,17 @@ Where the static Wave ordering in the reconciliation (§12) differs, **this orde
 
 Environment fences: Production and Certification untouched; no dual write; no Firebase fallback; `.firebaserc` default project is never relied upon.
 
+## Required product capabilities — Finance & Analysis (Controller, 2026-10-01)
+
+Recorded as REQUIRED product capabilities, **not optional post-launch enhancements** (DECISIONS #190, #191, #192):
+
+- **EOS FINANCE (operational financial subledger)** — target model: [`../financials/FINANCE_TARGET_PRODUCT_MODEL.md`](../financials/FINANCE_TARGET_PRODUCT_MODEL.md).
+  Foundation built locally (`lane/finance-foundation`, not merged); transactional packages not started.
+- **EOS FINANCIAL & OPERATIONAL ANALYSIS LAYER** — [`../financials/ANALYSIS_LAYER_ARCHITECTURE.md`](../financials/ANALYSIS_LAYER_ARCHITECTURE.md).
+- **ANALYSIS UI / PERSONA ANALYTICS** — required purpose-built UI workstream (same document, §8).
+
+Sequence, never inverted: GOVERNED FACTS → FINANCIAL CONSEQUENCES → MEASURES → ANALYSIS → PERSONA UI → OPTIONAL AI EXPLANATION.
+
 ## Execution strategy — owner-approved hybrid migration
 
 The platform reset is executed through [`2026-09-16-parallel-v2-sandbox-cutover-strategy.md`](2026-09-16-parallel-v2-sandbox-cutover-strategy.md).

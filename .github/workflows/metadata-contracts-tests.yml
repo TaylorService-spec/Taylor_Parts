@@ -77,6 +77,8 @@ on:
       - "field-ops-app-vite/test/manufacturersMetadataList.test.jsx"
       - "field-ops-app-vite/test/warehousesSurface.test.jsx"
       - "field-ops-app-vite/test/suppliersSurface.test.jsx"
+      - "field-ops-app-vite/test/supplierAdministrationPanel.test.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/SupplierAdministration.jsx"
       - "field-ops-app-vite/test/techniciansSurfaceEmployeeDivergence.test.jsx"
       - "field-ops-app-vite/test/transfersSurface.test.jsx"
       - "field-ops-app-vite/test/purchaseOrdersSurface.test.jsx"
@@ -154,6 +156,8 @@ on:
       - "field-ops-app-vite/test/manufacturersMetadataList.test.jsx"
       - "field-ops-app-vite/test/warehousesSurface.test.jsx"
       - "field-ops-app-vite/test/suppliersSurface.test.jsx"
+      - "field-ops-app-vite/test/supplierAdministrationPanel.test.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/SupplierAdministration.jsx"
       - "field-ops-app-vite/test/techniciansSurfaceEmployeeDivergence.test.jsx"
       - "field-ops-app-vite/test/transfersSurface.test.jsx"
       - "field-ops-app-vite/test/purchaseOrdersSurface.test.jsx"
@@ -235,7 +239,7 @@ jobs:
         run: npx vitest run test/warehousesSurface.test.jsx
         working-directory: field-ops-app-vite
       - name: Suppliers surface on the metadata list runtime (vitest)
-        run: npx vitest run test/suppliersSurface.test.jsx
+        run: npx vitest run test/suppliersSurface.test.jsx test/supplierAdministrationPanel.test.jsx
         working-directory: field-ops-app-vite
       - name: Technicians surface is NOT the Employees entity (vitest)
         run: npx vitest run test/techniciansSurfaceEmployeeDivergence.test.jsx

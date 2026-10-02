@@ -6471,3 +6471,331 @@ ruling R3 is pending", and the workflow control plane). This records rulings; it
    `functions/test/adminPolicyActivation.test.mjs` ("a NEW draft version, not a rewrite of the old one").
 5. **Not authorized by this entry:** applying migration `1763078400000` anywhere but local test databases, any
    live grant or assignment, production.
+
+## #190 — CONTROLLER RULING: Finance / Commercial foundation — Taylor + Ventana + Saratoga + Rental operating model (2026-10-01)
+
+**Status.** RECORDED as the governed business foundation that future Finance, Commercial, Equipment, Inventory and
+Reporting design must honor. **It activates nothing and authorizes no implementation**: no runtime behavior, migration,
+capability, grant, Finance UI change, Rental build, Saratoga integration, Finance activation or Firebase change. It
+preserves #145. It follows the read-only Finance & Reporting archaeology at main `903fd1db` (2026-10-01). (Numbering:
+DECISIONS.md last recorded #180, but Owner rulings up to #189 are already cited elsewhere in the repository, so this
+entry takes #190 to avoid a collision.)
+
+1. **Operating companies.** Taylor and Ventana are financially distinct operating companies. Each keeps its own
+   purchases, inventory ownership, sales, service transactions, operational financial records and accounting
+   destination/configuration. Every financial consequence resolves to EXACTLY ONE operating company; if it cannot be
+   determined, financial posting FAILS CLOSED. Authorized reporting may consolidate the companies, but CONSOLIDATED is a
+   reporting projection only — not a shared ledger, not a third operating company, not permission to commingle
+   records, and not a change in inventory/equipment ownership.
+2. **Taylor is an independent distributor/reseller** — not merely a service company and not merely a customer of
+   Ventana. Taylor may purchase and own Taylor-branded equipment, other-vendor equipment and equipment bought from
+   Ventana as Taylor-owned inventory; resell it; deliver and install; service equipment (including equipment it did not
+   sell); and own equipment for its rental business.
+3. **Ventana is the separate in-house ice-machine distributor.** It may own ice-machine inventory, sell directly to
+   outside customers/dealers/vendors, sell to Taylor for Taylor resale, fulfill warehouse pickup, and use Taylor Service
+   for delivery/install/service. Ventana inventory and records remain Ventana's until a governed business transaction
+   changes ownership.
+4. **Supplier/vendor is a RELATIONSHIP, not an identity.** An EOS operating company may be a supplier or service
+   provider to another (Ventana as SUPPLIER TO Taylor; Taylor as service provider on a Ventana transaction). Company
+   identity and transactional relationship are separate concepts.
+5. **Physical location ≠ ownership.** Taylor and Ventana may share a building; co-location never implies shared
+   ownership. Distinct questions, never collapsed: WAREHOUSE/LOCATION (where is it?), OPERATING COMPANY (whose is it?),
+   CUSTODY (who possesses/controls it?), COMMERCIAL DISPOSITION (held for sale, sold, financed, rented, installed…?),
+   FINANCIAL COUNTERPARTY (who owes the obligation?).
+6. **Taylor purchase from Ventana is an explicit INTERCOMPANY commercial transaction** — Ventana-owned inventory →
+   Ventana sale to Taylor → Ventana financial consequence; Taylor purchase → Taylor receipt → Taylor-owned inventory →
+   Taylor financial consequence. Never an ownership-field change. There must eventually be corresponding but separate
+   records per company, linked by the intercompany transaction without combining their financial records.
+7. **Downstream Taylor resale belongs to Taylor.** Taylor-owned inventory → Taylor customer sale → Taylor fulfillment →
+   optional Taylor delivery/install → customer/site Equipment. Ventana earns nothing from Taylor's downstream sale
+   because it originally supplied the item; provenance is preserved separately from current ownership.
+8. **Ventana direct sale** (Ventana inventory → Ventana customer/dealer sale → warehouse pickup) is a Ventana equipment
+   sale; Taylor has no equipment-sale consequence because the item sat in the shared warehouse.
+9. **Taylor Service on a Ventana sale** — one serialized machine may carry a VENTANA equipment sale AND a TAYLOR
+   delivery/install/service transaction. EOS must not infer equipment-sale revenue from service responsibility, nor
+   service revenue from equipment ownership.
+10. **Inventory always retains operating-company ownership.** Physical movement (warehouse → truck → customer/site) does
+    not by itself change financial ownership; only a governed sale, purchase or intercompany transaction changes the
+    commercial/financial relationship. No silent ownership change on physical movement.
+11. **Commercial disposition is explicit.** At minimum: SALE; LEASE / FINANCED SALE; RENTAL; SERVICE / INSTALL ONLY.
+    It is explicit or deterministically derived from a governed originating transaction — never inferred from custody,
+    Equipment location, installation or Work Order completion.
+12. **Saratoga Leasing** is Taylor's preferred external leasing/financing provider — NOT an EOS operating company; an
+    external financing/commercial counterparty. **OWNER RULING: SARATOGA OWNS THE CUSTOMER FINANCIAL OBLIGATION for a
+    Saratoga-financed transaction.** CUSTOMER (receives/uses the Equipment; remains the commercial customer) and
+    FINANCIAL OBLIGOR (Saratoga; Taylor's financial counterparty for the financed amount) are never assumed to be the
+    same party; TAYLOR is the seller where Taylor is the selling company. Flow: customer selects equipment → Taylor
+    Sales Order → financing method SARATOGA → Saratoga approval → governed fulfillment → Equipment delivered/installed
+    for the Customer → financed obligation belongs to Saratoga → Taylor's receivable/funding relationship for the
+    financed amount is with Saratoga. The financed balance is NOT ordinary Taylor customer A/R once Saratoga owns it.
+    EOS must preserve separately: selling operating company, commercial customer, Equipment, Equipment site, financing
+    provider, financial obligor/counterparty, financed amount, customer-paid amount (if any), deposit/down payment (if
+    any), financing application/reference, financing status, funding status, amount due from Saratoga, amount received
+    from Saratoga, originating Sales Order. Example: Taylor sells to Customer A on Saratoga financing → SELLER Taylor,
+    CUSTOMER Customer A, EQUIPMENT SITE Customer A's location, FINANCING PROVIDER Saratoga, OBLIGATION OWNER /
+    COUNTERPARTY Saratoga; the Equipment stays associated with Customer A. Reporting must eventually distinguish direct
+    sales, Saratoga-financed sales, financed amount, amount funded, outstanding due from Saratoga, and customer deposits.
+    Saratoga financing is never combined with Taylor Rental. **UNRESOLVED — NOT TO BE INVENTED:** legal Equipment title
+    mechanics; title-transfer timing; Saratoga approval workflow; funding timing and conditions; partial-financing
+    rules; cancellation mechanics; end-of-financing ownership terms. These require business confirmation before any
+    runtime financial behavior.
+13. **Taylor operates a significant equipment rental business.** Rental is NOT a sale: Taylor RETAINS OWNERSHIP of the
+    equipment unless a separate governed sale later changes it, including while it resides at a customer/site. Flow:
+    Taylor-owned Equipment → Rental Agreement → customer/site deployment → customer custody/use → rental financial
+    consequences → service / exchange / extension → return/pickup → Taylor custody. OWNER ≠ CUSTODIAN; OWNER ≠ LOCATION;
+    LOCATION ≠ COMMERCIAL DISPOSITION.
+14. **Rental equipment identity.** Rental equipment stays identifiable as Taylor-owned Equipment throughout deployment;
+    it is never converted into customer-owned Equipment because it is delivered, installed, assigned to a customer,
+    located at a customer site or serviced through a Work Order. The Equipment model must ultimately represent
+    operating-company owner, current location/site, current custodian/user, rental status and rental relationship
+    (no fields are added by this decision).
+15. **Rental lifecycle — required business coverage (not authorized implementation, no invented policy):** rental
+    availability, rental agreement, customer/site, equipment assignment, start, term, rate/charges, delivery,
+    installation, service responsibility, extension, exchange/swap, temporary replacement, pickup, return,
+    damage/condition, completion, utilization, rental profitability.
+16. **Rental vs sale.** SALE: company-owned inventory/equipment → sale → governed ownership/commercial transfer →
+    customer-owned Equipment where applicable. RENTAL: Taylor-owned Equipment → customer custody/use → Taylor remains
+    owner → rental charges → return/exchange. Never the same transaction because both end with equipment at a site.
+17. **Rental service** uses the normal governed Work Order architecture referencing the Equipment. Work Order completion
+    never implies an ownership transfer. Service responsibility and its financial consequence may depend on the Rental
+    Agreement; those billing rules are NOT yet defined and must not be invented.
+18. **Saratoga financing ≠ Taylor rental.** Financing supports customer acquisition; Saratoga owns the obligation and is
+    Taylor's counterparty; the customer remains the operational Equipment user; title mechanics unresolved. Rental:
+    Taylor owns the Equipment; customer has custody/use; Taylor keeps the relationship; the Equipment returns, is
+    exchanged or remains in Taylor's fleet unless separately sold. No single generic "lease/rental" lifecycle.
+19. **Service / install only.** Taylor may deliver, install, start up, service, repair and maintain Equipment it did not
+    sell and does not own. SELLER, EQUIPMENT OWNER, CUSTOMER, SERVICE PROVIDER and FINANCIAL COUNTERPARTY may all be
+    different parties; Work Order and financial architecture must not assume otherwise.
+20. **Financial consequences** — where ultimately implemented, preserve operating company AND the appropriate
+    counterparty on: purchase, PO, receipt, acquisition cost, inventory value, inventory adjustment, COGS, sale, billing
+    package, revenue, service cost and revenue, labor, parts and equipment consequences, rental revenue, rental
+    equipment cost, rental service cost, rental profitability, receivable, payable, financing receivable/funding,
+    payment/reconciliation, intercompany transaction, accounting integration. No cross-company commingling.
+21. **Accounting integration is configurable per operating company.** Taylor and Ventana need not share an accounting
+    company/file, provider, credentials, chart/configuration or synchronization destination. Routing: EOS transaction →
+    operating company → company-specific operational financial record → company-specific accounting destination. A
+    deployment MAY configure the same provider for both; the architecture must not require it. External counterparties
+    (e.g. Saratoga) are not accounting destinations because they own an obligation. OPERATING COMPANY, FINANCIAL
+    COUNTERPARTY and ACCOUNTING DESTINATION are separate concepts.
+22. **Reporting.** Authorized management reporting may present TAYLOR, VENTANA and CONSOLIDATED; CONSOLIDATED is a
+    projection, never a third financial authority, and never merges underlying records. Reporting should eventually
+    distinguish: Taylor equipment sales; Taylor third-party equipment sales; Ventana ice-machine sales; intercompany
+    Taylor/Ventana transactions; direct customer sales; Saratoga-financed sales; Taylor rental revenue; Taylor service
+    revenue; delivery/install-only revenue; equipment margin; service/job margin; rental utilization/profitability —
+    where implemented. Permissions continue to govern who sees each company.
+23. **Current Finance boundary — #145 preserved** unless the Owner later changes it: EOS is the governed operational
+    financial subledger; it is NOT being designed as a general ledger, chart-of-accounts authority, accounting-close
+    authority or statutory accounting system; the external accounting authority remains unselected. EOS preserves
+    enough operational financial truth to explain a business transaction before handing the appropriate consequence to
+    the eventual accounting authority.
+24. **Architectural principle.** Finance is NOT designed around a single CUSTOMER → SALE → INVOICE assumption. EOS
+    represents independently, never inferring one from another: WHO SOLD IT? WHO OWNS IT? WHO BOUGHT IT? WHO USES IT?
+    WHERE IS IT? WHO SERVICES IT? WHO OWES THE MONEY? WHICH OPERATING COMPANY OWNS THE FINANCIAL CONSEQUENCE? WHERE DOES
+    THAT COMPANY'S ACCOUNTING CONSEQUENCE GO?
+25. **Not authorized by this entry:** any runtime change, migration, capability, grant, Finance UI change, Rental
+    implementation, Saratoga integration, Finance activation or Firebase change. The next step designs the Finance
+    product model from this foundation rather than finishing the legacy Finance implementation.
+
+## #191 — CONTROLLER RULING: Finance target model ACCEPTED with four corrections; EOS owns the operational billing package (2026-10-01)
+
+**Status.** The Finance target product model (`docs/financials/FINANCE_TARGET_PRODUCT_MODEL.md`) is ACCEPTED subject to
+the corrections below. #145 and #190 remain governing; no earlier decision is rewritten.
+
+1. **Saratoga / FINANCED_SALE title is UNRESOLVED.** COMMERCIAL CUSTOMER = the customer; FINANCIAL OBLIGOR = Saratoga;
+   EQUIPMENT TITLE / OWNERSHIP EFFECT = UNRESOLVED PENDING OWNER BUSINESS CONFIRMATION. Title transfer is never inferred.
+   The financial-counterparty foundation does not wait on it.
+2. **Inventory operating company comes from governed inventory / transaction ownership, never from physical location.**
+   LOCATION = where; OPERATING COMPANY / INVENTORY OWNERSHIP = whose (#190 §5). Location-company consistency may be
+   validated where appropriate; co-location never causes ownership inference.
+3. **Unpriced Purchase Orders are NOT prohibited (deferred business policy).** A priced receipt produces
+   acquisition-cost evidence; an unpriced receipt produces an explicit governed COST_EVIDENCE_MISSING exception. Cost is
+   never invented, never zero, and the operational receipt is never blocked by a new pricing policy.
+4. **Commercial commitments are not recognized consequences.** Sales Order confirmation and Purchase Order commitment
+   may create COMMITMENT facts for operational/commercial reporting. They are NOT revenue or expense recognition, NOT a
+   receivable or payable, and NOT an accounting posting; they are kept semantically separate (their own fact class).
+5. **Billing authority (consistent with #145).** EOS owns the authoritative OPERATIONAL BILLING PACKAGE: from governed
+   operational facts EOS determines what is billable, the operating company, the counterparty, the originating
+   transaction, quantities, prices, eligible charges, supporting references and billing readiness. The external
+   accounting authority will ultimately receive the package, create/post the formal accounting invoice, assign its
+   accounting document/reference and own GL/accounting treatment. EOS retains the originating operational facts, the
+   billing package, package status, the provider/accounting reference, acknowledgement, settlement status and
+   reconciliation status. EOS does not become a general ledger; no accounting provider is selected by this ruling.
+6. **Deferred Owner policy — configuration/product decisions for later activation windows, NOT blockers of the Finance
+   foundation:** SERVICE BILLING POLICY; RENTAL BILLING RULES; INVENTORY MARGIN COST BASIS; SARATOGA WORKFLOW / TITLE
+   DETAILS; TAX SOURCE.
+7. **Foundation authorized (local, no PR / deploy / nonprod mutation):** organization/counterparty foundation, per-company
+   counterparty profiles, the immutable financial-fact core, obligations, the acquisition-cost adapter, the correction
+   foundation and the provider-neutral accounting-destination shape — migration `1764420000000_finance-foundation.sql`,
+   `functions/src/eosFinance/financeFoundation.ts`. No capability, no grant, no route, no Firebase.
+
+## #192 — CONTROLLER RULING: EOS Financial & Operational Analysis Layer and Analysis UI / Persona Analytics are REQUIRED (2026-10-01)
+
+**Status.** Recorded as required EOS product architecture: `docs/financials/ANALYSIS_LAYER_ARCHITECTURE.md`. **Not
+implemented.** Finance foundation `76335e8e` (#191) ACCEPTED.
+
+1. **The Analysis Layer is not a reporting add-on** — it is the governed management-analysis layer over EOS operational
+   and financial truth: FACTS → MEASURES → COMPARISONS → VARIANCES → DRIVERS → EXCEPTIONS → INSIGHTS → AUTHORIZED
+   ACTIONS. Program sequence, never inverted: GOVERNED FACTS → FINANCIAL CONSEQUENCES → MEASURES → ANALYSIS → PERSONA
+   UI → OPTIONAL AI EXPLANATION.
+2. **Provenance:** every material KPI traces KPI → measure definition → calculation → contributing facts → source
+   transactions → originating business records. Basis classes stay distinct (ACCOUNTING ACTUAL, EOS OPERATIONAL ACTUAL,
+   EOS OPERATIONAL ESTIMATE, FORECAST, TARGET / BUDGET); an estimate is never presented as accounting truth; missing
+   information is never zero.
+3. **Families recorded for the future:** contribution economics (no invented allocation); price / cost / mix / volume;
+   margin leakage (confirmed vs potential vs authorized variance); operational working capital (not bank / GL
+   authority); inventory economics (operational estimate ≠ accounting valuation; missing cost stays missing); rental
+   fleet economics (no depreciation required; labelled if added); customer contribution; service job economics (no
+   simplistic employee rankings); quote-to-actual; purchasing / vendor economics (intercompany stays identifiable;
+   consolidated elimination never destroys company records); revenue quality; cash / funding conversion;
+   forecast / target / actual kept apart (dormant forecasting engine NOT activated); period comparison without
+   hard-coded calendars; data-quality / confidence states.
+4. **Exception-first, record-linked, actionable** — analytics surfaces or recommends actions and never bypasses EOS
+   authority. **Deterministic first; AI optional** — the full layer works with AI off; AI never manufactures financial
+   truth or gains business authority (optional, local-first, governed, auditable).
+5. **Governed measure registry** (one definition per KPI) is a future requirement — not built now.
+6. **ANALYSIS UI / PERSONA ANALYTICS is REQUIRED future product/UI work — not a post-launch nice-to-have.** Owner / GM
+   (TAYLOR / VENTANA / CONSOLIDATED), Finance / Accounting, Sales, Service, Parts / Purchasing, Warehouse / Inventory and
+   Rental experiences plus contextual economics on Customer, Equipment, Work Order, Part, Rental Equipment, Sales Order,
+   Vendor and Operating Company records; not a wall of charts; authority-aware (aggregates never widen access; drill-down
+   enforces the same or stronger authority; no client-only hiding); usable with AI disabled.
+7. **Performance / UAT:** derived projections / materialized views / summaries allowed, always traceable; UAT proves
+   source records → facts → measure → variance → driver → drill-down, including missing cost / price, corrections,
+   late data, intercompany elimination, company separation, Saratoga, rental, service coverage and large volume.
+8. **Foundation readiness: READY, no schema change.** The foundation preserves source identity, company, counterparty,
+   amount, currency, basis, effective and recorded time, correlation, reversal / correction, obligation relationships
+   and the missing-cost exception path; every other dimension resolves through governed source records. Future
+   vocabularies are additive. Principle: PRESERVE SOURCE TRUTH AND RELATIONSHIPS NOW; DERIVE ANALYTICS LATER.
+9. **Not authorized:** Analysis Layer or Analysis UI implementation, KPI registry, receiving → Finance wiring, routes,
+   grants, Finance activation, DQ-015, billing packages, outbox, Saratoga, Rental, Service Finance, Intercompany, Finance
+   UI.
+
+## #193 — CONTROLLER RULING: Purchasing supplier identity is EXPLICIT; receipt correction originates in Operations (2026-10-01)
+
+**Status.** Owner business ruling recorded with Finance Activation 1 completion (local). #190–#192 remain governing and
+are not rewritten. Migration `1764430000000_purchasing-supplier-identity-and-receipt-correction.sql`.
+
+1. **PURCHASING SUPPLIER IDENTITY IS EXPLICIT.** A purchasing transaction identifies its supplier as exactly one of
+   **EXTERNAL_ORGANIZATION** (a governed `eos_ops.suppliers` record, linked to its CRM organization; Finance counterparty =
+   that organization) or **INTERNAL_OPERATING_COMPANY** (another governed operating company; Finance counterparty = that
+   operating company — never a CRM Account pretending to be external). Supplier identity is **never inferred** from
+   supplier display text, free text, warehouse, physical location, email or company naming convention.
+2. **A company cannot purchase from itself** as an INTERNAL_OPERATING_COMPANY supplier — refused by the command and by the
+   database. Taylor and Ventana remain separate financial companies.
+3. **The Reorder Purchase Order carries the identity**: `supplier_kind`, `supplier_id` | `supplier_operating_company_id`,
+   and `purchasing_operating_company_id` (the buyer, resolved once at recording). An internal purchase therefore states
+   BUYER and SELLER explicitly — sufficient for a later governed intercompany correlation (Ventana sale ↔ Taylor
+   purchase) without guessing from names or amounts. **No correlation, elimination or settlement is implemented.**
+   `supplier_name` remains as display text, server-authored from the governed record. A **legacy text-only** PO keeps no
+   identity: its text is displayed as legacy supplier text and is never converted into counterparty truth (counterparty
+   unresolved / null). Identity is not yet mandatory for new POs while the employee client still enters free text (see 7).
+4. **RECEIPT CORRECTION ≠ VENDOR RETURN.** A receipt correction is "we recorded the receipt wrong"; a vendor return / RMA
+   ("we received it correctly and later returned it") is a separate, future business workflow and is not implemented.
+5. **Receipt correction originates in Operations** (`correctReorderReceipt`): **VOID** (the receipt did not happen as
+   recorded) or **CORRECTED** (void + a replacement receipt through the one governed receipt pipeline, in one
+   transaction). The original receipt, its lines, its inventory movements, its acquisition-cost evidence and its Finance
+   facts are **never deleted or edited**: the receipt takes the existing CANCELLED status, stock leaves through
+   compensating ADJUSTED movements of the same company, every live acquisition fact is reversed (and, for CORRECTED, the
+   replacement's fact carries `corrects_fact_id`), open COST_EVIDENCE_MISSING exceptions are resolved by append-only rows,
+   and the Reorder returns to ORDERED. A correction refuses when the received stock is no longer at the receipt location
+   (consumed / transferred / installed) — the downstream event is corrected first; stock is never driven negative. A
+   correction never moves ownership. Supported only where the Reorder receiving data justifies it: wrong quantity / Part /
+   PO line / company / price cannot be recorded by a Reorder receipt (full-quantity, single-line, inherited company,
+   immutable PO price); serialized receipts are refused pending a governed never-arrived custody state.
+6. **Authority:** `inventory.receipt.correct` (PostgreSQL-native, BUSINESS_ACTION on `receivingOrder`) + WAREHOUSE
+   operational scope over the receipt location; a CORRECTED replacement additionally requires `inventory.stock.receive`.
+   **Granted to NO Role**; its holder is a Controller decision applied through Administration. No Finance capability is
+   required — the Finance consequence is server-side.
+7. **Recorded dependencies (not implemented here):** a governed price amendment / later cost-evidence path (the unpriced
+   PO policy remains deferred, #191 correction 3); serialized receipt correction; employee supplier selection via the
+   governed picker (requires a supplier-read grant decision for the purchasing employee) before identity becomes mandatory.
+
+## #194 — OWNER RULINGS: Purchasing → Finance final closure — correction holders, supplier identity required, Parts Manager finance defect (2026-10-02)
+
+**Status.** Recorded with the local closure package. #193 remains governing; this tightens it.
+
+1. **`inventory.receipt.correct` holders:** the Warehouse Manager and Parts Manager Security Roles, through ordinary
+   Administration grants (`functions/src/adminPolicy/purchasingFinanceClosureDelta.ts`), WAREHOUSE operational scope
+   preserved. **Not** Warehouse Associate, Parts Associate, Technician, Dispatcher or ordinary receiving users. No job-role
+   bypass in code; a future Administrator changes holders without a source edit.
+2. **Supplier identity is REQUIRED for every NEW Purchase Order** (supersedes #193 §3's "not yet mandatory"): exactly one of
+   EXTERNAL_ORGANIZATION / INTERNAL_OPERATING_COMPANY. The employee command refuses supplier text, alone or alongside
+   identity. Employees select by name (`listPurchaseOrderSupplierOptions`: ACTIVE suppliers + the OTHER operating companies;
+   never the buyer, never CONSOLIDATED); the server persists identity and authors the display name. Free-text-only is
+   LEGACY COMPATIBILITY for historical / imported purchase orders only; they stay valid, unchanged, readable and are never
+   guessed into identity. No second supplier master.
+3. **Parts Manager `finance.invoice.issue` + `finance.adjustment.record` = AUTHORITY DEFECT.** Archaeology: written by
+   migration `1761609600000` from the Firebase-era Role catalog (`PARTS_MANAGER_ROLE`), which took them in #1399
+   (`27a6307b`, 2026-08-21) from the workbook row "Parts Manager / Invoices / AR / CRE" whose Design Status is **Proposed**.
+   #151 only *classified* them (OTHER_TARGET_TYPE); no accepted Decision authorizes them. Both grants are revoked through
+   Administration (same delta); the capabilities remain, every finance Role keeps them, and Parts Manager keeps only the
+   finance READS. The Firebase-era Role catalog still declares them for the retiring Firebase finance path (recorded, not
+   changed here — retirement-only).
+
+## #195 — CONTROLLER RULING: DQ-015 closed — Commercial fulfillment from Work Order completion → billing eligibility (2026-10-02)
+
+**Status.** Implemented locally (migration `1764440000000_commercial-fulfillment-billing-eligibility.sql`). Supersedes the
+DQ-015 completion refusal. #145 / #190–#194 remain governing.
+
+1. **Progression:** AGREEMENT → SALES ORDER → WORK / FULFILLMENT → FULFILLMENT ACCEPTED → BILLING ELIGIBILITY. No invoice, no
+   AR, no billing package, no posting, no revenue from Work Order completion.
+2. **DQ-015 end state:** completing a Sales-Order-linked Work Order invokes the Commercial fulfillment authority
+   (`eosCommercial/fulfillment/salesOrderFulfillmentAuthority.ts`) server-side, **in the completion transaction**.
+   Commercial owns fulfillment state; the technician keeps only the authority to complete their assigned work and gains no
+   Commercial or Finance capability. If the fulfillment cannot be recorded the completion is refused and rolls back.
+3. **One real job = one Work Order.** A Work Order states the Sales Order **lines** it fulfils at creation
+   (`salesOrderLines`), validated against the governed Sales Order (company, customer, site, state, lines). Evidence counted
+   for linked lines only: PART ← the Work Order's recorded Part actuals (PART_USAGE); EQUIPMENT_MODEL ← units the Work Order
+   INSTALLED of that model (Equipment ids + serials kept); SERVICE ← the completion of the Work Order the agreed SERVICE line
+   was linked to (remaining ordered quantity, existing commercial price; never priced from labor). Nothing is consumed,
+   installed or moved by fulfillment; the Equipment / Inventory / Work Order authorities keep their facts.
+4. **Fulfillment** = append-only `eos_commercial.sales_order_fulfillments`, one row per (Work Order, line); a line's fulfilled
+   quantity is the SUM. Matching / overage reuse the Owner-ratified P1 core (additive, line-id match, OVERAGE fails closed).
+   IN_FULFILLMENT → FULFILLED is now decided by those quantities (the ratified `allLinesFulfilled` gate).
+5. **Billing eligibility** is DERIVED (`sales_order_line_billing_eligibility` view; no writer), with the ratified states
+   NOT_YET / PARTIALLY_ELIGIBLE / ELIGIBLE / CANCELLED, per line and per order. Partial fulfillment is PARTIALLY_ELIGIBLE —
+   one fulfilled line never makes the order ELIGIBLE; what/when to bill a partial is the billing package's policy. It carries
+   the accepted price as a SOURCE reference only and computes no amount.
+6. **Company:** exactly one governed operating company (the Sales Order's, which must equal the Work Order's); unbound or
+   CONSOLIDATED fails closed; the site never decides ownership.
+7. **Customer ≠ obligor:** eligibility records the commercial customer only; the financial obligor is
+   `DEFERRED_TO_BILLING_PACKAGE`. The Agreement's disposition is exposed (SALE / LEASE / DIRECT_ORDER). A financed /
+   Saratoga marker does not yet exist in PostgreSQL Commercial (dependency). Rental never enters this model.
+8. **No capability, no grant.** Recorded dependencies: Commercial correction / cancellation of recorded fulfillment (none
+   exists; fulfillment is historical), partial-billing policy, the financed-sale marker, HELD (blocked / additional-work)
+   inputs, Work Order un-completion.
+
+## #196 — CONTROLLER RULING: Supplier administration + the EOS Operational Billing Package; AR obligation HELD (2026-10-02)
+
+**Status.** Implemented locally (migration `1764450000000_operational-billing-packages.sql`). #145 / #190–#195 remain
+governing.
+
+1. **Supplier administration** (`eosOps/supplierAdministration.ts`, `/operations/inventory`: `createSupplier`,
+   `updateSupplier`, `setSupplierStatus`, `listSupplierOrganizationOptions`) is the ONE writer of `eos_ops.suppliers` — no
+   seed writer, no second master. CRM ORGANIZATION (governed as a VENDOR) → SUPPLIER RELATIONSHIP (one per organization;
+   name authored from the organization; supplier-specific operational fields only) → governed PO supplier identity (#193)
+   → EXTERNAL_ORGANIZATION counterparty. Never deleted: ACTIVE / INACTIVE; an INACTIVE supplier cannot be named on a new PO,
+   history stays readable.
+2. **Supplier authority is REUSED (DECISIONS #78):** create / update ← `inventory.catalog.manage`; activate / deactivate ←
+   `inventory.catalog.activate` — the keys the retiring Firebase Supplier Master enforced. No new capability, no grant;
+   holders change through Administration only.
+3. **The Operational Billing Package** (`eos_finance.billing_packages` + `billing_package_lines`,
+   `eosFinance/billingPackage.ts`) is EOS's authoritative hand-off object to a future accounting provider — **not an
+   accounting invoice, not a receivable, not a posting; nothing is sent**. It is a server-side Finance consequence: prepared
+   in the Work Order completion transaction when the Sales Order becomes ELIGIBLE IN FULL, and by deterministic recovery
+   (`prepareEligibleBillingPackages`). No operation creates or edits one; no Sales / Service employee needs Finance authority.
+4. **Amounts** come only from governed Commercial inputs, in integer minor units: line = fulfilled qty × the Sales Order
+   line's accepted price; the Agreement's shipping / install / tax / down payment / trade-in; total = subtotal + shipping +
+   install + tax; balance = total − down payment − trade-in (the Agreement's own arithmetic). Missing price →
+   PRICE_EVIDENCE_MISSING; missing tax → TAX_EVIDENCE_MISSING (never zero); the package is then HELD with NULL totals.
+5. **Boundaries:** only an order ELIGIBLE in full (partial billing DEFERRED); direct sale only (SALE / DIRECT_ORDER) — a
+   LEASE / financed disposition is HELD (FINANCED_DISPOSITION_UNSUPPORTED) with the obligor UNRESOLVED; the customer is the
+   obligor only by the explicit DIRECT_SALE_CUSTOMER rule; one governed company (CONSOLIDATED / unbound fail closed); Sales
+   Orders only (Rental cannot enter).
+6. **Immutability:** package content and lines are append-only; the only mutation is READY|HELD → SUPERSEDED when a
+   re-evaluation with different evidence writes a new version that references it. VOID / SENT / ACKNOWLEDGED / REJECTED
+   belong to later packages.
+7. **AR obligation — HELD.** The accepted model gives DIRECT_SALE a customer receivable (target model §4) but no accepted
+   ruling states its ORIGINATING EVENT (package READY, provider acknowledgement / accounting acceptance, or fulfillment), and
+   the event catalog lists none. No obligation is created. Owner ruling required.
+8. **Accounting boundary:** a READY package records the company's provider-neutral accounting destination when one is
+   configured; no outbox delivery, provider API, credential or provider-specific schema.

@@ -74,6 +74,11 @@ export interface CreateWorkOrderInput {
   readonly severity?: string;
   readonly complaint?: string;
   readonly salesOrderId?: string;
+  /**
+   * DQ-015 (DECISIONS #195): the Sales Order LINE NUMBERS this job fulfils -- explicit, so a completion can say exactly what
+   * it fulfilled. Requires salesOrderId; validated against the governed Sales Order (company, customer, site, state, lines).
+   */
+  readonly salesOrderLines?: readonly number[];
   /** Optional: a retry carrying the same key replays the Work Order it already created (never a duplicate). */
   readonly idempotencyKey?: string;
 }
@@ -81,7 +86,7 @@ export interface CreateWorkOrderInput {
 /** Fields a client may state. Anything else is a forgery attempt, not a mistake to tolerate. */
 const ACCEPTED_INPUT = Object.freeze([
   "customerId", "locationId", "workOrderType", "priority", "equipmentId", "severity", "complaint", "salesOrderId",
-  "idempotencyKey",
+  "salesOrderLines", "idempotencyKey",
 ]);
 
 /** Named so the refusal can say WHICH governed fact was being forged. */
@@ -155,6 +160,13 @@ export async function createWorkOrder(
   if (input.salesOrderId !== undefined && !ID_SHAPE(input.salesOrderId)) {
     refuse("SALES_ORDER_INVALID", "INVALID_INPUT", "salesOrderId, when stated, is an id");
   }
+  if (input.salesOrderLines !== undefined) {
+    const l = input.salesOrderLines;
+    if (input.salesOrderId === undefined) refuse("SALES_ORDER_REQUIRED", "INVALID_INPUT", "salesOrderLines names lines of a stated salesOrderId");
+    if (!Array.isArray(l) || l.length === 0 || l.length > 100 || !l.every((n) => Number.isSafeInteger(n) && n > 0) || new Set(l).size !== l.length) {
+      refuse("SALES_ORDER_LINES_INVALID", "INVALID_INPUT", "salesOrderLines is a non-empty list of distinct Sales Order line numbers");
+    }
+  }
   if (!NATIVE_WORK_ORDER_TYPES.includes(input.workOrderType)) {
     refuse("WORK_ORDER_TYPE_INVALID", "INVALID_INPUT",
       `'${String(input.workOrderType)}' is not a native Work Order type (${NATIVE_WORK_ORDER_TYPES.join(", ")}). `
@@ -216,6 +228,28 @@ export async function createWorkOrder(
       if (e.customer_location_id !== input.locationId) refuse("EQUIPMENT_SITE_MISMATCH", "PRECONDITION_FAILED", "the Equipment is at another site");
     }
 
+    // THE SALES ORDER IS PROVEN, NOT ACCEPTED (DQ-015, DECISIONS #195): a stated Sales Order must exist in PostgreSQL
+    // Commercial, be of THIS Work Order's operating company, customer and site, and still take fulfillment; every linked line
+    // must exist on it. Read FOR SHARE. A Work Order referencing a Sales Order that cannot be proven is refused -- it could
+    // never complete, so creating it would only defer the failure.
+    if (input.salesOrderId !== undefined) {
+      const { rows: so } = await client.query(
+        `SELECT state::text AS state, operating_company_key, account_id, location_id FROM eos_commercial.sales_orders
+          WHERE tenant_id = $1 AND id = $2 FOR SHARE`, [actor.tenantId, input.salesOrderId]);
+      if (so.length === 0) refuse("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no such Sales Order in this tenant");
+      const o = so[0];
+      if (o.operating_company_key !== operatingCompanyKey) refuse("SALES_ORDER_COMPANY_MISMATCH", "PRECONDITION_FAILED", "the Sales Order belongs to another operating company");
+      if (o.account_id !== input.customerId) refuse("SALES_ORDER_CUSTOMER_MISMATCH", "PRECONDITION_FAILED", "the Sales Order is for another customer");
+      if (o.location_id !== null && o.location_id !== input.locationId) refuse("SALES_ORDER_SITE_MISMATCH", "PRECONDITION_FAILED", "the Sales Order is for another site");
+      if (!["CONFIRMED", "IN_FULFILLMENT"].includes(o.state)) refuse("SALES_ORDER_NOT_FULFILLABLE", "PRECONDITION_FAILED", `the Sales Order is ${String(o.state)}`);
+      if (input.salesOrderLines !== undefined) {
+        const { rows: found } = await client.query(
+          `SELECT line_number FROM eos_commercial.sales_order_lines WHERE tenant_id = $1 AND sales_order_id = $2 AND line_number = ANY($3::int[])`,
+          [actor.tenantId, input.salesOrderId, input.salesOrderLines]);
+        if (found.length !== input.salesOrderLines.length) refuse("SALES_ORDER_LINE_NOT_FOUND", "PRECONDITION_FAILED", "a stated line is not on the Sales Order");
+      }
+    }
+
     const allocated = await allocateWorkOrderNumber(client, actor.tenantId, now);
     const workOrderId = `wo_${randomUUID()}`;
 
@@ -230,6 +264,12 @@ export async function createWorkOrder(
        input.workOrderType, input.priority, input.severity ?? null, input.customerId, input.locationId,
        input.equipmentId ?? null, input.salesOrderId ?? null, input.complaint ?? null,
        actor.principalId, now, key, fingerprint]);
+
+    for (const lineNumber of input.salesOrderLines ?? []) {
+      await client.query(
+        `INSERT INTO ${SCHEMA}.work_order_sales_order_lines (tenant_id, work_order_id, sales_order_id, sales_order_line_id) VALUES ($1,$2,$3,$4)`,
+        [actor.tenantId, workOrderId, input.salesOrderId, String(lineNumber)]);
+    }
 
     // THE OPENING TRANSITION. from_status is NULL because nothing preceded creation, and history that
     // began only at the first move could not answer "who created this".

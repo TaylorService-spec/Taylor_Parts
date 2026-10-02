@@ -291,7 +291,8 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
 
   await t.test("the persona route: credential required and compared, closed body, closed persona list, POST only", async () => {
     assert.equal((await post("/auth/nonprod/persona-session", { personaKey: "dispatcher" })).status, 401);
-    assert.equal((await post("/auth/nonprod/persona-session", { personaKey: "dispatcher" }, { "x-eos-persona-issuer-credential": `${credential.slice(0, -1)}A` })).status, 401);
+    assert.equal((await post("/auth/nonprod/persona-session", { personaKey: "dispatcher" }, { "x-eos-persona-issuer-credential": `${credential.slice(0, -1)}${credential.endsWith("A") ? "B" : "A"}` })).status, 401);
+    // ^ the tamper must ALWAYS differ: a random credential ending in "A" made the old "replace the last char with A" a no-op (1-in-64 flake).
     assert.equal((await post("/auth/nonprod/persona-session", { personaKey: "dispatcher" }, { "x-eos-persona-issuer-credential": "short" })).status, 401);
     const auth = { "x-eos-persona-issuer-credential": credential };
     assert.equal((await post("/auth/nonprod/persona-session", { personaKey: "root" }, auth)).body.code, "UNKNOWN_PERSONA");

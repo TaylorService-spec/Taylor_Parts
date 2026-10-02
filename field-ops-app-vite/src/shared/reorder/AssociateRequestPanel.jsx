@@ -15,6 +15,9 @@ import OperationalCard, { OperationalCardGrid } from "../ui/OperationalCard.jsx"
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 import FailureState from "../ui/FailureState";
 import { Button } from "../ui/primitives/index.js";
+import SupplierPicker from "../supplier/SupplierPicker.jsx";
+import { isSelectableSupplier } from "../../domain/supplierPicker.js";
+import { usePurchaseOrderSupplierOptions } from "../../hooks/usePurchaseOrderSupplierOptions.js";
 
 // Wave 6 -- queue consolidation (Owner directive, Option A). Extracted from
 // PartsAssociateHome.jsx's own RequestCards + AssignedRequestDetail (StartPurchasingCard/
@@ -105,7 +108,13 @@ function PurchasingInProgressCard({ request, resolveName }) {
   const [updateSubmitting, setUpdateSubmitting] = useState(false);
   const [updateError, setUpdateError] = useState(null);
 
-  const [supplierName, setSupplierName] = useState("");
+  // DECISIONS #193 (Owner 2026-10-02): the supplier is SELECTED by name from the governed options for this Reorder, never
+  // typed; the PO stores the identity behind it.
+  const [selectedSupplier, setSelectedSupplier] = useState(null);
+  const supplierOptions = usePurchaseOrderSupplierOptions(request.id);
+  // The committed unit price + currency recordPurchaseOrder requires (FIN-BLOCK-003A); the same pair PartDetail collects.
+  const [unitPriceMajor, setUnitPriceMajor] = useState("");
+  const [currency, setCurrency] = useState("USD");
   const [externalPoNumber, setExternalPoNumber] = useState("");
   const [orderedQuantity, setOrderedQuantity] = useState("");
   const [orderedDate, setOrderedDate] = useState("");
@@ -128,6 +137,10 @@ function PurchasingInProgressCard({ request, resolveName }) {
 
   async function handleRecordPo(e) {
     e.preventDefault();
+    if (!isSelectableSupplier(selectedSupplier)) {
+      setPoError("Select a supplier from the list before recording the purchase order.");
+      return;
+    }
     const quantity = Number(orderedQuantity);
     if (!Number.isFinite(quantity) || quantity <= 0) {
       setPoError("Ordered quantity must be greater than zero.");
@@ -142,11 +155,13 @@ function PurchasingInProgressCard({ request, resolveName }) {
     try {
       await recordPurchaseOrder(request.id, {
         partId: request.partId,
-        supplierName,
+        supplier: selectedSupplier,
         externalPoNumber,
         orderedQuantity,
         orderedDate,
         expectedArrivalDate,
+        unitPriceMajor,
+        currency,
       });
     } catch (err) {
       setPoError(err.message);
@@ -218,12 +233,15 @@ function PurchasingInProgressCard({ request, resolveName }) {
       <div className="fo-card">
         <h3>Record Purchase Order</h3>
         <form className="fo-form" onSubmit={handleRecordPo}>
-          {/* DEFERRED FOLLOW-ON (tracked, intentional, unchanged from PartsAssociateHome.jsx's
-              original scope): free-text supplier, not the governed Supplier picker -- the
-              `suppliers` read is Rules-gated to admin/dispatcher and this must NOT widen the
-              legacy supplier read for PARTS_ASSOCIATE. */}
-          <label htmlFor="pa-po-supplier">Supplier name</label>
-          <input id="pa-po-supplier" type="text" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} required />
+          <label htmlFor="pa-po-supplier">Supplier</label>
+          <SupplierPicker
+            inputId="pa-po-supplier"
+            loading={supplierOptions.loading}
+            error={supplierOptions.error}
+            suppliers={supplierOptions.suppliers}
+            selected={selectedSupplier}
+            onSelect={setSelectedSupplier}
+          />
 
           <label htmlFor="pa-po-number">External PO/reference number</label>
           <input id="pa-po-number" type="text" value={externalPoNumber} onChange={(e) => setExternalPoNumber(e.target.value)} required />
@@ -239,6 +257,12 @@ function PurchasingInProgressCard({ request, resolveName }) {
             required
           />
 
+          <label htmlFor="pa-po-unit-price">Unit purchase price</label>
+          <input id="pa-po-unit-price" type="text" inputMode="decimal" value={unitPriceMajor} onChange={(e) => setUnitPriceMajor(e.target.value)} required />
+
+          <label htmlFor="pa-po-currency">Currency</label>
+          <input id="pa-po-currency" type="text" maxLength={3} value={currency} onChange={(e) => setCurrency(e.target.value)} required />
+
           <label htmlFor="pa-po-ordered-date">Ordered date</label>
           <input id="pa-po-ordered-date" type="date" value={orderedDate} onChange={(e) => setOrderedDate(e.target.value)} required />
 
@@ -248,7 +272,7 @@ function PurchasingInProgressCard({ request, resolveName }) {
           {poError && <p className="fo-muted" role="alert">{poError}</p>}
 
           <div className="disp-board-toolbar">
-            <Button type="submit" loading={poSubmitting}>
+            <Button type="submit" loading={poSubmitting} disabled={!isSelectableSupplier(selectedSupplier)}>
               Record Purchase Order
             </Button>
           </div>

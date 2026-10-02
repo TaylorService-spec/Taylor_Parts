@@ -1,9 +1,10 @@
 // Governed PostgreSQL Sales Order commands -- wave C2. Reached only through the C4 transport (commercialHttp.ts).
 //
-// Core Commercial lifecycle only. D2 (Owner ruling) keeps execution out: no allocated / fulfilled / billed quantity,
-// no inventory, no Work Order, no invoice, no service link is read or written here. Because the IN_FULFILLMENT ->
-// FULFILLED step is decided by fulfilled quantities that PostgreSQL does not hold, that one step REFUSES with
-// FULFILLMENT_AUTHORITY_UNAVAILABLE -- an activation prerequisite, never a guess.
+// Core Commercial lifecycle only. D2 (Owner ruling) keeps execution out: no allocated / billed quantity, no inventory, no
+// Work Order, no invoice is read or written here. The IN_FULFILLMENT -> FULFILLED step is decided by FULFILLED QUANTITIES,
+// which PostgreSQL now governs (DQ-015, DECISIONS #195): eos_commercial.sales_order_fulfillments, written only by the
+// Commercial fulfillment authority from Work Order completion. ADVANCE from IN_FULFILLMENT is allowed exactly when every
+// line is fully fulfilled -- the Owner-ratified allLinesFulfilled gate -- and refused otherwise. Never a guess.
 import type { PoolClient } from "pg";
 import { buildCreateSalesOrder, buildTransitionPatch } from "../../salesOrder/salesOrderCommands";
 import { isSalesOrderState, type SalesOrderTransition } from "../../salesOrder/salesOrderLifecycle";
@@ -16,6 +17,7 @@ import {
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
+import { salesOrderFulfillmentLines, salesOrderFullyFulfilled } from "../fulfillment/salesOrderFulfillmentAuthority";
 import {
   insertSalesOrder, lockAgreementForOpportunity, lockOpportunity, lockOrderForOpportunity, lockOrderState, newRecordId,
   type AgreementRow, type OpportunityRow,
@@ -176,7 +178,7 @@ export function createSalesOrderFromOpportunity(deps: CommercialCommandDeps, act
     });
 }
 
-/** Core lifecycle: CONFIRMED -> IN_FULFILLMENT, CANCEL before FULFILLED. The quantity-decided step refuses (D2). */
+/** Core lifecycle: CONFIRMED -> IN_FULFILLMENT -> FULFILLED (only when every line is fulfilled), CANCEL before FULFILLED. */
 export function transitionSalesOrder(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "salesOrder.transition", [COMMERCIAL_CAPABILITIES.SALES_ORDER_WRITE], input?.idempotencyKey,
     async (db, now, scope) => {
@@ -186,11 +188,13 @@ export function transitionSalesOrder(deps: CommercialCommandDeps, actor: Commerc
       if (!order) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
       scope.admitChannel(order.salesChannel); // DQ-020: its stored channel
       if (!isSalesOrderState(order.state)) return fail("ORDER_STATE_UNSET", "PRECONDITION_FAILED", "the Sales Order has no governed lifecycle state");
-      if (transition === "ADVANCE" && order.state === "IN_FULFILLMENT") {
-        fail("FULFILLMENT_AUTHORITY_UNAVAILABLE", "UNAVAILABLE",
-          "IN_FULFILLMENT -> FULFILLED is decided by fulfilled quantities, which PostgreSQL does not govern until execution migrates (D2)");
+      if (transition === "ADVANCE" && order.state === "IN_FULFILLMENT" && !(await salesOrderFullyFulfilled(db, actor.tenantId, order.id))) {
+        fail("SALES_ORDER_NOT_FULLY_FULFILLED", "PRECONDITION_FAILED",
+          "IN_FULFILLMENT -> FULFILLED is decided by fulfilled quantities: a line still has quantity the governed fulfillment has not covered");
       }
-      const patch = buildTransitionPatch({ state: order.state }, transition, { actorUid: actor.principalId, nowMillis: now.getTime() });
+      // The Owner-ratified lifecycle gate (allLinesFulfilled) reads the DERIVED fulfilled quantities -- the same truth as above.
+      const lines = await salesOrderFulfillmentLines(db, actor.tenantId, order.id);
+      const patch = buildTransitionPatch({ state: order.state, lines } as never, transition, { actorUid: actor.principalId, nowMillis: now.getTime() });
       await db.query(
         `UPDATE eos_commercial.sales_orders SET state = $3, updated_by = $4, updated_at = now() WHERE tenant_id = $1 AND id = $2`,
         [actor.tenantId, order.id, patch.state, actor.principalId],

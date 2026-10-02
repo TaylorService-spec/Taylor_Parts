@@ -106,7 +106,7 @@ test.after(async () => {
   if (!URL) return;
   await query(
     "TRUNCATE eos_commercial.accountability_handoffs, eos_commercial.ownership_handoffs," +
-      " eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
+      " eos_finance.billing_package_lines, eos_commercial.sales_order_fulfillments, eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
       " eos_commercial.sales_orders, eos_commercial.sales_agreements, eos_commercial.opportunities",
   );
   await query("DELETE FROM eos_crm.accounts WHERE tenant_id = $1", [TENANT]);

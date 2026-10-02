@@ -261,20 +261,11 @@ test("the Service Office + Technician journey through the EOS API", { skip: SKIP
     refused(await wo(dispatcher, "scheduleWorkOrder", { workOrderId: overlap, employeeId: "emp-sj-a", ...at(4, 11) }), 412, "SCHEDULE_CONFLICT", "overlapping Work Order");
   });
 
-  await t.test("DQ-015: an unlinked Work Order completes exactly once; a Sales-Order-linked one refuses ATOMICALLY", async () => {
-    const linked = created(await wo(office, "createWorkOrder", { ...CREATE, salesOrderId: "so-sj-1" }));
-    ok(await wo(office, "markWorkOrderReady", { workOrderId: linked }), "ready");
-    ok(await wo(dispatcher, "scheduleWorkOrder", { workOrderId: linked, employeeId: "emp-sj-a", ...at(7, 10) }), "schedule");
-    ok(await wo(dispatcher, "dispatchWorkOrder", { workOrderId: linked }), "dispatch");
-    for (const op of ["acceptWorkOrder", "startWorkOrderTravel", "arriveAtWorkOrder", "startWorkOrderWork"]) ok(await wo(techA, op, { workOrderId: linked }), op);
-    const snap = async () => (await q(`SELECT status::text s, completed_at, (SELECT count(*)::int FROM eos_ops.work_order_transitions t WHERE t.work_order_id=w.id) n
-                                         FROM eos_ops.work_orders w WHERE id=$1`, [linked])).rows[0];
-    const before = await snap();
+  await t.test("DQ-015: a Work Order naming a Sales Order PostgreSQL Commercial cannot prove is refused at creation (no dangling link)", async () => {
+    // DECISIONS #195: the Sales Order a Work Order fulfils is PROVEN at creation (company, customer, site, state, lines), and its
+    // completion records the fulfillment in the same transaction (financeCommercialFulfillmentPostgres proves the positive path).
     const commercialBefore = (await q(`SELECT count(*)::int n FROM eos_commercial.sales_order_lines`)).rows[0].n;
-    for (let i = 0; i < 2; i += 1) {
-      refused(await wo(techA, "completeWorkOrder", { workOrderId: linked }), 503, "SALES_ORDER_FULFILLMENT_AUTHORITY_UNAVAILABLE", `attempt ${i}`);
-    }
-    assert.deepEqual(await snap(), before, "no partial Work Order completion, no transition, no replay side effect");
+    refused(await wo(office, "createWorkOrder", { ...CREATE, salesOrderId: "so-sj-1" }), 404, "SALES_ORDER_NOT_FOUND", "an unknown Sales Order");
     assert.equal((await q(`SELECT count(*)::int n FROM eos_commercial.sales_order_lines`)).rows[0].n, commercialBefore, "no Commercial mutation");
   });
 

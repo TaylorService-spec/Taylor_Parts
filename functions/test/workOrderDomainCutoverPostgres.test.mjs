@@ -438,7 +438,7 @@ test("the Work Order domain cutover", { skip: SKIP, concurrency: 1 }, async (t) 
       (e) => { assert.equal(e.code, "WORK_ORDER_TERMINAL"); return true; });
   });
 
-  await t.test("DQ-015: a Sales-Order-linked Work Order is NOT completed without its fulfillment write-back", async () => {
+  await t.test("DQ-015: a Work Order whose Sales Order PostgreSQL Commercial cannot prove is NOT completed (fails safely)", async () => {
     const wo = await newWo("READY_TO_DISPATCH", { salesOrderId: "so-1" });
     await scheduling.scheduleWorkOrder(deps, actor(P.dispatcher), { workOrderId: wo, employeeId: "emp-a", ...future(26) });
     await scheduling.dispatchWorkOrder(deps, actor(P.dispatcher), { workOrderId: wo });
@@ -446,7 +446,9 @@ test("the Work Order domain cutover", { skip: SKIP, concurrency: 1 }, async (t) 
       await step(P.techABaseline, wo, from, to);
     }
     await assert.rejects(scheduling.completeWorkOrder(deps, actor(P.techABaseline), { workOrderId: wo }),
-      (e) => { assert.equal(e.code, "SALES_ORDER_FULFILLMENT_AUTHORITY_UNAVAILABLE"); assert.equal(e.category, "UNAVAILABLE"); return true; });
+      // DECISIONS #195: completion now records the Sales Order fulfillment in its own transaction; a Sales Order that does not
+      // exist in PostgreSQL Commercial refuses the whole completion rather than completing with a dangling link.
+      (e) => { assert.equal(e.code, "SALES_ORDER_NOT_FOUND"); assert.equal(e.category, "NOT_FOUND"); return true; });
     assert.equal(await statusOf(wo), "WORK_IN_PROGRESS", "nothing moved");
     // The office cancels the held job, which frees the technician (a cancelled job is not an occupying one).
     await step(P.dispatcherBaseline, wo, "WORK_IN_PROGRESS", "CANCELLED");

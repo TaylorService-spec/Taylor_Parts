@@ -19,7 +19,8 @@
 // current binding to a warehouse they are scoped over.
 import type { Pool, PoolClient } from "pg";
 import { postgresPrincipalDimensionReader } from "./contextualAuthorization.js";
-import { ReorderLifecycleError, type ReorderActor } from "./reorderLifecycleCommands.js";
+import { REORDER_RECORD_PO, ReorderLifecycleError, type ReorderActor } from "./reorderLifecycleCommands.js";
+import { operatingCompanyDisplayName } from "../ownership/operatingCompanyAuthority.js";
 import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./syntheticAcceptanceWarehouse.js";
 import { currentMobileLocationIds } from "./mobileStockAuthority.js";
 import { listTruckViews } from "./truckRegistryAdministration.js";
@@ -230,6 +231,48 @@ export async function listSuppliers(deps: { readonly pool: Pool }, actor: Reorde
       contactName: r.contact_name ?? null, phone: r.phone ?? null, email: r.email ?? null, address: r.address ?? null,
       paymentTermsRef: r.payment_terms_ref ?? null, notes: r.notes ?? null, version: Number(r.version),
       updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : r.updated_at })) };
+  });
+}
+
+/**
+ * THE GOVERNED SUPPLIER SELECTION for a new Purchase Order (DECISIONS #193; Owner ruling 2026-10-02). What the purchasing
+ * employee picks FROM, by human-readable name -- never a free-text supplier and never an id they must know:
+ *   EXTERNAL_ORGANIZATION       every ACTIVE governed supplier (eos_ops.suppliers -- the one Supplier master);
+ *   INTERNAL_OPERATING_COMPANY  every ACTIVE operating company of this tenant EXCEPT the Reorder's own buying company
+ *                               (a company never buys from itself; CONSOLIDATED is a reporting projection, never a row).
+ * The command re-validates every choice in its own transaction; this read only offers the valid ones. Requires
+ * supplier.record.read AND reorder.request.recordPurchaseOrder (the people who record a PO).
+ */
+export async function listPurchaseOrderSupplierOptions(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
+  requireCapability(actor, SUPPLIER_READ);
+  requireCapability(actor, REORDER_RECORD_PO);
+  const i = acceptOnly(input, ["reorderRequestId"]);
+  if (!ID(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
+  return withReadSnapshot(deps.pool, async (c) => {
+    const { rows: rr } = await c.query(
+      `SELECT k.operating_company_id FROM eos_ops.reorder_requests r
+         LEFT JOIN eos_policy.tenant_operating_company_keys k
+           ON k.tenant_id = r.tenant_id AND k.operating_company_key = r.operating_company_key AND k.status = 'ACTIVE'
+        WHERE r.tenant_id = $1 AND r.id = $2`, [actor.tenantId, i.reorderRequestId]);
+    if (rr.length === 0) refuse("REORDER_NOT_FOUND", "NOT_FOUND", "no Reorder Request with that id");
+    const buyer = (rr[0].operating_company_id as string | null) ?? null;
+    if (buyer === null) refuse("PURCHASING_COMPANY_UNRESOLVED", "PRECONDITION_FAILED", "the Reorder's company is not bound to an ACTIVE operating company");
+    const { rows: suppliers } = await c.query(
+      `SELECT supplier_id, name, vendor_number FROM eos_ops.suppliers WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY name, supplier_id LIMIT 1000`,
+      [actor.tenantId]);
+    const { rows: companies } = await c.query(
+      `SELECT operating_company_id FROM eos_policy.tenant_operating_companies
+        WHERE tenant_id = $1 AND status = 'ACTIVE' AND operating_company_id <> $2 AND operating_company_id <> 'consolidated'
+        ORDER BY operating_company_id`, [actor.tenantId, buyer]);
+    return {
+      items: [
+        ...suppliers.map((r) => ({ optionId: `EXTERNAL_ORGANIZATION:${r.supplier_id}`, kind: "EXTERNAL_ORGANIZATION" as const,
+          supplierId: String(r.supplier_id), operatingCompanyId: null, name: String(r.name), vendorNumber: (r.vendor_number as string | null) ?? null })),
+        ...companies.map((r) => ({ optionId: `INTERNAL_OPERATING_COMPANY:${r.operating_company_id}`, kind: "INTERNAL_OPERATING_COMPANY" as const,
+          supplierId: null, operatingCompanyId: String(r.operating_company_id),
+          name: operatingCompanyDisplayName(r.operating_company_id) ?? String(r.operating_company_id), vendorNumber: null })),
+      ],
+    };
   });
 }
 

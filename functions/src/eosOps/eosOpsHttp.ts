@@ -39,8 +39,10 @@ import {
   recordReorderPurchaseOrder, voidReorderPurchaseOrder, REORDER_POSTGRES_ACTIVE, type ReorderActor,
 } from "./reorderLifecycleCommands.js";
 import { ReorderAssignmentError, assignReorderRequestToEmployee, listReorderAssignmentTargets } from "./reorderAssignmentAuthority.js";
-import { listInventoryLocations, listInventoryWarehouses, listReceipts, listReceivingLocationOptions, listSuppliers, listTransferOrders, listTruckRoster, readInventoryMovements, readInventoryOnHand, readReceipt, readTruckStock } from "./partsReads.js";
+import { listInventoryLocations, listInventoryWarehouses, listPurchaseOrderSupplierOptions, listReceipts, listReceivingLocationOptions, listSuppliers, listTransferOrders, listTruckRoster, readInventoryMovements, readInventoryOnHand, readReceipt, readTruckStock } from "./partsReads.js";
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
+import { correctReorderReceipt } from "./receiptCorrectionCommand.js";
+import { createSupplier, listSupplierOrganizationOptions, setSupplierStatus, updateSupplier } from "./supplierAdministration.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import { EOS_WORK_ORDER_OPERATIONS, isWorkOrderOperation, type EosWorkOrderOperation } from "./workOrderOperations";
 import { EOS_INBOUND_WORK_OPERATIONS, INBOUND_WORK_ROUTE, isInboundWorkOperation } from "./inboundWorkOperations";
@@ -95,6 +97,10 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "readReceipt",
   "listReceivingLocationOptions",
   "listSuppliers",
+  // DECISIONS #193: the governed supplier SELECTION for a new PO -- ACTIVE suppliers + the OTHER operating companies, by name.
+  "listPurchaseOrderSupplierOptions",
+  // DECISIONS #196: the CRM vendor organizations a new supplier relationship may be created for, by name.
+  "listSupplierOrganizationOptions",
   "listInventoryWarehouses",
   "listInventoryLocations",
   "listTransferOrders",
@@ -128,6 +134,15 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   // neither path ever falls back to the other: a receipt lands against the authority the caller
   // named, or it is refused.
   "receiveReorderStock",
+  // RECEIPT CORRECTION (DECISIONS #193): "we recorded the receipt wrong" -- VOID or CORRECTED, never a vendor return.
+  // inventory.receipt.correct + WAREHOUSE scope; compensating movements, the Finance reversal and the replacement receipt
+  // commit with it.
+  "correctReorderReceipt",
+  // GOVERNED SUPPLIER ADMINISTRATION (DECISIONS #196): the one writer of eos_ops.suppliers -- inventory.catalog.manage for
+  // create / update, inventory.catalog.activate for activate / deactivate (DECISIONS #78). Never a delete.
+  "createSupplier",
+  "updateSupplier",
+  "setSupplierStatus",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
 
@@ -153,6 +168,7 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   readReceipt: "/operations/inventory",
   listReceivingLocationOptions: "/operations/inventory",
   listSuppliers: "/operations/inventory",
+  listPurchaseOrderSupplierOptions: "/operations/inventory",
   listInventoryWarehouses: "/operations/inventory",
   listInventoryLocations: "/operations/inventory",
   listTransferOrders: "/operations/inventory",
@@ -169,6 +185,11 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   recordReorderPurchaseOrder: "/operations/inventory",
   voidReorderPurchaseOrder: "/operations/inventory",
   receiveReorderStock: "/operations/inventory",
+  correctReorderReceipt: "/operations/inventory",
+  listSupplierOrganizationOptions: "/operations/inventory",
+  createSupplier: "/operations/inventory",
+  updateSupplier: "/operations/inventory",
+  setSupplierStatus: "/operations/inventory",
 });
 
 // ════════════════════ the Cycle Count command route (Controller rulings DQ-017 / DQ-018) ════════════════════
@@ -268,9 +289,10 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "readReorderPurchaseOrders",
   "createReorderRequest", "reviewReorderRequest", "assignReorderRequest", "startPurchasingOnReorder", "postPurchasingUpdate",
   "markReorderReceived", "cancelReorderRequest", "recordReorderPurchaseOrder", "voidReorderPurchaseOrder", "receiveReorderStock",
+  "correctReorderReceipt", "createSupplier", "updateSupplier", "setSupplierStatus", "listSupplierOrganizationOptions",
   // The Parts / Purchasing / Receiving reads (2026-10-01) sit behind the same activation boundary.
   "readInventoryOnHand", "readInventoryMovements", "listReceipts", "readReceipt", "listReceivingLocationOptions",
-  "listSuppliers", "listReorderAssignmentTargets", "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
+  "listSuppliers", "listPurchaseOrderSupplierOptions", "listReorderAssignmentTargets", "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
   "listTruckRoster", "readTruckStock",
 ]);
 
@@ -414,6 +436,10 @@ export async function executeOperation(
         const { actor, pool } = await reorderActor();
         return ok(await listSuppliers({ pool }, actor, request.input ?? {}));
       }
+      case "listPurchaseOrderSupplierOptions": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listPurchaseOrderSupplierOptions({ pool }, actor, request.input ?? {}));
+      }
       case "listInventoryWarehouses": {
         const { actor, pool } = await reorderActor();
         return ok(await listInventoryWarehouses({ pool }, actor, request.input ?? {}));
@@ -480,6 +506,26 @@ export async function executeOperation(
         // Employee the purchasing work happens to be assigned to.
         const { actor, pool } = await reorderActor();
         return ok(await receiveReorderStock({ pool }, actor, request.input ?? {}));
+      }
+      case "listSupplierOrganizationOptions": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listSupplierOrganizationOptions({ pool }, actor, request.input ?? {}));
+      }
+      case "createSupplier": {
+        const { actor, pool } = await reorderActor();
+        return ok(await createSupplier({ pool }, actor, request.input ?? {}));
+      }
+      case "updateSupplier": {
+        const { actor, pool } = await reorderActor();
+        return ok(await updateSupplier({ pool }, actor, request.input ?? {}));
+      }
+      case "setSupplierStatus": {
+        const { actor, pool } = await reorderActor();
+        return ok(await setSupplierStatus({ pool }, actor, request.input ?? {}));
+      }
+      case "correctReorderReceipt": {
+        const { actor, pool } = await reorderActor();
+        return ok(await correctReorderReceipt({ pool }, actor, request.input ?? {}));
       }
       default:
         return { ok: false, operation: request.operation, code: "UNKNOWN_OPERATION", message: "no such Operations operation" };
