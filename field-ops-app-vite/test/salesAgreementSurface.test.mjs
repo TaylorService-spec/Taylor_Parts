@@ -45,6 +45,8 @@ function projection(overrides = {}) {
       shippingMinor: 500,
       installChargeMinor: 2500,
       taxMinor: 300,
+      taxEvidenceStatus: "DETERMINED",
+      taxEvidenceAmountMinor: 300,
       totalMinor: 28300,
       downPaymentMinor: 1000,
       tradeInMinor: 2000,
@@ -76,6 +78,16 @@ test("EVERY money field arrives, in integer minor units", () => {
   // Still minor units at the boundary: a number divided by 100 here would be a float nobody can add
   // up again, and the renderer is the only place that should format.
   for (const k of ["subtotalMinor", "totalMinor", "balanceMinor"]) assert.ok(Number.isInteger(v[k]));
+});
+
+test("UNKNOWN TAX IS NOT ZERO: the tax amount arrives only with DETERMINED evidence (DECISIONS #197)", () => {
+  for (const status of ["NOT_DETERMINED", "LEGACY_UNVERIFIED", undefined]) {
+    const v = view({ taxEvidenceStatus: status, taxEvidenceAmountMinor: null });
+    assert.equal(v.taxMinor, null, `${status}: a stored charge column is not a tax determination`);
+    assert.equal(v.totalMinor, 28300, "the total stays the server's arithmetic");
+  }
+  const zero = view({ taxMinor: 0, taxEvidenceStatus: "DETERMINED", taxEvidenceAmountMinor: 0 });
+  assert.equal(zero.taxMinor, 0, "a determined zero is a real zero");
 });
 
 test("EVERY commercial term and lineage field arrives", () => {

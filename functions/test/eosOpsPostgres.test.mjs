@@ -192,7 +192,8 @@ test("financial authority lives in eos_finance, and does not leak into eos_ops",
   // + DECISIONS #193 (migration 1764430000000): the append-only resolution of a missing-cost exception by a receipt correction.
   // + DECISIONS #196 (migration 1764450000000): the Operational Billing Package and its lines.
   // + DECISIONS #197 (migration 1764460000000): the provider-neutral accounting handoff.
-  const FINANCIAL_TABLES = ["accounting_destinations", "accounting_handoffs", "billing_package_lines", "billing_packages", "cost_evidence_exception_resolutions", "cost_evidence_exceptions", "counterparty_company_profiles", "financial_counterparties",
+  // + DECISIONS #198 (migration 1764470000000): its durable delivery attempts and actionable delivery exceptions.
+  const FINANCIAL_TABLES = ["accounting_destinations", "accounting_handoff_attempts", "accounting_handoff_exceptions", "accounting_handoffs", "billing_package_lines", "billing_packages", "cost_evidence_exception_resolutions", "cost_evidence_exceptions", "counterparty_company_profiles", "financial_counterparties",
     "financial_facts", "inventory_acquisition_costs", "invoice_lines", "invoices", "obligations", "payment_applications", "payments"];
   const FINANCIAL_VIEWS = ["invoice_application_totals", "invoice_totals", "obligation_balances", "payment_balances"];
 

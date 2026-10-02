@@ -233,6 +233,9 @@ export function toSalesAgreementProjection(a) {
     shippingMinor: t.shippingMinor ?? null,
     installChargeMinor: t.installChargeMinor ?? null,
     taxMinor: t.taxMinor ?? null,
+    // DECISIONS #197: the tax's EVIDENCE travels with it. Absent evidence (an older backend) is not a determination.
+    taxEvidenceStatus: a.taxEvidence?.status ?? null,
+    taxEvidenceAmountMinor: a.taxEvidence?.amountMinor ?? null,
     totalMinor: t.totalMinor ?? null,
     downPaymentMinor: t.downPaymentMinor ?? null,
     tradeInMinor: t.tradeInMinor ?? null,

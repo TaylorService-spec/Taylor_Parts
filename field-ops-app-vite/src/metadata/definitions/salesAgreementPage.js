@@ -92,7 +92,8 @@ export const salesAgreementRecordPage = makePageDefinition({
         "subtotalMinor",
         "shippingMinor",
         "installChargeMinor",
-        "taxMinor",
+        // Tax is NOT drawn as a bare amount here: an undetermined tax would read as "—" or a zero. The panel words it
+        // from its evidence (TaxEvidenceSummary; DECISIONS #197).
         "downPaymentMinor",
         "tradeInMinor",
         "balanceMinor",

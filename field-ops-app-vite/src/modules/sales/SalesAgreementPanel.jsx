@@ -56,6 +56,8 @@ const STATE_TONE = { DRAFT: "neutral", ACCEPTED: "positive", DECLINED: "negative
 const STATE_LABEL = { DRAFT: "Draft", ACCEPTED: "Accepted", DECLINED: "Declined" };
 
 import { BLANK_LINE, toMinor, toMajorText, toEditorLines, LinesEditor, buildLines } from "./salesAgreementLines.jsx";
+import TaxEvidenceControl, { TaxEvidenceSummary } from "./TaxEvidenceControl.jsx";
+import { taxEvidenceSeed, taxEvidencePatch } from "../../domain/taxEvidenceView.js";
 
 function CreateForm({ onCreate, pending, canCreate }) {
   const [lines, setLines] = useState([{ ...BLANK_LINE }]);
@@ -126,9 +128,10 @@ function TermsForm({ view, pending, onSave }) {
       // an absent charge stays empty rather than becoming "0".
       shippingMinor: toMajorText(view.shippingMinor),
       installChargeMinor: toMajorText(view.installChargeMinor),
-      taxMinor: toMajorText(view.taxMinor),
       downPaymentMinor: toMajorText(view.downPaymentMinor),
       tradeInMinor: toMajorText(view.tradeInMinor),
+      // Tax is NOT a charge box: it is evidence (DECISIONS #197), seeded from the server's own state.
+      tax: taxEvidenceSeed(view, toMajorText),
     });
     setError(null);
     setOpen(true);
@@ -143,7 +146,7 @@ function TermsForm({ view, pending, onSave }) {
       specialInstructions: form.specialInstructions.trim() || null,
       isLease: form.isLease,
     };
-    for (const key of ["shippingMinor", "installChargeMinor", "taxMinor", "downPaymentMinor", "tradeInMinor"]) {
+    for (const key of ["shippingMinor", "installChargeMinor", "downPaymentMinor", "tradeInMinor"]) {
       const minor = toMinor(form[key]);
       if (Number.isNaN(minor)) { setError("Amounts must look like 1250.00."); return; }
       // An empty charge box means ZERO here, not "unknown": a charge that is not stated is not
@@ -151,6 +154,11 @@ function TermsForm({ view, pending, onSave }) {
       // blanks mean different things and are deliberately not collapsed.
       patch[key] = minor ?? 0;
     }
+    // A bare taxMinor is never sent: the server would read it as an un-evidenced change. The tax travels only as the
+    // governed `taxEvidence` input, and only when the person changed it.
+    const tax = taxEvidencePatch(view, form.tax, toMinor);
+    if (tax.error) { setError(tax.error); return; }
+    Object.assign(patch, tax);
     setError(null);
     const res = await onSave(patch);
     if (res.ok) setOpen(false);
@@ -186,7 +194,7 @@ function TermsForm({ view, pending, onSave }) {
       {field("specialInstructions", "Special instructions")}
       {field("shippingMinor", "Shipping")}
       {field("installChargeMinor", "Install charge")}
-      {field("taxMinor", "Tax")}
+      <TaxEvidenceControl value={form.tax} disabled={pending === "updateDraft"} onChange={(tax) => setForm({ ...form, tax })} />
       {field("downPaymentMinor", "Down payment")}
       {field("tradeInMinor", "Trade-in")}
       {error && <p role="alert" className="fo-error">{error}</p>}
@@ -265,6 +273,9 @@ export default function SalesAgreementPanel({ agreement, hasCapability = () => f
         // through the one bounded form below, which submits the SAME bounded command.
         onEditField={null}
       />
+
+      {/* The tax's evidence, in words, for every reader -- not only the one who can edit it. */}
+      <TaxEvidenceSummary view={view} />
 
       {editable && (
         <TermsForm view={view} pending={pending} onSave={(patch) => updateDraft(view.id, patch)} />

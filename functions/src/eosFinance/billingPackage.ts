@@ -232,8 +232,23 @@ async function isCurrentAuthoritative(c: Queryable, actor: FinanceActor, package
   return rows[0]?.tax_evidence_status === "DETERMINED" && rows[0]?.obligor_basis === "DIRECT_SALE_CUSTOMER";
 }
 
-/** A superseded package's receivable is VOIDED (reversing facts; refused once settled) and its handoff SUPERSEDED. */
-async function retirePackageReceivableOn(c: Queryable, actor: FinanceActor, packageId: string, reason: string): Promise<void> {
+/**
+ * A superseded package's receivable is VOIDED (reversing facts; refused once settled) and its handoff SUPERSEDED, with any
+ * open delivery exception resolved by the correction (DECISIONS #198). FAILS CLOSED once the handoff is in delivery or
+ * ACKNOWLEDGED: the provider may hold a document for it, and reversing that is a provider act no package is allowed to fake.
+ */
+export async function retirePackageReceivableOn(c: Queryable, actor: FinanceActor, packageId: string, reason: string): Promise<void> {
+  const { rows: delivered } = await c.query(
+    `SELECT status FROM eos_finance.accounting_handoffs WHERE tenant_id = $1 AND billing_package_id = $2 AND status IN ('DELIVERY_IN_PROGRESS', 'ACKNOWLEDGED') FOR UPDATE`,
+    [actor.tenantId, packageId]);
+  if (delivered[0]) {
+    throw new FinanceFoundationError("ACCOUNTING_HANDOFF_DELIVERED", "CONFLICT",
+      `the package's accounting handoff is ${delivered[0].status}; it cannot be superseded without a provider-side correction`);
+  }
+  await c.query(
+    `UPDATE eos_finance.accounting_handoff_exceptions x SET status = 'RESOLVED', resolved_by = $3, resolved_at = now(), resolution = 'SUPERSEDED_BY_CORRECTED_PACKAGE'
+      FROM eos_finance.accounting_handoffs h WHERE h.tenant_id = x.tenant_id AND h.id = x.handoff_id AND x.tenant_id = $1 AND h.billing_package_id = $2 AND x.status = 'OPEN'`,
+    [actor.tenantId, packageId, actor.principalId]);
   const { rows } = await c.query(`SELECT id FROM eos_finance.obligations WHERE tenant_id = $1 AND source_domain = 'BILLING_PACKAGE' AND source_record_id = $2`,
     [actor.tenantId, packageId]);
   if (rows[0]) await voidObligationOn(c, actor, { obligationId: String(rows[0].id), reason, idempotencyKey: `ar:void:${packageId}` });
