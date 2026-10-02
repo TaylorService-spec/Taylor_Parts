@@ -32,8 +32,8 @@ test("13-17 / 27. static: no operation creates or edits a package; no invoice / 
   const src = readFileSync(join(SRC, "eosFinance/billingPackage.ts"), "utf8");
   const code = src.replace(/^\s*\/\/.*$/gm, "");
   assert.equal(/from ["'][^"']*firebase/i.test(src), false);
-  assert.equal(/INSERT INTO eos_finance\.(invoices|financial_facts|obligations)|fetch\(|https?:\/\/|credential|quickbooks|netsuite|sage|xero/i.test(code), false,
-    "no invoice, fact, obligation, network call, credential or provider-specific code");
+  assert.equal(/INSERT INTO eos_finance\.(invoices|financial_facts)|fetch\(|https?:\/\/|credential|quickbooks|netsuite|sage|xero|dynamics/i.test(code), false,
+    "no invoice, no direct fact write, no network call, credential or provider-specific code (the receivable goes through openObligationOn, #197)");
 });
 
 test("Operational Billing Package over the governed path", { skip: SKIP, concurrency: 1 }, async (t) => {
@@ -96,9 +96,13 @@ test("Operational Billing Package over the governed path", { skip: SKIP, concurr
     if (lease !== null) {
       agreementId = `sa-cf-${soSeq}`;
       await q(`INSERT INTO eos_commercial.sales_agreements (id, tenant_id, sales_agreement_number, account_id, owner_employee_id, state, accepted_at, accepted_by,
-                 is_lease, operating_company_key, currency, shipping_minor, install_charge_minor, tax_minor, down_payment_minor, trade_in_minor, created_by, updated_by)
-               VALUES ($1,$2,$1,$3,'e-seller','ACCEPTED',now(),'fixture',$4,$5,'USD',$6,$7,$8,$9,$10,'fixture','fixture')`,
-        [agreementId, TENANT, account, lease, company, charges.shipping ?? null, charges.install ?? null, charges.tax ?? null, charges.down ?? null, charges.tradeIn ?? null]);
+                 is_lease, operating_company_key, currency, shipping_minor, install_charge_minor, tax_minor, down_payment_minor, trade_in_minor, created_by, updated_by,
+                 tax_evidence_status, tax_evidence_currency, tax_evidence_recorded_by, tax_evidence_recorded_at)
+               VALUES ($1,$2,$1,$3,'e-seller','ACCEPTED',now(),'fixture',$4,$5,'USD',$6,$7,$8,$9,$10,'fixture','fixture',$11,$12,$13,$14)`,
+        // DECISIONS #197: a stated tax is a DETERMINED governed value (0 included); no tax is NOT_DETERMINED.
+        [agreementId, TENANT, account, lease, company, charges.shipping ?? null, charges.install ?? null, charges.tax ?? null, charges.down ?? null, charges.tradeIn ?? null,
+          charges.tax === undefined ? "NOT_DETERMINED" : "DETERMINED", charges.tax === undefined ? null : "USD", charges.tax === undefined ? null : "fixture",
+          charges.tax === undefined ? null : new Date()]);
     }
     await q(`INSERT INTO eos_commercial.sales_orders (id, tenant_id, sales_order_number, account_id, owner_employee_id, operating_company_key, state, sales_channel,
                currency, credited_salesperson_employee_id, accountable_employee_id, location_id, sales_agreement_id, created_by, updated_by)
@@ -179,8 +183,11 @@ test("Operational Billing Package over the governed path", { skip: SKIP, concurr
     assert.deepEqual([trace.source_work_order_id, trace.serial, trace.equipment_model_id, trace.unit_price_minor, trace.so, trace.customer, trace.eligibility],
       [wo, "SN-A1", MODEL, "500000", direct, "Harbor Grill", "ELIGIBLE"]);
     // 13-16: not an invoice, not a posting, not a receivable, nothing sent.
-    assert.deepEqual(await one(`SELECT (SELECT count(*)::int FROM eos_finance.invoices WHERE tenant_id=$1) i, (SELECT count(*)::int FROM eos_finance.financial_facts WHERE tenant_id=$1 AND fact_class <> 'COST_EVIDENCE') f,
-        (SELECT count(*)::int FROM eos_finance.obligations WHERE tenant_id=$1) o`, [TENANT]), { i: 0, f: 0, o: 0 });
+    // DECISIONS #197: the READY direct sale establishes exactly ONE operational receivable (its origination fact is the foundation
+    // invariant); still no invoice.
+    assert.deepEqual(await one(`SELECT (SELECT count(*)::int FROM eos_finance.invoices WHERE tenant_id=$1) i,
+        (SELECT count(*)::int FROM eos_finance.financial_facts WHERE tenant_id=$1 AND fact_class NOT IN ('COST_EVIDENCE','OBLIGATION')) f,
+        (SELECT count(*)::int FROM eos_finance.obligations WHERE tenant_id=$1 AND source_record_id = $2) o`, [TENANT, p.id]), { i: 0, f: 0, o: 1 });
     assert.equal(p.accounting_destination_id, null, "no destination configured -- and nothing is sent either way");
   });
 
@@ -206,19 +213,22 @@ test("Operational Billing Package over the governed path", { skip: SKIP, concurr
   await t.test("22 / 25. UAT-FIN-BPK-005: missing tax evidence HOLDS the package (never zero); new evidence supersedes it, history intact", async () => {
     const so = await salesOrder({ lease: false, charges: { shipping: 0, install: 0 }, lines: [SVC(1)] });
     const done = await serviceJob(so);
-    assert.deepEqual([done.billingPackage.status, done.billingPackage.readinessExceptions, done.billingPackage.totalMinor], ["HELD", ["TAX_EVIDENCE_MISSING"], null]);
+    assert.deepEqual([done.billingPackage.status, done.billingPackage.readinessExceptions, done.billingPackage.totalMinor], ["HELD", ["TAX_NOT_DETERMINED"], null]);
     const [held] = (await packages(so)).rows;
     assert.deepEqual([held.tax_minor, held.total_minor, held.subtotal_minor], [null, null, "30000"]);
     // The governed tax arrives (fixture: Commercial tax determination is a later authority); re-evaluation writes version 2.
-    await q(`UPDATE eos_commercial.sales_agreements SET tax_minor = 2460 WHERE tenant_id=$1 AND id = (SELECT sales_agreement_id FROM eos_commercial.sales_orders WHERE id=$2)`, [TENANT, so]);
+    await q(`UPDATE eos_commercial.sales_agreements SET tax_minor = 2460, tax_evidence_status = 'DETERMINED', tax_evidence_currency = 'USD',
+               tax_evidence_recorded_by = 'fixture', tax_evidence_recorded_at = now()
+             WHERE tenant_id=$1 AND id = (SELECT sales_agreement_id FROM eos_commercial.sales_orders WHERE id=$2)`, [TENANT, so]);
     const [r] = await pkg.prepareEligibleBillingPackages(pool, sys);
     assert.deepEqual([r.outcome, r.version, r.status, r.totalMinor], ["superseded", 2, "READY", "32460"]);
+    assert.equal(r.consequence.receivable.outcome, "recorded", "the READY version establishes its receivable (DECISIONS #197)");
     const all = (await packages(so)).rows;
     assert.deepEqual(all.map((p) => [p.version, p.status, p.total_minor, p.supersedes_package_id]), [[1, "SUPERSEDED", null, null], [2, "READY", "32460", held.id]]);
-    assert.deepEqual(all[0].readiness_exceptions, ["TAX_EVIDENCE_MISSING"], "the superseded version keeps exactly what it said");
+    assert.deepEqual(all[0].readiness_exceptions, ["TAX_NOT_DETERMINED"], "the superseded version keeps exactly what it said");
     const direct2 = await salesOrder({ lines: [SVC(1)] });
     const d = await serviceJob(direct2);
-    assert.deepEqual([d.billingPackage.status, d.billingPackage.readinessExceptions], ["HELD", ["TAX_EVIDENCE_MISSING"]], "a direct order has no governed tax source");
+    assert.deepEqual([d.billingPackage.status, d.billingPackage.readinessExceptions], ["HELD", ["TAX_NOT_DETERMINED"]], "a direct order has no governed tax source");
   });
 
   await t.test("21. UAT-FIN-BPK-006: a missing price is explicit, never zero", async () => {
@@ -232,7 +242,7 @@ test("Operational Billing Package over the governed path", { skip: SKIP, concurr
   await t.test("23 / 28. UAT-FIN-BPK-007: a lease / financed disposition is HELD, never billed as a direct sale to the customer", async () => {
     const so = await salesOrder({ lease: true, charges: { tax: 0 }, lines: [SVC(1)] });
     const done = await serviceJob(so);
-    assert.deepEqual([done.billingPackage.status, done.billingPackage.readinessExceptions], ["HELD", ["FINANCED_DISPOSITION_UNSUPPORTED"]]);
+    assert.deepEqual([done.billingPackage.status, done.billingPackage.readinessExceptions], ["HELD", ["UNSUPPORTED_FINANCIAL_OBLIGOR"]]);
     const [p] = (await packages(so)).rows;
     assert.deepEqual([p.commercial_disposition, p.counterparty_id, p.obligor_basis], ["LEASE", null, "UNRESOLVED"]);
   });

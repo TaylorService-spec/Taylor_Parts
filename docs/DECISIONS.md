@@ -6799,3 +6799,34 @@ governing.
    the event catalog lists none. No obligation is created. Owner ruling required.
 8. **Accounting boundary:** a READY package records the company's provider-neutral accounting destination when one is
    configured; no outbox delivery, provider API, credential or provider-specific schema.
+
+## #197 — OWNER RULINGS: READY Billing Package → EOS operational receivable; tax evidence (unknown ≠ zero); accounting handoff boundary (2026-10-02)
+
+**Status.** Implemented locally (migration `1764460000000_receivable-tax-evidence-accounting-handoff.sql`). #145 / #190–#196
+remain governing. Resolves the obligation HOLD of #196 §7.
+
+1. **Receivable trigger.** For a supported DIRECT SALE, a READY EOS Operational Billing Package establishes the EOS
+   operational receivable obligation — EOS truth that money is owed; NOT an accounting invoice, GL posting, accounting
+   recognition or provider acknowledgement. Sequence: fulfillment → eligibility → READY package → EOS receivable →
+   accounting handoff → provider acknowledgement / document reference → reconciliation / settlement. Not for Saratoga /
+   financed sales, Rental, unsupported dispositions or intercompany sales.
+2. **Foundation reused:** an `eos_finance.obligations` RECEIVABLE toward the package's governed counterparty (the customer
+   organization, DIRECT_SALE_CUSTOMER rule only), opened through `openObligationOn` in the package's own transaction; its
+   origination fact is the foundation's existing invariant (balances derive from facts) — no revenue / GL fact is invented.
+   Amount = the package total exactly. One per package (unique index + idempotency). A superseded READY package's
+   receivable is VOIDED with reversing facts (refused once settled); the new version gets its own.
+3. **Tax evidence.** Unknown tax ≠ zero tax. The Sales Agreement records NOT_DETERMINED (the default for new writes) or
+   DETERMINED (amount, 0 allowed, in the Agreement's currency, with recorder). A bare `taxMinor` is never evidence. Every
+   pre-existing Agreement is LEGACY_UNVERIFIED — its stored 0 (the writer then stored omitted tax as 0) is never promoted.
+   The Billing Package uses tax only when DETERMINED; otherwise TAX_NOT_DETERMINED holds it. No tax engine, rate,
+   jurisdiction or provider.
+4. **Exception vocabulary:** TAX_NOT_DETERMINED, PRICE_EVIDENCE_MISSING, UNSUPPORTED_FINANCIAL_OBLIGOR,
+   ACCOUNTING_DESTINATION_MISSING — never a generic "not ready".
+5. **Accounting handoff** (`eos_finance.accounting_handoffs`): one provider-neutral record per READY package — company,
+   destination (the company's existing `accounting_destinations` row), package, receivable, payload kind / version /
+   fingerprint, status (PENDING_DESTINATION / READY_FOR_DELIVERY / SUPERSEDED), and empty attempt / acknowledgement /
+   provider document reference / failure columns for the later delivery package. A missing destination never refuses the
+   receivable: the handoff is PENDING_DESTINATION with ACCOUNTING_DESTINATION_MISSING and attaches when a destination is
+   configured. Nothing is delivered; no credential; no provider-specific schema.
+6. **No capability, no grant;** no client operation creates a receivable, package or handoff. Recovery:
+   `establishReceivablesForReadyPackages` (READY packages from before this activation), `refreshAccountingHandoffs`.

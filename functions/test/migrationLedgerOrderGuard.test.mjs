@@ -196,8 +196,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 84 -> 85: Finance Activation 1 completion (2026-10-01, DECISIONS #193): 1764430000000 -- explicit PO supplier identity, receiving_corrections, missing-cost exception resolutions; inventory.receipt.correct granted to NO Role.
 // 85 -> 86: Commercial Finance activation (2026-10-02, DECISIONS #195): 1764440000000 -- sales_order_fulfillments (append-only) + derived fulfillment / billing-eligibility views; no capability, no grant.
 // 86 -> 87: Operational Billing Package (2026-10-02, DECISIONS #196): 1764450000000 -- eos_finance.billing_packages + billing_package_lines (immutable content); no capability, no grant.
-const RUNNABLE_MIGRATION_COUNT = 87;
-const TRACKED_MIGRATION_COUNT = 88; // the 87 runnable + the one deferred file
+// 87 -> 88: Finance Activation 2 (2026-10-02, DECISIONS #197): 1764460000000 -- Agreement tax evidence, one receivable per billing package, accounting_handoffs; no capability, no grant.
+const RUNNABLE_MIGRATION_COUNT = 88;
+const TRACKED_MIGRATION_COUNT = 89; // the 88 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -236,6 +237,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764430000000_purchasing-supplier-identity-and-receipt-correction",
   "1764440000000_commercial-fulfillment-billing-eligibility",
   "1764450000000_operational-billing-packages",
+  "1764460000000_receivable-tax-evidence-accounting-handoff",
 ]);
 
 const repoMigrations = () =>

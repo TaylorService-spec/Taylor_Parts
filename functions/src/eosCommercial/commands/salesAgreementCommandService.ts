@@ -40,6 +40,38 @@ async function sourceOpportunityChannel(db: Queryable, tenantId: string, agreeme
   return rows[0]?.sales_channel ?? null;
 }
 
+/**
+ * TAX EVIDENCE (Owner ruling 2026-10-02; DECISIONS #197): unknown tax is NOT zero tax. A new or edited Agreement records an
+ * explicit state -- `taxEvidence: { status: "DETERMINED", amountMinor, currency }` (0 allowed: a DETERMINED zero) or
+ * `{ status: "NOT_DETERMINED" }`; omitting it means NOT_DETERMINED. A bare `taxMinor` is a commercial input, never evidence.
+ * This records evidence only: no tax calculation, rate, jurisdiction or provider exists here.
+ */
+type TaxEvidence = { readonly status: "NOT_DETERMINED" } | { readonly status: "DETERMINED"; readonly amountMinor: number; readonly currency: string };
+const AGREEMENT_CURRENCY = "USD";
+function parseTaxEvidence(raw: unknown): TaxEvidence | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) return fail("TAX_EVIDENCE_INVALID", "INVALID_INPUT", "taxEvidence states its status");
+  const t = raw as Record<string, unknown>;
+  const keys = Object.keys(t).sort().join(",");
+  if (t.status === "NOT_DETERMINED" && keys === "status") return { status: "NOT_DETERMINED" };
+  if (t.status === "DETERMINED" && keys === "amountMinor,currency,status") {
+    if (!Number.isSafeInteger(t.amountMinor) || (t.amountMinor as number) < 0) {
+      return fail("TAX_EVIDENCE_INVALID", "INVALID_INPUT", "a DETERMINED tax states its amount in non-negative minor units (0 is a determined zero)");
+    }
+    if (t.currency !== AGREEMENT_CURRENCY) return fail("TAX_CURRENCY_MISMATCH", "INVALID_INPUT", `the tax determination must be in the Agreement's currency (${AGREEMENT_CURRENCY})`);
+    return { status: "DETERMINED", amountMinor: t.amountMinor as number, currency: AGREEMENT_CURRENCY };
+  }
+  return fail("TAX_EVIDENCE_INVALID", "INVALID_INPUT", "taxEvidence is { status: NOT_DETERMINED } or { status: DETERMINED, amountMinor, currency }");
+}
+/** Merge evidence into the builder's charge input: a DETERMINED amount IS the tax; a conflicting bare taxMinor is refused. */
+function withTaxEvidence(fields: Record<string, unknown>, evidence: TaxEvidence | null): Record<string, unknown> {
+  if (evidence?.status !== "DETERMINED") return fields;
+  if (fields.taxMinor !== undefined && fields.taxMinor !== evidence.amountMinor) {
+    fail("TAX_EVIDENCE_CONFLICT", "INVALID_INPUT", "taxMinor disagrees with the DETERMINED tax evidence");
+  }
+  return { ...fields, taxMinor: evidence.amountMinor };
+}
+
 async function requireAgreement(db: Queryable, tenantId: string, id: unknown): Promise<AgreementRow> {
   if (typeof id !== "string" || id.trim() === "") fail("AGREEMENT_REQUIRED", "INVALID_INPUT", "salesAgreementId is required");
   const row = await lockAgreement(db, tenantId, id as string);
@@ -61,7 +93,9 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
       if (await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id)) {
         fail("AGREEMENT_ALREADY_EXISTS", "CONFLICT", "the Opportunity already has a Sales Agreement");
       }
-      const { idempotencyKey: _k, opportunityId: _o, accountableEmployeeId, ...fields } = input;
+      const { idempotencyKey: _k, opportunityId: _o, accountableEmployeeId, taxEvidence: rawTax, ...rawFields } = input;
+      const taxEvidence = parseTaxEvidence(rawTax);
+      const fields = withTaxEvidence(rawFields, taxEvidence);
       const built = buildCreateSalesAgreement({
         ...(fields as Record<string, unknown>),
         accountId: opportunity.accountId,
@@ -81,13 +115,15 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
         `INSERT INTO eos_commercial.sales_agreements (id, tenant_id, sales_agreement_number, account_id, opportunity_id, owner_employee_id,
            operating_company_key, state, currency, credited_salesperson_employee_id, location_id, customer_po, is_lease, fulfillment_intent,
            shipping_instructions, ship_via, special_instructions, shipping_minor, install_charge_minor, tax_minor, down_payment_minor,
-           trade_in_minor, created_by, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'DRAFT','USD',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$21)`,
+           trade_in_minor, created_by, updated_by, tax_evidence_status, tax_evidence_currency, tax_evidence_recorded_by, tax_evidence_recorded_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'DRAFT','USD',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$21,$22,$23,$24,$25)`,
         [id, actor.tenantId, number.number, built.accountId, opportunity.id, built.ownerEmployeeId,
           await operatingCompanyKeyFor(db, actor.tenantId, built.operatingCompanyId),
           built.creditedSalespersonId, built.locationId, built.customerPO, built.isLease, built.fulfillmentIntent, built.shippingInstructions,
           built.shipVia, built.specialInstructions, built.totals.shippingMinor, built.totals.installChargeMinor, built.totals.taxMinor,
-          built.totals.downPaymentMinor, built.totals.tradeInMinor, actor.principalId],
+          built.totals.downPaymentMinor, built.totals.tradeInMinor, actor.principalId,
+          taxEvidence?.status ?? "NOT_DETERMINED", taxEvidence?.status === "DETERMINED" ? taxEvidence.currency : null,
+          taxEvidence?.status === "DETERMINED" ? actor.principalId : null, taxEvidence?.status === "DETERMINED" ? now : null],
       );
       await replaceAgreementLines(db, actor.tenantId, id, agreementLineRows(built.lines));
       const accountable = await stageCreationAccountablePerson(db, actor.tenantId, actor.principalId, "salesAgreement", id, established);
@@ -114,7 +150,9 @@ export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: Co
     input?.idempotencyKey, async (db, now, scope) => {
       const current = await requireAgreement(db, actor.tenantId, input.salesAgreementId);
       scope.admitChannel(await sourceOpportunityChannel(db, actor.tenantId, current));
-      const { idempotencyKey: _k, salesAgreementId: _a, ...fields } = input;
+      const { idempotencyKey: _k, salesAgreementId: _a, taxEvidence: rawTax, ...rawFields } = input;
+      const taxEvidence = parseTaxEvidence(rawTax);
+      const fields = withTaxEvidence(rawFields, taxEvidence);
       const patch = buildUpdateSalesAgreementDraft(
         { state: current.state as never, lines: current.lines as never, totals: computeAgreementTotals(current.lines as never, current.charges) },
         fields as never,
@@ -136,6 +174,14 @@ export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: Co
           values.push(totals[field]);
           sets.push(`${column} = $${values.length}`);
         }
+      }
+      // Tax evidence moves only by an explicit statement; a changed bare taxMinor is no longer evidenced (NOT_DETERMINED).
+      if (taxEvidence !== null || "taxMinor" in rawFields) {
+        const determined = taxEvidence?.status === "DETERMINED";
+        values.push(determined ? "DETERMINED" : "NOT_DETERMINED"); sets.push(`tax_evidence_status = $${values.length}`);
+        values.push(determined ? AGREEMENT_CURRENCY : null); sets.push(`tax_evidence_currency = $${values.length}`);
+        values.push(determined ? actor.principalId : null); sets.push(`tax_evidence_recorded_by = $${values.length}`);
+        values.push(determined ? now : null); sets.push(`tax_evidence_recorded_at = $${values.length}`);
       }
       const lines = (patch.lines as AgreementRow["lines"] | undefined) ?? current.lines;
       await requireCatalogReferences(deps, db, actor.tenantId, lines);
