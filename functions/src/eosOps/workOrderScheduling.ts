@@ -39,6 +39,8 @@ import {
 } from "./workOrderAssignmentAuthority";
 import { checkTechnicianAvailability } from "./workOrderAvailability";
 import { CommercialFulfillmentError, recordWorkOrderFulfillmentOn, type WorkOrderFulfillmentOutcome } from "../eosCommercial/fulfillment/salesOrderFulfillmentAuthority";
+import { prepareBillingPackageOn, type BillingPackageOutcome } from "../eosFinance/billingPackage";
+import { FinanceFoundationError } from "../eosFinance/financeFoundation";
 import { isQuarantined, notQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 
 const SCHEMA = "eos_ops";
@@ -438,6 +440,8 @@ export interface CompleteResult {
   readonly inventoryBoundary: string | null;
   /** NOT_APPLICABLE for a Work Order with no Sales Order; RECORDED with the governed Commercial fulfillment otherwise. */
   readonly fulfillment: WorkOrderFulfillmentOutcome;
+  /** The Finance consequence (DECISIONS #196): the Operational Billing Package when the Sales Order is now ELIGIBLE in full. */
+  readonly billingPackage: BillingPackageOutcome | null;
 }
 
 /**
@@ -473,7 +477,22 @@ export async function completeWorkOrder(deps: SchedulingDeps, actor: LifecycleAc
       }
       throw err;
     }
-    return Object.freeze({ transition, inventoryBoundary: transition.inventoryBoundary, fulfillment });
+    // THE FINANCE CONSEQUENCE (DECISIONS #196), same transaction: when the fulfillment leaves the Sales Order ELIGIBLE in full,
+    // the Operational Billing Package is prepared (READY, or HELD with its explicit evidence exceptions). Not an invoice, not a
+    // receivable, not a posting, nothing sent; no Finance capability is asked of the technician.
+    let billingPackage: BillingPackageOutcome | null = null;
+    if (fulfillment.status === "RECORDED") {
+      try {
+        billingPackage = await prepareBillingPackageOn(client, { tenantId: actor.tenantId, principalId: actor.principalId },
+          { salesOrderId: fulfillment.salesOrderId });
+      } catch (err) {
+        if (err instanceof FinanceFoundationError) {
+          refuse(err.code, "PRECONDITION_FAILED", `the Sales Order's billing package could not be prepared: ${err.message}`);
+        }
+        throw err;
+      }
+    }
+    return Object.freeze({ transition, inventoryBoundary: transition.inventoryBoundary, fulfillment, billingPackage });
   });
 }
 

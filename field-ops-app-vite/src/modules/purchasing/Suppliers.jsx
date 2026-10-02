@@ -5,6 +5,7 @@ import { useMetadataList } from "../../hooks/useMetadataList";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
+import SupplierAdministration from "./SupplierAdministration.jsx";
 
 // Purchasing > Suppliers -- S-INV-SUPPLIERS. Migrated onto the metadata list runtime
 // (useMetadataList + MetadataListGrid over supplierIndexList/supplierEntity,
@@ -181,9 +182,7 @@ export default function Suppliers({ accessVersion }) {
           ? [{ key: "ungoverned", label: `${summary.ungoverned} without governed status`, tone: "attention" }]
           : []
       }
-      // NO CREATE ACTION, and it is P2's third treatment rather than an omission: `suppliers` is
-      // Admin-SDK-write-only, so there is no client write path to offer. A disabled button would
-      // describe a permission boundary; the truth is that this object is not created from the app.
+      // CREATE lives in the Supplier administration panel below (DECISIONS #196): the governed EOS writer, server-authorized.
     >
       {intro}
 
@@ -210,6 +209,8 @@ export default function Suppliers({ accessVersion }) {
       <FilterBar options={filterOptions} activeKey={filterKey} onChange={setFilterKey} />
 
       <MetadataListGrid presentation={gridPresentation} caption="Suppliers" onLoadMore={loadMore} onRetry={retry} />
+
+      <SupplierAdministration onChanged={retry} />
 
       <p className="fo-muted fo-sup-footnote">
         Purchase orders placed with these suppliers appear under <Link to="/purchasing">Purchase Orders</Link>.

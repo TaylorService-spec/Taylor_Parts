@@ -32,6 +32,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
       "listSuppliers",
       // DECISIONS #193 (2026-10-02): the governed supplier selection for a new PO.
       "listPurchaseOrderSupplierOptions",
+      // DECISIONS #196 (2026-10-02): the CRM vendor organizations a new supplier may be created for.
+      "listSupplierOrganizationOptions",
       // Inventory / Warehouse completion (2026-10-01): the governed warehouse / location / transfer-order reads the cut-over
       // employee screens need (no quantity: stock stays readInventoryOnHand).
       "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
@@ -44,6 +46,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
     "recordReorderPurchaseOrder", "voidReorderPurchaseOrder", "receiveReorderStock",
     // Finance Activation 1 completion (2026-10-01, DECISIONS #193): the governed receipt correction (VOID / CORRECTED).
     "correctReorderReceipt",
+    // DECISIONS #196 (2026-10-02): governed supplier administration.
+    "createSupplier", "updateSupplier", "setSupplierStatus",
   ]);
   for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
     assert.equal(isOperationsOperation(name), true, name);
@@ -199,7 +203,8 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   // + the two Truck Inventory reads (listTruckRoster, readTruckStock; 2026-10-01).
   // + correctReorderReceipt (the governed receipt correction, DECISIONS #193; 2026-10-01).
   // + listPurchaseOrderSupplierOptions (the governed supplier selection, DECISIONS #193; 2026-10-02).
-  assert.equal(reorderOps.length, 30);
+  // + supplier administration (createSupplier / updateSupplier / setSupplierStatus / listSupplierOrganizationOptions; DECISIONS #196).
+  assert.equal(reorderOps.length, 34);
   for (const operation of reorderOps) {
     const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },
       { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });

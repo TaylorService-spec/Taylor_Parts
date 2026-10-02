@@ -190,7 +190,8 @@ test("financial authority lives in eos_finance, and does not leak into eos_ops",
   // + the Finance foundation (DECISIONS #191, migration 1764420000000): counterparties, company profiles, immutable financial
   // facts, obligations (+ the derived obligation_balances view), cost-evidence exceptions and accounting destinations.
   // + DECISIONS #193 (migration 1764430000000): the append-only resolution of a missing-cost exception by a receipt correction.
-  const FINANCIAL_TABLES = ["accounting_destinations", "cost_evidence_exception_resolutions", "cost_evidence_exceptions", "counterparty_company_profiles", "financial_counterparties",
+  // + DECISIONS #196 (migration 1764450000000): the Operational Billing Package and its lines.
+  const FINANCIAL_TABLES = ["accounting_destinations", "billing_package_lines", "billing_packages", "cost_evidence_exception_resolutions", "cost_evidence_exceptions", "counterparty_company_profiles", "financial_counterparties",
     "financial_facts", "inventory_acquisition_costs", "invoice_lines", "invoices", "obligations", "payment_applications", "payments"];
   const FINANCIAL_VIEWS = ["invoice_application_totals", "invoice_totals", "obligation_balances", "payment_balances"];
 
@@ -265,7 +266,8 @@ test("financial authority lives in eos_finance, and does not leak into eos_ops",
         AND t.table_type = 'BASE TABLE'
       ORDER BY 1`,
   );
-  assert.deepEqual(company.rows.map((r) => r.table_name), ["invoices", "payments"]);
+  // + billing_packages (DECISIONS #196): the package states its company key beside the resolved company id.
+  assert.deepEqual(company.rows.map((r) => r.table_name), ["billing_packages", "invoices", "payments"]);
   for (const row of company.rows) {
     assert.equal(row.is_nullable, "NO", `${row.table_name}.operating_company_key must be NOT NULL`);
     assert.equal(row.column_default, null, `${row.table_name}.operating_company_key must have no default`);

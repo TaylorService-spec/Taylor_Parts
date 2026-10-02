@@ -120,7 +120,7 @@ test.after(async () => {
       // to run order, because a cleanup that depends on which suite ran first is not a cleanup.
       "TRUNCATE eos_commercial.accountability_handoffs, eos_commercial.ownership_handoffs," +
       // Migration 022's line tables reference the three record tables too.
-      " eos_commercial.sales_order_fulfillments, eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
+      " eos_finance.billing_package_lines, eos_commercial.sales_order_fulfillments, eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
       " eos_commercial.sales_orders," +
       " eos_commercial.sales_agreements, eos_commercial.opportunities",
     );

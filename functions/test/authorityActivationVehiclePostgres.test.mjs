@@ -196,7 +196,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // inventory.receipt.correct (no grant).
     "1764430000000_purchasing-supplier-identity-and-receipt-correction.sql",
     // Commercial Finance activation (2026-10-02, #195): sales_order_fulfillments + derived eligibility views; no capability, no grant.
-    "1764440000000_commercial-fulfillment-billing-eligibility.sql"],
+    "1764440000000_commercial-fulfillment-billing-eligibility.sql",
+    // Operational Billing Package (2026-10-02, #196): eos_finance.billing_packages + lines; no capability, no grant.
+    "1764450000000_operational-billing-packages.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -421,6 +423,8 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // Parts / Purchasing / Receiving completion first (-2 capabilities, no grant), then the Service Experience completion,
     // newest first: self-scheduling (-2), recovery (-1), provider runtime (schema).
     assert.deepEqual(await counts(), { caps: 114, grants: 415, mine: 26 });
+    runMigrate(url, "down", 1); // the Operational Billing Package (schema only)
+    assert.deepEqual(await counts(), { caps: 114, grants: 415, mine: 26 });
     runMigrate(url, "down", 1); // the Commercial Finance activation (schema only)
     assert.deepEqual(await counts(), { caps: 114, grants: 415, mine: 26 });
     runMigrate(url, "down", 1); // the Finance Activation 1 completion (-1 capability, no grant)
@@ -520,7 +524,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the Commercial Finance activation (1764440000000) first
+    runMigrate(url, "down", 1); // peel the Operational Billing Package (1764450000000) first
+    runMigrate(url, "down", 1); // then the Commercial Finance activation (1764440000000)
     runMigrate(url, "down", 1); // then the Finance Activation 1 completion (1764430000000)
     runMigrate(url, "down", 1); // then the Finance foundation (1764420000000)
     runMigrate(url, "down", 1); // then the Truck Inventory activation (1764410000000)

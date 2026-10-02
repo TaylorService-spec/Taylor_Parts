@@ -6763,3 +6763,39 @@ DQ-015 completion refusal. #145 / #190–#194 remain governing.
 8. **No capability, no grant.** Recorded dependencies: Commercial correction / cancellation of recorded fulfillment (none
    exists; fulfillment is historical), partial-billing policy, the financed-sale marker, HELD (blocked / additional-work)
    inputs, Work Order un-completion.
+
+## #196 — CONTROLLER RULING: Supplier administration + the EOS Operational Billing Package; AR obligation HELD (2026-10-02)
+
+**Status.** Implemented locally (migration `1764450000000_operational-billing-packages.sql`). #145 / #190–#195 remain
+governing.
+
+1. **Supplier administration** (`eosOps/supplierAdministration.ts`, `/operations/inventory`: `createSupplier`,
+   `updateSupplier`, `setSupplierStatus`, `listSupplierOrganizationOptions`) is the ONE writer of `eos_ops.suppliers` — no
+   seed writer, no second master. CRM ORGANIZATION (governed as a VENDOR) → SUPPLIER RELATIONSHIP (one per organization;
+   name authored from the organization; supplier-specific operational fields only) → governed PO supplier identity (#193)
+   → EXTERNAL_ORGANIZATION counterparty. Never deleted: ACTIVE / INACTIVE; an INACTIVE supplier cannot be named on a new PO,
+   history stays readable.
+2. **Supplier authority is REUSED (DECISIONS #78):** create / update ← `inventory.catalog.manage`; activate / deactivate ←
+   `inventory.catalog.activate` — the keys the retiring Firebase Supplier Master enforced. No new capability, no grant;
+   holders change through Administration only.
+3. **The Operational Billing Package** (`eos_finance.billing_packages` + `billing_package_lines`,
+   `eosFinance/billingPackage.ts`) is EOS's authoritative hand-off object to a future accounting provider — **not an
+   accounting invoice, not a receivable, not a posting; nothing is sent**. It is a server-side Finance consequence: prepared
+   in the Work Order completion transaction when the Sales Order becomes ELIGIBLE IN FULL, and by deterministic recovery
+   (`prepareEligibleBillingPackages`). No operation creates or edits one; no Sales / Service employee needs Finance authority.
+4. **Amounts** come only from governed Commercial inputs, in integer minor units: line = fulfilled qty × the Sales Order
+   line's accepted price; the Agreement's shipping / install / tax / down payment / trade-in; total = subtotal + shipping +
+   install + tax; balance = total − down payment − trade-in (the Agreement's own arithmetic). Missing price →
+   PRICE_EVIDENCE_MISSING; missing tax → TAX_EVIDENCE_MISSING (never zero); the package is then HELD with NULL totals.
+5. **Boundaries:** only an order ELIGIBLE in full (partial billing DEFERRED); direct sale only (SALE / DIRECT_ORDER) — a
+   LEASE / financed disposition is HELD (FINANCED_DISPOSITION_UNSUPPORTED) with the obligor UNRESOLVED; the customer is the
+   obligor only by the explicit DIRECT_SALE_CUSTOMER rule; one governed company (CONSOLIDATED / unbound fail closed); Sales
+   Orders only (Rental cannot enter).
+6. **Immutability:** package content and lines are append-only; the only mutation is READY|HELD → SUPERSEDED when a
+   re-evaluation with different evidence writes a new version that references it. VOID / SENT / ACKNOWLEDGED / REJECTED
+   belong to later packages.
+7. **AR obligation — HELD.** The accepted model gives DIRECT_SALE a customer receivable (target model §4) but no accepted
+   ruling states its ORIGINATING EVENT (package READY, provider acknowledgement / accounting acceptance, or fulfillment), and
+   the event catalog lists none. No obligation is created. Owner ruling required.
+8. **Accounting boundary:** a READY package records the company's provider-neutral accounting destination when one is
+   configured; no outbox delivery, provider API, credential or provider-specific schema.

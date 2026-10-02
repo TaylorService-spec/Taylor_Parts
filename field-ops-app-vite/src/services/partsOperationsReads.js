@@ -39,6 +39,15 @@ export async function fetchPurchaseOrderSupplierOptions(reorderRequestId, option
   }));
 }
 
+// ── GOVERNED SUPPLIER ADMINISTRATION (DECISIONS #196) -- the server decides authority (inventory.catalog.manage for create /
+// update, inventory.catalog.activate for status) and authors the supplier's name from its CRM organization.
+export async function fetchSupplierOrganizationOptions(options) {
+  return (await call("listSupplierOrganizationOptions", {}, options))?.items ?? [];
+}
+export const createSupplierRelationship = (input, options) => call("createSupplier", input, options);
+export const updateSupplierFields = (input, options) => call("updateSupplier", input, options);
+export const setSupplierRelationshipStatus = (input, options) => call("setSupplierStatus", input, options);
+
 export const fetchInventoryPosition = ({ partIds = null, warehouseId = null } = {}, options) =>
   call("readInventoryOnHand", { ...(partIds ? { partIds } : {}), ...(warehouseId ? { warehouseId } : {}) }, options);
 

@@ -263,8 +263,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 83 -> 84: the Finance foundation (2026-10-01): 1764420000000 -- counterparties, company profiles, immutable financial facts, obligations, cost-evidence exceptions, accounting destinations; FINANCING_PROVIDER relationship; supplier -> organization link; no capability, no grant.
 // 84 -> 85: Finance Activation 1 completion (2026-10-01, DECISIONS #193): 1764430000000 -- explicit PO supplier identity, receiving_corrections, missing-cost exception resolutions; inventory.receipt.correct granted to NO Role.
 // 85 -> 86: Commercial Finance activation (2026-10-02, DECISIONS #195): 1764440000000 -- sales_order_fulfillments (append-only) + derived fulfillment / billing-eligibility views; no capability, no grant.
-const PINNED_LAST_MIGRATION = "1764440000000_commercial-fulfillment-billing-eligibility";
-const PINNED_MIGRATION_COUNT = 86;
+// 86 -> 87: Operational Billing Package (2026-10-02, DECISIONS #196): 1764450000000 -- eos_finance.billing_packages + billing_package_lines (immutable content); no capability, no grant.
+const PINNED_LAST_MIGRATION = "1764450000000_operational-billing-packages";
+const PINNED_MIGRATION_COUNT = 87;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

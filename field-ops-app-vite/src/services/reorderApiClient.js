@@ -44,6 +44,8 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "listSuppliers",
   // DECISIONS #193: the governed supplier selection for a new PO.
   "listPurchaseOrderSupplierOptions",
+  // DECISIONS #196: the CRM vendor organizations a new supplier relationship may be created for.
+  "listSupplierOrganizationOptions",
   "listReorderAssignmentTargets",
 ]);
 
@@ -62,6 +64,10 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   "receiveReorderStock",
   // DECISIONS #193: the governed receipt correction (VOID / CORRECTED).
   "correctReorderReceipt",
+  // DECISIONS #196: governed supplier administration (the one writer of eos_ops.suppliers).
+  "createSupplier",
+  "updateSupplier",
+  "setSupplierStatus",
 ]);
 
 /** Reads that take no input. */
@@ -74,6 +80,7 @@ export const REORDER_OPTIONAL_INPUT_OPERATIONS = Object.freeze([
   "readInventoryMovements",
   "listReceipts",
   "listSuppliers",
+  "listSupplierOrganizationOptions",
   "listReorderAssignmentTargets",
 ]);
 
