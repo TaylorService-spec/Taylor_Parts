@@ -288,7 +288,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 81 -> 82: the Equipment activation (2026-10-01): 1764400000000 -- equipment.record.read + equipment.record.manage (granted to
   // NO Role), equipment.version and the append-only equipment_events history.
   // 82 -> 83: the Truck Inventory activation (2026-10-01): 1764410000000 -- inventory.catalog.alias.read + inventory.truckRegistry.manage (granted to NO Role), MOBILE operational scope, receipt-into-MOBILE CHECK.
-  assert.equal(files.length, 83, "the migration chain moved; re-measure before trusting anything below");
+  // 83 -> 84: the Finance foundation (2026-10-01): 1764420000000 -- counterparties, company profiles, immutable financial facts, obligations, cost-evidence exceptions, accounting destinations; FINANCING_PROVIDER relationship; supplier -> organization link; no capability, no grant.
+  assert.equal(files.length, 84, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

@@ -6595,3 +6595,35 @@ entry takes #190 to avoid a collision.)
 25. **Not authorized by this entry:** any runtime change, migration, capability, grant, Finance UI change, Rental
     implementation, Saratoga integration, Finance activation or Firebase change. The next step designs the Finance
     product model from this foundation rather than finishing the legacy Finance implementation.
+
+## #191 — CONTROLLER RULING: Finance target model ACCEPTED with four corrections; EOS owns the operational billing package (2026-10-01)
+
+**Status.** The Finance target product model (`docs/financials/FINANCE_TARGET_PRODUCT_MODEL.md`) is ACCEPTED subject to
+the corrections below. #145 and #190 remain governing; no earlier decision is rewritten.
+
+1. **Saratoga / FINANCED_SALE title is UNRESOLVED.** COMMERCIAL CUSTOMER = the customer; FINANCIAL OBLIGOR = Saratoga;
+   EQUIPMENT TITLE / OWNERSHIP EFFECT = UNRESOLVED PENDING OWNER BUSINESS CONFIRMATION. Title transfer is never inferred.
+   The financial-counterparty foundation does not wait on it.
+2. **Inventory operating company comes from governed inventory / transaction ownership, never from physical location.**
+   LOCATION = where; OPERATING COMPANY / INVENTORY OWNERSHIP = whose (#190 §5). Location-company consistency may be
+   validated where appropriate; co-location never causes ownership inference.
+3. **Unpriced Purchase Orders are NOT prohibited (deferred business policy).** A priced receipt produces
+   acquisition-cost evidence; an unpriced receipt produces an explicit governed COST_EVIDENCE_MISSING exception. Cost is
+   never invented, never zero, and the operational receipt is never blocked by a new pricing policy.
+4. **Commercial commitments are not recognized consequences.** Sales Order confirmation and Purchase Order commitment
+   may create COMMITMENT facts for operational/commercial reporting. They are NOT revenue or expense recognition, NOT a
+   receivable or payable, and NOT an accounting posting; they are kept semantically separate (their own fact class).
+5. **Billing authority (consistent with #145).** EOS owns the authoritative OPERATIONAL BILLING PACKAGE: from governed
+   operational facts EOS determines what is billable, the operating company, the counterparty, the originating
+   transaction, quantities, prices, eligible charges, supporting references and billing readiness. The external
+   accounting authority will ultimately receive the package, create/post the formal accounting invoice, assign its
+   accounting document/reference and own GL/accounting treatment. EOS retains the originating operational facts, the
+   billing package, package status, the provider/accounting reference, acknowledgement, settlement status and
+   reconciliation status. EOS does not become a general ledger; no accounting provider is selected by this ruling.
+6. **Deferred Owner policy — configuration/product decisions for later activation windows, NOT blockers of the Finance
+   foundation:** SERVICE BILLING POLICY; RENTAL BILLING RULES; INVENTORY MARGIN COST BASIS; SARATOGA WORKFLOW / TITLE
+   DETAILS; TAX SOURCE.
+7. **Foundation authorized (local, no PR / deploy / nonprod mutation):** organization/counterparty foundation, per-company
+   counterparty profiles, the immutable financial-fact core, obligations, the acquisition-cost adapter, the correction
+   foundation and the provider-neutral accounting-destination shape — migration `1764420000000_finance-foundation.sql`,
+   `functions/src/eosFinance/financeFoundation.ts`. No capability, no grant, no route, no Firebase.

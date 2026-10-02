@@ -189,7 +189,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     "1764400000000_equipment-activation.sql",
     // Truck Inventory activation (2026-10-01): inventory.catalog.alias.read / inventory.truckRegistry.manage (no grant),
     // MOBILE operational scope, receipt-into-MOBILE CHECK.
-    "1764410000000_truck-inventory-activation.sql"],
+    "1764410000000_truck-inventory-activation.sql",
+    // Finance foundation (2026-10-01): counterparties, facts, obligations, destinations -- schema only; no capability, no grant.
+    "1764420000000_finance-foundation.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -414,6 +416,8 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // Parts / Purchasing / Receiving completion first (-2 capabilities, no grant), then the Service Experience completion,
     // newest first: self-scheduling (-2), recovery (-1), provider runtime (schema).
     assert.deepEqual(await counts(), { caps: 113, grants: 415, mine: 26 });
+    runMigrate(url, "down", 1); // the Finance foundation (schema only)
+    assert.deepEqual(await counts(), { caps: 113, grants: 415, mine: 26 });
     runMigrate(url, "down", 1); // the Truck Inventory activation (-2 capabilities, no grant)
     assert.deepEqual(await counts(), { caps: 111, grants: 415, mine: 26 });
     runMigrate(url, "down", 1); // the Equipment activation (-2 capabilities, no grant)
@@ -507,7 +511,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the Truck Inventory activation (1764410000000) first
+    runMigrate(url, "down", 1); // peel the Finance foundation (1764420000000) first
+    runMigrate(url, "down", 1); // then the Truck Inventory activation (1764410000000)
     runMigrate(url, "down", 1); // then the Equipment activation (1764400000000)
     runMigrate(url, "down", 1); // then the Inventory / Warehouse baseline cutover (1764390000000)
     runMigrate(url, "down", 1); // then the Parts / Purchasing / Receiving completion (1764380000000)

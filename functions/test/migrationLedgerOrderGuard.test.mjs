@@ -192,8 +192,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 80 -> 81: the Inventory / Warehouse completion (2026-10-01): 1764390000000 -- the inventory baseline cutover certification (schema).
 // 81 -> 82: the Equipment activation (2026-10-01): 1764400000000 -- equipment.record.read / .manage (no grant), equipment events.
 // 82 -> 83: the Truck Inventory activation (2026-10-01): 1764410000000 -- inventory.catalog.alias.read + inventory.truckRegistry.manage (granted to NO Role), MOBILE operational scope, receipt-into-MOBILE CHECK.
-const RUNNABLE_MIGRATION_COUNT = 83;
-const TRACKED_MIGRATION_COUNT = 84; // the 83 runnable + the one deferred file
+// 83 -> 84: the Finance foundation (2026-10-01): 1764420000000 -- counterparties, company profiles, immutable financial facts, obligations, cost-evidence exceptions, accounting destinations; FINANCING_PROVIDER relationship; supplier -> organization link; no capability, no grant.
+const RUNNABLE_MIGRATION_COUNT = 84;
+const TRACKED_MIGRATION_COUNT = 85; // the 84 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -228,6 +229,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764390000000_inventory-baseline-cutover",
   "1764400000000_equipment-activation",
   "1764410000000_truck-inventory-activation",
+  "1764420000000_finance-foundation",
 ]);
 
 const repoMigrations = () =>

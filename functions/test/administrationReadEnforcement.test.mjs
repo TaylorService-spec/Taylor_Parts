@@ -222,7 +222,8 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 81 -> 82: the Equipment activation (2026-10-01): 1764400000000 -- equipment.record.read + equipment.record.manage (granted to
   // NO Role), equipment.version and the append-only equipment_events history.
   // 82 -> 83: the Truck Inventory activation (2026-10-01): 1764410000000 -- inventory.catalog.alias.read + inventory.truckRegistry.manage (granted to NO Role), MOBILE operational scope, receipt-into-MOBILE CHECK.
-  assert.equal(migrations.length, 83, "a migration was added or removed by the read enforcement");
+  // 83 -> 84: the Finance foundation (2026-10-01): 1764420000000 -- counterparties, company profiles, immutable financial facts, obligations, cost-evidence exceptions, accounting destinations; FINANCING_PROVIDER relationship; supplier -> organization link; no capability, no grant.
+  assert.equal(migrations.length, 84, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,
