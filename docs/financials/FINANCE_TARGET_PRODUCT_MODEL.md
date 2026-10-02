@@ -4,6 +4,8 @@
 **Governing decisions:** #145 (EOS is the governed operational financial subledger, not a general ledger) and #190
 (the Taylor / Ventana / Saratoga / Rental operating model).
 **Baseline:** main `903fd1db`; it follows the read-only Finance & Reporting archaeology of the same date.
+**Analysis:** the Financial & Operational Analysis Layer and Analysis UI / Persona Analytics are REQUIRED (#192) —
+[`ANALYSIS_LAYER_ARCHITECTURE.md`](ANALYSIS_LAYER_ARCHITECTURE.md); this model's facts are their source of truth.
 **Implementation status:** the foundation layer only — §13 and §21 step 1–2, local. Nothing is routed, granted or activated.
 
 ---

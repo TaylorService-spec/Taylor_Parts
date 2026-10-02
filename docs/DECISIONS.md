@@ -6627,3 +6627,44 @@ the corrections below. #145 and #190 remain governing; no earlier decision is re
    counterparty profiles, the immutable financial-fact core, obligations, the acquisition-cost adapter, the correction
    foundation and the provider-neutral accounting-destination shape — migration `1764420000000_finance-foundation.sql`,
    `functions/src/eosFinance/financeFoundation.ts`. No capability, no grant, no route, no Firebase.
+
+## #192 — CONTROLLER RULING: EOS Financial & Operational Analysis Layer and Analysis UI / Persona Analytics are REQUIRED (2026-10-01)
+
+**Status.** Recorded as required EOS product architecture: `docs/financials/ANALYSIS_LAYER_ARCHITECTURE.md`. **Not
+implemented.** Finance foundation `76335e8e` (#191) ACCEPTED.
+
+1. **The Analysis Layer is not a reporting add-on** — it is the governed management-analysis layer over EOS operational
+   and financial truth: FACTS → MEASURES → COMPARISONS → VARIANCES → DRIVERS → EXCEPTIONS → INSIGHTS → AUTHORIZED
+   ACTIONS. Program sequence, never inverted: GOVERNED FACTS → FINANCIAL CONSEQUENCES → MEASURES → ANALYSIS → PERSONA
+   UI → OPTIONAL AI EXPLANATION.
+2. **Provenance:** every material KPI traces KPI → measure definition → calculation → contributing facts → source
+   transactions → originating business records. Basis classes stay distinct (ACCOUNTING ACTUAL, EOS OPERATIONAL ACTUAL,
+   EOS OPERATIONAL ESTIMATE, FORECAST, TARGET / BUDGET); an estimate is never presented as accounting truth; missing
+   information is never zero.
+3. **Families recorded for the future:** contribution economics (no invented allocation); price / cost / mix / volume;
+   margin leakage (confirmed vs potential vs authorized variance); operational working capital (not bank / GL
+   authority); inventory economics (operational estimate ≠ accounting valuation; missing cost stays missing); rental
+   fleet economics (no depreciation required; labelled if added); customer contribution; service job economics (no
+   simplistic employee rankings); quote-to-actual; purchasing / vendor economics (intercompany stays identifiable;
+   consolidated elimination never destroys company records); revenue quality; cash / funding conversion;
+   forecast / target / actual kept apart (dormant forecasting engine NOT activated); period comparison without
+   hard-coded calendars; data-quality / confidence states.
+4. **Exception-first, record-linked, actionable** — analytics surfaces or recommends actions and never bypasses EOS
+   authority. **Deterministic first; AI optional** — the full layer works with AI off; AI never manufactures financial
+   truth or gains business authority (optional, local-first, governed, auditable).
+5. **Governed measure registry** (one definition per KPI) is a future requirement — not built now.
+6. **ANALYSIS UI / PERSONA ANALYTICS is REQUIRED future product/UI work — not a post-launch nice-to-have.** Owner / GM
+   (TAYLOR / VENTANA / CONSOLIDATED), Finance / Accounting, Sales, Service, Parts / Purchasing, Warehouse / Inventory and
+   Rental experiences plus contextual economics on Customer, Equipment, Work Order, Part, Rental Equipment, Sales Order,
+   Vendor and Operating Company records; not a wall of charts; authority-aware (aggregates never widen access; drill-down
+   enforces the same or stronger authority; no client-only hiding); usable with AI disabled.
+7. **Performance / UAT:** derived projections / materialized views / summaries allowed, always traceable; UAT proves
+   source records → facts → measure → variance → driver → drill-down, including missing cost / price, corrections,
+   late data, intercompany elimination, company separation, Saratoga, rental, service coverage and large volume.
+8. **Foundation readiness: READY, no schema change.** The foundation preserves source identity, company, counterparty,
+   amount, currency, basis, effective and recorded time, correlation, reversal / correction, obligation relationships
+   and the missing-cost exception path; every other dimension resolves through governed source records. Future
+   vocabularies are additive. Principle: PRESERVE SOURCE TRUTH AND RELATIONSHIPS NOW; DERIVE ANALYTICS LATER.
+9. **Not authorized:** Analysis Layer or Analysis UI implementation, KPI registry, receiving → Finance wiring, routes,
+   grants, Finance activation, DQ-015, billing packages, outbox, Saratoga, Rental, Service Finance, Intercompany, Finance
+   UI.
