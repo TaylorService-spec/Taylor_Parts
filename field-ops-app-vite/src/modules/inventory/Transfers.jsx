@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchTruckDestinations } from "../../services/inventoryLocationClient.js";
 import { Link } from "react-router-dom";
 import { useTransferOrders } from "../../hooks/useTransferOrders";
 import { useTransferActions } from "../../hooks/useTransferActions";
@@ -69,6 +70,15 @@ export default function Transfers({ accessVersion }) {
     () => (Array.isArray(read.warehouses) ? read.warehouses : []).map((w) => ({ id: w.id, label: w.name || w.id })),
     [read.warehouses],
   );
+  // Trucks bound to the caller's warehouses (Truck Inventory activation, 2026-10-01). A failed read offers no truck --
+  // the server still decides every transfer.
+  const [truckOptions, setTruckOptions] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchTruckDestinations().then((rows) => { if (!cancelled) setTruckOptions(rows.map((t) => ({ id: t.locationId, label: t.label }))); })
+      .catch(() => { if (!cancelled) setTruckOptions([]); });
+    return () => { cancelled = true; };
+  }, [accessVersion]);
   const intro = <p className="fo-muted">Track inventory moving between locations — what's in transit, where from and to, and for which part.</p>;
 
   // THE AUTHORITY NOTICE BELONGS WITH THE CONTROLS, not on a loading or error screen.
@@ -144,6 +154,7 @@ export default function Transfers({ accessVersion }) {
       {showForm && (
         <TransferOrderForm
           warehouseOptions={warehouseOptions}
+          truckOptions={truckOptions}
           submitting={busyId === "create"}
           onCancel={() => setShowForm(false)}
           onSubmit={async (draft) => {

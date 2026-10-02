@@ -184,7 +184,13 @@ function requireLifecycleConsistent(status: TruckStatus, active: boolean): void 
   }
 }
 
+/** A checked-out client (it can be released) rather than a pool. */
+const isCallerClient = (db: unknown): boolean => typeof (db as { release?: unknown })?.release === "function";
+
 async function inTransaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  // A caller that already OWNS a transaction (the Administration registry operations, which append their audit row in the
+  // same transaction -- Controller TRUCK INVENTORY ACTIVATION OD-T7) passes its client; the work joins that transaction.
+  if (isCallerClient(pool)) return fn(pool as unknown as PoolClient);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");

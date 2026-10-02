@@ -305,7 +305,9 @@ test("all 34 importers of the frontend handle shim's db/functions also import th
   // acquire capability pre-gate left the shim AND the fenced dependency together (39 -> 34).
   // Equipment activation (2026-10-01): the Equipment register hooks, the install / available / location-display clients and
   // the install pre-gate left the shim AND the fenced dependency together (34 -> 29).
-  assert.equal(live.observed.alreadyFencedConsumers, 29,
+  // Truck Inventory activation (2026-10-01): the truck registry reads and the retired truck command client left the shim AND
+  // the fenced dependency together (29 -> 27).
+  assert.equal(live.observed.alreadyFencedConsumers, 27,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });

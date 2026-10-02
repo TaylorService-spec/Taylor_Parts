@@ -102,6 +102,9 @@ test("the catalog authority is composed ONLY by the Work Order/ops commands that
     // identity from the PG Catalog through the Part policy authority; ROUTED on /operations/work-orders by the Equipment
     // activation (2026-10-01).
     "eosOps/workOrderEquipmentInstall.ts",
+    // Controller TRUCK INVENTORY ACTIVATION OD-T4 (2026-10-01): consumption from a truck reads the consumed Part's tracking
+    // mode from the catalog (quantity-tracked only), never the caller.
+    "eosOps/workOrderExecution.ts",
     "eosOps/workOrderPartsPlanAuthority.ts",
   ], "a NEW module composes the catalog authority -- name it here and say why it may");
 });

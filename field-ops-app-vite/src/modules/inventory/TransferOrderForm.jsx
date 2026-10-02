@@ -7,10 +7,11 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // origin/destination active-ness, on-hand/SERIAL-availability sufficiency). This form only shapes the
 // request; it never decides whether the transfer is actually legal.
 //
-// WAREHOUSE ENDPOINTS ONLY (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): truck transfers belong to
-// the separate Truck Inventory journey, so the Truck choice is not offered. The locations are the caller's governed
-// warehouses from eos_ops (listInventoryWarehouses), never the Firestore `warehouses` / `mobile_locations` reads.
-export default function TransferOrderForm({ warehouseOptions, submitting, onSubmit, onCancel }) {
+// WAREHOUSE AND TRUCK ENDPOINTS. The warehouses are the caller's governed warehouses from eos_ops (listInventoryWarehouses);
+// since the Truck Inventory activation (2026-10-01, Package D) the trucks are the ACTIVE MOBILE locations bound to those
+// warehouses (listInventoryLocations), so Warehouse -> Truck, Truck -> Warehouse and Truck -> Truck are offered when the
+// server returned any truck. Never the Firestore `warehouses` / `mobile_locations` reads.
+export default function TransferOrderForm({ warehouseOptions, truckOptions = [], submitting, onSubmit, onCancel }) {
   const [draft, setDraft] = useState({
     partId: "",
     quantity: "1",
@@ -22,7 +23,8 @@ export default function TransferOrderForm({ warehouseOptions, submitting, onSubm
   });
   const [errors, setErrors] = useState({});
 
-  const locationOptions = () => warehouseOptions ?? [];
+  const locationOptions = (type) => (type === "MOBILE" ? truckOptions ?? [] : warehouseOptions ?? []);
+  const offersTrucks = Array.isArray(truckOptions) && truckOptions.length > 0;
 
   function set(field, value) {
     setDraft((prev) => ({ ...prev, [field]: value }));
@@ -54,8 +56,9 @@ export default function TransferOrderForm({ warehouseOptions, submitting, onSubm
       <fieldset className="fo-form-fieldset">
         <legend>Origin</legend>
         <div className="fo-form-row">
-          <select aria-label="Origin type" value={draft.originType} onChange={(e) => set("originType", e.target.value)} disabled={submitting}>
+          <select aria-label="Origin type" value={draft.originType} onChange={(e) => { set("originType", e.target.value); set("originLocationId", ""); }} disabled={submitting}>
             <option value="WAREHOUSE">Warehouse</option>
+            {offersTrucks && <option value="MOBILE">Truck</option>}
           </select>
           <select aria-label="Origin location" value={draft.originLocationId} onChange={(e) => set("originLocationId", e.target.value)} disabled={submitting} required>
             <option value="">Select…</option>
@@ -71,8 +74,9 @@ export default function TransferOrderForm({ warehouseOptions, submitting, onSubm
       <fieldset className="fo-form-fieldset">
         <legend>Destination</legend>
         <div className="fo-form-row">
-          <select aria-label="Destination type" value={draft.destinationType} onChange={(e) => set("destinationType", e.target.value)} disabled={submitting}>
+          <select aria-label="Destination type" value={draft.destinationType} onChange={(e) => { set("destinationType", e.target.value); set("destinationLocationId", ""); }} disabled={submitting}>
             <option value="WAREHOUSE">Warehouse</option>
+            {offersTrucks && <option value="MOBILE">Truck</option>}
           </select>
           <select aria-label="Destination location" value={draft.destinationLocationId} onChange={(e) => set("destinationLocationId", e.target.value)} disabled={submitting} required>
             <option value="">Select…</option>

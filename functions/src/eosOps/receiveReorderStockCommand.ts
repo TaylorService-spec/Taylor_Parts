@@ -84,7 +84,6 @@ import { allocateReceivingOrderNumber } from "./receivingNumbering.js";
 import { planAcquisitionCost, insertAcquisitionCostFact } from "./acquisitionCostAuthority.js";
 import { closeOutReorderAsReceived } from "./reorderLifecycleCommands.js";
 import { resolveOpsLocation, LocationAuthorityError } from "./warehouseBinRepository.js";
-import { readMobileLocation } from "./truckFleetRepository.js";
 import { insertReceivingOrder, type OpsTrackingMode } from "./purchasingRepository.js";
 import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
@@ -353,16 +352,14 @@ async function resolvePart(client: PoolClient, tenantId: string, partId: string)
 async function requireActiveLocation(
   client: PoolClient, tenantId: string, location: { type: string; locationId: string },
 ): Promise<void> {
+  // OD-T5 (Controller 2026-10-01): a purchase order is never received into a truck. Purchased stock arrives at a WAREHOUSE or
+  // BIN and reaches a truck only through a governed Transfer -- no reorder-to-truck. (The receipt table CHECKs the same.)
   if (location.type === "MOBILE") {
-    const mobile = await readMobileLocation(client, tenantId, location.locationId);
-    if (mobile === null || mobile.active !== true) {
-      refuse("DESTINATION_INVALID", "PRECONDITION_FAILED",
-        "the destination is not an ACTIVE governed mobile location of this tenant");
-    }
-    return;
+    refuse("RECEIPT_TO_MOBILE_REFUSED", "PRECONDITION_FAILED",
+      "a purchase order is received into a warehouse or bin; stock reaches a truck only through a governed transfer");
   }
   if (location.type !== "WAREHOUSE" && location.type !== "BIN") {
-    refuse("DESTINATION_INVALID", "INVALID_INPUT", "receivingLocation.type must be WAREHOUSE, BIN or MOBILE");
+    refuse("DESTINATION_INVALID", "INVALID_INPUT", "receivingLocation.type must be WAREHOUSE or BIN");
   }
   let resolved;
   try {

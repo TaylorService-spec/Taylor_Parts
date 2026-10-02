@@ -7,11 +7,15 @@ initializeApp();
 // --- Issue #15 surface: Work Order Engine v1.2 ---
 export { createWorkOrder } from "./createWorkOrder";
 export { transitionWorkOrder } from "./transitionWorkOrder";
-export { updateWorkOrderExecutionData } from "./updateWorkOrderExecutionData";
+// RETIRED FROM THE REPOSITORY (Controller TRUCK INVENTORY ACTIVATION AUTHORIZED, 2026-10-01, Package J): no caller remains
+// (census) and the governed EOS route replaces it. The deployed copy stays DEPLOYED_NOT_CALLED until the bounded Firebase
+// removal window -- tracked, not deleted by deploy here.
+//   updateWorkOrderExecutionData   (-> /operations/work-orders recordWorkOrderExecution; with consumeFrom, truck consumption)
 
-// Decision #171 -- the ONE narrow trusted read that makes consumption source selection possible
-// without granting technicians any standing inventory or location read.
-export { listWorkOrderConsumptionSources } from "./workOrderConsumption/consumptionSourceCallables";
+// RETIRED FROM THE REPOSITORY (Controller TRUCK INVENTORY ACTIVATION AUTHORIZED, 2026-10-01, Package J): no caller remains
+// (census) and the governed EOS route replaces it. The deployed copy stays DEPLOYED_NOT_CALLED until the bounded Firebase
+// removal window -- tracked, not deleted by deploy here.
+//   listWorkOrderConsumptionSources (-> the technician's own trucks: /operations/inventory listTruckRoster / readTruckStock)
 export { detectInventoryEffects } from "./inventoryEffectCallables";
 export { getInventoryAnalytics } from "./inventoryAnalyticsCallables";
 export { getAccountPortfolioSummary } from "./account/accountPortfolioSummary";
@@ -301,24 +305,15 @@ export {
   listRecordChangeHistory,
 } from "./access/administrationUsersCallables";
 
-// --- EI Truck Registry surface (ADR-010 / Decision #60): trusted write callables ---
-// Same posture as every surface above: deployed to eos-platform-sandbox under the per-environment
-// activation program, NOT deployed to the production project. NO Admin UI wired to call them, NO App
-// Check requirement (matching every other callable here), and the governed inventory predicate does NOT
-// exist yet -- so
-// deactivateTruck FAILS CLOSED (INVENTORY_STATE_UNKNOWN) until a separate, later gate injects a
-// real predicate. Authorization is admin/dispatcher (users/{uid}.role), enforced in the service.
-export {
-  createTruckCallable,
-  assignTruckDriverCallable,
-  reassignTruckDriverCallable,
-  unassignTruckDriverCallable,
-  changeTruckStatusCallable,
-  changeTruckHomeWarehouseCallable,
-  deactivateTruckCallable,
-  reactivateTruckCallable,
-  deleteTruckCreatedInErrorCallable,
-} from "./truckRegistry/truckRegistryCallables";
+// --- EI Truck Registry surface (ADR-010 / Decision #60) ---
+// RETIRED FROM THE REPOSITORY (Controller TRUCK INVENTORY ACTIVATION AUTHORIZED, 2026-10-01, Package J): no caller remains
+// (census) and the governed EOS route replaces it. The deployed copy stays DEPLOYED_NOT_CALLED until the bounded Firebase
+// removal window -- tracked, not deleted by deploy here.
+// Truck / MOBILE-location registry administration is Administration on the PostgreSQL registry (inventory.truckRegistry.manage,
+// eosOps/truckRegistryAdministration.ts); truck assignment is an Employee MOBILE scope (no driver field).
+//   createTruckCallable, assignTruckDriverCallable, reassignTruckDriverCallable, unassignTruckDriverCallable,
+//   changeTruckStatusCallable, changeTruckHomeWarehouseCallable, deactivateTruckCallable, reactivateTruckCallable,
+//   deleteTruckCreatedInErrorCallable
 
 // --- EI Phase-2 Receiving surface (E1): trusted Receiving callables ---
 // Deployed and live in eos-platform-sandbox (2026-08-06, Decision #63). The governed

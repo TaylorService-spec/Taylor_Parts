@@ -481,8 +481,8 @@ export interface UpdateWorkOrderExecutionDataResult {
   success: true;
   workOrderId: string;
   outcome: string;
-  // Always NO_STOCK_MOVEMENT: recording actual usage on a Work Order moves no inventory. Stock movement is
-  // an explicit, separate boundary the governed route does not cross.
+  // NO_STOCK_MOVEMENT unless the usage was recorded FROM the technician's truck (consumeFrom), in which case it is
+  // TRUCK_CONSUMPTION: the governed route posted WORK_ORDER_CONSUMPTION at that truck in the same transaction (OD-T4).
   inventoryBoundary: string;
 }
 
@@ -498,7 +498,11 @@ export function makeExecutionIdempotencyKey(): string {
  */
 export async function updateWorkOrderExecutionData(
   workOrderId: string,
-  updates: { qtyUsedUpdates?: QtyUsedDelta[]; executionNote?: string; idempotencyKey?: string },
+  updates: {
+    qtyUsedUpdates?: QtyUsedDelta[]; executionNote?: string; idempotencyKey?: string;
+    /** OD-T4 (2026-10-01): the technician's truck the parts came out of -- the usage then consumes truck stock, atomically. */
+    consumeFrom?: { type: "MOBILE"; locationId: string } | null;
+  },
 ): Promise<UpdateWorkOrderExecutionDataResult> {
   const input: Record<string, unknown> = {
     workOrderId,
@@ -507,6 +511,9 @@ export async function updateWorkOrderExecutionData(
   const usage = (updates.qtyUsedUpdates ?? []).filter((u) => u && typeof u.sku === "string" && u.sku !== "");
   if (usage.length > 0) input.partUsage = usage.map((u) => ({ partId: u.sku, qtyDelta: u.delta }));
   if (typeof updates.executionNote === "string" && updates.executionNote.trim()) input.note = updates.executionNote.trim();
+  if (updates.consumeFrom && typeof updates.consumeFrom.locationId === "string" && usage.length > 0) {
+    input.consumeFrom = { type: "MOBILE", locationId: updates.consumeFrom.locationId };
+  }
   const result = await run<{ outcome: string; inventoryBoundary: string }>("recordWorkOrderExecution", input);
   return { success: true, workOrderId, outcome: result?.outcome ?? "RECORDED", inventoryBoundary: result?.inventoryBoundary ?? "NO_STOCK_MOVEMENT" };
 }

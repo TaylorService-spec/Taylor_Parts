@@ -111,7 +111,8 @@ export default function MoveStockScan({ deps }) {
   const lookupPart = deps?.lookupPart ?? lookupScannedPart;
   const relocate = deps?.relocate ?? stockMovementClient.relocateStock;
   const transfer = deps?.transferClient ?? transferCommandClient;
-  const loadTrucks = deps?.fetchTrucks ?? null;
+  // Trucks come from the same governed location read (MOBILE locations bound to the caller's warehouses).
+  const loadTrucks = deps?.fetchTrucks !== undefined ? deps.fetchTrucks : () => inventoryLocationClient.fetchTruckDestinations();
   const onPendingWorkChange = deps?.onPendingWorkChange;
   const sessionId = useRef(deps?.sessionId ?? newSessionId());
 

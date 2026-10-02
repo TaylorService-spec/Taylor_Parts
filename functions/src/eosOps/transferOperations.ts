@@ -1,5 +1,5 @@
 // EOS TRANSFER -- the EXISTING Transfer lifecycle (inventoryTransfer/transferOrderCommand.ts) on the EOS operations
-// transport, over the PostgreSQL inventory authority. HELD (inventoryTransfer/transferWriterState.ts).
+// transport, over the PostgreSQL inventory authority. ACTIVE since the Inventory / Warehouse activation (2026-10-01; inventoryTransfer/transferWriterState.ts), gated per tenant by the certified inventory baseline.
 //
 // ════════════════════ THE SAME LIFECYCLE ════════════════════
 //
@@ -32,6 +32,8 @@ import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
 import { warehousePredicates } from "./cycleCountOperations.js";
+import { authorizeMobileAct, MobileStockRefusal } from "./mobileStockAuthority.js";
+import { lockStockLocation } from "./stockLocationLock.js";
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";
 import { InventoryScopeError, requiredTransferScope, type TransferAct } from "./inventoryScopeAuthority.js";
 import { createTransferOrder, readTransferOrder, transferLegOperatingCompanyKey, type TransferOrderRecord } from "./purchasingRepository.js";
@@ -118,21 +120,54 @@ function requireCapability(actor: TransferOperationActor, act: keyof typeof EOS_
   if (!actor.capabilities.has(key)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${key}`);
 }
 
-/** DQ-024: the scope of the END this act works on, then eligibility + that warehouse's operational scope. */
+/**
+ * DQ-024: the scope of the END this act works on, then eligibility + that warehouse's operational scope.
+ *
+ * OD-T3 (2026-10-01): RECEIVING INTO A TRUCK has a second, Technician path -- SERVICE_TECHNICIAN eligibility plus a current
+ * MOBILE scope over THAT destination truck, revalidated here (mobileStockAuthority.ts). It is offered for `receive` with a
+ * MOBILE destination ONLY: a Technician never creates, dispatches or cancels a transfer, never receives into a warehouse and
+ * never receives into another Employee's truck. The warehouse path is tried first and is unchanged.
+ */
 async function authorizeAct(db: Queryable, actor: TransferOperationActor, act: TransferAct & keyof typeof EOS_TRANSFER_CAPABILITY,
   transfer: { readonly origin: TransferLocationRef; readonly destination: TransferLocationRef }): Promise<void> {
+  const truckReceipt = act === "receive" && transfer.destination.type === "MOBILE";
   let scope;
   try {
     scope = await requiredTransferScope(db, actor.tenantId, act, transfer);
   } catch (err) {
-    if (err instanceof InventoryScopeError) {
-      return refuse(err.code, err.code === "LOCATION_NOT_FOUND" ? "NOT_FOUND" : "PRECONDITION_FAILED", err.message);
+    // An unbound truck has no warehouse path; the Technician path does not depend on the binding.
+    if (!(truckReceipt && err instanceof InventoryScopeError && err.code === "MOBILE_SCOPE_BINDING_MISSING")) {
+      if (err instanceof InventoryScopeError) {
+        return refuse(err.code, err.code === "LOCATION_NOT_FOUND" ? "NOT_FOUND" : "PRECONDITION_FAILED", err.message);
+      }
+      throw err;
     }
-    throw err;
   }
-  const decision = await authorizeObjectAction(postgresContextualReader(db), {
-    actor, capabilityKey: EOS_TRANSFER_CAPABILITY[act], predicates: warehousePredicates(scope.scopeWarehouseId),
-  });
+  let decision = scope
+    ? await authorizeObjectAction(postgresContextualReader(db), {
+      actor, capabilityKey: EOS_TRANSFER_CAPABILITY[act], predicates: warehousePredicates(scope.scopeWarehouseId),
+    })
+    : undefined;
+  if (truckReceipt && !decision?.allowed && decision?.reason !== "CAPABILITY_MISSING") {
+    try {
+      const mobile = await authorizeMobileAct(db, actor, EOS_TRANSFER_CAPABILITY.receive, transfer.destination.locationId, { lock: true });
+      if (mobile.allowed) return;
+      // Report the refusal of the path the caller is ELIGIBLE for: a Technician (no Warehouse Operations eligibility) hears
+      // "that truck is outside your scope", not a warehouse-eligibility answer it could never act on.
+      if (!decision || (decision.reason === "WORK_ELIGIBILITY_MISSING" && mobile.decision.reason === "OUTSIDE_OPERATIONAL_SCOPE")) {
+        return refuse(mobile.decision.reason, "FORBIDDEN", mobile.decision.reason === "OUTSIDE_OPERATIONAL_SCOPE"
+          ? "this truck is outside your current MOBILE scope" : mobile.decision.reason === "WORK_ELIGIBILITY_MISSING"
+            ? "receiving into a truck requires the Service Technician work eligibility or warehouse scope over its bound warehouse" : "not authorized");
+      }
+    } catch (err) {
+      if (err instanceof MobileStockRefusal) return refuse(err.code, err.category, err.message);
+      throw err;
+    }
+  }
+  if (!decision) {
+    return refuse("MOBILE_SCOPE_BINDING_MISSING", "PRECONDITION_FAILED",
+      "this truck location has no governed warehouse scope binding, so no one's warehouse scope reaches it");
+  }
   if (!decision.allowed) {
     refuse(decision.reason, "FORBIDDEN",
       decision.reason === "OUTSIDE_OPERATIONAL_SCOPE" ? "the warehouse this act works at is outside your operational scope"
@@ -351,7 +386,7 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
  * concurrent relocation / transfer cannot interleave between the sum and the write. Used at create AND at dispatch.
  */
 async function requireOriginStock(db: Queryable, tenantId: string, partId: string, origin: { type: string; locationId: string }, quantity: number): Promise<void> {
-  await db.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`eos-relocation:${tenantId}:${partId}:${origin.type}:${origin.locationId}`]);
+  await lockStockLocation(db, tenantId, partId, origin.type, origin.locationId);
   const { rows } = await db.query<{ total: string | null }>(
     `SELECT COALESCE(SUM(quantity_delta), 0)::bigint AS total FROM eos_ops.inventory_movements
       WHERE tenant_id = $1 AND part_id = $2 AND tracking_mode = 'NONE' AND location_type = $3 AND location_id = $4`,

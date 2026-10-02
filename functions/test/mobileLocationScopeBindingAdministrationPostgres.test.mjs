@@ -30,7 +30,8 @@ const require = createRequire(import.meta.url);
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
 const { bootstrapTenant, bootstrapAdministrator, ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
 const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
-const { MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, WAREHOUSE_MASTER_CAPABILITY, ADMIN_CONFIGURATION_OPERATIONS } = require("../lib/adminPolicy/configurationOperations.js");
+const { MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, WAREHOUSE_MASTER_CAPABILITY, TRUCK_REGISTRY_CAPABILITY, ADMIN_CONFIGURATION_OPERATIONS } = require("../lib/adminPolicy/configurationOperations.js");
+const { TRUCK_REGISTRY_ADMIN_OPERATIONS } = require("../lib/eosOps/truckRegistryAdministration.js");
 const { WAREHOUSE_ADMIN_OPERATIONS } = require("../lib/eosOps/warehouseBinAdministration.js");
 const { createMobileLocationScopeBindingAdministration } = require("../lib/eosOps/mobileLocationScopeBindingAdministration.js");
 const { resolveScopeLocation } = require("../lib/eosOps/inventoryScopeAuthority.js");
@@ -51,11 +52,14 @@ test("the capability is one closed constant, and stays out of both PERMISSION_CA
   // own closed constant; every OTHER configuration operation is the binding capability.
   assert.equal(WAREHOUSE_MASTER_CAPABILITY, "warehouse.record.manage");
   const warehouseOps = new Set(WAREHOUSE_ADMIN_OPERATIONS);
+  // ... and the truck / MOBILE registry operations (Controller OD-T7, 2026-10-01) under theirs.
+  assert.equal(TRUCK_REGISTRY_CAPABILITY, "inventory.truckRegistry.manage");
+  const truckOps = new Set(TRUCK_REGISTRY_ADMIN_OPERATIONS);
   for (const [name, op] of Object.entries(ADMIN_CONFIGURATION_OPERATIONS)) {
-    assert.equal(op.capability, warehouseOps.has(name) ? WAREHOUSE_MASTER_CAPABILITY : CAP, name);
+    assert.equal(op.capability, warehouseOps.has(name) ? WAREHOUSE_MASTER_CAPABILITY : truckOps.has(name) ? TRUCK_REGISTRY_CAPABILITY : CAP, name);
   }
   for (const p of ["src/access/permissionCatalog.ts", "../field-ops-app-vite/src/access/permissionCatalog.ts"]) {
-    for (const c of [CAP, WAREHOUSE_MASTER_CAPABILITY]) {
+    for (const c of [CAP, WAREHOUSE_MASTER_CAPABILITY, TRUCK_REGISTRY_CAPABILITY]) {
       assert.equal(readFileSync(resolve(FUNCTIONS_DIR, p), "utf8").includes(c), false, `${p} must not carry ${c}: admin composes the whole catalog`);
     }
   }

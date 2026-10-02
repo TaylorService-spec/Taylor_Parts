@@ -371,7 +371,7 @@ test("Equipment activation over the Operations transport", { skip: SKIP, concurr
     refused(await attempt(office, assigned, "SN-6", "neg-office"), 403, "CAPABILITY_MISSING", "register manager cannot install");
     refused(await attempt(dispatcher, assigned, "SN-6", "neg-dispatch"), 403, "CAPABILITY_MISSING", "dispatcher");
     refused(await attempt(wa, assigned, "SN-6", "neg-wa"), 403, "CAPABILITY_MISSING", "warehouse");
-    refused(await attempt(techA, assigned, "SN-3", "neg-truck"), 412, "TRUCK_SOURCE_NOT_ACTIVATED", "MOBILE source");
+    refused(await attempt(techA, assigned, "SN-3", "neg-truck"), 403, "OUTSIDE_OPERATIONAL_SCOPE", "MOBILE source without the truck path (Package F: eligibility + MOBILE scope)");
     refused(await attempt(techA, assigned, "SN-4", "neg-company"), 412, "OPERATING_COMPANY_MISMATCH", "Ventana unit on a Taylor Work Order");
     refused(await attempt(techA, assigned, "SN-C1", "neg-comp", { partId: "PRT-COMP" }), 412, "PART_NOT_WHOLE_UNIT", "component");
     refused(await attempt(techA, assigned, "SN-5", "neg-ledger"), 412, "LEDGER_INTEGRITY", "custody without its ledger");

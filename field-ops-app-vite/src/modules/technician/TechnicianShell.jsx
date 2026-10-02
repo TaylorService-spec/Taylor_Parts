@@ -75,7 +75,7 @@ export default function TechnicianShell({ deps = {} }) {
         {tab === "jobs" && <HandheldJobs cards={cards} loading={loading} />}
         {tab === "scan" && (
           <Suspense fallback={<p className="fo-muted" role="status">Starting the scanner…</p>}>
-            <ScanWorkspace />
+            <ScanWorkspace deps={deps.scan} />
           </Suspense>
         )}
         {tab === "more" && <HandheldMore offline={offline} />}

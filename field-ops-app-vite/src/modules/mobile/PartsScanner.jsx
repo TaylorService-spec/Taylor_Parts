@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
+import { useMyTrucks } from "../../hooks/useMyTrucks";
 import { updateWorkOrderExecutionData } from "../../services/workOrderService";
 import { workOrderSyncError } from "../../offline/workOrderSyncError.js";
 import { submitOrQueue, SUBMIT_RESULT } from "../../offline/submitOrQueue.js";
@@ -66,6 +67,12 @@ export default function PartsScanner({ workOrderId = null, offline: offlineProp 
   const [cameraOpen, setCameraOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
   const [qty, setQty] = useState(1);
+  // OD-T4 (2026-10-01): the truck the parts come out of. One truck -> it is the source; several -> the technician
+  // chooses; none -> usage is recorded without moving stock, exactly as before. The server revalidates the MOBILE scope.
+  const { trucks: myTrucks } = useMyTrucks();
+  const [truckChoice, setTruckChoice] = useState("");
+  const sourceTruck = myTrucks.length === 1 ? myTrucks[0] : myTrucks.find((t) => t.mobileLocationId === truckChoice) ?? null;
+  const consumeFrom = sourceTruck ? { type: "MOBILE", locationId: sourceTruck.mobileLocationId } : null;
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -224,8 +231,8 @@ export default function PartsScanner({ workOrderId = null, offline: offlineProp 
     // the scanner is also mounted outside the technician shell.
     if (!offline?.enqueue) {
       try {
-        await updateWorkOrderExecutionData(workOrderId, { qtyUsedUpdates: [{ sku, delta: qty }] });
-        setNotice({ tone: "ok", text: `Recorded ${qty} × ${label} on ${woNumber}.` });
+        await updateWorkOrderExecutionData(workOrderId, { qtyUsedUpdates: [{ sku, delta: qty }], consumeFrom });
+        setNotice({ tone: "ok", text: `Recorded ${qty} × ${label} on ${woNumber}${sourceTruck ? ` from ${sourceTruck.label}` : ""}.` });
         clear();
       } catch (err) {
         // The server is the authority and may still refuse. Say so plainly --
@@ -241,7 +248,7 @@ export default function PartsScanner({ workOrderId = null, offline: offlineProp 
     const outcome = await submitOrQueue({
       send: async () => {
         try {
-          await updateWorkOrderExecutionData(workOrderId, { qtyUsedUpdates: [{ sku, delta: qty }] });
+          await updateWorkOrderExecutionData(workOrderId, { qtyUsedUpdates: [{ sku, delta: qty }], consumeFrom });
           return { ok: true };
         } catch (err) {
           return { ok: false, error: workOrderSyncError(err) };
@@ -253,9 +260,9 @@ export default function PartsScanner({ workOrderId = null, offline: offlineProp 
       // technician correcting a mis-keyed count actually means.
       buildIntent: (wasOffline) => capturePartsUsage({
         workOrderId, principalUid: offline.principalUid ?? "self",
-        sku, delta: qty,
+        sku, delta: qty, consumeFrom,
         provenance: identity?.source === "camera" ? "SCAN" : "MANUAL",
-        captureKey: `parts:${sku}:${qty}`, at: Date.now(), offline: wasOffline,
+        captureKey: `parts:${sku}:${qty}:${consumeFrom?.locationId ?? "none"}`, at: Date.now(), offline: wasOffline,
       }),
       enqueue: offline.enqueue,
       nav: typeof navigator === "undefined" ? null : navigator,
@@ -306,6 +313,17 @@ export default function PartsScanner({ workOrderId = null, offline: offlineProp 
           </div>
         </div>
       )}
+
+      {myTrucks.length > 1 && (
+        <label className="fo-form-row">
+          Parts come from
+          <select value={truckChoice} onChange={(e) => setTruckChoice(e.target.value)} aria-label="Truck the parts come from">
+            <option value="">Not from a truck</option>
+            {myTrucks.map((t) => <option key={t.mobileLocationId} value={t.mobileLocationId}>{t.label}</option>)}
+          </select>
+        </label>
+      )}
+      {myTrucks.length === 1 && <p className="fo-muted">Parts used are taken from {myTrucks[0].label}.</p>}
 
       {/* A committing write and a refusal must not look identical. */}
       {notice && (

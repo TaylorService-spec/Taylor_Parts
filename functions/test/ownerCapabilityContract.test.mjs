@@ -328,7 +328,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 104 -> 107: inboundWork.request.recover (1764360000000) + workOrder.selfScheduling.issue/.configure (1764370000000), granted to no Role.
   // 107 -> 109: warehouse.record.manage + supplier.record.read (1764380000000, 2026-10-01), granted to NO Role.
   // 109 -> 111: equipment.record.read + equipment.record.manage (1764400000000, the Equipment activation 2026-10-01), granted to NO Role.
-  assert.equal(VOCABULARY.size, 111);
+  // 111 -> 113: inventory.catalog.alias.read + inventory.truckRegistry.manage (1764410000000, Truck Inventory activation 2026-10-01), granted to NO Role.
+  assert.equal(VOCABULARY.size, 113);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

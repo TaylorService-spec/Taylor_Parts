@@ -34,7 +34,10 @@ test("the Catalog read capability table names inventory.catalog.read for every r
   for (const op of ops) assert.ok(http.CATALOG_READ_REQUIREMENTS[op].includes(READ), `${op} requires ${READ}`);
   // The only other keys are the legacy callables' own predicates -- already registered ids, not new ones.
   const extra = new Set(ops.flatMap((op) => http.CATALOG_READ_REQUIREMENTS[op]).filter((k) => k !== READ));
-  assert.deepEqual([...extra].sort(), ["inventory.catalog.alias.read", "inventory.catalog.manage"]);
+  // lookupScannedPart's alias half is gated INSIDE the read on inventory.catalog.alias.read (OD-T6, 2026-10-01): without it
+  // the half is not run and the answer says aliasDenied -- the legacy lookupScannedPart contract.
+  assert.deepEqual([...extra].sort(), ["inventory.catalog.manage"]);
+  assert.equal(http.CATALOG_ALIAS_READ_CAPABILITY, "inventory.catalog.alias.read");
 });
 
 test("Catalog reads are capability-gated server-side, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
@@ -170,10 +173,11 @@ test("Catalog reads are capability-gated server-side, in PostgreSQL", { skip: SK
       const ok = await call(aliasAdmin, op, INPUT[op]);
       assert.equal(ok.status, 200, `${op}: ${JSON.stringify(ok.body)}`);
     }
-    // Scanned-identifier resolution requires inventory.catalog.alias.read, as the legacy callable did.
+    // Scanned-identifier resolution requires inventory.catalog.alias.read, as the legacy lookupScannedPart did: without it
+    // the alias half is NOT run and the result says so (aliasDenied), exactly the legacy callable's contract.
     const scan = await call(aliasAdmin, "lookupScannedPart", INPUT.lookupScannedPart);
-    assert.deepEqual([scan.status, scan.body.code], [403, "FORBIDDEN"]);
-    assert.match(scan.body.message, /inventory\.catalog\.alias\.read/);
+    assert.equal(scan.status, 200, JSON.stringify(scan.body));
+    assert.deepEqual([scan.body.result.aliasDenied, scan.body.result.alias], [true, null]);
   });
 
   await t.test("UNAUTHENTICATED: no token, or an unverifiable one, is 401 before identity or data is touched", async () => {

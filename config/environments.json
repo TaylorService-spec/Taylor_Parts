@@ -135,7 +135,7 @@
       },
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
-        "PART_IDENTIFIER_TRANSPORT_READY": false,
+        "PART_IDENTIFIER_TRANSPORT_READY": true,
         "INVENTORY_BALANCE_READ_READY": false,
         "WORK_ORDER_READINESS_CONTEXT_READY": true,
         "TRUCK_MANAGEMENT_WRITE_READY": true,

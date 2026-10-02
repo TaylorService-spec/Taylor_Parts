@@ -12,10 +12,17 @@
 // inferred). A caller sees a row only when its Employee holds the WAREHOUSE Operational Scope over that warehouse. No
 // Employee, or no scope, sees nothing -- fail closed, and the answer says so (`scopedWarehouseIds`). Tenant is always the
 // resolved actor's; no tenant, company or scope is accepted from the caller.
+//
+// TRUCKS (Controller OD-T3, 2026-10-01). A Technician's current MOBILE scope over a truck is a SECOND, narrower reach for
+// the inventory reads: that truck's stock, and nothing else (`mobileLocationIds`, mobileStockAuthority.ts). No Technician
+// sees a warehouse, another Employee's truck or a tenant-wide view. Warehouse staff keep seeing a truck only through its
+// current binding to a warehouse they are scoped over.
 import type { Pool, PoolClient } from "pg";
 import { postgresPrincipalDimensionReader } from "./contextualAuthorization.js";
 import { ReorderLifecycleError, type ReorderActor } from "./reorderLifecycleCommands.js";
 import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./syntheticAcceptanceWarehouse.js";
+import { currentMobileLocationIds } from "./mobileStockAuthority.js";
+import { listTruckViews } from "./truckRegistryAdministration.js";
 
 export const INVENTORY_ON_HAND_READ = "inventory.transaction.read";
 export const RECEIPT_READ = "receivingOrder.record.read";
@@ -76,39 +83,50 @@ export interface OnHandRow {
   readonly partId: string;
   readonly locationType: string;
   readonly locationId: string;
-  readonly warehouseId: string;
+  /** The governing warehouse; null for a truck reached only through the caller's own MOBILE scope (no binding). */
+  readonly warehouseId: string | null;
   readonly onHand: number;
 }
 
 export async function readInventoryOnHand(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
   requireCapability(actor, INVENTORY_ON_HAND_READ);
-  const i = acceptOnly(input, ["partIds", "warehouseId"]);
+  const i = acceptOnly(input, ["partIds", "warehouseId", "mobileLocationId"]);
   const partIds = i.partIds === undefined || i.partIds === null ? null : i.partIds;
   if (partIds !== null && (!Array.isArray(partIds) || partIds.length === 0 || partIds.length > 500 || !partIds.every(ID))) {
     refuse("PART_IDS_INVALID", "INVALID_INPUT", "partIds, when stated, is a non-empty list of at most 500 Part ids");
   }
   const warehouseId = i.warehouseId === undefined || i.warehouseId === null ? null : i.warehouseId;
   if (warehouseId !== null && !ID(warehouseId)) refuse("WAREHOUSE_ID_INVALID", "INVALID_INPUT", "warehouseId must be a governed id");
+  const mobileLocationId = i.mobileLocationId === undefined || i.mobileLocationId === null ? null : i.mobileLocationId;
+  if (mobileLocationId !== null && !ID(mobileLocationId)) refuse("MOBILE_LOCATION_ID_INVALID", "INVALID_INPUT", "mobileLocationId must be a governed id");
+  if (warehouseId !== null && mobileLocationId !== null) refuse("FILTER_CONFLICT", "INVALID_INPUT", "state warehouseId or mobileLocationId, not both");
   return withReadSnapshot(deps.pool, async (c) => {
     const scope = await scopedWarehouseIds(c, actor);
-    const visible = warehouseId === null ? scope : scope.filter((w) => w === warehouseId);
-    if (visible.length === 0) return { scopedWarehouseIds: scope, rows: [] as OnHandRow[], totals: [] as { partId: string; onHand: number }[] };
+    const mine = await currentMobileLocationIds(c, actor);
+    // A truck filter narrows to that truck: reached through the caller's own MOBILE scope, or through its binding to a
+    // warehouse the caller is scoped over (checked by the governing-warehouse predicate below).
+    const visible = mobileLocationId !== null ? scope : warehouseId === null ? scope : scope.filter((w) => w === warehouseId);
+    const visibleTrucks = warehouseId !== null ? [] : mobileLocationId === null ? mine : mine.filter((m) => m === mobileLocationId);
+    if (visible.length === 0 && visibleTrucks.length === 0) {
+      return { scopedWarehouseIds: scope, mobileLocationIds: mine, rows: [] as OnHandRow[], totals: [] as { partId: string; onHand: number }[] };
+    }
     const { rows } = await c.query(
       `SELECT part_id, location_type::text AS location_type, location_id, governing_warehouse_id, sum(quantity_delta)::int AS on_hand
          FROM (SELECT m.part_id, m.location_type, m.location_id, m.quantity_delta,
                       ${GOVERNING_WAREHOUSE("m.tenant_id", "m.location_type", "m.location_id")} AS governing_warehouse_id
                  FROM eos_ops.inventory_movements m
-                WHERE m.tenant_id = $1 AND ($2::text[] IS NULL OR m.part_id = ANY($2::text[]))) x
-        WHERE governing_warehouse_id = ANY($3::text[])
+                WHERE m.tenant_id = $1 AND ($2::text[] IS NULL OR m.part_id = ANY($2::text[]))
+                  AND ($5::text IS NULL OR (m.location_type::text = 'MOBILE' AND m.location_id = $5))) x
+        WHERE governing_warehouse_id = ANY($3::text[]) OR (location_type::text = 'MOBILE' AND location_id = ANY($4::text[]))
         GROUP BY 1, 2, 3, 4
        HAVING sum(quantity_delta) <> 0
         ORDER BY 1, 4, 2, 3`,
-      [actor.tenantId, partIds, visible]);
+      [actor.tenantId, partIds, visible, visibleTrucks, mobileLocationId]);
     const out: OnHandRow[] = rows.map((r) => ({ partId: r.part_id, locationType: r.location_type, locationId: r.location_id,
-      warehouseId: r.governing_warehouse_id, onHand: Number(r.on_hand) }));
+      warehouseId: r.governing_warehouse_id ?? null, onHand: Number(r.on_hand) }));
     const totals = new Map<string, number>();
     for (const r of out) totals.set(r.partId, (totals.get(r.partId) ?? 0) + r.onHand);
-    return { scopedWarehouseIds: scope, rows: out, totals: [...totals.entries()].map(([partId, onHand]) => ({ partId, onHand })) };
+    return { scopedWarehouseIds: scope, mobileLocationIds: mine, rows: out, totals: [...totals.entries()].map(([partId, onHand]) => ({ partId, onHand })) };
   });
 }
 
@@ -310,15 +328,28 @@ export async function listInventoryLocations(deps: { readonly pool: Pool }, acto
   return withReadSnapshot(deps.pool, async (c) => {
     const scope = await presentableScope(c, actor);
     const visible = warehouseId === null ? scope : scope.filter((w) => w === warehouseId);
-    if (visible.length === 0) return { items: [] };
+    // OD-T3 / Package G: trucks are resolvable locations -- the caller's own scoped trucks, and the trucks currently bound
+    // to a warehouse the caller is scoped over (a transfer destination). Nothing else.
+    const mine = warehouseId === null ? await currentMobileLocationIds(c, actor) : [];
+    if (visible.length === 0 && mine.length === 0) return { items: [] };
     const wh = (await c.query(`SELECT id, name, status::text AS status FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = ANY($2::text[]) ORDER BY name, id`,
       [actor.tenantId, visible])).rows;
     const bins = (await c.query(
       `SELECT b.id, b.warehouse_id, b.name, b.code, b.status::text AS status
          FROM eos_ops.bins b WHERE b.tenant_id = $1 AND b.warehouse_id = ANY($2::text[]) ORDER BY b.warehouse_id, b.id`, [actor.tenantId, visible])).rows;
+    const trucks = (await c.query(
+      `SELECT m.location_id, m.display_label, m.active, t.vehicle_number, sb.warehouse_id
+         FROM eos_ops.mobile_locations m
+         LEFT JOIN eos_ops.trucks t ON t.tenant_id = m.tenant_id AND t.mobile_location_type = m.location_type AND t.mobile_location_id = m.location_id
+         LEFT JOIN eos_ops.mobile_location_scope_bindings sb ON sb.tenant_id = m.tenant_id AND sb.location_type = 'MOBILE'
+                                                            AND sb.location_id = m.location_id AND sb.effective_to IS NULL
+        WHERE m.tenant_id = $1 AND m.location_type = 'MOBILE' AND (sb.warehouse_id = ANY($2::text[]) OR m.location_id = ANY($3::text[]))
+        ORDER BY m.display_label, m.location_id`, [actor.tenantId, visible, mine])).rows;
     return { items: [
       ...wh.map((w) => ({ type: "WAREHOUSE", locationId: w.id, warehouseId: w.id, code: null, name: w.name, status: w.status })),
       ...bins.map((b) => ({ type: "BIN", locationId: b.id, warehouseId: b.warehouse_id, code: b.code ?? null, name: b.name ?? null, status: b.status })),
+      ...trucks.map((t) => ({ type: "MOBILE", locationId: t.location_id, warehouseId: t.warehouse_id ?? null, code: t.vehicle_number ?? null,
+        name: t.display_label, status: t.active ? "ACTIVE" : "INACTIVE", mine: mine.includes(t.location_id) })),
     ] };
   });
 }
@@ -334,7 +365,9 @@ export async function listTransferOrders(deps: { readonly pool: Pool }, actor: R
   if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 500) refuse("LIMIT_INVALID", "INVALID_INPUT", "limit is an integer 1..500");
   return withReadSnapshot(deps.pool, async (c) => {
     const scope = await scopedWarehouseIds(c, actor);
-    if (scope.length === 0) return { items: [] };
+    // OD-T3: a Technician sees the transfers INTO a truck it holds MOBILE scope over (to receive them), and no others.
+    const mine = actor.capabilities.has("inventory.transfer.receive") ? await currentMobileLocationIds(c, actor) : [];
+    if (scope.length === 0 && mine.length === 0) return { items: [] };
     const { rows } = await c.query(
       `SELECT * FROM (
          SELECT t.id, t.transfer_order_number, t.status::text AS status, t.part_id, t.tracking_mode::text AS tracking_mode, t.quantity,
@@ -343,14 +376,77 @@ export async function listTransferOrders(deps: { readonly pool: Pool }, actor: R
                 ${GOVERNING_WAREHOUSE("t.tenant_id", "t.origin_location_type", "t.origin_location_id")} AS ow,
                 ${GOVERNING_WAREHOUSE("t.tenant_id", "t.destination_location_type", "t.destination_location_id")} AS dw
            FROM eos_ops.transfer_orders t WHERE t.tenant_id = $1 AND ($2::text IS NULL OR t.status::text = $2)) x
-        WHERE ow = ANY($3::text[]) OR dw = ANY($3::text[])
-        ORDER BY created_at DESC, id LIMIT $4`, [actor.tenantId, status, scope, limit]);
+        WHERE ow = ANY($3::text[]) OR dw = ANY($3::text[]) OR (dt = 'MOBILE' AND di = ANY($5::text[]))
+        ORDER BY created_at DESC, id LIMIT $4`, [actor.tenantId, status, scope, limit, mine]);
     return { items: rows.map((r) => ({
       transferOrderId: r.id, transferOrderNumber: r.transfer_order_number, status: r.status, partId: r.part_id, trackingMode: r.tracking_mode,
       quantity: Number(r.quantity), serialNumbers: r.serial_numbers ?? [],
       origin: { type: r.ot, locationId: r.oi, warehouseId: r.ow ?? null }, destination: { type: r.dt, locationId: r.di, warehouseId: r.dw ?? null },
       createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at, createdBy: r.created_by,
-      canReceive: r.status === "IN_TRANSIT" && r.dw !== null && scope.includes(r.dw),
+      canReceive: r.status === "IN_TRANSIT" && ((r.dw !== null && scope.includes(r.dw)) || (r.dt === "MOBILE" && mine.includes(r.di))),
     })) };
+  });
+}
+
+// ════════════════════ trucks (OD-T3 / OD-T7, 2026-10-01) ════════════════════
+
+export const TRUCK_ROSTER_READERS = Object.freeze([WAREHOUSE_READ, "workOrder.lifecycle.dispatch", "inventory.truckRegistry.manage"]);
+
+/**
+ * The operational truck roster: each truck, its MOBILE location, its current warehouse binding and the Employees holding
+ * MOBILE scope over it. Warehouse readers, dispatchers and registry administrators read the tenant's roster (registry facts,
+ * not stock); anyone else -- a Technician -- reads only the trucks it is currently scoped to. Read-only.
+ */
+export async function listTruckRoster(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
+  if (!actor || !(actor.capabilities instanceof Set)) refuse("CAPABILITY_MISSING", "FORBIDDEN", "a resolved actor is required");
+  acceptOnly(input, []);
+  return withReadSnapshot(deps.pool, async (c) => {
+    const mine = await currentMobileLocationIds(c, actor);
+    const tenantWide = TRUCK_ROSTER_READERS.some((k) => actor.capabilities.has(k));
+    if (!tenantWide && mine.length === 0) {
+      if (!actor.capabilities.has(INVENTORY_ON_HAND_READ)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `this read requires one of ${TRUCK_ROSTER_READERS.join(", ")}`);
+      return { scope: "OWN", mobileLocationIds: mine, trucks: [] };
+    }
+    const trucks = await listTruckViews(c, actor.tenantId, tenantWide ? {} : { mobileLocationIds: mine });
+    return { scope: tenantWide ? "TENANT" : "OWN", mobileLocationIds: mine, trucks };
+  });
+}
+
+/**
+ * One truck's stock: quantity on hand per Part (from the movement ledger) and the serialized units in its custody. Reached
+ * through the caller's own current MOBILE scope, or through the truck's current binding to a warehouse the caller is
+ * scoped over. Anything else is NOT_FOUND -- the existence of another Employee's truck stock is not disclosed.
+ */
+export async function readTruckStock(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
+  requireCapability(actor, INVENTORY_ON_HAND_READ);
+  const i = acceptOnly(input, ["mobileLocationId"]);
+  if (!ID(i.mobileLocationId)) refuse("MOBILE_LOCATION_ID_INVALID", "INVALID_INPUT", "mobileLocationId is required");
+  const locationId = i.mobileLocationId as string;
+  return withReadSnapshot(deps.pool, async (c) => {
+    const mine = await currentMobileLocationIds(c, actor);
+    const scope = await scopedWarehouseIds(c, actor);
+    const { rows: loc } = await c.query(
+      `SELECT m.display_label, m.active, m.operating_company_key, t.truck_id, t.vehicle_number, t.status::text AS truck_status,
+              ${GOVERNING_WAREHOUSE("m.tenant_id", "m.location_type", "m.location_id")} AS bound_warehouse_id
+         FROM eos_ops.mobile_locations m
+         LEFT JOIN eos_ops.trucks t ON t.tenant_id = m.tenant_id AND t.mobile_location_type = m.location_type AND t.mobile_location_id = m.location_id
+        WHERE m.tenant_id = $1 AND m.location_type = 'MOBILE' AND m.location_id = $2`, [actor.tenantId, locationId]);
+    const l = loc[0];
+    const reach = !l ? null : mine.includes(locationId) ? "MOBILE_SCOPE" : l.bound_warehouse_id && scope.includes(l.bound_warehouse_id) ? "WAREHOUSE_SCOPE" : null;
+    if (!reach) refuse("TRUCK_NOT_FOUND", "NOT_FOUND", "no truck you can see has that location");
+    const { rows: qty } = await c.query(
+      `SELECT part_id, sum(quantity_delta)::int AS on_hand FROM eos_ops.inventory_movements
+        WHERE tenant_id = $1 AND location_type = 'MOBILE' AND location_id = $2 AND tracking_mode = 'NONE'
+        GROUP BY part_id HAVING sum(quantity_delta) <> 0 ORDER BY part_id`, [actor.tenantId, locationId]);
+    const { rows: units } = await c.query(
+      `SELECT part_id, serial_number, status::text AS status FROM eos_ops.serialized_custody
+        WHERE tenant_id = $1 AND location_type = 'MOBILE' AND location_id = $2 ORDER BY part_id, serial_number`, [actor.tenantId, locationId]);
+    return {
+      truck: { mobileLocationId: locationId, displayLabel: l.display_label, active: l.active === true, truckId: l.truck_id ?? null,
+        vehicleNumber: l.vehicle_number ?? null, truckStatus: l.truck_status ?? null, boundWarehouseId: l.bound_warehouse_id ?? null },
+      reach,
+      quantities: qty.map((r) => ({ partId: r.part_id, onHand: Number(r.on_hand) })),
+      serializedUnits: units.map((r) => ({ partId: r.part_id, serialNumber: r.serial_number, status: r.status })),
+    };
   });
 }

@@ -66,9 +66,12 @@ export type CatalogReadOperation = (typeof CATALOG_READ_OPERATIONS)[number];
 // simplification):
 //   listPartAliases / probePartAlias   legacy listPartAliasesCallable / probePartAliasCallable required
 //                                      inventory.catalog.manage (identifier ADMINISTRATION reads).
-//   lookupScannedPart                  resolves a scanned identifier through the alias table; the legacy
-//                                      resolveScannedPartIdentifierCallable (and the alias half of the legacy
-//                                      lookupScannedPart) required inventory.catalog.alias.read.
+//   lookupScannedPart                  the scanner's ONE Part read (Controller OD-T6, 2026-10-01), in the legacy
+//                                      callable's contract { parts, alias, aliasDenied }: the catalogue half
+//                                      (the <=3 Parts the scan names by id) needs inventory.catalog.read; the
+//                                      ALIAS half additionally needs inventory.catalog.alias.read, exactly as the
+//                                      legacy lookupScannedPart enforced it -- without it the alias half is not
+//                                      run and `aliasDenied` says so. Never wider than the legacy path.
 export const CATALOG_READ_CAPABILITY = "inventory.catalog.read";
 export const CATALOG_READ_REQUIREMENTS: Readonly<Record<CatalogReadOperation, readonly string[]>> = Object.freeze({
   readPart: [CATALOG_READ_CAPABILITY],
@@ -78,8 +81,19 @@ export const CATALOG_READ_REQUIREMENTS: Readonly<Record<CatalogReadOperation, re
   listEquipmentModels: [CATALOG_READ_CAPABILITY],
   listPartAliases: [CATALOG_READ_CAPABILITY, "inventory.catalog.manage"],
   probePartAlias: [CATALOG_READ_CAPABILITY, "inventory.catalog.manage"],
-  lookupScannedPart: [CATALOG_READ_CAPABILITY, "inventory.catalog.alias.read"],
+  lookupScannedPart: [CATALOG_READ_CAPABILITY],
 });
+
+/** OD-T6: the resolve-only right the alias half of the scanner lookup requires (registered in PostgreSQL 2026-10-01). */
+export const CATALOG_ALIAS_READ_CAPABILITY = "inventory.catalog.alias.read";
+
+/** Catalogue fields a scanner may see -- exactly what the client's toPartView reads (legacy SCANNER_PART_FIELDS). */
+export const SCANNER_PART_FIELDS = Object.freeze([
+  "partId", "internalPartNumber", "name", "description", "category", "status", "stockingUnit",
+  "controlType", "stockingClass", "primaryManufacturerId", "primaryManufacturerPartNumber", "oemStatus", "version",
+] as const);
+const SCANNER_MAX_RAW = 256;
+const SCANNER_SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 /** Writes: the governed Part and alias commands, each with its own capability check. */
 export const CATALOG_MUTATION_OPERATIONS = Object.freeze([
@@ -223,11 +237,31 @@ export async function executeCatalogOperation(
           rawValue: str(input.rawValue),
           ...(typeof input.manufacturerId === "string" ? { manufacturerId: input.manufacturerId } : {}),
         })));
-      case "lookupScannedPart":
-        return ok(await withClient((c) => resolveScannedPartIdentifier(c, actor.tenantId, {
-          rawValue: str(input.rawValue),
-          ...(typeof input.manufacturerId === "string" ? { manufacturerId: input.manufacturerId } : {}),
-        })));
+      case "lookupScannedPart": {
+        // The legacy request contract: { rawValue, partCode? } and nothing else.
+        if (Object.keys(input).some((k) => k !== "rawValue" && k !== "partCode")) {
+          return { ok: false, operation: request.operation, code: "INVALID_INPUT", message: "lookupScannedPart accepts rawValue and partCode only" };
+        }
+        const rawValue = str(input.rawValue);
+        if (rawValue.trim() === "" || rawValue.length > SCANNER_MAX_RAW) {
+          return { ok: false, operation: request.operation, code: "INVALID_INPUT", message: `rawValue is a non-empty string of at most ${SCANNER_MAX_RAW} characters` };
+        }
+        const partCode = typeof input.partCode === "string" && SCANNER_SAFE_ID.test(input.partCode.trim()) ? input.partCode.trim() : null;
+        const aliasAllowed = actor.capabilities.has(CATALOG_ALIAS_READ_CAPABILITY);
+        return ok(await withClient(async (c) => {
+          const alias = aliasAllowed ? await resolveScannedPartIdentifier(c, actor.tenantId, { rawValue }) : null;
+          const ids = new Set<string>();
+          if (partCode) { ids.add(partCode); ids.add(partCode.toUpperCase()); }
+          if (alias && alias.result === "FOUND") ids.add(alias.partId);
+          const parts = (await readPartsByIds(c, actor.tenantId, [...ids])).map((p) => {
+            const src: Record<string, unknown> = { ...p, partId: p.id };
+            const data: Record<string, unknown> = {};
+            for (const k of SCANNER_PART_FIELDS) if (src[k] !== undefined) data[k] = src[k];
+            return { id: p.id, data };
+          });
+          return { parts, alias, aliasDenied: !aliasAllowed };
+        }));
+      }
       case "listEquipmentModels":
         // DQ-030: the Sales Agreement Equipment Model picker. Bounded; see postgresCatalogReads.
         return ok(await withClient((c) => listEquipmentModels(c, actor.tenantId, {

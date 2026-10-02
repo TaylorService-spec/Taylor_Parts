@@ -134,10 +134,12 @@ const FIREBASE_FREE = [
 const WRITE_FREE = [
   ...FIREBASE_FREE,
   "hooks/useTruckManagement.js",
-  "hooks/useDriverOptions.js",
   "hooks/useWarehouseOptions.js",
   "services/truckRegistryCommandClient.js",
 ];
+// Truck Inventory activation (2026-10-01): the Firebase employee picker (hooks/useDriverOptions.js) is DELETED -- truck
+// assignment is an Employee MOBILE scope -- and the command client imports no Firebase at all.
+FIREBASE_FREE.push("services/truckRegistryCommandClient.js", "services/truckRegistryQueries.js", "hooks/useTruckRegistrySource.js");
 const WRITE_PRIMITIVES = /\b(setDoc|addDoc|updateDoc|deleteDoc|writeBatch|runTransaction|setDocs)\b/;
 
 test("management surface imports NO firebase (renderable/mocked without a backend)", () => {

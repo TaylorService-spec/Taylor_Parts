@@ -17,7 +17,7 @@
     "catalogInactive": 151,
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
-    "callableExports": 33,
+    "callableExports": 31,
     "destinations": 95,
     "destinationsHidden": 19,
     "guides": 0,
@@ -2049,6 +2049,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/truckInventoryActivationDelta.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/partsReads.ts"
         ],
@@ -2059,7 +2060,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3634,6 +3635,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/truckInventoryActivationDelta.ts",
           "functions/src/catalogMaster/catalogHttp.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/partMaster/manufacturerReadService.ts",
@@ -3646,7 +3648,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3850,13 +3852,15 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
+          "functions/src/adminPolicy/truckInventoryActivationDelta.ts",
           "functions/src/catalogMaster/catalogHttp.ts",
           "functions/src/partMaster/partAliasCallables.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4049,6 +4053,7 @@
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/adminPolicy/inventoryWarehouseActivationDelta.ts",
+          "functions/src/adminPolicy/truckInventoryActivationDelta.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
           "functions/src/eosOps/partsReads.ts",
@@ -4063,7 +4068,7 @@
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 8,
+        "serverReferenceCount": 9,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4828,27 +4833,11 @@
     },
     {
       "names": [
-        "updateWorkOrderExecutionData"
-      ],
-      "module": "./updateWorkOrderExecutionData",
-      "capabilityHints": [],
-      "comment": null
-    },
-    {
-      "names": [
-        "listWorkOrderConsumptionSources"
-      ],
-      "module": "./workOrderConsumption/consumptionSourceCallables",
-      "capabilityHints": [],
-      "comment": "Decision #171 -- the ONE narrow trusted read that makes consumption source selection possible without granting technicians any standing inventory or location read."
-    },
-    {
-      "names": [
         "detectInventoryEffects"
       ],
       "module": "./inventoryEffectCallables",
       "capabilityHints": [],
-      "comment": null
+      "comment": "RETIRED FROM THE REPOSITORY (Controller TRUCK INVENTORY ACTIVATION AUTHORIZED, 2026-10-01, Package J): no caller remains (census) and the governed EOS route replaces it. The deployed copy stays DEPLOYED_NOT_CALLED until the bounded Firebase removal window -- tracked, not deleted by deploy here.   li"
     },
     {
       "names": [

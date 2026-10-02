@@ -48,13 +48,17 @@ import {
   type InstallResult,
 } from "./equipmentCustody.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
+import { authorizeMobileAct, currentMobileLocationIds, MobileStockRefusal } from "./mobileStockAuthority.js";
 
 export const EQUIPMENT_INSTALL = "equipment.install";
 export const INSTALL_WORK_ORDER_TYPE = "INSTALL";
 /** WORK_IN_PROGRESS only -- the single state Complete may follow (workOrderInstallCommand, unchanged). */
 export const INSTALLABLE_WORK_ORDER_STATUSES: readonly string[] = Object.freeze(["WORK_IN_PROGRESS"]);
-/** OD-1: the source custody an installation may draw from in this package. MOBILE is TRUCK_INVENTORY_FOLLOWUP. */
-export const INSTALL_SOURCE_LOCATION_TYPES: readonly string[] = Object.freeze(["WAREHOUSE", "BIN"]);
+/**
+ * OD-1: the source custody an installation may draw from. MOBILE since Truck Inventory activation (2026-10-01, Package F):
+ * only from a truck the installer holds a current MOBILE scope over, revalidated in the install transaction.
+ */
+export const INSTALL_SOURCE_LOCATION_TYPES: readonly string[] = Object.freeze(["WAREHOUSE", "BIN", "MOBILE"]);
 /** The ledger row's source_kind: the existing WORK_ORDER_CONSUMPTION movement, attributed to an installation. */
 export const INSTALL_MOVEMENT_SOURCE_KIND = "WORK_ORDER_EQUIPMENT_INSTALL";
 export const installMovementKey = (idempotencyKey: string): string => `equipmentInstall:${idempotencyKey}`;
@@ -172,21 +176,27 @@ export async function listInstallableUnitsForWorkOrder(
     refuse("SERIAL_INVALID", "INVALID_INPUT", "serialNumber, when stated, is a non-empty string");
   }
   // Candidates by CUSTODY first (the operating company and installable statuses are custody facts), over-
-  // fetched because some candidates will not be whole units; then the CATALOG decides which are.
+  // fetched because some candidates will not be whole units; then the CATALOG decides which are. A truck's units are
+  // candidates only on the trucks the caller holds a current MOBILE scope over -- never another Employee's truck.
+  const myTrucks = await currentMobileLocationIds(deps.pool, actor);
   const { rows } = await deps.pool.query(
     `SELECT c.part_id, c.serial_number, c.status::text AS status, c.location_type::text AS location_type, c.location_id,
-            CASE WHEN c.location_type = 'BIN' THEN concat_ws(' / ', bw.name, b.code) ELSE w.name END AS location_label
+            CASE WHEN c.location_type = 'BIN' THEN concat_ws(' / ', bw.name, b.code)
+                 WHEN c.location_type = 'MOBILE' THEN m.display_label ELSE w.name END AS location_label
        FROM eos_ops.serialized_custody c
        LEFT JOIN eos_ops.warehouses w ON c.location_type = 'WAREHOUSE' AND w.tenant_id = c.tenant_id AND w.id = c.location_id
        LEFT JOIN eos_ops.bins b ON c.location_type = 'BIN' AND b.tenant_id = c.tenant_id AND b.id = c.location_id
        LEFT JOIN eos_ops.warehouses bw ON bw.tenant_id = b.tenant_id AND bw.id = b.warehouse_id
+       LEFT JOIN eos_ops.mobile_locations m ON c.location_type = 'MOBILE' AND m.tenant_id = c.tenant_id
+                                           AND m.location_type = 'MOBILE' AND m.location_id = c.location_id
       WHERE c.tenant_id = $1 AND c.operating_company_key = $2 AND c.status::text = ANY($3::text[])
         AND c.location_type::text = ANY($6::text[])
+        AND (c.location_type <> 'MOBILE' OR c.location_id = ANY($7::text[]))
         AND ($4::text IS NULL OR c.serial_number = $4)
       ORDER BY c.part_id, c.serial_number
       LIMIT $5`,
     [actor.tenantId, wo.operatingCompanyKey, [...INSTALLABLE_CUSTODY_STATUSES], serial, INSTALLABLE_LIST_CAP * 4,
-      [...INSTALL_SOURCE_LOCATION_TYPES]]);
+      [...INSTALL_SOURCE_LOCATION_TYPES], myTrucks]);
   const partIds = [...new Set(rows.map((r) => String(r.part_id)))];
   const policies = await createPostgresPartPolicyAuthority().readPartPolicies(deps.pool, actor.tenantId, partIds);
   const wholeUnit = new Set(policies.filter((p) => p.found && p.wholeUnit === true).map((p) => p.partId));
@@ -216,7 +226,7 @@ const INSTALL_INPUT_KEYS: readonly string[] = Object.freeze(["workOrderId", "par
  * completed separately). The customer, the site and the operating company are the Work Order's, never the caller's.
  *
  * ONE TRANSACTION (OD-1), in the ruled order: authorize -> lock + revalidate the Work Order -> INSTALL / state ->
- * assignment -> source unit -> source custody (WAREHOUSE / BIN) -> whole unit / model (the catalog) -> company /
+ * assignment -> source unit -> source custody (WAREHOUSE / BIN, or MOBILE within the installer's scope) -> whole unit / model (the catalog) -> company /
  * customer / site -> the ledger consequence -> EQUIPMENT custody -> the Equipment record -> work_orders.equipment_id ->
  * the Equipment event -> commit. A replay of the same key returns the ORIGINAL result and writes nothing.
  */
@@ -291,12 +301,26 @@ export async function recordWorkOrderEquipmentInstall(
     if (wo.equipmentId !== null) {
       refuse("WORK_ORDER_ALREADY_HAS_EQUIPMENT", "PRECONDITION_FAILED", "this Work Order already references Equipment; one installation per INSTALL Work Order");
     }
-    if (unit.location_type === "MOBILE") {
-      refuse("TRUCK_SOURCE_NOT_ACTIVATED", "PRECONDITION_FAILED",
-        "installing from truck (MOBILE) custody is not activated yet; Truck Inventory is a later journey");
-    }
     if (!INSTALL_SOURCE_LOCATION_TYPES.includes(String(unit.location_type))) {
       refuse("SOURCE_NOT_INSTALLABLE", "PRECONDITION_FAILED", `a unit in ${String(unit.location_type)} custody cannot be installed`);
+    }
+    if (unit.location_type === "MOBILE") {
+      // PACKAGE F (OD-T3): from a truck only when the location is ACTIVE and linked to an active truck, the installer holds a
+      // current MOBILE scope over it (with SERVICE_TECHNICIAN eligibility), and the truck is the Work Order's company.
+      // The assignment was checked above; custody / ledger agreement is checked below exactly as for a warehouse unit.
+      let mobile;
+      try {
+        mobile = await authorizeMobileAct(client, actor, EQUIPMENT_INSTALL, String(unit.location_id), { lock: true });
+      } catch (err) {
+        if (err instanceof MobileStockRefusal) refuse(err.code, err.category === "NOT_FOUND" ? "PRECONDITION_FAILED" : err.category, err.message);
+        throw err;
+      }
+      if (!mobile.allowed) {
+        return refuse(mobile.decision.reason, "FORBIDDEN", "the unit is on a truck outside your current MOBILE scope");
+      }
+      if (mobile.location.operatingCompanyKey !== wo.operatingCompanyKey) {
+        refuse("OPERATING_COMPANY_MISMATCH", "PRECONDITION_FAILED", "the truck belongs to another operating company than the Work Order's");
+      }
     }
     if (unit.operating_company_key !== wo.operatingCompanyKey) {
       refuse("OPERATING_COMPANY_MISMATCH", "PRECONDITION_FAILED", "the unit is held by another operating company than the Work Order's");

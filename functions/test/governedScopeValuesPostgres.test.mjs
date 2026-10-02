@@ -357,12 +357,14 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
     const targets = await wf("admin-a", "listOperationalScopeTargets", {});
     assert.equal(targets.ok, true, JSON.stringify(targets));
     const byType = Object.fromEntries(targets.result.scopeTypes.map((s) => [s.scopeType, s]));
-    assert.deepEqual(Object.keys(byType), ["WAREHOUSE", "REORDER_QUEUE"]);
+    // + MOBILE (Truck Inventory activation OD-T1, 2026-10-01): no truck location exists in this tenant, so no value.
+    assert.deepEqual(Object.keys(byType), ["WAREHOUSE", "REORDER_QUEUE", "MOBILE"]);
+    assert.deepEqual(byType.MOBILE.values, []);
     assert.deepEqual(byType.WAREHOUSE.values.map((v) => v.value), ["wh-a1"], "ACTIVE, this tenant only");
     assert.deepEqual(byType.REORDER_QUEUE.values.map((v) => v.value), ["taylor-a"]);
     assert.equal(byType.WAREHOUSE.available, true);
     const bTargets = (await wf("admin-b", "listOperationalScopeTargets", {})).result.scopeTypes;
-    assert.deepEqual(bTargets.map((s) => s.values.map((v) => v.value)), [["wh-b1"], ["taylor-b"]]);
+    assert.deepEqual(bTargets.map((s) => s.values.map((v) => v.value)), [["wh-b1"], ["taylor-b"], []]);
     // An extra field is refused, and the read is gated on employee.record.read.
     assert.equal((await wf("admin-a", "listOperationalScopeTargets", { scopeType: "WAREHOUSE" })).ok, false);
     assert.equal((await wf("bystander", "listOperationalScopeTargets", {})).ok, false);

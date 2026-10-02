@@ -33,7 +33,9 @@ test("both Operations lists are closed, every entry is routed, and they name exa
       // Inventory / Warehouse completion (2026-10-01): the governed warehouse / location / transfer-order reads the cut-over
       // employee screens need (no quantity: stock stays readInventoryOnHand).
       "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
-      "listReorderAssignmentTargets"]);
+      "listReorderAssignmentTargets",
+      // Truck Inventory activation (2026-10-01): the operational truck roster and one truck's stock.
+      "listTruckRoster", "readTruckStock"]);
   assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
@@ -190,7 +192,8 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   const reorderOps = [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].filter((o) => !/^resolveMy/.test(o));
   // 16 + the seven Parts / Purchasing / Receiving reads + the three Inventory / Warehouse reads (2026-10-01), all behind
   // the same activation boundary.
-  assert.equal(reorderOps.length, 26);
+  // + the two Truck Inventory reads (listTruckRoster, readTruckStock; 2026-10-01).
+  assert.equal(reorderOps.length, 28);
   for (const operation of reorderOps) {
     const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },
       { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });

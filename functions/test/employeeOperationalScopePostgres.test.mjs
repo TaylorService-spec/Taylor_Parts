@@ -100,7 +100,8 @@ test("Employee Operational Scope authority: one scope type, real warehouse, no a
   await t.test("an Employee may currently cover MULTIPLE warehouses", async () => {
     // WAREHOUSE alone -> WAREHOUSE + REORDER_QUEUE (migration 1761696000000, Owner ruling). This
     // suite is about the WAREHOUSE scope and stays that way; the queue scope has its own proofs.
-    assert.deepEqual([...vocab.OPERATIONAL_SCOPE_TYPES], ["WAREHOUSE", "REORDER_QUEUE"]);
+    // + MOBILE (migration 1764410000000, Controller OD-T1 2026-10-01): an Employee's truck relationship.
+    assert.deepEqual([...vocab.OPERATIONAL_SCOPE_TYPES], ["WAREHOUSE", "REORDER_QUEUE", "MOBILE"]);
     await scope("e-1", "wh-main");
     await scope("e-1", "wh-north");
     assert.deepEqual(await current("e-1"), ["wh-main", "wh-north"]);

@@ -61,7 +61,8 @@ describe("TechnicianShell is reachable", () => {
   });
 
   test("it is RENDERED, not merely imported", () => {
-    assert.match(APP, /<TechnicianShell\s*\/>/, "imported but never rendered is still unreachable");
+    // Truck Inventory activation (2026-10-01): the shell now receives the Scan tab's capability gate and role (deps).
+    assert.match(APP, /<TechnicianShell(\s+deps=\{[^}]*\}\})?\s*\/>/, "imported but never rendered is still unreachable");
   });
 
   test("the render is reached from the route table, under the technician workspace slot", () => {
@@ -94,7 +95,7 @@ describe("TechnicianShell is reachable", () => {
 
   test("DESKTOP IS NOT FORCED INTO THE PHONE SHELL", () => {
     // Width picks the composition; both branches exist, so a desktop user keeps the desktop surface.
-    assert.match(APP, /useIsPhone\(\)\s*\?\s*<TechnicianShell\s*\/>\s*:\s*<FieldMode\s*\/>/);
+    assert.match(APP, /useIsPhone\(\)\s*\?\s*<TechnicianShell(\s+deps=\{[^}]*\}\})?\s*\/>\s*:\s*<FieldMode\s*\/>/);
   });
 
   test("WIDTH NEVER DECIDES AUTHORITY", () => {
