@@ -325,8 +325,11 @@ accounting authority posts the formal invoice.
 
 1. **Foundations** — counterparties, company profiles, supplier link, FINANCING_PROVIDER. *Implemented locally.*
 2. **Facts / obligations / corrections core**, plus the acquisition-cost adapter (cost evidence and missing-cost
-   exceptions), plus the provider-neutral destination shape. *Implemented locally — not routed, not wired into
-   receiving.*
+   exceptions), plus the provider-neutral destination shape. *Implemented locally — not routed.*
+   - **Finance Activation 1 (2026-10-01):** the Reorder receipt (`receiveReorderStock`) now records its Finance
+     consequence in the receipt's own transaction (cost evidence → one COST_EVIDENCE fact, or a COST_EVIDENCE_MISSING
+     exception). It adds no route, capability or grant. `recoverReceiptFinancialConsequences` is the governed recovery
+     path. UAT: `UAT_FIN_PURCHASING.md`.
 3. Purchasing subledger: vendor obligations from receipts; received-not-invoiced.
 4. Commercial fulfillment authority (resolves DQ-015) → billing eligibility.
 5. Billing packages + accounting outbox + the provider-neutral adapter contract.

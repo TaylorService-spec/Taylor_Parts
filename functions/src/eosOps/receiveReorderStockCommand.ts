@@ -82,6 +82,7 @@ import {
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import { allocateReceivingOrderNumber } from "./receivingNumbering.js";
 import { planAcquisitionCost, insertAcquisitionCostFact } from "./acquisitionCostAuthority.js";
+import { FinanceFoundationError, projectReceiptAcquisitionCostOn } from "../eosFinance/financeFoundation.js";
 import { closeOutReorderAsReceived } from "./reorderLifecycleCommands.js";
 import { resolveOpsLocation, LocationAuthorityError } from "./warehouseBinRepository.js";
 import { insertReceivingOrder, type OpsTrackingMode } from "./purchasingRepository.js";
@@ -750,6 +751,20 @@ export async function receiveReorderStock(
       if (planned !== null) {
         acquisitionCostIds.push(await insertAcquisitionCostFact(client, actor.tenantId, actor.principalId, planned));
       }
+    }
+
+    // ---- 15b. THE FINANCIAL CONSEQUENCE (Finance Activation 1, DECISIONS #191) -- in THIS transaction ----
+    // The acquisition-cost evidence written above is projected into the Finance core: a priced line becomes ONE immutable
+    // COST_EVIDENCE fact (keyed by its evidence id, owned by the evidence's governed operating company); an unpriced line
+    // becomes a COST_EVIDENCE_MISSING exception -- never a zero cost, and never a blocked receipt. Same transaction, so the
+    // receipt, its evidence and its Finance consequence commit together or not at all. A server-side consequence of the
+    // already-authorized receipt: no Finance capability is asked of the receiver, and no caller can invoke it directly.
+    // The evidence stays the single source of the cost; recoverReceiptFinancialConsequences re-projects from it.
+    try {
+      await projectReceiptAcquisitionCostOn(client, { tenantId: actor.tenantId, principalId: actor.principalId }, { receivingId });
+    } catch (err) {
+      if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's financial consequence could not be recorded: ${err.message}`);
+      throw err;
     }
 
     // ---- 16. THE REORDER CLOSEOUT -- a consequence of the receipt, in its transaction ----

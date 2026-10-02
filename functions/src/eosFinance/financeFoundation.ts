@@ -511,46 +511,79 @@ export interface AcquisitionCostProjection {
  *
  * Replaying the same receipt records nothing new.
  */
-export async function projectReceiptAcquisitionCost(pool: Pool, actor: FinanceActor, input: { receivingId: unknown }): Promise<AcquisitionCostProjection> {
+export async function projectReceiptAcquisitionCostOn(c: Queryable, actor: FinanceActor, input: { receivingId: unknown }): Promise<AcquisitionCostProjection> {
   const receivingId = requireId(input.receivingId, "receivingId");
-  return tx(pool, async (c) => {
-    const { rows: rcv } = await c.query(
-      `SELECT id, operating_company_key, source_purchase_order_id, status::text AS status FROM eos_ops.receiving_orders WHERE tenant_id = $1 AND id = $2`,
-      [actor.tenantId, receivingId]);
-    if (!rcv[0]) return refuse("RECEIPT_NOT_FOUND", "NOT_FOUND", "no receipt with that id");
-    if (rcv[0].status === "CANCELLED") refuse("RECEIPT_CANCELLED", "PRECONDITION_FAILED", "a cancelled receipt carries no cost consequence");
-    const { rows: lines } = await c.query(
-      `SELECT line_id, part_id, received_quantity FROM eos_ops.receiving_order_lines WHERE tenant_id = $1 AND receiving_order_id = $2 ORDER BY line_id`,
-      [actor.tenantId, receivingId]);
-    const { rows: evidence } = await c.query(
-      `SELECT * FROM eos_finance.inventory_acquisition_costs WHERE tenant_id = $1 AND receiving_id = $2`, [actor.tenantId, receivingId]);
-    const byLine = new Map(evidence.map((e) => [String(e.receiving_line_id), e]));
-    const facts: { outcome: "recorded" | "replayed"; fact: FinancialFact }[] = [];
-    const missing: { receivingLineId: string; partId: string; receivedQuantity: number }[] = [];
-    let receiptCompany: string | null = null;
-    for (const line of lines) {
-      const e = byLine.get(String(line.line_id));
-      if (e) {
-        const counterparty = await counterpartyForSupplier(c, actor, e.supplier_id ?? null);
-        facts.push(await insertFact(c, actor, {
-          operatingCompanyId: e.operating_company_id, counterpartyId: counterparty?.id ?? null, factClass: "COST_EVIDENCE",
-          factType: ACQUISITION_COST_FACT_TYPE, sourceDomain: "RECEIVING", sourceRecordId: receivingId, sourceLine: String(line.line_id),
-          amountMinor: BigInt(e.extended_cost_minor), currency: e.currency, basis: String(e.cost_basis), effectiveAt: e.received_at,
-          idempotencyKey: `acq:${e.id}`, correlationId: e.purchase_order_id,
-        }));
-      } else {
-        receiptCompany ??= await resolveOperatingCompanyFromKey(c, actor.tenantId, rcv[0].operating_company_key);
-        await c.query(
-          `INSERT INTO eos_finance.cost_evidence_exceptions (id, tenant_id, operating_company_id, condition, receiving_id, receiving_line_id,
-              purchase_order_id, part_id, received_quantity, detected_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (tenant_id, receiving_id, receiving_line_id, condition) DO NOTHING`,
-          [`cee_${randomUUID()}`, actor.tenantId, receiptCompany, COST_EVIDENCE_MISSING, receivingId, String(line.line_id),
-            rcv[0].source_purchase_order_id, line.part_id, line.received_quantity, actor.principalId]);
-        missing.push({ receivingLineId: String(line.line_id), partId: String(line.part_id), receivedQuantity: Number(line.received_quantity) });
-      }
+  const { rows: rcv } = await c.query(
+    `SELECT id, operating_company_key, source_purchase_order_id, status::text AS status FROM eos_ops.receiving_orders WHERE tenant_id = $1 AND id = $2`,
+    [actor.tenantId, receivingId]);
+  if (!rcv[0]) return refuse("RECEIPT_NOT_FOUND", "NOT_FOUND", "no receipt with that id");
+  if (rcv[0].status === "CANCELLED") refuse("RECEIPT_CANCELLED", "PRECONDITION_FAILED", "a cancelled receipt carries no cost consequence");
+  const { rows: lines } = await c.query(
+    `SELECT line_id, part_id, received_quantity FROM eos_ops.receiving_order_lines WHERE tenant_id = $1 AND receiving_order_id = $2 ORDER BY line_id`,
+    [actor.tenantId, receivingId]);
+  const { rows: evidence } = await c.query(
+    `SELECT * FROM eos_finance.inventory_acquisition_costs WHERE tenant_id = $1 AND receiving_id = $2`, [actor.tenantId, receivingId]);
+  const byLine = new Map(evidence.map((e) => [String(e.receiving_line_id), e]));
+  const facts: { outcome: "recorded" | "replayed"; fact: FinancialFact }[] = [];
+  const missing: { receivingLineId: string; partId: string; receivedQuantity: number }[] = [];
+  let receiptCompany: string | null = null;
+  for (const line of lines) {
+    const e = byLine.get(String(line.line_id));
+    if (e) {
+      const counterparty = await counterpartyForSupplier(c, actor, e.supplier_id ?? null);
+      facts.push(await insertFact(c, actor, {
+        operatingCompanyId: e.operating_company_id, counterpartyId: counterparty?.id ?? null, factClass: "COST_EVIDENCE",
+        factType: ACQUISITION_COST_FACT_TYPE, sourceDomain: "RECEIVING", sourceRecordId: receivingId, sourceLine: String(line.line_id),
+        amountMinor: BigInt(e.extended_cost_minor), currency: e.currency, basis: String(e.cost_basis), effectiveAt: e.received_at,
+        idempotencyKey: `acq:${e.id}`, correlationId: e.purchase_order_id,
+      }));
+    } else {
+      receiptCompany ??= await resolveOperatingCompanyFromKey(c, actor.tenantId, rcv[0].operating_company_key);
+      await c.query(
+        `INSERT INTO eos_finance.cost_evidence_exceptions (id, tenant_id, operating_company_id, condition, receiving_id, receiving_line_id,
+            purchase_order_id, part_id, received_quantity, detected_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (tenant_id, receiving_id, receiving_line_id, condition) DO NOTHING`,
+        [`cee_${randomUUID()}`, actor.tenantId, receiptCompany, COST_EVIDENCE_MISSING, receivingId, String(line.line_id),
+          rcv[0].source_purchase_order_id, line.part_id, line.received_quantity, actor.principalId]);
+      missing.push({ receivingLineId: String(line.line_id), partId: String(line.part_id), receivedQuantity: Number(line.received_quantity) });
     }
-    return Object.freeze({ receivingId, facts: Object.freeze(facts), missingCostEvidence: Object.freeze(missing) });
-  });
+  }
+  return Object.freeze({ receivingId, facts: Object.freeze(facts), missingCostEvidence: Object.freeze(missing) });
+}
+
+/** The same projection in its own transaction (recovery / tooling). */
+export async function projectReceiptAcquisitionCost(pool: Pool, actor: FinanceActor, input: { receivingId: unknown }): Promise<AcquisitionCostProjection> {
+  return tx(pool, (c) => projectReceiptAcquisitionCostOn(c, actor, input));
+}
+
+/**
+ * DETERMINISTIC RECOVERY (Finance Activation 1). Every receipt line whose durable source state has not yet produced its
+ * Finance consequence -- a priced line without its `acq:<evidence id>` fact, or an unpriced line without its
+ * COST_EVIDENCE_MISSING exception -- is projected again from the durable evidence. Idempotent: running it twice records
+ * nothing new. It recovers receipts recorded before the consequence was wired into receiving; for new receipts the
+ * consequence commits in the receipt's own transaction. No manual database edit is ever needed.
+ */
+export async function recoverReceiptFinancialConsequences(pool: Pool, actor: FinanceActor, opts: { readonly limit?: number } = {})
+  : Promise<{ readonly receiptsProjected: readonly string[]; readonly factsRecorded: number; readonly missingCostEvidence: number }> {
+  const limit = Number.isSafeInteger(opts.limit) && (opts.limit as number) > 0 ? (opts.limit as number) : 500;
+  const { rows } = await pool.query(
+    `SELECT DISTINCT r.id FROM eos_ops.receiving_orders r
+       JOIN eos_ops.receiving_order_lines l ON l.tenant_id = r.tenant_id AND l.receiving_order_id = r.id
+       LEFT JOIN eos_finance.inventory_acquisition_costs e ON e.tenant_id = r.tenant_id AND e.receiving_id = r.id AND e.receiving_line_id = l.line_id
+      WHERE r.tenant_id = $1 AND r.status::text <> 'CANCELLED'
+        AND ((e.id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM eos_finance.financial_facts f WHERE f.tenant_id = r.tenant_id AND f.idempotency_key = 'acq:' || e.id))
+          OR (e.id IS NULL AND NOT EXISTS (SELECT 1 FROM eos_finance.cost_evidence_exceptions x WHERE x.tenant_id = r.tenant_id
+                AND x.receiving_id = r.id AND x.receiving_line_id = l.line_id AND x.condition = 'COST_EVIDENCE_MISSING')))
+      ORDER BY r.id LIMIT $2`, [actor.tenantId, limit]);
+  const projected: string[] = [];
+  let facts = 0, missing = 0;
+  for (const r of rows) {
+    const p = await projectReceiptAcquisitionCost(pool, actor, { receivingId: r.id });
+    projected.push(String(r.id));
+    facts += p.facts.filter((f) => f.outcome === "recorded").length;
+    missing += p.missingCostEvidence.length;
+  }
+  return Object.freeze({ receiptsProjected: Object.freeze(projected), factsRecorded: facts, missingCostEvidence: missing });
 }
 
 // ════════════════════ C7. accounting destinations ════════════════════
