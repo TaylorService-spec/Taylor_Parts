@@ -169,7 +169,7 @@ test("National Accounts Sales over the Commercial transport", { skip: SKIP, conc
     assert.equal(JSON.stringify(detail).includes("PRT-2001"), true, "the governed product travels to the order");
     assert.equal(ok(await com(national, "transitionSalesOrder", { idempotencyKey: key(), salesOrderId: so.salesOrderId, transition: "ADVANCE" }), "advance").state, "IN_FULFILLMENT");
     // THE ACTIVATED BOUNDARY: FULFILLED stays NOT_YET_ACTIVATED (allocation / service creation are the held cross-domain integration).
-    refused(await com(national, "transitionSalesOrder", { idempotencyKey: key(), salesOrderId: so.salesOrderId, transition: "ADVANCE" }), 503, "FULFILLMENT_AUTHORITY_UNAVAILABLE", "the held fulfillment boundary");
+    refused(await com(national, "transitionSalesOrder", { idempotencyKey: key(), salesOrderId: so.salesOrderId, transition: "ADVANCE" }), 412, "SALES_ORDER_NOT_FULLY_FULFILLED", "nothing fulfilled yet -- the governed quantity gate (DECISIONS #195)");
     const projection = ok(await com(national, "getAccountCommercialProjection", { accountId: "acct-chain" }), "projection");
     for (const id of [o.opportunityId, a.salesAgreementId, so.salesOrderId]) assert.ok(JSON.stringify(projection).includes(id), id);
     const receipts = (await q(`SELECT DISTINCT principal_id FROM eos_commercial.command_receipts`)).rows.map((r) => r.principal_id);

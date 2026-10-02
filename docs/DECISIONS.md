@@ -6730,3 +6730,36 @@ are not rewritten. Migration `1764430000000_purchasing-supplier-identity-and-rec
    Administration (same delta); the capabilities remain, every finance Role keeps them, and Parts Manager keeps only the
    finance READS. The Firebase-era Role catalog still declares them for the retiring Firebase finance path (recorded, not
    changed here — retirement-only).
+
+## #195 — CONTROLLER RULING: DQ-015 closed — Commercial fulfillment from Work Order completion → billing eligibility (2026-10-02)
+
+**Status.** Implemented locally (migration `1764440000000_commercial-fulfillment-billing-eligibility.sql`). Supersedes the
+DQ-015 completion refusal. #145 / #190–#194 remain governing.
+
+1. **Progression:** AGREEMENT → SALES ORDER → WORK / FULFILLMENT → FULFILLMENT ACCEPTED → BILLING ELIGIBILITY. No invoice, no
+   AR, no billing package, no posting, no revenue from Work Order completion.
+2. **DQ-015 end state:** completing a Sales-Order-linked Work Order invokes the Commercial fulfillment authority
+   (`eosCommercial/fulfillment/salesOrderFulfillmentAuthority.ts`) server-side, **in the completion transaction**.
+   Commercial owns fulfillment state; the technician keeps only the authority to complete their assigned work and gains no
+   Commercial or Finance capability. If the fulfillment cannot be recorded the completion is refused and rolls back.
+3. **One real job = one Work Order.** A Work Order states the Sales Order **lines** it fulfils at creation
+   (`salesOrderLines`), validated against the governed Sales Order (company, customer, site, state, lines). Evidence counted
+   for linked lines only: PART ← the Work Order's recorded Part actuals (PART_USAGE); EQUIPMENT_MODEL ← units the Work Order
+   INSTALLED of that model (Equipment ids + serials kept); SERVICE ← the completion of the Work Order the agreed SERVICE line
+   was linked to (remaining ordered quantity, existing commercial price; never priced from labor). Nothing is consumed,
+   installed or moved by fulfillment; the Equipment / Inventory / Work Order authorities keep their facts.
+4. **Fulfillment** = append-only `eos_commercial.sales_order_fulfillments`, one row per (Work Order, line); a line's fulfilled
+   quantity is the SUM. Matching / overage reuse the Owner-ratified P1 core (additive, line-id match, OVERAGE fails closed).
+   IN_FULFILLMENT → FULFILLED is now decided by those quantities (the ratified `allLinesFulfilled` gate).
+5. **Billing eligibility** is DERIVED (`sales_order_line_billing_eligibility` view; no writer), with the ratified states
+   NOT_YET / PARTIALLY_ELIGIBLE / ELIGIBLE / CANCELLED, per line and per order. Partial fulfillment is PARTIALLY_ELIGIBLE —
+   one fulfilled line never makes the order ELIGIBLE; what/when to bill a partial is the billing package's policy. It carries
+   the accepted price as a SOURCE reference only and computes no amount.
+6. **Company:** exactly one governed operating company (the Sales Order's, which must equal the Work Order's); unbound or
+   CONSOLIDATED fails closed; the site never decides ownership.
+7. **Customer ≠ obligor:** eligibility records the commercial customer only; the financial obligor is
+   `DEFERRED_TO_BILLING_PACKAGE`. The Agreement's disposition is exposed (SALE / LEASE / DIRECT_ORDER). A financed /
+   Saratoga marker does not yet exist in PostgreSQL Commercial (dependency). Rental never enters this model.
+8. **No capability, no grant.** Recorded dependencies: Commercial correction / cancellation of recorded fulfillment (none
+   exists; fulfillment is historical), partial-billing policy, the financed-sale marker, HELD (blocked / additional-work)
+   inputs, Work Order un-completion.

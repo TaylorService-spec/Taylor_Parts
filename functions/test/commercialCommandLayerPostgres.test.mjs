@@ -371,7 +371,7 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
   await t.test("(30)(31) Sales Order transitions follow the lifecycle; the quantity-decided step refuses and no D2 field exists", async () => {
     const advanced = await so.transitionSalesOrder(deps, ACTOR, { idempotencyKey: key(), salesOrderId: direct.salesOrderId, transition: "ADVANCE" });
     assert.equal(advanced.state, "IN_FULFILLMENT");
-    await assert.rejects(so.transitionSalesOrder(deps, ACTOR, { idempotencyKey: key(), salesOrderId: direct.salesOrderId, transition: "ADVANCE" }), code("FULFILLMENT_AUTHORITY_UNAVAILABLE"));
+    await assert.rejects(so.transitionSalesOrder(deps, ACTOR, { idempotencyKey: key(), salesOrderId: direct.salesOrderId, transition: "ADVANCE" }), code("SALES_ORDER_NOT_FULLY_FULFILLED")); // the governed quantity gate (DECISIONS #195)
     assert.equal((await so.transitionSalesOrder(deps, ACTOR, { idempotencyKey: key(), salesOrderId: direct.salesOrderId, transition: "CANCEL" })).state, "CANCELLED");
     await assert.rejects(so.transitionSalesOrder(deps, ACTOR, { idempotencyKey: key(), salesOrderId: direct.salesOrderId, transition: "CANCEL" }), code("TERMINAL"));
     const columns = (await q(`SELECT column_name FROM information_schema.columns WHERE table_schema='eos_commercial' AND table_name IN ('sales_orders','sales_order_lines')`)).rows.map((r) => r.column_name);

@@ -358,7 +358,7 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
   await t.test("JOURNEY 6: Sales Order CONFIRMED -> IN_FULFILLMENT; FULFILLED is the held D2 boundary (503), never a guess", async () => {
     const advanced = ok(await call(retailA, "transitionSalesOrder", { idempotencyKey: key(), salesOrderId: order.salesOrderId, transition: "ADVANCE" }), "advance");
     assert.equal(advanced.state, "IN_FULFILLMENT");
-    refused(await call(retailA, "transitionSalesOrder", { idempotencyKey: key(), salesOrderId: order.salesOrderId, transition: "ADVANCE" }), 503, "FULFILLMENT_AUTHORITY_UNAVAILABLE", "fulfil");
+    refused(await call(retailA, "transitionSalesOrder", { idempotencyKey: key(), salesOrderId: order.salesOrderId, transition: "ADVANCE" }), 412, "SALES_ORDER_NOT_FULLY_FULFILLED", "fulfil");
   });
 
   await t.test("JOURNEY 7: the Account projection shows the whole chain; every write left exactly one receipt attributed to the persona", async () => {

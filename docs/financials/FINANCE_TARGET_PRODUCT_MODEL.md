@@ -129,8 +129,9 @@ built from the source record, the event and the line. Corrections are always new
 6. EOS keeps: facts, package, status, provider reference, acknowledgement, settlement status and reconciliation status.
 
 **DQ-015 end state.** Work Order completion writes fulfillment quantities through the Commercial fulfillment authority
-in the same transaction. Billing eligibility derives from that fulfillment, never from completion. Until that authority
-exists, the current refusal stands.
+in the same transaction. Billing eligibility derives from that fulfillment, never from completion. **Implemented locally,
+2026-10-02 (#195)**: `sales_order_fulfillments` plus the derived `sales_order_line_billing_eligibility`. UAT:
+`UAT_FIN_COMMERCIAL.md`.
 
 ## 7. Saratoga flow
 

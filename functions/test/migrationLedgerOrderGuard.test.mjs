@@ -194,8 +194,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 82 -> 83: the Truck Inventory activation (2026-10-01): 1764410000000 -- inventory.catalog.alias.read + inventory.truckRegistry.manage (granted to NO Role), MOBILE operational scope, receipt-into-MOBILE CHECK.
 // 83 -> 84: the Finance foundation (2026-10-01): 1764420000000 -- counterparties, company profiles, immutable financial facts, obligations, cost-evidence exceptions, accounting destinations; FINANCING_PROVIDER relationship; supplier -> organization link; no capability, no grant.
 // 84 -> 85: Finance Activation 1 completion (2026-10-01, DECISIONS #193): 1764430000000 -- explicit PO supplier identity, receiving_corrections, missing-cost exception resolutions; inventory.receipt.correct granted to NO Role.
-const RUNNABLE_MIGRATION_COUNT = 85;
-const TRACKED_MIGRATION_COUNT = 86; // the 85 runnable + the one deferred file
+// 85 -> 86: Commercial Finance activation (2026-10-02, DECISIONS #195): 1764440000000 -- sales_order_fulfillments (append-only) + derived fulfillment / billing-eligibility views; no capability, no grant.
+const RUNNABLE_MIGRATION_COUNT = 86;
+const TRACKED_MIGRATION_COUNT = 87; // the 86 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -232,6 +233,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764410000000_truck-inventory-activation",
   "1764420000000_finance-foundation",
   "1764430000000_purchasing-supplier-identity-and-receipt-correction",
+  "1764440000000_commercial-fulfillment-billing-eligibility",
 ]);
 
 const repoMigrations = () =>

@@ -196,6 +196,7 @@ on:
       - "functions/test/commercialSchemaParityPostgres.test.mjs"
       # COMMERCIAL WAVE C2: the governed PostgreSQL command layer (test:adminPolicy / test:adminPolicyPostgres).
       - "functions/src/eosCommercial/commands/**"
+      - "functions/src/eosCommercial/fulfillment/**"
       - "functions/src/eosCommercial/commercialOwnershipRepository.ts"
       - "functions/test/commercialCommandLayer.test.mjs"
       - "functions/test/commercialCommandLayerPostgres.test.mjs"
@@ -244,6 +245,7 @@ on:
       - "functions/test/financeFoundationPostgres.test.mjs"
       - "functions/test/financePurchasingConsequencePostgres.test.mjs"
       - "functions/test/financePurchasingIdentityCorrectionPostgres.test.mjs"
+      - "functions/test/financeCommercialFulfillmentPostgres.test.mjs"
       - "functions/src/eosFinance/**"
       - "functions/test/reorderLifecycleAuthorityRegistrationPostgres.test.mjs"
       - "functions/test/reorderFieldParityMatrix.test.mjs"
@@ -808,6 +810,7 @@ on:
       - "functions/test/commercialSchemaParityPostgres.test.mjs"
       # COMMERCIAL WAVE C2: the governed PostgreSQL command layer (test:adminPolicy / test:adminPolicyPostgres).
       - "functions/src/eosCommercial/commands/**"
+      - "functions/src/eosCommercial/fulfillment/**"
       - "functions/src/eosCommercial/commercialOwnershipRepository.ts"
       - "functions/test/commercialCommandLayer.test.mjs"
       - "functions/test/commercialCommandLayerPostgres.test.mjs"
@@ -856,6 +859,7 @@ on:
       - "functions/test/financeFoundationPostgres.test.mjs"
       - "functions/test/financePurchasingConsequencePostgres.test.mjs"
       - "functions/test/financePurchasingIdentityCorrectionPostgres.test.mjs"
+      - "functions/test/financeCommercialFulfillmentPostgres.test.mjs"
       - "functions/src/eosFinance/**"
       - "functions/test/reorderLifecycleAuthorityRegistrationPostgres.test.mjs"
       - "functions/test/reorderFieldParityMatrix.test.mjs"

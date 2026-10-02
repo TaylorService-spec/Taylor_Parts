@@ -120,7 +120,7 @@ test.after(async () => {
       // to run order, because a cleanup that depends on which suite ran first is not a cleanup.
       "TRUNCATE eos_commercial.accountability_handoffs, eos_commercial.ownership_handoffs," +
       // Migration 022's line tables reference the three record tables too.
-      " eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
+      " eos_commercial.sales_order_fulfillments, eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
       " eos_commercial.sales_orders," +
       " eos_commercial.sales_agreements, eos_commercial.opportunities",
     );
@@ -152,12 +152,14 @@ test("migration 008 creates eos_commercial beside eos_policy and eos_ops", { ski
   assert.deepEqual(
     tables.rows.map((r) => r.table_name),
     ["accountability_handoffs", "command_receipts", "number_counters", "opportunities", "opportunity_lines", "ownership_handoffs",
-      "sales_agreement_lines", "sales_agreements", "sales_order_lines", "sales_orders"],
+      "sales_agreement_lines", "sales_agreements", "sales_order_fulfillments", "sales_order_line_billing_eligibility", "sales_order_line_fulfillment",
+      "sales_order_lines", "sales_orders"],
     "five tables: three commercial records, their shared OWNERSHIP history, and -- since migration 020 " +
       "(Wave 2C) -- their shared ACCOUNTABILITY history. The second history table is deliberately NOT a " +
       "new source value on `ownership_handoffs`: #187 s1 rules that accountability must not be redefined " +
       "as ownership, and reusing those columns would make their names lie about what they hold. Migration 022 " +
-      "(wave C1) adds the three commercial line tables, the business-number counter and the idempotency receipts.",
+      "(wave C1) adds the three commercial line tables, the business-number counter and the idempotency receipts. Migration " +
+      "1764440000000 (DECISIONS #195) adds the append-only fulfillment record and its two DERIVED views (fulfillment, billing eligibility).",
   );
 });
 
