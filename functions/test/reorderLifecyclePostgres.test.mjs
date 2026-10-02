@@ -585,7 +585,9 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
     assert.deepEqual([rows[0].actor_uid, rows[0].target_kind, rows[0].target_id, rows[0].reason], [pPA, "purchase_order", id, "purchase order recorded"]);
     assert.deepEqual(rows[0].before, { status: "PURCHASING_IN_PROGRESS" });
     assert.deepEqual(rows[0].after, { status: "ORDERED", reorderRequestId: id, purchaseOrderId: id, operatingCompanyKey: "taylor",
-      warehouseId: W, partId: "PART-SYN", actorEmployeeId: "e-pa", externalPoNumber: "CAC-PROOF-PO-AUDIT", orderedQuantity: 2, orderedDate: "2026-09-30" });
+      warehouseId: W, partId: "PART-SYN", actorEmployeeId: "e-pa", externalPoNumber: "CAC-PROOF-PO-AUDIT", orderedQuantity: 2, orderedDate: "2026-09-30",
+      // DECISIONS #193: the audit states the supplier identity the PO carries -- a text-only PO is LEGACY_TEXT, with no identity.
+      supplierKind: "LEGACY_TEXT", supplierId: null, supplierOperatingCompanyId: null, purchasingOperatingCompanyId: null });
     // The PO and its audit are one transaction: the audit names exactly the PO that exists.
     assert.deepEqual((await q(`SELECT id, created_by, operating_company_key FROM eos_ops.purchase_orders WHERE id = $1`, [id])).rows, [{ id, created_by: pPA, operating_company_key: "taylor" }]);
     // A replay is refused (the request is ORDERED) and adds no second audit event. XLF 2026-09-30: it is the SAME

@@ -59,10 +59,12 @@ export interface ReorderTargetClassification {
  * pins, while ANY value written into such a column still changes the fingerprint and refuses. Additive only: a column
  * is listed here when a migration adds it, never to excuse a changed pinned column.
  *   reorder_requests: create_idempotency_key, create_request_fingerprint (migration 1764380000000, G2).
+ *   purchase_orders: supplier_kind, supplier_id, supplier_operating_company_id, purchasing_operating_company_id (migration
+ *     1764430000000, DECISIONS #193 -- explicit supplier identity; a pre-existing text-only PO carries all four NULL).
  */
 export const POST_PIN_NULLABLE_COLUMNS: Readonly<Record<Kind, readonly string[]>> = Object.freeze({
   reorderRequests: Object.freeze(["create_idempotency_key", "create_request_fingerprint"]),
-  purchaseOrders: Object.freeze([]),
+  purchaseOrders: Object.freeze(["supplier_kind", "supplier_id", "supplier_operating_company_id", "purchasing_operating_company_id"]),
   voids: Object.freeze([]),
 });
 

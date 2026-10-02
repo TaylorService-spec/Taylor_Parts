@@ -244,6 +244,8 @@ interface LegacyPurchaseOrderRow {
   readonly partId: string;
   readonly orderedQuantity: number;
   readonly supplierName: string;
+  /** The governed EXTERNAL supplier (eos_ops.suppliers) when the PO carries explicit identity (#193); null otherwise. */
+  readonly supplierId: string | null;
   readonly unitPriceMinor: number | null;
   readonly currency: string | null;
   readonly priceAuthorityVersion: number | null;
@@ -252,7 +254,7 @@ interface LegacyPurchaseOrderRow {
 
 async function readPurchaseOrder(client: PoolClient, tenantId: string, id: string): Promise<LegacyPurchaseOrderRow> {
   const { rows } = await client.query(
-    `SELECT part_id, ordered_quantity, supplier_name, unit_price_minor, currency,
+    `SELECT part_id, ordered_quantity, supplier_name, supplier_id, unit_price_minor, currency,
             price_authority_version, operating_company_key
        FROM ${SCHEMA}.purchase_orders WHERE tenant_id = $1 AND id = $2`,
     [tenantId, id],
@@ -265,6 +267,7 @@ async function readPurchaseOrder(client: PoolClient, tenantId: string, id: strin
     partId: r.part_id as string,
     orderedQuantity: r.ordered_quantity as number,
     supplierName: r.supplier_name as string,
+    supplierId: (r.supplier_id as string | null) ?? null,
     // BIGINT arrives as a string from node-postgres; money is converted once, here, and every later
     // reader sees a number the price authority has already validated as an exact integer.
     unitPriceMinor: r.unit_price_minor === null ? null : Number(r.unit_price_minor),
@@ -422,11 +425,43 @@ export async function receiveReorderStock(
   input: Record<string, unknown>,
 ): Promise<ReceiveReorderStockResult> {
   requireActor(actor);
-  const source = requireOwnedSource(input);
-
+  requireOwnedSource(input);
   const client = await deps.pool.connect();
   try {
     await client.query("BEGIN");
+    const result = await receiveReorderStockWithin(client, deps, actor, input);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/** A replacement receipt's Finance link to the facts it corrects (receipt correction, DECISIONS #193). */
+export interface ReceiptFinanceCorrection {
+  /** Receipt line id -> the original ACQUISITION_COST fact the replacement line's fact corrects. */
+  readonly correctsFactIdByLine: ReadonlyMap<string, string>;
+  readonly reason: string;
+}
+
+/**
+ * The whole receipt inside the CALLER's transaction: every effect, no BEGIN / COMMIT. receiveReorderStock owns the transaction
+ * for an ordinary receipt; the governed receipt correction calls this directly so a CORRECTED receipt's replacement commits
+ * atomically with the void of the receipt it replaces.
+ */
+export async function receiveReorderStockWithin(
+  client: PoolClient,
+  deps: { readonly now?: () => Date },
+  actor: ReceivingPrincipalActor,
+  input: Record<string, unknown>,
+  opts: { readonly financeCorrection?: ReceiptFinanceCorrection } = {},
+): Promise<ReceiveReorderStockResult> {
+  requireActor(actor);
+  const source = requireOwnedSource(input);
+  {
 
     // ---- 1. THE SERIALIZATION ANCHOR. Locked first, held to COMMIT, asserted later. ----
     const reorder = await lockReorder(client, actor.tenantId, source.reorderRequestId);
@@ -577,7 +612,6 @@ export async function receiveReorderStock(
       // the replayed answer is computed from exactly the same inputs the original was.
       const receivedNowByPoLineId = new Map<string, number>([[derived.lines[0].lineId, value.lines[0].receivedQuantity]]);
       const lines = perLineResults(derived, receivedNowByPoLineId, false);
-      await client.query("COMMIT");
       return {
         outcome: "replayed",
         receivingId,
@@ -738,7 +772,9 @@ export async function receiveReorderStock(
         purchaseOrderSourceType: LEGACY_SOURCE_KIND,
         // The legacy chain is immutable and has no revisions, so null is the true statement.
         purchaseOrderVersion: null,
-        supplierId: canonical.supplierId,
+        // The PO's governed supplier identity (#193), never derived from its name. The shared legacy normalizer carries no
+        // supplier id (a Firestore PO has only a name), so the PostgreSQL row's own column is the source here.
+        supplierId: poRow.supplierId ?? canonical.supplierId,
         supplierName: canonical.supplierName,
         partId: line.partId,
         receivedQuantity: line.receivedQuantity,
@@ -761,7 +797,8 @@ export async function receiveReorderStock(
     // already-authorized receipt: no Finance capability is asked of the receiver, and no caller can invoke it directly.
     // The evidence stays the single source of the cost; recoverReceiptFinancialConsequences re-projects from it.
     try {
-      await projectReceiptAcquisitionCostOn(client, { tenantId: actor.tenantId, principalId: actor.principalId }, { receivingId });
+      await projectReceiptAcquisitionCostOn(client, { tenantId: actor.tenantId, principalId: actor.principalId },
+        { receivingId, ...(opts.financeCorrection === undefined ? {} : { correction: opts.financeCorrection }) });
     } catch (err) {
       if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's financial consequence could not be recorded: ${err.message}`);
       throw err;
@@ -800,7 +837,6 @@ export async function receiveReorderStock(
       "stock received against a Reorder Purchase Order",
     );
 
-    await client.query("COMMIT");
     return {
       outcome: "applied",
       receivingId,
@@ -818,10 +854,5 @@ export async function receiveReorderStock(
         : lines.every((l) => l.previouslyReceived + l.receivedNow === 0) ? "NOT_RECEIVED" : "PARTIALLY_RECEIVED",
       reorderStatus: closed.status,
     };
-  } catch (err) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw err;
-  } finally {
-    client.release();
   }
 }

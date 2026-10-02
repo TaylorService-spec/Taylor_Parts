@@ -1,7 +1,9 @@
 # UAT — Finance Activation 1: Purchasing / Receiving → Financial Consequence
 
-Recorded 2026-10-01 on branch `lane/finance-foundation`. Governed by DECISIONS #145, #190 and #191. These are
-**local** proofs, executed by `functions/test/financePurchasingConsequencePostgres.test.mjs` against real PostgreSQL.
+Recorded 2026-10-01 on branch `lane/finance-foundation`. Governed by DECISIONS #145, #190, #191 and #193 (supplier identity and
+receipt correction, added by the Activation 1 completion). These are
+**local** proofs, executed by `functions/test/financePurchasingConsequencePostgres.test.mjs` (001–008) and
+`functions/test/financePurchasingIdentityCorrectionPostgres.test.mjs` (009–018) against real PostgreSQL.
 They have **not** been executed on nonprod; that needs a separate authorization.
 
 ## Chain
@@ -35,17 +37,31 @@ They have **not** been executed on nonprod; that needs a separate authorization.
 | UAT-FIN-PUR-004 | Replay of 001 | **PASS.** Outcome `replayed` with the same receipt id. Evidence and fact counts do not change, and an explicit re-projection also reports `replayed`. |
 | UAT-FIN-PUR-005 | Unauthorized attempt to manufacture a fact | **PASS.** `recordFinancialFact` on the transport returns 404 `UNKNOWN_OPERATION`. No Operations operation names a Finance fact. Only the receipt command imports the Finance writer. Facts are append-only: UPDATE and DELETE are refused. The receiver holds no Finance write capability. |
 | UAT-FIN-PUR-006 | Wrong or missing company | **PASS (fail closed).** An unbound company key gives `OPERATING_COMPANY_UNRESOLVED` and writes nothing. A `consolidated` company gives `CONSOLIDATED_NOT_A_COMPANY`. |
-| UAT-FIN-PUR-007 | Correction | **PARTIAL (dependency recorded).** EOS has no command to cancel, void or correct a receipt; `CANCELLED` is a status that nothing writes, and a cancelled receipt is refused by projection. The Finance fact is corrected only by the existing `correctFinancialFact` (reversal plus replacement linked to the same receipt line). The original fact and the operational evidence stay untouched. |
+| UAT-FIN-PUR-007 | Correction | **PASS (updated by #193).** A Finance-only fact correction still goes through `correctFinancialFact` (reversal plus replacement on the same receipt line). The operational receipt correction now exists and originates in Operations: see 014–018. The original fact and evidence are never edited. |
 | UAT-FIN-PUR-008 | One building, two owners | **PASS.** Two governed warehouses share one site label. Taylor's receipt is Taylor's fact and Ventana's is Ventana's. Evidence frozen as Ventana's while the stock sits in a Taylor warehouse still produces a Ventana fact: the company comes from who owns the stock, not where it sits. |
+
+| UAT-FIN-PUR-009 | External supplier identity | **PASS.** The PO carries `EXTERNAL_ORGANIZATION` / `SUP-ACME`, the buyer `taylor`, and a display name authored from the supplier master. Supplier text sent alongside identity is refused, and an unknown supplier is refused. The receipt fact's counterparty is the `EXTERNAL_ORGANIZATION` behind CRM organization `acct-acme`. The evidence names `SUP-ACME`. A replay records nothing. |
+| UAT-FIN-PUR-010 | Taylor buying from Ventana | **PASS.** The PO records `INTERNAL_OPERATING_COMPANY`, seller `ventana`, buyer `taylor`, display name "Ventana". The fact is Taylor's, with an `INTERNAL_OPERATING_COMPANY` counterparty of `ventana` and correlation = the PO id. No CRM Account was created. Buyer and seller can be queried explicitly; no matching is performed. |
+| UAT-FIN-PUR-011 | Ventana buying from Taylor | **PASS.** The fact is Ventana's (19800), with an `INTERNAL_OPERATING_COMPANY` counterparty of `taylor`. |
+| UAT-FIN-PUR-012 | Self-company refusal | **PASS (fail closed).** Taylor naming Taylor as its internal supplier is refused ("cannot purchase from itself"), and so is `consolidated`. Nothing is recorded and the Reorder stays `PURCHASING_IN_PROGRESS`. A direct database insert is refused by `purchase_order_supplier_identity`. |
+| UAT-FIN-PUR-013 | Legacy text-only supplier | **PASS.** The text "Taylor Freezer of Arizona" on a Ventana-warehouse PO is kept as display text only. The PO has no identity and the fact counterparty is null. Nothing is inferred from the text or the building. |
+| UAT-FIN-PUR-014 | Full receipt void | **PASS.** The receipt is `CANCELLED`, not deleted; its lines and `RECEIVED +4` movement are unchanged. A compensating `ADJUSTED −4` movement is written for company `taylor` with source `RECEIVING_CORRECTION`, and on-hand nets to 0. The original fact is byte-identical; one linked reversal (−16400, with reason and actor) nets the receipt to 0. The evidence is unchanged. The Reorder returns to `ORDERED` and can be re-received normally. Audit records actor, reason, original receipt, correction, movements and reversed facts. A replay returns `replayed`; a different request on the same key gets 409; a second correction gets 412. |
+| UAT-FIN-PUR-015 | Receipt correction | **PASS.** A wrong-location receipt is CORRECTED into a bin of the same warehouse. The replacement receipt is `PUTAWAY_COMPLETE` in the BIN for company `taylor`; warehouse stock goes to 0 and bin stock to 3. The facts are ORIGINAL, REVERSAL and REPLACEMENT (the replacement carries `corrects_fact_id` = the original). Their net is 6000, counted once. The correction links the original receipt to its replacement. |
+| UAT-FIN-PUR-016 | Unsafe correction after downstream consumption | **PASS (fail closed).** 2 of 3 units were consumed, so the void is refused ("only 1 of the 3 received remain"). Nothing is written and stock is never negative. |
+| UAT-FIN-PUR-017 | Wrong-company correction | **PASS (fail closed).** A replacement in Ventana's warehouse is refused (the replacement must be in the Reorder's own destination warehouse), and a supplied `operatingCompanyKey` is refused. The original receipt, stock and fact are untouched. |
+| UAT-FIN-PUR-018 | Unpriced receipt corrected | **PASS.** Voiding an unpriced receipt reverses nothing and resolves its `COST_EVIDENCE_MISSING` exception with an append-only `RECEIPT_VOIDED` row linked to the correction. The exception row itself is unchanged and no zero-cost fact is created. There is no governed later-price path, and the vocabulary refuses one (dependency). |
 
 ## Held / dependencies
 
-- **Counterparty on Reorder receipts is HELD (NEXT ACTIVATION).** A Reorder PO names its supplier only by text
-  (`purchase_orders.supplier_name`; `canonical.supplierId` is always null), so these facts carry
-  `counterparty_id = null` rather than a guess. The adapter path is already proven: a governed `supplier_id` linked to
-  a CRM organization resolves to exactly one `EXTERNAL_ORGANIZATION` counterparty, with no duplicate counterparty or
-  organization. What's missing is a governed supplier id on the PO.
-- **Internal Taylor ↔ Ventana purchase is HELD.** Nothing in the PO identifies an internal-company supplier, so
-  `INTERNAL_OPERATING_COMPANY` is not inferred.
+- **Counterparty on Reorder receipts: RESOLVED by #193** for purchase orders that carry governed identity
+  (009–011). Legacy text-only purchase orders stay `counterparty_id = null` and are never guessed (013).
+- **Internal Taylor ↔ Ventana purchase: RESOLVED by #193.** An explicit `INTERNAL_OPERATING_COMPANY` supplier states
+  buyer and seller. Correlation, elimination and settlement are **not** built.
 - **Vendor payable is DEFERRED.** No accepted obligation trigger exists. Commitment, cost evidence and obligation stay
-  distinct, and no obligation is opened.
+  distinct.
+- **Receipt correction ≠ vendor return.** Vendor return / RMA is a future workflow and is not implemented.
+- **Dependencies:**
+  - a governed price amendment, or a later cost-evidence path (the unpriced-PO policy is still deferred);
+  - serialized receipt correction (refused today);
+  - the employee supplier picker on the PO screen (it needs a supplier-read grant decision) before identity becomes
+    mandatory for new POs.

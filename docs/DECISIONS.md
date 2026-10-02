@@ -6668,3 +6668,43 @@ implemented.** Finance foundation `76335e8e` (#191) ACCEPTED.
 9. **Not authorized:** Analysis Layer or Analysis UI implementation, KPI registry, receiving → Finance wiring, routes,
    grants, Finance activation, DQ-015, billing packages, outbox, Saratoga, Rental, Service Finance, Intercompany, Finance
    UI.
+
+## #193 — CONTROLLER RULING: Purchasing supplier identity is EXPLICIT; receipt correction originates in Operations (2026-10-01)
+
+**Status.** Owner business ruling recorded with Finance Activation 1 completion (local). #190–#192 remain governing and
+are not rewritten. Migration `1764430000000_purchasing-supplier-identity-and-receipt-correction.sql`.
+
+1. **PURCHASING SUPPLIER IDENTITY IS EXPLICIT.** A purchasing transaction identifies its supplier as exactly one of
+   **EXTERNAL_ORGANIZATION** (a governed `eos_ops.suppliers` record, linked to its CRM organization; Finance counterparty =
+   that organization) or **INTERNAL_OPERATING_COMPANY** (another governed operating company; Finance counterparty = that
+   operating company — never a CRM Account pretending to be external). Supplier identity is **never inferred** from
+   supplier display text, free text, warehouse, physical location, email or company naming convention.
+2. **A company cannot purchase from itself** as an INTERNAL_OPERATING_COMPANY supplier — refused by the command and by the
+   database. Taylor and Ventana remain separate financial companies.
+3. **The Reorder Purchase Order carries the identity**: `supplier_kind`, `supplier_id` | `supplier_operating_company_id`,
+   and `purchasing_operating_company_id` (the buyer, resolved once at recording). An internal purchase therefore states
+   BUYER and SELLER explicitly — sufficient for a later governed intercompany correlation (Ventana sale ↔ Taylor
+   purchase) without guessing from names or amounts. **No correlation, elimination or settlement is implemented.**
+   `supplier_name` remains as display text, server-authored from the governed record. A **legacy text-only** PO keeps no
+   identity: its text is displayed as legacy supplier text and is never converted into counterparty truth (counterparty
+   unresolved / null). Identity is not yet mandatory for new POs while the employee client still enters free text (see 7).
+4. **RECEIPT CORRECTION ≠ VENDOR RETURN.** A receipt correction is "we recorded the receipt wrong"; a vendor return / RMA
+   ("we received it correctly and later returned it") is a separate, future business workflow and is not implemented.
+5. **Receipt correction originates in Operations** (`correctReorderReceipt`): **VOID** (the receipt did not happen as
+   recorded) or **CORRECTED** (void + a replacement receipt through the one governed receipt pipeline, in one
+   transaction). The original receipt, its lines, its inventory movements, its acquisition-cost evidence and its Finance
+   facts are **never deleted or edited**: the receipt takes the existing CANCELLED status, stock leaves through
+   compensating ADJUSTED movements of the same company, every live acquisition fact is reversed (and, for CORRECTED, the
+   replacement's fact carries `corrects_fact_id`), open COST_EVIDENCE_MISSING exceptions are resolved by append-only rows,
+   and the Reorder returns to ORDERED. A correction refuses when the received stock is no longer at the receipt location
+   (consumed / transferred / installed) — the downstream event is corrected first; stock is never driven negative. A
+   correction never moves ownership. Supported only where the Reorder receiving data justifies it: wrong quantity / Part /
+   PO line / company / price cannot be recorded by a Reorder receipt (full-quantity, single-line, inherited company,
+   immutable PO price); serialized receipts are refused pending a governed never-arrived custody state.
+6. **Authority:** `inventory.receipt.correct` (PostgreSQL-native, BUSINESS_ACTION on `receivingOrder`) + WAREHOUSE
+   operational scope over the receipt location; a CORRECTED replacement additionally requires `inventory.stock.receive`.
+   **Granted to NO Role**; its holder is a Controller decision applied through Administration. No Finance capability is
+   required — the Finance consequence is server-side.
+7. **Recorded dependencies (not implemented here):** a governed price amendment / later cost-evidence path (the unpriced
+   PO policy remains deferred, #191 correction 3); serialized receipt correction; employee supplier selection via the
+   governed picker (requires a supplier-read grant decision for the purchasing employee) before identity becomes mandatory.

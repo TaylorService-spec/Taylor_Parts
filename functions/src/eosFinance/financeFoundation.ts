@@ -511,7 +511,35 @@ export interface AcquisitionCostProjection {
  *
  * Replaying the same receipt records nothing new.
  */
-export async function projectReceiptAcquisitionCostOn(c: Queryable, actor: FinanceActor, input: { receivingId: unknown }): Promise<AcquisitionCostProjection> {
+/**
+ * The counterparty behind ONE piece of acquisition-cost evidence (DECISIONS #193) -- from GOVERNED identity only, never a name:
+ *   Reorder PO, EXTERNAL_ORGANIZATION      -> the supplier's organization (EXTERNAL_ORGANIZATION), when governed onto one;
+ *   Reorder PO, INTERNAL_OPERATING_COMPANY -> the supplying operating company (INTERNAL_OPERATING_COMPANY), never the buyer;
+ *   Reorder PO, legacy text-only           -> null (unresolved; the text is never guessed into a counterparty);
+ *   canonical PO                           -> the evidence's supplier id, as before.
+ */
+async function counterpartyForEvidence(c: Queryable, actor: FinanceActor, e: Record<string, unknown>): Promise<Counterparty | null> {
+  if (e.purchase_order_source_type !== "REORDER_PURCHASE_ORDER") return counterpartyForSupplier(c, actor, (e.supplier_id as string | null) ?? null);
+  const { rows } = await c.query(
+    `SELECT supplier_kind, supplier_id, supplier_operating_company_id FROM eos_ops.purchase_orders WHERE tenant_id = $1 AND id = $2`,
+    [actor.tenantId, e.purchase_order_id]);
+  const po = rows[0];
+  if (!po || po.supplier_kind === null) return null;
+  if (po.supplier_kind === "EXTERNAL_ORGANIZATION") return counterpartyForSupplier(c, actor, po.supplier_id as string);
+  if (po.supplier_operating_company_id === e.operating_company_id) {
+    return refuse("SELF_PURCHASE_REFUSED", "PRECONDITION_FAILED", "an operating company cannot be its own supplier counterparty");
+  }
+  return ensureInternalCounterparty(c, actor, po.supplier_operating_company_id);
+}
+
+/** A replacement receipt's link to the facts its lines correct (receipt correction, DECISIONS #193). */
+export interface ReceiptFactCorrection {
+  readonly correctsFactIdByLine: ReadonlyMap<string, string>;
+  readonly reason: string;
+}
+
+export async function projectReceiptAcquisitionCostOn(c: Queryable, actor: FinanceActor,
+  input: { receivingId: unknown; correction?: ReceiptFactCorrection }): Promise<AcquisitionCostProjection> {
   const receivingId = requireId(input.receivingId, "receivingId");
   const { rows: rcv } = await c.query(
     `SELECT id, operating_company_key, source_purchase_order_id, status::text AS status FROM eos_ops.receiving_orders WHERE tenant_id = $1 AND id = $2`,
@@ -530,12 +558,14 @@ export async function projectReceiptAcquisitionCostOn(c: Queryable, actor: Finan
   for (const line of lines) {
     const e = byLine.get(String(line.line_id));
     if (e) {
-      const counterparty = await counterpartyForSupplier(c, actor, e.supplier_id ?? null);
+      const counterparty = await counterpartyForEvidence(c, actor, e);
+      const corrects = input.correction?.correctsFactIdByLine.get(String(line.line_id)) ?? null;
       facts.push(await insertFact(c, actor, {
         operatingCompanyId: e.operating_company_id, counterpartyId: counterparty?.id ?? null, factClass: "COST_EVIDENCE",
         factType: ACQUISITION_COST_FACT_TYPE, sourceDomain: "RECEIVING", sourceRecordId: receivingId, sourceLine: String(line.line_id),
         amountMinor: BigInt(e.extended_cost_minor), currency: e.currency, basis: String(e.cost_basis), effectiveAt: e.received_at,
         idempotencyKey: `acq:${e.id}`, correlationId: e.purchase_order_id,
+        ...(corrects === null ? {} : { correctsFactId: corrects, reason: (input.correction as ReceiptFactCorrection).reason }),
       }));
     } else {
       receiptCompany ??= await resolveOperatingCompanyFromKey(c, actor.tenantId, rcv[0].operating_company_key);
@@ -554,6 +584,45 @@ export async function projectReceiptAcquisitionCostOn(c: Queryable, actor: Finan
 /** The same projection in its own transaction (recovery / tooling). */
 export async function projectReceiptAcquisitionCost(pool: Pool, actor: FinanceActor, input: { receivingId: unknown }): Promise<AcquisitionCostProjection> {
   return tx(pool, (c) => projectReceiptAcquisitionCostOn(c, actor, input));
+}
+
+/**
+ * THE FINANCE CONSEQUENCE OF A RECEIPT CORRECTION (DECISIONS #193), inside the correction's transaction. Every live
+ * acquisition fact of the corrected receipt -- one that is not itself a reversal and is not yet reversed (an original, or the
+ * replacement left by an earlier Finance correction) -- gets ONE equal-and-opposite reversal keyed by the correction. The
+ * facts themselves are never edited. Returns the live fact each receipt line had, so a replacement receipt can link to it.
+ */
+export async function reverseReceiptFinancialConsequenceOn(c: Queryable, actor: FinanceActor,
+  input: { receivingId: string; correctionId: string; reason: string })
+  : Promise<{ readonly reversed: readonly { readonly lineId: string; readonly factId: string; readonly reversalFactId: string }[] }> {
+  const { rows } = await c.query(
+    `SELECT f.id, f.source_line FROM eos_finance.financial_facts f
+      WHERE f.tenant_id = $1 AND f.source_domain = 'RECEIVING' AND f.source_record_id = $2 AND f.fact_type = $3
+        AND f.reverses_fact_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM eos_finance.financial_facts r WHERE r.tenant_id = f.tenant_id AND r.reverses_fact_id = f.id)
+      ORDER BY f.source_line, f.created_at`, [actor.tenantId, input.receivingId, ACQUISITION_COST_FACT_TYPE]);
+  const reversed: { lineId: string; factId: string; reversalFactId: string }[] = [];
+  for (const f of rows) {
+    const out = await reverseInTx(c, actor, { factId: f.id, reason: input.reason, idempotencyKey: `rcvcorr:${input.correctionId}:${f.id}` });
+    reversed.push({ lineId: String(f.source_line), factId: String(f.id), reversalFactId: out.fact.id });
+  }
+  return Object.freeze({ reversed: Object.freeze(reversed) });
+}
+
+/** A corrected receipt's open COST_EVIDENCE_MISSING exceptions are RESOLVED by an append-only row (never edited). */
+export async function resolveReceiptCostExceptionsOn(c: Queryable, actor: FinanceActor,
+  input: { receivingId: string; correctionId: string; resolution: "RECEIPT_VOIDED" | "RECEIPT_CORRECTED"; reason: string }): Promise<string[]> {
+  const { rows } = await c.query(
+    `SELECT x.id FROM eos_finance.cost_evidence_exceptions x
+      WHERE x.tenant_id = $1 AND x.receiving_id = $2
+        AND NOT EXISTS (SELECT 1 FROM eos_finance.cost_evidence_exception_resolutions r WHERE r.exception_id = x.id)
+      ORDER BY x.receiving_line_id`, [actor.tenantId, input.receivingId]);
+  for (const x of rows) {
+    await c.query(
+      `INSERT INTO eos_finance.cost_evidence_exception_resolutions (exception_id, tenant_id, resolution, receiving_correction_id, reason, resolved_by)
+       VALUES ($1,$2,$3,$4,$5,$6)`, [x.id, actor.tenantId, input.resolution, input.correctionId, input.reason, actor.principalId]);
+  }
+  return rows.map((x) => String(x.id));
 }
 
 /**

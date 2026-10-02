@@ -40,6 +40,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
     "recordReorderPurchaseOrder", "voidReorderPurchaseOrder", "receiveReorderStock",
+    // Finance Activation 1 completion (2026-10-01, DECISIONS #193): the governed receipt correction (VOID / CORRECTED).
+    "correctReorderReceipt",
   ]);
   for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
     assert.equal(isOperationsOperation(name), true, name);
@@ -193,7 +195,8 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   // 16 + the seven Parts / Purchasing / Receiving reads + the three Inventory / Warehouse reads (2026-10-01), all behind
   // the same activation boundary.
   // + the two Truck Inventory reads (listTruckRoster, readTruckStock; 2026-10-01).
-  assert.equal(reorderOps.length, 28);
+  // + correctReorderReceipt (the governed receipt correction, DECISIONS #193; 2026-10-01).
+  assert.equal(reorderOps.length, 29);
   for (const operation of reorderOps) {
     const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },
       { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });

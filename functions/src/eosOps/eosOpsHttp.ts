@@ -41,6 +41,7 @@ import {
 import { ReorderAssignmentError, assignReorderRequestToEmployee, listReorderAssignmentTargets } from "./reorderAssignmentAuthority.js";
 import { listInventoryLocations, listInventoryWarehouses, listReceipts, listReceivingLocationOptions, listSuppliers, listTransferOrders, listTruckRoster, readInventoryMovements, readInventoryOnHand, readReceipt, readTruckStock } from "./partsReads.js";
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
+import { correctReorderReceipt } from "./receiptCorrectionCommand.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import { EOS_WORK_ORDER_OPERATIONS, isWorkOrderOperation, type EosWorkOrderOperation } from "./workOrderOperations";
 import { EOS_INBOUND_WORK_OPERATIONS, INBOUND_WORK_ROUTE, isInboundWorkOperation } from "./inboundWorkOperations";
@@ -128,6 +129,10 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   // neither path ever falls back to the other: a receipt lands against the authority the caller
   // named, or it is refused.
   "receiveReorderStock",
+  // RECEIPT CORRECTION (DECISIONS #193): "we recorded the receipt wrong" -- VOID or CORRECTED, never a vendor return.
+  // inventory.receipt.correct + WAREHOUSE scope; compensating movements, the Finance reversal and the replacement receipt
+  // commit with it.
+  "correctReorderReceipt",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
 
@@ -169,6 +174,7 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   recordReorderPurchaseOrder: "/operations/inventory",
   voidReorderPurchaseOrder: "/operations/inventory",
   receiveReorderStock: "/operations/inventory",
+  correctReorderReceipt: "/operations/inventory",
 });
 
 // ════════════════════ the Cycle Count command route (Controller rulings DQ-017 / DQ-018) ════════════════════
@@ -268,6 +274,7 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "readReorderPurchaseOrders",
   "createReorderRequest", "reviewReorderRequest", "assignReorderRequest", "startPurchasingOnReorder", "postPurchasingUpdate",
   "markReorderReceived", "cancelReorderRequest", "recordReorderPurchaseOrder", "voidReorderPurchaseOrder", "receiveReorderStock",
+  "correctReorderReceipt",
   // The Parts / Purchasing / Receiving reads (2026-10-01) sit behind the same activation boundary.
   "readInventoryOnHand", "readInventoryMovements", "listReceipts", "readReceipt", "listReceivingLocationOptions",
   "listSuppliers", "listReorderAssignmentTargets", "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
@@ -480,6 +487,10 @@ export async function executeOperation(
         // Employee the purchasing work happens to be assigned to.
         const { actor, pool } = await reorderActor();
         return ok(await receiveReorderStock({ pool }, actor, request.input ?? {}));
+      }
+      case "correctReorderReceipt": {
+        const { actor, pool } = await reorderActor();
+        return ok(await correctReorderReceipt({ pool }, actor, request.input ?? {}));
       }
       default:
         return { ok: false, operation: request.operation, code: "UNKNOWN_OPERATION", message: "no such Operations operation" };

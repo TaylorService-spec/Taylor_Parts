@@ -27,13 +27,14 @@ const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 test("15 / 22. static: only the receipt command composes the Finance writer; no transport names a Finance-fact operation; no Firebase", () => {
   const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
   const importers = walk(SRC).filter((f) => f.endsWith(".ts") && !f.includes(`${join("eosFinance", "")}`))
-    .filter((f) => /eosFinance\/financeFoundation/.test(readFileSync(f, "utf8"))).map((f) => f.slice(SRC.length + 1).split("\\").join("/"));
-  assert.deepEqual(importers, ["eosOps/receiveReorderStockCommand.ts"], "the Finance writer is reached only as a server-side consequence of the receipt");
+    .filter((f) => /eosFinance\/financeFoundation/.test(readFileSync(f, "utf8"))).map((f) => f.slice(SRC.length + 1).split("\\").join("/")).sort();
+  assert.deepEqual(importers, ["eosOps/receiptCorrectionCommand.ts", "eosOps/receiveReorderStockCommand.ts"],
+    "the Finance writer is reached only as a server-side consequence of the receipt and of its governed correction (#193)");
   const ops = [...http.OPERATIONS_READ_OPERATIONS, ...http.OPERATIONS_MUTATION_OPERATIONS];
   assert.equal(ops.some((o) => /financ|fact|obligation|counterpart|acquisitionCost/i.test(o)), false, "no Operations operation manufactures Finance truth");
   assert.equal(/firebase/i.test(readFileSync(join(SRC, "eosFinance/financeFoundation.ts"), "utf8").replace(/no Firebase[^\n]*/gi, "")), false);
-  // No EOS receipt correction / void / cancel command exists to project (recorded dependency, not invented here).
-  assert.equal(ops.some((o) => /cancelReceipt|voidReceipt|correctReceipt|reverseReceipt/i.test(o)), false);
+  // The ONE governed receipt correction (DECISIONS #193) originates in Operations; no accounting-only correction exists.
+  assert.deepEqual(ops.filter((o) => /receipt/i.test(o) && /correct|void|cancel|reverse/i.test(o)), ["correctReorderReceipt"]);
 });
 
 test("Finance Activation 1 over the governed purchasing / receiving path", { skip: SKIP, concurrency: 1 }, async (t) => {
@@ -230,7 +231,7 @@ test("Finance Activation 1 over the governed purchasing / receiving path", { ski
     assert.equal(await count(`SELECT count(*)::int n FROM eos_crm.accounts WHERE tenant_id=$1 AND name='Acme Supply'`, [TENANT]), 1, "no second organization");
   });
 
-  await t.test("18. UAT-FIN-PUR-007: correction -- no EOS receipt correction exists; the Finance fact is corrected only by REVERSE / CORRECT", async () => {
+  await t.test("18. UAT-FIN-PUR-007: a Finance-only correction is REVERSE / CORRECT (the operational receipt correction is #193, proven separately)", async () => {
     const f = (await factsFor(taylorReceipt)).rows[0];
     const corr = await fin.correctFinancialFact(pool, { tenantId: TENANT, principalId: "finance-ops" },
       { factId: f.id, reason: "supplier credit: unit price was 39.00", idempotencyKey: "corr-taylor-1", replacement: { amountMinor: 4 * 3900 } });

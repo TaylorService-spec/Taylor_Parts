@@ -330,6 +330,10 @@ accounting authority posts the formal invoice.
      consequence in the receipt's own transaction (cost evidence → one COST_EVIDENCE fact, or a COST_EVIDENCE_MISSING
      exception). It adds no route, capability or grant. `recoverReceiptFinancialConsequences` is the governed recovery
      path. UAT: `UAT_FIN_PURCHASING.md`.
+   - **Activation 1 completion (2026-10-01, #193):** purchase orders now carry explicit supplier identity
+     (`EXTERNAL_ORGANIZATION` or `INTERNAL_OPERATING_COMPANY`, buyer and seller stated), and the counterparty resolves only
+     from that identity. The governed receipt correction (`correctReorderReceipt`: VOID / CORRECTED) uses compensating
+     movements plus Finance reversal and replacement. Receipt correction ≠ vendor return.
 3. Purchasing subledger: vendor obligations from receipts; received-not-invoiced.
 4. Commercial fulfillment authority (resolves DQ-015) → billing eligibility.
 5. Billing packages + accounting outbox + the provider-neutral adapter contract.

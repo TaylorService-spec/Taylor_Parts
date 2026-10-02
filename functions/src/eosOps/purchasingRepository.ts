@@ -52,6 +52,7 @@
 // wrong end of the pair, and the ledger would disagree with the order about who owns a leg.
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
+import { operatingCompanyDisplayName } from "../ownership/operatingCompanyAuthority.js";
 import {
   type OperatingCompanyKey,
   type OpsLocationType,
@@ -251,10 +252,30 @@ export interface PurchaseOrderRecord {
   readonly currency: string | null;
   /** Null marks a purchase order recorded before the price authority existed. Still receivable. */
   readonly priceAuthorityVersion: number | null;
+  /** The governed supplier identity (DECISIONS #193); null for a legacy text-only purchase order. */
+  readonly supplier: GovernedPurchaseOrderSupplier | null;
+}
+
+/**
+ * EXPLICIT supplier identity (DECISIONS #193): exactly one of an external governed supplier or another operating company.
+ * Never inferred from the display name, a warehouse or a location.
+ */
+export type SupplierIdentityInput =
+  | { readonly kind: "EXTERNAL_ORGANIZATION"; readonly supplierId: string }
+  | { readonly kind: "INTERNAL_OPERATING_COMPANY"; readonly operatingCompanyId: string };
+
+export interface GovernedPurchaseOrderSupplier {
+  readonly kind: "EXTERNAL_ORGANIZATION" | "INTERNAL_OPERATING_COMPANY";
+  readonly supplierId: string | null;
+  readonly supplierOperatingCompanyId: string | null;
+  /** The BUYING company, resolved once at recording through the ACTIVE key binding. */
+  readonly purchasingOperatingCompanyId: string;
 }
 
 export interface RecordPurchaseOrderInput {
+  /** Legacy text-only supplier. Ignored when `supplierIdentity` is stated: the governed record authors the display name. */
   readonly supplierName: string;
+  readonly supplierIdentity?: SupplierIdentityInput | null;
   readonly externalPoNumber: string;
   readonly orderedQuantity: number;
   /** yyyy-mm-dd. */
@@ -263,6 +284,46 @@ export interface RecordPurchaseOrderInput {
   readonly unitPriceMinor?: number | null;
   readonly currency?: string | null;
   readonly priceAuthorityVersion?: number | null;
+}
+
+/**
+ * Resolve the PO's supplier identity INSIDE the recording transaction (DECISIONS #193). EXTERNAL -> an ACTIVE governed
+ * supplier; INTERNAL -> another ACTIVE operating company of this tenant, never the purchasing company itself. The display
+ * name is authored from the governed record, so supplier text can never override identity. No identity = a legacy
+ * text-only PO: its text is kept for display and is never converted into counterparty truth.
+ */
+async function resolveSupplierIdentity(client: PoolClient, tenantId: string, companyKey: string, input: RecordPurchaseOrderInput)
+  : Promise<{ supplier: GovernedPurchaseOrderSupplier | null; supplierName: string }> {
+  const identity = input.supplierIdentity ?? null;
+  if (identity === null) return { supplier: null, supplierName: input.supplierName };
+  const { rows: binding } = await client.query(
+    `SELECT k.operating_company_id FROM eos_policy.tenant_operating_company_keys k
+       JOIN eos_policy.tenant_operating_companies c ON c.tenant_id = k.tenant_id AND c.operating_company_id = k.operating_company_id
+      WHERE k.tenant_id = $1 AND k.operating_company_key = $2 AND k.status = 'ACTIVE' AND c.status = 'ACTIVE'`,
+    [tenantId, companyKey]);
+  if (binding.length !== 1) {
+    throw new PurchasingRepositoryError("PURCHASING_COMPANY_UNRESOLVED", `the request's company key "${companyKey}" is not bound to one ACTIVE operating company`);
+  }
+  const purchasingOperatingCompanyId = String(binding[0].operating_company_id);
+  if (identity.kind === "EXTERNAL_ORGANIZATION") {
+    const { rows } = await client.query(
+      `SELECT name, status::text AS status FROM ${SCHEMA}.suppliers WHERE tenant_id = $1 AND supplier_id = $2`, [tenantId, identity.supplierId]);
+    if (rows.length === 0) throw new PurchasingRepositoryError("SUPPLIER_NOT_FOUND", "no governed supplier with that id");
+    if (rows[0].status !== "ACTIVE") throw new PurchasingRepositoryError("SUPPLIER_INACTIVE", "the supplier is not ACTIVE");
+    return { supplierName: String(rows[0].name),
+      supplier: { kind: identity.kind, supplierId: identity.supplierId, supplierOperatingCompanyId: null, purchasingOperatingCompanyId } };
+  }
+  const { rows } = await client.query(
+    `SELECT status FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND operating_company_id = $2`,
+    [tenantId, identity.operatingCompanyId]);
+  if (rows.length === 0 || rows[0].status !== "ACTIVE") {
+    throw new PurchasingRepositoryError("SUPPLIER_COMPANY_UNRESOLVED", "the supplying operating company is not an ACTIVE operating company of this tenant");
+  }
+  if (identity.operatingCompanyId === purchasingOperatingCompanyId) {
+    throw new PurchasingRepositoryError("SELF_PURCHASE_REFUSED", "an operating company cannot purchase from itself");
+  }
+  return { supplierName: operatingCompanyDisplayName(identity.operatingCompanyId) ?? identity.operatingCompanyId,
+    supplier: { kind: identity.kind, supplierId: null, supplierOperatingCompanyId: identity.operatingCompanyId, purchasingOperatingCompanyId } };
 }
 
 /**
@@ -327,17 +388,21 @@ export async function recordPurchaseOrder(
 
     const priced = input.unitPriceMinor ?? null;
     const currency = input.currency ?? null;
+    const { supplier, supplierName } = await resolveSupplierIdentity(client, tenantId, companyKey, input);
     await client.query(
       `INSERT INTO ${SCHEMA}.purchase_orders
          (id, tenant_id, operating_company_key, part_id, supplier_name, external_po_number,
           ordered_quantity, ordered_date, expected_arrival_date,
-          unit_price_minor, currency, price_authority_version, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9::date, $10, $11, $12, $13)`,
+          unit_price_minor, currency, price_authority_version, created_by,
+          supplier_kind, supplier_id, supplier_operating_company_id, purchasing_operating_company_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9::date, $10, $11, $12, $13, $14, $15, $16, $17)`,
       [
         reorderRequestId, tenantId, companyKey, request.part_id,
-        input.supplierName, input.externalPoNumber, input.orderedQuantity,
+        supplierName, input.externalPoNumber, input.orderedQuantity,
         input.orderedDate, input.expectedArrivalDate ?? null,
         priced, currency, input.priceAuthorityVersion ?? null, actorPrincipalId,
+        supplier?.kind ?? null, supplier?.supplierId ?? null, supplier?.supplierOperatingCompanyId ?? null,
+        supplier?.purchasingOperatingCompanyId ?? null,
       ],
     );
     await client.query(
@@ -364,6 +429,9 @@ export async function recordPurchaseOrder(
           warehouseId: request.warehouse_id ?? null, partId: request.part_id,
           actorEmployeeId: (assignee.rows[0]?.assigned_employee_id as string | undefined) ?? null,
           externalPoNumber: input.externalPoNumber, orderedQuantity: input.orderedQuantity, orderedDate: input.orderedDate,
+          supplierKind: supplier?.kind ?? "LEGACY_TEXT", supplierId: supplier?.supplierId ?? null,
+          supplierOperatingCompanyId: supplier?.supplierOperatingCompanyId ?? null,
+          purchasingOperatingCompanyId: supplier?.purchasingOperatingCompanyId ?? null,
         }),
         "purchase order recorded"],
     );
@@ -374,7 +442,7 @@ export async function recordPurchaseOrder(
       tenantId,
       operatingCompanyKey: companyKey,
       partId: request.part_id,
-      supplierName: input.supplierName,
+      supplierName,
       externalPoNumber: input.externalPoNumber,
       orderedQuantity: input.orderedQuantity,
       orderedDate: input.orderedDate,
@@ -382,6 +450,7 @@ export async function recordPurchaseOrder(
       unitPriceMinor: priced,
       currency,
       priceAuthorityVersion: input.priceAuthorityVersion ?? null,
+      supplier,
     };
   } catch (err) {
     await rollbackQuietly(client);
@@ -400,7 +469,8 @@ export async function readPurchaseOrder(
     `SELECT id, tenant_id, operating_company_key, part_id, supplier_name, external_po_number,
             ordered_quantity, to_char(ordered_date, 'YYYY-MM-DD') AS ordered_date,
             to_char(expected_arrival_date, 'YYYY-MM-DD') AS expected_arrival_date,
-            unit_price_minor, currency, price_authority_version
+            unit_price_minor, currency, price_authority_version,
+            supplier_kind, supplier_id, supplier_operating_company_id, purchasing_operating_company_id
        FROM ${SCHEMA}.purchase_orders WHERE tenant_id = $1 AND id = $2`,
     [tenantId, purchaseOrderId],
   );
@@ -421,6 +491,12 @@ export async function readPurchaseOrder(
     unitPriceMinor: r.unit_price_minor === null ? null : Number(r.unit_price_minor),
     currency: (r.currency as string | null) ?? null,
     priceAuthorityVersion: (r.price_authority_version as number | null) ?? null,
+    supplier: r.supplier_kind === null || r.supplier_kind === undefined ? null : {
+      kind: r.supplier_kind as GovernedPurchaseOrderSupplier["kind"],
+      supplierId: (r.supplier_id as string | null) ?? null,
+      supplierOperatingCompanyId: (r.supplier_operating_company_id as string | null) ?? null,
+      purchasingOperatingCompanyId: r.purchasing_operating_company_id as string,
+    },
   };
 }
 
