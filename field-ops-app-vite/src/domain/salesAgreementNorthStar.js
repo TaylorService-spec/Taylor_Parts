@@ -1,3 +1,4 @@
+import { taxEvidenceDisplay } from "./taxEvidenceView.js";
 import {
   SALES_AGREEMENT_VIEW_STATE,
   salesAgreementLabel,
@@ -213,6 +214,9 @@ export function salesAgreementMoneyLadder(view) {
       shipping: complete ? charge(view.shippingMinor) : null,
       installCharge: complete ? charge(view.installChargeMinor) : null,
       tax: complete ? charge(view.taxMinor) : null,
+      // The tax row is ALWAYS drawn, from its evidence (DECISIONS #197): a determined amount (a determined zero
+      // included, which `charge` would omit), or words -- never an absent row that reads as "no tax".
+      taxEvidence: complete ? taxEvidenceDisplay(view) : null,
       total: complete ? { minor: totalMinor, formatted: fmt(totalMinor) } : null,
     },
     credits: {

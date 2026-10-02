@@ -77,7 +77,13 @@ export function salesAgreementView({ result, loading, errorStatus }) {
     subtotalMinor: a.subtotalMinor ?? null,
     shippingMinor: a.shippingMinor ?? null,
     installChargeMinor: a.installChargeMinor ?? null,
-    taxMinor: a.taxMinor ?? null,
+    // UNKNOWN TAX IS NOT ZERO TAX (DECISIONS #197). The stored charge column holds 0 for an Agreement whose tax was never
+    // determined, so the view carries a tax amount ONLY when the server says it was DETERMINED (0 included: a determined
+    // zero). Anything else -- not yet determined, recorded before evidence existed, or a backend that sends no evidence --
+    // is null here, and taxEvidenceView.js words it. The total is unaffected: it is the server's arithmetic.
+    taxEvidenceStatus: a.taxEvidenceStatus ?? null,
+    taxEvidenceAmountMinor: a.taxEvidenceStatus === "DETERMINED" ? (a.taxEvidenceAmountMinor ?? null) : null,
+    taxMinor: a.taxEvidenceStatus === "DETERMINED" ? (a.taxEvidenceAmountMinor ?? a.taxMinor ?? null) : null,
     totalMinor: a.totalMinor ?? null,
     downPaymentMinor: a.downPaymentMinor ?? null,
     tradeInMinor: a.tradeInMinor ?? null,

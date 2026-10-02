@@ -63,13 +63,17 @@ function parseTaxEvidence(raw: unknown): TaxEvidence | null {
   }
   return fail("TAX_EVIDENCE_INVALID", "INVALID_INPUT", "taxEvidence is { status: NOT_DETERMINED } or { status: DETERMINED, amountMinor, currency }");
 }
-/** Merge evidence into the builder's charge input: a DETERMINED amount IS the tax; a conflicting bare taxMinor is refused. */
+/**
+ * Merge evidence into the builder's charge input: a DETERMINED amount IS the tax; an explicit NOT_DETERMINED carries no
+ * tax into the Agreement's arithmetic (a previously determined amount leaves the total). A conflicting bare taxMinor is refused.
+ */
 function withTaxEvidence(fields: Record<string, unknown>, evidence: TaxEvidence | null): Record<string, unknown> {
-  if (evidence?.status !== "DETERMINED") return fields;
-  if (fields.taxMinor !== undefined && fields.taxMinor !== evidence.amountMinor) {
-    fail("TAX_EVIDENCE_CONFLICT", "INVALID_INPUT", "taxMinor disagrees with the DETERMINED tax evidence");
+  if (evidence === null) return fields;
+  const amount = evidence.status === "DETERMINED" ? evidence.amountMinor : 0;
+  if (fields.taxMinor !== undefined && fields.taxMinor !== amount) {
+    fail("TAX_EVIDENCE_CONFLICT", "INVALID_INPUT", `taxMinor disagrees with the ${evidence.status} tax evidence`);
   }
-  return { ...fields, taxMinor: evidence.amountMinor };
+  return { ...fields, taxMinor: amount };
 }
 
 async function requireAgreement(db: Queryable, tenantId: string, id: unknown): Promise<AgreementRow> {

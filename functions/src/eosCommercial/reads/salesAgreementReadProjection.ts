@@ -42,6 +42,15 @@ export interface SalesAgreementTotalsProjection {
   readonly balanceMinor: number | null;
 }
 
+/**
+ * TAX EVIDENCE (DECISIONS #197): unknown tax is not zero tax. `amountMinor` is present only for a DETERMINED tax (0 = a
+ * determined zero); NOT_DETERMINED and LEGACY_UNVERIFIED carry none, whatever the stored charge column says.
+ */
+export interface SalesAgreementTaxEvidenceProjection {
+  readonly status: "NOT_DETERMINED" | "DETERMINED" | "LEGACY_UNVERIFIED";
+  readonly amountMinor: number | null;
+}
+
 export interface SalesAgreementSummaryProjection {
   readonly id: string;
   readonly salesAgreementNumber: string;
@@ -61,6 +70,7 @@ export interface SalesAgreementSummaryProjection {
   /** The governed EOS principal who accepted; null unless ACCEPTED. */
   readonly acceptedByPrincipalId: string | null;
   readonly totals: SalesAgreementTotalsProjection;
+  readonly taxEvidence: SalesAgreementTaxEvidenceProjection;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly lines: readonly SalesAgreementLineProjection[];
@@ -84,7 +94,7 @@ export const SALES_AGREEMENT_IS_COMPLETE = "a.state IS NOT NULL AND a.currency I
 const SUMMARY_COLUMNS = `a.id, a.sales_agreement_number, a.opportunity_id, a.account_id, acc.name AS account_name, a.operating_company_key, (SELECT k.operating_company_id FROM eos_policy.tenant_operating_company_keys k
   WHERE k.tenant_id = a.tenant_id AND k.operating_company_key = a.operating_company_key AND k.status = 'ACTIVE') AS operating_company_id,
   a.state::text AS state, a.currency, a.accepted_at, a.accepted_by, a.created_at, a.updated_at,
-  a.shipping_minor, a.install_charge_minor, a.tax_minor, a.down_payment_minor, a.trade_in_minor,
+  a.shipping_minor, a.install_charge_minor, a.tax_minor, a.down_payment_minor, a.trade_in_minor, a.tax_evidence_status,
   a.owner_employee_id, EXISTS (SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = a.tenant_id AND e.id = a.owner_employee_id) AS owner_resolved,
   a.accountable_employee_id, EXISTS (SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = a.tenant_id AND e.id = a.accountable_employee_id) AS accountable_resolved,
   a.credited_salesperson_employee_id, EXISTS (SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = a.tenant_id AND e.id = a.credited_salesperson_employee_id) AS credited_resolved`;
@@ -126,7 +136,9 @@ function summaryOf(r: Row, lines: readonly SalesAgreementLineProjection[]): Sale
     creditedSalesperson: personOf(r.credited_salesperson_employee_id, r.credited_resolved),
     operatingCompanyId: r.operating_company_id, operatingCompanyKey: r.operating_company_key, state: r.state, currency: r.currency,
     acceptedAt: isoOf(r.accepted_at), acceptedByPrincipalId: r.accepted_by,
-    totals: totals as SalesAgreementTotalsProjection, createdAt: isoOf(r.created_at)!, updatedAt: isoOf(r.updated_at)!, lines,
+    totals: totals as SalesAgreementTotalsProjection,
+    taxEvidence: { status: r.tax_evidence_status, amountMinor: r.tax_evidence_status === "DETERMINED" ? minorOf(r.tax_minor) : null },
+    createdAt: isoOf(r.created_at)!, updatedAt: isoOf(r.updated_at)!, lines,
   };
 }
 

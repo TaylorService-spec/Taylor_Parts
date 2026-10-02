@@ -127,7 +127,7 @@ export const salesAgreementEntity = makeEntityDefinition({
       entityId: "salesAgreement",
       label: "Tax",
       type: "CURRENCY_MINOR",
-      description: "INJECTED, never computed. No tax determination exists on this surface and none is invented — the number supplied is the number carried.",
+      description: "Never computed. Carried as an amount ONLY when its tax evidence is DETERMINED (0 = a determined zero); otherwise the tax is \"not yet determined\" or \"needs confirmation\" and no amount is shown (DECISIONS #197).",
     }),
     makeFieldDefinition({
       id: "downPaymentMinor",

@@ -536,8 +536,13 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
                   <div><dt>Subtotal</dt><dd className="ns-num">{ladder.saleComposition.subtotal.formatted}</dd></div>
                   {ladder.saleComposition.shipping ? <div><dt>Shipping</dt><dd className="ns-num">{ladder.saleComposition.shipping.formatted}</dd></div> : null}
                   {ladder.saleComposition.installCharge ? <div><dt>Installation charge</dt><dd className="ns-num">{ladder.saleComposition.installCharge.formatted}</dd></div> : null}
-                  {ladder.saleComposition.tax ? <div><dt>Tax</dt><dd className="ns-num">{ladder.saleComposition.tax.formatted}</dd></div> : null}
+                  {/* Tax, from its evidence: an amount only when determined (zero included), otherwise words. */}
+                  <div data-tax-evidence={ladder.saleComposition.taxEvidence.kind}>
+                    <dt>{ladder.saleComposition.taxEvidence.isDetermined ? "Tax" : ladder.saleComposition.taxEvidence.label}</dt>
+                    <dd className="ns-num">{ladder.saleComposition.taxEvidence.amountText ?? <span className="ns-state--na">Not determined</span>}</dd>
+                  </div>
                   <div className="ns-ladder__total"><dt>Total committed</dt><dd className="ns-num">{ladder.saleComposition.total.formatted}</dd></div>
+                  {ladder.saleComposition.taxEvidence.note ? <p className="ns-section__note">{ladder.saleComposition.taxEvidence.note}</p> : null}
                 </dl>
                 {ladder.credits.balance ? (
                   <dl className="ns-ladder__block ns-ladder__block--credits" aria-label="Credits recorded at commitment">

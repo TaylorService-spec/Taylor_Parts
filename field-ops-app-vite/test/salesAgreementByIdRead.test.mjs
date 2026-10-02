@@ -66,7 +66,7 @@ function projection(overrides = {}) {
         { lineId: "ln-1", kind: "EQUIPMENT_MODEL", ref: "TAY-C712", quantity: 2, unitPriceMinor: 980000, extendedMinor: 1960000, condition: "NEW", warranty: "12 mo parts & labour", estimatedArrivalMillis: 1_756_000_000_000 },
         { lineId: "ln-2", kind: "PART", ref: "X49463-3", quantity: 12, unitPriceMinor: 17500, extendedMinor: 210000, condition: "NEW", warranty: null, estimatedArrivalMillis: null },
       ],
-      subtotalMinor: 2170000, shippingMinor: 60000, installChargeMinor: 25000, taxMinor: 164605,
+      subtotalMinor: 2170000, shippingMinor: 60000, installChargeMinor: 25000, taxMinor: 164605, taxEvidenceStatus: "DETERMINED", taxEvidenceAmountMinor: 164605,
       totalMinor: 2419605, downPaymentMinor: 500000, tradeInMinor: 150000, balanceMinor: 1769605,
       sourceOpportunityId: "opp_1842",
       salesOrderId: null,
@@ -220,7 +220,7 @@ test("the derivation contract receives the actual projection, field for field", 
     "customerPO", "fulfillmentIntent", "shippingInstructions", "shipVia", "specialInstructions",
     "subtotalMinor", "shippingMinor", "installChargeMinor", "taxMinor", "totalMinor",
     "downPaymentMinor", "tradeInMinor", "balanceMinor", "sourceOpportunityId", "salesOrderId",
-    "acceptedAtMillis", "acceptedByUid",
+    "acceptedAtMillis", "acceptedByUid", "taxEvidenceStatus",
   ]) {
     assert.deepEqual(view[key], agreement[key], `${key} did not survive the seam`);
   }

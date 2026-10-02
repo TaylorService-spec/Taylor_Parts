@@ -200,7 +200,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // Operational Billing Package (2026-10-02, #196): eos_finance.billing_packages + lines; no capability, no grant.
     "1764450000000_operational-billing-packages.sql",
     // Finance Activation 2 (2026-10-02, #197): tax evidence, one receivable per package, accounting handoffs; no capability, no grant.
-    "1764460000000_receivable-tax-evidence-accounting-handoff.sql"],
+    "1764460000000_receivable-tax-evidence-accounting-handoff.sql",
+    // Accounting Delivery Control Plane (2026-10-02, #198): delivery states, attempts, exceptions; no capability, no grant.
+    "1764470000000_accounting-delivery-control-plane.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -425,6 +427,8 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // Parts / Purchasing / Receiving completion first (-2 capabilities, no grant), then the Service Experience completion,
     // newest first: self-scheduling (-2), recovery (-1), provider runtime (schema).
     assert.deepEqual(await counts(), { caps: 114, grants: 415, mine: 26 });
+    runMigrate(url, "down", 1); // Accounting Delivery Control Plane (schema only)
+    assert.deepEqual(await counts(), { caps: 114, grants: 415, mine: 26 });
     runMigrate(url, "down", 1); // Finance Activation 2 (schema only)
     assert.deepEqual(await counts(), { caps: 114, grants: 415, mine: 26 });
     runMigrate(url, "down", 1); // the Operational Billing Package (schema only)
@@ -528,7 +532,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel Finance Activation 2 (1764460000000) first
+    runMigrate(url, "down", 1); // peel the Accounting Delivery Control Plane (1764470000000) first
+    runMigrate(url, "down", 1); // then Finance Activation 2 (1764460000000)
     runMigrate(url, "down", 1); // then the Operational Billing Package (1764450000000)
     runMigrate(url, "down", 1); // then the Commercial Finance activation (1764440000000)
     runMigrate(url, "down", 1); // then the Finance Activation 1 completion (1764430000000)

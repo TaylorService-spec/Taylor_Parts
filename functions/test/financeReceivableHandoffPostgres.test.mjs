@@ -197,6 +197,26 @@ test("Finance Activation 2: tax evidence -> READY package -> EOS receivable -> a
     assert.deepEqual([(await evidenceOf("sa-legacy")).tax_evidence_status, (await evidenceOf("sa-legacy")).tax_minor], ["LEGACY_UNVERIFIED", "0"]);
   });
 
+  await t.test("UI-9 (DECISIONS #198). the read projection carries tax EVIDENCE; an explicit NOT_DETERMINED takes a prior amount out of the total", async () => {
+    const reads = require("../lib/eosCommercial/reads/salesAgreementReadProjection.js");
+    const reader = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesAgreement.read"]) };
+    const id = await agreement({ taxEvidence: { status: "DETERMINED", amountMinor: 1850, currency: "USD" } });
+    let d = await reads.getSalesAgreementDetail({ pool }, reader, { salesAgreementId: id });
+    assert.deepEqual([d.taxEvidence, d.totals.taxMinor, d.totals.totalMinor], [{ status: "DETERMINED", amountMinor: 1850 }, 1850, 31850]);
+    await sa.updateSalesAgreementDraft(commercialDeps, seller2, { idempotencyKey: `nd-${Date.now()}`, salesAgreementId: id, taxEvidence: { status: "NOT_DETERMINED" } });
+    d = await reads.getSalesAgreementDetail({ pool }, reader, { salesAgreementId: id });
+    assert.deepEqual([d.taxEvidence, d.totals.taxMinor, d.totals.totalMinor], [{ status: "NOT_DETERMINED", amountMinor: null }, 0, 30000],
+      "a tax no longer determined is not carried in the Agreement's arithmetic");
+    await assert.rejects(sa.updateSalesAgreementDraft(commercialDeps, seller2, { idempotencyKey: `nd2-${Date.now()}`, salesAgreementId: id, taxMinor: 500,
+      taxEvidence: { status: "NOT_DETERMINED" } }), code("TAX_EVIDENCE_CONFLICT"));
+    // A bare amount change is the server-side reset the UI reflects: NOT_DETERMINED, no evidenced amount.
+    await sa.updateSalesAgreementDraft(commercialDeps, seller2, { idempotencyKey: `nd3-${Date.now()}`, salesAgreementId: id, taxMinor: 900 });
+    d = await reads.getSalesAgreementDetail({ pool }, reader, { salesAgreementId: id });
+    assert.deepEqual(d.taxEvidence, { status: "NOT_DETERMINED", amountMinor: null });
+    const legacy = await reads.getSalesAgreementDetail({ pool }, reader, { salesAgreementId: "sa-legacy" }).catch((e) => e);
+    if (!(legacy instanceof Error)) assert.deepEqual(legacy.taxEvidence, { status: "LEGACY_UNVERIFIED", amountMinor: null });
+  });
+
   await t.test("2 / 7. UAT-FIN-AR-004 / 010: a package never turns NOT_DETERMINED or legacy-ambiguous tax into zero", async () => {
     const nd = await salesOrder({ lease: false, lines: [SVC(1)] });
     const a = (await serviceJob(nd)).done;

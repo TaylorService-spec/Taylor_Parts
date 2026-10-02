@@ -265,8 +265,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 85 -> 86: Commercial Finance activation (2026-10-02, DECISIONS #195): 1764440000000 -- sales_order_fulfillments (append-only) + derived fulfillment / billing-eligibility views; no capability, no grant.
 // 86 -> 87: Operational Billing Package (2026-10-02, DECISIONS #196): 1764450000000 -- eos_finance.billing_packages + billing_package_lines (immutable content); no capability, no grant.
 // 87 -> 88: Finance Activation 2 (2026-10-02, DECISIONS #197): 1764460000000 -- Agreement tax evidence, one receivable per billing package, accounting_handoffs; no capability, no grant.
-const PINNED_LAST_MIGRATION = "1764460000000_receivable-tax-evidence-accounting-handoff";
-const PINNED_MIGRATION_COUNT = 88;
+// 88 -> 89: Accounting Delivery Control Plane (2026-10-02, DECISIONS #198): 1764470000000 -- handoff delivery states, append-only attempts, delivery exceptions; no capability, no grant.
+const PINNED_LAST_MIGRATION = "1764470000000_accounting-delivery-control-plane";
+const PINNED_MIGRATION_COUNT = 89;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

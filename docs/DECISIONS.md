@@ -6834,3 +6834,47 @@ remain governing. Resolves the obligation HOLD of #196 §7.
    receivable. A package READY under the pre-evidence rules (no tax-evidence state; its Agreement LEGACY_UNVERIFIED — e.g.
    nonprod `bpk_a0c72734`) stays immutable history: recovery skips it, establishing refuses (TAX_NOT_DETERMINED), nothing is
    rewritten and no DETERMINED evidence is fabricated.
+
+## #198 — Tax Evidence UX + Accounting Delivery Control Plane (2026-10-02)
+
+**Status.** Implemented locally (migration `1764470000000_accounting-delivery-control-plane.sql`); NOT deployed — held for
+Controller review. #197 remains governing. No real provider, credential, invoice, GL, settlement or tax calculation.
+
+1. **Tax evidence on the Agreement workflow.** The smallest control on the existing Agreement terms form: "Tax not yet
+   determined" or "Tax determined" with an amount. Zero is typed as 0 and reads as a determined zero; an empty amount is
+   never zero. The control sends only the governed `taxEvidence` input (never a bare `taxMinor`), and nothing when the
+   choice is unchanged. The read projection carries `taxEvidence { status, amountMinor }`; the view carries a tax amount
+   only when DETERMINED, so a server reset to NOT_DETERMINED reads "Tax not yet determined". A LEGACY_UNVERIFIED Agreement
+   (or a backend sending no evidence) reads the neutral "Tax needs confirmation" — never "No tax" or "Tax exempt" — and
+   starts with no choice selected, so saving other terms leaves it as recorded. No status code or record id is displayed.
+   An explicit NOT_DETERMINED takes a previously determined amount out of the Agreement's arithmetic.
+2. **Handoff states (exact transitions, enforced by the database; anything else fails closed):**
+   PENDING_DESTINATION → READY_FOR_DELIVERY | SUPERSEDED; READY_FOR_DELIVERY → DELIVERY_IN_PROGRESS | SUPERSEDED;
+   DELIVERY_IN_PROGRESS → ACKNOWLEDGED | REJECTED | FAILED_RETRYABLE | FAILED_FINAL; FAILED_RETRYABLE →
+   DELIVERY_IN_PROGRESS (governed retry only) | SUPERSEDED; REJECTED, FAILED_FINAL → SUPERSEDED; ACKNOWLEDGED terminal.
+   A package whose handoff is in delivery or ACKNOWLEDGED cannot be superseded (ACCOUNTING_HANDOFF_DELIVERED) — reversing a
+   provider document is a provider act.
+3. **Durable attempts** (`accounting_handoff_attempts`, append-only; the outcome is recorded once): attempt number,
+   company, destination, adapter, the exact payload + contract version + fingerprint, the provider de-duplication key
+   (stable across a handoff's attempts for the same payload), the governed request key, INITIAL vs GOVERNED_RETRY (with
+   the retried attempt and a stated reason), outcome, provider reference or failure code. One attempt in flight per handoff.
+4. **Payload contract** `eos.accounting.operational-billing-package` v1: provider-neutral, derived from the READY package
+   (DETERMINED tax), its lines and its receivable (same company, counterparty, currency and exact total; not VOID);
+   integer minor units as strings; canonical JSON + sha256; states it is NOT an accounting invoice.
+5. **Adapter interface:** prepare / deliver / interpretAcknowledgement / interpretRejection. The adapter receives frozen
+   copies and no database handle; its answer is narrowed to a validated provider document reference or a failure
+   disposition + code. A provider's amounts are ignored; an acknowledgement echoing a different payload fingerprint, or
+   an uninterpretable answer, fails CLOSED (FAILED_FINAL). The production registry is EMPTY (ADAPTER_NOT_AVAILABLE); the
+   only adapter is the deterministic test adapter under `functions/test/support`.
+6. **Retry / idempotency:** a replayed request returns its attempt; a new first-delivery request on a handoff not
+   READY_FOR_DELIVERY refuses; a retry is permitted only from FAILED_RETRYABLE, with a reason. Nothing schedules: no timer,
+   queue or cron.
+7. **Acknowledgement** records the provider document reference and time on the handoff and the attempt — never an amount.
+   **Rejection** preserves the receivable and opens an actionable exception (`accounting_handoff_exceptions`:
+   PROVIDER_REJECTED → CORRECT_AND_SUPERSEDE_PACKAGE; DELIVERY_FAILED_FINAL → REVIEW_DESTINATION_CONFIGURATION), resolved
+   once with a stated resolution, or by the correcting package's supersession.
+8. **Company-specific destinations:** a handoff is delivered only to its own company's ACTIVE destination
+   (DESTINATION_COMPANY_MISMATCH / ACCOUNTING_DESTINATION_INACTIVE refuse before any attempt).
+9. **Authority:** no capability, no grant, no transport operation — delivery, retry and exception resolution are
+   server-side functions only; no Sales or Technician authority. An employee retry capability is deferred until a
+   governed Finance surface needs it. Delivery records no financial fact (Analysis provenance unchanged).
