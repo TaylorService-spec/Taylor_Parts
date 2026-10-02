@@ -337,7 +337,7 @@ accounting authority posts the formal invoice.
      movements plus Finance reversal and replacement. Receipt correction ≠ vendor return.
 3. Purchasing subledger: vendor obligations from receipts; received-not-invoiced.
 4. Commercial fulfillment authority (resolves DQ-015) → billing eligibility.
-5. Billing packages + accounting outbox + the provider-neutral adapter contract.
+5. Billing packages + accounting outbox + the provider-neutral adapter contract. *Billing packages implemented (#196, nonprod-proven); READY → EOS operational receivable, tax evidence and the provider-neutral accounting handoff record implemented locally (#197); delivery adapter pending.*
 6. Saratoga Financing Relationship + funding package (status level until mechanics are confirmed).
 7. Service cost and billing responsibility (after the service billing policy).
 8. Intercompany pairing.

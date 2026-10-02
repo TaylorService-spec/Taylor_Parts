@@ -22,18 +22,24 @@
 // yields a NEW version and the previous one becomes SUPERSEDED -- its content never changes.
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
-import { ensureExternalCounterparty, FinanceFoundationError, resolveAccountingDestination, resolveOperatingCompanyFromKey, type FinanceActor } from "./financeFoundation";
+import { ensureExternalCounterparty, FinanceFoundationError, openObligationOn, resolveAccountingDestination, resolveOperatingCompanyFromKey, voidObligationOn, type FinanceActor } from "./financeFoundation";
 
 type Queryable = Pick<PoolClient, "query">;
 
+// DECISIONS #197 vocabulary: why a package is not READY, never collapsed into a generic "not ready".
 export const BILLING_PACKAGE_EXCEPTIONS = Object.freeze([
-  "PRICE_EVIDENCE_MISSING", "TAX_EVIDENCE_MISSING", "FINANCED_DISPOSITION_UNSUPPORTED",
+  "PRICE_EVIDENCE_MISSING", "TAX_NOT_DETERMINED", "UNSUPPORTED_FINANCIAL_OBLIGOR",
 ] as const);
+/** Receivable / handoff consequence of a READY direct-sale package (DECISIONS #197). */
+export interface ReceivableConsequence {
+  readonly receivable: { readonly outcome: "recorded" | "replayed"; readonly obligationId: string } | { readonly outcome: "NOT_REQUIRED_ZERO_TOTAL" };
+  readonly handoff: { readonly id: string; readonly status: string; readonly readinessExceptions: readonly string[] } | null;
+}
 
 export type BillingPackageOutcome =
   | { readonly outcome: "NOT_ELIGIBLE"; readonly salesOrderId: string; readonly eligibility: string }
   | { readonly outcome: "recorded" | "replayed" | "superseded"; readonly packageId: string; readonly version: number; readonly status: "READY" | "HELD";
-      readonly readinessExceptions: readonly string[]; readonly totalMinor: string | null };
+      readonly readinessExceptions: readonly string[]; readonly totalMinor: string | null; readonly consequence: ReceivableConsequence | null };
 
 const big = (v: unknown): bigint | null => (v === null || v === undefined ? null : BigInt(v as string | number));
 const str = (v: bigint | null): string | null => (v === null ? null : v.toString());
@@ -42,7 +48,7 @@ const str = (v: bigint | null): string | null => (v === null ? null : v.toString
 export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor, input: { readonly salesOrderId: string }): Promise<BillingPackageOutcome> {
   const { rows: so } = await c.query(
     `SELECT so.id, so.state::text AS state, so.operating_company_key, so.account_id, so.currency, so.sales_agreement_id,
-            a.is_lease, a.shipping_minor, a.install_charge_minor, a.tax_minor, a.down_payment_minor, a.trade_in_minor
+            a.is_lease, a.shipping_minor, a.install_charge_minor, a.tax_minor, a.tax_evidence_status, a.down_payment_minor, a.trade_in_minor
        FROM eos_commercial.sales_orders so
        LEFT JOIN eos_commercial.sales_agreements a ON a.tenant_id = so.tenant_id AND a.id = so.sales_agreement_id
       WHERE so.tenant_id = $1 AND so.id = $2 FOR SHARE OF so`, [actor.tenantId, input.salesOrderId]);
@@ -63,7 +69,8 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
   let counterpartyId: string | null = null;
   let obligorBasis: "DIRECT_SALE_CUSTOMER" | "UNRESOLVED" = "UNRESOLVED";
   if (disposition === "LEASE") {
-    exceptions.push("FINANCED_DISPOSITION_UNSUPPORTED");
+    // A lease / financed disposition: the customer is NOT assumed to be the obligor (Saratoga funds a financed sale).
+    exceptions.push("UNSUPPORTED_FINANCIAL_OBLIGOR");
   } else {
     // A SUPPORTED DIRECT SALE: the commercial customer's organization is the obligor, by this explicit rule only.
     counterpartyId = (await ensureExternalCounterparty(c, actor, o.account_id)).id;
@@ -97,13 +104,16 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
       workOrderIds: (f[0].wos ?? []).filter((x: unknown) => x !== null).sort() as string[], equipmentIds: f[0].eqs as string[], serials: f[0].sns as string[] });
   }
 
-  // Charges: the Agreement's governed values (none for a direct order). Tax absent = TAX_EVIDENCE_MISSING, never zero.
+  // Charges: the Agreement's governed values (none for a direct order). TAX IS USED ONLY WHEN ITS EVIDENCE IS DETERMINED
+  // (DECISIONS #197): NOT_DETERMINED, a pre-evidence LEGACY_UNVERIFIED Agreement (whose stored 0 may be an omitted tax) and a
+  // direct order with no tax source all HOLD the package as TAX_NOT_DETERMINED -- never a zero.
   const shipping = o.sales_agreement_id === null ? null : big(o.shipping_minor);
   const install = o.sales_agreement_id === null ? null : big(o.install_charge_minor);
-  const tax = o.sales_agreement_id === null ? null : big(o.tax_minor);
+  const taxEvidence: string = o.sales_agreement_id === null ? "NO_TAX_SOURCE" : String(o.tax_evidence_status);
+  const tax = taxEvidence === "DETERMINED" ? big(o.tax_minor) : null;
   const down = o.sales_agreement_id === null ? null : big(o.down_payment_minor);
   const tradeIn = o.sales_agreement_id === null ? null : big(o.trade_in_minor);
-  if (tax === null) exceptions.push("TAX_EVIDENCE_MISSING");
+  if (tax === null) exceptions.push("TAX_NOT_DETERMINED");
   const total = subtotal === null || tax === null ? null : subtotal + (shipping ?? 0n) + (install ?? 0n) + tax;
   const balance = total === null ? null : total - (down ?? 0n) - (tradeIn ?? 0n);
   const status: "READY" | "HELD" = exceptions.length === 0 ? "READY" : "HELD";
@@ -111,7 +121,7 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
   const destination = await resolveAccountingDestination(c, actor.tenantId, companyId);
 
   const content = { companyId, key: o.operating_company_key, customer: o.account_id, counterpartyId, obligorBasis, disposition,
-    agreement: o.sales_agreement_id, currency, subtotal: str(subtotal), shipping: str(shipping), install: str(install), tax: str(tax),
+    agreement: o.sales_agreement_id, currency, subtotal: str(subtotal), shipping: str(shipping), install: str(install), tax: str(tax), taxEvidence,
     total: str(total), down: str(down), tradeIn: str(tradeIn), balance: str(balance), status, exceptions, lines: pkgLines };
   const fingerprint = createHash("sha256").update(JSON.stringify(content)).digest("hex");
 
@@ -120,24 +130,29 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
       WHERE tenant_id = $1 AND source_kind = 'SALES_ORDER' AND sales_order_id = $2 AND status IN ('HELD', 'READY') FOR UPDATE`,
     [actor.tenantId, input.salesOrderId]);
   if (current[0] && current[0].content_fingerprint === fingerprint) {
+    // A replay re-asserts the READY consequence (idempotent: the same receivable and handoff, never a second).
+    const consequence = current[0].status === "READY" && (await isCurrentAuthoritative(c, actor, String(current[0].id)))
+      ? await establishPackageReceivableOn(c, actor, String(current[0].id)) : null;
     return Object.freeze({ outcome: "replayed" as const, packageId: String(current[0].id), version: Number(current[0].version),
-      status: current[0].status, readinessExceptions: Object.freeze([...current[0].readiness_exceptions]), totalMinor: current[0].total_minor ?? null });
+      status: current[0].status, readinessExceptions: Object.freeze([...current[0].readiness_exceptions]), totalMinor: current[0].total_minor ?? null, consequence });
   }
   const version = current[0] ? Number(current[0].version) + 1 : 1;
   if (current[0]) {
     await c.query(`UPDATE eos_finance.billing_packages SET status = 'SUPERSEDED', status_changed_at = now() WHERE tenant_id = $1 AND id = $2`,
       [actor.tenantId, current[0].id]);
+    // A superseded READY package's receivable is VOIDED with reversing facts (never edited in place); its handoff is superseded.
+    await retirePackageReceivableOn(c, actor, String(current[0].id), "the billing package was superseded by a new version");
   }
   const packageId = `bpk_${randomUUID()}`;
   await c.query(
     `INSERT INTO eos_finance.billing_packages (id, tenant_id, source_kind, sales_order_id, version, supersedes_package_id, status, readiness_exceptions,
         operating_company_id, operating_company_key, commercial_customer_account_id, counterparty_id, obligor_basis, commercial_disposition,
         sales_agreement_id, currency, subtotal_minor, shipping_minor, install_charge_minor, tax_minor, total_minor, down_payment_minor,
-        trade_in_minor, balance_minor, accounting_destination_id, content_fingerprint, prepared_by)
-     VALUES ($1,$2,'SALES_ORDER',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
+        trade_in_minor, balance_minor, accounting_destination_id, content_fingerprint, prepared_by, tax_evidence_status)
+     VALUES ($1,$2,'SALES_ORDER',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
     [packageId, actor.tenantId, input.salesOrderId, version, current[0]?.id ?? null, status, exceptions, companyId, o.operating_company_key,
       o.account_id, counterpartyId, obligorBasis, disposition, o.sales_agreement_id, currency, str(subtotal), str(shipping), str(install),
-      str(tax), str(total), str(down), str(tradeIn), str(balance), destination?.id ?? null, fingerprint, actor.principalId]);
+      str(tax), str(total), str(down), str(tradeIn), str(balance), destination?.id ?? null, fingerprint, actor.principalId, taxEvidence]);
   for (const [i, l] of pkgLines.entries()) {
     await c.query(
       `INSERT INTO eos_finance.billing_package_lines (package_id, tenant_id, line_number, sales_order_id, sales_order_line_number, kind, ref,
@@ -154,8 +169,118 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
       current[0] ? JSON.stringify({ supersededPackageId: current[0].id, version: current[0].version }) : null,
       JSON.stringify({ salesOrderId: input.salesOrderId, version, status, readinessExceptions: exceptions, totalMinor: str(total), operatingCompanyId: companyId }),
       "operational billing package prepared from governed Commercial eligibility"]);
+  // THE OWNER-RULED CONSEQUENCE (DECISIONS #197): a READY direct-sale package establishes the EOS operational receivable --
+  // in THIS transaction, so a READY package can never be observed without it.
+  const consequence = status === "READY" ? await establishPackageReceivableOn(c, actor, packageId) : null;
   return Object.freeze({ outcome: current[0] ? "superseded" as const : "recorded" as const, packageId, version, status,
-    readinessExceptions: Object.freeze(exceptions), totalMinor: str(total) });
+    readinessExceptions: Object.freeze(exceptions), totalMinor: str(total), consequence });
+}
+
+/**
+ * THE EOS OPERATIONAL RECEIVABLE of ONE READY Billing Package, inside the caller's transaction (DECISIONS #197).
+ *
+ * Owner ruling: for a supported DIRECT SALE, the READY package establishes the receivable -- EOS operational truth that money
+ * is owed; NOT the accounting invoice, NOT a GL posting, NOT recognition, NOT provider acknowledgement. Reuses the foundation:
+ * an eos_finance.obligations RECEIVABLE toward the package's governed counterparty (the customer organization, by the
+ * DIRECT_SALE_CUSTOMER rule only), opened through openObligationOn, whose origination fact is the foundation's own invariant
+ * (balances derive from facts). Amount = the package total, exactly -- nothing is re-priced. One per package (unique index +
+ * idempotency key). Then the provider-neutral accounting handoff: READY_FOR_DELIVERY when the company has a destination,
+ * otherwise PENDING_DESTINATION with ACCOUNTING_DESTINATION_MISSING -- the receivable stands either way. Nothing is sent.
+ */
+export async function establishPackageReceivableOn(c: Queryable, actor: FinanceActor, packageId: string): Promise<ReceivableConsequence> {
+  const { rows } = await c.query(`SELECT * FROM eos_finance.billing_packages WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, packageId]);
+  const p = rows[0];
+  if (!p) throw new FinanceFoundationError("BILLING_PACKAGE_NOT_FOUND", "NOT_FOUND", "no billing package with that id");
+  if (p.status !== "READY") throw new FinanceFoundationError("BILLING_PACKAGE_NOT_READY", "PRECONDITION_FAILED", "only a READY package establishes a receivable");
+  if (p.obligor_basis !== "DIRECT_SALE_CUSTOMER" || p.counterparty_id === null) {
+    throw new FinanceFoundationError("UNSUPPORTED_FINANCIAL_OBLIGOR", "PRECONDITION_FAILED", "only a supported direct sale establishes a customer receivable");
+  }
+  // CURRENT AUTHORITATIVE REQUIREMENTS ONLY (Controller correction 2026-10-02): a package READY under the pre-evidence rules
+  // (tax_evidence_status NULL -- e.g. a LEGACY_UNVERIFIED Agreement's stored 0) is historical and immutable; it never becomes
+  // receivable truth. Only a package whose tax came from DETERMINED evidence establishes one.
+  if (p.tax_evidence_status !== "DETERMINED") {
+    throw new FinanceFoundationError("TAX_NOT_DETERMINED", "PRECONDITION_FAILED",
+      "the package's tax is not from governed DETERMINED evidence; it establishes no receivable");
+  }
+  const total = BigInt(p.total_minor);
+  if (total === 0n) return Object.freeze({ receivable: Object.freeze({ outcome: "NOT_REQUIRED_ZERO_TOTAL" as const }), handoff: null });
+  const opened = await openObligationOn(c, actor, {
+    operatingCompanyId: p.operating_company_id, counterpartyId: p.counterparty_id, kind: "RECEIVABLE", currency: p.currency,
+    sourceDomain: "BILLING_PACKAGE", sourceRecordId: packageId, originationAmountMinor: total, basis: "OPERATIONAL_BILLING_PACKAGE",
+    effectiveAt: p.prepared_at, idempotencyKey: `ar:bpk:${packageId}`, correlationId: p.sales_order_id,
+  });
+  // The provider-neutral handoff (one per package).
+  const destination = await resolveAccountingDestination(c, actor.tenantId, p.operating_company_id);
+  await c.query(
+    `INSERT INTO eos_finance.accounting_handoffs (id, tenant_id, operating_company_id, billing_package_id, obligation_id, accounting_destination_id,
+        payload_kind, payload_version, payload_fingerprint, status, readiness_exceptions, idempotency_key, correlation_id, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,'OPERATIONAL_BILLING_PACKAGE',$7,$8,$9,$10,$11,$12,$13)
+     ON CONFLICT (tenant_id, billing_package_id) DO NOTHING`,
+    [`aho_${randomUUID()}`, actor.tenantId, p.operating_company_id, packageId, opened.obligationId, destination?.id ?? null, Number(p.version),
+      p.content_fingerprint, destination ? "READY_FOR_DELIVERY" : "PENDING_DESTINATION", destination ? [] : ["ACCOUNTING_DESTINATION_MISSING"],
+      `handoff:bpk:${packageId}`, p.sales_order_id, actor.principalId]);
+  const { rows: h } = await c.query(`SELECT id, status, readiness_exceptions FROM eos_finance.accounting_handoffs WHERE tenant_id = $1 AND billing_package_id = $2`,
+    [actor.tenantId, packageId]);
+  return Object.freeze({
+    receivable: Object.freeze({ outcome: opened.outcome, obligationId: opened.obligationId }),
+    handoff: Object.freeze({ id: String(h[0].id), status: String(h[0].status), readinessExceptions: Object.freeze([...h[0].readiness_exceptions]) }),
+  });
+}
+
+async function isCurrentAuthoritative(c: Queryable, actor: FinanceActor, packageId: string): Promise<boolean> {
+  const { rows } = await c.query(`SELECT tax_evidence_status, obligor_basis FROM eos_finance.billing_packages WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, packageId]);
+  return rows[0]?.tax_evidence_status === "DETERMINED" && rows[0]?.obligor_basis === "DIRECT_SALE_CUSTOMER";
+}
+
+/** A superseded package's receivable is VOIDED (reversing facts; refused once settled) and its handoff SUPERSEDED. */
+async function retirePackageReceivableOn(c: Queryable, actor: FinanceActor, packageId: string, reason: string): Promise<void> {
+  const { rows } = await c.query(`SELECT id FROM eos_finance.obligations WHERE tenant_id = $1 AND source_domain = 'BILLING_PACKAGE' AND source_record_id = $2`,
+    [actor.tenantId, packageId]);
+  if (rows[0]) await voidObligationOn(c, actor, { obligationId: String(rows[0].id), reason, idempotencyKey: `ar:void:${packageId}` });
+  await c.query(`UPDATE eos_finance.accounting_handoffs SET status = 'SUPERSEDED', updated_at = now() WHERE tenant_id = $1 AND billing_package_id = $2 AND status <> 'SUPERSEDED'`,
+    [actor.tenantId, packageId]);
+}
+
+/** Attach the company's accounting destination to handoffs still PENDING_DESTINATION (configured later). Nothing is sent. */
+export async function refreshAccountingHandoffs(pool: Pool, actor: FinanceActor) {
+  const { rows } = await pool.query(
+    `SELECT h.id, d.id AS destination_id FROM eos_finance.accounting_handoffs h
+       JOIN eos_finance.accounting_destinations d ON d.tenant_id = h.tenant_id AND d.operating_company_id = h.operating_company_id AND d.status = 'ACTIVE'
+      WHERE h.tenant_id = $1 AND h.status = 'PENDING_DESTINATION'`, [actor.tenantId]);
+  for (const r of rows) {
+    await pool.query(`UPDATE eos_finance.accounting_handoffs SET accounting_destination_id = $3, status = 'READY_FOR_DELIVERY', readiness_exceptions = '{}', updated_at = now()
+      WHERE tenant_id = $1 AND id = $2 AND status = 'PENDING_DESTINATION'`, [actor.tenantId, r.id, r.destination_id]);
+  }
+  return Object.freeze({ attached: rows.length });
+}
+
+/**
+ * DETERMINISTIC RECOVERY: every READY direct-sale package whose tax is from DETERMINED evidence and that lacks its receivable
+ * gets it, idempotently, each in its own transaction. A package READY under the pre-evidence rules is SKIPPED -- it stays
+ * immutable history and is never promoted into receivable truth (Controller correction 2026-10-02). Server-side only; no route.
+ */
+export async function establishReceivablesForReadyPackages(pool: Pool, actor: FinanceActor) {
+  const { rows } = await pool.query(
+    `SELECT p.id FROM eos_finance.billing_packages p
+      WHERE p.tenant_id = $1 AND p.status = 'READY' AND p.obligor_basis = 'DIRECT_SALE_CUSTOMER' AND p.total_minor > 0
+        AND p.tax_evidence_status = 'DETERMINED'  -- a pre-evidence (legacy) READY package is skipped, never promoted
+        AND NOT EXISTS (SELECT 1 FROM eos_finance.obligations o WHERE o.tenant_id = p.tenant_id AND o.source_domain = 'BILLING_PACKAGE' AND o.source_record_id = p.id)
+      ORDER BY p.prepared_at, p.id`, [actor.tenantId]);
+  const out = [];
+  for (const r of rows) {
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN");
+      out.push({ packageId: String(r.id), ...(await establishPackageReceivableOn(c, actor, String(r.id))) });
+      await c.query("COMMIT");
+    } catch (err) {
+      await c.query("ROLLBACK").catch(() => undefined);
+      throw err;
+    } finally {
+      c.release();
+    }
+  }
+  return Object.freeze(out);
 }
 
 /** The same, in its own transaction. */

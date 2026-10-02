@@ -292,7 +292,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 84 -> 85: Finance Activation 1 completion (2026-10-01, DECISIONS #193): 1764430000000 -- explicit PO supplier identity, receiving_corrections, missing-cost exception resolutions; inventory.receipt.correct granted to NO Role.
   // 85 -> 86: Commercial Finance activation (2026-10-02, DECISIONS #195): 1764440000000 -- sales_order_fulfillments (append-only) + derived fulfillment / billing-eligibility views; no capability, no grant.
   // 86 -> 87: Operational Billing Package (2026-10-02, DECISIONS #196): 1764450000000 -- eos_finance.billing_packages + billing_package_lines (immutable content); no capability, no grant.
-  assert.equal(files.length, 87, "the migration chain moved; re-measure before trusting anything below");
+  // 87 -> 88: Finance Activation 2 (2026-10-02, DECISIONS #197): 1764460000000 -- Agreement tax evidence, one receivable per billing package, accounting_handoffs; no capability, no grant.
+  assert.equal(files.length, 88, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

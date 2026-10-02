@@ -438,17 +438,27 @@ async function refreshObligationStatus(c: Queryable, actor: FinanceActor, obliga
  * `idempotencyKey`. The counterparty must fit the kind (enforced by the database too): INTERCOMPANY_* -> the other
  * operating company; FUNDING_RECEIVABLE -> an organization governed as a FINANCING_PROVIDER; the rest -> an organization.
  */
-export async function openObligation(pool: Pool, actor: FinanceActor, input: {
+export interface OpenObligationInput {
   operatingCompanyId: unknown; counterpartyId: unknown; kind: ObligationKind; currency: string; sourceDomain: string; sourceRecordId: string;
   sourceLine?: string | null; originationAmountMinor: number | bigint; basis: string; effectiveAt: Date; idempotencyKey: string; correlationId?: string | null;
-}) {
+}
+
+export async function openObligation(pool: Pool, actor: FinanceActor, input: OpenObligationInput) {
+  return tx(pool, (c) => openObligationOn(c, actor, input));
+}
+
+/** The same obligation opening INSIDE the caller's transaction (a governed consequence composed with its source). */
+export async function openObligationOn(c: Queryable, actor: FinanceActor, input: OpenObligationInput) {
   if (!(OBLIGATION_KINDS as readonly string[]).includes(input.kind)) refuse("OBLIGATION_KIND_INVALID", "INVALID_INPUT", `kind is one of ${OBLIGATION_KINDS.join(", ")}`);
   const counterpartyId = requireId(input.counterpartyId, "counterpartyId");
   const key = requireId(input.idempotencyKey, "idempotencyKey");
   if (typeof input.originationAmountMinor !== "bigint" && !(Number.isSafeInteger(input.originationAmountMinor) && input.originationAmountMinor > 0)) {
     refuse("AMOUNT_INVALID", "INVALID_INPUT", "an obligation originates for a positive amount");
   }
-  return tx(pool, async (c) => {
+  if (typeof input.originationAmountMinor === "bigint" && input.originationAmountMinor <= 0n) {
+    refuse("AMOUNT_INVALID", "INVALID_INPUT", "an obligation originates for a positive amount");
+  }
+  try {
     const company = await resolveOperatingCompany(c, actor.tenantId, input.operatingCompanyId);
     const { rows: existing } = await c.query(`SELECT id FROM eos_finance.obligations WHERE tenant_id = $1 AND idempotency_key = $2`, [actor.tenantId, key]);
     let obligationId: string;
@@ -467,7 +477,30 @@ export async function openObligation(pool: Pool, actor: FinanceActor, input: {
       basis: input.basis, effectiveAt: input.effectiveAt, idempotencyKey: `${key}:originate`, obligationId, correlationId: input.correlationId ?? null,
     });
     return { outcome: origination.outcome, obligationId, origination: origination.fact, balance: await readObligationBalance(c, actor.tenantId, obligationId) };
-  });
+  } catch (err) {
+    if (err instanceof FinanceFoundationError) throw err;
+    return mapDatabaseError(err);
+  }
+}
+
+/**
+ * VOID an obligation whose SOURCE was legitimately superseded (#191 / target model §15: "package / obligation VOID status +
+ * reversing facts (before acceptance)"). Refused once anything was settled against it. The origination facts are reversed
+ * (never edited) and the status projection becomes VOID (sticky). Idempotent on the key.
+ */
+export async function voidObligationOn(c: Queryable, actor: FinanceActor, input: { obligationId: string; reason: string; idempotencyKey: string }) {
+  const balance = await readObligationBalance(c, actor.tenantId, input.obligationId);
+  if (!balance) return refuse("OBLIGATION_NOT_FOUND", "NOT_FOUND", "no obligation with that id");
+  if (balance.status === "VOID") return { outcome: "replayed" as const, obligationId: input.obligationId };
+  if (balance.settledMinor !== 0n) refuse("OBLIGATION_HAS_SETTLEMENTS", "PRECONDITION_FAILED", "a settled obligation is corrected through its settlements, not voided");
+  const { rows } = await c.query(
+    `SELECT f.id FROM eos_finance.financial_facts f WHERE f.tenant_id = $1 AND f.obligation_id = $2 AND f.fact_class = 'OBLIGATION'
+        AND f.reverses_fact_id IS NULL AND NOT EXISTS (SELECT 1 FROM eos_finance.financial_facts r WHERE r.tenant_id = f.tenant_id AND r.reverses_fact_id = f.id)`,
+    [actor.tenantId, input.obligationId]);
+  for (const f of rows) await reverseInTx(c, actor, { factId: f.id, reason: input.reason, idempotencyKey: `${input.idempotencyKey}:${f.id}` });
+  await c.query(`UPDATE eos_finance.obligations SET status = 'VOID', updated_by = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2`,
+    [actor.tenantId, input.obligationId, actor.principalId]);
+  return { outcome: "voided" as const, obligationId: input.obligationId };
 }
 
 /** Settle part or all of an obligation with a SETTLEMENT fact. Over-application is refused (and enforced by the database). */
