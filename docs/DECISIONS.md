@@ -6471,3 +6471,127 @@ ruling R3 is pending", and the workflow control plane). This records rulings; it
    `functions/test/adminPolicyActivation.test.mjs` ("a NEW draft version, not a rewrite of the old one").
 5. **Not authorized by this entry:** applying migration `1763078400000` anywhere but local test databases, any
    live grant or assignment, production.
+
+## #190 — CONTROLLER RULING: Finance / Commercial foundation — Taylor + Ventana + Saratoga + Rental operating model (2026-10-01)
+
+**Status.** RECORDED as the governed business foundation that future Finance, Commercial, Equipment, Inventory and
+Reporting design must honor. **It activates nothing and authorizes no implementation**: no runtime behavior, migration,
+capability, grant, Finance UI change, Rental build, Saratoga integration, Finance activation or Firebase change. It
+preserves #145. It follows the read-only Finance & Reporting archaeology at main `903fd1db` (2026-10-01). (Numbering:
+DECISIONS.md last recorded #180, but Owner rulings up to #189 are already cited elsewhere in the repository, so this
+entry takes #190 to avoid a collision.)
+
+1. **Operating companies.** Taylor and Ventana are financially distinct operating companies. Each keeps its own
+   purchases, inventory ownership, sales, service transactions, operational financial records and accounting
+   destination/configuration. Every financial consequence resolves to EXACTLY ONE operating company; if it cannot be
+   determined, financial posting FAILS CLOSED. Authorized reporting may consolidate the companies, but CONSOLIDATED is a
+   reporting projection only — not a shared ledger, not a third operating company, not permission to commingle
+   records, and not a change in inventory/equipment ownership.
+2. **Taylor is an independent distributor/reseller** — not merely a service company and not merely a customer of
+   Ventana. Taylor may purchase and own Taylor-branded equipment, other-vendor equipment and equipment bought from
+   Ventana as Taylor-owned inventory; resell it; deliver and install; service equipment (including equipment it did not
+   sell); and own equipment for its rental business.
+3. **Ventana is the separate in-house ice-machine distributor.** It may own ice-machine inventory, sell directly to
+   outside customers/dealers/vendors, sell to Taylor for Taylor resale, fulfill warehouse pickup, and use Taylor Service
+   for delivery/install/service. Ventana inventory and records remain Ventana's until a governed business transaction
+   changes ownership.
+4. **Supplier/vendor is a RELATIONSHIP, not an identity.** An EOS operating company may be a supplier or service
+   provider to another (Ventana as SUPPLIER TO Taylor; Taylor as service provider on a Ventana transaction). Company
+   identity and transactional relationship are separate concepts.
+5. **Physical location ≠ ownership.** Taylor and Ventana may share a building; co-location never implies shared
+   ownership. Distinct questions, never collapsed: WAREHOUSE/LOCATION (where is it?), OPERATING COMPANY (whose is it?),
+   CUSTODY (who possesses/controls it?), COMMERCIAL DISPOSITION (held for sale, sold, financed, rented, installed…?),
+   FINANCIAL COUNTERPARTY (who owes the obligation?).
+6. **Taylor purchase from Ventana is an explicit INTERCOMPANY commercial transaction** — Ventana-owned inventory →
+   Ventana sale to Taylor → Ventana financial consequence; Taylor purchase → Taylor receipt → Taylor-owned inventory →
+   Taylor financial consequence. Never an ownership-field change. There must eventually be corresponding but separate
+   records per company, linked by the intercompany transaction without combining their financial records.
+7. **Downstream Taylor resale belongs to Taylor.** Taylor-owned inventory → Taylor customer sale → Taylor fulfillment →
+   optional Taylor delivery/install → customer/site Equipment. Ventana earns nothing from Taylor's downstream sale
+   because it originally supplied the item; provenance is preserved separately from current ownership.
+8. **Ventana direct sale** (Ventana inventory → Ventana customer/dealer sale → warehouse pickup) is a Ventana equipment
+   sale; Taylor has no equipment-sale consequence because the item sat in the shared warehouse.
+9. **Taylor Service on a Ventana sale** — one serialized machine may carry a VENTANA equipment sale AND a TAYLOR
+   delivery/install/service transaction. EOS must not infer equipment-sale revenue from service responsibility, nor
+   service revenue from equipment ownership.
+10. **Inventory always retains operating-company ownership.** Physical movement (warehouse → truck → customer/site) does
+    not by itself change financial ownership; only a governed sale, purchase or intercompany transaction changes the
+    commercial/financial relationship. No silent ownership change on physical movement.
+11. **Commercial disposition is explicit.** At minimum: SALE; LEASE / FINANCED SALE; RENTAL; SERVICE / INSTALL ONLY.
+    It is explicit or deterministically derived from a governed originating transaction — never inferred from custody,
+    Equipment location, installation or Work Order completion.
+12. **Saratoga Leasing** is Taylor's preferred external leasing/financing provider — NOT an EOS operating company; an
+    external financing/commercial counterparty. **OWNER RULING: SARATOGA OWNS THE CUSTOMER FINANCIAL OBLIGATION for a
+    Saratoga-financed transaction.** CUSTOMER (receives/uses the Equipment; remains the commercial customer) and
+    FINANCIAL OBLIGOR (Saratoga; Taylor's financial counterparty for the financed amount) are never assumed to be the
+    same party; TAYLOR is the seller where Taylor is the selling company. Flow: customer selects equipment → Taylor
+    Sales Order → financing method SARATOGA → Saratoga approval → governed fulfillment → Equipment delivered/installed
+    for the Customer → financed obligation belongs to Saratoga → Taylor's receivable/funding relationship for the
+    financed amount is with Saratoga. The financed balance is NOT ordinary Taylor customer A/R once Saratoga owns it.
+    EOS must preserve separately: selling operating company, commercial customer, Equipment, Equipment site, financing
+    provider, financial obligor/counterparty, financed amount, customer-paid amount (if any), deposit/down payment (if
+    any), financing application/reference, financing status, funding status, amount due from Saratoga, amount received
+    from Saratoga, originating Sales Order. Example: Taylor sells to Customer A on Saratoga financing → SELLER Taylor,
+    CUSTOMER Customer A, EQUIPMENT SITE Customer A's location, FINANCING PROVIDER Saratoga, OBLIGATION OWNER /
+    COUNTERPARTY Saratoga; the Equipment stays associated with Customer A. Reporting must eventually distinguish direct
+    sales, Saratoga-financed sales, financed amount, amount funded, outstanding due from Saratoga, and customer deposits.
+    Saratoga financing is never combined with Taylor Rental. **UNRESOLVED — NOT TO BE INVENTED:** legal Equipment title
+    mechanics; title-transfer timing; Saratoga approval workflow; funding timing and conditions; partial-financing
+    rules; cancellation mechanics; end-of-financing ownership terms. These require business confirmation before any
+    runtime financial behavior.
+13. **Taylor operates a significant equipment rental business.** Rental is NOT a sale: Taylor RETAINS OWNERSHIP of the
+    equipment unless a separate governed sale later changes it, including while it resides at a customer/site. Flow:
+    Taylor-owned Equipment → Rental Agreement → customer/site deployment → customer custody/use → rental financial
+    consequences → service / exchange / extension → return/pickup → Taylor custody. OWNER ≠ CUSTODIAN; OWNER ≠ LOCATION;
+    LOCATION ≠ COMMERCIAL DISPOSITION.
+14. **Rental equipment identity.** Rental equipment stays identifiable as Taylor-owned Equipment throughout deployment;
+    it is never converted into customer-owned Equipment because it is delivered, installed, assigned to a customer,
+    located at a customer site or serviced through a Work Order. The Equipment model must ultimately represent
+    operating-company owner, current location/site, current custodian/user, rental status and rental relationship
+    (no fields are added by this decision).
+15. **Rental lifecycle — required business coverage (not authorized implementation, no invented policy):** rental
+    availability, rental agreement, customer/site, equipment assignment, start, term, rate/charges, delivery,
+    installation, service responsibility, extension, exchange/swap, temporary replacement, pickup, return,
+    damage/condition, completion, utilization, rental profitability.
+16. **Rental vs sale.** SALE: company-owned inventory/equipment → sale → governed ownership/commercial transfer →
+    customer-owned Equipment where applicable. RENTAL: Taylor-owned Equipment → customer custody/use → Taylor remains
+    owner → rental charges → return/exchange. Never the same transaction because both end with equipment at a site.
+17. **Rental service** uses the normal governed Work Order architecture referencing the Equipment. Work Order completion
+    never implies an ownership transfer. Service responsibility and its financial consequence may depend on the Rental
+    Agreement; those billing rules are NOT yet defined and must not be invented.
+18. **Saratoga financing ≠ Taylor rental.** Financing supports customer acquisition; Saratoga owns the obligation and is
+    Taylor's counterparty; the customer remains the operational Equipment user; title mechanics unresolved. Rental:
+    Taylor owns the Equipment; customer has custody/use; Taylor keeps the relationship; the Equipment returns, is
+    exchanged or remains in Taylor's fleet unless separately sold. No single generic "lease/rental" lifecycle.
+19. **Service / install only.** Taylor may deliver, install, start up, service, repair and maintain Equipment it did not
+    sell and does not own. SELLER, EQUIPMENT OWNER, CUSTOMER, SERVICE PROVIDER and FINANCIAL COUNTERPARTY may all be
+    different parties; Work Order and financial architecture must not assume otherwise.
+20. **Financial consequences** — where ultimately implemented, preserve operating company AND the appropriate
+    counterparty on: purchase, PO, receipt, acquisition cost, inventory value, inventory adjustment, COGS, sale, billing
+    package, revenue, service cost and revenue, labor, parts and equipment consequences, rental revenue, rental
+    equipment cost, rental service cost, rental profitability, receivable, payable, financing receivable/funding,
+    payment/reconciliation, intercompany transaction, accounting integration. No cross-company commingling.
+21. **Accounting integration is configurable per operating company.** Taylor and Ventana need not share an accounting
+    company/file, provider, credentials, chart/configuration or synchronization destination. Routing: EOS transaction →
+    operating company → company-specific operational financial record → company-specific accounting destination. A
+    deployment MAY configure the same provider for both; the architecture must not require it. External counterparties
+    (e.g. Saratoga) are not accounting destinations because they own an obligation. OPERATING COMPANY, FINANCIAL
+    COUNTERPARTY and ACCOUNTING DESTINATION are separate concepts.
+22. **Reporting.** Authorized management reporting may present TAYLOR, VENTANA and CONSOLIDATED; CONSOLIDATED is a
+    projection, never a third financial authority, and never merges underlying records. Reporting should eventually
+    distinguish: Taylor equipment sales; Taylor third-party equipment sales; Ventana ice-machine sales; intercompany
+    Taylor/Ventana transactions; direct customer sales; Saratoga-financed sales; Taylor rental revenue; Taylor service
+    revenue; delivery/install-only revenue; equipment margin; service/job margin; rental utilization/profitability —
+    where implemented. Permissions continue to govern who sees each company.
+23. **Current Finance boundary — #145 preserved** unless the Owner later changes it: EOS is the governed operational
+    financial subledger; it is NOT being designed as a general ledger, chart-of-accounts authority, accounting-close
+    authority or statutory accounting system; the external accounting authority remains unselected. EOS preserves
+    enough operational financial truth to explain a business transaction before handing the appropriate consequence to
+    the eventual accounting authority.
+24. **Architectural principle.** Finance is NOT designed around a single CUSTOMER → SALE → INVOICE assumption. EOS
+    represents independently, never inferring one from another: WHO SOLD IT? WHO OWNS IT? WHO BOUGHT IT? WHO USES IT?
+    WHERE IS IT? WHO SERVICES IT? WHO OWES THE MONEY? WHICH OPERATING COMPANY OWNS THE FINANCIAL CONSEQUENCE? WHERE DOES
+    THAT COMPANY'S ACCOUNTING CONSEQUENCE GO?
+25. **Not authorized by this entry:** any runtime change, migration, capability, grant, Finance UI change, Rental
+    implementation, Saratoga integration, Finance activation or Firebase change. The next step designs the Finance
+    product model from this foundation rather than finishing the legacy Finance implementation.
