@@ -187,8 +187,11 @@ test("financial authority lives in eos_finance, and does not leak into eos_ops",
   // produced it. It is the reason the ruling also says the fact carries `operating_company_id` --
   // the governed business company -- rather than the operational `operating_company_key` every
   // eos_ops row carries.
-  const FINANCIAL_TABLES = ["inventory_acquisition_costs", "invoice_lines", "invoices", "payment_applications", "payments"];
-  const FINANCIAL_VIEWS = ["invoice_application_totals", "invoice_totals", "payment_balances"];
+  // + the Finance foundation (DECISIONS #191, migration 1764420000000): counterparties, company profiles, immutable financial
+  // facts, obligations (+ the derived obligation_balances view), cost-evidence exceptions and accounting destinations.
+  const FINANCIAL_TABLES = ["accounting_destinations", "cost_evidence_exceptions", "counterparty_company_profiles", "financial_counterparties",
+    "financial_facts", "inventory_acquisition_costs", "invoice_lines", "invoices", "obligations", "payment_applications", "payments"];
+  const FINANCIAL_VIEWS = ["invoice_application_totals", "invoice_totals", "obligation_balances", "payment_balances"];
 
   // (1) The schema exists and holds EXACTLY the seven objects the ruling names -- derived from the
   // migration files, in the same directory-derived way the eos_ops census above is derived, so a
