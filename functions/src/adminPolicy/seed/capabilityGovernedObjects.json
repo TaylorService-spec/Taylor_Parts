@@ -132,6 +132,54 @@
         "D": []
       },
       "fields": []
+    },
+    {
+      "key": "financeConfiguration",
+      "label": "Finance Configuration",
+      "labelPlural": "Finance Configuration",
+      "description": "Administrative Finance configuration (DECISIONS #203 / #204): each operating company's provider-neutral accounting destination and company / counterparty payment terms (net days, governing future obligations). Managed by finance.configuration.manage. No financial transaction, settlement, delivery, credential or business approval is part of this Object.",
+      "domain": "Finance",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "systemConfiguration",
+      "label": "System Configuration",
+      "labelPlural": "System Configuration",
+      "description": "Governed company / system settings (Owner ruling #204): each operating company's business time zone and default language, by one settings registry. Managed by admin.systemConfiguration.manage (system administration). Confers no business approval.",
+      "domain": "Administration",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "salesDiscountAuthority",
+      "label": "Sales Discount Authority",
+      "labelPlural": "Sales Discount Authority",
+      "description": "Employee Sales Authority (Owner ruling #204): each Sales user's maximum customer discount percentage, governing only the customer-facing transaction discount. Managed by sales.discountAuthority.manage. Never internal pricing, cost, trade-in value or resale price.",
+      "domain": "Sales",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
     }
   ]
 }

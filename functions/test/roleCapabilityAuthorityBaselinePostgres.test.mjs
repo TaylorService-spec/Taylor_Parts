@@ -143,9 +143,14 @@ test("every grant carries exactly one canonical source and NOTHING is unexplaine
   // plane -- admin -> admin.securityPolicy.write, the capability that replaced the Role-name gate.
   // 414 -> 415 (MIGRATION_BACKED 356 -> 357): migration 1763078400000, Owner ruling R1 -- owner ->
   // admin.administratorRole.assign, the bounded Administrator staffing capability.
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 415);
+  // 415 -> 426 (MIGRATION_BACKED 357 -> 368): migration 1764500000000, Owner rulings #204 -- the eleven ruled holders of
+  // finance.configuration.manage, sales.discountAuthority.manage (owner / generalManager / controller / admin),
+  // admin.systemConfiguration.manage (admin) and salesAgreement.tradeIn.approve (owner / generalManager).
+  // 426 -> 431 (MIGRATION_BACKED 368 -> 373): Owner ruling #205 amends the same migration -- accountingManager and
+  // financeManager join for the two Finance-management configuration capabilities; owner joins System Configuration.
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 431);
   assert.deepEqual(counts, {
-    MIGRATION_BACKED: 357, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 373, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
   assert.equal(counts.MIGRATION_BACKED + counts.CANONICAL_CATALOG + counts.NONPROD_ACTIVATION
     + counts.FIXTURE_ONLY + counts.UNEXPLAINED, AUTHORITY_BASELINE_GRANTS.length);

@@ -75,6 +75,10 @@ export function salesAgreementView({ result, loading, errorStatus }) {
     // Every amount stays integer minor units all the way to the renderer. Formatting is a display
     // concern; a number divided by 100 here would be a float nobody can add up again.
     subtotalMinor: a.subtotalMinor ?? null,
+    customerDiscount: a.customerDiscount ?? null,
+    customerDiscountMinor: a.customerDiscountMinor ?? null,
+    netSellingMinor: a.netSellingMinor ?? null,
+    tradeIns: Array.isArray(a.tradeIns) ? a.tradeIns : [],
     shippingMinor: a.shippingMinor ?? null,
     installChargeMinor: a.installChargeMinor ?? null,
     // UNKNOWN TAX IS NOT ZERO TAX (DECISIONS #197). The stored charge column holds 0 for an Agreement whose tax was never

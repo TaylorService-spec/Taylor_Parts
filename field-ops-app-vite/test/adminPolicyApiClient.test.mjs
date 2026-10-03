@@ -86,15 +86,20 @@ test("DQ-029: the configuration operations mirror the server's closed table, and
   const clientStart = SOURCE.indexOf("export const ADMIN_CONFIGURATION_OPERATIONS");
   const clientNames = [...SOURCE.slice(clientStart, SOURCE.indexOf("]", clientStart)).matchAll(/"([a-zA-Z]+)"/g)].map((m) => m[1]).sort();
   assert.deepEqual(clientNames, serverNames);
-  assert.deepEqual(clientNames, ["changeTruckStatus", "createBin", "createMobileLocation", "createTruck", "createWarehouse", "linkTruck",
-    "listMobileLocationScopeBindings", "listMobileLocations", "listTrucks", "listWarehouseBins", "listWarehouses",
-    "readMobileLocationScopeBinding", "readTruck", "relabelBin", "relinkTruck", "removeMobileLocationScopeBinding", "setBinStatus",
-    "setMobileLocationScopeBinding", "setWarehouseStatus", "unlinkTruck", "updateWarehouse"]);
+  assert.deepEqual(clientNames, ["changeTruckStatus", "configureAccountingDestination", "createBin", "createMobileLocation", "createTruck", "createWarehouse", "linkTruck",
+    "listAccountingDestinations", "listCounterpartyPaymentTerms", "listMobileLocationScopeBindings", "listMobileLocations",
+    "listSalesDiscountAuthorities", "listSystemConfiguration", "listTrucks", "listWarehouseBins", "listWarehouses",
+    "readMobileLocationScopeBinding", "readTruck", "relabelBin", "relinkTruck", "removeMobileLocationScopeBinding",
+    "setAccountingDestinationStatus", "setBinStatus", "setCounterpartyPaymentTerms",
+    "setMobileLocationScopeBinding", "setSalesDiscountAuthority", "setSystemConfigurationSetting", "setWarehouseStatus", "unlinkTruck", "updateWarehouse"]);
   // Reachable through the one endpoint, and holding no capability name: the gate is the server's.
   assert.match(SOURCE, /\.\.\.ADMIN_CONFIGURATION_OPERATIONS\]\)/);
   assert.equal(SOURCE.includes("inventory.location.scopeBinding.manage\""), false, "the client names no capability to decide on");
   assert.equal(SOURCE.includes("warehouse.record.manage\""), false, "nor the warehouse-master capability");
   assert.equal(SOURCE.includes("inventory.truckRegistry.manage\""), false, "nor the truck-registry capability");
+  assert.equal(SOURCE.includes("finance.configuration.manage\""), false, "nor the finance-configuration capability");
+  assert.equal(SOURCE.includes("admin.systemConfiguration.manage\""), false, "nor the system-configuration capability");
+  assert.equal(SOURCE.includes("sales.discountAuthority.manage\""), false, "nor the discount-authority capability");
 });
 
 test("the four Object-owned security reads have a named wrapper, each on the one endpoint", () => {

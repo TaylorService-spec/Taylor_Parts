@@ -236,7 +236,9 @@ test("PRODUCTION: the one destination this branch adds is invisible under the le
   }
   // The destination COUNT grew by one and the VISIBLE count did not, which is the shape of a door
   // that was added to the governed source only.
-  assert.equal(destinations().length, 86, "the nav tree size moved by something other than Sales Agreements");
+  // 86 -> 88: Owner rulings #204 add System Configuration and Sales Configuration, each capability-gated (proved below by the
+  // legacy-visible pins, which do not move).
+  assert.equal(destinations().length, 88, "the nav tree size moved by something other than Sales Agreements and the #204 configuration destinations");
   assert.equal(MAIN_B6A36B15_LEGACY_VISIBLE.admin.includes(added), false);
   assert.equal(visibleUnderLegacy(ROLES.ADMIN).includes(added), false);
 });

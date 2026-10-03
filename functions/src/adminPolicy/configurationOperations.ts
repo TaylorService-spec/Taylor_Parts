@@ -38,6 +38,24 @@ export const WAREHOUSE_MASTER_CAPABILITY = "warehouse.record.manage";
  */
 export const TRUCK_REGISTRY_CAPABILITY = "inventory.truckRegistry.manage";
 
+/**
+ * ADMINISTRATIVE CONFIGURATION authority for Finance configuration (DECISIONS #203 / Owner ruling #204): accounting
+ * destinations and counterparty payment terms. Held by no one by default; the ruled holders are an Administration delta.
+ */
+export const FINANCE_CONFIGURATION_CAPABILITY = "finance.configuration.manage";
+
+/**
+ * SYSTEM ADMINISTRATION authority over governed company / system settings (Owner ruling #204): business time zone, default
+ * language and the settings that follow. Confers no business approval.
+ */
+export const SYSTEM_CONFIGURATION_CAPABILITY = "admin.systemConfiguration.manage";
+
+/**
+ * SALES AUTHORITY ADMINISTRATION (Owner ruling #204): each Sales user's maximum CUSTOMER discount percentage. Confers no
+ * discount of its own and no pricing, cost or trade-in authority.
+ */
+export const SALES_DISCOUNT_AUTHORITY_CAPABILITY = "sales.discountAuthority.manage";
+
 export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze({
   listMobileLocationScopeBindings: Object.freeze({ capability: MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, mutation: false }),
   readMobileLocationScopeBinding: Object.freeze({ capability: MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, mutation: false }),
@@ -62,6 +80,18 @@ export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze({
   relinkTruck: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
   unlinkTruck: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
   changeTruckStatus: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
+  // Finance configuration (eosFinance/financeConfigurationAdministration.ts).
+  listAccountingDestinations: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: false }),
+  configureAccountingDestination: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: true }),
+  setAccountingDestinationStatus: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: true }),
+  listCounterpartyPaymentTerms: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: false }),
+  setCounterpartyPaymentTerms: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: true }),
+  // System Configuration (eosOps/systemConfigurationAdministration.ts): company settings, by registry.
+  listSystemConfiguration: Object.freeze({ capability: SYSTEM_CONFIGURATION_CAPABILITY, mutation: false }),
+  setSystemConfigurationSetting: Object.freeze({ capability: SYSTEM_CONFIGURATION_CAPABILITY, mutation: true }),
+  // Employee Sales Authority (eosCommercial/salesDiscountAuthorityAdministration.ts).
+  listSalesDiscountAuthorities: Object.freeze({ capability: SALES_DISCOUNT_AUTHORITY_CAPABILITY, mutation: false }),
+  setSalesDiscountAuthority: Object.freeze({ capability: SALES_DISCOUNT_AUTHORITY_CAPABILITY, mutation: true }),
 } as const);
 
 export type AdminConfigurationOperation = keyof typeof ADMIN_CONFIGURATION_OPERATIONS;

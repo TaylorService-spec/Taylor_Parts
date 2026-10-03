@@ -36,7 +36,7 @@ export interface AccountingPayloadV1 {
     readonly id: string; readonly version: number; readonly contentFingerprint: string; readonly preparedAt: string;
     readonly salesOrderId: string; readonly salesAgreementId: string | null; readonly currency: string; readonly taxEvidence: "DETERMINED";
     readonly amounts: Readonly<Record<"subtotalMinor" | "shippingMinor" | "installChargeMinor" | "taxMinor" | "totalMinor"
-      | "downPaymentMinor" | "tradeInMinor" | "balanceMinor", string | null>>;
+      | "downPaymentMinor" | "tradeInMinor" | "balanceMinor", string | null>> & { readonly customerDiscountMinor?: string | null };
     readonly lines: readonly {
       readonly lineNumber: number; readonly salesOrderLineNumber: number; readonly kind: string; readonly ref: string; readonly businessUnit: string;
       readonly billableQty: number; readonly unitPriceMinor: string; readonly extendedMinor: string; readonly serialNumbers: readonly string[];
@@ -59,6 +59,8 @@ export interface AccountingPayloadV2 extends Omit<AccountingPayloadV1, "contract
     readonly kind: "FINANCED_SALE";
     readonly currency: string;
     readonly totalCommercialMinor: string;
+    /** #203: the trade-in credit -- cash-equivalent consideration, never cash and never a discount ("0" when none). */
+    readonly tradeInCreditMinor: string;
     readonly commercialCustomer: { readonly counterpartyId: string; readonly crmAccountId: string; readonly name: string | null;
       readonly contributionMinor: string; readonly receivable: PayloadReceivable | null };
     readonly financingProvider: { readonly counterpartyId: string; readonly crmAccountId: string; readonly name: string | null;
@@ -172,7 +174,8 @@ export async function buildAccountingPayload(db: Queryable, tenantId: string, ha
   // FUNDING_RECEIVABLE for the financed amount.
   const anchorKind = financedSale ? "FUNDING_RECEIVABLE" : "RECEIVABLE";
   const anchorCounterparty = financedSale ? p.financing_provider_counterparty_id : p.counterparty_id;
-  const anchorAmount = financedSale ? p.financed_amount_minor : p.total_minor;
+  // A direct sale's receivable is the total less any trade-in credit (#203); without a trade-in, the total exactly.
+  const anchorAmount = financedSale ? p.financed_amount_minor : (BigInt(p.total_minor) - BigInt(p.trade_in_minor ?? 0)).toString();
   if (!o || o.kind !== anchorKind || o.status === "VOID" || o.source_domain !== "BILLING_PACKAGE" || o.source_record_id !== p.id
       || o.operating_company_id !== p.operating_company_id || o.operating_company_id !== h.operating_company_id
       || o.counterparty_id !== anchorCounterparty || o.currency !== p.currency || BigInt(o.originated_minor) !== BigInt(anchorAmount)) {
@@ -204,6 +207,8 @@ export async function buildAccountingPayload(db: Queryable, tenantId: string, ha
         subtotalMinor: minorText(p.subtotal_minor), shippingMinor: minorText(p.shipping_minor), installChargeMinor: minorText(p.install_charge_minor),
         taxMinor: minorText(p.tax_minor), totalMinor: minorText(p.total_minor), downPaymentMinor: minorText(p.down_payment_minor),
         tradeInMinor: minorText(p.trade_in_minor), balanceMinor: minorText(p.balance_minor),
+        // #203: present ONLY when a customer sales discount applies (a payload without one is unchanged).
+        ...(p.customer_discount_minor === null || p.customer_discount_minor === undefined ? {} : { customerDiscountMinor: minorText(p.customer_discount_minor) }),
       },
       lines: lr.map((l) => ({
         lineNumber: Number(l.line_number), salesOrderLineNumber: Number(l.sales_order_line_number), kind: String(l.kind), ref: String(l.ref),
@@ -254,11 +259,12 @@ async function financedComposition(db: Queryable, tenantId: string, p: Record<st
   const ar = cr[0];
   const arValid = contribution === 0n ? !ar
     : Boolean(ar && ar.status !== "VOID" && ar.counterparty_id === p.counterparty_id && ar.currency === p.currency && BigInt(ar.originated_minor) === contribution);
-  if (!arValid || contribution + financed !== BigInt(p.total_minor) || BigInt(funding.originated_minor) !== financed) {
+  const tradeInCredit = BigInt(p.trade_in_minor ?? 0);
+  if (!arValid || contribution + tradeInCredit + financed !== BigInt(p.total_minor) || BigInt(funding.originated_minor) !== financed) {
     refuse("PAYLOAD_COMPOSITION_MISMATCH", "PRECONDITION_FAILED", "the receivables are not exactly the package's composition -- nothing is delivered");
   }
   return {
-    kind: "FINANCED_SALE", currency: String(p.currency), totalCommercialMinor: String(p.total_minor),
+    kind: "FINANCED_SALE", currency: String(p.currency), totalCommercialMinor: String(p.total_minor), tradeInCreditMinor: tradeInCredit.toString(),
     commercialCustomer: { counterpartyId: String(customer.id), crmAccountId: String(customer.crm_account_id), name: customer.name ?? null,
       contributionMinor: contribution.toString(), receivable: ar ? { obligationId: String(ar.id), kind: "RECEIVABLE", amountMinor: contribution.toString() } : null },
     financingProvider: { counterpartyId: String(provider.id), crmAccountId: String(provider.crm_account_id), name: provider.name ?? null,

@@ -7038,3 +7038,175 @@ target model §11. Saratoga (#200 / #201) is unchanged.
 8. **Not built:** elimination, netting, settlement, GL, an intercompany accounting-handoff payload (the direct-sale v1
    payload is not forced to carry it; each side's future handoff will anchor on its own company's obligation and carry
    the correlation id), Analysis. No capability, grant or transport operation.
+
+## #203 — CONTROLLER: post-FBR governed configuration + commercial pricing (2026-10-02)
+
+**Status.** Implemented locally (migration `1764500000000_governed-config-and-sales-pricing.sql`); not pushed, not deployed,
+no nonprod mutation. Builds on #200–#202. FBR-F1..F4 stay separate and open (§9).
+
+1. **FINANCING_PROVIDER is a governed CRM relationship** (G1). `ACCOUNT_RELATIONSHIP_TYPES` = CUSTOMER, VENDOR,
+   FINANCING_PROVIDER. It is provider-neutral; the organization stays the master record. It implies neither CUSTOMER nor
+   VENDOR, and an organization may hold several relationships. Setting or clearing it requires
+   `customer.governedField.write` on create and update; clearing it while an arrangement names the provider is refused
+   (FINANCING_PROVIDER_IN_USE). Finance (`recordFinancingArrangement`) consumes the relationship. No direct DB setup.
+2. **Operating-company business time** (G2). Technical timestamps stay UTC instants. A business date is derived from
+   `eos_policy.tenant_operating_companies.business_time_zone` (IANA, validated against `pg_timezone_names`, default
+   UTC) through ONE resolver, `eos_policy.operating_company_business_date(tenant, company, instant)`, wrapped by
+   `eosOps/operatingCompanyBusinessTime.ts`. Example: 2026-10-03 04:40 UTC is the America/Phoenix business date
+   2026-10-02, so Taylor ← Ventana NET 90 is due 2026-12-31.
+   - **Swept:** the intercompany obligation date (#202) now uses the buyer's business date.
+   - **Findings, left unchanged** (no global rewrite): the labour work date (`workOrderLabor.workDateOf`, UTC by
+     documented Firebase parity in the frozen Service journey); the business-number year allocation (UTC year); and
+     `reportingCalendar` (an existing governed America/Phoenix reporting zone, #163).
+3. **Finance configuration through Administration.** A new Administration configuration family, gated on
+   `finance.configuration.manage` (object `financeConfiguration`, ADMIN_ACTION, **granted to no Role**). Each mutation
+   requires a reason and is audited in `eos_policy.audit_events`.
+   - **Operations:** list / configure / activate / deactivate accounting destinations; list / set counterparty payment
+     terms; list / set operating-company business time zones.
+   - **Screen:** Administration → Financial Policy → Finance configuration. It decides nothing and renders the server's
+     refusal.
+4. **Accounting destinations.**
+   - One ACTIVE per operating company: activating a destination steps the current one down to INACTIVE, which is kept
+     as history. CONSOLIDATED can't own one.
+   - Activation attaches unattached handoffs and re-points an UNTOUCHED handoff (READY_FOR_DELIVERY, `attempt_count` = 0)
+     to the company's new active destination. A handoff with delivery history is never re-pointed: the #198 guard is
+     re-created with exactly that one relaxation.
+5. **Payment terms.** `payment_terms_net_days` on the per-company counterparty profile, for an internal company or an
+   external organization; a company with itself is refused.
+   - Taylor → Ventana = 90 is configuration, never code. No reverse direction is assumed.
+   - A change governs FUTURE obligations only; an established `due_on` is immutable.
+6. **Customer sales discount.** On the Sales Agreement: PERCENT (basis points 1..10000, half-up integer arithmetic) or
+   FIXED_AMOUNT (≤ selling price).
+   - Selling price − discount = net selling price. Line prices and internal pricing are never mutated.
+   - It is carried to the billing package (`customer_discount_minor`); total = subtotal − discount + shipping + install
+     + tax.
+   - The accounting payload carries `customerDiscountMinor` only when a discount exists, so v1 is unchanged in shape
+     without one.
+   - Authority: the existing `salesAgreement.create` / `salesAgreement.updateDraft`. No approval threshold is built.
+7. **Trade-in = cash-equivalent consideration, not cash and not a discount.** Remaining balance = net selling price −
+   trade-in credit − cash / down payment (40000 − 2000 = 38000; − 5000 − 3000 = 30000).
+   - **Financed sale:** financed = net − trade-in − cash, and FINANCING_TRADE_IN_UNGOVERNED is retired. The package
+     CHECK is total = contribution + trade-in + financed. The v2 handoff composition carries `tradeInCreditMinor`.
+   - **Direct sale:** the customer receivable is total − trade-in. A trade-in never creates a receivable.
+   - **Incoming equipment:** each traded item is a row in `eos_commercial.sales_agreement_trade_ins`, recording the
+     Agreement, item, description, manufacturer, model and serial (null when unknown — identity is never invented), the
+     agreed credit, the receiving company and `acquisition_status` AGREED. RECEIVED and `acquired_receiving_id` are
+     reserved for the eventual receipt.
+8. **Independent values (hard rule).** Acquisition value, trade-in credit, reconditioning and a future sale price are
+   independent. Nothing propagates one into another; a future sale price is set explicitly by the Sales process. A
+   static check guards this.
+9. **Customer-facing.** The Agreement shows Selling price, Customer discount, Net selling price, Trade-in credit, Cash /
+   down payment and Remaining balance, in words: no enum, no cost, no margin.
+10. **Not built / still open:**
+    - Not started: Settlement, Rental, elimination, GL, a real provider, refurbishment, disposition, Analysis,
+      production.
+    - The governed RECEIPT of a traded-in unit into inventory, and its acquisition basis (§8 forbids defaulting it to
+      the credit).
+    - Separate and open: FBR-F1 (Ventana inventory relief when Ventana sells to Taylor), FBR-F2 (Taylor Service
+      delivery / install for a Ventana sale), FBR-F3 (a per-side intercompany accounting handoff) and FBR-F4 (governed
+      late completion of a receipt's cost evidence).
+
+## #204 — OWNER RULINGS: governed configuration authority, discount authority and trade-in approval (2026-10-03)
+
+**Status.** Implemented locally, in the same unpushed migration as #203 (`1764500000000_governed-config-and-sales-pricing.sql`,
+now grant-bearing). Not pushed, not deployed, no nonprod mutation. It supersedes #203 §3 (time zone under Finance
+configuration) and §7 (agreed credit) where they differ.
+
+1. **Authority model.** The existing chain applies: Employee / Principal → Security Role → Capability. A Job Role grants
+   nothing. The ruled positions map to the Security Roles the governed persona model already gives them:
+   - Owner / Executive → `owner` (the protected Owner Role);
+   - General Manager → `generalManager`;
+   - Finance / Accounting → `controller`;
+   - System Administrator → `admin`, the designated Administrator Security Role. No new Job Role was created.
+2. **Four capabilities.**
+
+   | Capability | Object / action | Holders seeded |
+   |---|---|---|
+   | `finance.configuration.manage` | `financeConfiguration`, ADMIN_ACTION | owner, generalManager, controller, admin |
+   | `admin.systemConfiguration.manage` | `systemConfiguration`, ADMIN_ACTION | admin |
+   | `sales.discountAuthority.manage` | `salesDiscountAuthority`, ADMIN_ACTION | owner, generalManager, controller, admin |
+   | `salesAgreement.tradeIn.approve` | `salesAgreement / approveTradeIn`, BUSINESS_ACTION | owner, generalManager only |
+
+   - **Vehicle.** The holders are written by the migration — Owner ruling E (the R1 vehicle). Administration can never
+     edit the designated Administrator Role for itself (SELF_ADMINISTRATION), so a grant-bearing migration recorded in
+     `roleCapabilityAuthorityBaseline.json` (415 → 426 grants) is the only governed way to seed `admin`.
+   - **Later changes.** Every later assignment or revocation is an ordinary Roles & Permissions checkbox: each
+     capability appears under its Object in the security matrix. No source edit is needed.
+   - **System Administration ≠ Business Approval.** `admin` administers configuration, permissions and discount limits,
+     but holds no trade-in approval. `controller` doesn't either: Finance configuration is not business approval. A
+     person who separately holds owner or generalManager may approve through that Role.
+3. **System Configuration** (Administration → System Configuration).
+   - **Registry.** One settings registry, `eos_policy.configuration_setting_definitions`, defines each setting's scope,
+     value kind, storage and default. Company values live in `eos_policy.operating_company_settings`, unless the
+     definition keeps them on the company row.
+   - **Settings today, per operating company:**
+     - `businessTimeZone` (IANA, kept on `tenant_operating_companies`, where the #203 resolver reads it);
+     - `defaultLanguage` (governed catalog `eos_policy.supported_languages`: en-US, es-US).
+   - **Validation.** The server validates and a database trigger re-checks. Each change is audited
+     (`admin.systemConfiguration.set`) with before, after, actor and reason. A future setting is one definition row plus
+     a validator.
+   - **Domain boundaries.** The time zone moved here from Finance configuration. Accounting destinations and payment terms
+     remain Finance configuration, and discount authority is Sales configuration.
+4. **Per-user maximum customer discount** (Administration → Sales Configuration).
+   - **Storage.** `eos_commercial.sales_discount_authorities` holds one row per principal, in basis points 0..10000.
+   - **States.**
+     - No row means NOT_CONFIGURED: it fails closed (no discount at all) and is reported as its own state.
+     - 0 means no discount authority.
+     - NULL never means unlimited. The model has no unrestricted state.
+   - **Changes.** Each change is audited (`sales.discountAuthority.set`) with the affected user, previous and new limit,
+     actor, time and reason. A salesperson cannot raise their own limit without the administrative capability.
+   - **Scope.** It governs only the customer transaction discount — never internal pricing, cost, trade-in value,
+     price-book values or resale price.
+5. **Enforcement (server).**
+   - **When it is checked.** A discount the actor states on create or update must be within the actor's maximum. So must
+     a standing fixed amount whose effective percentage rose because the selling price fell.
+   - **Arithmetic.** PERCENT compares basis points. FIXED_AMOUNT compares `amount × 10000 ≤ max × selling price` in
+     integers, so 10% of 40000 allows 3500 and refuses 5000.
+   - **Above the maximum.** The command is refused with DISCOUNT_EXCEEDS_AUTHORITY or DISCOUNT_AUTHORITY_NOT_CONFIGURED —
+     the smallest governed mechanism, since no existing approval engine fits. A user with a higher limit (e.g. a manager
+     who can edit the draft) may apply it.
+6. **Trade-in proposal and approval.**
+   - **Proposal.** The salesperson proposes items (`tradeIns`). Each records:
+     - description;
+     - manufacturer, model and serial when known;
+     - `proposedValueMinor`;
+     - notes and an evidence reference.
+
+     The customer is the Agreement's. A proposal reduces nothing: neither a bare `tradeInMinor` nor any item credit can be
+     stated by the client (TRADE_IN_REQUIRES_APPROVAL).
+   - **Decision.** On a DRAFT, `approveSalesAgreementTradeIn` approves with the value the approver assigns (it may differ
+     from the proposal). `declineSalesAgreementTradeIn` declines with a reason. Both require
+     `salesAgreement.tradeIn.approve`.
+   - **Credit and balance.** The Agreement's trade-in credit is the sum of APPROVED values. A change to an item's facts
+     returns it to PROPOSED, so an approval never survives a change to what was approved. Acceptance waits while any item
+     is PROPOSED (TRADE_IN_APPROVAL_PENDING).
+7. **Composition.** Selling − discount = net selling. Net − APPROVED trade-in − cash/down payment = remaining balance, which
+   is the financed amount of a financed sale.
+   - A trade-in creates no receivable and no cash receipt, and stays distinct from the discount.
+   - A direct sale's receivable is total − approved trade-in.
+8. **Acquisition value HELD; future price separate.**
+   - An approved credit is not acquisition or book value: the item stays AGREED incoming equipment, and no
+     acquisition-cost evidence is written.
+   - A future resale price needs an explicit Sales pricing action.
+   - The accounting / book-value method for received used equipment remains HELD for the Owner. Commercial approval,
+     provenance and financial consideration proceed without it.
+9. **Not built.** Used-equipment valuation policy, refurbishment, disposition, auction/scrap, Settlement/Payment, Rental,
+   Analysis, GL, real provider, production, a discount-approval workflow, UI translation for es-US. FBR-F1..F4 stay
+   separate.
+
+## #205 — OWNER RULING: Finance-management roles, Owner System Configuration (2026-10-03)
+
+**Status.** Implemented locally in the same migration (`1764500000000`). It amends #204 §2:
+
+1. **Finance management.** `controller`, `accountingManager` and `financeManager` are equivalent for the two new
+   configuration capabilities. `finance.configuration.manage` and `sales.discountAuthority.manage` go to owner,
+   generalManager, controller, accountingManager, financeManager and admin. No Job Role is created, and these Roles gain
+   nothing else: each finance Role holds 19 capabilities (its 17 + these 2).
+2. **System Configuration.** `admin.systemConfiguration.manage` goes to owner and admin. The Owner governs company
+   settings without the Administrator Role. It is not granted to generalManager or the finance Roles.
+3. **Trade-in approval.** Unchanged: owner and generalManager only.
+4. **Used-equipment book value.** Remains HELD. Approved trade-in credit is commercial consideration, never automatically
+   acquisition/book value, reconditioning cost or a future selling price. A later receipt may establish ownership, custody,
+   identity and acquisition provenance without manufacturing a book value.
+
+The migration now writes 16 ruled grants (baseline 415 → 431). Every later change goes through Roles & Permissions.

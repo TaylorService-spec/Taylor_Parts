@@ -257,7 +257,7 @@ test("the salesAgreement vocabulary the old commercial.agreements reason denied 
   await reset();
   const { rows } = await query(
     `SELECT key, object_key, action_kind FROM eos_policy.capabilities
-      WHERE key LIKE 'salesAgreement.%' ORDER BY key`,
+      WHERE key LIKE 'salesAgreement.%' AND key <> 'salesAgreement.tradeIn.approve' ORDER BY key`, // #204: trade-in approval is separate business approval
   );
   assert.deepEqual(
     rows.map((r) => r.key),

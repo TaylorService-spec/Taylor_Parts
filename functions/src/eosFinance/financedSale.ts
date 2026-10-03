@@ -309,7 +309,10 @@ export async function financedConsequenceOn(c: Queryable, actor: FinanceActor, p
   if (p.tax_evidence_status !== "DETERMINED") refuse("TAX_NOT_DETERMINED", "PRECONDITION_FAILED", "the package's tax is not from DETERMINED evidence");
   const financed = BigInt(p.financed_amount_minor);
   const contribution = BigInt(p.customer_contribution_minor);
-  if (financed + contribution !== BigInt(p.total_minor)) refuse("FINANCING_COMPOSITION_MISMATCH", "PRECONDITION_FAILED", "contribution + financed must equal the total");
+  // #203: total = cash contribution + trade-in credit + financed amount (the trade-in is consideration, never cash).
+  if (financed + contribution + BigInt(p.trade_in_minor ?? 0) !== BigInt(p.total_minor)) {
+    refuse("FINANCING_COMPOSITION_MISMATCH", "PRECONDITION_FAILED", "contribution + trade-in credit + financed must equal the total");
+  }
   // CUSTOMER SIDE: independent of provider funding.
   let contributionReceivable = null;
   if (contribution > 0n) {

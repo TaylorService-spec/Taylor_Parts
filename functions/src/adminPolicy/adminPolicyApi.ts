@@ -983,6 +983,15 @@ async function dispatch(
     case "relinkTruck":
     case "unlinkTruck":
     case "changeTruckStatus":
+    case "listAccountingDestinations":
+    case "configureAccountingDestination":
+    case "setAccountingDestinationStatus":
+    case "listCounterpartyPaymentTerms":
+    case "setCounterpartyPaymentTerms":
+    case "listSystemConfiguration":
+    case "setSystemConfigurationSetting":
+    case "listSalesDiscountAuthorities":
+    case "setSalesDiscountAuthority":
       throw new Error(`${operation} is a configuration operation`);
 
     default: {

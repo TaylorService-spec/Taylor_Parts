@@ -35,6 +35,12 @@ export const COMMERCIAL_CAPABILITIES = Object.freeze({
 } as const);
 
 /**
+ * Owner ruling #204: BUSINESS APPROVAL of a proposed trade-in value (PostgreSQL-native, migration 1764500000000). Not one of
+ * the migration-023 vocabulary keys above, and never implied by administrative authority.
+ */
+export const SALES_AGREEMENT_TRADE_IN_APPROVE_CAPABILITY = "salesAgreement.tradeIn.approve";
+
+/**
  * DQ-022: an ADMINISTRATIVE handoff source (ADMIN_CORRECTION / CUSTOMER_HANDOFF_REVIEW) needs this in addition to the
  * record's edit capability. Not one of the Commercial vocabulary keys above (migration 023): it belongs to the ownership
  * handoff domain shared with the CRM Account (migration 1763683200000).

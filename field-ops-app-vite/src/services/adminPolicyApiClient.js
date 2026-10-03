@@ -143,6 +143,19 @@ export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze([
   "relinkTruck",
   "unlinkTruck",
   "changeTruckStatus",
+  // DECISIONS #203 (Controller 2026-10-02): Finance configuration -- accounting destinations and counterparty payment terms,
+  // gated on the server by finance.configuration.manage.
+  "listAccountingDestinations",
+  "configureAccountingDestination",
+  "setAccountingDestinationStatus",
+  "listCounterpartyPaymentTerms",
+  "setCounterpartyPaymentTerms",
+  // Owner rulings #204: System Configuration (company time zone, default language; admin.systemConfiguration.manage) and
+  // Employee Sales Authority (each Sales user's maximum customer discount; sales.discountAuthority.manage).
+  "listSystemConfiguration",
+  "setSystemConfigurationSetting",
+  "listSalesDiscountAuthorities",
+  "setSalesDiscountAuthority",
 ]);
 
 const ALL_OPERATIONS = new Set([...ADMIN_READ_OPERATIONS, ...ADMIN_MUTATION_OPERATIONS, ...ADMIN_CONFIGURATION_OPERATIONS]);

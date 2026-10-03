@@ -127,6 +127,9 @@ export function accountStatusLabel(status) {
 export const ACCOUNT_RELATIONSHIP_TYPE = {
   CUSTOMER: "CUSTOMER",
   VENDOR: "VENDOR",
+  // A leasing / financing provider (Owner ruling #200; Controller G1). A governed classification: only someone holding
+  // the governed-field authority may set or clear it.
+  FINANCING_PROVIDER: "FINANCING_PROVIDER",
 };
 
 // W1 / Line-of-business (LOB wireframe §3.8, Owner-approved model correction

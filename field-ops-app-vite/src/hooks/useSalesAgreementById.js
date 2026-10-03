@@ -3,6 +3,8 @@ import {
   getSalesAgreementContext,
   updateSalesAgreementDraft,
   acceptSalesAgreement,
+  approveSalesAgreementTradeIn,
+  declineSalesAgreementTradeIn,
 } from "../services/salesAgreementCommandClient.js";
 import { useAgreementCommandRunner } from "./useAgreementCommandRunner.js";
 import { salesAgreementView, SALES_AGREEMENT_VIEW_STATE } from "../domain/salesAgreementView.js";
@@ -95,11 +97,25 @@ export function useSalesAgreementById(salesAgreementId, { enabled = true } = {})
     [run, salesAgreementId],
   );
 
+  // Owner ruling #204: the trade-in value decision. Same runner, same re-read; the id comes from the route.
+  const approveTradeIn = useCallback(
+    ({ itemNumber, approvedCreditMinor, reason }) => run(`approveTradeIn:${itemNumber}`, (idempotencyKey) =>
+      approveSalesAgreementTradeIn({ salesAgreementId, itemNumber, approvedCreditMinor, reason, idempotencyKey })),
+    [run, salesAgreementId],
+  );
+  const declineTradeIn = useCallback(
+    ({ itemNumber, reason }) => run(`declineTradeIn:${itemNumber}`, (idempotencyKey) =>
+      declineSalesAgreementTradeIn({ salesAgreementId, itemNumber, reason, idempotencyKey })),
+    [run, salesAgreementId],
+  );
+
   const view = salesAgreementView({ result, loading, errorStatus });
   return {
     view,
     updateDraft,
     accept,
+    approveTradeIn,
+    declineTradeIn,
     pending,
     commandError,
     clearCommandError,

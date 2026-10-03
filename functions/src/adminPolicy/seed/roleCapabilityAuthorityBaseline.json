@@ -13,9 +13,9 @@
   "environment": "nonprod",
   "tenantId": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
   "tenantKey": "taylor-nonprod",
-  "totalGrants": 415,
+  "totalGrants": 431,
   "countsBySource": {
-    "MIGRATION_BACKED": 357,
+    "MIGRATION_BACKED": 373,
     "CANONICAL_CATALOG": 53,
     "NONPROD_ACTIVATION": 5,
     "FIXTURE_ONLY": 0,
@@ -31,18 +31,20 @@
     "migration:1762128000000",
     "migration:1762300800000",
     "migration:1762646400000",
-    "migration:1763078400000"
+    "migration:1763078400000",
+    "migration:1764500000000"
   ],
   "seedBoundaryMigration": "1761523200000",
   "deployment": {
     "$comment": "WHAT THIS FILE MEASURES, AFTER RULING E. It is the authority a DETERMINISTIC REBUILD of this repository produces -- the five-phase pipeline above -- and the rebuild guard proves expected == actual with ZERO unexplained. Ruling E requires a grant-bearing migration and the baseline that explains it to land in ONE change, so the moment migration 1762300800000 entered migrations/ this number moved with it. It is therefore AHEAD of the live nonprod row count until that migration is deployed, and saying so here is the point: 'what the repository produces' and 'what nonprod holds right now' are two questions and both stay answerable. This is NOT blessed live drift (AN2). Drift is a row in the database that nothing in the repository explains; this is a row in the repository that the database has not run yet, and it is named, counted and attributable to one migration.",
-    "rebuildTotal": 415,
+    "rebuildTotal": 431,
     "measuredInNonprodAt": "2026-09-24",
     "measuredInNonprodTotal": 387,
     "notYetAppliedToNonprod": [
       "migration:1762300800000",
       "migration:1762646400000",
-      "migration:1763078400000"
+      "migration:1763078400000",
+      "migration:1764500000000"
     ],
     "appliedToNonprodBy": "the ordinary deploy (functions migrate:up); lane BO did not and may not apply it"
   },
@@ -192,6 +194,13 @@
     },
     {
       "roleKey": "accountingManager",
+      "capabilityKey": "finance.configuration.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
+    },
+    {
+      "roleKey": "accountingManager",
       "capabilityKey": "finance.invoice.issue",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
@@ -273,6 +282,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761696000000",
       "observedGrantedBy": "migration:1761696000000"
+    },
+    {
+      "roleKey": "accountingManager",
+      "capabilityKey": "sales.discountAuthority.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
     },
     {
       "roleKey": "accountingManager",
@@ -367,6 +383,13 @@
     },
     {
       "roleKey": "admin",
+      "capabilityKey": "admin.systemConfiguration.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
+    },
+    {
+      "roleKey": "admin",
       "capabilityKey": "admin.userStatus.write",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
@@ -441,6 +464,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
       "observedGrantedBy": "migration:1761609600000"
+    },
+    {
+      "roleKey": "admin",
+      "capabilityKey": "finance.configuration.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
     },
     {
       "roleKey": "admin",
@@ -682,6 +712,13 @@
     },
     {
       "roleKey": "admin",
+      "capabilityKey": "sales.discountAuthority.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
+    },
+    {
+      "roleKey": "admin",
       "capabilityKey": "salesAgreement.accept",
       "source": "CANONICAL_CATALOG",
       "evidence": "role-catalog",
@@ -801,6 +838,13 @@
     },
     {
       "roleKey": "controller",
+      "capabilityKey": "finance.configuration.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
+    },
+    {
+      "roleKey": "controller",
       "capabilityKey": "finance.invoice.issue",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
@@ -882,6 +926,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761696000000",
       "observedGrantedBy": "migration:1761696000000"
+    },
+    {
+      "roleKey": "controller",
+      "capabilityKey": "sales.discountAuthority.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
     },
     {
       "roleKey": "controller",
@@ -1249,6 +1300,13 @@
     },
     {
       "roleKey": "financeManager",
+      "capabilityKey": "finance.configuration.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
+    },
+    {
+      "roleKey": "financeManager",
       "capabilityKey": "finance.invoice.issue",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
@@ -1333,6 +1391,13 @@
     },
     {
       "roleKey": "financeManager",
+      "capabilityKey": "sales.discountAuthority.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
+    },
+    {
+      "roleKey": "financeManager",
       "capabilityKey": "salesOrder.read",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
@@ -1386,6 +1451,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
       "observedGrantedBy": "migration:1761609600000"
+    },
+    {
+      "roleKey": "generalManager",
+      "capabilityKey": "finance.configuration.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
     },
     {
       "roleKey": "generalManager",
@@ -1501,6 +1573,13 @@
     },
     {
       "roleKey": "generalManager",
+      "capabilityKey": "sales.discountAuthority.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
+    },
+    {
+      "roleKey": "generalManager",
       "capabilityKey": "salesAgreement.accept",
       "source": "CANONICAL_CATALOG",
       "evidence": "role-catalog",
@@ -1519,6 +1598,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "sample-company-v2:rudy"
+    },
+    {
+      "roleKey": "generalManager",
+      "capabilityKey": "salesAgreement.tradeIn.approve",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
     },
     {
       "roleKey": "generalManager",
@@ -1907,6 +1993,13 @@
     },
     {
       "roleKey": "owner",
+      "capabilityKey": "admin.systemConfiguration.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
+    },
+    {
+      "roleKey": "owner",
       "capabilityKey": "admin.userStatus.write",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
@@ -1960,6 +2053,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
       "observedGrantedBy": "migration:1761609600000"
+    },
+    {
+      "roleKey": "owner",
+      "capabilityKey": "finance.configuration.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
     },
     {
       "roleKey": "owner",
@@ -2117,6 +2217,13 @@
     },
     {
       "roleKey": "owner",
+      "capabilityKey": "sales.discountAuthority.manage",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
+    },
+    {
+      "roleKey": "owner",
       "capabilityKey": "salesAgreement.create",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
@@ -2128,6 +2235,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "migration:1761523200000"
+    },
+    {
+      "roleKey": "owner",
+      "capabilityKey": "salesAgreement.tradeIn.approve",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764500000000",
+      "observedGrantedBy": "migration:1764500000000"
     },
     {
       "roleKey": "owner",

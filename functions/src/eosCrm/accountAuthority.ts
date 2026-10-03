@@ -297,6 +297,21 @@ const requireGovernedFieldCapability = (actor: CrmActorContext): void => {
   }
 };
 
+/** G1: FINANCING_PROVIDER is set or cleared only by a holder of the governed-field authority (no new capability). */
+const requireFinancingProviderDesignation = (principal: { capabilities: ReadonlySet<string> }): void => {
+  if (!principal.capabilities.has(CRM_CAPABILITIES.CUSTOMER_GOVERNED_FIELD_WRITE)) {
+    fail("CAPABILITY_REQUIRED", "FORBIDDEN", `designating or removing a financing provider requires ${CRM_CAPABILITIES.CUSTOMER_GOVERNED_FIELD_WRITE}`);
+  }
+};
+
+/** A provider still named by an open (not declined / cancelled / restructured) financing arrangement keeps its designation. */
+async function refuseProviderRemovalInUse(db: PoolClient, tenantId: string, accountId: string): Promise<void> {
+  if ((await db.query(`SELECT to_regclass('eos_commercial.financing_arrangements') AS t`)).rows[0].t === null) return;
+  const { rows } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM eos_commercial.financing_arrangements
+    WHERE tenant_id = $1 AND financing_provider_account_id = $2 AND restructure_id IS NULL AND status NOT IN ('DECLINED', 'CANCELLED')`, [tenantId, accountId]);
+  if (rows[0].n > 0) fail("FINANCING_PROVIDER_IN_USE", "PRECONDITION_FAILED", "an open financing arrangement names this provider; its designation stays");
+}
+
 async function replaceChildren(db: PoolClient, tenantId: string, accountId: string, fields: AccountFields, replacing: boolean): Promise<void> {
   const sets: [string, string, string[] | undefined, boolean][] = [
     ["account_tags", "tag", fields.tags, true],
@@ -449,6 +464,8 @@ export function createAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
       const paymentTerms = (fields.columns.get("payment_terms") ?? null) as string | null;
       const taxStatus = (fields.columns.get("tax_status") ?? null) as string | null;
       if (!isUngovernedPaymentTerms(paymentTerms) || !isUngovernedTaxStatus(taxStatus)) requireGovernedFieldCapability(actor);
+      // G1: creating an organization already designated a financing provider is the same governed classification.
+      if (fields.relationshipTypes?.includes("FINANCING_PROVIDER")) requireFinancingProviderDesignation(actor);
       return { idempotencyKey, request, owner, fields };
     },
     async (db, { tenantId, principalId }, { owner, fields }) => {
@@ -505,6 +522,15 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
       // accountGovernedFieldsUnchanged: naming a governed field with its CURRENT value is not a governed write.
       for (const column of ["payment_terms", "tax_status"] as const) {
         if (fields.columns.has(column) && fields.columns.get(column) !== current.rows[0][column]) requireGovernedFieldCapability(principal);
+      }
+      // G1: designating or removing FINANCING_PROVIDER is a governed classification change.
+      if (fields.relationshipTypes !== undefined) {
+        const { rows: had } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM eos_crm.account_relationship_types
+          WHERE tenant_id = $1 AND account_id = $2 AND relationship_type = 'FINANCING_PROVIDER'`, [tenantId, accountId]);
+        const hadProvider = had[0].n > 0;
+        const wantsProvider = fields.relationshipTypes.includes("FINANCING_PROVIDER");
+        if (hadProvider !== wantsProvider) requireFinancingProviderDesignation(principal);
+        if (hadProvider && !wantsProvider) await refuseProviderRemovalInUse(db, tenantId, accountId);
       }
       if (owner !== null) {
         const previous = current.rows[0].owner_employee_id;

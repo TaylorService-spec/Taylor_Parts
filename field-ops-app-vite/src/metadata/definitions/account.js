@@ -146,7 +146,7 @@ export const accountEntity = makeEntityDefinition({
       label: "Relationship",
       type: "ENUM_SET",
       enumValues: Object.values(ACCOUNT_RELATIONSHIP_TYPE),
-      enumLabels: { CUSTOMER: "Customer", VENDOR: "Vendor" },
+      enumLabels: { CUSTOMER: "Customer", VENDOR: "Vendor", FINANCING_PROVIDER: "Financing provider" },
       filterable: true,
       // ARRAY_CONTAINS only. array-contains-any would let a caller pass an arbitrary set,
       // and Firestore permits one array filter per query — declaring both invites a

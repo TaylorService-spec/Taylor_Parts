@@ -441,7 +441,10 @@ test("(F16) the vocabulary is pinned to the Account form's constants and to migr
   assert.deepEqual(inList("invoice_delivery_method"), [...vocabulary.INVOICE_DELIVERY_METHODS]);
   assert.deepEqual(inList("payment_terms"), [...vocabulary.PAYMENT_TERMS]);
   assert.deepEqual(inList("tax_status"), [...vocabulary.TAX_STATUSES]);
-  assert.deepEqual(inList("relationship_type"), [...vocabulary.ACCOUNT_RELATIONSHIP_TYPES]);
+  // The relationship vocabulary was widened by the Finance foundation (FINANCING_PROVIDER, migration 1764420000000; G1).
+  assert.deepEqual(inList("relationship_type"), ["CUSTOMER", "VENDOR"]);
+  const foundation = readFileSync(join(FUNCTIONS_DIR, "migrations", "1764420000000_finance-foundation.sql"), "utf8").split("-- Down Migration")[0];
+  assert.deepEqual([...foundation.match(/relationship_type IN \(([^)]*)\)/)[1].matchAll(/'([A-Z_0-9]+)'/g)].map((m) => m[1]), [...vocabulary.ACCOUNT_RELATIONSHIP_TYPES]);
   // Lines of business are an OPAQUE governed key in SQL (no operating-company names in executable migrations); the
   // valid set lives in the authority vocabulary, pinned to the client above.
   assert.match(sql, /line_of_business TEXT NOT NULL CHECK \(line_of_business ~ '\^\[A-Z\]\[A-Z0-9_\]\{0,63\}\$'\)/);

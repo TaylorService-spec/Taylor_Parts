@@ -32,7 +32,11 @@ export interface SalesAgreementLineProjection {
 }
 
 export interface SalesAgreementTotalsProjection {
+  /** The SELLING PRICE (the lines' arithmetic). */
   readonly subtotalMinor: number | null;
+  /** The customer sales discount amount (0 when none) and SELLING PRICE - DISCOUNT (#203). */
+  readonly customerDiscountMinor: number | null;
+  readonly netSellingMinor: number | null;
   readonly shippingMinor: number;
   readonly installChargeMinor: number;
   readonly taxMinor: number;
@@ -49,6 +53,35 @@ export interface SalesAgreementTotalsProjection {
 export interface SalesAgreementTaxEvidenceProjection {
   readonly status: "NOT_DETERMINED" | "DETERMINED" | "LEGACY_UNVERIFIED";
   readonly amountMinor: number | null;
+}
+
+/** The customer sales discount as entered (#203): what the salesperson stated, not only its amount. */
+export type SalesAgreementDiscountProjection =
+  | { readonly kind: "PERCENT"; readonly percentBasisPoints: number }
+  | { readonly kind: "FIXED_AMOUNT"; readonly amountMinor: number }
+  | null;
+
+/**
+ * One traded-in item (#203; Owner ruling #204): a PROPOSAL until decided. Only an APPROVED credit is consideration (it is
+ * what the Agreement's tradeInMinor sums). Incoming equipment as known; never an acquisition value or a resale price.
+ */
+export interface SalesAgreementTradeInProjection {
+  readonly itemNumber: number;
+  readonly description: string;
+  readonly manufacturer: string | null;
+  readonly modelNumber: string | null;
+  readonly serialNumber: string | null;
+  readonly equipmentModelId: string | null;
+  readonly proposedValueMinor: number;
+  readonly notes: string | null;
+  readonly evidenceReference: string | null;
+  readonly approvalStatus: "PROPOSED" | "APPROVED" | "DECLINED";
+  readonly approvedCreditMinor: number | null;
+  readonly decidedBy: string | null;
+  readonly decidedAt: string | null;
+  readonly decisionReason: string | null;
+  readonly receivingOperatingCompanyId: string;
+  readonly acquisitionStatus: string;
 }
 
 export interface SalesAgreementSummaryProjection {
@@ -71,6 +104,7 @@ export interface SalesAgreementSummaryProjection {
   readonly acceptedByPrincipalId: string | null;
   readonly totals: SalesAgreementTotalsProjection;
   readonly taxEvidence: SalesAgreementTaxEvidenceProjection;
+  readonly customerDiscount: SalesAgreementDiscountProjection;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly lines: readonly SalesAgreementLineProjection[];
@@ -86,6 +120,7 @@ export interface SalesAgreementDetailProjection extends SalesAgreementSummaryPro
   readonly specialInstructions: string | null;
   readonly sourceOpportunity: CommercialLineageReference | null;
   readonly salesOrder: CommercialLineageReference | null;
+  readonly tradeIns: readonly SalesAgreementTradeInProjection[];
 }
 
 /** Every governed Agreement create writes both; C1 leaves them nullable only for identity-only rows. */
@@ -95,6 +130,7 @@ const SUMMARY_COLUMNS = `a.id, a.sales_agreement_number, a.opportunity_id, a.acc
   WHERE k.tenant_id = a.tenant_id AND k.operating_company_key = a.operating_company_key AND k.status = 'ACTIVE') AS operating_company_id,
   a.state::text AS state, a.currency, a.accepted_at, a.accepted_by, a.created_at, a.updated_at,
   a.shipping_minor, a.install_charge_minor, a.tax_minor, a.down_payment_minor, a.trade_in_minor, a.tax_evidence_status,
+  a.customer_discount_kind, a.customer_discount_basis_points, a.customer_discount_amount_minor,
   a.owner_employee_id, EXISTS (SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = a.tenant_id AND e.id = a.owner_employee_id) AS owner_resolved,
   a.accountable_employee_id, EXISTS (SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = a.tenant_id AND e.id = a.accountable_employee_id) AS accountable_resolved,
   a.credited_salesperson_employee_id, EXISTS (SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = a.tenant_id AND e.id = a.credited_salesperson_employee_id) AS credited_resolved`;
@@ -122,12 +158,17 @@ async function linesByAgreement(db: Queryable, tenantId: string, ids: readonly s
   return out;
 }
 
+const discountOf = (r: Row): SalesAgreementDiscountProjection => (r.customer_discount_kind === "PERCENT"
+  ? { kind: "PERCENT", percentBasisPoints: Number(r.customer_discount_basis_points) }
+  : r.customer_discount_kind === "FIXED_AMOUNT" ? { kind: "FIXED_AMOUNT", amountMinor: Number(r.customer_discount_amount_minor) } : null);
+
 function summaryOf(r: Row, lines: readonly SalesAgreementLineProjection[]): SalesAgreementSummaryProjection {
+  const customerDiscount = discountOf(r);
   const totals = computeAgreementTotals(lines.map((l) => ({ extendedMinor: l.extendedMinor })) as never, {
     shippingMinor: minorOf(r.shipping_minor) ?? undefined, installChargeMinor: minorOf(r.install_charge_minor) ?? undefined,
     taxMinor: minorOf(r.tax_minor) ?? undefined, downPaymentMinor: minorOf(r.down_payment_minor) ?? undefined,
     tradeInMinor: minorOf(r.trade_in_minor) ?? undefined,
-  });
+  }, customerDiscount);
   return {
     id: r.id, salesAgreementNumber: r.sales_agreement_number, opportunityId: r.opportunity_id, accountId: r.account_id,
     accountName: r.account_name ?? null,
@@ -138,6 +179,7 @@ function summaryOf(r: Row, lines: readonly SalesAgreementLineProjection[]): Sale
     acceptedAt: isoOf(r.accepted_at), acceptedByPrincipalId: r.accepted_by,
     totals: totals as SalesAgreementTotalsProjection,
     taxEvidence: { status: r.tax_evidence_status, amountMinor: r.tax_evidence_status === "DETERMINED" ? minorOf(r.tax_minor) : null },
+    customerDiscount,
     createdAt: isoOf(r.created_at)!, updatedAt: isoOf(r.updated_at)!, lines,
   };
 }
@@ -166,8 +208,18 @@ export function getSalesAgreementDetail(deps: CommercialReadDeps, actor: Commerc
       if (!reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ, r.sales_channel ?? null)) refuseOutsideReach("Sales Agreement");
       if (!r.complete) fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Sales Agreement was not created through a governed command and carries no lifecycle");
       const lines = await linesByAgreement(db, tenantId, [r.id]);
+      const { rows: tradeInRows } = await db.query(
+        `SELECT item_number, description, manufacturer, model_number, serial_number, equipment_model_id, proposed_value_minor, notes, evidence_reference,
+                approval_status, approved_credit_minor, decided_by, decided_at, decision_reason, receiving_operating_company_id, acquisition_status
+           FROM eos_commercial.sales_agreement_trade_ins WHERE tenant_id = $1 AND sales_agreement_id = $2 ORDER BY item_number`, [tenantId, r.id]);
       return {
         ...summaryOf(r, lines.get(r.id)!),
+        tradeIns: tradeInRows.map((t) => Object.freeze({ itemNumber: t.item_number, description: t.description, manufacturer: t.manufacturer ?? null,
+          modelNumber: t.model_number ?? null, serialNumber: t.serial_number ?? null, equipmentModelId: t.equipment_model_id ?? null,
+          proposedValueMinor: Number(t.proposed_value_minor), notes: t.notes ?? null, evidenceReference: t.evidence_reference ?? null,
+          approvalStatus: t.approval_status, approvedCreditMinor: t.approved_credit_minor === null ? null : Number(t.approved_credit_minor),
+          decidedBy: t.decided_by ?? null, decidedAt: t.decided_at === null ? null : new Date(t.decided_at).toISOString(), decisionReason: t.decision_reason ?? null,
+          receivingOperatingCompanyId: t.receiving_operating_company_id, acquisitionStatus: t.acquisition_status })),
         location: r.location_id === null ? null : { locationId: r.location_id, name: r.location_name ?? null },
         customerPO: r.customer_po, isLease: r.is_lease, fulfillmentIntent: r.fulfillment_intent,
         shippingInstructions: r.shipping_instructions, shipVia: r.ship_via, specialInstructions: r.special_instructions,

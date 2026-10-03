@@ -197,7 +197,7 @@ ok("the Administration domain's key/path/label are unchanged", () => {
   assert.equal(adminDomain.path, "administration");
   assert.equal(adminDomain.label, "Administration");
 });
-ok("exactly fifteen Administration subnav items now exist", () => {
+ok("exactly eighteen Administration subnav items now exist", () => {
   // The count is pinned so a nav item cannot appear by accident. Duplicate Rules
   // was added deliberately (Owner, 2026-08-19) as its own tab under Administration, and
   // Objects (the Role x Object x CRED grid) deliberately on 2026-08-20. The pin earned its
@@ -225,7 +225,10 @@ ok("exactly fifteen Administration subnav items now exist", () => {
   // may be DONE and by whom. Deliberately its own destination rather than a tab under Roles --
   // a workflow binding grants no data access and a data grant permits no action, and one screen
   // holding both would invite exactly that conflation.
-  assert.equal(adminDomain.subnav.length, 16);
+  // EIGHTEEN since Owner rulings #204 (2026-10-03): System Configuration (company settings by one governed registry -- time
+  // zone, language) and Sales Configuration (Employee Sales Authority -- each person's maximum customer discount). Two
+  // destinations because business configuration stays with its domain; both capability-gated like Data Import.
+  assert.equal(adminDomain.subnav.length, 18);
 });
 
 ok("Financial Policy is a visible Administration tab, and the only one", () => {

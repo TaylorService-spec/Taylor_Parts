@@ -315,6 +315,14 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
           />
           Vendor
         </label>
+        <label className="fo-checkbox-label">
+          <input
+            type="checkbox"
+            checked={relationshipTypes.includes(ACCOUNT_RELATIONSHIP_TYPE.FINANCING_PROVIDER)}
+            onChange={() => toggleRelationshipType(ACCOUNT_RELATIONSHIP_TYPE.FINANCING_PROVIDER)}
+          />
+          Financing provider
+        </label>
       </fieldset>
 
       <fieldset className="fo-fieldset">

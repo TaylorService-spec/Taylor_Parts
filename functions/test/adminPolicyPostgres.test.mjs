@@ -148,15 +148,15 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_policy' ORDER BY 1",
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "audit_events", "capabilities", "capability_grant_conditions", "employee_principal_links",
-    "object_fields", "objects",
+    "audit_events", "capabilities", "capability_grant_conditions", "configuration_setting_definitions", "employee_principal_links",
+    "object_fields", "objects", "operating_company_settings",
     "principal_access_versions", "principal_capabilities", "principal_identities", "principals",
     "role_capabilities", "role_capability_decisions", "role_field_permission_overrides", "role_object_permissions", "roles",
-    "tenant_admin_bootstraps", "tenant_memberships", "tenant_operating_companies",
+    "supported_languages", "tenant_admin_bootstraps", "tenant_memberships", "tenant_operating_companies",
     "tenant_operating_company_keys", "tenant_sales_channels", "tenants",
     "user_role_assignments", "workflow_actions", "workflow_instance_events", "workflow_instances",
     "workflow_role_bindings", "workflow_steps", "workflow_versions", "workflows",
-  ], "twenty-nine tables (principal_identities from migration 1764200000000, the EOS identity binding; tenant_sales_channels from migration 1762905600000, lane GA) -- sixteen from migration 001, three from 002 (identity), two from 004 " +
+  ], "thirty-two tables (Owner rulings #204, migration 1764500000000, add System Configuration's three: configuration_setting_definitions, operating_company_settings, supported_languages; principal_identities from migration 1764200000000, the EOS identity binding; tenant_sales_channels from migration 1762905600000, lane GA) -- sixteen from migration 001, three from 002 (identity), two from 004 " +
      "(operational capabilities), one from 008 (the Employee <-> Principal linkage), one from EMP-RT-W2 " +
      "(tenant <-> operating company authority), one from migration 038 (the company -> eos_ops KEY " +
      "binding: which PARTITION an authorized company operates under, which the company row does not say), " +
@@ -233,7 +233,7 @@ test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }
 
   migrateFromClean();
   const back = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
-  assert.equal(back.rows[0].n, 29, "and up restores all twenty-nine (principal_identities, migration 1764200000000)");
+  assert.equal(back.rows[0].n, 32, "and up restores all thirty-two (System Configuration's three, migration 1764500000000; principal_identities, migration 1764200000000)");
 });
 
 test("a migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {

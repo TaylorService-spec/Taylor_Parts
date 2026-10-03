@@ -13,6 +13,7 @@ import { formatMoment } from "../../domain/displayTimestamp";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import { SALES_AGREEMENT_READ_CAPABILITY } from "../../access/salesAgreementCapabilityAccess.js";
 import { LinesEditor, buildLines, toEditorLines } from "./salesAgreementLines.jsx";
+import TradeInSection from "./TradeInSection.jsx";
 import {
   salesAgreementHeader,
   salesAgreementLines,
@@ -211,7 +212,7 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
   const mayRead = hasCapability(SALES_AGREEMENT_READ_CAPABILITY) === true;
   // The commands come from the SAME hook that owns the read, so a success refreshes the record this
   // page is showing. The onEditDraft / onRecordAcceptance props stay as an override seam.
-  const { view, absence, refresh, updateDraft, accept, pending, commandError, clearCommandError } =
+  const { view, absence, refresh, updateDraft, accept, approveTradeIn, declineTradeIn, pending, commandError, clearCommandError } =
     useSalesAgreementById(salesAgreementId, { enabled: mayRead });
   const [editingTerms, setEditingTerms] = useState(false);
   // SA-G7. `null` means not editing; an array is the working draft. Kept separate from
@@ -533,7 +534,10 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
             {ladder.complete ? (
               <div className="ns-ladder">
                 <dl className="ns-ladder__block" aria-label="Sale composition">
-                  <div><dt>Subtotal</dt><dd className="ns-num">{ladder.saleComposition.subtotal.formatted}</dd></div>
+                  <div><dt>Selling price</dt><dd className="ns-num">{ladder.saleComposition.subtotal.formatted}</dd></div>
+                  {/* #203: the customer discount and net selling price, only when a discount applies. */}
+                  {ladder.saleComposition.customerDiscount ? <div><dt>Customer discount</dt><dd className="ns-num">−{ladder.saleComposition.customerDiscount.formatted}</dd></div> : null}
+                  {ladder.saleComposition.netSelling ? <div><dt>Net selling price</dt><dd className="ns-num">{ladder.saleComposition.netSelling.formatted}</dd></div> : null}
                   {ladder.saleComposition.shipping ? <div><dt>Shipping</dt><dd className="ns-num">{ladder.saleComposition.shipping.formatted}</dd></div> : null}
                   {ladder.saleComposition.installCharge ? <div><dt>Installation charge</dt><dd className="ns-num">{ladder.saleComposition.installCharge.formatted}</dd></div> : null}
                   {/* Tax, from its evidence: an amount only when determined (zero included), otherwise words. */}
@@ -546,9 +550,10 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
                 </dl>
                 {ladder.credits.balance ? (
                   <dl className="ns-ladder__block ns-ladder__block--credits" aria-label="Credits recorded at commitment">
-                    {ladder.credits.downPayment ? <div><dt>Down payment</dt><dd className="ns-num">−{ladder.credits.downPayment.formatted}</dd></div> : null}
-                    {ladder.credits.tradeIn ? <div><dt>Trade-in</dt><dd className="ns-num">−{ladder.credits.tradeIn.formatted}</dd></div> : null}
-                    <div><dt>Balance after credits</dt><dd className="ns-num">{ladder.credits.balance.formatted}</dd></div>
+                    {/* #203: the trade-in is cash-equivalent consideration -- shown apart from cash and from the discount. */}
+                    {ladder.credits.tradeIn ? <div><dt>Trade-in credit</dt><dd className="ns-num">−{ladder.credits.tradeIn.formatted}</dd></div> : null}
+                    {ladder.credits.downPayment ? <div><dt>Cash / down payment</dt><dd className="ns-num">−{ladder.credits.downPayment.formatted}</dd></div> : null}
+                    <div><dt>Remaining balance</dt><dd className="ns-num">{ladder.credits.balance.formatted}</dd></div>
                     <p className="ns-section__note">
                       The agreement&apos;s own arithmetic: total minus down payment and trade-in. Not an
                       accounts-receivable balance — no payment is tracked on this record.
@@ -562,6 +567,22 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
               </p>
             )}
           </RuledSection>
+
+          {/* TRADE-INS (Owner ruling #204) — proposals, and an approver's decision. A proposal reduces nothing. */}
+          {(view.tradeIns?.length > 0 || (view.state === "DRAFT" && hasCapability("salesAgreement.updateDraft") === true)) ? (
+            <RuledSection title="Trade-ins">
+              <TradeInSection
+                tradeIns={view.tradeIns ?? []}
+                currency={view.currency ?? "USD"}
+                editable={view.state === "DRAFT" && hasCapability("salesAgreement.updateDraft") === true && typeof updateDraft === "function"}
+                mayApprove={view.state === "DRAFT" && hasCapability("salesAgreement.tradeIn.approve") === true && typeof approveTradeIn === "function"}
+                pending={pending}
+                onPropose={(tradeIns) => updateDraft({ tradeIns })}
+                onApprove={(input) => approveTradeIn(input)}
+                onDecline={(input) => declineTradeIn(input)}
+              />
+            </RuledSection>
+          ) : null}
 
           {/* ACCEPTANCE — EVIDENCE, NOT ESSAY. Exactly the three facts EOS writes, then the two
               short statements it can stand behind. The sentences come from PR 1's frozen contract,

@@ -52,7 +52,12 @@ on:
       - "functions/src/adminPolicy/**"
       # OD-T7 (2026-10-01): the truck registry Administration section and its suite (the guard AND its subject).
       - "field-ops-app-vite/src/modules/administration/TruckRegistry.jsx"
+      - "field-ops-app-vite/src/modules/administration/FinanceConfiguration.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminSystemConfiguration.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminSalesConfiguration.jsx"
       - "field-ops-app-vite/test/truckRegistryAdministration.test.jsx"
+      - "field-ops-app-vite/test/financeConfigurationAdministration.test.jsx"
+      - "field-ops-app-vite/test/systemSalesConfigurationAdministration.test.jsx"
       - "functions/test/adminPolicyAuthorization.test.mjs"
       - "functions/test/adminPolicyWorkflow.test.mjs"
       - "functions/test/adminPolicyNoFirebase.test.mjs"
@@ -251,6 +256,9 @@ on:
       - "functions/test/financeAccountingDeliveryPostgres.test.mjs"
       - "functions/test/financeFinancedSalePostgres.test.mjs"
       - "functions/test/financeIntercompanyPostgres.test.mjs"
+      - "functions/test/governedConfigSalesPricingPostgres.test.mjs"
+      - "functions/src/eosFinance/financeConfigurationAdministration.ts"
+      - "functions/src/eosOps/operatingCompanyBusinessTime.ts"
       - "functions/src/eosFinance/intercompany.ts"
       - "functions/src/eosFinance/financedSale.ts"
       - "functions/test/support/deterministicAccountingAdapter.mjs"
@@ -686,7 +694,12 @@ on:
     branches: [main]
     paths:
       - "field-ops-app-vite/src/modules/administration/TruckRegistry.jsx"
+      - "field-ops-app-vite/src/modules/administration/FinanceConfiguration.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminSystemConfiguration.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminSalesConfiguration.jsx"
       - "field-ops-app-vite/test/truckRegistryAdministration.test.jsx"
+      - "field-ops-app-vite/test/financeConfigurationAdministration.test.jsx"
+      - "field-ops-app-vite/test/systemSalesConfigurationAdministration.test.jsx"
       - "functions/src/adminPolicy/**"
       - "functions/test/adminPolicyAuthorization.test.mjs"
       - "functions/test/adminPolicyWorkflow.test.mjs"
@@ -876,6 +889,9 @@ on:
       - "functions/test/financeAccountingDeliveryPostgres.test.mjs"
       - "functions/test/financeFinancedSalePostgres.test.mjs"
       - "functions/test/financeIntercompanyPostgres.test.mjs"
+      - "functions/test/governedConfigSalesPricingPostgres.test.mjs"
+      - "functions/src/eosFinance/financeConfigurationAdministration.ts"
+      - "functions/src/eosOps/operatingCompanyBusinessTime.ts"
       - "functions/src/eosFinance/intercompany.ts"
       - "functions/src/eosFinance/financedSale.ts"
       - "functions/test/support/deterministicAccountingAdapter.mjs"
@@ -1325,6 +1341,18 @@ jobs:
       # reason to /admin/policy and renders a refusal as the server's answer.
       - name: Truck registry Administration section (vitest + jsdom)
         run: npx vitest run test/truckRegistryAdministration.test.jsx
+        working-directory: field-ops-app-vite
+
+      # DECISIONS #203 (2026-10-02): the Administration finance configuration section -- accounting destinations, payment terms,
+      # business time zones -- sends every change with its reason to /admin/policy and renders a refusal as the server's answer.
+      - name: Finance configuration Administration section (vitest + jsdom)
+        run: npx vitest run test/financeConfigurationAdministration.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Owner rulings #204 (2026-10-03): System Configuration (company time zone, language) and Sales Configuration (Employee
+      # Sales Authority) -- every change with its reason to /admin/policy; a refusal rendered as the server's answer.
+      - name: System and Sales Configuration Administration sections (vitest + jsdom)
+        run: npx vitest run test/systemSalesConfigurationAdministration.test.jsx
         working-directory: field-ops-app-vite
 
       # THE BROWSER'S ROUTE TO THE OBJECT-OWNED SECURITY READ MODEL. Proved through an injected

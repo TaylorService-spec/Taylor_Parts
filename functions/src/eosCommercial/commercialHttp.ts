@@ -35,7 +35,9 @@ import {
   CommercialCommandError, type CommercialActorContext, type CommercialCatalogAuthority, type CommercialErrorCategory,
 } from "./commands/commercialCommandKernel";
 import { closeOpportunityAsWon, createOpportunity, transitionOpportunity, updateOpportunity } from "./commands/opportunityCommandService";
-import { acceptSalesAgreement, createSalesAgreement, updateSalesAgreementDraft } from "./commands/salesAgreementCommandService";
+import {
+  acceptSalesAgreement, approveSalesAgreementTradeIn, createSalesAgreement, declineSalesAgreementTradeIn, updateSalesAgreementDraft,
+} from "./commands/salesAgreementCommandService";
 import { createSalesOrder, createSalesOrderFromOpportunity, transitionSalesOrder } from "./commands/salesOrderCommandService";
 import type { CommercialReadActor } from "./reads/commercialReadKernel";
 import { getAccountCommercialProjection } from "./reads/accountCommercialProjection";
@@ -100,6 +102,9 @@ const MUTATION_RUNNERS = Object.freeze({
   createSalesAgreement: command(createSalesAgreement),
   updateSalesAgreementDraft: command(updateSalesAgreementDraft),
   acceptSalesAgreement: command(acceptSalesAgreement),
+  // Owner ruling #204: the business decision on a proposed trade-in value (salesAgreement.tradeIn.approve).
+  approveSalesAgreementTradeIn: command(approveSalesAgreementTradeIn),
+  declineSalesAgreementTradeIn: command(declineSalesAgreementTradeIn),
   createSalesOrder: command(createSalesOrder),
   createSalesOrderFromOpportunity: command(createSalesOrderFromOpportunity),
   transitionSalesOrder: command(transitionSalesOrder),
