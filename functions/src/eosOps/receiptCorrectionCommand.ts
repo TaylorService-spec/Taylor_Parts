@@ -35,6 +35,7 @@ import {
   type ReceivingPrincipalActor,
 } from "./receiveReorderStockCommand.js";
 import { FinanceFoundationError, resolveReceiptCostExceptionsOn, reverseReceiptFinancialConsequenceOn } from "../eosFinance/financeFoundation.js";
+import { retireIntercompanyCorrelationForReceiptOn } from "../eosFinance/intercompany.js";
 import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import { lockStockLocation } from "./stockLocationLock.js";
@@ -235,6 +236,8 @@ async function correctWithin(
   let reversed: Awaited<ReturnType<typeof reverseReceiptFinancialConsequenceOn>>["reversed"];
   try {
     reversed = (await reverseReceiptFinancialConsequenceOn(client, financeActor, { receivingId: c.receivingId, correctionId, reason: c.reason })).reversed;
+    // The corrected receipt's intercompany correlation (#202) is retired with it (an established pair voided on both sides).
+    await retireIntercompanyCorrelationForReceiptOn(client, financeActor, { receivingId: c.receivingId, correctionId, reason: c.reason });
   } catch (err) {
     if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's Finance consequence could not be reversed: ${err.message}`);
     throw err;

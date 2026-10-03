@@ -6975,3 +6975,54 @@ not deployed. Completes #200.
    reference; the total, currency, Billing Package, Sales Order and operating company. It fails closed unless the
    receivables are exactly the composition. Direct sales keep v1 unchanged. It states the composition only — not how
    an accounting system books a lease. Nothing is sent to a real provider.
+
+## #202 — CONTROLLER: Taylor / Ventana intercompany transactions (2026-10-02)
+
+**Status.** Implemented locally (migration `1764490000000_intercompany-transactions.sql`); not pushed, not deployed. The
+paired obligations are HELD AT THE GOVERNED BOUNDARY pending one Owner question (§6). Governed by #190 §6–§10, #193 and the
+target model §11. Saratoga (#200 / #201) is unchanged.
+
+1. **Separate businesses; WHERE ≠ WHOSE.** Taylor and Ventana may share facilities, but a site, a custody location or a
+   supplier's display text never decides the operating company, the inventory owner, the seller, the financial
+   counterparty or who owns a receivable or payable. A shared building has one warehouse record per company. A receipt
+   can't put a purchase into another company's warehouse record (refused: "received into its own destination warehouse").
+2. **The source model is the existing Purchasing pipeline** (Reorder → PO → Receipt → acquisition-cost evidence → Finance
+   consequence); no second purchasing system. A governed internal purchase is a Reorder PO whose supplier is
+   INTERNAL_OPERATING_COMPANY (#193): `purchasing_operating_company_id` is the buyer and `supplier_operating_company_id`
+   the seller. The command and the database refuse a company buying from itself, and CONSOLIDATED is not a company. A
+   legacy text-only PO, even one naming the other company, carries no identity and produces nothing intercompany. Both
+   directions use the same schema.
+3. **The intercompany transaction is a CORRELATION record** (`eos_finance.intercompany_transactions`; target model §11:
+   "not a financial record"). The internal-supplier receipt writes it in the receipt's own transaction, idempotently, one
+   per receipt. It holds:
+   - the buyer and seller companies (distinct, never CONSOLIDATED);
+   - the source receipt and the Purchase Order;
+   - the amount (the receipt's priced acquisition-cost evidence) and the currency;
+   - whether the cost evidence is complete;
+   - its status, and the buyer and seller obligation ids once established;
+   - the stated trigger, timestamps, idempotency key and creator.
+
+   An unpriced receipt holds it in COST_EVIDENCE_MISSING (no amount invented). A receipt correction retires it, and an
+   established pair is voided on both sides with reversing facts.
+4. **The paired obligations** are two obligations owned by two companies and correlated, never one shared obligation and
+   never CONSOLIDATED-owned: the buyer's INTERCOMPANY_PAYABLE toward the seller company, and the seller's
+   INTERCOMPANY_RECEIVABLE toward the buyer company, for the same amount and currency. They are never netted.
+   `establishIntercompanyObligationsOn` implements this; it is idempotent, and the database accepts only the exact pair
+   (kinds, companies, counterparties, amount, currency, source).
+5. **Acquisition cost stays company-correct.** The buyer's evidence and fact are the buyer's, with the seller company as
+   internal counterparty (#193), unchanged.
+6. **HELD — the obligation trigger.** The accepted materials don't establish when the paired obligations arise:
+   - the target model names "Fulfillment / receipt" for intercompany, but for ordinary vendor receipts it records only
+     cost plus "vendor obligation eligibility", and EOS creates no payable at receipt for any supplier;
+   - the "Fulfillment" half presumes a Ventana Sales Order that the Purchasing-based flow doesn't have;
+   - FIN-BLOCK-004 predates #190.
+
+   So nothing in the runtime establishes the pair. Every correlation waits in AWAITING_OBLIGATION_TRIGGER until the Owner
+   names the business event.
+7. **Downstream sales stay with their seller.** Taylor's outside resale of equipment bought from Ventana is a Taylor sale
+   (Taylor package, customer counterparty, Taylor destination); provenance to the intercompany acquisition is traceable
+   (receipt → correlation). A Ventana direct outside sale stays Ventana's (Ventana package and destination). A Taylor
+   Service Work Order can't fulfil, or rewrite, a Ventana sale (SALES_ORDER_COMPANY_MISMATCH, existing).
+8. **Not built:** elimination, netting, settlement, GL, an intercompany accounting-handoff payload (the direct-sale v1
+   payload is not forced to carry it; each side's future handoff will anchor on its own company's obligation and carry
+   the correlation id), Analysis. No capability, grant or transport operation.
