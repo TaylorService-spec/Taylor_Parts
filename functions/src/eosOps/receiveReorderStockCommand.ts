@@ -83,6 +83,7 @@ import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import { allocateReceivingOrderNumber } from "./receivingNumbering.js";
 import { planAcquisitionCost, insertAcquisitionCostFact } from "./acquisitionCostAuthority.js";
 import { FinanceFoundationError, projectReceiptAcquisitionCostOn } from "../eosFinance/financeFoundation.js";
+import { recordIntercompanyCorrelationForReceiptOn } from "../eosFinance/intercompany.js";
 import { closeOutReorderAsReceived } from "./reorderLifecycleCommands.js";
 import { resolveOpsLocation, LocationAuthorityError } from "./warehouseBinRepository.js";
 import { insertReceivingOrder, type OpsTrackingMode } from "./purchasingRepository.js";
@@ -799,6 +800,10 @@ export async function receiveReorderStockWithin(
     try {
       await projectReceiptAcquisitionCostOn(client, { tenantId: actor.tenantId, principalId: actor.principalId },
         { receivingId, ...(opts.financeCorrection === undefined ? {} : { correction: opts.financeCorrection }) });
+      // A governed INTERNAL purchase (supplier INTERNAL_OPERATING_COMPANY, #193) also writes its intercompany CORRELATION
+      // (DECISIONS #202) -- buyer and seller from the PO's governed identity, never the site or supplier text. Not a
+      // financial record; the paired obligations wait for the Owner-ruled trigger.
+      await recordIntercompanyCorrelationForReceiptOn(client, { tenantId: actor.tenantId, principalId: actor.principalId }, receivingId);
     } catch (err) {
       if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's financial consequence could not be recorded: ${err.message}`);
       throw err;

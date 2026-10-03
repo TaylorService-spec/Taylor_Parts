@@ -6878,3 +6878,163 @@ Controller review. #197 remains governing. No real provider, credential, invoice
 9. **Authority:** no capability, no grant, no transport operation — delivery, retry and exception resolution are
    server-side functions only; no Sales or Technician authority. An employee retry capability is deferred until a
    governed Finance surface needs it. Delivery records no financial fact (Analysis provenance unchanged).
+
+## #199 — CONTROLLER CORRECTION: the financing-provider (Saratoga) business model (2026-10-02)
+
+**Status.** Recorded locally; HELD for Owner business answers. Suspends the financial-obligor and funding statements of
+#190 §12 / §18 and of FINANCE_TARGET_PRODUCT_MODEL §4 / §7; #190 is otherwise unchanged and no earlier text is rewritten.
+
+1. **The relationship.** Taylor sells equipment to Taylor's customer. The customer uses a third-party leasing / financing
+   provider (today Saratoga) as its financing source. The Taylor sale remains a Taylor commercial sale, and the
+   commercial customer remains the customer.
+2. **Not assumed:** the provider is not the commercial customer; does not purchase the equipment from Taylor; does not
+   automatically replace the customer as financial obligor; and a financed sale does not automatically create a
+   FUNDING_RECEIVABLE against the provider.
+3. **EOS must distinguish:** seller operating company; commercial customer; financing / leasing provider; the financing
+   or lease arrangement; equipment / site; the party Taylor expects payment from; the amount expected from that party;
+   any customer contribution / deposit; funding status; provider reference. Items 6–9 are never inferred from the
+   provider's presence.
+4. **Provider-neutral.** The provider is an organization governed as a FINANCING_PROVIDER (existing relationship), never
+   a schema concept. The existing FUNDING_RECEIVABLE obligation kind stays inert: nothing creates one.
+5. **Runtime today (unchanged, compliant):** a lease / financed disposition's Billing Package is HELD with
+   UNSUPPORTED_FINANCIAL_OBLIGOR and the obligor UNRESOLVED; no customer receivable and no funding receivable exist for it.
+6. **Ungoverned facts (HELD for the Owner):** who Taylor invoices; who remits the financed amount; when Taylor becomes
+   entitled to it; whether the provider purchases / funds the equipment amount or only facilitates the customer's lease;
+   how deposits / down payments are handled; what happens when financing is declined or cancelled.
+
+## #200 — OWNER RULING: the financing-provider (Saratoga) leasing / financing business model (2026-10-02)
+
+**Status.** Implemented locally (migration `1764480000000_financing-arrangements.sql`); not pushed, not deployed.
+Supersedes the held financial-obligor portions of #190 §12 / §18 and completes #199. #197 / #198 remain governing.
+
+1. **Commercial customer.** The Taylor customer remains the commercial customer; the customer / site relationship is never
+   replaced. The sale is ONE Taylor commercial sale (one Billing Package), never two sales because payment has two sources.
+2. **Provider.** The customer's third-party leasing / financing source (today Saratoga) is an organization governed with
+   the existing FINANCING_PROVIDER relationship — never a schema concept.
+3. **Billing and payment.** For the financed portion Taylor invoices the provider; the provider pays Taylor up front; the
+   customer pays the provider under the provider's lease, which EOS neither owns nor administers. Taylor's claim for the
+   financed portion is a FUNDING_RECEIVABLE against the provider — never customer A/R.
+4. **Customer contribution.** A deposit / down payment MAY exist (0 allowed, never assumed). total commercial amount =
+   customer contribution + financed amount; a positive contribution is a separate customer RECEIVABLE for exactly that
+   amount. The two never overlap and neither party is billed twice.
+5. **Financial parties** are represented independently: seller (operating company), commercial customer, equipment / site,
+   financing provider, payer to Taylor for the financed portion (provider), payer to the provider (customer, outside EOS),
+   Taylor's counterparty for the financed portion (provider), contribution counterparty (customer).
+6. **Repossession / collection.** The provider handles repossession and its own customer collection; EOS models neither,
+   and a provider's later collection problem never returns the sale to Taylor customer A/R. No title mechanics inferred.
+7. **Funding entitlement (remaining held detail).** The provider pays up front, but the operational event that entitles
+   Taylor is not yet ruled. The arrangement's governed status (APPLIED → APPROVED → FUNDING_ENTITLED → FUNDED; DECLINED /
+   CANCELLED only before entitlement) represents the lifecycle; FUNDING_ENTITLED is recorded with its stated basis and only
+   then are receivables established. Before funding a decline / cancellation holds (the package is re-evaluated to HELD
+   with FINANCING_NOT_AVAILABLE); after funding the sale never converts to customer A/R.
+
+**Implementation.**
+- `eos_commercial.financing_arrangements` (one per Agreement; the customer, the provider, the kind (LEASE / FINANCING),
+  the currency, an explicit contribution and the provider reference recorded once) + `financing_arrangement_events`
+  (append-only). The database enforces the governed provider, the provider ≠ customer rule, immutability and the exact
+  transitions.
+- The Billing Package gains disposition FINANCED_SALE, obligor basis FINANCING_PROVIDER_FUNDED and its composition
+  (financing arrangement, provider counterparty, customer contribution, financed amount). A CHECK enforces total =
+  contribution + financed. Direct-sale content and fingerprints are unchanged; a bare lease flag with no arrangement
+  stays HELD (UNSUPPORTED_FINANCIAL_OBLIGOR).
+- Readiness exceptions: FINANCING_NOT_AVAILABLE, FINANCING_CONTRIBUTION_MISMATCH (the contribution must equal the
+  Agreement's down payment), FINANCING_TRADE_IN_UNGOVERNED, FINANCING_CURRENCY_MISMATCH, FINANCED_AMOUNT_INVALID.
+- At most one receivable of each kind per package (unique index). A funding-entitled or funded financed package is never
+  silently superseded (FINANCED_PACKAGE_FUNDING_ENTITLED).
+- No capability, grant or transport operation; financed packages get no accounting handoff yet (the v1 payload is
+  direct-sale only — a composition-aware payload is a follow-up).
+
+## #201 — OWNER RULING: financing-provider funding entitlement; contribution; restructure; financed handoff (2026-10-02)
+
+**Status.** Implemented locally (amends the unpushed migration `1764480000000_financing-arrangements.sql`); not pushed,
+not deployed. Completes #200.
+
+1. **Funding entitlement.** APPROVED → FUNDING_ENTITLED occurs when Taylor holds the provider's SIGNED and APPROVED
+   documentation, modelled provider-neutrally as FINANCING PROVIDER APPROVAL DOCUMENTATION
+   (`eos_commercial.financing_approval_evidence`, append-only). Its provenance: arrangement, provider, provider reference,
+   document reference (with an optional content hash), signed flag, approved flag, recorder, time and correlation. The
+   transition names this arrangement's evidence record, and the service and the database both refuse anything not both
+   signed and approved. Application, verbal approval, APPROVED alone, delivery, installation, Work Order completion,
+   customer acceptance, possession, Sales Order status and package readiness never entitle. No document-management
+   system exists in EOS to reuse (Inbound Work's attachment custody belongs to inbound requests), so the evidence is a
+   durable reference — never a file and never a credential.
+2. **Consequence.** At FUNDING_ENTITLED exactly one FUNDING_RECEIVABLE is opened against the provider for the financed
+   amount (e.g. 33000 total = 8000 contribution + 25000 financed: provider owes 25000). FUNDED (the provider's money
+   actually received) stays a distinct, later state; settlement / payment is not implemented.
+3. **Customer contribution** is independent of provider funding: a positive contribution's customer RECEIVABLE is opened
+   when the package is READY (the sale's ordinary billing eligibility). Never overlapping with the provider's receivable.
+4. **Decline / restructure.** Before entitlement a declined / cancelled arrangement holds the sale (its package is
+   re-evaluated to HELD with FINANCING_NOT_AVAILABLE; it never silently becomes a direct sale). An explicit, append-only
+   restructure (`eos_commercial.financing_restructures`) may move it to a new arrangement (another provider) or convert it
+   to DIRECT_SALE; the replaced arrangement stays as history. Entitled or funded arrangements can't be restructured.
+5. **Trade-in** on a financed sale stays held (FINANCING_TRADE_IN_UNGOVERNED); a trade-in is not a cash contribution.
+6. **Financed accounting handoff.** At entitlement the financed package gets its one handoff, anchored on the
+   FUNDING_RECEIVABLE. Payload contract `eos.accounting.operational-billing-package` **v2** (financed sales only)
+   names: the commercial customer with their contribution and receivable; the provider with the financed amount, the
+   FUNDING_RECEIVABLE, the arrangement, the provider reference, the funding status and the signed + approved evidence
+   reference; the total, currency, Billing Package, Sales Order and operating company. It fails closed unless the
+   receivables are exactly the composition. Direct sales keep v1 unchanged. It states the composition only — not how
+   an accounting system books a lease. Nothing is sent to a real provider.
+
+## #202 — CONTROLLER: Taylor / Ventana intercompany transactions (2026-10-02)
+
+**Status.** Implemented locally (migration `1764490000000_intercompany-transactions.sql`); not pushed, not deployed. The
+obligation trigger is RESOLVED by **Owner ruling #202** (§6). Governed by #190 §6–§10, #193 and the
+target model §11. Saratoga (#200 / #201) is unchanged.
+
+1. **Separate businesses; WHERE ≠ WHOSE.** Taylor and Ventana may share facilities, but a site, a custody location or a
+   supplier's display text never decides the operating company, the inventory owner, the seller, the financial
+   counterparty or who owns a receivable or payable. A shared building has one warehouse record per company. A receipt
+   can't put a purchase into another company's warehouse record (refused: "received into its own destination warehouse").
+2. **The source model is the existing Purchasing pipeline** (Reorder → PO → Receipt → acquisition-cost evidence → Finance
+   consequence); no second purchasing system. A governed internal purchase is a Reorder PO whose supplier is
+   INTERNAL_OPERATING_COMPANY (#193): `purchasing_operating_company_id` is the buyer and `supplier_operating_company_id`
+   the seller. The command and the database refuse a company buying from itself, and CONSOLIDATED is not a company. A
+   legacy text-only PO, even one naming the other company, carries no identity and produces nothing intercompany. Both
+   directions use the same schema.
+3. **The intercompany transaction is a CORRELATION record** (`eos_finance.intercompany_transactions`; target model §11:
+   "not a financial record"). The internal-supplier receipt writes it in the receipt's own transaction, idempotently, one
+   per receipt. It holds:
+   - the buyer and seller companies (distinct, never CONSOLIDATED);
+   - the source receipt and the Purchase Order;
+   - the amount (the receipt's priced acquisition-cost evidence) and the currency;
+   - whether the cost evidence is complete;
+   - its status, and the buyer and seller obligation ids once established;
+   - the stated trigger, timestamps, idempotency key and creator.
+
+   An unpriced receipt holds it in COST_EVIDENCE_MISSING (no amount invented). A receipt correction retires it, and an
+   established pair is voided on both sides with reversing facts.
+4. **The paired obligations** are two obligations owned by two companies and correlated, never one shared obligation and
+   never CONSOLIDATED-owned: the buyer's INTERCOMPANY_PAYABLE toward the seller company, and the seller's
+   INTERCOMPANY_RECEIVABLE toward the buyer company, for the same amount and currency. They are never netted.
+   `establishIntercompanyObligationsOn` implements this; it is idempotent, and the database accepts only the exact pair
+   (kinds, companies, counterparties, amount, currency, source).
+5. **Acquisition cost stays company-correct.** The buyer's evidence and fact are the buyer's, with the seller company as
+   internal counterparty (#193), unchanged.
+6. **OWNER RULING #202 — the obligation trigger.** Taylor has NET 90 terms with Ventana and may receive Ventana equipment
+   immediately.
+   - **Trigger.** The governed PRICED RECEIPT establishes the paired intercompany obligations, in the receipt's own
+     transaction, at the agreed acquisition price. Nothing else is awaited: no separate internal invoice, resale, customer
+     sale, installation, Work Order completion, periodic settlement or payment. EOS creates no formal accounting invoice;
+     a future external accounting document is referenced when it exists.
+   - **Dates and terms.** The receipt's business date is the obligation date. The due date comes from governed terms:
+     the buyer's per-company counterparty profile of the seller company gains a structured `payment_terms_net_days`
+     (Taylor's profile of Ventana = 90, by configuration — never code). Both obligations carry the same `due_on`, which
+     is immutable once set.
+   - **Each direction has its own terms.** Every direction, and every external supplier, has its own profile. Where no
+     terms are governed (Ventana's terms with Taylor today), the pair is still established, with no due date — NET 90
+     is never assumed.
+   - **Separate facts.** Established, due, paid and overdue stay separate: overdue is never stored, and no
+     settlement/payment is built.
+   - **Unpriced receipt.** The correlation is preserved, the obligations are held and the cost-evidence exception is
+     retained (missing amount ≠ zero). When the receipt's cost evidence becomes complete,
+     `establishIntercompanyObligationsForCompletedEvidence` establishes the pair once. Note: #193 still has no governed
+     path that completes a receipt's cost evidence later (the PO is immutable, with no price amendment).
+   - **Corrections.** A receipt correction voids BOTH sides with reversing facts, never one.
+7. **Downstream sales stay with their seller.** Taylor's outside resale of equipment bought from Ventana is a Taylor sale
+   (Taylor package, customer counterparty, Taylor destination); provenance to the intercompany acquisition is traceable
+   (receipt → correlation). A Ventana direct outside sale stays Ventana's (Ventana package and destination). A Taylor
+   Service Work Order can't fulfil, or rewrite, a Ventana sale (SALES_ORDER_COMPANY_MISMATCH, existing).
+8. **Not built:** elimination, netting, settlement, GL, an intercompany accounting-handoff payload (the direct-sale v1
+   payload is not forced to carry it; each side's future handoff will anchor on its own company's obligation and carry
+   the correlation id), Analysis. No capability, grant or transport operation.

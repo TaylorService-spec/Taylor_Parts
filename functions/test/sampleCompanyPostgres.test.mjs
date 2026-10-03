@@ -266,8 +266,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 86 -> 87: Operational Billing Package (2026-10-02, DECISIONS #196): 1764450000000 -- eos_finance.billing_packages + billing_package_lines (immutable content); no capability, no grant.
 // 87 -> 88: Finance Activation 2 (2026-10-02, DECISIONS #197): 1764460000000 -- Agreement tax evidence, one receivable per billing package, accounting_handoffs; no capability, no grant.
 // 88 -> 89: Accounting Delivery Control Plane (2026-10-02, DECISIONS #198): 1764470000000 -- handoff delivery states, append-only attempts, delivery exceptions; no capability, no grant.
-const PINNED_LAST_MIGRATION = "1764470000000_accounting-delivery-control-plane";
-const PINNED_MIGRATION_COUNT = 89;
+// 89 -> 90: Financed sales (2026-10-02, Owner ruling #200): 1764480000000 -- financing arrangements + history, financed package composition, one receivable per kind per package; no capability, no grant.
+// 90 -> 91: Taylor / Ventana intercompany (2026-10-02, DECISIONS #202): 1764490000000 -- intercompany_transactions correlation + paired obligations at the governed priced receipt (Owner ruling #202), net-days terms, obligation due_on; no capability, no grant.
+const PINNED_LAST_MIGRATION = "1764490000000_intercompany-transactions";
+const PINNED_MIGRATION_COUNT = 91;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

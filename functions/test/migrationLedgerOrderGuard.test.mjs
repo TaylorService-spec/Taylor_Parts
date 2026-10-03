@@ -198,8 +198,10 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 86 -> 87: Operational Billing Package (2026-10-02, DECISIONS #196): 1764450000000 -- eos_finance.billing_packages + billing_package_lines (immutable content); no capability, no grant.
 // 87 -> 88: Finance Activation 2 (2026-10-02, DECISIONS #197): 1764460000000 -- Agreement tax evidence, one receivable per billing package, accounting_handoffs; no capability, no grant.
 // 88 -> 89: Accounting Delivery Control Plane (2026-10-02, DECISIONS #198): 1764470000000 -- handoff delivery states, append-only attempts, delivery exceptions; no capability, no grant.
-const RUNNABLE_MIGRATION_COUNT = 89;
-const TRACKED_MIGRATION_COUNT = 90; // the 89 runnable + the one deferred file
+// 89 -> 90: Financed sales (2026-10-02, Owner ruling #200): 1764480000000 -- financing arrangements + history, financed package composition, one receivable per kind per package; no capability, no grant.
+// 90 -> 91: Taylor / Ventana intercompany (2026-10-02, DECISIONS #202): 1764490000000 -- intercompany_transactions correlation + paired obligations at the governed priced receipt (Owner ruling #202), net-days terms, obligation due_on; no capability, no grant.
+const RUNNABLE_MIGRATION_COUNT = 91;
+const TRACKED_MIGRATION_COUNT = 92; // the 91 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -240,6 +242,8 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764450000000_operational-billing-packages",
   "1764460000000_receivable-tax-evidence-accounting-handoff",
   "1764470000000_accounting-delivery-control-plane",
+  "1764480000000_financing-arrangements",
+  "1764490000000_intercompany-transactions",
 ]);
 
 const repoMigrations = () =>

@@ -21,6 +21,7 @@ import { FinanceFoundationError, type FinanceActor, type FinanceFoundationCatego
 type Queryable = Pick<PoolClient, "query">;
 
 export const ACCOUNTING_PAYLOAD_CONTRACT = "eos.accounting.operational-billing-package";
+/** The direct-sale contract version (v1). A financed sale uses v2 (its two-party composition). */
 export const ACCOUNTING_PAYLOAD_CONTRACT_VERSION = 1;
 
 /** The provider-neutral payload, contract version 1. Money is integer minor units as decimal STRINGS (never floats). */
@@ -45,6 +46,29 @@ export interface AccountingPayloadV1 {
   readonly customer: { readonly counterpartyId: string; readonly kind: "EXTERNAL_ORGANIZATION"; readonly crmAccountId: string; readonly name: string | null };
 }
 
+/** A party's receivable in the financed composition: present exactly when that party owes Taylor something. */
+export interface PayloadReceivable { readonly obligationId: string; readonly kind: "RECEIVABLE" | "FUNDING_RECEIVABLE"; readonly amountMinor: string }
+
+/**
+ * Contract version 2 -- a FINANCED SALE (Owner rulings #200 / #201): ONE commercial sale whose payment composition names
+ * both financial parties. It states the composition; it does not say how an accounting system should book a lease.
+ */
+export interface AccountingPayloadV2 extends Omit<AccountingPayloadV1, "contract" | "receivable" | "customer"> {
+  readonly contract: { readonly name: typeof ACCOUNTING_PAYLOAD_CONTRACT; readonly version: 2 };
+  readonly composition: {
+    readonly kind: "FINANCED_SALE";
+    readonly currency: string;
+    readonly totalCommercialMinor: string;
+    readonly commercialCustomer: { readonly counterpartyId: string; readonly crmAccountId: string; readonly name: string | null;
+      readonly contributionMinor: string; readonly receivable: PayloadReceivable | null };
+    readonly financingProvider: { readonly counterpartyId: string; readonly crmAccountId: string; readonly name: string | null;
+      readonly financedAmountMinor: string; readonly receivable: PayloadReceivable;
+      readonly arrangementId: string; readonly arrangementKind: string; readonly providerReference: string | null; readonly fundingStatus: string;
+      readonly approvalEvidence: { readonly evidenceId: string; readonly documentReference: string; readonly signed: true; readonly approved: true; readonly recordedAt: string } };
+  };
+}
+export type AccountingPayload = AccountingPayloadV1 | AccountingPayloadV2;
+
 export interface AccountingDestinationRef {
   readonly id: string; readonly operatingCompanyId: string; readonly providerKey: string; readonly externalCompanyRef: string | null;
 }
@@ -59,7 +83,7 @@ export interface ProviderRejection { readonly disposition: DeliveryFailureDispos
  */
 export interface AccountingDeliveryAdapter {
   readonly key: string;
-  prepare(payload: AccountingPayloadV1, destination: AccountingDestinationRef, deliveryIdempotencyKey: string): PreparedDelivery;
+  prepare(payload: AccountingPayload, destination: AccountingDestinationRef, deliveryIdempotencyKey: string): PreparedDelivery;
   deliver(prepared: PreparedDelivery): Promise<unknown>;
   interpretAcknowledgement(response: unknown): ProviderAcknowledgement | null;
   interpretRejection(response: unknown): ProviderRejection | null;
@@ -130,21 +154,28 @@ async function tx<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): Promise<T> 
  * the handoff company's own.
  */
 export async function buildAccountingPayload(db: Queryable, tenantId: string, handoffId: string)
-  : Promise<{ readonly payload: AccountingPayloadV1; readonly fingerprint: string; readonly destination: AccountingDestinationRef }> {
+  : Promise<{ readonly payload: AccountingPayload; readonly fingerprint: string; readonly destination: AccountingDestinationRef }> {
   const { rows: hr } = await db.query(`SELECT * FROM eos_finance.accounting_handoffs WHERE tenant_id = $1 AND id = $2`, [tenantId, handoffId]);
   const h = hr[0] ?? refuse("ACCOUNTING_HANDOFF_NOT_FOUND", "NOT_FOUND", "no accounting handoff with that id");
   const { rows: pr } = await db.query(`SELECT * FROM eos_finance.billing_packages WHERE tenant_id = $1 AND id = $2`, [tenantId, h.billing_package_id]);
   const p = pr[0];
-  if (!p || p.status !== "READY" || p.tax_evidence_status !== "DETERMINED" || p.obligor_basis !== "DIRECT_SALE_CUSTOMER") {
-    refuse("PAYLOAD_SOURCE_NOT_AUTHORITATIVE", "PRECONDITION_FAILED", "only a READY direct-sale package with DETERMINED tax is delivered");
+  const financedSale = p?.commercial_disposition === "FINANCED_SALE";
+  if (!p || p.status !== "READY" || p.tax_evidence_status !== "DETERMINED"
+      || p.obligor_basis !== (financedSale ? "FINANCING_PROVIDER_FUNDED" : "DIRECT_SALE_CUSTOMER")) {
+    refuse("PAYLOAD_SOURCE_NOT_AUTHORITATIVE", "PRECONDITION_FAILED", "only a READY direct or financed sale package with DETERMINED tax is delivered");
   }
   const { rows: or } = await db.query(
     `SELECT o.*, b.originated_minor FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
       WHERE o.tenant_id = $1 AND o.id = $2`, [tenantId, h.obligation_id]);
   const o = or[0];
-  if (!o || o.kind !== "RECEIVABLE" || o.status === "VOID" || o.source_domain !== "BILLING_PACKAGE" || o.source_record_id !== p.id
+  // The handoff's anchoring receivable: a direct sale's customer RECEIVABLE for the total, or a financed sale's provider
+  // FUNDING_RECEIVABLE for the financed amount.
+  const anchorKind = financedSale ? "FUNDING_RECEIVABLE" : "RECEIVABLE";
+  const anchorCounterparty = financedSale ? p.financing_provider_counterparty_id : p.counterparty_id;
+  const anchorAmount = financedSale ? p.financed_amount_minor : p.total_minor;
+  if (!o || o.kind !== anchorKind || o.status === "VOID" || o.source_domain !== "BILLING_PACKAGE" || o.source_record_id !== p.id
       || o.operating_company_id !== p.operating_company_id || o.operating_company_id !== h.operating_company_id
-      || o.counterparty_id !== p.counterparty_id || o.currency !== p.currency || BigInt(o.originated_minor) !== BigInt(p.total_minor)) {
+      || o.counterparty_id !== anchorCounterparty || o.currency !== p.currency || BigInt(o.originated_minor) !== BigInt(anchorAmount)) {
     refuse("PAYLOAD_RECEIVABLE_MISMATCH", "PRECONDITION_FAILED", "the receivable is not exactly the package's own -- nothing is delivered");
   }
   const { rows: dr } = await db.query(`SELECT * FROM eos_finance.accounting_destinations WHERE tenant_id = $1 AND id = $2`, [tenantId, h.accounting_destination_id]);
@@ -161,8 +192,7 @@ export async function buildAccountingPayload(db: Queryable, tenantId: string, ha
   if (!cp || cp.kind !== "EXTERNAL_ORGANIZATION") refuse("UNSUPPORTED_FINANCIAL_OBLIGOR", "PRECONDITION_FAILED", "a direct sale's obligor is an external organization");
   const { rows: lr } = await db.query(
     `SELECT * FROM eos_finance.billing_package_lines WHERE tenant_id = $1 AND package_id = $2 ORDER BY line_number`, [tenantId, p.id]);
-  const payload: AccountingPayloadV1 = {
-    contract: { name: ACCOUNTING_PAYLOAD_CONTRACT, version: 1 },
+  const common = {
     semantics: "OPERATIONAL_BILLING_PACKAGE_NOT_AN_ACCOUNTING_INVOICE",
     handoff: { id: String(h.id), idempotencyKey: String(h.idempotency_key), correlationId: h.correlation_id ?? null },
     operatingCompany: { id: String(h.operating_company_id) },
@@ -181,13 +211,62 @@ export async function buildAccountingPayload(db: Queryable, tenantId: string, ha
         extendedMinor: minorText(l.extended_minor) as string, serialNumbers: [...(l.serial_numbers ?? [])],
       })),
     },
-    receivable: { obligationId: String(o.id), amountMinor: minorText(o.originated_minor) as string, currency: String(o.currency) },
-    customer: { counterpartyId: String(cp.id), kind: "EXTERNAL_ORGANIZATION", crmAccountId: String(cp.crm_account_id), name: cp.name ?? null },
-  };
+  } as const;
+  const payload: AccountingPayload = financedSale
+    ? { contract: { name: ACCOUNTING_PAYLOAD_CONTRACT, version: 2 }, ...common, composition: await financedComposition(db, tenantId, p, o, cp) }
+    : { contract: { name: ACCOUNTING_PAYLOAD_CONTRACT, version: 1 }, ...common,
+        receivable: { obligationId: String(o.id), amountMinor: minorText(o.originated_minor) as string, currency: String(o.currency) },
+        customer: { counterpartyId: String(cp.id), kind: "EXTERNAL_ORGANIZATION", crmAccountId: String(cp.crm_account_id), name: cp.name ?? null } };
   const fingerprint = createHash("sha256").update(canonicalJson(payload)).digest("hex");
   const destination: AccountingDestinationRef = { id: String(d.id), operatingCompanyId: String(d.operating_company_id), providerKey: String(d.provider_key),
     externalCompanyRef: d.external_company_ref ?? null };
   return { payload: deepFreeze(payload), fingerprint, destination: deepFreeze(destination) };
+}
+
+/**
+ * The financed composition (v2), fail closed: the arrangement is funding-entitled by SIGNED + APPROVED evidence; the
+ * provider's FUNDING_RECEIVABLE is the financed amount; the customer's RECEIVABLE is exactly the contribution (and exists
+ * only when it is positive); contribution + financed = total; nothing VOID; one company, one currency.
+ */
+async function financedComposition(db: Queryable, tenantId: string, p: Record<string, any>, funding: Record<string, any>, customer: Record<string, any>)
+  : Promise<AccountingPayloadV2["composition"]> {
+  const { rows: fr } = await db.query(
+    `SELECT fa.*, e.document_reference, e.signed, e.approved, e.recorded_at AS evidence_recorded_at
+       FROM eos_commercial.financing_arrangements fa LEFT JOIN eos_commercial.financing_approval_evidence e ON e.id = fa.entitlement_evidence_id
+      WHERE fa.tenant_id = $1 AND fa.id = $2`, [tenantId, p.financing_arrangement_id]);
+  const fa = fr[0];
+  if (!fa || !["FUNDING_ENTITLED", "FUNDED"].includes(fa.status) || fa.signed !== true || fa.approved !== true) {
+    refuse("PAYLOAD_FUNDING_NOT_ENTITLED", "PRECONDITION_FAILED", "a financed sale is delivered only once signed + approved provider documentation entitles Taylor");
+  }
+  const { rows: pr } = await db.query(
+    `SELECT c.id, c.kind, c.crm_account_id, a.name FROM eos_finance.financial_counterparties c
+       LEFT JOIN eos_crm.accounts a ON a.tenant_id = c.tenant_id AND a.id = c.crm_account_id WHERE c.tenant_id = $1 AND c.id = $2`, [tenantId, p.financing_provider_counterparty_id]);
+  const provider = pr[0];
+  if (!provider || provider.kind !== "EXTERNAL_ORGANIZATION" || provider.crm_account_id !== fa.financing_provider_account_id) {
+    refuse("PAYLOAD_PROVIDER_MISMATCH", "PRECONDITION_FAILED", "the package's provider is not the arrangement's provider");
+  }
+  const contribution = BigInt(p.customer_contribution_minor);
+  const financed = BigInt(p.financed_amount_minor);
+  const { rows: cr } = await db.query(
+    `SELECT o.id, o.counterparty_id, o.currency, o.status, b.originated_minor FROM eos_finance.obligations o
+       JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
+      WHERE o.tenant_id = $1 AND o.source_domain = 'BILLING_PACKAGE' AND o.source_record_id = $2 AND o.kind = 'RECEIVABLE'`, [tenantId, p.id]);
+  const ar = cr[0];
+  const arValid = contribution === 0n ? !ar
+    : Boolean(ar && ar.status !== "VOID" && ar.counterparty_id === p.counterparty_id && ar.currency === p.currency && BigInt(ar.originated_minor) === contribution);
+  if (!arValid || contribution + financed !== BigInt(p.total_minor) || BigInt(funding.originated_minor) !== financed) {
+    refuse("PAYLOAD_COMPOSITION_MISMATCH", "PRECONDITION_FAILED", "the receivables are not exactly the package's composition -- nothing is delivered");
+  }
+  return {
+    kind: "FINANCED_SALE", currency: String(p.currency), totalCommercialMinor: String(p.total_minor),
+    commercialCustomer: { counterpartyId: String(customer.id), crmAccountId: String(customer.crm_account_id), name: customer.name ?? null,
+      contributionMinor: contribution.toString(), receivable: ar ? { obligationId: String(ar.id), kind: "RECEIVABLE", amountMinor: contribution.toString() } : null },
+    financingProvider: { counterpartyId: String(provider.id), crmAccountId: String(provider.crm_account_id), name: provider.name ?? null,
+      financedAmountMinor: financed.toString(), receivable: { obligationId: String(funding.id), kind: "FUNDING_RECEIVABLE", amountMinor: financed.toString() },
+      arrangementId: String(fa.id), arrangementKind: String(fa.arrangement_kind), providerReference: fa.provider_reference ?? null, fundingStatus: String(fa.status),
+      approvalEvidence: { evidenceId: String(fa.entitlement_evidence_id), documentReference: String(fa.document_reference), signed: true, approved: true,
+        recordedAt: new Date(fa.evidence_recorded_at).toISOString() } },
+  };
 }
 
 /** First delivery of a READY_FOR_DELIVERY handoff. A replayed request returns its attempt; a second request refuses. */
@@ -280,7 +359,7 @@ async function runAttempt(deps: AccountingDeliveryDeps, actor: FinanceActor,
           initiation, retry_of_attempt_id, retry_reason, initiated_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
       [attemptId, actor.tenantId, h.id, attemptNumber, h.operating_company_id, built.destination.id, adapter.key, ACCOUNTING_PAYLOAD_CONTRACT,
-        ACCOUNTING_PAYLOAD_CONTRACT_VERSION, canonicalJson(built.payload), built.fingerprint, deliveryKey, r.requestKey, r.initiation, retryOf, r.reason, actor.principalId]);
+        built.payload.contract.version, canonicalJson(built.payload), built.fingerprint, deliveryKey, r.requestKey, r.initiation, retryOf, r.reason, actor.principalId]);
     await c.query(
       `UPDATE eos_finance.accounting_handoffs SET status = 'DELIVERY_IN_PROGRESS', attempt_count = attempt_count + 1, last_attempt_at = now(),
           failure_reason = NULL, updated_at = now() WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, h.id]);
