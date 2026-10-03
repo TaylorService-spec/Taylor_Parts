@@ -189,7 +189,9 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
     assert.equal(RULED.length, 16, "exactly the sixteen Owner-ruled (capability, Security Role) pairs (#204 as amended by #205)");
     const written = await q(`SELECT c.key, r.key AS role FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id
       JOIN eos_policy.roles r ON r.id = rc.role_id WHERE rc.tenant_id = $1 AND rc.granted_by = 'migration:1764500000000' ORDER BY 1, 2`, [TENANT]);
-    assert.deepEqual(written.rows.map((x) => [x.key, x.role]), [...RULED].sort((a, b) => (a[0] + a[1] < b[0] + b[1] ? -1 : 1)), "the ruled holders, nothing else");
+    // Both sides ordered in JS: database collation differs between environments.
+    const byPair = (a, b) => (`${a[0]}|${a[1]}` < `${b[0]}|${b[1]}` ? -1 : 1);
+    assert.deepEqual(written.rows.map((x) => [x.key, x.role]).sort(byPair), [...RULED].sort(byPair), "the ruled holders, nothing else");
     // A: the capability is an ordinary Object action in the Administration security model (the Roles & Permissions checkbox).
     const matrix = await admin("getObjectSecurityMatrix", { objectKey: "financeConfiguration" });
     assert.equal(matrix.ok, true, JSON.stringify(matrix).slice(0, 300));
@@ -219,7 +221,7 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
     assert.equal((await holds(["admin"])).has("admin.systemConfiguration.manage"), true, "system administration is the System Administrator's");
     // OWNER RULING #205 -- the exact holder sets, measured in the database (no unintended grant).
     const holdersIn = async (key) => (await q(`SELECT r.key FROM eos_policy.role_capabilities rc JOIN eos_policy.roles r ON r.id = rc.role_id
-      JOIN eos_policy.capabilities c ON c.id = rc.capability_id WHERE rc.tenant_id = $1 AND c.key = $2 ORDER BY r.key`, [TENANT, key])).rows.map((x) => x.key);
+      JOIN eos_policy.capabilities c ON c.id = rc.capability_id WHERE rc.tenant_id = $1 AND c.key = $2`, [TENANT, key])).rows.map((x) => x.key).sort();
     const SIX = ["accountingManager", "admin", "controller", "financeManager", "generalManager", "owner"];
     assert.deepEqual(await holdersIn("finance.configuration.manage"), SIX, "#205: six ruled roles hold Finance configuration");
     assert.deepEqual(await holdersIn("sales.discountAuthority.manage"), SIX, "#205: six ruled roles manage Sales discount limits");
