@@ -6943,3 +6943,35 @@ Supersedes the held financial-obligor portions of #190 §12 / §18 and completes
   silently superseded (FINANCED_PACKAGE_FUNDING_ENTITLED).
 - No capability, grant or transport operation; financed packages get no accounting handoff yet (the v1 payload is
   direct-sale only — a composition-aware payload is a follow-up).
+
+## #201 — OWNER RULING: financing-provider funding entitlement; contribution; restructure; financed handoff (2026-10-02)
+
+**Status.** Implemented locally (amends the unpushed migration `1764480000000_financing-arrangements.sql`); not pushed,
+not deployed. Completes #200.
+
+1. **Funding entitlement.** APPROVED → FUNDING_ENTITLED occurs when Taylor holds the provider's SIGNED and APPROVED
+   documentation, modelled provider-neutrally as FINANCING PROVIDER APPROVAL DOCUMENTATION
+   (`eos_commercial.financing_approval_evidence`, append-only). Its provenance: arrangement, provider, provider reference,
+   document reference (with an optional content hash), signed flag, approved flag, recorder, time and correlation. The
+   transition names this arrangement's evidence record, and the service and the database both refuse anything not both
+   signed and approved. Application, verbal approval, APPROVED alone, delivery, installation, Work Order completion,
+   customer acceptance, possession, Sales Order status and package readiness never entitle. No document-management
+   system exists in EOS to reuse (Inbound Work's attachment custody belongs to inbound requests), so the evidence is a
+   durable reference — never a file and never a credential.
+2. **Consequence.** At FUNDING_ENTITLED exactly one FUNDING_RECEIVABLE is opened against the provider for the financed
+   amount (e.g. 33000 total = 8000 contribution + 25000 financed: provider owes 25000). FUNDED (the provider's money
+   actually received) stays a distinct, later state; settlement / payment is not implemented.
+3. **Customer contribution** is independent of provider funding: a positive contribution's customer RECEIVABLE is opened
+   when the package is READY (the sale's ordinary billing eligibility). Never overlapping with the provider's receivable.
+4. **Decline / restructure.** Before entitlement a declined / cancelled arrangement holds the sale (its package is
+   re-evaluated to HELD with FINANCING_NOT_AVAILABLE; it never silently becomes a direct sale). An explicit, append-only
+   restructure (`eos_commercial.financing_restructures`) may move it to a new arrangement (another provider) or convert it
+   to DIRECT_SALE; the replaced arrangement stays as history. Entitled or funded arrangements can't be restructured.
+5. **Trade-in** on a financed sale stays held (FINANCING_TRADE_IN_UNGOVERNED); a trade-in is not a cash contribution.
+6. **Financed accounting handoff.** At entitlement the financed package gets its one handoff, anchored on the
+   FUNDING_RECEIVABLE. Payload contract `eos.accounting.operational-billing-package` **v2** (financed sales only)
+   names: the commercial customer with their contribution and receivable; the provider with the financed amount, the
+   FUNDING_RECEIVABLE, the arrangement, the provider reference, the funding status and the signed + approved evidence
+   reference; the total, currency, Billing Package, Sales Order and operating company. It fails closed unless the
+   receivables are exactly the composition. Direct sales keep v1 unchanged. It states the composition only — not how
+   an accounting system books a lease. Nothing is sent to a real provider.

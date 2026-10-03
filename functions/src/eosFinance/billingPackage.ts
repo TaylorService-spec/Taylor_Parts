@@ -53,10 +53,13 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
     `SELECT so.id, so.state::text AS state, so.operating_company_key, so.account_id, so.currency, so.sales_agreement_id,
             a.is_lease, a.shipping_minor, a.install_charge_minor, a.tax_minor, a.tax_evidence_status, a.down_payment_minor, a.trade_in_minor,
             fa.id AS financing_arrangement_id, fa.status AS financing_status, fa.financing_provider_account_id, fa.customer_contribution_minor,
-            fa.currency AS financing_currency
+            fa.currency AS financing_currency, rs.to_kind AS restructured_to
        FROM eos_commercial.sales_orders so
        LEFT JOIN eos_commercial.sales_agreements a ON a.tenant_id = so.tenant_id AND a.id = so.sales_agreement_id
        LEFT JOIN eos_commercial.financing_arrangements fa ON fa.tenant_id = so.tenant_id AND fa.sales_agreement_id = so.sales_agreement_id
+                                                          AND fa.restructure_id IS NULL
+       LEFT JOIN LATERAL (SELECT r.to_kind FROM eos_commercial.financing_restructures r WHERE r.tenant_id = so.tenant_id
+                            AND r.sales_agreement_id = so.sales_agreement_id ORDER BY r.recorded_at DESC, r.id DESC LIMIT 1) rs ON true
       WHERE so.tenant_id = $1 AND so.id = $2 FOR SHARE OF so`, [actor.tenantId, input.salesOrderId]);
   if (!so[0]) throw new FinanceFoundationError("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no Sales Order with that id");
   const o = so[0];
@@ -71,7 +74,9 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
   // ONE governed company (fails closed; CONSOLIDATED refused by resolveOperatingCompany).
   const companyId = await resolveOperatingCompanyFromKey(c, actor.tenantId, o.operating_company_key);
   // A governed financing arrangement makes it a FINANCED_SALE (#200); a bare lease flag without one stays unsupported.
-  const disposition = o.sales_agreement_id === null ? "DIRECT_ORDER" : o.financing_arrangement_id ? "FINANCED_SALE" : o.is_lease ? "LEASE" : "SALE";
+  // An EXPLICIT restructure to DIRECT_SALE (#201 §5) makes an unfunded financed sale a direct sale -- never silently.
+  const disposition = o.sales_agreement_id === null ? "DIRECT_ORDER" : o.financing_arrangement_id ? "FINANCED_SALE"
+    : o.restructured_to === "DIRECT_SALE" ? "SALE" : o.is_lease ? "LEASE" : "SALE";
   const exceptions: string[] = [];
   let counterpartyId: string | null = null;
   let providerCounterpartyId: string | null = null;
@@ -242,22 +247,29 @@ export async function establishPackageReceivableOn(c: Queryable, actor: FinanceA
     sourceDomain: "BILLING_PACKAGE", sourceRecordId: packageId, originationAmountMinor: total, basis: "OPERATIONAL_BILLING_PACKAGE",
     effectiveAt: p.prepared_at, idempotencyKey: `ar:bpk:${packageId}`, correlationId: p.sales_order_id,
   });
-  // The provider-neutral handoff (one per package).
+  const handoff = await ensurePackageHandoffOn(c, actor, p, opened.obligationId);
+  return Object.freeze({ receivable: Object.freeze({ outcome: opened.outcome, obligationId: opened.obligationId }), handoff });
+}
+
+/**
+ * The provider-neutral accounting handoff of ONE package (one per package; idempotent). READY_FOR_DELIVERY when the
+ * company has a destination, otherwise PENDING_DESTINATION with ACCOUNTING_DESTINATION_MISSING. Nothing is sent.
+ * `obligationId` is the package's anchoring receivable (a financed package anchors on its FUNDING_RECEIVABLE).
+ */
+export async function ensurePackageHandoffOn(c: Queryable, actor: FinanceActor, p: Record<string, any>, obligationId: string) {
+  const packageId = String(p.id);
   const destination = await resolveAccountingDestination(c, actor.tenantId, p.operating_company_id);
   await c.query(
     `INSERT INTO eos_finance.accounting_handoffs (id, tenant_id, operating_company_id, billing_package_id, obligation_id, accounting_destination_id,
         payload_kind, payload_version, payload_fingerprint, status, readiness_exceptions, idempotency_key, correlation_id, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,'OPERATIONAL_BILLING_PACKAGE',$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (tenant_id, billing_package_id) DO NOTHING`,
-    [`aho_${randomUUID()}`, actor.tenantId, p.operating_company_id, packageId, opened.obligationId, destination?.id ?? null, Number(p.version),
+    [`aho_${randomUUID()}`, actor.tenantId, p.operating_company_id, packageId, obligationId, destination?.id ?? null, Number(p.version),
       p.content_fingerprint, destination ? "READY_FOR_DELIVERY" : "PENDING_DESTINATION", destination ? [] : ["ACCOUNTING_DESTINATION_MISSING"],
       `handoff:bpk:${packageId}`, p.sales_order_id, actor.principalId]);
   const { rows: h } = await c.query(`SELECT id, status, readiness_exceptions FROM eos_finance.accounting_handoffs WHERE tenant_id = $1 AND billing_package_id = $2`,
     [actor.tenantId, packageId]);
-  return Object.freeze({
-    receivable: Object.freeze({ outcome: opened.outcome, obligationId: opened.obligationId }),
-    handoff: Object.freeze({ id: String(h[0].id), status: String(h[0].status), readinessExceptions: Object.freeze([...h[0].readiness_exceptions]) }),
-  });
+  return Object.freeze({ id: String(h[0].id), status: String(h[0].status), readinessExceptions: Object.freeze([...h[0].readiness_exceptions] as string[]) });
 }
 
 async function isCurrentAuthoritative(c: Queryable, actor: FinanceActor, packageId: string): Promise<boolean> {
