@@ -299,6 +299,10 @@ check("RECONCILE PROOF: the nine live Owner grants this catalog lacks are a cata
     "finance.configuration.manage",
     "finance.invoice.read",
     "finance.payment.read",
+    "finance.reconciliation.record",
+    "finance.settlement.apply",
+    "finance.settlement.correct",
+    "finance.settlement.record",
     "inventory.manufacturer.read",
     "receivingOrder.record.read",
     "reorder.request.read",
@@ -339,7 +343,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 113 -> 114: inventory.receipt.correct (1764430000000, Finance Activation 1 completion 2026-10-01), granted to NO Role.
   // 114 -> 115: finance.configuration.manage (1764500000000, governed configuration 2026-10-02), granted to NO Role.
   // 115 -> 118: admin.systemConfiguration.manage, sales.discountAuthority.manage, salesAgreement.tradeIn.approve (#204, 1764500000000).
-  assert.equal(VOCABULARY.size, 118);
+  // 118 -> 122: finance.settlement.record / .apply / .correct, finance.reconciliation.record (#206, 1764510000000).
+  assert.equal(VOCABULARY.size, 122);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

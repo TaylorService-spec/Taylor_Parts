@@ -84,6 +84,7 @@ import { allocateReceivingOrderNumber } from "./receivingNumbering.js";
 import { planAcquisitionCost, insertAcquisitionCostFact } from "./acquisitionCostAuthority.js";
 import { FinanceFoundationError, projectReceiptAcquisitionCostOn } from "../eosFinance/financeFoundation.js";
 import { recordIntercompanyCorrelationForReceiptOn } from "../eosFinance/intercompany.js";
+import { establishReceiptPayableOn } from "../eosFinance/vendorPayable.js";
 import { closeOutReorderAsReceived } from "./reorderLifecycleCommands.js";
 import { resolveOpsLocation, LocationAuthorityError } from "./warehouseBinRepository.js";
 import { insertReceivingOrder, type OpsTrackingMode } from "./purchasingRepository.js";
@@ -804,6 +805,9 @@ export async function receiveReorderStockWithin(
       // (DECISIONS #202) -- buyer and seller from the PO's governed identity, never the site or supplier text. Not a
       // financial record; the paired obligations wait for the Owner-ruled trigger.
       await recordIntercompanyCorrelationForReceiptOn(client, { tenantId: actor.tenantId, principalId: actor.principalId }, receivingId);
+      // #206 (target model §12): a governed EXTERNAL purchase with complete cost evidence opens the company's vendor PAYABLE
+      // (received-not-invoiced) and hands it to the company's accounting destination. Incomplete evidence opens nothing.
+      await establishReceiptPayableOn(client, { tenantId: actor.tenantId, principalId: actor.principalId }, receivingId);
     } catch (err) {
       if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's financial consequence could not be recorded: ${err.message}`);
       throw err;

@@ -13,9 +13,9 @@
   "environment": "nonprod",
   "tenantId": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
   "tenantKey": "taylor-nonprod",
-  "totalGrants": 431,
+  "totalGrants": 451,
   "countsBySource": {
-    "MIGRATION_BACKED": 373,
+    "MIGRATION_BACKED": 393,
     "CANONICAL_CATALOG": 53,
     "NONPROD_ACTIVATION": 5,
     "FIXTURE_ONLY": 0,
@@ -32,19 +32,21 @@
     "migration:1762300800000",
     "migration:1762646400000",
     "migration:1763078400000",
-    "migration:1764500000000"
+    "migration:1764500000000",
+    "migration:1764510000000"
   ],
   "seedBoundaryMigration": "1761523200000",
   "deployment": {
     "$comment": "WHAT THIS FILE MEASURES, AFTER RULING E. It is the authority a DETERMINISTIC REBUILD of this repository produces -- the five-phase pipeline above -- and the rebuild guard proves expected == actual with ZERO unexplained. Ruling E requires a grant-bearing migration and the baseline that explains it to land in ONE change, so the moment migration 1762300800000 entered migrations/ this number moved with it. It is therefore AHEAD of the live nonprod row count until that migration is deployed, and saying so here is the point: 'what the repository produces' and 'what nonprod holds right now' are two questions and both stay answerable. This is NOT blessed live drift (AN2). Drift is a row in the database that nothing in the repository explains; this is a row in the repository that the database has not run yet, and it is named, counted and attributable to one migration.",
-    "rebuildTotal": 431,
+    "rebuildTotal": 451,
     "measuredInNonprodAt": "2026-09-24",
     "measuredInNonprodTotal": 387,
     "notYetAppliedToNonprod": [
       "migration:1762300800000",
       "migration:1762646400000",
       "migration:1763078400000",
-      "migration:1764500000000"
+      "migration:1764500000000",
+      "migration:1764510000000"
     ],
     "appliedToNonprodBy": "the ordinary deploy (functions migrate:up); lane BO did not and may not apply it"
   },
@@ -229,10 +231,38 @@
     },
     {
       "roleKey": "accountingManager",
+      "capabilityKey": "finance.reconciliation.record",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "accountingManager",
       "capabilityKey": "finance.refund.record",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
       "observedGrantedBy": "migration:1761609600000"
+    },
+    {
+      "roleKey": "accountingManager",
+      "capabilityKey": "finance.settlement.apply",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "accountingManager",
+      "capabilityKey": "finance.settlement.correct",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "accountingManager",
+      "capabilityKey": "finance.settlement.record",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
     },
     {
       "roleKey": "accountingManager",
@@ -873,10 +903,38 @@
     },
     {
       "roleKey": "controller",
+      "capabilityKey": "finance.reconciliation.record",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "controller",
       "capabilityKey": "finance.refund.record",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
       "observedGrantedBy": "migration:1761609600000"
+    },
+    {
+      "roleKey": "controller",
+      "capabilityKey": "finance.settlement.apply",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "controller",
+      "capabilityKey": "finance.settlement.correct",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "controller",
+      "capabilityKey": "finance.settlement.record",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
     },
     {
       "roleKey": "controller",
@@ -1335,10 +1393,38 @@
     },
     {
       "roleKey": "financeManager",
+      "capabilityKey": "finance.reconciliation.record",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "financeManager",
       "capabilityKey": "finance.refund.record",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
       "observedGrantedBy": "migration:1761609600000"
+    },
+    {
+      "roleKey": "financeManager",
+      "capabilityKey": "finance.settlement.apply",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "financeManager",
+      "capabilityKey": "finance.settlement.correct",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "financeManager",
+      "capabilityKey": "finance.settlement.record",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
     },
     {
       "roleKey": "financeManager",
@@ -1489,10 +1575,38 @@
     },
     {
       "roleKey": "generalManager",
+      "capabilityKey": "finance.reconciliation.record",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "generalManager",
       "capabilityKey": "finance.refund.record",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
       "observedGrantedBy": "migration:1761609600000"
+    },
+    {
+      "roleKey": "generalManager",
+      "capabilityKey": "finance.settlement.apply",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "generalManager",
+      "capabilityKey": "finance.settlement.correct",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "generalManager",
+      "capabilityKey": "finance.settlement.record",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
     },
     {
       "roleKey": "generalManager",
@@ -2091,10 +2205,38 @@
     },
     {
       "roleKey": "owner",
+      "capabilityKey": "finance.reconciliation.record",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "owner",
       "capabilityKey": "finance.refund.record",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
       "observedGrantedBy": "migration:1761609600000"
+    },
+    {
+      "roleKey": "owner",
+      "capabilityKey": "finance.settlement.apply",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "owner",
+      "capabilityKey": "finance.settlement.correct",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
+    },
+    {
+      "roleKey": "owner",
+      "capabilityKey": "finance.settlement.record",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764510000000",
+      "observedGrantedBy": "migration:1764510000000"
     },
     {
       "roleKey": "owner",

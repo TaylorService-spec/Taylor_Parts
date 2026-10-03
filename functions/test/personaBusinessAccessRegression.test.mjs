@@ -297,7 +297,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 89 -> 90: Financed sales (2026-10-02, Owner ruling #200): 1764480000000 -- financing arrangements + history, financed package composition, one receivable per kind per package; no capability, no grant.
   // 90 -> 91: Taylor / Ventana intercompany (2026-10-02, DECISIONS #202): 1764490000000 -- intercompany_transactions correlation + paired obligations at the governed priced receipt (Owner ruling #202), net-days terms, obligation due_on; no capability, no grant.
   // 91 -> 92: Governed configuration + sales pricing (2026-10-02, DECISIONS #203): 1764500000000 -- operating-company business time zone + resolver, finance.configuration.manage (granted to NO Role), customer discount, trade-in items, package composition; untouched handoffs follow the active destination.
-  assert.equal(files.length, 92, "the migration chain moved; re-measure before trusting anything below");
+  // 92 -> 93: 1764510000000 -- Finance Closure (#206): settlements / applications / reconciliation, obligation handoffs, intercompany relief, service-provider authorization, late cost evidence; four settlement capabilities granted to the five Finance-execution Roles.
+  assert.equal(files.length, 93, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -380,12 +381,12 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 413 -> 414: the Administration control plane (1762646400000) grants admin.securityPolicy.write.
     // 414 -> 415: the Administrator staffing capability (1763078400000, Owner ruling R1) grants owner
     // admin.administratorRole.assign.
-    assert.equal(rebuilt.length, 431, "the repository rebuild total"); // 415 -> 431: the sixteen Owner-ruled #204 / #205 holders (1764500000000)
-    assert.equal(baselineDeployment.rebuildTotal, 431);
+    assert.equal(rebuilt.length, 451, "the repository rebuild total"); // 415 -> 431: the sixteen Owner-ruled #204 / #205 holders (1764500000000); 431 -> 451: the twenty Finance Closure settlement grants (1764510000000)
+    assert.equal(baselineDeployment.rebuildTotal, 451);
     assert.equal(baselineDeployment.measuredInNonprodTotal, 387, "what nonprod held when last measured");
     assert.deepEqual(baselineDeployment.notYetAppliedToNonprod, ["migration:1762300800000", "migration:1762646400000",
-      "migration:1763078400000", "migration:1764500000000"]);
-    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 44);
+      "migration:1763078400000", "migration:1764500000000", "migration:1764510000000"]);
+    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 64);
     const stampedBy = async (stamp) => (await pool.query(
       `SELECT count(*)::int n FROM eos_policy.role_capabilities
         WHERE tenant_id = $1 AND granted_by = $2`, [TENANT, stamp])).rows[0].n;
@@ -394,14 +395,15 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.equal(await stampedBy("migration:1763078400000"), 1);
     // 415 -> 426: Owner rulings #204 (1764500000000) grant the eleven ruled configuration / discount / trade-in holders.
     assert.equal(await stampedBy("migration:1764500000000"), 16); // #205: + accountingManager / financeManager x2, + owner System Configuration
-    // The whole 431-vs-387 difference carries the four grant-bearing migrations' provenance.
-    assert.equal(26 + 1 + 1 + 16, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
+    assert.equal(await stampedBy("migration:1764510000000"), 20); // Finance Closure: four settlement keys x five Finance-execution Roles
+    // The whole 451-vs-387 difference carries the five grant-bearing migrations' provenance.
+    assert.equal(26 + 1 + 1 + 16 + 20, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
 
     const one = async (sql, params = []) => (await pool.query(sql, params)).rows[0].n;
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 118); // 115 -> 118: admin.systemConfiguration.manage + sales.discountAuthority.manage + salesAgreement.tradeIn.approve (#204, 1764500000000). // 114 -> 115: finance.configuration.manage (1764500000000, governed configuration 2026-10-02), granted to NO Role. // 113 -> 114: inventory.receipt.correct (1764430000000, Finance Activation 1 completion 2026-10-01), granted to NO Role. // 111 -> 113: inventory.catalog.alias.read + inventory.truckRegistry.manage (1764410000000, Truck Inventory activation 2026-10-01), granted to NO Role. // 109 -> 111: equipment.record.read + equipment.record.manage (1764400000000, the Equipment activation 2026-10-01), granted to NO Role. // 107 -> 109: warehouse.record.manage + supplier.record.read (1764380000000, 2026-10-01), granted to NO Role. // 104 -> 107: recover + selfScheduling.issue/.configure (2026-09-30), granted to NO Role; // 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (the completion pass 2026-09-30), granted to NO Role; // + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to NO Role) // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): + inventory.serializedAsset.acquire (1764129600000, DQ-036(b), Administration-grant-only), + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011), + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 122); // 118 -> 122: the four settlement capabilities (#206, 1764510000000). // 115 -> 118: admin.systemConfiguration.manage + sales.discountAuthority.manage + salesAgreement.tradeIn.approve (#204, 1764500000000). // 114 -> 115: finance.configuration.manage (1764500000000, governed configuration 2026-10-02), granted to NO Role. // 113 -> 114: inventory.receipt.correct (1764430000000, Finance Activation 1 completion 2026-10-01), granted to NO Role. // 111 -> 113: inventory.catalog.alias.read + inventory.truckRegistry.manage (1764410000000, Truck Inventory activation 2026-10-01), granted to NO Role. // 109 -> 111: equipment.record.read + equipment.record.manage (1764400000000, the Equipment activation 2026-10-01), granted to NO Role. // 107 -> 109: warehouse.record.manage + supplier.record.read (1764380000000, 2026-10-01), granted to NO Role. // 104 -> 107: recover + selfScheduling.issue/.configure (2026-09-30), granted to NO Role; // 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (the completion pass 2026-09-30), granted to NO Role; // + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to NO Role) // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): + inventory.serializedAsset.acquire (1764129600000, DQ-036(b), Administration-grant-only), + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011), + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.
@@ -527,8 +529,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // owner-only key. admin.systemConfiguration.manage is ruled to the System Administrator alone -- admin-only by ruling.
     // 54 -> 55: Owner ruling #205 -- admin.systemConfiguration.manage (the Owner governs company settings without the
     // Administrator Role), so it is no longer admin-only.
-    assert.equal(owner.capabilities.size, 55);
-    const RULED_OWNER_ONLY = ["admin.administratorRole.assign", "salesAgreement.tradeIn.approve"];
+    // 55 -> 59: the four settlement capabilities (Finance Closure, #206, 1764510000000) -- Finance TRANSACTION authority the
+    // migration deliberately withholds from admin (administering EOS confers none), so they are ruled owner-only keys too.
+    assert.equal(owner.capabilities.size, 59);
+    const RULED_OWNER_ONLY = ["admin.administratorRole.assign", "salesAgreement.tradeIn.approve", "finance.settlement.record", "finance.settlement.apply",
+      "finance.settlement.correct", "finance.reconciliation.record"];
     const ownerOnly = [...owner.capabilities].filter((k) => !admin.capabilities.has(k) && !RULED_OWNER_ONLY.includes(k)).sort();
     for (const k of RULED_OWNER_ONLY) assert.equal(owner.capabilities.has(k) && !admin.capabilities.has(k), true, k);
     const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write"];
@@ -936,12 +941,12 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // The three finance Roles are REAL and identically granted -- 19 capabilities each: the 17 finance capabilities plus the
     // two Finance-management configuration authorities Owner ruling #205 gives all three equally.
     for (const role of financeRoles) {
-      assert.equal((await capabilitiesForRoleKeys(pool, TENANT, [role])).size, 19, role);
+      assert.equal((await capabilitiesForRoleKeys(pool, TENANT, [role])).size, 23, role); // + the four settlement capabilities (#206)
     }
     // LIVE, through the product path: the finance persona holds the finance READS and the four named
     // finance EXECUTION acts, and reaches the two Financials surfaces.
     const finance = await resolvePersona("finance-controller");
-    assert.equal(finance.capabilities.size, 19); // 17 + the two #204 configuration authorities (controller)
+    assert.equal(finance.capabilities.size, 23); // 17 + the two #204 configuration authorities + the four #206 settlement capabilities
     for (const key of ["finance.invoice.read", "finance.payment.read", "finance.invoice.issue",
       "finance.payment.apply", "finance.refund.record", "finance.adjustment.record"]) {
       assert.ok(finance.capabilities.has(key), `the finance persona does not hold ${key}`);

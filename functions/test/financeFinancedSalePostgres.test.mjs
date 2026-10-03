@@ -18,6 +18,7 @@ const pkg = require("../lib/eosFinance/billingPackage.js");
 const fs = require("../lib/eosFinance/financedSale.js");
 const http = require("../lib/eosOps/eosOpsHttp.js");
 const delivery = require("../lib/eosFinance/accountingDelivery.js");
+const settlement = require("../lib/eosFinance/settlement.js");
 import { deterministicAccountingAdapter, TEST_ADAPTER_KEY } from "./support/deterministicAccountingAdapter.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
@@ -210,6 +211,17 @@ test("Financed sales over PostgreSQL (Owner ruling #200)", { skip: SKIP, concurr
     assert.deepEqual((await obligations(zo.packageId)).map((o) => [o.kind, o.outstanding]), [["FUNDING_RECEIVABLE", "33000"]]);
   });
 
+  // #206: the provider's money, recorded and applied in full to the package's FUNDING_RECEIVABLE (which moves it to FUNDED).
+  let fundSeq = 0;
+  const fundFully = async (packageId) => {
+    const { rows } = await q(`SELECT o.id, b.outstanding_minor FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.obligation_id = o.id
+      WHERE o.source_record_id = $1 AND o.kind = 'FUNDING_RECEIVABLE'`, [packageId]);
+    const amount = Number(rows[0].outstanding_minor);
+    const rec = await settlement.recordFinancialSettlement(pool, sys, { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-lessor-a" },
+      kind: "PROVIDER_FUNDING", amountMinor: amount, currency: "USD", sourceReference: `WIRE-${++fundSeq}`, idempotencyKey: `fund-${packageId}` });
+    return settlement.applyFinancialSettlement(pool, sys, { settlementId: rec.settlement.id, applications: [{ obligationId: rows[0].id, amountMinor: amount }], idempotencyKey: `fundapp-${packageId}` });
+  };
+
   await t.test("N. FUNDED is distinct from FUNDING_ENTITLED; funded never converts to customer A/R; no provider collection model", async () => {
     const s0 = await sale();
     const a = await arrange(s0.agreementId);
@@ -218,7 +230,10 @@ test("Financed sales over PostgreSQL (Owner ruling #200)", { skip: SKIP, concurr
     assert.equal((await one(`SELECT status FROM eos_commercial.financing_arrangements WHERE id=$1`, [a.arrangementId])).status, "FUNDING_ENTITLED", "entitled is not funded");
     assert.equal((await q(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE source_record_id=$1 AND fact_class='SETTLEMENT'`, [out.packageId])).rows[0].n, 0,
       "entitlement records no payment");
-    await move(a.arrangementId, "FUNDED");
+    // #206: FUNDED is never set by hand before the money -- it follows the provider's funding, recorded and applied in full.
+    await refusedWith(move(a.arrangementId, "FUNDED"), "FUNDING_NOT_RECEIVED");
+    await fundFully(out.packageId);
+    assert.equal((await one(`SELECT status FROM eos_commercial.financing_arrangements WHERE id=$1`, [a.arrangementId])).status, "FUNDED");
     for (const to of ["DECLINED", "CANCELLED", "APPROVED", "APPLIED"]) await refusedWith(move(a.arrangementId, to), "FINANCING_TRANSITION_REFUSED");
     assert.deepEqual((await customerAR()).filter((r) => r.source_record_id === out.packageId), []);
     const c = await pool.connect();
@@ -266,8 +281,8 @@ test("Financed sales over PostgreSQL (Owner ruling #200)", { skip: SKIP, concurr
 
   await t.test("Q. an entitled or funded arrangement cannot use the pre-funding restructure", async () => {
     for (const funded of [false, true]) {
-      const s0 = await sale(); const a = await arrange(s0.agreementId); await prepare(s0.salesOrderId); await entitle(a.arrangementId);
-      if (funded) await move(a.arrangementId, "FUNDED");
+      const s0 = await sale(); const a = await arrange(s0.agreementId); const prepared = await prepare(s0.salesOrderId); await entitle(a.arrangementId);
+      if (funded) await fundFully(prepared.packageId);
       await refusedWith(fs.restructureFinancedSale(pool, sys, { salesAgreementId: s0.agreementId, toKind: "DIRECT_SALE", reason: "x", idempotencyKey: key() }), "FINANCING_RESTRUCTURE_REFUSED");
       await refusedWith(move(a.arrangementId, "CANCELLED"), "FINANCING_TRANSITION_REFUSED");
     }

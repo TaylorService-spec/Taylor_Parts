@@ -7210,3 +7210,92 @@ configuration) and §7 (agreed credit) where they differ.
    identity and acquisition provenance without manufacturing a book value.
 
 The migration now writes 16 ruled grants (baseline 415 → 431). Every later change goes through Roles & Permissions.
+
+## #206 — CONTROLLER: Finance Closure (roadmap Package A) (2026-10-03)
+
+**Status.** Implemented locally (migration `1764510000000_finance-closure.sql`). EOS stays the operational financial
+subledger (#145). It records what it has evidence of, never becomes a GL, never invents a bank fact, never nets, and never
+owns a record in CONSOLIDATED.
+
+1. **Settlement authority, separated.** The `settlement` Object has four capabilities: `finance.settlement.record`,
+   `.apply` and `.correct`, plus `finance.reconciliation.record`.
+   - **Holders.** The migration grants them (Owner ruling E) to the Security Roles that already hold the equivalent
+     Finance execution authority (`finance.payment.apply` / refund / adjustment): owner, generalManager, controller,
+     accountingManager, financeManager. That is 20 grants; the baseline moves 431 → 451.
+   - **Not admin.** Administering EOS confers no Finance transaction authority (Controller A13). View reuses
+     `finance.payment.read`.
+   - **Why new keys.** The legacy `finance.payment.apply` means "record a cash receipt and apply it" to a legacy invoice,
+     so it cannot separate record from apply. The legacy invoice cash tables (`payments` / `payment_applications`) remain
+     the frozen invoice projection and are not extended.
+2. **Settlements** (`eos_finance.settlements`) are evidence, independent of obligations.
+   - **Kinds.** CUSTOMER_PAYMENT, PROVIDER_FUNDING (from a governed FINANCING_PROVIDER), VENDOR_PAYMENT,
+     INTERCOMPANY_PAYMENT and INTERCOMPANY_RECEIPT. The counterparty must fit the kind: an external organization, or the
+     other company for intercompany.
+   - **Fields.** Operating company, counterparty, kind, direction, amount, currency, business date (company time zone;
+     never in the future), technical timestamp, source reference, method, status, correlation and idempotency.
+   - **Trade-ins.** No kind exists for a trade-in, and none ever becomes a settlement.
+3. **Application** (`settlement_applications`). A settlement applies to compatible obligations — same company,
+   counterparty and currency, with the kind pairing:
+   - customer payment → RECEIVABLE;
+   - provider funding → FUNDING_RECEIVABLE;
+   - vendor payment → PAYABLE;
+   - intercompany payment → INTERCOMPANY_PAYABLE;
+   - intercompany receipt → INTERCOMPANY_RECEIVABLE.
+
+   Applications can be full, partial, several payments to one obligation, or one payment across several obligations.
+   Each writes the obligation's SETTLEMENT fact, so `obligation_balances` stays the balance; the unapplied remainder is
+   derived (`settlement_balances`). Over-application is refused against both the settlement and the obligation.
+4. **Provider funding.** FUNDING_ENTITLED is not money received. Provider funding fully applied to the FUNDING_RECEIVABLE
+   moves the arrangement to FUNDED in the same transaction. A manual FUNDED transition is refused (FUNDING_NOT_RECEIVED)
+   until then. Reversing funding on a FUNDED arrangement is refused, because that is a provider-side correction. The
+   customer contribution stays the customer's own RECEIVABLE and settlement.
+5. **Correction.**
+   - An application is REVERSED with a reason (an equal-and-opposite fact, the original kept), then re-applied.
+   - A settlement with no live application is VOIDED with a reason, and may be REPLACED once by a settlement that names it.
+   - Balances reconstruct deterministically from facts.
+6. **Reconciliation** (`settlement_reconciliations`) is evidence of the external accounting reference and amount:
+   RECONCILED when the amounts agree, MISMATCH otherwise (with a reason). No evidence means UNRECONCILED. Accounting
+   handoff states — pending, ready, acknowledged, rejected, retryable and final — remain the control plane's (#198).
+7. **Vendor payable** (target model §12, already governed). A priced EXTERNAL purchase receipt whose cost evidence is
+   complete opens the buying company's PAYABLE toward the supplier's organization (received-not-invoiced).
+   - **Dates.** It is dated at the receipt's business date and due by the governed per-company net days (never assumed).
+   - **Handoff.** It is handed off as VENDOR_PAYABLE.
+   - **Exceptions.** An incomplete receipt opens nothing. A legacy supplier without a governed organization opens nothing.
+     A receipt correction voids the payable; this is refused once it is settled or delivered.
+8. **FBR-F3 — obligation-anchored handoffs.** A handoff may anchor on an obligation, using contract
+   `eos.accounting.operational-obligation` v1.
+   - A Taylor purchase from Ventana yields two handoffs: Taylor's INTERCOMPANY_PAYABLE to Taylor's destination and
+     Ventana's INTERCOMPANY_RECEIVABLE to Ventana's.
+   - They are correlated by the intercompany transaction, never netted, never CONSOLIDATED.
+   - Each is acknowledged with its own provider reference, using the same transitions, attempts and idempotency.
+   - A receipt correction supersedes them, and is refused once either side is delivered or acknowledged.
+9. **FBR-F1 — Ventana relief.** Taylor's receipt establishes Taylor's ownership and custody; it never decrements Ventana by
+   inference. `relieveIntercompanySaleInventory` is the explicit Ventana-side event: an INTERCOMPANY_SALE_RELIEF
+   movement on the seller's own ledger.
+   - It runs once per received line, for exactly the received quantity.
+   - It must come from a warehouse record of the seller company; a shared building has one record per company.
+   - It is refused beyond recorded on-hand. Quantity-tracked parts only.
+   - Authority: `inventory.transfer.dispatch` plus WAREHOUSE scope.
+10. **FBR-F2 — Taylor service for a Ventana sale.** The seller authorizes another company to perform INSTALLATION
+    (an INSTALL Work Order: delivery and install) and/or SERVICE on its Sales Order.
+    - The authorization uses `salesOrder.write` in channel scope, and can be revoked with history kept.
+    - The Work Order is the service company's. The fulfillment record keeps the SELLER's company and states the service
+      company. The billing package and receivable stay the seller's.
+    - Without an ACTIVE authorization naming the Work Order's company and scope, SALES_ORDER_COMPANY_MISMATCH still
+      refuses.
+11. **FBR-F4 — late cost evidence.** `supplyReceiptCostEvidence` (`inventory.receipt.correct` plus WAREHOUSE scope)
+    supplies one unpriced line's cost once. It writes a GOVERNED_LATE_COST_EVIDENCE evidence row, a supply record (who,
+    when, why, evidence reference) and an exception resolution COST_EVIDENCE_SUPPLIED. The receipt is never rewritten.
+    Once the receipt is complete, its consequences follow exactly once: the paired intercompany obligations and both
+    handoffs, or the vendor payable.
+12. **Finance operations.** These are served on `/operations/finance`.
+    - Reads: workspace, obligations, obligation detail, settlements.
+    - Commands: record, apply, reverse, void, reconcile, late cost evidence, intercompany relief.
+    - The workspace is exception-first and shows: receivables, funding receivables, payables, intercompany receivables and
+      payables, overdue (derived from due dates), partially paid, unapplied settlements, handoff exceptions,
+      reconciliation, missing cost evidence, relief pending.
+    - Scope: per company, or CONSOLIDATED as a reporting projection that cannot record anything.
+    - The client renders it on Financials → Overview.
+13. **Not built.** GL, banking integration, real accounting provider, AP bill entry or three-way match, payment runs,
+    netting, elimination, intercompany SERVICE charges (Taylor billing Ventana for service is not ruled), serialized
+    intercompany relief, production.

@@ -101,7 +101,7 @@ const pairId = (p) => `${p.roleKey}\u0000${p.capabilityKey}`;
 const capabilitiesOf = (roleKey) =>
   new Set(AUTHORITY_BASELINE_GRANTS
     .filter((g) => g.roleKey === roleKey && g.evidence !== "migration:1762646400000" && g.evidence !== "migration:1763078400000"
-      && g.evidence !== "migration:1764500000000")
+      && g.evidence !== "migration:1764500000000" && g.evidence !== "migration:1764510000000")
     .map((g) => g.capabilityKey));
 
 /** What a Role held BEFORE this activation -- the baseline minus the rows this migration wrote. */
@@ -115,7 +115,7 @@ const GOVERNED_CONFIGURATION = "migration:1764500000000";
 const capabilitiesBeforeOf = (roleKey) =>
   new Set(AUTHORITY_BASELINE_GRANTS
     .filter((g) => g.roleKey === roleKey && g.evidence !== MIG && g.evidence !== CONTROL_PLANE && g.evidence !== ADMINISTRATOR_STAFFING
-      && g.evidence !== GOVERNED_CONFIGURATION)
+      && g.evidence !== GOVERNED_CONFIGURATION && g.evidence !== "migration:1764510000000")
     .map((g) => g.capabilityKey));
 
 const holdersOf = (capabilityKey) =>
@@ -124,16 +124,16 @@ const holdersOf = (capabilityKey) =>
 // ════════════════════ THE MEASUREMENT, AND THE TWO QUESTIONS IT KEEPS SEPARATE ════════════════════
 
 test("the baseline declares the ACTIVATED authority, and still says what nonprod holds today", () => {
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 431,
-    "387 measured + 26 activated + 1 control plane (1762646400000) + 1 Administrator staffing (1763078400000) + 16 Owner-ruled #204 / #205 holders (1764500000000)");
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 451,
+    "387 measured + 26 activated + 1 control plane (1762646400000) + 1 Administrator staffing (1763078400000) + 16 Owner-ruled #204 / #205 holders (1764500000000) + 20 Finance Closure settlement grants (1764510000000)");
   assert.deepEqual(countsBySource(), {
-    MIGRATION_BACKED: 373, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 393, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
-  assert.equal(globalAuthorityGrants().length, 426);
-  assert.equal(nonprodAuthorityGrants().length, 431);
+  assert.equal(globalAuthorityGrants().length, 446);
+  assert.equal(nonprodAuthorityGrants().length, 451);
   // ...and the OTHER question is still answerable without arithmetic in somebody's head.
   assert.equal(AUTHORITY_BASELINE_NONPROD_MEASURED_TOTAL, 387);
-  assert.deepEqual([...AUTHORITY_BASELINE_NOT_YET_APPLIED_MIGRATIONS], [MIG, CONTROL_PLANE, ADMINISTRATOR_STAFFING, GOVERNED_CONFIGURATION],
+  assert.deepEqual([...AUTHORITY_BASELINE_NOT_YET_APPLIED_MIGRATIONS], [MIG, CONTROL_PLANE, ADMINISTRATOR_STAFFING, GOVERNED_CONFIGURATION, "migration:1764510000000"],
     "the activation vehicle, the Administration control plane, the Administrator staffing capability and the #204 governed configuration holders are authored beyond the 387 measurement");
 });
 
@@ -566,7 +566,7 @@ test("the rebuild reproduces the ACTIVATED authority exactly, and every activate
     try {
       const rebuilt = await rebuild(pool);
       assertAuthorityRebuildMatches(nonprodAuthorityGrants(), rebuilt);
-      assert.equal(rebuilt.length, 431);
+      assert.equal(rebuilt.length, 451);
 
       const stamped = new Map(rebuilt.map((r) => [pairId(r), r.grantedBy]));
       for (const p of activatedGrantPairs()) {

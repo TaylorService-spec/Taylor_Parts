@@ -28,7 +28,7 @@ test("15 / 22. static: only the receipt command composes the Finance writer; no 
   const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
   const importers = walk(SRC).filter((f) => f.endsWith(".ts") && !f.includes(`${join("eosFinance", "")}`))
     .filter((f) => /eosFinance\/financeFoundation/.test(readFileSync(f, "utf8"))).map((f) => f.slice(SRC.length + 1).split("\\").join("/")).sort();
-  assert.deepEqual(importers, ["eosOps/receiptCorrectionCommand.ts", "eosOps/receiveReorderStockCommand.ts", "eosOps/workOrderScheduling.ts"],
+  assert.deepEqual(importers, ["eosOps/costEvidenceSupplyCommand.ts", "eosOps/receiptCorrectionCommand.ts", "eosOps/receiveReorderStockCommand.ts", "eosOps/workOrderScheduling.ts"],
     "the Finance writer is reached only as a server-side consequence: the receipt, its governed correction (#193), and the Work Order completion's billing package (#196)");
   const ops = [...http.OPERATIONS_READ_OPERATIONS, ...http.OPERATIONS_MUTATION_OPERATIONS];
   assert.equal(ops.some((o) => /financ|fact|obligation|counterpart|acquisitionCost/i.test(o)), false, "no Operations operation manufactures Finance truth");

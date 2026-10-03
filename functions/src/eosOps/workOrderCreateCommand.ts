@@ -23,6 +23,7 @@
 //
 // Ventana is ACTIVE for the tenant with no key binding today, so a native Ventana Work Order fails
 // closed with OPERATING_COMPANY_KEY_NOT_BOUND. That is the model working, not a gap to paper over.
+import { serviceProviderAuthorized } from "../eosCommercial/fulfillment/serviceProviderAuthorization";
 import type { Pool } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { resolveOperatingCompanyKeyForCompany } from "./operatingCompanyBinding.js";
@@ -238,7 +239,12 @@ export async function createWorkOrder(
           WHERE tenant_id = $1 AND id = $2 FOR SHARE`, [actor.tenantId, input.salesOrderId]);
       if (so.length === 0) refuse("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no such Sales Order in this tenant");
       const o = so[0];
-      if (o.operating_company_key !== operatingCompanyKey) refuse("SALES_ORDER_COMPANY_MISMATCH", "PRECONDITION_FAILED", "the Sales Order belongs to another operating company");
+      // FBR-F2 (#206): another company's Sales Order only under the seller's ACTIVE service-provider authorization for this
+      // company and Work Order type -- the seller stays the seller; this Work Order is the service-performing company's.
+      if (o.operating_company_key !== operatingCompanyKey
+          && !(await serviceProviderAuthorized(client, actor.tenantId, input.salesOrderId, operatingCompanyKey, input.workOrderType))) {
+        refuse("SALES_ORDER_COMPANY_MISMATCH", "PRECONDITION_FAILED", "the Sales Order belongs to another operating company");
+      }
       if (o.account_id !== input.customerId) refuse("SALES_ORDER_CUSTOMER_MISMATCH", "PRECONDITION_FAILED", "the Sales Order is for another customer");
       if (o.location_id !== null && o.location_id !== input.locationId) refuse("SALES_ORDER_SITE_MISMATCH", "PRECONDITION_FAILED", "the Sales Order is for another site");
       if (!["CONFIRMED", "IN_FULFILLMENT"].includes(o.state)) refuse("SALES_ORDER_NOT_FULFILLABLE", "PRECONDITION_FAILED", `the Sales Order is ${String(o.state)}`);

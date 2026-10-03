@@ -180,6 +180,22 @@
         "D": []
       },
       "fields": []
+    },
+    {
+      "key": "settlement",
+      "label": "Settlement",
+      "labelPlural": "Settlements",
+      "description": "Operational settlement evidence (DECISIONS #206): a customer payment, provider funding receipt, vendor payment or intercompany payment / receipt for one operating company and one counterparty, its application to obligations, its correction and its reconciliation evidence. Never a bank fact; EOS is not the GL.",
+      "domain": "Finance",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
     }
   ]
 }

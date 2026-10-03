@@ -58,6 +58,9 @@ on:
       - "field-ops-app-vite/test/truckRegistryAdministration.test.jsx"
       - "field-ops-app-vite/test/financeConfigurationAdministration.test.jsx"
       - "field-ops-app-vite/test/systemSalesConfigurationAdministration.test.jsx"
+      - "field-ops-app-vite/test/financeWorkspace.test.jsx"
+      - "field-ops-app-vite/src/modules/financials/FinancialsWorkspace.jsx"
+      - "field-ops-app-vite/src/services/financeApiClient.js"
       - "functions/test/adminPolicyAuthorization.test.mjs"
       - "functions/test/adminPolicyWorkflow.test.mjs"
       - "functions/test/adminPolicyNoFirebase.test.mjs"
@@ -257,6 +260,7 @@ on:
       - "functions/test/financeFinancedSalePostgres.test.mjs"
       - "functions/test/financeIntercompanyPostgres.test.mjs"
       - "functions/test/governedConfigSalesPricingPostgres.test.mjs"
+      - "functions/test/financeClosurePostgres.test.mjs"
       - "functions/src/eosFinance/financeConfigurationAdministration.ts"
       - "functions/src/eosOps/operatingCompanyBusinessTime.ts"
       - "functions/src/eosFinance/intercompany.ts"
@@ -700,6 +704,9 @@ on:
       - "field-ops-app-vite/test/truckRegistryAdministration.test.jsx"
       - "field-ops-app-vite/test/financeConfigurationAdministration.test.jsx"
       - "field-ops-app-vite/test/systemSalesConfigurationAdministration.test.jsx"
+      - "field-ops-app-vite/test/financeWorkspace.test.jsx"
+      - "field-ops-app-vite/src/modules/financials/FinancialsWorkspace.jsx"
+      - "field-ops-app-vite/src/services/financeApiClient.js"
       - "functions/src/adminPolicy/**"
       - "functions/test/adminPolicyAuthorization.test.mjs"
       - "functions/test/adminPolicyWorkflow.test.mjs"
@@ -890,6 +897,7 @@ on:
       - "functions/test/financeFinancedSalePostgres.test.mjs"
       - "functions/test/financeIntercompanyPostgres.test.mjs"
       - "functions/test/governedConfigSalesPricingPostgres.test.mjs"
+      - "functions/test/financeClosurePostgres.test.mjs"
       - "functions/src/eosFinance/financeConfigurationAdministration.ts"
       - "functions/src/eosOps/operatingCompanyBusinessTime.ts"
       - "functions/src/eosFinance/intercompany.ts"
@@ -1353,6 +1361,11 @@ jobs:
       # Sales Authority) -- every change with its reason to /admin/policy; a refusal rendered as the server's answer.
       - name: System and Sales Configuration Administration sections (vitest + jsdom)
         run: npx vitest run test/systemSalesConfigurationAdministration.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Finance Closure (#206): the Finance workspace -- the server's figures and refusals; Consolidated records nothing.
+      - name: Finance workspace (vitest + jsdom)
+        run: npx vitest run test/financeWorkspace.test.jsx
         working-directory: field-ops-app-vite
 
       # THE BROWSER'S ROUTE TO THE OBJECT-OWNED SECURITY READ MODEL. Proved through an injected

@@ -17,6 +17,7 @@
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { FinanceFoundationError, type FinanceActor, type FinanceFoundationCategory } from "./financeFoundation";
+import { buildObligationPayload, type ObligationPayloadV1 } from "./obligationHandoff";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -69,7 +70,8 @@ export interface AccountingPayloadV2 extends Omit<AccountingPayloadV1, "contract
       readonly approvalEvidence: { readonly evidenceId: string; readonly documentReference: string; readonly signed: true; readonly approved: true; readonly recordedAt: string } };
   };
 }
-export type AccountingPayload = AccountingPayloadV1 | AccountingPayloadV2;
+/** #206: an obligation-anchored handoff (a company-side intercompany obligation, or a vendor payable) carries its own contract. */
+export type AccountingPayload = AccountingPayloadV1 | AccountingPayloadV2 | ObligationPayloadV1;
 
 export interface AccountingDestinationRef {
   readonly id: string; readonly operatingCompanyId: string; readonly providerKey: string; readonly externalCompanyRef: string | null;
@@ -159,6 +161,20 @@ export async function buildAccountingPayload(db: Queryable, tenantId: string, ha
   : Promise<{ readonly payload: AccountingPayload; readonly fingerprint: string; readonly destination: AccountingDestinationRef }> {
   const { rows: hr } = await db.query(`SELECT * FROM eos_finance.accounting_handoffs WHERE tenant_id = $1 AND id = $2`, [tenantId, handoffId]);
   const h = hr[0] ?? refuse("ACCOUNTING_HANDOFF_NOT_FOUND", "NOT_FOUND", "no accounting handoff with that id");
+  if (h.payload_kind !== "OPERATIONAL_BILLING_PACKAGE") {
+    // #206: anchored on an OBLIGATION -- the same destination rules, its own provider-neutral contract.
+    const { rows: odr } = await db.query(`SELECT * FROM eos_finance.accounting_destinations WHERE tenant_id = $1 AND id = $2`, [tenantId, h.accounting_destination_id]);
+    const od = odr[0] ?? refuse("ACCOUNTING_DESTINATION_MISSING", "PRECONDITION_FAILED", "the handoff has no accounting destination");
+    if (od.operating_company_id !== h.operating_company_id) {
+      refuse("DESTINATION_COMPANY_MISMATCH", "PRECONDITION_FAILED", "a company's handoff is delivered only to that company's own destination");
+    }
+    if (od.status !== "ACTIVE") refuse("ACCOUNTING_DESTINATION_INACTIVE", "PRECONDITION_FAILED", "the handoff's destination is not active");
+    if (!od.provider_key) refuse("ADAPTER_NOT_AVAILABLE", "PRECONDITION_FAILED", "the destination names no delivery adapter");
+    const obligationPayload = await buildObligationPayload(db, tenantId, h, od);
+    return { payload: deepFreeze(obligationPayload), fingerprint: createHash("sha256").update(canonicalJson(obligationPayload)).digest("hex"),
+      destination: deepFreeze({ id: String(od.id), operatingCompanyId: String(od.operating_company_id), providerKey: String(od.provider_key),
+        externalCompanyRef: od.external_company_ref ?? null }) };
+  }
   const { rows: pr } = await db.query(`SELECT * FROM eos_finance.billing_packages WHERE tenant_id = $1 AND id = $2`, [tenantId, h.billing_package_id]);
   const p = pr[0];
   const financedSale = p?.commercial_disposition === "FINANCED_SALE";

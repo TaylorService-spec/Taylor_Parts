@@ -36,6 +36,7 @@ import {
 } from "./receiveReorderStockCommand.js";
 import { FinanceFoundationError, resolveReceiptCostExceptionsOn, reverseReceiptFinancialConsequenceOn } from "../eosFinance/financeFoundation.js";
 import { retireIntercompanyCorrelationForReceiptOn } from "../eosFinance/intercompany.js";
+import { retireReceiptPayableOn } from "../eosFinance/vendorPayable.js";
 import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import { lockStockLocation } from "./stockLocationLock.js";
@@ -235,6 +236,8 @@ async function correctWithin(
   const financeActor = { tenantId: actor.tenantId, principalId: actor.principalId };
   let reversed: Awaited<ReturnType<typeof reverseReceiptFinancialConsequenceOn>>["reversed"];
   try {
+    // #206: the receipt's vendor PAYABLE is voided first -- refused once anything was settled against it or it was handed off.
+    await retireReceiptPayableOn(client, financeActor, { receivingId: c.receivingId, correctionId, reason: c.reason });
     reversed = (await reverseReceiptFinancialConsequenceOn(client, financeActor, { receivingId: c.receivingId, correctionId, reason: c.reason })).reversed;
     // The corrected receipt's intercompany correlation (#202) is retired with it (an established pair voided on both sides).
     await retireIntercompanyCorrelationForReceiptOn(client, financeActor, { receivingId: c.receivingId, correctionId, reason: c.reason });

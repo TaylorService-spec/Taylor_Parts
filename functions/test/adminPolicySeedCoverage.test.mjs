@@ -107,9 +107,10 @@ test("the reconciliation adds up: 28 entities and 389 fields, all seeded", () =>
   // 40 -> 42, objectsFromCapabilityAuthority 6 -> 8 (objectsWithoutAnEntity stays 6): the Work Order cutover (2026-09-30) -- `inboundWorkRequest` and `inboundMailbox`, because the five inboundWork.* capabilities of migration 1764340000000 name them (object_key NOT NULL); without them every inbound grant was STRANDED (capabilityObjectAuthorityGuard).
   // 42 -> 43, objectsFromCapabilityAuthority 8 -> 9: the post-FBR governed configuration package (2026-10-02) -- `financeConfiguration`, because finance.configuration.manage (migration 1764500000000) names it; a security subject with no EntityDefinition.
   // 43 -> 45, objectsFromCapabilityAuthority 9 -> 11: Owner rulings #204 -- `systemConfiguration` and `salesDiscountAuthority`, named by admin.systemConfiguration.manage / sales.discountAuthority.manage.
-  assert.equal(ledger.seeded.objects, 45);
+  // 45 -> 46, objectsFromCapabilityAuthority 11 -> 12: Finance Closure (#206) -- `settlement`, named by the four settlement capabilities.
+  assert.equal(ledger.seeded.objects, 46);
   assert.equal(ledger.seeded.objectsWithoutAnEntity, 6);
-  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 11);
+  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 12);
   assert.equal(
     ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity + ledger.seeded.objectsFromCapabilityAuthority,
     ledger.seeded.objects,
