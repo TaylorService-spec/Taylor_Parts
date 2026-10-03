@@ -129,9 +129,11 @@ INSERT INTO capabilities (id, key, description, object_key, action_key, action_k
      'salesAgreement', 'approveTradeIn', 'BUSINESS_ACTION', 'Approve Trade-in Value')
 ON CONFLICT (key) DO NOTHING;
 
--- THE OWNER-RULED HOLDERS (#204). Job Roles grant nothing: these are the SECURITY ROLES the governed persona model gives the
--- positions -- Owner / Executive = owner (the protected Owner Role), General Manager = generalManager, Finance / Accounting =
--- controller, System Administrator = admin (the designated Administrator Role; no new Job Role). Trade-in approval is BUSINESS
+-- THE OWNER-RULED HOLDERS (#204, as amended by Owner ruling #205). Job Roles grant nothing: these are the SECURITY ROLES the
+-- governed persona model gives the positions -- Owner / Executive = owner (the protected Owner Role), General Manager =
+-- generalManager, Finance management = controller, accountingManager and financeManager (equivalent for these two
+-- configuration capabilities ONLY, #205), System Administrator = admin (the designated Administrator Role; no new Job Role).
+-- System Configuration: owner and admin (#205: the Owner governs company settings without the Administrator Role). Trade-in approval is BUSINESS
 -- approval: owner and generalManager ONLY -- never admin (administering EOS), never controller (Finance configuration), never
 -- a Sales Role. An Administration revocation recorded before this ran is honoured.
 INSERT INTO role_capabilities (id, tenant_id, role_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at)
@@ -140,10 +142,12 @@ SELECT 'rc_204_' || substr(md5(r.tenant_id || r.id || c.id), 1, 25),
        'migration:1764500000000', now(), 'migration:1764500000000', now(), 'migration:1764500000000', now()
   FROM (VALUES
           ('finance.configuration.manage', 'owner'), ('finance.configuration.manage', 'generalManager'),
-          ('finance.configuration.manage', 'controller'), ('finance.configuration.manage', 'admin'),
+          ('finance.configuration.manage', 'controller'), ('finance.configuration.manage', 'accountingManager'),
+          ('finance.configuration.manage', 'financeManager'), ('finance.configuration.manage', 'admin'),
           ('sales.discountAuthority.manage', 'owner'), ('sales.discountAuthority.manage', 'generalManager'),
-          ('sales.discountAuthority.manage', 'controller'), ('sales.discountAuthority.manage', 'admin'),
-          ('admin.systemConfiguration.manage', 'admin'),
+          ('sales.discountAuthority.manage', 'controller'), ('sales.discountAuthority.manage', 'accountingManager'),
+          ('sales.discountAuthority.manage', 'financeManager'), ('sales.discountAuthority.manage', 'admin'),
+          ('admin.systemConfiguration.manage', 'owner'), ('admin.systemConfiguration.manage', 'admin'),
           ('salesAgreement.tradeIn.approve', 'owner'), ('salesAgreement.tradeIn.approve', 'generalManager')
        ) AS ruled (capability_key, role_key)
   JOIN capabilities c ON c.key = ruled.capability_key

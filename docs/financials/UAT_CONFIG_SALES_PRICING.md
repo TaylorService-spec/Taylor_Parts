@@ -50,3 +50,10 @@ These are local proofs, from the same PostgreSQL suite: its `#204` subtests plus
 | AH | Direct sale | **PASS.** The receivable is the total less the approved credit (35000); v1 shape is unchanged. |
 | AJ | Finance Business Relationships | **PASS.** The intercompany NET 90 (2026-12-31), FINANCING_PROVIDER and destination proofs run unchanged in the same suite. |
 | AK | No Firebase | **PASS.** The static scan of the new modules finds no Firebase reference, and the Firebase exit guard holds. |
+
+## Owner ruling #205
+
+| Proof | Result |
+|---|---|
+| Exact holders, measured in the database | **PASS.** Finance configuration and Sales discount-limit management are each held by exactly accountingManager, admin, controller, financeManager, generalManager and owner. System Configuration is held by exactly admin and owner. Trade-in approval is held by exactly generalManager and owner. accountingManager and financeManager hold 19 capabilities each, with no System Configuration and no trade-in approval. |
+| Owner / GM System Configuration | **PASS.** The Owner reads System Configuration; the General Manager is refused. |

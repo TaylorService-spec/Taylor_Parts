@@ -7193,3 +7193,20 @@ configuration) and §7 (agreed credit) where they differ.
 9. **Not built.** Used-equipment valuation policy, refurbishment, disposition, auction/scrap, Settlement/Payment, Rental,
    Analysis, GL, real provider, production, a discount-approval workflow, UI translation for es-US. FBR-F1..F4 stay
    separate.
+
+## #205 — OWNER RULING: Finance-management roles, Owner System Configuration (2026-10-03)
+
+**Status.** Implemented locally in the same migration (`1764500000000`). It amends #204 §2:
+
+1. **Finance management.** `controller`, `accountingManager` and `financeManager` are equivalent for the two new
+   configuration capabilities. `finance.configuration.manage` and `sales.discountAuthority.manage` go to owner,
+   generalManager, controller, accountingManager, financeManager and admin. No Job Role is created, and these Roles gain
+   nothing else: each finance Role holds 19 capabilities (its 17 + these 2).
+2. **System Configuration.** `admin.systemConfiguration.manage` goes to owner and admin. The Owner governs company
+   settings without the Administrator Role. It is not granted to generalManager or the finance Roles.
+3. **Trade-in approval.** Unchanged: owner and generalManager only.
+4. **Used-equipment book value.** Remains HELD. Approved trade-in credit is commercial consideration, never automatically
+   acquisition/book value, reconditioning cost or a future selling price. A later receipt may establish ownership, custody,
+   identity and acquisition provenance without manufacturing a book value.
+
+The migration now writes 16 ruled grants (baseline 415 → 431). Every later change goes through Roles & Permissions.

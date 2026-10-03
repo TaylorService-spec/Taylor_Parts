@@ -124,13 +124,13 @@ const holdersOf = (capabilityKey) =>
 // ════════════════════ THE MEASUREMENT, AND THE TWO QUESTIONS IT KEEPS SEPARATE ════════════════════
 
 test("the baseline declares the ACTIVATED authority, and still says what nonprod holds today", () => {
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 426,
-    "387 measured + 26 activated + 1 control plane (1762646400000) + 1 Administrator staffing (1763078400000) + 11 Owner-ruled #204 holders (1764500000000)");
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 431,
+    "387 measured + 26 activated + 1 control plane (1762646400000) + 1 Administrator staffing (1763078400000) + 16 Owner-ruled #204 / #205 holders (1764500000000)");
   assert.deepEqual(countsBySource(), {
-    MIGRATION_BACKED: 368, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 373, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
-  assert.equal(globalAuthorityGrants().length, 421);
-  assert.equal(nonprodAuthorityGrants().length, 426);
+  assert.equal(globalAuthorityGrants().length, 426);
+  assert.equal(nonprodAuthorityGrants().length, 431);
   // ...and the OTHER question is still answerable without arithmetic in somebody's head.
   assert.equal(AUTHORITY_BASELINE_NONPROD_MEASURED_TOTAL, 387);
   assert.deepEqual([...AUTHORITY_BASELINE_NOT_YET_APPLIED_MIGRATIONS], [MIG, CONTROL_PLANE, ADMINISTRATOR_STAFFING, GOVERNED_CONFIGURATION],
@@ -566,7 +566,7 @@ test("the rebuild reproduces the ACTIVATED authority exactly, and every activate
     try {
       const rebuilt = await rebuild(pool);
       assertAuthorityRebuildMatches(nonprodAuthorityGrants(), rebuilt);
-      assert.equal(rebuilt.length, 426);
+      assert.equal(rebuilt.length, 431);
 
       const stamped = new Map(rebuilt.map((r) => [pairId(r), r.grantedBy]));
       for (const p of activatedGrantPairs()) {

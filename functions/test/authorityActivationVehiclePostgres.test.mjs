@@ -434,8 +434,9 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // newest first: self-scheduling (-2), recovery (-1), provider runtime (schema).
     // #203 / #204 register four capabilities and write the eleven Owner-ruled grants (a grant-bearing migration, Owner ruling
     // E): -4 capabilities and -11 grants when peeled.
-    assert.deepEqual(await counts(), { caps: 118, grants: 426, mine: 26 });
-    runMigrate(url, "down", 1); // Governed configuration + sales pricing (-4 capabilities, -11 grants)
+    // #205 amends it: sixteen ruled grants.
+    assert.deepEqual(await counts(), { caps: 118, grants: 431, mine: 26 });
+    runMigrate(url, "down", 1); // Governed configuration + sales pricing (-4 capabilities, -16 grants)
     assert.deepEqual(await counts(), { caps: 114, grants: 415, mine: 26 });
     runMigrate(url, "down", 1); // Intercompany transactions (schema only)
     assert.deepEqual(await counts(), { caps: 114, grants: 415, mine: 26 });

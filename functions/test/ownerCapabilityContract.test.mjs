@@ -218,10 +218,8 @@ check("OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES is exactly the 19 admin-only keys 
   // invariant it replaced -- "what a Role may do is admin only" -- NOT by Owner ruling A. It is
   // deliberately NOT added to the ruling-A exclusion list: that would make it a SYSTEM INVARIANT
   // that no administrator could ever grant to Owner, which no ruling decided.
-  // admin.systemConfiguration.manage (migration 1764500000000) is admin-only by OWNER RULING #204 (the System Administrator
-  // administers company / system settings), granted by that migration -- also NOT a ruling-A exclusion: Administration may
-  // still assign it to Owner, which no ruling forbids.
-  const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write", "admin.systemConfiguration.manage"];
+  // (admin.systemConfiguration.manage was admin-only under #204; Owner ruling #205 grants it to owner too.)
+  const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write"];
   const measuredAdminOnly = [...LIVE_ADMIN].filter((id) => !LIVE_OWNER.has(id) && !PARITY_ADMIN_ONLY.includes(id)).sort();
   assert.equal(measuredAdminOnly.length, 19);
   assert.deepEqual([...OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES].sort(), measuredAdminOnly);
@@ -297,6 +295,7 @@ check("RECONCILE PROOF: the nine live Owner grants this catalog lacks are a cata
   assert.deepEqual(liveNotDeclared, [
     "admin.administratorRole.assign",
     "admin.securityPolicy.read",
+    "admin.systemConfiguration.manage",
     "finance.configuration.manage",
     "finance.invoice.read",
     "finance.payment.read",

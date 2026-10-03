@@ -380,12 +380,12 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 413 -> 414: the Administration control plane (1762646400000) grants admin.securityPolicy.write.
     // 414 -> 415: the Administrator staffing capability (1763078400000, Owner ruling R1) grants owner
     // admin.administratorRole.assign.
-    assert.equal(rebuilt.length, 426, "the repository rebuild total"); // 415 -> 426: the eleven Owner-ruled #204 holders (1764500000000)
-    assert.equal(baselineDeployment.rebuildTotal, 426);
+    assert.equal(rebuilt.length, 431, "the repository rebuild total"); // 415 -> 431: the sixteen Owner-ruled #204 / #205 holders (1764500000000)
+    assert.equal(baselineDeployment.rebuildTotal, 431);
     assert.equal(baselineDeployment.measuredInNonprodTotal, 387, "what nonprod held when last measured");
     assert.deepEqual(baselineDeployment.notYetAppliedToNonprod, ["migration:1762300800000", "migration:1762646400000",
       "migration:1763078400000", "migration:1764500000000"]);
-    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 39);
+    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 44);
     const stampedBy = async (stamp) => (await pool.query(
       `SELECT count(*)::int n FROM eos_policy.role_capabilities
         WHERE tenant_id = $1 AND granted_by = $2`, [TENANT, stamp])).rows[0].n;
@@ -393,9 +393,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.equal(await stampedBy("migration:1762646400000"), 1);
     assert.equal(await stampedBy("migration:1763078400000"), 1);
     // 415 -> 426: Owner rulings #204 (1764500000000) grant the eleven ruled configuration / discount / trade-in holders.
-    assert.equal(await stampedBy("migration:1764500000000"), 11);
-    // The whole 426-vs-387 difference carries the four grant-bearing migrations' provenance.
-    assert.equal(26 + 1 + 1 + 11, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
+    assert.equal(await stampedBy("migration:1764500000000"), 16); // #205: + accountingManager / financeManager x2, + owner System Configuration
+    // The whole 431-vs-387 difference carries the four grant-bearing migrations' provenance.
+    assert.equal(26 + 1 + 1 + 16, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
 
     const one = async (sql, params = []) => (await pool.query(sql, params)).rows[0].n;
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
@@ -525,11 +525,13 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 51 -> 54: finance.configuration.manage, sales.discountAuthority.manage, salesAgreement.tradeIn.approve (#204). Trade-in
     // approval is BUSINESS approval the Owner ruled to Owner / GM and NOT to the System Administrator -- the second ruled
     // owner-only key. admin.systemConfiguration.manage is ruled to the System Administrator alone -- admin-only by ruling.
-    assert.equal(owner.capabilities.size, 54);
+    // 54 -> 55: Owner ruling #205 -- admin.systemConfiguration.manage (the Owner governs company settings without the
+    // Administrator Role), so it is no longer admin-only.
+    assert.equal(owner.capabilities.size, 55);
     const RULED_OWNER_ONLY = ["admin.administratorRole.assign", "salesAgreement.tradeIn.approve"];
     const ownerOnly = [...owner.capabilities].filter((k) => !admin.capabilities.has(k) && !RULED_OWNER_ONLY.includes(k)).sort();
     for (const k of RULED_OWNER_ONLY) assert.equal(owner.capabilities.has(k) && !admin.capabilities.has(k), true, k);
-    const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write", "admin.systemConfiguration.manage"];
+    const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write"];
     for (const k of PARITY_ADMIN_ONLY) assert.equal(admin.capabilities.has(k) && !owner.capabilities.has(k), true, k);
     const adminOnly = [...admin.capabilities].filter((k) => !owner.capabilities.has(k) && !PARITY_ADMIN_ONLY.includes(k)).sort();
     assert.deepEqual(ownerOnly, [], "owner has gained an authority admin lacks -- re-read the gap report");
@@ -931,11 +933,10 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
       .filter(([, p]) => p.securityRoles.some((r) => financeRoles.includes(r))).map(([k]) => k);
     assert.deepEqual(holders, ["finance-controller"]);
     assert.deepEqual(PERSONAS["finance-controller"].securityRoles, ["controller"]);
-    // The three finance Roles are REAL and share the same 17 finance capabilities. Owner rulings #204 add the Finance /
-    // Accounting configuration authority (finance.configuration.manage, sales.discountAuthority.manage) to `controller` --
-    // the FINANCE_ACCOUNTING persona's Security Role -- only: 19 for controller, 17 for the other two.
+    // The three finance Roles are REAL and identically granted -- 19 capabilities each: the 17 finance capabilities plus the
+    // two Finance-management configuration authorities Owner ruling #205 gives all three equally.
     for (const role of financeRoles) {
-      assert.equal((await capabilitiesForRoleKeys(pool, TENANT, [role])).size, role === "controller" ? 19 : 17, role);
+      assert.equal((await capabilitiesForRoleKeys(pool, TENANT, [role])).size, 19, role);
     }
     // LIVE, through the product path: the finance persona holds the finance READS and the four named
     // finance EXECUTION acts, and reaches the two Financials surfaces.
