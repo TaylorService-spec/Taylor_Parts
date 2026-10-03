@@ -6901,3 +6901,45 @@ Controller review. #197 remains governing. No real provider, credential, invoice
 6. **Ungoverned facts (HELD for the Owner):** who Taylor invoices; who remits the financed amount; when Taylor becomes
    entitled to it; whether the provider purchases / funds the equipment amount or only facilitates the customer's lease;
    how deposits / down payments are handled; what happens when financing is declined or cancelled.
+
+## #200 — OWNER RULING: the financing-provider (Saratoga) leasing / financing business model (2026-10-02)
+
+**Status.** Implemented locally (migration `1764480000000_financing-arrangements.sql`); not pushed, not deployed.
+Supersedes the held financial-obligor portions of #190 §12 / §18 and completes #199. #197 / #198 remain governing.
+
+1. **Commercial customer.** The Taylor customer remains the commercial customer; the customer / site relationship is never
+   replaced. The sale is ONE Taylor commercial sale (one Billing Package), never two sales because payment has two sources.
+2. **Provider.** The customer's third-party leasing / financing source (today Saratoga) is an organization governed with
+   the existing FINANCING_PROVIDER relationship — never a schema concept.
+3. **Billing and payment.** For the financed portion Taylor invoices the provider; the provider pays Taylor up front; the
+   customer pays the provider under the provider's lease, which EOS neither owns nor administers. Taylor's claim for the
+   financed portion is a FUNDING_RECEIVABLE against the provider — never customer A/R.
+4. **Customer contribution.** A deposit / down payment MAY exist (0 allowed, never assumed). total commercial amount =
+   customer contribution + financed amount; a positive contribution is a separate customer RECEIVABLE for exactly that
+   amount. The two never overlap and neither party is billed twice.
+5. **Financial parties** are represented independently: seller (operating company), commercial customer, equipment / site,
+   financing provider, payer to Taylor for the financed portion (provider), payer to the provider (customer, outside EOS),
+   Taylor's counterparty for the financed portion (provider), contribution counterparty (customer).
+6. **Repossession / collection.** The provider handles repossession and its own customer collection; EOS models neither,
+   and a provider's later collection problem never returns the sale to Taylor customer A/R. No title mechanics inferred.
+7. **Funding entitlement (remaining held detail).** The provider pays up front, but the operational event that entitles
+   Taylor is not yet ruled. The arrangement's governed status (APPLIED → APPROVED → FUNDING_ENTITLED → FUNDED; DECLINED /
+   CANCELLED only before entitlement) represents the lifecycle; FUNDING_ENTITLED is recorded with its stated basis and only
+   then are receivables established. Before funding a decline / cancellation holds (the package is re-evaluated to HELD
+   with FINANCING_NOT_AVAILABLE); after funding the sale never converts to customer A/R.
+
+**Implementation.**
+- `eos_commercial.financing_arrangements` (one per Agreement; the customer, the provider, the kind (LEASE / FINANCING),
+  the currency, an explicit contribution and the provider reference recorded once) + `financing_arrangement_events`
+  (append-only). The database enforces the governed provider, the provider ≠ customer rule, immutability and the exact
+  transitions.
+- The Billing Package gains disposition FINANCED_SALE, obligor basis FINANCING_PROVIDER_FUNDED and its composition
+  (financing arrangement, provider counterparty, customer contribution, financed amount). A CHECK enforces total =
+  contribution + financed. Direct-sale content and fingerprints are unchanged; a bare lease flag with no arrangement
+  stays HELD (UNSUPPORTED_FINANCIAL_OBLIGOR).
+- Readiness exceptions: FINANCING_NOT_AVAILABLE, FINANCING_CONTRIBUTION_MISMATCH (the contribution must equal the
+  Agreement's down payment), FINANCING_TRADE_IN_UNGOVERNED, FINANCING_CURRENCY_MISMATCH, FINANCED_AMOUNT_INVALID.
+- At most one receivable of each kind per package (unique index). A funding-entitled or funded financed package is never
+  silently superseded (FINANCED_PACKAGE_FUNDING_ENTITLED).
+- No capability, grant or transport operation; financed packages get no accounting handoff yet (the v1 payload is
+  direct-sale only — a composition-aware payload is a follow-up).

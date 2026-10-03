@@ -93,7 +93,7 @@ installation or Work Order completion.
 For a Saratoga-financed sale, COMMERCIAL CUSTOMER = the customer and FINANCIAL OBLIGOR = Saratoga.
 
 > **SUSPENDED by DECISIONS #199 (Controller correction, 2026-10-02).** The obligor, the FUNDING_RECEIVABLE and the funding
-> package for a financed sale (this row, the line above and §7 steps 2–4) are NOT governed. The commercial customer stays the
+> package for a financed sale (this row, the line above and §7 steps 2–4) are superseded by Owner ruling #200 (see DECISIONS #200). The commercial customer stays the
 > customer; no payer, amount, entitlement or funding status is inferred from a financing provider's presence. HELD
 > pending the Owner questions in #199.
 
@@ -140,7 +140,7 @@ in the same transaction. Billing eligibility derives from that fulfillment, neve
 
 ## 7. Saratoga flow
 
-> **SUSPENDED by DECISIONS #199** — steps 1–4 below are a superseded assumption, kept for history. See #199.
+> **SUSPENDED by DECISIONS #199; RESOLVED by Owner ruling #200** — steps 1–4 below are a superseded assumption, kept for history. The governing model is #200: one Taylor sale, the customer unchanged, the provider owing the financed amount as a FUNDING_RECEIVABLE once funding-entitled, and any customer contribution a separate receivable.
 
 1. The Sales Order carries financing method SARATOGA, which creates a **Financing Relationship** (Commercial-owned).
    It records: provider, application reference, financed amount, customer-paid amount, deposit, financing status and
