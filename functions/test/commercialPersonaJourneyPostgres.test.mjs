@@ -94,6 +94,9 @@ const OPERATIONS = Object.freeze({
   // Owner ruling #204: the trade-in value decision -- business approval, never a Sales Role's.
   approveSalesAgreementTradeIn: [["salesAgreement.tradeIn.approve"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesAgreementId: "sag-missing", itemNumber: 1, approvedCreditMinor: 100 })],
   declineSalesAgreementTradeIn: [["salesAgreement.tradeIn.approve"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesAgreementId: "sag-missing", itemNumber: 1, reason: "x" })],
+  // FBR-F2 (#206): the seller's service-provider authorization rides the Sales Order's own edit authority.
+  authorizeSalesOrderServiceProvider: [["salesOrder.write"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesOrderId: "so-missing", serviceOperatingCompanyId: "taylor", scopes: ["SERVICE"], reason: "x" })],
+  revokeSalesOrderServiceProvider: [["salesOrder.write"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesOrderId: "so-missing", serviceOperatingCompanyId: "taylor", reason: "x" })],
   createSalesOrder: [["salesOrder.write"], (channel = "RETAIL") => ({ idempotencyKey: `k-${randomUUID()}`, accountId: "acct-missing", ownerEmployeeId: "e-retail-a", salesChannel: channel, operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", orderedQty: 1, unitPrice: 100, businessUnitId: "SERVICE" }] })],
   transitionSalesOrder: [["salesOrder.write"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesOrderId: "sor-missing", transition: "ADVANCE" })],
   getOpportunityDetail: [["opportunity.read"], () => ({ opportunityId: "opp-missing" })],

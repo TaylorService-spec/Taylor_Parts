@@ -44,7 +44,9 @@ const EXPECTED_READS = ["getOpportunityDetail", "listOpportunities", "getSalesAg
   "listCoordinatedOperations"];
 // + approve / decline a proposed trade-in value (Owner ruling #204, 2026-10-03): business approval on salesAgreement.tradeIn.approve.
 const EXPECTED_MUTATIONS = ["createOpportunity", "updateOpportunity", "transitionOpportunity", "closeOpportunityAsWon", "createSalesAgreement", "updateSalesAgreementDraft",
-  "acceptSalesAgreement", "approveSalesAgreementTradeIn", "declineSalesAgreementTradeIn", "createSalesOrder", "createSalesOrderFromOpportunity", "transitionSalesOrder"];
+  "acceptSalesAgreement", "approveSalesAgreementTradeIn", "declineSalesAgreementTradeIn", "createSalesOrder", "createSalesOrderFromOpportunity", "transitionSalesOrder",
+  // FBR-F2 (#206): the seller authorizes / revokes a service-performing company on its Sales Order.
+  "authorizeSalesOrderServiceProvider", "revokeSalesOrderServiceProvider"];
 
 /** A PolicyReader that knows one principal, recording every subject lookup it is asked for. */
 function fakeWorld({ capabilities = ALL_CAPS, clientQuery } = {}) {
@@ -100,7 +102,7 @@ const parsed = (res) => JSON.parse(res.body);
 
 // ════════════════════ closed surface ════════════════════
 
-test("(1)(23) the operation list is closed: exactly the 21 approved operations (18 C2/C3 + the coordinated-visits read + the #204 trade-in decision pair), no D2", () => {
+test("(1)(23) the operation list is closed: exactly the 23 approved operations (18 C2/C3 + the coordinated-visits read + the #204 trade-in decision pair + the #206 service-provider pair), no D2", () => {
   assert.deepEqual([...http.COMMERCIAL_READ_OPERATIONS], EXPECTED_READS);
   assert.deepEqual([...http.COMMERCIAL_MUTATION_OPERATIONS], EXPECTED_MUTATIONS);
   for (const name of [...EXPECTED_READS, ...EXPECTED_MUTATIONS]) assert.equal(http.isCommercialOperation(name), true);
@@ -208,7 +210,7 @@ test("(17)(18) a raw failure is a generic 500 that leaks no SQL, driver or conne
 test("omitted input: only the three unfiltered list reads may omit it; every other operation refuses before identity, context, database or domain", async () => {
   const OMITTABLE = ["listOpportunities", "listSalesAgreements", "listSalesOrders"];
   const REQUIRED = ["getOpportunityDetail", "getSalesAgreementDetail", "getSalesOrderDetail", "getAccountCommercialProjection", ...EXPECTED_MUTATIONS];
-  assert.equal(REQUIRED.length, 16); // + the #204 trade-in decision pair
+  assert.equal(REQUIRED.length, 18); // + the #204 trade-in decision pair + the #206 service-provider pair
   for (const operation of OMITTABLE) {
     const res = await post(fakeWorld(), { operation });
     assert.equal(res.status, 200, `${operation} without input: ${res.body}`);

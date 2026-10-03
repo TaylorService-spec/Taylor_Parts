@@ -23,6 +23,7 @@
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { ensureInternalCounterparty, FinanceFoundationError, openObligationOn, voidObligationOn, type FinanceActor, type FinanceFoundationCategory } from "./financeFoundation";
+import { ensureObligationHandoffOn, supersedeObligationHandoffOn } from "./obligationHandoff";
 import { businessDateOn } from "../eosOps/operatingCompanyBusinessTime";
 
 type Queryable = Pick<PoolClient, "query">;
@@ -194,7 +195,11 @@ export async function establishIntercompanyObligationsOn(c: Queryable, actor: Fi
         seller_obligation_id = $5, established_trigger = $6, established_at = now(), payment_terms_net_days = $7, due_on = $8, updated_at = now()
       WHERE tenant_id = $1 AND id = $2 RETURNING *`,
     [actor.tenantId, t.id, amount.toString(), payable.obligationId, receivable.obligationId, input.trigger.trim(), netDays, dueOn]);
-  return Object.freeze({ outcome: "recorded" as const, correlation: correlationOf(done[0]) });
+  // FBR-F3 (#206): each company-side obligation is handed to ITS OWN company's accounting destination -- two handoffs, one
+  // correlation, never netted, never CONSOLIDATED.
+  const buyerHandoff = await ensureObligationHandoffOn(c, actor, { obligationId: payable.obligationId, payloadKind: "INTERCOMPANY_OBLIGATION", correlationId: t.id });
+  const sellerHandoff = await ensureObligationHandoffOn(c, actor, { obligationId: receivable.obligationId, payloadKind: "INTERCOMPANY_OBLIGATION", correlationId: t.id });
+  return Object.freeze({ outcome: "recorded" as const, correlation: correlationOf(done[0]), handoffs: Object.freeze({ buyer: buyerHandoff, seller: sellerHandoff }) });
 }
 
 /**
@@ -234,6 +239,8 @@ export async function retireIntercompanyCorrelationForReceiptOn(c: Queryable, ac
   if (!t || t.status === "SUPERSEDED_BY_RECEIPT_CORRECTION") return null;
   if (t.status === "ESTABLISHED") {
     for (const [obligationId, side] of [[t.buyer_obligation_id, "payable"], [t.seller_obligation_id, "receivable"]] as const) {
+      // A side already delivered / acknowledged refuses the whole correction (provider-side correction first, #206).
+      await supersedeObligationHandoffOn(c, actor, String(obligationId));
       await voidObligationOn(c, actor, { obligationId: String(obligationId), reason: input.reason, idempotencyKey: `ic:void:${side}:${input.correctionId}` });
     }
   }

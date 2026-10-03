@@ -202,3 +202,60 @@ export function transitionSalesOrder(deps: CommercialCommandDeps, actor: Commerc
       return { result: { salesOrderId: order.id, state: patch.state }, target: { family: "salesOrder" as const, id: order.id } };
     }, { family: "salesOrder", id: input?.salesOrderId });
 }
+
+/**
+ * FBR-F2 (Finance Closure, DECISIONS #206): the SELLER authorizes another operating company to PERFORM SERVICE on its Sales
+ * Order -- e.g. Ventana sells equipment to an outside customer and authorizes Taylor Service to deliver / install
+ * (INSTALLATION) or service (SERVICE) it. The seller stays the seller: the Sales Order, its fulfillment record's company, its
+ * billing package and its receivable all remain Ventana's; Taylor's Work Order is Taylor's (the service-performing company).
+ * This is the ONLY cross-company Work Order relationship: without an ACTIVE authorization naming the Work Order's company and
+ * scope, SALES_ORDER_COMPANY_MISMATCH still refuses. Authorized by the Sales Order's own edit authority (salesOrder.write, in
+ * its channel scope). Revocable; history kept.
+ */
+export function authorizeSalesOrderServiceProvider(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
+  return runCommercialCommand(deps, actor, "salesOrder.authorizeServiceProvider", [COMMERCIAL_CAPABILITIES.SALES_ORDER_WRITE], input?.idempotencyKey,
+    async (db, _now, scope) => {
+      for (const k of Object.keys(input ?? {})) {
+        if (!["idempotencyKey", "salesOrderId", "serviceOperatingCompanyId", "scopes", "reason"].includes(k)) fail("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${k}`);
+      }
+      const order = await lockOrderState(db, actor.tenantId, String(input.salesOrderId ?? ""));
+      if (!order) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
+      scope.admitChannel(order.salesChannel);
+      if (order.state === "CANCELLED") fail("ORDER_CANCELLED", "PRECONDITION_FAILED", "a cancelled Sales Order authorizes no service");
+      const scopes = Array.isArray(input.scopes) ? [...new Set(input.scopes as unknown[])] : [];
+      if (scopes.length === 0 || scopes.some((s) => s !== "INSTALLATION" && s !== "SERVICE")) {
+        fail("SERVICE_SCOPES_INVALID", "INVALID_INPUT", "scopes is a non-empty list of INSTALLATION and / or SERVICE");
+      }
+      if (typeof input.reason !== "string" || input.reason.trim() === "") fail("REASON_REQUIRED", "INVALID_INPUT", "an authorization states its reason");
+      const { rows: so } = await db.query(`SELECT operating_company_key FROM eos_commercial.sales_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, order.id]);
+      const { rows: key } = await db.query(`SELECT operating_company_key FROM eos_policy.tenant_operating_company_keys
+        WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE'`, [actor.tenantId, String(input.serviceOperatingCompanyId ?? "")]);
+      const serviceKey = key[0]?.operating_company_key ?? fail("SERVICE_COMPANY_UNKNOWN", "PRECONDITION_FAILED", "the service company is not an active operating company");
+      if (serviceKey === so[0].operating_company_key) fail("SERVICE_COMPANY_IS_SELLER", "PRECONDITION_FAILED", "the seller needs no authorization to service its own Sales Order");
+      await db.query(
+        `INSERT INTO eos_commercial.sales_order_service_providers (tenant_id, sales_order_id, service_operating_company_key, scopes, status, reason, authorized_by)
+         VALUES ($1,$2,$3,$4,'ACTIVE',$5,$6)
+         ON CONFLICT (tenant_id, sales_order_id, service_operating_company_key) DO UPDATE SET scopes = EXCLUDED.scopes, status = 'ACTIVE', reason = EXCLUDED.reason,
+           authorized_by = EXCLUDED.authorized_by, authorized_at = now(), revoked_by = NULL, revoked_at = NULL, revoke_reason = NULL`,
+        [actor.tenantId, order.id, serviceKey, scopes, (input.reason as string).trim(), actor.principalId]);
+      return { result: { salesOrderId: order.id, serviceOperatingCompanyKey: serviceKey, scopes, status: "ACTIVE" }, target: { family: "salesOrder" as const, id: order.id } };
+    }, { family: "salesOrder", id: input?.salesOrderId });
+}
+
+export function revokeSalesOrderServiceProvider(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
+  return runCommercialCommand(deps, actor, "salesOrder.revokeServiceProvider", [COMMERCIAL_CAPABILITIES.SALES_ORDER_WRITE], input?.idempotencyKey,
+    async (db, _now, scope) => {
+      const order = await lockOrderState(db, actor.tenantId, String(input.salesOrderId ?? ""));
+      if (!order) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
+      scope.admitChannel(order.salesChannel);
+      if (typeof input.reason !== "string" || input.reason.trim() === "") fail("REASON_REQUIRED", "INVALID_INPUT", "a revocation states its reason");
+      const { rowCount } = await db.query(
+        `UPDATE eos_commercial.sales_order_service_providers p SET status = 'REVOKED', revoked_by = $4, revoked_at = now(), revoke_reason = $5
+           FROM eos_policy.tenant_operating_company_keys k
+          WHERE p.tenant_id = $1 AND p.sales_order_id = $2 AND k.tenant_id = p.tenant_id AND k.operating_company_id = $3 AND k.status = 'ACTIVE'
+            AND p.service_operating_company_key = k.operating_company_key AND p.status = 'ACTIVE'`,
+        [actor.tenantId, order.id, String(input.serviceOperatingCompanyId ?? ""), actor.principalId, (input.reason as string).trim()]);
+      if (!rowCount) fail("SERVICE_PROVIDER_NOT_AUTHORIZED", "NOT_FOUND", "no active service-provider authorization for that company");
+      return { result: { salesOrderId: order.id, status: "REVOKED" }, target: { family: "salesOrder" as const, id: order.id } };
+    }, { family: "salesOrder", id: input?.salesOrderId });
+}

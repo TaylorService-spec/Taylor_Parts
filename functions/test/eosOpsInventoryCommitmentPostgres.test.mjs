@@ -147,7 +147,7 @@ test("the commitment vocabulary and the movement vocabulary stay disjoint IN THE
   assert.deepEqual(commitment, ["RESERVED", "RELEASED", "CONSUMED"]);
   assert.deepEqual(movement, [
     "RECEIVED", "RETURNED", "TRANSFER_OUT", "TRANSFER_IN", "RELOCATION_OUT", "RELOCATION_IN",
-    "WORK_ORDER_CONSUMPTION", "SCRAPPED", "ADJUSTED",
+    "WORK_ORDER_CONSUMPTION", "SCRAPPED", "ADJUSTED", "INTERCOMPANY_SALE_RELIEF",
   ], "migration 008 did not widen the movement vocabulary");
   assert.deepEqual(movement.filter((label) => commitment.includes(label)), [],
     "no commitment lifecycle label is a movement type");

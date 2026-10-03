@@ -120,7 +120,7 @@ test.after(async () => {
       // to run order, because a cleanup that depends on which suite ran first is not a cleanup.
       "TRUNCATE eos_commercial.accountability_handoffs, eos_commercial.ownership_handoffs," +
       // Migration 022's line tables reference the three record tables too.
-      " eos_finance.billing_package_lines, eos_commercial.sales_order_fulfillments, eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
+      " eos_finance.billing_package_lines, eos_commercial.sales_order_fulfillments, eos_commercial.sales_order_service_providers, eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
       // Migration 1764480000000 (#200): the financing arrangement and its history reference the Agreement.
       " eos_commercial.sales_agreement_trade_ins, eos_commercial.financing_restructures, eos_commercial.financing_approval_evidence, eos_commercial.financing_arrangement_events, eos_commercial.financing_arrangements," +
       " eos_commercial.sales_orders," +
@@ -152,10 +152,10 @@ test("migration 008 creates eos_commercial beside eos_policy and eos_ops", { ski
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_commercial' ORDER BY table_name",
   );
   assert.deepEqual(
-    tables.rows.map((r) => r.table_name),
+    tables.rows.map((r) => r.table_name).sort(),
     ["accountability_handoffs", "command_receipts", "financing_approval_evidence", "financing_arrangement_events", "financing_arrangements", "financing_restructures", "number_counters", "opportunities", "opportunity_lines", "ownership_handoffs",
       "sales_agreement_lines", "sales_agreement_trade_ins", "sales_agreements", "sales_discount_authorities", "sales_order_fulfillments", "sales_order_line_billing_eligibility", "sales_order_line_fulfillment",
-      "sales_order_lines", "sales_orders"],
+      "sales_order_lines", "sales_order_service_providers", "sales_orders"],
     "five tables: three commercial records, their shared OWNERSHIP history, and -- since migration 020 " +
       "(Wave 2C) -- their shared ACCOUNTABILITY history. The second history table is deliberately NOT a " +
       "new source value on `ownership_handoffs`: #187 s1 rules that accountability must not be redefined " +

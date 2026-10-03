@@ -23,6 +23,7 @@
 // FAIL CLOSED, all inside the completion transaction: a Sales Order that does not exist, a Work Order of another operating
 // company / customer / site, an unbound or CONSOLIDATED company, a Sales Order that cannot take fulfillment, a linked Work
 // Order with no linked lines. Idempotent: COMPLETED is one-way and every row is unique per (Work Order, line).
+import { serviceProviderAuthorized } from "./serviceProviderAuthorization";
 import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { applyFulfillmentAcceptance, FulfillmentWriteBackError, type FulfillmentAcceptance } from "../../salesOrder/salesOrderFulfillmentWriteBack";
@@ -71,7 +72,7 @@ export async function recordWorkOrderFulfillmentOn(
   input: { readonly workOrderId: string; readonly completedAt: Date },
 ): Promise<WorkOrderFulfillmentOutcome> {
   const { rows: woRows } = await c.query(
-    `SELECT id, operating_company_key, customer_id, location_id, sales_order_id FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2`,
+    `SELECT id, operating_company_key, customer_id, location_id, sales_order_id, work_order_type FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2`,
     [actor.tenantId, input.workOrderId]);
   const wo = woRows[0];
   if (!wo) return refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "no such Work Order");
@@ -99,7 +100,10 @@ export async function recordWorkOrderFulfillmentOn(
   }
   // ONE GOVERNED COMPANY. The Work Order and the Sales Order must be the same company; the company is the binding's, never
   // the site's, and never CONSOLIDATED.
-  if (wo.operating_company_key !== so.operating_company_key) {
+  // ONE governed company -- or (FBR-F2, #206) a service-performing company the seller ACTIVELY authorized for this Work Order's
+  // type. The fulfillment record keeps the SELLER's company; the service company is stated beside it.
+  const crossCompany = wo.operating_company_key !== so.operating_company_key;
+  if (crossCompany && !(await serviceProviderAuthorized(c, actor.tenantId, salesOrderId, String(wo.operating_company_key), String(wo.work_order_type)))) {
     refuse("SALES_ORDER_COMPANY_MISMATCH", "PRECONDITION_FAILED", "the Work Order and the Sales Order belong to different operating companies");
   }
   const operatingCompanyId = await resolveCompany(c, actor.tenantId, String(so.operating_company_key));
@@ -165,12 +169,12 @@ export async function recordWorkOrderFulfillmentOn(
     await c.query(
       `INSERT INTO eos_commercial.sales_order_fulfillments (id, tenant_id, sales_order_id, line_number, line_kind, line_ref, quantity, source_kind,
           source_work_order_id, evidence_kind, evidence_record_ids, equipment_ids, serial_numbers, operating_company_key, operating_company_id,
-          account_id, location_id, fulfilled_at, recorded_by)
-       VALUES ($1,$2,$3,$4,$5::eos_commercial.commercial_line_kind,$6,$7,'WORK_ORDER_COMPLETION',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+          account_id, location_id, fulfilled_at, recorded_by, service_operating_company_key)
+       VALUES ($1,$2,$3,$4,$5::eos_commercial.commercial_line_kind,$6,$7,'WORK_ORDER_COMPLETION',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        ON CONFLICT (tenant_id, source_work_order_id, sales_order_id, line_number) DO NOTHING`,
       [`sof_${randomUUID()}`, actor.tenantId, salesOrderId, n, l.kind, l.ref, e.quantity, input.workOrderId, e.kind, e.recordIds,
         e.equipmentIds, e.serials, so.operating_company_key, operatingCompanyId, so.account_id, wo.location_id ?? null, input.completedAt,
-        actor.principalId]);
+        actor.principalId, crossCompany ? String(wo.operating_company_key) : null]);
     recorded.push(Object.freeze({ lineNumber: n, kind: String(l.kind), ref: String(l.ref), quantity: e.quantity, evidenceKind: e.kind,
       equipmentIds: Object.freeze(e.equipmentIds), serialNumbers: Object.freeze(e.serials) }));
   }

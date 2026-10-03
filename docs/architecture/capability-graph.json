@@ -4022,6 +4022,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/adminPolicy/inventoryWarehouseActivationDelta.ts",
           "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/intercompanyInventoryRelief.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
           "functions/src/eosOps/partsReads.ts",
           "functions/src/eosOps/transferOperations.ts",
@@ -4036,7 +4037,7 @@
           "field-ops-app-vite/src/modules/scan/MoveStockScan.jsx",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 8,
+        "serverReferenceCount": 9,
         "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },

@@ -184,6 +184,18 @@ export async function transitionFinancingArrangement(pool: Pool, actor: FinanceA
     if (!FINANCING_TRANSITIONS[fa.status as FinancingStatus].includes(to)) {
       refuse("FINANCING_TRANSITION_REFUSED", "CONFLICT", `${fa.status} -> ${to} is not a financing transition`);
     }
+    // FUNDED means the provider's money was RECEIVED (#206): only once every FUNDING_RECEIVABLE of its package is fully settled
+    // by applied provider funding. FUNDING_ENTITLED never meant money received.
+    if (to === "FUNDED") {
+      const { rows: fr } = await c.query(
+        `SELECT b.outstanding_minor FROM eos_finance.billing_packages p JOIN eos_finance.obligations o ON o.tenant_id = p.tenant_id
+            AND o.source_domain = 'BILLING_PACKAGE' AND o.source_record_id = p.id AND o.kind = 'FUNDING_RECEIVABLE' AND o.status <> 'VOID'
+           JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
+          WHERE p.tenant_id = $1 AND p.financing_arrangement_id = $2`, [actor.tenantId, id]);
+      if (fr.length === 0 || fr.some((x) => BigInt(x.outstanding_minor) !== 0n)) {
+        refuse("FUNDING_NOT_RECEIVED", "PRECONDITION_FAILED", "FUNDED requires the provider's funding receivable to be fully settled by recorded, applied provider funding");
+      }
+    }
     if (evidenceId !== null) {
       const { rows: ev } = await c.query(`SELECT signed, approved FROM eos_commercial.financing_approval_evidence WHERE tenant_id = $1 AND id = $2 AND arrangement_id = $3`,
         [actor.tenantId, evidenceId, id]);

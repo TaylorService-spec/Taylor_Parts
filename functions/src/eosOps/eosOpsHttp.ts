@@ -48,6 +48,7 @@ import { EOS_WORK_ORDER_OPERATIONS, isWorkOrderOperation, type EosWorkOrderOpera
 import { EOS_INBOUND_WORK_OPERATIONS, INBOUND_WORK_ROUTE, isInboundWorkOperation } from "./inboundWorkOperations";
 import type { WorkOrderOp } from "./workOrderOperationTypes";
 import { EOS_EQUIPMENT_OPERATIONS, isEquipmentOperation } from "./equipmentOperations";
+import { EOS_FINANCE_OPERATIONS, FINANCE_ROUTE, isFinanceOperation } from "../eosFinance/financeOperations";
 import type { PostgresEquipmentWriterState } from "./equipmentWriterState";
 import { WORK_ORDER_WRITER_AUTHORITY, type PostgresWorkOrderWriterState } from "./workOrderWriterState";
 import { postgresContextualReader } from "./contextualAuthorization";
@@ -249,7 +250,7 @@ export const EQUIPMENT_ROUTE = "/operations/equipment";
 
 export const OPERATIONS_ROUTES: readonly string[] =
   Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE, RELOCATION_ROUTE, TRANSFER_ROUTE,
-    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE, WORK_ORDER_ROUTE, INBOUND_WORK_ROUTE, EQUIPMENT_ROUTE])].sort());
+    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE, WORK_ORDER_ROUTE, INBOUND_WORK_ROUTE, EQUIPMENT_ROUTE, FINANCE_ROUTE])].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(OPERATIONS_MUTATION_OPERATIONS);
@@ -671,6 +672,8 @@ const STATUS_BY_WORK_ORDER_CATEGORY: Readonly<Record<string, number>> = Object.f
 const WORK_ORDER_ERROR_NAMES: ReadonlySet<string> = new Set([
   "WorkOrderLifecycleError", "WorkOrderAssignmentError", "WorkOrderCreateError", "WorkOrderPartsPlanError", "WorkOrderReadError",
   "WorkOrderEquipmentInstallError", "EquipmentOperationError",
+  // Finance Closure (#206): the /operations/finance table's governed refusal classes.
+  "FinanceOperationError", "FinanceFoundationError", "CostEvidenceSupplyError", "IntercompanyReliefError",
 ]);
 
 /**
@@ -830,10 +833,11 @@ export async function handleOperationsRequest(
     return json(out.status, out.body, origin);
   }
 
-  if (path === WORK_ORDER_ROUTE || path === INBOUND_WORK_ROUTE || path === EQUIPMENT_ROUTE) {
+  if (path === WORK_ORDER_ROUTE || path === INBOUND_WORK_ROUTE || path === EQUIPMENT_ROUTE || path === FINANCE_ROUTE) {
     const inbound = path === INBOUND_WORK_ROUTE;
     const equipment = path === EQUIPMENT_ROUTE;
-    if (equipment ? !isEquipmentOperation(operation) : inbound ? !isInboundWorkOperation(operation) : !isWorkOrderOperation(operation)) {
+    const finance = path === FINANCE_ROUTE;
+    if (finance ? !isFinanceOperation(operation) : equipment ? !isEquipmentOperation(operation) : inbound ? !isInboundWorkOperation(operation) : !isWorkOrderOperation(operation)) {
       return json(404, notFound(String(operation ?? "")), origin);
     }
     const input = payload.input === undefined ? {} : payload.input;
@@ -856,7 +860,8 @@ export async function handleOperationsRequest(
       },
       operation: operation as string,
       input: input as Record<string, unknown>,
-    }, equipment ? EOS_EQUIPMENT_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
+    }, finance ? EOS_FINANCE_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
+      : equipment ? EOS_EQUIPMENT_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
       : inbound ? EOS_INBOUND_WORK_OPERATIONS : EOS_WORK_ORDER_OPERATIONS);
     return json(out.status, out.body, origin);
   }

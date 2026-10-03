@@ -515,6 +515,42 @@ export async function voidObligationOn(c: Queryable, actor: FinanceActor, input:
   return { outcome: "voided" as const, obligationId: input.obligationId };
 }
 
+/**
+ * The SETTLEMENT fact of ONE application, inside the caller's transaction (the settlement / application authority composes it,
+ * #206): the obligation's own company, counterparty and currency; the foundation's over-application guard is the floor.
+ */
+export async function insertSettlementFactOn(c: Queryable, actor: FinanceActor, input: {
+  obligationId: string; amountMinor: bigint; effectiveAt: Date; idempotencyKey: string; sourceRecordId: string; correlationId?: string | null;
+}) {
+  const { rows } = await c.query(`SELECT * FROM eos_finance.obligations WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, input.obligationId]);
+  const o = rows[0] ?? refuse("OBLIGATION_NOT_FOUND", "NOT_FOUND", "no obligation with that id");
+  if (o.status === "VOID") refuse("OBLIGATION_VOID", "PRECONDITION_FAILED", "a VOID obligation cannot be settled");
+  try {
+    const out = await insertFact(c, actor, {
+      operatingCompanyId: o.operating_company_id, counterpartyId: o.counterparty_id, factClass: "SETTLEMENT", factType: "SETTLEMENT_APPLIED",
+      sourceDomain: "SETTLEMENT", sourceRecordId: input.sourceRecordId, amountMinor: input.amountMinor, currency: o.currency, basis: "SETTLEMENT_APPLICATION",
+      effectiveAt: input.effectiveAt, idempotencyKey: input.idempotencyKey, obligationId: input.obligationId, correlationId: input.correlationId ?? null,
+    });
+    await refreshObligationStatus(c, actor, input.obligationId);
+    return out;
+  } catch (err) {
+    if (err instanceof FinanceFoundationError) throw err;
+    return mapDatabaseError(err);
+  }
+}
+
+/** Reverse ONE fact inside the caller's transaction, refreshing its obligation's status projection (#206 application reversal). */
+export async function reverseFactOn(c: Queryable, actor: FinanceActor, input: { factId: string; reason: string; idempotencyKey: string }) {
+  try {
+    const out = await reverseInTx(c, actor, input);
+    if (out.fact.obligationId) await refreshObligationStatus(c, actor, out.fact.obligationId);
+    return out;
+  } catch (err) {
+    if (err instanceof FinanceFoundationError) throw err;
+    return mapDatabaseError(err);
+  }
+}
+
 /** Settle part or all of an obligation with a SETTLEMENT fact. Over-application is refused (and enforced by the database). */
 export async function recordSettlement(pool: Pool, actor: FinanceActor, input: {
   obligationId: unknown; amountMinor: number | bigint; basis: string; effectiveAt: Date; idempotencyKey: string; sourceDomain: string; sourceRecordId: string;

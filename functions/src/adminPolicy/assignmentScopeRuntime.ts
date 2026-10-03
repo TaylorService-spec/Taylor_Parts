@@ -155,7 +155,9 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
   Object.freeze({
     scopeType: "salesChannel" as const,
     capabilityKey: "salesOrder.write",
-    consumers: Object.freeze(["commercial.createSalesOrder", "commercial.transitionSalesOrder"]),
+    consumers: Object.freeze(["commercial.createSalesOrder", "commercial.transitionSalesOrder",
+      // Finance Closure (#206, FBR-F2): the seller authorizes / revokes another company to perform its order's service.
+      "commercial.authorizeSalesOrderServiceProvider", "commercial.revokeSalesOrderServiceProvider"]),
   }),
   // EQUIPMENT ACTIVATION (Controller OD-3, 2026-10-01): a seller reads customer Equipment ONLY through the governed
   // commercial relationship -- an Equipment record is admitted when its Account has an Opportunity or a Sales Order whose

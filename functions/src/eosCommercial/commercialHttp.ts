@@ -38,7 +38,7 @@ import { closeOpportunityAsWon, createOpportunity, transitionOpportunity, update
 import {
   acceptSalesAgreement, approveSalesAgreementTradeIn, createSalesAgreement, declineSalesAgreementTradeIn, updateSalesAgreementDraft,
 } from "./commands/salesAgreementCommandService";
-import { createSalesOrder, createSalesOrderFromOpportunity, transitionSalesOrder } from "./commands/salesOrderCommandService";
+import { createSalesOrder, createSalesOrderFromOpportunity, transitionSalesOrder, authorizeSalesOrderServiceProvider, revokeSalesOrderServiceProvider } from "./commands/salesOrderCommandService";
 import type { CommercialReadActor } from "./reads/commercialReadKernel";
 import { getAccountCommercialProjection } from "./reads/accountCommercialProjection";
 import { getOpportunityDetail, listOpportunities } from "./reads/opportunityReadProjection";
@@ -108,6 +108,9 @@ const MUTATION_RUNNERS = Object.freeze({
   createSalesOrder: command(createSalesOrder),
   createSalesOrderFromOpportunity: command(createSalesOrderFromOpportunity),
   transitionSalesOrder: command(transitionSalesOrder),
+  // FBR-F2 (#206): the seller authorizes / revokes a service-performing company on its Sales Order (salesOrder.write).
+  authorizeSalesOrderServiceProvider: command(authorizeSalesOrderServiceProvider),
+  revokeSalesOrderServiceProvider: command(revokeSalesOrderServiceProvider),
 } as const);
 
 export type CommercialReadOperation = keyof typeof READ_RUNNERS;

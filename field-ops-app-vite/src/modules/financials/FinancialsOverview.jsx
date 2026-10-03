@@ -9,6 +9,7 @@
 // composition is present; every figure whose governed read is not activated renders its
 // honest absence — never a zero, never a specimen number, never a client-side computation.
 import { useState } from "react";
+import FinancialsWorkspace from "./FinancialsWorkspace.jsx";
 import { Link } from "react-router-dom";
 import {
   FinancialsPageFrame,
@@ -156,10 +157,10 @@ export default function FinancialsOverview() {
                 <span className="fin-inact">No billing-readiness read</span>
               </li>
               <li>
-                <span>Unapplied payments</span>
-                {/* Not a missing read — a missing RECORD TYPE. The payment core refuses
-                    over-application, so no governed receipt can carry an unapplied balance. */}
-                <span className="fin-inact">No governed record can carry one</span>
+                <span>Unapplied settlements</span>
+                {/* Finance Closure (#206): a governed settlement CAN now carry an unapplied remainder; the governed figure is
+                    the Finance Workspace's (below), read from /operations/finance -- never computed here. */}
+                <span className="fin-inact">See the Finance Workspace below</span>
               </li>
               <li>
                 <span>Invoices 61+ days overdue</span>
@@ -197,6 +198,13 @@ export default function FinancialsOverview() {
           </section>
         </aside>
       </div>
+
+      {/* Finance Closure (#206): the governed operational workspace -- obligations, settlements, application, reconciliation,
+          accounting handoffs, missing cost evidence -- per company or as the Consolidated reporting view. The server authorizes
+          every read (finance.payment.read) and every act; a refusal renders as its answer. */}
+      <section className="ns-section" aria-label="Finance Workspace">
+        <FinancialsWorkspace embedded />
+      </section>
     </FinancialsPageFrame>
   );
 }

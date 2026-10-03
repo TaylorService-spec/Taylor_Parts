@@ -82,6 +82,8 @@ export const isCommercialReadOperation = (name) =>
  */
 export const COMMERCIAL_MUTATION_OPERATIONS = Object.freeze([
   "acceptSalesAgreement",
+  // FBR-F2 (#206): the seller authorizes / revokes a service-performing company on its Sales Order.
+  "authorizeSalesOrderServiceProvider",
   // Owner ruling #204: the business decision on a proposed trade-in value (salesAgreement.tradeIn.approve).
   "approveSalesAgreementTradeIn",
   "closeOpportunityAsWon",
@@ -90,6 +92,7 @@ export const COMMERCIAL_MUTATION_OPERATIONS = Object.freeze([
   "createSalesOrder",
   "createSalesOrderFromOpportunity",
   "declineSalesAgreementTradeIn",
+  "revokeSalesOrderServiceProvider",
   "transitionOpportunity",
   "transitionSalesOrder",
   "updateOpportunity",

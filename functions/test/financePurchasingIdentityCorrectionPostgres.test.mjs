@@ -131,7 +131,11 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
   const EXT = { supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-ACME" } };
   const INTERNAL = (operatingCompanyId) => ({ supplier: { kind: "INTERNAL_OPERATING_COMPANY", operatingCompanyId } });
   const po = (rr) => one(`SELECT * FROM eos_ops.purchase_orders WHERE tenant_id=$1 AND id=$2`, [TENANT, rr]);
-  const factsOf = (receivingId) => q(`SELECT * FROM eos_finance.financial_facts WHERE tenant_id=$1 AND source_record_id=$2 ORDER BY created_at, id`, [TENANT, receivingId]);
+  // The receipt's COST-EVIDENCE facts (the inventory consequence these proofs are about). Since #206 a governed external receipt also
+  // opens a vendor PAYABLE whose obligation facts carry the same source record; those are asserted separately where they matter.
+  const factsOf = (receivingId) => q(`SELECT * FROM eos_finance.financial_facts WHERE tenant_id=$1 AND source_record_id=$2 AND fact_class='COST_EVIDENCE' ORDER BY created_at, id`, [TENANT, receivingId]);
+  const payableNet = async (receivingId) => (await one(`SELECT COALESCE(SUM(amount_minor),0)::text AS n FROM eos_finance.financial_facts
+      WHERE tenant_id=$1 AND source_record_id=$2 AND fact_class='OBLIGATION'`, [TENANT, receivingId])).n;
   const counterparty = async (id) => (id === null ? null : fin.readCounterparty(pool, TENANT, id));
   const onHand = (partId, type, id) => count(`SELECT COALESCE(SUM(quantity_delta),0)::int n FROM eos_ops.inventory_movements
       WHERE tenant_id=$1 AND part_id=$2 AND location_type=$3 AND location_id=$4`, [TENANT, partId, type, id]);
@@ -277,7 +281,8 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
     // 22. replay is idempotent; a different request on the same key, or a second correction, is refused.
     const again = ok(await correct(corrector, input), "replay");
     assert.deepEqual([again.outcome, again.correctionId], ["replayed", out.correctionId]);
-    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND source_record_id=$2`, [TENANT, r.receivingId]), 2);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND source_record_id=$2 AND fact_class='COST_EVIDENCE'`, [TENANT, r.receivingId]), 2);
+    assert.equal(await payableNet(r.receivingId), "0", "#206: the voided receipt's vendor payable is retired with it");
     refused(await correct(corrector, { ...input, reason: "another story" }), 409, "CONFLICT", /DIFFERENT receipt correction/);
     refused(await correct(corrector, { ...input, idempotencyKey: "corr-void-2" }), 412, "PRECONDITION_FAILED", /already cancelled/);
     // The delivery can now be received correctly through the ordinary path.
@@ -302,7 +307,7 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
       [original.id, "6000", "put away in bin MAIN-A-1-1, not the dock", original.counterparty_id, rr]);
     // M. Analysis distinguishes ORIGINAL / REVERSAL / REPLACEMENT, and the net consequence is the amount ONCE.
     const chain = (await q(`SELECT CASE WHEN reverses_fact_id IS NOT NULL THEN 'REVERSAL' WHEN corrects_fact_id IS NOT NULL THEN 'REPLACEMENT' ELSE 'ORIGINAL' END AS role,
-        amount_minor FROM eos_finance.financial_facts WHERE tenant_id=$1 AND correlation_id=$2 ORDER BY created_at, id`, [TENANT, rr])).rows;
+        amount_minor FROM eos_finance.financial_facts WHERE tenant_id=$1 AND correlation_id=$2 AND fact_class='COST_EVIDENCE' ORDER BY created_at, id`, [TENANT, rr])).rows;
     // One transaction writes the reversal and the replacement (same created_at), so the ROLES are asserted, not a row order.
     assert.deepEqual(chain.map((c) => c.role).sort(), ["ORIGINAL", "REPLACEMENT", "REVERSAL"]);
     assert.equal(chain.reduce((s, c) => s + BigInt(c.amount_minor), 0n), 6000n, "original + reversal + replacement = the replacement, never double");
