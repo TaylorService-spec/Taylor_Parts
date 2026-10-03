@@ -104,14 +104,14 @@ async function audit(c: Queryable, actor: RentalActor, action: string, targetKin
 }
 
 async function fleetEvent(c: Queryable, actor: RentalActor, unit: Record<string, any>, e: {
-  readonly type: string; readonly to: string; readonly agreementId?: string | null; readonly assignmentId?: string | null; readonly workOrderId?: string | null;
+  readonly event: string; readonly to: string; readonly agreementId?: string | null; readonly assignmentId?: string | null; readonly workOrderId?: string | null;
   readonly equipmentId?: string | null; readonly locationType?: string | null; readonly locationId?: string | null; readonly reason?: string | null;
 }) {
   await c.query(
     `INSERT INTO eos_rental.fleet_unit_events (id, tenant_id, fleet_unit_id, event_type, from_availability, to_availability, agreement_id, assignment_id,
         work_order_id, equipment_id, owner_operating_company_key, location_type, location_id, reason, actor_principal_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-    [`rfe_${randomUUID()}`, actor.tenantId, unit.id, e.type, unit.availability ?? null, e.to, e.agreementId ?? null, e.assignmentId ?? null,
+    [`rfe_${randomUUID()}`, actor.tenantId, unit.id, e.event, unit.availability ?? null, e.to, e.agreementId ?? null, e.assignmentId ?? null,
       e.workOrderId ?? null, e.equipmentId ?? null, unit.owner_operating_company_key, e.locationType ?? null, e.locationId ?? null, e.reason ?? null, actor.principalId]);
 }
 
@@ -168,7 +168,7 @@ export async function designateFleetUnit(pool: Pool, actor: RentalActor, input: 
     await c.query(`INSERT INTO eos_rental.fleet_units (id, tenant_id, part_id, serial_number, owner_operating_company_key, availability, display_name, designated_by)
       VALUES ($1,$2,$3,$4,$5,'AVAILABLE',$6,$7)`, [id, actor.tenantId, partId, serial, custody.operating_company_key, displayName, actor.principalId]);
     await fleetEvent(c, actor, { id, availability: null, owner_operating_company_key: custody.operating_company_key },
-      { type: "DESIGNATED", to: "AVAILABLE", locationType: custody.location_type, locationId: custody.location_id, reason });
+      { event: "DESIGNATED", to: "AVAILABLE", locationType: custody.location_type, locationId: custody.location_id, reason });
     await audit(c, actor, "rental.fleet.designate", "rental_fleet_unit", id, { partId, serial, owner: custody.operating_company_key }, reason);
     return Object.freeze({ outcome: "recorded" as const, fleetUnit: await readFleetUnitOn(c, actor.tenantId, id) });
   });
@@ -193,7 +193,7 @@ export async function setFleetUnitAvailability(pool: Pool, actor: RentalActor, i
       if (!["WAREHOUSE", "BIN"].includes(cu[0]?.lt)) refuse("UNIT_NOT_IN_TAYLOR_CUSTODY", "PRECONDITION_FAILED", "a unit becomes available only in Taylor custody");
     }
     await moveUnit(c, actor, unit, to as string, null);
-    await fleetEvent(c, actor, unit, { type: to === "UNAVAILABLE" ? "MARKED_UNAVAILABLE" : unit.availability === "SERVICE_HOLD" ? "SERVICE_HOLD_RELEASED" : "AVAILABILITY_RESTORED", to: to as string, reason });
+    await fleetEvent(c, actor, unit, { event: to === "UNAVAILABLE" ? "MARKED_UNAVAILABLE" : unit.availability === "SERVICE_HOLD" ? "SERVICE_HOLD_RELEASED" : "AVAILABILITY_RESTORED", to: to as string, reason });
     await audit(c, actor, "rental.fleet.availability", "rental_fleet_unit", fleetUnitId, { from: unit.availability, to }, reason);
     return Object.freeze({ outcome: "recorded" as const, fleetUnit: await readFleetUnitOn(c, actor.tenantId, fleetUnitId) });
   });
@@ -352,7 +352,7 @@ export async function reserveRentalUnit(pool: Pool, actor: RentalActor, input: R
       throw err;
     }
     await moveUnit(c, actor, unit, "RESERVED", id);
-    await fleetEvent(c, actor, unit, { type: "RESERVED", to: "RESERVED", agreementId, assignmentId: id, reason: replaces ? `exchange for ${replaces}` : null });
+    await fleetEvent(c, actor, unit, { event: "RESERVED", to: "RESERVED", agreementId, assignmentId: id, reason: replaces ? `exchange for ${replaces}` : null });
     await audit(c, actor, "rental.unit.reserve", "rental_assignment", id, { agreementId, fleetUnitId, replacesAssignmentId: replaces }, null);
     return Object.freeze({ outcome: "recorded" as const, assignmentId: id, agreement: await readRentalAgreementOn(c, actor.tenantId, agreementId) });
   });
@@ -369,7 +369,7 @@ export async function releaseRentalReservation(pool: Pool, actor: RentalActor, i
     await c.query(`UPDATE eos_rental.rental_assignments SET status = 'RELEASED', released_by = $3, released_at = now(), release_reason = $4 WHERE tenant_id = $1 AND id = $2`,
       [actor.tenantId, assignmentId, actor.principalId, reason]);
     await moveUnit(c, actor, unit, "AVAILABLE", null);
-    await fleetEvent(c, actor, unit, { type: "RESERVATION_RELEASED", to: "AVAILABLE", agreementId: s.agreement_id, assignmentId, reason });
+    await fleetEvent(c, actor, unit, { event: "RESERVATION_RELEASED", to: "AVAILABLE", agreementId: s.agreement_id, assignmentId, reason });
     return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementOn(c, actor.tenantId, String(s.agreement_id)) });
   });
 }
@@ -394,7 +394,7 @@ export async function initiateRentalReturn(pool: Pool, actor: RentalActor, input
     await c.query(`UPDATE eos_rental.rental_assignments SET status = 'RETURN_PENDING', return_initiated_by = $3, return_initiated_at = now(), expected_pickup_date = $4,
       return_work_order_id = $5 WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, assignmentId, actor.principalId, pickup, woId]);
     await moveUnit(c, actor, unit, "RETURN_PENDING", assignmentId);
-    await fleetEvent(c, actor, unit, { type: "RETURN_INITIATED", to: "RETURN_PENDING", agreementId: s.agreement_id, assignmentId, workOrderId: woId, equipmentId: s.equipment_id, reason });
+    await fleetEvent(c, actor, unit, { event: "RETURN_INITIATED", to: "RETURN_PENDING", agreementId: s.agreement_id, assignmentId, workOrderId: woId, equipmentId: s.equipment_id, reason });
     return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementOn(c, actor.tenantId, String(s.agreement_id)) });
   });
 }
@@ -452,7 +452,7 @@ export async function receiveRentalReturn(pool: Pool, actor: RentalActor, input:
         return_initiated_by = COALESCE(return_initiated_by, $3), return_initiated_at = COALESCE(return_initiated_at, now())
       WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, assignmentId, actor.principalId, warehouseId]);
     await moveUnit(c, actor, unit, "INSPECTION", null);
-    await fleetEvent(c, actor, unit, { type: "RETURN_RECEIVED", to: "INSPECTION", agreementId: s.agreement_id, assignmentId, equipmentId: s.equipment_id,
+    await fleetEvent(c, actor, unit, { event: "RETURN_RECEIVED", to: "INSPECTION", agreementId: s.agreement_id, assignmentId, equipmentId: s.equipment_id,
       locationType: "WAREHOUSE", locationId: warehouseId, reason: notes });
     await audit(c, actor, "rental.unit.returnReceive", "rental_assignment", assignmentId, { warehouseId, movementId, equipmentId: s.equipment_id }, notes);
     return Object.freeze({ outcome: "recorded" as const, movementId, agreement: await readRentalAgreementOn(c, actor.tenantId, String(s.agreement_id)) });
@@ -477,7 +477,7 @@ export async function inspectRentalUnit(pool: Pool, actor: RentalActor, input: R
     await c.query(`INSERT INTO eos_rental.rental_inspections (id, tenant_id, fleet_unit_id, assignment_id, outcome, condition_notes, inspected_by, idempotency_key)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [id, actor.tenantId, fleetUnitId, last[0]?.id ?? null, input.outcome, notes, actor.principalId, key]);
     await moveUnit(c, actor, unit, to, null);
-    await fleetEvent(c, actor, unit, { type: "INSPECTED", to, assignmentId: last[0]?.id ?? null, reason: `${String(input.outcome)}: ${notes}` });
+    await fleetEvent(c, actor, unit, { event: "INSPECTED", to, assignmentId: last[0]?.id ?? null, reason: `${String(input.outcome)}: ${notes}` });
     return Object.freeze({ outcome: "recorded" as const, inspectionId: id, fleetUnit: await readFleetUnitOn(c, actor.tenantId, fleetUnitId) });
   });
 }
