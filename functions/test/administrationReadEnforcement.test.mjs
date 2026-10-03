@@ -232,7 +232,8 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 90 -> 91: Taylor / Ventana intercompany (2026-10-02, DECISIONS #202): 1764490000000 -- intercompany_transactions correlation + paired obligations at the governed priced receipt (Owner ruling #202), net-days terms, obligation due_on; no capability, no grant.
   // 91 -> 92: Governed configuration + sales pricing (2026-10-02, DECISIONS #203): 1764500000000 -- operating-company business time zone + resolver, finance.configuration.manage (granted to NO Role), customer discount, trade-in items, package composition; untouched handoffs follow the active destination.
   // 92 -> 93: 1764510000000 -- Finance Closure (#206): settlements / applications / reconciliation, obligation handoffs, intercompany relief, service-provider authorization, late cost evidence; four settlement capabilities granted to the five Finance-execution Roles.
-  assert.equal(migrations.length, 93, "a migration was added or removed by the read enforcement");
+  // 93 -> 94: 1764520000000 -- Rental (#207): the eos_rental domain (fleet, agreements + versioned terms, assignments, inspections, charges, events), rental Work Orders, the RENTAL billing package source; six rental capabilities granted to their analog Roles.
+  assert.equal(migrations.length, 94, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

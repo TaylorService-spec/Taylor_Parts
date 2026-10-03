@@ -70,8 +70,23 @@ export interface AccountingPayloadV2 extends Omit<AccountingPayloadV1, "contract
       readonly approvalEvidence: { readonly evidenceId: string; readonly documentReference: string; readonly signed: true; readonly approved: true; readonly recordedAt: string } };
   };
 }
+/**
+ * Contract version 3 -- a RENTAL charge (#207): the v1 shape with no Sales Order (the source is a Rental Agreement charge) and a
+ * `rental` block naming the agreement and the charged period. It states the rent; it says nothing of ownership (none moves).
+ */
+export interface AccountingPayloadV3 extends Omit<AccountingPayloadV1, "contract" | "billingPackage"> {
+  readonly contract: { readonly name: typeof ACCOUNTING_PAYLOAD_CONTRACT; readonly version: 3 };
+  readonly billingPackage: Omit<AccountingPayloadV1["billingPackage"], "salesOrderId" | "lines"> & {
+    readonly salesOrderId: null;
+    readonly lines: readonly (Omit<AccountingPayloadV1["billingPackage"]["lines"][number], "salesOrderLineNumber"> & { readonly salesOrderLineNumber: null })[];
+  };
+  readonly rental: {
+    readonly agreementId: string; readonly agreementNumber: string; readonly chargeId: string; readonly chargeKind: string;
+    readonly periodStart: string | null; readonly periodEnd: string | null; readonly ownershipTransfers: false;
+  };
+}
 /** #206: an obligation-anchored handoff (a company-side intercompany obligation, or a vendor payable) carries its own contract. */
-export type AccountingPayload = AccountingPayloadV1 | AccountingPayloadV2 | ObligationPayloadV1;
+export type AccountingPayload = AccountingPayloadV1 | AccountingPayloadV2 | AccountingPayloadV3 | ObligationPayloadV1;
 
 export interface AccountingDestinationRef {
   readonly id: string; readonly operatingCompanyId: string; readonly providerKey: string; readonly externalCompanyRef: string | null;
@@ -178,9 +193,10 @@ export async function buildAccountingPayload(db: Queryable, tenantId: string, ha
   const { rows: pr } = await db.query(`SELECT * FROM eos_finance.billing_packages WHERE tenant_id = $1 AND id = $2`, [tenantId, h.billing_package_id]);
   const p = pr[0];
   const financedSale = p?.commercial_disposition === "FINANCED_SALE";
+  const rental = p?.commercial_disposition === "RENTAL";
   if (!p || p.status !== "READY" || p.tax_evidence_status !== "DETERMINED"
-      || p.obligor_basis !== (financedSale ? "FINANCING_PROVIDER_FUNDED" : "DIRECT_SALE_CUSTOMER")) {
-    refuse("PAYLOAD_SOURCE_NOT_AUTHORITATIVE", "PRECONDITION_FAILED", "only a READY direct or financed sale package with DETERMINED tax is delivered");
+      || p.obligor_basis !== (financedSale ? "FINANCING_PROVIDER_FUNDED" : rental ? "RENTAL_CUSTOMER" : "DIRECT_SALE_CUSTOMER")) {
+    refuse("PAYLOAD_SOURCE_NOT_AUTHORITATIVE", "PRECONDITION_FAILED", "only a READY direct sale, financed sale or rental package with DETERMINED tax is delivered");
   }
   const { rows: or } = await db.query(
     `SELECT o.*, b.originated_minor FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
@@ -218,7 +234,7 @@ export async function buildAccountingPayload(db: Queryable, tenantId: string, ha
     destination: { id: String(d.id), externalCompanyRef: d.external_company_ref ?? null },
     billingPackage: {
       id: String(p.id), version: Number(p.version), contentFingerprint: String(p.content_fingerprint), preparedAt: new Date(p.prepared_at).toISOString(),
-      salesOrderId: String(p.sales_order_id), salesAgreementId: p.sales_agreement_id ?? null, currency: String(p.currency), taxEvidence: "DETERMINED",
+      salesOrderId: (rental ? null : String(p.sales_order_id)) as string, salesAgreementId: p.sales_agreement_id ?? null, currency: String(p.currency), taxEvidence: "DETERMINED",
       amounts: {
         subtotalMinor: minorText(p.subtotal_minor), shippingMinor: minorText(p.shipping_minor), installChargeMinor: minorText(p.install_charge_minor),
         taxMinor: minorText(p.tax_minor), totalMinor: minorText(p.total_minor), downPaymentMinor: minorText(p.down_payment_minor),
@@ -227,7 +243,7 @@ export async function buildAccountingPayload(db: Queryable, tenantId: string, ha
         ...(p.customer_discount_minor === null || p.customer_discount_minor === undefined ? {} : { customerDiscountMinor: minorText(p.customer_discount_minor) }),
       },
       lines: lr.map((l) => ({
-        lineNumber: Number(l.line_number), salesOrderLineNumber: Number(l.sales_order_line_number), kind: String(l.kind), ref: String(l.ref),
+        lineNumber: Number(l.line_number), salesOrderLineNumber: (l.sales_order_line_number === null ? null : Number(l.sales_order_line_number)) as number, kind: String(l.kind), ref: String(l.ref),
         businessUnit: String(l.business_unit), billableQty: Number(l.billable_qty), unitPriceMinor: minorText(l.unit_price_minor) as string,
         extendedMinor: minorText(l.extended_minor) as string, serialNumbers: [...(l.serial_numbers ?? [])],
       })),
@@ -235,6 +251,10 @@ export async function buildAccountingPayload(db: Queryable, tenantId: string, ha
   } as const;
   const payload: AccountingPayload = financedSale
     ? { contract: { name: ACCOUNTING_PAYLOAD_CONTRACT, version: 2 }, ...common, composition: await financedComposition(db, tenantId, p, o, cp) }
+    : rental ? { contract: { name: ACCOUNTING_PAYLOAD_CONTRACT, version: 3 }, ...(common as unknown as Omit<AccountingPayloadV3, "contract" | "receivable" | "customer" | "rental">),
+        receivable: { obligationId: String(o.id), amountMinor: minorText(o.originated_minor) as string, currency: String(o.currency) },
+        customer: { counterpartyId: String(cp.id), kind: "EXTERNAL_ORGANIZATION", crmAccountId: String(cp.crm_account_id), name: cp.name ?? null },
+        rental: await rentalBlock(db, tenantId, p) }
     : { contract: { name: ACCOUNTING_PAYLOAD_CONTRACT, version: 1 }, ...common,
         receivable: { obligationId: String(o.id), amountMinor: minorText(o.originated_minor) as string, currency: String(o.currency) },
         customer: { counterpartyId: String(cp.id), kind: "EXTERNAL_ORGANIZATION", crmAccountId: String(cp.crm_account_id), name: cp.name ?? null } };
@@ -458,4 +478,16 @@ export async function readAccountingHandoffDelivery(db: Queryable, tenantId: str
   const { rows: exceptions } = await db.query(
     `SELECT * FROM eos_finance.accounting_handoff_exceptions WHERE tenant_id = $1 AND handoff_id = $2 ORDER BY opened_at, id`, [tenantId, handoffId]);
   return Object.freeze({ handoff: h[0], attempts, exceptions });
+}
+
+/** #207: the rental block of a v3 payload -- the agreement and the charged period, read from governed records. */
+async function rentalBlock(db: Queryable, tenantId: string, p: Record<string, any>): Promise<AccountingPayloadV3["rental"]> {
+  const { rows } = await db.query(
+    `SELECT c.id, c.kind, to_char(c.period_start, 'YYYY-MM-DD') AS ps, to_char(c.period_end, 'YYYY-MM-DD') AS pe, g.id AS agreement_id, g.rental_agreement_number
+       FROM eos_rental.rental_charges c JOIN eos_rental.rental_agreements g ON g.tenant_id = c.tenant_id AND g.id = c.agreement_id
+      WHERE c.tenant_id = $1 AND c.id = $2`, [tenantId, p.rental_charge_id]);
+  const r = rows[0] ?? refuse("PAYLOAD_SOURCE_NOT_AUTHORITATIVE", "PRECONDITION_FAILED", "the rental package's charge is missing");
+  if (r.agreement_id !== p.rental_agreement_id) refuse("PAYLOAD_SOURCE_NOT_AUTHORITATIVE", "PRECONDITION_FAILED", "the rental package names another agreement than its charge");
+  return { agreementId: String(r.agreement_id), agreementNumber: String(r.rental_agreement_number), chargeId: String(r.id), chargeKind: String(r.kind),
+    periodStart: r.ps ?? null, periodEnd: r.pe ?? null, ownershipTransfers: false };
 }

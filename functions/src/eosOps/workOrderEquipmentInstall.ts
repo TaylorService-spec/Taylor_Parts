@@ -49,6 +49,7 @@ import {
 } from "./equipmentCustody.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 import { authorizeMobileAct, currentMobileLocationIds, MobileStockRefusal } from "./mobileStockAuthority.js";
+import { recordRentalDeploymentOn, rentalInstallContextOn } from "../eosRental/rentalDeployment";
 
 export const EQUIPMENT_INSTALL = "equipment.install";
 export const INSTALL_WORK_ORDER_TYPE = "INSTALL";
@@ -105,6 +106,8 @@ interface InstallWorkOrder {
   readonly locationId: string;
   readonly operatingCompanyKey: string;
   readonly equipmentId: string | null;
+  /** #207: the Rental Agreement this INSTALL Work Order deploys for, or null (a sale / service installation). */
+  readonly rentalAgreementId: string | null;
 }
 
 /** Capability, then the assignment -- in that order, so an unauthorized caller reads nothing. */
@@ -130,7 +133,7 @@ async function authorizeInstall(reader: ContextualReader, actor: InstallActor, w
 async function readInstallWorkOrder(db: Pick<PoolClient, "query">, tenantId: string, workOrderId: string, lock = false): Promise<InstallWorkOrder> {
   const { rows } = await db.query(
     `SELECT id, status::text AS status, work_order_type::text AS type, customer_id, location_id, operating_company_key,
-            equipment_id
+            equipment_id, rental_agreement_id
        FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2${lock ? " FOR UPDATE" : ""}`,
     [tenantId, workOrderId]);
   if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "no such Work Order in this tenant");
@@ -139,6 +142,7 @@ async function readInstallWorkOrder(db: Pick<PoolClient, "query">, tenantId: str
     id: String(r.id), status: String(r.status), type: String(r.type), customerId: String(r.customer_id),
     locationId: String(r.location_id), operatingCompanyKey: String(r.operating_company_key),
     equipmentId: r.equipment_id == null ? null : String(r.equipment_id),
+    rentalAgreementId: r.rental_agreement_id == null ? null : String(r.rental_agreement_id),
   };
   if (wo.type !== INSTALL_WORK_ORDER_TYPE) {
     refuse("WORK_ORDER_NOT_INSTALL", "PRECONDITION_FAILED", "only an INSTALL Work Order carries an installation");
@@ -193,10 +197,15 @@ export async function listInstallableUnitsForWorkOrder(
         AND c.location_type::text = ANY($6::text[])
         AND (c.location_type <> 'MOBILE' OR c.location_id = ANY($7::text[]))
         AND ($4::text IS NULL OR c.serial_number = $4)
+        -- #207: rental fleet units install ONLY on their own Rental Agreement's Work Order (reserved for it); never by sale.
+        AND (($8::text IS NULL AND NOT EXISTS (SELECT 1 FROM eos_rental.fleet_units f WHERE f.tenant_id = c.tenant_id AND f.part_id = c.part_id AND f.serial_number = c.serial_number))
+             OR ($8::text IS NOT NULL AND EXISTS (SELECT 1 FROM eos_rental.fleet_units f JOIN eos_rental.rental_assignments s ON s.id = f.current_assignment_id
+                  WHERE f.tenant_id = c.tenant_id AND f.part_id = c.part_id AND f.serial_number = c.serial_number AND f.availability = 'RESERVED'
+                    AND s.status = 'RESERVED' AND s.agreement_id = $8)))
       ORDER BY c.part_id, c.serial_number
       LIMIT $5`,
     [actor.tenantId, wo.operatingCompanyKey, [...INSTALLABLE_CUSTODY_STATUSES], serial, INSTALLABLE_LIST_CAP * 4,
-      [...INSTALL_SOURCE_LOCATION_TYPES], myTrucks]);
+      [...INSTALL_SOURCE_LOCATION_TYPES], myTrucks, wo.rentalAgreementId]);
   const partIds = [...new Set(rows.map((r) => String(r.part_id)))];
   const policies = await createPostgresPartPolicyAuthority().readPartPolicies(deps.pool, actor.tenantId, partIds);
   const wholeUnit = new Set(policies.filter((p) => p.found && p.wholeUnit === true).map((p) => p.partId));
@@ -346,15 +355,20 @@ export async function recordWorkOrderEquipmentInstall(
     if (Number(nets[0]?.net ?? 0) !== 1) {
       refuse("LEDGER_INTEGRITY", "PRECONDITION_FAILED", "the ledger disagrees with custody at the source; it must be investigated before installing");
     }
+    // #207: a rental deployment (the unit RESERVED for this Work Order's agreement), or a sale / service install of a non-fleet unit.
+    const rental = await rentalInstallContextOn(client, actor.tenantId, wo, input.partId, input.serialNumber);
+    if (rental.kind === "REFUSED") refuse(rental.code, "PRECONDITION_FAILED", rental.message);
     const movementId = `mov_${randomUUID()}`;
     try {
       await client.query(
         `INSERT INTO eos_ops.inventory_movements
            (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
             movement_type, quantity_delta, serial_number, source_kind, source_id, idempotency_key, created_by)
-         VALUES ($1, $2, $3, $4, 'SERIAL', $5, $6, 'WORK_ORDER_CONSUMPTION', -1, $7, $8, $9, $10, $11)`,
+         VALUES ($1, $2, $3, $4, 'SERIAL', $5, $6, $12::eos_ops.ops_movement_type, -1, $7, $8, $9, $10, $11)`,
         [movementId, actor.tenantId, wo.operatingCompanyKey, input.partId, unit.location_type, unit.location_id,
-          input.serialNumber, INSTALL_MOVEMENT_SOURCE_KIND, wo.id, installMovementKey(input.idempotencyKey), actor.principalId]);
+          input.serialNumber, INSTALL_MOVEMENT_SOURCE_KIND, wo.id, installMovementKey(input.idempotencyKey), actor.principalId,
+          // A rental unit leaves Taylor's stock location for the customer site, still Taylor's: not a consumption.
+          rental.kind === "RENTAL" ? "RENTAL_DEPLOYMENT" : "WORK_ORDER_CONSUMPTION"]);
     } catch (err) {
       if ((err as { code?: string }).code === "23505") refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotencyKey already moved stock");
       throw err;
@@ -400,6 +414,7 @@ export async function recordWorkOrderEquipmentInstall(
         JSON.stringify({ name: installed.equipment.name, equipmentModelId: installed.equipment.equipmentModelId,
           installedFrom: installed.origin, notes: input.notes ?? null }),
         installEventKey(input.idempotencyKey), actor.principalId]);
+    if (rental.kind === "RENTAL") await recordRentalDeploymentOn(client, actor, rental, { equipmentId, workOrderId: wo.id });
 
     await client.query("COMMIT");
     return Object.freeze({ outcome: "installed" as const, workOrderId: wo.id, movementId, eventId,

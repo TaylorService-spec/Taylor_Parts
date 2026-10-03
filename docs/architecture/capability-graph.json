@@ -18,7 +18,7 @@
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
     "callableExports": 31,
-    "destinations": 97,
+    "destinations": 98,
     "destinationsHidden": 19,
     "guides": 0,
     "registerEntries": 18,
@@ -5183,6 +5183,15 @@
     {
       "key": "equipment",
       "label": "Equipment",
+      "path": "",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "rental",
+      "label": "Rental",
       "path": "",
       "legacyKey": null,
       "navHidden": false,

@@ -238,7 +238,11 @@ test("PRODUCTION: the one destination this branch adds is invisible under the le
   // that was added to the governed source only.
   // 86 -> 88: Owner rulings #204 add System Configuration and Sales Configuration, each capability-gated (proved below by the
   // legacy-visible pins, which do not move).
-  assert.equal(destinations().length, 88, "the nav tree size moved by something other than Sales Agreements and the #204 configuration destinations");
+  // 88 -> 89: Rental (#207) adds the governed Rental destination (rental.workspace only -- invisible under the legacy source too).
+  assert.equal(destinations().length, 89, "the nav tree size moved by something other than Sales Agreements, the #204 configuration destinations and Rental");
+  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN, "owner", "salesperson", null]) {
+    assert.equal(isNavItemVisible(itemAt("rental/rental"), role, keysFor(role), legacy), false, `Rental opened for the legacy role "${role}"`);
+  }
   assert.equal(MAIN_B6A36B15_LEGACY_VISIBLE.admin.includes(added), false);
   assert.equal(visibleUnderLegacy(ROLES.ADMIN).includes(added), false);
 });

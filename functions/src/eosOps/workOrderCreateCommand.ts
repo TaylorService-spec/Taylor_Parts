@@ -80,6 +80,8 @@ export interface CreateWorkOrderInput {
    * it fulfilled. Requires salesOrderId; validated against the governed Sales Order (company, customer, site, state, lines).
    */
   readonly salesOrderLines?: readonly number[];
+  /** #207: the Rental Agreement this job serves (delivery / install, service while rented, pickup) -- proven, never accepted. */
+  readonly rentalAgreementId?: string;
   /** Optional: a retry carrying the same key replays the Work Order it already created (never a duplicate). */
   readonly idempotencyKey?: string;
 }
@@ -87,7 +89,7 @@ export interface CreateWorkOrderInput {
 /** Fields a client may state. Anything else is a forgery attempt, not a mistake to tolerate. */
 const ACCEPTED_INPUT = Object.freeze([
   "customerId", "locationId", "workOrderType", "priority", "equipmentId", "severity", "complaint", "salesOrderId",
-  "salesOrderLines", "idempotencyKey",
+  "salesOrderLines", "idempotencyKey", "rentalAgreementId",
 ]);
 
 /** Named so the refusal can say WHICH governed fact was being forged. */
@@ -161,6 +163,12 @@ export async function createWorkOrder(
   if (input.salesOrderId !== undefined && !ID_SHAPE(input.salesOrderId)) {
     refuse("SALES_ORDER_INVALID", "INVALID_INPUT", "salesOrderId, when stated, is an id");
   }
+  if (input.rentalAgreementId !== undefined && !ID_SHAPE(input.rentalAgreementId)) {
+    refuse("RENTAL_AGREEMENT_INVALID", "INVALID_INPUT", "rentalAgreementId, when stated, is an id");
+  }
+  if (input.rentalAgreementId !== undefined && input.salesOrderId !== undefined) {
+    refuse("RENTAL_AND_SALE_EXCLUSIVE", "INVALID_INPUT", "a Work Order serves a Rental Agreement or a Sales Order, never both -- a rental is not a sale");
+  }
   if (input.salesOrderLines !== undefined) {
     const l = input.salesOrderLines;
     if (input.salesOrderId === undefined) refuse("SALES_ORDER_REQUIRED", "INVALID_INPUT", "salesOrderLines names lines of a stated salesOrderId");
@@ -183,8 +191,10 @@ export async function createWorkOrder(
   }
   const { idempotencyKey: _ignored, ...business } = input;
   const fingerprint = key === null ? null : createHash("sha256")
-    .update(JSON.stringify([actor.operatingCompanyId, ...ACCEPTED_INPUT.filter((k) => k !== "idempotencyKey")
-      .map((k) => (business as Record<string, unknown>)[k] ?? null)]))
+    .update(JSON.stringify([actor.operatingCompanyId, ...ACCEPTED_INPUT.filter((k) => k !== "idempotencyKey" && k !== "rentalAgreementId")
+      .map((k) => (business as Record<string, unknown>)[k] ?? null),
+      // #207: appended only when stated, so every earlier request's fingerprint (and replay) is unchanged.
+      ...(input.rentalAgreementId === undefined ? [] : [["rentalAgreementId", input.rentalAgreementId]])]))
     .digest("hex");
 
   const now = (deps.now ?? (() => new Date()))();
@@ -256,6 +266,19 @@ export async function createWorkOrder(
       }
     }
 
+    // THE RENTAL AGREEMENT IS PROVEN, NOT ACCEPTED (#207): ACTIVE, of THIS Work Order's operating company (the owner of the fleet),
+    // and of the same customer and site. A Rental Agreement is never a Sales Order: no fulfillment, no sale, no ownership transfer.
+    if (input.rentalAgreementId !== undefined) {
+      const { rows: ra } = await client.query(
+        `SELECT status, operating_company_key, account_id, customer_location_id FROM eos_rental.rental_agreements WHERE tenant_id = $1 AND id = $2 FOR SHARE`,
+        [actor.tenantId, input.rentalAgreementId]);
+      if (ra.length === 0) refuse("RENTAL_AGREEMENT_NOT_FOUND", "NOT_FOUND", "no such Rental Agreement in this tenant");
+      if (ra[0].status !== "ACTIVE") refuse("RENTAL_AGREEMENT_NOT_ACTIVE", "PRECONDITION_FAILED", `the Rental Agreement is ${String(ra[0].status)}`);
+      if (ra[0].operating_company_key !== operatingCompanyKey) refuse("RENTAL_COMPANY_MISMATCH", "PRECONDITION_FAILED", "the Rental Agreement belongs to another operating company");
+      if (ra[0].account_id !== input.customerId) refuse("RENTAL_CUSTOMER_MISMATCH", "PRECONDITION_FAILED", "the Rental Agreement is for another customer");
+      if (ra[0].customer_location_id !== input.locationId) refuse("RENTAL_SITE_MISMATCH", "PRECONDITION_FAILED", "the Rental Agreement is for another site");
+    }
+
     const allocated = await allocateWorkOrderNumber(client, actor.tenantId, now);
     const workOrderId = `wo_${randomUUID()}`;
 
@@ -263,13 +286,13 @@ export async function createWorkOrder(
       `INSERT INTO ${SCHEMA}.work_orders
          (id, tenant_id, operating_company_key, work_order_number, status, work_order_type, priority,
           severity, customer_id, location_id, equipment_id, sales_order_id, complaint,
-          provenance, created_by_principal_id, created_at, updated_at, create_idempotency_key, create_request_fingerprint)
+          provenance, created_by_principal_id, created_at, updated_at, create_idempotency_key, create_request_fingerprint, rental_agreement_id)
        VALUES ($1,$2,$3,$4,$5::${SCHEMA}.ops_work_order_status,$6::${SCHEMA}.ops_work_order_type,$7,
-               $8::${SCHEMA}.ops_work_order_severity,$9,$10,$11,$12,$13,'NATIVE',$14,$15,$15,$16,$17)`,
+               $8::${SCHEMA}.ops_work_order_severity,$9,$10,$11,$12,$13,'NATIVE',$14,$15,$15,$16,$17,$18)`,
       [workOrderId, actor.tenantId, operatingCompanyKey, allocated.number, INITIAL_STATUS,
        input.workOrderType, input.priority, input.severity ?? null, input.customerId, input.locationId,
        input.equipmentId ?? null, input.salesOrderId ?? null, input.complaint ?? null,
-       actor.principalId, now, key, fingerprint]);
+       actor.principalId, now, key, fingerprint, input.rentalAgreementId ?? null]);
 
     for (const lineNumber of input.salesOrderLines ?? []) {
       await client.query(

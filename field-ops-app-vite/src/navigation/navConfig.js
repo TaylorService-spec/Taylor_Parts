@@ -216,6 +216,15 @@ export const NAV_DOMAINS = [
     subnav: [{ key: "equipment", label: "Equipment", path: "" }],
   },
   {
+    // Rental (DECISIONS #207) -- a TOP-LEVEL area: Taylor-owned rental fleet, Rental Agreements, returns and inspection.
+    // Not a Sales subnav item: a rental is not a sale. No `legacyKey`; its door is the governed `rental.workspace`
+    // surface (earned server-side by rental.agreement.read), and the server authorizes every command on its own key.
+    key: "rental",
+    label: "Rental",
+    path: "rental",
+    subnav: [{ key: "rental", label: "Rental", path: "" }],
+  },
+  {
     key: "service",
     label: "Service",
     path: "service",
@@ -752,6 +761,8 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "service/scan": ["receiving.checkIn", "warehouse.picking", "field.myWorkOrders"],
   // Equipment
   "equipment/equipment": ["equipment.register"],
+  // Rental (#207)
+  "rental/rental": ["rental.workspace"],
   // Inventory
   "inventory/parts": ["inventory.catalog"],
   "inventory/partMaster": ["inventory.catalogAdmin"],

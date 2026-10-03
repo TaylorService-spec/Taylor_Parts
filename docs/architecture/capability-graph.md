@@ -32,7 +32,7 @@ things and this document never fuses them into one verdict.
 - **eligibleForEnvironmentActivation**: 92
 - **activatedInSomeEnvironment**: 92
 - **callableExports**: 31
-- **destinations**: 97
+- **destinations**: 98
 - **destinationsHidden**: 19
 - **guides**: 0
 - **registerEntries**: 18

@@ -210,7 +210,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // Governed configuration + sales pricing (2026-10-02, #203): business time zone, finance.configuration.manage (no grant), discount, trade-ins.
     "1764500000000_governed-config-and-sales-pricing.sql",
     // Finance Closure (#206): settlements, obligation handoffs, relief, service providers, late cost evidence; 4 capabilities, 20 grants.
-    "1764510000000_finance-closure.sql"],
+    "1764510000000_finance-closure.sql",
+    // Rental (#207): the eos_rental domain, rental Work Orders, the RENTAL billing package; 6 capabilities, 30 grants.
+    "1764520000000_rental.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -438,6 +440,9 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // E): -4 capabilities and -11 grants when peeled.
     // #205 amends it: sixteen ruled grants.
     // #206 Finance Closure: -4 capabilities and -20 grants when peeled.
+    // #207 Rental: -6 capabilities and -30 grants when peeled.
+    assert.deepEqual(await counts(), { caps: 128, grants: 481, mine: 26 });
+    runMigrate(url, "down", 1); // Rental (-6 capabilities, -30 grants)
     assert.deepEqual(await counts(), { caps: 122, grants: 451, mine: 26 });
     runMigrate(url, "down", 1); // Finance Closure (-4 capabilities, -20 grants)
     assert.deepEqual(await counts(), { caps: 118, grants: 431, mine: 26 });
@@ -552,7 +557,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel Finance Closure (1764510000000) first
+    runMigrate(url, "down", 1); // peel Rental (1764520000000) first
+    runMigrate(url, "down", 1); // then Finance Closure (1764510000000)
     runMigrate(url, "down", 1); // then the governed configuration + sales pricing (1764500000000)
     runMigrate(url, "down", 1); // then the intercompany transactions (1764490000000)
     runMigrate(url, "down", 1); // then the financed sales (1764480000000)
