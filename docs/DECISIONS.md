@@ -6878,3 +6878,26 @@ Controller review. #197 remains governing. No real provider, credential, invoice
 9. **Authority:** no capability, no grant, no transport operation — delivery, retry and exception resolution are
    server-side functions only; no Sales or Technician authority. An employee retry capability is deferred until a
    governed Finance surface needs it. Delivery records no financial fact (Analysis provenance unchanged).
+
+## #199 — CONTROLLER CORRECTION: the financing-provider (Saratoga) business model (2026-10-02)
+
+**Status.** Recorded locally; HELD for Owner business answers. Suspends the financial-obligor and funding statements of
+#190 §12 / §18 and of FINANCE_TARGET_PRODUCT_MODEL §4 / §7; #190 is otherwise unchanged and no earlier text is rewritten.
+
+1. **The relationship.** Taylor sells equipment to Taylor's customer. The customer uses a third-party leasing / financing
+   provider (today Saratoga) as its financing source. The Taylor sale remains a Taylor commercial sale, and the
+   commercial customer remains the customer.
+2. **Not assumed:** the provider is not the commercial customer; does not purchase the equipment from Taylor; does not
+   automatically replace the customer as financial obligor; and a financed sale does not automatically create a
+   FUNDING_RECEIVABLE against the provider.
+3. **EOS must distinguish:** seller operating company; commercial customer; financing / leasing provider; the financing
+   or lease arrangement; equipment / site; the party Taylor expects payment from; the amount expected from that party;
+   any customer contribution / deposit; funding status; provider reference. Items 6–9 are never inferred from the
+   provider's presence.
+4. **Provider-neutral.** The provider is an organization governed as a FINANCING_PROVIDER (existing relationship), never
+   a schema concept. The existing FUNDING_RECEIVABLE obligation kind stays inert: nothing creates one.
+5. **Runtime today (unchanged, compliant):** a lease / financed disposition's Billing Package is HELD with
+   UNSUPPORTED_FINANCIAL_OBLIGOR and the obligor UNRESOLVED; no customer receivable and no funding receivable exist for it.
+6. **Ungoverned facts (HELD for the Owner):** who Taylor invoices; who remits the financed amount; when Taylor becomes
+   entitled to it; whether the provider purchases / funds the equipment amount or only facilitates the customer's lease;
+   how deposits / down payments are handled; what happens when financing is declined or cancelled.

@@ -69,7 +69,8 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
   let counterpartyId: string | null = null;
   let obligorBasis: "DIRECT_SALE_CUSTOMER" | "UNRESOLVED" = "UNRESOLVED";
   if (disposition === "LEASE") {
-    // A lease / financed disposition: the customer is NOT assumed to be the obligor (Saratoga funds a financed sale).
+    // A lease / financed disposition: NO obligor is assumed -- neither the customer nor the financing provider. Who Taylor
+    // invoices, who remits, when Taylor is entitled and what a provider funds are not governed (DECISIONS #199); HELD.
     exceptions.push("UNSUPPORTED_FINANCIAL_OBLIGOR");
   } else {
     // A SUPPORTED DIRECT SALE: the commercial customer's organization is the obligor, by this explicit rule only.
