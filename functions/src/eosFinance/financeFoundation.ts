@@ -206,22 +206,30 @@ export interface CounterpartyCompanyProfile {
   readonly operatingCompanyId: string;
   readonly status: "ACTIVE" | "INACTIVE";
   readonly paymentTerms: string | null;
+  /** Structured governed terms (net days from the obligation date), when the company has set them (DECISIONS #202). */
+  readonly paymentTermsNetDays: number | null;
   readonly accountingReference: string | null;
 }
 
 export async function setCounterpartyCompanyProfile(db: Queryable, actor: FinanceActor, input: {
-  counterpartyId: unknown; operatingCompanyId: unknown; paymentTerms?: string | null; accountingReference?: string | null; status?: "ACTIVE" | "INACTIVE";
+  counterpartyId: unknown; operatingCompanyId: unknown; paymentTerms?: string | null; paymentTermsNetDays?: number | null; accountingReference?: string | null;
+  status?: "ACTIVE" | "INACTIVE";
 }): Promise<CounterpartyCompanyProfile> {
   const counterpartyId = requireId(input.counterpartyId, "counterpartyId");
+  const netDays = input.paymentTermsNetDays ?? null;
+  if (netDays !== null && !(Number.isSafeInteger(netDays) && netDays >= 0 && netDays <= 3650)) {
+    refuse("PAYMENT_TERMS_INVALID", "INVALID_INPUT", "paymentTermsNetDays is a whole number of days (0-3650)");
+  }
   const company = await resolveOperatingCompany(db, actor.tenantId, input.operatingCompanyId);
   try {
     await db.query(
-      `INSERT INTO eos_finance.counterparty_company_profiles (tenant_id, counterparty_id, operating_company_id, status, payment_terms, accounting_reference, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO eos_finance.counterparty_company_profiles (tenant_id, counterparty_id, operating_company_id, status, payment_terms, accounting_reference,
+          updated_by, payment_terms_net_days)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (tenant_id, counterparty_id, operating_company_id)
        DO UPDATE SET status = EXCLUDED.status, payment_terms = EXCLUDED.payment_terms, accounting_reference = EXCLUDED.accounting_reference,
-                     updated_by = EXCLUDED.updated_by, updated_at = now()`,
-      [actor.tenantId, counterpartyId, company, input.status ?? "ACTIVE", input.paymentTerms ?? null, input.accountingReference ?? null, actor.principalId]);
+                     payment_terms_net_days = EXCLUDED.payment_terms_net_days, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+      [actor.tenantId, counterpartyId, company, input.status ?? "ACTIVE", input.paymentTerms ?? null, input.accountingReference ?? null, actor.principalId, netDays]);
   } catch (err) {
     return mapDatabaseError(err);
   }
@@ -234,7 +242,8 @@ export async function readCounterpartyCompanyProfile(db: Queryable, tenantId: st
     `SELECT * FROM eos_finance.counterparty_company_profiles WHERE tenant_id = $1 AND counterparty_id = $2 AND operating_company_id = $3`,
     [tenantId, counterpartyId, operatingCompanyId]);
   const r = rows[0];
-  return r ? Object.freeze({ counterpartyId, operatingCompanyId, status: r.status, paymentTerms: r.payment_terms ?? null, accountingReference: r.accounting_reference ?? null }) : null;
+  return r ? Object.freeze({ counterpartyId, operatingCompanyId, status: r.status, paymentTerms: r.payment_terms ?? null,
+    paymentTermsNetDays: r.payment_terms_net_days ?? null, accountingReference: r.accounting_reference ?? null }) : null;
 }
 
 // ════════════════════ C3. financial facts ════════════════════
@@ -441,6 +450,8 @@ async function refreshObligationStatus(c: Queryable, actor: FinanceActor, obliga
 export interface OpenObligationInput {
   operatingCompanyId: unknown; counterpartyId: unknown; kind: ObligationKind; currency: string; sourceDomain: string; sourceRecordId: string;
   sourceLine?: string | null; originationAmountMinor: number | bigint; basis: string; effectiveAt: Date; idempotencyKey: string; correlationId?: string | null;
+  /** The governed due date (YYYY-MM-DD), when terms establish one; never assumed (DECISIONS #202). */
+  dueOn?: string | null;
 }
 
 export async function openObligation(pool: Pool, actor: FinanceActor, input: OpenObligationInput) {
@@ -468,8 +479,9 @@ export async function openObligationOn(c: Queryable, actor: FinanceActor, input:
       obligationId = `obl_${randomUUID()}`;
       await c.query(
         `INSERT INTO eos_finance.obligations (id, tenant_id, operating_company_id, counterparty_id, kind, currency, source_domain, source_record_id,
-            idempotency_key, created_by, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)`,
-        [obligationId, actor.tenantId, company, counterpartyId, input.kind, input.currency, input.sourceDomain, input.sourceRecordId, key, actor.principalId]);
+            idempotency_key, created_by, updated_by, due_on) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11)`,
+        [obligationId, actor.tenantId, company, counterpartyId, input.kind, input.currency, input.sourceDomain, input.sourceRecordId, key, actor.principalId,
+          input.dueOn ?? null]);
     }
     const origination = await insertFact(c, actor, {
       operatingCompanyId: company, counterpartyId, factClass: "OBLIGATION", factType: `${input.kind}_ORIGINATED`, sourceDomain: input.sourceDomain,

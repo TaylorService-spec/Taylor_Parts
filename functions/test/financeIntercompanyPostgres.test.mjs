@@ -31,20 +31,20 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(HERE, "../src");
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/^\s*--.*$/gm, "");
 
-test("11-16 HELD / 17 / 24. static: the pair has NO runtime caller (trigger held); no netting / elimination; no Firebase; no transport operation", () => {
-  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
-  const callers = walk(SRC).filter((f) => f.endsWith(".ts") && !f.endsWith("intercompany.ts"))
-    .filter((f) => /establishIntercompanyObligationsOn/.test(readFileSync(f, "utf8")));
-  assert.deepEqual(callers, [], "HELD AT THE GOVERNED BOUNDARY: nothing in the runtime establishes the pair until the Owner rules the trigger");
+test("P / Q / R / S. static: the receipt TRIGGER is wired (#202); no netting / elimination / settlement / invoice; no Firebase; no transport operation", () => {
+  const receipt = readFileSync(join(SRC, "eosOps/receiveReorderStockCommand.ts"), "utf8");
   const code = strip(readFileSync(join(SRC, "eosFinance/intercompany.ts"), "utf8"));
+  assert.match(receipt, /recordIntercompanyCorrelationForReceiptOn\(/, "the governed receipt writes the correlation");
+  assert.match(code, /establishIntercompanyObligationsOn\(c, actor, \{ correlationId: id, trigger: INTERCOMPANY_RECEIPT_TRIGGER \}\)/, "...and establishes the pair (Owner ruling #202)");
+  assert.equal(/NET.?90|\b90\b/.test(code), false, "NET 90 is configuration, never code");
   const mig = strip(readFileSync(resolve(HERE, "../migrations/1764490000000_intercompany-transactions.sql"), "utf8"));
-  for (const [name, s] of [["intercompany.ts", code], ["migration", mig]]) {
-    assert.equal(/\bnet(ting|ted)?\b|eliminat|settle/i.test(s), false, `${name}: no netting, elimination or settlement`);
-    assert.equal(/firebase/i.test(s), false, `${name}: no Firebase`);
-    assert.equal(/site_label|location_id|supplier_name/i.test(s), false, `${name}: company never from a site, location or supplier text`);
+  for (const [name, src] of [["intercompany.ts", code], ["migration", mig]]) {
+    assert.equal(/\bnet(ting|ted)?\b|eliminat|settle|invoice|ledger|journal|overdue/i.test(src), false, `${name}: no netting, elimination, settlement, invoice, GL or stored overdue`);
+    assert.equal(/firebase/i.test(src), false, `${name}: no Firebase`);
+    assert.equal(/site_label|location_id|supplier_name/i.test(src), false, `${name}: company never from a site, location or supplier text`);
   }
   const ops = [...http.OPERATIONS_READ_OPERATIONS, ...http.OPERATIONS_MUTATION_OPERATIONS];
-  assert.equal(ops.some((o) => /intercompany|obligation/i.test(o)), false, "no transport operation manufactures intercompany truth");
+  assert.equal(ops.some((o) => /intercompany|obligation|settle|payment/i.test(o)), false, "no transport operation manufactures intercompany truth or payment");
 });
 
 test("Taylor / Ventana intercompany over the governed Purchasing path", { skip: SKIP, concurrency: 1 }, async (t) => {
@@ -155,32 +155,71 @@ test("Taylor / Ventana intercompany over the governed Purchasing path", { skip: 
   // ════════════════════ IDENTITY AND COMPANY RULES ════════════════════
 
   let t2v, v2t;
-  await t.test("1 / 2 / 3 / 9 / 10 / 19. both directions: explicit internal supplier, buyer/seller preserved, cost evidence company-correct, correlation written", async () => {
+  const receiptDate = async (receivingId) => (await one(`SELECT to_char(received_at AT TIME ZONE 'UTC','YYYY-MM-DD') d FROM eos_ops.receiving_orders WHERE tenant_id=$1 AND id=$2`, [TENANT, receivingId])).d;
+  const plusDays = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+  const dueOf = async (obligationId) => (await one(`SELECT to_char(due_on,'YYYY-MM-DD') d FROM eos_finance.obligations WHERE id=$1`, [obligationId])).d;
+  const corr = async (receivingId) => one(`SELECT *, to_char(obligation_date,'YYYY-MM-DD') AS od, to_char(due_on,'YYYY-MM-DD') AS dd FROM eos_finance.intercompany_transactions
+      WHERE tenant_id=$1 AND source_record_id=$2`, [TENANT, receivingId]);
+
+  await t.test("TERMS: Taylor's governed terms with Ventana are NET 90 (configuration on Taylor's profile of Ventana); nothing else is configured", async () => {
+    const ventanaCp = await fin.ensureInternalCounterparty(pool, sys, "ventana");
+    const p = await fin.setCounterpartyCompanyProfile(pool, sys, { counterpartyId: ventanaCp.id, operatingCompanyId: "taylor", paymentTerms: "Net 90", paymentTermsNetDays: 90 });
+    assert.deepEqual([p.paymentTerms, p.paymentTermsNetDays], ["Net 90", 90]);
+    await assert.rejects(fin.setCounterpartyCompanyProfile(pool, sys, { counterpartyId: ventanaCp.id, operatingCompanyId: "taylor", paymentTermsNetDays: -1 }), (e) => e.code === "PAYMENT_TERMS_INVALID");
+    const taylorCp = await fin.ensureInternalCounterparty(pool, sys, "taylor");
+    assert.equal(await fin.readCounterpartyCompanyProfile(pool, TENANT, taylorCp.id, "ventana"), null, "Ventana's terms with Taylor are NOT governed (never assumed NET 90)");
+  });
+
+  await t.test("A / B / C / D / E / F / G / 1 / 3 / 9 / 19. a priced Taylor receipt from Ventana establishes the pair NOW: one payable, one receivable, NET 90 due", async () => {
     const forTaylor = ok(await inv(pa, "listPurchaseOrderSupplierOptions", { reorderRequestId: await toPurchasing("P-IC-OPT", "wh-t", 1) }), "options");
-    assert.ok(forTaylor.items.some((o) => o.kind === "INTERNAL_OPERATING_COMPANY" && o.operatingCompanyId === "ventana"), "1: Taylor can choose Ventana as its internal supplier");
-    // 9: Taylor buys Ventana-owned ice equipment for resale.
+    assert.ok(forTaylor.items.some((o) => o.kind === "INTERNAL_OPERATING_COMPANY" && o.operatingCompanyId === "ventana"), "1");
     const rrT = await ordered({ partId: "P-IC-T", warehouseId: "wh-t", qty: 2, supplier: INTERNAL("ventana"), price: 250000 });
     const rT = ok(await receive(rrT, "P-IC-T", WH_T, 2), "receive T<-V");
-    t2v = await correlationOf(rT.receivingId);
-    assert.deepEqual([t2v.buyer_operating_company_id, t2v.seller_operating_company_id, t2v.source_kind, t2v.purchase_order_id, t2v.amount_minor, t2v.currency,
-      t2v.cost_evidence_complete, t2v.status, t2v.buyer_obligation_id, t2v.seller_obligation_id],
-      ["taylor", "ventana", "REORDER_RECEIPT", rrT, "500000", "USD", true, "AWAITING_OBLIGATION_TRIGGER", null, null], "9 / G");
+    t2v = await corr(rT.receivingId);
+    const day = await receiptDate(rT.receivingId);
+    assert.deepEqual([t2v.buyer_operating_company_id, t2v.seller_operating_company_id, t2v.purchase_order_id, t2v.amount_minor, t2v.currency, t2v.status, t2v.established_trigger],
+      ["taylor", "ventana", rrT, "500000", "USD", "ESTABLISHED", "GOVERNED_PRICED_RECEIPT (Owner ruling #202)"], "9 + the ruled trigger");
+    const obs = await icObligations(t2v.id);
+    assert.deepEqual(obs.map((o) => [o.kind, o.operating_company_id, o.cp_kind, o.cp_company, o.originated, o.currency, o.status]), [
+      ["INTERCOMPANY_PAYABLE", "taylor", "INTERNAL_OPERATING_COMPANY", "ventana", "500000", "USD", "OPEN"],
+      ["INTERCOMPANY_RECEIVABLE", "ventana", "INTERNAL_OPERATING_COMPANY", "taylor", "500000", "USD", "OPEN"]], "A / B / C");
+    assert.deepEqual([t2v.buyer_obligation_id, t2v.seller_obligation_id], [obs[0].id, obs[1].id], "C: one correlation links them");
+    assert.equal(t2v.od, day, "D: the obligation date is the receipt's business date");
+    assert.deepEqual([t2v.payment_terms_net_days, t2v.dd, await dueOf(obs[0].id), await dueOf(obs[1].id)], [90, plusDays(day, 90), plusDays(day, 90), plusDays(day, 90)],
+      "E: due = receipt date + 90, stamped on both sides");
+    const facts = await q(`SELECT fact_class, effective_at FROM eos_finance.financial_facts WHERE tenant_id=$1 AND obligation_id = ANY($2)`, [TENANT, obs.map((o) => o.id)]);
+    assert.deepEqual(facts.rows.map((f) => f.fact_class), ["OBLIGATION", "OBLIGATION"], "F: established before (and without) any payment -- no settlement fact");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoices WHERE tenant_id=$1`, [TENANT]), 0, "G: no invoice was needed or created");
     const row = await po(rrT);
-    assert.deepEqual([row.supplier_kind, row.supplier_operating_company_id, row.purchasing_operating_company_id], ["INTERNAL_OPERATING_COMPANY", "ventana", "taylor"], "3: explicit identity");
-    // 19: the acquisition-cost evidence and fact stay the BUYER's, with the seller company as internal counterparty.
-    const ev = await one(`SELECT operating_company_id, extended_cost_minor::text AS amount FROM eos_finance.inventory_acquisition_costs WHERE tenant_id=$1 AND receiving_id=$2`, [TENANT, rT.receivingId]);
+    assert.deepEqual([row.supplier_kind, row.supplier_operating_company_id, row.purchasing_operating_company_id], ["INTERNAL_OPERATING_COMPANY", "ventana", "taylor"], "3");
+    const ev = await one(`SELECT operating_company_id FROM eos_finance.inventory_acquisition_costs WHERE tenant_id=$1 AND receiving_id=$2`, [TENANT, rT.receivingId]);
     const [fact] = (await factsOf(rT.receivingId)).rows;
-    const cp = await counterparty(fact.counterparty_id);
-    assert.deepEqual([ev.operating_company_id, ev.amount, fact.operating_company_id, cp.kind, cp.operatingCompanyId], ["taylor", "500000", "taylor", "INTERNAL_OPERATING_COMPANY", "ventana"]);
-    // 2 / 10: the reverse direction, no special-case schema.
+    assert.deepEqual([ev.operating_company_id, fact.operating_company_id, (await counterparty(fact.counterparty_id)).operatingCompanyId], ["taylor", "taylor", "ventana"], "19");
+    // H. replay creates no duplicate pair.
+    const before = await count(`SELECT count(*)::int n FROM eos_finance.obligations WHERE tenant_id=$1 AND source_domain='INTERCOMPANY'`, [TENANT]);
+    assert.equal(ok(await receive(rrT, "P-IC-T", WH_T, 2), "replay").outcome, "replayed");
+    const replay = await inTx((c) => ic.establishIntercompanyObligationsOn(c, sys, { correlationId: t2v.id, trigger: "x" }));
+    assert.equal(replay.outcome, "replayed");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.obligations WHERE tenant_id=$1 AND source_domain='INTERCOMPANY'`, [TENANT]), before, "H");
+    // P. never netted: both sides stand at their full amount.
+    assert.deepEqual(obs.map((o) => o.outstanding), ["500000", "500000"], "P");
+    // The database refuses anything but the exact pair, and refuses rewriting it.
+    await assert.rejects(q(`UPDATE eos_finance.intercompany_transactions SET amount_minor=1 WHERE id=$1`, [t2v.id]), /IMMUTABLE/);
+    await assert.rejects(q(`UPDATE eos_finance.intercompany_transactions SET due_on = due_on + 1 WHERE id=$1`, [t2v.id]), /IMMUTABLE|intercompany_due_shape/);
+    await assert.rejects(q(`UPDATE eos_finance.obligations SET due_on = due_on + 30 WHERE id=$1`, [obs[0].id]), /OBLIGATION_IMMUTABLE/);
+    await assert.rejects(q(`DELETE FROM eos_finance.intercompany_transactions WHERE id=$1`, [t2v.id]), /IMMUTABLE/);
+  });
+
+  await t.test("O / 2 / 10. reverse direction (Ventana buys from Taylor): same architecture, its OWN terms -- none governed, so NO due date is assumed", async () => {
     const rrV = await ordered({ partId: "P-IC-V", warehouseId: "wh-v", qty: 3, supplier: INTERNAL("taylor"), price: 4200 });
     const rV = ok(await receive(rrV, "P-IC-V", WH_V, 3), "receive V<-T");
-    v2t = await correlationOf(rV.receivingId);
-    assert.deepEqual([v2t.buyer_operating_company_id, v2t.seller_operating_company_id, v2t.amount_minor, v2t.status], ["ventana", "taylor", "12600", "AWAITING_OBLIGATION_TRIGGER"]);
-    // Replay: the receipt replays and writes no second correlation.
-    const before = await ics();
-    assert.equal(ok(await receive(rrT, "P-IC-T", WH_T, 2), "replay").outcome, "replayed");
-    assert.equal(await ics(), before);
+    v2t = await corr(rV.receivingId);
+    assert.deepEqual([v2t.buyer_operating_company_id, v2t.seller_operating_company_id, v2t.amount_minor, v2t.status, v2t.payment_terms_net_days, v2t.dd],
+      ["ventana", "taylor", "12600", "ESTABLISHED", null, null]);
+    const obs = await icObligations(v2t.id);
+    assert.deepEqual(obs.map((o) => [o.kind, o.operating_company_id, o.cp_company, o.originated]),
+      [["INTERCOMPANY_PAYABLE", "ventana", "taylor", "12600"], ["INTERCOMPANY_RECEIVABLE", "taylor", "ventana", "12600"]]);
+    assert.deepEqual([await dueOf(obs[0].id), await dueOf(obs[1].id)], [null, null], "O: never NET 90 by assumption");
   });
 
   await t.test("4. supplier TEXT naming the other company manufactures nothing; an external supplier writes no correlation", async () => {
@@ -194,74 +233,66 @@ test("Taylor / Ventana intercompany over the governed Purchasing path", { skip: 
     assert.equal(await ics(), before, "neither text 'Ventana' nor an external supplier produces an intercompany transaction");
   });
 
-  await t.test("5 / 6 / 7. Taylor->Taylor, Ventana->Ventana and CONSOLIDATED are refused (command and database)", async () => {
-    refused(await inv(pa, "recordReorderPurchaseOrder", poInput(await toPurchasing("P-IC-SELF", "wh-t", 1), 1, INTERNAL("taylor"), 100)), 412, "PRECONDITION_FAILED", null, "5");
-    refused(await inv(pa, "recordReorderPurchaseOrder", poInput(await toPurchasing("P-IC-SELFV", "wh-v", 1), 1, INTERNAL("ventana"), 100)), 412, "PRECONDITION_FAILED", null, "6");
-    const base = [TENANT, "src-x", "po-x"];
+  await t.test("L / M / N / 5 / 6 / 7. Taylor->Taylor, Ventana->Ventana and CONSOLIDATED are refused (command and database)", async () => {
+    refused(await inv(pa, "recordReorderPurchaseOrder", poInput(await toPurchasing("P-IC-SELF", "wh-t", 1), 1, INTERNAL("taylor"), 100)), 412, "PRECONDITION_FAILED", null, "L");
+    refused(await inv(pa, "recordReorderPurchaseOrder", poInput(await toPurchasing("P-IC-SELFV", "wh-v", 1), 1, INTERNAL("ventana"), 100)), 412, "PRECONDITION_FAILED", null, "M");
     const insert = (buyer, seller, id) => q(`INSERT INTO eos_finance.intercompany_transactions (id, tenant_id, buyer_operating_company_id, seller_operating_company_id,
-        source_kind, source_record_id, purchase_order_id, currency, amount_minor, cost_evidence_complete, status, idempotency_key, created_by)
-        VALUES ($1,$2,$3,$4,'REORDER_RECEIPT',$5,$6,'USD',100,true,'AWAITING_OBLIGATION_TRIGGER',$1,'x')`, [id, base[0], buyer, seller, `${base[1]}-${id}`, base[2]]);
+        source_kind, source_record_id, purchase_order_id, currency, amount_minor, cost_evidence_complete, status, obligation_date, idempotency_key, created_by)
+        VALUES ($1,$2,$3,$4,'REORDER_RECEIPT',$1,'po-x','USD',100,true,'AWAITING_OBLIGATION_TRIGGER',current_date,$1,'x')`, [id, TENANT, buyer, seller]);
     await assert.rejects(insert("taylor", "taylor", "ic-self-t"), /intercompany_two_companies/);
     await assert.rejects(insert("ventana", "ventana", "ic-self-v"), /intercompany_two_companies/);
-    await assert.rejects(insert("consolidated", "ventana", "ic-cons-1"), /check constraint/);
-    await assert.rejects(insert("taylor", "CONSOLIDATED", "ic-cons-2"), /check constraint/);
+    await assert.rejects(insert("consolidated", "ventana", "ic-cons-1"), /check constraint/, "N");
+    await assert.rejects(insert("taylor", "CONSOLIDATED", "ic-cons-2"), /check constraint/, "N");
     await assert.rejects(fin.ensureInternalCounterparty(pool, sys, "consolidated"));
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.obligations WHERE tenant_id=$1 AND lower(operating_company_id)='consolidated'`, [TENANT]), 0);
   });
 
   await t.test("8. physical location never determines company: two warehouse records in ONE shared building, each its own company", async () => {
     const sites = await q(`SELECT id, operating_company_key, site_label FROM eos_ops.warehouses WHERE tenant_id=$1 ORDER BY id`, [TENANT]);
     assert.deepEqual(sites.rows.map((r) => [r.id, r.operating_company_key, r.site_label]), [["wh-t", "taylor", "Shared Building"], ["wh-v", "ventana", "Shared Building"]]);
-    assert.deepEqual([t2v.buyer_operating_company_id, v2t.buyer_operating_company_id], ["taylor", "ventana"], "same building, two companies: each from its governed record");
-    // Receiving Taylor's internal purchase at Ventana's warehouse record cannot move the purchase to Ventana.
+    assert.deepEqual([t2v.buyer_operating_company_id, v2t.buyer_operating_company_id], ["taylor", "ventana"]);
     const rr = await ordered({ partId: "P-IC-LOC", warehouseId: "wh-t", qty: 1, supplier: INTERNAL("ventana"), price: 7000 });
-    const r = await receive(rr, "P-IC-LOC", WH_V, 1);
-    refused(r, 412, "PRECONDITION_FAILED", /its own destination warehouse/, "a receipt can't relocate a purchase into another company's warehouse record");
-    assert.equal((await po(rr)).purchasing_operating_company_id, "taylor", "the purchase stays Taylor's");
+    refused(await receive(rr, "P-IC-LOC", WH_V, 1), 412, "PRECONDITION_FAILED", /its own destination warehouse/, "a receipt can't relocate a purchase into another company's warehouse record");
+    assert.equal((await po(rr)).purchasing_operating_company_id, "taylor");
   });
 
-  // ════════════════════ THE PAIRED OBLIGATIONS -- mechanism proven; trigger HELD ════════════════════
-
-  await t.test("11-18 (mechanism; trigger HELD). exactly one payable + one receivable, equal, own companies, one correlation, replay-safe, never netted", async () => {
-    assert.equal((await icObligations(t2v.id)).length, 0, "nothing exists until the Owner-ruled trigger establishes it");
-    const out = await inTx((c) => ic.establishIntercompanyObligationsOn(c, sys, { correlationId: t2v.id, trigger: "SAMPLE: invoked by the test only (trigger HELD)" }));
-    assert.equal(out.outcome, "recorded");
-    const obs = await icObligations(t2v.id);
-    assert.deepEqual(obs.map((o) => [o.kind, o.operating_company_id, o.cp_kind, o.cp_company, o.originated, o.currency, o.status]), [
-      ["INTERCOMPANY_PAYABLE", "taylor", "INTERNAL_OPERATING_COMPANY", "ventana", "500000", "USD", "OPEN"],
-      ["INTERCOMPANY_RECEIVABLE", "ventana", "INTERNAL_OPERATING_COMPANY", "taylor", "500000", "USD", "OPEN"]], "11 / 12 / 13 / 14");
-    const c1 = await correlationOf(t2v.source_record_id);
-    assert.deepEqual([c1.status, c1.buyer_obligation_id, c1.seller_obligation_id], ["ESTABLISHED", obs[0].id, obs[1].id], "15: one correlation links the pair");
-    const again = await inTx((c) => ic.establishIntercompanyObligationsOn(c, sys, { correlationId: t2v.id, trigger: "x" }));
-    assert.equal(again.outcome, "replayed");
-    assert.equal((await icObligations(t2v.id)).length, 2, "16: replay creates nothing");
-    assert.deepEqual(obs.map((o) => o.outstanding), ["500000", "500000"], "17: never netted -- each side stands at its full amount");
-    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.obligations WHERE tenant_id=$1 AND lower(operating_company_id)='consolidated'`, [TENANT]), 0, "18");
-    // The reverse direction pairs symmetrically.
-    await inTx((c) => ic.establishIntercompanyObligationsOn(c, sys, { correlationId: v2t.id, trigger: "SAMPLE" }));
-    assert.deepEqual((await icObligations(v2t.id)).map((o) => [o.kind, o.operating_company_id, o.cp_company, o.originated]),
-      [["INTERCOMPANY_PAYABLE", "ventana", "taylor", "12600"], ["INTERCOMPANY_RECEIVABLE", "taylor", "ventana", "12600"]]);
-    // The database refuses anything but the exact pair, and refuses rewriting it.
-    await assert.rejects(q(`UPDATE eos_finance.intercompany_transactions SET buyer_obligation_id=$2, seller_obligation_id=$3 WHERE id=$1`,
-      [t2v.id, obs[1].id, obs[0].id]), /INTERCOMPANY_TRANSACTION_IMMUTABLE|INTERCOMPANY_PAIR_MISMATCH/);
-    await assert.rejects(q(`UPDATE eos_finance.intercompany_transactions SET amount_minor=1 WHERE id=$1`, [t2v.id]), /IMMUTABLE/);
-    await assert.rejects(q(`DELETE FROM eos_finance.intercompany_transactions WHERE id=$1`, [t2v.id]), /IMMUTABLE/);
-    await assert.rejects(inTx((c) => ic.establishIntercompanyObligationsOn(c, sys, { correlationId: t2v.id, trigger: " " })), (e) => e.code === "INTERCOMPANY_TRIGGER_REQUIRED");
+  await t.test("I / J. an unpriced receipt fabricates nothing; once its cost evidence completes, the pair is established ONCE", async () => {
+    const rrU = await ordered({ partId: "P-IC-UNP", warehouseId: "wh-t", qty: 2, supplier: INTERNAL("ventana") });
+    const rU = ok(await receive(rrU, "P-IC-UNP", WH_T, 2), "unpriced receive");
+    const cu = await corr(rU.receivingId);
+    assert.deepEqual([cu.status, cu.cost_evidence_complete, cu.amount_minor], ["COST_EVIDENCE_MISSING", false, null], "I: missing amount != zero");
+    assert.equal((await icObligations(cu.id)).length, 0);
+    assert.ok(await one(`SELECT 1 FROM eos_finance.cost_evidence_exceptions WHERE tenant_id=$1 AND receiving_id=$2`, [TENANT, rU.receivingId]), "the cost-evidence exception is retained");
+    // Still incomplete: the recovery holds it.
+    assert.deepEqual((await ic.establishIntercompanyObligationsForCompletedEvidence(pool, sys)).map((r) => r.outcome), ["still_held"]);
+    // J. The governed cost evidence becomes complete (no such pricing path exists yet -- #193 -- so the test supplies the evidence row a future
+    // governed pricing path would write), then the pair is established exactly once.
+    const line = await one(`SELECT * FROM eos_ops.receiving_order_lines WHERE tenant_id=$1 AND receiving_order_id=$2`, [TENANT, rU.receivingId]);
+    const rcv = await one(`SELECT * FROM eos_ops.receiving_orders WHERE tenant_id=$1 AND id=$2`, [TENANT, rU.receivingId]);
+    await q(`INSERT INTO eos_finance.inventory_acquisition_costs (id, tenant_id, cost_basis, operating_company_id, purchase_order_id, purchase_order_line_id,
+               purchase_order_source_type, part_id, received_quantity, unit_price_minor, extended_cost_minor, currency, receiving_id, receiving_line_id, received_at,
+               receiving_location_type, receiving_location_id, created_by)
+             SELECT 'iac-ic-later',$1,(SELECT cost_basis FROM eos_finance.inventory_acquisition_costs LIMIT 1),'taylor',$2,'L1','REORDER_PURCHASE_ORDER',$3,$4,30000,$4*30000,'USD',$5,$6,$7,'WAREHOUSE','wh-t','fixture'`,
+      [TENANT, rrU, line.part_id, line.received_quantity, rU.receivingId, line.line_id, rcv.received_at]);
+    const first = await ic.establishIntercompanyObligationsForCompletedEvidence(pool, sys);
+    assert.deepEqual(first.map((r) => [r.outcome, r.correlation?.amountMinor]), [["recorded", "60000"]]);
+    assert.deepEqual((await ic.establishIntercompanyObligationsForCompletedEvidence(pool, sys)), [], "nothing left to establish");
+    const est = await corr(rU.receivingId);
+    assert.deepEqual([est.status, est.amount_minor, est.payment_terms_net_days, est.dd], ["ESTABLISHED", "60000", 90, plusDays(est.od, 90)]);
+    assert.deepEqual((await icObligations(cu.id)).map((o) => [o.kind, o.originated]), [["INTERCOMPANY_PAYABLE", "60000"], ["INTERCOMPANY_RECEIVABLE", "60000"]], "J: once");
   });
 
-  await t.test("unpriced internal receipt holds its correlation; a receipt correction retires the correlation and voids an established pair", async () => {
-    const rrU = await ordered({ partId: "P-IC-UNP", warehouseId: "wh-t", qty: 1, supplier: INTERNAL("ventana") });
-    const rU = ok(await receive(rrU, "P-IC-UNP", WH_T, 1), "unpriced receive");
-    const cu = await correlationOf(rU.receivingId);
-    assert.deepEqual([cu.status, cu.cost_evidence_complete, cu.amount_minor], ["COST_EVIDENCE_MISSING", false, null], "no amount is invented");
-    await assert.rejects(inTx((c) => ic.establishIntercompanyObligationsOn(c, sys, { correlationId: cu.id, trigger: "x" })), (e) => e.code === "INTERCOMPANY_NOT_ESTABLISHABLE");
+  await t.test("K. a receipt correction reverses BOTH sides (never one); history kept", async () => {
     const rrC = await ordered({ partId: "P-IC-CORR", warehouseId: "wh-t", qty: 1, supplier: INTERNAL("ventana"), price: 9000 });
     const rC = ok(await receive(rrC, "P-IC-CORR", WH_T, 1), "receive");
-    const cc = await correlationOf(rC.receivingId);
-    await inTx((c) => ic.establishIntercompanyObligationsOn(c, sys, { correlationId: cc.id, trigger: "SAMPLE" }));
+    const cc = await corr(rC.receivingId);
+    assert.equal(cc.status, "ESTABLISHED");
     ok(await correct(corrector, { receivingId: rC.receivingId, correction: "VOID", reason: "wrong delivery", idempotencyKey: "ic-corr-1" }), "void");
-    assert.equal((await correlationOf(rC.receivingId)).status, "SUPERSEDED_BY_RECEIPT_CORRECTION");
-    assert.deepEqual((await icObligations(cc.id)).map((o) => [o.kind, o.status]), [["INTERCOMPANY_PAYABLE", "VOID"], ["INTERCOMPANY_RECEIVABLE", "VOID"]],
-      "both sides voided with reversing facts; history kept");
+    assert.equal((await corr(rC.receivingId)).status, "SUPERSEDED_BY_RECEIPT_CORRECTION");
+    const obs = await icObligations(cc.id);
+    assert.deepEqual(obs.map((o) => [o.kind, o.status, o.outstanding]), [["INTERCOMPANY_PAYABLE", "VOID", "0"], ["INTERCOMPANY_RECEIVABLE", "VOID", "0"]], "both voided, balanced");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND obligation_id = ANY($2)`, [TENANT, obs.map((o) => o.id)]), 4,
+      "each side: origination kept + one reversal");
   });
 
   // ════════════════════ DOWNSTREAM SALES AND SERVICE ════════════════════

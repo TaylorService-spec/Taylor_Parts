@@ -6979,7 +6979,7 @@ not deployed. Completes #200.
 ## #202 — CONTROLLER: Taylor / Ventana intercompany transactions (2026-10-02)
 
 **Status.** Implemented locally (migration `1764490000000_intercompany-transactions.sql`); not pushed, not deployed. The
-paired obligations are HELD AT THE GOVERNED BOUNDARY pending one Owner question (§6). Governed by #190 §6–§10, #193 and the
+obligation trigger is RESOLVED by **Owner ruling #202** (§6). Governed by #190 §6–§10, #193 and the
 target model §11. Saratoga (#200 / #201) is unchanged.
 
 1. **Separate businesses; WHERE ≠ WHOSE.** Taylor and Ventana may share facilities, but a site, a custody location or a
@@ -7011,14 +7011,26 @@ target model §11. Saratoga (#200 / #201) is unchanged.
    (kinds, companies, counterparties, amount, currency, source).
 5. **Acquisition cost stays company-correct.** The buyer's evidence and fact are the buyer's, with the seller company as
    internal counterparty (#193), unchanged.
-6. **HELD — the obligation trigger.** The accepted materials don't establish when the paired obligations arise:
-   - the target model names "Fulfillment / receipt" for intercompany, but for ordinary vendor receipts it records only
-     cost plus "vendor obligation eligibility", and EOS creates no payable at receipt for any supplier;
-   - the "Fulfillment" half presumes a Ventana Sales Order that the Purchasing-based flow doesn't have;
-   - FIN-BLOCK-004 predates #190.
-
-   So nothing in the runtime establishes the pair. Every correlation waits in AWAITING_OBLIGATION_TRIGGER until the Owner
-   names the business event.
+6. **OWNER RULING #202 — the obligation trigger.** Taylor has NET 90 terms with Ventana and may receive Ventana equipment
+   immediately.
+   - **Trigger.** The governed PRICED RECEIPT establishes the paired intercompany obligations, in the receipt's own
+     transaction, at the agreed acquisition price. Nothing else is awaited: no separate internal invoice, resale, customer
+     sale, installation, Work Order completion, periodic settlement or payment. EOS creates no formal accounting invoice;
+     a future external accounting document is referenced when it exists.
+   - **Dates and terms.** The receipt's business date is the obligation date. The due date comes from governed terms:
+     the buyer's per-company counterparty profile of the seller company gains a structured `payment_terms_net_days`
+     (Taylor's profile of Ventana = 90, by configuration — never code). Both obligations carry the same `due_on`, which
+     is immutable once set.
+   - **Each direction has its own terms.** Every direction, and every external supplier, has its own profile. Where no
+     terms are governed (Ventana's terms with Taylor today), the pair is still established, with no due date — NET 90
+     is never assumed.
+   - **Separate facts.** Established, due, paid and overdue stay separate: overdue is never stored, and no
+     settlement/payment is built.
+   - **Unpriced receipt.** The correlation is preserved, the obligations are held and the cost-evidence exception is
+     retained (missing amount ≠ zero). When the receipt's cost evidence becomes complete,
+     `establishIntercompanyObligationsForCompletedEvidence` establishes the pair once. Note: #193 still has no governed
+     path that completes a receipt's cost evidence later (the PO is immutable, with no price amendment).
+   - **Corrections.** A receipt correction voids BOTH sides with reversing facts, never one.
 7. **Downstream sales stay with their seller.** Taylor's outside resale of equipment bought from Ventana is a Taylor sale
    (Taylor package, customer counterparty, Taylor destination); provenance to the intercompany acquisition is traceable
    (receipt → correlation). A Ventana direct outside sale stays Ventana's (Ventana package and destination). A Taylor
