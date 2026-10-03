@@ -145,7 +145,7 @@ async function readFinanceWorkspace(deps: WorkOrderOperationDeps, caller: WorkOr
     unappliedSettlements: unapplied.map((s) => ({ id: String(s.id), operatingCompanyId: String(s.operating_company_id), kind: String(s.kind), currency: String(s.currency),
       amountMinor: String(s.amount_minor), unappliedMinor: String(s.unapplied_minor), businessDate: dateText(s.business_date), sourceReference: String(s.source_reference) })),
     accountingHandoffs: handoffs.map((h) => ({ id: String(h.id), operatingCompanyId: String(h.operating_company_id), payloadKind: String(h.payload_kind), status: String(h.status),
-      readinessExceptions: [...(h.readiness_exceptions ?? [])], failureReason: h.failure_reason ?? null, obligationId: String(h.obligation_id),
+      readinessExceptions: [...(h.readiness_exceptions ?? [])], failureReason: h.failure_reason ?? null, obligationId: h.obligation_id ?? null,
       billingPackageId: h.billing_package_id ?? null, openExceptions: Number(h.open_exceptions) })),
     reconciliation: recon.map((r) => ({ settlementId: String(r.id), operatingCompanyId: String(r.operating_company_id), kind: String(r.kind), amountMinor: String(r.amount_minor),
       currency: String(r.currency), status: r.outcome ?? "UNRECONCILED", externalAmountMinor: r.external_amount_minor === null ? null : String(r.external_amount_minor), reason: r.reason ?? null })),

@@ -480,6 +480,10 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.equal(cons.receivables.count, taylor.receivables.count + ventana.receivables.count, "the projection is the sum of the companies, owning nothing");
     assert.ok(taylor.unappliedSettlements.length >= 1);
     assert.equal(taylor.missingCostEvidence.length, 0, "the late-evidenced line is no longer missing");
+    for (const h of [...taylor.accountingHandoffs, ...ventana.accountingHandoffs]) {
+      assert.notEqual(h.obligationId, "null", "an absent obligation is null, never the text \"null\"");
+      if (h.payloadKind !== "OPERATIONAL_BILLING_PACKAGE") assert.ok(h.billingPackageId === null && typeof h.obligationId === "string", `an obligation-anchored handoff: ${JSON.stringify(h)}`);
+    }
     for (const who of [techP]) refused(await fn(who, "readFinanceWorkspace", { operatingCompanyId: "taylor" }), 403, "CAPABILITY_REQUIRED");
     const detail = ok(await fn(ctrl, "readObligation", { obligationId: dsReceivable }));
     assert.deepEqual([detail.kind, detail.status, detail.applications.length >= 2, detail.facts.some((f) => f.factClass === "OBLIGATION")], ["RECEIVABLE", "SETTLED", true, true]);
