@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { PageHeader, SectionHeader, StatusIndicator } from "../../shared/ui/primitives";
 import { buildFinancialPolicyView, VIEW_STATE } from "../../domain/financialPolicyView";
 import { FINANCIAL_POLICY_GATE } from "../../access/shellCapabilityGates.js";
+import FinanceConfiguration from "./FinanceConfiguration";
 
 // Administration -> Company Setup -> Financial Policy.
 //
@@ -73,6 +74,7 @@ export default function AdminFinancialPolicy({
   profile = null,
   loading = false,
   error = null,
+  callApi = undefined,
 }) {
   const canRead = typeof hasCapability === "function" && hasCapability(CAP_READ);
   const canConfigure = typeof hasCapability === "function" && hasCapability(CAP_CONFIGURE);
@@ -242,6 +244,13 @@ export default function AdminFinancialPolicy({
           </section>
         </>
       ) : null}
+
+      {/* ── FINANCE CONFIGURATION (DECISIONS #203) ─────────────────────────────────────────
+          Server-gated on finance.configuration.manage through /admin/policy, independently of the policy-profile
+          gates above: a refusal is the server's answer, rendered in the section itself. */}
+      <div className="fo-panel">
+        <FinanceConfiguration callApi={callApi} />
+      </div>
     </div>
   );
 }

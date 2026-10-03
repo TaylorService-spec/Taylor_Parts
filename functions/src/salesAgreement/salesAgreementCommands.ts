@@ -56,6 +56,9 @@ export type SalesAgreementErrorCode =
   | "SERIALIZED_LINE_FORBIDDEN"
   | "QTY_INVALID"
   | "MONEY_INVALID"
+  /** #203: a customer sales discount that is malformed, or exceeds the selling price. */
+  | "DISCOUNT_INVALID"
+  | "DISCOUNT_EXCEEDS_SELLING_PRICE"
   | "INTENT_INVALID"
   /** Acceptance attempted while a billable line still has no committed price. */
   | "UNPRICED_LINE"
@@ -221,8 +224,40 @@ function validateLine(line: unknown, index: number): BuiltAgreementLine {
   };
 }
 
+/**
+ * CUSTOMER SALES DISCOUNT (Controller, 2026-10-02; DECISIONS #203): transaction-specific, customer-facing. PERCENT is held in
+ * basis points (525 = 5.25%) and rounded half-up to the minor unit with integer arithmetic; FIXED_AMOUNT is minor units and
+ * may not exceed the selling price. It never changes a line price, a price book, a cost or a margin basis.
+ */
+export type CustomerDiscount =
+  | { readonly kind: "PERCENT"; readonly percentBasisPoints: number }
+  | { readonly kind: "FIXED_AMOUNT"; readonly amountMinor: number };
+
+/** The discount's amount for a selling price (integer minor units). Null when the selling price is not yet known. */
+export function customerDiscountMinorOf(sellingMinor: number | null, discount: CustomerDiscount | null | undefined): number | null {
+  if (sellingMinor === null) return null;
+  if (!discount) return 0;
+  if (discount.kind === "PERCENT") {
+    if (!Number.isSafeInteger(discount.percentBasisPoints) || discount.percentBasisPoints < 1 || discount.percentBasisPoints > 10000) {
+      throw new SalesAgreementCommandError("DISCOUNT_INVALID", "a percentage discount is 0.01% - 100.00% (1 - 10000 basis points)");
+    }
+    return Math.floor((sellingMinor * discount.percentBasisPoints + 5000) / 10000);
+  }
+  if (discount.kind === "FIXED_AMOUNT") {
+    if (!minorUnits(discount.amountMinor) || discount.amountMinor < 1) throw new SalesAgreementCommandError("DISCOUNT_INVALID", "a fixed discount is a positive amount in minor units");
+    if (discount.amountMinor > sellingMinor) throw new SalesAgreementCommandError("DISCOUNT_EXCEEDS_SELLING_PRICE", "a discount cannot exceed the selling price");
+    return discount.amountMinor;
+  }
+  throw new SalesAgreementCommandError("DISCOUNT_INVALID", "discount kind is PERCENT or FIXED_AMOUNT");
+}
+
 export interface AgreementTotals {
+  /** The SELLING PRICE: the lines' own arithmetic. */
   subtotalMinor: number | null;
+  /** The customer sales discount's amount (0 when none). */
+  customerDiscountMinor: number | null;
+  /** SELLING PRICE - CUSTOMER DISCOUNT. */
+  netSellingMinor: number | null;
   shippingMinor: number;
   installChargeMinor: number;
   taxMinor: number;
@@ -241,7 +276,8 @@ export interface AgreementTotals {
  */
 export function computeAgreementTotals(
   lines: BuiltAgreementLine[],
-  charges: { shippingMinor?: number; installChargeMinor?: number; taxMinor?: number; downPaymentMinor?: number; tradeInMinor?: number }
+  charges: { shippingMinor?: number; installChargeMinor?: number; taxMinor?: number; downPaymentMinor?: number; tradeInMinor?: number },
+  discount: CustomerDiscount | null = null,
 ): AgreementTotals {
   for (const [field, v] of Object.entries(charges)) {
     if (v !== undefined && v !== null && !minorUnits(v)) {
@@ -256,10 +292,14 @@ export function computeAgreementTotals(
 
   const fullyPriced = lines.length > 0 && lines.every((l) => l.extendedMinor !== null);
   const subtotalMinor = fullyPriced ? lines.reduce((n, l) => n + (l.extendedMinor as number), 0) : null;
-  const totalMinor = subtotalMinor === null ? null : subtotalMinor + shippingMinor + installChargeMinor + taxMinor;
+  // SELLING PRICE - CUSTOMER DISCOUNT = NET SELLING PRICE; + shipping + install + tax = TOTAL;
+  // TOTAL - TRADE-IN CREDIT - CASH / DOWN PAYMENT = REMAINING BALANCE (the trade-in is consideration, never a discount).
+  const customerDiscountMinor = customerDiscountMinorOf(subtotalMinor, discount);
+  const netSellingMinor = subtotalMinor === null ? null : subtotalMinor - (customerDiscountMinor as number);
+  const totalMinor = netSellingMinor === null ? null : netSellingMinor + shippingMinor + installChargeMinor + taxMinor;
   const balanceMinor = totalMinor === null ? null : totalMinor - downPaymentMinor - tradeInMinor;
 
-  return { subtotalMinor, shippingMinor, installChargeMinor, taxMinor, totalMinor, downPaymentMinor, tradeInMinor, balanceMinor };
+  return { subtotalMinor, customerDiscountMinor, netSellingMinor, shippingMinor, installChargeMinor, taxMinor, totalMinor, downPaymentMinor, tradeInMinor, balanceMinor };
 }
 
 export interface BuiltSalesAgreement {

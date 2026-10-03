@@ -24,6 +24,7 @@ import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { ensureExternalCounterparty, FinanceFoundationError, openObligationOn, resolveAccountingDestination, resolveOperatingCompanyFromKey, voidObligationOn, type FinanceActor } from "./financeFoundation";
 import { financedConsequenceOn, type FinancedConsequence } from "./financedSale";
+import { customerDiscountMinorOf, type CustomerDiscount } from "../salesAgreement/salesAgreementCommands";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -31,7 +32,9 @@ type Queryable = Pick<PoolClient, "query">;
 export const BILLING_PACKAGE_EXCEPTIONS = Object.freeze([
   "PRICE_EVIDENCE_MISSING", "TAX_NOT_DETERMINED", "UNSUPPORTED_FINANCIAL_OBLIGOR",
   // DECISIONS #200 (financed sales): why a financed package is not READY.
-  "FINANCING_NOT_AVAILABLE", "FINANCING_CONTRIBUTION_MISMATCH", "FINANCING_TRADE_IN_UNGOVERNED", "FINANCING_CURRENCY_MISMATCH", "FINANCED_AMOUNT_INVALID",
+  "FINANCING_NOT_AVAILABLE", "FINANCING_CONTRIBUTION_MISMATCH", "FINANCING_CURRENCY_MISMATCH", "FINANCED_AMOUNT_INVALID",
+  // DECISIONS #203 (customer discount / trade-in composition). FINANCING_TRADE_IN_UNGOVERNED is retired: the Owner governed it.
+  "DISCOUNT_EXCEEDS_SELLING_PRICE", "TRADE_IN_EXCEEDS_TOTAL",
 ] as const);
 /** Receivable / handoff consequence of a READY direct-sale package (DECISIONS #197). */
 export interface ReceivableConsequence {
@@ -53,7 +56,8 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
     `SELECT so.id, so.state::text AS state, so.operating_company_key, so.account_id, so.currency, so.sales_agreement_id,
             a.is_lease, a.shipping_minor, a.install_charge_minor, a.tax_minor, a.tax_evidence_status, a.down_payment_minor, a.trade_in_minor,
             fa.id AS financing_arrangement_id, fa.status AS financing_status, fa.financing_provider_account_id, fa.customer_contribution_minor,
-            fa.currency AS financing_currency, rs.to_kind AS restructured_to
+            fa.currency AS financing_currency, rs.to_kind AS restructured_to,
+            a.customer_discount_kind, a.customer_discount_basis_points, a.customer_discount_amount_minor
        FROM eos_commercial.sales_orders so
        LEFT JOIN eos_commercial.sales_agreements a ON a.tenant_id = so.tenant_id AND a.id = so.sales_agreement_id
        LEFT JOIN eos_commercial.financing_arrangements fa ON fa.tenant_id = so.tenant_id AND fa.sales_agreement_id = so.sales_agreement_id
@@ -90,8 +94,7 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
     if (o.financing_status === "DECLINED" || o.financing_status === "CANCELLED") exceptions.push("FINANCING_NOT_AVAILABLE");
     // The contribution is the arrangement's stated amount and must be the Agreement's down payment -- never billed twice.
     if (BigInt(o.down_payment_minor ?? 0) !== BigInt(o.customer_contribution_minor)) exceptions.push("FINANCING_CONTRIBUTION_MISMATCH");
-    // A trade-in on a financed sale has no ruled place in the composition: held, never guessed.
-    if (BigInt(o.trade_in_minor ?? 0) !== 0n) exceptions.push("FINANCING_TRADE_IN_UNGOVERNED");
+    // #203: a trade-in on a financed sale is GOVERNED -- cash-equivalent consideration in the composition (below), never cash.
     if (o.financing_currency !== String(o.currency ?? "USD")) exceptions.push("FINANCING_CURRENCY_MISMATCH");
   } else if (disposition === "LEASE") {
     // A lease / financed disposition: NO obligor is assumed -- neither the customer nor the financing provider. Who Taylor
@@ -140,12 +143,24 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
   const down = o.sales_agreement_id === null ? null : big(o.down_payment_minor);
   const tradeIn = o.sales_agreement_id === null ? null : big(o.trade_in_minor);
   if (tax === null) exceptions.push("TAX_NOT_DETERMINED");
-  const total = subtotal === null || tax === null ? null : subtotal + (shipping ?? 0n) + (install ?? 0n) + tax;
+  // #203: SELLING PRICE (subtotal) - CUSTOMER DISCOUNT = NET SELLING PRICE; + shipping + install + tax = TOTAL.
+  const discountSpec: CustomerDiscount | null = o.customer_discount_kind === "PERCENT"
+    ? { kind: "PERCENT", percentBasisPoints: Number(o.customer_discount_basis_points) }
+    : o.customer_discount_kind === "FIXED_AMOUNT" ? { kind: "FIXED_AMOUNT", amountMinor: Number(o.customer_discount_amount_minor) } : null;
+  let discount: bigint | null = discountSpec === null ? null : 0n;
+  if (discountSpec !== null && subtotal !== null) {
+    try { discount = BigInt(customerDiscountMinorOf(Number(subtotal), discountSpec) as number); }
+    catch { exceptions.push("DISCOUNT_EXCEEDS_SELLING_PRICE"); discount = null; }
+  }
+  const total = subtotal === null || tax === null || (discountSpec !== null && discount === null) ? null
+    : subtotal - (discount ?? 0n) + (shipping ?? 0n) + (install ?? 0n) + tax;
   const balance = total === null ? null : total - (down ?? 0n) - (tradeIn ?? 0n);
-  // total = customer contribution + financed amount (#200 §5); a non-positive financed amount is not a financed sale.
+  // total = cash contribution + trade-in credit + financed amount (#200 §5 + #203); a non-positive financed amount is not a
+  // financed sale. A direct sale's trade-in may not exceed what it buys down.
   const contribution = disposition === "FINANCED_SALE" ? BigInt(o.customer_contribution_minor) : null;
-  const financed = disposition === "FINANCED_SALE" && total !== null ? total - (contribution as bigint) : null;
+  const financed = disposition === "FINANCED_SALE" && total !== null ? total - (tradeIn ?? 0n) - (contribution as bigint) : null;
   if (financed !== null && financed <= 0n) exceptions.push("FINANCED_AMOUNT_INVALID");
+  if (disposition !== "FINANCED_SALE" && total !== null && (tradeIn ?? 0n) > total) exceptions.push("TRADE_IN_EXCEEDS_TOTAL");
   const status: "READY" | "HELD" = exceptions.length === 0 ? "READY" : "HELD";
   const currency = String(o.currency ?? "USD");
   const destination = await resolveAccountingDestination(c, actor.tenantId, companyId);
@@ -155,7 +170,9 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
     total: str(total), down: str(down), tradeIn: str(tradeIn), balance: str(balance), status, exceptions, lines: pkgLines,
     // Financed composition only on a financed sale, so a direct sale's content (and fingerprint) is unchanged.
     ...(disposition === "FINANCED_SALE" ? { financing: { arrangement: o.financing_arrangement_id, provider: providerCounterpartyId,
-      contribution: str(contribution), financed: str(financed) } } : {}) };
+      contribution: str(contribution), financed: str(financed) } } : {}),
+    // The discount only when one exists, so a package without one keeps its content (and fingerprint).
+    ...(discountSpec !== null ? { discount: { spec: discountSpec, amount: str(discount) } } : {}) };
   const fingerprint = createHash("sha256").update(JSON.stringify(content)).digest("hex");
 
   const { rows: current } = await c.query(
@@ -183,12 +200,13 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
         operating_company_id, operating_company_key, commercial_customer_account_id, counterparty_id, obligor_basis, commercial_disposition,
         sales_agreement_id, currency, subtotal_minor, shipping_minor, install_charge_minor, tax_minor, total_minor, down_payment_minor,
         trade_in_minor, balance_minor, accounting_destination_id, content_fingerprint, prepared_by, tax_evidence_status,
-        financing_arrangement_id, financing_provider_counterparty_id, customer_contribution_minor, financed_amount_minor)
-     VALUES ($1,$2,'SALES_ORDER',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)`,
+        financing_arrangement_id, financing_provider_counterparty_id, customer_contribution_minor, financed_amount_minor, customer_discount_minor)
+     VALUES ($1,$2,'SALES_ORDER',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)`,
     [packageId, actor.tenantId, input.salesOrderId, version, current[0]?.id ?? null, status, exceptions, companyId, o.operating_company_key,
       o.account_id, counterpartyId, obligorBasis, disposition, o.sales_agreement_id, currency, str(subtotal), str(shipping), str(install),
       str(tax), str(total), str(down), str(tradeIn), str(balance), destination?.id ?? null, fingerprint, actor.principalId, taxEvidence,
-      disposition === "FINANCED_SALE" ? o.financing_arrangement_id : null, providerCounterpartyId, str(contribution), str(financed)]);
+      disposition === "FINANCED_SALE" ? o.financing_arrangement_id : null, providerCounterpartyId, str(contribution), str(financed),
+      discount !== null && discount > 0n ? str(discount) : null]);
   for (const [i, l] of pkgLines.entries()) {
     await c.query(
       `INSERT INTO eos_finance.billing_package_lines (package_id, tenant_id, line_number, sales_order_id, sales_order_line_number, kind, ref,
@@ -240,8 +258,10 @@ export async function establishPackageReceivableOn(c: Queryable, actor: FinanceA
     throw new FinanceFoundationError("TAX_NOT_DETERMINED", "PRECONDITION_FAILED",
       "the package's tax is not from governed DETERMINED evidence; it establishes no receivable");
   }
-  const total = BigInt(p.total_minor);
-  if (total === 0n) return Object.freeze({ receivable: Object.freeze({ outcome: "NOT_REQUIRED_ZERO_TOTAL" as const }), handoff: null });
+  // #203: what the customer owes = the total less the trade-in credit (cash-equivalent consideration received in kind -- never
+  // cash, never a discount). Without a trade-in this is the package total exactly, as before.
+  const total = BigInt(p.total_minor) - BigInt(p.trade_in_minor ?? 0);
+  if (total <= 0n) return Object.freeze({ receivable: Object.freeze({ outcome: "NOT_REQUIRED_ZERO_TOTAL" as const }), handoff: null });
   const opened = await openObligationOn(c, actor, {
     operatingCompanyId: p.operating_company_id, counterpartyId: p.counterparty_id, kind: "RECEIVABLE", currency: p.currency,
     sourceDomain: "BILLING_PACKAGE", sourceRecordId: packageId, originationAmountMinor: total, basis: "OPERATIONAL_BILLING_PACKAGE",
@@ -323,7 +343,15 @@ export async function refreshAccountingHandoffs(pool: Pool, actor: FinanceActor)
     await pool.query(`UPDATE eos_finance.accounting_handoffs SET accounting_destination_id = $3, status = 'READY_FOR_DELIVERY', readiness_exceptions = '{}', updated_at = now()
       WHERE tenant_id = $1 AND id = $2 AND status = 'PENDING_DESTINATION'`, [actor.tenantId, r.id, r.destination_id]);
   }
-  return Object.freeze({ attached: rows.length });
+  // #203: an UNTOUCHED READY handoff (no delivery attempt) follows its company's current ACTIVE destination. Anything with
+  // delivery history keeps the destination it was attempted against.
+  const { rowCount } = await pool.query(
+    `UPDATE eos_finance.accounting_handoffs h SET accounting_destination_id = d.id, updated_at = now()
+       FROM eos_finance.accounting_destinations d
+      WHERE h.tenant_id = $1 AND h.status = 'READY_FOR_DELIVERY' AND h.attempt_count = 0
+        AND d.tenant_id = h.tenant_id AND d.operating_company_id = h.operating_company_id AND d.status = 'ACTIVE'
+        AND h.accounting_destination_id IS DISTINCT FROM d.id`, [actor.tenantId]);
+  return Object.freeze({ attached: rows.length, repointedUntouched: rowCount ?? 0 });
 }
 
 /**

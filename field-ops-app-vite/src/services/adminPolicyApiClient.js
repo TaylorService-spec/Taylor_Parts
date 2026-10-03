@@ -143,6 +143,15 @@ export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze([
   "relinkTruck",
   "unlinkTruck",
   "changeTruckStatus",
+  // DECISIONS #203 (Controller 2026-10-02): Finance configuration -- accounting destinations, counterparty payment terms and
+  // operating-company business time zones, gated on the server by finance.configuration.manage.
+  "listAccountingDestinations",
+  "configureAccountingDestination",
+  "setAccountingDestinationStatus",
+  "listCounterpartyPaymentTerms",
+  "setCounterpartyPaymentTerms",
+  "listOperatingCompanyBusinessTimeZones",
+  "setOperatingCompanyBusinessTimeZone",
 ]);
 
 const ALL_OPERATIONS = new Set([...ADMIN_READ_OPERATIONS, ...ADMIN_MUTATION_OPERATIONS, ...ADMIN_CONFIGURATION_OPERATIONS]);

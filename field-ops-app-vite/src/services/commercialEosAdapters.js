@@ -230,6 +230,13 @@ export function toSalesAgreementProjection(a) {
         }))
       : [],
     subtotalMinor: t.subtotalMinor ?? null,
+    // #203: the customer sales discount (as entered, and its amount) and the net selling price.
+    customerDiscount: a.customerDiscount ?? null,
+    customerDiscountMinor: t.customerDiscountMinor ?? null,
+    netSellingMinor: t.netSellingMinor ?? null,
+    // #203: itemised trade-ins (consideration + incoming equipment). Never a resale price; no acquisition value is carried.
+    tradeIns: Array.isArray(a.tradeIns) ? a.tradeIns.map((ti) => ({ itemNumber: ti.itemNumber, description: ti.description ?? null,
+      manufacturer: ti.manufacturer ?? null, modelNumber: ti.modelNumber ?? null, serialNumber: ti.serialNumber ?? null, creditMinor: ti.creditMinor ?? null })) : [],
     shippingMinor: t.shippingMinor ?? null,
     installChargeMinor: t.installChargeMinor ?? null,
     taxMinor: t.taxMinor ?? null,

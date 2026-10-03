@@ -59,6 +59,24 @@ import { BLANK_LINE, toMinor, toMajorText, toEditorLines, LinesEditor, buildLine
 import TaxEvidenceControl, { TaxEvidenceSummary } from "./TaxEvidenceControl.jsx";
 import { taxEvidenceSeed, taxEvidencePatch } from "../../domain/taxEvidenceView.js";
 
+/**
+ * #203: the customer sales discount, from what the salesperson typed to the governed input. PERCENT is entered as a
+ * percentage with up to two decimals (5.25 -> 525 basis points); FIXED_AMOUNT in currency units. Nothing is sent when unchanged.
+ */
+function customerDiscountPatch(view, kind, value) {
+  const current = view.customerDiscount ?? null;
+  if (!kind) return { patch: current === null ? {} : { customerDiscount: null } };
+  const text = String(value ?? "").trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(text)) return { error: kind === "PERCENT" ? "The discount percent must look like 5 or 5.25." : "The discount amount must look like 20.00." };
+  const [whole, frac = ""] = text.split(".");
+  const hundredths = Number(whole) * 100 + Number(frac.padEnd(2, "0"));
+  if (hundredths < 1) return { error: "A discount must be greater than zero." };
+  if (kind === "PERCENT" && hundredths > 10000) return { error: "A discount cannot exceed 100%." };
+  const next = kind === "PERCENT" ? { kind, percentBasisPoints: hundredths } : { kind, amountMinor: hundredths };
+  const same = current && current.kind === next.kind && (current.percentBasisPoints ?? current.amountMinor) === (next.percentBasisPoints ?? next.amountMinor);
+  return { patch: same ? {} : { customerDiscount: next } };
+}
+
 function CreateForm({ onCreate, pending, canCreate }) {
   const [lines, setLines] = useState([{ ...BLANK_LINE }]);
   const [customerPO, setCustomerPO] = useState("");
@@ -132,6 +150,10 @@ function TermsForm({ view, pending, onSave }) {
       tradeInMinor: toMajorText(view.tradeInMinor),
       // Tax is NOT a charge box: it is evidence (DECISIONS #197), seeded from the server's own state.
       tax: taxEvidenceSeed(view, toMajorText),
+      // #203: the customer sales discount, as the salesperson states it (percent or fixed amount).
+      discountKind: view.customerDiscount?.kind ?? "",
+      discountValue: view.customerDiscount?.kind === "PERCENT" ? (view.customerDiscount.percentBasisPoints / 100).toFixed(2)
+        : view.customerDiscount?.kind === "FIXED_AMOUNT" ? toMajorText(view.customerDiscount.amountMinor) : "",
     });
     setError(null);
     setOpen(true);
@@ -159,6 +181,9 @@ function TermsForm({ view, pending, onSave }) {
     const tax = taxEvidencePatch(view, form.tax, toMinor);
     if (tax.error) { setError(tax.error); return; }
     Object.assign(patch, tax);
+    const discount = customerDiscountPatch(view, form.discountKind, form.discountValue);
+    if (discount.error) { setError(discount.error); return; }
+    Object.assign(patch, discount.patch);
     setError(null);
     const res = await onSave(patch);
     if (res.ok) setOpen(false);
@@ -195,8 +220,21 @@ function TermsForm({ view, pending, onSave }) {
       {field("shippingMinor", "Shipping")}
       {field("installChargeMinor", "Install charge")}
       <TaxEvidenceControl value={form.tax} disabled={pending === "updateDraft"} onChange={(tax) => setForm({ ...form, tax })} />
-      {field("downPaymentMinor", "Down payment")}
-      {field("tradeInMinor", "Trade-in")}
+      <label>Customer discount
+        <select value={form.discountKind} disabled={pending === "updateDraft"} onChange={(e) => setForm({ ...form, discountKind: e.target.value })}>
+          <option value="">No discount</option>
+          <option value="PERCENT">Percent</option>
+          <option value="FIXED_AMOUNT">Fixed amount</option>
+        </select>
+      </label>
+      {form.discountKind ? (
+        <label>{form.discountKind === "PERCENT" ? "Discount percent" : "Discount amount"}
+          <input inputMode="decimal" aria-label={form.discountKind === "PERCENT" ? "Discount percent" : "Discount amount"} value={form.discountValue}
+            disabled={pending === "updateDraft"} onChange={(e) => setForm({ ...form, discountValue: e.target.value })} />
+        </label>
+      ) : null}
+      {field("downPaymentMinor", "Cash / down payment")}
+      {field("tradeInMinor", "Trade-in credit")}
       {error && <p role="alert" className="fo-error">{error}</p>}
       <Button variant="primary" disabled={pending === "updateDraft"} onClick={submit}>Save terms</Button>
       <Button variant="ghost" disabled={pending === "updateDraft"} onClick={() => setOpen(false)}>Cancel</Button>

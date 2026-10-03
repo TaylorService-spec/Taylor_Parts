@@ -171,7 +171,7 @@ describe("agreed lines", () => {
     const sale = screen.getByLabelText("Sale composition");
     expect(within(sale).getByText("Total committed")).toBeTruthy();
     const credits = screen.getByLabelText("Credits recorded at commitment");
-    expect(credits.textContent).toContain("Balance after credits");
+    expect(credits.textContent).toContain("Remaining balance");
     expect(credits.textContent).toContain("Not an accounts-receivable balance");
   });
 });

@@ -108,7 +108,7 @@ test.after(async () => {
     "TRUNCATE eos_commercial.accountability_handoffs, eos_commercial.ownership_handoffs," +
       " eos_finance.billing_package_lines, eos_commercial.sales_order_fulfillments, eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
       // Migration 1764480000000 (#200): the financing arrangement and its history reference the Agreement.
-      " eos_commercial.financing_restructures, eos_commercial.financing_approval_evidence, eos_commercial.financing_arrangement_events, eos_commercial.financing_arrangements," +
+      " eos_commercial.sales_agreement_trade_ins, eos_commercial.financing_restructures, eos_commercial.financing_approval_evidence, eos_commercial.financing_arrangement_events, eos_commercial.financing_arrangements," +
       " eos_commercial.sales_orders, eos_commercial.sales_agreements, eos_commercial.opportunities",
   );
   await query("DELETE FROM eos_crm.accounts WHERE tenant_id = $1", [TENANT]);

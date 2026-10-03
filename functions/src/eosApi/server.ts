@@ -37,6 +37,7 @@ import { explainEffectiveAccess } from "../eosOps/effectiveAccessExplanation";
 import { createMobileLocationScopeBindingAdministration } from "../eosOps/mobileLocationScopeBindingAdministration";
 import { createWarehouseBinAdministration, isWarehouseAdminOperation } from "../eosOps/warehouseBinAdministration";
 import { createTruckRegistryAdministration, isTruckRegistryAdminOperation } from "../eosOps/truckRegistryAdministration";
+import { createFinanceConfigurationAdministration, isFinanceConfigurationOperation } from "../eosFinance/financeConfigurationAdministration";
 import { createCommercialHttpHandler } from "../eosCommercial/commercialHttp";
 import { createWorkforceHttpHandler } from "../eosWorkforce/workforceHttp";
 import { createCrmHttpHandler } from "../eosCrm/crmHttp";
@@ -213,12 +214,14 @@ export async function startEosApi(
     // Gated in executeAdminOperation on inventory.location.scopeBinding.manage before this is ever reached.
     // DQ-E: Warehouse and Bin master administration (warehouse.record.manage), routed by operation name.
     // OD-T7: truck / MOBILE-location registry administration (inventory.truckRegistry.manage).
+    // #203: finance configuration -- accounting destinations, payment terms, business time zones (finance.configuration.manage).
     configuration: (() => {
       const bindings = createMobileLocationScopeBindingAdministration(pool);
       const warehouses = createWarehouseBinAdministration(pool);
       const trucks = createTruckRegistryAdministration(pool);
+      const finance = createFinanceConfigurationAdministration(pool);
       return (operation, actor, input, reason) => (isWarehouseAdminOperation(operation) ? warehouses
-        : isTruckRegistryAdminOperation(operation) ? trucks : bindings)(operation, actor, input, reason);
+        : isTruckRegistryAdminOperation(operation) ? trucks : isFinanceConfigurationOperation(operation) ? finance : bindings)(operation, actor, input, reason);
     })(),
     verifyToken,
     allowedOrigins: config.allowedOrigins,

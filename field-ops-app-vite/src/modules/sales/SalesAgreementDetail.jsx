@@ -533,7 +533,10 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
             {ladder.complete ? (
               <div className="ns-ladder">
                 <dl className="ns-ladder__block" aria-label="Sale composition">
-                  <div><dt>Subtotal</dt><dd className="ns-num">{ladder.saleComposition.subtotal.formatted}</dd></div>
+                  <div><dt>Selling price</dt><dd className="ns-num">{ladder.saleComposition.subtotal.formatted}</dd></div>
+                  {/* #203: the customer discount and net selling price, only when a discount applies. */}
+                  {ladder.saleComposition.customerDiscount ? <div><dt>Customer discount</dt><dd className="ns-num">−{ladder.saleComposition.customerDiscount.formatted}</dd></div> : null}
+                  {ladder.saleComposition.netSelling ? <div><dt>Net selling price</dt><dd className="ns-num">{ladder.saleComposition.netSelling.formatted}</dd></div> : null}
                   {ladder.saleComposition.shipping ? <div><dt>Shipping</dt><dd className="ns-num">{ladder.saleComposition.shipping.formatted}</dd></div> : null}
                   {ladder.saleComposition.installCharge ? <div><dt>Installation charge</dt><dd className="ns-num">{ladder.saleComposition.installCharge.formatted}</dd></div> : null}
                   {/* Tax, from its evidence: an amount only when determined (zero included), otherwise words. */}
@@ -546,9 +549,10 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
                 </dl>
                 {ladder.credits.balance ? (
                   <dl className="ns-ladder__block ns-ladder__block--credits" aria-label="Credits recorded at commitment">
-                    {ladder.credits.downPayment ? <div><dt>Down payment</dt><dd className="ns-num">−{ladder.credits.downPayment.formatted}</dd></div> : null}
-                    {ladder.credits.tradeIn ? <div><dt>Trade-in</dt><dd className="ns-num">−{ladder.credits.tradeIn.formatted}</dd></div> : null}
-                    <div><dt>Balance after credits</dt><dd className="ns-num">{ladder.credits.balance.formatted}</dd></div>
+                    {/* #203: the trade-in is cash-equivalent consideration -- shown apart from cash and from the discount. */}
+                    {ladder.credits.tradeIn ? <div><dt>Trade-in credit</dt><dd className="ns-num">−{ladder.credits.tradeIn.formatted}</dd></div> : null}
+                    {ladder.credits.downPayment ? <div><dt>Cash / down payment</dt><dd className="ns-num">−{ladder.credits.downPayment.formatted}</dd></div> : null}
+                    <div><dt>Remaining balance</dt><dd className="ns-num">{ladder.credits.balance.formatted}</dd></div>
                     <p className="ns-section__note">
                       The agreement&apos;s own arithmetic: total minus down payment and trade-in. Not an
                       accounts-receivable balance — no payment is tracked on this record.

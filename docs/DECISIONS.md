@@ -7038,3 +7038,70 @@ target model §11. Saratoga (#200 / #201) is unchanged.
 8. **Not built:** elimination, netting, settlement, GL, an intercompany accounting-handoff payload (the direct-sale v1
    payload is not forced to carry it; each side's future handoff will anchor on its own company's obligation and carry
    the correlation id), Analysis. No capability, grant or transport operation.
+
+## #203 — CONTROLLER: post-FBR governed configuration + commercial pricing (2026-10-02)
+
+**Status.** Implemented locally (migration `1764500000000_governed-config-and-sales-pricing.sql`); not pushed, not deployed,
+no nonprod mutation. Builds on #200–#202. FBR-F1..F4 stay separate and open (§9).
+
+1. **FINANCING_PROVIDER is a governed CRM relationship** (G1). `ACCOUNT_RELATIONSHIP_TYPES` = CUSTOMER, VENDOR,
+   FINANCING_PROVIDER. It is provider-neutral; the organization stays the master record. It implies neither CUSTOMER nor
+   VENDOR, and an organization may hold several relationships. Setting or clearing it requires
+   `customer.governedField.write` on create and update; clearing it while an arrangement names the provider is refused
+   (FINANCING_PROVIDER_IN_USE). Finance (`recordFinancingArrangement`) consumes the relationship. No direct DB setup.
+2. **Operating-company business time** (G2). Technical timestamps stay UTC instants. A business date is derived from
+   `eos_policy.tenant_operating_companies.business_time_zone` (IANA, validated against `pg_timezone_names`, default
+   UTC) through ONE resolver, `eos_policy.operating_company_business_date(tenant, company, instant)`, wrapped by
+   `eosOps/operatingCompanyBusinessTime.ts`. Example: 2026-10-03 04:40 UTC is the America/Phoenix business date
+   2026-10-02, so Taylor ← Ventana NET 90 is due 2026-12-31.
+   - **Swept:** the intercompany obligation date (#202) now uses the buyer's business date.
+   - **Findings, left unchanged** (no global rewrite): the labour work date (`workOrderLabor.workDateOf`, UTC by
+     documented Firebase parity in the frozen Service journey); the business-number year allocation (UTC year); and
+     `reportingCalendar` (an existing governed America/Phoenix reporting zone, #163).
+3. **Finance configuration through Administration.** A new Administration configuration family, gated on
+   `finance.configuration.manage` (object `financeConfiguration`, ADMIN_ACTION, **granted to no Role**). Each mutation
+   requires a reason and is audited in `eos_policy.audit_events`.
+   - **Operations:** list / configure / activate / deactivate accounting destinations; list / set counterparty payment
+     terms; list / set operating-company business time zones.
+   - **Screen:** Administration → Financial Policy → Finance configuration. It decides nothing and renders the server's
+     refusal.
+4. **Accounting destinations.**
+   - One ACTIVE per operating company: activating a destination steps the current one down to INACTIVE, which is kept
+     as history. CONSOLIDATED can't own one.
+   - Activation attaches unattached handoffs and re-points an UNTOUCHED handoff (READY_FOR_DELIVERY, `attempt_count` = 0)
+     to the company's new active destination. A handoff with delivery history is never re-pointed: the #198 guard is
+     re-created with exactly that one relaxation.
+5. **Payment terms.** `payment_terms_net_days` on the per-company counterparty profile, for an internal company or an
+   external organization; a company with itself is refused.
+   - Taylor → Ventana = 90 is configuration, never code. No reverse direction is assumed.
+   - A change governs FUTURE obligations only; an established `due_on` is immutable.
+6. **Customer sales discount.** On the Sales Agreement: PERCENT (basis points 1..10000, half-up integer arithmetic) or
+   FIXED_AMOUNT (≤ selling price).
+   - Selling price − discount = net selling price. Line prices and internal pricing are never mutated.
+   - It is carried to the billing package (`customer_discount_minor`); total = subtotal − discount + shipping + install
+     + tax.
+   - The accounting payload carries `customerDiscountMinor` only when a discount exists, so v1 is unchanged in shape
+     without one.
+   - Authority: the existing `salesAgreement.create` / `salesAgreement.updateDraft`. No approval threshold is built.
+7. **Trade-in = cash-equivalent consideration, not cash and not a discount.** Remaining balance = net selling price −
+   trade-in credit − cash / down payment (40000 − 2000 = 38000; − 5000 − 3000 = 30000).
+   - **Financed sale:** financed = net − trade-in − cash, and FINANCING_TRADE_IN_UNGOVERNED is retired. The package
+     CHECK is total = contribution + trade-in + financed. The v2 handoff composition carries `tradeInCreditMinor`.
+   - **Direct sale:** the customer receivable is total − trade-in. A trade-in never creates a receivable.
+   - **Incoming equipment:** each traded item is a row in `eos_commercial.sales_agreement_trade_ins`, recording the
+     Agreement, item, description, manufacturer, model and serial (null when unknown — identity is never invented), the
+     agreed credit, the receiving company and `acquisition_status` AGREED. RECEIVED and `acquired_receiving_id` are
+     reserved for the eventual receipt.
+8. **Independent values (hard rule).** Acquisition value, trade-in credit, reconditioning and a future sale price are
+   independent. Nothing propagates one into another; a future sale price is set explicitly by the Sales process. A
+   static check guards this.
+9. **Customer-facing.** The Agreement shows Selling price, Customer discount, Net selling price, Trade-in credit, Cash /
+   down payment and Remaining balance, in words: no enum, no cost, no margin.
+10. **Not built / still open:**
+    - Not started: Settlement, Rental, elimination, GL, a real provider, refurbishment, disposition, Analysis,
+      production.
+    - The governed RECEIPT of a traded-in unit into inventory, and its acquisition basis (§8 forbids defaulting it to
+      the credit).
+    - Separate and open: FBR-F1 (Ventana inventory relief when Ventana sells to Taylor), FBR-F2 (Taylor Service
+      delivery / install for a Ventana sale), FBR-F3 (a per-side intercompany accounting handoff) and FBR-F4 (governed
+      late completion of a receipt's cost evidence).

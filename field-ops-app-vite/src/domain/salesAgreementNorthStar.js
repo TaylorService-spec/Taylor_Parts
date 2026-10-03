@@ -211,6 +211,9 @@ export function salesAgreementMoneyLadder(view) {
     unpricedRefs: unpriced.map((l) => l.ref ?? l.lineId).filter((v) => v != null),
     saleComposition: {
       subtotal: complete ? { minor: num(view.subtotalMinor), formatted: fmt(view.subtotalMinor) } : null,
+      // #203: SELLING PRICE - CUSTOMER DISCOUNT = NET SELLING PRICE. Drawn only when a discount applies.
+      customerDiscount: complete ? charge(view.customerDiscountMinor) : null,
+      netSelling: complete && num(view.customerDiscountMinor) ? { minor: num(view.netSellingMinor), formatted: fmt(view.netSellingMinor) } : null,
       shipping: complete ? charge(view.shippingMinor) : null,
       installCharge: complete ? charge(view.installChargeMinor) : null,
       tax: complete ? charge(view.taxMinor) : null,

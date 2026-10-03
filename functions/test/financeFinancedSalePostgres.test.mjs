@@ -273,10 +273,13 @@ test("Financed sales over PostgreSQL (Owner ruling #200)", { skip: SKIP, concurr
     }
   });
 
-  await t.test("R. a financed trade-in stays explicitly held; ordinary financed sales stay usable", async () => {
+  await t.test("R (#203). a financed trade-in is now GOVERNED: total = cash contribution + trade-in credit + financed amount", async () => {
     const tr = await sale({ tradeIn: 3000 });
     await arrange(tr.agreementId);
-    assert.deepEqual((await prepare(tr.salesOrderId)).readinessExceptions, ["FINANCING_TRADE_IN_UNGOVERNED"]);
+    const out = await prepare(tr.salesOrderId);
+    const p = await packageRow(out.packageId);
+    assert.deepEqual([out.status, p.total_minor, p.trade_in_minor, p.customer_contribution_minor, p.financed_amount_minor], ["READY", "33000", "3000", "0", "30000"],
+      "the trade-in buys down what the provider finances -- never cash, never a discount");
     const mis = await sale({ down: 5000 }); await arrange(mis.agreementId, { customerContributionMinor: 4000 });
     assert.deepEqual((await prepare(mis.salesOrderId)).readinessExceptions, ["FINANCING_CONTRIBUTION_MISMATCH"]);
     const all = await sale({ down: 33000 }); await arrange(all.agreementId, { customerContributionMinor: 33000 });

@@ -241,7 +241,7 @@ test("governed PostgreSQL Commercial read projections, in PostgreSQL", { skip: S
       [1, "EQUIPMENT_MODEL", "model-a", "EQUIPMENT_SALES", 1, 1250000, 1250000, "NEW"],
       [2, "SERVICE", "svc-install", "INSTALLATION", 2, 50000, 100000, null],
     ]);
-    assert.deepEqual(d.totals, { subtotalMinor: 1350000, shippingMinor: 15000, installChargeMinor: 0, taxMinor: 8000, totalMinor: 1373000, downPaymentMinor: 100000, tradeInMinor: 0, balanceMinor: 1273000 });
+    assert.deepEqual(d.totals, { subtotalMinor: 1350000, customerDiscountMinor: 0, netSellingMinor: 1350000, shippingMinor: 15000, installChargeMinor: 0, taxMinor: 8000, totalMinor: 1373000, downPaymentMinor: 100000, tradeInMinor: 0, balanceMinor: 1273000 });
     assert.deepEqual(d.location, { locationId: "loc-1", name: "Main Kitchen" });
     assert.deepEqual(d.sourceOpportunity, { id: o1.opportunityId, number: o1.opportunityNumber, state: "DECISION" });
     assert.deepEqual(d.salesOrder, { id: won.salesOrderId, number: won.salesOrderNumber, state: "CONFIRMED" });

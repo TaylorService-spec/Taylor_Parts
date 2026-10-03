@@ -132,6 +132,22 @@
         "D": []
       },
       "fields": []
+    },
+    {
+      "key": "financeConfiguration",
+      "label": "Finance Configuration",
+      "labelPlural": "Finance Configuration",
+      "description": "Administrative Finance configuration (DECISIONS #203): each operating company's provider-neutral accounting destination, company / counterparty payment terms (net days, governing future obligations) and the operating company's business time zone. Managed by finance.configuration.manage. No financial transaction, settlement, delivery or credential is part of this Object.",
+      "domain": "Finance",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
     }
   ]
 }

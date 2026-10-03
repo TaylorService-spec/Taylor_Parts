@@ -15,6 +15,7 @@
 // installation, settlement or payment is awaited. An unpriced receipt holds them until its cost evidence is complete, then
 // establishIntercompanyObligationsForCompletedEvidence establishes them once (missing amount != zero).
 //
+// BUSINESS DATE (G2): the obligation date is the receipt instant's calendar day in the buyer company's governed time zone.
 // TERMS (#202 §2-3): the BUYER's per-company counterparty profile of the seller company carries governed net-days terms
 // (Taylor -> Ventana is NET 90 by configuration, never by code). Obligation date = the receipt's business date; due date =
 // obligation date + net days, stamped on both obligations. No governed terms => no due date. Overdue is never stored.
@@ -22,6 +23,7 @@
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { ensureInternalCounterparty, FinanceFoundationError, openObligationOn, voidObligationOn, type FinanceActor, type FinanceFoundationCategory } from "./financeFoundation";
+import { businessDateOn } from "../eosOps/operatingCompanyBusinessTime";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -69,7 +71,7 @@ const correlationOf = (r: Record<string, any>): IntercompanyCorrelation => Objec
  */
 export async function recordIntercompanyCorrelationForReceiptOn(c: Queryable, actor: FinanceActor, receivingId: string): Promise<IntercompanyCorrelation | null> {
   const { rows: rcv } = await c.query(
-    `SELECT r.id, r.source_purchase_order_id, to_char(r.received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS obligation_date, po.supplier_kind, po.supplier_operating_company_id, po.purchasing_operating_company_id, po.currency AS po_currency
+    `SELECT r.id, r.source_purchase_order_id, r.received_at, po.supplier_kind, po.supplier_operating_company_id, po.purchasing_operating_company_id, po.currency AS po_currency
        FROM eos_ops.receiving_orders r JOIN eos_ops.purchase_orders po ON po.tenant_id = r.tenant_id AND po.id = r.source_purchase_order_id
       WHERE r.tenant_id = $1 AND r.id = $2`, [actor.tenantId, receivingId]);
   const r = rcv[0];
@@ -93,6 +95,9 @@ export async function recordIntercompanyCorrelationForReceiptOn(c: Queryable, ac
   const complete = lines.length > 0 && evidence.length === lines.length;
   const amount = evidence.reduce((n, e) => n + BigInt(e.extended_cost_minor), 0n);
   const currency = [...currencies][0] ?? String(r.po_currency ?? "USD");
+  // G2: the obligation date is the receipt's BUSINESS DATE in the buyer company's governed time zone (the instant itself
+  // stays on the receipt) -- never a UTC calendar cut.
+  const obligationDate = await businessDateOn(c, actor.tenantId, buyer, r.received_at);
   const id = `ict_${randomUUID()}`;
   const status = !complete ? "COST_EVIDENCE_MISSING" : amount === 0n ? "NOT_REQUIRED_ZERO_AMOUNT" : "AWAITING_OBLIGATION_TRIGGER";
   const { rows } = await c.query(
@@ -101,7 +106,7 @@ export async function recordIntercompanyCorrelationForReceiptOn(c: Queryable, ac
      VALUES ($1,$2,$3,$4,'REORDER_RECEIPT',$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (tenant_id, source_kind, source_record_id) DO NOTHING RETURNING *`,
     [id, actor.tenantId, buyer, seller, receivingId, r.source_purchase_order_id, currency, amount > 0n ? amount.toString() : null, complete,
-      status, r.obligation_date, `ict:rcv:${receivingId}`, actor.principalId]);
+      status, obligationDate, `ict:rcv:${receivingId}`, actor.principalId]);
   if (rows[0]) {
     // THE RULED TRIGGER (#202): a priced, complete receipt establishes the pair now, in the receipt's transaction.
     if (status === "AWAITING_OBLIGATION_TRIGGER") return (await establishIntercompanyObligationsOn(c, actor, { correlationId: id, trigger: INTERCOMPANY_RECEIPT_TRIGGER })).correlation;

@@ -38,6 +38,12 @@ export const WAREHOUSE_MASTER_CAPABILITY = "warehouse.record.manage";
  */
 export const TRUCK_REGISTRY_CAPABILITY = "inventory.truckRegistry.manage";
 
+/**
+ * ADMINISTRATIVE CONFIGURATION authority for Finance configuration (Controller, 2026-10-02; DECISIONS #203): accounting
+ * destinations, counterparty payment terms and operating-company business time zones. Held by no one by default.
+ */
+export const FINANCE_CONFIGURATION_CAPABILITY = "finance.configuration.manage";
+
 export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze({
   listMobileLocationScopeBindings: Object.freeze({ capability: MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, mutation: false }),
   readMobileLocationScopeBinding: Object.freeze({ capability: MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, mutation: false }),
@@ -62,6 +68,14 @@ export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze({
   relinkTruck: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
   unlinkTruck: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
   changeTruckStatus: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: true }),
+  // Finance configuration (eosFinance/financeConfigurationAdministration.ts).
+  listAccountingDestinations: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: false }),
+  configureAccountingDestination: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: true }),
+  setAccountingDestinationStatus: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: true }),
+  listCounterpartyPaymentTerms: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: false }),
+  setCounterpartyPaymentTerms: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: true }),
+  listOperatingCompanyBusinessTimeZones: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: false }),
+  setOperatingCompanyBusinessTimeZone: Object.freeze({ capability: FINANCE_CONFIGURATION_CAPABILITY, mutation: true }),
 } as const);
 
 export type AdminConfigurationOperation = keyof typeof ADMIN_CONFIGURATION_OPERATIONS;

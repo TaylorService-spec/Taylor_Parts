@@ -122,7 +122,7 @@ test.after(async () => {
       // Migration 022's line tables reference the three record tables too.
       " eos_finance.billing_package_lines, eos_commercial.sales_order_fulfillments, eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
       // Migration 1764480000000 (#200): the financing arrangement and its history reference the Agreement.
-      " eos_commercial.financing_restructures, eos_commercial.financing_approval_evidence, eos_commercial.financing_arrangement_events, eos_commercial.financing_arrangements," +
+      " eos_commercial.sales_agreement_trade_ins, eos_commercial.financing_restructures, eos_commercial.financing_approval_evidence, eos_commercial.financing_arrangement_events, eos_commercial.financing_arrangements," +
       " eos_commercial.sales_orders," +
       " eos_commercial.sales_agreements, eos_commercial.opportunities",
     );
@@ -154,7 +154,7 @@ test("migration 008 creates eos_commercial beside eos_policy and eos_ops", { ski
   assert.deepEqual(
     tables.rows.map((r) => r.table_name),
     ["accountability_handoffs", "command_receipts", "financing_approval_evidence", "financing_arrangement_events", "financing_arrangements", "financing_restructures", "number_counters", "opportunities", "opportunity_lines", "ownership_handoffs",
-      "sales_agreement_lines", "sales_agreements", "sales_order_fulfillments", "sales_order_line_billing_eligibility", "sales_order_line_fulfillment",
+      "sales_agreement_lines", "sales_agreement_trade_ins", "sales_agreements", "sales_order_fulfillments", "sales_order_line_billing_eligibility", "sales_order_line_fulfillment",
       "sales_order_lines", "sales_orders"],
     "five tables: three commercial records, their shared OWNERSHIP history, and -- since migration 020 " +
       "(Wave 2C) -- their shared ACCOUNTABILITY history. The second history table is deliberately NOT a " +
@@ -162,7 +162,7 @@ test("migration 008 creates eos_commercial beside eos_policy and eos_ops", { ski
       "as ownership, and reusing those columns would make their names lie about what they hold. Migration 022 " +
       "(wave C1) adds the three commercial line tables, the business-number counter and the idempotency receipts. Migration " +
       "1764440000000 (DECISIONS #195) adds the append-only fulfillment record and its two DERIVED views (fulfillment, billing eligibility). " +
-      "Migration 1764480000000 (Owner ruling #200) adds the customer's financing arrangement, its append-only history, its approval evidence (#201) and its explicit restructures.",
+      "Migration 1764480000000 (Owner ruling #200) adds the customer's financing arrangement, its append-only history, its approval evidence (#201) and its explicit restructures. Migration 1764500000000 (#203) adds the Agreement's itemised trade-ins.",
   );
 });
 

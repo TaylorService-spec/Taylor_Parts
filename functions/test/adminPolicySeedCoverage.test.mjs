@@ -105,9 +105,10 @@ test("the reconciliation adds up: 28 entities and 389 fields, all seeded", () =>
   // they would have had to become 34 fake Objects to be registered at all. They belong to
   // eos_policy.role_field_permission_overrides.
   // 40 -> 42, objectsFromCapabilityAuthority 6 -> 8 (objectsWithoutAnEntity stays 6): the Work Order cutover (2026-09-30) -- `inboundWorkRequest` and `inboundMailbox`, because the five inboundWork.* capabilities of migration 1764340000000 name them (object_key NOT NULL); without them every inbound grant was STRANDED (capabilityObjectAuthorityGuard).
-  assert.equal(ledger.seeded.objects, 42);
+  // 42 -> 43, objectsFromCapabilityAuthority 8 -> 9: the post-FBR governed configuration package (2026-10-02) -- `financeConfiguration`, because finance.configuration.manage (migration 1764500000000) names it; a security subject with no EntityDefinition.
+  assert.equal(ledger.seeded.objects, 43);
   assert.equal(ledger.seeded.objectsWithoutAnEntity, 6);
-  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 8);
+  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 9);
   assert.equal(
     ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity + ledger.seeded.objectsFromCapabilityAuthority,
     ledger.seeded.objects,

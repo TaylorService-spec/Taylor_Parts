@@ -15,7 +15,10 @@
 // executable SQL never names an operating company); crmAuthority.test.mjs pins these lists to the
 // client sources and to that migration so the three cannot drift apart silently.
 
-export const ACCOUNT_RELATIONSHIP_TYPES = Object.freeze(["CUSTOMER", "VENDOR"] as const);
+// FINANCING_PROVIDER (Controller G1, 2026-10-02; Owner ruling #200): a leasing / financing provider, provider-neutral. A
+// classification of the organization (never a separate master), never implying CUSTOMER or VENDOR; designating or
+// removing it is a governed change (customer.governedField.write).
+export const ACCOUNT_RELATIONSHIP_TYPES = Object.freeze(["CUSTOMER", "VENDOR", "FINANCING_PROVIDER"] as const);
 export const ACCOUNT_LINES_OF_BUSINESS = Object.freeze(["TAYLOR", "VENTANA"] as const);
 export const INVOICE_DELIVERY_METHODS = Object.freeze(["EMAIL", "PORTAL", "MAIL", "EDI"] as const);
 export const PAYMENT_TERMS = Object.freeze(["COD", "NET_30", "NET_60", "NET_90"] as const);

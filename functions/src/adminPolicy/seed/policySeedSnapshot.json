@@ -5,7 +5,7 @@
     "field-ops-app-vite/src/access/policyObjectRegistry.js"
   ],
   "counts": {
-    "objects": 42,
+    "objects": 43,
     "objectsWithFields": 28,
     "fields": 389
   },
@@ -87,7 +87,8 @@
           "required": false,
           "allowedValues": [
             "CUSTOMER",
-            "VENDOR"
+            "VENDOR",
+            "FINANCING_PROVIDER"
           ],
           "defaultValue": null,
           "searchable": true,
@@ -6505,6 +6506,22 @@
       "labelPlural": "Inbound Mailboxes",
       "description": "The intake configuration Inbound Work is received through: the mailboxes EOS knows and their routing rules (eos_ops.inbound_mailboxes, eos_ops.inbound_routing_rules; migration 1764340000000). Managed by inboundWork.intake.manage. Provider/OAuth custody is not part of this Object.",
       "domain": "Service",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "financeConfiguration",
+      "label": "Finance Configuration",
+      "labelPlural": "Finance Configuration",
+      "description": "Administrative Finance configuration (DECISIONS #203): each operating company's provider-neutral accounting destination, company / counterparty payment terms (net days, governing future obligations) and the operating company's business time zone. Managed by finance.configuration.manage. No financial transaction, settlement, delivery or credential is part of this Object.",
+      "domain": "Finance",
       "source": "CAPABILITY_AUTHORITY",
       "supportsDelete": false,
       "capabilitiesByVerb": {
