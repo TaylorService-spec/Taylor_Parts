@@ -18,7 +18,7 @@
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
     "callableExports": 31,
-    "destinations": 95,
+    "destinations": 97,
     "destinationsHidden": 19,
     "guides": 0,
     "registerEntries": 18,
@@ -880,10 +880,11 @@
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/policyObjectRegistry.js",
-          "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js"
+          "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js",
+          "field-ops-app-vite/src/modules/sales/SalesAgreementDetail.jsx"
         ],
         "serverReferenceCount": 7,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -5839,6 +5840,24 @@
       "key": "financialPolicy",
       "label": "Financial Policy",
       "path": "financial-policy",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "systemConfiguration",
+      "label": "System Configuration",
+      "path": "system-configuration",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "salesConfiguration",
+      "label": "Sales Configuration",
+      "path": "sales-configuration",
       "legacyKey": null,
       "navHidden": false,
       "future": false,

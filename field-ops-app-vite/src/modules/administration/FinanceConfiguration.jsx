@@ -3,10 +3,10 @@
 // finance.configuration.manage and audits each change with its stated reason. This component decides nothing: a refusal is
 // rendered as the server's answer.
 //
-// THREE RECORDS. An operating company's accounting destinations (one ACTIVE at a time; a superseded one stays as history and an
-// untouched handoff follows the new active one, a handoff with delivery history never moves), its payment terms with each
-// counterparty (they govern FUTURE obligations only -- an obligation already opened keeps its due date) and its business time
-// zone (the business date of an instant; technical timestamps stay UTC).
+// TWO RECORDS. An operating company's accounting destinations (one ACTIVE at a time; a superseded one stays as history and an
+// untouched handoff follows the new active one, a handoff with delivery history never moves) and its payment terms with each
+// counterparty (they govern FUTURE obligations only -- an obligation already opened keeps its due date). The company's
+// business time zone is System Configuration (Owner ruling #204), not Finance configuration.
 import { useCallback, useEffect, useState } from "react";
 import { SectionHeader, StatusIndicator, Button } from "../../shared/ui/primitives";
 import { Field, FormError } from "../../shared/ui/form";
@@ -26,11 +26,9 @@ const counterpartyText = (cp) => cp.kind === "INTERNAL_OPERATING_COMPANY" ? cp.o
 export default function FinanceConfiguration({ callApi = callPolicyApi }) {
   const [destinations, setDestinations] = useState(null);
   const [terms, setTerms] = useState([]);
-  const [zones, setZones] = useState([]);
   const [refusal, setRefusal] = useState(null);
   const [destinationDraft, setDestinationDraft] = useState(EMPTY_DESTINATION);
   const [termsDraft, setTermsDraft] = useState(EMPTY_TERMS);
-  const [zoneDraft, setZoneDraft] = useState({});
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -40,9 +38,8 @@ export default function FinanceConfiguration({ callApi = callPolicyApi }) {
     if (!res.ok) { setDestinations(null); setRefusal(refusalText(res)); return; }
     setRefusal(null);
     setDestinations(res.data?.items ?? []);
-    const [t, z] = await Promise.all([callApi("listCounterpartyPaymentTerms", {}), callApi("listOperatingCompanyBusinessTimeZones", {})]);
+    const t = await callApi("listCounterpartyPaymentTerms", {});
     setTerms(t.ok ? (t.data?.items ?? []) : []);
-    setZones(z.ok ? (z.data?.items ?? []) : []);
   }, [callApi]);
 
   useEffect(() => { load(); }, [load]);
@@ -73,11 +70,10 @@ export default function FinanceConfiguration({ callApi = callPolicyApi }) {
       : { kind: "EXTERNAL_ORGANIZATION", crmAccountId: termsDraft.counterpartyRef },
     paymentTermsNetDays: Number(termsDraft.netDays),
   }, async () => { setTermsDraft(EMPTY_TERMS); await load(); });
-  const setZone = (z) => run("setOperatingCompanyBusinessTimeZone", { operatingCompanyId: z.operatingCompanyId, businessTimeZone: zoneDraft[z.operatingCompanyId] }, load);
 
   return (
     <section aria-labelledby="finance-configuration-title">
-      <SectionHeader id="finance-configuration-title" title="Finance configuration" description="Accounting destinations, payment terms and business time zones for each operating company. Each change states a reason and is audited." />
+      <SectionHeader id="finance-configuration-title" title="Finance configuration" description="Accounting destinations and payment terms for each operating company. Each change states a reason and is audited." />
       {refusal && <p className="fo-muted" role="status">{refusal}</p>}
       {destinations && (
         <>
@@ -138,24 +134,6 @@ export default function FinanceConfiguration({ callApi = callPolicyApi }) {
             </Field>
             <Field label="Net days"><input className="fo-input" aria-label="Net days" inputMode="numeric" value={termsDraft.netDays} onChange={(e) => setTermsDraft({ ...termsDraft, netDays: e.target.value })} /></Field>
           </div>
-
-          <h4>Business time zones</h4>
-          <p className="fo-muted">The business date of an event is its date in the company&rsquo;s time zone. Timestamps are kept as recorded.</p>
-          <table className="fo-table" aria-label="Business time zones">
-            <thead><tr><th>Operating company</th><th>Time zone</th><th /></tr></thead>
-            <tbody>
-              {zones.map((z) => (
-                <tr key={z.operatingCompanyId}>
-                  <td>{z.operatingCompanyId}</td>
-                  <td>{z.businessTimeZone}</td>
-                  <td>
-                    <input className="fo-input" aria-label={`New time zone for ${z.operatingCompanyId}`} placeholder="e.g. America/Phoenix" value={zoneDraft[z.operatingCompanyId] ?? ""} onChange={(e) => setZoneDraft({ ...zoneDraft, [z.operatingCompanyId]: e.target.value })} />
-                    <Button size="sm" variant="secondary" disabled={busy || !reason.trim() || !zoneDraft[z.operatingCompanyId]} onClick={() => setZone(z)}>Set time zone</Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
 
           <Field label="Reason (required for every change)"><input className="fo-input" aria-label="Reason for the change" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
           <div className="fo-form-actions">

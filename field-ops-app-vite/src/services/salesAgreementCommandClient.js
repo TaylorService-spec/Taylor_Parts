@@ -25,6 +25,11 @@ export const createSalesAgreement = (payload, { client } = {}) => command("creat
 export const updateSalesAgreementDraft = (payload, { client } = {}) => command("updateSalesAgreementDraft", payload, client);
 export const acceptSalesAgreement = ({ salesAgreementId, idempotencyKey }, { client } = {}) =>
   command("acceptSalesAgreement", { salesAgreementId, idempotencyKey }, client);
+// Owner ruling #204: an approver (Owner / General Manager) decides a PROPOSED trade-in -- approving assigns the value.
+export const approveSalesAgreementTradeIn = ({ salesAgreementId, itemNumber, approvedCreditMinor, reason, idempotencyKey }, { client } = {}) =>
+  command("approveSalesAgreementTradeIn", { salesAgreementId, itemNumber, approvedCreditMinor, ...(reason ? { reason } : {}), idempotencyKey }, client);
+export const declineSalesAgreementTradeIn = ({ salesAgreementId, itemNumber, reason, idempotencyKey }, { client } = {}) =>
+  command("declineSalesAgreementTradeIn", { salesAgreementId, itemNumber, reason, idempotencyKey }, client);
 export const getSalesAgreementContext = ({ salesAgreementId }, { client = commercialApiClient } = {}) =>
   readAgreement(salesAgreementId, client);
 

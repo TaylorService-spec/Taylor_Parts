@@ -13,6 +13,7 @@ import { formatMoment } from "../../domain/displayTimestamp";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import { SALES_AGREEMENT_READ_CAPABILITY } from "../../access/salesAgreementCapabilityAccess.js";
 import { LinesEditor, buildLines, toEditorLines } from "./salesAgreementLines.jsx";
+import TradeInSection from "./TradeInSection.jsx";
 import {
   salesAgreementHeader,
   salesAgreementLines,
@@ -211,7 +212,7 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
   const mayRead = hasCapability(SALES_AGREEMENT_READ_CAPABILITY) === true;
   // The commands come from the SAME hook that owns the read, so a success refreshes the record this
   // page is showing. The onEditDraft / onRecordAcceptance props stay as an override seam.
-  const { view, absence, refresh, updateDraft, accept, pending, commandError, clearCommandError } =
+  const { view, absence, refresh, updateDraft, accept, approveTradeIn, declineTradeIn, pending, commandError, clearCommandError } =
     useSalesAgreementById(salesAgreementId, { enabled: mayRead });
   const [editingTerms, setEditingTerms] = useState(false);
   // SA-G7. `null` means not editing; an array is the working draft. Kept separate from
@@ -566,6 +567,22 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
               </p>
             )}
           </RuledSection>
+
+          {/* TRADE-INS (Owner ruling #204) — proposals, and an approver's decision. A proposal reduces nothing. */}
+          {(view.tradeIns?.length > 0 || (view.state === "DRAFT" && hasCapability("salesAgreement.updateDraft") === true)) ? (
+            <RuledSection title="Trade-ins">
+              <TradeInSection
+                tradeIns={view.tradeIns ?? []}
+                currency={view.currency ?? "USD"}
+                editable={view.state === "DRAFT" && hasCapability("salesAgreement.updateDraft") === true && typeof updateDraft === "function"}
+                mayApprove={view.state === "DRAFT" && hasCapability("salesAgreement.tradeIn.approve") === true && typeof approveTradeIn === "function"}
+                pending={pending}
+                onPropose={(tradeIns) => updateDraft({ tradeIns })}
+                onApprove={(input) => approveTradeIn(input)}
+                onDecline={(input) => declineTradeIn(input)}
+              />
+            </RuledSection>
+          ) : null}
 
           {/* ACCEPTANCE — EVIDENCE, NOT ESSAY. Exactly the three facts EOS writes, then the two
               short statements it can stand behind. The sentences come from PR 1's frozen contract,

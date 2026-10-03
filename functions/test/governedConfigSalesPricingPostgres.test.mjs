@@ -1,7 +1,8 @@
-// POST-FBR GOVERNED CONFIGURATION + COMMERCIAL PRICING (Controller, 2026-10-02; DECISIONS #203; migration 1764500000000).
-// Proofs A–AC against real PostgreSQL: FINANCING_PROVIDER as a governed CRM classification; operating-company business time;
-// accounting destinations and payment terms through Administration; the customer sales discount; the trade-in as
-// cash-equivalent consideration and incoming equipment; used-equipment value never a resale price; Finance unchanged.
+// POST-FBR GOVERNED CONFIGURATION + COMMERCIAL PRICING (Controller, 2026-10-02; DECISIONS #203 + Owner rulings #204;
+// migration 1764500000000). Proofs against real PostgreSQL: #203 A–AC (FINANCING_PROVIDER, operating-company business time,
+// accounting destinations and payment terms, the customer discount, the trade-in as consideration and incoming equipment,
+// used-equipment value never a resale price, Finance unchanged) and #204 A–AK (configuration authority assigned through
+// Administration to Security Roles, System Configuration, per-user discount authority, trade-in proposal and approval).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -23,7 +24,10 @@ const saRead = require("../lib/eosCommercial/reads/salesAgreementReadProjection.
 const crm = require("../lib/eosCrm/accountAuthority.js");
 const bt = require("../lib/eosOps/operatingCompanyBusinessTime.js");
 const recv = require("../lib/eosOps/receiveReorderStockCommand.js");
-const { createFinanceConfigurationAdministration } = require("../lib/eosFinance/financeConfigurationAdministration.js");
+const { createFinanceConfigurationAdministration, isFinanceConfigurationOperation } = require("../lib/eosFinance/financeConfigurationAdministration.js");
+const { createSystemConfigurationAdministration, isSystemConfigurationOperation } = require("../lib/eosOps/systemConfigurationAdministration.js");
+const { createSalesDiscountAuthorityAdministration } = require("../lib/salesAuthority/salesDiscountAuthority.js");
+const { bootstrapFirstOwner } = require("../lib/adminPolicy/tenantBootstrap.js");
 const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
 const authority = require("../lib/eosOps/reorderAssignmentAuthority.js");
 const http = require("../lib/eosOps/eosOpsHttp.js");
@@ -44,14 +48,15 @@ test("V / W / AC. static: no trade-in credit or acquisition value ever reaches a
   const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
   const pricing = ["salesAgreement/salesAgreementCommands.ts", "eosCommercial/commands/salesAgreementCommandService.ts", "eosCommercial/commands/commercialRecordStore.ts"]
     .map((f) => strip(readFileSync(join(SRC, f), "utf8"))).join("\n");
-  assert.equal(/inventory_acquisition_costs|agreed_credit_minor\s*[,)]*\s*(AS|as)\s*unit_price|unit_price_minor\s*=\s*[^,;]*agreed_credit/i.test(pricing), false,
-    "no pricing path reads an acquisition value or trade-in credit into a price");
+  assert.equal(/inventory_acquisition_costs|(approved_credit|proposed_value)_minor\s*[,)]*\s*(AS|as)\s*unit_price|unit_price_minor\s*=\s*[^,;]*(approved_credit|proposed_value)/i.test(pricing), false,
+    "no pricing path reads an acquisition value or a trade-in value into a price");
   // Business-date creation (Finance, Commercial, the business-time resolver) never names a zone -- it asks the resolver.
   for (const f of walk(SRC).filter((f) => f.endsWith(".ts") && /\/(eosFinance|eosCommercial)\/|operatingCompanyBusinessTime\.ts$/.test(f))) {
     const s = strip(readFileSync(f, "utf8"));
     assert.equal(/America\/Phoenix|AT TIME ZONE 'UTC'\s*,\s*'YYYY-MM-DD'\)/.test(s), false, `${f}: no hardcoded business zone or UTC calendar cut`);
   }
-  for (const f of ["eosFinance/financeConfigurationAdministration.ts", "eosOps/operatingCompanyBusinessTime.ts"]) {
+  for (const f of ["eosFinance/financeConfigurationAdministration.ts", "eosOps/operatingCompanyBusinessTime.ts", "eosOps/systemConfigurationAdministration.ts",
+    "salesAuthority/salesDiscountAuthority.ts"]) {
     assert.equal(/firebase/i.test(strip(readFileSync(join(SRC, f), "utf8"))), false, `${f}: no Firebase`);
   }
 });
@@ -154,19 +159,95 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
   const sys = { tenantId: TENANT, principalId: "finance-system" };
   const inTx = async (fn) => { const c = await pool.connect(); try { await c.query("BEGIN"); const r = await fn(c); await c.query("COMMIT"); return r; }
     catch (e) { await c.query("ROLLBACK"); throw e; } finally { c.release(); } };
-  const configuration = createFinanceConfigurationAdministration(pool);
+  const finance = createFinanceConfigurationAdministration(pool);
+  const system = createSystemConfigurationAdministration(pool);
+  const discounts = createSalesDiscountAuthorityAdministration(pool);
+  const configuration = (operation, ...rest) => (isFinanceConfigurationOperation(operation) ? finance
+    : isSystemConfigurationOperation(operation) ? system : discounts)(operation, ...rest);
   const adminAs = (who, operation, input) => executeAdminOperation({ repo, configuration },
     { caller: { externalSubject: who.subject, identityProvider: "firebase" }, operation, input, requestId: `r-${randomUUID()}` });
   const refusedWith = async (p, code) => { await assert.rejects(p, (e) => { assert.equal(e.code, code, `${e.code}: ${e.message}`); return true; }); };
 
-  // ── a Finance configuration administrator: the capability is granted through Administration, to a Role, never by code ──
-  const finRole = await admin("createRole", { key: "financeConfigurationAdministrator", name: "Finance Configuration Administrator", reason: "test tenant" });
-  assert.equal(finRole.ok, true, JSON.stringify(finRole).slice(0, 300));
-  const granted = await admin("grantObjectActionToRole", { roleKey: "financeConfigurationAdministrator", objectKey: "financeConfiguration", actionKey: "manage",
-    reason: "test tenant only" });
-  assert.equal(granted.ok, true, JSON.stringify(granted).slice(0, 400));
-  const finAdmin = await person("uid-finadmin", ["financeConfigurationAdministrator"], { id: "e-finadmin", name: "Frankie Finance" });
+  // ── #204: the Owner-ruled holders are written by the GRANT-BEARING migration (Owner ruling E; the R1 vehicle -- the only one
+  // that reaches the designated Administrator Role, which Administration never edits for itself). This tenant's Roles existed
+  // when it ran (serviceBaselineTenant seeds at the seed boundary, then migrates the rest), exactly as nonprod's do. ──
+  const MIGRATION_SQL = readFileSync(resolve(HERE, "../migrations/1764500000000_governed-config-and-sales-pricing.sql"), "utf8").split("-- Down Migration")[0];
+  const GRANT_SQL = MIGRATION_SQL.slice(MIGRATION_SQL.indexOf("INSERT INTO role_capabilities"),
+    MIGRATION_SQL.indexOf("ON CONFLICT (tenant_id, role_id, capability_id) DO NOTHING;") + "ON CONFLICT (tenant_id, role_id, capability_id) DO NOTHING;".length);
+  const RULED = [...GRANT_SQL.matchAll(/\('([a-zA-Z.]+)', '([a-zA-Z]+)'\)/g)].map((m) => [m[1], m[2]]);
   const outsider = await person("uid-outsider", ["partsAssociate"], { id: "e-outsider", name: "Ollie Outsider" });
+  // The protected Owner is never appointed by ordinary role administration: the tenant's first Owner is bootstrapped.
+  const ownerP = await person("uid-owner", [], { id: "e-owner", name: "Avery Owner" });
+  await bootstrapFirstOwner(repo, { tenantId: TENANT, principalId: ownerP.principalId, performedBy: "operator-test", reason: "local test tenant" });
+  const gmP = await person("uid-gm", ["generalManager"], { id: "e-gm", name: "Gale General-Manager" });
+  const controllerP = await person("uid-ctrl", ["controller"], { id: "e-ctrl", name: "Sage Controller" });
+  const sysAdminP = await person("uid-sysadmin", ["admin"], { id: "e-sysadmin", name: "Rowan System-Administrator" });
+  const finAdmin = controllerP;
+  const actorOfRoles = async (who, roles) => ({ tenantId: TENANT, principalId: who.principalId, capabilities: new Set(await capabilitiesForRoleKeys(pool, TENANT, roles)) });
+
+  await t.test("#204 A / B / C / D / E / F. finance.configuration.manage is assigned through Administration to Security Roles, and revoked the same way", async () => {
+    assert.equal(RULED.length, 11, "exactly the eleven Owner-ruled (capability, Security Role) pairs");
+    const written = await q(`SELECT c.key, r.key AS role FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+      JOIN eos_policy.roles r ON r.id = rc.role_id WHERE rc.tenant_id = $1 AND rc.granted_by = 'migration:1764500000000' ORDER BY 1, 2`, [TENANT]);
+    assert.deepEqual(written.rows.map((x) => [x.key, x.role]), [...RULED].sort((a, b) => (a[0] + a[1] < b[0] + b[1] ? -1 : 1)), "the ruled holders, nothing else");
+    // A: the capability is an ordinary Object action in the Administration security model (the Roles & Permissions checkbox).
+    const matrix = await admin("getObjectSecurityMatrix", { objectKey: "financeConfiguration" });
+    assert.equal(matrix.ok, true, JSON.stringify(matrix).slice(0, 300));
+    assert.match(JSON.stringify(matrix.data), /finance\.configuration\.manage/, "A: shown under its Object as an assignable action");
+    for (const [who, label] of [[ownerP, "B Owner / Executive"], [gmP, "C General Manager"], [controllerP, "D Finance / Accounting"], [sysAdminP, "E System Administrator"]]) {
+      assert.equal((await adminAs(who, "listAccountingDestinations", {})).ok, true, `${label} holds finance.configuration.manage`);
+    }
+    assert.equal((await adminAs(outsider, "listAccountingDestinations", {})).ok, false, "a Parts Associate does not");
+    // A / F: an ordinary checkbox -- any Role, granted then revoked through Administration, no source change.
+    assert.equal((await admin("createRole", { key: "financeConfigurationAdministrator", name: "Finance Configuration Administrator", reason: "test tenant" })).ok, true);
+    const grantIt = await admin("grantObjectActionToRole", { roleKey: "financeConfigurationAdministrator", objectKey: "financeConfiguration", actionKey: "manage", reason: "assign" });
+    assert.equal(grantIt.ok, true, JSON.stringify(grantIt).slice(0, 300));
+    const delegate = await person("uid-findelegate", ["financeConfigurationAdministrator"], { id: "e-findelegate", name: "Dana Delegate" });
+    assert.equal((await adminAs(delegate, "listAccountingDestinations", {})).ok, true, "A: assigned");
+    const revoked = await admin("revokeObjectActionFromRole", { roleKey: "financeConfigurationAdministrator", objectKey: "financeConfiguration", actionKey: "manage", reason: "revoke" });
+    assert.equal(revoked.ok, true, JSON.stringify(revoked).slice(0, 300));
+    assert.equal((await adminAs(delegate, "listAccountingDestinations", {})).ok, false, "F: revocation removes configuration authority");
+  });
+
+  await t.test("#204 G / Z / AA. administration and finance configuration confer no business approval; trade-in approval is Owner / GM only", async () => {
+    const holds = async (roles) => new Set(await capabilitiesForRoleKeys(pool, TENANT, roles));
+    for (const [role, label] of [["admin", "G / AA System Administrator"], ["controller", "Z Finance / Accounting"], ["salesperson", "Y salesperson"]]) {
+      assert.equal((await holds([role])).has("salesAgreement.tradeIn.approve"), false, `${label} holds no trade-in approval`);
+    }
+    assert.equal((await holds(["owner"])).has("salesAgreement.tradeIn.approve"), true);
+    assert.equal((await holds(["generalManager"])).has("salesAgreement.tradeIn.approve"), true);
+    assert.equal((await holds(["admin"])).has("admin.systemConfiguration.manage"), true, "system administration is the System Administrator's");
+    assert.equal((await holds(["controller"])).has("admin.systemConfiguration.manage"), false, "Finance configuration is not system configuration");
+    assert.deepEqual(RULED.filter(([k]) => k === "salesAgreement.tradeIn.approve").map(([, r]) => r).sort(), ["generalManager", "owner"],
+      "the migration rules exactly Owner / GM as trade-in approvers");
+  });
+
+  await t.test("#204 H / I / J. System Configuration: company time zone and default language, validated, audited, authority-guarded", async () => {
+    assert.equal((await adminAs(controllerP, "listSystemConfiguration", {})).ok, false, "Finance / Accounting is not system administration");
+    for (const company of ["taylor", "ventana"]) {
+      const r = await adminAs(sysAdminP, "setSystemConfigurationSetting", { operatingCompanyId: company, settingKey: "businessTimeZone", value: "America/Phoenix", reason: "Arizona business day" });
+      assert.equal(r.ok, true, `H ${JSON.stringify(r)}`);
+    }
+    const lang = await adminAs(sysAdminP, "setSystemConfigurationSetting", { operatingCompanyId: "ventana", settingKey: "defaultLanguage", value: "es-US", reason: "Ventana staff" });
+    assert.deepEqual([lang.ok, lang.data.previous, lang.data.value], [true, "en-US", "es-US"], "I: language configurable; the previous value was the default");
+    for (const [settingKey, value, why] of [["businessTimeZone", "Mars/Olympus", /not an IANA time zone/], ["defaultLanguage", "xx-ZZ", /not a supported language/],
+      ["defaultLanguage", "english", /not a supported language/], ["favouriteColour", "blue", /not a governed setting/]]) {
+      const r = await adminAs(sysAdminP, "setSystemConfigurationSetting", { operatingCompanyId: "taylor", settingKey, value, reason: "x" });
+      assert.deepEqual([r.ok, r.code], [false, "INVALID_INPUT"], `J: ${settingKey}=${value} ${JSON.stringify(r)}`);
+      assert.match(r.message, why, `J: ${settingKey}=${value}`);
+    }
+    assert.equal((await adminAs(sysAdminP, "setSystemConfigurationSetting", { operatingCompanyId: "taylor", settingKey: "defaultLanguage", value: "en-US" })).ok, false, "a change states its reason");
+    await assert.rejects(q(`INSERT INTO eos_policy.operating_company_settings (tenant_id, operating_company_id, setting_key, value, updated_by) VALUES ($1,'taylor','defaultLanguage','xx-ZZ','x')`, [TENANT]),
+      /LANGUAGE_UNSUPPORTED/, "the database refuses an unsupported language too");
+    const cfg = (await adminAs(sysAdminP, "listSystemConfiguration", {})).data;
+    const byCo = Object.fromEntries(cfg.companies.map((c) => [c.operatingCompanyId, c.values]));
+    assert.deepEqual([byCo.taylor.businessTimeZone.value, byCo.taylor.defaultLanguage, byCo.ventana.defaultLanguage],
+      ["America/Phoenix", { value: "en-US", source: "DEFAULT" }, { value: "es-US", source: "CONFIGURED" }], "company-aware; an unset language reads as its default, said so");
+    assert.deepEqual(cfg.supportedLanguages.map((l) => l.languageTag), ["en-US", "es-US"]);
+    const audits = await q(`SELECT target_id, before, after, actor_uid FROM eos_policy.audit_events WHERE tenant_id=$1 AND action='admin.systemConfiguration.set' ORDER BY occurred_at`, [TENANT]);
+    assert.deepEqual(audits.rows.map((a) => a.target_id), ["taylor:businessTimeZone", "ventana:businessTimeZone", "ventana:defaultLanguage"]);
+    assert.deepEqual([audits.rows[2].before, audits.rows[2].after, audits.rows[2].actor_uid], [{ defaultLanguage: "en-US" }, { defaultLanguage: "es-US" }, sysAdminP.principalId]);
+  });
 
   await t.test("G / H. accounting destinations through Administration: configure, activate, deactivate, history, company-separated", async () => {
     const refused = await adminAs(outsider, "listAccountingDestinations", {});
@@ -193,14 +274,9 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
     void v;
   });
 
-  await t.test("C / D / I. business time zones and payment terms through Administration (Taylor -> Ventana NET 90; nothing mirrored)", async () => {
-    for (const company of ["taylor", "ventana"]) {
-      const r = await adminAs(finAdmin, "setOperatingCompanyBusinessTimeZone", { operatingCompanyId: company, businessTimeZone: "America/Phoenix", reason: "Arizona business day" });
-      assert.equal(r.ok, true, JSON.stringify(r));
-    }
-    assert.equal((await adminAs(finAdmin, "setOperatingCompanyBusinessTimeZone", { operatingCompanyId: "taylor", businessTimeZone: "Mars/Olympus", reason: "x" })).ok, false);
-    const zones = (await adminAs(finAdmin, "listOperatingCompanyBusinessTimeZones", {})).data.items;
-    assert.deepEqual(zones.map((z) => [z.operatingCompanyId, z.businessTimeZone]), [["taylor", "America/Phoenix"], ["ventana", "America/Phoenix"]]);
+  await t.test("C / D / I. business time (set through System Configuration above) and payment terms through Finance configuration (Taylor -> Ventana NET 90; nothing mirrored)", async () => {
+    const zones = (await adminAs(sysAdminP, "listSystemConfiguration", {})).data.companies;
+    assert.deepEqual(zones.map((z) => [z.operatingCompanyId, z.values.businessTimeZone.value]), [["taylor", "America/Phoenix"], ["ventana", "America/Phoenix"]]);
     // C / E: the shared resolver.
     assert.equal(await bt.businessDateOn(pool, TENANT, "taylor", "2026-10-03T04:40:00Z"), "2026-10-02", "E: 04:40 UTC is still 2 October in Arizona");
     assert.equal(await bt.businessDateOn(pool, TENANT, "taylor", "2026-10-03T07:00:00Z"), "2026-10-03");
@@ -260,6 +336,47 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
   const reader = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesAgreement.read"]) };
   const detail = (id) => saRead.getSalesAgreementDetail({ pool }, reader, { salesAgreementId: id });
 
+  await t.test("#204 K / L / M / N / O / P / Q / R / S / T. per-user maximum customer discount: governed, audited, enforced on the server", async () => {
+    // T: NOT CONFIGURED fails closed -- no discount at all, and said so (never read as unlimited).
+    await refusedWith(agreement({ customerDiscount: { kind: "PERCENT", percentBasisPoints: 100 } }), "DISCOUNT_AUTHORITY_NOT_CONFIGURED");
+    const listed0 = (await adminAs(gmP, "listSalesDiscountAuthorities", {})).data.items.find((i) => i.principalId === seller.principalId);
+    assert.deepEqual([listed0.state, listed0.maxDiscountBasisPoints], ["NOT_CONFIGURED", null], "T: missing is its own state");
+    // M: the salesperson cannot set their own maximum.
+    const self = await adminAs(seller, "setSalesDiscountAuthority", { principalId: seller.principalId, maxDiscountBasisPoints: 10000, reason: "me" });
+    assert.equal(self.ok, false, "M: no sales.discountAuthority.manage -> refused");
+    // K / L: the General Manager gives the salesperson an individual 10% maximum; audited (who, previous, new, actor, reason).
+    const set = await adminAs(gmP, "setSalesDiscountAuthority", { principalId: seller.principalId, maxDiscountBasisPoints: 1000, reason: "standard retail authority" });
+    assert.deepEqual([set.ok, set.data?.previousMaxDiscountBasisPoints, set.data?.maxDiscountBasisPoints], [true, null, 1000], `L ${JSON.stringify(set)}`);
+    for (const who of [ownerP, controllerP, sysAdminP]) assert.equal((await adminAs(who, "listSalesDiscountAuthorities", {})).ok, true, "every ruled administrator may manage it");
+    assert.equal((await adminAs(outsider, "listSalesDiscountAuthorities", {})).ok, false);
+    assert.equal((await adminAs(gmP, "setSalesDiscountAuthority", { principalId: seller.principalId, maxDiscountBasisPoints: 10001, reason: "x" })).ok, false, "at most 100%");
+    const audit = await one(`SELECT target_id, before, after, actor_uid, reason, occurred_at FROM eos_policy.audit_events WHERE tenant_id=$1 AND action='sales.discountAuthority.set'`, [TENANT]);
+    assert.deepEqual([audit.target_id, audit.before, audit.after, audit.actor_uid],
+      [seller.principalId, { state: "NOT_CONFIGURED" }, { state: "CONFIGURED", maxDiscountBasisPoints: 1000 }, gmP.principalId]);
+    assert.match(audit.reason, /^standard retail authority \[request r-/, "the stated reason, correlated to its request (the Administration convention)");
+    assert.ok(audit.occurred_at instanceof Date);
+    // N / O / P: percentage below, at, above.
+    assert.ok(await agreement({ customerDiscount: { kind: "PERCENT", percentBasisPoints: 525 } }), "N: 5.25% <= 10%");
+    assert.ok(await agreement({ customerDiscount: { kind: "PERCENT", percentBasisPoints: 1000 } }), "O: exactly 10%");
+    await refusedWith(agreement({ customerDiscount: { kind: "PERCENT", percentBasisPoints: 1001 } }), "DISCOUNT_EXCEEDS_AUTHORITY");
+    // Q / R: fixed amounts against the 40000 selling price -> at most 4000 (integer arithmetic).
+    assert.ok(await agreement({ customerDiscount: { kind: "FIXED_AMOUNT", amountMinor: 3500 } }), "Q: 3500 of 40000 = 8.75%");
+    const atMax = await agreement({ customerDiscount: { kind: "FIXED_AMOUNT", amountMinor: 4000 } });
+    await refusedWith(agreement({ customerDiscount: { kind: "FIXED_AMOUNT", amountMinor: 4001 } }), "DISCOUNT_EXCEEDS_AUTHORITY");
+    await refusedWith(agreement({ customerDiscount: { kind: "FIXED_AMOUNT", amountMinor: 5000 } }), "DISCOUNT_EXCEEDS_AUTHORITY");
+    // A standing fixed discount over a LOWER selling price is a larger percentage: lowering the price is held to the same ceiling.
+    await refusedWith(update(atMax, { lines: [{ kind: "SERVICE", ref: "ICE-MACHINE-X", quantity: 1, unitPrice: 30000, businessUnitId: "SERVICE" }] }), "DISCOUNT_EXCEEDS_AUTHORITY");
+    // The client cannot bypass: an update path is held to the same ceiling.
+    await refusedWith(update(atMax, { customerDiscount: { kind: "PERCENT", percentBasisPoints: 1500 } }), "DISCOUNT_EXCEEDS_AUTHORITY");
+    // S: 0% is NO discount authority -- explicit and CONFIGURED, distinct from NOT_CONFIGURED.
+    await adminAs(controllerP, "setSalesDiscountAuthority", { principalId: seller.principalId, maxDiscountBasisPoints: 0, reason: "suspended" });
+    const listed = (await adminAs(gmP, "listSalesDiscountAuthorities", {})).data.items.find((i) => i.principalId === seller.principalId);
+    assert.deepEqual([listed.state, listed.maxDiscountBasisPoints], ["CONFIGURED", 0]);
+    await refusedWith(agreement({ customerDiscount: { kind: "PERCENT", percentBasisPoints: 1 } }), "DISCOUNT_EXCEEDS_AUTHORITY");
+    assert.ok(await agreement({}), "S: no discount needs no authority");
+    await adminAs(gmP, "setSalesDiscountAuthority", { principalId: seller.principalId, maxDiscountBasisPoints: 1000, reason: "restored" });
+  });
+
   await t.test("K / L / M / N. the salesperson's customer discount: PERCENT or FIXED_AMOUNT; net selling price only; line prices untouched", async () => {
     const id = await agreement({ customerDiscount: { kind: "PERCENT", percentBasisPoints: 525 } });
     let d = await detail(id);
@@ -279,22 +396,57 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
     assert.deepEqual([(await detail(id)).customerDiscount, (await detail(id)).totals.customerDiscountMinor], [null, 0], "cleared");
   });
 
+  const ownerActor = await actorOfRoles(ownerP, ["owner"]);
+  const gmActor = await actorOfRoles(gmP, ["generalManager"]);
+  const decide = (who, op, input) => sa[op](commercialDeps, who, { idempotencyKey: `d-${++gn}-${Date.now()}`, ...input }).then((r) => ({ result: r.result ?? r }));
   let financedAgreement;
-  await t.test("O / P / Q / R / T / U. trade-in buys down the balance: 40000 - 2000 = 38000; - 5000 trade-in - 3000 cash = 30000 remaining", async () => {
-    financedAgreement = await agreement({ customerDiscount: { kind: "FIXED_AMOUNT", amountMinor: 2000 }, downPaymentMinor: 3000,
-      tradeIns: [{ description: "Used ice machine (SAMPLE)", manufacturer: "Acme", modelNumber: "IM-500", serialNumber: "SN-OLD-1", creditMinor: 5000 }] });
-    const d = await detail(financedAgreement);
+  const ITEM = { description: "Used ice machine (SAMPLE)", manufacturer: "Acme", modelNumber: "IM-500", serialNumber: "SN-OLD-1", proposedValueMinor: 5500,
+    notes: "Runs; compressor noisy", evidenceReference: "photo-set-77" };
+  await t.test("#204 U / V / Y / Z / AA / W / AB / AE. a proposed trade-in reduces nothing until Owner / GM approval; then 40000 - 2000 - 5000 - 3000 = 30000", async () => {
+    financedAgreement = await agreement({ customerDiscount: { kind: "FIXED_AMOUNT", amountMinor: 2000 }, downPaymentMinor: 3000, tradeIns: [ITEM] });
+    let d = await detail(financedAgreement);
+    assert.deepEqual([d.totals.netSellingMinor, d.totals.tradeInMinor, d.totals.downPaymentMinor, d.totals.balanceMinor], [38000, 0, 3000, 35000],
+      "U / V: proposed (5500) -- the balance is not reduced");
+    assert.deepEqual(d.tradeIns.map((ti) => [ti.description, ti.manufacturer, ti.modelNumber, ti.serialNumber, ti.proposedValueMinor, ti.notes, ti.evidenceReference,
+      ti.approvalStatus, ti.approvedCreditMinor, ti.receivingOperatingCompanyId, ti.acquisitionStatus]),
+    [["Used ice machine (SAMPLE)", "Acme", "IM-500", "SN-OLD-1", 5500, "Runs; compressor noisy", "photo-set-77", "PROPOSED", null, "taylor", "AGREED"]], "U: the proposal and its provenance");
+    assert.equal(d.accountId, "acct-cust", "U: the customer is the Agreement's");
+    // No client path states a credit.
+    await refusedWith(update(financedAgreement, { tradeInMinor: 5000 }), "TRADE_IN_REQUIRES_APPROVAL");
+    await refusedWith(update(financedAgreement, { tradeIns: [{ description: "x", creditMinor: 5000 }] }), "TRADE_IN_REQUIRES_APPROVAL");
+    // Y / Z / AA: not the salesperson, not Finance / Accounting, not the System Administrator.
+    await refusedWith(decide(sellerActor, "approveSalesAgreementTradeIn", { salesAgreementId: financedAgreement, itemNumber: 1, approvedCreditMinor: 5500 }), "CAPABILITY_REQUIRED");
+    await refusedWith(decide(await actorOfRoles(controllerP, ["controller"]), "approveSalesAgreementTradeIn", { salesAgreementId: financedAgreement, itemNumber: 1, approvedCreditMinor: 5500 }), "CAPABILITY_REQUIRED");
+    await refusedWith(decide(await actorOfRoles(sysAdminP, ["admin"]), "approveSalesAgreementTradeIn", { salesAgreementId: financedAgreement, itemNumber: 1, approvedCreditMinor: 5500 }), "CAPABILITY_REQUIRED");
+    // Acceptance waits for the decision.
+    await refusedWith(sa.acceptSalesAgreement(commercialDeps, sellerActor, { idempotencyKey: `acc-pend-${Date.now()}`, salesAgreementId: financedAgreement }), "TRADE_IN_APPROVAL_PENDING");
+    // W: the Owner approves, ASSIGNING the value (5000, not the proposed 5500).
+    const w = await decide(ownerActor, "approveSalesAgreementTradeIn", { salesAgreementId: financedAgreement, itemNumber: 1, approvedCreditMinor: 5000, reason: "condition" });
+    assert.deepEqual([w.result.approvalStatus, w.result.tradeInCreditMinor, w.result.balanceMinor], ["APPROVED", 5000, 30000], "W / AB");
+    d = await detail(financedAgreement);
     assert.deepEqual([d.totals.subtotalMinor, d.totals.customerDiscountMinor, d.totals.netSellingMinor, d.totals.tradeInMinor, d.totals.downPaymentMinor, d.totals.balanceMinor],
-      [40000, 2000, 38000, 5000, 3000, 30000], "O / R / T: each component independent; the composition totals exactly");
-    assert.equal(d.totals.customerDiscountMinor + d.totals.netSellingMinor, d.totals.subtotalMinor, "Q: the trade-in is not in the discount");
-    assert.deepEqual(d.tradeIns.map((ti) => [ti.description, ti.manufacturer, ti.modelNumber, ti.serialNumber, ti.creditMinor, ti.receivingOperatingCompanyId, ti.acquisitionStatus]),
-      [["Used ice machine (SAMPLE)", "Acme", "IM-500", "SN-OLD-1", 5000, "taylor", "AGREED"]], "U: traded equipment provenance");
-    await refusedWith(update(financedAgreement, { tradeInMinor: 4000, tradeIns: [{ description: "x", creditMinor: 5000 }] }), "TRADE_IN_CONFLICT");
-    const unknown = await agreement({ tradeIns: [{ description: "Older reach-in cooler, identity unknown", creditMinor: 1000 }] });
-    assert.deepEqual((await detail(unknown)).tradeIns.map((ti) => [ti.serialNumber, ti.modelNumber]), [[null, null]], "identity is never invented");
+      [40000, 2000, 38000, 5000, 3000, 30000], "AB: the APPROVED credit buys down the balance");
+    assert.equal(d.totals.customerDiscountMinor + d.totals.netSellingMinor, d.totals.subtotalMinor, "AE: the trade-in credit is not in the discount");
+    assert.deepEqual([d.tradeIns[0].approvalStatus, d.tradeIns[0].approvedCreditMinor, d.tradeIns[0].decidedBy, d.tradeIns[0].proposedValueMinor], ["APPROVED", 5000, ownerP.principalId, 5500]);
+    await refusedWith(decide(gmActor, "approveSalesAgreementTradeIn", { salesAgreementId: financedAgreement, itemNumber: 1, approvedCreditMinor: 9000 }), "TRADE_IN_ALREADY_DECIDED");
+    // A changed proposal is decided again: an approval never survives a change to what was approved.
+    await update(financedAgreement, { tradeIns: [{ ...ITEM, serialNumber: "SN-OLD-2" }] });
+    assert.deepEqual([(await detail(financedAgreement)).tradeIns[0].approvalStatus, (await detail(financedAgreement)).totals.tradeInMinor], ["PROPOSED", 0]);
+    await update(financedAgreement, { tradeIns: [ITEM] });
+    await decide(ownerActor, "approveSalesAgreementTradeIn", { salesAgreementId: financedAgreement, itemNumber: 1, approvedCreditMinor: 5000 });
+    // An unchanged edit keeps the decision.
+    await update(financedAgreement, { tradeIns: [ITEM], specialInstructions: "deliver Tuesday" });
+    assert.deepEqual([(await detail(financedAgreement)).tradeIns[0].approvalStatus, (await detail(financedAgreement)).totals.balanceMinor], ["APPROVED", 30000]);
+    // Decline states a reason and carries no credit.
+    const other = await agreement({ tradeIns: [{ description: "Older reach-in cooler, identity unknown", proposedValueMinor: 1000 }] });
+    assert.deepEqual((await detail(other)).tradeIns.map((ti) => [ti.serialNumber, ti.modelNumber]), [[null, null]], "identity is never invented");
+    await refusedWith(decide(gmActor, "declineSalesAgreementTradeIn", { salesAgreementId: other, itemNumber: 1 }), "REASON_REQUIRED");
+    const dec = await decide(gmActor, "declineSalesAgreementTradeIn", { salesAgreementId: other, itemNumber: 1, reason: "scrap value only" });
+    assert.deepEqual([dec.result.approvalStatus, dec.result.tradeInCreditMinor], ["DECLINED", 0]);
+    await refusedWith(decide(ownerActor, "approveSalesAgreementTradeIn", { salesAgreementId: other, itemNumber: 1, approvedCreditMinor: 50000 }), "TRADE_IN_ALREADY_DECIDED");
   });
 
-  await t.test("S / Z / P / AB. financed: provider finances 30000; customer owes only the 3000 cash; the 5000 trade-in is neither cash nor A/R", async () => {
+  await t.test("#204 AC / AD / AI (and #203 S / Z / P / AB). financed: provider finances 30000 = net - APPROVED trade-in - cash; the trade-in is neither cash nor A/R", async () => {
     await sa.acceptSalesAgreement(commercialDeps, sellerActor, { idempotencyKey: `acc-${Date.now()}`, salesAgreementId: financedAgreement });
     await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-lessor',$1,'Sample Lessor','ACTIVE','f','f')`, [TENANT]);
     await q(`INSERT INTO eos_crm.account_relationship_types (tenant_id, account_id, relationship_type) VALUES ($1,'acct-lessor','FINANCING_PROVIDER')`, [TENANT]);
@@ -316,16 +468,20 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
     const obs = (await q(`SELECT o.kind, b.originated_minor::text amt, cp.crm_account_id FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.obligation_id=o.id
         JOIN eos_finance.financial_counterparties cp ON cp.id=o.counterparty_id WHERE o.source_record_id=$1 ORDER BY o.kind`, [out.packageId])).rows;
     assert.deepEqual(obs.map((o) => [o.kind, o.amt, o.crm_account_id]), [["FUNDING_RECEIVABLE", "30000", "acct-lessor"], ["RECEIVABLE", "3000", "acct-cust"]],
-      "P / AB: the trade-in creates no receivable; exactly one of each kind");
+      "P / AB / AC: the trade-in creates no receivable; exactly one of each kind");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.payments WHERE tenant_id=$1`, [TENANT]), 0, "AD: no cash receipt (payment) for the trade-in");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND source_record_id=$2 AND (fact_type ILIKE '%PAYMENT%' OR fact_type ILIKE '%CASH%')`,
+      [TENANT, out.packageId]), 0, "AD: no cash fact");
     // The financed handoff v2 carries the trade-in credit in the composition.
     const built = await delivery.buildAccountingPayload(pool, TENANT, ent.consequences[0].handoff.id);
     assert.deepEqual([built.payload.contract.version, built.payload.composition.tradeInCreditMinor, built.payload.composition.totalCommercialMinor,
       built.payload.billingPackage.amounts.customerDiscountMinor], [2, "5000", "38000", "2000"]);
   });
 
-  await t.test("Y / AB. direct sales: with a discount the receivable is the discounted total; with a trade-in it is the total less the trade-in", async () => {
-    const direct = async (extra, soId) => {
+  await t.test("#204 X / AH (and #203 Y / AB). direct sales: discount -> the discounted total; a GM-approved trade-in -> the total less the APPROVED credit", async () => {
+    const direct = async (extra, soId, approve) => {
       const id = await agreement(extra);
+      if (approve) await approve(id);
       await sa.acceptSalesAgreement(commercialDeps, sellerActor, { idempotencyKey: `acc-${soId}`, salesAgreementId: id });
       await q(`INSERT INTO eos_commercial.sales_orders (id, tenant_id, sales_order_number, account_id, owner_employee_id, operating_company_key, state, sales_channel, currency, sales_agreement_id, created_by, updated_by)
                VALUES ($1,$2,$1,'acct-cust','e-seller','taylor','IN_FULFILLMENT','RETAIL','USD',$3,'f','f')`, [soId, TENANT, id]);
@@ -337,7 +493,9 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
     const disc = await direct({ customerDiscount: { kind: "FIXED_AMOUNT", amountMinor: 2000 } }, "so-gp-d1");
     const ar1 = (await q(`SELECT b.originated_minor::text amt FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.obligation_id=o.id WHERE o.source_record_id=$1`, [disc.packageId])).rows;
     assert.deepEqual([disc.status, disc.totalMinor, ar1.map((r) => r.amt)], ["READY", "38000", ["38000"]]);
-    const trade = await direct({ tradeIns: [{ description: "Old unit", creditMinor: 5000 }] }, "so-gp-d2");
+    // X: the General Manager approves the proposed 6000 trade-in at 5000.
+    const trade = await direct({ tradeIns: [{ description: "Old unit", proposedValueMinor: 6000 }] }, "so-gp-d2",
+      (id) => decide(gmActor, "approveSalesAgreementTradeIn", { salesAgreementId: id, itemNumber: 1, approvedCreditMinor: 5000 }));
     const ar2 = (await q(`SELECT b.originated_minor::text amt FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.obligation_id=o.id WHERE o.source_record_id=$1`, [trade.packageId])).rows;
     assert.deepEqual([trade.totalMinor, ar2.map((r) => r.amt)], ["40000", ["35000"]], "the customer owes the total less the trade-in credit -- never cash for the trade-in");
     const built = await delivery.buildAccountingPayload(pool, TENANT, trade.consequence.handoff.id);
@@ -347,7 +505,11 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
     assert.equal(plain.totalMinor, "40000", "Y: an undiscounted, trade-in-free direct sale is exactly as before");
   });
 
-  await t.test("V / W / X. acquisition and trade-in values never become a resale price; a future price is set explicitly", async () => {
+  await t.test("#204 AF / AG (and #203 V / W / X). acquisition, proposed and approved trade-in values never become book value or a resale price", async () => {
+    // AF: approval wrote no acquisition / book value -- the item is still only AGREED incoming equipment.
+    const approved = await one(`SELECT acquisition_status, acquired_receiving_id FROM eos_commercial.sales_agreement_trade_ins WHERE serial_number='SN-OLD-1' AND approval_status='APPROVED'`);
+    assert.deepEqual([approved.acquisition_status, approved.acquired_receiving_id], ["AGREED", null], "AF: acquisition / book value HELD");
+    const costsBefore = await count(`SELECT count(*)::int n FROM eos_finance.inventory_acquisition_costs WHERE tenant_id=$1`, [TENANT]);
     // W: a used unit bought for 4000 -> acquisition-cost evidence 4000.
     const rr = await ordered({ partId: "P-USED", warehouseId: "wh-t", qty: 1, supplier: EXT, price: 4000 });
     ok(await receive(rr, "P-USED", WH_T, 1), "used purchase");
@@ -357,7 +519,15 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
     if (!(unpriced instanceof Error)) assert.equal((await detail(unpriced)).lines[0].unitPriceMinor, null, "no price is inferred");
     const priced = await agreement({ lines: [{ kind: "PART", ref: "P-USED", quantity: 1, unitPrice: 10000, businessUnitId: "PARTS" }] });
     assert.equal((await detail(priced)).lines[0].unitPriceMinor, 10000, "X: the future sale price is established by the Sales process");
-    assert.equal((await one(`SELECT agreed_credit_minor::text v FROM eos_commercial.sales_agreement_trade_ins WHERE serial_number='SN-OLD-1'`)).v, "5000", "V: the trade-in credit stays what it was");
+    assert.equal((await one(`SELECT approved_credit_minor::text v FROM eos_commercial.sales_agreement_trade_ins WHERE serial_number='SN-OLD-1' AND approval_status='APPROVED'`)).v, "5000",
+      "V: the approved credit stays what it was");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.inventory_acquisition_costs WHERE tenant_id=$1`, [TENANT]), costsBefore + 1,
+      "AF: the only new acquisition evidence is the explicitly purchased unit's, never a trade-in's");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.inventory_acquisition_costs WHERE tenant_id=$1 AND extended_cost_minor IN (5000, 5500, 6000)`, [TENANT]), 0,
+      "AF: no trade-in value became acquisition evidence");
+    // AG: approving a 5000 credit set no price anywhere.
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_commercial.sales_agreement_lines WHERE tenant_id=$1 AND unit_price_minor IN (5000, 5500, 6000)`, [TENANT]), 0,
+      "AG: no trade-in value became a selling price");
   });
 
   await t.test("A / B. FINANCING_PROVIDER: assigned only through the governed CRM path by governed-field authority; an ordinary org cannot act as one", async () => {

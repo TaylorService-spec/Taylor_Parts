@@ -76,6 +76,8 @@ const AdminRolesPermissions = lazy(() => import("./modules/administration/AdminR
 const AdminDuplicateRules = lazy(() => import("./modules/administration/AdminDuplicateRules"));
 const AdminWarehouseRacking = lazy(() => import("./modules/administration/AdminWarehouseRacking"));
 const AdminFinancialPolicy = lazy(() => import("./modules/administration/AdminFinancialPolicy"));
+const AdminSystemConfiguration = lazy(() => import("./modules/administration/AdminSystemConfiguration"));
+const AdminSalesConfiguration = lazy(() => import("./modules/administration/AdminSalesConfiguration"));
 const AdminDataImport = lazy(() => import("./modules/administration/AdminDataImport"));
 const AdminObjects = lazy(() => import("./modules/administration/AdminObjects.jsx"));
 const AdminWorkflows = lazy(() => import("./modules/administration/AdminWorkflows.jsx"));
@@ -696,6 +698,14 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   }
   if (domain.key === "administration" && item.key === "financialPolicy") {
     return <AdminFinancialPolicy hasCapability={operationalContext?.hasCapability} />;
+  }
+  // Owner rulings #204: System Configuration (company time zone, language) and Sales Configuration (Employee Sales
+  // Authority). Server-gated through /admin/policy; each screen renders the server's refusal itself.
+  if (domain.key === "administration" && item.key === "systemConfiguration") {
+    return <AdminSystemConfiguration />;
+  }
+  if (domain.key === "administration" && item.key === "salesConfiguration") {
+    return <AdminSalesConfiguration />;
   }
   if (domain.key === "administration" && item.key === "duplicateRules") {
     return <AdminDuplicateRules />;

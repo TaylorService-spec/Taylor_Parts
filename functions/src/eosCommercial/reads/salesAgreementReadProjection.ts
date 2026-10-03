@@ -61,7 +61,10 @@ export type SalesAgreementDiscountProjection =
   | { readonly kind: "FIXED_AMOUNT"; readonly amountMinor: number }
   | null;
 
-/** One traded-in item (#203): cash-equivalent consideration + incoming equipment, as known. Never a resale price. */
+/**
+ * One traded-in item (#203; Owner ruling #204): a PROPOSAL until decided. Only an APPROVED credit is consideration (it is
+ * what the Agreement's tradeInMinor sums). Incoming equipment as known; never an acquisition value or a resale price.
+ */
 export interface SalesAgreementTradeInProjection {
   readonly itemNumber: number;
   readonly description: string;
@@ -69,7 +72,14 @@ export interface SalesAgreementTradeInProjection {
   readonly modelNumber: string | null;
   readonly serialNumber: string | null;
   readonly equipmentModelId: string | null;
-  readonly creditMinor: number;
+  readonly proposedValueMinor: number;
+  readonly notes: string | null;
+  readonly evidenceReference: string | null;
+  readonly approvalStatus: "PROPOSED" | "APPROVED" | "DECLINED";
+  readonly approvedCreditMinor: number | null;
+  readonly decidedBy: string | null;
+  readonly decidedAt: string | null;
+  readonly decisionReason: string | null;
   readonly receivingOperatingCompanyId: string;
   readonly acquisitionStatus: string;
 }
@@ -199,13 +209,17 @@ export function getSalesAgreementDetail(deps: CommercialReadDeps, actor: Commerc
       if (!r.complete) fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Sales Agreement was not created through a governed command and carries no lifecycle");
       const lines = await linesByAgreement(db, tenantId, [r.id]);
       const { rows: tradeInRows } = await db.query(
-        `SELECT item_number, description, manufacturer, model_number, serial_number, equipment_model_id, agreed_credit_minor, receiving_operating_company_id,
-                acquisition_status FROM eos_commercial.sales_agreement_trade_ins WHERE tenant_id = $1 AND sales_agreement_id = $2 ORDER BY item_number`, [tenantId, r.id]);
+        `SELECT item_number, description, manufacturer, model_number, serial_number, equipment_model_id, proposed_value_minor, notes, evidence_reference,
+                approval_status, approved_credit_minor, decided_by, decided_at, decision_reason, receiving_operating_company_id, acquisition_status
+           FROM eos_commercial.sales_agreement_trade_ins WHERE tenant_id = $1 AND sales_agreement_id = $2 ORDER BY item_number`, [tenantId, r.id]);
       return {
         ...summaryOf(r, lines.get(r.id)!),
         tradeIns: tradeInRows.map((t) => Object.freeze({ itemNumber: t.item_number, description: t.description, manufacturer: t.manufacturer ?? null,
           modelNumber: t.model_number ?? null, serialNumber: t.serial_number ?? null, equipmentModelId: t.equipment_model_id ?? null,
-          creditMinor: Number(t.agreed_credit_minor), receivingOperatingCompanyId: t.receiving_operating_company_id, acquisitionStatus: t.acquisition_status })),
+          proposedValueMinor: Number(t.proposed_value_minor), notes: t.notes ?? null, evidenceReference: t.evidence_reference ?? null,
+          approvalStatus: t.approval_status, approvedCreditMinor: t.approved_credit_minor === null ? null : Number(t.approved_credit_minor),
+          decidedBy: t.decided_by ?? null, decidedAt: t.decided_at === null ? null : new Date(t.decided_at).toISOString(), decisionReason: t.decision_reason ?? null,
+          receivingOperatingCompanyId: t.receiving_operating_company_id, acquisitionStatus: t.acquisition_status })),
         location: r.location_id === null ? null : { locationId: r.location_id, name: r.location_name ?? null },
         customerPO: r.customer_po, isLease: r.is_lease, fulfillmentIntent: r.fulfillment_intent,
         shippingInstructions: r.shipping_instructions, shipVia: r.ship_via, specialInstructions: r.special_instructions,

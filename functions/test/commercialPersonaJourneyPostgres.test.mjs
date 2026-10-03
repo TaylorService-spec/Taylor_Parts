@@ -91,6 +91,9 @@ const OPERATIONS = Object.freeze({
   createSalesAgreement: [["salesAgreement.create"], () => ({ idempotencyKey: `k-${randomUUID()}`, opportunityId: "opp-missing" })],
   updateSalesAgreementDraft: [["salesAgreement.updateDraft"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesAgreementId: "sag-missing", customerPO: "x" })],
   acceptSalesAgreement: [["salesAgreement.accept"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesAgreementId: "sag-missing" })],
+  // Owner ruling #204: the trade-in value decision -- business approval, never a Sales Role's.
+  approveSalesAgreementTradeIn: [["salesAgreement.tradeIn.approve"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesAgreementId: "sag-missing", itemNumber: 1, approvedCreditMinor: 100 })],
+  declineSalesAgreementTradeIn: [["salesAgreement.tradeIn.approve"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesAgreementId: "sag-missing", itemNumber: 1, reason: "x" })],
   createSalesOrder: [["salesOrder.write"], (channel = "RETAIL") => ({ idempotencyKey: `k-${randomUUID()}`, accountId: "acct-missing", ownerEmployeeId: "e-retail-a", salesChannel: channel, operatingCompanyId: "taylor", lines: [{ kind: "SERVICE", ref: "s", orderedQty: 1, unitPrice: 100, businessUnitId: "SERVICE" }] })],
   transitionSalesOrder: [["salesOrder.write"], () => ({ idempotencyKey: `k-${randomUUID()}`, salesOrderId: "sor-missing", transition: "ADVANCE" })],
   getOpportunityDetail: [["opportunity.read"], () => ({ opportunityId: "opp-missing" })],
@@ -248,7 +251,12 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     for (const [persona, holdings] of Object.entries(COMMERCIAL_HOLDINGS)) {
       const answer = ok(await call(personas[persona], "readMyCommercialCapabilities"), persona);
       const scopedPersona = Boolean(personas[persona].channel);
-      assert.deepEqual([...(scopedPersona ? answer.channelScoped : answer.capabilities)].sort(), [...holdings].sort(), `${persona}: the offer disagrees with the authority`);
+      // Owner ruling #204: the offer also says whether the caller may decide a trade-in value (business approval, held by the
+      // owner and generalManager Security Roles through migration 1764500000000) -- never a Sales Role.
+      const approves = (persona.startsWith("role:") ? grantsOf(persona.slice(5)) : rolesOf(persona).flatMap(grantsOf)).includes("salesAgreement.tradeIn.approve");
+      assert.deepEqual(approves, ["general-manager", "owner-executive"].includes(persona), `${persona}: trade-in approval is Owner / GM only`);
+      assert.deepEqual([...(scopedPersona ? answer.channelScoped : answer.capabilities)].sort(),
+        [...holdings, ...(approves ? ["salesAgreement.tradeIn.approve"] : [])].sort(), `${persona}: the offer disagrees with the authority`);
       assert.deepEqual(scopedPersona ? answer.capabilities : answer.channelScoped, [], `${persona}: global and channel-scoped holdings mixed`);
       assert.deepEqual(Object.keys(answer).sort(), ["capabilities", "channelOffers", "channelScoped"], "the answer discloses nothing else");
       // DQ-4: the channel offer follows the same holding -- the persona's own channel when scoped, none without the key.

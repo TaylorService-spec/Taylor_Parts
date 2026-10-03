@@ -10,22 +10,20 @@ const DESTINATIONS = [
 ];
 const TERMS = [{ operatingCompanyId: "taylor", status: "ACTIVE", paymentTerms: "Net 90", paymentTermsNetDays: 90,
   counterparty: { kind: "INTERNAL_OPERATING_COMPANY", operatingCompanyId: "ventana" } }];
-const ZONES = [{ operatingCompanyId: "taylor", status: "ACTIVE", businessTimeZone: "America/Phoenix" }];
 const api = () => vi.fn(async (op) => {
   if (op === "listAccountingDestinations") return { ok: true, data: { items: DESTINATIONS } };
   if (op === "listCounterpartyPaymentTerms") return { ok: true, data: { items: TERMS } };
-  if (op === "listOperatingCompanyBusinessTimeZones") return { ok: true, data: { items: ZONES } };
   return { ok: true, data: {} };
 });
 
 describe("FinanceConfiguration (Administration)", () => {
-  it("shows destinations with history, payment terms and time zones, and activates with a reason", async () => {
+  it("shows destinations with history and payment terms (no time zone: that is System Configuration), and activates with a reason", async () => {
     const callApi = api();
     render(<FinanceConfiguration callApi={callApi} />);
     await screen.findByText("Taylor ledger");
     expect(screen.getByText("Old ledger")).toBeTruthy();
     expect(screen.getByText("Net 90 days")).toBeTruthy();
-    expect(screen.getByText("America/Phoenix")).toBeTruthy();
+    expect(callApi.mock.calls.map(([op]) => op)).not.toContain("listOperatingCompanyBusinessTimeZones");
     const activate = screen.getByRole("button", { name: "Activate Old ledger" });
     expect(activate.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Reason for the change"), { target: { value: "ledger move" } });

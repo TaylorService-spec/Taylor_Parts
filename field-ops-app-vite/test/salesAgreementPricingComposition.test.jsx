@@ -28,7 +28,8 @@ const view = (over = {}) => salesAgreementView({
     subtotalMinor: 4000000, customerDiscount: { kind: "FIXED_AMOUNT", amountMinor: 200000 }, customerDiscountMinor: 200000, netSellingMinor: 3800000,
     shippingMinor: 0, installChargeMinor: 0, taxMinor: 0, taxEvidenceStatus: "DETERMINED", taxEvidenceAmountMinor: 0, totalMinor: 3800000,
     downPaymentMinor: 300000, tradeInMinor: 500000, balanceMinor: 3000000,
-    tradeIns: [{ itemNumber: 1, description: "Used ice machine", serialNumber: "SN-OLD-1", modelNumber: "IM-500", creditMinor: 500000 }],
+    tradeIns: [{ itemNumber: 1, description: "Used ice machine", serialNumber: "SN-OLD-1", modelNumber: "IM-500", proposedValueMinor: 550000,
+      approvalStatus: "APPROVED", approvedCreditMinor: 500000 }],
     sourceOpportunityId: "opp_1", salesOrderId: null, acceptedAtMillis: null, acceptedByUid: null, ...over } },
 });
 const FORBIDDEN = [/FIXED_AMOUNT/, /\bPERCENT\b/, /acquisition/i, /margin/i, /\bcost\b/i];

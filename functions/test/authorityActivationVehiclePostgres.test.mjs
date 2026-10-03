@@ -432,9 +432,10 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // Peeled NEWEST FIRST. None of the seven wrote a grant, so only the capability count moves.
     // Parts / Purchasing / Receiving completion first (-2 capabilities, no grant), then the Service Experience completion,
     // newest first: self-scheduling (-2), recovery (-1), provider runtime (schema).
-    // #203 registers finance.configuration.manage (granted to NO Role): -1 capability when peeled.
-    assert.deepEqual(await counts(), { caps: 115, grants: 415, mine: 26 });
-    runMigrate(url, "down", 1); // Governed configuration + sales pricing (-1 capability, no grant)
+    // #203 / #204 register four capabilities and write the eleven Owner-ruled grants (a grant-bearing migration, Owner ruling
+    // E): -4 capabilities and -11 grants when peeled.
+    assert.deepEqual(await counts(), { caps: 118, grants: 426, mine: 26 });
+    runMigrate(url, "down", 1); // Governed configuration + sales pricing (-4 capabilities, -11 grants)
     assert.deepEqual(await counts(), { caps: 114, grants: 415, mine: 26 });
     runMigrate(url, "down", 1); // Intercompany transactions (schema only)
     assert.deepEqual(await counts(), { caps: 114, grants: 415, mine: 26 });

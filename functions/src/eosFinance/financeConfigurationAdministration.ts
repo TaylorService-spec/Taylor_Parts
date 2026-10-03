@@ -9,7 +9,8 @@
 //   PAYMENT TERMS            the company's per-counterparty profile: structured net days (and display text). Terms govern
 //                            FUTURE obligations: an obligation's due date is stamped at establishment and is immutable.
 //                            Each direction and each external supplier is its own profile -- nothing is mirrored.
-//   BUSINESS TIME ZONE       an operating company's governed zone (IANA), from which business dates are derived (G2).
+//   (The operating-company business time zone moved to System Configuration -- Owner ruling #204: accounting destinations
+//   and payment terms remain Finance configuration; company settings do not.)
 //
 // Every change is audited with its stated reason. No credential, no provider, no AP, no Firebase.
 import type { Pool, PoolClient } from "pg";
@@ -24,7 +25,6 @@ import { ConfigurationRefusal, type AdminConfigurationOperation, type Configurat
 export const FINANCE_CONFIGURATION_OPERATIONS = Object.freeze([
   "listAccountingDestinations", "configureAccountingDestination", "setAccountingDestinationStatus",
   "listCounterpartyPaymentTerms", "setCounterpartyPaymentTerms",
-  "listOperatingCompanyBusinessTimeZones", "setOperatingCompanyBusinessTimeZone",
 ] as const);
 export const isFinanceConfigurationOperation = (op: string): boolean => (FINANCE_CONFIGURATION_OPERATIONS as readonly string[]).includes(op);
 
@@ -164,31 +164,6 @@ async function setPaymentTerms(pool: Pool, actor: ConfigurationActor, i: Record<
   });
 }
 
-async function listTimeZones(pool: Pool, actor: ConfigurationActor, i: Record<string, unknown>) {
-  only(i, []);
-  const { rows } = await pool.query(`SELECT operating_company_id, status, business_time_zone FROM eos_policy.tenant_operating_companies
-    WHERE tenant_id = $1 ORDER BY operating_company_id`, [actor.tenantId]);
-  return Object.freeze({ items: rows.map((r) => Object.freeze({ operatingCompanyId: r.operating_company_id, status: r.status, businessTimeZone: r.business_time_zone })) });
-}
-
-async function setTimeZone(pool: Pool, actor: ConfigurationActor, i: Record<string, unknown>, reason: string | null) {
-  only(i, ["operatingCompanyId", "businessTimeZone"]);
-  const why = requireReason(reason);
-  const zone = text(i.businessTimeZone, "businessTimeZone", 64);
-  return tx(pool, async (c) => {
-    const company = await resolveOperatingCompany(c, actor.tenantId, i.operatingCompanyId);
-    const { rows: before } = await c.query(`SELECT business_time_zone FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND operating_company_id = $2 FOR UPDATE`,
-      [actor.tenantId, company]);
-    await c.query(`UPDATE eos_policy.tenant_operating_companies SET business_time_zone = $3, updated_by = $4, updated_at = now() WHERE tenant_id = $1 AND operating_company_id = $2`,
-      [actor.tenantId, company, zone, actor.principalId]).catch((e: { message?: string }) => {
-      if (/BUSINESS_TIME_ZONE_UNKNOWN/.test(e.message ?? "")) refuse("BUSINESS_TIME_ZONE_UNKNOWN", "INVALID_INPUT", `${zone} is not an IANA time zone`);
-      throw e;
-    });
-    await audit(c, actor, "finance.configuration.businessTimeZone.set", "operating_company", company, { businessTimeZone: before[0].business_time_zone }, { businessTimeZone: zone }, why);
-    return Object.freeze({ operatingCompanyId: company, businessTimeZone: zone, appliesTo: "FUTURE_BUSINESS_DATES" as const });
-  });
-}
-
 export function createFinanceConfigurationAdministration(pool: Pool) {
   return async (operation: AdminConfigurationOperation, actor: ConfigurationActor, input: Record<string, unknown>, reason: string | null): Promise<unknown> => {
     const { reason: _stated, ...i } = input && typeof input === "object" && !Array.isArray(input) ? input : ({} as Record<string, unknown>);
@@ -200,8 +175,6 @@ export function createFinanceConfigurationAdministration(pool: Pool) {
         case "setAccountingDestinationStatus": return await setDestinationStatus(pool, actor, i, reason);
         case "listCounterpartyPaymentTerms": return await listPaymentTerms(pool, actor, i);
         case "setCounterpartyPaymentTerms": return await setPaymentTerms(pool, actor, i, reason);
-        case "listOperatingCompanyBusinessTimeZones": return await listTimeZones(pool, actor, i);
-        case "setOperatingCompanyBusinessTimeZone": return await setTimeZone(pool, actor, i, reason);
         default: throw new Error(`not a finance configuration operation: ${String(operation)}`);
       }
     } catch (err) {

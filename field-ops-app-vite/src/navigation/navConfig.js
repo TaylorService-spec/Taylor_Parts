@@ -670,6 +670,11 @@ export const NAV_DOMAINS = [
       // configuration of the same kind as Roles and Racking rather than routine financial work.
       // Financials carries a read-only summary that links here; this is the only editing surface.
       { key: "financialPolicy", label: "Financial Policy", path: "financial-policy" },
+      // System Configuration (Owner ruling #204) -- company settings by one governed registry (time zone, language), and
+      // Sales Configuration -- Employee Sales Authority (each person's maximum customer discount). Business configuration
+      // stays with its domain (Finance configuration is on Financial Policy). Both are server-gated through /admin/policy.
+      { key: "systemConfiguration", label: "System Configuration", path: "system-configuration", capabilityAccess: ["admin.systemConfiguration.manage"] },
+      { key: "salesConfiguration", label: "Sales Configuration", path: "sales-configuration", capabilityAccess: ["sales.discountAuthority.manage"] },
       // Data Import -- loading a customer's existing records into EOS. Configuration of the same kind
       // as Roles and Racking: it is done during implementation, by an administrator, once per data set.
       // Both capabilities are registered active:false and activated per environment, so this item is
@@ -830,6 +835,8 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   "administration/duplicateRules": "No capability governs duplicate-rule administration.",
   "administration/warehouseRacking": "Gated today by the Firebase capability feed; inventory.location.bin.* is not in eos_policy.capabilities.",
   "administration/financialPolicy": "Gated today by the Firebase capability feed; no registered financial-policy capability.",
+  "administration/systemConfiguration": "Server-gated through /admin/policy on admin.systemConfiguration.manage; no EOS experience surface declares it yet.",
+  "administration/salesConfiguration": "Server-gated through /admin/policy on sales.discountAuthority.manage; no EOS experience surface declares it yet.",
   "administration/vehicles": "Hidden placeholder, no backend.",
   "administration/regions": "Hidden placeholder, no backend.",
   "administration/companySettings": "Hidden placeholder, no backend.",

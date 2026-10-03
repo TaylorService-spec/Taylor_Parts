@@ -218,7 +218,10 @@ check("OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES is exactly the 19 admin-only keys 
   // invariant it replaced -- "what a Role may do is admin only" -- NOT by Owner ruling A. It is
   // deliberately NOT added to the ruling-A exclusion list: that would make it a SYSTEM INVARIANT
   // that no administrator could ever grant to Owner, which no ruling decided.
-  const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write"];
+  // admin.systemConfiguration.manage (migration 1764500000000) is admin-only by OWNER RULING #204 (the System Administrator
+  // administers company / system settings), granted by that migration -- also NOT a ruling-A exclusion: Administration may
+  // still assign it to Owner, which no ruling forbids.
+  const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write", "admin.systemConfiguration.manage"];
   const measuredAdminOnly = [...LIVE_ADMIN].filter((id) => !LIVE_OWNER.has(id) && !PARITY_ADMIN_ONLY.includes(id)).sort();
   assert.equal(measuredAdminOnly.length, 19);
   assert.deepEqual([...OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES].sort(), measuredAdminOnly);
@@ -289,15 +292,20 @@ check("RECONCILE PROOF: the nine live Owner grants this catalog lacks are a cata
   // + admin.administratorRole.assign (migration 1763078400000, Owner ruling R1, 2026-09-26): the bounded
   // Administrator staffing capability -- PostgreSQL-native, absent from PERMISSION_CATALOG, a catalog gap by
   // construction and NOT an admin-only key (admin holds admin.securityPolicy.write instead).
+  // + finance.configuration.manage, sales.discountAuthority.manage, salesAgreement.tradeIn.approve (migration 1764500000000,
+  // Owner rulings #204): PostgreSQL-native, granted to owner by that migration, absent from PERMISSION_CATALOG by construction.
   assert.deepEqual(liveNotDeclared, [
     "admin.administratorRole.assign",
     "admin.securityPolicy.read",
+    "finance.configuration.manage",
     "finance.invoice.read",
     "finance.payment.read",
     "inventory.manufacturer.read",
     "receivingOrder.record.read",
     "reorder.request.read",
     "reportDefinition.read",
+    "sales.discountAuthority.manage",
+    "salesAgreement.tradeIn.approve",
     "workOrder.record.read",
     "workflowDefinition.read",
   ]);
@@ -331,7 +339,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 111 -> 113: inventory.catalog.alias.read + inventory.truckRegistry.manage (1764410000000, Truck Inventory activation 2026-10-01), granted to NO Role.
   // 113 -> 114: inventory.receipt.correct (1764430000000, Finance Activation 1 completion 2026-10-01), granted to NO Role.
   // 114 -> 115: finance.configuration.manage (1764500000000, governed configuration 2026-10-02), granted to NO Role.
-  assert.equal(VOCABULARY.size, 115);
+  // 115 -> 118: admin.systemConfiguration.manage, sales.discountAuthority.manage, salesAgreement.tradeIn.approve (#204, 1764500000000).
+  assert.equal(VOCABULARY.size, 118);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

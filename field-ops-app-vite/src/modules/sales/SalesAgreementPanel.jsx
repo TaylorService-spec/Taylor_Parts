@@ -147,7 +147,8 @@ function TermsForm({ view, pending, onSave }) {
       shippingMinor: toMajorText(view.shippingMinor),
       installChargeMinor: toMajorText(view.installChargeMinor),
       downPaymentMinor: toMajorText(view.downPaymentMinor),
-      tradeInMinor: toMajorText(view.tradeInMinor),
+      // The trade-in credit is NOT typed (Owner ruling #204): it is the sum of APPROVED trade-ins, proposed on the
+      // Agreement's Trade-ins section and decided by an approver.
       // Tax is NOT a charge box: it is evidence (DECISIONS #197), seeded from the server's own state.
       tax: taxEvidenceSeed(view, toMajorText),
       // #203: the customer sales discount, as the salesperson states it (percent or fixed amount).
@@ -168,7 +169,7 @@ function TermsForm({ view, pending, onSave }) {
       specialInstructions: form.specialInstructions.trim() || null,
       isLease: form.isLease,
     };
-    for (const key of ["shippingMinor", "installChargeMinor", "downPaymentMinor", "tradeInMinor"]) {
+    for (const key of ["shippingMinor", "installChargeMinor", "downPaymentMinor"]) {
       const minor = toMinor(form[key]);
       if (Number.isNaN(minor)) { setError("Amounts must look like 1250.00."); return; }
       // An empty charge box means ZERO here, not "unknown": a charge that is not stated is not
@@ -234,7 +235,6 @@ function TermsForm({ view, pending, onSave }) {
         </label>
       ) : null}
       {field("downPaymentMinor", "Cash / down payment")}
-      {field("tradeInMinor", "Trade-in credit")}
       {error && <p role="alert" className="fo-error">{error}</p>}
       <Button variant="primary" disabled={pending === "updateDraft"} onClick={submit}>Save terms</Button>
       <Button variant="ghost" disabled={pending === "updateDraft"} onClick={() => setOpen(false)}>Cancel</Button>

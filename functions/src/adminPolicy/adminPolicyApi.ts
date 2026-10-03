@@ -988,8 +988,10 @@ async function dispatch(
     case "setAccountingDestinationStatus":
     case "listCounterpartyPaymentTerms":
     case "setCounterpartyPaymentTerms":
-    case "listOperatingCompanyBusinessTimeZones":
-    case "setOperatingCompanyBusinessTimeZone":
+    case "listSystemConfiguration":
+    case "setSystemConfigurationSetting":
+    case "listSalesDiscountAuthorities":
+    case "setSalesDiscountAuthority":
       throw new Error(`${operation} is a configuration operation`);
 
     default: {

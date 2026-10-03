@@ -42,6 +42,7 @@ export const COMMERCIAL_OFFER_CAPABILITY_IDS = Object.freeze([
   "salesAgreement.create",
   "salesAgreement.updateDraft",
   "salesAgreement.accept",
+  "salesAgreement.tradeIn.approve", // Owner ruling #204: lets the client offer Approve / Decline only to an approver.
   "salesOrder.read",
   "salesOrder.write",
 ] as const);

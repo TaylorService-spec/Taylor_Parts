@@ -7105,3 +7105,91 @@ no nonprod mutation. Builds on #200–#202. FBR-F1..F4 stay separate and open (�
     - Separate and open: FBR-F1 (Ventana inventory relief when Ventana sells to Taylor), FBR-F2 (Taylor Service
       delivery / install for a Ventana sale), FBR-F3 (a per-side intercompany accounting handoff) and FBR-F4 (governed
       late completion of a receipt's cost evidence).
+
+## #204 — OWNER RULINGS: governed configuration authority, discount authority and trade-in approval (2026-10-03)
+
+**Status.** Implemented locally, in the same unpushed migration as #203 (`1764500000000_governed-config-and-sales-pricing.sql`,
+now grant-bearing). Not pushed, not deployed, no nonprod mutation. It supersedes #203 §3 (time zone under Finance
+configuration) and §7 (agreed credit) where they differ.
+
+1. **Authority model.** The existing chain applies: Employee / Principal → Security Role → Capability. A Job Role grants
+   nothing. The ruled positions map to the Security Roles the governed persona model already gives them:
+   - Owner / Executive → `owner` (the protected Owner Role);
+   - General Manager → `generalManager`;
+   - Finance / Accounting → `controller`;
+   - System Administrator → `admin`, the designated Administrator Security Role. No new Job Role was created.
+2. **Four capabilities.**
+
+   | Capability | Object / action | Holders seeded |
+   |---|---|---|
+   | `finance.configuration.manage` | `financeConfiguration`, ADMIN_ACTION | owner, generalManager, controller, admin |
+   | `admin.systemConfiguration.manage` | `systemConfiguration`, ADMIN_ACTION | admin |
+   | `sales.discountAuthority.manage` | `salesDiscountAuthority`, ADMIN_ACTION | owner, generalManager, controller, admin |
+   | `salesAgreement.tradeIn.approve` | `salesAgreement / approveTradeIn`, BUSINESS_ACTION | owner, generalManager only |
+
+   - **Vehicle.** The holders are written by the migration — Owner ruling E (the R1 vehicle). Administration can never
+     edit the designated Administrator Role for itself (SELF_ADMINISTRATION), so a grant-bearing migration recorded in
+     `roleCapabilityAuthorityBaseline.json` (415 → 426 grants) is the only governed way to seed `admin`.
+   - **Later changes.** Every later assignment or revocation is an ordinary Roles & Permissions checkbox: each
+     capability appears under its Object in the security matrix. No source edit is needed.
+   - **System Administration ≠ Business Approval.** `admin` administers configuration, permissions and discount limits,
+     but holds no trade-in approval. `controller` doesn't either: Finance configuration is not business approval. A
+     person who separately holds owner or generalManager may approve through that Role.
+3. **System Configuration** (Administration → System Configuration).
+   - **Registry.** One settings registry, `eos_policy.configuration_setting_definitions`, defines each setting's scope,
+     value kind, storage and default. Company values live in `eos_policy.operating_company_settings`, unless the
+     definition keeps them on the company row.
+   - **Settings today, per operating company:**
+     - `businessTimeZone` (IANA, kept on `tenant_operating_companies`, where the #203 resolver reads it);
+     - `defaultLanguage` (governed catalog `eos_policy.supported_languages`: en-US, es-US).
+   - **Validation.** The server validates and a database trigger re-checks. Each change is audited
+     (`admin.systemConfiguration.set`) with before, after, actor and reason. A future setting is one definition row plus
+     a validator.
+   - **Domain boundaries.** The time zone moved here from Finance configuration. Accounting destinations and payment terms
+     remain Finance configuration, and discount authority is Sales configuration.
+4. **Per-user maximum customer discount** (Administration → Sales Configuration).
+   - **Storage.** `eos_commercial.sales_discount_authorities` holds one row per principal, in basis points 0..10000.
+   - **States.**
+     - No row means NOT_CONFIGURED: it fails closed (no discount at all) and is reported as its own state.
+     - 0 means no discount authority.
+     - NULL never means unlimited. The model has no unrestricted state.
+   - **Changes.** Each change is audited (`sales.discountAuthority.set`) with the affected user, previous and new limit,
+     actor, time and reason. A salesperson cannot raise their own limit without the administrative capability.
+   - **Scope.** It governs only the customer transaction discount — never internal pricing, cost, trade-in value,
+     price-book values or resale price.
+5. **Enforcement (server).**
+   - **When it is checked.** A discount the actor states on create or update must be within the actor's maximum. So must
+     a standing fixed amount whose effective percentage rose because the selling price fell.
+   - **Arithmetic.** PERCENT compares basis points. FIXED_AMOUNT compares `amount × 10000 ≤ max × selling price` in
+     integers, so 10% of 40000 allows 3500 and refuses 5000.
+   - **Above the maximum.** The command is refused with DISCOUNT_EXCEEDS_AUTHORITY or DISCOUNT_AUTHORITY_NOT_CONFIGURED —
+     the smallest governed mechanism, since no existing approval engine fits. A user with a higher limit (e.g. a manager
+     who can edit the draft) may apply it.
+6. **Trade-in proposal and approval.**
+   - **Proposal.** The salesperson proposes items (`tradeIns`). Each records:
+     - description;
+     - manufacturer, model and serial when known;
+     - `proposedValueMinor`;
+     - notes and an evidence reference.
+
+     The customer is the Agreement's. A proposal reduces nothing: neither a bare `tradeInMinor` nor any item credit can be
+     stated by the client (TRADE_IN_REQUIRES_APPROVAL).
+   - **Decision.** On a DRAFT, `approveSalesAgreementTradeIn` approves with the value the approver assigns (it may differ
+     from the proposal). `declineSalesAgreementTradeIn` declines with a reason. Both require
+     `salesAgreement.tradeIn.approve`.
+   - **Credit and balance.** The Agreement's trade-in credit is the sum of APPROVED values. A change to an item's facts
+     returns it to PROPOSED, so an approval never survives a change to what was approved. Acceptance waits while any item
+     is PROPOSED (TRADE_IN_APPROVAL_PENDING).
+7. **Composition.** Selling − discount = net selling. Net − APPROVED trade-in − cash/down payment = remaining balance, which
+   is the financed amount of a financed sale.
+   - A trade-in creates no receivable and no cash receipt, and stays distinct from the discount.
+   - A direct sale's receivable is total − approved trade-in.
+8. **Acquisition value HELD; future price separate.**
+   - An approved credit is not acquisition or book value: the item stays AGREED incoming equipment, and no
+     acquisition-cost evidence is written.
+   - A future resale price needs an explicit Sales pricing action.
+   - The accounting / book-value method for received used equipment remains HELD for the Owner. Commercial approval,
+     provenance and financial consideration proceed without it.
+9. **Not built.** Used-equipment valuation policy, refurbishment, disposition, auction/scrap, Settlement/Payment, Rental,
+   Analysis, GL, real provider, production, a discount-approval workflow, UI translation for es-US. FBR-F1..F4 stay
+   separate.

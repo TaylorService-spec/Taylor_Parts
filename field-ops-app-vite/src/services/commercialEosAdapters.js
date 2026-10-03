@@ -234,9 +234,13 @@ export function toSalesAgreementProjection(a) {
     customerDiscount: a.customerDiscount ?? null,
     customerDiscountMinor: t.customerDiscountMinor ?? null,
     netSellingMinor: t.netSellingMinor ?? null,
-    // #203: itemised trade-ins (consideration + incoming equipment). Never a resale price; no acquisition value is carried.
+    // #203 / #204: itemised trade-ins -- a PROPOSAL until an approver decides; only an approved credit is consideration.
+    // Never a resale price; no acquisition value is carried.
     tradeIns: Array.isArray(a.tradeIns) ? a.tradeIns.map((ti) => ({ itemNumber: ti.itemNumber, description: ti.description ?? null,
-      manufacturer: ti.manufacturer ?? null, modelNumber: ti.modelNumber ?? null, serialNumber: ti.serialNumber ?? null, creditMinor: ti.creditMinor ?? null })) : [],
+      manufacturer: ti.manufacturer ?? null, modelNumber: ti.modelNumber ?? null, serialNumber: ti.serialNumber ?? null,
+      equipmentModelId: ti.equipmentModelId ?? null, proposedValueMinor: ti.proposedValueMinor ?? null, notes: ti.notes ?? null,
+      evidenceReference: ti.evidenceReference ?? null, approvalStatus: ti.approvalStatus ?? null, approvedCreditMinor: ti.approvedCreditMinor ?? null,
+      decisionReason: ti.decisionReason ?? null })) : [],
     shippingMinor: t.shippingMinor ?? null,
     installChargeMinor: t.installChargeMinor ?? null,
     taxMinor: t.taxMinor ?? null,

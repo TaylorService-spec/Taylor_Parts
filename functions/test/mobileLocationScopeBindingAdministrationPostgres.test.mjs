@@ -30,8 +30,10 @@ const require = createRequire(import.meta.url);
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
 const { bootstrapTenant, bootstrapAdministrator, ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
 const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
-const { MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, WAREHOUSE_MASTER_CAPABILITY, TRUCK_REGISTRY_CAPABILITY, FINANCE_CONFIGURATION_CAPABILITY, ADMIN_CONFIGURATION_OPERATIONS } = require("../lib/adminPolicy/configurationOperations.js");
+const { MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, WAREHOUSE_MASTER_CAPABILITY, TRUCK_REGISTRY_CAPABILITY, FINANCE_CONFIGURATION_CAPABILITY, SYSTEM_CONFIGURATION_CAPABILITY, SALES_DISCOUNT_AUTHORITY_CAPABILITY, ADMIN_CONFIGURATION_OPERATIONS } = require("../lib/adminPolicy/configurationOperations.js");
 const { isFinanceConfigurationOperation } = require("../lib/eosFinance/financeConfigurationAdministration.js");
+const { isSystemConfigurationOperation } = require("../lib/eosOps/systemConfigurationAdministration.js");
+const { isSalesDiscountAuthorityOperation } = require("../lib/salesAuthority/salesDiscountAuthority.js");
 const { TRUCK_REGISTRY_ADMIN_OPERATIONS } = require("../lib/eosOps/truckRegistryAdministration.js");
 const { WAREHOUSE_ADMIN_OPERATIONS } = require("../lib/eosOps/warehouseBinAdministration.js");
 const { createMobileLocationScopeBindingAdministration } = require("../lib/eosOps/mobileLocationScopeBindingAdministration.js");
@@ -60,10 +62,14 @@ test("the capability is one closed constant, and stays out of both PERMISSION_CA
   assert.equal(FINANCE_CONFIGURATION_CAPABILITY, "finance.configuration.manage");
   for (const [name, op] of Object.entries(ADMIN_CONFIGURATION_OPERATIONS)) {
     assert.equal(op.capability, warehouseOps.has(name) ? WAREHOUSE_MASTER_CAPABILITY : truckOps.has(name) ? TRUCK_REGISTRY_CAPABILITY
-      : isFinanceConfigurationOperation(name) ? FINANCE_CONFIGURATION_CAPABILITY : CAP, name);
+      : isFinanceConfigurationOperation(name) ? FINANCE_CONFIGURATION_CAPABILITY
+        // ... and System Configuration / Employee Sales Authority (Owner rulings #204) under theirs.
+        : isSystemConfigurationOperation(name) ? SYSTEM_CONFIGURATION_CAPABILITY
+          : isSalesDiscountAuthorityOperation(name) ? SALES_DISCOUNT_AUTHORITY_CAPABILITY : CAP, name);
   }
   for (const p of ["src/access/permissionCatalog.ts", "../field-ops-app-vite/src/access/permissionCatalog.ts"]) {
-    for (const c of [CAP, WAREHOUSE_MASTER_CAPABILITY, TRUCK_REGISTRY_CAPABILITY, FINANCE_CONFIGURATION_CAPABILITY]) {
+    for (const c of [CAP, WAREHOUSE_MASTER_CAPABILITY, TRUCK_REGISTRY_CAPABILITY, FINANCE_CONFIGURATION_CAPABILITY, SYSTEM_CONFIGURATION_CAPABILITY,
+      SALES_DISCOUNT_AUTHORITY_CAPABILITY]) {
       assert.equal(readFileSync(resolve(FUNCTIONS_DIR, p), "utf8").includes(c), false, `${p} must not carry ${c}: admin composes the whole catalog`);
     }
   }

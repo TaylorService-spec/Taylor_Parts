@@ -82,11 +82,14 @@ export const isCommercialReadOperation = (name) =>
  */
 export const COMMERCIAL_MUTATION_OPERATIONS = Object.freeze([
   "acceptSalesAgreement",
+  // Owner ruling #204: the business decision on a proposed trade-in value (salesAgreement.tradeIn.approve).
+  "approveSalesAgreementTradeIn",
   "closeOpportunityAsWon",
   "createOpportunity",
   "createSalesAgreement",
   "createSalesOrder",
   "createSalesOrderFromOpportunity",
+  "declineSalesAgreementTradeIn",
   "transitionOpportunity",
   "transitionSalesOrder",
   "updateOpportunity",
