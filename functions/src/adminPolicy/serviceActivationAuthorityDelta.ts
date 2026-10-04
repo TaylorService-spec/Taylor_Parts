@@ -140,8 +140,9 @@ export const INBOUND_RECOVERY_GRANTS: readonly ServiceGrantDecision[] = Object.f
 
 /**
  * The Administration API operations the NEXT activation window issues for this package (after merge, with the Owner's
- * authorization). Self-scheduling capability holders (workOrder.selfScheduling.issue / .configure) are NOT here: they
- * are an open Owner decision, and nothing is granted by assumption.
+ * authorization). Self-scheduling capability holders (workOrder.selfScheduling.issue / .configure) are NOT here: they were an
+ * open decision at the time, later RULED by the Controller (#2007 merge confirmation, "A") and are recorded as data in
+ * recordedActivationDecisionsDelta.ts (SELF_SCHEDULING_ACTIVATION_GRANTS) -- still nothing granted by assumption.
  */
 export function serviceExperienceOperations(): readonly { readonly operation: "grantObjectActionToRole"; readonly input: Record<string, unknown> }[] {
   return Object.freeze(INBOUND_RECOVERY_GRANTS.map((g) => Object.freeze({

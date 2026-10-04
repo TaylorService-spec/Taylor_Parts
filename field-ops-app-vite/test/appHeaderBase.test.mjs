@@ -129,9 +129,11 @@ check("the header owns no notification behaviour at all", () => {
   }
 });
 
-check("the header is the navigation opener and nothing else", () => {
+check("the header is the navigation opener and, under EOS authority only, site-wide search -- nothing else", () => {
   // Its contents are ONE value; the guard reads that value rather than restating its condition.
-  assert.ok(headerCode.includes("const contents = [navToggle].filter(Boolean);"));
+  // Application Assembly (#209) added the second control: SEARCH, supplied by AppShell only where EOS is the navigation source.
+  assert.ok(headerCode.includes("const contents = [navToggle, search].filter(Boolean);"));
+  assert.ok(shell.includes("search={isEosNavigationSource(operationalContext) ? <SiteSearch /> : null}"), "search is no longer gated on EOS authority");
   assert.ok(headerCode.includes("if (contents.length === 0) return null;"), "the empty-strip collapse is gone");
   assert.ok(!headerCode.includes("if (!onOpenNav)"), "the guard went back to restating the condition");
   // A docked desktop passes no opener, so the strip renders nothing -- for EVERY role now, admin

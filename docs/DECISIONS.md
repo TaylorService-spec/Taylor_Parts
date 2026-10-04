@@ -7433,3 +7433,171 @@ design without redesigning it.
      therefore need an Owner decision on authoring authority before a PostgreSQL home is built.
    - Time-weighted history snapshots for point-in-time measures, materialized projections, margin/cost (FIN-BLOCK-003),
      targets/forecast storage, the AI plug-in.
+
+## #209 — CONTROLLER: Final EOS Application Assembly (2026-10-03)
+
+**Context.** Roadmap blocks 1–3 (Finance Closure #206, Rental #207, Analysis & Reporting #208) are CLOSED / PROVEN / FROZEN.
+This decision assembles those proven capabilities into the employee experience. It redesigns no business domain, adds no
+capability, grant, migration or Firebase dependency, and changes no authority.
+
+1. **The persona chooses the layout, never the authority.**
+   - The persona is the caller's CURRENT Job Role (`eos_workforce.employee_job_role_assignments`, `effective_to IS NULL`),
+     from the canonical 16 (`jobRoleVocabulary.ts`).
+   - With no current Job Role, the caller gets the General Employee layout.
+   - Sales Manager stays a Security Role, not a persona. Retail and National Accounts stay distinct. Rental appears inside
+     existing personas, with no Rental persona.
+   - `PERSONA_LAYOUTS` (`functions/src/eosExperience/myWork.ts`) names only which sections appear, and in what order.
+   - Every section is composed in-process from an EXISTING governed read, under that read's own authority:
+     - `listMyAssignedWorkOrders`;
+     - `listWorkOrders` (schedule/dispatch/ready holders);
+     - `readMyAssignedReorders`;
+     - `readReorderQueue` (REORDER_QUEUE reach);
+     - `listTransferOrders` (WAREHOUSE scope);
+     - `readRentalWorkspace`;
+     - the Commercial records the caller owns or is accountable for (narrowed to its salesChannel-scoped holdings);
+     - `readAnalysisWorkspace` / `readAnalysisCatalog`;
+     - Administration attention: active employees with no current Job Role (admin.principalAccess.read or
+       employee.record.read).
+   - A refused section is returned as NOT_AUTHORIZED with its reason, never as "nothing to do".
+2. **Workspace shape: ATTENTION → INSIGHT → CONTEXT → AUTHORIZED ACTION.**
+   - Attention is Analysis's rule-based exceptions plus each read's own attention states, such as a CREATED work order
+     waiting for dispatch, a reorder PENDING_REVIEW, or a rental due back.
+   - The workspace has ONE severity vocabulary, ATTENTION / BLOCKING. An Analysis exception is ATTENTION, with its rank kept
+     verbatim as `priority` (HIGH / MEDIUM / LOW).
+   - Insights and key figures are the frozen Analysis engine's. Executive and Finance layouts choose Taylor, Ventana or the
+     Consolidated projection.
+   - An action is offered only as the server reports it, and only as a link to the record or workspace that enforces it.
+   - No AI (`aiRequired: false`).
+3. **OWNER / ACCOUNTABLE / ASSIGNEE are three answers.**
+   - Opportunity, Sales Order and Sales Agreement record pages show **Accountable** beside **Owner**. The view models now
+     carry `accountableEmployeeId`; before this decision they dropped it.
+   - Workspace rows show Owner and Accountable separately, and Assignee for work orders.
+   - Nothing here writes ownership. Reassignment does not rewrite ownership, and historical ownership stays historical.
+4. **Site-wide search** is `searchEos` on `/operations/workspace`, shown in the application header only where EOS is the
+   navigation authority.
+   - It searches Work Orders, Opportunities, Sales Orders, Sales Agreements, Customers, Parts, Equipment, Rental Agreements,
+     Reorder Requests and Employees.
+   - Each kind is searched only on its existing read and scope: channel-narrowed Commercial, and REORDER_QUEUE reach for
+     Reorder Requests.
+   - The answer names the kinds NOT searched. A result opens the record's own governed page, which re-checks the read.
+5. **Landing and navigation.**
+   - Under the EOS navigation source, `/dashboard` renders MyWorkspace, the primary surface. Legacy environments keep
+     MyDashboard / TechnicianDashboard unchanged.
+   - Left-rail structure, North Star and existing pages are reused. No page was duplicated.
+6. **Reused UI:** WorkspaceShell, AttentionBand, RuledSection, ContextBand, HonestState, Field, Button, `fo-table--stack`,
+   and Analysis's `figure` / BASIS_WORDS.
+   **New UI:** MyWorkspace, SiteSearch, workspaceApiClient, and the `.fo-sitesearch` rules.
+   Verified at 1440 / 1024 / 375 with no horizontal overflow.
+
+**Decision Queue (HELD — not implemented; none is a Day-1 blocker for assembly).**
+- Rental billing policy.
+- Saved Analysis Definition authoring authority.
+- Used-equipment book value.
+- Trade-in receiving lifecycle.
+- es-US translation content.
+- Above-limit discount approval.
+- Remaining UTC/date findings.
+
+**Assembly findings for the Owner.**
+- Warehouse Associate holds `rental.unit.return` without `rental.agreement.read`, so a rental return is not visible in its
+  workspace.
+- `readMyEmployeeProfile` does not return the Job Role. `readMyWork` returns it for the caller only.
+- Nonprod Ventana is unkeyed, and no accounting destination exists (handoffs PENDING_DESTINATION). Both are carried forward.
+
+## #210 — CONTROLLER/OWNER: Administration control plane + scaled NONPROD Taylor workforce (2026-10-03)
+
+**Ruling (final).** Administration → Users, Roles & Permissions, Objects and Workflows are the operational control planes for
+ALL normal user permissions and work authority:
+
+UI → EOS server → governed PostgreSQL → authority resolver → server enforcement → application → audit.
+
+No normal permission change needs code, Firebase, a migration or a redeploy. Definitions (capability ids, invariants,
+algorithms) are platform; ASSIGNMENTS ARE ADMINISTRATIVE CONFIGURATION. Job Role ≠ Security Role ≠ capability ≠
+scope/relationship.
+
+1. **Users.** `listWorkforceRoster` (`/workforce/employees`, employee.record.read) returns, per Employee:
+   - the current Job Role;
+   - Security Roles with their scope (only for admin.principalAccess.read holders; otherwise withheld and unfilterable);
+   - Work Eligibility, Operational Scopes (WAREHOUSE / REORDER_QUEUE / MOBILE truck) and manager;
+   - application-user linkage.
+
+   It filters by Job Role, Security Role, status, scope type and name, with facet counts from the data. It replaces the
+   name-only directory. No count is a product rule.
+
+   The employee record adds:
+   - the resolved **Effective Access chain**: Principal → Employee → Job Role (labelled "grants nothing") → Security Roles →
+     capabilities → scope → record relationships → domain preconditions. It comes from the server's `explainEffectiveAccess`,
+     which now carries `employeeFacts.jobRole` / `employee`;
+   - **View as user** (below);
+   - **EMP-RT-05 Assigned work**. It is served now, because the assignment authority is PostgreSQL: `listAssignedWorkForEmployee`
+     needs the family read (workOrder.record.read unconditional; reorder.request.read within REORDER_QUEUE reach).
+2. **Roles & Permissions.** Where a policy store exists, the enforced Security Role model is the whole screen; the code-side
+   grid and the unenforced legacy matrix no longer render. A role shows:
+   - its holders, with their Employee;
+   - Assign-to-employee (governed `assignRole` with a supported scope) and Remove (`revokeRole`), each with a stated reason;
+   - its decision history and its assignment history (policy audit filtered by role).
+3. **Objects.** The Object authority matrix: rows are Security Roles, columns are the Object's REAL actions from
+   `eos_policy.capabilities`.
+   - Columns use CRUD where it applies, plus domain verbs and governed field groups (e.g. `account.editGovernedField` =
+     customer.governedField.write).
+   - Each checkbox is the server's grant: `grantObjectActionToRole` / `revokeObjectActionFromRole`, with the stated reason,
+     audit and decision. The grid re-reads; nothing is optimistic. System-invariant cells are locked.
+   - **Whole-object authority** = `applyObjectWideRoleAuthority`. It expands deterministically into exactly the Object's
+     registered actions, each through the same governed command with the same checks and its own audit event. Refusals are
+     reported per action. Nothing new is stored and no wildcard exists for the resolver.
+   - The retired `role_object_permissions` / `setObjectPermission` is NOT revived.
+4. **Workflows.** The existing engine (versions, steps, actions with capability + guard, Security/Functional Role bindings,
+   pinned instances) now has a runtime caller: `/operations/workflow`.
+   - `listWorkflowWork`: per in-flight record of each ACTIVE version, the engine's own decision per action for this caller.
+   - `transitionWorkflowInstance`.
+   - Administration adds start-a-record and move-in-flight-records (with a step map) to the version panel.
+   - A binding enables PARTICIPATION only: the action's capability, condition, scope and record relationship still decide.
+5. **View as user.** `previewMyWorkAs` (admin.principalAccess.read) builds the subject's caller with the SAME resolver as a real
+   request, runs the read-only workspace and audits `experience.previewAsUser`. It issues no session or credential and can
+   change nothing. It renders inside a frame marked PREVIEW, with no workflow actions.
+6. **Trucks.** The truck view names its CURRENT technicians from governed MOBILE scope (`scopedEmployeeNames`). Truck
+   Inventory showed every truck "Unassigned"; fixed.
+7. **Scaled NONPROD workforce.** `functions/scripts/fixtures/taylorNonprodWorkforce.v1.json` is SAMPLE data. The orchestrator
+   `functions/scripts/seedTaylorNonprodWorkforce.mjs` plans by default and is idempotent. It calls governed commands only,
+   through the HTTP API, as the employee whose job it is; Principals are admitted via `ensureTenantPrincipal`.
+   - 30 employees covering all 16 canonical Job Roles: 10 Technicians and 10 governed trucks, 2 Sales Manager Security Role
+     holders (the Retail and National leads, channel-scoped), 3 Retail and 3 National sellers, a Warehouse Manager and 2
+     Warehouse Associates with distinct warehouse scopes.
+   - Sample customers, opportunities, an ownership reassignment, technician working hours and 12 work orders (10 scheduled
+     across the 10 Technicians, 2 awaiting dispatch).
+   - Sample Principals use EOS subjects `nonprod-sample.*` and have NO sign-in until EOS-IDAM. They are inspectable and
+     previewable in Administration.
+
+**Decision Queue (new; not implemented).**
+- **DQ-210-A:** The frozen-baseline `admin` compatibility Role still carries about 60 business capabilities (work orders,
+  sales, finance, inventory, customers). This conflicts with "System Administrator does not automatically acquire business
+  authority". Revoking them is a tenant-wide authority change with downstream persona/test effects; needs a ruling on the
+  exact set.
+- **DQ-210-B:** Which domain lifecycles become WORKFLOW-GOVERNED. The engine and runtime are live, but the Work Order /
+  Commercial commands still run their own transition matrices. Binding a domain command to the active workflow version is a
+  per-domain decision.
+- **DQ-210-C:** Sign-in for the scaled sample employees (`nonprod-sample.*` subjects) belongs to EOS-IDAM. The nonprod persona
+  issuer covers only the 16 persona keys, by design.
+
+Carried HELD items are unchanged (Rental billing policy, Saved Analysis Definitions, used-equipment book value, trade-in
+receiving, es-US content, above-limit discount approval, UTC/date findings).
+
+**#210 addendum — ADMIN_AUTHORITY_BASELINE_RECONCILED (2026-10-04).**
+- **The gap:** the local replay (530) differed from nonprod (542) by EXACTLY 12 grants, all present in nonprod only. Each is
+  ADMIN_GRANTED by the nonprod administering Principal with its Controller ruling as the reason:
+  - 9 from the Catalog/Reorder activation (GO 2026-09-28; window 2026-09-30, 415→424): Parts Manager approve / reject /
+    cancel / purchaseOrder.void; Parts Associate read / startPurchasing / postPurchasingUpdate / recordPurchaseOrder /
+    markReceived.
+  - 3 from the Service Experience activation (#2007 merge confirmation "A", 442→446): Dispatcher selfScheduling.issue;
+    Service Manager selfScheduling.issue + configure.
+- **Classification:** GOVERNED NONPROD CHANGES MISSING FROM THE REPLAY.
+- **Repair:** they are now recorded as data (`recordedActivationDecisionsDelta.ts`, read by no command). The replay equals
+  nonprod: 542 = 542, with an empty set difference both ways. No nonprod mutation.
+- **One environment-specific row:** the CUSTOM role `zz_nonprod_acceptance` (Pass 10 acceptance, 2026-09-10) holds zero
+  grants; all its temporary grants were revoked. Reported, not deleted.
+- **`admin` census:** see `docs/architecture/admin-role-capability-census-2026-10-04.json`. 73 capabilities = 17 platform /
+  administration + 56 business. Of the business ones, 28 came from a sample-company seed run (2026-09-16), the rest from
+  migrations and Owner/Administration decisions. Three have no other holder: customer.governedField.write,
+  equipment.model.manage, inventory.catalog.activate. No mutation (DQ-210-A remediation follows integration).
+- **DQ-210-B** (workflow adoption) HELD. **DQ-210-C** (sample-employee sign-in) deferred to EOS-IDAM. Neither blocks
+  integration.

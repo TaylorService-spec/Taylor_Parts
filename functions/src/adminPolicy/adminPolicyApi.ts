@@ -49,6 +49,7 @@ import {
   revokeRole,
   grantObjectActionToRole,
   revokeObjectActionFromRole,
+  applyObjectWideRoleAuthority,
   grantObjectActionToPrincipal,
   revokeObjectActionFromPrincipal,
   setGrantCondition,
@@ -172,6 +173,8 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   // Object-owned grants. The contract is (objectKey, actionKey, grantee) -- never a capability key.
   "grantObjectActionToRole",
   "revokeObjectActionFromRole",
+  // Whole-object authority (#210): deterministically expanded into the per-action grants above, each through the same command.
+  "applyObjectWideRoleAuthority",
   "grantObjectActionToPrincipal",
   "revokeObjectActionFromPrincipal",
   // Grant conditions. Fail closed: a condition is never lifted while its grant is held.
@@ -872,6 +875,21 @@ async function dispatch(
         reason: optionalString(input.reason) ? reason : null,
       });
 
+    case "applyObjectWideRoleAuthority": {
+      const mode = input.mode;
+      if (mode !== "GRANT" && mode !== "REVOKE") throw new PolicyValidationError("mode must be GRANT or REVOKE");
+      const kinds = input.actionKinds;
+      if (kinds !== undefined && kinds !== null && (!Array.isArray(kinds) || !kinds.every((k) => typeof k === "string"))) {
+        throw new PolicyValidationError("actionKinds must be a list of action kinds");
+      }
+      return applyObjectWideRoleAuthority(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        roleKey: requireString(input.roleKey, "roleKey"),
+        mode, actionKinds: (kinds as string[] | undefined) ?? null,
+        reason: optionalString(input.reason) ? reason : null,
+      });
+    }
+
     case "setGrantCondition":
       // A condition cell is (Role, capability) OR (direct exception, capability): exactly one grantee is named.
       return setGrantCondition(repo, actor, {
@@ -1075,9 +1093,12 @@ async function describeSecurityRole(repo: PolicyRepository, tenantId: string, ro
     for (const a of await repo.listAssignmentsForPrincipal(tenantId, principalId)) {
       if (a.roleId !== role.id || a.status !== "active") continue;
       const principal = await repo.getPrincipal(principalId);
+      // #210: the holder's linked Employee (the governed active link), so the role page links to the person -- a fact, not authority.
+      const linked = await repo.getLinkedEmployeeAccessFact(tenantId, principalId);
       holders.push({
         principalId, displayName: principal?.displayName ?? null, assignmentId: a.id,
         scopeType: a.scopeType, scopeValue: a.scopeValue, grantedAt: a.grantedAt,
+        employeeId: linked && !linked.ambiguous ? linked.employeeId : null,
       });
     }
   }
@@ -1099,7 +1120,7 @@ async function describeSecurityRole(repo: PolicyRepository, tenantId: string, ro
       };
     })
     .sort((a, b) => a.objectKey === b.objectKey ? a.actionKey.localeCompare(b.actionKey) : a.objectKey.localeCompare(b.objectKey));
-  return { roleKey: role.key, name: role.name, description: role.description, protected: role.protected, holders, actions };
+  return { roleKey: role.key, roleId: role.id, name: role.name, description: role.description, protected: role.protected, holders, actions };
 }
 
 async function objectActionGrantMatrix(repo: PolicyRepository, tenantId: string, objectKey: string) {

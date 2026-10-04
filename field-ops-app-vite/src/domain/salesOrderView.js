@@ -72,6 +72,8 @@ export function salesOrderView({ loading = false, errorStatus = null, result = n
     // rather than a document id. Null on Sales Orders predating Opportunity identity.
     sourceOpportunityNumber: so.sourceOpportunityNumber ?? null,
     ownerEmployeeId: so.ownerEmployeeId,
+    // OWNER and ACCOUNTABLE are distinct governed answers (#209); the view carries both, never one for the other.
+    accountableEmployeeId: so.accountableEmployeeId ?? null,
     salesChannel: so.salesChannel,
     locationId: so.locationId ?? null,
     // ════════════ THE MONEY, WHICH THIS VIEW MODEL WAS SILENTLY DROPPING ════════════

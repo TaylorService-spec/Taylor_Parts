@@ -1,0 +1,1476 @@
+{
+ "census": "Security Role `admin` capability census",
+ "source": "read-only nonprod census job-db10vuugekts73bmd860 (2026-10-04), tenant taylor-nonprod, 94 migrations, 542 tenant grants",
+ "ruling": "Controller DQ-210-A: System Administrator does not receive blanket business authority; NO mutation in this package; a bounded remediation package follows integration",
+ "testsReferencingWithAdmin": "heuristic: test files naming both the capability and the admin role (an upper bound on dependence, not a proof of it)",
+ "summary": {
+  "total": 73,
+  "platformAdministration": 17,
+  "businessDomain": 56,
+  "businessWithNoOtherHolder": [
+   "customer.governedField.write",
+   "equipment.model.manage",
+   "inventory.catalog.activate"
+  ]
+ },
+ "capabilities": [
+  {
+   "capability": "admin.accessRequest.decide",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.credentialReset.initiate",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.dataImport.execute",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.employeeJobRole.write",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "employee-capability-grants:lane-q-persona-e2e 2026-09-24",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.employeeOperationalScope.write",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "employee-capability-grants:lane-q-persona-e2e 2026-09-24",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.employeeProfile.write",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "employee-capability-grants:rudy 2026-09-15",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.employeeWorkEligibility.write",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "employee-capability-grants:lane-q-persona-e2e 2026-09-24",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.principalAccess.read",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "employee-capability-grants:rudy 2026-09-15",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.roleAssignment.write",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.securityPolicy.read",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "migration:1762041600000 2026-09-24",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.securityPolicy.write",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "migration:1762646400000 2026-09-27",
+   "otherRoles": [],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.systemConfiguration.manage",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "migration:1764500000000 2026-10-03",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "admin.userStatus.write",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "audit.event.read",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "migration:1761523200000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "fieldManager",
+    "financeManager",
+    "generalManager",
+    "operationsManager",
+    "owner",
+    "partsManager",
+    "shopManager",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "customer.governedField.write",
+   "class": "BUSINESS DOMAIN",
+   "domain": "CRM / Customers",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [],
+   "testsReferencingWithAdmin": 9,
+   "testFiles": [
+    "crmAuthority.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "receivingCapabilityRegistration.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "trustedWriterCommands.test.mjs",
+    "resolveEffectivePermission.test.mjs"
+   ]
+  },
+  {
+   "capability": "customer.record.create",
+   "class": "BUSINESS DOMAIN",
+   "domain": "CRM / Customers",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "commercialSharedContext",
+    "dispatcher",
+    "generalManager",
+    "officeManager",
+    "operationsManager",
+    "owner",
+    "salesManager",
+    "salesperson"
+   ],
+   "testsReferencingWithAdmin": 8,
+   "testFiles": [
+    "crmAuthority.test.mjs",
+    "adminPolicySeed.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "commercialPersonaJourneyPostgres.test.mjs",
+    "crmAuthorityPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "customer.record.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "CRM / Customers",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "accountingManager",
+    "commercialSharedContext",
+    "controller",
+    "dispatcher",
+    "fieldManager",
+    "financeManager",
+    "generalManager",
+    "marketingManager",
+    "officeManager",
+    "operationsManager",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "purchasingManager",
+    "salesManager",
+    "salesperson",
+    "shopAssociate",
+    "shopManager",
+    "supportStaff",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 22,
+   "testFiles": [
+    "crmAuthority.test.mjs",
+    "adminPolicySeed.test.mjs",
+    "workforceCapabilitiesPostgres.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "directExceptionAuthorityPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "customer.record.update",
+   "class": "BUSINESS DOMAIN",
+   "domain": "CRM / Customers",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "commercialSharedContext",
+    "dispatcher",
+    "generalManager",
+    "officeManager",
+    "owner",
+    "salesManager",
+    "salesperson"
+   ],
+   "testsReferencingWithAdmin": 9,
+   "testFiles": [
+    "crmAuthority.test.mjs",
+    "adminPolicySeed.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "commercialPersonaJourneyPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "employee.record.read",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "employee-capability-grants:rudy 2026-09-15",
+   "otherRoles": [
+    "generalManager",
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "equipment.compatibility.view",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Equipment",
+   "provenance": "migration:1761523200000 2026-09-23",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 4,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "equipmentCompatibilityReadCallable.test.mjs"
+   ]
+  },
+  {
+   "capability": "equipment.install",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Equipment",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "equipmentInstaller"
+   ],
+   "testsReferencingWithAdmin": 8,
+   "testFiles": [
+    "experienceAuthorityPostgres.test.mjs",
+    "directExceptionAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "serializedEquipmentStations.test.mjs",
+    "administrationControlPlane.test.mjs",
+    "personaBusinessAccessRegression.test.mjs"
+   ]
+  },
+  {
+   "capability": "equipment.model.manage",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Equipment",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [],
+   "testsReferencingWithAdmin": 2,
+   "testFiles": [
+    "experienceAuthorityPostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs"
+   ]
+  },
+  {
+   "capability": "finance.adjustment.record",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Finance",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "financeManager",
+    "generalManager",
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 6,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "adjustmentCallables.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "resolveEffectivePermission.test.mjs"
+   ]
+  },
+  {
+   "capability": "finance.configuration.manage",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Finance",
+   "provenance": "migration:1764500000000 2026-10-03",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "financeManager",
+    "generalManager",
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 11,
+   "testFiles": [
+    "governedPrincipalProvisioningPostgres.test.mjs",
+    "roleCapabilityAuthorityBaselinePostgres.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "sampleCompanyPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs"
+   ]
+  },
+  {
+   "capability": "finance.invoice.issue",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Finance",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "financeManager",
+    "generalManager",
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 7,
+   "testFiles": [
+    "invoiceCallables.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "resolveEffectivePermission.test.mjs"
+   ]
+  },
+  {
+   "capability": "finance.invoice.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Finance",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "fieldManager",
+    "financeManager",
+    "generalManager",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "purchasingManager",
+    "salesManager",
+    "salesperson",
+    "shopAssociate",
+    "shopManager"
+   ],
+   "testsReferencingWithAdmin": 5,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "dashboardEosProjection.test.mjs"
+   ]
+  },
+  {
+   "capability": "finance.payment.apply",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Finance",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "financeManager",
+    "generalManager",
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 7,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "resolveEffectivePermission.test.mjs",
+    "paymentCallables.test.mjs"
+   ]
+  },
+  {
+   "capability": "finance.payment.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Finance",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "fieldManager",
+    "financeManager",
+    "generalManager",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "purchasingManager",
+    "salesManager",
+    "salesperson",
+    "shopAssociate",
+    "shopManager"
+   ],
+   "testsReferencingWithAdmin": 5,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "dashboardEosProjection.test.mjs"
+   ]
+  },
+  {
+   "capability": "finance.refund.record",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Finance",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "financeManager",
+    "generalManager",
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 6,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "refundCallables.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "resolveEffectivePermission.test.mjs"
+   ]
+  },
+  {
+   "capability": "fulfillment.coordinatedVisit.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Fulfillment",
+   "provenance": "migration:1761955200000 2026-09-23",
+   "otherRoles": [
+    "dispatcher",
+    "fieldManager",
+    "operationsManager",
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 11,
+   "testFiles": [
+    "coordinatedVisitReadCallable.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "commercialPersonaJourneyPostgres.test.mjs",
+    "adminPolicyActivation.test.mjs",
+    "resolveEffectivePermission.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.action.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "migration:1761523200000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "dispatcher",
+    "financeManager",
+    "generalManager",
+    "operationsManager",
+    "owner",
+    "purchasingManager",
+    "warehouseAssociate",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 9,
+   "testFiles": [
+    "conditionKindInventory.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "trustedWriterCommands.test.mjs",
+    "resolveEffectivePermission.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.catalog.activate",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [],
+   "testsReferencingWithAdmin": 5,
+   "testFiles": [
+    "experienceAuthorityPostgres.test.mjs",
+    "supplierAdministrationPostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "binP4RelocationRoles.test.mjs",
+    "governedBusinessRoles.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.catalog.manage",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "fieldManager",
+    "generalManager",
+    "inventoryCatalogAdministrator",
+    "inventoryCreateExecutor",
+    "operationsManager",
+    "owner",
+    "partsManager",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 9,
+   "testFiles": [
+    "truckInventoryActivationJourneyPostgres.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "supplierAdministrationPostgres.test.mjs",
+    "receivingCapabilityRegistration.test.mjs",
+    "credConvergencePostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.catalog.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "migration:1761523200000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "commercialSharedContext",
+    "controller",
+    "dispatcher",
+    "fieldManager",
+    "financeManager",
+    "generalManager",
+    "inventoryCatalogAdministrator",
+    "inventoryLookupReader",
+    "inventoryStockRelocationOperator",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "purchasingManager",
+    "salesManager",
+    "salesperson",
+    "shopAssociate",
+    "shopManager",
+    "warehouseAssociate",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 17,
+   "testFiles": [
+    "conditionKindInventory.test.mjs",
+    "serializedAssetReadCallable.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "sampleCompanyPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.cycleCount.cancel",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "inventoryCycleCountCounter"
+   ],
+   "testsReferencingWithAdmin": 8,
+   "testFiles": [
+    "experienceAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "binP4RelocationRoles.test.mjs",
+    "resolveEffectivePermission.test.mjs",
+    "governedBusinessRoles.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.cycleCount.create",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "inventoryCycleCountCounter"
+   ],
+   "testsReferencingWithAdmin": 17,
+   "testFiles": [
+    "financialVisibilitySandboxActivation.test.mjs",
+    "workforceCapabilitiesPostgres.test.mjs",
+    "truckInventoryActivationJourneyPostgres.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "conditionalEntitlementPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.cycleCount.reconcile",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "inventoryCycleCountReconciler"
+   ],
+   "testsReferencingWithAdmin": 14,
+   "testFiles": [
+    "financialVisibilitySandboxActivation.test.mjs",
+    "truckInventoryActivationJourneyPostgres.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "pendingAuthorityCorrectionsPostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.cycleCount.submit",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "inventoryCycleCountCounter"
+   ],
+   "testsReferencingWithAdmin": 13,
+   "testFiles": [
+    "financialVisibilitySandboxActivation.test.mjs",
+    "workforceCapabilitiesPostgres.test.mjs",
+    "truckInventoryActivationJourneyPostgres.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "personaBusinessAccessRegression.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.manufacturer.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "migration:1761782400000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "dispatcher",
+    "fieldManager",
+    "financeManager",
+    "generalManager",
+    "inventoryCatalogAdministrator",
+    "inventoryStockRelocationOperator",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "purchasingManager",
+    "salesManager",
+    "salesperson",
+    "shopAssociate",
+    "shopManager",
+    "warehouseAssociate",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 2,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.placement.record",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "inventoryPutAwayOperator"
+   ],
+   "testsReferencingWithAdmin": 9,
+   "testFiles": [
+    "roleCapabilityAuthorityBaselinePostgres.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "pendingAuthorityCorrectionsPostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "binP4RelocationRoles.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.serializedAsset.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "migration:1761523200000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "fieldManager",
+    "financeManager",
+    "generalManager",
+    "inventoryLookupReader",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "purchasingManager",
+    "shopAssociate",
+    "shopManager",
+    "warehouseAssociate",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 8,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "resolveEffectivePermission.test.mjs",
+    "equipmentActivationJourneyPostgres.test.mjs",
+    "locationDisplayReadCallable.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.stock.receive",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "dispatcher",
+    "inventoryReceivingClerk"
+   ],
+   "testsReferencingWithAdmin": 22,
+   "testFiles": [
+    "ownerDecisionPrecedence.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "directExceptionAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "receivingCapabilityRegistration.test.mjs",
+    "pendingAuthorityCorrectionsPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.stock.relocate",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "inventoryStockRelocationOperator"
+   ],
+   "testsReferencingWithAdmin": 10,
+   "testFiles": [
+    "roleCapabilityAuthorityBaselinePostgres.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "receivingCapabilityRegistration.test.mjs",
+    "pendingAuthorityCorrectionsPostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.transaction.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "dispatcher",
+    "fieldManager",
+    "financeManager",
+    "generalManager",
+    "operationsManager",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "purchasingManager",
+    "salesManager",
+    "salesperson",
+    "shopAssociate",
+    "shopManager",
+    "technician",
+    "warehouseAssociate",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 10,
+   "testFiles": [
+    "conditionKindInventory.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "effectiveAccessFeed.test.mjs",
+    "trustedWriterCommands.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.transfer.cancel",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "inventoryTransferOperator"
+   ],
+   "testsReferencingWithAdmin": 7,
+   "testFiles": [
+    "experienceAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "binP4RelocationRoles.test.mjs",
+    "resolveEffectivePermission.test.mjs",
+    "governedBusinessRoles.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.transfer.create",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "inventoryTransferOperator",
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 9,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "sampleCompanyManifest.test.mjs",
+    "binP4RelocationRoles.test.mjs",
+    "resolveEffectivePermission.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.transfer.dispatch",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "inventoryTransferOperator"
+   ],
+   "testsReferencingWithAdmin": 9,
+   "testFiles": [
+    "experienceAuthorityPostgres.test.mjs",
+    "financeClosurePostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "binP4RelocationRoles.test.mjs",
+    "resolveEffectivePermission.test.mjs"
+   ]
+  },
+  {
+   "capability": "inventory.transfer.receive",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Inventory",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "inventoryTransferReceiver",
+    "technician"
+   ],
+   "testsReferencingWithAdmin": 8,
+   "testFiles": [
+    "experienceAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "binP4RelocationRoles.test.mjs",
+    "resolveEffectivePermission.test.mjs",
+    "governedBusinessRoles.test.mjs"
+   ]
+  },
+  {
+   "capability": "opportunity.createSalesOrder",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Sales / Commercial",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "generalManager",
+    "salesManager",
+    "salesperson"
+   ],
+   "testsReferencingWithAdmin": 10,
+   "testFiles": [
+    "experienceAuthorityPostgres.test.mjs",
+    "administrationControlPlane.test.mjs",
+    "governedScopeValuesPostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "commercialPersonaJourneyPostgres.test.mjs",
+    "resolveEffectivePermission.test.mjs"
+   ]
+  },
+  {
+   "capability": "opportunity.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Sales / Commercial",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "dispatcher",
+    "financeManager",
+    "generalManager",
+    "marketingManager",
+    "owner",
+    "salesManager",
+    "salesperson"
+   ],
+   "testsReferencingWithAdmin": 19,
+   "testFiles": [
+    "opportunityAccountRead.test.mjs",
+    "workforceCapabilitiesPostgres.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "directExceptionAuthorityPostgres.test.mjs",
+    "contextualActionAuthorityPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "opportunity.write",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Sales / Commercial",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "generalManager",
+    "owner",
+    "salesManager",
+    "salesperson"
+   ],
+   "testsReferencingWithAdmin": 15,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "productionCapabilityActivation.test.mjs",
+    "sampleCompanyPostgres.test.mjs",
+    "administrationControlPlane.test.mjs",
+    "effectiveAccessExplanationPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "receivingOrder.record.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Receiving",
+   "provenance": "migration:1762300800000 2026-09-25",
+   "otherRoles": [
+    "dispatcher",
+    "inventoryReceivingClerk",
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 5,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "sampleCompanyPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "pendingAuthorityCorrectionsPostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs"
+   ]
+  },
+  {
+   "capability": "reorder.purchaseOrder.create",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Purchasing / Reorder",
+   "provenance": "migration:1761696000000 2026-09-23",
+   "otherRoles": [
+    "dispatcher",
+    "generalManager",
+    "owner",
+    "purchasingManager"
+   ],
+   "testsReferencingWithAdmin": 12,
+   "testFiles": [
+    "conditionKindInventory.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "conditionalEntitlementPostgres.test.mjs",
+    "personaAuthorityDimensions.test.mjs",
+    "credConvergencePostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "reorder.purchaseOrder.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Purchasing / Reorder",
+   "provenance": "migration:1761696000000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "dispatcher",
+    "financeManager",
+    "generalManager",
+    "operationsManager",
+    "owner",
+    "purchasingManager",
+    "warehouseAssociate",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 17,
+   "testFiles": [
+    "conditionKindInventory.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "administrationControlPlane.test.mjs",
+    "conditionalEntitlementPostgres.test.mjs",
+    "personaAuthorityDimensions.test.mjs"
+   ]
+  },
+  {
+   "capability": "reorder.request.create.manual",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Purchasing / Reorder",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "dispatcher",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 11,
+   "testFiles": [
+    "conditionKindInventory.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "financeClosurePostgres.test.mjs",
+    "supplierAdministrationPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "reorder.request.create.system",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Purchasing / Reorder",
+   "provenance": "migration:1761609600000 2026-09-23",
+   "otherRoles": [
+    "dispatcher",
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 5,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "resolveEffectivePermission.test.mjs"
+   ]
+  },
+  {
+   "capability": "reorder.request.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Purchasing / Reorder",
+   "provenance": "migration:1761696000000 2026-09-23",
+   "otherRoles": [
+    "dispatcher",
+    "operationsManager",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "purchasingManager",
+    "technician"
+   ],
+   "testsReferencingWithAdmin": 33,
+   "testFiles": [
+    "conditionKindInventory.test.mjs",
+    "reorderPersonaAcceptancePostgres.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "migrationChainSafety.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "financeClosurePostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "reportDefinition.read",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "migration:1762300800000 2026-09-25",
+   "otherRoles": [
+    "owner",
+    "reportViewer"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "salesAgreement.accept",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Sales / Commercial",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "generalManager",
+    "salesManager",
+    "salesperson"
+   ],
+   "testsReferencingWithAdmin": 14,
+   "testFiles": [
+    "adminControlPlaneWorkforcePostgres.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "financeClosurePostgres.test.mjs",
+    "administrationControlPlane.test.mjs",
+    "effectiveAccessExplanationPostgres.test.mjs",
+    "governedScopeValuesPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "salesAgreement.create",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Sales / Commercial",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "generalManager",
+    "owner",
+    "salesManager",
+    "salesperson"
+   ],
+   "testsReferencingWithAdmin": 10,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "financeClosurePostgres.test.mjs",
+    "governedScopeValuesPostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "commercialPersonaJourneyPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "salesAgreement.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Sales / Commercial",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "dispatcher",
+    "generalManager",
+    "owner",
+    "salesManager",
+    "salesperson"
+   ],
+   "testsReferencingWithAdmin": 13,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "financeClosurePostgres.test.mjs",
+    "governedScopeValuesPostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "sampleCompanyManifest.test.mjs"
+   ]
+  },
+  {
+   "capability": "salesAgreement.updateDraft",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Sales / Commercial",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "generalManager",
+    "owner",
+    "salesManager",
+    "salesperson"
+   ],
+   "testsReferencingWithAdmin": 11,
+   "testFiles": [
+    "adminControlPlaneWorkforcePostgres.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "financeClosurePostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "governedScopeValuesPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "sales.discountAuthority.manage",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Sales / Commercial",
+   "provenance": "migration:1764500000000 2026-10-03",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "financeManager",
+    "generalManager",
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 6,
+   "testFiles": [
+    "governedPrincipalProvisioningPostgres.test.mjs",
+    "roleCapabilityAuthorityBaselinePostgres.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "governedConfigSalesPricingPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "salesOrder.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Sales / Commercial",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "dispatcher",
+    "fieldManager",
+    "financeManager",
+    "generalManager",
+    "marketingManager",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "purchasingManager",
+    "salesManager",
+    "salesperson",
+    "shopAssociate",
+    "shopManager",
+    "warehouseAssociate",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 19,
+   "testFiles": [
+    "workforceCapabilitiesPostgres.test.mjs",
+    "serializedAssetReadCallable.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "directExceptionAuthorityPostgres.test.mjs",
+    "salesOrderAccountRead.test.mjs"
+   ]
+  },
+  {
+   "capability": "salesOrder.write",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Sales / Commercial",
+   "provenance": "sample-company-v2:rudy 2026-09-16",
+   "otherRoles": [
+    "generalManager",
+    "owner",
+    "salesManager",
+    "salesperson"
+   ],
+   "testsReferencingWithAdmin": 16,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "financeClosurePostgres.test.mjs",
+    "productionCapabilityActivation.test.mjs",
+    "workflowControlPlane.test.mjs",
+    "credConvergencePostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "warehouse.record.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Warehouse",
+   "provenance": "migration:1761523200000 2026-09-23",
+   "otherRoles": [
+    "dispatcher",
+    "operationsManager",
+    "owner",
+    "warehouseAssociate",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 8,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "pendingAuthorityCorrectionsPostgres.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "trustedWriterCommands.test.mjs"
+   ]
+  },
+  {
+   "capability": "warehouse.transferOrder.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Warehouse",
+   "provenance": "migration:1761523200000 2026-09-23",
+   "otherRoles": [
+    "accountingManager",
+    "controller",
+    "dispatcher",
+    "financeManager",
+    "generalManager",
+    "operationsManager",
+    "owner",
+    "purchasingManager",
+    "warehouseAssociate",
+    "warehouseManager"
+   ],
+   "testsReferencingWithAdmin": 4,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "credConvergencePostgres.test.mjs",
+    "governedBusinessRoles.test.mjs"
+   ]
+  },
+  {
+   "capability": "workflowDefinition.read",
+   "class": "PLATFORM / ADMINISTRATION",
+   "domain": "Administration",
+   "provenance": "migration:1762128000000 2026-09-24",
+   "otherRoles": [
+    "owner"
+   ],
+   "testsReferencingWithAdmin": 0,
+   "testFiles": []
+  },
+  {
+   "capability": "workOrder.create",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Service / Work Orders",
+   "provenance": "owner-ruling-2026-09-22 2026-09-23",
+   "otherRoles": [
+    "dispatcher",
+    "fieldManager",
+    "generalManager",
+    "officeManager",
+    "operationsManager",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate",
+    "shopManager"
+   ],
+   "testsReferencingWithAdmin": 15,
+   "testFiles": [
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "effectiveAccessFeed.test.mjs",
+    "personaBusinessAccessRegression.test.mjs",
+    "trustedWriterCommands.test.mjs",
+    "authorityActivationVehiclePostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "workOrder.lifecycle.cancel",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Service / Work Orders",
+   "provenance": "639c1970-dbdb-4bc0-af7c-118559151e2f 2026-09-24",
+   "otherRoles": [
+    "dispatcher",
+    "fieldManager"
+   ],
+   "testsReferencingWithAdmin": 17,
+   "testFiles": [
+    "roleCapabilityAuthorityBaselinePostgres.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "migrationChainSafety.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "directExceptionAuthorityPostgres.test.mjs",
+    "inventoryWriterCapabilityCensus.test.mjs"
+   ]
+  },
+  {
+   "capability": "workOrder.lifecycle.dispatch",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Service / Work Orders",
+   "provenance": "639c1970-dbdb-4bc0-af7c-118559151e2f 2026-09-24",
+   "otherRoles": [
+    "dispatcher",
+    "fieldManager"
+   ],
+   "testsReferencingWithAdmin": 24,
+   "testFiles": [
+    "workflowDomainReadinessPostgres.test.mjs",
+    "roleCapabilityAuthorityBaselinePostgres.test.mjs",
+    "personaE2EHarness.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "migrationChainSafety.test.mjs",
+    "experienceAuthorityPostgres.test.mjs"
+   ]
+  },
+  {
+   "capability": "workOrder.record.read",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Service / Work Orders",
+   "provenance": "migration:1762300800000 2026-09-25",
+   "otherRoles": [
+    "dispatcher",
+    "fieldManager",
+    "generalManager",
+    "operationsManager",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate",
+    "shopManager",
+    "technician"
+   ],
+   "testsReferencingWithAdmin": 18,
+   "testFiles": [
+    "workOrderServicePersonaMatrixPostgres.test.mjs",
+    "serviceActivationAuthorityPostgres.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "sampleCompanyPostgres.test.mjs",
+    "directExceptionAuthorityPostgres.test.mjs",
+    "workflowControlPlane.test.mjs"
+   ]
+  },
+  {
+   "capability": "workOrder.transition",
+   "class": "BUSINESS DOMAIN",
+   "domain": "Service / Work Orders",
+   "provenance": "owner-ruling-2026-09-22 2026-09-23",
+   "otherRoles": [
+    "dispatcher",
+    "fieldManager",
+    "generalManager",
+    "operationsManager",
+    "owner",
+    "partsAssociate",
+    "partsManager",
+    "shopAssociate",
+    "shopManager",
+    "technician"
+   ],
+   "testsReferencingWithAdmin": 23,
+   "testFiles": [
+    "workOrderServicePersonaMatrixPostgres.test.mjs",
+    "workflowDomainReadinessPostgres.test.mjs",
+    "serviceActivationAuthorityPostgres.test.mjs",
+    "ownerCapabilityContract.test.mjs",
+    "experienceAuthorityPostgres.test.mjs",
+    "workflowControlPlane.test.mjs"
+   ]
+  }
+ ]
+}

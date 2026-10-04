@@ -93,6 +93,8 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   // the READS only. A name in this list confers no authority -- the server checks every one.
   "grantObjectActionToRole",
   "revokeObjectActionFromRole",
+  // #210: whole-object authority, expanded by the SERVER into the per-action grants above.
+  "applyObjectWideRoleAuthority",
   "grantObjectActionToPrincipal",
   "revokeObjectActionFromPrincipal",
   // Grant conditions (server lane CP-S): fail closed -- never retired while the grant is held.

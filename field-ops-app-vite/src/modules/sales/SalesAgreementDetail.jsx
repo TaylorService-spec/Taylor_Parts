@@ -241,6 +241,12 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
     loading: directory.loading,
     error: directory.error ?? null,
   });
+  // The ACCOUNTABLE person: a different governed answer from the owner (#209), resolved the same way, never merged.
+  const accountable = resolveEmployeeIdentity(ready ? view.accountableEmployeeId ?? null : null, {
+    byEmployeeId: directory.byEmployeeId,
+    loading: directory.loading,
+    error: directory.error ?? null,
+  });
 
   // ── THE HONEST STATES, EACH ITS OWN SENTENCE ─────────────────────────────────────────────────
   //
@@ -380,6 +386,7 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
           },
           { key: "po", label: "Customer PO", value: header.customerPO },
           { key: "owner", label: "Owner", value: owner.name },
+          { key: "accountable", label: "Accountable", value: view?.accountableEmployeeId ? accountable.name : (ready ? "Not set" : null) },
         ]}
         actions={<AgreementActions actions={actions} pending={pending} onEditDraft={handleEditDraft} onRecordAcceptance={handleRecordAcceptance} />
         }

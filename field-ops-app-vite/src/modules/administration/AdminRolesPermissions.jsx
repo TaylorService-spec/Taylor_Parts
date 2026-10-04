@@ -190,6 +190,17 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
 
   const configured = isPolicyApiConfigured();
 
+  // #210: WHERE A POLICY STORE EXISTS, THE STORED POLICY IS THE WHOLE SCREEN. The code-side contracts below (static picker,
+  // C/R/E/D grid, "can actually do" lists) describe what the code would grant, not what the server enforces for this tenant,
+  // so they no longer render beside it -- one truth per screen. They remain the reference where no EOS API is configured.
+  if (configured) {
+    return (
+      <WorkspaceShell title="Roles & Permissions" density="compact">
+        <RolesPermissionsSurface />
+      </WorkspaceShell>
+    );
+  }
+
   return (
     <WorkspaceShell
       title="Roles & Permissions"

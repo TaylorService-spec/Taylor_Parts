@@ -24,6 +24,52 @@ const ACTION_WORDS = Object.freeze({
   newVersion: "New draft from this version",
 });
 
+/**
+ * #210: RUN RECORDS ON THE ACTIVE VERSION. Start a record's workflow (pinned to this ACTIVE version at its initial step), or move
+ * the records still pinned to another version onto this one -- same step keys map to themselves; the server refuses any step the
+ * target lacks. Both are governed commands (workflowDefinition.publish), audited; the screen re-reads.
+ */
+function ActiveVersionRecords({ api, workflow, versionId, steps, reason, onDone }) {
+  const [recordId, setRecordId] = useState("");
+  const [fromVersionId, setFromVersionId] = useState("");
+  const [result, setResult] = useState(null);
+  const versions = (workflow.versions ?? []).filter((v) => v.id !== versionId);
+  const start = async () => {
+    const r = await api.startWorkflowInstance({ workflowKey: workflow.key, recordId: recordId.trim(), reason });
+    setResult(r.ok ? { ok: `Started ${recordId.trim()} at the initial step.` } : { error: refusalText(r) });
+    if (r.ok) { setRecordId(""); onDone(); }
+  };
+  const migrate = async () => {
+    const stepMap = Object.fromEntries(steps.map((s) => [s.key, s.key]));
+    const r = await api.migrateWorkflowInstances({ fromVersionId, toVersionId: versionId, stepMap, reason });
+    setResult(r.ok ? { ok: `Moved ${r.data?.moved ?? r.data?.instances?.length ?? "the"} record(s) onto this version.` } : { error: refusalText(r) });
+    if (r.ok) onDone();
+  };
+  return (
+    <div className="fo-cp-section" aria-label="Run records on this version">
+      <h4>Run records on this version</h4>
+      <div className="fo-roster__filters">
+        <label className="fo-form-field"><span>Record id</span>
+          <input type="text" aria-label="Record to start" value={recordId} onChange={(e) => setRecordId(e.target.value)} /></label>
+        <Button variant="secondary" disabled={!recordId.trim() || !reason.trim()} onClick={start}>Start workflow for record</Button>
+      </div>
+      {versions.length > 0 ? (
+        <div className="fo-roster__filters">
+          <label className="fo-form-field"><span>Move records from</span>
+            <select aria-label="Version to move records from" value={fromVersionId} onChange={(e) => setFromVersionId(e.target.value)}>
+              <option value="">Choose a version…</option>
+              {versions.map((v) => <option key={v.id} value={v.id}>v{v.version} · {v.status}</option>)}
+            </select></label>
+          <Button variant="secondary" disabled={!fromVersionId || !reason.trim()} onClick={migrate}>Move in-flight records here</Button>
+        </div>
+      ) : null}
+      <p className="fo-muted">Uses the Reason above. In-flight records stay on the version they started on until moved.</p>
+      {result?.ok && <p className="fo-success" role="status">{result.ok}</p>}
+      {result?.error && <p className="fo-warning" role="alert">{result.error}</p>}
+    </div>
+  );
+}
+
 export default function WorkflowVersionPanel({ api, workflow, versionId, onVersionCreated, onChanged }) {
   const read = useControlPlaneRead(() => api.readWorkflowVersion(versionId), `version:${versionId}`);
   const validation = useControlPlaneRead(() => api.validateWorkflowVersion(versionId), `validate:${versionId}`);
@@ -147,6 +193,10 @@ export default function WorkflowVersionPanel({ api, workflow, versionId, onVersi
           view={read.data}
           onSaved={(id) => onVersionCreated?.(id)}
         />
+      ) : null}
+
+      {view.active ? (
+        <ActiveVersionRecords api={api} workflow={workflow} versionId={versionId} steps={view.steps} reason={reason} onDone={reloadAll} />
       ) : null}
 
       <div className="fo-cp-section" aria-label="Pinned instances">

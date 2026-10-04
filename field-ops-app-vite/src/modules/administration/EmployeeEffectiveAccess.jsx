@@ -70,6 +70,26 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
         The server evaluator&rsquo;s answer for this Employee&rsquo;s Principal: per Object action, the
         result and its reason, the Security Roles (or direct exception) it comes through, and any condition.
       </p>
+      {/* THE RESOLVED CHAIN (#210): Principal -> Employee -> Job Role -> Security Roles -> Capabilities -> Scope -> Record
+          relationships -> Domain preconditions. Every link is the SERVER's explanation; the Job Role is shown and labelled as
+          granting nothing, so the chain cannot be read as "the job gives the access". */}
+      <ol className="fo-access-chain" aria-label="Resolved access chain" data-access-chain>
+        <li><span className="fo-access-chain__k">Principal</span> <code>{model.principalId ?? "—"}</code></li>
+        <li><span className="fo-access-chain__k">Employee</span> {model.employee?.displayName ?? model.employeeId ?? "not linked"}
+          {model.employee ? <span className="fo-muted">{` · ${model.employee.operatingCompanyId ?? "—"} · ${model.employee.employmentStatus ?? "—"}`}</span> : null}</li>
+        <li><span className="fo-access-chain__k">Job Role</span> {model.jobRole?.label ?? "none"} <span className="fo-muted">— the job performed; grants nothing</span></li>
+        <li><span className="fo-access-chain__k">Security Roles</span> {list(model.securityRoleKeys)}
+          {model.scopedAssignments.length > 0 ? <span className="fo-muted">{` · scoped: ${model.scopedAssignments.map((a) => `${a.roleKey} @ ${a.scope}`).join(", ")}`}</span> : null}</li>
+        <li><span className="fo-access-chain__k">Effective capabilities</span> {model.capabilities.length} unconditional
+          {model.conditionallyHeld.length ? `, ${model.conditionallyHeld.length} conditional` : ""}{model.scopedHeld.length ? `, ${model.scopedHeld.length} scope-qualified` : ""}</li>
+        <li><span className="fo-access-chain__k">Operational scope</span> {list(model.operationalScopes.map((s) => `${s.scopeType} ${s.scopeId}`))}
+          {model.workEligibility.length ? <span className="fo-muted">{` · eligibility: ${model.workEligibility.join(", ")}`}</span> : null}</li>
+        <li><span className="fo-access-chain__k">Record relationships</span> {(() => {
+          const conditioned = model.actions.filter((a) => a.result === "CONDITIONAL");
+          return conditioned.length === 0 ? "none restrict" : `${conditioned.length} action(s) restricted, e.g. ${conditioned.slice(0, 3).map((a) => `${a.capabilityKey} (${a.reasonCode})`).join(", ")}`;
+        })()}</li>
+        <li><span className="fo-access-chain__k">Domain preconditions</span> <span className="fo-muted">decided per record by each command (state, scope, operating company) — never granted here</span></li>
+      </ol>
       <dl className="fo-detail-list" data-effective-access-context>
         <dt>Security Roles that grant</dt><dd>{list(model.securityRoleKeys)}</dd>
         <dt>Access version</dt><dd>{model.accessVersion ?? "—"}</dd>
@@ -129,7 +149,9 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
       </label>
       {model.actions.length === 0 ? <p className="fo-muted">The evaluator reports no Object action.</p> : null}
       {groupByObject(shown).map((group) => (
-        <table key={group.objectKey} className="fo-table" aria-label={`Effective access on ${group.objectKey}`}>
+        // #210: the shared scroll container -- a long capability key or source list must not widen the page (1024px).
+        <div key={group.objectKey} className="fo-table-scroll">
+        <table className="fo-table" aria-label={`Effective access on ${group.objectKey}`}>
           <thead>
             <tr><th>{group.objectKey}</th><th>Result</th><th>Source</th><th>Direct exception</th><th>Surfaces / workflow</th></tr>
           </thead>
@@ -186,6 +208,7 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
             ))}
           </tbody>
         </table>
+        </div>
       ))}
     </div>
   );

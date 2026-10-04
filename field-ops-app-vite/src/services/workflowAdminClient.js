@@ -35,6 +35,10 @@ export function createWorkflowAdminClient(call = callPolicyApi) {
     publishWorkflowVersion: ({ versionId, reason }) => send("publishWorkflowVersion", { versionId, reason }),
     activateWorkflowVersion: ({ versionId, reason }) => send("activateWorkflowVersion", { versionId, reason }),
     retireWorkflowVersion: ({ versionId, reason }) => send("retireWorkflowVersion", { versionId, reason }),
+    // #210: a record enters the ACTIVE version (pinned at its initial step), and in-flight records move between versions with
+    // an explicit step map -- both workflowDefinition.publish, each one audited instance event.
+    startWorkflowInstance: ({ workflowKey, recordId, reason }) => send("startWorkflowInstance", { workflowKey, recordId, reason }),
+    migrateWorkflowInstances: ({ fromVersionId, toVersionId, stepMap, reason }) => send("migrateWorkflowInstances", { fromVersionId, toVersionId, stepMap, reason }),
   });
 }
 

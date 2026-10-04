@@ -22,17 +22,18 @@ const respond = (status, body) => vi.fn(async () => ({ ok: status >= 200 && stat
 const opts = (fetchImpl, extra = {}) => ({ baseUrl: "https://eos.example.test/", getIdToken: async () => "tok-123", fetchImpl, ...extra });
 
 describe("the closed operation list", () => {
-  it("mirrors the server's WORKFORCE read runners exactly, and serves no EMP-RT-05 name", () => {
+  it("mirrors the server's WORKFORCE read runners exactly (EMP-RT-05 served since #210)", () => {
     const server = read("../functions/src/eosWorkforce/workforceHttp.ts");
     const block = server.slice(server.indexOf("const READ_RUNNERS"), server.indexOf("} as const);", server.indexOf("const READ_RUNNERS")));
     const names = [...block.matchAll(/^\s+([a-zA-Z]+):\s*read\(/gm)].map((m) => m[1]).sort();
     expect([...WORKFORCE_READ_OPERATIONS].sort()).toEqual(names);
     expect(server).toMatch(/WORKFORCE_ROUTE = "\/workforce\/employees"/);
     expect(WORKFORCE_ROUTE).toBe("/workforce/employees");
-    expect([...WORKFORCE_OPTIONAL_INPUT_OPERATIONS].sort()).toEqual(["listEmployees", "readMyEmployeeProfile", "readMyWorkforceCapabilities"]);
+    expect([...WORKFORCE_OPTIONAL_INPUT_OPERATIONS].sort()).toEqual(["listEmployees", "listWorkforceRoster", "readMyEmployeeProfile", "readMyWorkforceCapabilities"]);
     // Finding #17: the self capability read is served and is the only capability-shaped read.
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /capabilit/i.test(n))).toEqual(["readMyWorkforceCapabilities"]);
-    expect(WORKFORCE_READ_OPERATIONS.some((n) => /assigned/i.test(n))).toBe(false);
+    // EMP-RT-05 is served since #210 (assignment authority is PostgreSQL), and it is the only assigned-work read.
+    expect(WORKFORCE_READ_OPERATIONS.filter((n) => /assigned/i.test(n) && !/Assignable/.test(n))).toEqual(["listAssignedWorkForEmployee"]);
     // EMP-RT-08 (Owner ruling): the Job Role reads are served -- business function only, under employee.record.read.
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /jobRole/i.test(n)).sort()).toEqual(["listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listJobRoles"]);
     // EMP-RT-H1: the governed Employee change history is served, and it is the only history read.
@@ -85,7 +86,7 @@ describe("the closed operation list", () => {
 
   it("an unknown name never leaves the browser", async () => {
     const fetchImpl = respond(200, {});
-    expect(await callWorkforceApi("listAssignedWorkForEmployee", {}, opts(fetchImpl))).toMatchObject({ ok: false, code: "UNKNOWN_OPERATION" });
+    expect(await callWorkforceApi("listEverythingAboutEveryone", {}, opts(fetchImpl))).toMatchObject({ ok: false, code: "UNKNOWN_OPERATION" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

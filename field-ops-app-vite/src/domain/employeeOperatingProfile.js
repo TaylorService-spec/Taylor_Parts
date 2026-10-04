@@ -33,6 +33,8 @@ export const WORKFORCE_READS = Object.freeze({
   PRINCIPAL_LINK: Object.freeze({ id: "EMP-RT-02", operation: "readEmployeePrincipalLink" }),
   OWNED_RECORDS: Object.freeze({ id: "EMP-RT-03", operation: "listRecordsOwnedByEmployee" }),
   ACCOUNTABILITIES: Object.freeze({ id: "EMP-RT-04", operation: "listAccountabilitiesForEmployee" }),
+  // EMP-RT-05 is SERVED since #210: current work assignments, from the PostgreSQL assignment authority.
+  ASSIGNED_WORK: Object.freeze({ id: "EMP-RT-05", operation: "listAssignedWorkForEmployee" }),
   MANAGED_EMPLOYEES: Object.freeze({ id: "EMP-RT-06", operation: "listManagedEmployees" }),
   MY_PROFILE: Object.freeze({ id: "EMP-RT-07", operation: "readMyEmployeeProfile" }),
   JOB_ROLE_HISTORY: Object.freeze({ id: "EMP-RT-08", operation: "listEmployeeJobRoleHistory" }),
@@ -46,16 +48,8 @@ export const EMPLOYEE_RUNTIME_DEPENDENCY = "EMPLOYEE_RUNTIME_DEPENDENCY";
 
 /** Facts the design needs that this client cannot offer yet. Each renders as a named, truthful unavailable state. */
 export const RUNTIME_DEPENDENCIES = Object.freeze({
-  ASSIGNED_WORK_READ: Object.freeze({
-    id: "EMP-RT-05",
-    kind: EMPLOYEE_RUNTIME_DEPENDENCY,
-    serverReason: "ASSIGNMENT_AUTHORITY_NOT_IN_POSTGRES",
-    fact: "Work assigned to this Employee",
-    today:
-      "Work assignment authority is not in PostgreSQL, so the Workforce service does not serve assigned work. EOS does not guess it from technician or user ids.",
-    requiredApi:
-      "Governed read listAssignedWorkForEmployee { employeeId }, over a PostgreSQL assignment authority and a governed Employee ↔ Technician projection.",
-  }),
+  // EMP-RT-05 (assigned work) is SERVED since #210 -- listAssignedWorkForEmployee over the PostgreSQL assignment authority -- so it
+  // is no longer a runtime dependency; the Assigned Person axis reads it (WORKFORCE_READS.ASSIGNED_WORK).
   // The profile facts and the reporting relationship ARE editable now (EMP-RT-W1, served as Workforce commands by
   // W1B). The Employee LIFECYCLE writer IS served too (EMP-RT-W2: changeEmploymentStatus / changeOperatingCompany on the
   // Workforce transport). What is missing is only the UI: no Administration control offers those two commands yet, so
@@ -220,6 +214,7 @@ export const RESPONSIBILITY_AXIS = Object.freeze({ OWNER: "OWNER", ACCOUNTABLE: 
 /** Families each served axis reads, mirrored from the server's EMPLOYEE_RECORD_FAMILIES / ACCOUNTABLE_RECORD_FAMILIES. */
 export const OWNED_RECORD_FAMILIES = Object.freeze(["OPPORTUNITY", "SALES_AGREEMENT", "SALES_ORDER", "ACCOUNT", "CONTACT", "ACCOUNT_LOCATION"]);
 export const ACCOUNTABLE_RECORD_FAMILIES = Object.freeze(["OPPORTUNITY", "SALES_AGREEMENT", "SALES_ORDER"]);
+export const ASSIGNED_WORK_FAMILIES = Object.freeze(["WORK_ORDER", "REORDER_REQUEST"]);
 
 export const RECORD_FAMILY_LABEL = Object.freeze({
   OPPORTUNITY: "Opportunities",
@@ -228,6 +223,8 @@ export const RECORD_FAMILY_LABEL = Object.freeze({
   ACCOUNT: "Accounts",
   CONTACT: "Contacts",
   ACCOUNT_LOCATION: "Account locations",
+  WORK_ORDER: "Work Orders",
+  REORDER_REQUEST: "Reorder Requests",
 });
 
 const AXES = Object.freeze([
@@ -257,9 +254,9 @@ const AXES = Object.freeze([
     heading: { admin: "Assigned work", self: "My assigned work" },
     question: { admin: "What work is assigned to this Employee?", self: "What work is assigned to me?" },
     why: "You are the Assigned Person: you perform the work. Being assigned does not make you the Record Owner or the Accountable Person.",
-    read: null,
-    families: Object.freeze([]),
-    dependency: RUNTIME_DEPENDENCIES.ASSIGNED_WORK_READ,
+    read: WORKFORCE_READS.ASSIGNED_WORK,
+    families: ASSIGNED_WORK_FAMILIES,
+    dependency: null,
   }),
 ]);
 

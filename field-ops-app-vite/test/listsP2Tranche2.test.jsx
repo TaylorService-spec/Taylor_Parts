@@ -39,6 +39,8 @@ const read = (rel) => readFileSync(path.resolve(process.cwd(), rel), "utf8");
 const code = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 
 const EMPLOYEES = read("src/modules/administration/AdminUsers.jsx");
+// #210: the Users rows are the workforce roster (one governed read, one table).
+const ROSTER = read("src/modules/administration/WorkforceRoster.jsx");
 const USER_DETAIL = read("src/modules/administration/UserDetail.jsx");
 const WAREHOUSES = read("src/modules/inventory/Warehouses.jsx");
 const TRUCKS = read("src/modules/inventory/TruckInventory.jsx");
@@ -105,8 +107,8 @@ describe("no record route was created to make a row clickable", () => {
     // The ruling forbids dead hrefs and fake destinations, not navigation. So the row click is
     // checked together with the route it depends on: delete the record page and this fails, which
     // is the failure mode the original inert-rows assertion existed to prevent.
-    expect(code(EMPLOYEES)).toMatch(/onRowClick=\{openDetail\}/);
-    expect(code(EMPLOYEES)).toMatch(/administration\/users\/\$\{employeeId\}/);
+    // #210: each roster row's name is a real Link to the routed record page, by the governed employeeId.
+    expect(code(ROSTER)).toMatch(/<Link to=\{`\/administration\/users\/\$\{e\.employeeId\}`\}>/);
     expect(APP, "App.jsx must mount the User Detail record route").toMatch(/users\/:employeeId/);
     expect(USER_DETAIL, "the record page must exist and be a North Star record page").toMatch(
       /ns-page/,
@@ -129,8 +131,11 @@ describe("a count is exact or it is absent", () => {
   it("Users withholds its count while pages remain", () => {
     // A directory is where a partial count reads most convincingly as a complete one: "47
     // employees" sounds like a headcount.
-    expect(EMPLOYEES).toMatch(/const complete = presentation\.state === "READY" && !presentation\.hasMore/);
-    expect(EMPLOYEES).toMatch(/count=\{complete \? presentation\.rows\.length : null\}/);
+    // #210: the roster's count is the SERVER's exact total of the filtered population (never a page tally), and a cut list
+    // says so ("first N shown"); the page header states no count of its own.
+    expect(ROSTER).toMatch(/state\.roster\.total/);
+    expect(ROSTER).toMatch(/state\.roster\.truncated \? ` \(first \$\{state\.roster\.items\.length\} shown\)`/);
+    expect(EMPLOYEES).toMatch(/count=\{null\}/);
   });
 
   it("Warehouses gates every per-bucket count on a complete read", () => {

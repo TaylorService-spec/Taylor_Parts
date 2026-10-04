@@ -278,6 +278,15 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
                 : "Unassigned",
           },
           {
+            // OWNER, ACCOUNTABLE and ASSIGNEE are three governed answers (Application Assembly, #209) -- shown side by side,
+            // never merged: the accountable person is who answers for the outcome, whoever owns the record.
+            key: "accountable",
+            label: "Accountable",
+            value: ready && view.accountableEmployeeId
+              ? (resolveOwnerName(view.accountableEmployeeId, directory) ?? UNRESOLVED_REFERENCE_LABEL)
+              : ready ? "Not set" : null,
+          },
+          {
             key: "salesOrder",
             label: null,
             // THE ORDER FACT, MOVED HERE FROM "When this closes" (Owner ruling, DECISIONS #137).

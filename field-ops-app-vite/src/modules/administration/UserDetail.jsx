@@ -26,6 +26,7 @@ import EmployeeJobRoleControl from "./EmployeeJobRoleControl.jsx";
 import EmployeeChangeHistorySection from "./EmployeeChangeHistorySection.jsx";
 import EmployeeSecurityRoles from "./EmployeeSecurityRoles.jsx";
 import EmployeeEffectiveAccess from "./EmployeeEffectiveAccess.jsx";
+import EmployeeExperiencePreview from "./EmployeeExperiencePreview.jsx";
 import EmployeeDirectExceptions from "./EmployeeDirectExceptions.jsx";
 import EmployeeWorkflowResponsibilities from "./EmployeeWorkflowResponsibilities.jsx";
 import EmployeeAccessAudit from "./EmployeeAccessAudit.jsx";
@@ -425,6 +426,13 @@ export default function UserDetail({
             </PrincipalGate>
           </RuledSection>
 
+          {/* VIEW AS USER (#210): the server-resolved workspace of this employee, read-only, audited, marked PREVIEW. */}
+          <RuledSection title="View as user" meta="Read-only preview of what EOS resolves for this person">
+            <PrincipalGate linked={linked} principalLink={principalLink}>
+              <EmployeeExperiencePreview employeeId={employee.employeeId} />
+            </PrincipalGate>
+          </RuledSection>
+
           {/* WORKFLOW RESPONSIBILITIES: bindings on held Security Roles INTERSECTED with effective authority, by the server. */}
           <RuledSection title="Workflow responsibilities" meta="Active workflow actions this Employee may perform">
             <PrincipalGate linked={linked} principalLink={principalLink}>
@@ -445,8 +453,8 @@ export default function UserDetail({
               },
               {
                 key: "responsibility",
-                label: "Owned records, accountabilities, managed employees",
-                source: `Workforce reads ${WORKFORCE_READS.OWNED_RECORDS.id}, ${WORKFORCE_READS.ACCOUNTABILITIES.id} and ${WORKFORCE_READS.MANAGED_EMPLOYEES.id}. Assigned work is not served (${RUNTIME_DEPENDENCIES.ASSIGNED_WORK_READ.id}).`,
+                label: "Owned records, accountabilities, assigned work, managed employees",
+                source: `Workforce reads ${WORKFORCE_READS.OWNED_RECORDS.id}, ${WORKFORCE_READS.ACCOUNTABILITIES.id}, ${WORKFORCE_READS.ASSIGNED_WORK.id} and ${WORKFORCE_READS.MANAGED_EMPLOYEES.id}.`,
               },
               {
                 key: "edits",

@@ -45,6 +45,8 @@ const MUTATIONS = [
   // Object-owned grants: (objectKey, actionKey, grantee), never a capability key. Mirrored so the
   // closed list stays the server's; no screen sends one yet.
   "grantObjectActionToRole", "revokeObjectActionFromRole",
+  // #210: whole-object authority, expanded by the server into the per-action grants above.
+  "applyObjectWideRoleAuthority",
   "grantObjectActionToPrincipal", "revokeObjectActionFromPrincipal",
   // Grant conditions (server lane CP-S): fail closed.
   "setGrantCondition", "retireGrantCondition",

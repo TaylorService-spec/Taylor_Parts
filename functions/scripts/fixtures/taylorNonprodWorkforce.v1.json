@@ -1,0 +1,1025 @@
+{
+ "manifest": "taylorNonprodWorkforce",
+ "version": 1,
+ "classification": "NONPROD SAMPLE DATA -- not Taylor people or customers (Owner ruling 2026-10-01: Firebase/nonprod data is SAMPLE)",
+ "ruling": "Owner 2026-10-03: scale NONPROD into a realistic Taylor workforce. The 16 canonical Job Roles are the coverage requirement; this population is test data, never an application rule.",
+ "tenantKey": "taylor-nonprod",
+ "operatingCompanyId": "taylor",
+ "identityProvider": "eos",
+ "identityNote": "Persona employees reuse their canonical persona subjects (nonprod-persona.<key>). Additional sample employees get EOS subjects nonprod-sample.<slug>: Principals that hold Security Roles and are inspectable / previewable in Administration, but have NO sign-in until EOS-IDAM issues sessions for them -- no credential is created for any of them.",
+ "actors": {
+  "workforceAdministration": "synthetic-np-emp-administrator",
+  "roleAssignment": "synthetic-np-emp-administrator",
+  "ownerOnlyAssignment": "owner",
+  "configuration": "synthetic-np-emp-office-manager",
+  "dispatch": "synthetic-np-emp-dispatcher",
+  "serviceManager": "synthetic-np-emp-service-manager"
+ },
+ "warehouses": [
+  {
+   "warehouseId": "taylor-main",
+   "name": "Taylor Main Warehouse (SAMPLE)",
+   "siteLabel": "Phoenix",
+   "operatingCompanyId": "taylor"
+  },
+  {
+   "warehouseId": "taylor-service",
+   "name": "Taylor Service Warehouse (SAMPLE)",
+   "siteLabel": "Phoenix",
+   "operatingCompanyId": "taylor"
+  }
+ ],
+ "employees": [
+  {
+   "employeeId": "synthetic-np-emp-owner-executive",
+   "principalSubject": null,
+   "firstName": "Morgan",
+   "lastName": "Taylor",
+   "jobRoleId": "owner-executive",
+   "securityRoles": [],
+   "employeeNumber": "SMP-1001",
+   "jobTitle": "Owner / President (SAMPLE)",
+   "ownerViaBootstrap": true,
+   "note": "The protected Owner authority is the Owner persona Principal, established by bootstrap, deliberately NOT linked to this Employee (registry ownerAdminSplit).",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": [],
+   "manager": null
+  },
+  {
+   "employeeId": "synthetic-np-emp-administrator",
+   "principalSubject": "nonprod-persona.administrator",
+   "firstName": "Casey",
+   "lastName": "Admin",
+   "jobRoleId": "office-administration",
+   "securityRoles": [
+    {
+     "role": "admin"
+    }
+   ],
+   "employeeNumber": "SMP-1002",
+   "jobTitle": "Office Administrator (SAMPLE)",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": [],
+   "manager": "synthetic-np-emp-office-manager"
+  },
+  {
+   "employeeId": "synthetic-np-emp-general-manager",
+   "principalSubject": "nonprod-persona.generalManager",
+   "firstName": "Jordan",
+   "lastName": "Reyes",
+   "jobRoleId": "general-manager",
+   "securityRoles": [
+    {
+     "role": "generalManager"
+    }
+   ],
+   "employeeNumber": "SMP-1003",
+   "jobTitle": "General Manager (SAMPLE)",
+   "manager": "synthetic-np-emp-owner-executive",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-office-manager",
+   "principalSubject": "nonprod-persona.officeManager",
+   "firstName": "Priya",
+   "lastName": "Shah",
+   "jobRoleId": "office-manager",
+   "securityRoles": [
+    {
+     "role": "officeManager"
+    },
+    {
+     "role": "operationalConfigurationAdministrator",
+     "assignedBy": "owner"
+    }
+   ],
+   "employeeNumber": "SMP-1004",
+   "jobTitle": "Office Manager (SAMPLE)",
+   "manager": "synthetic-np-emp-general-manager",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-service-manager",
+   "principalSubject": "nonprod-persona.serviceManager",
+   "firstName": "Alex",
+   "lastName": "Romero",
+   "jobRoleId": "service-manager",
+   "securityRoles": [
+    {
+     "role": "fieldManager"
+    }
+   ],
+   "employeeNumber": "SMP-1005",
+   "jobTitle": "Service Manager (SAMPLE)",
+   "manager": "synthetic-np-emp-general-manager",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-dispatcher",
+   "principalSubject": "nonprod-persona.dispatcher",
+   "firstName": "Taylor",
+   "lastName": "Nguyen",
+   "jobRoleId": "service-coordinator-dispatcher",
+   "securityRoles": [
+    {
+     "role": "dispatcher"
+    }
+   ],
+   "employeeNumber": "SMP-1006",
+   "jobTitle": "Service Dispatcher (SAMPLE)",
+   "manager": "synthetic-np-emp-service-manager",
+   "scopes": [
+    {
+     "scopeType": "REORDER_QUEUE",
+     "scopeId": "taylor"
+    }
+   ],
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-service-technician-a",
+   "principalSubject": "nonprod-persona.serviceTechnician",
+   "firstName": "Diego",
+   "lastName": "Martinez",
+   "jobRoleId": "service-technician",
+   "securityRoles": [
+    {
+     "role": "technician"
+    }
+   ],
+   "employeeNumber": "SMP-1007",
+   "jobTitle": "Service Technician (SAMPLE)",
+   "employmentStatus": "ACTIVE",
+   "manager": "synthetic-np-emp-service-manager",
+   "workEligibility": [
+    "SERVICE_TECHNICIAN"
+   ],
+   "truck": "taylor-truck-01",
+   "operatingCompanyId": "taylor",
+   "scopes": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-service-technician-b",
+   "principalSubject": "nonprod-sample.service-technician-b",
+   "firstName": "Hannah",
+   "lastName": "Brooks",
+   "jobRoleId": "service-technician",
+   "securityRoles": [
+    {
+     "role": "technician"
+    }
+   ],
+   "employeeNumber": "SMP-1008",
+   "jobTitle": "Service Technician (SAMPLE)",
+   "employmentStatus": "ACTIVE",
+   "manager": "synthetic-np-emp-service-manager",
+   "workEligibility": [
+    "SERVICE_TECHNICIAN"
+   ],
+   "truck": "taylor-truck-02",
+   "operatingCompanyId": "taylor",
+   "scopes": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-contract-technician",
+   "principalSubject": "nonprod-sample.contract-technician",
+   "firstName": "Marcus",
+   "lastName": "Lee",
+   "jobRoleId": "service-technician",
+   "securityRoles": [
+    {
+     "role": "technician"
+    }
+   ],
+   "employeeNumber": "SMP-1009",
+   "jobTitle": "Service Technician (SAMPLE)",
+   "employmentStatus": "CONTRACTOR",
+   "manager": "synthetic-np-emp-service-manager",
+   "workEligibility": [
+    "SERVICE_TECHNICIAN"
+   ],
+   "truck": "taylor-truck-03",
+   "operatingCompanyId": "taylor",
+   "scopes": []
+  },
+  {
+   "employeeId": "np-taylor-tech-04",
+   "principalSubject": "nonprod-sample.tech-04",
+   "firstName": "Sofia",
+   "lastName": "Alvarez",
+   "jobRoleId": "service-technician",
+   "securityRoles": [
+    {
+     "role": "technician"
+    }
+   ],
+   "employeeNumber": "SMP-1010",
+   "jobTitle": "Service Technician (SAMPLE)",
+   "employmentStatus": "ACTIVE",
+   "manager": "synthetic-np-emp-service-manager",
+   "workEligibility": [
+    "SERVICE_TECHNICIAN"
+   ],
+   "truck": "taylor-truck-04",
+   "operatingCompanyId": "taylor",
+   "scopes": []
+  },
+  {
+   "employeeId": "np-taylor-tech-05",
+   "principalSubject": "nonprod-sample.tech-05",
+   "firstName": "Ethan",
+   "lastName": "Clark",
+   "jobRoleId": "service-technician",
+   "securityRoles": [
+    {
+     "role": "technician"
+    }
+   ],
+   "employeeNumber": "SMP-1011",
+   "jobTitle": "Service Technician (SAMPLE)",
+   "employmentStatus": "ACTIVE",
+   "manager": "synthetic-np-emp-service-manager",
+   "workEligibility": [
+    "SERVICE_TECHNICIAN"
+   ],
+   "truck": "taylor-truck-05",
+   "operatingCompanyId": "taylor",
+   "scopes": []
+  },
+  {
+   "employeeId": "np-taylor-tech-06",
+   "principalSubject": "nonprod-sample.tech-06",
+   "firstName": "Grace",
+   "lastName": "Kim",
+   "jobRoleId": "service-technician",
+   "securityRoles": [
+    {
+     "role": "technician"
+    }
+   ],
+   "employeeNumber": "SMP-1012",
+   "jobTitle": "Service Technician (SAMPLE)",
+   "employmentStatus": "ACTIVE",
+   "manager": "synthetic-np-emp-service-manager",
+   "workEligibility": [
+    "SERVICE_TECHNICIAN"
+   ],
+   "truck": "taylor-truck-06",
+   "operatingCompanyId": "taylor",
+   "scopes": []
+  },
+  {
+   "employeeId": "np-taylor-tech-07",
+   "principalSubject": "nonprod-sample.tech-07",
+   "firstName": "Liam",
+   "lastName": "Patel",
+   "jobRoleId": "service-technician",
+   "securityRoles": [
+    {
+     "role": "technician"
+    }
+   ],
+   "employeeNumber": "SMP-1013",
+   "jobTitle": "Service Technician (SAMPLE)",
+   "employmentStatus": "ACTIVE",
+   "manager": "synthetic-np-emp-service-manager",
+   "workEligibility": [
+    "SERVICE_TECHNICIAN"
+   ],
+   "truck": "taylor-truck-07",
+   "operatingCompanyId": "taylor",
+   "scopes": []
+  },
+  {
+   "employeeId": "np-taylor-tech-08",
+   "principalSubject": "nonprod-sample.tech-08",
+   "firstName": "Olivia",
+   "lastName": "Turner",
+   "jobRoleId": "service-technician",
+   "securityRoles": [
+    {
+     "role": "technician"
+    }
+   ],
+   "employeeNumber": "SMP-1014",
+   "jobTitle": "Service Technician (SAMPLE)",
+   "employmentStatus": "ACTIVE",
+   "manager": "synthetic-np-emp-service-manager",
+   "workEligibility": [
+    "SERVICE_TECHNICIAN"
+   ],
+   "truck": "taylor-truck-08",
+   "operatingCompanyId": "taylor",
+   "scopes": []
+  },
+  {
+   "employeeId": "np-taylor-tech-09",
+   "principalSubject": "nonprod-sample.tech-09",
+   "firstName": "Noah",
+   "lastName": "Bennett",
+   "jobRoleId": "service-technician",
+   "securityRoles": [
+    {
+     "role": "technician"
+    }
+   ],
+   "employeeNumber": "SMP-1015",
+   "jobTitle": "Service Technician (SAMPLE)",
+   "employmentStatus": "ACTIVE",
+   "manager": "synthetic-np-emp-service-manager",
+   "workEligibility": [
+    "SERVICE_TECHNICIAN"
+   ],
+   "truck": "taylor-truck-09",
+   "operatingCompanyId": "taylor",
+   "scopes": []
+  },
+  {
+   "employeeId": "np-taylor-tech-10",
+   "principalSubject": "nonprod-sample.tech-10",
+   "firstName": "Ava",
+   "lastName": "Ramirez",
+   "jobRoleId": "service-technician",
+   "securityRoles": [
+    {
+     "role": "technician"
+    }
+   ],
+   "employeeNumber": "SMP-1016",
+   "jobTitle": "Service Technician (SAMPLE)",
+   "employmentStatus": "ACTIVE",
+   "manager": "synthetic-np-emp-service-manager",
+   "workEligibility": [
+    "SERVICE_TECHNICIAN"
+   ],
+   "truck": "taylor-truck-10",
+   "operatingCompanyId": "taylor",
+   "scopes": []
+  },
+  {
+   "employeeId": "np-taylor-retail-lead",
+   "principalSubject": "nonprod-sample.retail-lead",
+   "firstName": "Dana",
+   "lastName": "Whitfield",
+   "jobRoleId": "retail-sales",
+   "securityRoles": [
+    {
+     "role": "salesperson",
+     "scopeType": "salesChannel",
+     "scopeValue": "RETAIL"
+    },
+    {
+     "role": "salesManager",
+     "scopeType": "salesChannel",
+     "scopeValue": "RETAIL"
+    },
+    {
+     "role": "commercialSharedContext"
+    }
+   ],
+   "employeeNumber": "SMP-1017",
+   "jobTitle": "Retail Sales Lead (SAMPLE)",
+   "manager": "synthetic-np-emp-general-manager",
+   "team": "RETAIL",
+   "lead": true,
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-retail-sales-a",
+   "principalSubject": "nonprod-persona.retailSales",
+   "firstName": "Chris",
+   "lastName": "Morales",
+   "jobRoleId": "retail-sales",
+   "securityRoles": [
+    {
+     "role": "salesperson",
+     "scopeType": "salesChannel",
+     "scopeValue": "RETAIL"
+    },
+    {
+     "role": "commercialSharedContext"
+    }
+   ],
+   "employeeNumber": "SMP-1018",
+   "jobTitle": "Retail Sales Associate (SAMPLE)",
+   "manager": "np-taylor-retail-lead",
+   "team": "RETAIL",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-retail-sales-b",
+   "principalSubject": "nonprod-sample.retail-sales-b",
+   "firstName": "Jamie",
+   "lastName": "Foster",
+   "jobRoleId": "retail-sales",
+   "securityRoles": [
+    {
+     "role": "salesperson",
+     "scopeType": "salesChannel",
+     "scopeValue": "RETAIL"
+    },
+    {
+     "role": "commercialSharedContext"
+    }
+   ],
+   "employeeNumber": "SMP-1019",
+   "jobTitle": "Retail Sales Associate (SAMPLE)",
+   "manager": "np-taylor-retail-lead",
+   "team": "RETAIL",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  },
+  {
+   "employeeId": "np-taylor-national-lead",
+   "principalSubject": "nonprod-sample.national-lead",
+   "firstName": "Robin",
+   "lastName": "Castillo",
+   "jobRoleId": "national-accounts-sales",
+   "securityRoles": [
+    {
+     "role": "salesperson",
+     "scopeType": "salesChannel",
+     "scopeValue": "NATIONAL_ACCOUNTS"
+    },
+    {
+     "role": "salesManager",
+     "scopeType": "salesChannel",
+     "scopeValue": "NATIONAL_ACCOUNTS"
+    },
+    {
+     "role": "commercialSharedContext"
+    }
+   ],
+   "employeeNumber": "SMP-1020",
+   "jobTitle": "National Accounts Lead (SAMPLE)",
+   "manager": "synthetic-np-emp-general-manager",
+   "team": "NATIONAL_ACCOUNTS",
+   "lead": true,
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-national-accounts-sales",
+   "principalSubject": "nonprod-persona.nationalAccountsSales",
+   "firstName": "Avery",
+   "lastName": "Hughes",
+   "jobRoleId": "national-accounts-sales",
+   "securityRoles": [
+    {
+     "role": "salesperson",
+     "scopeType": "salesChannel",
+     "scopeValue": "NATIONAL_ACCOUNTS"
+    },
+    {
+     "role": "commercialSharedContext"
+    }
+   ],
+   "employeeNumber": "SMP-1021",
+   "jobTitle": "National Accounts Associate (SAMPLE)",
+   "manager": "np-taylor-national-lead",
+   "team": "NATIONAL_ACCOUNTS",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  },
+  {
+   "employeeId": "np-taylor-national-assoc-2",
+   "principalSubject": "nonprod-sample.national-assoc-2",
+   "firstName": "Quinn",
+   "lastName": "Sullivan",
+   "jobRoleId": "national-accounts-sales",
+   "securityRoles": [
+    {
+     "role": "salesperson",
+     "scopeType": "salesChannel",
+     "scopeValue": "NATIONAL_ACCOUNTS"
+    },
+    {
+     "role": "commercialSharedContext"
+    }
+   ],
+   "employeeNumber": "SMP-1022",
+   "jobTitle": "National Accounts Associate (SAMPLE)",
+   "manager": "np-taylor-national-lead",
+   "team": "NATIONAL_ACCOUNTS",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-parts-manager",
+   "principalSubject": "nonprod-persona.partsManager",
+   "firstName": "Sam",
+   "lastName": "Okafor",
+   "jobRoleId": "parts-manager",
+   "securityRoles": [
+    {
+     "role": "partsManager"
+    },
+    {
+     "role": "purchasingManager"
+    }
+   ],
+   "employeeNumber": "SMP-1023",
+   "jobTitle": "Parts Manager (SAMPLE)",
+   "manager": "synthetic-np-emp-general-manager",
+   "workEligibility": [
+    "PARTS_OPERATIONS"
+   ],
+   "scopes": [
+    {
+     "scopeType": "REORDER_QUEUE",
+     "scopeId": "taylor"
+    }
+   ],
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor"
+  },
+  {
+   "employeeId": "synthetic-np-emp-parts-associate",
+   "principalSubject": "nonprod-persona.partsAssociate",
+   "firstName": "Riley",
+   "lastName": "Chen",
+   "jobRoleId": "parts-associate",
+   "securityRoles": [
+    {
+     "role": "partsAssociate"
+    },
+    {
+     "role": "inventoryReceivingClerk"
+    }
+   ],
+   "employeeNumber": "SMP-1024",
+   "jobTitle": "Parts Associate (SAMPLE)",
+   "manager": "synthetic-np-emp-parts-manager",
+   "workEligibility": [
+    "PARTS_OPERATIONS"
+   ],
+   "scopes": [
+    {
+     "scopeType": "REORDER_QUEUE",
+     "scopeId": "taylor"
+    }
+   ],
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor"
+  },
+  {
+   "employeeId": "synthetic-np-emp-warehouse-manager",
+   "principalSubject": "nonprod-persona.warehouseManager",
+   "firstName": "Pat",
+   "lastName": "Johnson",
+   "jobRoleId": "warehouse-manager",
+   "securityRoles": [
+    {
+     "role": "warehouseManager"
+    },
+    {
+     "role": "inventoryCycleCountReconciler"
+    },
+    {
+     "role": "inventoryBinAdministrator"
+    }
+   ],
+   "employeeNumber": "SMP-1025",
+   "jobTitle": "Warehouse Manager (SAMPLE)",
+   "manager": "synthetic-np-emp-general-manager",
+   "workEligibility": [
+    "WAREHOUSE_OPERATIONS"
+   ],
+   "scopes": [
+    {
+     "scopeType": "WAREHOUSE",
+     "scopeId": "taylor-main"
+    },
+    {
+     "scopeType": "WAREHOUSE",
+     "scopeId": "taylor-service"
+    }
+   ],
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor"
+  },
+  {
+   "employeeId": "synthetic-np-emp-warehouse-associate",
+   "principalSubject": "nonprod-persona.warehouseAssociate",
+   "firstName": "Lee",
+   "lastName": "Garcia",
+   "jobRoleId": "warehouse-associate",
+   "securityRoles": [
+    {
+     "role": "warehouseAssociate"
+    },
+    {
+     "role": "inventoryCycleCountCounter"
+    }
+   ],
+   "employeeNumber": "SMP-1026",
+   "jobTitle": "Warehouse Associate (SAMPLE)",
+   "manager": "synthetic-np-emp-warehouse-manager",
+   "workEligibility": [
+    "WAREHOUSE_OPERATIONS"
+   ],
+   "scopes": [
+    {
+     "scopeType": "WAREHOUSE",
+     "scopeId": "taylor-main"
+    }
+   ],
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor"
+  },
+  {
+   "employeeId": "np-taylor-warehouse-assoc-2",
+   "principalSubject": "nonprod-sample.warehouse-assoc-2",
+   "firstName": "Kendall",
+   "lastName": "Price",
+   "jobRoleId": "warehouse-associate",
+   "securityRoles": [
+    {
+     "role": "warehouseAssociate"
+    },
+    {
+     "role": "inventoryCycleCountCounter"
+    }
+   ],
+   "employeeNumber": "SMP-1027",
+   "jobTitle": "Warehouse Associate (SAMPLE)",
+   "manager": "synthetic-np-emp-warehouse-manager",
+   "workEligibility": [
+    "WAREHOUSE_OPERATIONS"
+   ],
+   "scopes": [
+    {
+     "scopeType": "WAREHOUSE",
+     "scopeId": "taylor-service"
+    }
+   ],
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor"
+  },
+  {
+   "employeeId": "synthetic-np-emp-finance-controller",
+   "principalSubject": "nonprod-persona.financeAccounting",
+   "firstName": "Elena",
+   "lastName": "Vasquez",
+   "jobRoleId": "finance-accounting",
+   "securityRoles": [
+    {
+     "role": "controller"
+    }
+   ],
+   "employeeNumber": "SMP-1028",
+   "jobTitle": "Controller (SAMPLE)",
+   "manager": "synthetic-np-emp-general-manager",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-report-analyst",
+   "principalSubject": "nonprod-persona.reportingAnalyst",
+   "firstName": "Jules",
+   "lastName": "Bauer",
+   "jobRoleId": "reporting-analyst",
+   "securityRoles": [
+    {
+     "role": "reportViewer"
+    }
+   ],
+   "employeeNumber": "SMP-1029",
+   "jobTitle": "Reporting Analyst (SAMPLE)",
+   "manager": "synthetic-np-emp-general-manager",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  },
+  {
+   "employeeId": "synthetic-np-emp-restricted-user",
+   "principalSubject": "nonprod-persona.generalEmployee",
+   "firstName": "Frankie",
+   "lastName": "Moss",
+   "jobRoleId": "general-employee",
+   "securityRoles": [
+    {
+     "role": "generalEmployee"
+    }
+   ],
+   "employeeNumber": "SMP-1030",
+   "jobTitle": "Shop Helper (SAMPLE)",
+   "manager": "synthetic-np-emp-office-manager",
+   "employmentStatus": "ACTIVE",
+   "operatingCompanyId": "taylor",
+   "workEligibility": [],
+   "scopes": []
+  }
+ ],
+ "trucks": [
+  {
+   "truckId": "taylor-svc-01",
+   "vehicleNumber": "T-101",
+   "displayLabel": "Service Truck 01 (SAMPLE)",
+   "mobileLocationId": "taylor-truck-01",
+   "homeWarehouseId": "taylor-service"
+  },
+  {
+   "truckId": "taylor-svc-02",
+   "vehicleNumber": "T-102",
+   "displayLabel": "Service Truck 02 (SAMPLE)",
+   "mobileLocationId": "taylor-truck-02",
+   "homeWarehouseId": "taylor-service"
+  },
+  {
+   "truckId": "taylor-svc-03",
+   "vehicleNumber": "T-103",
+   "displayLabel": "Service Truck 03 (SAMPLE)",
+   "mobileLocationId": "taylor-truck-03",
+   "homeWarehouseId": "taylor-service"
+  },
+  {
+   "truckId": "taylor-svc-04",
+   "vehicleNumber": "T-104",
+   "displayLabel": "Service Truck 04 (SAMPLE)",
+   "mobileLocationId": "taylor-truck-04",
+   "homeWarehouseId": "taylor-service"
+  },
+  {
+   "truckId": "taylor-svc-05",
+   "vehicleNumber": "T-105",
+   "displayLabel": "Service Truck 05 (SAMPLE)",
+   "mobileLocationId": "taylor-truck-05",
+   "homeWarehouseId": "taylor-service"
+  },
+  {
+   "truckId": "taylor-svc-06",
+   "vehicleNumber": "T-106",
+   "displayLabel": "Service Truck 06 (SAMPLE)",
+   "mobileLocationId": "taylor-truck-06",
+   "homeWarehouseId": "taylor-service"
+  },
+  {
+   "truckId": "taylor-svc-07",
+   "vehicleNumber": "T-107",
+   "displayLabel": "Service Truck 07 (SAMPLE)",
+   "mobileLocationId": "taylor-truck-07",
+   "homeWarehouseId": "taylor-service"
+  },
+  {
+   "truckId": "taylor-svc-08",
+   "vehicleNumber": "T-108",
+   "displayLabel": "Service Truck 08 (SAMPLE)",
+   "mobileLocationId": "taylor-truck-08",
+   "homeWarehouseId": "taylor-service"
+  },
+  {
+   "truckId": "taylor-svc-09",
+   "vehicleNumber": "T-109",
+   "displayLabel": "Service Truck 09 (SAMPLE)",
+   "mobileLocationId": "taylor-truck-09",
+   "homeWarehouseId": "taylor-service"
+  },
+  {
+   "truckId": "taylor-svc-10",
+   "vehicleNumber": "T-110",
+   "displayLabel": "Service Truck 10 (SAMPLE)",
+   "mobileLocationId": "taylor-truck-10",
+   "homeWarehouseId": "taylor-service"
+  }
+ ],
+ "accounts": [
+  {
+   "accountId": "np-taylor-acct-r1",
+   "name": "Harbor Grill (SAMPLE)",
+   "channel": "RETAIL",
+   "owner": "np-taylor-retail-lead",
+   "accountable": "np-taylor-retail-lead",
+   "actor": "np-taylor-retail-lead",
+   "location": "Main kitchen"
+  },
+  {
+   "accountId": "np-taylor-acct-r2",
+   "name": "Desert Bloom Cafe (SAMPLE)",
+   "channel": "RETAIL",
+   "owner": "np-taylor-retail-lead",
+   "accountable": "np-taylor-retail-lead",
+   "actor": "np-taylor-retail-lead",
+   "location": "Main kitchen"
+  },
+  {
+   "accountId": "np-taylor-acct-r3",
+   "name": "Copper Kettle Diner (SAMPLE)",
+   "channel": "RETAIL",
+   "owner": "synthetic-np-emp-retail-sales-a",
+   "accountable": "np-taylor-retail-lead",
+   "actor": "np-taylor-retail-lead",
+   "location": "Main kitchen"
+  },
+  {
+   "accountId": "np-taylor-acct-r4",
+   "name": "Saguaro Bistro (SAMPLE)",
+   "channel": "RETAIL",
+   "owner": "synthetic-np-emp-retail-sales-a",
+   "accountable": "np-taylor-retail-lead",
+   "actor": "np-taylor-retail-lead",
+   "location": "Main kitchen"
+  },
+  {
+   "accountId": "np-taylor-acct-r5",
+   "name": "Mesa Market Deli (SAMPLE)",
+   "channel": "RETAIL",
+   "owner": "synthetic-np-emp-retail-sales-b",
+   "accountable": "np-taylor-retail-lead",
+   "actor": "np-taylor-retail-lead",
+   "location": "Main kitchen"
+  },
+  {
+   "accountId": "np-taylor-acct-r6",
+   "name": "Sunset Taqueria (SAMPLE)",
+   "channel": "RETAIL",
+   "owner": "synthetic-np-emp-retail-sales-b",
+   "accountable": "np-taylor-retail-lead",
+   "actor": "np-taylor-retail-lead",
+   "location": "Main kitchen"
+  },
+  {
+   "accountId": "np-taylor-acct-n1",
+   "name": "Southwest Hospitality Group (SAMPLE)",
+   "channel": "NATIONAL_ACCOUNTS",
+   "owner": "np-taylor-national-lead",
+   "accountable": "np-taylor-national-lead",
+   "actor": "np-taylor-national-lead",
+   "location": "Central plant"
+  },
+  {
+   "accountId": "np-taylor-acct-n2",
+   "name": "Canyon Health Systems (SAMPLE)",
+   "channel": "NATIONAL_ACCOUNTS",
+   "owner": "synthetic-np-emp-national-accounts-sales",
+   "accountable": "np-taylor-national-lead",
+   "actor": "np-taylor-national-lead",
+   "location": "Central plant"
+  },
+  {
+   "accountId": "np-taylor-acct-n3",
+   "name": "Valley School District (SAMPLE)",
+   "channel": "NATIONAL_ACCOUNTS",
+   "owner": "np-taylor-national-assoc-2",
+   "accountable": "np-taylor-national-lead",
+   "actor": "np-taylor-national-lead",
+   "location": "Central plant"
+  },
+  {
+   "accountId": "np-taylor-acct-n4",
+   "name": "Grand Resorts Arizona (SAMPLE)",
+   "channel": "NATIONAL_ACCOUNTS",
+   "owner": "np-taylor-national-lead",
+   "accountable": "np-taylor-national-lead",
+   "actor": "np-taylor-national-lead",
+   "location": "Central plant"
+  }
+ ],
+ "reassignments": [
+  {
+   "accountId": "np-taylor-acct-r6",
+   "from": "synthetic-np-emp-retail-sales-b",
+   "to": "synthetic-np-emp-retail-sales-a",
+   "actor": "np-taylor-retail-lead",
+   "reason": "SAMPLE coverage change: territory rebalanced to Chris Morales"
+  }
+ ],
+ "workOrders": [
+  {
+   "key": "wo-01",
+   "accountId": "np-taylor-acct-r1",
+   "workOrderType": "PM",
+   "assignee": "synthetic-np-emp-service-technician-a",
+   "dayOffset": 1,
+   "hour": 8
+  },
+  {
+   "key": "wo-02",
+   "accountId": "np-taylor-acct-r2",
+   "workOrderType": "SERVICE_CALL",
+   "assignee": "synthetic-np-emp-service-technician-b",
+   "dayOffset": 2,
+   "hour": 10
+  },
+  {
+   "key": "wo-03",
+   "accountId": "np-taylor-acct-r3",
+   "workOrderType": "PM",
+   "assignee": "synthetic-np-emp-contract-technician",
+   "dayOffset": 3,
+   "hour": 13
+  },
+  {
+   "key": "wo-04",
+   "accountId": "np-taylor-acct-r4",
+   "workOrderType": "SERVICE_CALL",
+   "assignee": "np-taylor-tech-04",
+   "dayOffset": 4,
+   "hour": 8
+  },
+  {
+   "key": "wo-05",
+   "accountId": "np-taylor-acct-r5",
+   "workOrderType": "PM",
+   "assignee": "np-taylor-tech-05",
+   "dayOffset": 5,
+   "hour": 10
+  },
+  {
+   "key": "wo-06",
+   "accountId": "np-taylor-acct-r6",
+   "workOrderType": "SERVICE_CALL",
+   "assignee": "np-taylor-tech-06",
+   "dayOffset": 1,
+   "hour": 13
+  },
+  {
+   "key": "wo-07",
+   "accountId": "np-taylor-acct-r1",
+   "workOrderType": "PM",
+   "assignee": "np-taylor-tech-07",
+   "dayOffset": 2,
+   "hour": 8
+  },
+  {
+   "key": "wo-08",
+   "accountId": "np-taylor-acct-r2",
+   "workOrderType": "SERVICE_CALL",
+   "assignee": "np-taylor-tech-08",
+   "dayOffset": 3,
+   "hour": 10
+  },
+  {
+   "key": "wo-09",
+   "accountId": "np-taylor-acct-r3",
+   "workOrderType": "PM",
+   "assignee": "np-taylor-tech-09",
+   "dayOffset": 4,
+   "hour": 13
+  },
+  {
+   "key": "wo-10",
+   "accountId": "np-taylor-acct-r4",
+   "workOrderType": "SERVICE_CALL",
+   "assignee": "np-taylor-tech-10",
+   "dayOffset": 5,
+   "hour": 8
+  },
+  {
+   "key": "wo-11",
+   "accountId": "np-taylor-acct-r5",
+   "workOrderType": "PM",
+   "assignee": null,
+   "dayOffset": 1,
+   "hour": 10
+  },
+  {
+   "key": "wo-12",
+   "accountId": "np-taylor-acct-r6",
+   "workOrderType": "SERVICE_CALL",
+   "assignee": null,
+   "dayOffset": 2,
+   "hour": 13
+  }
+ ],
+ "sharedContextNote": "Sellers hold salesperson (and the leads salesManager) @salesChannel, PLUS commercialSharedContext GLOBALLY -- the nonprod Option A model (2026-09-30): shared customer/catalog context is global, selling is channel-scoped.",
+ "nonprodActorFallback": {
+  "$comment": "Nonprod only: the 16 personas are the only identities with EOS sessions until EOS-IDAM. A step whose local actor is an additional sample employee runs as this already-authorized persona; the server still decides.",
+  "nonprod-sample.retail-lead": "nonprod-persona.retailSales",
+  "nonprod-sample.retail-sales-b": "nonprod-persona.retailSales",
+  "nonprod-sample.national-lead": "nonprod-persona.nationalAccountsSales",
+  "nonprod-sample.national-assoc-2": "nonprod-persona.nationalAccountsSales"
+ }
+}

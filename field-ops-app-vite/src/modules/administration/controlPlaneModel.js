@@ -250,6 +250,12 @@ export function explanationModel(payload) {
     workEligibility: strings(payload.workEligibility),
     // EMPLOYEE FACTS (never a permission source): the linked Employee's CURRENT Functional Roles. Drawn as
     // facts only; nothing on the client derives access from them, and the server states grantsCapabilities:false.
+    // The CURRENT Job Role and the Employee's name/company (Administration control plane, #210) -- facts for the chain
+    // Principal -> Employee -> Job Role -> Security Roles -> Capabilities. The Job Role grants nothing; the server says so.
+    jobRole: payload.employeeFacts?.jobRole && typeof payload.employeeFacts.jobRole === "object" ? payload.employeeFacts.jobRole : null,
+    employee: payload.employeeFacts?.employee && typeof payload.employeeFacts.employee === "object" ? payload.employeeFacts.employee : null,
+    conditionallyHeld: strings(payload.conditionallyHeld),
+    scopedHeld: Array.isArray(payload.scopedHeld) ? payload.scopedHeld.filter((h) => h && typeof h === "object") : [],
     functionalRoles: Array.isArray(payload.employeeFacts?.functionalRoles)
       ? payload.employeeFacts.functionalRoles.filter((f) => f && typeof f === "object" && typeof f.key === "string")
       : [],

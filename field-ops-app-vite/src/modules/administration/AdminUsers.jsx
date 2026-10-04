@@ -1,10 +1,9 @@
-import { useCallback, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
+import { Link } from "react-router-dom";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import { workforceApiClient } from "../../services/workforceApiClient.js";
-import { useWorkforceEmployeeDirectory } from "../../hooks/useWorkforceEmployeeDirectory.js";
-import { employeeDirectoryPresentation } from "../../domain/employeeOperatingProfile.js";
+// Administration control plane (#210): the directory IS the workforce roster -- Job Role, Security Roles, scopes and
+// assignment per Employee, filterable -- one governed read, one table (the earlier name/number-only directory is retired).
+import WorkforceRoster from "./WorkforceRoster.jsx";
 // THE STORED ASSIGNMENTS, beside the employee directory. A PRINCIPAL is the identity EOS
 // authorizes and it is not the same record as an employee -- the panel says so rather than
 // letting the proximity of the two tables imply they are one thing.
@@ -64,92 +63,31 @@ import JobRoleRemediation from "./JobRoleRemediation.jsx";
 // reporting-relationship commands, EMP-RT-W1); for anyone else it says editing is not available to them.
 // The destination is kept so that answer, and the server's own refusal, are given in one place, not two.
 export default function AdminUsers({ workforce = workforceApiClient }) {
-  const navigate = useNavigate();
-  const directory = useWorkforceEmployeeDirectory({ client: workforce });
-
-  const presentation = useMemo(
-    () =>
-      employeeDirectoryPresentation({
-        status: directory.status,
-        items: directory.items,
-        hasMore: directory.hasMore,
-        error: directory.error,
-      }),
-    [directory.status, directory.items, directory.hasMore, directory.error],
-  );
-
-  const openDetail = useCallback(
-    // The PostgreSQL employeeId the governed read returned -- the same id the record page reads by.
-    (employeeId) => navigate(`/administration/users/${employeeId}`),
-    [navigate],
-  );
-
-  const rowActions = useMemo(
-    () => [
-      { id: "view", label: "View", onActivate: openDetail },
-      {
-        id: "edit",
-        label: "Edit",
-        onActivate: (employeeId) => navigate(`/administration/users/${employeeId}?edit=1`),
-      },
-    ],
-    [navigate, openDetail],
-  );
-
-  // THE COUNT EXISTS ONLY WHEN THE CURSOR IS EXHAUSTED -- the rule Suppliers, Warehouses and the
-  // retired Employees screen all state at length, and a people directory is where a partial count
-  // reads most convincingly as a complete one ("47 users" sounds like a headcount). No aggregate
-  // query was added to rescue the partial case: that would be creating a read to make the page
-  // look finished.
-  const complete = presentation.state === "READY" && !presentation.hasMore;
-
   return (
     <WorkspaceIdentity
       crumb="Administration → Users"
       title="Users"
-      count={complete ? presentation.rows.length : null}
-      countLabel={presentation.rows.length === 1 ? "user" : "users"}
-      // NOTHING TO SUMMARISE. employmentStatus is a six-value field with no governed aggregate over
-      // it, so a workload line here would be a tally of the loaded page presented as a fact about
-      // the company. Silence is the honest answer, not an approximation in a smaller font.
+      // The roster states its own count from the governed read (and the counts per Job Role / Security Role).
+      count={null}
       summaryItems={[]}
-      // NO CREATE ACTION. A person enters EOS through the governed operator process, not through a
-      // screen, and a disabled "New user" here would describe a permission boundary when the truth is
-      // that creating one is an onboarding procedure.
+      // NO CREATE ACTION. A person enters EOS through the governed operator process, not through a screen.
     >
       <p className="fo-muted">
-        Employee business records from the governed Employee authority: name, Employee ID, employment
-        status, job title and operating company. Whether a person can sign in is User Access, not an
-        Employee fact. To see or change a person&apos;s Security Roles, open their Employee record and use
-        its Security Roles section.
+        The workforce from the governed Employee and Security authorities: each person&apos;s Job Role (the job they do),
+        Security Roles (the authority they hold, with its scope), status, operating company and operational scope. Open a
+        person to see their Effective Access — what EOS resolves for them, and why — or to preview their workspace. To see or
+        change a person&apos;s Security Roles, open their Employee record and use its Security Roles section. Whether a person can
+        sign in is User Access, not an Employee fact.
       </p>
-      {/* EMPLOYEES WITHOUT A JOB ROLE (EMP-RT-08). Its own governed read and count, never a directory column and never
-          inferred from a title or a Security Role. Silent when the count is 0; a refused or failed read is stated. */}
+      {/* EMPLOYEES WITHOUT A JOB ROLE (EMP-RT-08). Its own governed read and count. Silent when the count is 0. */}
       <JobRoleRemediation workforce={workforce} />
-      {/* FUNCTIONAL ROLES (lane FR): the catalog of business responsibilities -- not Security Roles, not Job Roles. */}
       <p className="fo-muted">
         <Link to="/administration/users/functional-roles">Functional Roles</Link> — the catalog of business
         responsibilities an Employee may hold. They grant nothing.
       </p>
-      {/* THE DIRECTORY IS MEASURED AGAINST ITSELF, NOT THE WINDOW. This wrapper exists only to
-          be a containment context: `.fo-users-directory` in index.css asks how much width the
-          directory actually has once the application rail has taken its share, and recomposes
-          the columns into the shared labelled-card grammar below 760px of its OWN width.
-          The rail is why a 900px window was clipping View and Edit off the right edge while the
-          640px phone breakpoint sat unfired -- the numbers are in the CSS comment and in
-          scripts/adminUsersResponsiveProbe.mjs. No second Users table: same grid, same cells,
-          same data-labels, recomposed. */}
       <div className="fo-users-directory">
-        <MetadataListGrid
-          presentation={presentation}
-          caption="Users"
-          onRowClick={openDetail}
-          rowActions={rowActions}
-          onLoadMore={directory.loadMore}
-          onRetry={directory.retry}
-        />
+        <WorkforceRoster workforce={workforce} />
       </div>
-
     </WorkspaceIdentity>
   );
 }

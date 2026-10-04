@@ -63,6 +63,11 @@ on:
       - "field-ops-app-vite/test/analysisWorkspace.test.jsx"
       - "field-ops-app-vite/src/modules/analysis/**"
       - "field-ops-app-vite/src/services/analysisApiClient.js"
+      - "field-ops-app-vite/test/myWorkspace.test.jsx"
+      - "field-ops-app-vite/test/adminControlPlaneWorkforce.test.jsx"
+      - "field-ops-app-vite/src/modules/workspace/**"
+      - "field-ops-app-vite/src/modules/search/**"
+      - "field-ops-app-vite/src/services/workspaceApiClient.js"
       - "field-ops-app-vite/src/modules/rental/**"
       - "field-ops-app-vite/src/services/rentalApiClient.js"
       - "field-ops-app-vite/src/modules/financials/FinancialsWorkspace.jsx"
@@ -269,6 +274,10 @@ on:
       - "functions/test/financeClosurePostgres.test.mjs"
       - "functions/test/rentalPostgres.test.mjs"
       - "functions/test/analysisPostgres.test.mjs"
+      - "functions/test/myWorkPostgres.test.mjs"
+      - "functions/test/adminControlPlaneWorkforcePostgres.test.mjs"
+      - "functions/scripts/seedTaylorNonprodWorkforce.mjs"
+      - "functions/scripts/fixtures/taylorNonprodWorkforce.v1.json"
       - "functions/src/eosFinance/financeConfigurationAdministration.ts"
       - "functions/src/eosOps/operatingCompanyBusinessTime.ts"
       - "functions/src/eosFinance/intercompany.ts"
@@ -280,6 +289,7 @@ on:
       - "functions/src/eosFinance/**"
       - "functions/src/eosRental/**"
       - "functions/src/eosAnalysis/**"
+      - "functions/src/eosExperience/**"
       - "functions/src/reportingPeriod/**"
       - "functions/test/reorderLifecycleAuthorityRegistrationPostgres.test.mjs"
       - "functions/test/reorderFieldParityMatrix.test.mjs"
@@ -720,6 +730,11 @@ on:
       - "field-ops-app-vite/test/analysisWorkspace.test.jsx"
       - "field-ops-app-vite/src/modules/analysis/**"
       - "field-ops-app-vite/src/services/analysisApiClient.js"
+      - "field-ops-app-vite/test/myWorkspace.test.jsx"
+      - "field-ops-app-vite/test/adminControlPlaneWorkforce.test.jsx"
+      - "field-ops-app-vite/src/modules/workspace/**"
+      - "field-ops-app-vite/src/modules/search/**"
+      - "field-ops-app-vite/src/services/workspaceApiClient.js"
       - "field-ops-app-vite/src/modules/rental/**"
       - "field-ops-app-vite/src/services/rentalApiClient.js"
       - "field-ops-app-vite/src/modules/financials/FinancialsWorkspace.jsx"
@@ -917,6 +932,10 @@ on:
       - "functions/test/financeClosurePostgres.test.mjs"
       - "functions/test/rentalPostgres.test.mjs"
       - "functions/test/analysisPostgres.test.mjs"
+      - "functions/test/myWorkPostgres.test.mjs"
+      - "functions/test/adminControlPlaneWorkforcePostgres.test.mjs"
+      - "functions/scripts/seedTaylorNonprodWorkforce.mjs"
+      - "functions/scripts/fixtures/taylorNonprodWorkforce.v1.json"
       - "functions/src/eosFinance/financeConfigurationAdministration.ts"
       - "functions/src/eosOps/operatingCompanyBusinessTime.ts"
       - "functions/src/eosFinance/intercompany.ts"
@@ -928,6 +947,7 @@ on:
       - "functions/src/eosFinance/**"
       - "functions/src/eosRental/**"
       - "functions/src/eosAnalysis/**"
+      - "functions/src/eosExperience/**"
       - "functions/src/reportingPeriod/**"
       - "functions/test/reorderLifecycleAuthorityRegistrationPostgres.test.mjs"
       - "functions/test/reorderFieldParityMatrix.test.mjs"
@@ -1398,6 +1418,18 @@ jobs:
       # Analysis & Reporting (#208): the Analysis workspace -- the server's figures, basis, refusals, exceptions and actions.
       - name: Analysis workspace (vitest + jsdom)
         run: npx vitest run test/analysisWorkspace.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Application Assembly (#209): the persona workspace and site-wide search -- the server's sections, refusals, people and
+      # results; OWNER / ACCOUNTABLE / ASSIGNEE stay three answers; search exists only under EOS authority.
+      - name: Persona workspace and site search (vitest + jsdom)
+        run: npx vitest run test/myWorkspace.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Administration control plane (#210): the workforce roster, the Object authority matrix (a checkbox is the server's
+      # grant; the grid re-reads), the View As preview (marked PREVIEW, one read per open) and workflow work.
+      - name: Administration control plane (vitest + jsdom)
+        run: npx vitest run test/adminControlPlaneWorkforce.test.jsx
         working-directory: field-ops-app-vite
 
       # THE BROWSER'S ROUTE TO THE OBJECT-OWNED SECURITY READ MODEL. Proved through an injected

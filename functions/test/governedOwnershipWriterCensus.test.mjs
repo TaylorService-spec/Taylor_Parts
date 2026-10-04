@@ -206,7 +206,17 @@ const CLASSIFIED_SCRIPTS = Object.freeze({
   // mint (see the GOVERNED/SEED ratchet below); assignment is written NOWHERE, because no governed
   // PostgreSQL assignment authority exists in any domain it touches.
   "scripts/seedSampleCompany.js": "GOVERNED/SEED",
+  // #210 (Owner 2026-10-03): the scaled Taylor NONPROD workforce orchestrator. It writes NO storage: every owner /
+  // accountable value is an INPUT to the governed HTTP commands (CRM createAccount / updateAccount with ownershipHandoff,
+  // Commercial createOpportunity), which establish, verify eligibility and record history themselves.
+  "scripts/seedTaylorNonprodWorkforce.mjs": "GOVERNED",
 });
+
+/**
+ * §5.2, pinned (#210). Operator scripts that NAME an accountability field ONLY as an input to the governed HTTP commands --
+ * they import no accountability storage, establishment or mint, and write no SQL. Each must be classified GOVERNED above.
+ */
+const GOVERNED_API_CLIENT_ACCOUNTABILITY_SCRIPTS = Object.freeze(["scripts/seedTaylorNonprodWorkforce.mjs"]);
 
 /**
  * §5.2, pinned. Operator scripts that REACH accountability storage -- by importing the governed declaration or
@@ -632,8 +642,18 @@ test("accountability storage reaches NO operator script and NO Rules statement",
   const inScripts = scan(SCRIPTS_DIR, [".js", ".mjs", ".cjs"], ACCOUNTABILITY_FIELD_LITERALS, {
     includeTypedOwner: false,
   });
+  // #210: a governed API-client script is admissible ONLY when classified GOVERNED, importing no accountability storage /
+  // establishment / mint, and writing no SQL -- its accountability values are inputs the governed commands decide.
+  for (const script of GOVERNED_API_CLIENT_ACCOUNTABILITY_SCRIPTS) {
+    assert.equal(CLASSIFIED_SCRIPTS[script], "GOVERNED", `${script} must be classified GOVERNED`);
+    const src = stripComments(readFileSync(join(FUNCTIONS_DIR, script), "utf8"));
+    assert.doesNotMatch(src, /responsibility\/|accountablePerson(Storage|Establishment|RecordStore)|mintGovernedAccountablePerson|commercialAccountabilityRepository/,
+      `${script} reaches accountability storage`);
+    assert.doesNotMatch(src, /\b(INSERT\s+INTO|UPDATE\s+\w+\.\w+\s+SET|DELETE\s+FROM)\b/i, `${script} writes SQL`);
+    assert.match(src, /"\/commercial\/sales"/, `${script} must reach the governed Commercial transport`);
+  }
   assert.deepEqual(
-    [...inScripts.keys()].sort(),
+    [...inScripts.keys()].filter((m) => !GOVERNED_API_CLIENT_ACCOUNTABILITY_SCRIPTS.includes(m)).sort(),
     [],
     "an operator script now names an accountability field. Classify it in the census §5.2 — an unclassified " +
       "script writing a responsibility axis is the bypass #184 calls a defect.",

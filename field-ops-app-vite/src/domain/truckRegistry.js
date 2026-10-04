@@ -33,7 +33,7 @@ export const TRUCK_STATUSES = Object.freeze(["ACTIVE", "IDLE", "OUT_OF_SERVICE"]
 // the inactive marking from the LOCATION's active, but the truck record carries its own).
 const STORAGE_META_FIELDS = ["version", "createdAt", "createdBy", "updatedAt", "updatedBy"];
 const MOBILE_LOCATION_FIELDS = new Set(["locationId", "type", "displayLabel", "active", ...STORAGE_META_FIELDS]);
-const TRUCK_FIELDS = new Set(["truckId", "locationId", "vehicleNumber", "displayLabel", "status", "homeWarehouseId", "assignedDriverEmployeeId", "active", ...STORAGE_META_FIELDS]);
+const TRUCK_FIELDS = new Set(["truckId", "locationId", "vehicleNumber", "displayLabel", "status", "homeWarehouseId", "assignedDriverEmployeeId", "scopedTechnicianNames", "active", ...STORAGE_META_FIELDS]);
 
 function isPlainObject(v) {
   if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
@@ -102,6 +102,7 @@ export function validateTruckRecord(docId, data, { mobileLocation } = {}) {
   if (!TRUCK_STATUSES.includes(data.status)) return fail("status_invalid");
   if (!isNonEmptyString(data.homeWarehouseId)) return fail("home_warehouse_invalid");
   if (!isNullableString(data.assignedDriverEmployeeId)) return fail("driver_invalid");
+  if (data.scopedTechnicianNames !== undefined && !(Array.isArray(data.scopedTechnicianNames) && data.scopedTechnicianNames.every(isNonEmptyString))) return fail("technicians_invalid");
   // 1:1 MOBILE Location link: the injected location must be a valid MOBILE Location value
   // whose locationId matches this truck's locationId.
   if (!isPlainObject(mobileLocation) || mobileLocation.type !== "MOBILE" || !isNonEmptyString(mobileLocation.locationId)) {
@@ -118,6 +119,8 @@ export function validateTruckRecord(docId, data, { mobileLocation } = {}) {
       status: data.status,
       homeWarehouseId: data.homeWarehouseId,
       assignedDriverEmployeeId: isNonEmptyString(data.assignedDriverEmployeeId) ? data.assignedDriverEmployeeId : null,
+      // The governed MOBILE-scope technicians (#210), names as the server read them -- present only when the roster supplies them.
+      ...(Array.isArray(data.scopedTechnicianNames) ? { scopedTechnicianNames: data.scopedTechnicianNames.filter(isNonEmptyString) } : {}),
     },
     reason: null,
   };
@@ -170,7 +173,8 @@ export function composeTruckFleet({ mobileLocations = [], trucks = [], resolveDr
     const driverName = typeof resolveDriverName === "function" && t.assignedDriverEmployeeId ? resolveDriverName(t.assignedDriverEmployeeId) : null;
     summaries.push({
       id: t.truckId,
-      technician: isNonEmptyString(driverName) ? driverName : null, // resolved driver display, or null
+      // The legacy resolved driver, else the governed MOBILE-scope technicians (#210), else null ("Unassigned").
+      technician: isNonEmptyString(driverName) ? driverName : (t.scopedTechnicianNames?.length ? t.scopedTechnicianNames.join(", ") : null),
       location: mobileLocation.displayLabel,
       homeWarehouse: t.homeWarehouseId,
       status: t.status,

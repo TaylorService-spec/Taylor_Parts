@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { X } from "lucide-react";
 import AppRail, { RailBrand, RailIdentity } from "./AppRail";
-import { NAV_DOMAINS, isNavItemVisible } from "./navConfig";
+import { NAV_DOMAINS, isNavItemVisible, isEosNavigationSource } from "./navConfig";
 import AppHeader from "../shared/ui/AppHeader";
+import SiteSearch from "../modules/search/SiteSearch.jsx";
 import NotificationControl from "../shared/ui/NotificationControl.jsx";
 import MobileTabBar from "./MobileTabBar.jsx";
 import { buildMobileNav } from "./mobilePrimaryNav.js";
@@ -212,6 +213,7 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
           onOpenNav={isDrawer ? () => setDrawerOpen(true) : null}
           navToggleRef={toggleRef}
           navOpen={drawerOpen}
+          search={isEosNavigationSource(operationalContext) ? <SiteSearch /> : null}
         />
         <main className="fo-main" id="fo-main" tabIndex={-1}>
           <h1 className="fo-visually-hidden">{activeDomainLabel}</h1>

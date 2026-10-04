@@ -5,6 +5,7 @@ import { PERMISSION_CATALOG } from "../../access/permissionCatalog.ts";
 import { OBJECT_PERMISSIONS, VERBS, VERB_LABEL, cellState, cellCapabilities } from "../../access/objectPermissionMap.js";
 import { matrixObjectKey } from "../../access/policyObjectRegistry.js";
 import ObjectAdministrationPanel from "./ObjectAdministrationPanel.jsx";
+import ObjectAuthorityMatrix from "./ObjectAuthorityMatrix.jsx";
 import ObjectActionSecurityPanel from "./ObjectActionSecurity.jsx";
 import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
 import { objectAccessAll, objectDiagnostics } from "../../access/roleAccessModel.js";
@@ -17,7 +18,7 @@ import RolePolicyGrid from "./RolePolicyGrid.jsx";
 // THE STORED CONFIGURATION IS THE SCREEN when a policy store exists; the measured model becomes a
 // collapsed reference. Two grids competing for the same question is why this page still felt
 // uneditable -- the first one you met was the one you could not change.
-import { ObjectsSurface, NotConfiguredNotice, SourceReference } from "./AdminPolicySurfaces.jsx";
+import { ObjectsSurface, NotConfiguredNotice } from "./AdminPolicySurfaces.jsx";
 import { isPolicyApiConfigured } from "../../services/adminPolicyApiClient.js";
 
 // ADMINISTRATION > OBJECTS -- the Role x Object x CRED grid.
@@ -318,12 +319,11 @@ export default function AdminObjects() {
           <>
             {/* The ENFORCED per-Object grant surface (lane CP-C): each Object's real action
                 vocabulary, who holds each action, and the governed grant/condition controls. */}
+            {/* #210: the PostgreSQL authority matrix is the screen; the code-side reference grid no longer renders where a
+                policy store exists, because it is not what the server enforces. */}
+            <ObjectAuthorityMatrix initialObjectKey={readAdminQueryParam("object")} />
             <ObjectActionSecurityPanel initialObjectKey={readAdminQueryParam("object")} />
             <ObjectsSurface />
-            <SourceReference>
-              <ByObject roles={rosterRoles} />
-              <ObjectDiagnostics roles={rosterRoles} />
-            </SourceReference>
           </>
         ) : (
           <>
@@ -345,11 +345,11 @@ export default function AdminObjects() {
     // grid answers a different question and is available underneath, named as reference.
     return (
       <WorkspaceShell title="Objects" context={viewToggle}>
+        {/* #210: the PostgreSQL authority matrix (rows = Security Roles, columns = the Object's real actions, functional
+            checkboxes) replaces the code-side C/R/E/D reference grid, which is not what the server enforces. */}
+        <ObjectAuthorityMatrix initialObjectKey={readAdminQueryParam("object")} />
         <ObjectActionSecurityPanel initialObjectKey={readAdminQueryParam("object")} />
         <ObjectsSurface />
-        <SourceReference>
-          <RolePolicyGrid role={role} label={selected.label} />
-        </SourceReference>
       </WorkspaceShell>
     );
   }

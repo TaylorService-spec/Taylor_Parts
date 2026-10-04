@@ -108,6 +108,12 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
     const employee = directory.byEmployeeId?.get(view.ownerEmployeeId);
     return employee?.displayName ?? employee?.name ?? null;
   }, [ready, view.ownerEmployeeId, directory]);
+  // The ACCOUNTABLE person is a different answer from the owner (#209) -- resolved the same way, never merged.
+  const accountableName = useMemo(() => {
+    if (!ready || !view.accountableEmployeeId || directory.loading) return null;
+    const employee = directory.byEmployeeId?.get(view.accountableEmployeeId);
+    return employee?.displayName ?? employee?.name ?? null;
+  }, [ready, view.accountableEmployeeId, directory]);
 
   const resolveSalesOrderReference = useCallback((fieldId, id) => {
     if (fieldId === "accountId") {
@@ -216,6 +222,11 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
             key: "owner",
             label: "Owner",
             value: ownerName ?? (view.ownerEmployeeId ? "reference unavailable" : "Unassigned"),
+          },
+          {
+            key: "accountable",
+            label: "Accountable",
+            value: accountableName ?? (view.accountableEmployeeId ? "reference unavailable" : "Not set"),
           },
           { key: "channel", label: "Channel", value: view.salesChannel ?? null },
           {

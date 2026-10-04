@@ -54,6 +54,8 @@ export function opportunityView({ loading = false, errorStatus = null, result = 
     // unresolved, which the page states in words; it never falls back to the accountId.
     accountName: str(result.accountName),
     ownerEmployeeId: str(o.ownerEmployeeId),
+    // OWNER and ACCOUNTABLE are distinct governed answers (#209); the view carries both, never one for the other.
+    accountableEmployeeId: str(o.accountableEmployeeId),
     salesChannel: str(o.salesChannel),
     stage: str(o.stage),
     outcome: str(o.outcome),

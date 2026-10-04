@@ -238,6 +238,8 @@ test("every operation is either a read or a mutation, and none is both", () => {
     "grantObjectActionToPrincipal", "grantObjectActionToRole",
     "publishWorkflowVersion", "removeFieldPermissionOverride",
     "revokeObjectActionFromPrincipal", "revokeObjectActionFromRole",
+    // #210: whole-object authority, expanded by the server into the per-action grants (each the command above).
+    "applyObjectWideRoleAuthority",
     "revokeRole", "setFieldPermissionOverride",
     // TWO ADDED: grant conditions, fail closed (never retired while the grant is held).
     "retireGrantCondition", "setGrantCondition",
