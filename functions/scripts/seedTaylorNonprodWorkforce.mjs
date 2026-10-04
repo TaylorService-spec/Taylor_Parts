@@ -67,6 +67,11 @@ async function phasePrincipals() {
     const out = {};
     for (const e of MANIFEST.employees) {
       if (!e.principalSubject) continue;
+      // An Employee ALREADY linked to a Principal keeps that governed identity: no second Principal is admitted for it,
+      // and every later step targets the linked one (a read, never a write).
+      const linked = (await pool.query(`SELECT principal_id FROM eos_policy.employee_principal_links
+        WHERE tenant_id = $1 AND employee_id = $2 AND status = 'active'`, [tenant, e.employeeId])).rows[0]?.principal_id;
+      if (linked) { out[e.principalSubject] = String(linked); continue; }
       const existing = await bySubject(e.principalSubject);
       if (existing) { out[e.principalSubject] = existing.id; continue; }
       plan.push(`ensureTenantPrincipal ${e.principalSubject}`);
@@ -184,7 +189,8 @@ async function phaseApi() {
   roster = APPLY ? await rosterOf() : roster;
   for (const e of MANIFEST.employees) {
     const r = roster.get(e.employeeId);
-    const pid = e.principalSubject ? principals[e.principalSubject] : null;
+    // The Employee's LINKED Principal is its governed identity; the manifest subject is used only for an unlinked Employee.
+    const pid = r?.applicationUser === "LINKED" && r.principalId ? r.principalId : (e.principalSubject ? principals[e.principalSubject] : null);
     for (const s of e.securityRoles) {
       const held = (r?.securityRoles ?? []).some((x) => x.roleKey === s.role && (x.scopeType ?? "global") === (s.scopeType ?? "global") && (x.scopeValue ?? null) === (s.scopeValue ?? null));
       if (held || !pid) continue;
