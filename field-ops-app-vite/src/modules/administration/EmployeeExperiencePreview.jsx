@@ -5,7 +5,7 @@
 // request and runs the read-only workspace over it; every preview is audited. This panel renders that result with the SAME
 // MyWorkspace component the subject sees, inside a frame marked PREVIEW -- so there is no second rendering of anyone's access.
 // Links inside the preview open records as the ADMINISTRATOR (the caller), never as the subject.
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "../../shared/ui/primitives";
 import { FormError } from "../../shared/ui/form";
 import MyWorkspace from "../workspace/MyWorkspace.jsx";
@@ -17,14 +17,16 @@ export default function EmployeeExperiencePreview({ employeeId, callApi = callWo
   const [error, setError] = useState(null);
 
   // MyWorkspace asks for "readMyWork"; the preview answers it with the server's preview for THIS employee.
-  const previewCall = async (operation, input = {}) => {
+  // STABLE (useCallback): MyWorkspace re-reads whenever its callApi changes, so a fresh function per render would re-read --
+  // and audit -- in a loop. One preview per open (and per company change), never per render.
+  const previewCall = useCallback(async (operation, input = {}) => {
     if (operation !== "readMyWork") return { ok: false, message: "not available in a preview" };
     const res = await callApi("previewMyWorkAs", { employeeId, ...input, reason: "Administration: View as user" });
     if (!res.ok) { setError(res.message ?? "The preview could not be resolved."); return res; }
     setError(null);
     setMeta(res.result);
     return { ok: true, result: res.result.work };
-  };
+  }, [callApi, employeeId]);
 
   if (!open) {
     return (

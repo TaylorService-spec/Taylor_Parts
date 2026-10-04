@@ -142,8 +142,8 @@ test("NO C/R/E/D MUTATION CONTROL REMAINS: the legacy matrix is read-only and sa
 test("the ENFORCED Security Role detail leads the Roles screen", () => {
   assert.match(SURFACES, /import SecurityRoleDetail from "\.\/SecurityRoleDetail\.jsx";/);
   assert.match(SURFACES, /<SecurityRoleDetail roleKey=\{selected\.key\} \/>/);
-  // The legacy matrix comes AFTER the enforced detail, and collapsed.
-  assert.ok(SURFACES.indexOf("<SecurityRoleDetail") < SURFACES.indexOf("<LegacyRoleMatrix"));
+  // #210: the unenforced legacy matrix no longer renders beside the enforced detail at all -- one truth per screen.
+  assert.equal(SURFACES.includes("<LegacyRoleMatrix"), false, "the legacy matrix is not mounted");
 });
 
 // ============================ roles are managed here ============================
@@ -214,7 +214,9 @@ test("NO DUPLICATE UX: when configured, the measured grid is a collapsed REFEREN
     assert.match(source, /isPolicyApiConfigured\(\)/, `${name}: the screen knows whether a store exists`);
     assert.match(source, /NotConfiguredNotice/, `${name}: says so plainly when it does not`);
   }
-  assert.match(OBJECTS_SCREEN, /SourceReference/, "Objects demotes the measured model");
+  // #210: where a store exists, Objects IS the PostgreSQL authority matrix; the code-side reference grid no longer renders.
+  assert.match(OBJECTS_SCREEN, /<ObjectAuthorityMatrix/, "Objects leads with the enforced PostgreSQL matrix");
+  assert.equal(OBJECTS_SCREEN.includes("<SourceReference"), false, "no code-side reference grid beside the enforced matrix");
   assert.match(ROLES_SCREEN, /RolesPermissionsSurface/, "Roles leads with the stored policy");
 
   // The reference is collapsed and named as reference, not as control.

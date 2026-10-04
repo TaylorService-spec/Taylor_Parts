@@ -117,7 +117,7 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, work
             {holders.map((h) => (
               <tr key={h.assignmentId} data-holder={h.employeeId ?? h.principalId}>
                 <td data-label="Holder">{h.employeeId ? <Link to={`/administration/users/${h.employeeId}`}>{principalLabel(h)}</Link> : principalLabel(h)}
-                  <span className="fo-muted"> · Principal <code>{h.principalId}</code>{h.employeeId ? "" : " · no linked Employee"}</span></td>
+                  {" "}<span className="fo-muted">ID <code>{h.principalId}</code></span>{h.employeeId ? null : <span className="fo-muted"> · no linked Employee</span>}</td>
                 <td data-label="Scope" className="fo-muted">{h.scopeType}{h.scopeValue ? ` · ${h.scopeValue}` : ""}</td>
                 <td data-label="Since" className="fo-muted">{h.grantedAt ?? "—"}</td>
                 <td data-label="Administer"><Button size="sm" variant="secondary" onClick={() => remove(h)}>Remove</Button></td>

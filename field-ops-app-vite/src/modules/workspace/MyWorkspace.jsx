@@ -16,6 +16,7 @@ import RuledSection from "../../shared/ui/RuledSection";
 import ContextBand from "../../shared/ui/ContextBand";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState";
 import { Field } from "../../shared/ui/form";
+import { Button } from "../../shared/ui/primitives";
 import { callWorkspaceApi } from "../../services/workspaceApiClient";
 import { figure, BASIS_WORDS } from "../analysis/AnalysisWorkspace";
 import WorkflowWork from "./WorkflowWork.jsx";
@@ -109,7 +110,7 @@ export default function MyWorkspace({ callApi = callWorkspaceApi, preview = fals
   }, [callApi, company]);
   useEffect(() => { load(); }, [load]);
 
-  if (refusal) return <WorkspaceShell title="My work"><HonestState state={HONEST_STATE.UNAVAILABLE} subject="Your workspace" detail={refusal} onRetry={load} /></WorkspaceShell>;
+  if (refusal) return <WorkspaceShell title="My work"><HonestState state={HONEST_STATE.UNAVAILABLE} subject="Your workspace" detail={refusal} action={<Button variant="secondary" onClick={load}>Try again</Button>} /></WorkspaceShell>;
   if (!work) return <WorkspaceShell title="My work"><HonestState state={HONEST_STATE.LOADING} subject="Your workspace" /></WorkspaceShell>;
 
   const attention = work.sections.find((s) => s.key === "attention");

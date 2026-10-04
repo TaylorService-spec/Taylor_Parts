@@ -8938,3 +8938,6 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-objmatrix__table td { text-align: center; }
 .fo-check { display: inline-flex; gap: 6px; align-items: center; }
 .fo-success { color: var(--color-success, #1f7a4d); }
+/* #210 containers: the roster and the authority matrix are sections of their pages, spaced like any ruled section. */
+.fo-roster { margin-block: 12px; }
+.fo-objmatrix { margin-block: 12px; }

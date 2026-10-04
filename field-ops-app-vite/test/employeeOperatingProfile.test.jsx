@@ -247,10 +247,12 @@ describe("Employee and User Access are separate", () => {
 // ════════════════════ OWNER != ACCOUNTABLE != ASSIGNED ════════════════════
 
 describe("Record Owner, Accountable Person and Assigned Person stay separate", () => {
-  it("owned = EMP-RT-03 per family, accountable = EMP-RT-04 per Commercial family, assigned = EMP-RT-05 unavailable", async () => {
+  it("owned = EMP-RT-03 per family, accountable = EMP-RT-04 per Commercial family, assigned = EMP-RT-05 per work family", async () => {
     const workforce = makeWorkforce({
       listRecordsOwnedByEmployee: (i) => ok({ items: i.family === "ACCOUNT" ? [{ family: "ACCOUNT", recordId: "acc-x", recordNumber: "C-1001", name: "Canyon Foods", state: "ACTIVE", accountId: "acc-x", operatingCompanyId: null, updatedAt: "x" }] : [], truncated: false }),
       listAccountabilitiesForEmployee: (i) => (i.family === "SALES_ORDER" ? fail("FORBIDDEN", "CAPABILITY_REQUIRED", 403) : ok({ items: i.family === "OPPORTUNITY" ? [{ family: "OPPORTUNITY", recordId: "op-x", recordNumber: "OPP-0042", name: null, state: "QUALIFY", accountId: "a", operatingCompanyId: "taylor", updatedAt: "x", currentAccountability: null }] : [], truncated: true })),
+      listAssignedWorkForEmployee: (i) => (i.family === "REORDER_REQUEST" ? fail("FORBIDDEN", "OUTSIDE_OPERATIONAL_SCOPE", 403)
+        : ok({ items: [{ family: "WORK_ORDER", recordId: "wo-x", recordNumber: "WO-2026-000007", name: "Canyon Foods · PM", state: "SCHEDULED", assignedSince: "x", scheduledStart: null, operatingCompanyId: "taylor" }], truncated: false })),
     });
     renderRecord("emp-1", workforce);
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
@@ -270,14 +272,17 @@ describe("Record Owner, Accountable Person and Assigned Person stay separate", (
     // One family refused never hides another family.
     expect(accountable.querySelector('[data-record-family="SALES_ORDER"]').getAttribute("data-family-state")).toBe("NOT_AVAILABLE_TO_YOU");
     expect(within(accountable).getAllByText("More records exist than are shown here.").length).toBeGreaterThan(0);
-    // Assigned work is never read, never invented.
-    expect(assigned.querySelector('[data-runtime-dependency="EMP-RT-05"]')).toBeTruthy();
-    expect(assigned.querySelector("[data-responsibility-read]")).toBeNull();
+    // Assigned work is the governed EMP-RT-05 read (#210), per work family -- never merged with owner or accountable.
+    await waitFor(() => expect(assigned.querySelector('[data-record-family="WORK_ORDER"][data-family-state="RECORDS"]')).toBeTruthy());
+    expect(assigned.querySelector("[data-responsibility-read]").getAttribute("data-responsibility-read")).toBe("EMP-RT-05");
+    expect(within(assigned).getByText("WO-2026-000007")).toBeTruthy();
+    expect(within(owner).queryByText("WO-2026-000007")).toBeNull();
+    expect(assigned.querySelector('[data-record-family="REORDER_REQUEST"]').getAttribute("data-family-state")).toBe("NOT_AVAILABLE_TO_YOU");
 
     const calls = workforce.call.mock.calls;
     expect(calls.filter((c) => c[0] === "listRecordsOwnedByEmployee").map((c) => c[1].family).sort()).toEqual([...OWNED_RECORD_FAMILIES].sort());
     expect(calls.filter((c) => c[0] === "listAccountabilitiesForEmployee").map((c) => c[1].family).sort()).toEqual([...ACCOUNTABLE_RECORD_FAMILIES].sort());
-    expect(calls.some((c) => /Assigned/i.test(c[0]))).toBe(false);
+    expect(calls.filter((c) => c[0] === "listAssignedWorkForEmployee").map((c) => c[1].family).sort()).toEqual(["REORDER_REQUEST", "WORK_ORDER"]);
     // Never the record id (DECISIONS #106).
     expect(screen.queryByText("acc-x")).toBeNull();
   });
@@ -298,8 +303,8 @@ describe("Record Owner, Accountable Person and Assigned Person stay separate", (
       ["ACCOUNTABLE", "EMP-RT-04"],
       ["ASSIGNED", "EMP-RT-05"],
     ]);
-    expect(axes[2].available).toBe(false);
-    expect(RUNTIME_DEPENDENCIES.ASSIGNED_WORK_READ.serverReason).toBe("ASSIGNMENT_AUTHORITY_NOT_IN_POSTGRES");
+    expect(axes[2].available).toBe(true);
+    expect(RUNTIME_DEPENDENCIES.ASSIGNED_WORK_READ).toBeUndefined();
     expect(explainWhyInFrontOfMe(["ASSIGNED", "OWNER", "BOGUS"]).map((r) => r.label)).toEqual(["Record Owner", "Assigned Person"]);
     expect(new Set(explainWhyInFrontOfMe(Object.values(RESPONSIBILITY_AXIS)).map((r) => r.reason)).size).toBe(3);
   });
@@ -530,7 +535,7 @@ describe("domain: failures in words", () => {
       expect(dep.kind).toBe(EMPLOYEE_RUNTIME_DEPENDENCY);
       expect(dep.requiredApi).toMatch(/Governed/);
     }
-    expect(Object.values(RUNTIME_DEPENDENCIES).map((d) => d.id).sort()).toEqual(["EMP-RT-05", "EMP-RT-W2"]);
+    expect(Object.values(RUNTIME_DEPENDENCIES).map((d) => d.id).sort()).toEqual(["EMP-RT-W2"]);
     // EMP-RT-H1 (the governed Employee change history) is served now; nothing may still claim it is missing.
     expect(Object.values(RUNTIME_DEPENDENCIES).some((d) => d.id === "EMP-RT-H1" || /HISTORY/.test(d.serverReason))).toBe(false);
     expect(WORKFORCE_READS.EMPLOYEE_CHANGE_HISTORY).toEqual({ id: "EMP-RT-H1", operation: "listEmployeeChangeHistory" });

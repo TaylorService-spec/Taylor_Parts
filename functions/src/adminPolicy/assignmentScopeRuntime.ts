@@ -109,7 +109,7 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
   Object.freeze({
     scopeType: "operatingCompany" as const,
     capabilityKey: "employee.record.read",
-    consumers: Object.freeze(["workforce.readEmployee", "workforce.listEmployees", "workforce.listManagedEmployees"]),
+    consumers: Object.freeze(["workforce.readEmployee", "workforce.listEmployees", "workforce.listManagedEmployees", "workforce.listWorkforceRoster"]),
   }),
   Object.freeze({
     scopeType: "salesChannel" as const,

@@ -55,6 +55,8 @@ function makeWorkforce({ pages = [PAGE_ONE], cursors = [null], failWith = null, 
   return {
     call: vi.fn(async (operation, input) => {
       if (operation === "listEmployeesWithoutJobRole") return typeof withoutJobRole === "function" ? withoutJobRole(input) : withoutJobRole;
+      // #210: the directory is the roster; the remediation tests below still see the same people.
+      if (operation === "listWorkforceRoster") return rosterOf(pages[0] ?? []);
       if (operation !== "listEmployees") return fail("UNKNOWN_OPERATION");
       if (failWith && call === 0) {
         call += 1;
@@ -81,135 +83,63 @@ const renderDirectory = (workforce = makeWorkforce()) => {
 beforeEach(() => mockNavigate.mockClear());
 afterEach(cleanup);
 
-// ════════════════════ THE READ ════════════════════
+// ════════════════════ THE READ (Administration control plane, #210: the directory IS the workforce roster) ════════════════════
 
-describe("the directory is the governed PostgreSQL Employee read", () => {
-  it("invokes listEmployees and renders the projection it returns", async () => {
-    const workforce = renderDirectory();
-    expect(await screen.findByText("John Smith")).toBeTruthy();
-    expect(directoryCalls(workforce).length).toBe(1);
-    expect(screen.getByRole("heading", { name: "Users" })).toBeTruthy();
-    expect(screen.getByText("Pat Lee")).toBeTruthy();
-    expect(screen.getByText("TAZ-0042")).toBeTruthy();
-    expect(screen.getByText("Senior Service Technician")).toBeTruthy();
-    expect(screen.getAllByText("Taylor Freezer of Arizona").length).toBe(2);
-    expect(screen.getByText("Contractor")).toBeTruthy();
-  });
+const rosterOf = (items, over = {}) => ok({ items: items.map((i) => ({ jobRole: null, manager: null, workEligibility: [], operationalScopes: [], applicationUser: "LINKED", securityRoles: [], principalId: null, ...i })),
+  total: items.length, truncated: false, securityRolesWithheld: null,
+  facets: { jobRoles: [], securityRoles: [], operatingCompanies: [], statuses: [] }, ...over });
+function makeRoster({ items = PAGE_ONE, failWith = null, over = {} } = {}) {
+  return { call: vi.fn(async (operation) => {
+    if (operation === "listEmployeesWithoutJobRole") return NONE_WITHOUT_JOB_ROLE;
+    if (operation !== "listWorkforceRoster") return fail("UNKNOWN_OPERATION");
+    return failWith ?? rosterOf(items, over);
+  }) };
+}
+const rosterCalls = (workforce) => workforce.call.mock.calls.filter((c) => c[0] === "listWorkforceRoster");
 
-  it("shows only the columns the governed projection carries -- and invents none", async () => {
-    renderDirectory();
+describe("the directory is the governed PostgreSQL workforce roster", () => {
+  it("invokes listWorkforceRoster (never listEmployees, never Firestore) and renders what it returns", async () => {
+    const workforce = renderDirectory(makeRoster());
     await screen.findByText("John Smith");
-    for (const heading of ["Name", "Employee ID", "Employment Status", "Job Title", "Operating Company"]) {
-      expect(screen.getByRole("columnheader", { name: heading }), heading).toBeTruthy();
-    }
-    // listEmployees returns no account status, no Security Role, no Job Role and no uid, so no column claims one.
-    for (const absent of ["EOS Account", "EOS Access", "Security Role", "Legacy role", "Job Role", "Account Status", "Operational Roles"]) {
-      expect(screen.queryByRole("columnheader", { name: absent }), absent).toBeNull();
-    }
-    expect(screen.queryByText(/uid-/)).toBeNull();
+    expect(rosterCalls(workforce).length).toBeGreaterThanOrEqual(1);
+    expect(workforce.call.mock.calls.some((c) => c[0] === "listEmployees")).toBe(false);
+    expect(screen.getByText("Pat Lee")).toBeTruthy();
   });
-
-  it("an Employee with no number or title says so rather than showing a blank or an id", async () => {
-    renderDirectory();
-    await screen.findByText("Pat Lee");
-    const row = screen.getByText("Pat Lee").closest("tr");
-    expect(within(row).getAllByText("Not recorded").length).toBe(2);
-    expect(row.textContent).not.toMatch(/pg-emp-3/);
+  it("states the exact count the server computed, and says when the list is cut", async () => {
+    renderDirectory(makeRoster({ over: { total: 612, truncated: true } }));
+    await screen.findByText(/612 employees \(first 2 shown\)/);
   });
-
-  it("a loading directory is a loading state, never an empty one", () => {
+  it("a loading roster is a loading state, never an empty one", () => {
     renderDirectory({ call: vi.fn(() => new Promise(() => {})) });
-    expect(screen.getByRole("status")).toBeTruthy();
-    expect(screen.queryByText("Nothing here yet")).toBeNull();
+    expect(screen.queryByText(/0 employees/)).toBeNull();
   });
 });
-
-// ════════════════════ NAVIGATION BY THE PostgreSQL ID ════════════════════
 
 describe("navigation uses the PostgreSQL employeeId", () => {
-  it("a row click opens that Employee's record, and nothing on the row becomes editable", async () => {
-    renderDirectory();
-    fireEvent.click(await screen.findByText("John Smith"));
-    expect(mockNavigate).toHaveBeenCalledWith("/administration/users/pg-emp-1");
-    expect(screen.queryAllByRole("textbox").length).toBe(0);
-    expect(screen.queryAllByRole("combobox").length).toBe(0);
-  });
-
-  it("Edit is a separate action, to the same record, by the same id", async () => {
-    renderDirectory();
-    await screen.findByText("John Smith");
-    const edits = screen.getAllByRole("button", { name: "Edit" });
-    expect(edits.length).toBe(2);
-    fireEvent.click(edits[0]);
-    expect(mockNavigate).toHaveBeenCalledWith("/administration/users/pg-emp-1?edit=1");
+  it("each name links to that Employee's record by the governed id", async () => {
+    renderDirectory(makeRoster());
+    const link = await screen.findByRole("link", { name: "John Smith" });
+    expect(link.getAttribute("href")).toBe("/administration/users/pg-emp-1");
   });
 });
-
-// ════════════════════ PAGINATION ════════════════════
-
-describe("pagination follows the read's own cursor", () => {
-  it("Load More requests the next page and appends it, then the count appears once exhausted", async () => {
-    const workforce = renderDirectory(makeWorkforce({ pages: [PAGE_ONE, PAGE_TWO], cursors: ["cursor-1", null] }));
-    await screen.findByText("John Smith");
-    // A partial page never states a headcount.
-    expect(screen.queryByText("2")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-    expect(await screen.findByText("Kim Wu")).toBeTruthy();
-    expect(directoryCalls(workforce)[1]).toEqual(["listEmployees", { cursor: "cursor-1" }]);
-    // Appended, not replaced.
-    expect(screen.getByText("John Smith")).toBeTruthy();
-    expect(screen.getByText("Terminated")).toBeTruthy();
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Load more" })).toBeNull());
-    expect(screen.getByText("3")).toBeTruthy();
-  });
-
-  it("no Load More when the read returned no cursor", async () => {
-    renderDirectory();
-    await screen.findByText("John Smith");
-    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
-  });
-});
-
-// ════════════════════ FAILURE, AND NO FALLBACK ════════════════════
 
 describe("failures are stated, and nothing else is read", () => {
   it("an outage shows the retryable failure, no rows, and no second source", async () => {
-    const workforce = makeWorkforce({ failWith: fail("UNREACHABLE") });
-    renderDirectory(workforce);
-    expect(await screen.findByText(/could not be loaded from the Workforce service/)).toBeTruthy();
+    const workforce = renderDirectory(makeRoster({ failWith: fail("UNREACHABLE", null, null) }));
+    await screen.findByRole("button", { name: /Try again|Retry/i });
     expect(screen.queryByText("John Smith")).toBeNull();
-    expect(screen.queryByText("Nothing here yet")).toBeNull();
-    // Only the directory read (and, beside it, its own EMP-RT-08 remediation read) was ever called -- no second source.
-    expect(workforce.call.mock.calls.every((c) => c[0] === "listEmployees" || c[0] === "listEmployeesWithoutJobRole")).toBe(true);
-
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("John Smith")).toBeTruthy();
-    expect(directoryCalls(workforce).length).toBe(2);
+    expect(workforce.call.mock.calls.every((c) => ["listWorkforceRoster", "listEmployeesWithoutJobRole"].includes(c[0]))).toBe(true);
   });
-
   it("a refusal says not available to you -- never an empty directory", async () => {
-    renderDirectory(makeWorkforce({ failWith: fail("FORBIDDEN", "CAPABILITY_REQUIRED", 403) }));
-    expect(await screen.findByText("Not available to you")).toBeTruthy();
-    expect(screen.getByText("The Employee directory is not available to you.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
-    expect(screen.queryByText("Nothing here yet")).toBeNull();
-  });
-
-  it("a company the governed authority cannot resolve reads as unavailable, never as a raw id", () => {
-    const presentation = employeeDirectoryPresentation({ status: "ready", items: [item({ employeeId: "e", displayName: "X", operatingCompanyId: "no-such-company" })] });
-    expect(presentation.rows[0].cells.at(-1).value).toBe("Unavailable");
-    expect(JSON.stringify(presentation.rows[0].cells)).not.toContain("no-such-company");
-    // And the row key is the PostgreSQL Employee id the record route reads by.
-    expect(presentation.rows[0].key).toBe("e");
+    renderDirectory(makeRoster({ failWith: fail("FORBIDDEN", "CAPABILITY_REQUIRED", 403) }));
+    await screen.findByText(/Ask an administrator if you believe you need it/);
+    expect(screen.queryByText(/0 employees/)).toBeNull();
   });
 });
 
-// ════════════════════ EMPLOYEE != USER ACCESS ════════════════════
-
 describe("Employee and Principal stay separate on this page", () => {
   it("the Users page is the Employee directory only; Security Roles are changed on the Employee record (Pass 10 F2/F3)", async () => {
-    renderDirectory();
+    renderDirectory(makeRoster());
     await screen.findByText("John Smith");
     expect(screen.getByText(/Whether a person can sign in is User Access, not an\s+Employee fact/)).toBeTruthy();
     expect(screen.getByText(/open their Employee record and use\s+its Security Roles section/)).toBeTruthy();
@@ -238,8 +168,9 @@ describe("the Job Role remediation count is its own governed read", () => {
     const list = screen.getByRole("list", { name: "Employees without a Job Role" });
     expect(within(list).getByRole("link", { name: "Rae Quinn" }).getAttribute("href")).toBe("/administration/users/pg-emp-21");
     expect(within(list).getByRole("link", { name: "Sol Vega" }).getAttribute("href")).toBe("/administration/users/pg-emp-22");
-    // Still not a directory column.
-    expect(screen.queryByRole("columnheader", { name: "Job Role" })).toBeNull();
+    // #210 (Owner): the workforce roster DOES show each person's Job Role -- from the governed read (listWorkforceRoster), never
+    // inferred; the remediation count above remains its own read.
+    expect(await screen.findByRole("columnheader", { name: "Job Role" })).toBeTruthy();
   });
 
   it("one Employee reads in the singular", async () => {
@@ -301,7 +232,10 @@ describe("no Firestore Employee-directory read remains", () => {
     expect(src).not.toMatch(/\b(collection|onSnapshot|getDocs|getDoc|query|httpsCallable)\s*\(/);
     expect(src).not.toMatch(/useEmployeeDirectory|domain\/employees/);
     const seams = [...src.matchAll(/from\s+["']([^"']*(hooks|services|access)\/[^"']*)["']/g)].map((m) => m[1]).sort();
-    expect(seams).toEqual(["../../hooks/useWorkforceEmployeeDirectory.js", "../../services/workforceApiClient.js"]);
+    expect(seams).toEqual(["../../services/workforceApiClient.js"]);
+    const roster = code(read("src/modules/administration/WorkforceRoster.jsx"));
+    expect(roster).toMatch(/workforce\.call\("listWorkforceRoster"/);
+    expect(roster).not.toMatch(/from\s+["']firebase(\/[a-z-]+)?["']|useMetadataList|firestore|httpsCallable/i);
   });
 
   it("the Job Role remediation reads only the Workforce transport it is handed", () => {

@@ -14,11 +14,16 @@
 //
 // It computes no authority: Effective Access stays the server resolver's (explainEffectiveAccess). Filters narrow; they never widen.
 // employee.record.read, decided per operating company for a scoped holder, exactly like listEmployees. Read-only.
+//
+// WHY IT LIVES HERE, NOT IN eosWorkforce/reads. The Workforce reads are fenced so that no Employee read ever names, produces or
+// infers a Security Role (employeeRuntimeReads / employeeProfileAuthority suites). The roster is an ADMINISTRATION composition
+// of two authorities -- the Employee (Workforce) and the Security Role assignment (eos_policy) -- so it lives in the
+// Administration layer, reuses the Workforce read kernel for its gate and reach, and is served on the Workforce transport.
 import {
   acceptOnly, refuse, runEmployeeRead, type EmployeeReadActor, type EmployeeReadDeps,
-} from "./employeeReadKernel";
-import { directoryItemOf, EMPLOYEE_DIRECTORY_COLUMNS, type EmployeeDirectoryItem } from "./employeeRecordProjection";
-import { EMPLOYEE_RECORD_READ, EMPLOYMENT_STATUSES } from "./employeeDirectoryReads";
+} from "../eosWorkforce/reads/employeeReadKernel";
+import { directoryItemOf, EMPLOYEE_DIRECTORY_COLUMNS, type EmployeeDirectoryItem } from "../eosWorkforce/reads/employeeRecordProjection";
+import { EMPLOYEE_RECORD_READ, EMPLOYMENT_STATUSES } from "../eosWorkforce/reads/employeeDirectoryReads";
 
 export const PRINCIPAL_ACCESS_READ = "admin.principalAccess.read";
 export const WORKFORCE_ROSTER_LIMIT = 500;

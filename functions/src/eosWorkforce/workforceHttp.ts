@@ -86,7 +86,7 @@ import { readMyEmployeeProfile } from "./reads/myEmployeeProfile";
 import { readMyWorkforceCapabilities } from "./reads/myWorkforceCapabilities";
 import { listAccountabilitiesForEmployee, listRecordsOwnedByEmployee } from "./reads/employeeResponsibilityReads";
 import { listEmployees, listManagedEmployees, readEmployee } from "./reads/employeeDirectoryReads";
-import { listWorkforceRoster } from "./reads/workforceRosterReads";
+import { listWorkforceRoster } from "../eosAdministration/workforceRoster";
 import { listAssignedWorkForEmployee } from "./reads/assignedWorkReads";
 import { readEmployeePrincipalLink } from "./reads/employeePrincipalLinkRead";
 import { EmployeeCommandError } from "./commands/employeeCommandKernel";

@@ -149,7 +149,9 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
       </label>
       {model.actions.length === 0 ? <p className="fo-muted">The evaluator reports no Object action.</p> : null}
       {groupByObject(shown).map((group) => (
-        <table key={group.objectKey} className="fo-table" aria-label={`Effective access on ${group.objectKey}`}>
+        // #210: the shared scroll container -- a long capability key or source list must not widen the page (1024px).
+        <div key={group.objectKey} className="fo-table-scroll">
+        <table className="fo-table" aria-label={`Effective access on ${group.objectKey}`}>
           <thead>
             <tr><th>{group.objectKey}</th><th>Result</th><th>Source</th><th>Direct exception</th><th>Surfaces / workflow</th></tr>
           </thead>
@@ -206,6 +208,7 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
             ))}
           </tbody>
         </table>
+        </div>
       ))}
     </div>
   );

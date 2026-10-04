@@ -9,9 +9,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState";
 import { Field } from "../../shared/ui/form";
+import { Button } from "../../shared/ui/primitives";
 import { workforceApiClient } from "../../services/workforceApiClient.js";
 
-const STATUS_WORDS = Object.freeze({ ACTIVE: "Active", CONTRACTOR: "Contractor", ON_LEAVE: "On leave", INACTIVE: "Inactive", TERMINATED: "Terminated", RETIRED: "Retired" });
+const STATUS_WORDS = Object.freeze({ ACTIVE: "Employee active", CONTRACTOR: "Contractor", ON_LEAVE: "On leave", INACTIVE: "Employee inactive", TERMINATED: "Terminated", RETIRED: "Retired" });
 const SCOPE_WORDS = Object.freeze({ WAREHOUSE: "Warehouse", REORDER_QUEUE: "Reorder queue", MOBILE: "Truck" });
 const channelWords = (v) => (v === "NATIONAL_ACCOUNTS" ? "National Accounts" : v === "RETAIL" ? "Retail" : v);
 
@@ -81,12 +82,12 @@ export default function WorkforceRoster({ workforce = workforceApiClient }) {
       </div>
       {state.status === "LOADING" && !state.roster && <HonestState state={HONEST_STATE.LOADING} subject="The workforce" />}
       {state.status === "DENIED" && <HonestState state={HONEST_STATE.DENIED} subject="The workforce roster" detail={state.message} />}
-      {state.status === "FAILED" && <HonestState state={HONEST_STATE.UNAVAILABLE} subject="The workforce roster" detail={state.message} onRetry={load} />}
+      {state.status === "FAILED" && <HonestState state={HONEST_STATE.UNAVAILABLE} subject="The workforce roster" detail={state.message} action={<Button variant="secondary" onClick={load}>Try again</Button>} />}
       {state.roster && (
         <>
           <p className="fo-muted" aria-live="polite">{state.roster.total} employee{state.roster.total === 1 ? "" : "s"}{state.roster.truncated ? ` (first ${state.roster.items.length} shown)` : ""}</p>
           {state.roster.securityRolesWithheld && <p className="fo-muted">{state.roster.securityRolesWithheld}.</p>}
-          <table className="fo-table fo-table--stack">
+          <table className="fo-table fo-table--stack ns-table">
             <thead><tr><th>Employee</th><th>Job Role</th><th>Security Roles</th><th>Company</th><th>Status</th><th>Scope / assignment</th><th>Manager</th></tr></thead>
             <tbody>
               {state.roster.items.map((e) => (

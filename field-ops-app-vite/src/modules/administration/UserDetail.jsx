@@ -453,8 +453,8 @@ export default function UserDetail({
               },
               {
                 key: "responsibility",
-                label: "Owned records, accountabilities, managed employees",
-                source: `Workforce reads ${WORKFORCE_READS.OWNED_RECORDS.id}, ${WORKFORCE_READS.ACCOUNTABILITIES.id} and ${WORKFORCE_READS.MANAGED_EMPLOYEES.id}. Assigned work is not served (${RUNTIME_DEPENDENCIES.ASSIGNED_WORK_READ.id}).`,
+                label: "Owned records, accountabilities, assigned work, managed employees",
+                source: `Workforce reads ${WORKFORCE_READS.OWNED_RECORDS.id}, ${WORKFORCE_READS.ACCOUNTABILITIES.id}, ${WORKFORCE_READS.ASSIGNED_WORK.id} and ${WORKFORCE_READS.MANAGED_EMPLOYEES.id}.`,
               },
               {
                 key: "edits",

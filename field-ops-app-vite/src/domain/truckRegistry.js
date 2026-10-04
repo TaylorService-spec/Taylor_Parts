@@ -119,8 +119,8 @@ export function validateTruckRecord(docId, data, { mobileLocation } = {}) {
       status: data.status,
       homeWarehouseId: data.homeWarehouseId,
       assignedDriverEmployeeId: isNonEmptyString(data.assignedDriverEmployeeId) ? data.assignedDriverEmployeeId : null,
-      // The governed MOBILE-scope technicians (#210), names as the server read them; empty when none.
-      scopedTechnicianNames: Array.isArray(data.scopedTechnicianNames) ? data.scopedTechnicianNames.filter(isNonEmptyString) : [],
+      // The governed MOBILE-scope technicians (#210), names as the server read them -- present only when the roster supplies them.
+      ...(Array.isArray(data.scopedTechnicianNames) ? { scopedTechnicianNames: data.scopedTechnicianNames.filter(isNonEmptyString) } : {}),
     },
     reason: null,
   };

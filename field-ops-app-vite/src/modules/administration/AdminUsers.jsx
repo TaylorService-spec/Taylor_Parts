@@ -75,7 +75,9 @@ export default function AdminUsers({ workforce = workforceApiClient }) {
       <p className="fo-muted">
         The workforce from the governed Employee and Security authorities: each person&apos;s Job Role (the job they do),
         Security Roles (the authority they hold, with its scope), status, operating company and operational scope. Open a
-        person to see their Effective Access — what EOS resolves for them, and why — or to preview their workspace.
+        person to see their Effective Access — what EOS resolves for them, and why — or to preview their workspace. To see or
+        change a person&apos;s Security Roles, open their Employee record and use its Security Roles section. Whether a person can
+        sign in is User Access, not an Employee fact.
       </p>
       {/* EMPLOYEES WITHOUT A JOB ROLE (EMP-RT-08). Its own governed read and count. Silent when the count is 0. */}
       <JobRoleRemediation workforce={workforce} />

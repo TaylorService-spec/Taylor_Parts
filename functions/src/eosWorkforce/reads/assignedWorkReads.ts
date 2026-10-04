@@ -42,7 +42,7 @@ export function listAssignedWorkForEmployee(deps: EmployeeReadDeps, actor: Emplo
       if (p.family === "WORK_ORDER") {
         ({ rows } = await db.query(
           `SELECT w.id, w.work_order_number AS number, concat_ws(' · ', a2.name, w.work_order_type::text) AS name, w.status::text AS state,
-                  a.effective_from, w.scheduled_start, w.operating_company_id
+                  a.effective_from, w.scheduled_start, w.operating_company_key AS operating_company_id
              FROM eos_ops.work_order_assignments a
              JOIN eos_ops.work_orders w ON w.tenant_id = a.tenant_id AND w.id = a.work_order_id
              LEFT JOIN eos_crm.accounts a2 ON a2.tenant_id = w.tenant_id AND a2.id = w.customer_id

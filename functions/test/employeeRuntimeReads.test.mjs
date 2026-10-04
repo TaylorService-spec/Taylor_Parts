@@ -100,7 +100,9 @@ const OPERATIONS = ["readMyEmployeeProfile", "readMyWorkforceCapabilities", "rea
   // Step G: the governed assignable-Employee read.
   "listAssignableEmployees",
   // Functional Role (migration 1762819200000): the catalog, its holders, an Employee's assignments, the audit history.
-  "listFunctionalRoles", "listFunctionalRoleHolders", "listEmployeeFunctionalRoles", "listFunctionalRoleHistory"];
+  "listFunctionalRoles", "listFunctionalRoleHolders", "listEmployeeFunctionalRoles", "listFunctionalRoleHistory",
+  // #210: the Administration workforce roster (composed in eosAdministration, served here) and EMP-RT-05 assigned work.
+  "listWorkforceRoster", "listAssignedWorkForEmployee"];
 
 const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole",
   // Step C: each authority gets an assign and an end -- never a generic patch, and never one command for both.
@@ -115,22 +117,23 @@ const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "en
 test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07, 08, H1 and exactly the governed Employee commands", () => {
   assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], OPERATIONS);
   assert.deepEqual([...http.WORKFORCE_COMMAND_OPERATIONS], COMMANDS);
-  assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile", "readMyWorkforceCapabilities", "listEmployees"]);
+  assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile", "readMyWorkforceCapabilities", "listEmployees", "listWorkforceRoster"]);
   assert.equal(http.WORKFORCE_ROUTE, "/workforce/employees");
   const src = code(HTTP_SOURCE);
-  assert.doesNotMatch(src, /MUTATION|assign(ed)?Work|migration\//);
+  // EMP-RT-05 listAssignedWorkForEmployee is served since #210 (assignment authority is PostgreSQL); nothing else assigns work here.
+  assert.doesNotMatch(src.replace(/listAssignedWorkForEmployee|reads\/assignedWorkReads/g, ""), /MUTATION|assign(ed)?Work|migration\//);
   const runners = /const READ_RUNNERS = Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/.exec(src)[1];
   assert.deepEqual([...runners.matchAll(/(\w+): read\(/g)].map((m) => m[1]), OPERATIONS);
   const commandRunners = /const COMMAND_RUNNERS = Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/.exec(src)[1];
   assert.deepEqual([...commandRunners.matchAll(/(\w+): command\((\w+)\)/g)].map((m) => [m[1], m[2]]), COMMANDS.map((c) => [c, c]));
-  for (const blocked of ["listAssignedWorkForEmployee", "listEmployeeJobRoles", "setEmploymentStatus", "assignSecurityRole", "updateEmployee", "patchEmployee"]) {
+  for (const blocked of ["listEmployeeJobRoles", "setEmploymentStatus", "assignSecurityRole", "updateEmployee", "patchEmployee"]) {
     assert.equal(http.isWorkforceOperation(blocked), false, blocked);
   }
 });
 
 test("unknown operation 404, wrong method 405, wrong path 404, OPTIONS preflight with a bounded origin", async () => {
   const w = fakeWorld();
-  assert.equal((await post(w, { operation: "listAssignedWorkForEmployee", input: { employeeId: "e1" } })).status, 404);
+  assert.equal((await post(w, { operation: "listEmployeeJobRoles", input: { employeeId: "e1" } })).status, 404);
   assert.equal((await post(w, { operation: "readMyEmployeeProfile" }, {}, "/workforce/employees", "GET")).status, 405);
   assert.equal((await post(w, { operation: "readMyEmployeeProfile" }, {}, "/workforce/other")).status, 404);
   const pre = await post(w, "", { origin: "https://eos.example" }, "/workforce/employees", "OPTIONS");
@@ -299,14 +302,17 @@ test("capabilities: only existing read ids, each registered in the catalog AND t
   // so there is still exactly one place each id is spelled.
   assert.deepEqual([...used].sort(), ["admin.employeeFunctionalRole.write", "admin.employeeJobRole.write", "admin.employeeOperationalScope.write", "admin.employeeProfile.write",
     "admin.employeeWorkEligibility.write", "admin.principalAccess.read", "customer.record.read", "employee.record.read",
-    "opportunity.read", "salesAgreement.read", "salesOrder.read"]);
+    // #210 EMP-RT-05: each assigned-work family is gated by its own existing record read.
+    "opportunity.read", "reorder.request.read", "salesAgreement.read", "salesOrder.read", "workOrder.record.read"]);
   const catalog = readFileSync(join(SRC, "access", "permissionCatalog.ts"), "utf8");
   const migrations = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8")).join("\n");
   // POSTGRESQL-NATIVE, deliberately NOT in the legacy permission catalog (the admin.securityPolicy.write precedent):
   // the legacy admin Role composes the WHOLE catalog (compatibilityRoles ADMIN_ALL_PERMISSIONS), so listing the key
   // there would silently declare a grant. It is registered by migration 1762819200000 and held by nobody until an
   // administrator grants it through Administration.
-  const POSTGRES_NATIVE = new Set(["admin.employeeFunctionalRole.write"]);
+  // #210 EMP-RT-05: the two work-family reads are PostgreSQL-native record reads of their own domains (Work Order, Reorder),
+  // reused here as gates -- registered by their domain migrations, never in the legacy catalog.
+  const POSTGRES_NATIVE = new Set(["admin.employeeFunctionalRole.write", "workOrder.record.read", "reorder.request.read"]);
   for (const id of POSTGRES_NATIVE) assert.ok(!catalog.includes(`id: "${id}"`), `${id} must stay out of the legacy catalog`);
   for (const id of used) {
     if (!POSTGRES_NATIVE.has(id)) assert.ok(catalog.includes(`id: "${id}"`), `${id} is not in the permission catalog`);
@@ -330,7 +336,9 @@ test("server.ts composes the Workforce transport as a fourth domain with the sam
 
 test("nothing but the transport imports the read layer; no Functions, Rules or client reference the route", () => {
   const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) && /eosWorkforce\/reads\/|["']\.\/reads\/(employee|myEmployeeProfile)/.test(readFileSync(f, "utf8")));
-  assert.deepEqual(importers.map(rel), ["functions/src/eosWorkforce/workforceHttp.ts"]);
+  // #210: the Administration workforce roster (eosAdministration/workforceRoster.ts) is the one sanctioned second importer --
+  // it reuses the read KERNEL (gate + operating-company reach) and projection; it is served by the Workforce transport.
+  assert.deepEqual(importers.map(rel).sort(), ["functions/src/eosAdministration/workforceRoster.ts", "functions/src/eosWorkforce/workforceHttp.ts"]);
   // The reporting writer's commands module borrows only the error-category TYPE from the read kernel.
   // The retirement ledger NAMES Workforce paths as DATA -- it is a migration-only inventory of legacy consumers and
   // imports nothing at all. This guard is about IMPORTERS, so it is excluded by path rather than listed as one: a
@@ -338,7 +346,7 @@ test("nothing but the transport imports the read layer; no Functions, Rules or c
   const LEDGER = join(SRC, "adminPolicy", "migration", "legacyConsumerLedger.ts");
   const outsideWorkforce = walk(SRC, [".ts"])
     .filter((f) => !f.startsWith(WORKFORCE) && f !== LEDGER && /eosWorkforce/.test(code(f)));
-  assert.deepEqual(outsideWorkforce.map(rel), ["functions/src/eosApi/server.ts"]);
+  assert.deepEqual(outsideWorkforce.map(rel).sort(), ["functions/src/eosAdministration/workforceRoster.ts", "functions/src/eosApi/server.ts"]);
   // The transport is the ONE runtime importer of the internal governed commands (W1B); nothing runtime imports migration.
   const internal = walk(WORKFORCE, [".ts"]).filter((f) => /["'][./]*\/?(commands|migration)\//.test(code(f)) && !f.includes(`${WORKFORCE}/migration/`));
   assert.deepEqual(internal.map(rel), ["functions/src/eosWorkforce/workforceHttp.ts"], "a runtime Workforce module other than the transport imports the internal writer");

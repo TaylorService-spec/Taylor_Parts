@@ -48,16 +48,8 @@ export const EMPLOYEE_RUNTIME_DEPENDENCY = "EMPLOYEE_RUNTIME_DEPENDENCY";
 
 /** Facts the design needs that this client cannot offer yet. Each renders as a named, truthful unavailable state. */
 export const RUNTIME_DEPENDENCIES = Object.freeze({
-  ASSIGNED_WORK_READ: Object.freeze({
-    id: "EMP-RT-05",
-    kind: EMPLOYEE_RUNTIME_DEPENDENCY,
-    serverReason: "ASSIGNMENT_AUTHORITY_NOT_IN_POSTGRES",
-    fact: "Work assigned to this Employee",
-    today:
-      "Work assignment authority is not in PostgreSQL, so the Workforce service does not serve assigned work. EOS does not guess it from technician or user ids.",
-    requiredApi:
-      "Governed read listAssignedWorkForEmployee { employeeId }, over a PostgreSQL assignment authority and a governed Employee ↔ Technician projection.",
-  }),
+  // EMP-RT-05 (assigned work) is SERVED since #210 -- listAssignedWorkForEmployee over the PostgreSQL assignment authority -- so it
+  // is no longer a runtime dependency; the Assigned Person axis reads it (WORKFORCE_READS.ASSIGNED_WORK).
   // The profile facts and the reporting relationship ARE editable now (EMP-RT-W1, served as Workforce commands by
   // W1B). The Employee LIFECYCLE writer IS served too (EMP-RT-W2: changeEmploymentStatus / changeOperatingCompany on the
   // Workforce transport). What is missing is only the UI: no Administration control offers those two commands yet, so
