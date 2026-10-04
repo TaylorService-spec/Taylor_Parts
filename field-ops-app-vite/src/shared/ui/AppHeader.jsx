@@ -20,8 +20,12 @@
 // with a surface and a bottom border above every page, announcing a region that contains nothing.
 // The page begins at the top of its own column.
 //
+// SEARCH (Application Assembly, DECISIONS #209). Site-wide search is the strip's second job, and it exists only where EOS is the
+// authority (`search` is supplied by AppShell under the EOS navigation source). Legacy environments get no search box: the
+// server-side search is EOS-governed and there is no Firebase fallback to offer instead.
+//
 // The layout/colour for the strip lives in index.css under .fo-appheader.
-export default function AppHeader({ onOpenNav = null, navToggleRef = null, navOpen = false } = {}) {
+export default function AppHeader({ onOpenNav = null, navToggleRef = null, navOpen = false, search = null } = {}) {
   // THE STRIP IS ITS CONTENTS. The opener is built first, as a value, and the strip renders only if
   // it exists.
   //
@@ -42,12 +46,13 @@ export default function AppHeader({ onOpenNav = null, navToggleRef = null, navOp
     </button>
   ) : null;
 
-  const contents = [navToggle].filter(Boolean);
+  const contents = [navToggle, search].filter(Boolean);
   if (contents.length === 0) return null;
 
   return (
     <div className="fo-appheader">
-      <div className="fo-appheader-left">{navToggle}</div>
+      {navToggle ? <div className="fo-appheader-left">{navToggle}</div> : null}
+      {search}
     </div>
   );
 }

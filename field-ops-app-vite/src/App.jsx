@@ -177,6 +177,7 @@ const previewHasPermission = createPermissionPreviewer(
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
 import MyDashboard from "./modules/dashboard/MyDashboard.jsx";
+import MyWorkspace from "./modules/workspace/MyWorkspace.jsx";
 // WAVE 9 / LANE AL -- the dashboard-surface rule, stated beside the composition it pairs with.
 import { DASHBOARD_SURFACE, dashboardSurfaceFor } from "./domain/dashboardComposition.js";
 import { NAV_DOMAINS, isDomainVisible, isEosNavigationSource, isNavItemVisible } from "./navigation/navConfig";
@@ -250,7 +251,12 @@ const LEGACY_COMPONENTS = {
 // field work eligibility AND no operations surface, which is the sentence that file has always
 // opened with -- and reproduces `role === "technician"` byte-for-byte when it is not. Moving it
 // there keeps the one rule beside the composition it pairs with, and makes it testable without React.
+//
+// APPLICATION ASSEMBLY (#209). Where EOS is the navigation authority, the landing is MyWorkspace: the persona workspace composed
+// by the server from the caller's current Job Role (layout only) and each section's own governed read. The legacy branch below
+// is untouched for every environment where EOS is not the source.
 function DashboardIndex({ role, allowedLegacyKeys, operationalContext }) {
+  if (isEosNavigationSource(operationalContext)) return <MyWorkspace />;
   if (dashboardSurfaceFor({ role, operationalContext }) === DASHBOARD_SURFACE.FIELD_WORK) {
     return <TechnicianDashboard />;
   }

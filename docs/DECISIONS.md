@@ -7433,3 +7433,73 @@ design without redesigning it.
      therefore need an Owner decision on authoring authority before a PostgreSQL home is built.
    - Time-weighted history snapshots for point-in-time measures, materialized projections, margin/cost (FIN-BLOCK-003),
      targets/forecast storage, the AI plug-in.
+
+## #209 — CONTROLLER: Final EOS Application Assembly (2026-10-03)
+
+**Context.** Roadmap blocks 1–3 (Finance Closure #206, Rental #207, Analysis & Reporting #208) are CLOSED / PROVEN / FROZEN.
+This decision assembles those proven capabilities into the employee experience. It redesigns no business domain, adds no
+capability, grant, migration or Firebase dependency, and changes no authority.
+
+1. **The persona chooses the layout, never the authority.**
+   - The persona is the caller's CURRENT Job Role (`eos_workforce.employee_job_role_assignments`, `effective_to IS NULL`),
+     from the canonical 16 (`jobRoleVocabulary.ts`).
+   - With no current Job Role, the caller gets the General Employee layout.
+   - Sales Manager stays a Security Role, not a persona. Retail and National Accounts stay distinct. Rental appears inside
+     existing personas, with no Rental persona.
+   - `PERSONA_LAYOUTS` (`functions/src/eosExperience/myWork.ts`) names only which sections appear, and in what order.
+   - Every section is composed in-process from an EXISTING governed read, under that read's own authority:
+     - `listMyAssignedWorkOrders`;
+     - `listWorkOrders` (schedule/dispatch/ready holders);
+     - `readMyAssignedReorders`;
+     - `readReorderQueue` (REORDER_QUEUE reach);
+     - `listTransferOrders` (WAREHOUSE scope);
+     - `readRentalWorkspace`;
+     - the Commercial records the caller owns or is accountable for (narrowed to its salesChannel-scoped holdings);
+     - `readAnalysisWorkspace` / `readAnalysisCatalog`;
+     - Administration attention: active employees with no current Job Role (admin.principalAccess.read or
+       employee.record.read).
+   - A refused section is returned as NOT_AUTHORIZED with its reason, never as "nothing to do".
+2. **Workspace shape: ATTENTION → INSIGHT → CONTEXT → AUTHORIZED ACTION.**
+   - Attention is Analysis's rule-based exceptions plus each read's own attention states, such as a CREATED work order
+     waiting for dispatch, a reorder PENDING_REVIEW, or a rental due back.
+   - The workspace has ONE severity vocabulary, ATTENTION / BLOCKING. An Analysis exception is ATTENTION, with its rank kept
+     verbatim as `priority` (HIGH / MEDIUM / LOW).
+   - Insights and key figures are the frozen Analysis engine's. Executive and Finance layouts choose Taylor, Ventana or the
+     Consolidated projection.
+   - An action is offered only as the server reports it, and only as a link to the record or workspace that enforces it.
+   - No AI (`aiRequired: false`).
+3. **OWNER / ACCOUNTABLE / ASSIGNEE are three answers.**
+   - Opportunity, Sales Order and Sales Agreement record pages show **Accountable** beside **Owner**. The view models now
+     carry `accountableEmployeeId`; before this decision they dropped it.
+   - Workspace rows show Owner and Accountable separately, and Assignee for work orders.
+   - Nothing here writes ownership. Reassignment does not rewrite ownership, and historical ownership stays historical.
+4. **Site-wide search** is `searchEos` on `/operations/workspace`, shown in the application header only where EOS is the
+   navigation authority.
+   - It searches Work Orders, Opportunities, Sales Orders, Sales Agreements, Customers, Parts, Equipment, Rental Agreements,
+     Reorder Requests and Employees.
+   - Each kind is searched only on its existing read and scope: channel-narrowed Commercial, and REORDER_QUEUE reach for
+     Reorder Requests.
+   - The answer names the kinds NOT searched. A result opens the record's own governed page, which re-checks the read.
+5. **Landing and navigation.**
+   - Under the EOS navigation source, `/dashboard` renders MyWorkspace, the primary surface. Legacy environments keep
+     MyDashboard / TechnicianDashboard unchanged.
+   - Left-rail structure, North Star and existing pages are reused. No page was duplicated.
+6. **Reused UI:** WorkspaceShell, AttentionBand, RuledSection, ContextBand, HonestState, Field, Button, `fo-table--stack`,
+   and Analysis's `figure` / BASIS_WORDS.
+   **New UI:** MyWorkspace, SiteSearch, workspaceApiClient, and the `.fo-sitesearch` rules.
+   Verified at 1440 / 1024 / 375 with no horizontal overflow.
+
+**Decision Queue (HELD — not implemented; none is a Day-1 blocker for assembly).**
+- Rental billing policy.
+- Saved Analysis Definition authoring authority.
+- Used-equipment book value.
+- Trade-in receiving lifecycle.
+- es-US translation content.
+- Above-limit discount approval.
+- Remaining UTC/date findings.
+
+**Assembly findings for the Owner.**
+- Warehouse Associate holds `rental.unit.return` without `rental.agreement.read`, so a rental return is not visible in its
+  workspace.
+- `readMyEmployeeProfile` does not return the Job Role. `readMyWork` returns it for the caller only.
+- Nonprod Ventana is unkeyed, and no accounting destination exists (handoffs PENDING_DESTINATION). Both are carried forward.

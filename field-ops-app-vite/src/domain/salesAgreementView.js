@@ -63,6 +63,8 @@ export function salesAgreementView({ result, loading, errorStatus }) {
     state: a.state ?? null,
     accountId: a.accountId ?? null,
     ownerEmployeeId: a.ownerEmployeeId ?? null,
+    // OWNER and ACCOUNTABLE are distinct governed answers (#209); the view carries both, never one for the other.
+    accountableEmployeeId: a.accountableEmployeeId ?? null,
     locationId: a.locationId ?? null,
     currency: a.currency ?? null,
     customerPO: a.customerPO ?? null,

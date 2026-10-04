@@ -455,3 +455,19 @@ describe("SalesOrderDetail -- write-capability gating (regression: read-only pri
     await waitFor(() => expect(client.transitionSalesOrder).toHaveBeenCalledTimes(1));
   });
 });
+
+// Application Assembly (#209): OWNER and ACCOUNTABLE are two governed answers on the record, side by side, never one word.
+describe("SalesOrderDetail -- owner and accountable stay distinct", () => {
+  const fact = (container, label) =>
+    [...container.querySelectorAll(".ns-identity__fact")].find((n) => n.querySelector(".ns-identity__fact-label")?.textContent === label);
+  it("shows an Accountable fact beside Owner, and says 'Not set' rather than borrowing the owner", () => {
+    useSalesOrder.mockReturnValue(readySalesOrder());
+    const first = renderAt("SO-42");
+    expect(fact(first.container, "Owner")).toBeTruthy();
+    expect(fact(first.container, "Accountable").querySelector(".ns-identity__fact-value").textContent).toBe("Not set");
+    first.unmount();
+    useSalesOrder.mockReturnValue(readySalesOrder({ salesOrder: { accountableEmployeeId: "EMP-2" } }));
+    const second = renderAt("SO-42");
+    expect(fact(second.container, "Accountable").querySelector(".ns-identity__fact-value").textContent).not.toBe("Not set");
+  });
+});

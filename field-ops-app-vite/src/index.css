@@ -369,6 +369,19 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 /* .fo-appheader button rules removed with the last button that was not the nav toggle.
    The toggle has its own .fo-navtoggle rules; the notification trigger moved to the rail. */
 
+/* SITE-WIDE SEARCH (modules/search/SiteSearch.jsx, Application Assembly #209) -- the strip's second control, under EOS authority
+   only. It grows to fill the strip and wraps under the opener at phone width; results drop below it in the same column. */
+.fo-sitesearch { position: relative; flex: 1 1 320px; max-width: 640px; min-width: 0; }
+.fo-sitesearch form { display: flex; gap: 8px; align-items: center; }
+.fo-sitesearch .fo-input { flex: 1 1 auto; min-width: 0; }
+.fo-sitesearch__results {
+  position: absolute; inset-inline: 0; top: calc(100% + 4px); z-index: 20;
+  background: var(--color-surface-card); border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  padding: 8px 12px; max-height: 60vh; overflow-y: auto; font-size: 14px;
+}
+.fo-sitesearch__results ul { list-style: none; margin: 0 0 8px; padding: 0; }
+.fo-sitesearch__results li { padding-block: 4px; overflow-wrap: anywhere; }
+
 /* ===========================================================================
    GATE 2 — APPLICATION SHELL
    ---------------------------------------------------------------------------
