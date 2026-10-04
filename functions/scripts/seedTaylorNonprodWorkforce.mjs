@@ -20,6 +20,14 @@
 //
 //   node scripts/seedTaylorNonprodWorkforce.mjs --phase principals --out principals.json [--apply]   (DATABASE_URL, operator)
 //   node scripts/seedTaylorNonprodWorkforce.mjs --phase api --api http://localhost:8791 --principals principals.json --tokens local [--apply]
+//   node scripts/seedTaylorNonprodWorkforce.mjs --phase api --api <nonprod EOS API> --principals principals.json --tokens persona \
+//        --issuer-credential-file <path> [--apply]
+//
+// PERSONA MODE (nonprod): every step runs as one of the 16 governed nonprod personas through the established EOS persona
+// session issuer (scripts/eosPersonaSession.mjs). The issuer credential is read from the named FILE in-process and never
+// printed, logged or written. A step whose local actor is an additional sample employee (no sign-in until EOS-IDAM) runs as
+// the already-authorized persona the manifest names in `nonprodActorFallback` -- which is refused by the server if that
+// persona lacks the authority, exactly as any caller would be.
 import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -45,17 +53,21 @@ async function phasePrincipals() {
   const pg = require("pg");
   const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
   const { ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
+  // The SAME resolution authentication uses: a primary EOS Principal OR a Principal holding an active EOS identity binding
+  // (the nonprod personas are Firebase-primary Principals bound to nonprod-persona.<key>).
+  const { resolvePrincipalByVerifiedIdentity } = require("../lib/adminPolicy/principalContext.js");
+  const bySubject = (subject) => resolvePrincipalByVerifiedIdentity(repo, MANIFEST.identityProvider, subject);
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
   const repo = new PostgresPolicyRepository(pool);
   try {
     const tenant = (await pool.query(`SELECT id FROM eos_policy.tenants WHERE key = $1`, [MANIFEST.tenantKey])).rows[0]?.id;
     if (!tenant) throw new Error(`tenant ${MANIFEST.tenantKey} not found`);
-    const admin = await repo.getPrincipalBySubject(MANIFEST.identityProvider, "nonprod-persona.administrator");
+    const admin = await bySubject("nonprod-persona.administrator");
     if (!admin) throw new Error("the administrator persona Principal does not exist");
     const out = {};
     for (const e of MANIFEST.employees) {
       if (!e.principalSubject) continue;
-      const existing = await repo.getPrincipalBySubject(MANIFEST.identityProvider, e.principalSubject);
+      const existing = await bySubject(e.principalSubject);
       if (existing) { out[e.principalSubject] = existing.id; continue; }
       plan.push(`ensureTenantPrincipal ${e.principalSubject}`);
       if (!APPLY) continue;
@@ -64,15 +76,30 @@ async function phasePrincipals() {
       out[e.principalSubject] = p.id;
       done.push(`principal ${e.principalSubject}`);
     }
-    const owner = await repo.getPrincipalBySubject(MANIFEST.identityProvider, "nonprod-persona.ownerExecutive");
+    const owner = await bySubject("nonprod-persona.ownerExecutive");
     if (owner) out["nonprod-persona.ownerExecutive"] = owner.id;
     if (args.out) writeFileSync(args.out, JSON.stringify(out, null, 1));
   } finally { await pool.end(); }
 }
 
 // ════════════════════ phase: api (governed commands, as the employee whose job it is) ════════════════════
-function tokenFor(subject) {
-  if (args.tokens !== "local") throw new Error("only --tokens local is implemented (the local proof harness); nonprod uses persona sessions");
+let issuerCredential = null;
+async function personaToken(subject) {
+  const fallback = MANIFEST.nonprodActorFallback ?? {};
+  const actor = subject.startsWith("nonprod-persona.") ? subject : fallback[subject];
+  if (!actor || !actor.startsWith("nonprod-persona.")) throw new Error(`no governed nonprod persona can act for ${subject}`);
+  if (!issuerCredential) {
+    if (typeof args["issuer-credential-file"] !== "string") throw new Error("--issuer-credential-file is required in persona mode");
+    issuerCredential = readFileSync(args["issuer-credential-file"], "utf8").trim();
+  }
+  const { issueEosPersonaSession } = await import("../../scripts/eosPersonaSession.mjs");
+  const s = await issueEosPersonaSession(actor.slice("nonprod-persona.".length), { credential: issuerCredential, baseUrl: args.api });
+  return s.token;
+}
+
+async function tokenFor(subject) {
+  if (args.tokens === "persona") return personaToken(subject);
+  if (args.tokens !== "local") throw new Error("--tokens local (the local proof harness) or --tokens persona (nonprod persona sessions)");
   if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(String(args.api))) throw new Error("--tokens local is refused for a non-localhost API");
   const b = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
   const now = Math.floor(Date.now() / 1000);
@@ -80,7 +107,7 @@ function tokenFor(subject) {
 }
 
 async function call(subject, route, operation, input) {
-  const res = await fetch(`${args.api}${route}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${tokenFor(subject)}` },
+  const res = await fetch(`${args.api}${route}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${await tokenFor(subject)}` },
     body: JSON.stringify(input === undefined ? { operation } : { operation, input }) });
   const body = await res.json().catch(() => ({}));
   return { status: res.status, ok: res.ok && body.ok !== false, body };

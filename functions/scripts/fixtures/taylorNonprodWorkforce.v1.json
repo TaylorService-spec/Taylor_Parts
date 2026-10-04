@@ -1014,5 +1014,12 @@
    "hour": 13
   }
  ],
- "sharedContextNote": "Sellers hold salesperson (and the leads salesManager) @salesChannel, PLUS commercialSharedContext GLOBALLY -- the nonprod Option A model (2026-09-30): shared customer/catalog context is global, selling is channel-scoped."
+ "sharedContextNote": "Sellers hold salesperson (and the leads salesManager) @salesChannel, PLUS commercialSharedContext GLOBALLY -- the nonprod Option A model (2026-09-30): shared customer/catalog context is global, selling is channel-scoped.",
+ "nonprodActorFallback": {
+  "$comment": "Nonprod only: the 16 personas are the only identities with EOS sessions until EOS-IDAM. A step whose local actor is an additional sample employee runs as this already-authorized persona; the server still decides.",
+  "nonprod-sample.retail-lead": "nonprod-persona.retailSales",
+  "nonprod-sample.retail-sales-b": "nonprod-persona.retailSales",
+  "nonprod-sample.national-lead": "nonprod-persona.nationalAccountsSales",
+  "nonprod-sample.national-assoc-2": "nonprod-persona.nationalAccountsSales"
+ }
 }
