@@ -170,7 +170,7 @@ export function RolesPermissionsSurface() {
               )}
               {/* PRIMARY: the enforced Security Role -- the rows the server evaluator reads. */}
               <SecurityRoleDetail roleKey={selected.key} />
-              <LegacyRoleMatrix role={selected} objects={objects.data ?? []} />
+              {/* #210: the legacy unenforced C/R/E/D matrix no longer renders -- it is not what the server enforces. */}
             </>
           )}
           {!selected && <p className="fo-muted">Choose a Security Role to see its holders, its Object actions and its decision history.</p>}

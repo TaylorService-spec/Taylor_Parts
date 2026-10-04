@@ -20,13 +20,65 @@ import { ReadState } from "./ObjectActionSecurity.jsx";
 import { roleActionsByObject } from "./controlPlaneModel.js";
 import { principalLabel } from "./principalDisplay.js";
 import { useConditionVocabulary } from "./useConditionVocabulary.js";
+import { Link } from "react-router-dom";
+import { workforceApiClient } from "../../services/workforceApiClient.js";
 
-export default function SecurityRoleDetail({ api = adminControlPlaneClient, roleKey }) {
+/**
+ * #210: ASSIGN this Security Role to an employee, from the role -- the SAME governed assignRole the employee record uses, with
+ * an optional supported scope (salesChannel for a seller or Sales Manager). The server decides (Owner protection, self-
+ * administration, staffing rules, scope validity) and the page re-reads; nothing is assumed.
+ */
+function AssignRoleToEmployee({ api, workforce, role, onChanged }) {
+  const roster = useControlPlaneRead(() => workforce.call("listWorkforceRoster", {}).then((r) => (r.ok ? { ok: true, data: r.result } : r)), "roster-for-assign");
+  const scopes = useControlPlaneRead(() => (api.listSupportedAssignmentScopes ? api.listSupportedAssignmentScopes(role.roleKey) : Promise.resolve({ ok: true, data: { scopeTypes: [] } })), `assign-scopes:${role.roleKey}`);
+  const [employeeId, setEmployeeId] = useState("");
+  const [scope, setScope] = useState("global");
+  const [reason, setReason] = useState("");
+  const [result, setResult] = useState(null);
+  const people = (roster.data?.items ?? []).filter((e) => e.principalId);
+  const scopeOptions = (scopes.data?.scopeTypes ?? [])
+    .filter((s) => s.supported && s.scopeType !== "global")
+    .flatMap((s) => (s.values ?? []).map((v) => ({ value: `${s.scopeType}|${v.value}`, label: `${s.label ?? s.scopeType}: ${v.label ?? v.value}` })));
+  const submit = async (e) => {
+    e.preventDefault();
+    const person = people.find((p) => p.employeeId === employeeId);
+    if (!person) { setResult({ error: "Choose an employee with an application user." }); return; }
+    const [scopeType, scopeValue] = scope === "global" ? [null, null] : scope.split("|");
+    const res = await api.assignRole({ principalId: person.principalId, roleId: role.roleId ?? role.id, reason, scopeType, scopeValue });
+    setResult(res.ok ? { ok: `Assigned ${role.name ?? role.roleKey} to ${person.displayName}.` } : { error: `${res.code}: ${res.message}` });
+    if (res.ok) { setReason(""); onChanged(); }
+  };
+  return (
+    <form className="fo-roster__filters" onSubmit={submit} aria-label="Assign this Security Role">
+      <label className="fo-form-field"><span>Employee</span>
+        <select className="fo-input" aria-label="Employee to assign" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
+          <option value="">Choose an employee…</option>
+          {people.map((p) => <option key={p.employeeId} value={p.employeeId}>{p.displayName} — {p.jobRole?.label ?? "no Job Role"}</option>)}
+        </select></label>
+      <label className="fo-form-field"><span>Scope</span>
+        <select className="fo-input" aria-label="Assignment scope" value={scope} onChange={(e) => setScope(e.target.value)}>
+          <option value="global">All (global)</option>
+          {scopeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select></label>
+      <label className="fo-form-field"><span>Reason (recorded)</span>
+        <input className="fo-input" aria-label="Assignment reason" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+      <Button type="submit" variant="primary">Assign</Button>
+      {result?.ok && <p className="fo-success" role="status">{result.ok}</p>}
+      {result?.error && <p className="fo-warning" role="alert">{result.error}</p>}
+    </form>
+  );
+}
+
+export default function SecurityRoleDetail({ api = adminControlPlaneClient, workforce = workforceApiClient, roleKey }) {
   const detail = useControlPlaneRead(roleKey ? () => api.getSecurityRoleDetail(roleKey) : null, `role:${roleKey}`);
   const history = useControlPlaneRead(roleKey ? () => api.listRoleCapabilityDecisionHistory({ roleKey, limit: 200 }) : null, `history:${roleKey}`);
   const groups = useMemo(() => (detail.data ? roleActionsByObject(detail.data) : null), [detail.data]);
   const [openObject, setOpenObject] = useState(null);
   const vocabulary = useConditionVocabulary(api);
+  // #210: who was given or lost this Role, and when -- the governed policy audit filtered to this Role (assignment events included).
+  const assignments = useControlPlaneRead(roleKey ? () => api.readPolicyAuditHistory({ roleKey, limit: 50 }) : null, `role-audit:${roleKey}`);
+  const [removeReason, setRemoveReason] = useState("");
+  const [removeResult, setRemoveResult] = useState(null);
 
   if (!roleKey) return null;
   if (!detail.data) return <ReadState read={detail} what="this Security Role" />;
@@ -34,7 +86,13 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, role
 
   const role = detail.data;
   const holders = Array.isArray(role.holders) ? role.holders : [];
-  const onChanged = () => { detail.reload(); history.reload(); };
+  const onChanged = () => { detail.reload(); history.reload(); assignments.reload(); };
+  const remove = async (h) => {
+    if (removeReason.trim().length < 4) { setRemoveResult({ error: "State the reason for removing this assignment first." }); return; }
+    const res = await api.revokeRole({ assignmentId: h.assignmentId, reason: removeReason.trim() });
+    setRemoveResult(res.ok ? { ok: `Removed from ${principalLabel(h)}.` } : { error: `${res.code}: ${res.message}` });
+    if (res.ok) onChanged();
+  };
 
   return (
     <section className="fo-panel" aria-label={`Security Role ${role.name ?? roleKey}`} data-security-role={roleKey}>
@@ -48,19 +106,38 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, role
       {holders.length === 0 ? (
         <p className="fo-muted">No Principal holds this Security Role.</p>
       ) : (
-        <table className="fo-table" aria-label="Holders">
-          <thead><tr><th>Principal</th><th>Scope</th><th>Since</th></tr></thead>
+        <>
+        <label className="fo-form-field"><span>Reason for a removal (recorded)</span>
+          <input className="fo-input" aria-label="Removal reason" value={removeReason} onChange={(e) => setRemoveReason(e.target.value)} /></label>
+        {removeResult?.ok && <p className="fo-success" role="status">{removeResult.ok}</p>}
+        {removeResult?.error && <p className="fo-warning" role="alert">{removeResult.error}</p>}
+        <table className="fo-table fo-table--stack" aria-label="Holders">
+          <thead><tr><th>Holder</th><th>Scope</th><th>Since</th><th>Administer</th></tr></thead>
           <tbody>
             {holders.map((h) => (
-              <tr key={h.assignmentId}>
-                <td>{principalLabel(h)} <span className="fo-muted">ID <code>{h.principalId}</code></span></td>
-                <td className="fo-muted">{h.scopeType}{h.scopeValue ? ` · ${h.scopeValue}` : ""}</td>
-                <td className="fo-muted">{h.grantedAt ?? "—"}</td>
+              <tr key={h.assignmentId} data-holder={h.employeeId ?? h.principalId}>
+                <td data-label="Holder">{h.employeeId ? <Link to={`/administration/users/${h.employeeId}`}>{principalLabel(h)}</Link> : principalLabel(h)}
+                  <span className="fo-muted"> · Principal <code>{h.principalId}</code>{h.employeeId ? "" : " · no linked Employee"}</span></td>
+                <td data-label="Scope" className="fo-muted">{h.scopeType}{h.scopeValue ? ` · ${h.scopeValue}` : ""}</td>
+                <td data-label="Since" className="fo-muted">{h.grantedAt ?? "—"}</td>
+                <td data-label="Administer"><Button size="sm" variant="secondary" onClick={() => remove(h)}>Remove</Button></td>
               </tr>
             ))}
           </tbody>
         </table>
+        </>
       )}
+      <h4>Assign to an employee</h4>
+      <AssignRoleToEmployee api={api} workforce={workforce} role={{ ...role, roleKey }} onChanged={onChanged} />
+      <h4>Assignment history</h4>
+      {Array.isArray(assignments.data) && assignments.data.length > 0 ? (
+        <table className="fo-table fo-table--stack" aria-label="Assignment history">
+          <thead><tr><th>When</th><th>What</th><th>By</th><th>Reason</th></tr></thead>
+          <tbody>{assignments.data.map((ev) => (
+            <tr key={ev.id}><td data-label="When">{ev.occurredAt}</td><td data-label="What">{ev.action}</td>
+              <td data-label="By"><code>{ev.actorUid}</code></td><td data-label="Reason">{ev.reason ?? "—"}</td></tr>))}</tbody>
+        </table>
+      ) : <p className="fo-muted">{assignments.status === "failed" ? "Assignment history is not available to you (audit.event.read)." : "No recorded events for this Role yet."}</p>}
 
       <h4>Objects &amp; actions</h4>
       <p className="fo-muted">

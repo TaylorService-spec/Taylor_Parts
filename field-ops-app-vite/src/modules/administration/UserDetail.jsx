@@ -26,6 +26,7 @@ import EmployeeJobRoleControl from "./EmployeeJobRoleControl.jsx";
 import EmployeeChangeHistorySection from "./EmployeeChangeHistorySection.jsx";
 import EmployeeSecurityRoles from "./EmployeeSecurityRoles.jsx";
 import EmployeeEffectiveAccess from "./EmployeeEffectiveAccess.jsx";
+import EmployeeExperiencePreview from "./EmployeeExperiencePreview.jsx";
 import EmployeeDirectExceptions from "./EmployeeDirectExceptions.jsx";
 import EmployeeWorkflowResponsibilities from "./EmployeeWorkflowResponsibilities.jsx";
 import EmployeeAccessAudit from "./EmployeeAccessAudit.jsx";
@@ -422,6 +423,13 @@ export default function UserDetail({
           <RuledSection title="Effective Access" meta="The server evaluator's explanation">
             <PrincipalGate linked={linked} principalLink={principalLink}>
               <EmployeeEffectiveAccess api={controlPlane} principalId={principalId} key={`access-${accessReadKey}`} />
+            </PrincipalGate>
+          </RuledSection>
+
+          {/* VIEW AS USER (#210): the server-resolved workspace of this employee, read-only, audited, marked PREVIEW. */}
+          <RuledSection title="View as user" meta="Read-only preview of what EOS resolves for this person">
+            <PrincipalGate linked={linked} principalLink={principalLink}>
+              <EmployeeExperiencePreview employeeId={employee.employeeId} />
             </PrincipalGate>
           </RuledSection>
 

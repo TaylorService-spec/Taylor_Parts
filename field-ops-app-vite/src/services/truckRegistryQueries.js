@@ -25,7 +25,9 @@ export async function fetchTruckRegistry(call = eosOperationOrThrow) {
     const loc = t.mobileLocation;
     mobileLocationDocs.push({ docId: loc.locationId, data: { type: "MOBILE", locationId: loc.locationId, displayLabel: loc.displayLabel ?? loc.locationId, active: loc.active === true } });
     truckDocs.push({ docId: t.truckId, data: { truckId: t.truckId, locationId: loc.locationId, vehicleNumber: t.vehicleNumber, displayLabel: t.displayLabel,
-      status: t.status, homeWarehouseId: t.homeWarehouseId, assignedDriverEmployeeId: null } });
+      status: t.status, homeWarehouseId: t.homeWarehouseId, assignedDriverEmployeeId: null,
+      // #210: who works from this truck NOW = the Employees whose governed MOBILE scope is this truck's location (OD-T1).
+      scopedTechnicianNames: Array.isArray(t.scopedEmployeeNames) ? t.scopedEmployeeNames : [] } });
   }
   const stockByTruck = new Map();
   await Promise.all(trucks.filter((t) => t?.mobileLocation?.locationId).map(async (t) => {

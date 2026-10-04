@@ -18,6 +18,7 @@ import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState";
 import { Field } from "../../shared/ui/form";
 import { callWorkspaceApi } from "../../services/workspaceApiClient";
 import { figure, BASIS_WORDS } from "../analysis/AnalysisWorkspace";
+import WorkflowWork from "./WorkflowWork.jsx";
 
 const COMPANIES = [["consolidated", "Consolidated (reporting view)"], ["taylor", "Taylor"], ["ventana", "Ventana"]];
 
@@ -95,7 +96,7 @@ function Measures({ summary }) {
   );
 }
 
-export default function MyWorkspace({ callApi = callWorkspaceApi }) {
+export default function MyWorkspace({ callApi = callWorkspaceApi, preview = false }) {
   const [work, setWork] = useState(null);
   const [company, setCompany] = useState(null);
   const [refusal, setRefusal] = useState(null);
@@ -144,6 +145,8 @@ export default function MyWorkspace({ callApi = callWorkspaceApi }) {
           <SectionBody section={s} />
         </RuledSection>
       ))}
+      {/* Workflow participation (#210). Never inside a View-as-user PREVIEW: a preview cannot act. */}
+      {!preview && <WorkflowWork />}
     </WorkspaceShell>
   );
 }

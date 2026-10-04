@@ -37,7 +37,8 @@ export function createAdminControlPlaneClient(call = callPolicyApi) {
       ...(limit ? { limit } : {}),
     }),
     listPrincipalRoleAssignments: (principalId) => send("listPrincipalRoleAssignments", { principalId }),
-    readPolicyAuditHistory: ({ limit } = {}) => send("readPolicyAuditHistory", limit ? { limit } : {}),
+    readPolicyAuditHistory: ({ limit, roleKey, principalId } = {}) => send("readPolicyAuditHistory", {
+      ...(limit ? { limit } : {}), ...(roleKey ? { roleKey } : {}), ...(principalId ? { principalId } : {}) }),
     explainEffectiveAccess: (principalId) => send("explainEffectiveAccess", { principalId }),
     // The server's condition vocabulary (kinds, parameters, record kinds, applicable capabilities).
     // NOT YET in the server's closed operation list on this base, so it is deliberately absent from
@@ -58,6 +59,10 @@ export function createAdminControlPlaneClient(call = callPolicyApi) {
       }),
     revokeObjectActionFromRole: ({ objectKey, actionKey, roleKey, reason }) =>
       send("revokeObjectActionFromRole", { objectKey, actionKey, roleKey, reason }),
+    // WHOLE-OBJECT AUTHORITY (#210): the server expands it into exactly the Object's registered actions (optionally some
+    // action kinds), each granted/revoked through the same governed command, and reports each action's outcome.
+    applyObjectWideRoleAuthority: ({ objectKey, roleKey, mode, actionKinds, reason }) =>
+      send("applyObjectWideRoleAuthority", { objectKey, roleKey, mode, reason, ...(actionKinds?.length ? { actionKinds } : {}) }),
     // A condition cell is a Role grant (roleKey) OR a direct exception (principalId) -- exactly one is sent.
     setGrantCondition: ({ objectKey, actionKey, roleKey, principalId, condition, reason }) =>
       send("setGrantCondition", { objectKey, actionKey, ...(principalId ? { principalId } : { roleKey }), condition, reason }),

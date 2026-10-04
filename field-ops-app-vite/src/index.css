@@ -8916,3 +8916,25 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-self-schedule__day { border: 1px solid var(--color-border, #d0d4d9); border-radius: 6px; padding: var(--space-2) var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .fo-self-schedule__slot { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 2.75rem; padding: 0 var(--space-2); }
 .fo-self-schedule-link { display: grid; gap: var(--space-2); }
+
+/* WORKFORCE ROSTER (Administration -> Users, #210): filters wrap; the table stacks to labelled cards at phone width. */
+.fo-roster__filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-block: 8px 12px; }
+.fo-roster__filters > * { flex: 1 1 180px; min-width: 0; }
+
+/* EFFECTIVE ACCESS CHAIN (#210): the resolved chain as a numbered list, one link per line. */
+.fo-access-chain { margin: 8px 0 16px; padding-left: 20px; display: grid; gap: 4px; }
+.fo-access-chain__k { font-weight: 600; display: inline-block; min-width: 11em; }
+@media (max-width: 640px) { .fo-access-chain__k { display: block; min-width: 0; } }
+
+/* VIEW AS USER PREVIEW FRAME (#210): visibly a preview -- a ruled frame and a banner, never the app's own chrome. */
+.fo-preview-frame { border: 2px dashed var(--color-warning); border-radius: var(--radius-sm); padding: 12px; margin-block: 8px; }
+.fo-preview-frame__banner { background: var(--color-warning); color: var(--color-brand-primary); padding: 6px 10px; margin: -12px -12px 12px; }
+
+/* OBJECT AUTHORITY MATRIX (#210): sticky role column, compact action headers, a real checkbox per governed grant. */
+.fo-objmatrix__table th[scope="col"] { vertical-align: bottom; font-size: 12.5px; }
+.fo-objmatrix__table th[scope="col"] > span { display: block; }
+.fo-objmatrix__kind { font-weight: 400; font-size: 11px; }
+.fo-objmatrix__table th[scope="row"] { position: sticky; left: 0; background: var(--color-surface-card); text-align: left; white-space: nowrap; }
+.fo-objmatrix__table td { text-align: center; }
+.fo-check { display: inline-flex; gap: 6px; align-items: center; }
+.fo-success { color: var(--color-success, #1f7a4d); }

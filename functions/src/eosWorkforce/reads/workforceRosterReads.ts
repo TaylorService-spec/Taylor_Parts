@@ -29,6 +29,8 @@ export interface WorkforceRosterItem extends EmployeeDirectoryItem {
   readonly workEligibility: readonly string[];
   readonly operationalScopes: readonly { readonly scopeType: string; readonly scopeId: string; readonly label: string | null }[];
   readonly applicationUser: "LINKED" | "UNLINKED";
+  /** The linked Principal id -- ONLY for a caller holding admin.principalAccess.read (else null), for Security Role assignment. */
+  readonly principalId: string | null;
   /** null when the caller may not read Security Role assignments (see securityRolesWithheld). */
   readonly securityRoles: readonly { readonly roleKey: string; readonly name: string; readonly scopeType: string; readonly scopeValue: string | null }[] | null;
 }
@@ -113,6 +115,7 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
         workEligibility: (r.eligibility ?? []) as string[],
         operationalScopes: (r.scopes ?? []) as WorkforceRosterItem["operationalScopes"],
         applicationUser: r.principal_id ? "LINKED" : "UNLINKED",
+        principalId: roles && r.principal_id ? String(r.principal_id) : null,
         securityRoles: roles ? ((r.security_roles ?? []) as NonNullable<WorkforceRosterItem["securityRoles"]>) : null,
       }));
       const facet = <K extends string>(keyOf: (i: WorkforceRosterItem) => readonly K[]) => {

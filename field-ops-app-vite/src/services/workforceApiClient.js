@@ -66,6 +66,10 @@ export const WORKFORCE_READ_OPERATIONS = Object.freeze([
   "listFunctionalRoleHolders",
   "listEmployeeFunctionalRoles",
   "listFunctionalRoleHistory",
+  // Administration control plane (#210): the workforce roster (employee.record.read; Security Roles with admin.principalAccess.read).
+  "listWorkforceRoster",
+  // EMP-RT-05 (#210): current work assigned to an Employee (served now that assignment authority is in PostgreSQL).
+  "listAssignedWorkForEmployee",
 ]);
 
 export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
@@ -100,7 +104,7 @@ export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
 ]);
 
 /** Operations whose input may be omitted (the server's WORKFORCE_OPTIONAL_INPUT_OPERATIONS). */
-export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS = Object.freeze(["readMyEmployeeProfile", "readMyWorkforceCapabilities", "listEmployees"]);
+export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS = Object.freeze(["readMyEmployeeProfile", "readMyWorkforceCapabilities", "listEmployees", "listWorkforceRoster"]);
 
 const OPERATIONS = new Set([...WORKFORCE_READ_OPERATIONS, ...WORKFORCE_COMMAND_OPERATIONS]);
 export const isWorkforceOperation = (name) => typeof name === "string" && OPERATIONS.has(name);

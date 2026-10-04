@@ -1093,9 +1093,12 @@ async function describeSecurityRole(repo: PolicyRepository, tenantId: string, ro
     for (const a of await repo.listAssignmentsForPrincipal(tenantId, principalId)) {
       if (a.roleId !== role.id || a.status !== "active") continue;
       const principal = await repo.getPrincipal(principalId);
+      // #210: the holder's linked Employee (the governed active link), so the role page links to the person -- a fact, not authority.
+      const linked = await repo.getLinkedEmployeeAccessFact(tenantId, principalId);
       holders.push({
         principalId, displayName: principal?.displayName ?? null, assignmentId: a.id,
         scopeType: a.scopeType, scopeValue: a.scopeValue, grantedAt: a.grantedAt,
+        employeeId: linked && !linked.ambiguous ? linked.employeeId : null,
       });
     }
   }
@@ -1117,7 +1120,7 @@ async function describeSecurityRole(repo: PolicyRepository, tenantId: string, ro
       };
     })
     .sort((a, b) => a.objectKey === b.objectKey ? a.actionKey.localeCompare(b.actionKey) : a.objectKey.localeCompare(b.objectKey));
-  return { roleKey: role.key, name: role.name, description: role.description, protected: role.protected, holders, actions };
+  return { roleKey: role.key, roleId: role.id, name: role.name, description: role.description, protected: role.protected, holders, actions };
 }
 
 async function objectActionGrantMatrix(repo: PolicyRepository, tenantId: string, objectKey: string) {

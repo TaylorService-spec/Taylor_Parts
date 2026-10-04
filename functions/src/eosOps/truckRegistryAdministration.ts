@@ -111,7 +111,10 @@ const TRUCK_VIEW = `SELECT t.truck_id, t.vehicle_number, t.display_label, t.stat
     (SELECT b.operating_company_id FROM eos_policy.tenant_operating_company_keys b WHERE b.tenant_id = t.tenant_id AND b.operating_company_key = m.operating_company_key AND b.status = 'ACTIVE' LIMIT 1) AS operating_company_id,
     (SELECT sb.warehouse_id FROM eos_ops.mobile_location_scope_bindings sb WHERE sb.tenant_id = t.tenant_id AND sb.location_type = 'MOBILE' AND sb.location_id = t.mobile_location_id AND sb.effective_to IS NULL LIMIT 1) AS bound_warehouse_id,
     coalesce((SELECT array_agg(s.employee_id ORDER BY s.employee_id) FROM eos_workforce.employee_operational_scopes s
-               WHERE s.tenant_id = t.tenant_id AND s.scope_type = 'MOBILE' AND s.scope_id = t.mobile_location_id AND s.effective_to IS NULL), '{}') AS scoped_employee_ids
+               WHERE s.tenant_id = t.tenant_id AND s.scope_type = 'MOBILE' AND s.scope_id = t.mobile_location_id AND s.effective_to IS NULL), '{}') AS scoped_employee_ids,
+    coalesce((SELECT array_agg(coalesce(e.display_name, s.employee_id) ORDER BY s.employee_id) FROM eos_workforce.employee_operational_scopes s
+               LEFT JOIN eos_workforce.employees e ON e.tenant_id = s.tenant_id AND e.id = s.employee_id
+               WHERE s.tenant_id = t.tenant_id AND s.scope_type = 'MOBILE' AND s.scope_id = t.mobile_location_id AND s.effective_to IS NULL), '{}') AS scoped_employee_names
   FROM eos_ops.trucks t
   LEFT JOIN eos_ops.mobile_locations m ON m.tenant_id = t.tenant_id AND m.location_type = t.mobile_location_type AND m.location_id = t.mobile_location_id`;
 
@@ -124,6 +127,8 @@ export const truckView = (r: Record<string, unknown>) => Object.freeze({
   operatingCompanyKey: (r.operating_company_key as string) ?? null, operatingCompanyId: (r.operating_company_id as string) ?? null,
   boundWarehouseId: (r.bound_warehouse_id as string) ?? null,
   scopedEmployeeIds: Object.freeze([...((r.scoped_employee_ids as string[]) ?? [])]),
+  // #210: the CURRENT technician relationship in words -- the names of the Employees whose MOBILE scope is this truck (same order).
+  scopedEmployeeNames: Object.freeze([...((r.scoped_employee_names as string[]) ?? [])]),
 });
 
 export async function listTruckViews(db: Pick<PoolClient, "query">, tenantId: string, filter: { readonly mobileLocationIds?: readonly string[] } = {}) {
