@@ -206,6 +206,20 @@ test("administration control plane + workforce over PostgreSQL", { skip: SKIP, c
     assert.deepEqual(d.data.holders.map((h) => h.employeeId), ["e-tech"]);
   });
 
+  await t.test("BASELINE: the recorded activation decisions replay exactly the 12 governed nonprod grants, idempotently", async () => {
+    const { recordedActivationOperations, CATALOG_REORDER_ACTIVATION_GRANTS, SELF_SCHEDULING_ACTIVATION_GRANTS } = require("../lib/adminPolicy/recordedActivationDecisionsDelta.js");
+    const ops = recordedActivationOperations();
+    assert.equal(ops.length, 12);
+    assert.equal(CATALOG_REORDER_ACTIVATION_GRANTS.length + SELF_SCHEDULING_ACTIVATION_GRANTS.length, 12);
+    for (const { operation, input } of ops) assert.equal((await admin(operation, input)).ok, true, JSON.stringify(input));
+    const held = async (role, cap) => (await q(`SELECT 1 FROM eos_policy.role_capabilities rc JOIN eos_policy.roles r ON r.id=rc.role_id AND r.key=$2 JOIN eos_policy.capabilities c ON c.id=rc.capability_id AND c.key=$3 WHERE rc.tenant_id=$1`, [TENANT, role, cap])).length === 1;
+    for (const d of [...CATALOG_REORDER_ACTIVATION_GRANTS, ...SELF_SCHEDULING_ACTIVATION_GRANTS]) assert.ok(await held(d.roleKey, d.capabilityKey), `${d.roleKey} ${d.capabilityKey}`);
+    const before = (await q(`SELECT count(*)::int n FROM eos_policy.role_capabilities WHERE tenant_id=$1`, [TENANT]))[0].n;
+    for (const { operation, input } of ops) assert.equal((await admin(operation, input)).ok, true);
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.role_capabilities WHERE tenant_id=$1`, [TENANT]))[0].n, before, "a replay adds nothing");
+    for (const d of [...CATALOG_REORDER_ACTIVATION_GRANTS, ...SELF_SCHEDULING_ACTIVATION_GRANTS]) assert.notEqual(d.roleKey, "admin", "the delta never widens admin");
+  });
+
   await t.test("TRUCKS: the truck view names its CURRENT technicians from MOBILE scope", async () => {
     await q(`INSERT INTO eos_ops.mobile_locations (tenant_id, location_type, location_id, operating_company_key, display_label, active, created_by, updated_by) VALUES ($1,'MOBILE','truck-01','taylor','Truck 01',true,'f','f')`, [TENANT]);
     await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, name, status, operating_company_id, created_by, updated_by) VALUES ('wh-1',$1,'Main','ACTIVE','taylor','f','f') ON CONFLICT DO NOTHING`, [TENANT]).catch(() => {});

@@ -7581,3 +7581,23 @@ scope/relationship.
 
 Carried HELD items are unchanged (Rental billing policy, Saved Analysis Definitions, used-equipment book value, trade-in
 receiving, es-US content, above-limit discount approval, UTC/date findings).
+
+**#210 addendum — ADMIN_AUTHORITY_BASELINE_RECONCILED (2026-10-04).**
+- **The gap:** the local replay (530) differed from nonprod (542) by EXACTLY 12 grants, all present in nonprod only. Each is
+  ADMIN_GRANTED by the nonprod administering Principal with its Controller ruling as the reason:
+  - 9 from the Catalog/Reorder activation (GO 2026-09-28; window 2026-09-30, 415→424): Parts Manager approve / reject /
+    cancel / purchaseOrder.void; Parts Associate read / startPurchasing / postPurchasingUpdate / recordPurchaseOrder /
+    markReceived.
+  - 3 from the Service Experience activation (#2007 merge confirmation "A", 442→446): Dispatcher selfScheduling.issue;
+    Service Manager selfScheduling.issue + configure.
+- **Classification:** GOVERNED NONPROD CHANGES MISSING FROM THE REPLAY.
+- **Repair:** they are now recorded as data (`recordedActivationDecisionsDelta.ts`, read by no command). The replay equals
+  nonprod: 542 = 542, with an empty set difference both ways. No nonprod mutation.
+- **One environment-specific row:** the CUSTOM role `zz_nonprod_acceptance` (Pass 10 acceptance, 2026-09-10) holds zero
+  grants; all its temporary grants were revoked. Reported, not deleted.
+- **`admin` census:** see `docs/architecture/admin-role-capability-census-2026-10-04.json`. 73 capabilities = 17 platform /
+  administration + 56 business. Of the business ones, 28 came from a sample-company seed run (2026-09-16), the rest from
+  migrations and Owner/Administration decisions. Three have no other holder: customer.governedField.write,
+  equipment.model.manage, inventory.catalog.activate. No mutation (DQ-210-A remediation follows integration).
+- **DQ-210-B** (workflow adoption) HELD. **DQ-210-C** (sample-employee sign-in) deferred to EOS-IDAM. Neither blocks
+  integration.
