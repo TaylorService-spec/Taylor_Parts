@@ -196,6 +196,40 @@
         "D": []
       },
       "fields": []
+    },
+    {
+      "key": "rentalAgreement",
+      "label": "Rental Agreement",
+      "labelPlural": "Rental Agreements",
+      "description": "A Rental Agreement (DECISIONS #207): Taylor-owned equipment rented to a customer site under versioned agreed terms (rate, billing frequency, expected end, governed delivery / install charges), and the explicit billing eligibility of its whole periods and one-time charges. Never a sale, never financing; ownership never moves.",
+      "domain": "Rental",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [
+          "rental.agreement.read"
+        ],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "rentalEquipment",
+      "label": "Rental Equipment",
+      "labelPlural": "Rental Equipment",
+      "description": "The rental fleet (DECISIONS #207): Taylor-owned serialized units designated for rental, their availability (available / reserved / on rent / service hold / return pending / inspection / unavailable), assignment to agreements, return into Taylor custody and inspection.",
+      "domain": "Rental",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
     }
   ]
 }

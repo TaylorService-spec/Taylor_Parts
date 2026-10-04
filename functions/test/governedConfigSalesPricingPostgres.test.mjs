@@ -229,7 +229,7 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
     assert.deepEqual(await holdersIn("salesAgreement.tradeIn.approve"), ["generalManager", "owner"], "#205: trade-in approval unchanged");
     for (const role of ["accountingManager", "financeManager"]) {
       const h = await holds([role]);
-      assert.equal(h.size, 23, `${role}: the 17 finance capabilities + the two #205 configuration authorities + the four #206 settlement / reconciliation authorities, nothing else`);
+      assert.equal(h.size, 25, `${role}: the 17 finance capabilities + the two #205 configuration authorities + the four #206 settlement / reconciliation authorities + rental.agreement.read / rental.charge.record (#207), nothing else`);
       assert.equal(h.has("admin.systemConfiguration.manage") || h.has("salesAgreement.tradeIn.approve"), false, role);
     }
     assert.equal((await holds(["controller"])).has("admin.systemConfiguration.manage"), false, "Finance configuration is not system configuration");

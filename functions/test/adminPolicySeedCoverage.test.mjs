@@ -108,9 +108,10 @@ test("the reconciliation adds up: 28 entities and 389 fields, all seeded", () =>
   // 42 -> 43, objectsFromCapabilityAuthority 8 -> 9: the post-FBR governed configuration package (2026-10-02) -- `financeConfiguration`, because finance.configuration.manage (migration 1764500000000) names it; a security subject with no EntityDefinition.
   // 43 -> 45, objectsFromCapabilityAuthority 9 -> 11: Owner rulings #204 -- `systemConfiguration` and `salesDiscountAuthority`, named by admin.systemConfiguration.manage / sales.discountAuthority.manage.
   // 45 -> 46, objectsFromCapabilityAuthority 11 -> 12: Finance Closure (#206) -- `settlement`, named by the four settlement capabilities.
-  assert.equal(ledger.seeded.objects, 46);
+  // 46 -> 48, objectsFromCapabilityAuthority 12 -> 14: Rental (#207) -- `rentalAgreement` and `rentalEquipment`, named by the six rental capabilities.
+  assert.equal(ledger.seeded.objects, 48);
   assert.equal(ledger.seeded.objectsWithoutAnEntity, 6);
-  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 12);
+  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 14);
   assert.equal(
     ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity + ledger.seeded.objectsFromCapabilityAuthority,
     ledger.seeded.objects,

@@ -184,7 +184,8 @@ test("the experience surface catalog satisfies its own invariants", () => {
   // 30 -> 31: `service.inboundWork` (Work Order cutover activation, 2026-09-30), earned by inboundWork.request.read.
   // 31 -> 32: `administration.emailCommunications` (Service Experience completion, 2026-09-30), earned by inboundWork.intake.manage.
   // 32 -> 33: `purchasing.suppliers` (Parts / Purchasing / Receiving, 2026-10-01), earned by supplier.record.read.
-  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 33);
+  // 33 -> 34: `rental.workspace` (Rental, #207), earned by rental.agreement.read.
+  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 34);
   assert.equal(EXPERIENCE_SURFACE_KEYS.includes("commercial.agreements"), true);
 });
 
@@ -298,7 +299,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 90 -> 91: Taylor / Ventana intercompany (2026-10-02, DECISIONS #202): 1764490000000 -- intercompany_transactions correlation + paired obligations at the governed priced receipt (Owner ruling #202), net-days terms, obligation due_on; no capability, no grant.
   // 91 -> 92: Governed configuration + sales pricing (2026-10-02, DECISIONS #203): 1764500000000 -- operating-company business time zone + resolver, finance.configuration.manage (granted to NO Role), customer discount, trade-in items, package composition; untouched handoffs follow the active destination.
   // 92 -> 93: 1764510000000 -- Finance Closure (#206): settlements / applications / reconciliation, obligation handoffs, intercompany relief, service-provider authorization, late cost evidence; four settlement capabilities granted to the five Finance-execution Roles.
-  assert.equal(files.length, 93, "the migration chain moved; re-measure before trusting anything below");
+  // 93 -> 94: 1764520000000 -- Rental (#207): the eos_rental domain, rental Work Orders, the RENTAL billing package source; six rental capabilities.
+  assert.equal(files.length, 94, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -381,12 +383,12 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 413 -> 414: the Administration control plane (1762646400000) grants admin.securityPolicy.write.
     // 414 -> 415: the Administrator staffing capability (1763078400000, Owner ruling R1) grants owner
     // admin.administratorRole.assign.
-    assert.equal(rebuilt.length, 451, "the repository rebuild total"); // 415 -> 431: the sixteen Owner-ruled #204 / #205 holders (1764500000000); 431 -> 451: the twenty Finance Closure settlement grants (1764510000000)
-    assert.equal(baselineDeployment.rebuildTotal, 451);
+    assert.equal(rebuilt.length, 481, "the repository rebuild total"); // 451 -> 481: the thirty Rental grants (1764520000000). // 415 -> 431: the sixteen Owner-ruled #204 / #205 holders (1764500000000); 431 -> 451: the twenty Finance Closure settlement grants (1764510000000)
+    assert.equal(baselineDeployment.rebuildTotal, 481);
     assert.equal(baselineDeployment.measuredInNonprodTotal, 387, "what nonprod held when last measured");
     assert.deepEqual(baselineDeployment.notYetAppliedToNonprod, ["migration:1762300800000", "migration:1762646400000",
-      "migration:1763078400000", "migration:1764500000000", "migration:1764510000000"]);
-    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 64);
+      "migration:1763078400000", "migration:1764500000000", "migration:1764510000000", "migration:1764520000000"]);
+    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 94);
     const stampedBy = async (stamp) => (await pool.query(
       `SELECT count(*)::int n FROM eos_policy.role_capabilities
         WHERE tenant_id = $1 AND granted_by = $2`, [TENANT, stamp])).rows[0].n;
@@ -396,14 +398,15 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 415 -> 426: Owner rulings #204 (1764500000000) grant the eleven ruled configuration / discount / trade-in holders.
     assert.equal(await stampedBy("migration:1764500000000"), 16); // #205: + accountingManager / financeManager x2, + owner System Configuration
     assert.equal(await stampedBy("migration:1764510000000"), 20); // Finance Closure: four settlement keys x five Finance-execution Roles
-    // The whole 451-vs-387 difference carries the five grant-bearing migrations' provenance.
-    assert.equal(26 + 1 + 1 + 16 + 20, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
+    assert.equal(await stampedBy("migration:1764520000000"), 30); // Rental: six keys to their analog Roles
+    // The whole 481-vs-387 difference carries the six grant-bearing migrations' provenance.
+    assert.equal(26 + 1 + 1 + 16 + 20 + 30, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
 
     const one = async (sql, params = []) => (await pool.query(sql, params)).rows[0].n;
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 122); // 118 -> 122: the four settlement capabilities (#206, 1764510000000). // 115 -> 118: admin.systemConfiguration.manage + sales.discountAuthority.manage + salesAgreement.tradeIn.approve (#204, 1764500000000). // 114 -> 115: finance.configuration.manage (1764500000000, governed configuration 2026-10-02), granted to NO Role. // 113 -> 114: inventory.receipt.correct (1764430000000, Finance Activation 1 completion 2026-10-01), granted to NO Role. // 111 -> 113: inventory.catalog.alias.read + inventory.truckRegistry.manage (1764410000000, Truck Inventory activation 2026-10-01), granted to NO Role. // 109 -> 111: equipment.record.read + equipment.record.manage (1764400000000, the Equipment activation 2026-10-01), granted to NO Role. // 107 -> 109: warehouse.record.manage + supplier.record.read (1764380000000, 2026-10-01), granted to NO Role. // 104 -> 107: recover + selfScheduling.issue/.configure (2026-09-30), granted to NO Role; // 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (the completion pass 2026-09-30), granted to NO Role; // + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to NO Role) // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): + inventory.serializedAsset.acquire (1764129600000, DQ-036(b), Administration-grant-only), + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011), + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 128); // 122 -> 128: the six rental capabilities (#207, 1764520000000). // 118 -> 122: the four settlement capabilities (#206, 1764510000000). // 115 -> 118: admin.systemConfiguration.manage + sales.discountAuthority.manage + salesAgreement.tradeIn.approve (#204, 1764500000000). // 114 -> 115: finance.configuration.manage (1764500000000, governed configuration 2026-10-02), granted to NO Role. // 113 -> 114: inventory.receipt.correct (1764430000000, Finance Activation 1 completion 2026-10-01), granted to NO Role. // 111 -> 113: inventory.catalog.alias.read + inventory.truckRegistry.manage (1764410000000, Truck Inventory activation 2026-10-01), granted to NO Role. // 109 -> 111: equipment.record.read + equipment.record.manage (1764400000000, the Equipment activation 2026-10-01), granted to NO Role. // 107 -> 109: warehouse.record.manage + supplier.record.read (1764380000000, 2026-10-01), granted to NO Role. // 104 -> 107: recover + selfScheduling.issue/.configure (2026-09-30), granted to NO Role; // 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (the completion pass 2026-09-30), granted to NO Role; // + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to NO Role) // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): + inventory.serializedAsset.acquire (1764129600000, DQ-036(b), Administration-grant-only), + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011), + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.
@@ -531,9 +534,12 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // Administrator Role), so it is no longer admin-only.
     // 55 -> 59: the four settlement capabilities (Finance Closure, #206, 1764510000000) -- Finance TRANSACTION authority the
     // migration deliberately withholds from admin (administering EOS confers none), so they are ruled owner-only keys too.
-    assert.equal(owner.capabilities.size, 59);
+    // 59 -> 65: the six rental capabilities (Rental, #207, 1764520000000) -- BUSINESS authority withheld from admin by the
+    // migration (administering EOS confers no rental authority), so ruled owner-only keys as well.
+    assert.equal(owner.capabilities.size, 65);
     const RULED_OWNER_ONLY = ["admin.administratorRole.assign", "salesAgreement.tradeIn.approve", "finance.settlement.record", "finance.settlement.apply",
-      "finance.settlement.correct", "finance.reconciliation.record"];
+      "finance.settlement.correct", "finance.reconciliation.record", "rental.agreement.read", "rental.agreement.manage", "rental.charge.record",
+      "rental.unit.assign", "rental.unit.return", "rental.fleet.manage"];
     const ownerOnly = [...owner.capabilities].filter((k) => !admin.capabilities.has(k) && !RULED_OWNER_ONLY.includes(k)).sort();
     for (const k of RULED_OWNER_ONLY) assert.equal(owner.capabilities.has(k) && !admin.capabilities.has(k), true, k);
     const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write"];
@@ -552,9 +558,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // The surface consequence: three surfaces admin reaches and owner cannot, none the other way.
     assert.deepEqual(admin.surfaces.filter((s) => !owner.surfaces.includes(s)).sort(),
       ["administration.dataImport", "receiving.checkIn", "service.dispatch"]);
-    assert.deepEqual(owner.surfaces.filter((s) => !admin.surfaces.includes(s)), []);
+    // Rental (#207): `rental.workspace` is the one surface owner reaches and admin does not -- the rental read is business
+    // authority the migration withholds from admin, by the same rule as the settlement keys above.
+    assert.deepEqual(owner.surfaces.filter((s) => !admin.surfaces.includes(s)), ["rental.workspace"]);
     assert.equal(admin.surfaces.length, 24);
-    assert.equal(owner.surfaces.length, 21);
+    assert.equal(owner.surfaces.length, 22);
     // NOT THE SAME ROLE, stated as an assertion rather than left implicit in the counts above.
     assert.notEqual(admin.capabilities.size, owner.capabilities.size);
     assert.notDeepEqual(admin.surfaces, owner.surfaces);
@@ -593,7 +601,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 31, not 29: the activation vehicle grants dispatcher receivingOrder.record.read and
     // workOrder.record.read -- two READS on Objects it already held a write on. Neither is an
     // ADMIN_ACTION, which is exactly what the rest of this test goes on to prove.
-    assert.equal(dispatcher.capabilities.size, 31);
+    assert.equal(dispatcher.capabilities.size, 33); // 31 -> 33: rental.agreement.read + rental.unit.assign (#207)
     assert.ok(dispatcher.capabilities.has("receivingOrder.record.read"));
     assert.ok(dispatcher.capabilities.has("workOrder.record.read"));
     // Not "holds no key called admin.*" -- holds no capability whose ACTION KIND is an admin action,
@@ -941,12 +949,12 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // The three finance Roles are REAL and identically granted -- 19 capabilities each: the 17 finance capabilities plus the
     // two Finance-management configuration authorities Owner ruling #205 gives all three equally.
     for (const role of financeRoles) {
-      assert.equal((await capabilitiesForRoleKeys(pool, TENANT, [role])).size, 23, role); // + the four settlement capabilities (#206)
+      assert.equal((await capabilitiesForRoleKeys(pool, TENANT, [role])).size, 25, role); // + the four settlement capabilities (#206) + rental.agreement.read / rental.charge.record (#207)
     }
     // LIVE, through the product path: the finance persona holds the finance READS and the four named
     // finance EXECUTION acts, and reaches the two Financials surfaces.
     const finance = await resolvePersona("finance-controller");
-    assert.equal(finance.capabilities.size, 23); // 17 + the two #204 configuration authorities + the four #206 settlement capabilities
+    assert.equal(finance.capabilities.size, 25); // 17 + the two #204 configuration authorities + the four #206 settlement capabilities + the two #207 rental keys
     for (const key of ["finance.invoice.read", "finance.payment.read", "finance.invoice.issue",
       "finance.payment.apply", "finance.refund.record", "finance.adjustment.record"]) {
       assert.ok(finance.capabilities.has(key), `the finance persona does not hold ${key}`);
@@ -1046,7 +1054,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // rather than `admin` (lane BI), and lane BN's contract withholds Data Import, receiving check-in
     // and dispatch from Owner.
     const ownerExecutive = await resolvePersona("owner-executive");
-    assert.equal(ownerExecutive.surfaces.length, 21);
+    assert.equal(ownerExecutive.surfaces.length, 22); // + rental.workspace (#207)
     assert.ok(ownerExecutive.destinations.length >= 20,
       `owner-executive reached only ${ownerExecutive.destinations.length} destinations`);
     // technician-on-leave is the same PERSON as a technician minus the authority: the Employee, the
@@ -1155,12 +1163,13 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // owner-executive moved from `admin` to `owner` (BI) and so lost the three Owner-excluded
     // surfaces; and `administrator`, `finance-controller` and `report-analyst` are new personas.
     const EXPECTED_SURFACE_COUNTS = {
-      "owner-executive": 21, "administrator": 24, "general-manager": 15, "office-manager": 2,
-      "service-manager": 12, "dispatcher": 13, "service-technician-a": 2, "service-technician-b": 2,
+      // Rental (#207): + rental.workspace for every persona whose Role holds rental.agreement.read.
+      "owner-executive": 22, "administrator": 24, "general-manager": 16, "office-manager": 3,
+      "service-manager": 13, "dispatcher": 14, "service-technician-a": 2, "service-technician-b": 2,
       "contract-technician": 2, "technician-on-leave": 0, "retail-sales-a": 8, "retail-sales-b": 8,
       "national-accounts-sales": 8, "parts-manager": 13, "parts-associate": 8,
-      "warehouse-manager": 11, "warehouse-associate": 7, "records-clerk": 0,
-      "finance-controller": 11, "report-analyst": 0, "restricted-user": 0,
+      "warehouse-manager": 12, "warehouse-associate": 7, "records-clerk": 0,
+      "finance-controller": 12, "report-analyst": 0, "restricted-user": 0,
     };
     // EVERY persona is covered. A persona added to the manifest without a measured expectation here
     // would otherwise slip through this census unmeasured, which is the failure mode this guards.

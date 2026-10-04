@@ -49,6 +49,7 @@ import { EOS_INBOUND_WORK_OPERATIONS, INBOUND_WORK_ROUTE, isInboundWorkOperation
 import type { WorkOrderOp } from "./workOrderOperationTypes";
 import { EOS_EQUIPMENT_OPERATIONS, isEquipmentOperation } from "./equipmentOperations";
 import { EOS_FINANCE_OPERATIONS, FINANCE_ROUTE, isFinanceOperation } from "../eosFinance/financeOperations";
+import { EOS_RENTAL_OPERATIONS, RENTAL_ROUTE, isRentalOperation } from "../eosRental/rentalOperations";
 import type { PostgresEquipmentWriterState } from "./equipmentWriterState";
 import { WORK_ORDER_WRITER_AUTHORITY, type PostgresWorkOrderWriterState } from "./workOrderWriterState";
 import { postgresContextualReader } from "./contextualAuthorization";
@@ -250,7 +251,7 @@ export const EQUIPMENT_ROUTE = "/operations/equipment";
 
 export const OPERATIONS_ROUTES: readonly string[] =
   Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE, RELOCATION_ROUTE, TRANSFER_ROUTE,
-    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE, WORK_ORDER_ROUTE, INBOUND_WORK_ROUTE, EQUIPMENT_ROUTE, FINANCE_ROUTE])].sort());
+    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE, WORK_ORDER_ROUTE, INBOUND_WORK_ROUTE, EQUIPMENT_ROUTE, FINANCE_ROUTE, RENTAL_ROUTE])].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(OPERATIONS_MUTATION_OPERATIONS);
@@ -674,6 +675,8 @@ const WORK_ORDER_ERROR_NAMES: ReadonlySet<string> = new Set([
   "WorkOrderEquipmentInstallError", "EquipmentOperationError",
   // Finance Closure (#206): the /operations/finance table's governed refusal classes.
   "FinanceOperationError", "FinanceFoundationError", "CostEvidenceSupplyError", "IntercompanyReliefError",
+  // Rental (#207): the /operations/rental table's governed refusal class.
+  "RentalError",
 ]);
 
 /**
@@ -833,11 +836,12 @@ export async function handleOperationsRequest(
     return json(out.status, out.body, origin);
   }
 
-  if (path === WORK_ORDER_ROUTE || path === INBOUND_WORK_ROUTE || path === EQUIPMENT_ROUTE || path === FINANCE_ROUTE) {
+  if (path === WORK_ORDER_ROUTE || path === INBOUND_WORK_ROUTE || path === EQUIPMENT_ROUTE || path === FINANCE_ROUTE || path === RENTAL_ROUTE) {
     const inbound = path === INBOUND_WORK_ROUTE;
     const equipment = path === EQUIPMENT_ROUTE;
     const finance = path === FINANCE_ROUTE;
-    if (finance ? !isFinanceOperation(operation) : equipment ? !isEquipmentOperation(operation) : inbound ? !isInboundWorkOperation(operation) : !isWorkOrderOperation(operation)) {
+    const rental = path === RENTAL_ROUTE;
+    if (rental ? !isRentalOperation(operation) : finance ? !isFinanceOperation(operation) : equipment ? !isEquipmentOperation(operation) : inbound ? !isInboundWorkOperation(operation) : !isWorkOrderOperation(operation)) {
       return json(404, notFound(String(operation ?? "")), origin);
     }
     const input = payload.input === undefined ? {} : payload.input;
@@ -860,7 +864,8 @@ export async function handleOperationsRequest(
       },
       operation: operation as string,
       input: input as Record<string, unknown>,
-    }, finance ? EOS_FINANCE_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
+    }, rental ? EOS_RENTAL_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
+      : finance ? EOS_FINANCE_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
       : equipment ? EOS_EQUIPMENT_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
       : inbound ? EOS_INBOUND_WORK_OPERATIONS : EOS_WORK_ORDER_OPERATIONS);
     return json(out.status, out.body, origin);

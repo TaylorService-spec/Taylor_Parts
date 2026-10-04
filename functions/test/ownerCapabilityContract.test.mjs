@@ -292,6 +292,7 @@ check("RECONCILE PROOF: the nine live Owner grants this catalog lacks are a cata
   // construction and NOT an admin-only key (admin holds admin.securityPolicy.write instead).
   // + finance.configuration.manage, sales.discountAuthority.manage, salesAgreement.tradeIn.approve (migration 1764500000000,
   // Owner rulings #204): PostgreSQL-native, granted to owner by that migration, absent from PERMISSION_CATALOG by construction.
+  // + the six rental capabilities (migration 1764520000000, #207): PostgreSQL-native, granted to owner by that migration.
   assert.deepEqual(liveNotDeclared, [
     "admin.administratorRole.assign",
     "admin.securityPolicy.read",
@@ -305,6 +306,12 @@ check("RECONCILE PROOF: the nine live Owner grants this catalog lacks are a cata
     "finance.settlement.record",
     "inventory.manufacturer.read",
     "receivingOrder.record.read",
+    "rental.agreement.manage",
+    "rental.agreement.read",
+    "rental.charge.record",
+    "rental.fleet.manage",
+    "rental.unit.assign",
+    "rental.unit.return",
     "reorder.request.read",
     "reportDefinition.read",
     "sales.discountAuthority.manage",
@@ -344,7 +351,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 114 -> 115: finance.configuration.manage (1764500000000, governed configuration 2026-10-02), granted to NO Role.
   // 115 -> 118: admin.systemConfiguration.manage, sales.discountAuthority.manage, salesAgreement.tradeIn.approve (#204, 1764500000000).
   // 118 -> 122: finance.settlement.record / .apply / .correct, finance.reconciliation.record (#206, 1764510000000).
-  assert.equal(VOCABULARY.size, 122);
+  // 122 -> 128: the six rental capabilities (#207, 1764520000000).
+  assert.equal(VOCABULARY.size, 128);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

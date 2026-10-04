@@ -5,7 +5,7 @@
     "field-ops-app-vite/src/access/policyObjectRegistry.js"
   ],
   "counts": {
-    "objects": 46,
+    "objects": 48,
     "objectsWithFields": 28,
     "fields": 389
   },
@@ -6570,6 +6570,40 @@
       "labelPlural": "Settlements",
       "description": "Operational settlement evidence (DECISIONS #206): a customer payment, provider funding receipt, vendor payment or intercompany payment / receipt for one operating company and one counterparty, its application to obligations, its correction and its reconciliation evidence. Never a bank fact; EOS is not the GL.",
       "domain": "Finance",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "rentalAgreement",
+      "label": "Rental Agreement",
+      "labelPlural": "Rental Agreements",
+      "description": "A Rental Agreement (DECISIONS #207): Taylor-owned equipment rented to a customer site under versioned agreed terms (rate, billing frequency, expected end, governed delivery / install charges), and the explicit billing eligibility of its whole periods and one-time charges. Never a sale, never financing; ownership never moves.",
+      "domain": "Rental",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [
+          "rental.agreement.read"
+        ],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "rentalEquipment",
+      "label": "Rental Equipment",
+      "labelPlural": "Rental Equipment",
+      "description": "The rental fleet (DECISIONS #207): Taylor-owned serialized units designated for rental, their availability (available / reserved / on rent / service hold / return pending / inspection / unavailable), assignment to agreements, return into Taylor custody and inspection.",
+      "domain": "Rental",
       "source": "CAPABILITY_AUTHORITY",
       "supportsDelete": false,
       "capabilitiesByVerb": {

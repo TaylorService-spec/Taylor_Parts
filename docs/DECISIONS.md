@@ -7299,3 +7299,80 @@ owns a record in CONSOLIDATED.
 13. **Not built.** GL, banking integration, real accounting provider, AP bill entry or three-way match, payment runs,
     netting, elimination, intercompany SERVICE charges (Taylor billing Ventana for service is not ruled), serialized
     intercompany relief, production.
+
+## #207 — CONTROLLER: Rental (roadmap Package B) (2026-10-03)
+
+**Status.** Implemented locally (migration `1764520000000_rental.sql`). It is the first Rental build, following the model of
+#190 §13–§18. Rental is not a sale, not Saratoga or provider financing, not a loan, and not a transfer: Taylor keeps
+ownership. Owner, custodian, location and commercial disposition are separate records.
+
+1. **Records** (schema `eos_rental`).
+   - **Fleet units.** A company-owned serialized unit designated into the fleet. The owner key comes from custody and is
+     fixed (a trigger refuses any change).
+   - **Rental Agreement.** Numbered `RA-YYYY-######`, following the governed `<PREFIX>-YYYY-######` convention (OPP, SA, SO,
+     WO, RO, TO, RR); the prefix is a convention choice the Owner may rename. Statuses: DRAFT, ACTIVE, CLOSED, CANCELLED.
+   - **Terms.** Append-only and versioned: rate, billing frequency (DAY / WEEK / MONTH), expected end, and governed delivery
+     / install charges. Versions are ORIGINAL, EXTENSION or AMENDMENT; history is never rewritten.
+   - **Assignments.** At most one live assignment per fleet unit, so double booking cannot be represented.
+   - **Inspections, events, charges.** Inspections are append-only. An append-only fleet-unit event log holds the
+     utilization, downtime, service and return facts Analysis will consume. Charges carry an append-only tax-evidence
+     table.
+2. **Availability.** AVAILABLE → RESERVED → ON_RENT (deployed) → RETURN_PENDING → INSPECTION → AVAILABLE, SERVICE_HOLD or
+   UNAVAILABLE.
+   - UNAVAILABLE can be set from AVAILABLE, SERVICE_HOLD or INSPECTION.
+   - AVAILABLE can be restored from SERVICE_HOLD or UNAVAILABLE, only in the owner's custody and always with a reason.
+   - A returned unit is never automatically AVAILABLE; its inspection decides.
+3. **Deployment** uses the single installation workflow (OD-5).
+   - The INSTALL Work Order linked to the agreement installs the unit reserved for that agreement, at that agreement's
+     customer site.
+   - The Equipment record carries the owner's company key; the customer becomes custodian and site user.
+   - The ledger records a RENTAL_DEPLOYMENT, not a consumption.
+   - A fleet unit can never be installed by a non-rental Work Order, and never appears in its installable list.
+   - Work Order creation proves the agreement: ACTIVE, same company, same customer and site. A Work Order serves a rental or
+     a sale, never both. Completion transfers nothing.
+4. **Service while rented** uses the normal Work Order path on Taylor's Equipment record. Service billing that depends on
+   the agreement is still not defined (#190 §17) and is not invented.
+5. **Exchange.** A replacement reservation names the deployed assignment it replaces. The new unit deploys through its own
+   INSTALL Work Order, the old one returns, and every history is kept.
+6. **Return.**
+   - Return is initiated (optionally with a pickup Work Order of the agreement), then the unit is physically received into
+     a warehouse of the owner company, within the receiver's WAREHOUSE scope.
+   - On receipt, custody moves from EQUIPMENT to WAREHOUSE and the ledger records RENTAL_RETURN +1, so stock and custody
+     agree again.
+   - The Equipment record becomes INACTIVE with a RENTAL_RETURNED event, and the unit waits in INSPECTION.
+7. **Charges.** A charge records billing eligibility explicitly; EOS never decides when to bill.
+   - **Period charge.** Whole agreed periods within the agreed term, at the current terms' rate.
+   - **Refusals.** A partial period is refused (RENTAL_PARTIAL_PERIOD_UNRULED), overlapping periods are refused, and a
+     period past the expected end is refused until the agreement is extended.
+   - **One-time charge.** DELIVERY or INSTALL at the agreed amount, once per agreement.
+   - **Tax.** Human-supplied evidence (DETERMINED or NOT_DETERMINED); never assumed.
+   - **Not invented.** Deposits, late fees, damage charges, minimum term, renewal and depreciation.
+8. **Finance** uses the frozen Finance Closure path.
+   - Each charge prepares one Operational Billing Package: source RENTAL_CHARGE, disposition RENTAL, obligor basis
+     RENTAL_CUSTOMER (the rental customer owes the rent, by that explicit rule).
+   - A READY package establishes the customer RECEIVABLE and the accounting handoff through the same foundation functions.
+     The payload is contract v3: no Sales Order, plus a `rental` block with `ownershipTransfers: false`.
+   - Settlement, application and reconciliation stay on `/operations/finance`.
+   - A HELD package (tax not determined) is superseded by a later tax determination.
+   - No Sales Order, Sales Agreement, financing arrangement or ownership transfer is ever written.
+9. **Authority.** Six capabilities on Objects `rentalAgreement` and `rentalEquipment`, granted by Owner ruling E by analogy
+   to existing holders. Never by Job Role, never admin.
+   - `rental.agreement.read`: owner, GM, salesManager, officeManager, dispatcher, fieldManager, warehouseManager,
+     controller, accountingManager, financeManager.
+   - `rental.agreement.manage`: owner, GM, salesManager.
+   - `rental.unit.assign`: owner, GM, salesManager, dispatcher.
+   - `rental.unit.return`: owner, GM, warehouseManager, warehouseAssociate, fieldManager.
+   - `rental.fleet.manage`: owner, GM, warehouseManager.
+   - `rental.charge.record`: the #206 Finance execution roles.
+
+   Deployment reuses `workOrder.create` + `equipment.install`. That is 30 grants; the baseline moves 451 → 481. The
+   workspace door is the experience surface `rental.workspace`, earned by `rental.agreement.read`.
+10. **Workspace.** Served on `/operations/rental`, with the client's Rental area.
+    - It answers what is available, reserved, going out, on rent (where and who holds it), service hold, due back, return
+      pending and awaiting inspection, plus billing exceptions: HELD packages, and equipment out with no current charge.
+    - It also covers agreements (terms history, assignments, charges and their receivables) and the commands.
+11. **Not built.**
+    - Rental billing policy (advance vs. arrears, proration, minimum term, damage, deposits, late fees) remains Owner
+      policy (#191 §6). Only explicit whole-period charges exist.
+    - Also not built: rental service billing responsibility (RENTAL_COVERED), rental depreciation, Analysis & Reporting
+      (Package C), production.

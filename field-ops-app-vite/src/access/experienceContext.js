@@ -63,6 +63,8 @@ export const EXPERIENCE_SURFACE_KEYS = Object.freeze([
   "purchasing.purchaseOrders",
   "purchasing.suppliers",
   "receiving.checkIn",
+  // Rental (#207): earned server-side by rental.agreement.read only.
+  "rental.workspace",
   "service.coordinatedVisits",
   "service.dispatch",
   "service.inboundWork",

@@ -150,9 +150,10 @@ test("every grant carries exactly one canonical source and NOTHING is unexplaine
   // financeManager join for the two Finance-management configuration capabilities; owner joins System Configuration.
   // 431 -> 451 (MIGRATION_BACKED 373 -> 393): migration 1764510000000, Finance Closure (#206) -- the four settlement capabilities to owner,
   // generalManager, controller, accountingManager, financeManager (never admin).
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 451);
+  // 451 -> 481 (MIGRATION_BACKED 393 -> 423): migration 1764520000000, Rental (#207) -- the six rental capabilities to their analog Roles.
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 481);
   assert.deepEqual(counts, {
-    MIGRATION_BACKED: 393, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 423, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
   assert.equal(counts.MIGRATION_BACKED + counts.CANONICAL_CATALOG + counts.NONPROD_ACTIVATION
     + counts.FIXTURE_ONLY + counts.UNEXPLAINED, AUTHORITY_BASELINE_GRANTS.length);

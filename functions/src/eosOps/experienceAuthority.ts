@@ -231,6 +231,9 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
     { capabilityKey: "equipment.compatibility.view" },
   ]),
 
+  // ── Rental (DECISIONS #207): the workspace door is earned by the rental READ only; every command is its own key.
+  surface("rental.workspace", "Rental", [{ capabilityKey: "rental.agreement.read" }]),
+
   // ── Financials
   surface("financials.invoices", "Invoices", [{ capabilityKey: "finance.invoice.read" }]),
   surface("financials.payments", "Payments", [{ capabilityKey: "finance.payment.read" }]),
