@@ -223,6 +223,7 @@ test("POSITIVE -- capability + PARTS_OPERATIONS + REORDER_QUEUE opens the queue 
   const surfaces = [...(await grantedSurfaceKeys(actorWith(PARTS_CAPABILITIES), NONPROD_MEASURED["parts-manager"]))];
   assert.ok(surfaces.includes(SURFACE));
   assert.deepEqual(destinationsFor(surfaces), [
+    "analysis/analysis",
     "dashboard/operationsDashboard",
     "inventory/parts",
     DESTINATION,
@@ -242,7 +243,8 @@ test("NEGATIVE -- the SAME capabilities and the SAME qualification, minus the qu
   assert.equal(surfaces.includes(SURFACE), false);
   assert.equal(destinationsFor(surfaces).includes(DESTINATION), false);
   // It loses the QUEUE and nothing else. A scope closed one door; it did not demote the persona.
-  assert.deepEqual(surfaces, ["inventory.catalog", "purchasing.purchaseOrders"]);
+  // + analysis.workspace (#208): the door opens on reorder.request.read; inside, the purchasing figures need the queue scope too.
+  assert.deepEqual(surfaces, ["analysis.workspace", "inventory.catalog", "purchasing.purchaseOrders"]);
 });
 
 test("NEGATIVE -- a technician stays negative WITHOUT being given Parts eligibility", async () => {

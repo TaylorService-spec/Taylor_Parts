@@ -7376,3 +7376,60 @@ ownership. Owner, custodian, location and commercial disposition are separate re
       policy (#191 §6). Only explicit whole-period charges exist.
     - Also not built: rental service billing responsibility (RENTAL_COVERED), rental depreciation, Analysis & Reporting
       (Package C), production.
+
+## #208 — CONTROLLER: Analysis & Reporting (roadmap Package C) (2026-10-03)
+
+**Status.** Implemented locally. There is no migration, no new capability and no grant. #192 point 9 recorded the Analysis
+Layer as "not authorized"; the Owner-authorized roadmap (Packages A/B/C, 2026-10-03) authorizes it now, implementing #192's
+design without redesigning it.
+
+1. **The chain.** FACTS → MEASURES → COMPARISONS → VARIANCES → DRIVERS → EXCEPTIONS → INSIGHTS → AUTHORIZED ACTIONS, all
+   deterministic. EOS Core imports nothing from `ai/`, and analysis works with AI absent.
+2. **Measure catalog** (`functions/src/eosAnalysis/measures.ts`). This is the #192 §7 registry, in code, with one versioned
+   definition per measure.
+   - **Each definition carries:** id, name, description, formula, basis, unit, time basis, the governed period event (never
+     a financial `createdAt`), source facts, driver dimension, the EXISTING read capabilities that may see it, reach and
+     drill target.
+   - **Coverage:** 37 measures (33 computed) across finance, sales (Retail and National Accounts kept distinct by the governed sales
+     channel), service, purchasing, inventory and rental.
+   - **Absent by design:** target/budget, forecast and accounting actual are ABSENT, and gross margin is STRUCTURALLY_UNKNOWN,
+     each with its reason (FIN-003 / FIN-005 dormant; FIN-BLOCK-003; #145).
+3. **Basis and missing data.** The basis is one of ACCOUNTING_ACTUAL, EOS_OPERATIONAL_ACTUAL, EOS_OPERATIONAL_ESTIMATE,
+   FORECAST or TARGET_BUDGET, and is never mixed.
+   - Missing is never zero. A missing price makes the figure MISSING_PRICE (excluded and counted). Money is per currency and
+     never summed across currencies.
+   - Source overflow is PARTIAL.
+4. **Company.** Taylor, Ventana, or CONSOLIDATED: an un-eliminated projection over the companies that owns no record.
+   - Period figures use the governed reporting period (#163) with the prior comparable window.
+   - Business-date measures use each company's governed business date, never a hardcoded zone.
+5. **Authority.** Analysis grants nothing.
+   - A measure is computed only for a caller holding one of its existing reads.
+   - Sales measures are narrowed to the caller's salesChannel-scoped holdings: a Retail seller sees RETAIL only.
+   - Measures carry the SAME reach as their records' reads: purchasing uses REORDER_QUEUE scope, and on-hand, receipts,
+     transfers and cycle counts use WAREHOUSE scope. An aggregate therefore never exceeds what its records' reads allow.
+   - A refused measure says why. Drill-through goes to the record's own governed read.
+   - An exception's action is offered only when the caller already holds its capability, and it runs on its own route.
+   - The workspace door is the experience surface `analysis.workspace`, earned by any such read or by `reportDefinition.read`
+     (the Reporting Analyst reads the catalog and no business figure).
+6. **Exceptions** are rule-based, record-linked and named. The rules:
+   - overdue receivable;
+   - provider funding outstanding;
+   - accounting handoff pending a destination, or refused;
+   - settlement unreconciled;
+   - missing receipt cost evidence;
+   - cycle-count difference pending review;
+   - rental overdue return;
+   - rental deployed without a current charge.
+
+   **Insights** are structured, deterministic findings: increased or decreased versus prior, data incomplete, largest driver.
+7. **Persona areas.** Owner/GM, Finance, Retail Sales, National Accounts, Service, Parts/Purchasing, Warehouse and Rental,
+   plus the catalog for the Reporting Analyst.
+   - Served on `/operations/analysis`: readAnalysisCatalog, readAnalysisWorkspace, readMeasureAnalysis. All three are
+     read-only.
+   - The client has an Analysis area (functional components; the final persona UI redesign is not done).
+8. **Not built.**
+   - Saved report definitions. The existing Report Builder and Saved Reports are Firebase-backed and Firebase is
+     retirement-only. `reportDefinition` has no authoring verb (`reportAuthor` holds nothing). Saved analysis definitions
+     therefore need an Owner decision on authoring authority before a PostgreSQL home is built.
+   - Time-weighted history snapshots for point-in-time measures, materialized projections, margin/cost (FIN-BLOCK-003),
+     targets/forecast storage, the AI plug-in.

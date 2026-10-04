@@ -225,6 +225,15 @@ export const NAV_DOMAINS = [
     subnav: [{ key: "rental", label: "Rental", path: "" }],
   },
   {
+    // Analysis & Reporting (DECISIONS #208) -- the governed, read-only analysis workspace (persona areas, company scope, period,
+    // exceptions, measures with basis and provenance, drill-through). Its door is the `analysis.workspace` surface; every figure
+    // inside is decided again on its own existing read. No `legacyKey`.
+    key: "analysis",
+    label: "Analysis",
+    path: "analysis",
+    subnav: [{ key: "analysis", label: "Analysis", path: "" }],
+  },
+  {
     key: "service",
     label: "Service",
     path: "service",
@@ -763,6 +772,8 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "equipment/equipment": ["equipment.register"],
   // Rental (#207)
   "rental/rental": ["rental.workspace"],
+  // Analysis & Reporting (#208)
+  "analysis/analysis": ["analysis.workspace"],
   // Inventory
   "inventory/parts": ["inventory.catalog"],
   "inventory/partMaster": ["inventory.catalogAdmin"],
