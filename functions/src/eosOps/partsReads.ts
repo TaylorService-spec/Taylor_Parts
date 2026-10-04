@@ -62,7 +62,7 @@ async function withReadSnapshot<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>
 }
 
 /** The warehouses the caller's Employee holds the WAREHOUSE Operational Scope over. None without an Employee. */
-async function scopedWarehouseIds(c: PoolClient, actor: ReorderActor): Promise<string[]> {
+export async function scopedWarehouseIds(c: Pick<PoolClient, "query">, actor: ReorderActor): Promise<string[]> {
   const reader = postgresPrincipalDimensionReader(c);
   const employeeId = await reader.linkedEmployeeId(actor.tenantId, actor.principalId);
   if (employeeId === null) return [];
@@ -71,7 +71,7 @@ async function scopedWarehouseIds(c: PoolClient, actor: ReorderActor): Promise<s
 }
 
 /** SQL resolving (location_type, location_id) to its governing warehouse; MOBILE only through a CURRENT binding. */
-const GOVERNING_WAREHOUSE = (t: string, lt: string, li: string) => `CASE ${lt}::text
+export const GOVERNING_WAREHOUSE = (t: string, lt: string, li: string) => `CASE ${lt}::text
     WHEN 'WAREHOUSE' THEN ${li}
     WHEN 'BIN' THEN (SELECT b.warehouse_id FROM eos_ops.bins b WHERE b.tenant_id = ${t} AND b.id = ${li})
     WHEN 'MOBILE' THEN (SELECT mb.warehouse_id FROM eos_ops.mobile_location_scope_bindings mb

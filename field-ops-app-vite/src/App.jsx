@@ -66,6 +66,7 @@ import { OPPORTUNITY_WRITE_CAPABILITY } from "./access/opportunityCapabilityAcce
 import { opportunityWriteReadiness } from "./access/opportunityWriteReadiness.js";
 const EquipmentWorkspace = lazy(() => import("./modules/equipment/EquipmentWorkspace"));
 const RentalWorkspace = lazy(() => import("./modules/rental/RentalWorkspace"));
+const AnalysisWorkspace = lazy(() => import("./modules/analysis/AnalysisWorkspace"));
 const EquipmentDetail = lazy(() => import("./modules/equipment/EquipmentDetail"));
 const AccountDetail = lazy(() => import("./modules/accounts/AccountDetail"));
 const PartsShadowParityDiagnostics = lazy(() => import("./modules/inventory/PartsShadowParityDiagnostics"));
@@ -491,6 +492,9 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // Equipment = cross-customer paginated installed list; Available Equipment = honest
   // not-yet-connected Serialized Asset surface). accessVersion is threaded so the
   // list read resets on any access change (same convention as PartsList/Operations).
+  if (domain.key === "analysis" && item.key === "analysis") {
+    return <AnalysisWorkspace />;
+  }
   if (domain.key === "rental" && item.key === "rental") {
     return <RentalWorkspace />;
   }

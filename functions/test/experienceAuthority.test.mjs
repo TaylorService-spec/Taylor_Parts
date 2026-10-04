@@ -460,9 +460,12 @@ test("every persona in the governed manifest gets a destination set earned entir
   }
 
   // Written out rather than snapshotted: a reviewer has to be able to read who can open what.
+  // Analysis (#208): `analysis.workspace` opens wherever a measure's existing read is held (workOrder.record.read here); every
+  // figure inside is decided again on its own read and reach.
   assert.deepEqual(observed["service-technician-a"], {
-    surfaces: ["field.myWorkOrders", "service.workOrders"],
+    surfaces: ["analysis.workspace", "field.myWorkOrders", "service.workOrders"],
     destinations: [
+      "analysis/analysis",
       "service/coordinatedMission",
       "service/jobAssignments",
       "service/scan",
@@ -498,8 +501,9 @@ test("every persona in the governed manifest gets a destination set earned entir
   // arrived WITHOUT anything else arriving with it: no inventoryRole destination, no receiving, no
   // warehouse. A scope opened one door.
   assert.deepEqual(observed["parts-manager"], {
-    surfaces: ["inventory.catalog", "inventory.reorderQueue", "purchasing.purchaseOrders"],
+    surfaces: ["analysis.workspace", "inventory.catalog", "inventory.reorderQueue", "purchasing.purchaseOrders"],
     destinations: [
+      "analysis/analysis",
       "dashboard/operationsDashboard",
       "inventory/parts",
       "inventory/reorderQueue",
@@ -515,6 +519,7 @@ test("every persona in the governed manifest gets a destination set earned entir
   });
 
   assert.deepEqual(observed.dispatcher.surfaces, [
+    "analysis.workspace",
     "inventory.reorderQueue",
     "service.coordinatedVisits",
     "service.dispatch",

@@ -60,6 +60,9 @@ on:
       - "field-ops-app-vite/test/systemSalesConfigurationAdministration.test.jsx"
       - "field-ops-app-vite/test/financeWorkspace.test.jsx"
       - "field-ops-app-vite/test/rentalWorkspace.test.jsx"
+      - "field-ops-app-vite/test/analysisWorkspace.test.jsx"
+      - "field-ops-app-vite/src/modules/analysis/**"
+      - "field-ops-app-vite/src/services/analysisApiClient.js"
       - "field-ops-app-vite/src/modules/rental/**"
       - "field-ops-app-vite/src/services/rentalApiClient.js"
       - "field-ops-app-vite/src/modules/financials/FinancialsWorkspace.jsx"
@@ -265,6 +268,7 @@ on:
       - "functions/test/governedConfigSalesPricingPostgres.test.mjs"
       - "functions/test/financeClosurePostgres.test.mjs"
       - "functions/test/rentalPostgres.test.mjs"
+      - "functions/test/analysisPostgres.test.mjs"
       - "functions/src/eosFinance/financeConfigurationAdministration.ts"
       - "functions/src/eosOps/operatingCompanyBusinessTime.ts"
       - "functions/src/eosFinance/intercompany.ts"
@@ -275,6 +279,8 @@ on:
       - "functions/test/supplierAdministrationPostgres.test.mjs"
       - "functions/src/eosFinance/**"
       - "functions/src/eosRental/**"
+      - "functions/src/eosAnalysis/**"
+      - "functions/src/reportingPeriod/**"
       - "functions/test/reorderLifecycleAuthorityRegistrationPostgres.test.mjs"
       - "functions/test/reorderFieldParityMatrix.test.mjs"
       - "functions/test/reorderFirestoreRetirementGate.test.mjs"
@@ -711,6 +717,9 @@ on:
       - "field-ops-app-vite/test/systemSalesConfigurationAdministration.test.jsx"
       - "field-ops-app-vite/test/financeWorkspace.test.jsx"
       - "field-ops-app-vite/test/rentalWorkspace.test.jsx"
+      - "field-ops-app-vite/test/analysisWorkspace.test.jsx"
+      - "field-ops-app-vite/src/modules/analysis/**"
+      - "field-ops-app-vite/src/services/analysisApiClient.js"
       - "field-ops-app-vite/src/modules/rental/**"
       - "field-ops-app-vite/src/services/rentalApiClient.js"
       - "field-ops-app-vite/src/modules/financials/FinancialsWorkspace.jsx"
@@ -907,6 +916,7 @@ on:
       - "functions/test/governedConfigSalesPricingPostgres.test.mjs"
       - "functions/test/financeClosurePostgres.test.mjs"
       - "functions/test/rentalPostgres.test.mjs"
+      - "functions/test/analysisPostgres.test.mjs"
       - "functions/src/eosFinance/financeConfigurationAdministration.ts"
       - "functions/src/eosOps/operatingCompanyBusinessTime.ts"
       - "functions/src/eosFinance/intercompany.ts"
@@ -917,6 +927,8 @@ on:
       - "functions/test/supplierAdministrationPostgres.test.mjs"
       - "functions/src/eosFinance/**"
       - "functions/src/eosRental/**"
+      - "functions/src/eosAnalysis/**"
+      - "functions/src/reportingPeriod/**"
       - "functions/test/reorderLifecycleAuthorityRegistrationPostgres.test.mjs"
       - "functions/test/reorderFieldParityMatrix.test.mjs"
       - "functions/test/reorderFirestoreRetirementGate.test.mjs"
@@ -1381,6 +1393,11 @@ jobs:
       # Rental (#207): the Rental workspace -- the server's fleet, agreements and refusals; tax is never assumed.
       - name: Rental workspace (vitest + jsdom)
         run: npx vitest run test/rentalWorkspace.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Analysis & Reporting (#208): the Analysis workspace -- the server's figures, basis, refusals, exceptions and actions.
+      - name: Analysis workspace (vitest + jsdom)
+        run: npx vitest run test/analysisWorkspace.test.jsx
         working-directory: field-ops-app-vite
 
       # THE BROWSER'S ROUTE TO THE OBJECT-OWNED SECURITY READ MODEL. Proved through an injected
