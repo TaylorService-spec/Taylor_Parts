@@ -185,7 +185,8 @@ test("the experience surface catalog satisfies its own invariants", () => {
   // 31 -> 32: `administration.emailCommunications` (Service Experience completion, 2026-09-30), earned by inboundWork.intake.manage.
   // 32 -> 33: `purchasing.suppliers` (Parts / Purchasing / Receiving, 2026-10-01), earned by supplier.record.read.
   // 33 -> 34: `rental.workspace` (Rental, #207), earned by rental.agreement.read.
-  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 34);
+  // 34 -> 35: `analysis.workspace` (Analysis & Reporting, #208), earned by any read a measure is decided on, or reportDefinition.read.
+  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 35);
   assert.equal(EXPERIENCE_SURFACE_KEYS.includes("commercial.agreements"), true);
 });
 
@@ -561,8 +562,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // Rental (#207): `rental.workspace` is the one surface owner reaches and admin does not -- the rental read is business
     // authority the migration withholds from admin, by the same rule as the settlement keys above.
     assert.deepEqual(owner.surfaces.filter((s) => !admin.surfaces.includes(s)), ["rental.workspace"]);
-    assert.equal(admin.surfaces.length, 24);
-    assert.equal(owner.surfaces.length, 22);
+    assert.equal(admin.surfaces.length, 25); // + analysis.workspace (#208)
+    assert.equal(owner.surfaces.length, 23); // + analysis.workspace (#208)
     // NOT THE SAME ROLE, stated as an assertion rather than left implicit in the counts above.
     assert.notEqual(admin.capabilities.size, owner.capabilities.size);
     assert.notDeepEqual(admin.surfaces, owner.surfaces);
@@ -638,7 +639,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.equal(technician.capabilities.size, 4);
     assert.deepEqual([...technician.capabilities].sort(),
       ["reorder.request.read", "workOrder.lifecycle.complete", "workOrder.record.read", "workOrder.transition"]);
-    assert.deepEqual([...technician.surfaces], ["field.myWorkOrders", "service.workOrders"]);
+    // + analysis.workspace (#208): the door opens on workOrder.record.read; inside, each figure is decided on its own read and reach.
+    assert.deepEqual([...technician.surfaces], ["analysis.workspace", "field.myWorkOrders", "service.workOrders"]);
     for (const withheld of ["workOrder.lifecycle.dispatch", "workOrder.lifecycle.cancel"]) {
       assert.equal(technician.capabilities.has(withheld), false, `the record READ widened technician to ${withheld}`);
     }
@@ -656,7 +658,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // unassigned technician is not silently handed the assigned surface.
     const unidentified = await resolve(["technician"],
       { employeeId: null, workEligibility: ["SERVICE_TECHNICIAN"], operationalScopes: [] });
-    assert.deepEqual([...unidentified.surfaces], ["service.workOrders"]);
+    assert.deepEqual([...unidentified.surfaces], ["analysis.workspace", "service.workOrders"]); // + analysis.workspace (#208)
     assert.equal(unidentified.surfaces.includes("field.myWorkOrders"), false);
     assert.equal(technician.surfaces.includes("field.myWorkOrders"), true);
 
@@ -822,13 +824,13 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
       assert.equal(r.capabilities.size, 17);
       // 8, not 7: `commercial.agreements` is a declared surface now (lanes BL + BQ) and salesperson
       // already held salesAgreement.read, so it resolves for all three without any new grant.
-      assert.equal(r.surfaces.length, 8);
+      assert.equal(r.surfaces.length, 9); // + analysis.workspace (#208), narrowed inside to the seller's own channels
       assert.deepEqual([...r.surfaces], [...resolved[0].surfaces]);
       assert.deepEqual(r.destinations, resolved[0].destinations);
     }
     // NON-VACUOUS: the shared answer is a real, non-empty business surface set, not "nothing".
     assert.deepEqual([...resolved[0].surfaces], [
-      "commercial.agreements", "commercial.opportunities", "commercial.salesOrders", "crm.accounts",
+      "analysis.workspace", "commercial.agreements", "commercial.opportunities", "commercial.salesOrders", "crm.accounts",
       "financials.invoices", "financials.payments", "inventory.balances", "inventory.catalog",
     ]);
     // SAME SECURITY ROLE, DIFFERENT JOB ROLE. Retail and National Accounts resolve IDENTICAL access
@@ -1054,7 +1056,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // rather than `admin` (lane BI), and lane BN's contract withholds Data Import, receiving check-in
     // and dispatch from Owner.
     const ownerExecutive = await resolvePersona("owner-executive");
-    assert.equal(ownerExecutive.surfaces.length, 22); // + rental.workspace (#207)
+    assert.equal(ownerExecutive.surfaces.length, 23); // + rental.workspace (#207) + analysis.workspace (#208)
     assert.ok(ownerExecutive.destinations.length >= 20,
       `owner-executive reached only ${ownerExecutive.destinations.length} destinations`);
     // technician-on-leave is the same PERSON as a technician minus the authority: the Employee, the
@@ -1143,8 +1145,10 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.deepEqual([...capsAfter].sort(), [...capsBefore].sort(),
       "a workflow role binding changed the Role's Object authority");
     const resolved = await resolve(["reportViewer"], NO_DIMENSIONS);
-    assert.deepEqual([...resolved.surfaces], []);
-    assert.deepEqual(resolved.destinations, []);
+    // ONE door, from reportDefinition.read (the report catalog), not from the binding: the Analysis workspace, where the
+    // Reporting Analyst reads the measure catalog and no business figure (each needs its own domain read).
+    assert.deepEqual([...resolved.surfaces], ["analysis.workspace"]);
+    assert.deepEqual(resolved.destinations, ["analysis/analysis"]);
     // The workOrder Object capabilities exist and reportViewer holds none of them.
     const workOrderKeys = capabilityCatalog.filter((c) => c.objectKey === "workOrder").map((c) => c.key);
     assert.ok(workOrderKeys.length > 0);
@@ -1164,12 +1168,13 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // surfaces; and `administrator`, `finance-controller` and `report-analyst` are new personas.
     const EXPECTED_SURFACE_COUNTS = {
       // Rental (#207): + rental.workspace for every persona whose Role holds rental.agreement.read.
-      "owner-executive": 22, "administrator": 24, "general-manager": 16, "office-manager": 3,
-      "service-manager": 13, "dispatcher": 14, "service-technician-a": 2, "service-technician-b": 2,
-      "contract-technician": 2, "technician-on-leave": 0, "retail-sales-a": 8, "retail-sales-b": 8,
-      "national-accounts-sales": 8, "parts-manager": 13, "parts-associate": 8,
-      "warehouse-manager": 12, "warehouse-associate": 7, "records-clerk": 0,
-      "finance-controller": 12, "report-analyst": 0, "restricted-user": 0,
+      // Analysis (#208): + analysis.workspace for every persona holding a read a measure is decided on (or the report catalog read).
+      "owner-executive": 23, "administrator": 25, "general-manager": 17, "office-manager": 4,
+      "service-manager": 14, "dispatcher": 15, "service-technician-a": 3, "service-technician-b": 3,
+      "contract-technician": 3, "technician-on-leave": 0, "retail-sales-a": 9, "retail-sales-b": 9,
+      "national-accounts-sales": 9, "parts-manager": 14, "parts-associate": 9,
+      "warehouse-manager": 13, "warehouse-associate": 8, "records-clerk": 0,
+      "finance-controller": 13, "report-analyst": 0, "restricted-user": 0,
     };
     // EVERY persona is covered. A persona added to the manifest without a measured expectation here
     // would otherwise slip through this census unmeasured, which is the failure mode this guards.

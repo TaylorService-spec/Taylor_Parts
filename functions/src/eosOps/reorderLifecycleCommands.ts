@@ -198,7 +198,7 @@ async function requireAssignee(
  * through the governed dimension reader (eosOps/contextualAuthorization.ts), the one module that knows the scope table.
  * A caller with no linked Employee reaches no queue.
  */
-async function queueReachKeys(db: Pick<PoolClient, "query">, actor: ReorderActor): Promise<readonly string[]> {
+export async function queueReachKeys(db: Pick<PoolClient, "query">, actor: ReorderActor): Promise<readonly string[]> {
   const reader = postgresPrincipalDimensionReader(db);
   const employeeId = await reader.linkedEmployeeId(actor.tenantId, actor.principalId);
   if (employeeId === null) return [];

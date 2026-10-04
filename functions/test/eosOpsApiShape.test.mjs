@@ -62,9 +62,10 @@ test("both Operations lists are closed, every entry is routed, and they name exa
   // Count is the first inventory domain on this transport). No read route serves a command.
   // DQ-036: + the Stock Relocation command route, its own closed table.
   // + /operations/work-orders: the governed Work Order domain (WORK ORDER DOMAIN CUTOVER AUTHORIZATION, 2026-09-30), fail-closed until activated.
+  // + /operations/analysis: Analysis & Reporting (#208) -- read-only catalog, workspace and measure drill-through.
   // + /operations/rental: Rental (#207) -- fleet, agreements, assignment, return / inspection, charges, the workspace.
   // + /operations/finance: Finance Closure (#206) -- settlements, applications, reconciliation, the workspace, late cost evidence, relief.
-  assert.deepEqual(OPERATIONS_ROUTES, ["/operations/cycle-count", "/operations/equipment", "/operations/experience", "/operations/finance", "/operations/inbound-work", "/operations/inventory", "/operations/placement", "/operations/relocation", "/operations/rental", "/operations/serialized-asset", "/operations/transfer", "/operations/work-orders"]);
+  assert.deepEqual(OPERATIONS_ROUTES, ["/operations/analysis", "/operations/cycle-count", "/operations/equipment", "/operations/experience", "/operations/finance", "/operations/inbound-work", "/operations/inventory", "/operations/placement", "/operations/relocation", "/operations/rental", "/operations/serialized-asset", "/operations/transfer", "/operations/work-orders"]);
   assert.equal(CYCLE_COUNT_ROUTE, "/operations/cycle-count");
   assert.ok(!Object.values(OPERATIONS_ROUTE_BY_OPERATION).includes(CYCLE_COUNT_ROUTE));
 });

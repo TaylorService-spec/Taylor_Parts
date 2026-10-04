@@ -17,3 +17,17 @@ nonprod evidence is appended below once the package is deployed.
 | Return and inspection | **PASS.** Return into Ventana's warehouse is refused. Receipt into Taylor Main gives: custody WAREHOUSE, ledger RENTAL_RETURN +1 (stock agrees with custody), Equipment INACTIVE with a RENTAL_RETURNED event, and the unit in INSPECTION (not reservable). Inspection NEEDS_SERVICE puts it on SERVICE_HOLD; a release with a reason makes it AVAILABLE. |
 | Workspace | **PASS.** Available, on-rent (customer custody), due-back and DEPLOYED_WITHOUT_CURRENT_CHARGE are all answered from governed records. |
 | Close, no sale, facts | **PASS.** Close is refused while a unit is out and allowed once all units are back; cancelling a deployed agreement is refused. Zero sales orders, agreements, financing arrangements or fulfillments. The owner is constant across every event, and the event log (DESIGNATED … SERVICE_HOLD_RELEASED) is append-only. |
+
+## Nonprod evidence (2026-10-03)
+
+Main `9922c68d` (PR #2022, CI 125/125) went out as Render deploy `dep-db0q490jo6nc739u2ji0`, with 94 migrations.
+- **Seed and census.** The seed added `rentalAgreement` and `rentalEquipment`. The census shows 128 capabilities and tenant
+  grants 512 → 542, with holders exactly as the frozen mapping and admin holding none.
+- **UAT.** 96 steps passed, 0 failed.
+- **Sample units.** RNT-UAT-0001 and -0002 were acquired through the governed acquire (EXISTING_COMPANY_ASSET).
+- **Lifecycle.** RA-2026-000001 ran end to end (WO-2026-000100/101/102):
+  - deploy, then service while rented, extension (terms v2) and exchange;
+  - return into Taylor Main, inspection to SERVICE_HOLD and then AVAILABLE, and close;
+  - 151,200 charged, settled and applied, and a HELD delivery charge superseded once its tax was determined.
+- **What did not happen.** No sale, no financing and no ownership transfer.
+- **Finding.** The handoffs are PENDING_DESTINATION: nonprod Taylor has no active accounting destination.
