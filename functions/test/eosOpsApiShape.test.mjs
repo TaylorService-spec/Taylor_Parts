@@ -66,7 +66,7 @@ test("both Operations lists are closed, every entry is routed, and they name exa
   // + /operations/workspace: Application Assembly (#209) -- the read-only persona workspace and site-wide search.
   // + /operations/rental: Rental (#207) -- fleet, agreements, assignment, return / inspection, charges, the workspace.
   // + /operations/finance: Finance Closure (#206) -- settlements, applications, reconciliation, the workspace, late cost evidence, relief.
-  assert.deepEqual(OPERATIONS_ROUTES, ["/operations/analysis", "/operations/cycle-count", "/operations/equipment", "/operations/experience", "/operations/finance", "/operations/inbound-work", "/operations/inventory", "/operations/placement", "/operations/relocation", "/operations/rental", "/operations/serialized-asset", "/operations/transfer", "/operations/work-orders", "/operations/workspace"]);
+  assert.deepEqual(OPERATIONS_ROUTES, ["/operations/analysis", "/operations/cycle-count", "/operations/equipment", "/operations/experience", "/operations/finance", "/operations/inbound-work", "/operations/inventory", "/operations/placement", "/operations/relocation", "/operations/rental", "/operations/serialized-asset", "/operations/transfer", "/operations/work-orders", "/operations/workflow", "/operations/workspace"]);
   assert.equal(CYCLE_COUNT_ROUTE, "/operations/cycle-count");
   assert.ok(!Object.values(OPERATIONS_ROUTE_BY_OPERATION).includes(CYCLE_COUNT_ROUTE));
 });

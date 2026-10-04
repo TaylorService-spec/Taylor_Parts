@@ -62,7 +62,7 @@ import {
   grantConditionCatalogFromRows,
 } from "../eosOps/conditionalEntitlement";
 import type { GrantConditionRecord, RoleCapabilityDecisionRecord } from "./types";
-import { resolveObjectAction } from "./objectSecurityAuthority";
+import { actionsForObject, resolveObjectAction } from "./objectSecurityAuthority";
 import {
   ASSIGNMENT_SCOPE_DIMENSIONS,
   ASSIGNMENT_SCOPE_RUNTIME_TYPES,
@@ -2023,4 +2023,64 @@ async function retireDirectExceptionCondition(
     });
     return retired;
   });
+}
+
+// ════════════════════ object-wide authority (Administration control plane, DECISIONS #210) ════════════════════
+
+export type ObjectWideOutcome = "GRANTED" | "ALREADY_HELD" | "REVOKED" | "NOT_HELD" | "REFUSED";
+export interface ObjectWideResult {
+  readonly objectKey: string;
+  readonly roleKey: string;
+  readonly mode: "GRANT" | "REVOKE";
+  readonly actions: readonly { readonly actionKey: string; readonly actionKind: string; readonly capabilityKey: string;
+    readonly outcome: ObjectWideOutcome; readonly refusal: string | null }[];
+}
+
+/**
+ * WHOLE-OBJECT AUTHORITY, expanded deterministically into the governed capability model -- never a wildcard.
+ *
+ * "Grant Work Order to Service Manager" is exactly the set of the Object's registered actions (optionally only some action
+ * kinds), each granted through `grantObjectActionToRole` -- the same command a single-action grant uses, with its SAME
+ * checks (system invariants, self-administration, Owner exclusions, scoped-role Administration), its own transaction, its own
+ * audit event and its own ADMIN_GRANTED decision. Nothing new is stored: the runtime resolver reads the resulting per-capability
+ * rows as it always has, so there is no object-level grant for it to expand and none that could drift. A refused action is
+ * reported with its refusal and the others proceed; the result says exactly what changed.
+ */
+export async function applyObjectWideRoleAuthority(
+  repo: PolicyRepository, actor: AdminActor,
+  input: { readonly objectKey: string; readonly roleKey: string; readonly mode: "GRANT" | "REVOKE";
+    readonly actionKinds?: readonly string[] | null; readonly reason?: string | null },
+): Promise<ObjectWideResult> {
+  await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
+  const reason = requireReason(input.reason, input.mode === "GRANT" ? "an object-wide grant" : "an object-wide revoke");
+  const objectKey = nonEmpty(input.objectKey, "objectKey");
+  const roleKey = nonEmpty(input.roleKey, "roleKey");
+  const role = await repo.getRoleByKey(actor.tenantId, roleKey);
+  if (!role) throw new PolicyValidationError("role not found");
+  const kinds = input.actionKinds && input.actionKinds.length > 0 ? new Set(input.actionKinds) : null;
+  const actions = actionsForObject(await repo.listCapabilities(), objectKey).filter((c) => !kinds || kinds.has(c.actionKind));
+  if (actions.length === 0) throw new PolicyValidationError(`${objectKey} has no registered action${kinds ? " of those kinds" : ""}`);
+  const heldIds = new Set((await repo.listRoleCapabilities(actor.tenantId, [role.id])).map((g) => g.capabilityId));
+  const results: ObjectWideResult["actions"][number][] = [];
+  for (const c of actions) {
+    const base = { actionKey: c.actionKey, actionKind: c.actionKind, capabilityKey: c.key };
+    const held = heldIds.has(c.id);
+    try {
+      if (input.mode === "GRANT") {
+        if (held) { results.push({ ...base, outcome: "ALREADY_HELD", refusal: null }); continue; }
+        await grantObjectActionToRole(repo, actor, { objectKey, actionKey: c.actionKey, roleKey, reason });
+        results.push({ ...base, outcome: "GRANTED", refusal: null });
+      } else {
+        if (!held) { results.push({ ...base, outcome: "NOT_HELD", refusal: null }); continue; }
+        const removed = await revokeObjectActionFromRole(repo, actor, { objectKey, actionKey: c.actionKey, roleKey, reason });
+        results.push({ ...base, outcome: removed ? "REVOKED" : "NOT_HELD", refusal: null });
+      }
+    } catch (err) {
+      const e = err as Error & { code?: string };
+      // Authorization failures are the caller's, not the action's: stop rather than report N identical refusals.
+      if (err instanceof AdministrationDeniedError) throw err;
+      results.push({ ...base, outcome: "REFUSED", refusal: `${e.code ?? e.name}: ${e.message}` });
+    }
+  }
+  return Object.freeze({ objectKey, roleKey, mode: input.mode, actions: Object.freeze(results) });
 }

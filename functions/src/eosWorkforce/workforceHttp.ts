@@ -30,6 +30,7 @@
 //   EMP-RT-02 readEmployeePrincipalLink       admin.principalAccess.read (Owner ruling B).
 //   EMP-RT-03 listRecordsOwnedByEmployee      the Commercial families, gated by each family's read capability.
 //   EMP-RT-04 listAccountabilitiesForEmployee the Commercial families, gated by each family's read capability.
+//   #210      listWorkforceRoster             employee.record.read (+ admin.principalAccess.read for the Security Role column).
 //   EMP-RT-06 listManagedEmployees            employee.record.read over eos_workforce.employee_reporting_relationships.
 //   EMP-RT-05 listAssignedWorkForEmployee     NOT SERVED -- ASSIGNMENT_AUTHORITY_NOT_IN_POSTGRES (held, Owner ruling H).
 //   EMP-RT-08 listJobRoles / listEmployeeJobRoleHistory / listEmployeesWithoutJobRole   employee.record.read.
@@ -83,6 +84,7 @@ import { readMyEmployeeProfile } from "./reads/myEmployeeProfile";
 import { readMyWorkforceCapabilities } from "./reads/myWorkforceCapabilities";
 import { listAccountabilitiesForEmployee, listRecordsOwnedByEmployee } from "./reads/employeeResponsibilityReads";
 import { listEmployees, listManagedEmployees, readEmployee } from "./reads/employeeDirectoryReads";
+import { listWorkforceRoster } from "./reads/workforceRosterReads";
 import { readEmployeePrincipalLink } from "./reads/employeePrincipalLinkRead";
 import { EmployeeCommandError } from "./commands/employeeCommandKernel";
 import { updateEmployeeProfile } from "./commands/employeeProfileCommand";
@@ -168,6 +170,9 @@ const READ_RUNNERS = Object.freeze({
   listFunctionalRoleHolders: read(listFunctionalRoleHolders),
   listEmployeeFunctionalRoles: read(listEmployeeFunctionalRoles),
   listFunctionalRoleHistory: read(listFunctionalRoleHistory),
+  // Administration control plane (#210): the workforce roster -- Job Role, Security Roles (admin.principalAccess.read only),
+  // scopes, eligibility and manager per Employee, filterable; employee.record.read.
+  listWorkforceRoster: read(listWorkforceRoster),
 } as const);
 
 // ════════════════════ the closed operation list (commands) ════════════════════
@@ -208,7 +213,7 @@ export const isWorkforceOperation = (name: unknown): name is WorkforceOperation 
   typeof name === "string" && Object.prototype.hasOwnProperty.call(RUNNERS, name);
 
 /** The ONLY operations whose `input` may be omitted: the two self reads (no input at all) and the unfiltered directory. */
-export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS: readonly WorkforceOperation[] = Object.freeze(["readMyEmployeeProfile", "readMyWorkforceCapabilities", "listEmployees"]);
+export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS: readonly WorkforceOperation[] = Object.freeze(["readMyEmployeeProfile", "readMyWorkforceCapabilities", "listEmployees", "listWorkforceRoster"]);
 const OPTIONAL_INPUT = new Set<string>(WORKFORCE_OPTIONAL_INPUT_OPERATIONS);
 
 /** Fields that would state authority. Authority comes from the verified subject and PostgreSQL, never from the body. */

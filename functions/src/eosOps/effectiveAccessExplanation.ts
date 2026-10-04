@@ -134,6 +134,14 @@ export interface EffectiveAccessExplanation {
    */
   readonly employeeFacts: {
     readonly functionalRoles: readonly CurrentFunctionalRole[];
+    /**
+     * The CURRENT Job Role (Administration control plane, #210): the job this person performs. Shown in the chain
+     * Principal -> Employee -> Job Role -> Security Roles -> Capabilities so a reader sees it -- and sees that it grants
+     * nothing (the persona LAYOUT only; no capability, scope or surface derives from it).
+     */
+    readonly jobRole: { readonly id: string; readonly label: string; readonly since: string } | null;
+    /** The linked Employee's name and operating company, for the chain header. Facts, not authority. */
+    readonly employee: { readonly displayName: string | null; readonly operatingCompanyId: string | null; readonly employmentStatus: string | null } | null;
     readonly grantsCapabilities: false;
   };
 }
@@ -268,6 +276,13 @@ export async function explainEffectiveAccess(
   const functionalRoles = employeeId
     ? await (options.functionalRoleReader ?? ((t: string, e: string) => listCurrentFunctionalRoles(pool, t, e)))(tenantId, employeeId)
     : [];
+  const employeeRow = employeeId ? (await pool.query(
+    `SELECT e.display_name, e.operating_company_id, e.employment_status::text AS employment_status,
+            a.job_role_id, r.display_name AS job_role_label, a.effective_from
+       FROM eos_workforce.employees e
+       LEFT JOIN eos_workforce.employee_job_role_assignments a ON a.tenant_id = e.tenant_id AND a.employee_id = e.id AND a.effective_to IS NULL
+       LEFT JOIN eos_workforce.job_roles r ON r.tenant_id = a.tenant_id AND r.id = a.job_role_id
+      WHERE e.tenant_id = $1 AND e.id = $2`, [tenantId, employeeId])).rows[0] ?? null : null;
 
   return Object.freeze({
     tenantId,
@@ -295,6 +310,10 @@ export async function explainEffectiveAccess(
     actions: Object.freeze(actions),
     employeeFacts: Object.freeze({
       functionalRoles: Object.freeze([...functionalRoles]),
+      jobRole: employeeRow?.job_role_id ? Object.freeze({ id: String(employeeRow.job_role_id), label: String(employeeRow.job_role_label ?? employeeRow.job_role_id),
+        since: employeeRow.effective_from instanceof Date ? employeeRow.effective_from.toISOString() : String(employeeRow.effective_from) }) : null,
+      employee: employeeRow ? Object.freeze({ displayName: employeeRow.display_name ?? null, operatingCompanyId: employeeRow.operating_company_id ?? null,
+        employmentStatus: employeeRow.employment_status ?? null }) : null,
       grantsCapabilities: false as const,
     }),
   });

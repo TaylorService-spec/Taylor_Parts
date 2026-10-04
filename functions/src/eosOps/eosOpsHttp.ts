@@ -52,6 +52,7 @@ import { EOS_FINANCE_OPERATIONS, FINANCE_ROUTE, isFinanceOperation } from "../eo
 import { EOS_RENTAL_OPERATIONS, RENTAL_ROUTE, isRentalOperation } from "../eosRental/rentalOperations";
 import { ANALYSIS_ROUTE, EOS_ANALYSIS_OPERATIONS, isAnalysisOperation } from "../eosAnalysis/analysisOperations";
 import { EOS_WORKSPACE_OPERATIONS, WORKSPACE_ROUTE, isWorkspaceOperation } from "../eosExperience/workspaceOperations";
+import { EOS_WORKFLOW_RUNTIME_OPERATIONS, WORKFLOW_RUNTIME_ROUTE, isWorkflowRuntimeOperation } from "./workflowRuntimeOperations";
 import type { PostgresEquipmentWriterState } from "./equipmentWriterState";
 import { WORK_ORDER_WRITER_AUTHORITY, type PostgresWorkOrderWriterState } from "./workOrderWriterState";
 import { postgresContextualReader } from "./contextualAuthorization";
@@ -253,7 +254,7 @@ export const EQUIPMENT_ROUTE = "/operations/equipment";
 
 export const OPERATIONS_ROUTES: readonly string[] =
   Object.freeze([...new Set([...Object.values(OPERATIONS_ROUTE_BY_OPERATION), CYCLE_COUNT_ROUTE, RELOCATION_ROUTE, TRANSFER_ROUTE,
-    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE, WORK_ORDER_ROUTE, INBOUND_WORK_ROUTE, EQUIPMENT_ROUTE, FINANCE_ROUTE, RENTAL_ROUTE, ANALYSIS_ROUTE, WORKSPACE_ROUTE])].sort());
+    PLACEMENT_ROUTE, SERIALIZED_ASSET_ROUTE, WORK_ORDER_ROUTE, INBOUND_WORK_ROUTE, EQUIPMENT_ROUTE, FINANCE_ROUTE, RENTAL_ROUTE, ANALYSIS_ROUTE, WORKSPACE_ROUTE, WORKFLOW_RUNTIME_ROUTE])].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(OPERATIONS_MUTATION_OPERATIONS);
@@ -683,6 +684,7 @@ const WORK_ORDER_ERROR_NAMES: ReadonlySet<string> = new Set([
   "AnalysisError",
   // Application Assembly (#209): the read-only /operations/workspace table's governed refusal class.
   "MyWorkError",
+  "WorkflowRuntimeError",
 ]);
 
 /**
@@ -842,14 +844,15 @@ export async function handleOperationsRequest(
     return json(out.status, out.body, origin);
   }
 
-  if (path === WORK_ORDER_ROUTE || path === INBOUND_WORK_ROUTE || path === EQUIPMENT_ROUTE || path === FINANCE_ROUTE || path === RENTAL_ROUTE || path === ANALYSIS_ROUTE || path === WORKSPACE_ROUTE) {
+  if (path === WORK_ORDER_ROUTE || path === INBOUND_WORK_ROUTE || path === EQUIPMENT_ROUTE || path === FINANCE_ROUTE || path === RENTAL_ROUTE || path === ANALYSIS_ROUTE || path === WORKSPACE_ROUTE || path === WORKFLOW_RUNTIME_ROUTE) {
     const inbound = path === INBOUND_WORK_ROUTE;
     const equipment = path === EQUIPMENT_ROUTE;
     const finance = path === FINANCE_ROUTE;
     const rental = path === RENTAL_ROUTE;
     const analysis = path === ANALYSIS_ROUTE;
     const workspace = path === WORKSPACE_ROUTE;
-    if (workspace ? !isWorkspaceOperation(operation) : analysis ? !isAnalysisOperation(operation) : rental ? !isRentalOperation(operation) : finance ? !isFinanceOperation(operation) : equipment ? !isEquipmentOperation(operation) : inbound ? !isInboundWorkOperation(operation) : !isWorkOrderOperation(operation)) {
+    const workflowRuntime = path === WORKFLOW_RUNTIME_ROUTE;
+    if (workflowRuntime ? !isWorkflowRuntimeOperation(operation) : workspace ? !isWorkspaceOperation(operation) : analysis ? !isAnalysisOperation(operation) : rental ? !isRentalOperation(operation) : finance ? !isFinanceOperation(operation) : equipment ? !isEquipmentOperation(operation) : inbound ? !isInboundWorkOperation(operation) : !isWorkOrderOperation(operation)) {
       return json(404, notFound(String(operation ?? "")), origin);
     }
     const input = payload.input === undefined ? {} : payload.input;
@@ -872,7 +875,8 @@ export async function handleOperationsRequest(
       },
       operation: operation as string,
       input: input as Record<string, unknown>,
-    }, workspace ? EOS_WORKSPACE_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
+    }, workflowRuntime ? EOS_WORKFLOW_RUNTIME_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
+      : workspace ? EOS_WORKSPACE_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
       : analysis ? EOS_ANALYSIS_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
       : rental ? EOS_RENTAL_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>
       : finance ? EOS_FINANCE_OPERATIONS as unknown as Readonly<Record<string, WorkOrderOp>>

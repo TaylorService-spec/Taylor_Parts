@@ -372,7 +372,7 @@ test("Functional Role authority: schema, governed commands, reads, effective acc
 
   await t.test("D: explainEffectiveAccess shows Functional Roles as EMPLOYEE FACTS; no capability, surface or decision derives from them", async () => {
     const before = await explainEffectiveAccess(repo, pool, { tenantId: "t1", principalId: dutyOnly.principalId });
-    assert.deepEqual(before.employeeFacts, { functionalRoles: [], grantsCapabilities: false });
+    assert.deepEqual([before.employeeFacts.functionalRoles, before.employeeFacts.grantsCapabilities], [[], false]);
     const given = await commands.assignEmployeeFunctionalRole(deps, adminActor, { employeeId: "e-duty", functionalRoleId: warranty.functionalRoleId, reason: REASON });
     const after = await explainEffectiveAccess(repo, pool, { tenantId: "t1", principalId: dutyOnly.principalId });
     assert.deepEqual(after.employeeFacts.functionalRoles.map((f) => [f.key, f.assignmentId]), [["claims-coordinator", given.assignmentId]]);

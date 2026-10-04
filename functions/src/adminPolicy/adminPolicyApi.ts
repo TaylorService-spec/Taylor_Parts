@@ -49,6 +49,7 @@ import {
   revokeRole,
   grantObjectActionToRole,
   revokeObjectActionFromRole,
+  applyObjectWideRoleAuthority,
   grantObjectActionToPrincipal,
   revokeObjectActionFromPrincipal,
   setGrantCondition,
@@ -172,6 +173,8 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   // Object-owned grants. The contract is (objectKey, actionKey, grantee) -- never a capability key.
   "grantObjectActionToRole",
   "revokeObjectActionFromRole",
+  // Whole-object authority (#210): deterministically expanded into the per-action grants above, each through the same command.
+  "applyObjectWideRoleAuthority",
   "grantObjectActionToPrincipal",
   "revokeObjectActionFromPrincipal",
   // Grant conditions. Fail closed: a condition is never lifted while its grant is held.
@@ -871,6 +874,21 @@ async function dispatch(
         roleKey: requireString(input.roleKey, "roleKey"),
         reason: optionalString(input.reason) ? reason : null,
       });
+
+    case "applyObjectWideRoleAuthority": {
+      const mode = input.mode;
+      if (mode !== "GRANT" && mode !== "REVOKE") throw new PolicyValidationError("mode must be GRANT or REVOKE");
+      const kinds = input.actionKinds;
+      if (kinds !== undefined && kinds !== null && (!Array.isArray(kinds) || !kinds.every((k) => typeof k === "string"))) {
+        throw new PolicyValidationError("actionKinds must be a list of action kinds");
+      }
+      return applyObjectWideRoleAuthority(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        roleKey: requireString(input.roleKey, "roleKey"),
+        mode, actionKinds: (kinds as string[] | undefined) ?? null,
+        reason: optionalString(input.reason) ? reason : null,
+      });
+    }
 
     case "setGrantCondition":
       // A condition cell is (Role, capability) OR (direct exception, capability): exactly one grantee is named.
