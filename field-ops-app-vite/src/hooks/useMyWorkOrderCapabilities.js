@@ -5,6 +5,9 @@
 import { useEffect, useState } from "react";
 import { workOrderApiClient } from "../services/workOrderApiClient.js";
 
+/** The one Work Order capability this hook is asked about by the shell (the New Work Order route and button). */
+export const WORK_ORDER_CREATE_CAPABILITY = "workOrder.create";
+
 export function useMyWorkOrderCapabilities({ enabled = true, client = workOrderApiClient } = {}) {
   const [state, setState] = useState({ status: enabled ? "loading" : "idle", keys: new Set() });
   useEffect(() => {

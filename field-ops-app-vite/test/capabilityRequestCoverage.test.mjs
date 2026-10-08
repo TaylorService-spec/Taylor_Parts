@@ -143,6 +143,10 @@ const CATALOGUE_FILES = new Set([
 //       so a real feed gate in the same file is still caught.
 //   (d) INERT-BY-DECLARATION CONSTANTS — domain/partLookup.js's INERT_LOOKUP_CAPABILITIES and
 //       domain/financialPolicyView.js's reported capability name are display/documentation values.
+//   (e) EOS-AUTHORITY SELF-READ — hooks/useMyWorkOrderCapabilities.js's WORK_ORDER_CREATE_CAPABILITY is
+//       answered by the EOS Work Order authority's readMyWorkOrderCapabilities (the caller's OWN
+//       capabilities, read through the governed Work Order route), not by the trusted feed -- a
+//       different mechanism, like (c). It decides only what to OFFER; createWorkOrder re-checks it.
 const NON_GATE_ALLOWLIST = {
   "access/objectPermissionMap.js": "*",       // (a)
   "access/policyObjectRegistry.js": "*",      // (a)
@@ -152,6 +156,7 @@ const NON_GATE_ALLOWLIST = {
   "metadata/query/queryModel.js": "*",        // (b)
   "domain/partLookup.js": ["inventory.serializedAsset.read", "inventory.location.display.read"], // (d)
   "domain/financialPolicyView.js": ["financialPolicy.profile.read"], // (d)
+  "hooks/useMyWorkOrderCapabilities.js": ["workOrder.create"], // (e)
 };
 
 function allowed(rel, id) {

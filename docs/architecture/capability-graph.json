@@ -405,13 +405,13 @@
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
           "functions/src/account/accountPortfolioSummary.ts",
+          "functions/src/adminPolicy/recordedAdministrationRolesDelta.ts",
           "functions/src/assistant/assistantStarters.ts",
           "functions/src/dataImport/importedServiceHistoryReadService.ts",
           "functions/src/eosCrm/crmAuthorityKernel.ts",
           "functions/src/eosExperience/myWork.ts",
-          "functions/src/eosOps/experienceAuthority.ts",
-          "functions/src/eosWorkforce/reads/employeeResponsibilityReads.ts",
-          "functions/src/performance/performanceGoalAuthority.ts"
+          "functions/src/eosExperience/principalDisplayNames.ts",
+          "functions/src/eosOps/experienceAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -422,7 +422,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
-        "serverReferenceCount": 12,
+        "serverReferenceCount": 14,
         "clientReferenceCount": 7,
         "evidence": "EXPORTED"
       },
@@ -445,6 +445,7 @@
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
           "functions/src/account/accountImportCommand.ts",
+          "functions/src/adminPolicy/recordedAdministrationRolesDelta.ts",
           "functions/src/eosCrm/crmAuthorityKernel.ts"
         ],
         "clientReferences": [
@@ -454,7 +455,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -476,6 +477,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/recordedAdministrationRolesDelta.ts",
           "functions/src/eosCrm/crmAuthorityKernel.ts"
         ],
         "clientReferences": [
@@ -485,7 +487,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -549,10 +551,11 @@
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts",
+          "field-ops-app-vite/src/hooks/useMyWorkOrderCapabilities.js",
           "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
         ],
         "serverReferenceCount": 7,
-        "clientReferenceCount": 7,
+        "clientReferenceCount": 8,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -760,6 +763,7 @@
           "functions/src/eosCommercial/myCommercialCapabilities.ts",
           "functions/src/eosCommercial/reads/commercialReadKernel.ts",
           "functions/src/eosExperience/myWork.ts",
+          "functions/src/eosExperience/principalDisplayNames.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosWorkforce/reads/employeeResponsibilityReads.ts",
           "functions/src/opportunity/opportunityReadService.ts"
@@ -777,7 +781,7 @@
           "field-ops-app-vite/src/metadata/uxMigrationManifest.js",
           "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx"
         ],
-        "serverReferenceCount": 11,
+        "serverReferenceCount": 12,
         "clientReferenceCount": 11,
         "evidence": "EXPORTED"
       },
@@ -949,6 +953,7 @@
           "functions/src/eosCommercial/myCommercialCapabilities.ts",
           "functions/src/eosCommercial/reads/commercialReadKernel.ts",
           "functions/src/eosExperience/myWork.ts",
+          "functions/src/eosExperience/principalDisplayNames.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosWorkforce/reads/employeeResponsibilityReads.ts",
           "functions/src/salesAgreement/salesAgreementReadService.ts"
@@ -962,7 +967,7 @@
           "field-ops-app-vite/src/metadata/definitions/salesAgreement.js",
           "field-ops-app-vite/src/navigation/navConfig.js"
         ],
-        "serverReferenceCount": 9,
+        "serverReferenceCount": 10,
         "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
@@ -991,6 +996,7 @@
           "functions/src/eosCommercial/myCommercialCapabilities.ts",
           "functions/src/eosCommercial/reads/commercialReadKernel.ts",
           "functions/src/eosExperience/myWork.ts",
+          "functions/src/eosExperience/principalDisplayNames.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosWorkforce/reads/employeeResponsibilityReads.ts",
           "functions/src/salesOrder/salesOrderReadService.ts"
@@ -1008,7 +1014,7 @@
           "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx",
           "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
         ],
-        "serverReferenceCount": 10,
+        "serverReferenceCount": 11,
         "clientReferenceCount": 11,
         "evidence": "EXPORTED"
       },
@@ -3662,6 +3668,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/recordedAdministrationRolesDelta.ts",
           "functions/src/adminPolicy/truckInventoryActivationDelta.ts",
           "functions/src/catalogMaster/catalogHttp.ts",
           "functions/src/eosExperience/myWork.ts",
@@ -3676,7 +3683,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
         ],
-        "serverReferenceCount": 9,
+        "serverReferenceCount": 10,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },

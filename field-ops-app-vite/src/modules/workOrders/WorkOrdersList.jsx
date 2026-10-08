@@ -1,4 +1,4 @@
-import { useMyWorkOrderCapabilities } from "../../hooks/useMyWorkOrderCapabilities.js";
+import { useMyWorkOrderCapabilities, WORK_ORDER_CREATE_CAPABILITY } from "../../hooks/useMyWorkOrderCapabilities.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { workOrderEntity, workOrderIndexList } from "../../metadata/definitions/workOrder.js";
@@ -164,7 +164,7 @@ export default function WorkOrdersList() {
   // Offered unless the governed Work Order authority positively says this caller cannot create (UI corrections integration):
   // the route itself is gated the same way, and createWorkOrder re-checks workOrder.create on the server.
   const myWorkOrderCapabilities = useMyWorkOrderCapabilities();
-  const canOfferCreate = !(myWorkOrderCapabilities.status === "ready" && !myWorkOrderCapabilities.has("workOrder.create"));
+  const canOfferCreate = !(myWorkOrderCapabilities.status === "ready" && !myWorkOrderCapabilities.has(WORK_ORDER_CREATE_CAPABILITY));
   const actions = canOfferCreate ? (
     <Link to="/service/work-orders/new">
       <Button variant="primary">New Work Order</Button>

@@ -161,7 +161,7 @@ const FinancialsAudit = lazy(() => import("./modules/financials/FinancialsAudit.
 const FinancialsReports = lazy(() => import("./modules/financials/FinancialsReports.jsx"));
 const FinancialsGovernance = lazy(() => import("./modules/financials/FinancialsGovernance.jsx"));
 import FailureState from "./shared/ui/FailureState";
-import { useMyWorkOrderCapabilities } from "./hooks/useMyWorkOrderCapabilities.js";
+import { useMyWorkOrderCapabilities, WORK_ORDER_CREATE_CAPABILITY } from "./hooks/useMyWorkOrderCapabilities.js";
 
 const previewHasPermission = createPermissionPreviewer(
   resolveEffectivePermission,
@@ -960,7 +960,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   const navRole = eosIsNavigationSource ? null : role;
   const eosWorkOrderSurface = eosIsNavigationSource && Boolean(operationalContext?.eosNavigationAuthority?.grants?.("service.workOrders"));
   const myWorkOrderCapabilities = useMyWorkOrderCapabilities({ enabled: eosWorkOrderSurface });
-  const workOrderRoutes = { record: eosWorkOrderSurface, create: eosWorkOrderSurface && myWorkOrderCapabilities.has("workOrder.create") };
+  const workOrderRoutes = { record: eosWorkOrderSurface, create: eosWorkOrderSurface && myWorkOrderCapabilities.has(WORK_ORDER_CREATE_CAPABILITY) };
   const navAllowedLegacyKeys = eosIsNavigationSource ? NO_LEGACY_KEYS : allowedLegacyKeys;
   return (
     // ONE boundary around every route. A lazily-loaded surface that arrives a moment later shows this
@@ -1178,7 +1178,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                   : <Route path="work-orders/new" element={myWorkOrderCapabilities.status === "loading"
                     ? <div className="fo-panel" data-route-state="LOADING"><p className="fo-muted">Checking your Work Order permissions…</p></div>
                     : (
-                      <div className="fo-panel" data-route-refused="workOrder.create">
+                      <div className="fo-panel" data-route-refused={WORK_ORDER_CREATE_CAPABILITY}>
                         <h2>New Work Order</h2>
                         <p className="fo-muted">Creating work orders is not available to you. It requires the Work Order create permission (workOrder.create).</p>
                       </div>
