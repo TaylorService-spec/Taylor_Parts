@@ -122,8 +122,14 @@ describe("Objects → Permissions matrix (redesign)", () => {
     expect(within(container.querySelector(".fo-objmatrix__columns")).getByText("workOrder.selfScheduling.issue")).toBeTruthy();
     expect(table.querySelector("thead th.fo-objmatrix__rolehead")).toBeTruthy();
     expect(table.querySelector("tbody th.fo-objmatrix__role")).toBeTruthy();
-    // Every row and every column align: one cell per action per Role.
-    for (const row of table.querySelectorAll("tbody tr")) expect(row.querySelectorAll("td").length).toBe(BIG.actions.length);
+    // Every row and every column align: one cell per action per Role, plus one explicit cell for each of Create / Read /
+    // Edit / Delete the Object has NO action for (Phase 4, finding P02) -- here Edit and Delete.
+    for (const row of table.querySelectorAll("tbody tr")) expect(row.querySelectorAll("td").length).toBe(BIG.actions.length + 2);
+    expect([...table.querySelectorAll("thead tr:last-child th")].map((th) => th.querySelector(".fo-objmatrix__colname")?.textContent ?? th.textContent))
+      .toEqual(["Security Role", "Create", "Read", "Edit", "Delete", "Dispatch", "Issue Scheduling Link"]);
+    expect([...table.querySelectorAll("thead tr.fo-objmatrix__bands th")].map((th) => [th.textContent, th.colSpan]))
+      .toEqual([["Object Access", 4], ["Business Actions", 2]]);
+    expect(screen.getByRole("img", { name: "General Manager — Delete: Not Available, Work Orders has no Delete action" })).toBeTruthy();
     MUTATIONS.forEach((m) => expect(api[m]).not.toHaveBeenCalled());
   });
 

@@ -9062,3 +9062,7 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
    escapes the matrix's scroll region and widens the page on a phone. */
 .fo-objmatrix__table .fo-sr-only { position: static; display: inline-block; }
 .fo-sortable-th .fo-sr-only { position: static; display: inline-block; }
+
+/* Permissions matrix bands (approved IA, Phase 4): Object Access / Business Actions / Administration, named once. */
+.fo-objmatrix__bands th { font-size: var(--font-size-xs); letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-secondary);
+  text-align: left; border-bottom: 2px solid var(--color-border); }

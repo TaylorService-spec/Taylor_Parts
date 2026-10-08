@@ -7641,3 +7641,13 @@ This entry adds `administration/permissions` → `["administration.objects"]` an
 - **Legacy source** (every environment where `EOS_NAVIGATION_AUTHORITY_READY` is false, production included): Permissions is fail-closed for every role, like Rental (#207) and Analysis (#208). Opening it there would need a new legacy placeholder row, which this decision does not authorize. The matrix therefore stays reachable through Objects in those environments; Phase 2 must not remove it from Objects.
 - **Pins moved on purpose:** Administration subnav 18 → 19; nav tree 90 → 91; the Administration container scope gains `administration/permissions` (it is a door onto a child surface). Legacy-visible sets (admin 75, dispatcher 72) are unchanged.
 - Page Layouts' row lands with its read-only viewer (Phase 5), so no destination exists without a screen.
+
+## #215 — Administration IA Phase 4: Permissions reads as access, then business actions (2026-10-08)
+
+**Decision:** UI-only Phase 4 of the Owner-approved Administration redesign (#211), in the shared permission matrix (`ObjectAuthorityMatrix`, rendered on Objects and on Permissions) and the per-cell grant controls.
+
+- **Bands and order (P01):** columns are ordered Create, Read, Edit, Delete, then business actions, then administration actions, under *Object Access* / *Business Actions* / *Administration* band headings. Ordering is stable within a kind; the grid's cell indexes, bulk plans and every mutation are unchanged.
+- **Unavailable verbs are shown, not omitted (P02):** for each of Create / Read / Edit / Delete an Object has no action for, the matrix shows a column marked *Not Available* with the reason "EOS has no Delete action for Work Orders". It is never a control, never part of a bulk plan, and invents no grant.
+- **No dead condition form (P03):** when the server's condition vocabulary has answered and no kind applies to the capability, *Set Condition* is disabled with "No supported conditions for this action." While the vocabulary is loading or unavailable the opener stays and the form explains why, as before; an active condition can still be replaced or retired.
+
+Not changed: state words (Granted / Granted (Conditional) / Not Granted / Not Available), capability keys behind the column legend, server enforcement. G6 (field-level access) remains an open Owner decision and is not represented as configurable.

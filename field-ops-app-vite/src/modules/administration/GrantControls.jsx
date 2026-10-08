@@ -136,6 +136,9 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, capabili
   const built = condition.kind ? buildCondition(spec, condition) : null;
   const reasonText = statedReason(reason);
   const ready = Boolean(reasonText) && (mode === "setCondition" ? Boolean(built) : mode === "grant" ? (!condition.kind || Boolean(built)) : true);
+  // An active condition can still be replaced or retired; only a NEW condition with nothing applicable is refused up front.
+  const noConditionApplies = !active && vocabulary?.status === "ready" && Array.isArray(vocabulary.kinds)
+    && !vocabulary.kinds.some((k) => kindApplies(k, capabilityKey));
 
   const submit = async (event) => {
     event.preventDefault();
@@ -162,9 +165,21 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, capabili
         ) : (
           <Button type="button" variant="secondary" onClick={() => open("grant")} aria-label={`Grant ${actionKey} to ${roleKey}`}>Grant</Button>
         )}
-        <Button type="button" variant="secondary" onClick={() => open("setCondition")} aria-label={`Set condition on ${actionKey} for ${roleKey}`}>
-          {active ? "Replace Condition" : "Set Condition"}
-        </Button>
+        {/* Finding P03: when the server's vocabulary has answered and NO kind applies to this capability, the opener is
+            disabled with the reason, instead of opening a form whose every choice is disabled. While the vocabulary is
+            loading or unavailable the opener stays, and the form says why (vocabularyUnavailableWords). */}
+        {noConditionApplies ? (
+          <>
+            <Button type="button" variant="secondary" disabled aria-describedby={`${roleKey}-${actionKey}-nocondition`} aria-label={`Set condition on ${actionKey} for ${roleKey}`}>
+              Set Condition
+            </Button>
+            <span id={`${roleKey}-${actionKey}-nocondition`} className="fo-muted">No supported conditions for this action.</span>
+          </>
+        ) : (
+          <Button type="button" variant="secondary" onClick={() => open("setCondition")} aria-label={`Set condition on ${actionKey} for ${roleKey}`}>
+            {active ? "Replace Condition" : "Set Condition"}
+          </Button>
+        )}
         {active ? (
           <Button type="button" variant="secondary" onClick={() => open("retireCondition")} aria-label={`Retire condition on ${actionKey} for ${roleKey}`}>Retire Condition</Button>
         ) : null}
