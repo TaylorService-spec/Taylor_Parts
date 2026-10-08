@@ -141,7 +141,7 @@ test("NO C/R/E/D MUTATION CONTROL REMAINS: the legacy matrix is read-only and sa
 
 test("the ENFORCED Security Role detail leads the Roles screen", () => {
   assert.match(SURFACES, /import SecurityRoleDetail from "\.\/SecurityRoleDetail\.jsx";/);
-  assert.match(SURFACES, /<SecurityRoleDetail roleKey=\{selected\.key\} \/>/);
+  assert.match(SURFACES, /<SecurityRoleDetail (?:key=\{selected\.key\} )?roleKey=\{selected\.key\} \/>/);
   // #210: the unenforced legacy matrix no longer renders beside the enforced detail at all -- one truth per screen.
   assert.equal(SURFACES.includes("<LegacyRoleMatrix"), false, "the legacy matrix is not mounted");
 });
