@@ -240,10 +240,13 @@ test("PRODUCTION: the one destination this branch adds is invisible under the le
   // legacy-visible pins, which do not move).
   // 88 -> 89: Rental (#207) adds the governed Rental destination (rental.workspace only -- invisible under the legacy source too).
   // 89 -> 90: Analysis (#208) adds the governed Analysis destination (analysis.workspace only -- invisible under the legacy source).
-  assert.equal(destinations().length, 90, "the nav tree size moved by something other than Sales Agreements, the #204 configuration destinations, Rental and Analysis");
+  // 90 -> 91: Administration > Permissions (Owner decision 2026-10-08, DECISIONS #212) -- a second door onto
+  // administration.objects, governed-source only, invisible under the legacy source like Rental and Analysis.
+  assert.equal(destinations().length, 91, "the nav tree size moved by something other than Sales Agreements, the #204 configuration destinations, Rental, Analysis and Administration Permissions");
   for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN, "owner", "salesperson", null]) {
     assert.equal(isNavItemVisible(itemAt("rental/rental"), role, keysFor(role), legacy), false, `Rental opened for the legacy role "${role}"`);
     assert.equal(isNavItemVisible(itemAt("analysis/analysis"), role, keysFor(role), legacy), false, `Analysis opened for the legacy role "${role}"`);
+    assert.equal(isNavItemVisible(itemAt("administration/permissions"), role, keysFor(role), legacy), false, `Administration Permissions opened for the legacy role "${role}"`);
   }
   assert.equal(MAIN_B6A36B15_LEGACY_VISIBLE.admin.includes(added), false);
   assert.equal(visibleUnderLegacy(ROLES.ADMIN).includes(added), false);
@@ -523,4 +526,22 @@ test("TRANSITION: purchasing/suppliers is the ONE row that changed kind, and not
   const item = destinations().find(([key]) => key === "purchasing/suppliers")[1];
   assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority([]))), false, "visible without the surface");
   assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority(["purchasing.suppliers"]))), true, "the surface opens it");
+});
+
+// ADMINISTRATION > PERMISSIONS (Owner decision 2026-10-08, DECISIONS #212): the governed source opens it on
+// administration.objects and NOTHING else -- not another Administration surface, not a role literal.
+// App.jsx emits a destination's route only when this same isNavItemVisible answer is true and a refusal
+// route otherwise, so the direct URL follows the same decision as the rail.
+test("EOS: Administration Permissions opens only on the existing Objects surface", () => {
+  const item = itemAt("administration/permissions");
+  assert.deepEqual(NAV_SURFACE_ACCESS["administration/permissions"], ["administration.objects"]);
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority(["administration.objects"]))), true);
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority([]))), false);
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority(
+    ["administration.users", "administration.rolesPermissions", "administration.workflows", "administration.auditLogs"],
+  ))), false, "another Administration surface opened Permissions");
+  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN, "owner"]) {
+    assert.equal(isNavItemVisible(item, role, keysFor(role), eosContext(eosAuthority([]))), false,
+      `the role literal "${role}" opened Permissions under the governed source`);
+  }
 });

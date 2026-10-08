@@ -86,6 +86,24 @@ describe("AppRail active Service group (Fix 3)", () => {
   });
 });
 
+// Approved Administration IA (Owner, 2026-10-08): business destinations first, configuration
+// grouped under System & Integrations, and the group marked current for one of its routes.
+describe("AppRail Administration groups", () => {
+  it("renders the approved order and marks System & Integrations active for Audit Logs", () => {
+    render(
+      <MemoryRouter initialEntries={["/administration/audit-logs"]}>
+        <AppRail role={ROLES.ADMIN} allowedLegacyKeys={ROLE_NAV_ACCESS[ROLES.ADMIN]} activeDomainPath="administration" />
+      </MemoryRouter>,
+    );
+    const panel = document.getElementById("fo-rail-administration");
+    const topLevel = [...panel.querySelectorAll(":scope > a")].map((a) => a.textContent);
+    expect(topLevel).toEqual(["Overview", "Employees & Users", "Objects", "Roles", "Workflows"]);
+    const sys = screen.getByRole("group", { name: "System & Integrations" });
+    expect(sys.getAttribute("aria-current")).toBe("true");
+    expect(sys.textContent).toContain("Audit Logs");
+  });
+});
+
 // A real in-app navigation (via useNavigate, same MemoryRouter/history the
 // whole time) from one Service item to another WITHOUT leaving the domain --
 // MemoryRouter only honors `initialEntries` on first mount, so re-rendering

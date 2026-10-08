@@ -234,7 +234,7 @@ test("no existing domain's routes changed — every non-financials domain path s
     "/administration/overview", "/administration/users", "/administration/roles-permissions",
     // Workflows joined 2026-09-08 -- the third axis of Administration, beside Objects (what data
     // exists) and Roles & Permissions (who may touch it).
-    "/administration/objects", "/administration/workflows",
+    "/administration/objects", "/administration/permissions", "/administration/workflows",
     // UI corrections §15 (2026-10-08): the retired Permission Preview item is the hidden NONPROD QA tool now; its old
     // address redirects to Users from App.jsx.
     "/administration/qa/principal-inspection", "/administration/vehicles",

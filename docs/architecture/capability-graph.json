@@ -18,7 +18,7 @@
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
     "callableExports": 31,
-    "destinations": 99,
+    "destinations": 101,
     "destinationsHidden": 20,
     "guides": 0,
     "registerEntries": 18,
@@ -5803,7 +5803,7 @@
     },
     {
       "key": "users",
-      "label": "Users",
+      "label": "Employees & Users",
       "path": "users",
       "legacyKey": null,
       "navHidden": false,
@@ -5812,7 +5812,7 @@
     },
     {
       "key": "rolesPermissions",
-      "label": "Roles & Permissions",
+      "label": "Roles",
       "path": "roles-permissions",
       "legacyKey": null,
       "navHidden": false,
@@ -5823,6 +5823,15 @@
       "key": "objects",
       "label": "Objects",
       "path": "objects",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "permissions",
+      "label": "Permissions",
+      "path": "permissions",
       "legacyKey": null,
       "navHidden": false,
       "future": false,
@@ -6029,6 +6038,15 @@
     {
       "key": "integrity",
       "label": "Integrity & Governance",
+      "path": null,
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "systemIntegrations",
+      "label": "System & Integrations",
       "path": null,
       "legacyKey": null,
       "navHidden": false,
