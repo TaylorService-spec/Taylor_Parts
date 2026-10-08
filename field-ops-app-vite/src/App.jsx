@@ -82,6 +82,7 @@ const AdminSystemConfiguration = lazy(() => import("./modules/administration/Adm
 const AdminSalesConfiguration = lazy(() => import("./modules/administration/AdminSalesConfiguration"));
 const AdminDataImport = lazy(() => import("./modules/administration/AdminDataImport"));
 const AdminObjects = lazy(() => import("./modules/administration/AdminObjects.jsx"));
+const AdminPermissions = lazy(() => import("./modules/administration/AdminPermissions.jsx"));
 const AdminWorkflows = lazy(() => import("./modules/administration/AdminWorkflows.jsx"));
 // Administration -> Users -> Functional Roles (lane FR): the tenant catalog of business responsibilities. It has no
 // navigation item of its own (no server Administration surface declares it yet); it is reached from the Users page
@@ -479,6 +480,10 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // AppRoutes below, where a redirect can be a route rather than a nav item pretending to be one.
   if (domain.key === "administration" && item.key === "objects") {
     return <AdminObjects />;
+  }
+  // Permissions -- the role-first authority matrix on its own destination (DECISIONS #212).
+  if (domain.key === "administration" && item.key === "permissions") {
+    return <AdminPermissions />;
   }
   // Workflows -- the business processes, beside Objects and Roles & Permissions because they are the
   // third axis of the same model: Objects is what data exists, Roles & Permissions is who may touch

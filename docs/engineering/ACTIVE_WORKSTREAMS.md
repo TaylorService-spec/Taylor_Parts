@@ -27,7 +27,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
-- Capability:          Administration IA redesign — Phase 1 navigation regroup (DECISIONS #211)
+- Capability:          Administration IA redesign — Phase 1 navigation regroup (DECISIONS #211) + Permissions destination (#212, branch `feat/admin-permissions-destination`, stacked)
 - Agent/session:       Claude (Claude Code, 2026-10-08) · Role: builder
 - Branch / worktree:   `feat/admin-ia-nav-regroup` · `D:/Taylor_Parts-admin-ia`
 - Base commit:         `9bb53a3f` (origin/main)

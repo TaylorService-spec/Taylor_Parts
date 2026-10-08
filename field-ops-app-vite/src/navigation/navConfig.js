@@ -662,6 +662,12 @@ export const NAV_DOMAINS = [
       // Permissions because it answers the other half of the same question: that screen is
       // about which PEOPLE hold a role; this one is what a ROLE can do to each object.
       { key: "objects", label: "Objects", path: "objects" },
+      // Permissions -- the role-first authority matrix on its own destination (approved IA; Owner
+      // decision 2026-10-08, DECISIONS #212). Its ONLY authority is the NAV_SURFACE_ACCESS row onto
+      // administration.objects: no legacyKey, no capabilityAccess, no placeholder row. So under the
+      // legacy source (every environment where EOS_NAVIGATION_AUTHORITY_READY is false) it is
+      // fail-closed for everyone, and the matrix stays reachable there through Objects.
+      { key: "permissions", label: "Permissions", path: "permissions" },
       // Workflows -- the third axis of the Administration model. Objects says what data exists,
       // Roles & Permissions says who may touch it, and this says what may be DONE and by whom.
       // Deliberately its own destination rather than a tab under Roles: a workflow binding grants
@@ -828,6 +834,9 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   // and the two would then be free to disagree.
   "administration/rolesPermissions": ["administration.rolesPermissions"],
   "administration/objects": ["administration.objects"],
+  // OWNER DECISION 2026-10-08 (Administration navigation authority, DECISIONS #212): Permissions is a
+  // second door onto the SAME governed surface as Objects. No new surface, capability or grant.
+  "administration/permissions": ["administration.objects"],
   "administration/workflows": ["administration.workflows"],
   "administration/permissionPreview": ["administration.permissionPreview"],
   // The index is the CONTAINER surface, and it is not a door of its own: the server grants
@@ -1865,7 +1874,7 @@ export const ADMINISTRATION_NAV_GROUPS = [
 
 // Display order of the top-level (ungrouped) Administration destinations. Items not listed keep
 // their subnav order after these.
-export const ADMINISTRATION_NAV_ORDER = ["overview", "users", "objects", "rolesPermissions", "workflows"];
+export const ADMINISTRATION_NAV_ORDER = ["overview", "users", "objects", "rolesPermissions", "permissions", "workflows"];
 
 export function buildAdministrationNavGroups(visibleItems = []) {
   const { groups, ungrouped } = buildNavGroups(ADMINISTRATION_NAV_GROUPS, visibleItems);
