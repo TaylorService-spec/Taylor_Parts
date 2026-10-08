@@ -131,6 +131,8 @@ export function RolesPermissionsSurface() {
   const [editingRole, setEditingRole] = useState(false);
   // DEEP LINK (?role=<key>, from Employee > Workflow responsibilities): pre-selects a Security Role until one is chosen.
   const [linkedRoleKey] = useState(() => readAdminQueryParam("role"));
+  const [query, setQuery] = useState("");
+  const [kind, setKind] = useState("all");
 
   if (!isPolicyApiConfigured()) return null;
 
@@ -143,42 +145,75 @@ export function RolesPermissionsSurface() {
       {roles.status === "loading" && <p className="fo-muted">Reading roles…</p>}
       {roles.status === "failed" && <p className="fo-warning">{roles.error?.description}</p>}
 
-      {roles.status === "ready" && (
-        <>
-          <div className="fo-pill-row" role="group" aria-label="Select a role">
-            {roles.data.map((role) => (
-              <Button
-                key={role.id}
-                variant={role.id === selected?.id ? "primary" : "secondary"}
-                onClick={() => { setRoleId(role.id === selected?.id ? "" : role.id); setEditingRole(false); }}
-                aria-pressed={role.id === selected?.id}
-              >
-                {identifierLabel(role.key, role.name)}{role.protected ? " · Protected" : ""}
-              </Button>
-            ))}
-          </div>
+      {roles.status === "ready" && (() => {
+        // MASTER-DETAIL (approved IA, Phase 3, finding R01): a searchable list beside the selected Role,
+        // instead of every Role as a wrapping wall of buttons above it. Same listRoles read.
+        const needle = query.trim().toLowerCase();
+        const shown = roles.data
+          .filter((r) => kind === "all" || (kind === "protected" ? r.protected : !r.protected))
+          .filter((r) => !needle || `${identifierLabel(r.key, r.name)} ${r.description ?? ""}`.toLowerCase().includes(needle));
+        return (
+          <>
+            {/* The three ideas this screen keeps apart. Only the Security Role grants anything here. */}
+            <p className="fo-muted">
+              A <strong>Security Role</strong> is what someone may do. A <strong>Job Role</strong> is what their job is;
+              it shapes their pages and grants nothing. A <strong>permission</strong> is one action EOS enforces, such
+              as Dispatch Work Order.
+            </p>
+            <div className="fo-master-detail">
+              <div>
+                <label className="fo-form-field">
+                  <span>Search Security Roles</span>
+                  <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name or description" />
+                </label>
+                <div className="fo-chip-row" role="group" aria-label="Role type">
+                  {[["all", "All"], ["protected", "Protected"], ["other", "Not protected"]].map(([id, label]) => (
+                    <Button key={id} size="sm" variant={kind === id ? "primary" : "secondary"} aria-pressed={kind === id} onClick={() => setKind(id)}>
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="fo-muted">{shown.length} of {roles.data.length} roles</p>
+                <ul className="fo-master-detail__list" role="group" aria-label="Select a role">
+                  {shown.map((role) => (
+                    <li key={role.id}>
+                      <Button
+                        variant={role.id === selected?.id ? "primary" : "secondary"}
+                        onClick={() => { setRoleId(role.id === selected?.id ? "" : role.id); setEditingRole(false); }}
+                        aria-pressed={role.id === selected?.id}
+                      >
+                        {identifierLabel(role.key, role.name)}{role.protected ? " · Protected" : ""}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+                {shown.length === 0 && <p className="fo-muted">No Security Role matches &ldquo;{query}&rdquo;.</p>}
+                <Button variant="secondary" onClick={() => setCreating((v) => !v)} aria-expanded={creating}>
+                  {creating ? "Cancel" : "Create a Role"}
+                </Button>
+                {creating && <CreateRoleForm onDone={() => { setCreating(false); roles.reload(); }} mutate={roles.mutate} />}
+              </div>
 
-          <Button variant="secondary" onClick={() => setCreating((v) => !v)} aria-expanded={creating}>
-            {creating ? "Cancel" : "Create a Role"}
-          </Button>
-          {creating && <CreateRoleForm onDone={() => { setCreating(false); roles.reload(); }} mutate={roles.mutate} />}
-
-          {selected && (
-            <>
-              <Button variant="secondary" onClick={() => setEditingRole((v) => !v)} aria-expanded={editingRole}>
-                {editingRole ? "Cancel" : "Edit Role Details"}
-              </Button>
-              {editingRole && (
-                <EditRoleForm role={selected} mutate={roles.mutate} onDone={() => setEditingRole(false)} />
-              )}
-              {/* PRIMARY: the enforced Security Role -- the rows the server evaluator reads. */}
-              <SecurityRoleDetail roleKey={selected.key} />
-              {/* #210: the legacy unenforced C/R/E/D matrix no longer renders -- it is not what the server enforces. */}
-            </>
-          )}
-          {!selected && <p className="fo-muted">Choose a Security Role to see its holders, its Object actions and its decision history.</p>}
-        </>
-      )}
+              <div>
+                {selected && (
+                  <>
+                    <Button variant="secondary" onClick={() => setEditingRole((v) => !v)} aria-expanded={editingRole}>
+                      {editingRole ? "Cancel" : "Edit Role Details"}
+                    </Button>
+                    {editingRole && (
+                      <EditRoleForm role={selected} mutate={roles.mutate} onDone={() => setEditingRole(false)} />
+                    )}
+                    {/* PRIMARY: the enforced Security Role -- the rows the server evaluator reads. */}
+                    <SecurityRoleDetail key={selected.key} roleKey={selected.key} />
+                    {/* #210: the legacy unenforced C/R/E/D matrix no longer renders -- it is not what the server enforces. */}
+                  </>
+                )}
+                {!selected && <p className="fo-muted">Choose a Security Role to see its permissions, its employees and its history.</p>}
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </section>
   );
 }
@@ -414,47 +449,78 @@ const OBJECT_COLUMNS = Object.freeze({
   deletable: { value: (o) => (o.supportsDelete ? "Yes" : "No") },
 });
 
+// The object catalog (approved Administration IA, Phase 2): searchable by business name, with keys
+// and other technical identifiers behind "Show technical details" rather than leading every row.
 export function ObjectsSurface() {
   const objects = usePolicyStore("listObjects");
   const [openKey, setOpenKey] = useState(null);
+  const [query, setQuery] = useState("");
+  const [technical, setTechnical] = useState(false);
   const { sort, toggle, sorted } = useTableSort({ rows: objects.status === "ready" ? objects.data : null, columns: OBJECT_COLUMNS });
+  const needle = query.trim().toLowerCase();
+  const visible = needle
+    ? sorted.filter((o) => `${o.label ?? ""} ${o.labelPlural ?? ""} ${o.description ?? ""} ${o.key}`.toLowerCase().includes(needle))
+    : sorted;
 
   if (!isPolicyApiConfigured()) return null;
 
   return (
     <section className="fo-panel" aria-label="Objects">
-      <h3>Objects <span className="fo-muted">· this tenant&rsquo;s stored configuration</span></h3>
+      <h3>Object catalog <span className="fo-muted">· the business records EOS keeps</span></h3>
       {objects.status === "loading" && <p className="fo-muted">Reading objects…</p>}
       {objects.status === "failed" && <p className="fo-warning">{objects.error?.description}</p>}
 
       {objects.status === "ready" && (
-        <table className="fo-table">
-          <thead>
-            <tr>
-              <SortableHeader columnKey="object" label="Object" sort={sort} onSort={toggle} />
-              <SortableHeader columnKey="key" label="Key" sort={sort} onSort={toggle} />
-              <SortableHeader columnKey="origin" label="Origin" sort={sort} onSort={toggle} />
-              <SortableHeader columnKey="deletable" label="Deletable" sort={sort} onSort={toggle} />
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((object) => (
-              <ObjectRows
-                key={object.id}
-                object={object}
-                open={object.key === openKey}
-                onToggleOpen={() => setOpenKey(object.key === openKey ? null : object.key)}
-                onChanged={objects.reload}
-              />
-            ))}
-          </tbody>
-        </table>
+        <>
+          <div className="fo-form-row">
+            <label className="fo-form-field">
+              <span>Search Objects</span>
+              <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Accounts, work order, inventory…" />
+            </label>
+            <label className="fo-form-field">
+              <span>Show Technical Details</span>
+              <input type="checkbox" checked={technical} onChange={(e) => setTechnical(e.target.checked)} />
+            </label>
+          </div>
+          <p className="fo-muted">
+            {visible.length} of {sorted.length} objects. Select one to see its fields and add a custom field.
+          </p>
+          <div className="fo-table-scroll"><table className="fo-table">
+            <thead>
+              <tr>
+                <SortableHeader columnKey="object" label="Object" sort={sort} onSort={toggle} />
+                {technical && <SortableHeader columnKey="key" label="Key" sort={sort} onSort={toggle} />}
+                <SortableHeader columnKey="origin" label="Origin" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="deletable" label="Records Can Be Deleted" sort={sort} onSort={toggle} />
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((object) => (
+                <ObjectRows
+                  key={object.id}
+                  object={object}
+                  objects={objects.data}
+                  technical={technical}
+                  open={object.key === openKey}
+                  onToggleOpen={() => setOpenKey(object.key === openKey ? null : object.key)}
+                  onChanged={objects.reload}
+                />
+              ))}
+            </tbody>
+          </table></div>
+          {visible.length === 0 && (
+            <p className="fo-muted">
+              No object matches &ldquo;{query}&rdquo;. Objects come from the governed catalog; new objects
+              can&rsquo;t be created here.
+            </p>
+          )}
+        </>
       )}
     </section>
   );
 }
 
-function ObjectRows({ object, open, onToggleOpen, onChanged }) {
+function ObjectRows({ object, objects, technical, open, onToggleOpen, onChanged }) {
   const detail = usePolicyStore("readObjectWithFields", open ? { objectKey: object.key } : null, { enabled: open });
   const [editing, setEditing] = useState(false);
   const [result, setResult] = useState(null);
@@ -467,14 +533,15 @@ function ObjectRows({ object, open, onToggleOpen, onChanged }) {
             {open ? "▾" : "▸"} {object.label}
           </Button>
         </td>
-        <td className="fo-muted"><code>{object.key}</code></td>
+        {technical && <td className="fo-muted"><code>{object.key}</code></td>}
         <td className="fo-muted">{titleCase(object.origin)}</td>
         <td className="fo-muted">{object.supportsDelete ? "Yes" : "No"}</td>
       </tr>
 
       {open && (
         <tr className="fo-row-nested">
-          <td colSpan={4}>
+          <td colSpan={technical ? 4 : 3}>
+            {object.description && <p className="fo-muted">{object.description}</p>}
             <div className="fo-panel--nested">
               <Button variant="secondary" onClick={() => setEditing((v) => !v)} aria-expanded={editing}>
                 {editing ? "Cancel" : "Edit Object Details"}
@@ -497,8 +564,10 @@ function ObjectRows({ object, open, onToggleOpen, onChanged }) {
                     fields={detail.data.fields}
                     mutate={detail.mutate}
                     onResult={setResult}
+                    technical={technical}
+                    objects={objects}
                   />
-                  <CreateFieldForm objectKey={object.key} mutate={detail.mutate} onResult={setResult} />
+                  <CreateFieldForm objectKey={object.key} objects={objects} mutate={detail.mutate} onResult={setResult} />
                 </>
               )}
             </div>
@@ -568,17 +637,19 @@ const FIELD_COLUMNS = Object.freeze({
   lifecycle: { value: (f) => titleCase(f.lifecycle) },
 });
 
-function FieldTable({ fields, mutate, onResult }) {
+function FieldTable({ fields, mutate, onResult, technical = false, objects = [] }) {
+  // A Reference field names its target by the target's business label; the key only with technical details on.
+  const targetLabel = (key) => objects.find((o) => o.key === key)?.label ?? titleCase(key);
   const [editingId, setEditingId] = useState(null);
   const { sort, toggle, sorted } = useTableSort({ rows: fields, columns: FIELD_COLUMNS });
   const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
   return (
     <>
-      <table className="fo-table">
+      <div className="fo-table-scroll"><table className="fo-table">
         <thead>
           <tr>
-            {header("field", "Field")}{header("key", "Key")}{header("type", "Type")}{header("origin", "Origin")}{header("required", "Required")}
-            {header("sensitivity", "Sensitivity")}{header("lifecycle", "Lifecycle")}<th />
+            {header("field", "Field")}{technical && header("key", "Key")}{header("type", "Type")}{header("origin", "Origin")}{header("required", "Required")}
+            {header("sensitivity", "Sensitivity")}{header("lifecycle", "Status")}<th />
           </tr>
         </thead>
         <tbody>
@@ -589,10 +660,10 @@ function FieldTable({ fields, mutate, onResult }) {
             <Fragment key={field.id}>
               <tr>
                 <td>{field.label}</td>
-                <td className="fo-muted"><code>{field.key}</code></td>
+                {technical && <td className="fo-muted"><code>{field.key}</code></td>}
                 <td className="fo-muted">
                   {titleCase(field.dataType)}
-                  {field.referenceTo ? <span className="fo-muted"> → {field.referenceTo}</span> : null}
+                  {field.referenceTo ? <span className="fo-muted"> → {technical ? field.referenceTo : targetLabel(field.referenceTo)}</span> : null}
                   {(field.allowedValues ?? []).length > 0
                     ? <span className="fo-muted"> ({field.allowedValues.join(", ")})</span>
                     : null}
@@ -614,13 +685,13 @@ function FieldTable({ fields, mutate, onResult }) {
                       Edit
                     </Button>
                   ) : (
-                    <span className="fo-muted" title="A system field's definition is protected">Protected</span>
+                    <span className="fo-muted" title="Defined by EOS: its name and settings can't be changed here">System field</span>
                   )}
                 </td>
               </tr>
               {editingId === field.id && (
                 <tr className="fo-row-nested">
-                  <td colSpan={8}>
+                  <td colSpan={technical ? 8 : 7}>
                     <EditFieldForm
                       field={field}
                       mutate={mutate}
@@ -633,10 +704,10 @@ function FieldTable({ fields, mutate, onResult }) {
             </Fragment>
           ))}
         </tbody>
-      </table>
+      </table></div>
       <p className="fo-muted">
-        A system field&rsquo;s definition is fixed — its POLICY is still fully configurable from
-        Roles &amp; Permissions. Custom fields are yours to edit.
+        A system field&rsquo;s definition is fixed — who may act on its object is configured in
+        Permissions. Custom fields are yours to edit.
       </p>
     </>
   );
@@ -725,18 +796,32 @@ function EditFieldForm({ field, mutate, onResult, onDone }) {
   );
 }
 
-function CreateFieldForm({ objectKey, mutate, onResult }) {
+// A suggested field key from its business label ("Service Contract" -> "serviceContract"). Only a
+// suggestion: the server validates the key, and the administrator can change it before saving.
+export function suggestFieldKey(label) {
+  const words = String(label ?? "").trim().split(/[^A-Za-z0-9]+/).filter(Boolean);
+  if (words.length === 0) return "";
+  const camel = words.map((w, i) => (i === 0 ? w.toLowerCase() : w[0].toUpperCase() + w.slice(1).toLowerCase())).join("");
+  return /^[0-9]/.test(camel) ? `field${camel}` : camel;
+}
+
+function CreateFieldForm({ objectKey, objects = [], mutate, onResult }) {
   const [draft, setDraft] = useState({
     key: "", label: "", description: "", dataType: "STRING",
     required: false, searchable: false, sortable: false, reportable: false,
     sensitivity: "NORMAL", allowedValues: "", referenceTo: "",
   });
+  // The key follows the label until the administrator edits the key themselves.
+  const [keyEdited, setKeyEdited] = useState(false);
+  const [created, setCreated] = useState(null);
+  const referenceTargets = [...objects].sort((a, b) => (a.label ?? a.key).localeCompare(b.label ?? b.key));
 
   const needsAllowedValues = draft.dataType === "ENUM" || draft.dataType === "ENUM_SET";
   const needsReference = draft.dataType === "REFERENCE";
 
   const submit = async (event) => {
     event.preventDefault();
+    setCreated(null); // a previous success must not sit beside a new refusal
     const outcome = await mutate("createCustomField", {
       objectKey,
       key: draft.key,
@@ -755,6 +840,8 @@ function CreateFieldForm({ objectKey, mutate, onResult }) {
     });
     onResult(outcome);
     if (outcome.ok) {
+      setCreated(draft.label);
+      setKeyEdited(false);
       setDraft({
         key: "", label: "", description: "", dataType: "STRING",
         required: false, searchable: false, sortable: false, reportable: false,
@@ -778,14 +865,31 @@ function CreateFieldForm({ objectKey, mutate, onResult }) {
   return (
     <form className="fo-form" onSubmit={submit} aria-label="Create a custom field">
       <h4>Add a Custom Field</h4>
+      {created && (
+        <p className="fo-muted" role="status">
+          <strong>{created}</strong> was created as a <strong>Draft</strong> custom field. It follows this
+          object&rsquo;s access. It does not store values or appear on a record page yet; both need
+          separately approved capabilities.
+        </p>
+      )}
       <div className="fo-form-row">
         <label className="fo-form-field">
-          <span>Key</span>
-          <input value={draft.key} onChange={(e) => setDraft({ ...draft, key: e.target.value })} placeholder="loyaltyTier" required />
+          <span>Label</span>
+          <input
+            value={draft.label}
+            onChange={(e) => setDraft({ ...draft, label: e.target.value, key: keyEdited ? draft.key : suggestFieldKey(e.target.value) })}
+            placeholder="Loyalty Tier"
+            required
+          />
         </label>
         <label className="fo-form-field">
-          <span>Label</span>
-          <input value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} placeholder="Loyalty Tier" required />
+          <span>Key</span>
+          <input
+            value={draft.key}
+            onChange={(e) => { setKeyEdited(true); setDraft({ ...draft, key: e.target.value }); }}
+            placeholder="loyaltyTier"
+            required
+          />
         </label>
         <label className="fo-form-field">
           <span>Type</span>
@@ -819,15 +923,27 @@ function CreateFieldForm({ objectKey, mutate, onResult }) {
       )}
       {needsReference && (
         <div className="fo-form-row">
-          <label className="fo-form-field">
-            <span>References Object Key</span>
-            <input
-              value={draft.referenceTo}
-              onChange={(e) => setDraft({ ...draft, referenceTo: e.target.value })}
-              placeholder="account"
-              required
-            />
-          </label>
+          {/* Chosen by business name from the catalog this screen already read (O04). The server still
+              validates the target; free text is kept only if the catalog could not be read. */}
+          {referenceTargets.length > 0 ? (
+            <label className="fo-form-field">
+              <span>Links To</span>
+              <select value={draft.referenceTo} onChange={(e) => setDraft({ ...draft, referenceTo: e.target.value })} required>
+                <option value="">Choose an object…</option>
+                {referenceTargets.map((o) => <option key={o.key} value={o.key}>{o.label ?? titleCase(o.key)}</option>)}
+              </select>
+            </label>
+          ) : (
+            <label className="fo-form-field">
+              <span>References Object Key</span>
+              <input
+                value={draft.referenceTo}
+                onChange={(e) => setDraft({ ...draft, referenceTo: e.target.value })}
+                placeholder="account"
+                required
+              />
+            </label>
+          )}
         </div>
       )}
 

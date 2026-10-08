@@ -7642,6 +7642,26 @@ This entry adds `administration/permissions` → `["administration.objects"]` an
 - **Pins moved on purpose:** Administration subnav 18 → 19; nav tree 90 → 91; the Administration container scope gains `administration/permissions` (it is a door onto a child surface). Legacy-visible sets (admin 75, dispatcher 72) are unchanged.
 - Page Layouts' row lands with its read-only viewer (Phase 5), so no destination exists without a screen.
 
+## #213 — Administration IA Phase 2: Objects opens with the object catalog (2026-10-08)
+
+**Decision:** UI-only Phase 2 of the Owner-approved Administration redesign (#211). Where a policy store is configured, Administration → Objects now leads with the **Object catalog** (searchable by business name) and follows it with a **Permissions** section holding the same `ObjectAuthorityMatrix` and `ObjectActionSecurityPanel` it always mounted. A `?object=` deep link puts the Permissions section first, because it arrives to change permissions. The By Role / By Object toggle is no longer offered in that mode: both views rendered the same three components (review finding O02). The not-configured mode (code reference grid, role picker, By Object diagnostics) is unchanged.
+
+Within the catalog: object and field keys sit behind **Show Technical Details** (O03); System fields read "System field" instead of "Protected"; a Reference custom field picks its target from the catalog by business name instead of a free-text object key, with the free-text input kept only if the catalog could not be read (O04); the field key is suggested from the label and stays editable; a successful create states that the field is a **Draft** that follows the object's access and does not yet store values or appear on a page (G5, G1).
+
+**Why the matrix stays on Objects:** the separate Permissions destination (#212) is governed-source only, so in legacy-source environments Objects is the only door to the matrix.
+
+**No backend change:** same reads (`listObjects`, `readObjectWithFields`) and commands (`updateObjectMetadata`, `createCustomField`, `updateCustomFieldMetadata`); the server validates the field key and requires a reference target to be named (it does not check that the target exists -- the picker only offers objects from the catalog).
+
+## #214 — Administration IA Phase 3: Security Roles as a searchable master-detail (2026-10-08)
+
+**Decision:** UI-only Phase 3 of the Owner-approved Administration redesign (#211).
+- **Roles list (R01):** the wrapping wall of Role buttons becomes a searchable list (name and description) with an All / Protected / Not protected filter and a count, beside the selected Role's detail (`.fo-master-detail`, stacking under 900 px). Same `listRoles` read; the `?role=` deep link still pre-selects.
+- **Role detail (R02):** `SecurityRoleDetail` opens on **Objects & Permissions**; **Employees** (holders, removal with reason, assign) and **History** (assignment history and decision history) are tabs. Every read, mutation, reason requirement and server refusal is unchanged.
+- **Presentation (R03):** holder and Role keys sit behind *Show Technical Details*; "Since" and assignment-history times use the shared `formatDateOnly` / `formatTimestamp` instead of raw UTC strings; scope reads "Applies To".
+- **Kept distinct, not redesigned:** a one-line explainer separates Security Role (what someone may do), Job Role (what their job is; grants nothing) and permission (one enforced action). No authority model changed.
+
+Out of scope and not attempted: resolving "By" actor ids to names in assignment history (needs a read the screen does not have today).
+
 ## #215 — Administration IA Phase 4: Permissions reads as access, then business actions (2026-10-08)
 
 **Decision:** UI-only Phase 4 of the Owner-approved Administration redesign (#211), in the shared permission matrix (`ObjectAuthorityMatrix`, rendered on Objects and on Permissions) and the per-cell grant controls.

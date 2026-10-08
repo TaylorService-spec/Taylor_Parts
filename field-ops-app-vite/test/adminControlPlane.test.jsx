@@ -271,17 +271,22 @@ const DECISIONS = [
 ];
 
 describe("Security Role detail", () => {
+  // Phase 3 (approved IA): the detail opens on Objects & Permissions; Employees and History are tabs.
   it("shows the Role, its holders, its actions by Object with source and condition, and its decision history", async () => {
     const api = makeApi();
     render(<SecurityRoleDetail api={api} roleKey="technician" />);
+    expect((await screen.findByRole("tab", { name: "Objects & Permissions" })).getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("tab", { name: /Employees/ }));
     await screen.findByRole("table", { name: "Holders" });
     expect(api.getSecurityRoleDetail).toHaveBeenCalledWith("technician");
     expect(api.listRoleCapabilityDecisionHistory).toHaveBeenCalledWith({ roleKey: "technician", limit: 200 });
     expect(screen.getByText("John Smith")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "History" }));
     const history = await screen.findByRole("table", { name: "Decision history" });
     expect(history.textContent).toMatch(/ADMIN_GRANTED · requires condition/);
     expect(history.textContent).toMatch(/Technicians read assigned work/);
 
+    fireEvent.click(screen.getByRole("tab", { name: "Objects & Permissions" }));
     fireEvent.click(screen.getByRole("button", { name: /workOrder/ }));
     const row = document.querySelector('[data-role-action="workOrder.record.read"]');
     expect(row.textContent).toMatch(/Read Work Orders/);
@@ -297,7 +302,7 @@ describe("Security Role detail", () => {
   it("revoking from the Role detail sends the governed mutation and re-reads detail AND history", async () => {
     const api = makeApi();
     render(<SecurityRoleDetail api={api} roleKey="technician" />);
-    await screen.findByRole("table", { name: "Holders" });
+    await screen.findByRole("table", { name: "Objects and actions" });
     fireEvent.click(screen.getByRole("button", { name: /workOrder/ }));
     fireEvent.click(screen.getByRole("button", { name: "Revoke read from technician" }));
     const form = screen.getByRole("form", { name: "Revoke read for technician" });
