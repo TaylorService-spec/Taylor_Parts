@@ -33,7 +33,7 @@ const RESULT_TAG = Object.freeze({
 const list = (items) => (items.length > 0 ? items.join(", ") : "None");
 // Display words for identifiers (UI corrections item A). The raw key stays visible in <code> where it is evidence.
 const roleWords = (key) => identifierLabel(key);
-const scopeWords = (s) => `${titleCase(s.scopeType)} ${s.label ?? s.scopeId}`;
+const scopeWords = (s) => `${titleCase(s.scopeType)} ${s.label ?? (s.scopeType === "REORDER_QUEUE" ? operatingCompanyLabel(s.scopeId) : s.scopeId)}`;
 const PROVENANCE_TAG = Object.freeze({
   ROLE: "fo-cp-tag",
   DIRECT: "fo-cp-tag fo-cp-tag--direct",
@@ -45,6 +45,9 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
   const read = useControlPlaneRead(principalId ? () => api.explainEffectiveAccess(principalId) : null, `explain:${principalId}`);
   const model = useMemo(() => (read.status === "ready" ? explanationModel(read.data) : null), [read.status, read.data]);
   const [filter, setFilter] = useState("");
+  // Presentation only (UI corrections): the server answers for EVERY catalog action; the page opens on the ones this person
+  // actually reaches (any result but Denied, or any source) and shows the rest on request. Nothing is re-decided here.
+  const [scope, setScope] = useState("held");
 
   if (!principalId) {
     return <p className="fo-muted" data-effective-access="NO_PRINCIPAL">No governed Principal is linked to this Employee, so there is no access to explain.</p>;
@@ -74,9 +77,12 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
   const provenanceCount = (p) => held.filter((a) => a.provenance === p).length;
   const provenanceUnreported = model.actions.length > 0 && model.actions.every((a) => a.provenance === null);
   const needle = filter.trim().toLowerCase();
+  const reaches = (r) => r.result !== "DENIED" || r.sourceRoles.length > 0 || r.scopedSources.length > 0 || Boolean(r.directGrant);
+  const heldCount = model.actions.filter(reaches).length;
+  const scoped = scope === "held" ? model.actions.filter(reaches) : model.actions;
   const shown = needle
-    ? model.actions.filter((r) => `${r.capabilityKey} ${r.objectKey ?? ""} ${r.actionKey ?? ""}`.toLowerCase().includes(needle))
-    : model.actions;
+    ? scoped.filter((r) => `${r.capabilityKey} ${r.objectKey ?? ""} ${r.actionKey ?? ""}`.toLowerCase().includes(needle))
+    : scoped;
 
   return (
     <div data-effective-access="READY" data-effective-access-rows={model.actions.length}>
@@ -150,14 +156,14 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
         </table>
       ) : null}
       <div className="fo-cp-facts" data-employee-facts={model.functionalRoles.length}>
-        <p className="fo-cp-facts__title">Employee facts — not a permission source</p>
+        <p className="fo-cp-facts__title">Employee Facts — Not a Permission Source</p>
         <p className="fo-muted">
           Business facts about the linked Employee. No capability, surface or action above comes from them;
           a Functional Role can only narrow a workflow action a Security Role already authorizes.
         </p>
         <dl className="fo-detail-list">
           <dt>Functional Roles</dt>
-          <dd>{model.functionalRoles.length === 0 ? "none" : model.functionalRoles.map((f) => (
+          <dd>{model.functionalRoles.length === 0 ? "None" : model.functionalRoles.map((f) => (
             <span key={f.functionalRoleId ?? f.key} className="fo-cp-tag" data-functional-role-fact={f.key}>{f.name ? `${f.name} (${f.key})` : f.key}</span>
           ))}</dd>
         </dl>
@@ -182,6 +188,11 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
         <span>Filter</span>
         <input type="search" aria-label="Filter effective access" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </label>
+      <div className="fo-chip-row" role="group" aria-label="Which actions to show" data-effective-access-scope={scope}>
+        <button type="button" className="fo-linkbutton" aria-pressed={scope === "held"} onClick={() => setScope("held")}>{`Actions This Person Reaches (${heldCount})`}</button>
+        {" · "}
+        <button type="button" className="fo-linkbutton" aria-pressed={scope === "all"} onClick={() => setScope("all")}>{`All Catalog Actions (${model.actions.length})`}</button>
+      </div>
       {model.actions.length === 0 ? <p className="fo-muted">The evaluator reports no Object action.</p> : null}
       {groupByObject(shown).map((group) => (
         // #210: the shared scroll container -- a long capability key or source list must not widen the page (1024px).

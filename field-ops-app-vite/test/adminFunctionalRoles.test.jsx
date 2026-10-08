@@ -176,7 +176,7 @@ describe("Effective Access: Functional Roles are Employee FACTS, never a permiss
     render(<EmployeeEffectiveAccess api={api} principalId="p-1" />);
     await waitFor(() => expect(document.querySelector('[data-effective-access="READY"]')).not.toBeNull());
     const facts = document.querySelector("[data-employee-facts='1']");
-    expect(facts.textContent).toContain("Employee facts — not a permission source");
+    expect(facts.textContent).toContain("Employee Facts — Not a Permission Source");
     expect(facts.querySelector("[data-functional-role-fact='warranty-desk']")).not.toBeNull();
     expect(document.querySelector("[data-effective-access-context]").textContent).not.toContain("warranty-desk");
   });

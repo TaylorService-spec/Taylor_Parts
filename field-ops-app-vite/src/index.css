@@ -9007,7 +9007,7 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 
 .fo-tabs { margin-top: 12px; }
 .fo-tabs__list {
-  display: flex; gap: 2px; border-bottom: 1px solid var(--color-border); overflow-x: auto; scrollbar-width: thin;
+  display: flex; gap: 2px; border-bottom: 1px solid var(--color-border); overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
 }
 .fo-tabs__tab {

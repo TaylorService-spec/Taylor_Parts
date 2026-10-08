@@ -369,6 +369,9 @@ describe("Effective Access: the server evaluator's answer, rendered", () => {
     const complete = document.querySelector('[data-capability="workOrder.lifecycle.complete"]');
     expect(complete.textContent).toMatch(/Allowed/);
     expect(complete.textContent).toMatch(/Workflow Work Order Lifecycle v2 · Complete via Technician/);
+    // An action this person does not reach (Denied, no source) is shown only on request -- the server still answered for it.
+    expect(document.querySelector('[data-capability="opportunity.write"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /All Catalog Actions \(5\)/ }));
     expect(document.querySelector('[data-capability="opportunity.write"]').textContent).toMatch(/Denied.*CAPABILITY_MISSING/);
     // An unknown result is shown RAW.
     expect(document.querySelector('[data-capability="invoice.issue"]').textContent).toMatch(/SOMETHING_NEW/);

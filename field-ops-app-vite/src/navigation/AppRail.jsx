@@ -363,7 +363,7 @@ export function RailIdentity() {
       {/* The self view: who EOS says you are (Employee design v4.1). A route, not a nav group --
           it belongs to every signed-in person, whatever their role, and grants nothing. */}
       <NavLink to="/my-profile" className="fo-rail-identity__profile">
-        Your Employee profile
+        Your Employee Profile
       </NavLink>
       <Button variant="tertiary" onClick={logout} className="fo-rail-identity__signout">
         Sign Out
