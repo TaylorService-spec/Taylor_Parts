@@ -7621,3 +7621,13 @@ receiving, es-US content, above-limit discount approval, UTC/date findings).
   capabilities / 542 grants, with every stage pinned. The local proof harness is rebuilt from that replay, with no stand-ins,
   and the three sample-workforce refusals no longer occur.
 - No nonprod read or mutation; production untouched.
+
+## #214 — Administration IA Phase 3: Security Roles as a searchable master-detail (2026-10-08)
+
+**Decision:** UI-only Phase 3 of the Owner-approved Administration redesign (#211).
+- **Roles list (R01):** the wrapping wall of Role buttons becomes a searchable list (name and description) with an All / Protected / Not protected filter and a count, beside the selected Role's detail (`.fo-master-detail`, stacking under 900 px). Same `listRoles` read; the `?role=` deep link still pre-selects.
+- **Role detail (R02):** `SecurityRoleDetail` opens on **Objects & Permissions**; **Employees** (holders, removal with reason, assign) and **History** (assignment history and decision history) are tabs. Every read, mutation, reason requirement and server refusal is unchanged.
+- **Presentation (R03):** holder and Role keys sit behind *Show Technical Details*; "Since" and assignment-history times use the shared `formatDateOnly` / `formatTimestamp` instead of raw UTC strings; scope reads "Applies To".
+- **Kept distinct, not redesigned:** a one-line explainer separates Security Role (what someone may do), Job Role (what their job is; grants nothing) and permission (one enforced action). No authority model changed.
+
+Out of scope and not attempted: resolving "By" actor ids to names in assignment history (needs a read the screen does not have today).

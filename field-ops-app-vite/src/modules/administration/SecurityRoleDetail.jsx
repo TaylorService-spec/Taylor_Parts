@@ -26,6 +26,7 @@ import Autocomplete from "../../shared/ui/Autocomplete.jsx";
 import { identifierLabel, operatingCompanyLabel, statusLabel, titleCase } from "../../shared/display/displayLabels.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { formatDateOnly, formatTimestamp } from "../../domain/displayTimestamp.js";
 
 const scopeWords = (h) => {
   const type = !h.scopeType || h.scopeType === "global" ? "All (Global)" : titleCase(h.scopeType);
@@ -39,19 +40,20 @@ const HOLDER_COLUMNS = Object.freeze({
   since: { value: (h) => h.grantedAt },
 });
 
-function HoldersTable({ holders, onRemove }) {
+function HoldersTable({ holders, onRemove, technical = false }) {
   const { sort, toggle, sorted } = useTableSort({ rows: holders, columns: HOLDER_COLUMNS });
   const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
   return (
     <table className="fo-table fo-table--stack" aria-label="Holders">
-      <thead><tr>{header("holder", "Holder")}{header("scope", "Scope")}{header("since", "Since")}<th>Administer</th></tr></thead>
+      <thead><tr>{header("holder", "Employee")}{header("scope", "Applies To")}{header("since", "Since")}<th>Administer</th></tr></thead>
       <tbody>
         {sorted.map((h) => (
           <tr key={h.assignmentId} data-holder={h.employeeId ?? h.principalId}>
-            <td data-label="Holder">{h.employeeId ? <Link to={`/administration/users/${h.employeeId}`}>{principalLabel(h)}</Link> : principalLabel(h)}
-              {" "}<span className="fo-muted">ID <code>{h.principalId}</code></span>{h.employeeId ? null : <span className="fo-muted"> · no linked Employee</span>}</td>
-            <td data-label="Scope" className="fo-muted">{scopeWords(h)}</td>
-            <td data-label="Since" className="fo-muted">{h.grantedAt ?? "—"}</td>
+            <td data-label="Employee">{h.employeeId ? <Link to={`/administration/users/${h.employeeId}`}>{principalLabel(h)}</Link> : principalLabel(h)}
+              {technical ? <>{" "}<span className="fo-muted">ID <code>{h.principalId}</code></span></> : null}
+              {h.employeeId ? null : <span className="fo-muted"> · no linked Employee</span>}</td>
+            <td data-label="Applies To" className="fo-muted">{scopeWords(h)}</td>
+            <td data-label="Since" className="fo-muted">{h.grantedAt ? formatDateOnly(h.grantedAt) : "—"}</td>
             <td data-label="Administer"><Button size="sm" variant="secondary" onClick={() => onRemove(h)}>Remove</Button></td>
           </tr>
         ))}
@@ -74,7 +76,7 @@ function AssignmentHistoryTable({ events }) {
     <table className="fo-table fo-table--stack" aria-label="Assignment history">
       <thead><tr>{header("when", "When")}{header("what", "What")}{header("by", "By")}{header("reason", "Reason")}</tr></thead>
       <tbody>{sorted.map((ev) => (
-        <tr key={ev.id}><td data-label="When">{ev.occurredAt}</td><td data-label="What">{titleCase(ev.action)}</td>
+        <tr key={ev.id}><td data-label="When">{formatTimestamp(ev.occurredAt)}</td><td data-label="What">{titleCase(ev.action)}</td>
           <td data-label="By"><code>{ev.actorUid}</code></td><td data-label="Reason">{ev.reason ?? "—"}</td></tr>))}</tbody>
     </table>
   );
@@ -147,6 +149,10 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, work
   const assignments = useControlPlaneRead(roleKey ? () => api.readPolicyAuditHistory({ roleKey, limit: 50 }) : null, `role-audit:${roleKey}`);
   const [removeReason, setRemoveReason] = useState("");
   const [removeResult, setRemoveResult] = useState(null);
+  // Approved Administration IA, Phase 3 (finding R02): the permission task is the first tab; employees and
+  // history are their own tabs instead of preceding it. Same reads, same controls.
+  const [tab, setTab] = useState("objects");
+  const [technical, setTechnical] = useState(false);
 
   if (!roleKey) return null;
   if (!detail.data) return <ReadState read={detail} what="this Security Role" />;
@@ -165,56 +171,83 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, work
   return (
     <section className="fo-panel" aria-label={`Security Role ${role.name ?? roleKey}`} data-security-role={roleKey}>
       <h3>
-        {identifierLabel(roleKey, role.name)} <span className="fo-muted">· Security Role <code>{roleKey}</code>{role.protected ? " · Protected" : ""}</span>
+        {identifierLabel(roleKey, role.name)} <span className="fo-muted">· Security Role{role.protected ? " · Protected" : ""}</span>
       </h3>
       {role.description ? <p className="fo-muted">{role.description}</p> : null}
+      <p className="fo-muted">
+        {holders.length} {holders.length === 1 ? "employee holds" : "employees hold"} this role · {groups.length} objects.
+        Where it applies is set on each employee&rsquo;s assignment.
+      </p>
+      <label className="fo-form-field">
+        <span>Show Technical Details</span>
+        <input type="checkbox" checked={technical} onChange={(e) => setTechnical(e.target.checked)} />
+      </label>
+      {technical ? <p className="fo-muted">Role key <code>{roleKey}</code></p> : null}
       {detail.status === "loading" ? <p className="fo-muted" role="status">Re-reading from the server…</p> : null}
 
-      <h4>Holders ({holders.length})</h4>
-      {holders.length === 0 ? (
-        <p className="fo-muted">No Principal holds this Security Role.</p>
-      ) : (
-        <>
-        <label className="fo-form-field"><span>Reason for a Removal (Recorded)</span>
-          <input className="fo-input" aria-label="Removal reason" value={removeReason} onChange={(e) => setRemoveReason(e.target.value)} /></label>
-        {removeResult?.ok && <p className="fo-success" role="status">{removeResult.ok}</p>}
-        {removeResult?.error && <p className="fo-warning" role="alert">{removeResult.error}</p>}
-        <HoldersTable holders={holders} onRemove={remove} />
-        </>
+      <div className="fo-chip-row" role="tablist" aria-label="Security Role sections">
+        {[["objects", "Objects & Permissions"], ["employees", `Employees (${holders.length})`], ["history", "History"]].map(([id, label]) => (
+          <Button key={id} role="tab" aria-selected={tab === id} variant={tab === id ? "primary" : "secondary"} onClick={() => setTab(id)}>
+            {label}
+          </Button>
+        ))}
+      </div>
+
+      {tab === "employees" && (
+        <div role="tabpanel" aria-label="Employees">
+          {holders.length === 0 ? (
+            <p className="fo-muted">No employee holds this Security Role.</p>
+          ) : (
+            <>
+            <label className="fo-form-field"><span>Reason for a Removal (Recorded)</span>
+              <input className="fo-input" aria-label="Removal reason" value={removeReason} onChange={(e) => setRemoveReason(e.target.value)} /></label>
+            {removeResult?.ok && <p className="fo-success" role="status">{removeResult.ok}</p>}
+            {removeResult?.error && <p className="fo-warning" role="alert">{removeResult.error}</p>}
+            <HoldersTable holders={holders} onRemove={remove} technical={technical} />
+            </>
+          )}
+          <h4>Assign to an Employee</h4>
+          <AssignRoleToEmployee api={api} workforce={workforce} role={{ ...role, roleKey }} onChanged={onChanged} />
+        </div>
       )}
-      <h4>Assign to an Employee</h4>
-      <AssignRoleToEmployee api={api} workforce={workforce} role={{ ...role, roleKey }} onChanged={onChanged} />
-      <h4>Assignment History</h4>
-      {Array.isArray(assignments.data) && assignments.data.length > 0 ? (
-        <AssignmentHistoryTable events={assignments.data} />
-      ) : <p className="fo-muted">{assignments.status === "failed" ? "Assignment history is not available to you (audit.event.read)." : "No recorded events for this Role yet."}</p>}
 
-      <h4>Objects &amp; Actions</h4>
-      <p className="fo-muted">
-        Every governed action, grouped by Object. Expand an Object to administer its actions for this Role.
-      </p>
-      <table className="fo-table" aria-label="Objects and actions">
-        <thead><tr><th>Object / Action</th><th>State</th><th>Administer</th></tr></thead>
-        <tbody>
-          {groups.map((group) => {
-            const open = openObject === group.objectKey;
-            return (
-              <ObjectGroupRows
-                key={group.objectKey}
-                group={group}
-                open={open}
-                onToggle={() => setOpenObject(open ? null : group.objectKey)}
-                api={api}
-                roleKey={roleKey}
-                vocabulary={vocabulary}
-                onChanged={onChanged}
-              />
-            );
-          })}
-        </tbody>
-      </table>
+      {tab === "history" && (
+        <div role="tabpanel" aria-label="History">
+          <h4>Assignment History</h4>
+          {Array.isArray(assignments.data) && assignments.data.length > 0 ? (
+            <AssignmentHistoryTable events={assignments.data} />
+          ) : <p className="fo-muted">{assignments.status === "failed" ? "Assignment history is not available to you (audit.event.read)." : "No recorded events for this Role yet."}</p>}
+          <DecisionHistory read={history} />
+        </div>
+      )}
 
-      <DecisionHistory read={history} />
+      {tab === "objects" && (
+        <div role="tabpanel" aria-label="Objects & Permissions">
+          <p className="fo-muted">
+            Every governed action, grouped by Object. Expand an Object to administer its actions for this Role.
+          </p>
+          <table className="fo-table" aria-label="Objects and actions">
+            <thead><tr><th>Object / Action</th><th>State</th><th>Administer</th></tr></thead>
+            <tbody>
+              {groups.map((group) => {
+                const open = openObject === group.objectKey;
+                return (
+                  <ObjectGroupRows
+                    key={group.objectKey}
+                    group={group}
+                    open={open}
+                    onToggle={() => setOpenObject(open ? null : group.objectKey)}
+                    api={api}
+                    roleKey={roleKey}
+                    vocabulary={vocabulary}
+                    onChanged={onChanged}
+                  />
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
