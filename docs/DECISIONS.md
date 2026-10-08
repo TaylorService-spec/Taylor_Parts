@@ -7631,3 +7631,13 @@ Phase 1 (this entry) is presentation-only: `ADMINISTRATION_NAV_GROUPS` groups ev
 **Deferred, needs a decision:** the approved IA's separate **Permissions** destination is a new subnav key, which requires a `NAV_SURFACE_ACCESS` row (`administration/permissions` → the existing `administration.objects` surface) plus deliberate updates to the pinned destination counts (18 / 90 / 75 / 72). That row is a governance-map edit, so it was not made in Phase 1. Page Layouts' destination (Phase 5) has the same shape.
 
 **Alternatives rejected:** reordering the subnav array to get Objects before Roles. It would have rewritten the pinned production b6a36b15 destination order for no behavioral gain.
+
+## #212 — OWNER: Administration navigation authority for Permissions (and later Page Layouts) (2026-10-08)
+
+**Decision:** The Owner approved the minimum `NAV_SURFACE_ACCESS` mappings for separate Administration destinations: **Permissions** reuses the existing `administration.objects` surface; **Page Layouts** may reuse the same authority as a read-only viewer. Navigation configuration only — no new capability, grant, role assignment or authorization mechanism.
+
+This entry adds `administration/permissions` → `["administration.objects"]` and the `permissions` subnav item (no legacyKey, capabilityAccess or placeholder row). Consequences, stated rather than discovered:
+- **Governed source:** Permissions opens exactly where Objects does, and for nobody else. App.jsx emits its route only on the same `isNavItemVisible` answer and a refusal route otherwise, so a direct URL is refused identically.
+- **Legacy source** (every environment where `EOS_NAVIGATION_AUTHORITY_READY` is false, production included): Permissions is fail-closed for every role, like Rental (#207) and Analysis (#208). Opening it there would need a new legacy placeholder row, which this decision does not authorize. The matrix therefore stays reachable through Objects in those environments; Phase 2 must not remove it from Objects.
+- **Pins moved on purpose:** Administration subnav 18 → 19; nav tree 90 → 91; the Administration container scope gains `administration/permissions` (it is a door onto a child surface). Legacy-visible sets (admin 75, dispatcher 72) are unchanged.
+- Page Layouts' row lands with its read-only viewer (Phase 5), so no destination exists without a screen.

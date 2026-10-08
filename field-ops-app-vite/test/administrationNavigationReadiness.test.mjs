@@ -317,7 +317,7 @@ test("the Administration index follows its children under BOTH sources, and asse
   assert.equal(overview.legacyPlaceholder, undefined,
     "administration/overview is back in NAV_LEGACY_PLACEHOLDER_DESTINATIONS -- the register may only shrink");
   assert.deepEqual([...overview.containerScope], [
-    "administration/rolesPermissions", "administration/objects", "administration/workflows",
+    "administration/rolesPermissions", "administration/objects", "administration/permissions", "administration/workflows",
     "administration/permissionPreview", "administration/users", "administration/auditLogs",
   ], "the container's client scope has drifted from the server catalog's containerOf children");
   assert.equal(overview.containerScope.includes("administration/dataImport"), false,
@@ -481,10 +481,13 @@ test("a container may be mapped to its DERIVED surface and to no grant surface -
 
   // THE SCOPE IS COMPUTED FROM THE MIRROR, not typed beside it. This is what "agree by construction"
   // buys: there is no second list to keep equal.
+  // EVERY door onto a child surface, not the first: administration.objects has two since DECISIONS #212
+  // (Objects and Permissions), and both belong to the menu.
   assert.deepEqual([...NAV_CONTAINERS["administration/overview"]],
     NAV_DERIVED_SURFACE_CHILDREN["administration.overview"]
-      .map((surfaceKey) => Object.entries(NAV_SURFACE_ACCESS)
-        .find(([, keys]) => keys.includes(surfaceKey))[0]));
+      .flatMap((surfaceKey) => Object.entries(NAV_SURFACE_ACCESS)
+        .filter(([, keys]) => keys.includes(surfaceKey))
+        .map(([destination]) => destination)));
   assert.equal(NAV_CONTAINERS["dashboard/my"], "*", "the whole-product container is unchanged");
 });
 

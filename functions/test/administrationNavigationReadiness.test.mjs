@@ -329,10 +329,12 @@ test("the client's derived-surface mirror names exactly this catalog's container
 
   // AND THE CLIENT'S CONTAINER SCOPE IS THOSE CHILDREN, joined through the surface map. Computed on
   // the client, re-derived independently here: two routes to the same six destinations.
-  const expectedScope = EXPERIENCE_SURFACES.find((s) => s.key === "administration.overview").containerOf
-    .map((childKey) => Object.entries(NAV_SURFACE_ACCESS).find(([, keys]) => keys.includes(childKey))?.[0]);
-  assert.equal(expectedScope.includes(undefined), false,
+  // EVERY door onto each child: administration.objects has two since DECISIONS #212 (Objects, Permissions).
+  const doorsByChild = EXPERIENCE_SURFACES.find((s) => s.key === "administration.overview").containerOf
+    .map((childKey) => Object.entries(NAV_SURFACE_ACCESS).filter(([, keys]) => keys.includes(childKey)).map(([d]) => d));
+  assert.equal(doorsByChild.some((doors) => doors.length === 0), false,
     "a containerOf child surface is mapped to no nav destination -- the client menu could never open on it");
+  const expectedScope = doorsByChild.flat();
   assert.deepEqual([...NAV_CONTAINERS["administration/overview"]].sort(), [...expectedScope].sort());
   assert.equal(NAV_CONTAINERS["administration/overview"].includes("administration/dataImport"), false,
     "the client container would open the policy menu on a data-import grant; the server's does not");

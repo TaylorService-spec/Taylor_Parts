@@ -58,7 +58,7 @@ ok("Overview asserts NO authority of its own, and follows its children under bot
   assert.deepEqual(overview.surfaceAccess, ["administration.overview"],
     "Overview lost its governed surface -- the derived-surface guard would stop covering it");
   assert.deepEqual([...overview.containerScope], [
-    "administration/rolesPermissions", "administration/objects", "administration/workflows",
+    "administration/rolesPermissions", "administration/objects", "administration/permissions", "administration/workflows",
     "administration/permissionPreview", "administration/users", "administration/auditLogs",
   ], "the container's scope has drifted from the server catalog's containerOf children");
 
@@ -152,7 +152,8 @@ ok("Users is the one people destination, at its own named path", () => {
 ok("the rail shows business destinations first and groups configuration under System & Integrations", () => {
   const visible = adminDomain.subnav.filter((i) => !i.navHidden);
   const { groups, ungrouped } = buildAdministrationNavGroups(visible);
-  assert.deepEqual(ungrouped.map((i) => i.key), ["overview", "users", "objects", "rolesPermissions", "workflows"]);
+  // Grouping is over every non-hidden item; whether Permissions is VISIBLE is the source's decision, asserted elsewhere.
+  assert.deepEqual(ungrouped.map((i) => i.key), ["overview", "users", "objects", "rolesPermissions", "permissions", "workflows"]);
   assert.deepEqual(groups.map((g) => g.label), ["System & Integrations"]);
   assert.deepEqual(groups[0].items.map((i) => i.key), [
     "systemConfiguration", "salesConfiguration", "financialPolicy", "emailCommunications",
@@ -254,7 +255,8 @@ ok("exactly eighteen Administration subnav items now exist", () => {
   // EIGHTEEN since Owner rulings #204 (2026-10-03): System Configuration (company settings by one governed registry -- time
   // zone, language) and Sales Configuration (Employee Sales Authority -- each person's maximum customer discount). Two
   // destinations because business configuration stays with its domain; both capability-gated like Data Import.
-  assert.equal(adminDomain.subnav.length, 18);
+  // NINETEEN since Administration > Permissions (Owner decision 2026-10-08, DECISIONS #212).
+  assert.equal(adminDomain.subnav.length, 19);
 });
 
 ok("Financial Policy is a visible Administration tab, and the only one", () => {
