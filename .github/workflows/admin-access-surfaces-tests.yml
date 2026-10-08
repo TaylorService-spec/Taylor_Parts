@@ -70,6 +70,7 @@ on:
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/modules/administration/AdminDataImport.jsx"
       - "field-ops-app-vite/test/objectAccessModel.test.jsx"
+      - "field-ops-app-vite/test/adminObjectCatalog.test.jsx"
       - "field-ops-app-vite/test/approvalRequests.test.jsx"
       - "field-ops-app-vite/test/adminRoleList.test.jsx"
       # The privileged-approval surface reads its queue through this client, so a change to
@@ -119,6 +120,7 @@ on:
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/modules/administration/AdminDataImport.jsx"
       - "field-ops-app-vite/test/objectAccessModel.test.jsx"
+      - "field-ops-app-vite/test/adminObjectCatalog.test.jsx"
       - "field-ops-app-vite/test/approvalRequests.test.jsx"
       - "field-ops-app-vite/test/adminRoleList.test.jsx"
       # The privileged-approval surface reads its queue through this client, so a change to
@@ -180,6 +182,7 @@ jobs:
           test/binLabelsSurface.test.jsx
           test/binLabelsIntegration.test.jsx
           test/objectAccessModel.test.jsx
+          test/adminObjectCatalog.test.jsx
           test/approvalRequests.test.jsx
           test/adminRoleList.test.jsx
         working-directory: field-ops-app-vite
