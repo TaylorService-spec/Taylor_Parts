@@ -323,7 +323,7 @@ function Filters({ def, selected, setDef }) {
           onRemove={() => setDef(removeFilter(def, i))}
         />
       ))}
-      <Button type="button" variant="secondary" className="fo-link-btn" onClick={addBlank}>+ Add Filter</Button>
+      <Button type="button" variant="secondary" className="fo-link-btn" onClick={addBlank}>+ Add Report Filter</Button>
     </section>
   );
 }

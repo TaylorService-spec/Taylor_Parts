@@ -52,7 +52,7 @@ describe("ReportBuilder — array-value filter input (Fix 1)", () => {
     withRouter(<ReportBuilder runReportFn={vi.fn()} savedReportServiceImpl={{ get: vi.fn(), create: vi.fn() }} />);
 
     pickObjectAndField("customer", "Status");
-    fireEvent.click(screen.getByRole("button", { name: "+ Add Filter" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Report Filter" }));
     fireEvent.change(screen.getByLabelText("Comparator"), { target: { value: "in" } });
 
     const runButton = screen.getByRole("button", { name: /run report/i });
@@ -72,7 +72,7 @@ describe("ReportBuilder — array-value filter input (Fix 1)", () => {
     withRouter(<ReportBuilder runReportFn={vi.fn()} savedReportServiceImpl={{ get: vi.fn(), create: vi.fn() }} />);
 
     pickObjectAndField("customer", "Created");
-    fireEvent.click(screen.getByRole("button", { name: "+ Add Filter" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Report Filter" }));
     fireEvent.change(screen.getByLabelText("Comparator"), { target: { value: "between" } });
 
     // Exactly two bound inputs, no more, no less -- and until both are legal dates, Run is off.
@@ -91,7 +91,7 @@ describe("ReportBuilder — array-value filter input (Fix 1)", () => {
     withRouter(<ReportBuilder runReportFn={vi.fn()} savedReportServiceImpl={{ get: vi.fn(), create: vi.fn() }} />);
 
     pickObjectAndField("customer", "Tags");
-    fireEvent.click(screen.getByRole("button", { name: "+ Add Filter" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Report Filter" }));
     fireEvent.change(screen.getByLabelText("Comparator"), { target: { value: "containsAny" } });
     fireEvent.change(screen.getByLabelText("Value"), { target: { value: "vip, net30" } });
     expect(screen.getByLabelText("Value").value).toBe("vip, net30");
