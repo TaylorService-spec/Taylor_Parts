@@ -268,7 +268,8 @@ export function salesAgreementAcceptance(view, { byUserId, formatWhen } = {}) {
   if (!isReady(view)) return null;
   const accepted = view.state === "ACCEPTED";
   const atMillis = num(view.acceptedAtMillis);
-  const uid = view.acceptedByUid ?? null;
+  // EOS records the accepting Principal; a legacy record carries a uid. Either is a key into the governed actor names.
+  const uid = view.acceptedByPrincipalId ?? view.acceptedByUid ?? null;
 
   // resolveActorDisplayName returns a falsy uid unchanged; only a PRESENT uid resolves to a name or
   // to the neutral constant. Absence of an actor and an unresolved actor stay different facts.

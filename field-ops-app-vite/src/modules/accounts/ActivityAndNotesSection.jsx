@@ -25,7 +25,11 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // field (account.notes stays exactly as it is; this is additive, not a replacement of that field).
 export default function ActivityAndNotesSection({ accountId }) {
   const { loading, errorStatus, result, refetch } = useCrmActivities(accountId);
-  const { byUserId } = useGovernedEmployeeDirectory({ actors: true });
+  // The actors named on this timeline are exactly the identities its activities record (createdByUid: the legacy activity
+  // writer stores the actor's external subject) -- resolved to display names by the governed, minimally scoped
+  // resolvePrincipalDisplayNames read, keyed by that same subject.
+  const actorSubjects = Array.isArray(result?.activities) ? result.activities.map((a) => a.createdByUid).filter(Boolean) : [];
+  const { byUserId } = useGovernedEmployeeDirectory({ actorSubjects });
   const resolveActorName = (uid) => resolveActorDisplayName(uid, byUserId);
   const view = crmActivityView({ loading, errorStatus, result, resolveActorName });
 

@@ -298,40 +298,47 @@ describe("governed employee name directory (replaces the Firestore listener on O
     const client = { call: vi.fn(async (op, input) => (input.cursor
       ? page([{ employeeId: "e-2", displayName: "Lee Former", employmentStatus: "TERMINATED", operatingCompanyId: "taylor" }])
       : page([{ employeeId: "e-1", displayName: "Dana Reyes", employmentStatus: "ACTIVE", operatingCompanyId: "taylor" }], "c-1"))) };
-    const policyCall = vi.fn();
-    const { result } = renderHook(() => useGovernedEmployeeDirectory({ client, policyCall }));
+    const actorCall = vi.fn();
+    const { result } = renderHook(() => useGovernedEmployeeDirectory({ client, actorCall }));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.byEmployeeId.get("e-1").displayName).toBe("Dana Reyes");
     expect(result.current.byEmployeeId.get("e-2").displayName).toBe("Lee Former");
     expect(client.call.mock.calls.map(([op, input]) => [op, input])).toEqual([["listEmployees", { limit: 200 }], ["listEmployees", { limit: 200, cursor: "c-1" }]]);
-    // Actor names are NOT asked for unless the page needs them (that read is admin.principalAccess.read).
-    expect(policyCall).not.toHaveBeenCalled();
+    // Actor names are NOT asked for unless the page passes the actor ids it holds.
+    expect(actorCall).not.toHaveBeenCalled();
   });
 
   it("an Employee outside the caller's reach is absent (the SERVER omits it) and renders unresolved; a refusal is an error, never a guess", async () => {
     const reach = { call: vi.fn(async () => page([{ employeeId: "e-taylor", displayName: "In Reach", employmentStatus: "ACTIVE", operatingCompanyId: "taylor" }])) };
-    const noPolicy = vi.fn();
-    const a = renderHook(() => useGovernedEmployeeDirectory({ client: reach, policyCall: noPolicy }));
+    const noActors = vi.fn();
+    const a = renderHook(() => useGovernedEmployeeDirectory({ client: reach, actorCall: noActors }));
     await waitFor(() => expect(a.result.current.loading).toBe(false));
     expect(a.result.current.byEmployeeId.has("e-ventana")).toBe(false);
     const refused = { call: vi.fn(async () => ({ ok: false, code: "FORBIDDEN", message: "employee.record.read is required" })) };
-    const b = renderHook(() => useGovernedEmployeeDirectory({ client: refused, policyCall: noPolicy }));
+    const b = renderHook(() => useGovernedEmployeeDirectory({ client: refused, actorCall: noActors }));
     await waitFor(() => expect(b.result.current.loading).toBe(false));
     expect(b.result.current.error.code).toBe("FORBIDDEN");
     expect(b.result.current.byEmployeeId.size).toBe(0);
   });
 
-  it("actor (Principal) names come from the governed listTenantPrincipals read only when asked; a refusal leaves them unknown", async () => {
+  it("actor names come from the minimally scoped resolvePrincipalDisplayNames read, for exactly the ids the page holds -- never Principal administration", async () => {
     const client = { call: vi.fn(async () => page([])) };
-    const policyCall = vi.fn(async () => ({ ok: true, data: [{ id: "pr-1", displayName: "Avery Admin" }] }));
-    const { result } = renderHook(() => useGovernedEmployeeDirectory({ client, policyCall, actors: true }));
+    const actorCall = vi.fn(async (op, input) => ({ ok: true, result: { names: [...(input.principalIds ?? []), ...(input.actorSubjects ?? [])]
+      .filter((id) => id === "pr-1" || id === "uid-legacy").map((key) => ({ key, displayName: key === "pr-1" ? "Avery Admin" : "Legacy Writer" })) } }));
+    const ids = ["pr-1", "pr-outside-tenant", "pr-1"];
+    const subjects = ["uid-legacy"];
+    const { result } = renderHook(() => useGovernedEmployeeDirectory({ client, actorCall, actorIds: ids, actorSubjects: subjects }));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(policyCall).toHaveBeenCalledWith("listTenantPrincipals", {});
+    expect(actorCall).toHaveBeenCalledWith("resolvePrincipalDisplayNames", { principalIds: ["pr-1", "pr-outside-tenant"], actorSubjects: ["uid-legacy"] });
+    expect(result.current.byUserId.get("uid-legacy").displayName).toBe("Legacy Writer");
     expect(result.current.byUserId.get("pr-1").displayName).toBe("Avery Admin");
+    expect(result.current.byUserId.has("pr-outside-tenant")).toBe(false);
     const deny = vi.fn(async () => ({ ok: false, code: "FORBIDDEN" }));
-    const denied = renderHook(() => useGovernedEmployeeDirectory({ client, policyCall: deny, actors: true }));
+    const denied = renderHook(() => useGovernedEmployeeDirectory({ client, actorCall: deny, actorIds: ids }));
     await waitFor(() => expect(denied.result.current.loading).toBe(false));
     expect(denied.result.current.byUserId.size).toBe(0);
+    const src = readSrc("src/hooks/useGovernedEmployeeDirectory.js", "utf8").replace(/\/\/[^\n]*/g, "");
+    expect(src).not.toMatch(/listTenantPrincipals|adminPolicyApiClient/);
   });
 
   it("static: the Opportunity, Sales Order, Sales Agreement and Account pages no longer import the Firestore directory, and the new hook holds no Firebase", () => {

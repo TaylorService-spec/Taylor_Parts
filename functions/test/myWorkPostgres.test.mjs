@@ -156,6 +156,29 @@ test("my work + search over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     refused(await call(dispatcher, WO, "readMyWorkOrderCapabilities", { principalId: "someone-else" }), 400, "INPUT_FIELD_NOT_ACCEPTED");
   });
 
+  await t.test("resolvePrincipalDisplayNames: display names only, caller's tenant only, for record readers -- not Principal administration", async () => {
+    await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, display_name, status) VALUES ('pr-foreign','foreign-subject','eos','Foreign Person','active') ON CONFLICT DO NOTHING`);
+    const ids = [dispatcher.principalId, tech.principalId, "pr-foreign", "pr-unknown"];
+    // A channel-scoped seller (opportunity.read only within RETAIL) may name the actors on records it reads.
+    const r = ok(await call(retail, WS, "resolvePrincipalDisplayNames", { principalIds: ids }));
+    assert.deepEqual(r.names.map((n) => n.key).sort(), [dispatcher.principalId, tech.principalId].sort(), "a Principal outside the tenant, or unknown, is absent");
+    for (const n of r.names) assert.deepEqual(Object.keys(n).sort(), ["displayName", "key"], "no Employee id, Role, subject or status");
+    // A record written outside EOS stores the actor's external subject; it is named under THAT key -- the answer never
+    // translates a subject into a Principal id -- and a subject of another tenant's Principal is absent.
+    const bySubject = ok(await call(retail, WS, "resolvePrincipalDisplayNames", { actorSubjects: ["uid-dispatch", "foreign-subject"] }));
+    assert.deepEqual(bySubject.names.map((n) => n.key), ["uid-dispatch"]);
+    assert.ok(!JSON.stringify(bySubject).includes(dispatcher.principalId));
+    // Someone who reads none of the record kinds that show actors is refused, never answered empty.
+    refused(await call(nobody, WS, "resolvePrincipalDisplayNames", { principalIds: ids }), 403, "CAPABILITY_REQUIRED");
+    refused(await call(retail, WS, "resolvePrincipalDisplayNames", { principalIds: [] }), 400, "PRINCIPAL_IDS_INVALID");
+    refused(await call(retail, WS, "resolvePrincipalDisplayNames", { principalIds: Array.from({ length: 101 }, (_, i) => `p${i}`) }), 400, "PRINCIPAL_IDS_INVALID");
+    refused(await call(retail, WS, "resolvePrincipalDisplayNames", { principalIds: ids, tenantId: "other" }), 400, "FIELD_NOT_ACCEPTED");
+    // The seller still cannot read the tenant's Principal population (Administration).
+    const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
+    const adminRead = await executeAdminOperation({ repo }, { caller: { externalSubject: "uid-retail", identityProvider: "firebase" }, operation: "listTenantPrincipals", input: {}, requestId: "r-np" });
+    assert.equal(adminRead.ok, false);
+  });
+
   await t.test("SEARCH employees (UI corrections item E): a flat holder is global; an operatingCompany-scoped holder is searched inside its companies only", async () => {
     await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,first_name,last_name,employee_number) VALUES
              ('e-q-t',$1,'ACTIVE','taylor','Quinn','Northside','Q-T'), ('e-q-v',$1,'ACTIVE','ventana','Quinn','Southside','Q-V')`, [TENANT]);

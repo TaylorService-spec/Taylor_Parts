@@ -235,7 +235,10 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
 
   // ONE DIRECTORY READ for both the owner and the acceptance actor. An employee id is a routing key
   // and never content, and a raw Firebase uid must never reach a non-Admin DOM (F-UID-1).
-  const directory = useGovernedEmployeeDirectory({ actors: true });
+  // The accepting actor: EOS records the accepting PRINCIPAL (acceptedByPrincipalId); a legacy record its uid (subject).
+  const acceptanceActorIds = useMemo(() => (ready && view.acceptedByPrincipalId ? [view.acceptedByPrincipalId] : []), [ready, view.acceptedByPrincipalId]);
+  const acceptanceSubjects = useMemo(() => (ready && !view.acceptedByPrincipalId && view.acceptedByUid ? [view.acceptedByUid] : []), [ready, view.acceptedByPrincipalId, view.acceptedByUid]);
+  const directory = useGovernedEmployeeDirectory({ actorIds: acceptanceActorIds, actorSubjects: acceptanceSubjects });
   const owner = resolveEmployeeIdentity(ready ? view.ownerEmployeeId : null, {
     byEmployeeId: directory.byEmployeeId,
     loading: directory.loading,

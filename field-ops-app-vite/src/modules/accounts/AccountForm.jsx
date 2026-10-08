@@ -46,7 +46,7 @@ import { Button } from "../../shared/ui/primitives";
 // grid, `.fo-btn-row`, all control ids and label text are preserved.
 export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false, contactsError = null, onSavingChange, focusFieldId = null }) {
   const { user, employeeId: sessionEmployeeId, displayName: sessionDisplayName, loading: authLoading } = useAuth();
-  const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory({ actors: true });
+  const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory();
 
   const [name, setName] = useState(initialValues?.name ?? "");
   const [address, setAddress] = useState({

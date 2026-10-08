@@ -394,7 +394,7 @@ export default function AccountDetail() {
   const { account, loading, error: accountError, retry: retryAccount, checkedAt } = useAccount(accountId);
   const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
   const { data: contacts, loading: contactsLoading, error: contactsError, retry: retryContacts } = useContactsForAccount(accountId);
-  const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory({ actors: true });
+  const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory();
   // The real, fail-closed capability decisions for accountRecordPage's declared ids -- see
   // accountPageComponents.js. Denies everything while loading/signed-out/erroring; never a
   // permissive default.

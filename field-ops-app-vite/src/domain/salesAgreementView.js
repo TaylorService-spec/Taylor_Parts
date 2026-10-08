@@ -98,6 +98,7 @@ export function salesAgreementView({ result, loading, errorStatus }) {
     salesOrderId: a.salesOrderId ?? null,
     acceptedAtMillis: a.acceptedAtMillis ?? null,
     acceptedByUid: a.acceptedByUid ?? null,
+    acceptedByPrincipalId: a.acceptedByPrincipalId ?? null,
   };
 }
 
