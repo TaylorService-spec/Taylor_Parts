@@ -7622,6 +7622,25 @@ receiving, es-US content, above-limit discount approval, UTC/date findings).
   and the three sample-workforce refusals no longer occur.
 - No nonprod read or mutation; production untouched.
 
+## #211 — OWNER: Administration IA redesign approved; Phase 1 navigation regroup (2026-10-08)
+
+**Decision:** The Owner approved the Administration redesign design package (Design canvas `https://claude.ai/artifact/KTgD1S6VrgGiyKNDxvUhto`, grounded in the 2026-10-08 UX review and the discovery brief `https://claude.ai/artifact/CR8GJ4Vce8UUTnnsP7jgKQ`) as presented, and authorized the UI-only phases 1–6. Settled: the 8-destination Administration IA; Page Layouts ships first as a read-only viewer (G1–G4 separate); Draft custom fields shown as they are today; Approval Requests under Roles. G6 (field-level access model) remains an open Owner decision; no UI-only phase depends on it.
+
+Phase 1 (this entry) is presentation-only: `ADMINISTRATION_NAV_GROUPS` groups every configuration, communications, import and audit destination under **System & Integrations**; `ADMINISTRATION_NAV_ORDER` sets the rail's display order (Overview, Employees & Users, Objects, Roles, Workflows) without reordering the `administration` subnav array; Users → "Employees & Users" and Roles & Permissions → "Roles" are display-name changes only. No key, path, route, redirect, surface mapping, legacy gate, capability or server catalog changed, so the pinned production destination sets are byte-for-byte unchanged.
+
+**Deferred, needs a decision:** the approved IA's separate **Permissions** destination is a new subnav key, which requires a `NAV_SURFACE_ACCESS` row (`administration/permissions` → the existing `administration.objects` surface) plus deliberate updates to the pinned destination counts (18 / 90 / 75 / 72). That row is a governance-map edit, so it was not made in Phase 1. Page Layouts' destination (Phase 5) has the same shape.
+
+**Alternatives rejected:** reordering the subnav array to get Objects before Roles. It would have rewritten the pinned production b6a36b15 destination order for no behavioral gain.
+
+## #212 — OWNER: Administration navigation authority for Permissions (and later Page Layouts) (2026-10-08)
+
+**Decision:** The Owner approved the minimum `NAV_SURFACE_ACCESS` mappings for separate Administration destinations: **Permissions** reuses the existing `administration.objects` surface; **Page Layouts** may reuse the same authority as a read-only viewer. Navigation configuration only — no new capability, grant, role assignment or authorization mechanism.
+
+This entry adds `administration/permissions` → `["administration.objects"]` and the `permissions` subnav item (no legacyKey, capabilityAccess or placeholder row). Consequences, stated rather than discovered:
+- **Governed source:** Permissions opens exactly where Objects does, and for nobody else. App.jsx emits its route only on the same `isNavItemVisible` answer and a refusal route otherwise, so a direct URL is refused identically.
+- **Legacy source** (every environment where `EOS_NAVIGATION_AUTHORITY_READY` is false, production included): Permissions is fail-closed for every role, like Rental (#207) and Analysis (#208). Opening it there would need a new legacy placeholder row, which this decision does not authorize. The matrix therefore stays reachable through Objects in those environments; Phase 2 must not remove it from Objects.
+- **Pins moved on purpose:** Administration subnav 18 → 19; nav tree 90 → 91; the Administration container scope gains `administration/permissions` (it is a door onto a child surface). Legacy-visible sets (admin 75, dispatcher 72) are unchanged.
+- Page Layouts' row lands with its read-only viewer (Phase 5), so no destination exists without a screen.
 ## #214 — Administration IA Phase 3: Security Roles as a searchable master-detail (2026-10-08)
 
 **Decision:** UI-only Phase 3 of the Owner-approved Administration redesign (#211).

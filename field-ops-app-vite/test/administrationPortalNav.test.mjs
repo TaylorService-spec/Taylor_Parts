@@ -8,7 +8,7 @@
 //
 // Run: node test/administrationPortalNav.test.mjs   (also `npm test`)
 import assert from "node:assert/strict";
-import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "../src/navigation/navConfig.js";
+import { NAV_DOMAINS, isDomainVisible, isNavItemVisible, buildAdministrationNavGroups } from "../src/navigation/navConfig.js";
 import { ROLES, ROLE_NAV_ACCESS } from "../src/domain/constants.js";
 
 let passed = 0;
@@ -58,7 +58,7 @@ ok("Overview asserts NO authority of its own, and follows its children under bot
   assert.deepEqual(overview.surfaceAccess, ["administration.overview"],
     "Overview lost its governed surface -- the derived-surface guard would stop covering it");
   assert.deepEqual([...overview.containerScope], [
-    "administration/rolesPermissions", "administration/objects", "administration/workflows",
+    "administration/rolesPermissions", "administration/objects", "administration/permissions", "administration/workflows",
     "administration/permissionPreview", "administration/users", "administration/auditLogs",
   ], "the container's scope has drifted from the server catalog's containerOf children");
 
@@ -100,7 +100,9 @@ ok("Permission Preview is no longer a normal navigation item -- it is the hidden
   assert.equal(preview.legacyKey, undefined);
   const shown = adminDomain.subnav.filter((i) => !i.navHidden).map((i) => i.label);
   assert.ok(!shown.includes("Permission Preview"), "Permission Preview is still a visible Administration label");
-  for (const label of ["Overview", "Users", "Roles & Permissions", "Objects", "Workflows", "Data Import", "Audit Logs"]) {
+  // Labels per the approved Administration IA (Owner, 2026-10-08): Users -> "Employees & Users",
+  // Roles & Permissions -> "Roles". Keys and paths are unchanged.
+  for (const label of ["Overview", "Employees & Users", "Roles", "Objects", "Workflows", "Data Import", "Audit Logs"]) {
     assert.ok(shown.includes(label), `${label} missing from normal Administration navigation`);
   }
 });
@@ -143,7 +145,23 @@ ok("Users is the one people destination, at its own named path", () => {
   const users = byKey("users");
   assert.ok(users, "users subnav item present");
   assert.equal(users.path, "users");
-  assert.equal(users.label, "Users");
+  assert.equal(users.label, "Employees & Users");
+});
+
+// ----- Approved IA grouping (Owner, 2026-10-08) -----
+ok("the rail shows business destinations first and groups configuration under System & Integrations", () => {
+  const visible = adminDomain.subnav.filter((i) => !i.navHidden);
+  const { groups, ungrouped } = buildAdministrationNavGroups(visible);
+  // Grouping is over every non-hidden item; whether Permissions is VISIBLE is the source's decision, asserted elsewhere.
+  assert.deepEqual(ungrouped.map((i) => i.key), ["overview", "users", "objects", "rolesPermissions", "permissions", "workflows"]);
+  assert.deepEqual(groups.map((g) => g.label), ["System & Integrations"]);
+  assert.deepEqual(groups[0].items.map((i) => i.key), [
+    "systemConfiguration", "salesConfiguration", "financialPolicy", "emailCommunications",
+    "dataImport", "warehouseRacking", "integrations", "duplicateRules", "auditLogs",
+  ]);
+  // Every visible item is shown exactly once -- grouping hides nothing.
+  const shown = [...ungrouped, ...groups.flatMap((g) => g.items)].map((i) => i.key).sort();
+  assert.deepEqual(shown, visible.map((i) => i.key).sort());
 });
 
 // ----- Every pre-existing item's LEGACY gating is unchanged -----
@@ -237,7 +255,8 @@ ok("exactly eighteen Administration subnav items now exist", () => {
   // EIGHTEEN since Owner rulings #204 (2026-10-03): System Configuration (company settings by one governed registry -- time
   // zone, language) and Sales Configuration (Employee Sales Authority -- each person's maximum customer discount). Two
   // destinations because business configuration stays with its domain; both capability-gated like Data Import.
-  assert.equal(adminDomain.subnav.length, 18);
+  // NINETEEN since Administration > Permissions (Owner decision 2026-10-08, DECISIONS #212).
+  assert.equal(adminDomain.subnav.length, 19);
 });
 
 ok("Financial Policy is a visible Administration tab, and the only one", () => {
