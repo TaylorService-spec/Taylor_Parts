@@ -7641,6 +7641,7 @@ This entry adds `administration/permissions` → `["administration.objects"]` an
 - **Legacy source** (every environment where `EOS_NAVIGATION_AUTHORITY_READY` is false, production included): Permissions is fail-closed for every role, like Rental (#207) and Analysis (#208). Opening it there would need a new legacy placeholder row, which this decision does not authorize. The matrix therefore stays reachable through Objects in those environments; Phase 2 must not remove it from Objects.
 - **Pins moved on purpose:** Administration subnav 18 → 19; nav tree 90 → 91; the Administration container scope gains `administration/permissions` (it is a door onto a child surface). Legacy-visible sets (admin 75, dispatcher 72) are unchanged.
 - Page Layouts' row lands with its read-only viewer (Phase 5), so no destination exists without a screen.
+
 ## #214 — Administration IA Phase 3: Security Roles as a searchable master-detail (2026-10-08)
 
 **Decision:** UI-only Phase 3 of the Owner-approved Administration redesign (#211).

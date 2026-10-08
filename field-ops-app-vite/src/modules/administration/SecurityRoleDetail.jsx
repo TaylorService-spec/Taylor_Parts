@@ -175,7 +175,7 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, work
       </h3>
       {role.description ? <p className="fo-muted">{role.description}</p> : null}
       <p className="fo-muted">
-        {holders.length} {holders.length === 1 ? "employee holds" : "employees hold"} this role · {groups.length} objects.
+        {holders.length} {holders.length === 1 ? "employee holds" : "employees hold"} this role · {groups.length} {groups.length === 1 ? "object" : "objects"}.
         Where it applies is set on each employee&rsquo;s assignment.
       </p>
       <label className="fo-form-field">

@@ -204,7 +204,7 @@ export function RolesPermissionsSurface() {
                       <EditRoleForm role={selected} mutate={roles.mutate} onDone={() => setEditingRole(false)} />
                     )}
                     {/* PRIMARY: the enforced Security Role -- the rows the server evaluator reads. */}
-                    <SecurityRoleDetail roleKey={selected.key} />
+                    <SecurityRoleDetail key={selected.key} roleKey={selected.key} />
                     {/* #210: the legacy unenforced C/R/E/D matrix no longer renders -- it is not what the server enforces. */}
                   </>
                 )}
