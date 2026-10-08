@@ -530,6 +530,7 @@ function ObjectRows({ object, objects, technical, open, onToggleOpen, onChanged 
                     mutate={detail.mutate}
                     onResult={setResult}
                     technical={technical}
+                    objects={objects}
                   />
                   <CreateFieldForm objectKey={object.key} objects={objects} mutate={detail.mutate} onResult={setResult} />
                 </>
@@ -601,7 +602,9 @@ const FIELD_COLUMNS = Object.freeze({
   lifecycle: { value: (f) => titleCase(f.lifecycle) },
 });
 
-function FieldTable({ fields, mutate, onResult, technical = false }) {
+function FieldTable({ fields, mutate, onResult, technical = false, objects = [] }) {
+  // A Reference field names its target by the target's business label; the key only with technical details on.
+  const targetLabel = (key) => objects.find((o) => o.key === key)?.label ?? titleCase(key);
   const [editingId, setEditingId] = useState(null);
   const { sort, toggle, sorted } = useTableSort({ rows: fields, columns: FIELD_COLUMNS });
   const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
@@ -625,7 +628,7 @@ function FieldTable({ fields, mutate, onResult, technical = false }) {
                 {technical && <td className="fo-muted"><code>{field.key}</code></td>}
                 <td className="fo-muted">
                   {titleCase(field.dataType)}
-                  {field.referenceTo ? <span className="fo-muted"> → {field.referenceTo}</span> : null}
+                  {field.referenceTo ? <span className="fo-muted"> → {technical ? field.referenceTo : targetLabel(field.referenceTo)}</span> : null}
                   {(field.allowedValues ?? []).length > 0
                     ? <span className="fo-muted"> ({field.allowedValues.join(", ")})</span>
                     : null}
@@ -783,6 +786,7 @@ function CreateFieldForm({ objectKey, objects = [], mutate, onResult }) {
 
   const submit = async (event) => {
     event.preventDefault();
+    setCreated(null); // a previous success must not sit beside a new refusal
     const outcome = await mutate("createCustomField", {
       objectKey,
       key: draft.key,
