@@ -4,7 +4,7 @@ import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isValidPaymentTe
 import { accountSaveErrorMessage } from "../../domain/accountPortfolio";
 import { useAuth } from "../../auth/AuthContext";
 import { ACCOUNT_FIELD_INPUT_ID } from "./accountFieldInputs.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import AddressFields from "../../shared/address/AddressFields";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
 import IdentityLine from "./IdentityLine";
@@ -46,7 +46,7 @@ import { Button } from "../../shared/ui/primitives";
 // grid, `.fo-btn-row`, all control ids and label text are preserved.
 export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false, contactsError = null, onSavingChange, focusFieldId = null }) {
   const { user, employeeId: sessionEmployeeId, displayName: sessionDisplayName, loading: authLoading } = useAuth();
-  const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
+  const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory({ actors: true });
 
   const [name, setName] = useState(initialValues?.name ?? "");
   const [address, setAddress] = useState({

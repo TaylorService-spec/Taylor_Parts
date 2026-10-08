@@ -196,7 +196,9 @@ describe("truthful rendering survives the migration", () => {
     // The summary band rendered `view.ownerEmployeeId ?? "—"` — a raw employee id where a name
     // belongs. This is the defect that resolver threading exists to close.
     expect(SO).not.toMatch(/value: view\.ownerEmployeeId/);
-    expect(SO).toMatch(/useEmployeeDirectory/);
+    // Names come from the GOVERNED EOS Employee directory (UI corrections integration), not the Firestore listener.
+    expect(SO).toMatch(/useGovernedEmployeeDirectory/);
+    expect(SO).not.toMatch(/hooks\/useEmployeeDirectory/);
     expect(SO).toMatch(/REFERENCE_STATE\.NOT_FOUND/);
   });
 

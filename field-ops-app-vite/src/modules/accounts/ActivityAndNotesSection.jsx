@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useCrmActivities } from "../../hooks/useCrmActivities.js";
 import { useCrmActivityActions } from "../../hooks/useCrmActivityActions.js";
-import { useEmployeeDirectory, resolveActorDisplayName } from "../../hooks/useEmployeeDirectory.js";
+import { useGovernedEmployeeDirectory, resolveActorDisplayName } from "../../hooks/useGovernedEmployeeDirectory.js";
 import { crmActivityView, CRM_ACTIVITY_VIEW_STATE } from "../../domain/crmActivityView.js";
 import { CRM_ACTIVITY_TYPES, crmActivityTypeLabel } from "../../domain/crmActivityTypes.js";
 import Modal from "../../shared/ui/Modal.jsx";
@@ -25,7 +25,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // field (account.notes stays exactly as it is; this is additive, not a replacement of that field).
 export default function ActivityAndNotesSection({ accountId }) {
   const { loading, errorStatus, result, refetch } = useCrmActivities(accountId);
-  const { byUserId } = useEmployeeDirectory();
+  const { byUserId } = useGovernedEmployeeDirectory({ actors: true });
   const resolveActorName = (uid) => resolveActorDisplayName(uid, byUserId);
   const view = crmActivityView({ loading, errorStatus, result, resolveActorName });
 

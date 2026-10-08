@@ -56,6 +56,18 @@ import { useLocationsForAccount } from "../src/hooks/useLocationsForAccount";
 import { useContactsForAccount } from "../src/hooks/useContactsForAccount";
 import AccountDetail from "../src/modules/accounts/AccountDetail.jsx";
 
+// UI corrections integration (2026-10-08): these pages read names from the GOVERNED EOS directory
+// (useGovernedEmployeeDirectory). It is mocked to answer from the same fixture directory as before.
+vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
+  const legacy = await import("../src/hooks/useEmployeeDirectory");
+  return {
+    useGovernedEmployeeDirectory: (...args) => legacy.useEmployeeDirectory(...args),
+    ...(await vi.importActual("../src/domain/actorDisplayName.js")),
+    resetGovernedEmployeeDirectory: () => {},
+  };
+});
+
+
 const PERMISSION_ERROR_COPY = "You do not have permission to view these customers.";
 
 function renderDetail() {

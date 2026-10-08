@@ -6,7 +6,7 @@ import { SALES_AGREEMENT_ABSENCE, SALES_AGREEMENT_ABSENCE_SENTENCE } from "../..
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
 import RuledSection from "../../shared/ui/RuledSection.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import { useAccountNamesWithStatus, ACCOUNT_NAMES_STATUS } from "../../hooks/useAccountNames.js";
 import { REFERENCE_STATE, REFERENCE_STATE_LABEL } from "../../metadata/referenceResolution.js";
 import { formatMoment } from "../../domain/displayTimestamp";
@@ -235,7 +235,7 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
 
   // ONE DIRECTORY READ for both the owner and the acceptance actor. An employee id is a routing key
   // and never content, and a raw Firebase uid must never reach a non-Admin DOM (F-UID-1).
-  const directory = useEmployeeDirectory();
+  const directory = useGovernedEmployeeDirectory({ actors: true });
   const owner = resolveEmployeeIdentity(ready ? view.ownerEmployeeId : null, {
     byEmployeeId: directory.byEmployeeId,
     loading: directory.loading,

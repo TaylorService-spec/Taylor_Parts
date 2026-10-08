@@ -16,7 +16,7 @@ import {
   addFilter, removeFilter, clearFilters, setSort, makeCriterion, describeDropped, describeRefusal,
 } from "../../metadata/listUrlState.js";
 import { useListCriteria } from "../../hooks/useListCriteria.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
@@ -104,7 +104,7 @@ export default function AccountsList() {
   //
   // ONE directory read for the whole page, not one per row: useEmployeeDirectory is a single
   // subscription keyed by employee id, so adding an Owner column costs no reads per record.
-  const directory = useEmployeeDirectory();
+  const directory = useGovernedEmployeeDirectory();
   const resolveReference = useCallback((fieldId, id) => {
     if (fieldId !== "accountOwnerEmployeeId") return undefined;
     if (directory.loading) return { state: REFERENCE_STATE.LOADING };

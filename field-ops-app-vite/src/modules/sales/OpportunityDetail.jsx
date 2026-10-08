@@ -4,7 +4,7 @@ import { useOpportunity } from "../../hooks/useOpportunity.js";
 import { useOpportunityTransitions } from "../../hooks/useOpportunityTransitions.js";
 import { useOpportunitySectionSave } from "../../hooks/useOpportunitySectionSave.js";
 import { useSalesAgreement } from "../../hooks/useSalesAgreement.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import { opportunityView, OPPORTUNITY_VIEW_STATE } from "../../domain/opportunityView.js";
 import { opportunityDetailModel } from "../../domain/opportunityFieldModel.js";
 import { isOpportunityEditable } from "../../domain/opportunitySectionSave.js";
@@ -91,7 +91,7 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
   const agreement = useSalesAgreement(opportunityId, {
     enabled: hasCapability(SALES_AGREEMENT_READ_CAPABILITY) === true,
   });
-  const directory = useEmployeeDirectory();
+  const directory = useGovernedEmployeeDirectory();
   const [editingSection, setEditingSection] = useState(null);
 
   const nowMillis = Date.now();

@@ -21,6 +21,18 @@ vi.mock("../src/hooks/useEmployeeDirectory", () => ({
 import AccountOpportunitiesSection from "../src/modules/accounts/AccountOpportunitiesSection.jsx";
 import AccountSalesOrdersSection from "../src/modules/accounts/AccountSalesOrdersSection.jsx";
 
+// UI corrections integration (2026-10-08): these pages read names from the GOVERNED EOS directory
+// (useGovernedEmployeeDirectory). It is mocked to answer from the same fixture directory as before.
+vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
+  const legacy = await import("../src/hooks/useEmployeeDirectory");
+  return {
+    useGovernedEmployeeDirectory: (...args) => legacy.useEmployeeDirectory(...args),
+    ...(await vi.importActual("../src/domain/actorDisplayName.js")),
+    resetGovernedEmployeeDirectory: () => {},
+  };
+});
+
+
 function renderWithRouter(ui) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
 }

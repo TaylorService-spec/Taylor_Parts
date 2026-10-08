@@ -30,6 +30,18 @@ import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+// UI corrections integration (2026-10-08): these pages read names from the GOVERNED EOS directory
+// (useGovernedEmployeeDirectory). It is mocked to answer from the same fixture directory as before.
+vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
+  const legacy = await import("../src/hooks/useEmployeeDirectory");
+  return {
+    useGovernedEmployeeDirectory: (...args) => legacy.useEmployeeDirectory(...args),
+    ...(await vi.importActual("../src/domain/actorDisplayName.js")),
+    resetGovernedEmployeeDirectory: () => {},
+  };
+});
+
+
 vi.mock("../src/hooks/useAccount", () => ({ useAccount: vi.fn() }));
 vi.mock("../src/hooks/useLocationsForAccount", () => ({
   useLocationsForAccount: () => ({ data: [], loading: false, error: null, retry: vi.fn() }),

@@ -35,7 +35,8 @@ import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 // primary actions and therefore none. The variants below restore the hierarchy the artifact
 // draws: one filled action, everything else quiet.
 import { Button } from "../../shared/ui/primitives/index.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
+import { WORKFORCE_READ_STATE, useWorkforceRead } from "../../hooks/useWorkforceRead.js";
 // THE SAME owner resolution the record page uses, imported rather than reimplemented so a deal
 // cannot be owned by one person in the list and another on the record that list opens.
 import { ownerName as resolveOwnerName } from "./opportunitySections.jsx";
@@ -115,12 +116,12 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
   const { opportunities, accountNameById, status, synthetic, loading, error, refetch } = useOpportunities(source);
   // ONE directory subscription for the whole page. Owner names then resolve as a map lookup per
   // row -- never a read per row, which on a scanning surface is one round trip per visible deal.
-  const directory = useEmployeeDirectory();
-  // WHO IS LOOKING, resolved from the directory subscription already open above -- no extra read,
-  // and no new authority. `byUserId` is keyed by the Firebase uid; an account with no linked
-  // Employee record simply has no entry, and the "My opportunities" view says so rather than
-  // reporting an empty queue (see selectOpportunityView).
-  const viewerEmployeeId = viewerUid ? (directory.byUserId?.get(viewerUid)?.id ?? null) : null;
+  const directory = useGovernedEmployeeDirectory();
+  // WHO IS LOOKING: the caller's OWN governed Employee (EMP-RT-07 readMyEmployeeProfile, resolved by the server from the
+  // verified sign-in -- never from a uid in the client). A sign-in with no linked Employee has none, and the "My
+  // opportunities" view says so rather than reporting an empty queue (see selectOpportunityView).
+  const me = useWorkforceRead("readMyEmployeeProfile", viewerUid ? undefined : null);
+  const viewerEmployeeId = me.status === WORKFORCE_READ_STATE.READY ? (me.data?.employee?.employeeId ?? null) : null;
 
   // Fail-closed by default: a caller that injects nothing gets the seam's own inert readiness and
   // this page writes nothing. Production injects the real trusted capability decision.

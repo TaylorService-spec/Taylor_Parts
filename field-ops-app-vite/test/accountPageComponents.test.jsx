@@ -41,6 +41,18 @@ import { useAccount } from "../src/hooks/useAccount";
 import { useLocationsForAccount } from "../src/hooks/useLocationsForAccount";
 import { useContactsForAccount } from "../src/hooks/useContactsForAccount";
 
+// UI corrections integration (2026-10-08): these pages read names from the GOVERNED EOS directory
+// (useGovernedEmployeeDirectory). It is mocked to answer from the same fixture directory as before.
+vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
+  const legacy = await import("../src/hooks/useEmployeeDirectory");
+  return {
+    useGovernedEmployeeDirectory: (...args) => legacy.useEmployeeDirectory(...args),
+    ...(await vi.importActual("../src/domain/actorDisplayName.js")),
+    resetGovernedEmployeeDirectory: () => {},
+  };
+});
+
+
 // The X-ACCOUNT-WIRE-CALLABLE-LISTS re-evaluation below renders the REAL Opportunities /
 // Sales Orders RELATED_LIST sections (straight off accountRecordPage — not test doubles),
 // through the REAL default RELATED_LIST binding (DefaultRelatedList, MetadataRecordPage.jsx).

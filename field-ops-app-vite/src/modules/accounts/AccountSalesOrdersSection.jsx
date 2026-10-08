@@ -1,6 +1,6 @@
 import { useAccountSalesOrders } from "../../hooks/useAccountSalesOrders.js";
 import { accountSalesOrdersView, ACCOUNT_SALES_ORDERS_STATE } from "../../domain/accountSalesOrdersView.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import FailureState from "../../shared/ui/FailureState";
@@ -28,7 +28,7 @@ function formatDate(millis) {
 
 export default function AccountSalesOrdersSection({ accountId }) {
   const { loading, errorStatus, result } = useAccountSalesOrders(accountId);
-  const { byEmployeeId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
+  const { byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory();
   const view = accountSalesOrdersView({ loading, errorStatus, result });
 
   return (

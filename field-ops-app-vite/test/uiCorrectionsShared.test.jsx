@@ -283,3 +283,66 @@ describe("Administration → Users roster (items B, C, E)", () => {
     expect(screen.getByText("Row Descending")).toBeTruthy();
   });
 });
+
+// ════════ INTEGRATION READINESS: Firestore employee-name listeners replaced by the governed EOS directory ════════
+import { readFileSync as readSrc } from "node:fs";
+import { renderHook } from "@testing-library/react";
+import { resetGovernedEmployeeDirectory, useGovernedEmployeeDirectory } from "../src/hooks/useGovernedEmployeeDirectory.js";
+
+describe("governed employee name directory (replaces the Firestore listener on Opportunity / Sales Order / Account pages)", () => {
+  const page = (items, nextCursor = null) => ({ ok: true, result: { items, nextCursor } });
+  it("reads EMP-RT-01 listEmployees page by page; every employment status resolves (historical owners keep their names)", async () => {
+    resetGovernedEmployeeDirectory();
+    const client = { call: vi.fn(async (op, input) => (input.cursor
+      ? page([{ employeeId: "e-2", displayName: "Lee Former", employmentStatus: "TERMINATED", operatingCompanyId: "taylor" }])
+      : page([{ employeeId: "e-1", displayName: "Dana Reyes", employmentStatus: "ACTIVE", operatingCompanyId: "taylor" }], "c-1"))) };
+    const policyCall = vi.fn();
+    const { result } = renderHook(() => useGovernedEmployeeDirectory({ client, policyCall }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.byEmployeeId.get("e-1").displayName).toBe("Dana Reyes");
+    expect(result.current.byEmployeeId.get("e-2").displayName).toBe("Lee Former");
+    expect(client.call.mock.calls.map(([op, input]) => [op, input])).toEqual([["listEmployees", { limit: 200 }], ["listEmployees", { limit: 200, cursor: "c-1" }]]);
+    // Actor names are NOT asked for unless the page needs them (that read is admin.principalAccess.read).
+    expect(policyCall).not.toHaveBeenCalled();
+  });
+
+  it("an Employee outside the caller's reach is absent (the SERVER omits it) and renders unresolved; a refusal is an error, never a guess", async () => {
+    const reach = { call: vi.fn(async () => page([{ employeeId: "e-taylor", displayName: "In Reach", employmentStatus: "ACTIVE", operatingCompanyId: "taylor" }])) };
+    const noPolicy = vi.fn();
+    const a = renderHook(() => useGovernedEmployeeDirectory({ client: reach, policyCall: noPolicy }));
+    await waitFor(() => expect(a.result.current.loading).toBe(false));
+    expect(a.result.current.byEmployeeId.has("e-ventana")).toBe(false);
+    const refused = { call: vi.fn(async () => ({ ok: false, code: "FORBIDDEN", message: "employee.record.read is required" })) };
+    const b = renderHook(() => useGovernedEmployeeDirectory({ client: refused, policyCall: noPolicy }));
+    await waitFor(() => expect(b.result.current.loading).toBe(false));
+    expect(b.result.current.error.code).toBe("FORBIDDEN");
+    expect(b.result.current.byEmployeeId.size).toBe(0);
+  });
+
+  it("actor (Principal) names come from the governed listTenantPrincipals read only when asked; a refusal leaves them unknown", async () => {
+    const client = { call: vi.fn(async () => page([])) };
+    const policyCall = vi.fn(async () => ({ ok: true, data: [{ id: "pr-1", displayName: "Avery Admin" }] }));
+    const { result } = renderHook(() => useGovernedEmployeeDirectory({ client, policyCall, actors: true }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(policyCall).toHaveBeenCalledWith("listTenantPrincipals", {});
+    expect(result.current.byUserId.get("pr-1").displayName).toBe("Avery Admin");
+    const deny = vi.fn(async () => ({ ok: false, code: "FORBIDDEN" }));
+    const denied = renderHook(() => useGovernedEmployeeDirectory({ client, policyCall: deny, actors: true }));
+    await waitFor(() => expect(denied.result.current.loading).toBe(false));
+    expect(denied.result.current.byUserId.size).toBe(0);
+  });
+
+  it("static: the Opportunity, Sales Order, Sales Agreement and Account pages no longer import the Firestore directory, and the new hook holds no Firebase", () => {
+    for (const rel of ["src/modules/sales/OpportunityDetail.jsx", "src/modules/sales/OpportunityList.jsx", "src/modules/sales/SalesOrderDetail.jsx",
+      "src/modules/sales/SalesAgreementDetail.jsx", "src/modules/accounts/AccountDetail.jsx", "src/modules/accounts/AccountForm.jsx",
+      "src/modules/accounts/AccountsList.jsx", "src/modules/accounts/AccountOpportunitiesSection.jsx", "src/modules/accounts/AccountSalesOrdersSection.jsx",
+      "src/modules/accounts/ActivityAndNotesSection.jsx"]) {
+      const src = readSrc(rel, "utf8");
+      expect(src, rel).not.toMatch(/hooks\/useEmployeeDirectory/);
+      expect(src, rel).toMatch(/useGovernedEmployeeDirectory/);
+    }
+    const hook = readSrc("src/hooks/useGovernedEmployeeDirectory.js", "utf8").replace(/\/\/[^\n]*/g, "");
+    expect(hook).not.toMatch(/firebase|firestore|onSnapshot/i);
+    expect(readSrc("src/modules/sales/OpportunityList.jsx", "utf8")).toMatch(/useWorkforceRead\("readMyEmployeeProfile"/);
+  });
+});
