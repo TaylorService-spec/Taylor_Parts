@@ -8999,3 +8999,5 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-keylist__chips { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 0; padding: 0; }
 .fo-keylist__remove { appearance: none; border: 0; background: none; cursor: pointer; margin-left: 4px; font: inherit; color: var(--color-text-muted); padding: 0 2px; }
 .fo-keylist__remove:focus-visible { outline: 2px solid var(--color-focus); }
+.fo-cp-provenance { margin: 12px 0; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 6px; }
+.fo-cp-provenance .fo-detail-list { display: grid; grid-template-columns: max-content max-content; gap: 2px 16px; margin: 4px 0 0; }

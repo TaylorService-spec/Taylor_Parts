@@ -58,6 +58,8 @@ export function titleCasePhrase(value) {
   if (value === null || value === undefined) return "";
   const words = String(value).trim().split(/\s+/).filter(Boolean);
   return words.map((w, i) => {
+    // A token with inner punctuation ("A/R", "P&L") or already all-capitals is kept as written: it is an abbreviation.
+    if (/[A-Za-z][/&.][A-Za-z]/.test(w) || (w.length > 1 && w === w.toUpperCase() && /[A-Z]/.test(w))) return w;
     const m = /^([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9]*)$/.exec(w);
     return m ? `${m[1]}${capitalizeWord(m[2], i, words.length)}${m[3]}` : w;
   }).join(" ");

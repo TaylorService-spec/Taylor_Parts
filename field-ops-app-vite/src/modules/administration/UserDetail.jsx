@@ -170,7 +170,9 @@ export default function UserDetail({
 
   const record = useWorkforceRead(WORKFORCE_READS.EMPLOYEE_RECORD.operation, employeeId ? { employeeId } : null, { client: workforce });
   // The persistent header's Job Role (EMP-RT-08), read once per record; re-read after a Job Role change.
-  const jobRoleRead = useWorkforceRead(WORKFORCE_READS.JOB_ROLE_HISTORY.operation, employeeId ? { employeeId } : null, { client: workforce });
+  // Asked only once the record itself has been read: a refused or missing record reads nothing else.
+  const recordReady = record.status === WORKFORCE_READ_STATE.READY;
+  const jobRoleRead = useWorkforceRead(WORKFORCE_READS.JOB_ROLE_HISTORY.operation, employeeId && recordReady ? { employeeId } : null, { client: workforce });
   const [activeTab, selectTab] = useUrlTab(EMPLOYEE_TAB_DEFS);
   const employee = record.status === WORKFORCE_READ_STATE.READY ? record.data : null;
   const linked = employee?.userAccess === "LINKED";
@@ -272,7 +274,7 @@ export default function UserDetail({
   // active tab is mounted, so a tab's governed reads run when it is opened (and re-run on return).
   const tabs = [
     { id: "overview", label: "Overview", render: () => (
-      <div className="ns-record-body ns-record-body--single">
+      <div className="ns-record-body">
         <div>
           <RuledSection title="Identity & Contact">
             <StructuredFields fields={recordIdentityFields(employee)} label="Identity and contact" />
@@ -493,7 +495,7 @@ export default function UserDetail({
         />
       ) : null}
 
-      <Tabs tabs={tabs} active={activeTab} onSelect={selectTab} label={`${name} — Employee record sections`} className="fo-employee-tabs" />
+      <Tabs tabs={tabs} active={activeTab} onSelect={selectTab} label={`${name} — Employee record sections`} />
     </div>
   );
 }
@@ -600,7 +602,7 @@ function AccountActions({ linked, principalLink, credential, accountSubject, act
   }
   return (
     <div className="fo-user-actions" data-account-actions="UNAVAILABLE">
-      <h3 className="fo-user-actions__title">Administrative actions</h3>
+      <h3 className="fo-user-actions__title">Administrative Actions</h3>
       <p className="fo-muted">{words}</p>
     </div>
   );

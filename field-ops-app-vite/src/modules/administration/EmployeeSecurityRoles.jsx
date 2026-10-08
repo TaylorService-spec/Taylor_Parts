@@ -165,7 +165,7 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
           <p>{`Remove ${nameOf(removing)}${removing.scopeValue ? ` (${scopeLabel(removing.scopeType)}: ${valueLabel(removing.scopeType, removing.scopeValue)})` : ""} from ${employeeName}? They lose what that assignment carries unless another Role they hold carries it too.`}</p>
           <ReasonField value={reason} onChange={setReason} />
           <div className="fo-btn-row">
-            <Button type="submit" variant="primary" disabled={!reasonText || busy}>Confirm removal</Button>
+            <Button type="submit" variant="primary" disabled={!reasonText || busy}>Confirm Removal</Button>
             <Button type="button" variant="secondary" onClick={() => setRemoving(null)}>Cancel</Button>
           </div>
         </form>

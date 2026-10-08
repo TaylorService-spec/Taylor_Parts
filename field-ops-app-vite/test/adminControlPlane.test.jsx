@@ -143,7 +143,7 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     const api = await renderMatrix();
     fireEvent.click(screen.getByRole("button", { name: "Revoke dispatch from dispatcher" }));
     const form = screen.getByRole("form", { name: "Revoke dispatch for dispatcher" });
-    const confirm = within(form).getByRole("button", { name: "Confirm revoke" });
+    const confirm = within(form).getByRole("button", { name: "Confirm Revoke" });
     expect(confirm.disabled).toBe(true);
     typeReason(form, "Dispatch moves to Field Managers");
     await act(async () => { fireEvent.click(confirm); });
@@ -160,7 +160,7 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     const form = screen.getByRole("form", { name: "Grant recordConsumption to a Security Role" });
     fireEvent.change(within(form).getByLabelText("Security Role"), { target: { value: "technician" } });
     typeReason(form, "Technicians record their own parts");
-    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm grant" })); });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Grant" })); });
     expect(api.grantObjectActionToRole).toHaveBeenCalledWith({
       objectKey: "workOrder", actionKey: "recordConsumption", roleKey: "technician", reason: "Technicians record their own parts",
     });
@@ -175,7 +175,7 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     // Record kinds come from the SERVER's vocabulary; the single-value relation is filled automatically.
     fireEvent.change(within(form).getByLabelText("Record kind"), { target: { value: "workOrder" } });
     typeReason(form, "Office managers read their assigned work orders");
-    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm grant" })); });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Grant" })); });
     expect(api.grantObjectActionToRole).toHaveBeenCalledTimes(1);
     expect(api.grantObjectActionToRole.mock.calls[0][0]).toEqual({
       objectKey: "workOrder", actionKey: "read", roleKey: "officeManager",
@@ -202,7 +202,7 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     fireEvent.change(kind, { target: { value: "WORK_ELIGIBILITY" } });
     fireEvent.change(within(form).getByLabelText("Qualification"), { target: { value: "SERVICE_TECHNICIAN" } });
     typeReason(form, "Only qualified technicians dispatch");
-    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm set condition" })); });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Set Condition" })); });
     expect(api.setGrantCondition).toHaveBeenCalledWith({
       objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "Only qualified technicians dispatch",
       condition: { paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: "SERVICE_TECHNICIAN" }]] },
@@ -221,12 +221,12 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     expect(within(kind).getAllByRole("option")).toHaveLength(1);
     expect(form.textContent).toMatch(/does not serve its condition vocabulary \(listSupportedConditionKinds\)/);
     typeReason(form, "anything");
-    expect(within(form).getByRole("button", { name: "Confirm set condition" }).disabled).toBe(true);
+    expect(within(form).getByRole("button", { name: "Confirm Set Condition" }).disabled).toBe(true);
     // An unconditioned grant is still possible.
     fireEvent.click(screen.getByRole("button", { name: "Grant read to officeManager" }));
     const grant = screen.getByRole("form", { name: "Grant read for officeManager" });
     typeReason(grant, "plain grant");
-    await act(async () => { fireEvent.click(within(grant).getByRole("button", { name: "Confirm grant" })); });
+    await act(async () => { fireEvent.click(within(grant).getByRole("button", { name: "Confirm Grant" })); });
     expect(api.grantObjectActionToRole).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", roleKey: "officeManager", reason: "plain grant" });
   });
 
@@ -236,7 +236,7 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     fireEvent.click(screen.getByRole("button", { name: "Retire condition on read for technician" }));
     const form = screen.getByRole("form", { name: "Retire condition read for technician" });
     typeReason(form, "Widen technician reads");
-    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm retire condition" })); });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Retire Condition" })); });
     expect(api.retireGrantCondition).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", roleKey: "technician", reason: "Widen technician reads" });
     const shown = document.querySelector('[data-control-plane-refusal="CONFLICT"]');
     expect(shown.textContent).toBe("CONFLICT: CONDITION_RETIREMENT_WOULD_WIDEN: revoke the grant before retiring its condition");
@@ -302,7 +302,7 @@ describe("Security Role detail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Revoke read from technician" }));
     const form = screen.getByRole("form", { name: "Revoke read for technician" });
     typeReason(form, "Reads move to the dispatcher");
-    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm revoke" })); });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Revoke" })); });
     expect(api.revokeObjectActionFromRole).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", roleKey: "technician", reason: "Reads move to the dispatcher" });
     await waitFor(() => expect(api.getSecurityRoleDetail.mock.calls.length).toBeGreaterThan(1));
     expect(api.listRoleCapabilityDecisionHistory.mock.calls.length).toBeGreaterThan(1);

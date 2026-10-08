@@ -10,6 +10,7 @@
 // only things this screen withholds are the ones the server has said are not grantable: a
 // SYSTEM_INVARIANT cell (refused on write) and a condition kind the server's own vocabulary
 // (listSupportedConditionKinds) marks unsupported or inapplicable. With no vocabulary, no condition.
+import { titleCasePhrase } from "../../shared/display/displayLabels.js";
 import { useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { refusalText } from "../../services/adminControlPlaneClient.js";
@@ -179,7 +180,7 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, capabili
           ) : null}
           <ReasonField value={reason} onChange={setReason} />
           <div className="fo-btn-row">
-            <Button type="submit" variant="primary" disabled={!ready || busy}>{`Confirm ${verb?.toLowerCase()}`}</Button>
+            <Button type="submit" variant="primary" disabled={!ready || busy}>{`Confirm ${titleCasePhrase(verb ?? "")}`}</Button>
             <Button type="button" variant="secondary" onClick={() => setMode(null)}>Cancel</Button>
           </div>
         </form>

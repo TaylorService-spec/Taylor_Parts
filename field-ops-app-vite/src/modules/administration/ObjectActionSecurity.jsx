@@ -191,7 +191,7 @@ export function GrantToRoleForm({ api, objectKey, actionKey, capabilityKey, role
           </label>
           <ConditionFields value={condition} onChange={setCondition} vocabulary={vocabulary} capabilityKey={capabilityKey} allowNone idPrefix={`new-${actionKey}`} />
           <ReasonField value={reason} onChange={setReason} />
-          <Button type="submit" variant="primary" disabled={!ready || busy}>Confirm grant</Button>
+          <Button type="submit" variant="primary" disabled={!ready || busy}>Confirm Grant</Button>
         </form>
       ) : null}
       <Outcome result={result} success="Granted by the server; re-reading." />

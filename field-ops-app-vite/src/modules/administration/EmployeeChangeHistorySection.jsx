@@ -86,7 +86,7 @@ export default function EmployeeChangeHistorySection({ employeeId, workforce, re
       {more.error ? <p className="ns-state ns-state--denied" role="status">{more.error}</p> : null}
       {state.nextCursor ? (
         <button type="button" onClick={showMore} disabled={more.loading}>
-          {more.loading ? "Loading more…" : "Show more"}
+          {more.loading ? "Loading more…" : "Show More"}
         </button>
       ) : null}
     </div>

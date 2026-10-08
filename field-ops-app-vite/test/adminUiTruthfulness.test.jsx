@@ -37,7 +37,7 @@ describe("D2 Audit Logs: the governed audit is not described as undeployed", () 
     const text = document.body.textContent;
     expect(screen.getByRole("heading", { name: "Audit Logs" })).toBeTruthy();
     expect(text).toMatch(/Access Audit History/);
-    expect(text).toMatch(/Decision history/);
+    expect(text).toMatch(/Decision History/);
     expect(text).toMatch(/does not yet show a consolidated, tenant-wide list/);
     expect(text).not.toMatch(/firebase|firestore|trusted read path|not yet deployed|Issue #/i);
     expect(screen.getByRole("link", { name: "Users" }).getAttribute("href")).toBe("/administration/users");

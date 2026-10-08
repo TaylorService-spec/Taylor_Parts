@@ -24,6 +24,7 @@ import { adminControlPlaneClient } from "../../services/adminControlPlaneClient.
 import { workforceApiClient } from "../../services/workforceApiClient.js";
 import { isNonprodEnvironment } from "../../config/environmentRole.js";
 import { principalLabel } from "./principalDisplay.js";
+import { Button } from "../../shared/ui/primitives/index.js";
 
 export const PRINCIPAL_QA_PATH = "/administration/qa/principal-inspection";
 
@@ -102,10 +103,10 @@ function NonprodInspection({ api, workforce }) {
             <ul className="fo-pill-row" data-principal-list={showAll || links.status === "failed" ? "ALL" : "UNLINKED"}>
               {(links.status === "failed" ? all : listed).map((p) => (
                 <li key={p.id}>
-                  <button type="button" className={`fo-btn ${selected?.id === p.id ? "fo-btn--primary" : "fo-btn--secondary"}`}
+                  <Button variant={selected?.id === p.id ? "primary" : "secondary"}
                     aria-pressed={selected?.id === p.id} onClick={() => setSelected(selected?.id === p.id ? null : p)}>
                     {principalLabel(p)}{p.status === "active" ? "" : " · Disabled"}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

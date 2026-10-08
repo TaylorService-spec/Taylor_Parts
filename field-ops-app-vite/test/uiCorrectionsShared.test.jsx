@@ -20,6 +20,8 @@ describe("display labels (item A)", () => {
     expect(titleCase("salesOrder.write")).toBe("Sales Order Write");
     expect(titleCase("crm_account_id")).toBe("CRM Account ID");
     expect(titleCasePhrase("roles and permissions of the user")).toBe("Roles and Permissions of the User");
+    expect(titleCasePhrase("open A/R by company")).toBe("Open A/R by Company");
+    expect(titleCasePhrase("EOS access")).toBe("EOS Access");
     expect(sentenceCase("type at least 2 characters.")).toBe("Type at least 2 characters.");
   });
 

@@ -54,7 +54,7 @@ const MVP_SURFACES = [
     path: "audit-logs",
     title: "Audit Logs",
     description:
-      "Where to find the governed audit of access changes: each Employee's Access Audit History and each Security Role's Decision history.",
+      "Where to find the governed audit of access changes: each Employee's Access Audit History and each Security Role's Decision History.",
   },
 ];
 

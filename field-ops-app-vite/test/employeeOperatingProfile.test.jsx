@@ -6,7 +6,7 @@
 // in this file, because neither page has one -- and the static ratchet at the bottom proves it. Fixtures live
 // only in this file.
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, within, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -141,6 +141,9 @@ const renderSelf = (workforce = makeWorkforce()) =>
   );
 
 const section = (title) => screen.getByRole("heading", { level: 2, name: title }).closest("section");
+// UI corrections item D: the Employee record is TABBED -- Overview / Roles & Access / Assignments / Workflows / Activity.
+// Only the open tab is mounted, so a test opens the tab that holds the section it reads, as a person would.
+const openTab = (name) => fireEvent.click(screen.getByRole("tab", { name }));
 
 let consoleError;
 beforeEach(() => {
@@ -196,7 +199,10 @@ describe("Employee and User Access are separate", () => {
   it("the business context and User Access are different sections", async () => {
     renderRecord();
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
-    const business = section("Employment & business context");
+    const business = section("Employment & Business Context");
+    // User Access is on the Roles & Access tab; the business context on Overview -- different sections AND different tabs.
+    expect(within(business).queryByText(/User Access linked/)).toBeNull();
+    openTab("Roles & Access");
     const access = section("User Access");
     expect(within(business).queryByText(/User Access/)).toBeNull();
     expect(within(business).queryByText(/Security Role/)).toBeNull();
@@ -209,6 +215,7 @@ describe("Employee and User Access are separate", () => {
     const client = legacyClient();
     renderRecord("emp-1", workforce, client, () => true);
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    openTab("Roles & Access");
     await waitFor(() => expect(document.querySelector('[data-employee-principal="LINKED"]')).toBeTruthy());
     expect(workforce.call).toHaveBeenCalledWith("readEmployeePrincipalLink", { employeeId: "emp-1" });
     await waitFor(() => expect(client.readPrincipalAccessState).toHaveBeenCalledWith({ principalUid: "uid-dana" }));
@@ -220,6 +227,7 @@ describe("Employee and User Access are separate", () => {
     const client = legacyClient();
     renderRecord("emp-2", workforce, client);
     await screen.findByRole("heading", { level: 1, name: "Lee Park" });
+    openTab("Roles & Access");
     expect(document.querySelector("[data-user-access-link]").getAttribute("data-user-access-link")).toBe(USER_ACCESS_LINK.NOT_LINKED);
     expect(workforce.call.mock.calls.some((c) => c[0] === "readEmployeePrincipalLink")).toBe(false);
     expect(document.querySelector('[data-account-actions="UNAVAILABLE"]').textContent).toMatch(/no account to manage/);
@@ -231,6 +239,7 @@ describe("Employee and User Access are separate", () => {
     const client = legacyClient();
     renderRecord("emp-1", makeWorkforce({ readEmployeePrincipalLink: fail("FORBIDDEN", "CAPABILITY_REQUIRED", 403) }), client);
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    openTab("Roles & Access");
     await waitFor(() => expect(document.querySelector('[data-employee-principal="NOT_AVAILABLE_TO_YOU"]')).toBeTruthy());
     expect(screen.getAllByText(/The Principal link is not available to you\./).length).toBeGreaterThan(0);
     expect(policyCall).not.toHaveBeenCalled();
@@ -256,6 +265,7 @@ describe("Record Owner, Accountable Person and Assigned Person stay separate", (
     });
     renderRecord("emp-1", workforce);
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    openTab("Assignments");
     const axes = () => [...document.querySelectorAll("[data-responsibility-axis]")];
     await waitFor(() => expect(axes()[1].querySelector('[data-record-family="OPPORTUNITY"][data-family-state="RECORDS"]')).toBeTruthy());
     expect(axes().map((a) => a.getAttribute("data-responsibility-axis"))).toEqual(["OWNER", "ACCOUNTABLE", "ASSIGNED"]);
@@ -337,6 +347,7 @@ describe("the Employee lifecycle is exactly six statuses, each displayable and r
       renderRecord(id);
       expect(await screen.findByRole("heading", { level: 1, name })).toBeTruthy();
       expect(screen.getAllByText(word).length).toBeGreaterThan(0);
+      openTab("Activity");
       expect(screen.getByRole("heading", { name: "Change History" })).toBeTruthy();
     });
   }
@@ -420,11 +431,13 @@ describe("Job Role is the governed EMP-RT-08 read, business function only, never
     renderRecord("emp-1", makeWorkforce({ listEmployeeJobRoleHistory: HISTORY }), legacyClient(), () => true);
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
     await waitFor(() => expect(section("Job Role").querySelector('[data-employee-job-role="ASSIGNED"]')).toBeTruthy());
-    for (const other of ["User Access", "Employment & business context", "Responsibility"]) {
+    for (const [other, tab] of [["Employment & Business Context", "Overview"], ["User Access", "Roles & Access"], ["Responsibility", "Assignments"]]) {
+      openTab(tab);
       const s = section(other);
       expect(s.querySelector("[data-job-role-section], [data-job-role-control], [data-employee-job-role]"), other).toBeNull();
       expect(s.textContent, other).not.toMatch(/National Accounts Sales|Assign Job Role|Change Job Role/);
     }
+    openTab("Overview");
     expect(within(section("Job Role")).queryByText(/Security Role:|Add Role|Remove Role/)).toBeNull();
   });
 
@@ -474,6 +487,7 @@ describe("manager and managed employees come from the governed reporting relatio
     });
     renderRecord("emp-1", workforce);
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    openTab("Assignments");
     const managed = section("Managed employees");
     await waitFor(() => expect(within(managed).getByRole("link", { name: "Lee Park" })).toBeTruthy());
     expect(workforce.call).toHaveBeenCalledWith("listManagedEmployees", { managerEmployeeId: "emp-1" });
@@ -556,7 +570,11 @@ describe("accessibility labels", () => {
   it("the rail, the axis list and every axis are labelled; every disclosure has a summary", async () => {
     renderRecord();
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
-    expect(screen.getByRole("complementary", { name: "Responsibility and source" })).toBeTruthy();
+    expect(document.querySelector("[data-employee-lifecycle] .fo-status-pill").textContent).toMatch(/Active/);
+    // The record's sections are a labelled tab list; responsibility is the Assignments tab panel (item D).
+    expect(screen.getByRole("tablist", { name: /Employee record sections/ })).toBeTruthy();
+    openTab("Assignments");
+    expect(screen.getByRole("tabpanel", { name: "Assignments" })).toBeTruthy();
     const list = screen.getByRole("list", { name: "Responsibility relationships" });
     for (const item of [...list.children]) {
       expect(document.getElementById(item.getAttribute("aria-labelledby"))?.tagName).toBe("H3");
@@ -564,7 +582,6 @@ describe("accessibility labels", () => {
     for (const details of document.querySelectorAll("details.ns-emp-disclosure")) {
       expect(details.querySelector("summary")?.textContent.trim().length).toBeGreaterThan(0);
     }
-    expect(document.querySelector("[data-employee-lifecycle] .fo-status-pill").textContent).toMatch(/Active/);
   });
 });
 
@@ -625,7 +642,10 @@ describe("Employee business data no longer depends on Firestore", () => {
   it("the editor's only seams are the governed Workforce directory hook and the pure domain -- no legacy callable", () => {
     const src = code(read("src/modules/administration/EmployeeEditPanel.jsx"));
     const seams = [...src.matchAll(/from\s+["']([^"']*(hooks|access|services|auth)\/[^"']*)["']/g)].map((m) => m[1]).sort();
-    expect(seams).toEqual(["../../hooks/useWorkforceEmployeeDirectory.js"]);
+    // UI corrections item E: the Manager is a TYPEAHEAD over the governed roster read, sent through the INJECTED Workforce
+    // client -- the editor imports no hook, access, service or auth module at all.
+    expect(seams).toEqual([]);
+    expect(src).toMatch(/workforce\.call\("listWorkforceRoster"/);
     expect(src).not.toMatch(/administrationUsersClient|client\.updateEmployeeProfile|idempotencyKey/);
     expect(src).not.toMatch(/employmentStatus"|operatingCompanyId"|operationalRoles/);
     // The retired Firestore-shaped editor is gone, and the seam no longer exports the retired writer.

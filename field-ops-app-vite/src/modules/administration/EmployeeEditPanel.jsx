@@ -172,7 +172,7 @@ export default function EmployeeEditPanel({ employee, workforce, onCancel, onSav
               onSelect={chooseManager}
               disabled={submitting}
             />
-            <p className="fo-muted fo-form-hint">{managerChoice ? `Manager: ${managerChoice.displayName}. ` : "No manager recorded. "}{managerHint}</p>
+            <p className="fo-muted">{managerChoice ? `Manager: ${managerChoice.displayName}. ` : "No manager recorded. "}{managerHint}</p>
             {managerChoice ? <button type="button" className="fo-linkbutton" onClick={() => chooseManager(null)} disabled={submitting}>No Manager</button> : null}
           </div>
 

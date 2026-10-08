@@ -205,9 +205,10 @@ describe("Effective Access renders assignment scope as the server states it", ()
     expect(row.textContent).toMatch(/Scoped/);
     expect(row.textContent).toMatch(/SCOPE_CONTEXT_REQUIRED/);
     const source = row.querySelector('[data-scoped-source="operatingCompany = taylor"]');
-    expect(source.textContent).toBe("Security Role generalManager · Scope: operatingCompany = taylor · Inside the scope: Allowed (ALLOWED)");
+    // Role keys are shown by display name (UI corrections item A); the scope stays the server's own words.
+    expect(source.textContent).toBe("General Manager · Scope: operatingCompany = taylor · Inside the scope: Allowed (ALLOWED)");
     const global = document.querySelector('[data-capability="workOrder.record.read"]');
-    expect(global.textContent).toMatch(/Security Role dispatcher · Scope: all \(global\)/);
+    expect(global.textContent).toMatch(/Dispatcher · Scope: All \(Global\)/);
     const scopedTable = screen.getByRole("table", { name: "Scoped assignments" });
     expect(within(scopedTable).getByText("operatingCompany = taylor")).toBeTruthy();
     expect(within(scopedTable).getByText("employee.record.read")).toBeTruthy();

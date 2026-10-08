@@ -439,7 +439,7 @@ describe("EOS access and security stay independent, and fail closed", () => {
     const form = screen.getByRole("form", { name: "Remove a Security Role" });
     expect(within(form).getByText(/John Smith/)).toBeTruthy();
     fireEvent.change(within(form).getByLabelText("Reason"), { target: { value: "Left dispatch" } });
-    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm removal" })); });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Removal" })); });
     expect(policyCalls("revokeRole")[0][1]).toEqual({ assignmentId: "asg-7", reason: "Left dispatch" });
     expect(client.revokeRole).not.toHaveBeenCalled();
     expect(policyCalls("listPrincipalRoleAssignments").length).toBeGreaterThan(1);
@@ -1090,7 +1090,7 @@ describe("assigning a Job Role is ONE governed command, then a re-read", () => {
     const workforce = makeWorkforce({ assignEmployeeJobRole: { ok: true, result: { outcome: "CHANGED", employeeId: "emp-1", jobRoleId: "national-accounts-sales", assignmentId: "ejr-2", endedAssignmentId: "ejr-1" } } });
     const select = await openJobRoleControl(workforce);
     fireEvent.change(select, { target: { value: "national-accounts-sales" } });
-    fireEvent.change(within(jobRoleSection()).getByLabelText("Reason (optional)"), { target: { value: "  Moved to national accounts  " } });
+    fireEvent.change(within(jobRoleSection()).getByLabelText("Reason (Optional)"), { target: { value: "  Moved to national accounts  " } });
     fireEvent.click(within(jobRoleSection()).getByRole("button", { name: "Save Job Role" }));
     expect(await within(jobRoleSection()).findByText(/Job Role changed to National Accounts Sales/)).toBeTruthy();
     const [[, input]] = assignCalls(workforce);
@@ -1428,10 +1428,10 @@ describe("the governed Change History (EMP-RT-H1)", () => {
     renderDetail(okHistory(), "emp-1", "", undefined, workforce);
     await screen.findByTestId("governed-change-history-table");
     expect(within(screen.getByTestId("governed-change-history-table")).getAllByRole("row").length - 1).toBe(2);
-    fireEvent.click(within(governedSection()).getByRole("button", { name: "Show more" }));
+    fireEvent.click(within(governedSection()).getByRole("button", { name: "Show More" }));
     await waitFor(() => expect(within(screen.getByTestId("governed-change-history-table")).getAllByRole("row").length - 1).toBe(3));
     expect(governedReads(workforce).at(-1)).toEqual(["listEmployeeChangeHistory", { employeeId: "emp-1", limit: 50, cursor: "c-2" }]);
-    expect(within(governedSection()).queryByRole("button", { name: "Show more" })).toBeNull();
+    expect(within(governedSection()).queryByRole("button", { name: "Show More" })).toBeNull();
   });
 
   it("is re-read after a successful Edit Employee save", async () => {

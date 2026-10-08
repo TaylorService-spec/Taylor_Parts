@@ -170,7 +170,8 @@ describe("the Job Role remediation count is its own governed read", () => {
     expect(within(list).getByRole("link", { name: "Sol Vega" }).getAttribute("href")).toBe("/administration/users/pg-emp-22");
     // #210 (Owner): the workforce roster DOES show each person's Job Role -- from the governed read (listWorkforceRoster), never
     // inferred; the remediation count above remains its own read.
-    expect(await screen.findByRole("columnheader", { name: "Job Role" })).toBeTruthy();
+    // The header is now a sortable column (UI corrections item C): its accessible name carries the sort state.
+    expect(await screen.findByRole("columnheader", { name: /^Job Role/ })).toBeTruthy();
   });
 
   it("one Employee reads in the singular", async () => {
