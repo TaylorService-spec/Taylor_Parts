@@ -344,7 +344,7 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
             )}
           </p>
         ) : (
-          <CustomerPicker inputId="inbound-customer" accounts={accountPicker.options} onSelect={chooseCustomer} />
+          <CustomerPicker inputId="inbound-customer" onSelect={chooseCustomer} />
         )}
       </div>
 

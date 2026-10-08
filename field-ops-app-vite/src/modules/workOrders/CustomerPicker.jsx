@@ -12,6 +12,16 @@ import { accountStatusTone } from "../../domain/accountPortfolio";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives";
 import { useSettledQuery } from "../../hooks/useTypeahead.js";
+import { accountRowFromCrm, callCrmApi } from "../../services/crmApiClient.js";
+
+// GOVERNED SERVER SEARCH (UI corrections integration, 2026-10-08): the picker asks CRM listAccounts { search } -- name or
+// customer number CONTAINS the query, inside the caller's tenant, under customer.record.read -- so every customer can be
+// found, not only the first 200 a preloaded page held. The server decides what is returned; this ranks what came back.
+export async function searchCustomersOnServer(query, { limit = RESULT_LIMIT + 1, call = callCrmApi } = {}) {
+  const res = await call("listAccounts", { search: query, limit });
+  if (!res?.ok) return { ok: false, code: res?.code, message: res?.message };
+  return { ok: true, items: (res.result?.items ?? []).map(accountRowFromCrm), more: Boolean(res.result?.nextCursor) };
+}
 import { statusLabel } from "../../shared/display/displayLabels.js";
 
 // Work Order wizard, Step 1 -- accessible Customer picker. Replaces the generic
@@ -35,7 +45,7 @@ import { statusLabel } from "../../shared/display/displayLabels.js";
 const RESULT_LIMIT = 8;
 const LOCATIONS_SHOWN = 2;
 
-export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
+export default function CustomerPicker({ accounts = null, search = searchCustomersOnServer, onSelect, inputId }) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const generatedId = useId();
@@ -44,14 +54,31 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
   const optionId = (i) => `${generatedId}-opt-${i}`;
 
   const settled = useSettledQuery(query);
-  const { results, total } = useMemo(() => (settled ? rankCustomerMatches(accounts, settled, RESULT_LIMIT) : { results: [], total: 0 }), [accounts, settled]);
+  // Server mode (the default): the settled query is sent to the governed search; only the LATEST answer is kept.
+  const [served, setServed] = useState({ forQuery: "", items: [], more: false, failed: null });
+  const seq = useRef(0);
+  useEffect(() => {
+    if (accounts || !settled) return undefined;
+    seq.current += 1;
+    const mine = seq.current;
+    let alive = true;
+    search(settled).then((res) => {
+      if (!alive || mine !== seq.current) return; // a newer query owns the list
+      setServed(res.ok ? { forQuery: settled, items: res.items, more: res.more, failed: null } : { forQuery: settled, items: [], more: false, failed: res });
+    });
+    return () => { alive = false; };
+  }, [accounts, settled, search]);
+  const pool = accounts ?? (served.forQuery === settled ? served.items : []);
+  const ranked = useMemo(() => (settled ? rankCustomerMatches(pool, settled, RESULT_LIMIT) : { results: [], total: 0 }), [pool, settled]);
+  const results = ranked.results;
+  const total = accounts ? ranked.total : ranked.total + (served.more && served.forQuery === settled ? 1 : 0);
   const candidateIds = useMemo(() => results.map((a) => a.id), [results]);
   const { byAccount, loading: locLoading, error: locError, retry } = useLocationsForAccounts(candidateIds);
 
   const trimmed = query.trim();
   const open = trimmed.length > 0;
   // Typing but not yet 2 characters, or not yet settled: say so rather than "No customers found".
-  const pendingQuery = open && settled !== trimmed;
+  const pendingQuery = open && (settled !== trimmed || (!accounts && served.forQuery !== settled));
 
   const containerRef = useRef(null);
   const listRef = useRef(null);
@@ -100,7 +127,9 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
 
   // Never-blank status: exactly one distinct state (loading / query-error /
   // no-results / results) while the combobox is open.
-  const statusMessage = trimmed.length > 0 && trimmed.length < 2 ? "Type at least 2 characters."
+  const statusMessage = !accounts && served.failed && served.forQuery === settled
+    ? (served.failed.code === "FORBIDDEN" ? "Searching customers is not available to you." : "Customers could not be searched. Try again.")
+    : trimmed.length > 0 && trimmed.length < 2 ? "Type at least 2 characters."
     : pendingQuery ? "Searching customers…"
     : customerPickerStatus({ open, locLoading, locError, resultCount: results.length });
 
@@ -215,7 +244,9 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
             </ul>
           )}
 
-          {total > results.length && (
+          {!accounts && served.more && served.forQuery === settled ? (
+            <div className="fo-customer-picker-more">More customers match — keep typing to narrow the list</div>
+          ) : total > results.length && (
             <div className="fo-customer-picker-more">
               +{total - results.length} more result{total - results.length === 1 ? "" : "s"} — refine your search
             </div>

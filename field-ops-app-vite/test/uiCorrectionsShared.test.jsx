@@ -346,3 +346,41 @@ describe("governed employee name directory (replaces the Firestore listener on O
     expect(readSrc("src/modules/sales/OpportunityList.jsx", "utf8")).toMatch(/useWorkforceRead\("readMyEmployeeProfile"/);
   });
 });
+
+// ════════ INTEGRATION READINESS: the Customer picker searches on the governed server (no 200-record ceiling) ════════
+import CustomerPicker, { searchCustomersOnServer } from "../src/modules/workOrders/CustomerPicker.jsx";
+vi.mock("../src/hooks/useLocationsForAccounts", () => ({ useLocationsForAccounts: () => ({ byAccount: new Map(), loading: false, error: null, retry: () => {} }) }));
+
+describe("Customer picker: governed server search (CRM listAccounts { search })", () => {
+  it("sends the settled query to the server and finds a customer far beyond the first 200 (account #4,812 by name)", async () => {
+    const call = vi.fn(async (op, input) => ({ ok: true, result: { items: [{ accountId: "acc-4812", name: "Zephyr Creamery", status: "ACTIVE", customerNumber: "C-4812" }], nextCursor: null } }));
+    const search = (q) => searchCustomersOnServer(q, { call });
+    const onSelect = vi.fn();
+    render(<CustomerPicker inputId="c" search={search} onSelect={onSelect} />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "zeph" } });
+    const option = await screen.findByRole("option", { name: /Zephyr Creamery/ });
+    expect(call).toHaveBeenCalledWith("listAccounts", { search: "zeph", limit: 9 });
+    fireEvent.mouseDown(option);
+    expect(onSelect.mock.calls[0][0].id).toBe("acc-4812");
+  });
+
+  it("drops a stale answer, says when more match, and states a refusal instead of 'no customers'", async () => {
+    const answers = {};
+    const search = vi.fn((q) => new Promise((resolve) => { answers[q] = resolve; }));
+    render(<CustomerPicker inputId="c2" search={search} onSelect={() => {}} />);
+    const box = screen.getByRole("combobox");
+    fireEvent.change(box, { target: { value: "ha" } });
+    await waitFor(() => expect(search).toHaveBeenCalledWith("ha"));
+    fireEvent.change(box, { target: { value: "harb" } });
+    await waitFor(() => expect(search).toHaveBeenCalledWith("harb"));
+    await act(async () => { answers.harb({ ok: true, items: [{ id: "a1", name: "Harbor Grill", status: "ACTIVE" }], more: true }); });
+    await act(async () => { answers.ha({ ok: true, items: [{ id: "a9", name: "Hamlet Diner", status: "ACTIVE" }], more: false }); });
+    expect(screen.queryByText("Hamlet Diner")).toBeNull();
+    expect(screen.getByText("Harbor Grill")).toBeTruthy();
+    expect(screen.getByText(/More customers match/)).toBeTruthy();
+    cleanup();
+    render(<CustomerPicker inputId="c3" search={async () => ({ ok: false, code: "FORBIDDEN" })} onSelect={() => {}} />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "harbor" } });
+    expect(await screen.findByText("Searching customers is not available to you.")).toBeTruthy();
+  });
+});

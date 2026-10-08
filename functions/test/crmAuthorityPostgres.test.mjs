@@ -288,6 +288,21 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
     const reads = statements.filter((s) => /eos_crm/.test(s));
     assert.ok(reads.length > 0 && reads.every((s) => /LIMIT \$\d/.test(s) && !/\bINSERT\s+INTO\b|\bUPDATE\s+eos_|\bDELETE\s+FROM\b|FOR (SHARE|UPDATE)/i.test(s)));
     assert.ok(statements.includes("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"));
+    // SEARCH (UI corrections integration): contains-match on name or customer number, paged, literal (LIKE-escaped).
+    const all = [];
+    let sc;
+    do {
+      const page = await accounts.listAccounts(deps, A1, { search: "aged", limit: 3, ...(sc ? { cursor: sc } : {}) });
+      all.push(...page.items.map((a) => a.name));
+      sc = page.nextCursor;
+    } while (sc);
+    assert.deepEqual(all, ["Paged A", "Paged B", "Paged C", "Paged D", "Paged E", "Paged F", "Paged G"], "contains-match, beyond one page");
+    assert.deepEqual((await accounts.listAccounts(deps, A1, { search: "%_" })).items, [], "LIKE metacharacters are literal");
+    await assert.rejects(accounts.listAccounts(deps, A1, { search: "a" }), code("FILTER_INVALID"));
+    // Tenant isolation: tenant B's same-named Account is never a search result for tenant A, and vice versa.
+    assert.ok((await accounts.listAccounts(deps, A1, { search: "soda" })).items.every((a) => a.accountId !== acct2.accountId), "a tenant-B Account leaked into tenant A's search");
+    // Without customer.record.read the search is refused, never empty.
+    await assert.rejects(accounts.listAccounts(deps, { ...A1, capabilities: new Set() }, { search: "paged" }), code("CAPABILITY_REQUIRED"));
     const filtered = await accounts.listAccounts(deps, A1, { status: "PROSPECT" });
     assert.ok(filtered.items.length > 0 && filtered.items.every((a) => a.status === "PROSPECT"));
     const deflt = await accounts.listAccounts(deps, A1, {});
