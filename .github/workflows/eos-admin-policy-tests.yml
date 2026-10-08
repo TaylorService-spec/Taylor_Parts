@@ -680,6 +680,13 @@ on:
       - "field-ops-app-vite/src/services/workflowAdminClient.js"
       - "field-ops-app-vite/test/adminWorkflows.test.jsx"
       - "field-ops-app-vite/test/uiCorrectionsShared.test.jsx"
+      - "field-ops-app-vite/test/governedOwnerNames.test.jsx"
+      - "field-ops-app-vite/src/hooks/useGovernedEmployeeDirectory.js"
+      - "field-ops-app-vite/src/hooks/useGovernedAssignableEmployees.js"
+      - "field-ops-app-vite/src/hooks/useMyWorkOrderCapabilities.js"
+      - "field-ops-app-vite/src/modules/sales/SalesOrderDetail.jsx"
+      - "field-ops-app-vite/src/modules/accounts/AccountForm.jsx"
+      - "functions/src/eosExperience/principalDisplayNames.ts"
       - "field-ops-app-vite/src/shared/display/**"
       - "field-ops-app-vite/src/shared/ui/**"
       - "field-ops-app-vite/src/hooks/useTypeahead.js"
@@ -1194,6 +1201,13 @@ on:
       - "field-ops-app-vite/src/services/workflowAdminClient.js"
       - "field-ops-app-vite/test/adminWorkflows.test.jsx"
       - "field-ops-app-vite/test/uiCorrectionsShared.test.jsx"
+      - "field-ops-app-vite/test/governedOwnerNames.test.jsx"
+      - "field-ops-app-vite/src/hooks/useGovernedEmployeeDirectory.js"
+      - "field-ops-app-vite/src/hooks/useGovernedAssignableEmployees.js"
+      - "field-ops-app-vite/src/hooks/useMyWorkOrderCapabilities.js"
+      - "field-ops-app-vite/src/modules/sales/SalesOrderDetail.jsx"
+      - "field-ops-app-vite/src/modules/accounts/AccountForm.jsx"
+      - "functions/src/eosExperience/principalDisplayNames.ts"
       - "field-ops-app-vite/src/shared/display/**"
       - "field-ops-app-vite/src/shared/ui/**"
       - "field-ops-app-vite/src/hooks/useTypeahead.js"
@@ -1510,7 +1524,7 @@ jobs:
       # UI CORRECTIONS PACKAGE (2026-10-08): the shared display labels, tri-state column sort, tabs and typeahead, and the
       # Users roster (default Last/First/id order on the server, column sort, pages, suggestions, stale responses dropped).
       - name: UI corrections shared patterns -- client (vitest + jsdom)
-        run: npx vitest run test/uiCorrectionsShared.test.jsx
+        run: npx vitest run test/uiCorrectionsShared.test.jsx test/governedOwnerNames.test.jsx
         working-directory: field-ops-app-vite
 
       # LANE WR: Employee > Workflow responsibilities names each entry's admin location (Security Role / Functional Role

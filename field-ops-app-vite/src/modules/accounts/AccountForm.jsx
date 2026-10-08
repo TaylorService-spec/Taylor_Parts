@@ -1,3 +1,4 @@
+import { useGovernedAssignableEmployees } from "../../hooks/useGovernedAssignableEmployees.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ACCOUNT_STATUS, accountStatusLabel, ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
 import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isValidPaymentTerms, isValidTaxStatus, isContactOnAccount, resolveOwnerIdentity } from "../../domain/commercialProfile";
@@ -45,7 +46,7 @@ import { Button } from "../../shared/ui/primitives";
 // presentation-only migration. The `.fo-account-form` class + its two-column
 // grid, `.fo-btn-row`, all control ids and label text are preserved.
 export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false, contactsError = null, onSavingChange, focusFieldId = null }) {
-  const { user, employeeId: sessionEmployeeId, displayName: sessionDisplayName, loading: authLoading } = useAuth();
+  const { loading: authLoading } = useAuth();
   const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory();
 
   const [name, setName] = useState(initialValues?.name ?? "");
@@ -160,14 +161,12 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       setAccountOwner(null);
       return;
     }
+    // The governed owner (UI corrections integration): the CRM write takes the owner's Employee id only (ownerFromForm),
+    // and the server re-validates it. No Firebase uid pair, no client-side assignment snapshot.
     setAccountOwner({
       assignedToEmployeeId: sel.employeeId ?? null,
-      assignedToUserId: sel.userId ?? null,
       assignedToDisplayName: sel.displayName ?? null,
-      assignedByEmployeeId: sessionEmployeeId ?? null,
-      assignedByUserId: user?.uid ?? null,
-      assignedByDisplayName: sessionDisplayName ?? null,
-      assignedAt: Date.now(),
+      source: "EOS_CRM",
     });
   }
 
@@ -475,6 +474,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             </div>
           )}
           <EmployeeAssignmentPicker
+            useEmployees={useGovernedAssignableEmployees}
             onSelect={handleOwnerSelect}
             label="Account Owner"
             placeholder="Search owner by name..."
