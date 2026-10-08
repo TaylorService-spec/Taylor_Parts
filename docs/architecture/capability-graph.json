@@ -19,7 +19,7 @@
     "activatedInSomeEnvironment": 92,
     "callableExports": 31,
     "destinations": 99,
-    "destinationsHidden": 19,
+    "destinationsHidden": 20,
     "guides": 0,
     "registerEntries": 18,
     "parityIssues": 0
@@ -5830,10 +5830,10 @@
     },
     {
       "key": "permissionPreview",
-      "label": "Permission Preview",
-      "path": "permission-preview",
+      "label": "Principal Inspection (QA)",
+      "path": "qa/principal-inspection",
       "legacyKey": null,
-      "navHidden": false,
+      "navHidden": true,
       "future": false,
       "placeholderExplanation": null
     },

@@ -13,6 +13,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../../shared/ui/primitives";
 import Autocomplete from "../../shared/ui/Autocomplete.jsx";
 import { callWorkspaceApi } from "../../services/workspaceApiClient";
+import { titleCase } from "../../shared/display/displayLabels.js";
+
+// The server's detail line carries stored enum words (ACTIVE, IN_PROGRESS); show them as words, keep everything else as sent.
+const detailWords = (detail) => (detail ? String(detail).replace(/\b[A-Z][A-Z_]{2,}\b/g, (w) => titleCase(w)) : null);
 
 export default function SiteSearch({ callApi = callWorkspaceApi }) {
   const navigate = useNavigate();
@@ -49,7 +53,7 @@ export default function SiteSearch({ callApi = callWorkspaceApi }) {
           search={suggest}
           getKey={(r) => `${r.kind}-${r.id}`}
           getLabel={(r) => r.label}
-          getContext={(r) => [r.kindLabel, r.detail].filter(Boolean).join(" · ")}
+          getContext={(r) => [r.kindLabel, detailWords(r.detail)].filter(Boolean).join(" · ")}
           onSelect={(r) => { if (r?.path) { close(); navigate(r.path); } }}
           onViewAll={(q) => runAll(q)}
           onQueryChange={setQuery}
@@ -68,7 +72,7 @@ export default function SiteSearch({ callApi = callWorkspaceApi }) {
                   <li key={`${r.kind}-${r.id}`}>
                     <span className="fo-muted">{r.kindLabel}</span>{" "}
                     {r.path ? <Link to={r.path} onClick={close}>{r.label}</Link> : r.label}
-                    {r.detail ? <span className="fo-muted"> · {r.detail}</span> : null}
+                    {r.detail ? <span className="fo-muted"> · {detailWords(r.detail)}</span> : null}
                   </li>
                 ))}
               </ul>
