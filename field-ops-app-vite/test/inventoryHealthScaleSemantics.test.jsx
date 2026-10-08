@@ -216,7 +216,7 @@ test("the workspace states NO quantity — the third and strongest form of the s
   expect(/data-label="Warehouse Available"/.test(src)).toBe(false);
 
   // 3: no quantity heading, and no cell reading the derived figure.
-  for (const heading of ["Warehouse Available", "On Hand", "On hand", "Available"]) {
+  for (const heading of ["Warehouse Available", "On Hand", "On Hand", "Available"]) {
     // A sortable heading (<SortableHeader label="X" />) is a heading too -- UI corrections package.
     expect(src.includes(`<th>${heading}</th>`) || src.includes(`label="${heading}"`), `"${heading}" is a quantity column`).toBe(false);
   }

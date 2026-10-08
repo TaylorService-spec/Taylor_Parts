@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
-import ScanInput from "../../shared/ui/ScanInput.jsx";
+import ScanInput, { SCAN_ITEM_LABEL } from "../../shared/ui/ScanInput.jsx";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import { normalizeScanToken } from "../../domain/scannedIdentity.js";
 import { resolveTrackingModeFromControlType } from "../../domain/inventoryLedgerEvent.js";
@@ -331,7 +331,7 @@ export default function MoveStockScan({ deps }) {
             <button type="button" className="fo-link-btn" onClick={() => setExpecting(null)}>Cancel</button>
           </p>
         )}
-        <ScanInput onScan={scanItem} label={awaitingSerial ? "Scan serial number" : "Scan item"}
+        <ScanInput onScan={scanItem} label={awaitingSerial ? "Scan serial number" : SCAN_ITEM_LABEL}
           placeholder={awaitingSerial ? "Scan the serial on the unit" : "Scan each item going"}
           disabled={busy || route.route === MOVE_ROUTE.INVALID} deps={deps?.scanInputDeps} />
         <p className="fo-muted">Scanning records what is going. Nothing moves until you confirm.</p>

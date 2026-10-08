@@ -92,7 +92,7 @@ test("the placeholder claims only what the provider actually matches", () => {
 // ── ND-25: the quantity column is gone, and cannot come back unnoticed ──────────────────────────
 
 test("the catalog table declares no quantity column", () => {
-  for (const heading of ["Warehouse Available", "On Hand", "On hand", "Available"]) {
+  for (const heading of ["Warehouse Available", "On Hand", "On Hand", "Available"]) {
     assert.ok(
       !LIST_SRC.includes(`<th>${heading}</th>`),
       `"${heading}" is a quantity column heading; ND-25 omits it in P1`
@@ -146,7 +146,7 @@ test("the catalogue table states Frame 1a's grammar — P1v2 SUPERSEDES ND-30's 
     "the manufacturer must still render in the Part cell -- dropping the column may not drop the fact"
   );
   // And the quantity ruling still holds over the new grammar.
-  for (const heading of ["Warehouse Available", "On Hand", "On hand", "Available"]) {
+  for (const heading of ["Warehouse Available", "On Hand", "On Hand", "Available"]) {
     assert.ok(!LIST_SRC.includes(`<th>${heading}</th>`), `${heading} is a quantity column`);
   }
 });

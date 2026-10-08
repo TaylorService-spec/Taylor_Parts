@@ -88,7 +88,10 @@ function buzz(feedback) {
  * @param disabled   when the workflow cannot accept scans right now.
  * @param deps       test seams: `now` and `detectorFactory`.
  */
-export default function ScanInput({ onScan, label = "Scan item", placeholder = "Scan or type a code", disabled = false, deps }) {
+/** The scan field's default label (Title Case, UI corrections). Tests and callers use this constant, never a copy of the text. */
+export const SCAN_ITEM_LABEL = "Scan Item";
+
+export default function ScanInput({ onScan, label = SCAN_ITEM_LABEL, placeholder = "Scan or type a code", disabled = false, deps }) {
   // Stable across renders: an inline default would be a new function every render, invalidating
   // every callback below it — including the one the camera loop closes over.
   const injectedNow = deps?.now;
@@ -238,6 +241,7 @@ export default function ScanInput({ onScan, label = "Scan item", placeholder = "
           onChange={(e) => setQuery(e.target.value)}
           placeholder={placeholder}
           aria-label={label}
+          data-scan-input=""
           enterKeyHint="done"
           disabled={disabled}
           autoFocus

@@ -579,7 +579,7 @@ function ExceptionsTab({ config, canManage, actions, busy }) {
             <tbody>
               {sorted.map((f) => (
                 <tr key={f.id}>
-                  <td data-label="What failed">
+                  <td data-label="What Failed">
                     <StatusPill
                         tone={f.exhausted ? "attention" : "info"}
                         label={f.exhausted ? "Needs Attention" : "Retrying on Its Own"}
@@ -589,7 +589,7 @@ function ExceptionsTab({ config, canManage, actions, busy }) {
                   </td>
                   <td data-label="Mailbox">{mailboxName(f.mailboxId)}</td>
                   <td data-label="Attempts">{f.attempts}</td>
-                  <td data-label="Last failure"><When millis={f.lastFailedAt} /></td>
+                  <td data-label="Last Failure"><When millis={f.lastFailedAt} /></td>
                   <td data-label="Actions">
                     <Button variant="secondary" disabled={!canManage || busy} onClick={() => actions.retry(f.id)}>
                       Retry Now

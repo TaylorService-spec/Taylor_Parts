@@ -186,10 +186,10 @@ function ReconciliationTable({ lines }) {
                 )}
               </td>
               <td data-label="Ordered" className="num">{l.orderedQuantity}</td>
-              <td data-label="Already received" className="num">{l.previouslyReceived}</td>
+              <td data-label="Already Received" className="num">{l.previouslyReceived}</td>
               <td data-label="Outstanding" className="num">{l.remainingBefore}</td>
-              <td data-label="Scanned now" className="num"><strong>{l.observedNow}</strong></td>
-              <td data-label="Remaining after" className="num">{l.remainingAfter}</td>
+              <td data-label="Scanned Now" className="num"><strong>{l.observedNow}</strong></td>
+              <td data-label="Remaining After" className="num">{l.remainingAfter}</td>
             </tr>
           ))}
         </tbody>

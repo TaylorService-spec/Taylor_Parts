@@ -324,7 +324,7 @@ function AwaitingReceiptQueue({ queue, onOpen }) {
                         {row.supplierName ?? <span className="fo-muted">Supplier not resolved</span>}
                       </td>
                       <td data-label="Lines" className="fo-receiving-queue__num">{row.lineCount ?? "—"}</td>
-                      <td data-label="Order status">{row.statusWords ?? <span className="fo-muted">Not recorded</span>}</td>
+                      <td data-label="Order Status">{row.statusWords ?? <span className="fo-muted">Not recorded</span>}</td>
                       <td data-label="Action" className="fo-receiving-queue__action-col">
                         <Button
                           type="button"

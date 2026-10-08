@@ -10,7 +10,7 @@ import { TRANSFER_ORDER_STATUSES } from "./inventoryTransferPairing.js";
 // "tone" drives styling only; labels avoid implementation casing.
 export const TRANSFER_STATUS_META = Object.freeze({
   REQUESTED: { label: "Requested", tone: "pending" },
-  IN_TRANSIT: { label: "In transit", tone: "active" },
+  IN_TRANSIT: { label: "In Transit", tone: "active" },
   COMPLETED: { label: "Completed", tone: "done" },
   CANCELLED: { label: "Cancelled", tone: "muted" },
 });

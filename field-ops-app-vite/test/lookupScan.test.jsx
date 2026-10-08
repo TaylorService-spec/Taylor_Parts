@@ -146,7 +146,7 @@ describe("Lookup (a missing value is a statement, not a blank)", () => {
     fireEvent.click(screen.getByRole("button", { name: /look up/i }));
 
     const card = await screen.findByRole("region", { name: /part TS-1001/i });
-    for (const label of ["Serialized units", "Location", "On hand"]) {
+    for (const label of ["Serialized Units", "Location", "On Hand"]) {
       expect(within(card).getByText(label)).toBeTruthy();
     }
     await waitFor(() => expect(within(card).getAllByText(/not switched on/i).length).toBeGreaterThan(0));
@@ -159,7 +159,7 @@ describe("Lookup (a missing value is a statement, not a blank)", () => {
 
     const card = await screen.findByRole("region", { name: /part TS-1001/i });
     await waitFor(() => {
-      const value = within(card).getByText("On hand").closest(".fo-lookup__row").querySelector("dd").textContent;
+      const value = within(card).getByText("On Hand").closest(".fo-lookup__row").querySelector("dd").textContent;
       expect(value).toMatch(/not switched on/i);
       expect(value).not.toMatch(/^0$|^-$|^—$/);
     });
@@ -180,7 +180,7 @@ describe("Lookup (a missing value is a statement, not a blank)", () => {
     fireEvent.click(screen.getByRole("button", { name: /look up/i }));
 
     const card = await screen.findByRole("region", { name: /part TS-1001/i });
-    const onHand = () => within(card).getByText("On hand").closest(".fo-lookup__row").querySelector("dd").textContent;
+    const onHand = () => within(card).getByText("On Hand").closest(".fo-lookup__row").querySelector("dd").textContent;
     expect(onHand()).toMatch(/reading/i);
     expect(onHand()).not.toMatch(/could not be read/i);
 

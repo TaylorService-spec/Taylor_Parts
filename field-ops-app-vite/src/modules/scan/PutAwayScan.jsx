@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
-import ScanInput from "../../shared/ui/ScanInput.jsx";
+import ScanInput, { SCAN_ITEM_LABEL } from "../../shared/ui/ScanInput.jsx";
 import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
 import { capturePutAway } from "../../offline/warehouseIntent.js";
 import { placementClient } from "../../services/placementClient.js";
@@ -283,7 +283,7 @@ export default function PutAwayScan({ deps }) {
         <>
           <ScanInput
             onScan={scanContents}
-            label="Scan item"
+            label={SCAN_ITEM_LABEL}
             placeholder={state.serialTracked ? "Scan a serial number" : "Scan the part"}
             deps={deps?.scanInputDeps}
           />

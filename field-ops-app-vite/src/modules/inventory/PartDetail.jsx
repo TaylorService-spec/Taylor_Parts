@@ -1810,7 +1810,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
               {/* SERIALIZED / LOT UNITS — gated on the Part's own tracking mode through the governed
                   boundary translator, so SERIALIZED_LOT fails closed rather than being collapsed
                   into SERIAL. An untracked part gets no block at all: it has no unit identity, and
-                  an empty "Serialized units" heading is a question a bulk part cannot be asked. */}
+                  an empty "Serialized Units" heading is a question a bulk part cannot be asked. */}
               {unitSection.state === PART_SECTION_STATE.NOT_APPLICABLE ? null : (
                 <div className="ns-band__block">
                   <h3 className="ns-band__sub">{unitSection.heading}</h3>

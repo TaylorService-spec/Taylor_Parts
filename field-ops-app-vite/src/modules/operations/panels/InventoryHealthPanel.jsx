@@ -143,8 +143,8 @@ export default function InventoryHealthPanel({
               <tr key={partId}>
                 <td data-label="Part">{resolveName(partId)}</td>
                 <td data-label="Available">{stock.availableStock}</td>
-                <td data-label="Avg daily usage">{hasHistory ? usage.avgDailyUsage.toFixed(2) : <span className="fo-muted">Insufficient usage history</span>}</td>
-                <td data-label="Days remaining">{hasHistory && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>
+                <td data-label="Avg Daily Usage">{hasHistory ? usage.avgDailyUsage.toFixed(2) : <span className="fo-muted">Insufficient usage history</span>}</td>
+                <td data-label="Days Remaining">{hasHistory && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>
                 <td data-label="Risk">
                   {hasHistory ? (
                     <StatusPill tone={inventoryUrgencyTone(recommendation.urgency)} label={statusLabel(recommendation.urgency)} />
@@ -152,7 +152,7 @@ export default function InventoryHealthPanel({
                     <StatusPill tone="unknown" label="Needs Planning" />
                   )}
                 </td>
-                <td data-label="Recommended qty">{hasHistory ? Math.ceil(recommendation.recommendedOrderQty) : <span className="fo-muted">Insufficient usage history</span>}</td>
+                <td data-label="Recommended Qty">{hasHistory ? Math.ceil(recommendation.recommendedOrderQty) : <span className="fo-muted">Insufficient usage history</span>}</td>
                 {onRequestReorder && (
                   <td>
                     <RequestReorderControl

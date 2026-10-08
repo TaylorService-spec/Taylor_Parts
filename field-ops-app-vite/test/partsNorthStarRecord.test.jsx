@@ -216,7 +216,7 @@ describe("ND-27 — cost and price are refused", () => {
 describe("tracking mode decides the unit section — one treatment per Part", () => {
   it("a serial-tracked part gets Serialized units, and the assets-not-quantity sentence", async () => {
     await renderRecord({ controlType: "SERIALIZED" });
-    const section = screen.getByRole("heading", { name: "Serialized units" }).closest("section");
+    const section = screen.getByRole("heading", { name: "Serialized Units" }).closest("section");
     expect(section.textContent).toContain("never loose quantity");
     expect(within(section).queryByRole("table")).toBeNull();
   });
@@ -224,12 +224,12 @@ describe("tracking mode decides the unit section — one treatment per Part", ()
   it("a lot-tracked part gets Lots instead — not the serialized treatment", async () => {
     await renderRecord({ controlType: "LOT" });
     expect(screen.getByRole("heading", { name: "Lots" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Serialized units" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Serialized Units" })).toBeNull();
   });
 
   it("an untracked part gets NO unit section at all", async () => {
     await renderRecord({ controlType: "STANDARD" });
-    expect(screen.queryByRole("heading", { name: "Serialized units" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Serialized Units" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Lots" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Tracked units" })).toBeNull();
   });
@@ -238,7 +238,7 @@ describe("tracking mode decides the unit section — one treatment per Part", ()
     await renderRecord({ controlType: "SERIALIZED_LOT" });
     const section = screen.getByRole("heading", { name: "Tracked units" }).closest("section");
     expect(section.textContent).toContain("not supported");
-    expect(screen.queryByRole("heading", { name: "Serialized units" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Serialized Units" })).toBeNull();
   });
 });
 

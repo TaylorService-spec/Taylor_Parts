@@ -111,8 +111,8 @@ describe("Barcodes & Identifiers (the list)", () => {
     // Scoped to the table: the same label legitimately appears again as an option in the add
     // form's type dropdown, which is the point — one vocabulary in both places.
     const table = await screen.findByRole("table", { name: /identifiers for PRT-1001/i });
-    expect(within(table).getByText("UPC barcode")).toBeTruthy();
-    expect(within(table).getByText("Legacy identifier")).toBeTruthy();
+    expect(within(table).getByText("UPC Barcode")).toBeTruthy();
+    expect(within(table).getByText("Legacy Identifier")).toBeTruthy();
     expect(screen.queryByText("BARCODE_OTHER")).toBeNull();
     expect(within(table).queryByText("UPC")).toBeNull();
   });

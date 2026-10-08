@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
-import ScanInput from "../../shared/ui/ScanInput.jsx";
+import ScanInput, { SCAN_ITEM_LABEL } from "../../shared/ui/ScanInput.jsx";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import { normalizeScanToken } from "../../domain/scannedIdentity.js";
 import { resolveTrackingModeFromControlType } from "../../domain/inventoryLedgerEvent.js";
@@ -328,7 +328,7 @@ export default function CycleCountScan({ deps }) {
         </p>
         <ScanInput
           onScan={scanItem}
-          label={awaitingSerial ? `Scan the serial number for ${parts.get(awaitingSerial)?.label ?? awaitingSerial}` : "Scan item"}
+          label={awaitingSerial ? `Scan the serial number for ${parts.get(awaitingSerial)?.label ?? awaitingSerial}` : SCAN_ITEM_LABEL}
           placeholder={awaitingSerial ? "Serial number" : "Scan a part"}
           deps={deps?.scanInputDeps}
         />
