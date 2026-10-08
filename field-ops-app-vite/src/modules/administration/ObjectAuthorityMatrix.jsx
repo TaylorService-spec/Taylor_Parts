@@ -1,36 +1,120 @@
-// OBJECT AUTHORITY MATRIX — Administration → Objects (Administration control plane, DECISIONS #210).
+// OBJECT AUTHORITY MATRIX — Administration → Objects (Administration control plane, DECISIONS #210; redesigned in the UI
+// corrections package, 2026-10-08).
 //
-// One Object at a time: rows are Security Roles, columns are the Object's REAL action vocabulary from the governed PostgreSQL
-// capability registry (listObjectsWithActions / getObjectActionGrantMatrix) -- Create / Read / Edit / Delete where those are the
-// Object's actions, and its domain actions (accept, assign, complete, approve, correct, reconcile, record, manage …) and governed
-// field groups as first-class columns. Nothing is forced into CRUD and no column is invented.
+// One Object at a time: rows are Security Roles (by their human names), columns are the Object's REAL action vocabulary from the
+// governed PostgreSQL capability registry (listObjectsWithActions / getObjectActionGrantMatrix) -- Create / Read / Edit / Delete
+// only where those ARE the Object's actions, and its domain actions (accept, assign, complete, approve, correct, reconcile,
+// record, manage …) and governed field groups as first-class columns. Nothing is forced into CRUD and no column is invented.
 //
-// A CHECKBOX IS THE SERVER'S STATE. Checked = the Role holds the capability in eos_policy.role_capabilities right now. Checking
-// or unchecking sends grantObjectActionToRole / revokeObjectActionFromRole with the administrator's stated reason; the server
-// enforces every rule (system invariants, self-administration, Owner exclusions, anti-lockout), writes the row, the audit event
-// and the decision, and the matrix then RE-READS -- never an optimistic tick. A cell the platform forbids is locked with its
-// reason. "Grant all / Revoke all" on a row is whole-object authority, expanded by the server into exactly these per-action
-// grants (applyObjectWideRoleAuthority) -- no wildcard exists for the runtime to resolve. No Firebase, no client-side authority.
-import { useMemo, useState } from "react";
+// INSPECT FIRST, EDIT ON PURPOSE. The matrix opens READ-ONLY: every cell states Granted, Not Granted or Not Available (a platform
+// invariant forbids it). "Edit Permissions" is the explicit governed editing interaction: it asks for the reason the audit trail
+// records, turns each cell into a per-capability control, and gives each Role a compact Actions menu.
+//
+// A CELL IS THE SERVER'S STATE. Granted = the Role holds the capability in eos_policy.role_capabilities right now. A per-cell change
+// sends grantObjectActionToRole / revokeObjectActionFromRole with the stated reason; the server enforces every rule (system
+// invariants, self-administration, Owner exclusions, anti-lockout), writes the row, the audit event and the decision, and the
+// matrix RE-READS -- never an optimistic tick.
+//
+// BULK IS "EVERY LISTED ACTION", NOT "WHOLE OBJECT". The Actions menu's "Grant All Listed Actions…" / "Revoke All Listed
+// Actions…" is applyObjectWideRoleAuthority: the server applies THESE listed per-action grants one by one through the same
+// governed commands (no wildcard exists, nothing unrestricted is created, and an action added to the Object later is NOT
+// included). It always opens a confirmation that names exactly which capabilities will change -- computed from the grants just
+// re-read -- and, after the server answers, states each action's outcome. No Firebase, no client-side authority.
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "../../shared/ui/primitives";
 import { Field, FormError } from "../../shared/ui/form";
+import ConfirmDialog from "../../shared/ui/ConfirmDialog.jsx";
 import { adminControlPlaneClient, refusalText } from "../../services/adminControlPlaneClient.js";
+import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 
 const KIND_WORDS = Object.freeze({ CREATE: "Create", READ: "Read", EDIT: "Edit", DELETE: "Delete", BUSINESS_ACTION: "Action", ADMIN_ACTION: "Administration" });
 
+/** The column's SHORT header: the action key in words ("correctOwnership" -> "Correct Ownership"). The full name stays reachable. */
+const shortLabel = (a) => titleCase(a.actionKey);
+
 export function objectAuthorityGrid(matrix, roles) {
   const actions = Array.isArray(matrix?.actions) ? matrix.actions : [];
-  const roleList = (Array.isArray(roles) ? roles : []).map((r) => ({ key: r.key, name: r.name ?? r.key, protected: Boolean(r.protected) }));
+  const roleList = (Array.isArray(roles) ? roles : []).map((r) => ({ key: r.key, name: identifierLabel(r.key, r.name), protected: Boolean(r.protected) }));
   const cell = (roleKey, a) => {
     const c = (a.roles ?? []).find((r) => r.roleKey === roleKey);
     return { held: Boolean(c?.held), source: c?.source ?? null, condition: c?.condition ?? null, locked: c?.source === "SYSTEM_INVARIANT" };
   };
   return {
-    actions: actions.map((a) => ({ actionKey: a.actionKey, actionKind: a.actionKind, label: a.displayLabel ?? a.actionKey, capabilityKey: a.capabilityKey,
-      kindWords: KIND_WORDS[a.actionKind] ?? a.actionKind, directExceptions: (a.principals ?? []).length })),
+    actions: actions.map((a) => ({ actionKey: a.actionKey, actionKind: a.actionKind, label: a.displayLabel ?? titleCase(a.actionKey), short: shortLabel(a),
+      capabilityKey: a.capabilityKey, kindWords: KIND_WORDS[a.actionKind] ?? titleCase(a.actionKind), directExceptions: (a.principals ?? []).length })),
     rows: roleList.map((r) => ({ ...r, cells: actions.map((a) => cell(r.key, a)) })),
   };
+}
+
+/** What a bulk change WOULD do to one Role, from the grants just read: the server still decides each one. */
+export function bulkPlan(grid, roleKey, mode) {
+  const row = grid.rows.find((r) => r.key === roleKey);
+  const plan = { change: [], unchanged: [], unavailable: [] };
+  grid.actions.forEach((a, i) => {
+    const c = row.cells[i];
+    if (c.locked) plan.unavailable.push(a);
+    else if (mode === "GRANT" ? !c.held : c.held) plan.change.push(a);
+    else plan.unchanged.push(a);
+  });
+  return plan;
+}
+
+const STATE = Object.freeze({
+  GRANTED: { words: "Granted", glyph: "✓", className: "fo-objmatrix__state--granted" },
+  CONDITIONAL: { words: "Granted (Conditional)", glyph: "◐", className: "fo-objmatrix__state--conditional" },
+  NOT_GRANTED: { words: "Not Granted", glyph: "○", className: "fo-objmatrix__state--none" },
+  UNAVAILABLE: { words: "Not Available", glyph: "—", className: "fo-objmatrix__state--na" },
+});
+const stateOf = (c) => (c.locked ? STATE.UNAVAILABLE : c.held ? (c.condition ? STATE.CONDITIONAL : STATE.GRANTED) : STATE.NOT_GRANTED);
+
+/** A compact per-Role Actions menu (WAI-ARIA menu button). */
+function RoleActionsMenu({ role, disabled, canRevoke, onChoose }) {
+  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState(null);
+  const id = useId();
+  const buttonRef = useRef(null);
+  const itemsRef = useRef([]);
+  useEffect(() => { if (open) itemsRef.current[0]?.focus(); }, [open]);
+  // The menu is placed in the VIEWPORT (position: fixed) so the matrix's scroll region never clips it.
+  const toggleOpen = () => {
+    const r = buttonRef.current?.getBoundingClientRect();
+    if (r) setPlace({ top: Math.min(r.bottom + 2, window.innerHeight - 96), left: Math.max(8, r.right - 232) });
+    setOpen((v) => !v);
+  };
+  const close = (refocus = true) => { setOpen(false); if (refocus) buttonRef.current?.focus(); };
+  const items = [
+    { key: "GRANT", label: "Grant All Listed Actions…", disabled: false },
+    { key: "REVOKE", label: "Revoke All Listed Actions…", disabled: !canRevoke },
+  ];
+  const onKeyDown = (e, i) => {
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); itemsRef.current[(i + 1) % items.length]?.focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); itemsRef.current[(i - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === "Tab") close(false);
+  };
+  return (
+    <div className="fo-objmatrix__menu">
+      <button ref={buttonRef} type="button" className="fo-objmatrix__menubutton" aria-haspopup="menu" aria-expanded={open} aria-controls={`${id}-menu`}
+        aria-label={`Actions for ${role.name}`} disabled={disabled} onClick={toggleOpen}
+        onKeyDown={(e) => { if (e.key === "ArrowDown") { e.preventDefault(); if (!open) toggleOpen(); } }}>
+        Actions <span aria-hidden="true">▾</span>
+      </button>
+      {open && typeof document !== "undefined" ? createPortal((
+        <ul id={`${id}-menu`} role="menu" aria-label={`Actions for ${role.name}`} className="fo-objmatrix__menulist" style={place ? { top: place.top, left: place.left } : undefined} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
+          {items.map((item, i) => (
+            <li key={item.key} role="none">
+              <button type="button" role="menuitem" ref={(el) => { itemsRef.current[i] = el; }} disabled={item.disabled}
+                onKeyDown={(e) => onKeyDown(e, i)} onClick={() => { setOpen(false); onChoose(item.key); }}>
+                {item.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ), document.body) : null}
+    </div>
+  );
 }
 
 export default function ObjectAuthorityMatrix({ api = adminControlPlaneClient, initialObjectKey = null }) {
@@ -41,100 +125,165 @@ export default function ObjectAuthorityMatrix({ api = adminControlPlaneClient, i
   const matrix = useControlPlaneRead(chosen ? () => api.getObjectActionGrantMatrix(chosen) : null, `objmatrix:${chosen}`);
   const roles = useControlPlaneRead(() => api.listRoles(), "roles");
   const grid = useMemo(() => (matrix.data && roles.data ? objectAuthorityGrid(matrix.data, roles.data) : null), [matrix.data, roles.data]);
+  const [editing, setEditing] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(null);
   const [outcome, setOutcome] = useState(null);
   const [onlyHolders, setOnlyHolders] = useState(false);
+  const [bulk, setBulk] = useState(null); // { role, mode, plan }
+  const objectLabel = matrix.data?.label ?? objects.find((o) => o.key === chosen)?.label ?? titleCase(chosen ?? "");
 
   const needReason = () => { if (reason.trim().length < 4) { setOutcome({ error: "State the reason for this change first — it is recorded in the audit trail." }); return true; } return false; };
-  const toggle = async (roleKey, action, held) => {
+  const toggle = async (role, action, held) => {
     if (needReason()) return;
-    setBusy(`${roleKey}:${action.actionKey}`);
-    const req = { objectKey: chosen, actionKey: action.actionKey, roleKey, reason: reason.trim() };
+    setBusy(`${role.key}:${action.actionKey}`);
+    const req = { objectKey: chosen, actionKey: action.actionKey, roleKey: role.key, reason: reason.trim() };
     const res = held ? await api.revokeObjectActionFromRole(req) : await api.grantObjectActionToRole(req);
     setBusy(null);
-    setOutcome(res.ok ? { ok: `${held ? "Revoked" : "Granted"} ${action.label} ${held ? "from" : "to"} ${roleKey}.` } : { error: refusalText(res) });
+    setOutcome(res.ok ? { ok: `${held ? "Revoked" : "Granted"} ${action.label} ${held ? "from" : "to"} ${role.name}.` } : { error: refusalText(res) });
     matrix.reload();
   };
-  const objectWide = async (roleKey, mode) => {
-    if (needReason()) return;
-    setBusy(`${roleKey}:*`);
-    const res = await api.applyObjectWideRoleAuthority({ objectKey: chosen, roleKey, mode, reason: reason.trim() });
+  const openBulk = (role, mode) => { setOutcome(null); setBulk({ role, mode, plan: bulkPlan(grid, role.key, mode) }); };
+  const applyBulk = async (bulkReason) => {
+    const { role, mode } = bulk;
+    setBusy(`${role.key}:*`);
+    const res = await api.applyObjectWideRoleAuthority({ objectKey: chosen, roleKey: role.key, mode, reason: bulkReason });
     setBusy(null);
+    setBulk(null);
     if (!res.ok) setOutcome({ error: refusalText(res) });
     else {
       const counts = res.data.actions.reduce((m, a) => ({ ...m, [a.outcome]: (m[a.outcome] ?? 0) + 1 }), {});
-      const refused = res.data.actions.filter((a) => a.outcome === "REFUSED").map((a) => `${a.actionKey}: ${a.refusal}`);
-      setOutcome({ ok: `${mode === "GRANT" ? "Whole-object grant" : "Whole-object revoke"} for ${roleKey}: ${Object.entries(counts).map(([k, v]) => `${v} ${k.toLowerCase().replace("_", " ")}`).join(", ")}.`, refused });
+      const refused = res.data.actions.filter((a) => a.outcome === "REFUSED").map((a) => `${titleCase(a.actionKey)}: ${a.refusal}`);
+      setOutcome({ ok: `${mode === "GRANT" ? "Granted listed actions" : "Revoked listed actions"} for ${role.name}: ${Object.entries(counts).map(([k, v]) => `${v} ${titleCase(k).toLowerCase()}`).join(", ")}.`, refused });
     }
     matrix.reload();
   };
 
   const shownRows = grid ? (onlyHolders ? grid.rows.filter((r) => r.cells.some((c) => c.held)) : grid.rows) : [];
   return (
-    <section className="fo-objmatrix" aria-label="Object authority">
-      <h3>Object authority <span className="fo-muted">· the governed PostgreSQL grants the server enforces</span></h3>
-      <p className="fo-muted">Each checkbox is a Security Role holding one of this Object&rsquo;s actions right now. Change it here and the server
-        records it, audits your reason and enforces it on the next request. Job Roles are not shown: a job grants nothing.</p>
+    <section className="fo-objmatrix" aria-label="Object authority" data-objmatrix-mode={editing ? "EDIT" : "READ"}>
+      <div className="fo-objmatrix__head">
+        <div>
+          <h3>Permissions by Security Role</h3>
+          <p className="fo-muted">What each Security Role may do to this Object, from the grants the server enforces. Job Roles are not shown: a job grants nothing.</p>
+        </div>
+        {editing ? (
+          <Button variant="secondary" onClick={() => { setEditing(false); setOutcome(null); }}>Done Editing</Button>
+        ) : (
+          <Button variant="primary" onClick={() => setEditing(true)} disabled={!grid}>Edit Permissions</Button>
+        )}
+      </div>
       {inventory.status === "failed" && <FormError>{refusalText(inventory.error)}</FormError>}
-      <div className="fo-roster__filters">
+      <div className="fo-objmatrix__controls">
         <Field id="objmatrix-object" label="Object">
           <select className="fo-input" value={chosen ?? ""} onChange={(e) => { setObjectKey(e.target.value); setOutcome(null); }}>
-            {objects.map((o) => <option key={o.key} value={o.key}>{o.label ?? o.key} ({o.actions.length})</option>)}
+            {objects.map((o) => <option key={o.key} value={o.key}>{o.label ?? titleCase(o.key)} ({o.actions.length})</option>)}
           </select>
         </Field>
-        <Field id="objmatrix-reason" label="Reason for changes (recorded in the audit trail)">
-          <input className="fo-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Service Managers approve parts reorders" />
-        </Field>
-        <label className="fo-check"><input type="checkbox" checked={onlyHolders} onChange={(e) => setOnlyHolders(e.target.checked)} /> Only Roles holding an action</label>
+        {editing ? (
+          <Field id="objmatrix-reason" label="Reason for Changes (Recorded in the Audit Trail)">
+            <input className="fo-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Service Managers approve parts reorders" />
+          </Field>
+        ) : null}
+        <label className="fo-check"><input type="checkbox" checked={onlyHolders} onChange={(e) => setOnlyHolders(e.target.checked)} /> Only Roles Holding an Action</label>
       </div>
+      <ul className="fo-objmatrix__legend" aria-label="Legend">
+        {[STATE.GRANTED, STATE.CONDITIONAL, STATE.NOT_GRANTED, STATE.UNAVAILABLE].map((s) => (
+          <li key={s.words}><span className={`fo-objmatrix__state ${s.className}`} aria-hidden="true">{s.glyph}</span> {s.words}</li>
+        ))}
+      </ul>
       {outcome?.error && <FormError>{outcome.error}</FormError>}
       {outcome?.ok && <p className="fo-success" role="status">{outcome.ok}</p>}
       {outcome?.refused?.length > 0 && <ul className="fo-warning">{outcome.refused.map((r) => <li key={r}>{r}</li>)}</ul>}
       {matrix.status === "failed" && <FormError>{refusalText(matrix.error)}</FormError>}
       {grid && (
-        <div className="fo-table-scroll">
-          <table className="fo-table fo-objmatrix__table" aria-label={`${matrix.data.label ?? chosen} authority by Security Role`}>
+        <div className="fo-objmatrix__scroll" role="region" aria-label={`${objectLabel} permissions — scroll horizontally for more actions`} tabIndex={0}>
+          <table className="fo-objmatrix__table" aria-label={`${objectLabel} authority by Security Role`}>
             <thead>
               <tr>
-                <th scope="col">Security Role</th>
+                <th scope="col" className="fo-objmatrix__rolehead">Security Role</th>
                 {grid.actions.map((a) => (
-                  <th scope="col" key={a.actionKey} title={a.capabilityKey}>
-                    <span>{a.label}</span><span className="fo-muted fo-objmatrix__kind">{a.kindWords}</span>
+                  <th scope="col" key={a.actionKey} title={`${a.label} — ${a.kindWords} (${a.capabilityKey})`} data-action={a.actionKey}>
+                    <span className="fo-objmatrix__colname">{a.short}</span>
+                    {a.kindWords !== a.short ? <span className="fo-objmatrix__kind">{a.kindWords}</span> : null}
+                    <span className="fo-sr-only">{`: ${a.label}`}</span>
                   </th>
                 ))}
-                <th scope="col">Whole object</th>
+                {editing ? <th scope="col" className="fo-objmatrix__actionshead"><span className="fo-sr-only">Role actions</span></th> : null}
               </tr>
             </thead>
             <tbody>
               {shownRows.map((r) => (
                 <tr key={r.key} data-role={r.key}>
-                  <th scope="row">{r.name}<span className="fo-muted"> · {r.key}</span></th>
+                  <th scope="row" className="fo-objmatrix__role">{r.name}{r.protected ? <span className="fo-objmatrix__protected"> · Protected</span> : null}</th>
                   {r.cells.map((c, i) => {
                     const a = grid.actions[i];
+                    const s = stateOf(c);
+                    const name = `${r.name} — ${a.label} (${a.capabilityKey})`;
                     return (
-                      <td key={a.actionKey} data-cell={`${r.key}:${a.actionKey}`} data-held={c.held ? "true" : "false"}>
-                        <input type="checkbox" checked={c.held} disabled={c.locked || busy !== null}
-                          aria-label={`${r.name} — ${a.label} (${a.capabilityKey})`}
-                          title={c.locked ? "Forbidden by a platform invariant — no Role of this kind may hold it" : c.condition ? `Conditioned: ${JSON.stringify(c.condition.condition ?? c.condition)}` : c.source ?? ""}
-                          onChange={() => toggle(r.key, a, c.held)} />
-                        {c.condition ? <span className="fo-muted" title="Held under a condition"> ◐</span> : null}
+                      <td key={a.actionKey} data-cell={`${r.key}:${a.actionKey}`} data-held={c.held ? "true" : "false"} data-state={c.locked ? "UNAVAILABLE" : c.held ? "GRANTED" : "NOT_GRANTED"}>
+                        {editing && !c.locked ? (
+                          <input type="checkbox" className="fo-objmatrix__check" checked={c.held} disabled={busy !== null}
+                            aria-label={name} title={c.condition ? `Conditioned: ${JSON.stringify(c.condition.condition ?? c.condition)}` : c.source ?? ""}
+                            onChange={() => toggle(r, a, c.held)} />
+                        ) : (
+                          <span className={`fo-objmatrix__state ${s.className}`} role="img" aria-label={`${name}: ${s.words}`}
+                            title={c.locked ? "Not available: a platform invariant forbids any Role of this kind from holding it" : s.words}>
+                            {s.glyph}
+                          </span>
+                        )}
                       </td>
                     );
                   })}
-                  <td>
-                    <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => objectWide(r.key, "GRANT")}>Grant all</Button>{" "}
-                    <Button size="sm" variant="secondary" disabled={busy !== null || !r.cells.some((c) => c.held)} onClick={() => objectWide(r.key, "REVOKE")}>Revoke all</Button>
-                  </td>
+                  {editing ? (
+                    <td className="fo-objmatrix__actions">
+                      <RoleActionsMenu role={r} disabled={busy !== null} canRevoke={r.cells.some((c) => c.held && !c.locked)} onChoose={(mode) => openBulk(r, mode)} />
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      {grid && grid.actions.some((a) => a.directExceptions > 0) && (
-        <p className="fo-muted">Some actions are also held by individual people as direct exceptions — see the action details below or the person&rsquo;s record.</p>
-      )}
+      {grid ? (
+        <details className="fo-objmatrix__columns">
+          <summary>{`Column Names and Capabilities (${grid.actions.length})`}</summary>
+          <dl className="fo-objmatrix__coldefs">
+            {grid.actions.map((a) => (
+              <div key={a.actionKey} className="fo-objmatrix__coldef">
+                <dt>{a.short}</dt>
+                <dd>{a.label} · {a.kindWords} · <code>{a.capabilityKey}</code>{a.directExceptions > 0 ? ` · also held by ${a.directExceptions} person${a.directExceptions === 1 ? "" : "s"} as a direct exception` : ""}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      ) : null}
+      {bulk ? (
+        <ConfirmDialog
+          title={`${bulk.mode === "GRANT" ? "Grant" : "Revoke"} All Listed Actions — ${bulk.role.name}`}
+          destructive={bulk.mode === "REVOKE"}
+          consequence={bulk.plan.change.length === 0
+            ? `Nothing would change: ${bulk.role.name} already ${bulk.mode === "GRANT" ? "holds every grantable listed action" : "holds none of the listed actions"} on ${objectLabel}.`
+            : `${bulk.mode === "GRANT" ? "Grant" : "Revoke"} these ${bulk.plan.change.length} ${objectLabel} capabilit${bulk.plan.change.length === 1 ? "y" : "ies"} ${bulk.mode === "GRANT" ? "to" : "from"} ${bulk.role.name}:`}
+          extraNote={(
+            <span data-bulk-plan={bulk.mode}>
+              <span className="fo-objmatrix__plan">
+                {bulk.plan.change.map((a) => <span key={a.actionKey} className="fo-cp-tag" data-plan-change={a.capabilityKey}>{`${a.label} (${a.capabilityKey})`}</span>)}
+              </span>
+              {bulk.plan.unchanged.length ? <span className="fo-objmatrix__plan-note">{`Unchanged: ${bulk.plan.unchanged.map((a) => a.label).join(", ")}.`}</span> : null}
+              {bulk.plan.unavailable.length ? <span className="fo-objmatrix__plan-note">{`Not available (platform invariant): ${bulk.plan.unavailable.map((a) => a.label).join(", ")}.`}</span> : null}
+              <span className="fo-objmatrix__plan-note">This applies only the actions listed above, one by one, through the governed commands. It is not unrestricted authority: actions added to this Object later are not included, and the server may refuse any single change.</span>
+            </span>
+          )}
+          confirmLabel={bulk.mode === "GRANT" ? `Grant ${bulk.plan.change.length}` : `Revoke ${bulk.plan.change.length}`}
+          cancelLabel="Cancel"
+          requireReason
+          reasonLabel="Reason (Recorded in the Audit Trail)"
+          onConfirm={async (bulkReason) => { if (bulk.plan.change.length === 0) { setBulk(null); return; } await applyBulk(bulkReason); }}
+          onClose={() => setBulk(null)}
+        />
+      ) : null}
     </section>
   );
 }

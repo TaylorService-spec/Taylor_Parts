@@ -8930,12 +8930,63 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-preview-frame { border: 2px dashed var(--color-warning); border-radius: var(--radius-sm); padding: 12px; margin-block: 8px; }
 .fo-preview-frame__banner { background: var(--color-warning); color: var(--color-brand-primary); padding: 6px 10px; margin: -12px -12px 12px; }
 
-/* OBJECT AUTHORITY MATRIX (#210): sticky role column, compact action headers, a real checkbox per governed grant. */
-.fo-objmatrix__table th[scope="col"] { vertical-align: bottom; font-size: 12.5px; }
-.fo-objmatrix__table th[scope="col"] > span { display: block; }
-.fo-objmatrix__kind { font-weight: 400; font-size: 11px; }
-.fo-objmatrix__table th[scope="row"] { position: sticky; left: 0; background: var(--color-surface-card); text-align: left; white-space: nowrap; }
+/* OBJECT AUTHORITY MATRIX (#210; redesigned 2026-10-08): a compact permissions matrix -- sticky header row and sticky Security
+   Role column inside a bounded scroll region, aligned fixed-width capability columns, one consistent row height, three distinct
+   cell states (Granted / Not Granted / Not Available), and a per-Role Actions menu only in Edit mode. */
+.fo-objmatrix__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.fo-objmatrix__head h3 { margin: 0 0 4px; }
+.fo-objmatrix__controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-end; margin: 8px 0; }
+.fo-objmatrix__controls .fo-form-field, .fo-objmatrix__controls > div { min-width: 220px; flex: 0 1 320px; }
+.fo-objmatrix__legend { display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none; padding: 0; margin: 4px 0 8px; font-size: 12.5px; color: var(--color-text-secondary); }
+.fo-objmatrix__scroll { overflow: auto; max-height: min(70vh, 640px); border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface-elevated); }
+.fo-objmatrix__scroll:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.fo-objmatrix__table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-size: 13px; }
+.fo-objmatrix__table th, .fo-objmatrix__table td { padding: 4px 6px; height: 32px; box-sizing: border-box; border-bottom: 1px solid var(--color-border); }
+.fo-objmatrix__table thead th { position: sticky; top: 0; z-index: 2; background: var(--color-surface-sunken); vertical-align: bottom;
+  width: 92px; min-width: 92px; max-width: 92px; text-align: center; font-size: 11.5px; font-weight: 600; line-height: 1.2; height: auto; padding-block: 6px; }
+.fo-objmatrix__colname { display: block; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.fo-objmatrix__kind { display: block; font-weight: 400; font-size: 10.5px; color: var(--color-text-muted); }
+.fo-objmatrix__table .fo-objmatrix__rolehead, .fo-objmatrix__table .fo-objmatrix__role {
+  position: sticky; left: 0; text-align: left; width: 220px; min-width: 180px; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 1px 0 0 var(--color-border); }
+.fo-objmatrix__table .fo-objmatrix__rolehead { z-index: 3; background: var(--color-surface-sunken); }
+.fo-objmatrix__table .fo-objmatrix__role { z-index: 1; background: var(--color-surface-elevated); font-weight: 500; }
+.fo-objmatrix__table tbody tr:hover td, .fo-objmatrix__table tbody tr:hover .fo-objmatrix__role { background: var(--color-info-surface); }
 .fo-objmatrix__table td { text-align: center; }
+.fo-objmatrix__protected { font-weight: 400; color: var(--color-text-muted); font-size: 12px; }
+.fo-objmatrix__state { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 13px; line-height: 1; }
+.fo-objmatrix__state--granted { background: var(--color-success-surface); color: var(--color-success); font-weight: 700; }
+.fo-objmatrix__state--conditional { background: var(--color-warning-surface); color: var(--color-warning); }
+.fo-objmatrix__state--none { color: var(--color-text-muted); }
+.fo-objmatrix__state--na { color: var(--color-text-muted); background: var(--color-surface-sunken); border-radius: 4px; width: 22px; }
+.fo-objmatrix__check { width: 18px; height: 18px; margin: 0; cursor: pointer; }
+.fo-objmatrix__actionshead, .fo-objmatrix__actions { width: 96px; min-width: 96px; position: sticky; right: 0; background: var(--color-surface-elevated); box-shadow: -1px 0 0 var(--color-border); }
+.fo-objmatrix__table thead .fo-objmatrix__actionshead { z-index: 3; background: var(--color-surface-sunken); }
+.fo-objmatrix__menu { position: relative; display: inline-block; }
+.fo-objmatrix__menubutton { font: inherit; font-size: 12.5px; padding: 3px 8px; border: 1px solid var(--color-border-strong); border-radius: 4px;
+  background: var(--color-surface-elevated); color: var(--color-text-primary); cursor: pointer; white-space: nowrap; min-height: 26px; width: auto; }
+.fo-objmatrix__menubutton:disabled { color: var(--color-text-muted); cursor: not-allowed; }
+.fo-objmatrix__menubutton:focus-visible, .fo-objmatrix__menulist button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.fo-objmatrix__menulist { position: fixed; z-index: 60; list-style: none; margin: 0; padding: 4px 0; min-width: 220px;
+  background: var(--color-surface-elevated); border: 1px solid var(--color-border-strong); border-radius: 6px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); text-align: left; }
+.fo-objmatrix__menulist button { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 8px 12px; cursor: pointer; font-size: 13px; color: var(--color-text-primary); }
+.fo-objmatrix__menulist button:hover:not(:disabled) { background: var(--color-info-surface); }
+.fo-objmatrix__menulist button:disabled { color: var(--color-text-muted); cursor: not-allowed; }
+.fo-objmatrix__columns { margin-top: 8px; font-size: 13px; }
+.fo-objmatrix__columns summary { cursor: pointer; font-weight: 600; }
+.fo-objmatrix__coldefs { margin: 6px 0 0; display: block; }
+.fo-objmatrix__coldef { display: flex; gap: 2px 8px; flex-wrap: wrap; padding: 3px 0; min-width: 0; }
+.fo-objmatrix__coldef dt { font-weight: 600; flex: 0 0 11em; max-width: 100%; }
+.fo-objmatrix__coldef dd { margin: 0; flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; }
+.fo-objmatrix__plan { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.fo-objmatrix__plan-note { display: block; margin-top: 6px; }
+@media (max-width: 640px) {
+  .fo-objmatrix__table .fo-objmatrix__rolehead, .fo-objmatrix__table .fo-objmatrix__role { width: 128px; min-width: 128px; max-width: 128px; white-space: normal; font-size: 12.5px; }
+  .fo-objmatrix__table thead th { width: 76px; min-width: 76px; max-width: 76px; }
+  .fo-objmatrix__scroll { max-height: 60vh; }
+  /* On a phone only the Role column stays pinned; the Actions menu scrolls with its row so capability columns keep the room. */
+  .fo-objmatrix__actionshead, .fo-objmatrix__actions { position: static; box-shadow: none; }
+}
 .fo-check { display: inline-flex; gap: 6px; align-items: center; }
 .fo-success { color: var(--color-success, #1f7a4d); }
 /* #210 containers: the roster and the authority matrix are sections of their pages, spaced like any ruled section. */
@@ -9001,3 +9052,13 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-keylist__remove:focus-visible { outline: 2px solid var(--color-focus); }
 .fo-cp-provenance { margin: 12px 0; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 6px; }
 .fo-cp-provenance .fo-detail-list { display: grid; grid-template-columns: max-content max-content; gap: 2px 16px; margin: 4px 0 0; }
+/* Object Security Actions detail tables scroll inside their own box on a phone, never the page (UI corrections, 375px). */
+.fo-security-action { min-width: 0; max-width: 100%; }
+.fo-cp-action-detail { max-width: 100%; overflow-x: auto; }
+.fo-security-action { flex-wrap: wrap; }
+.fo-security-action > * { min-width: 0; max-width: 100%; }
+.fo-security-action__key { overflow-wrap: anywhere; word-break: break-all; }
+/* Screen-reader-only text inside the sticky matrix cells stays IN FLOW (1px, clipped): an absolutely positioned span there
+   escapes the matrix's scroll region and widens the page on a phone. */
+.fo-objmatrix__table .fo-sr-only { position: static; display: inline-block; }
+.fo-sortable-th .fo-sr-only { position: static; display: inline-block; }

@@ -45,7 +45,7 @@ export default function ObjectActionSecurityPanel({ api = adminControlPlaneClien
 
   return (
     <section className="fo-panel" aria-label="Object security actions">
-      <h3>Object security actions <span className="fo-muted">· enforced by the server evaluator</span></h3>
+      <h3>Object Security Actions <span className="fo-muted">· enforced by the server evaluator</span></h3>
       <p className="fo-muted">
         Each Object&rsquo;s own actions, and which Security Roles hold each one. A grant, revoke or
         condition here is written to the governed policy store, audited with your reason, and read by
