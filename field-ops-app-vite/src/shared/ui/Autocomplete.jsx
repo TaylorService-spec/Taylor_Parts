@@ -50,7 +50,8 @@ export default function Autocomplete({
   const selectedKey = selected ? getKey(selected) : null;
   useEffect(() => { if (selected) setDisplay(getLabel(selected)); }, [selectedKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { setActive(-1); }, [ta.items]);
+  // The highlighted option resets only when the ANSWERED query changes -- never on an unrelated re-render.
+  useEffect(() => { setActive(-1); }, [ta.forQuery, ta.status]);
 
   const options = [
     ...ta.items.map((item) => ({ key: String(getKey(item)), item })),

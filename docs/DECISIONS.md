@@ -7601,3 +7601,23 @@ receiving, es-US content, above-limit discount approval, UTC/date findings).
   equipment.model.manage, inventory.catalog.activate. No mutation (DQ-210-A remediation follows integration).
 - **DQ-210-B** (workflow adoption) HELD. **DQ-210-C** (sample-employee sign-in) deferred to EOS-IDAM. Neither blocks
   integration.
+
+
+## UI corrections integration readiness — authority reconciliation (2026-10-08)
+
+- **Gap measured:** the UI corrections local proof harness held 499 grants against governed nonprod's 542. A grant-by-grant
+  comparison with a full local replay of the recorded decisions found 46 grants missing from the harness and 3 present only in
+  the harness. The 46 are the recorded deltas the harness never replayed (Sales Manager parity, Service Experience, recorded
+  Catalog/Reorder and self-scheduling, Parts/Purchasing/Receiving, Inventory/Warehouse, Equipment, Truck Inventory). The 3 are
+  governed revocations it never applied (Sales Manager audit separation, the two Parts Manager finance revokes).
+- **Stand-ins:** the harness had created `operationalConfigurationAdministrator` and `commercialSharedContext` with four grants.
+  All four matched governed grants exactly, so no authority was invented. One governed grant (`customer.record.update` on
+  Commercial Shared Context) was missing from the stand-in. Automated suites never use the harness (each builds its own
+  disposable database); only the earlier browser proofs did.
+- **Missing replay inputs, now recorded as data:** `recordedAdministrationRolesDelta.ts` records D-B Option A (tenant sales
+  channels and the Commercial Shared Context Role with its four grants) and DQ-033 (the Operational Configuration Administrator
+  Role). It is read by no command and introduces no new Role, grant or capability.
+- **Result:** `governedNonprodReplayPostgres.test.mjs` replays the repository's recorded decisions to 94 migrations / 128
+  capabilities / 542 grants, with every stage pinned. The local proof harness is rebuilt from that replay, with no stand-ins,
+  and the three sample-workforce refusals no longer occur.
+- No nonprod read or mutation; production untouched.

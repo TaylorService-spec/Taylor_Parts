@@ -173,9 +173,11 @@ describe("typeahead (item E)", () => {
     await screen.findByRole("option", { name: "Alpha Co" });
     expect(box.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("option", { name: /View All Results for “al”/ })).toBeTruthy();
+    await waitFor(() => expect(box.closest("[data-autocomplete]").getAttribute("data-autocomplete")).toBe("ready"));
     fireEvent.keyDown(box, { key: "ArrowDown" });
+    await waitFor(() => expect(box.getAttribute("aria-activedescendant")).toBe(screen.getByRole("option", { name: "Alpha Co" }).id));
     fireEvent.keyDown(box, { key: "ArrowDown" });
-    expect(box.getAttribute("aria-activedescendant")).toBe(screen.getByRole("option", { name: "Alpine Ltd" }).id);
+    await waitFor(() => expect(box.getAttribute("aria-activedescendant")).toBe(screen.getByRole("option", { name: "Alpine Ltd" }).id));
     fireEvent.keyDown(box, { key: "Enter" });
     expect(onSelect).toHaveBeenCalledWith(items[1]);
     expect(box.value).toBe("Alpine Ltd");
