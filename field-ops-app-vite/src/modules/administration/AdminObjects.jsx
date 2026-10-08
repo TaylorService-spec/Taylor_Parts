@@ -312,44 +312,40 @@ export default function AdminObjects() {
 
   const configured = isPolicyApiConfigured();
 
-  if (view === "object") {
+  if (configured) {
+    // CONFIGURED (approved Administration IA, Phase 2): Objects OPENS WITH THE CATALOG -- the business
+    // objects and their fields -- and the enforced PostgreSQL authority matrix (#210) follows it. The
+    // By Role / By Object toggle is not offered here: both rendered the same three components.
+    //
+    // The matrix STAYS on Objects even though Permissions has its own destination (DECISIONS #212):
+    // that destination is governed-source only, so in every legacy-source environment this is the
+    // only door to it. A deep link (?object=, lane WR) arrives to change permissions, so it gets the
+    // matrix first.
+    const permissions = (
+      <section className="fo-panel" aria-label="Object permissions" key="permissions">
+        <h3>Permissions <span className="fo-muted">· what each Security Role can do on an object</span></h3>
+        <ObjectAuthorityMatrix initialObjectKey={readAdminQueryParam("object")} />
+        <ObjectActionSecurityPanel initialObjectKey={readAdminQueryParam("object")} />
+      </section>
+    );
+    const catalog = <ObjectsSurface key="catalog" />;
     return (
-      <WorkspaceShell title="Objects" context={viewToggle}>
-        {configured ? (
-          <>
-            {/* The ENFORCED per-Object grant surface (lane CP-C): each Object's real action
-                vocabulary, who holds each action, and the governed grant/condition controls. */}
-            {/* #210: the PostgreSQL authority matrix is the screen; the code-side reference grid no longer renders where a
-                policy store exists, because it is not what the server enforces. */}
-            <ObjectAuthorityMatrix initialObjectKey={readAdminQueryParam("object")} />
-            <ObjectActionSecurityPanel initialObjectKey={readAdminQueryParam("object")} />
-            <ObjectsSurface />
-          </>
-        ) : (
-          <>
-            <NotConfiguredNotice what="Stored objects" />
-            <ByObject roles={rosterRoles} />
-            <ObjectDiagnostics roles={rosterRoles} />
-            <p className="fo-warning">
-              Read-only. Role definitions live in code today, and the trusted commands grant{" "}
-              <em>roles to people</em>, not permissions to roles.
-            </p>
-          </>
-        )}
+      <WorkspaceShell title="Objects">
+        {readAdminQueryParam("object") ? [permissions, catalog] : [catalog, permissions]}
       </WorkspaceShell>
     );
   }
 
-  if (configured) {
-    // BY-ROLE, CONFIGURED: the stored object configuration is the screen. The measured per-role
-    // grid answers a different question and is available underneath, named as reference.
+  if (view === "object") {
     return (
       <WorkspaceShell title="Objects" context={viewToggle}>
-        {/* #210: the PostgreSQL authority matrix (rows = Security Roles, columns = the Object's real actions, functional
-            checkboxes) replaces the code-side C/R/E/D reference grid, which is not what the server enforces. */}
-        <ObjectAuthorityMatrix initialObjectKey={readAdminQueryParam("object")} />
-        <ObjectActionSecurityPanel initialObjectKey={readAdminQueryParam("object")} />
-        <ObjectsSurface />
+        <NotConfiguredNotice what="Stored objects" />
+        <ByObject roles={rosterRoles} />
+        <ObjectDiagnostics roles={rosterRoles} />
+        <p className="fo-warning">
+          Read-only. Role definitions live in code today, and the trusted commands grant{" "}
+          <em>roles to people</em>, not permissions to roles.
+        </p>
       </WorkspaceShell>
     );
   }
