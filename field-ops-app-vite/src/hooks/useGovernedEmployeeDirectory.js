@@ -2,11 +2,14 @@
 // Firestore `employees` listener (hooks/useEmployeeDirectory.js) on the Opportunity, Sales Order, Sales Agreement and Account
 // pages. Same result shape, so name resolution at every call site is unchanged:
 //
-//   byEmployeeId  Map<employeeId, { id, employeeId, displayName, employmentStatus, operatingCompanyId }>
-//                 from EMP-RT-01 listEmployees -- the governed PostgreSQL Employee directory. The SERVER applies
-//                 employee.record.read and operating-company reach: an Employee outside the caller's reach is simply absent
-//                 (and renders as unresolved, exactly like before), and every employment status is listed, so a historical
-//                 owner who has since left still resolves by name.
+//   byEmployeeId  Map<employeeId, { id, employeeId, displayName, ... }>. TWO governed sources:
+//                 * `employeeIds` GIVEN (every record page): ONLY those ids -- the owners / accountable people on records the
+//                   page was allowed to read -- named by resolveEmployeeDisplayNames (/operations/workspace), which any
+//                   reader of those record kinds may call. The Employee directory itself (employee.record.read) is
+//                   Administration's; a seller or dispatcher does not hold it and does not need it to name an owner.
+//                   Display names only; every employment status, so a former owner keeps their name.
+//                 * `employeeIds` OMITTED: EMP-RT-01 listEmployees, the whole directory the caller may read
+//                   (employee.record.read + operating-company reach) -- for callers that browse it.
 //   byUserId      Map<principalId, { id, displayName }> -- the ACTING Principals recorded on EOS records (created_by /
 //                 accepted_by are EOS Principal ids), named by the governed, minimally scoped resolvePrincipalDisplayNames
 //                 read (/operations/workspace): ONLY the keys passed in `actorIds` (EOS Principal ids) / `actorSubjects` (the
@@ -59,10 +62,23 @@ async function readActors(call, principalIds, actorSubjects) {
   return byUserId;
 }
 
-function load(key, client, actorCall, actorIds, actorSubjects) {
+async function readNamedEmployees(call, employeeIds) {
+  const byEmployeeId = new Map();
+  for (let i = 0; i < employeeIds.length; i += 100) {
+    const res = await call("resolveEmployeeDisplayNames", { employeeIds: employeeIds.slice(i, i + 100) });
+    if (!res?.ok) return { byEmployeeId: new Map(), error: res ?? { ok: false, code: "INTERNAL" }, truncated: false };
+    for (const n of res.result?.names ?? []) byEmployeeId.set(n.key, { id: n.key, employeeId: n.key, displayName: n.displayName ?? null });
+  }
+  return { byEmployeeId, error: null, truncated: false };
+}
+
+function load(key, client, actorCall, actorIds, actorSubjects, employeeIds) {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.promise;
-  const promise = Promise.all([readEmployees(client), actorIds.length + actorSubjects.length
+  const employees = employeeIds === null ? readEmployees(client)
+    : employeeIds.length ? readNamedEmployees(actorCall, employeeIds).catch(() => ({ byEmployeeId: new Map(), error: { ok: false, code: "INTERNAL" }, truncated: false }))
+      : Promise.resolve({ byEmployeeId: new Map(), error: null, truncated: false });
+  const promise = Promise.all([employees, actorIds.length + actorSubjects.length
     ? readActors(actorCall, actorIds, actorSubjects).catch(() => new Map()) : Promise.resolve(new Map())])
     .then(([employees, byUserId]) => ({ ...employees, byUserId }));
   cache.set(key, { at: Date.now(), promise });
@@ -73,19 +89,21 @@ function load(key, client, actorCall, actorIds, actorSubjects) {
 /** Test seam: forget the shared read. */
 export function resetGovernedEmployeeDirectory() { cache.clear(); }
 
-export function useGovernedEmployeeDirectory({ enabled = true, actorIds = [], actorSubjects = [], client = workforceApiClient, actorCall = callWorkspaceApi } = {}) {
+export function useGovernedEmployeeDirectory({ enabled = true, employeeIds, actorIds = [], actorSubjects = [], client = workforceApiClient, actorCall = callWorkspaceApi } = {}) {
   const [state, setState] = useState({ byEmployeeId: new Map(), byUserId: new Map(), loading: enabled, error: null, truncated: false });
   const clean = (xs) => [...new Set((xs ?? []).filter((v) => typeof v === "string" && v !== ""))].sort();
   const ids = clean(actorIds);
   const subjects = clean(actorSubjects);
-  const idsKey = `${ids.join("|")}#${subjects.join("|")}`;
+  const named = employeeIds === undefined ? null : clean(employeeIds);
+  const idsKey = `${ids.join("|")}#${subjects.join("|")}#${named === null ? "*" : named.join("|")}`;
   useEffect(() => {
     if (!enabled) { setState({ byEmployeeId: new Map(), byUserId: new Map(), loading: false, error: null, truncated: false }); return undefined; }
     let alive = true;
     setState((s) => ({ ...s, loading: true }));
     const shared = client === workforceApiClient && actorCall === callWorkspaceApi;
-    const [pIds, sIds] = idsKey.split("#");
-    load(shared ? `d:${idsKey}` : `d:${idsKey}:${Math.random()}`, client, actorCall, pIds ? pIds.split("|") : [], sIds ? sIds.split("|") : []).then((r) => {
+    const [pIds, sIds, eIds] = idsKey.split("#");
+    const split = (v) => (v ? v.split("|") : []);
+    load(shared ? `d:${idsKey}` : `d:${idsKey}:${Math.random()}`, client, actorCall, split(pIds), split(sIds), eIds === "*" ? null : split(eIds)).then((r) => {
       if (!alive) return;
       setState({ byEmployeeId: r.byEmployeeId, byUserId: r.byUserId, loading: false, error: r.error, truncated: r.truncated });
     });

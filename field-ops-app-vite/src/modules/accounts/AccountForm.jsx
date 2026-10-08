@@ -1,4 +1,3 @@
-import { useGovernedAssignableEmployees } from "../../hooks/useGovernedAssignableEmployees.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ACCOUNT_STATUS, accountStatusLabel, ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
 import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isValidPaymentTerms, isValidTaxStatus, isContactOnAccount, resolveOwnerIdentity } from "../../domain/commercialProfile";
@@ -7,7 +6,8 @@ import { useAuth } from "../../auth/AuthContext";
 import { ACCOUNT_FIELD_INPUT_ID } from "./accountFieldInputs.js";
 import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import AddressFields from "../../shared/address/AddressFields";
-import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
+import Autocomplete from "../../shared/ui/Autocomplete.jsx";
+import { callWorkspaceApi } from "../../services/workspaceApiClient.js";
 import IdentityLine from "./IdentityLine";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
@@ -28,13 +28,11 @@ import { Button } from "../../shared/ui/primitives";
 // it). `contacts`/`contactsLoading` (this Account's own contacts) are passed
 // in edit mode so the billing-contact picker only offers a contact belonging
 // to this Account, and billing validation waits for the list to resolve.
-// accountOwner is captured as a COMPLETE Person Assignment: the reciprocally
-// linked assignee (employeeId + userId) and resolved name snapshot from the
-// picker, plus the assignor's employee/user IDs from the authenticated
-// session and a timestamp. NOTE (interim, per the Implementation Plan's
-// audit-integrity invariant): these are client-direct edits for now; once the
-// audit log + trusted server-side writer ship, mutation moves there and direct
-// client writes are denied.
+// accountOwner is the governed EOS_CRM owner: an Employee id picked from the
+// server's offer (searchAccountOwnerCandidates -- ACTIVE/CONTRACTOR Employees
+// of this tenant, no Firebase uid) plus its display name. The CRM write (domain/accounts.js ->
+// updateAccount / createAccount) sends the Employee id only, and the server
+// re-validates it and records who assigned it.
 //
 // Issue #214 PR-1 -- migrated to the shared form primitives (Field / FormActions
 // / FormError / FormStatus) built on the System-A `fo-wizard-*` visual tokens:
@@ -47,7 +45,6 @@ import { Button } from "../../shared/ui/primitives";
 // grid, `.fo-btn-row`, all control ids and label text are preserved.
 export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false, contactsError = null, onSavingChange, focusFieldId = null }) {
   const { loading: authLoading } = useAuth();
-  const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory();
 
   const [name, setName] = useState(initialValues?.name ?? "");
   const [address, setAddress] = useState({
@@ -83,6 +80,8 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   const [taxStatus, setTaxStatus] = useState(initialValues?.taxStatus ?? "");
   const [billingContactId, setBillingContactId] = useState(initialValues?.billingContact?.contactId ?? "");
   const [accountOwner, setAccountOwner] = useState(initialValues?.accountOwner ?? null);
+  // The CURRENT owner, named by resolveEmployeeDisplayNames -- this one id, not the Employee directory.
+  const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory({ employeeIds: [accountOwner?.assignedToEmployeeId] });
   const [submitAttempted, setSubmitAttempted] = useState(false);
   // Save-time (post-validation) failure -- e.g. a Rules permission-denied. Shown
   // inside the form so the creation overlay stays open and the user can retry.
@@ -156,6 +155,11 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   // unresolved (broken-link) session yields an incomplete record that
   // validation blocks -- a bare employeeId can't pass as a provisioned
   // assignor. Any missing required piece is likewise rejected.
+  async function searchAccountOwners(query) {
+    const res = await callWorkspaceApi("searchAccountOwnerCandidates", { query });
+    return res?.ok ? { ok: true, items: res.result?.candidates ?? [], total: res.result?.candidates?.length ?? 0 } : { ok: false, code: res?.code, message: res?.message };
+  }
+
   function handleOwnerSelect(sel) {
     if (!sel) {
       setAccountOwner(null);
@@ -473,12 +477,20 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
               <Button type="button" variant="tertiary" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear Owner</Button>
             </div>
           )}
-          <EmployeeAssignmentPicker
-            useEmployees={useGovernedAssignableEmployees}
-            onSelect={handleOwnerSelect}
+          {/* The OFFER is the server's: searchAccountOwnerCandidates answers, for a caller who may write Accounts, exactly
+              the owners the CRM write accepts (ACTIVE / CONTRACTOR Employees of this tenant). 2 characters, debounced. */}
+          <Autocomplete
+            id="account-owner"
             label="Account Owner"
             placeholder="Search owner by name..."
+            search={searchAccountOwners}
+            selected={null}
+            getKey={(e) => e.employeeId}
+            getLabel={(e) => e.displayName ?? e.employeeId}
+            getContext={() => null}
+            onSelect={(e) => { if (e) handleOwnerSelect(e); }}
             disabled={authLoading}
+            emptyText="No eligible owner matches."
           />
           <FormError>{errors.accountOwner}</FormError>
         </div>

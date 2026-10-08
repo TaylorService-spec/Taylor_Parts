@@ -13,7 +13,7 @@ const loadAdminClient = () => import("./adminPolicyApiClient.js");
 export const WORKSPACE_ROUTE = "/operations/workspace";
 
 /** Mirrors the server's EOS_WORKSPACE_OPERATIONS (closed, read-only). */
-export const WORKSPACE_OPERATIONS = Object.freeze(["readMyWork", "searchEos", "previewMyWorkAs", "resolvePrincipalDisplayNames"]);
+export const WORKSPACE_OPERATIONS = Object.freeze(["readMyWork", "searchEos", "previewMyWorkAs", "resolvePrincipalDisplayNames", "resolveEmployeeDisplayNames", "searchAccountOwnerCandidates"]);
 const OPERATIONS = new Set(WORKSPACE_OPERATIONS);
 export const isWorkspaceOperation = (name) => typeof name === "string" && OPERATIONS.has(name);
 

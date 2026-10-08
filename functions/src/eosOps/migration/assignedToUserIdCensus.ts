@@ -108,7 +108,7 @@ export const ASSIGNED_TO_USER_ID_CENSUS: readonly CensusEntry[] = Object.freeze(
   }),
   e({
     path: "field-ops-app-vite/src/shared/reorder/AssignedWorkOversightTable.jsx", object: "REORDER", classification: "DISPLAY_ONLY",
-    consumer: "renders the assignee name from the uid", occurrences: 1, status: "NOT_STARTED",
+    consumer: "renders (and sorts by) the assignee name from the uid", occurrences: 2, status: "NOT_STARTED",
   }),
 
   // ── shape and payload contracts: they name the field, they decide nothing ──
@@ -186,10 +186,6 @@ export const ASSIGNED_TO_USER_ID_CENSUS: readonly CensusEntry[] = Object.freeze(
     path: "field-ops-app-vite/src/domain/commercialProfile.js", object: "COMMERCIAL", classification: "DISPLAY_ONLY",
     consumer: "reads accountOwner.assignedToUserId beside assignedToEmployeeId for the owner display",
     occurrences: 2, status: "NOT_STARTED",
-  }),
-  e({
-    path: "field-ops-app-vite/src/modules/accounts/AccountForm.jsx", object: "COMMERCIAL", classification: "DISPLAY_ONLY",
-    consumer: "carries the account owner's Person Assignment map", occurrences: 1, status: "NOT_STARTED",
   }),
   e({
     path: "functions/src/coverage/coverageCommands.ts", object: "COMMERCIAL", classification: "HISTORICAL_SCHEMA",

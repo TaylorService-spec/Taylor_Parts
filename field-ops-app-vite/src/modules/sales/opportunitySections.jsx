@@ -68,7 +68,7 @@ function FieldRead({ field }) {
 // Edit control for one USER_MAINTAINED field, bound to the section draft. These render ONLY inside an active
 // section edit form (never as a standing wall of controls). No control performs a write — Save is what would
 // hand the draft to the governed command, and Save is itself gated by readiness + a wired command.
-function FieldEdit({ field, value, onChange, directory }) {
+function FieldEdit({ field, value, onChange }) {
   const id = `opp-edit-${field.key}`;
   switch (field.control) {
     case "select":

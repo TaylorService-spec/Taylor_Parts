@@ -24,11 +24,11 @@ business-runtime dependency).
 
 | Page | Before | Now (governed) |
 | --- | --- | --- |
-| Opportunity detail and list owner | `useEmployeeDirectory` | `useGovernedEmployeeDirectory`, which uses `listEmployees` (EMP-RT-01) |
-| Sales Order detail owner and accountable | `useEmployeeDirectory` | `useGovernedEmployeeDirectory` (regression test: `test/governedOwnerNames.test.jsx`) |
+| Opportunity detail and list owner and accountable | `useEmployeeDirectory` | `useGovernedEmployeeDirectory({ employeeIds })`, which calls `resolveEmployeeDisplayNames` for exactly the ids on the rendered records |
+| Sales Order, Sales Agreement, Account (detail, list, Opportunities and Sales Orders sections) owner and accountable | `useEmployeeDirectory` | same: `resolveEmployeeDisplayNames` for the record's own ids (regression test: `test/governedOwnerNames.test.jsx`) |
 | Sales Agreement acceptance actor | `useEmployeeDirectory` `byUserId` | `resolvePrincipalDisplayNames` with `principalIds` (`acceptedByPrincipalId`), or `actorSubjects` for legacy records |
 | Account detail and Activity & Notes actors | `useEmployeeDirectory` `byUserId` | `resolvePrincipalDisplayNames` with `actorSubjects` (`createdByUid`) |
-| Account owner picker (`AccountForm`) | `useAssignableEmployees` (Firestore, uid pair) | `useGovernedAssignableEmployees`: `listEmployees`, ACTIVE or CONTRACTOR only, producing the `EOS_CRM` owner. The CRM write already takes the Employee id only. |
+| Account owner picker (`AccountForm`) | `EmployeeAssignmentPicker` + `useAssignableEmployees` (Firestore, uid pair) | shared `Autocomplete` over `searchAccountOwnerCandidates`: 2+ characters, ACTIVE or CONTRACTOR Employees of the tenant, producing the `EOS_CRM` owner. The CRM write already takes the Employee id only and re-validates it. |
 | Opportunity owner select (`OwnerSelect.jsx`) | free-text Employee id | typeahead over the EOS roster (`listEmployees`); a refused roster falls back to the bounded id field |
 
 Proof: the Account, Opportunity and Sales Order pages make 0 Firestore `Listen` requests to `employees`; before
@@ -58,7 +58,7 @@ the hook in the same change. It is a one-line swap with identical return shape.
 | `src/modules/inventory/PartDetail.jsx:1392` | `byUserId`: reorder request actors (assigned, last update, ordered, received, cancelled, voided) | Firebase uids and Employee ids on legacy reorder requests | `resolvePrincipalDisplayNames` for actors; `useGovernedEmployeeDirectory().byEmployeeId` for `assignedEmployeeId` |
 | `src/modules/purchasing/PurchaseOrders.jsx:110` | `byUserId`: `orderedByUserId` | Firebase uids on legacy purchase orders | `resolvePrincipalDisplayNames({ actorSubjects })` |
 
-`resolvePrincipalDisplayNames` currently admits callers holding a customer, opportunity, sales agreement, sales
+`resolvePrincipalDisplayNames` and `resolveEmployeeDisplayNames` currently admit callers holding a customer, opportunity, sales agreement, sales
 order or work order read (`ACTOR_DISPLAY_READ_CAPABILITIES`). Parts and Purchasing callers would need the Reorder
 and inventory read capabilities added to that gate. That widens a read, so it needs a ruling: it is code, not a
 grant, but it changes who may name actors. This is the one open decision in this ledger.
@@ -69,7 +69,8 @@ Assignment pickers on these pages already use the governed `useReorderAssignment
 ### Shared default
 
 `EmployeeAssignmentPicker`'s default `useEmployees = useAssignableEmployees` now has **zero production
-consumers**. All three call sites inject a governed source (AccountForm, PartDetail, ManagerQueuePanel). Exit:
+consumers**. Both remaining call sites inject the governed `useReorderAssignmentTargets` (PartDetail,
+ManagerQueuePanel). AccountForm no longer uses the picker. Exit:
 make the `useEmployees` prop required and delete `useAssignableEmployees` together with its baseline entry. The
 ratchet allows the baseline to shrink.
 
@@ -83,7 +84,9 @@ the page passes `principalIds`, and the callable client leaves the baseline.
 
 | API | Route | Gate | Answers |
 | --- | --- | --- | --- |
-| `listEmployees` (EMP-RT-01) | `/workforce/employees` | `employee.record.read` plus operating-company reach | Employee id, name, employment status, operating company |
+| `listEmployees` (EMP-RT-01) | `/workforce/employees` | `employee.record.read` plus operating-company reach (admin, generalManager, owner only) | Employee id, name, employment status, operating company |
+| `resolveEmployeeDisplayNames` | `/operations/workspace` | one of `ACTOR_DISPLAY_READ_CAPABILITIES` (customer / opportunity / sales agreement / sales order / work order read), flat or scoped | `{key, displayName}` for the asked Employee ids of the caller's tenant, every status; at most 100 |
+| `searchAccountOwnerCandidates` | `/operations/workspace` | `customer.record.create` or `customer.record.update` (the capabilities under which the CRM write accepts an owner) | at most 25 `{employeeId, displayName}`, ACTIVE or CONTRACTOR, name match on 2 to 100 characters |
 | `resolvePrincipalDisplayNames` | `/operations/workspace` | one of `ACTOR_DISPLAY_READ_CAPABILITIES`, flat or scoped | `{key, displayName}` for the asked keys only, ACTIVE members of the caller's tenant |
 | `listReorderAssignmentTargets` | `/operations/inventory` | the Reorder request assign capability | assignable Parts Employees |
 

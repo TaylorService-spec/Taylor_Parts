@@ -116,7 +116,8 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
   const { opportunities, accountNameById, status, synthetic, loading, error, refetch } = useOpportunities(source);
   // ONE directory subscription for the whole page. Owner names then resolve as a map lookup per
   // row -- never a read per row, which on a scanning surface is one round trip per visible deal.
-  const directory = useGovernedEmployeeDirectory();
+  // Name ONLY the people on these records (resolveEmployeeDisplayNames) -- not the Employee directory, which this reader may not hold.
+  const directory = useGovernedEmployeeDirectory({ employeeIds: (opportunities ?? []).map((o) => o?.ownerEmployeeId) });
   // WHO IS LOOKING: the caller's OWN governed Employee (EMP-RT-07 readMyEmployeeProfile, resolved by the server from the
   // verified sign-in -- never from a uid in the client). A sign-in with no linked Employee has none, and the "My
   // opportunities" view says so rather than reporting an empty queue (see selectOpportunityView).

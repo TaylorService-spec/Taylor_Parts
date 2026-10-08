@@ -179,6 +179,41 @@ test("my work + search over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     assert.equal(adminRead.ok, false);
   });
 
+  await t.test("resolveEmployeeDisplayNames: a record reader names the owners it holds -- names only, every status, caller's tenant", async () => {
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,display_name,first_name,last_name) VALUES
+             ('e-gone',$1,'TERMINATED','taylor','Gale Gone','Gale','Gone') ON CONFLICT DO NOTHING`, [TENANT]);
+    // The channel-scoped seller holds no employee.record.read (the Employee directory), yet it may name the owner /
+    // accountable on a record it reads -- including a former Employee.
+    const r = ok(await call(retail, WS, "resolveEmployeeDisplayNames", { employeeIds: ["e-retail", "e-dispatch", "e-gone", "e-unknown"] }));
+    assert.deepEqual(r.names.map((n) => [n.key, n.displayName]), [["e-dispatch", "Emerson Dispatch"], ["e-gone", "Gale Gone"], ["e-retail", "Robin Retail"]]);
+    for (const n of r.names) assert.deepEqual(Object.keys(n).sort(), ["displayName", "key"], "no status, company or Principal link");
+    refused(await call(nobody, WS, "resolveEmployeeDisplayNames", { employeeIds: ["e-retail"] }), 403, "CAPABILITY_REQUIRED");
+    refused(await call(retail, WS, "resolveEmployeeDisplayNames", { employeeIds: [] }), 400, "EMPLOYEE_IDS_INVALID");
+    refused(await call(retail, WS, "resolveEmployeeDisplayNames", { employeeIds: Array.from({ length: 101 }, (_, i) => `e${i}`) }), 400, "EMPLOYEE_IDS_INVALID");
+    refused(await call(retail, WS, "resolveEmployeeDisplayNames", { employeeIds: ["e-retail"], tenantId: "other" }), 400, "FIELD_NOT_ACCEPTED");
+  });
+
+  await t.test("searchAccountOwnerCandidates: the owners an Account write accepts (ACTIVE / CONTRACTOR), for an Account writer only", async () => {
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,display_name,first_name,last_name) VALUES
+             ('e-own-a',$1,'ACTIVE','taylor','Owen Zimmer','Owen','Zimmer'), ('e-own-c',$1,'CONTRACTOR','ventana','Owena Adams','Owena','Adams'),
+             ('e-own-x',$1,'TERMINATED','taylor','Owenby Gone','Owenby','Gone') ON CONFLICT DO NOTHING`, [TENANT]);
+    const role = await admin("createRole", { key: "accountWriterFixture", name: "Account Writer Fixture", reason: "fixture" });
+    assert.equal(role.ok, true, JSON.stringify(role));
+    for (const actionKey of ["read", "edit"]) {
+      const g = await admin("grantObjectActionToRole", { roleKey: "accountWriterFixture", objectKey: "account", actionKey, reason: "fixture" });
+      assert.equal(g.ok, true, JSON.stringify(g));
+    }
+    const writer = await person("uid-acct-writer", ["accountWriterFixture"], { id: "e-acct-writer", name: "Wren Writer" });
+    const r = ok(await call(writer, WS, "searchAccountOwnerCandidates", { query: "owen" }));
+    assert.deepEqual(r.candidates.map((c) => [c.employeeId, c.displayName]), [["e-own-c", "Owena Adams"], ["e-own-a", "Owen Zimmer"]],
+      "ACTIVE and CONTRACTOR in every operating company, last name first; a TERMINATED Employee is never offered");
+    for (const c of r.candidates) assert.deepEqual(Object.keys(c).sort(), ["displayName", "employeeId"]);
+    assert.deepEqual(ok(await call(writer, WS, "searchAccountOwnerCandidates", { query: "%_" })).candidates, [], "LIKE metacharacters are literal");
+    refused(await call(nobody, WS, "searchAccountOwnerCandidates", { query: "owen" }), 403, "CAPABILITY_REQUIRED");
+    refused(await call(writer, WS, "searchAccountOwnerCandidates", { query: "o" }), 400, "QUERY_INVALID");
+    refused(await call(writer, WS, "searchAccountOwnerCandidates", { query: "owen", status: "TERMINATED" }), 400, "FIELD_NOT_ACCEPTED");
+  });
+
   await t.test("SEARCH employees (UI corrections item E): a flat holder is global; an operatingCompany-scoped holder is searched inside its companies only", async () => {
     await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,first_name,last_name,employee_number) VALUES
              ('e-q-t',$1,'ACTIVE','taylor','Quinn','Northside','Q-T'), ('e-q-v',$1,'ACTIVE','ventana','Quinn','Southside','Q-V')`, [TENANT]);

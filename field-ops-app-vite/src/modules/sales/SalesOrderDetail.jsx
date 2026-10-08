@@ -101,7 +101,8 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
 
   // ONE DIRECTORY READ FOR THE PAGE, resolving the owner to a person. An employee id is a routing
   // key and never content.
-  const directory = useGovernedEmployeeDirectory();
+  // Name ONLY the people on this record (resolveEmployeeDisplayNames) -- not the Employee directory, which this reader may not hold.
+  const directory = useGovernedEmployeeDirectory({ employeeIds: ready ? [view.ownerEmployeeId, view.accountableEmployeeId] : [] });
   const ownerName = useMemo(() => {
     if (!ready || !view.ownerEmployeeId) return null;
     if (directory.loading) return null;

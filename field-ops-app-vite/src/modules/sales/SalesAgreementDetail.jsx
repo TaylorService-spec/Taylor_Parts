@@ -238,7 +238,9 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
   // The accepting actor: EOS records the accepting PRINCIPAL (acceptedByPrincipalId); a legacy record its uid (subject).
   const acceptanceActorIds = useMemo(() => (ready && view.acceptedByPrincipalId ? [view.acceptedByPrincipalId] : []), [ready, view.acceptedByPrincipalId]);
   const acceptanceSubjects = useMemo(() => (ready && !view.acceptedByPrincipalId && view.acceptedByUid ? [view.acceptedByUid] : []), [ready, view.acceptedByPrincipalId, view.acceptedByUid]);
-  const directory = useGovernedEmployeeDirectory({ actorIds: acceptanceActorIds, actorSubjects: acceptanceSubjects });
+  // Name ONLY the people on this record (resolveEmployeeDisplayNames) -- not the Employee directory, which this reader may not hold.
+  const directory = useGovernedEmployeeDirectory({ employeeIds: ready ? [view.ownerEmployeeId, view.accountableEmployeeId] : [],
+    actorIds: acceptanceActorIds, actorSubjects: acceptanceSubjects });
   const owner = resolveEmployeeIdentity(ready ? view.ownerEmployeeId : null, {
     byEmployeeId: directory.byEmployeeId,
     loading: directory.loading,

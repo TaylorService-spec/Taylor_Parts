@@ -35,9 +35,7 @@ export async function resolvePrincipalDisplayNames(deps: WorkOrderOperationDeps,
     throw new MyWorkError("PRINCIPAL_IDS_INVALID", "INVALID_INPUT", `principalIds and actorSubjects are 1 to ${MAX_PRINCIPAL_IDS} non-empty ids in all`);
   }
   const actor = caller.actor;
-  const scoped = (caller.operational?.scopedHeld ?? []) as readonly { capabilityKey: string }[];
-  const reads = ACTOR_DISPLAY_READ_CAPABILITIES.some((c) => actor.capabilities.has(c) || scoped.some((h) => h.capabilityKey === c));
-  if (!reads) {
+  if (!holdsAny(caller, ACTOR_DISPLAY_READ_CAPABILITIES)) {
     throw new MyWorkError("CAPABILITY_REQUIRED", "FORBIDDEN", `naming record actors requires one of ${ACTOR_DISPLAY_READ_CAPABILITIES.join(", ")}`);
   }
   const { rows } = await deps.pool.query<{ key: string; display_name: string | null }>(
@@ -54,4 +52,64 @@ export async function resolvePrincipalDisplayNames(deps: WorkOrderOperationDeps,
     [actor.tenantId, [...new Set(principalIds)], [...new Set(subjects)]],
   );
   return Object.freeze({ names: Object.freeze(rows.map((r) => Object.freeze({ key: r.key, displayName: r.display_name ?? null }))) });
+}
+
+// resolveEmployeeDisplayNames -- WHO OWNS IT, IN WORDS. Commercial records carry their owner / accountable person as an
+// EOS Employee id. The Employee directory read (listEmployees) is employee.record.read -- Administration and management --
+// so a seller or dispatcher who may read the RECORD could not name its owner. Same minimal shape as the actor read above:
+// the Employee ids the caller already holds (from records it was allowed to read), at most 100; the same record-read gate;
+// the answer is { key, displayName } for Employees of the CALLER'S tenant, every employment status (a former owner keeps
+// their name), and nothing else -- no status, no operating company, no Principal link. Unknown or foreign ids are absent.
+export async function resolveEmployeeDisplayNames(deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) {
+  const extra = Object.keys(input ?? {}).filter((k) => k !== "employeeIds");
+  if (extra.length) throw new MyWorkError("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${extra.sort().join(", ")}`);
+  const ids = input?.employeeIds;
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAX_PRINCIPAL_IDS
+    || !ids.every((x) => typeof x === "string" && x.length > 0 && x.length <= 200)) {
+    throw new MyWorkError("EMPLOYEE_IDS_INVALID", "INVALID_INPUT", `employeeIds is 1 to ${MAX_PRINCIPAL_IDS} non-empty ids`);
+  }
+  requireRecordRead(caller);
+  const { rows } = await deps.pool.query<{ key: string; display_name: string | null }>(
+    `SELECT id AS key, display_name FROM eos_workforce.employees WHERE tenant_id = $1 AND id = ANY($2::text[]) ORDER BY id`,
+    [caller.actor.tenantId, [...new Set(ids as string[])]],
+  );
+  return Object.freeze({ names: Object.freeze(rows.map((r) => Object.freeze({ key: r.key, displayName: r.display_name ?? null }))) });
+}
+
+// searchAccountOwnerCandidates -- WHOM MAY I MAKE THE OWNER. The Account owner picker's OFFER, for a caller who may create
+// or update an Account (customer.record.create / customer.record.update -- the capabilities under which the CRM write accepts
+// an owner; no capability is added). It offers exactly what that write accepts (accountAuthority requireOwnerEmployee): an
+// Employee of the caller's tenant whose status is ACTIVE or CONTRACTOR. A typed query of 2 to 100 characters, matched on the
+// name; at most 25 answers of { employeeId, displayName }, by last name then first name then id. The write re-validates.
+export const ACCOUNT_OWNER_OFFER_CAPABILITIES = Object.freeze(["customer.record.create", "customer.record.update"]);
+export const ACCOUNT_OWNER_CANDIDATE_LIMIT = 25;
+export async function searchAccountOwnerCandidates(deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) {
+  const extra = Object.keys(input ?? {}).filter((k) => k !== "query");
+  if (extra.length) throw new MyWorkError("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${extra.sort().join(", ")}`);
+  const query = typeof input?.query === "string" ? input.query.trim() : "";
+  if (query.length < 2 || query.length > 100) throw new MyWorkError("QUERY_INVALID", "INVALID_INPUT", "query is 2 to 100 characters");
+  if (!holdsAny(caller, ACCOUNT_OWNER_OFFER_CAPABILITIES)) {
+    throw new MyWorkError("CAPABILITY_REQUIRED", "FORBIDDEN", `offering Account owners requires one of ${ACCOUNT_OWNER_OFFER_CAPABILITIES.join(", ")}`);
+  }
+  const like = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const { rows } = await deps.pool.query<{ id: string; display_name: string | null }>(
+    `SELECT id, display_name FROM eos_workforce.employees
+      WHERE tenant_id = $1 AND employment_status::text = ANY($2::text[])
+        AND (display_name ILIKE $3 OR first_name ILIKE $3 OR last_name ILIKE $3 OR preferred_name ILIKE $3)
+      ORDER BY lower(last_name) NULLS LAST, lower(first_name) NULLS LAST, id
+      LIMIT ${ACCOUNT_OWNER_CANDIDATE_LIMIT}`,
+    [caller.actor.tenantId, ["ACTIVE", "CONTRACTOR"], like],
+  );
+  return Object.freeze({ candidates: Object.freeze(rows.map((r) => Object.freeze({ employeeId: r.id, displayName: r.display_name ?? r.id }))) });
+}
+
+function holdsAny(caller: WorkOrderCaller, keys: readonly string[]): boolean {
+  const scoped = (caller.operational?.scopedHeld ?? []) as readonly { capabilityKey: string }[];
+  return keys.some((c) => caller.actor.capabilities.has(c) || scoped.some((h) => h.capabilityKey === c));
+}
+
+function requireRecordRead(caller: WorkOrderCaller): void {
+  if (!holdsAny(caller, ACTOR_DISPLAY_READ_CAPABILITIES)) {
+    throw new MyWorkError("CAPABILITY_REQUIRED", "FORBIDDEN", `naming record owners requires one of ${ACTOR_DISPLAY_READ_CAPABILITIES.join(", ")}`);
+  }
 }

@@ -91,7 +91,8 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
   const agreement = useSalesAgreement(opportunityId, {
     enabled: hasCapability(SALES_AGREEMENT_READ_CAPABILITY) === true,
   });
-  const directory = useGovernedEmployeeDirectory();
+  // Name ONLY the people on this record (resolveEmployeeDisplayNames) -- not the Employee directory, which this reader may not hold.
+  const directory = useGovernedEmployeeDirectory({ employeeIds: ready ? [view.ownerEmployeeId, view.accountableEmployeeId] : [] });
   const [editingSection, setEditingSection] = useState(null);
 
   const nowMillis = Date.now();

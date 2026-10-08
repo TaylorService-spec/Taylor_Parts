@@ -28,8 +28,9 @@ function formatDate(millis) {
 
 export default function AccountSalesOrdersSection({ accountId }) {
   const { loading, errorStatus, result } = useAccountSalesOrders(accountId);
-  const { byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory();
   const view = accountSalesOrdersView({ loading, errorStatus, result });
+  // Name ONLY the people on these records (resolveEmployeeDisplayNames) -- not the Employee directory, which this reader may not hold.
+  const { byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory({ employeeIds: (view.rows ?? []).map((r) => r.ownerEmployeeId) });
 
   return (
     <section id="account-sales-orders-section" className="wo-history" aria-label="Sales Orders">

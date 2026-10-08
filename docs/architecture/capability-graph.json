@@ -446,7 +446,8 @@
           "functions/src/access/parityFixtures.ts",
           "functions/src/account/accountImportCommand.ts",
           "functions/src/adminPolicy/recordedAdministrationRolesDelta.ts",
-          "functions/src/eosCrm/crmAuthorityKernel.ts"
+          "functions/src/eosCrm/crmAuthorityKernel.ts",
+          "functions/src/eosExperience/principalDisplayNames.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -455,7 +456,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -478,7 +479,8 @@
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
           "functions/src/adminPolicy/recordedAdministrationRolesDelta.ts",
-          "functions/src/eosCrm/crmAuthorityKernel.ts"
+          "functions/src/eosCrm/crmAuthorityKernel.ts",
+          "functions/src/eosExperience/principalDisplayNames.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -487,7 +489,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
