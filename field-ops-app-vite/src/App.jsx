@@ -161,6 +161,7 @@ const FinancialsAudit = lazy(() => import("./modules/financials/FinancialsAudit.
 const FinancialsReports = lazy(() => import("./modules/financials/FinancialsReports.jsx"));
 const FinancialsGovernance = lazy(() => import("./modules/financials/FinancialsGovernance.jsx"));
 import FailureState from "./shared/ui/FailureState";
+import { useMyWorkOrderCapabilities } from "./hooks/useMyWorkOrderCapabilities.js";
 
 const previewHasPermission = createPermissionPreviewer(
   resolveEffectivePermission,
@@ -957,6 +958,9 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   // and navigation is what is cut over.
   const eosIsNavigationSource = isEosNavigationSource(operationalContext);
   const navRole = eosIsNavigationSource ? null : role;
+  const eosWorkOrderSurface = eosIsNavigationSource && Boolean(operationalContext?.eosNavigationAuthority?.grants?.("service.workOrders"));
+  const myWorkOrderCapabilities = useMyWorkOrderCapabilities({ enabled: eosWorkOrderSurface });
+  const workOrderRoutes = { record: eosWorkOrderSurface, create: eosWorkOrderSurface && myWorkOrderCapabilities.has("workOrder.create") };
   const navAllowedLegacyKeys = eosIsNavigationSource ? NO_LEGACY_KEYS : allowedLegacyKeys;
   return (
     // ONE boundary around every route. A lazily-loaded surface that arrives a moment later shows this
@@ -1157,15 +1161,28 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               comment. workOrder.create is the representative permission
               for this combined Wizard+Detail gate; today only admin/
               dispatcher hold it, matching the original check exactly. */}
-          {domain.key === "service" &&
-            previewHasPermission("workOrder.create", navRole, {
-              // `navRole` is null under the EOS source, so both the preview and this fallback are
-              // false there and neither route is emitted from a role literal. Under the legacy
-              // source it is byte-for-byte the previous check.
-              fallback: navRole === "admin" || navRole === "dispatcher",
-            }) && (
+          {/* UI corrections integration (2026-10-08): UNDER THE EOS SOURCE these two routes are decided by the GOVERNED
+              authority, not by a role literal. The Work Order record route exists for a principal the server grants the
+              `service.workOrders` surface (the same surface that opens the Work Orders list); the New Work Order route
+              additionally needs workOrder.create, from the caller's OWN governed Work Order capabilities
+              (readMyWorkOrderCapabilities). Fail closed while either answer is loading or failed. Every Work Order read
+              and command re-checks the server. Under the legacy source the previous check is byte-for-byte unchanged. */}
+          {domain.key === "service" && (eosIsNavigationSource
+            ? workOrderRoutes.record
+            : previewHasPermission("workOrder.create", navRole, { fallback: navRole === "admin" || navRole === "dispatcher" })) && (
               <>
-                <Route path="work-orders/new" element={<WorkOrderWizard />} />
+                {(eosIsNavigationSource ? workOrderRoutes.create : true)
+                  ? <Route path="work-orders/new" element={<WorkOrderWizard />} />
+                  // A STATIC "new" route either way: without it the address would fall through to :workOrderId and read a
+                  // record called "new". Without workOrder.create it states the refusal (and waits while the answer loads).
+                  : <Route path="work-orders/new" element={myWorkOrderCapabilities.status === "loading"
+                    ? <div className="fo-panel" data-route-state="LOADING"><p className="fo-muted">Checking your Work Order permissions…</p></div>
+                    : (
+                      <div className="fo-panel" data-route-refused="workOrder.create">
+                        <h2>New Work Order</h2>
+                        <p className="fo-muted">Creating work orders is not available to you. It requires the Work Order create permission (workOrder.create).</p>
+                      </div>
+                    )} />}
                 <Route path="work-orders/:workOrderId" element={<WorkOrderDetailPage />} />
               </>
             )}

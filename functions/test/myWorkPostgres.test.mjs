@@ -145,6 +145,17 @@ test("my work + search over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     refused(await search(tech, "x"), 400, "QUERY_INVALID");
   });
 
+  await t.test("readMyWorkOrderCapabilities: the caller's OWN workOrder.* keys, nothing else, no input", async () => {
+    const dc = ok(await call(dispatcher, WO, "readMyWorkOrderCapabilities", {}));
+    assert.ok(dc.capabilities.includes("workOrder.create"));
+    assert.ok(dc.capabilities.every((k) => k.startsWith("workOrder.")));
+    const tc = ok(await call(tech, WO, "readMyWorkOrderCapabilities", {}));
+    assert.equal(tc.capabilities.includes("workOrder.create"), false, "a technician is not offered New Work Order");
+    const nc = ok(await call(nobody, WO, "readMyWorkOrderCapabilities", {}));
+    assert.deepEqual(nc.capabilities, []);
+    refused(await call(dispatcher, WO, "readMyWorkOrderCapabilities", { principalId: "someone-else" }), 400, "INPUT_FIELD_NOT_ACCEPTED");
+  });
+
   await t.test("SEARCH employees (UI corrections item E): a flat holder is global; an operatingCompany-scoped holder is searched inside its companies only", async () => {
     await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,first_name,last_name,employee_number) VALUES
              ('e-q-t',$1,'ACTIVE','taylor','Quinn','Northside','Q-T'), ('e-q-v',$1,'ACTIVE','ventana','Quinn','Southside','Q-V')`, [TENANT]);

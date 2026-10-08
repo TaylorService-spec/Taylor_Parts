@@ -64,7 +64,7 @@ export function onWorkOrderMutation(listener: (workOrderId: string | null) => vo
 }
 
 const READ_OPERATIONS = new Set(["readWorkOrder", "listWorkOrders", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
-  "listWorkOrderOperatingCompanies", "readWorkOrderAuthorityStatus", "readTechnicianAvailability", "findAvailableTechnicianSlots",
+  "listWorkOrderOperatingCompanies", "readMyWorkOrderCapabilities", "readWorkOrderAuthorityStatus", "readTechnicianAvailability", "findAvailableTechnicianSlots",
   "readTechnicianExecutionStats", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown"]);
 
 async function run<T = unknown>(operation: string, input: Record<string, unknown> = {}): Promise<T> {

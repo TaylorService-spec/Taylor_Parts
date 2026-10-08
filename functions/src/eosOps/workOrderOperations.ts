@@ -60,6 +60,14 @@ export const EOS_WORK_ORDER_OPERATIONS = Object.freeze({
   listMyAssignedWorkOrders: (deps, caller, input) => listMyAssignedWorkOrders({ pool: deps.pool, reader: deps.reader }, caller.operational, input),
   listWorkOrderTechnicians: (deps, caller, input) => (only(input, ["workOrderId"]), listWorkOrderTechnicians({ pool: deps.pool }, caller.actor, input)),
   listWorkOrderOperatingCompanies: (deps, caller, input) => (only(input, []), listWorkOrderOperatingCompanies({ pool: deps.pool }, caller.actor)),
+  // WHICH Work Order controls (and routes) the CALLER may be OFFERED (UI corrections integration, 2026-10-08) -- the
+  // readMyCommercialCapabilities / readMyWorkforceCapabilities pattern for Work Orders: the caller's OWN resolved
+  // capabilities (the exact set every Work Order command re-checks), narrowed to the workOrder.* keys. Discloses nothing
+  // about any other Principal; grants nothing; a command still decides every write.
+  readMyWorkOrderCapabilities: async (_deps, caller, input) => {
+    only(input, []);
+    return Object.freeze({ capabilities: Object.freeze([...caller.actor.capabilities].filter((k) => k.startsWith("workOrder.")).sort()) });
+  },
 
   // ── create: the operating company is STATED by the caller's command context and validated as governed ──
   createWorkOrder: (deps, caller, input) => {
@@ -119,7 +127,7 @@ export type EosWorkOrderOperation = keyof typeof EOS_WORK_ORDER_OPERATIONS | "re
 
 export const WORK_ORDER_READ_OPERATIONS: readonly string[] = Object.freeze([
   "readWorkOrderAuthorityStatus", "readWorkOrder", "listWorkOrders", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
-  "listWorkOrderOperatingCompanies",
+  "listWorkOrderOperatingCompanies", "readMyWorkOrderCapabilities",
   "readTechnicianAvailability", "findAvailableTechnicianSlots", "readWorkOrderLabor", "readWorkOrderFieldContext",
   "readWorkOrderReadiness", "readTechnicianExecutionStats", "listInstallableEquipmentForWorkOrder", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown",
   ...SELF_SCHEDULING_READ_OPERATIONS,

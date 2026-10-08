@@ -43,6 +43,8 @@ export const WORK_ORDER_READ_OPERATIONS = Object.freeze([
   // The tenant's ACTIVE operating companies with an ACTIVE key binding -- the governed choice a create
   // states (workOrder.create). Never inferred.
   "listWorkOrderOperatingCompanies",
+  // The caller's OWN workOrder.* capabilities -- what to OFFER (the New Work Order route and button); commands still decide.
+  "readMyWorkOrderCapabilities",
   // The completion pass (2026-09-30).
   "readTechnicianAvailability",
   "findAvailableTechnicianSlots",
