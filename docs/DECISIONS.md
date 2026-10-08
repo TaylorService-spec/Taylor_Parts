@@ -7621,3 +7621,13 @@ receiving, es-US content, above-limit discount approval, UTC/date findings).
   capabilities / 542 grants, with every stage pinned. The local proof harness is rebuilt from that replay, with no stand-ins,
   and the three sample-workforce refusals no longer occur.
 - No nonprod read or mutation; production untouched.
+
+## #213 — Administration IA Phase 2: Objects opens with the object catalog (2026-10-08)
+
+**Decision:** UI-only Phase 2 of the Owner-approved Administration redesign (#211). Where a policy store is configured, Administration → Objects now leads with the **Object catalog** (searchable by business name) and follows it with a **Permissions** section holding the same `ObjectAuthorityMatrix` and `ObjectActionSecurityPanel` it always mounted. A `?object=` deep link puts the Permissions section first, because it arrives to change permissions. The By Role / By Object toggle is no longer offered in that mode: both views rendered the same three components (review finding O02). The not-configured mode (code reference grid, role picker, By Object diagnostics) is unchanged.
+
+Within the catalog: object and field keys sit behind **Show Technical Details** (O03); System fields read "System field" instead of "Protected"; a Reference custom field picks its target from the catalog by business name instead of a free-text object key, with the free-text input kept only if the catalog could not be read (O04); the field key is suggested from the label and stays editable; a successful create states that the field is a **Draft** that follows the object's access and does not yet store values or appear on a page (G5, G1).
+
+**Why the matrix stays on Objects:** the separate Permissions destination (#212) is governed-source only, so in legacy-source environments Objects is the only door to the matrix.
+
+**No backend change:** same reads (`listObjects`, `readObjectWithFields`) and commands (`updateObjectMetadata`, `createCustomField`, `updateCustomFieldMetadata`); the server still validates every key and reference target.
