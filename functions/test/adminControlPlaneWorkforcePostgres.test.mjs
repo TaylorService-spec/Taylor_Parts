@@ -103,6 +103,47 @@ test("administration control plane + workforce over PostgreSQL", { skip: SKIP, c
     await assert.rejects(listWorkforceRoster({ pool }, await actorOf(tech), {}), (e) => e.code === "CAPABILITY_REQUIRED");
   });
 
+  await t.test("ROSTER ORDER (UI corrections B/C): Last, First, Employee id over the WHOLE authorized set, before the bound; column sort; limit", async () => {
+    for (const [id, first, last] of [["e-ord-3", "Ann", "Zimmer"], ["e-ord-1", "Bob", "Avery"], ["e-ord-2", "Al", "Avery"], ["e-ord-0", "Al", "Avery"]]) {
+      await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,first_name,last_name) VALUES ($1,$2,'ACTIVE','taylor',$3,$4)`, [id, TENANT, first, last]);
+    }
+    const all = await listWorkforceRoster({ pool }, await actorOf(adminP), {});
+    assert.deepEqual(all.sort, { key: "name", direction: "asc", isDefault: true });
+    const ord = all.items.filter((i) => i.employeeId.startsWith("e-ord-")).map((i) => i.employeeId);
+    // Avery Al (e-ord-0, e-ord-2: same name, Employee id breaks the tie), Avery Bob, then Zimmer Ann.
+    assert.deepEqual(ord, ["e-ord-0", "e-ord-2", "e-ord-1", "e-ord-3"]);
+    // The default order is over everybody: no row sorts before a row with an earlier last name.
+    const lastNames = all.items.map((i) => (i.lastName ?? (i.displayName ?? "").split(/\s+/).pop() ?? "").toLowerCase());
+    assert.deepEqual(lastNames, [...lastNames].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" })));
+    // The bound applies AFTER the order: limit 2 is the first two of the sorted whole, and the total is the whole.
+    const two = await listWorkforceRoster({ pool }, await actorOf(adminP), { limit: 2 });
+    assert.deepEqual(two.items.map((i) => i.employeeId), all.items.slice(0, 2).map((i) => i.employeeId));
+    assert.equal(two.total, all.total);
+    assert.equal(two.truncated, true);
+    // A column sort: descending by name reverses the name order; a sort keeps filters.
+    const desc = await listWorkforceRoster({ pool }, await actorOf(adminP), { sort: { key: "name", direction: "desc" }, query: "Avery" });
+    assert.deepEqual(desc.items.map((i) => i.employeeId), ["e-ord-1", "e-ord-0", "e-ord-2"]);
+    const byNumber = await listWorkforceRoster({ pool }, await actorOf(adminP), { sort: { key: "jobRole", direction: "asc" } });
+    const labels = byNumber.items.map((i) => i.jobRole?.label ?? null);
+    const firstEmpty = labels.indexOf(null);
+    assert.ok(firstEmpty === -1 || labels.slice(firstEmpty).every((l) => l === null), "empty values sort last");
+    await assert.rejects(listWorkforceRoster({ pool }, await actorOf(adminP), { sort: { key: "salary", direction: "asc" } }), (e) => e.code === "FILTER_INVALID");
+    await assert.rejects(listWorkforceRoster({ pool }, await actorOf(adminP), { limit: 501 }), (e) => e.code === "FILTER_INVALID");
+    // Ordering never widens: the technician is still refused.
+    await assert.rejects(listWorkforceRoster({ pool }, await actorOf(tech), { sort: { key: "name", direction: "asc" } }), (e) => e.code === "CAPABILITY_REQUIRED");
+  });
+
+  await t.test("EFFECTIVE ACCESS PROVENANCE (UI corrections §15): ROLE / DIRECT / ROLE_AND_DIRECT / NONE from the evaluator's own sources", async () => {
+    const x = await explainEffectiveAccess(repo, pool, { tenantId: TENANT, principalId: tech.principalId });
+    for (const a of x.actions) {
+      const viaRole = a.sourceRoles.length + a.scopedSources.length > 0;
+      const expected = viaRole && a.directGrant ? "ROLE_AND_DIRECT" : a.directGrant ? "DIRECT" : viaRole ? "ROLE" : "NONE";
+      assert.equal(a.provenance, expected, a.capabilityKey);
+    }
+    assert.ok(x.actions.some((a) => a.provenance === "ROLE"), "the technician holds Role-granted capabilities");
+    assert.ok(x.actions.some((a) => a.provenance === "NONE"));
+  });
+
   await t.test("EFFECTIVE ACCESS: the chain carries the Job Role as a fact that grants nothing", async () => {
     const x = await explainEffectiveAccess(repo, pool, { tenantId: TENANT, principalId: tech.principalId });
     assert.equal(x.employeeFacts.jobRole.id, "service-technician");

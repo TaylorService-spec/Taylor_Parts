@@ -30,7 +30,9 @@ export default function WorkflowDraftEditor({ api, workflow, versionId, view, on
   const knownFunctionalRoles = functionalCatalog.status === WORKFORCE_READ_STATE.READY && Array.isArray(functionalCatalog.data?.items)
     ? functionalCatalog.data.items : [];
   // The tenant's Security Roles, for the binding typeahead (the same governed listRoles read Roles & Permissions uses).
-  const roleCatalog = useControlPlaneRead(() => rolesApi.listRoles(), "workflow-binding-roles");
+  // A workflow API that serves listRoles itself (tests, a combined client) is asked; otherwise the control-plane client.
+  const rolesSource = typeof api?.listRoles === "function" ? api : rolesApi;
+  const roleCatalog = useControlPlaneRead(() => rolesSource.listRoles(), "workflow-binding-roles");
   const securityRoleOptions = (Array.isArray(roleCatalog.data) ? roleCatalog.data : roleCatalog.data?.items ?? [])
     .filter((r) => r && typeof r.key === "string").map((r) => ({ key: r.key, label: r.name ?? null }));
   const functionalRoleOptions = knownFunctionalRoles.map((r) => ({ key: r.key, label: r.name ?? null, context: r.status === "ACTIVE" ? null : r.status }));

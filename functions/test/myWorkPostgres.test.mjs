@@ -143,6 +143,24 @@ test("my work + search over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     const ds = ok(await search(dispatcher, "Harbor"));
     assert.ok(ds.results.some((x) => x.kind === "workOrder"));
     refused(await search(tech, "x"), 400, "QUERY_INVALID");
+  });
+
+  await t.test("SEARCH employees (UI corrections item E): a flat holder is global; an operatingCompany-scoped holder is searched inside its companies only", async () => {
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,first_name,last_name,employee_number) VALUES
+             ('e-q-t',$1,'ACTIVE','taylor','Quinn','Northside','Q-T'), ('e-q-v',$1,'ACTIVE','ventana','Quinn','Southside','Q-V')`, [TENANT]);
+    const flat = await person("uid-gm-flat", ["generalManager"], { id: "e-gm-flat", name: "Glen Flat" });
+    const fs = ok(await search(flat, "Quinn"));
+    assert.deepEqual(fs.results.filter((x) => x.kind === "employee").map((x) => x.id).sort(), ["e-q-t", "e-q-v"]);
+    const scoped = await person("uid-gm-scoped", [], { id: "e-gm-scoped", name: "Gail Scoped" });
+    // A role that reads Employees and carries no Administration authority (only those may be scoped), in this disposable tenant.
+    assert.equal((await admin("createRole", { key: "companyStaffReader", name: "Company Staff Reader", reason: "scope fixture" })).ok, true);
+    assert.equal((await admin("grantObjectActionToRole", { objectKey: "employee", actionKey: "read", roleKey: "companyStaffReader", reason: "scope fixture" })).ok, true);
+    const a = await admin("assignRole", { principalId: scoped.principalId, roleId: (await repo.getRoleByKey(TENANT, "companyStaffReader")).id, scopeType: "operatingCompany", scopeValue: "ventana", reason: "ventana only" });
+    assert.equal(a.ok, true, JSON.stringify(a).slice(0, 300));
+    const ss = ok(await search(scoped, "Quinn"));
+    assert.deepEqual(ss.results.filter((x) => x.kind === "employee").map((x) => x.id), ["e-q-v"], "the scoped holder never finds the Taylor employee");
+    // The employee number is searchable too, and the label is the governed name.
+    assert.deepEqual(ok(await search(flat, "Q-V")).results.filter((x) => x.kind === "employee").map((x) => x.label), ["Quinn Southside"]);
     refused(await call(tech, WS, "readMyWork", { asEmployee: "e-dispatch" }), 400, "FIELD_NOT_ACCEPTED");
   });
 });

@@ -21,12 +21,18 @@ export default function OwnerSelect({ id, value, onChange, describedBy, workforc
   useEffect(() => {
     let alive = true;
     setCurrent({ status: "loading", owner: null });
-    workforce.call("listWorkforceRoster", value ? { query: value, limit: 5 } : { limit: 1 }).then((res) => {
+    (async () => {
+      // Is there a roster this caller may browse at all? (A denied read and an EMPTY one are different statements.)
+      const probe = await workforce.call("listWorkforceRoster", { limit: 1 });
       if (!alive) return;
-      if (!res.ok) { setCurrent({ status: res.code === "FORBIDDEN" ? "denied" : "failed", owner: null }); return; }
-      const owner = value ? res.result.items.find((i) => i.employeeId === value) ?? null : null;
+      if (!probe.ok) { setCurrent({ status: probe.code === "FORBIDDEN" ? "denied" : "failed", owner: null }); return; }
+      if (probe.result.total === 0) { setCurrent({ status: "empty", owner: null }); return; }
+      // The current owner, by name when the roster can name them.
+      const found = value ? await workforce.call("listWorkforceRoster", { query: value, limit: 5 }) : null;
+      if (!alive) return;
+      const owner = found?.ok ? found.result.items.find((i) => i.employeeId === value) ?? null : null;
       setCurrent({ status: "ready", owner: owner ?? (value ? { employeeId: value, displayName: `${value} (not in directory)` } : null) });
-    });
+    })();
     return () => { alive = false; };
     // Read once per mount and per owner change made elsewhere; a pick made here does not need a re-read.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -48,7 +54,9 @@ export default function OwnerSelect({ id, value, onChange, describedBy, workforc
         <p className="fo-muted fo-sales-editform__note">
           {current.status === "denied"
             ? "You are not authorized to browse the employee directory, so the owner is shown as an employee id. The id can still be changed and saved."
-            : "The employee directory could not be read, so the owner is shown as an employee id. The id can still be changed and saved."}
+            : current.status === "empty"
+              ? "The employee directory returned no records, so the owner is shown as an employee id."
+              : "The employee directory could not be read, so the owner is shown as an employee id. The id can still be changed and saved."}
         </p>
       </>
     );
