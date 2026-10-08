@@ -542,7 +542,6 @@ const SOURCE_ROWS = [
   },
 ];
 
-export const EMPLOYEE_TABS = Object.freeze(["overview", "access", "assignments", "workflows", "activity"]);
 
 /**
  * The Principal-keyed sections render only once the link is KNOWN: while EMP-RT-02 is loading they wait,

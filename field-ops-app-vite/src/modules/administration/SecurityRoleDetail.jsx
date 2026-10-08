@@ -22,6 +22,8 @@ import { principalLabel } from "./principalDisplay.js";
 import { useConditionVocabulary } from "./useConditionVocabulary.js";
 import { Link } from "react-router-dom";
 import { workforceApiClient } from "../../services/workforceApiClient.js";
+import Autocomplete from "../../shared/ui/Autocomplete.jsx";
+import { operatingCompanyLabel } from "../../shared/display/displayLabels.js";
 
 /**
  * #210: ASSIGN this Security Role to an employee, from the role -- the SAME governed assignRole the employee record uses, with
@@ -29,19 +31,24 @@ import { workforceApiClient } from "../../services/workforceApiClient.js";
  * administration, staffing rules, scope validity) and the page re-reads; nothing is assumed.
  */
 function AssignRoleToEmployee({ api, workforce, role, onChanged }) {
-  const roster = useControlPlaneRead(() => workforce.call("listWorkforceRoster", {}).then((r) => (r.ok ? { ok: true, data: r.result } : r)), "roster-for-assign");
   const scopes = useControlPlaneRead(() => (api.listSupportedAssignmentScopes ? api.listSupportedAssignmentScopes(role.roleKey) : Promise.resolve({ ok: true, data: { scopeTypes: [] } })), `assign-scopes:${role.roleKey}`);
-  const [employeeId, setEmployeeId] = useState("");
+  // The employee is found by TYPEAHEAD over the governed roster (UI corrections item E): only people with an application
+  // user can hold a Security Role, so suggestions without a linked Principal are not offered.
+  const [person, setPerson] = useState(null);
+  const searchPeople = async (query) => {
+    const res = await workforce.call("listWorkforceRoster", { query, limit: 25 });
+    if (!res.ok) return { ok: false, code: res.code, message: res.message };
+    const items = res.result.items.filter((e) => e.principalId).slice(0, 8);
+    return { ok: true, items, total: items.length };
+  };
   const [scope, setScope] = useState("global");
   const [reason, setReason] = useState("");
   const [result, setResult] = useState(null);
-  const people = (roster.data?.items ?? []).filter((e) => e.principalId);
   const scopeOptions = (scopes.data?.scopeTypes ?? [])
     .filter((s) => s.supported && s.scopeType !== "global")
     .flatMap((s) => (s.values ?? []).map((v) => ({ value: `${s.scopeType}|${v.value}`, label: `${s.label ?? s.scopeType}: ${v.label ?? v.value}` })));
   const submit = async (e) => {
     e.preventDefault();
-    const person = people.find((p) => p.employeeId === employeeId);
     if (!person) { setResult({ error: "Choose an employee with an application user." }); return; }
     const [scopeType, scopeValue] = scope === "global" ? [null, null] : scope.split("|");
     const res = await api.assignRole({ principalId: person.principalId, roleId: role.roleId ?? role.id, reason, scopeType, scopeValue });
@@ -50,17 +57,23 @@ function AssignRoleToEmployee({ api, workforce, role, onChanged }) {
   };
   return (
     <form className="fo-roster__filters" onSubmit={submit} aria-label="Assign this Security Role">
-      <label className="fo-form-field"><span>Employee</span>
-        <select className="fo-input" aria-label="Employee to assign" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
-          <option value="">Choose an employee…</option>
-          {people.map((p) => <option key={p.employeeId} value={p.employeeId}>{p.displayName} — {p.jobRole?.label ?? "no Job Role"}</option>)}
-        </select></label>
+      <Autocomplete
+        id={`assign-role-employee-${role.roleKey}`}
+        label="Employee to Assign"
+        placeholder="Type a name or employee number"
+        search={searchPeople}
+        selected={person}
+        getKey={(p) => p.employeeId}
+        getLabel={(p) => p.displayName ?? p.employeeId}
+        getContext={(p) => [p.jobRole?.label ?? "No Job Role", operatingCompanyLabel(p.operatingCompanyId)].join(" · ")}
+        onSelect={setPerson}
+      />
       <label className="fo-form-field"><span>Scope</span>
         <select className="fo-input" aria-label="Assignment scope" value={scope} onChange={(e) => setScope(e.target.value)}>
-          <option value="global">All (global)</option>
+          <option value="global">All (Global)</option>
           {scopeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select></label>
-      <label className="fo-form-field"><span>Reason (recorded)</span>
+      <label className="fo-form-field"><span>Reason (Recorded)</span>
         <input className="fo-input" aria-label="Assignment reason" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
       <Button type="submit" variant="primary">Assign</Button>
       {result?.ok && <p className="fo-success" role="status">{result.ok}</p>}

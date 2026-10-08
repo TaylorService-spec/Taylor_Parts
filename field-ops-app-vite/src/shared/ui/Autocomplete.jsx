@@ -138,3 +138,18 @@ export default function Autocomplete({
     </div>
   );
 }
+
+/**
+ * A `search` over a list the SERVER already returned for this caller (an assignable-technician roster, a governed
+ * catalog): it narrows what the caller may already see and never widens it. Matches every word of the query.
+ */
+export function searchLoaded(items, getText) {
+  return async (query) => {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const matches = (items ?? []).filter((item) => {
+      const text = String(getText(item) ?? "").toLowerCase();
+      return words.every((w) => text.includes(w));
+    });
+    return { ok: true, items: matches, total: matches.length };
+  };
+}

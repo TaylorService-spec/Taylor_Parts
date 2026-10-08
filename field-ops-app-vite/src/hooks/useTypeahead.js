@@ -69,3 +69,18 @@ export function useTypeahead({ search, minChars = TYPEAHEAD_MIN_CHARS, debounceM
   const clear = useCallback(() => setQuery(""), []);
   return { query, setQuery, clear, ...state };
 }
+
+/**
+ * The same debounce for a picker that filters a list the server ALREADY returned (no request per keystroke):
+ * `value` settles DEBOUNCE_MS after the last change, and is "" until it reaches MIN_CHARS.
+ */
+export function useSettledQuery(value, { minChars = TYPEAHEAD_MIN_CHARS, debounceMs = TYPEAHEAD_DEBOUNCE_MS } = {}) {
+  const [settled, setSettled] = useState("");
+  useEffect(() => {
+    const q = String(value ?? "").trim();
+    if (q.length < minChars) { setSettled(""); return undefined; }
+    const t = setTimeout(() => setSettled(q), debounceMs);
+    return () => clearTimeout(t);
+  }, [value, minChars, debounceMs]);
+  return settled;
+}

@@ -11,6 +11,8 @@ import {
 import { accountStatusTone } from "../../domain/accountPortfolio";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives";
+import { useSettledQuery } from "../../hooks/useTypeahead.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 
 // Work Order wizard, Step 1 -- accessible Customer picker. Replaces the generic
 // Global Search box with a combobox whose results are unambiguous: each shows
@@ -25,6 +27,10 @@ import { Button } from "../../shared/ui/primitives";
 // blank: it shows "Searching customers…", "No customers found", or results.
 // Selection hands the chosen account to the caller, which continues into the
 // existing Step 2 Location workflow unchanged.
+//
+// TYPEAHEAD STANDARD (UI corrections item E, 2026-10-08): results begin at 2 characters and settle 250 ms after the
+// last keystroke (useSettledQuery, the shared typeahead's own constants), so the batched location read runs once per
+// settled query instead of once per keystroke.
 
 const RESULT_LIMIT = 8;
 const LOCATIONS_SHOWN = 2;
@@ -37,12 +43,15 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
   const listboxId = `${generatedId}-listbox`;
   const optionId = (i) => `${generatedId}-opt-${i}`;
 
-  const { results, total } = useMemo(() => rankCustomerMatches(accounts, query, RESULT_LIMIT), [accounts, query]);
+  const settled = useSettledQuery(query);
+  const { results, total } = useMemo(() => (settled ? rankCustomerMatches(accounts, settled, RESULT_LIMIT) : { results: [], total: 0 }), [accounts, settled]);
   const candidateIds = useMemo(() => results.map((a) => a.id), [results]);
   const { byAccount, loading: locLoading, error: locError, retry } = useLocationsForAccounts(candidateIds);
 
   const trimmed = query.trim();
   const open = trimmed.length > 0;
+  // Typing but not yet 2 characters, or not yet settled: say so rather than "No customers found".
+  const pendingQuery = open && settled !== trimmed;
 
   const containerRef = useRef(null);
   const listRef = useRef(null);
@@ -91,7 +100,9 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
 
   // Never-blank status: exactly one distinct state (loading / query-error /
   // no-results / results) while the combobox is open.
-  const statusMessage = customerPickerStatus({ open, locLoading, locError, resultCount: results.length });
+  const statusMessage = trimmed.length > 0 && trimmed.length < 2 ? "Type at least 2 characters."
+    : pendingQuery ? "Searching customers…"
+    : customerPickerStatus({ open, locLoading, locError, resultCount: results.length });
 
   function choose(account) {
     if (account) onSelect?.(account);
@@ -172,7 +183,7 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
                     <div className="fo-customer-picker-name">{account.name}</div>
                     <div className="fo-customer-picker-meta">
                       {account.status && (
-                        <StatusPill tone={accountStatusTone(account.status)} label={account.status} />
+                        <StatusPill tone={accountStatusTone(account.status)} label={statusLabel(account.status)} />
                       )}
                       {secondary && <span className="fo-customer-picker-secondary">{secondary}</span>}
                     </div>

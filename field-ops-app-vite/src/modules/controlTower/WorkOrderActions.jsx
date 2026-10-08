@@ -1,3 +1,4 @@
+import Autocomplete, { searchLoaded } from "../../shared/ui/Autocomplete.jsx";
 import { useState } from "react";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
@@ -279,16 +280,19 @@ const statusPill = (status) =>
           {roster.error ? (
             <p className="fo-inline-error" role="alert">{loadErrorMessage(roster.error, { entity: "technicians" })}</p>
           ) : null}
-          <select value={selectedTechId || currentAssignee} onChange={(e) => setSelectedTechId(e.target.value)} disabled={roster.loading}>
-            <option value="" disabled>
-              {roster.loading ? "Loading technicians…" : "Select technician…"}
-            </option>
-            {technicians.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+          {/* ASSIGNEE TYPEAHEAD (UI corrections item E): over the technicians the server returned for this Work Order
+              (listWorkOrderTechnicians -- its operating company and eligibility); it narrows, never widens. */}
+          <Autocomplete
+            label="Technician"
+            placeholder={roster.loading ? "Loading technicians…" : "Type a technician's name"}
+            search={searchLoaded(technicians, (t) => t.name)}
+            selected={technicians.find((t) => t.id === (selectedTechId || currentAssignee)) ?? null}
+            getKey={(t) => t.id}
+            getLabel={(t) => t.name}
+            getContext={(t) => (t.id === currentAssignee ? "Current assignee" : null)}
+            onSelect={(t) => setSelectedTechId(t ? t.id : "")}
+            disabled={roster.loading}
+          />
           {reassigning && (
             <input
               type="text"

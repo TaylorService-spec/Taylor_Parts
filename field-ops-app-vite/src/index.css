@@ -8994,3 +8994,8 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-linkbutton:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .fo-roster__pager { align-items: center; gap: 12px; margin-top: 12px; }
 .fo-roster__filters .fo-autocomplete { min-width: 220px; }
+.fo-sitesearch .fo-autocomplete { flex: 1 1 auto; min-width: 0; }
+.fo-keylist { display: flex; flex-direction: column; gap: 4px; min-width: 160px; }
+.fo-keylist__chips { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.fo-keylist__remove { appearance: none; border: 0; background: none; cursor: pointer; margin-left: 4px; font: inherit; color: var(--color-text-muted); padding: 0 2px; }
+.fo-keylist__remove:focus-visible { outline: 2px solid var(--color-focus); }
