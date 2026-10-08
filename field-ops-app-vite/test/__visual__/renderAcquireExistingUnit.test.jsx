@@ -65,12 +65,12 @@ describe.skipIf(!process.env.VISUAL)("visual harness — Add existing unit", () 
     write("acquire-form.rendered.html", page("Add existing unit — form", document.body.innerHTML));
 
     fireEvent.change(screen.getByLabelText("Part"), { target: { value: "part_c712" } });
-    fireEvent.change(screen.getByLabelText("Serial number"), { target: { value: "GATE-ND33-DO-NOT-DELETE" } });
-    fireEvent.change(screen.getByLabelText("Company location"), { target: { value: "wh_main" } });
+    fireEvent.change(screen.getByLabelText("Serial Number"), { target: { value: "GATE-ND33-DO-NOT-DELETE" } });
+    fireEvent.change(screen.getByLabelText("Company Location"), { target: { value: "wh_main" } });
     fireEvent.click(screen.getByRole("radio", { name: /Opening balance/ }));
     write("acquire-form-complete.rendered.html", page("Add existing unit — complete", document.body.innerHTML));
 
-    fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Acquisition" }));
     write("acquire-confirm.rendered.html", page("Confirm acquisition", document.body.innerHTML));
 
     ready.unmount();

@@ -7,6 +7,9 @@ import ReservationsSection, { __test__ } from "../src/modules/inventory/mobile/R
 
 afterEach(cleanup);
 
+// A sortable header's visible label (the SortableHeader button's first span), else the header text.
+const headerLabel = (th) => th.querySelector(".fo-sortable-th__button > span")?.textContent ?? th.textContent;
+
 // A fully-populated governed row plus extra/unsupported fields that must never render.
 const FULL_ROW = Object.freeze({
   order: "ORD-1",
@@ -59,13 +62,13 @@ describe("ReservationsSection -- governed states", () => {
 describe("ReservationsSection -- READY rows", () => {
   it("renders one row per item using only the allowlist columns, quantity passed through", () => {
     const table = render(<ReservationsSection section={readySection([FULL_ROW])} />).getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((th) => th.textContent)).toEqual(COLUMN_LABELS);
-    expect(within(table).getAllByRole("cell").map((td) => td.textContent)).toEqual(["ORD-1", "HARD", "SKU-1", "SN-1", "4", "ACTIVE"]);
+    expect(within(table).getAllByRole("columnheader").map(headerLabel)).toEqual(COLUMN_LABELS);
+    expect(within(table).getAllByRole("cell").map((td) => td.textContent)).toEqual(["ORD-1", "Hard", "SKU-1", "SN-1", "4", "Active"]);
   });
 
   it("renders a sparse valid row (one governed value) with em dashes elsewhere", () => {
     const cells = within(render(<ReservationsSection section={readySection([{ kind: "SOFT" }])} />).getByRole("table")).getAllByRole("cell").map((td) => td.textContent);
-    expect(cells).toEqual(["—", "SOFT", "—", "—", "—", "—"]);
+    expect(cells).toEqual(["—", "Soft", "—", "—", "—", "—"]);
   });
 
   it("renders a real governed 0 quantity as '0' (visible, not hidden)", () => {

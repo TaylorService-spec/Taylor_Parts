@@ -235,7 +235,9 @@ test("no existing domain's routes changed — every non-financials domain path s
     // Workflows joined 2026-09-08 -- the third axis of Administration, beside Objects (what data
     // exists) and Roles & Permissions (who may touch it).
     "/administration/objects", "/administration/workflows",
-    "/administration/permission-preview", "/administration/vehicles",
+    // UI corrections §15 (2026-10-08): the retired Permission Preview item is the hidden NONPROD QA tool now; its old
+    // address redirects to Users from App.jsx.
+    "/administration/qa/principal-inspection", "/administration/vehicles",
     "/administration/regions", "/administration/company-settings", "/administration/duplicate-rules",
     "/administration/warehouse-racking",
     // CERT-FIN-02. Financial Policy is Administration, not Financials, deliberately: it is company

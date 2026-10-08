@@ -62,9 +62,9 @@ describe("dedicated deactivate/delete readiness gate (flags false -- current reg
     renderDrawer({ commands });
     const select = screen.getByLabelText(/^Status$/);
     fireEvent.change(select, { target: { value: DEACTIVATED_STATUS } });
-    fireEvent.click(screen.getByRole("button", { name: "Update status" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update Status" }));
 
-    const confirmBtn = await screen.findByRole("button", { name: "Confirm deactivate" });
+    const confirmBtn = await screen.findByRole("button", { name: "Confirm Deactivate" });
     expect(confirmBtn.disabled).toBe(true);
     expect(screen.getByTestId("tm-deactivate-unavailable").textContent).toMatch(
       /unavailable until inventory-at-location verification is enabled/i
@@ -87,19 +87,19 @@ describe("dedicated deactivate/delete readiness gate (flags false -- current reg
   it("every other governed action stays enabled exactly as today", () => {
     renderDrawer();
     fireEvent.change(screen.getByLabelText(/Employee/), { target: { value: "EMP-2" } });
-    expect(screen.getByRole("button", { name: "Reassign driver" }).disabled).toBe(false);
-    expect(screen.getByRole("button", { name: "Unassign driver" }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Reassign Driver" }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Unassign Driver" }).disabled).toBe(false);
     fireEvent.change(screen.getByLabelText(/Warehouse/), { target: { value: "WH-SOUTH" } });
-    expect(screen.getByRole("button", { name: "Update home warehouse" }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Update Home Warehouse" }).disabled).toBe(false);
     // Status select still permits choosing a non-deactivate target and updating.
     fireEvent.change(screen.getByLabelText(/^Status$/), { target: { value: "IDLE" } });
-    expect(screen.getByRole("button", { name: "Update status" }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Update Status" }).disabled).toBe(false);
   });
 
   it("writeReady=false still disables everything as before (broad seam unaffected by the new dedicated flags)", () => {
     renderDrawer({ writeReady: false });
     expect(screen.getByTestId("truck-management-not-ready")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Unassign driver" }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Unassign Driver" }).disabled).toBe(true);
     expect(screen.getByTestId("tm-delete-cie").disabled).toBe(true);
   });
 });

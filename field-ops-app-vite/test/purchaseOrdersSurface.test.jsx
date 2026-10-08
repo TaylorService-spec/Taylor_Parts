@@ -182,7 +182,7 @@ describe("Purchase Orders surface -- the four-way status ladder", () => {
     purchaseOrdersState.purchaseOrdersById = {}; // no matching PO doc
     renderSurface();
     fireEvent.click(screen.getByRole("button", { name: /^all/i }));
-    expect(within(screen.getByRole("table")).getByText("Needs attention")).toBeTruthy();
+    expect(within(screen.getByRole("table")).getByText("Needs Attention")).toBeTruthy();
     expect(screen.getByText(/blank fields are unknown, not empty/i)).toBeTruthy();
   });
 

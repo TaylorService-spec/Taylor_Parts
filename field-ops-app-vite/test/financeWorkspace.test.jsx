@@ -22,7 +22,7 @@ describe("FinancialsWorkspace", () => {
     const callApi = vi.fn(async (op) => (op === "readFinanceWorkspace" ? { ok: true, result: WS() } : { ok: true, result: {} }));
     const { container } = render(<FinancialsWorkspace callApi={callApi} />);
     await screen.findByText("Harbor Grill");
-    expect(container.textContent).toMatch(/Partially paid · overdue/);
+    expect(container.textContent).toMatch(/Partially Paid · overdue/);
     expect(container.textContent).not.toMatch(/\bPARTIAL\b|CUSTOMER_PAYMENT|RECEIVABLE\b/);
     fireEvent.change(screen.getByLabelText("Obligation for CHK-9"), { target: { value: "obl-1" } });
     fireEvent.change(screen.getByLabelText("Amount to apply from CHK-9"), { target: { value: "50.00" } });
@@ -35,7 +35,7 @@ describe("FinancialsWorkspace", () => {
     render(<FinancialsWorkspace callApi={callApi} />);
     fireEvent.change(await screen.findByLabelText("Company"), { target: { value: "consolidated" } });
     await screen.findByText(/Nothing is recorded in it/);
-    expect(screen.queryByRole("button", { name: "Record settlement" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Record Settlement" })).toBeNull();
   });
 
   it("renders the server's refusal; parses money without floats", async () => {

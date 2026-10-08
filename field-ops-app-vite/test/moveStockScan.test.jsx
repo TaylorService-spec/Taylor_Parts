@@ -72,7 +72,7 @@ async function setUp(deps) {
 
 async function unbinnedToScannedBin(deps) {
   await setUp(deps);
-  const from = screen.getByRole("region", { name: "Moving from" });
+  const from = screen.getByRole("region", { name: "Moving From" });
   fireEvent.click(within(from).getByRole("button", { name: /not in a bin/ }));
   await scan("Scan destination bin", "EOS-LOC:bin_dest0001");
   await waitFor(() => expect(screen.getByText(/Move within this warehouse/)).toBeTruthy());
@@ -201,7 +201,7 @@ describe("per-line truth and replay-safe retry", () => {
       }),
     });
     await mixedBatch(deps);
-    fireEvent.click(await screen.findByText("Try again (1)"));
+    fireEvent.click(await screen.findByText("Try Again (1)"));
     await waitFor(() => expect(screen.getByText(/2 moved · 0 already moved · 1 not moved/)).toBeTruthy());
     const cKeys = deps.relocate.mock.calls.filter(([r]) => r.serialNumbers[0] === "C").map(([r]) => r.idempotencyKey);
     expect(cKeys).toHaveLength(2);
@@ -268,9 +268,9 @@ describe("routing and capability", () => {
   it("the same place twice is refused before anything is scanned", async () => {
     const deps = makeDeps();
     await setUp(deps);
-    const from = screen.getByRole("region", { name: "Moving from" });
+    const from = screen.getByRole("region", { name: "Moving From" });
     fireEvent.click(within(from).getByRole("button", { name: /not in a bin/ }));
-    const to = screen.getByRole("region", { name: "Moving to" });
+    const to = screen.getByRole("region", { name: "Moving To" });
     fireEvent.click(within(to).getByRole("button", { name: /not in a bin/ }));
     await waitFor(() => expect(screen.getByText(/same place/)).toBeTruthy());
     expect(screen.getByLabelText("Scan item").disabled).toBe(true);

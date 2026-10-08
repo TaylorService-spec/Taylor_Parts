@@ -5,7 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { readFileSync, existsSync } from "node:fs";
 import AdminAuditLogs from "../src/modules/administration/AdminAuditLogs.jsx";
-import { principalLabel } from "../src/modules/administration/AdminPermissionPreview.jsx";
+import { principalLabel } from "../src/modules/administration/principalDisplay.js";
 import { principalLabel as sharedPrincipalLabel, UNNAMED_PRINCIPAL } from "../src/modules/administration/principalDisplay.js";
 import SecurityRoleDetail from "../src/modules/administration/SecurityRoleDetail.jsx";
 

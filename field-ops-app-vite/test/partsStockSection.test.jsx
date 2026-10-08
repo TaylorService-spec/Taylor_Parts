@@ -2,10 +2,13 @@
 // presentation slice (vitest + jsdom + RTL). The component has no Firebase/hooks/context,
 // so nothing is mocked: it is rendered directly through its `section` prop with fixtures.
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { render, cleanup, within } from "@testing-library/react";
+import { render, cleanup, within, fireEvent } from "@testing-library/react";
 import PartsStockSection, { __test__ } from "../src/modules/inventory/mobile/PartsStockSection.jsx";
 
 afterEach(cleanup);
+
+// A sortable header's visible label (the SortableHeader button's first span), else the header text.
+const headerLabel = (th) => th.querySelector(".fo-sortable-th__button > span")?.textContent ?? th.textContent;
 
 // A fully-populated governed row plus extra/unsupported fields that must never render.
 const FULL_ROW = Object.freeze({
@@ -63,7 +66,7 @@ describe("PartsStockSection -- READY rows", () => {
   it("renders one row per item using only the allowlist columns, quantities passed through", () => {
     const { getByRole } = render(<PartsStockSection section={readySection([FULL_ROW])} />);
     const table = getByRole("table");
-    const headers = within(table).getAllByRole("columnheader").map((th) => th.textContent);
+    const headers = within(table).getAllByRole("columnheader").map(headerLabel);
     expect(headers).toEqual(COLUMN_LABELS);
     const cells = within(table).getAllByRole("cell").map((td) => td.textContent);
     expect(cells).toEqual(["P-001", "Widget", "A1", "5", "2", "3", "OK"]);
@@ -255,5 +258,29 @@ describe("PartsStockSection -- accessibility & responsive semantics", () => {
   it("wraps the READY table in an overflow-x container (no mobile page overflow)", () => {
     const { getByTestId } = render(<PartsStockSection section={readySection([FULL_ROW])} />);
     expect(getByTestId("ps-ready").style.overflowX).toBe("auto");
+  });
+});
+
+describe("PartsStockSection -- client-side column sort (display copy only)", () => {
+  it("sorts by On Hand numerically, then descending, then restores the given order; the prop is untouched", () => {
+    const items = [
+      { internalSku: "B", onHand: 10 },
+      { internalSku: "A", onHand: 2 },
+      { internalSku: "C", onHand: null },
+    ];
+    const snapshot = JSON.stringify(items);
+    const { getByRole } = render(<PartsStockSection section={readySection(items)} />);
+    const table = getByRole("table");
+    const skus = () => [...table.querySelectorAll("tbody tr")].map((tr) => tr.firstChild.textContent);
+    const onHand = within(table).getAllByRole("columnheader").find((th) => headerLabel(th) === "On Hand");
+    expect(onHand.getAttribute("aria-sort")).toBe("none");
+    fireEvent.click(within(onHand).getByRole("button"));
+    expect(skus()).toEqual(["A", "B", "C"]); // a missing quantity sorts last, never as zero
+    expect(onHand.getAttribute("aria-sort")).toBe("ascending");
+    fireEvent.click(within(onHand).getByRole("button"));
+    expect(skus()).toEqual(["B", "A", "C"]);
+    fireEvent.click(within(onHand).getByRole("button"));
+    expect(skus()).toEqual(["B", "A", "C"]); // default (given) order restored
+    expect(JSON.stringify(items)).toBe(snapshot);
   });
 });

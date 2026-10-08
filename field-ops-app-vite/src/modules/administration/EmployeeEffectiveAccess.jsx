@@ -97,7 +97,7 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
         <li><span className="fo-access-chain__k">Effective capabilities</span> {model.capabilities.length} unconditional
           {model.conditionallyHeld.length ? `, ${model.conditionallyHeld.length} conditional` : ""}{model.scopedHeld.length ? `, ${model.scopedHeld.length} scope-qualified` : ""}</li>
         <li><span className="fo-access-chain__k">Operational Scope</span> {list(model.operationalScopes.map(scopeWords))}
-          {model.workEligibility.length ? <span className="fo-muted">{` · eligibility: ${model.workEligibility.join(", ")}`}</span> : null}</li>
+          {model.workEligibility.length ? <span className="fo-muted">{` · eligibility: ${model.workEligibility.map(titleCase).join(", ")}`}</span> : null}</li>
         <li><span className="fo-access-chain__k">Record Restrictions</span> {restricted.length === 0 ? "None restrict" : `${restricted.length} action${restricted.length === 1 ? "" : "s"} restricted to particular records — listed below`}</li>
         <li><span className="fo-access-chain__k">Domain Preconditions</span> <span className="fo-muted">decided per record by each command (state, scope, operating company) — never granted here</span></li>
       </ol>

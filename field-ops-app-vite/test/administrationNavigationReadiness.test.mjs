@@ -167,9 +167,11 @@ test("the Administration index is NOT an unconditional door -- it follows its ch
 
   // ...and ONE governed child is enough, with or without the server's own container grant. That is
   // the disjunction, measured from every one of its six sides.
+  // UI corrections §15 (2026-10-08): `administration.permissionPreview` is no longer a menu door -- its item is the navHidden
+  // NONPROD QA tool -- so it is not one of the sides that opens the menu. Nothing reachable is lost: the server earns it
+  // ONLY by admin.principalAccess.read, which earns `administration.users` too (experienceAuthority.ts), and Users opens it.
   for (const childSurface of ["administration.auditLogs", "administration.users",
-    "administration.rolesPermissions", "administration.objects", "administration.workflows",
-    "administration.permissionPreview"]) {
+    "administration.rolesPermissions", "administration.objects", "administration.workflows"]) {
     const withOneChild = eosContext(buildNavigationAuthority({
       state: EXPERIENCE_STATE.READY,
       context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,

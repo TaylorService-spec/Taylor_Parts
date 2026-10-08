@@ -8,6 +8,9 @@ import SerializedAssetsSection, { __test__ } from "../src/modules/inventory/mobi
 
 afterEach(cleanup);
 
+// A sortable header's visible label (the SortableHeader button's first span), else the header text.
+const headerLabel = (th) => th.querySelector(".fo-sortable-th__button > span")?.textContent ?? th.textContent;
+
 // A fully-populated governed row (every merged-contract field present), used to prove the
 // component renders only the display allowlist and never the withheld/absent fields.
 const FULL_ROW = Object.freeze({
@@ -77,7 +80,7 @@ describe("SerializedAssetsSection -- READY with projected rows", () => {
     const table = getByRole("table");
     expect(getByTestId("sa-ready")).toBeTruthy();
     // header labels = exactly the allowlist, in order
-    const headers = within(table).getAllByRole("columnheader").map((th) => th.textContent);
+    const headers = within(table).getAllByRole("columnheader").map(headerLabel);
     expect(headers).toEqual(["Asset ID", "SKU", "Manufacturer", "Model", "Serial", "Location"]);
     // 2 data rows
     const bodyRows = table.querySelectorAll("tbody tr");

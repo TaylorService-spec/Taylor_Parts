@@ -363,11 +363,12 @@ describe("Effective Access: the server evaluator's answer, rendered", () => {
     expect(read.getAttribute("data-result")).toBe("CONDITIONAL");
     expect(read.textContent).toMatch(/Conditional/);
     expect(read.textContent).toMatch(/RECORD_ASSIGNMENT_REQUIRED/);
-    expect(read.textContent).toMatch(/Security Role technician · Condition: assigned Employee on the workOrder/);
+    // Role keys are shown by display name (UI corrections item A): "technician" -> "Technician".
+    expect(read.textContent).toMatch(/Technician · Condition: assigned Employee on the workOrder/);
     expect(read.textContent).toMatch(/Withheld from flat-set kernels/);
     const complete = document.querySelector('[data-capability="workOrder.lifecycle.complete"]');
     expect(complete.textContent).toMatch(/Allowed/);
-    expect(complete.textContent).toMatch(/Workflow workOrderLifecycle v2 · complete via technician/);
+    expect(complete.textContent).toMatch(/Workflow Work Order Lifecycle v2 · Complete via Technician/);
     expect(document.querySelector('[data-capability="opportunity.write"]').textContent).toMatch(/Denied.*CAPABILITY_MISSING/);
     // An unknown result is shown RAW.
     expect(document.querySelector('[data-capability="invoice.issue"]').textContent).toMatch(/SOMETHING_NEW/);
@@ -379,7 +380,7 @@ describe("Effective Access: the server evaluator's answer, rendered", () => {
     const dispatch = document.querySelector('[data-capability="workOrder.lifecycle.dispatch"]');
     expect(dispatch.getAttribute("data-result")).toBe("DENIED");
     const direct = dispatch.querySelector('[data-direct-grant="DIRECT_EXCEPTION"]');
-    expect(direct.textContent).toMatch(/DIRECT EXCEPTION/);
+    expect(direct.textContent).toMatch(/Direct Exception/);
     expect(direct.textContent).toMatch(/Reason: covering the parts desk this week/);
     expect(direct.textContent).toMatch(/Expires: never/);
     expect(direct.textContent).toMatch(/Not enforced on Role-only runtime paths/);
@@ -393,11 +394,43 @@ describe("Effective Access: the server evaluator's answer, rendered", () => {
     const scoped = table.querySelector('[data-excluded-assignment="warehouseManager"]');
     expect(scoped.textContent).toMatch(/SCOPED/);
     expect(scoped.textContent).toMatch(/WAREHOUSE · SC-WH-MAIN/);
-    const context = document.querySelector("[data-effective-access-context]");
-    expect(context.textContent).toMatch(/technician/);
-    expect(context.textContent).toMatch(/SERVICE_TECHNICIAN/);
-    expect(context.textContent).toMatch(/WAREHOUSE SC-WH-MAIN/);
-    expect(context.textContent).toMatch(/operations\.workOrders/);
+    // The principal's context is stated ONCE, in the resolved chain (deduplicated, UI corrections item D), in words.
+    const chain = document.querySelector("[data-access-chain]");
+    expect(chain.textContent).toMatch(/Technician/);
+    expect(chain.textContent).toMatch(/Service Technician/);
+    expect(chain.textContent).toMatch(/Warehouse SC-WH-MAIN/);
+    expect(document.querySelector("[data-effective-access-context]").textContent).toMatch(/Access version 4 · 2 capabilities/);
+    // Surfaces stay on the action rows that earn them.
+    expect(document.querySelector('[data-capability="workOrder.record.read"]').textContent).toMatch(/operations\.workOrders/);
+  });
+
+  it("shows the SERVER's capability provenance -- Role, Direct, Role and Direct -- and record restrictions, computing none", async () => {
+    const withProvenance = {
+      ...EXPLAIN,
+      actions: EXPLAIN.actions.map((a) => ({
+        ...a,
+        provenance: { "workOrder.record.read": "ROLE", "workOrder.lifecycle.dispatch": "DIRECT", "workOrder.lifecycle.complete": "ROLE_AND_DIRECT" }[a.capabilityKey] ?? "NONE",
+      })),
+    };
+    render(<EmployeeEffectiveAccess api={makeApi({ explainEffectiveAccess: vi.fn(async () => ({ ok: true, data: withProvenance })) })} principalId="pr-1" />);
+    await waitFor(() => expect(document.querySelector('[data-effective-access="READY"]')).toBeTruthy());
+    expect(document.querySelector('[data-capability="workOrder.record.read"] [data-provenance]').getAttribute("data-provenance")).toBe("ROLE");
+    expect(document.querySelector('[data-capability="workOrder.lifecycle.dispatch"] [data-provenance]').textContent).toMatch(/Direct Exception/);
+    // ROLE_AND_DIRECT is reported once, never twice -- exactly the server's word for it.
+    expect(document.querySelector('[data-capability="workOrder.lifecycle.complete"] [data-provenance]').textContent).toBe("Security Role and Direct Exception");
+    expect(document.querySelector('[data-provenance-count="ROLE"]').textContent).toBe("1");
+    expect(document.querySelector('[data-provenance-count="DIRECT"]').textContent).toBe("1");
+    expect(document.querySelector('[data-provenance-count="ROLE_AND_DIRECT"]').textContent).toBe("1");
+    // A record restriction (CONDITIONAL) is listed with its reason in words.
+    const restrictions = screen.getByRole("table", { name: "Record restrictions" });
+    expect(restrictions.querySelector('[data-restricted-capability="workOrder.record.read"]').textContent).toMatch(/Only records this person is assigned to or owns/);
+  });
+
+  it("a server that does not report provenance is said so -- nothing is inferred on the client", async () => {
+    render(<EmployeeEffectiveAccess api={makeApi()} principalId="pr-1" />);
+    await waitFor(() => expect(document.querySelector('[data-effective-access="READY"]')).toBeTruthy());
+    expect(screen.getByText(/This server does not report provenance/)).toBeTruthy();
+    expect(document.querySelector('[data-provenance-count="ROLE"]').textContent).toBe("0");
   });
 
   it("renders an honest UNAVAILABLE state when the server does not serve explainEffectiveAccess", async () => {

@@ -426,12 +426,14 @@ describe("the read model is consumed only through the control-plane view, and no
     }
   });
 
-  it("Permission Preview is on the path it was on, and the effectiveAccessFeed is untouched", () => {
-    // Permission Preview keeps its own route to the governed read (AdminPermissionPreview). The Firebase-era
-    // AdministrationUnavailable placeholder is gone (Pass 10 UI truthfulness repair, D2).
+  it("the retired Permission Preview item renders only the nonprod QA tool, and the effectiveAccessFeed is untouched", () => {
+    // UI corrections §15: the permissionPreview item is now the NONPROD Principal Inspection (runtime evaluator only), and
+    // the retired address redirects to Users. The Firebase-era AdministrationUnavailable placeholder stays gone (Pass 10 D2).
     const app = readFileSync("src/App.jsx", "utf8");
     expect(app.includes('item.key === "permissionPreview"')).toBe(true);
-    expect(app.includes("<AdminPermissionPreview />")).toBe(true);
+    expect(app.includes("<PrincipalQaInspection />")).toBe(true);
+    expect(app.includes("<AdminPermissionPreview />")).toBe(false);
+    expect(app.includes('<Route path="permission-preview" element={<Navigate to="/administration/users" replace />} />')).toBe(true);
     expect(app.includes("AdministrationUnavailable")).toBe(false);
     for (const banned of ["usePrincipalAccessReadModel", "useObjectSecurity", "objectSecurityReadModel"]) {
       expect(app.includes(banned), banned).toBe(false);

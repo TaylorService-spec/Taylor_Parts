@@ -65,8 +65,8 @@ function mount(overrides = {}) {
 /** Fill every governed fact. */
 function completeForm() {
   fireEvent.change(screen.getByLabelText("Part"), { target: { value: "part_c712" } });
-  fireEvent.change(screen.getByLabelText("Serial number"), { target: { value: "GATE-ND33-DO-NOT-DELETE" } });
-  fireEvent.change(screen.getByLabelText("Company location"), { target: { value: "wh_main" } });
+  fireEvent.change(screen.getByLabelText("Serial Number"), { target: { value: "GATE-ND33-DO-NOT-DELETE" } });
+  fireEvent.change(screen.getByLabelText("Company Location"), { target: { value: "wh_main" } });
   fireEvent.click(screen.getByRole("radio", { name: /Opening balance/ }));
 }
 
@@ -146,7 +146,7 @@ describe("reason", () => {
 describe("company location states are truthful and mutually exclusive", () => {
   it("READY offers the governed options and says nothing about failure", () => {
     const { container } = mount();
-    const picker = screen.getByLabelText("Company location");
+    const picker = screen.getByLabelText("Company Location");
     expect(picker.disabled).toBe(false);
     expect(picker.querySelectorAll("option")).toHaveLength(3); // placeholder + two warehouses
     expect(container.querySelector("[data-acquire-location-message]")).toBeNull();
@@ -156,8 +156,8 @@ describe("company location states are truthful and mutually exclusive", () => {
   it("ERROR has no selected or default location beside its failure message", async () => {
     // Choose a location while the read is READY, then have the read fail.
     const view = mount();
-    fireEvent.change(screen.getByLabelText("Company location"), { target: { value: "wh_main" } });
-    expect(screen.getByLabelText("Company location").value).toBe("wh_main");
+    fireEvent.change(screen.getByLabelText("Company Location"), { target: { value: "wh_main" } });
+    expect(screen.getByLabelText("Company Location").value).toBe("wh_main");
 
     view.rerender(
       <AcquireExistingUnit
@@ -171,7 +171,7 @@ describe("company location states are truthful and mutually exclusive", () => {
     );
 
     // THE CRITICAL INVARIANT. A value nothing currently vouches for is not a default worth keeping.
-    const picker = screen.getByLabelText("Company location");
+    const picker = screen.getByLabelText("Company Location");
     expect(picker.value).toBe("");
     expect(picker.disabled).toBe(true);
     expect(picker.querySelectorAll("option[value]:not([value=''])")).toHaveLength(0);
@@ -198,18 +198,18 @@ describe("company location states are truthful and mutually exclusive", () => {
     for (const status of [RECEIVING_OUTCOME.DENIED, RECEIVING_OUTCOME.UNAVAILABLE, null]) {
       cleanup();
       mount({ locationsStatus: status });
-      expect(screen.getByLabelText("Company location").disabled).toBe(true);
+      expect(screen.getByLabelText("Company Location").disabled).toBe(true);
     }
   });
 
   it("offers Retry only where trying again could change the answer", () => {
     const onRetryLocations = vi.fn();
     mount({ locationsStatus: RECEIVING_OUTCOME.UNAVAILABLE, onRetryLocations });
-    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try Again" })).toBeTruthy();
     cleanup();
     // DENIED will refuse identically forever; a Retry there teaches a person to keep pressing.
     mount({ locationsStatus: RECEIVING_OUTCOME.DENIED, onRetryLocations });
-    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Try Again" })).toBeNull();
   });
 });
 
@@ -226,11 +226,11 @@ describe("validation", () => {
 
     // Used and left incomplete, each field says its own piece — exactly once.
     fireEvent.blur(screen.getByLabelText("Part"));
-    fireEvent.blur(screen.getByLabelText("Serial number"));
-    fireEvent.blur(screen.getByLabelText("Company location"));
+    fireEvent.blur(screen.getByLabelText("Serial Number"));
+    fireEvent.blur(screen.getByLabelText("Company Location"));
     // Moving PAST the reason group is what makes skipping it answerable — a radio group with no
     // default is only ever "used" by choosing one, which is the act that resolves it.
-    fireEvent.blur(screen.getByLabelText(/Provenance note/));
+    fireEvent.blur(screen.getByLabelText(/Provenance Note/));
 
     const messages = [...container.querySelectorAll("[role='alert']")].map((n) => n.textContent);
     // The duplicate this surface was reported for: the same sentence beside the field AND again
@@ -253,16 +253,16 @@ describe("validation", () => {
     expect(blocking()).toBe(
       "Still needed: the part, the serial number, the company location and a reason.",
     );
-    expect(screen.getByRole("button", { name: "Review acquisition" }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Review Acquisition" }).disabled).toBe(true);
 
     fireEvent.change(screen.getByLabelText("Part"), { target: { value: "part_c712" } });
-    fireEvent.change(screen.getByLabelText("Serial number"), { target: { value: "SN-1" } });
+    fireEvent.change(screen.getByLabelText("Serial Number"), { target: { value: "SN-1" } });
     expect(blocking()).toBe("Still needed: the company location and a reason.");
 
     completeForm();
     // Once nothing is outstanding, the explanation goes away rather than lingering.
     expect(blocking()).toBeNull();
-    expect(screen.getByRole("button", { name: "Review acquisition" }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Review Acquisition" }).disabled).toBe(false);
   });
 });
 
@@ -273,10 +273,10 @@ describe("the two stages", () => {
     const callAcquire = vi.fn(async () => ({}));
     mount({ callAcquire });
     completeForm();
-    fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Acquisition" }));
 
-    expect(screen.getByRole("heading", { name: "Confirm acquisition" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Confirm acquisition" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Confirm Acquisition" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Confirm Acquisition" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
     // NOTHING IS WRITTEN TO REACH THE READ-BACK. Review assembles; only Confirm commits.
     expect(callAcquire).not.toHaveBeenCalled();
@@ -285,8 +285,8 @@ describe("the two stages", () => {
   it("reads the governed facts back, in business words", async () => {
     const { container } = mount();
     completeForm();
-    fireEvent.change(screen.getByLabelText(/Provenance note/), { target: { value: "Found in the Broadway van" } });
-    fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
+    fireEvent.change(screen.getByLabelText(/Provenance Note/), { target: { value: "Found in the Broadway van" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review Acquisition" }));
 
     const read = (key) => container.querySelector(`[data-acquire-confirm='${key}']`)?.textContent;
     expect(read("part")).toBe("Taylor C712 — Soft Serve Freezer");
@@ -302,8 +302,8 @@ describe("the two stages", () => {
     const callAcquire = vi.fn(async () => ({}));
     mount({ callAcquire });
     completeForm();
-    fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Acquisition" }));
 
     expect(callAcquire).toHaveBeenCalledTimes(1);
     const [request] = callAcquire.mock.calls[0];
@@ -321,13 +321,13 @@ describe("the two stages", () => {
   it("Back returns to the form with every answer intact", async () => {
     mount();
     completeForm();
-    fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Acquisition" }));
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
 
-    expect(screen.getByRole("heading", { name: "Add existing unit" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Add Existing Unit" })).toBeTruthy();
     expect(screen.getByLabelText("Part").value).toBe("part_c712");
-    expect(screen.getByLabelText("Serial number").value).toBe("GATE-ND33-DO-NOT-DELETE");
-    expect(screen.getByLabelText("Company location").value).toBe("wh_main");
+    expect(screen.getByLabelText("Serial Number").value).toBe("GATE-ND33-DO-NOT-DELETE");
+    expect(screen.getByLabelText("Company Location").value).toBe("wh_main");
     expect(screen.getByRole("radio", { name: /Opening balance/ }).checked).toBe(true);
   });
 });
@@ -341,15 +341,15 @@ describe("the success state", () => {
     const callAcquire = vi.fn(async () => ACQUIRED);
     mount({ callAcquire });
     completeForm();
-    fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Acquisition" }));
 
     expect(await screen.findByText("Added to company inventory.")).toBeTruthy();
     // NOT MERELY DISABLED — GONE. A surface that still looks armed after it has fired is how
     // somebody comes to press it twice. The replay would be governed and harmless; the confusion
     // would not be.
-    expect(screen.queryByRole("button", { name: "Confirm acquisition" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Review acquisition" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm Acquisition" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Review Acquisition" })).toBeNull();
     expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
     expect(callAcquire).toHaveBeenCalledTimes(1);
   });
@@ -357,11 +357,11 @@ describe("the success state", () => {
   it("presents a replay as the success it is", async () => {
     mount({ callAcquire: async () => ({ outcome: { outcome: "replayed", serializedAssetId: "sa_1" } }) });
     completeForm();
-    fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Acquisition" }));
 
     expect(await screen.findByText(/already on the books/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Confirm acquisition" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm Acquisition" })).toBeNull();
   });
 });
 
@@ -370,7 +370,7 @@ describe("the success state", () => {
 describe("Frame 1c — sheet identity, truth pins, and close behaviour", () => {
   it("the sheet is a dialog with ONE identity ('Add existing unit') and no page H1", () => {
     const { container } = mount();
-    const dialog = screen.getByRole("dialog", { name: "Add existing unit" });
+    const dialog = screen.getByRole("dialog", { name: "Add Existing Unit" });
     expect(dialog).toBeTruthy();
     expect(container.querySelectorAll("h2")).toHaveLength(1);
     expect(document.querySelector("h1")).toBeNull();
@@ -389,7 +389,7 @@ describe("Frame 1c — sheet identity, truth pins, and close behaviour", () => {
     const { container } = mount();
     const optional = [...container.querySelectorAll(".fo-field-required")].map((n) => n.closest("label").textContent);
     expect(optional).toHaveLength(1);
-    expect(optional[0]).toMatch(/Provenance note/);
+    expect(optional[0]).toMatch(/Provenance Note/);
   });
 
   it("MUTATION PROOF: the destination is the governed option list only — no free-text entry exists", () => {
@@ -405,11 +405,11 @@ describe("Frame 1c — sheet identity, truth pins, and close behaviour", () => {
     const callAcquire = vi.fn().mockResolvedValue({ outcome: { outcome: "acquired", serializedAssetId: "sa_9xQ44" } });
     mount({ callAcquire });
     completeForm();
-    fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Acquisition" }));
     expect(await screen.findByText("Added to company inventory.")).toBeTruthy();
     const sheetText = document.querySelector(".fo-modal--sheet").textContent;
-    expect(sheetText).toContain("AVAILABLE");
+    expect(sheetText).toContain("company-owned, available stock");
     expect(sheetText).toContain("No purchase order, supplier receipt, Equipment record, or customer assignment was created.");
     expect(sheetText).not.toMatch(/Receipt recorded|Equipment created/);
     // The internal serialized-asset id is a return value, not an identity to display.
@@ -435,8 +435,8 @@ describe("Frame 1c — sheet identity, truth pins, and close behaviour", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
     completeForm();
-    fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Acquisition" }));
     expect(await screen.findByRole("button", { name: "Adding…" })).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Close the sheet" }));

@@ -209,7 +209,7 @@ describe("collection rows state object state as words + tone", () => {
     // unknown case, which is the tell that the plain treatment was always available and the pill
     // was a choice rather than the only option.
     const card = code(read("modules/inventory/TruckFleetCard.jsx"));
-    expect(card).toMatch(/tone: truckFleetStatusTone\(status\), label: status, asText: true/);
+    expect(card).toMatch(/tone: truckFleetStatusTone\(status\), label: statusLabel\(status\), asText: true/);
   });
 
   it("the tone vocabulary is the shared one", () => {

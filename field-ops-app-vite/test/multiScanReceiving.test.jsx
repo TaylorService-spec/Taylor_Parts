@@ -336,7 +336,7 @@ describe("Frame 1b — journey identity and RCV-G5/G7 truth rules", () => {
         progress: progress({ supplierName: null }),
       }),
     }));
-    expect(screen.getByRole("heading", { name: "Supplier purchase order" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Supplier Purchase Order" })).toBeTruthy();
   });
 
   it("MUTATION PROOF: no claimed purchase-order scan identifier returns (RCV-G7)", async () => {

@@ -310,6 +310,7 @@ export default function UserDetail({
               />
             )}
           />
+          <SourceSection rows={SOURCE_ROWS} />
         </div>
       </div>
     ) },
@@ -402,7 +403,6 @@ export default function UserDetail({
           onRetry={() => setHistoryNonce((n) => n + 1)}
           emptyMessage="No legacy (pre-cutover) changes were recorded for this Employee."
         />
-        <SourceSection rows={SOURCE_ROWS} />
       </div>
     ) },
   ];
@@ -498,7 +498,7 @@ export default function UserDetail({
   );
 }
 
-// Where each fact on this record comes from (Activity tab).
+// Where each fact on this record comes from (Overview tab).
 const SOURCE_ROWS = [
   {
     key: "employee",

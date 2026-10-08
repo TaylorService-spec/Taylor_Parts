@@ -7,6 +7,9 @@ import ReconciliationSection, { __test__ } from "../src/modules/inventory/mobile
 
 afterEach(cleanup);
 
+// A sortable header's visible label (the SortableHeader button's first span), else the header text.
+const headerLabel = (th) => th.querySelector(".fo-sortable-th__button > span")?.textContent ?? th.textContent;
+
 // A fully-populated missing/unexpected item plus extra/unsupported fields that must never render.
 const FULL_ITEM = Object.freeze({
   assetId: "AST-1",
@@ -75,7 +78,7 @@ describe("ReconciliationSection -- READY complete observation", () => {
     const dds = [...getByTestId("rc-summary").querySelectorAll("dd")].map((d) => d.textContent);
     expect(dds).toEqual(["8", "3", "20", "10"]);
     const missing = getByTestId("rc-missing-table");
-    expect(within(missing).getAllByRole("columnheader").map((th) => th.textContent)).toEqual(["Asset ID", "SKU", "Label", "Serial", "Last seen", "Expected", "Actual", "Note"]);
+    expect(within(missing).getAllByRole("columnheader").map(headerLabel)).toEqual(["Asset ID", "SKU", "Label", "Serial", "Last Seen", "Expected", "Actual", "Note"]);
     expect(within(missing).getAllByRole("cell").map((td) => td.textContent)).toEqual(["AST-1", "SKU-1", "Pump", "SN-1", "2026-08-01", "1", "0", "not found"]);
     // unexpected sparse row
     expect(within(getByTestId("rc-unexpected-table")).getAllByRole("cell").map((td) => td.textContent)).toEqual(["AST-2", "—", "—", "SN-2", "—", "—", "—", "—"]);
