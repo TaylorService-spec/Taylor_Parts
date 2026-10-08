@@ -19,6 +19,7 @@ import {
   isNavItemVisible,
   buildServiceNavGroups,
   buildFinancialsNavGroups,
+  buildAdministrationNavGroups,
   findActiveServiceGroupKey,
 } from "./navConfig";
 import VerenwardMark from "../shared/brand/VerenwardMark";
@@ -156,7 +157,9 @@ export default function AppRail({
           ? buildServiceNavGroups(visibleSubnav)
           : domain.key === "financials"
             ? buildFinancialsNavGroups(visibleSubnav)
-            : { groups: [], ungrouped: visibleSubnav };
+            : domain.key === "administration"
+              ? buildAdministrationNavGroups(visibleSubnav)
+              : { groups: [], ungrouped: visibleSubnav };
       return { domain, children };
     });
   }, [role, allowedLegacyKeys, operationalContext]);
