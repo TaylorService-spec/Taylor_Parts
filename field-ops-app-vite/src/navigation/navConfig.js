@@ -652,8 +652,12 @@ export const NAV_DOMAINS = [
       // The legacyKey it carried is not lost. It gated visibility for the technician-era role
       // model, and "users" carries no legacyKey -- so this destination is admin/dispatcher-visible
       // through PLACEHOLDER_DEFAULT_ROLES, unchanged from what the Users item already had.
-      { key: "users", label: "Users", path: "users" },
-      { key: "rolesPermissions", label: "Roles & Permissions", path: "roles-permissions" },
+      // ADMINISTRATION IA REGROUP (Owner-approved design, 2026-10-08). Display names follow the business
+      // destination; keys and paths are unchanged so every route, surface and redirect still holds.
+      // The rail's display order (Objects before Roles) comes from ADMINISTRATION_NAV_ORDER below,
+      // not from this array, so the pinned destination order stays byte-for-byte.
+      { key: "users", label: "Employees & Users", path: "users" },
+      { key: "rolesPermissions", label: "Roles", path: "roles-permissions" },
       // Objects -- the Role x Object x CRED grid (Owner, 2026-08-20). Sits beside Roles &
       // Permissions because it answers the other half of the same question: that screen is
       // about which PEOPLE hold a role; this one is what a ROLE can do to each object.
@@ -1835,6 +1839,42 @@ export const FINANCIALS_NAV_GROUPS = [
 
 export function buildFinancialsNavGroups(visibleItems = []) {
   return buildNavGroups(FINANCIALS_NAV_GROUPS, visibleItems);
+}
+
+// ADMINISTRATION is grouped for the approved IA (Owner, 2026-10-08): the business destinations
+// (Overview, Employees & Users, Objects, Roles, Permissions, Workflows) stay top-level and every
+// configuration, communications, import and audit destination sits under System & Integrations.
+// PRESENTATION-ONLY, like the groups above: no path, key, gate or route changes.
+export const ADMINISTRATION_NAV_GROUPS = [
+  {
+    key: "systemIntegrations",
+    label: "System & Integrations",
+    itemKeys: [
+      "systemConfiguration",
+      "salesConfiguration",
+      "financialPolicy",
+      "emailCommunications",
+      "dataImport",
+      "warehouseRacking",
+      "integrations",
+      "duplicateRules",
+      "auditLogs",
+    ],
+  },
+];
+
+// Display order of the top-level (ungrouped) Administration destinations. Items not listed keep
+// their subnav order after these.
+export const ADMINISTRATION_NAV_ORDER = ["overview", "users", "objects", "rolesPermissions", "workflows"];
+
+export function buildAdministrationNavGroups(visibleItems = []) {
+  const { groups, ungrouped } = buildNavGroups(ADMINISTRATION_NAV_GROUPS, visibleItems);
+  const rank = (it) => {
+    const i = ADMINISTRATION_NAV_ORDER.indexOf(it.key);
+    return i === -1 ? ADMINISTRATION_NAV_ORDER.length : i;
+  };
+  // Array.prototype.sort is stable, so unlisted items keep their original relative order.
+  return { groups, ungrouped: [...ungrouped].sort((a, b) => rank(a) - rank(b)) };
 }
 
 // The shared two-level builder both domains use. Extracted rather than copied: two hand-maintained

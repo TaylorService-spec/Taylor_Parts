@@ -7621,3 +7621,13 @@ receiving, es-US content, above-limit discount approval, UTC/date findings).
   capabilities / 542 grants, with every stage pinned. The local proof harness is rebuilt from that replay, with no stand-ins,
   and the three sample-workforce refusals no longer occur.
 - No nonprod read or mutation; production untouched.
+
+## #211 — OWNER: Administration IA redesign approved; Phase 1 navigation regroup (2026-10-08)
+
+**Decision:** The Owner approved the Administration redesign design package (Design canvas `https://claude.ai/artifact/KTgD1S6VrgGiyKNDxvUhto`, grounded in the 2026-10-08 UX review and the discovery brief `https://claude.ai/artifact/CR8GJ4Vce8UUTnnsP7jgKQ`) as presented, and authorized the UI-only phases 1–6. Settled: the 8-destination Administration IA; Page Layouts ships first as a read-only viewer (G1–G4 separate); Draft custom fields shown as they are today; Approval Requests under Roles. G6 (field-level access model) remains an open Owner decision; no UI-only phase depends on it.
+
+Phase 1 (this entry) is presentation-only: `ADMINISTRATION_NAV_GROUPS` groups every configuration, communications, import and audit destination under **System & Integrations**; `ADMINISTRATION_NAV_ORDER` sets the rail's display order (Overview, Employees & Users, Objects, Roles, Workflows) without reordering the `administration` subnav array; Users → "Employees & Users" and Roles & Permissions → "Roles" are display-name changes only. No key, path, route, redirect, surface mapping, legacy gate, capability or server catalog changed, so the pinned production destination sets are byte-for-byte unchanged.
+
+**Deferred, needs a decision:** the approved IA's separate **Permissions** destination is a new subnav key, which requires a `NAV_SURFACE_ACCESS` row (`administration/permissions` → the existing `administration.objects` surface) plus deliberate updates to the pinned destination counts (18 / 90 / 75 / 72). That row is a governance-map edit, so it was not made in Phase 1. Page Layouts' destination (Phase 5) has the same shape.
+
+**Alternatives rejected:** reordering the subnav array to get Objects before Roles. It would have rewritten the pinned production b6a36b15 destination order for no behavioral gain.

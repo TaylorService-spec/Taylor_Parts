@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Administration IA redesign — Phase 1 navigation regroup (DECISIONS #211)
+- Agent/session:       Claude (Claude Code, 2026-10-08) · Role: builder
+- Branch / worktree:   `feat/admin-ia-nav-regroup` · `D:/Taylor_Parts-admin-ia`
+- Base commit:         `9bb53a3f` (origin/main)
+- Owned paths:         `field-ops-app-vite/src/navigation/AppRail.jsx` · the Administration grouping block in `navConfig.js`
+- Shared paths req'd:  `field-ops-app-vite/src/navigation/navConfig.js` (administration subnav display names only) · `test/administrationPortalNav.test.mjs` · `test/appRailActiveServiceGroup.test.jsx`
+- Dependencies:        none
+- Expected outcome:    Administration rail shows the approved IA; no route, gate or surface change
+- Protected boundaries:none crossed; the Permissions destination's surface-map row is deferred to an Owner decision
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          Email Connections phase 2 — REAL Microsoft 365 / Google Workspace delivery and attachment byte custody, on top of the phase 1 intake capability (PR #1811)
 - Agent/session:       Claude (Claude Code, 2026-09-05) · Role: builder
 - Branch / worktree:   `feature/email-provider-delivery` · `D:/Taylor_Parts-eos` — STACKED on `feature/email-connections-inbound-work` (PR #1811, open at `d6e4b1de`)
