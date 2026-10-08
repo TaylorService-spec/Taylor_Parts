@@ -52,7 +52,7 @@ describe("ReportBuilder — array-value filter input (Fix 1)", () => {
     withRouter(<ReportBuilder runReportFn={vi.fn()} savedReportServiceImpl={{ get: vi.fn(), create: vi.fn() }} />);
 
     pickObjectAndField("customer", "Status");
-    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Report Filter" }));
     fireEvent.change(screen.getByLabelText("Comparator"), { target: { value: "in" } });
 
     const runButton = screen.getByRole("button", { name: /run report/i });
@@ -72,7 +72,7 @@ describe("ReportBuilder — array-value filter input (Fix 1)", () => {
     withRouter(<ReportBuilder runReportFn={vi.fn()} savedReportServiceImpl={{ get: vi.fn(), create: vi.fn() }} />);
 
     pickObjectAndField("customer", "Created");
-    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Report Filter" }));
     fireEvent.change(screen.getByLabelText("Comparator"), { target: { value: "between" } });
 
     // Exactly two bound inputs, no more, no less -- and until both are legal dates, Run is off.
@@ -91,7 +91,7 @@ describe("ReportBuilder — array-value filter input (Fix 1)", () => {
     withRouter(<ReportBuilder runReportFn={vi.fn()} savedReportServiceImpl={{ get: vi.fn(), create: vi.fn() }} />);
 
     pickObjectAndField("customer", "Tags");
-    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Report Filter" }));
     fireEvent.change(screen.getByLabelText("Comparator"), { target: { value: "containsAny" } });
     fireEvent.change(screen.getByLabelText("Value"), { target: { value: "vip, net30" } });
     expect(screen.getByLabelText("Value").value).toBe("vip, net30");
@@ -108,8 +108,8 @@ describe("ReportBuilder — Saved Reports wiring (Fix 2)", () => {
     withRouter(<ReportBuilder runReportFn={vi.fn()} savedReportServiceImpl={{ get: vi.fn(), create }} />);
 
     pickObjectAndField("customer", "Name");
-    fireEvent.change(screen.getByLabelText("Report name"), { target: { value: "My customer names" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save as new report" }));
+    fireEvent.change(screen.getByLabelText("Report Name"), { target: { value: "My customer names" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save as New Report" }));
 
     await screen.findByText(/saved “my customer names”/i);
     expect(create).toHaveBeenCalledTimes(1);
@@ -128,9 +128,9 @@ describe("ReportBuilder — Saved Reports wiring (Fix 2)", () => {
     // Pick an object but select zero fields -- builderStatus(def) is "invalid", same as what
     // keeps Run disabled. A name alone must not be enough to enable Save.
     fireEvent.change(screen.getByLabelText("Object"), { target: { value: "customer" } });
-    fireEvent.change(screen.getByLabelText("Report name"), { target: { value: "Incomplete report" } });
+    fireEvent.change(screen.getByLabelText("Report Name"), { target: { value: "Incomplete report" } });
 
-    const saveButton = screen.getByRole("button", { name: "Save as new report" });
+    const saveButton = screen.getByRole("button", { name: "Save as New Report" });
     expect(saveButton.disabled).toBe(true);
 
     fireEvent.click(saveButton);
@@ -142,8 +142,8 @@ describe("ReportBuilder — Saved Reports wiring (Fix 2)", () => {
     withRouter(<ReportBuilder runReportFn={vi.fn()} savedReportServiceImpl={{ get: vi.fn(), create }} />);
 
     pickObjectAndField("customer", "Name");
-    fireEvent.change(screen.getByLabelText("Report name"), { target: { value: "X" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save as new report" }));
+    fireEvent.change(screen.getByLabelText("Report Name"), { target: { value: "X" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save as New Report" }));
 
     await screen.findByText(/couldn't be saved/i);
   });
@@ -166,7 +166,7 @@ describe("ReportBuilder — Saved Reports wiring (Fix 2)", () => {
     expect(base.getByRole("checkbox", { name: "Name" }).checked).toBe(true);
     expect(base.getByRole("checkbox", { name: "Status" }).checked).toBe(true);
     // The Save name field is pre-filled from the opened report's name.
-    expect(screen.getByLabelText("Report name").value).toBe("Saved One");
+    expect(screen.getByLabelText("Report Name").value).toBe("Saved One");
   });
 
   it("an unopenable saved report (bad base object) hydrates nothing and shows a safe refusal", async () => {

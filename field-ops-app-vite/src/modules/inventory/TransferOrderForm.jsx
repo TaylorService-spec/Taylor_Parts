@@ -90,7 +90,7 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions = [],
       </fieldset>
 
       <div className="fo-form-row">
-        <label htmlFor="transfer-serials">Serial numbers (SERIAL-tracked parts only — leave blank otherwise)</label>
+        <label htmlFor="transfer-serials">Serial Numbers (serial-tracked parts only — leave blank otherwise)</label>
         <textarea
           id="transfer-serials"
           rows={2}
@@ -103,7 +103,7 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions = [],
       </div>
 
       <div className="fo-form-actions">
-        <Button type="submit" variant="primary" disabled={submitting}>{submitting ? "Creating…" : "Create transfer"}</Button>
+        <Button type="submit" variant="primary" disabled={submitting}>{submitting ? "Creating…" : "Create Transfer"}</Button>
         <button type="button" className="fo-btn-secondary" onClick={onCancel} disabled={submitting}>Cancel</button>
       </div>
     </form>

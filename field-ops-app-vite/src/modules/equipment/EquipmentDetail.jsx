@@ -244,7 +244,7 @@ export default function EquipmentDetail() {
             records it. `installedOperatingCompany()` is the seam a later governed ownership fact
             composes into; until then this panel says nothing about it rather than guessing. */}
         <section className="fo-panel" aria-labelledby="equip-where">
-          <h2 id="equip-where">Customer &amp; location</h2>
+          <h2 id="equip-where">Customer &amp; Location</h2>
           <dl className="fo-detail-list">
             <dt>Customer</dt>
             <dd data-equipment-account>
@@ -261,7 +261,7 @@ export default function EquipmentDetail() {
                 <span className="fo-muted">Unknown customer</span>
               )}
             </dd>
-            <dt>Installed location</dt>
+            <dt>Installed Location</dt>
             <dd data-equipment-location>
               {locationsLoading ? (
                 <span className="fo-muted">Loading…</span>
@@ -291,7 +291,7 @@ export default function EquipmentDetail() {
             permit today. Grouping an available action beside unavailable ones under one
             "not available yet" note would make it read as gated too. */}
         <section className="fo-panel" aria-labelledby="equip-actions">
-          <h2 id="equip-actions">Lifecycle actions</h2>
+          <h2 id="equip-actions">Lifecycle Actions</h2>
           <div className="fo-btn-row">
             <button type="button" disabled data-equipment-action="move">Move</button>
             {retired ? (

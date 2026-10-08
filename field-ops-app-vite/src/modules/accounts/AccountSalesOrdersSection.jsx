@@ -1,6 +1,6 @@
 import { useAccountSalesOrders } from "../../hooks/useAccountSalesOrders.js";
 import { accountSalesOrdersView, ACCOUNT_SALES_ORDERS_STATE } from "../../domain/accountSalesOrdersView.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import FailureState from "../../shared/ui/FailureState";
@@ -28,8 +28,9 @@ function formatDate(millis) {
 
 export default function AccountSalesOrdersSection({ accountId }) {
   const { loading, errorStatus, result } = useAccountSalesOrders(accountId);
-  const { byEmployeeId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
   const view = accountSalesOrdersView({ loading, errorStatus, result });
+  // Name ONLY the people on these records (resolveEmployeeDisplayNames) -- not the Employee directory, which this reader may not hold.
+  const { byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory({ employeeIds: (view.rows ?? []).map((r) => r.ownerEmployeeId) });
 
   return (
     <section id="account-sales-orders-section" className="wo-history" aria-label="Sales Orders">
@@ -38,7 +39,7 @@ export default function AccountSalesOrdersSection({ accountId }) {
       {view.kind === ACCOUNT_SALES_ORDERS_STATE.LOADING && <p className="fo-muted">Loading sales orders…</p>}
 
       {view.kind === ACCOUNT_SALES_ORDERS_STATE.DENIED && (
-        <FailureState title="Sales Orders unavailable" message="You are not authorized to view Sales Orders for this account." />
+        <FailureState title="Sales Orders Unavailable" message="You are not authorized to view Sales Orders for this account." />
       )}
 
       {view.kind === ACCOUNT_SALES_ORDERS_STATE.UNAVAILABLE && (

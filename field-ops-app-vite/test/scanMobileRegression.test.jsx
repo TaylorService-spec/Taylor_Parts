@@ -133,7 +133,7 @@ describe("360–430px viewports", () => {
 describe("the scanning loop", () => {
   const mountInput = (over = {}) => {
     const onScan = vi.fn();
-    render(<ScanInput label="Scan item" placeholder="Scan or type" onScan={onScan} deps={scanInputDeps} {...over} />);
+    render(<ScanInput label="Scan Item" placeholder="Scan or type" onScan={onScan} deps={scanInputDeps} {...over} />);
     return onScan;
   };
   const scan = (value) => {

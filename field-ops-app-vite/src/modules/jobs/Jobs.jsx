@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { fieldPhaseTone } from "../../domain/fieldWorkOrder";
@@ -13,6 +13,9 @@ import { resolveEffectivePermission } from "../../access/resolveEffectivePermiss
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
 import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActivationOverrides";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
+import { workOrderStatusLabel, WORK_ORDER_STATUS_VALUES } from "../../domain/workOrderStatus";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 
 const previewHasPermission = createPermissionPreviewer(
   resolveEffectivePermission,
@@ -105,6 +108,21 @@ export default function Jobs() {
   // branch was also an `fo-btn-link` anchor while the protected branch was the Button primitive,
   // so the same control changed shape depending on who was looking at it. Both are the primitive
   // now; only the variant differs, which is what the variant is for.
+  // Client-side sort over the complete subscription (item C); its order is the default. Status sorts in
+  // lifecycle order, an unrecognised status after every known one.
+  const sortColumns = useMemo(() => ({
+    workOrder: { value: (job) => job.woNumber ?? job.id },
+    assigned: { value: (job) => {
+      const identity = resolveTechnicianIdentity(job.assignedTechId, { technicians, loading: techniciansLoading, error: techniciansError });
+      return identity.state === "unset" ? "Unassigned" : identity.name ?? null;
+    } },
+    status: { value: (job) => {
+      const i = WORK_ORDER_STATUS_VALUES.indexOf(job.status);
+      return i === -1 ? WORK_ORDER_STATUS_VALUES.length : i;
+    } },
+  }), [technicians, techniciansLoading, techniciansError]);
+  const { sort, toggle, sorted: sortedJobs } = useTableSort({ rows: jobs, columns: sortColumns });
+
   const actions = canCreateWorkOrder ? (
     <Link to="/service/work-orders/new" className="ns-collection__act-link">
       <Button variant="primary">New Work Order</Button>
@@ -197,13 +215,13 @@ export default function Jobs() {
             <table className="ns-table ns-collection__table">
               <thead>
                 <tr>
-                  <th scope="col">Work Order</th>
-                  <th scope="col">Assigned</th>
-                  <th scope="col">Status</th>
+                  <SortableHeader columnKey="workOrder" label="Work Order" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="assigned" label="Assigned" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
                 </tr>
               </thead>
               <tbody>
-                {jobs.map((job) => (
+                {sortedJobs.map((job) => (
                   // THE ROW DEFERS TO ITS ANCHOR — the shared collection grammar.
                   //
                   // This file previously recorded the opposite convention: "linking the WO number is
@@ -246,7 +264,7 @@ export default function Jobs() {
                     </td>
                     {/* WORDS + TONE, NO PILL (board 2e), collection-scoped. */}
                     <td data-label="Status">
-                      <span className={`ns-row__stage is-${fieldPhaseTone(job)}`}>{job.status}</span>
+                      <span className={`ns-row__stage is-${fieldPhaseTone(job)}`}>{workOrderStatusLabel(job.status)}</span>
                     </td>
                   </tr>
                 ))}

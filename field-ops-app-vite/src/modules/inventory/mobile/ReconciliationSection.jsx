@@ -30,8 +30,12 @@
 //     observation is never shown. Non-READY states never inspect observation contents.
 //   * PRIVACY. No raw errors, location/truck IDs, employee/customer data, custody, GPS,
 //     valuation, or unsupported fields are ever rendered.
-//   * DETERMINISTIC. Pure function of its `section` prop; order preserved; prop never mutated.
+//   * DETERMINISTIC. Pure function of its `section` prop; DEFAULT order preserved; prop never
+//     mutated. A person may sort a loaded item table by a column header (shared useTableSort,
+//     tri-state back to the default); that reorders a display copy only.
 import { useId } from "react";
+import { useTableSort } from "../../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../../shared/ui/sorting/SortableHeader.jsx";
 import { MOBILE_INVENTORY_SECTION_STATE } from "../../../domain/mobileLocationInventoryProjection.js";
 
 const { UNAVAILABLE, LOADING, DENIED, ERROR, READY } = MOBILE_INVENTORY_SECTION_STATE;
@@ -39,10 +43,10 @@ const KNOWN_STATES = Object.freeze([UNAVAILABLE, LOADING, DENIED, ERROR, READY])
 
 // Summary count fields (governed finite numbers), in display order.
 const COUNT_FIELDS = Object.freeze([
-  { key: "expectedSerialized", label: "Expected serialized" },
-  { key: "scannedSerialized", label: "Scanned serialized" },
-  { key: "expectedParts", label: "Expected parts" },
-  { key: "scannedParts", label: "Scanned parts" },
+  { key: "expectedSerialized", label: "Expected Serialized" },
+  { key: "scannedSerialized", label: "Scanned Serialized" },
+  { key: "expectedParts", label: "Expected Parts" },
+  { key: "scannedParts", label: "Scanned Parts" },
 ]);
 
 // Missing/Unexpected item columns (governed strings), in display order.
@@ -51,7 +55,7 @@ const ITEM_COLUMNS = Object.freeze([
   { key: "internalSku", label: "SKU" },
   { key: "label", label: "Label" },
   { key: "serial", label: "Serial" },
-  { key: "lastSeen", label: "Last seen" },
+  { key: "lastSeen", label: "Last Seen" },
   { key: "expected", label: "Expected" },
   { key: "actual", label: "Actual" },
   { key: "note", label: "Note" },
@@ -59,6 +63,17 @@ const ITEM_COLUMNS = Object.freeze([
 
 const COUNT_KEYS = Object.freeze(COUNT_FIELDS.map((c) => c.key));
 const ITEM_KEYS = Object.freeze(ITEM_COLUMNS.map((c) => c.key));
+
+// Client-side sort over a loaded item table by each column's governed text; "Last Seen" by
+// instant when it parses.
+const ITEM_SORT_COLUMNS = Object.freeze(Object.fromEntries(ITEM_COLUMNS.map((col) => [col.key, {
+  value: (item) => {
+    const v = displayString(item[col.key]);
+    if (col.key !== "lastSeen" || v === null) return v;
+    const ms = Date.parse(v);
+    return Number.isFinite(ms) ? ms : v;
+  },
+}])));
 
 function isPlainObject(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -144,6 +159,7 @@ function SummaryList({ observation }) {
 // Render one Missing/Unexpected list: a table of validated items, or an honest "none reported"
 // empty state. `variant` is "missing" | "unexpected".
 function ItemList({ items, variant, heading, caption, emptyText }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: items, columns: ITEM_SORT_COLUMNS });
   return (
     <div>
       <h4>{heading}</h4>
@@ -156,12 +172,12 @@ function ItemList({ items, variant, heading, caption, emptyText }) {
             <thead>
               <tr>
                 {ITEM_COLUMNS.map((col) => (
-                  <th key={col.key} scope="col">{col.label}</th>
+                  <SortableHeader key={col.key} columnKey={col.key} label={col.label} sort={sort} onSort={toggle} />
                 ))}
               </tr>
             </thead>
             <tbody>
-              {items.map((item, i) => {
+              {sorted.map((item, i) => {
                 // Row key combines a governed identity with the render index so repeated
                 // assetId/serial values can never collide (order preserved, read-only slice).
                 const identity = displayString(item.assetId) ?? displayString(item.serial) ?? displayString(item.internalSku) ?? "row";

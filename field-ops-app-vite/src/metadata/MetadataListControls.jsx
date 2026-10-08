@@ -246,6 +246,14 @@ export function ActiveCriteria({ criteria, entity, onRemove, onClear, valueOptio
   );
 }
 
+/**
+ * The field ids a column-header sort may offer (UI corrections item C): exactly the fields SortControl offers -- declared
+ * sortable AND readable by this viewer. One rule for both controls, so the header and the menu cannot disagree.
+ */
+export function sortableFieldIds(entity, hasCapability = null) {
+  return new Set(readable(entity?.fields, hasCapability).filter((f) => f.sortable).map((f) => f.id));
+}
+
 /** Sort. Only fields the object declares sortable, in each field type's own vocabulary. */
 export function SortControl({ entity, criteria, onSort, hasCapability = null }) {
   const options = useMemo(

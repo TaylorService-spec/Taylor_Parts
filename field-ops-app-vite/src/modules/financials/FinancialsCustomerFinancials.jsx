@@ -161,7 +161,7 @@ export default function FinancialsCustomerFinancials() {
           {showCompany ? (
             <section className="ns-section" aria-label="Operating company breakdown">
               <div className="ns-section__head">
-                <h2 className="ns-section__title">By operating company</h2>
+                <h2 className="ns-section__title">By Operating Company</h2>
                 <span className="ns-section__meta">· governed company per invoice, never inferred</span>
               </div>
               <p className="fin-truth-band" role="note">
@@ -175,7 +175,7 @@ export default function FinancialsCustomerFinancials() {
                   </caption>
                   <thead>
                     <tr>
-                      <th scope="col">Operating company</th>
+                      <th scope="col">Operating Company</th>
                       <th scope="col" className="ns-num">Invoices</th>
                       <th scope="col" className="ns-num">Billed</th>
                       <th scope="col" className="ns-num">Collected</th>
@@ -231,7 +231,7 @@ export default function FinancialsCustomerFinancials() {
 
               <section className="ns-section" aria-label="Financial history">
                 <div className="ns-section__head">
-                  <h2 className="ns-section__title">Financial history</h2>
+                  <h2 className="ns-section__title">Financial History</h2>
                   <span className="ns-section__meta">· newest first · every event links to its owning record</span>
                 </div>
                 <p className="ns-state ns-state--na">
@@ -245,7 +245,7 @@ export default function FinancialsCustomerFinancials() {
             <aside className="fin-rail">
               <section className="ns-section" aria-label="Open items">
                 <div className="ns-section__head">
-                  <h2 className="ns-section__title">Open items</h2>
+                  <h2 className="ns-section__title">Open Items</h2>
                 </div>
                 <p className="ns-state ns-state--na">
                   Unapplied payments and blocked billing carry their exception colours here when

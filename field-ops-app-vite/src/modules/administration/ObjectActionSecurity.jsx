@@ -45,7 +45,7 @@ export default function ObjectActionSecurityPanel({ api = adminControlPlaneClien
 
   return (
     <section className="fo-panel" aria-label="Object security actions">
-      <h3>Object security actions <span className="fo-muted">· enforced by the server evaluator</span></h3>
+      <h3>Object Security Actions <span className="fo-muted">· enforced by the server evaluator</span></h3>
       <p className="fo-muted">
         Each Object&rsquo;s own actions, and which Security Roles hold each one. A grant, revoke or
         condition here is written to the governed policy store, audited with your reason, and read by
@@ -191,7 +191,7 @@ export function GrantToRoleForm({ api, objectKey, actionKey, capabilityKey, role
           </label>
           <ConditionFields value={condition} onChange={setCondition} vocabulary={vocabulary} capabilityKey={capabilityKey} allowNone idPrefix={`new-${actionKey}`} />
           <ReasonField value={reason} onChange={setReason} />
-          <Button type="submit" variant="primary" disabled={!ready || busy}>Confirm grant</Button>
+          <Button type="submit" variant="primary" disabled={!ready || busy}>Confirm Grant</Button>
         </form>
       ) : null}
       <Outcome result={result} success="Granted by the server; re-reading." />

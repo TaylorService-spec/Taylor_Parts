@@ -174,7 +174,7 @@ const DENIED_READS = {
 
 test("rows whose governing read is DENIED say so, and are not omitted", () => {
   const rows = describePartLookup(part({ controlType: "SERIALIZED" }), DENIED_READS);
-  for (const label of ["Serialized units", "Location", "On hand", "Reserved", "Available", "On order"]) {
+  for (const label of ["Serialized Units", "Location", "On Hand", "Reserved", "Available", "On Order"]) {
     const row = rowFor(rows, label);
     assert.ok(row, `${label} must be present so its absence is not read as "none"`);
     assert.equal(row.state, FIELD_STATE.CAPABILITY_INACTIVE, `${label} should read as not-switched-on`);
@@ -185,7 +185,7 @@ test("rows whose governing read is DENIED say so, and are not omitted", () => {
 
 test("a balance row is never rendered as zero when the read did not happen", () => {
   for (const status of ["DENIED", "UNAVAILABLE", "LOADING"]) {
-    const row = rowFor(describePartLookup(part(), { balance: { status } }), "On hand");
+    const row = rowFor(describePartLookup(part(), { balance: { status } }), "On Hand");
     assert.equal(row.value, null, `${status} must not produce a number`);
     assert.notEqual(row.state, FIELD_STATE.KNOWN);
   }
@@ -198,7 +198,7 @@ test("NO_GOVERNED_READ was retired once the balance read existed", () => {
 
 test("a non-serialized part reports serialized units as NOT APPLICABLE, not as a gap", () => {
   // "Unknown" would send someone looking for a registry entry that should not exist.
-  const row = rowFor(describePartLookup(part({ controlType: "STANDARD" }), DENIED_READS), "Serialized units");
+  const row = rowFor(describePartLookup(part({ controlType: "STANDARD" }), DENIED_READS), "Serialized Units");
   assert.equal(row.state, FIELD_STATE.NOT_APPLICABLE);
   assert.match(row.detail, /not serialized/i);
 });
@@ -210,9 +210,9 @@ test("the inert capabilities are named exactly, and are the real catalog ids", (
 
 test("every authoritative field carries a real value, and every row is one or the other", () => {
   const rows = describePartLookup(part());
-  assert.equal(rowFor(rows, "Part number").value, "TS-1001");
-  assert.equal(rowFor(rows, "Catalog status").value, "ACTIVE");
-  assert.equal(rowFor(rows, "Stocking unit").value, "EACH");
+  assert.equal(rowFor(rows, "Part Number").value, "TS-1001");
+  assert.equal(rowFor(rows, "Catalog Status").value, "ACTIVE");
+  assert.equal(rowFor(rows, "Stocking Unit").value, "EACH");
   for (const row of rows) {
     assert.ok(Object.values(FIELD_STATE).includes(row.state), `${row.label} has no field state`);
     if (row.state === FIELD_STATE.KNOWN) assert.ok(row.value, `${row.label} claims KNOWN with no value`);

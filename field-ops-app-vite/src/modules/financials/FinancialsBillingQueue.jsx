@@ -25,7 +25,7 @@ import { unwiredReadHonestState } from "../../domain/financialsSurface.js";
 const VIEW_OPTIONS = [
   { key: "eligible", label: "Eligible" },
   { key: "blocked", label: "Blocked" },
-  { key: "partial", label: "Partially invoiced" },
+  { key: "partial", label: "Partially Invoiced" },
   { key: "all", label: "All" },
 ];
 
@@ -43,7 +43,7 @@ export default function FinancialsBillingQueue() {
       action={
         <span className="fin-action-slot">
           <button type="button" className="fin-primary-action" disabled>
-            Create invoices
+            Create Invoices
           </button>
           <span className="fin-inact">
             Issuing isn&rsquo;t wired to this queue yet, and no items are listed to issue
@@ -65,7 +65,7 @@ export default function FinancialsBillingQueue() {
             of a full-width ruled row empty. */}
         <div className="fin-scorecard fin-scorecard--pair">
           <div className="fin-scorecard__slot">
-            <FinancialFigure label="Eligible to invoice" factClass="OPERATIONAL_ACTUAL" absence="No readiness read" />
+            <FinancialFigure label="Eligible to Invoice" factClass="OPERATIONAL_ACTUAL" absence="No readiness read" />
           </div>
           <div className="fin-scorecard__slot">
             <FinancialFigure label="Blocked" factClass="OPERATIONAL_ACTUAL" absence="No readiness read" />
@@ -73,7 +73,7 @@ export default function FinancialsBillingQueue() {
         </div>
       </section>
 
-      <FilterBar variant="views" label="Queue views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
+      <FilterBar variant="views" label="Queue Views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
 
       <FinancialsHonestSection
         id="fin-billing-queue"
@@ -97,7 +97,7 @@ export default function FinancialsBillingQueue() {
                 <th scope="col" className="ns-num">Amount</th>
                 <th scope="col">Eligibility</th>
                 <th scope="col" className="ns-num">Age</th>
-                <th scope="col">Invoice state</th>
+                <th scope="col">Invoice State</th>
               </tr>
             </thead>
           </table>

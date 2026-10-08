@@ -194,7 +194,8 @@ describe("Available Equipment renders the locked 1b table", () => {
     mockAvailableEquipmentSource = { connected: true, status: "ready", assets: [TAYLOR_ASSET] };
     const { container } = withRouter(<AvailableEquipment />);
     const table = screen.getByRole("table", { name: /available serialized assets/i });
-    expect([...table.querySelectorAll("thead th")].map((th) => th.textContent))
+    // Each header is a sortable column; its label is the first span inside the sort button.
+    expect([...table.querySelectorAll("thead th")].map((th) => th.querySelector("button > span")?.textContent ?? th.textContent))
       .toEqual(["Unit", "Serial", "Model", "Condition", "Location"]);
     expect(within(table).getByText("CW-C161-0001")).toBeTruthy();
     expect(within(table).getByText("Location unavailable")).toBeTruthy();
@@ -216,7 +217,10 @@ describe("Available Equipment renders the locked 1b table", () => {
     mockAvailableEquipmentSource = { connected: true, status: "ready", assets: [TAYLOR_ASSET] };
     const { container } = withRouter(<AvailableEquipment />);
     const table = container.querySelector("table");
-    expect(within(table).queryByRole("button")).toBeNull();
+    // The only buttons in the table are the column-sort headers; no row carries an action and nothing installs.
+    expect(within(table.querySelector("tbody")).queryByRole("button")).toBeNull();
+    expect(within(table).queryByRole("button", { name: /install/i })).toBeNull();
+    expect(within(table).getAllByRole("button").every((btn) => btn.closest("th[data-sort-key]"))).toBe(true);
     expect(container.querySelector("[data-install-via-work-order]").textContent).toMatch(/INSTALL Work Order/);
     // The inventory is still visible — seeing what the company owns is a different question.
     expect(within(table).getByText("CW-C161-0001")).toBeTruthy();

@@ -75,15 +75,15 @@ describe("Manufacturers — metadata list runtime migration (S-INV-MANUFACTURERS
     const row = screen.getByText("Beta Industrial").closest("tr");
     fireEvent.click(within(row).getByRole("button", { name: "Status" }));
 
-    expect(await screen.findByRole("heading", { name: "Change status — Beta Industrial" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Change Status — Beta Industrial" })).toBeTruthy();
     expect(document.body.textContent.includes("doc-beta-456")).toBe(false);
   });
 
-  it("EMPTY: distinct from denied/unavailable, and keeps the actionable copy pointing at New manufacturer", async () => {
+  it("EMPTY: distinct from denied/unavailable, and keeps the actionable copy pointing at New Manufacturer", async () => {
     fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: [], invalidCount: 0 });
     render(<Manufacturers />);
     await screen.findByText(/No manufacturers are recorded yet/);
-    expect(screen.getByText(/Use “New manufacturer” to create the first governed record/)).toBeTruthy();
+    expect(screen.getByText(/Use “New Manufacturer” to create the first governed record/)).toBeTruthy();
   });
 
   it("DENIED: distinct wording from EMPTY and UNAVAILABLE", async () => {

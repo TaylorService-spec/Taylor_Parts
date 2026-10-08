@@ -126,7 +126,7 @@ describe("Approval Requests", () => {
     privilegedApprovalClient.listAll.mockRejectedValue(new Error("permission-denied"));
     render(<ApprovalRequests />);
 
-    expect(await screen.findByText("Not available")).toBeTruthy();
+    expect(await screen.findByText("Not Available")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
     expect(screen.queryByText("No privileged Role requests are waiting for a decision.")).toBeNull();
   });

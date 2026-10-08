@@ -4,7 +4,7 @@ import { useOpportunity } from "../../hooks/useOpportunity.js";
 import { useOpportunityTransitions } from "../../hooks/useOpportunityTransitions.js";
 import { useOpportunitySectionSave } from "../../hooks/useOpportunitySectionSave.js";
 import { useSalesAgreement } from "../../hooks/useSalesAgreement.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import { opportunityView, OPPORTUNITY_VIEW_STATE } from "../../domain/opportunityView.js";
 import { opportunityDetailModel } from "../../domain/opportunityFieldModel.js";
 import { isOpportunityEditable } from "../../domain/opportunitySectionSave.js";
@@ -91,7 +91,8 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
   const agreement = useSalesAgreement(opportunityId, {
     enabled: hasCapability(SALES_AGREEMENT_READ_CAPABILITY) === true,
   });
-  const directory = useEmployeeDirectory();
+  // Name ONLY the people on this record (resolveEmployeeDisplayNames) -- not the Employee directory, which this reader may not hold.
+  const directory = useGovernedEmployeeDirectory({ employeeIds: ready ? [view.ownerEmployeeId, view.accountableEmployeeId] : [] });
   const [editingSection, setEditingSection] = useState(null);
 
   const nowMillis = Date.now();
@@ -157,7 +158,7 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
         <HonestState
           state={HONEST_STATE.UNAVAILABLE}
           detail="Couldn’t load this opportunity."
-          action={<button type="button" className="fo-button" onClick={refetch}>Try again</button>}
+          action={<button type="button" className="fo-button" onClick={refetch}>Try Again</button>}
         />
       </div>
     );

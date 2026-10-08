@@ -19,6 +19,7 @@ import {
 } from "../../domain/dispatchSchedulingBoard";
 import { buildScheduleInput } from "../../domain/schedulingWorkspace";
 import { WORK_ORDER_STATUS_LABEL } from "../../domain/workOrderStatus";
+import { workOrderTypeLabel } from "../../domain/workOrderType";
 import { Button } from "../../shared/ui/primitives/index.js";
 
 // Wave 7 completion, PART 1 -- the combined Dispatch / Scheduling operating workspace.
@@ -127,7 +128,7 @@ export default function DispatchSchedulingWorkspace({ nowMillis, initialDayMilli
       <div className="fo-panel">
         <WorkspaceHeader title="Dispatch / Scheduling" />
         <FailureState
-          title="Board unavailable"
+          title="Board Unavailable"
           message="The dispatch board could not be loaded. You may not have access, or the connection failed. Try again later."
         />
       </div>
@@ -196,9 +197,9 @@ export default function DispatchSchedulingWorkspace({ nowMillis, initialDayMilli
 
       <div className="fo-dboard-toolbar">
         <div className="fo-dboard-daynav" role="group" aria-label="Day navigation">
-          <Button variant="tertiary" onClick={() => setDayMillis((d) => addDaysMillis(d, -1))}>‹ Previous day</Button>
+          <Button variant="tertiary" onClick={() => setDayMillis((d) => addDaysMillis(d, -1))}>‹ Previous Day</Button>
           <Button variant="tertiary" onClick={() => setDayMillis(startOfTodayMillis(now))}>Today</Button>
-          <Button variant="tertiary" onClick={() => setDayMillis((d) => addDaysMillis(d, 1))}>Next day ›</Button>
+          <Button variant="tertiary" onClick={() => setDayMillis((d) => addDaysMillis(d, 1))}>Next Day ›</Button>
           <span className="fo-dboard-daylabel">{fmtDayHeading(board.dayMillis)}</span>
         </div>
         <div className="fo-dboard-summary">
@@ -241,7 +242,7 @@ export default function DispatchSchedulingWorkspace({ nowMillis, initialDayMilli
         )}
         {board.unassignedScheduledToday.length > 0 && (
           <div className="fo-dboard-unassigned">
-            <h4>Scheduled today, no matching technician</h4>
+            <h4>Scheduled Today, No Matching Technician</h4>
             <ul>
               {board.unassignedScheduledToday.map((job) => (
                 <li key={job.id}>
@@ -369,7 +370,7 @@ function ReadyCard({ wo, onDragStart, onDragEnd, onSchedule }) {
         <span className="fo-dboard-readycard__wo">{wo.woNumber}</span>
         <StatusChip status={wo.status} />
       </div>
-      {wo.type ? <div className="fo-muted">{wo.type}</div> : null}
+      {workOrderTypeLabel(wo.type) ? <div className="fo-muted">{workOrderTypeLabel(wo.type)}</div> : null}
       <Button variant="secondary" onClick={onSchedule}>Schedule</Button>
     </div>
   );

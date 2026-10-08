@@ -26,7 +26,7 @@ describe("RentalWorkspace", () => {
   it("answers where each unit is and who holds it; due back and billing exceptions first", async () => {
     const { container } = render(<RentalWorkspace callApi={api()} />);
     await screen.findByText("Harbor Grill (customer)");
-    expect(container.textContent).toMatch(/taylor \(owner\)/);
+    expect(container.textContent).toMatch(/Taylor \(owner\)/);
     expect(container.textContent).toMatch(/Due in 5 day\(s\)/);
     expect(container.textContent).toMatch(/charged only through 2026-09-20/);
     expect(container.textContent).not.toMatch(/\bON_RENT\b/);
@@ -37,18 +37,18 @@ describe("RentalWorkspace", () => {
     render(<RentalWorkspace callApi={callApi} />);
     fireEvent.click((await screen.findAllByRole("button", { name: "RA-2026-000001" }))[0]);
     await screen.findByText(/ownership never transfers/);
-    fireEvent.change(screen.getByLabelText("Period start"), { target: { value: "2026-09-01" } });
-    fireEvent.change(screen.getByLabelText("Period end (exclusive)"), { target: { value: "2026-09-08" } });
-    fireEvent.click(screen.getByRole("button", { name: "Record charge" }));
+    fireEvent.change(screen.getByLabelText("Period Start"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("Period End (Exclusive)"), { target: { value: "2026-09-08" } });
+    fireEvent.click(screen.getByRole("button", { name: "Record Charge" }));
     await screen.findByText(/tax is never assumed/);
     fireEvent.change(screen.getByLabelText("Tax"), { target: { value: "56.00" } });
-    fireEvent.click(screen.getByRole("button", { name: "Record charge" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Charge" }));
     await waitFor(() => expect(callApi).toHaveBeenCalledWith("recordRentalCharge", expect.objectContaining({ agreementId: "rag-1", kind: "PERIOD",
       periodStart: "2026-09-01", periodEnd: "2026-09-08", taxEvidence: { status: "DETERMINED", amountMinor: 5600 } })));
   });
 
   it("renders the server's refusal", async () => {
     render(<RentalWorkspace callApi={vi.fn(async () => ({ ok: false, code: "FORBIDDEN" }))} />);
-    await screen.findByText(/rental.agreement.read/);
+    await screen.findByText(/Rental Agreement read access/);
   });
 });

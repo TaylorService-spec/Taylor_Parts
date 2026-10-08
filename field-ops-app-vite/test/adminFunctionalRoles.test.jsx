@@ -46,7 +46,7 @@ describe("Administration > Users > Functional Roles", () => {
     const workforce = fakeWorkforce();
     render(<MemoryRouter><AdminFunctionalRoles workforce={workforce} /></MemoryRouter>);
     await waitFor(() => expect(document.querySelector("[data-functional-role-rows='2']")).not.toBeNull());
-    expect(document.querySelector("[data-functional-role-row='vendor-returns']").textContent).toContain("INACTIVE");
+    expect(document.querySelector("[data-functional-role-row='vendor-returns']").textContent).toContain("Inactive");
     fireEvent.click(screen.getByRole("button", { name: "Open warranty-desk" }));
     await waitFor(() => expect(document.querySelector("[data-functional-role-holders='1']")).not.toBeNull());
     expect(document.querySelector("[data-functional-role-events='1']").textContent).toContain("functionalRole.catalog.create");
@@ -158,7 +158,7 @@ describe("Workflows: FUNCTIONAL_ROLE bindings", () => {
     render(<EmployeeWorkflowResponsibilities api={api} principalId="p-1" />);
     await waitFor(() => expect(document.querySelector('[data-workflow-responsibilities="READY"]')).not.toBeNull());
     const row = document.querySelector('[data-responsibility="workOrder/go"]');
-    expect(row.querySelector("[data-functional-role-requirement]").textContent).toBe("requires one of warranty-desk; holds warranty-desk");
+    expect(row.querySelector("[data-functional-role-requirement]").textContent).toBe("requires one of Warranty Desk; holds Warranty Desk");
     expect(row.querySelector("[data-responsibility-source]").getAttribute("data-responsibility-source")).toBe("WORKFLOW_BINDING_FUNCTIONAL_ROLE_AND_EFFECTIVE_AUTHORITY");
     const inert = document.querySelector('[data-inert-binding="salesOrder/close"]');
     expect(inert.textContent).toContain("SECURITY_ROLE_BINDING_REQUIRED");
@@ -176,7 +176,7 @@ describe("Effective Access: Functional Roles are Employee FACTS, never a permiss
     render(<EmployeeEffectiveAccess api={api} principalId="p-1" />);
     await waitFor(() => expect(document.querySelector('[data-effective-access="READY"]')).not.toBeNull());
     const facts = document.querySelector("[data-employee-facts='1']");
-    expect(facts.textContent).toContain("Employee facts — not a permission source");
+    expect(facts.textContent).toContain("Employee Facts — Not a Permission Source");
     expect(facts.querySelector("[data-functional-role-fact='warranty-desk']")).not.toBeNull();
     expect(document.querySelector("[data-effective-access-context]").textContent).not.toContain("warranty-desk");
   });

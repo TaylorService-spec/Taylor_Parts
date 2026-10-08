@@ -64,10 +64,10 @@ export default function SyncQueue({ runtime, onClose }) {
 
       <div className="fo-sync-queue__actions">
         <Button variant="secondary" onClick={() => sync(true)} disabled={syncing}>
-          {syncing ? "Syncing…" : "Sync now"}
+          {syncing ? "Syncing…" : "Sync Now"}
         </Button>
         {summary.synced > 0 ? (
-          <Button variant="secondary" onClick={clearSettled}>Clear sent items</Button>
+          <Button variant="secondary" onClick={clearSettled}>Clear Sent Items</Button>
         ) : null}
       </div>
 
@@ -106,14 +106,14 @@ function ConflictItem({ intent, onRetry, onDiscard }) {
       <p className="fo-sync-item__next">{card.next}</p>
 
       <div className="fo-sync-item__actions">
-        <Button variant="secondary" onClick={() => onRetry(card.intentId)}>Try again</Button>
+        <Button variant="secondary" onClick={() => onRetry(card.intentId)}>Try Again</Button>
         {confirmingDiscard ? (
           <>
             {/* Discarding is the one destructive act here, so it is never one tap, and the cost is
                 stated rather than implied. */}
             <span className="fo-sync-item__confirm">Delete this entry for good?</span>
-            <Button variant="secondary" onClick={() => onDiscard(card.intentId)}>Yes, delete</Button>
-            <Button variant="secondary" onClick={() => setConfirmingDiscard(false)}>Keep it</Button>
+            <Button variant="secondary" onClick={() => onDiscard(card.intentId)}>Yes, Delete</Button>
+            <Button variant="secondary" onClick={() => setConfirmingDiscard(false)}>Keep It</Button>
           </>
         ) : (
           <Button variant="secondary" onClick={() => setConfirmingDiscard(true)}>Discard</Button>

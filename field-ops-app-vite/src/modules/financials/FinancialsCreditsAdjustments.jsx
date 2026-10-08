@@ -22,7 +22,7 @@ import FilterBar from "../../shared/ui/FilterBar";
 import { unwiredReadHonestState } from "../../domain/financialsSurface.js";
 
 const TYPE_OPTIONS = [
-  { key: "all", label: "All types" },
+  { key: "all", label: "All Types" },
   { key: "credit", label: "Credit" },
   { key: "adjustment", label: "Adjustment" },
   { key: "refund", label: "Refund" },
@@ -31,7 +31,7 @@ const TYPE_OPTIONS = [
 
 const VIEW_OPTIONS = [
   { key: "all", label: "All" },
-  { key: "awaiting", label: "Awaiting approval" },
+  { key: "awaiting", label: "Awaiting Approval" },
   { key: "approved", label: "Approved" },
   { key: "declined", label: "Declined" },
 ];
@@ -50,7 +50,7 @@ export default function FinancialsCreditsAdjustments() {
       action={
         <span className="fin-action-slot">
           <button type="button" className="fin-primary-action" disabled>
-            New correction
+            New Correction
           </button>
           <span className="fin-inact">
             Corrections aren&rsquo;t wired to this surface · approval policy not configured
@@ -60,8 +60,8 @@ export default function FinancialsCreditsAdjustments() {
       }
     >
       <FinancialsFilterRail company={company} onCompanyChange={setCompany} />
-      <FilterBar variant="chips" label="Correction type" options={TYPE_OPTIONS} activeKey={type} onChange={setType} />
-      <FilterBar variant="views" label="Approval state" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
+      <FilterBar variant="chips" label="Correction Type" options={TYPE_OPTIONS} activeKey={type} onChange={setType} />
+      <FilterBar variant="views" label="Approval State" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
 
       <FinancialsHonestSection
         id="fin-corrections"
@@ -76,7 +76,7 @@ export default function FinancialsCreditsAdjustments() {
             <thead>
               <tr>
                 <th scope="col">Correction</th>
-                <th scope="col">Original event</th>
+                <th scope="col">Original Event</th>
                 <th scope="col">Type</th>
                 <th scope="col" className="ns-num">Amount</th>
                 <th scope="col">Reason</th>

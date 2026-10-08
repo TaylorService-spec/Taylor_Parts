@@ -108,7 +108,7 @@ function CapabilityList({ capabilities, tone, environmentId }) {
       {capabilities.map((c) => (
         <li key={c.id}>
           <code>{c.id}</code>
-          {tone === "inert" && <StatusPill tone="attention" label="inert" asText />}
+          {tone === "inert" && <StatusPill tone="attention" label="Inert" asText />}
           {/* Catalogue-inert but reachable HERE. Said on the row rather than only in the
               heading, because this is the fact that changes when the same role is read against
               production -- and an administrator planning production needs to see which lines
@@ -209,17 +209,17 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
         access ? (
           <ContextBand
             items={[
-              { key: "effective", label: "Can actually do", value: access.effective.length },
+              { key: "effective", label: "Can Actually Do", value: access.effective.length },
               // Counted separately and never folded into the total: a granted capability
               // that denies for everyone HERE is not authority, and a single number would
               // say it was.
-              { key: "inert", label: "Granted but inert", value: access.inert.length },
+              { key: "inert", label: "Granted but Inert", value: access.inert.length },
               // Only shown when it is non-zero, because on most roles in most environments it
               // is zero and a permanent 0 teaches a reader to stop seeing the row.
               ...(access.environmentActivated.length > 0
                 ? [{ key: "envActivated", label: `Active because of ${environmentId ?? "this environment"}`, value: access.environmentActivated.length }]
                 : []),
-              { key: "catalog", label: "Capabilities in catalog", value: diagnostics.catalogSize },
+              { key: "catalog", label: "Capabilities in Catalog", value: diagnostics.catalogSize },
               { key: "active", label: "Active in catalog", value: diagnostics.activeCount },
             ]}
           />
@@ -260,7 +260,7 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
               than under them -- and now literally the same component, so a grant cannot read one
               way here and another way there. */}
           <section className="fo-panel" aria-label="Business object reach">
-            <h3>Business objects and fields</h3>
+            <h3>Business Objects and Fields</h3>
             <p className="fo-muted">
               What this role can touch. C = Create, R = Read, E = Edit, D = Delete. A tick is
               granted, a blank box is not, and a dash means no capability exists for that verb — it
@@ -284,7 +284,7 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
           <div className="fo-panel">
             <Field
               id="role-capability-filter"
-              label="Filter capabilities"
+              label="Filter Capabilities"
               hint="Matches the capability id and its description, across all three lists below."
             >
               <input
@@ -297,7 +297,7 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
           </div>
 
           <section className="fo-panel" aria-label="Capabilities this role can use">
-            <h3>Can actually do ({countLabel(shown.effective.length, access.effective.length)})</h3>
+            <h3>Can Actually Do ({countLabel(shown.effective.length, access.effective.length)})</h3>
             {access.environmentActivated.length > 0 && (
               <p className="fo-muted">
                 {access.environmentActivated.length} of these are registered inactive in the catalog and
@@ -326,7 +326,7 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
 
           {shown.inert.length > 0 && (
             <section className="fo-panel" aria-label="Granted but inert">
-              <h3>Granted, but denies anyway ({countLabel(shown.inert.length, access.inert.length)})</h3>
+              <h3>Granted, but Denies Anyway ({countLabel(shown.inert.length, access.inert.length)})</h3>
               <p className="fo-muted">
                 These are registered inactive in the permission catalog{" "}
                 <strong>and {environmentId ?? "this environment"} does not activate them</strong>, so they
@@ -340,7 +340,7 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
 
           {shown.unknown.length > 0 && (
             <section className="fo-panel" aria-label="Grants pointing at nothing">
-              <h3>Grants the catalog does not define ({countLabel(shown.unknown.length, access.unknown.length)})</h3>
+              <h3>Grants the Catalog Does Not Define ({countLabel(shown.unknown.length, access.unknown.length)})</h3>
               <p className="fo-muted">
                 This role names capability ids that do not exist. Shown rather than filtered out,
                 because a typo and a deletion look identical once both are dropped silently.
@@ -357,17 +357,17 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
       )}
 
       <section className="fo-panel" aria-label="System diagnostics">
-        <h3>System diagnostics</h3>
+        <h3>System Diagnostics</h3>
         <p className="fo-muted">
           Findings that only appear when every role is read together — none of these are visible from
           any single role.
         </p>
         <Button type="button" variant="secondary" onClick={() => setShowDiagnostics((v) => !v)}>
-          {showDiagnostics ? "Hide" : "Show"} diagnostics
+          {showDiagnostics ? "Hide" : "Show"} Diagnostics
         </Button>
         {showDiagnostics && (
           <>
-            <h4>Capabilities nobody can use ({diagnostics.unreachable.length})</h4>
+            <h4>Capabilities Nobody Can Use ({diagnostics.unreachable.length})</h4>
             <p className="fo-muted">
               In the catalog, granted to no role on the roster. Nothing in the product says so, which is
               how a capability reads as available when it is unreachable.
@@ -378,12 +378,12 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
                   <code>{u.id}</code>
                   {/* Doubly unavailable, and saying which stops someone "fixing" it with a
                       grant that would still deny. */}
-                  {!u.active && <StatusPill tone="attention" label="also inert" asText />}
+                  {!u.active && <StatusPill tone="attention" label="Also Inert" asText />}
                 </li>
               ))}
             </ul>
 
-            <h4>Grants that deny anyway ({diagnostics.inertGrants.length})</h4>
+            <h4>Grants That Deny Anyway ({diagnostics.inertGrants.length})</h4>
             <ul className="fo-role-caps">
               {diagnostics.inertGrants.map((g) => (
                 <li key={`${g.roleId}:${g.id}`}>
@@ -394,7 +394,7 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
 
             {diagnostics.rolesWithNothing.length > 0 && (
               <>
-                <h4>Roles granting nothing ({diagnostics.rolesWithNothing.length})</h4>
+                <h4>Roles Granting Nothing ({diagnostics.rolesWithNothing.length})</h4>
                 <p className="fo-muted">
                   Sometimes correct — a least-privilege baseline is meant to be empty — and sometimes a
                   role that was defined and never filled in. The screen cannot tell which; a person can.

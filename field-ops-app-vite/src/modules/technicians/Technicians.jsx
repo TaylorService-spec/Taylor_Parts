@@ -9,6 +9,16 @@ import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import FailureState from "../../shared/ui/FailureState";
+import { statusLabel } from "../../shared/display/displayLabels.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+
+// Client-side sort over the live roster already loaded (item C); the subscription's order is the default.
+const TECHNICIAN_SORT_COLUMNS = {
+  name: { value: (t) => t.name },
+  phone: { value: (t) => t.phone },
+  status: { value: (t) => statusLabel(t.status) },
+};
 
 // A technician is: { id, name, phone, status }
 // status is one of "available" | "on_job" | "off_shift"
@@ -42,6 +52,7 @@ export default function Technicians() {
   const [focusRowId, setFocusRowId] = useState(null);
   const focusedOnceRef = useRef(null);
   const newRowRef = useRef(null);
+  const { sort, toggle, sorted } = useTableSort({ rows: technicians, columns: TECHNICIAN_SORT_COLUMNS });
 
   useEffect(() => {
     if (focusRowId && focusRowId !== focusedOnceRef.current && newRowRef.current) {
@@ -95,13 +106,13 @@ export default function Technicians() {
           <table className="fo-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Status</th>
+                <SortableHeader columnKey="name" label="Name" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="phone" label="Phone" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
               </tr>
             </thead>
             <tbody>
-              {technicians.map((tech) => (
+              {sorted.map((tech) => (
                 <tr
                   key={tech.id}
                   ref={tech.id === focusRowId ? newRowRef : null}
@@ -110,7 +121,7 @@ export default function Technicians() {
                   <td>{tech.name}</td>
                   <td>{tech.phone}</td>
                   <td>
-                    <StatusPill tone={technicianStatusTone(tech.status)} label={tech.status} />
+                    <StatusPill tone={technicianStatusTone(tech.status)} label={statusLabel(tech.status)} />
                   </td>
                 </tr>
               ))}

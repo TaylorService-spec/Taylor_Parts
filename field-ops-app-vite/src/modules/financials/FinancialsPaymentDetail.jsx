@@ -15,12 +15,9 @@
 // The URL carries the document id because a URL is technical identity; the visible header does not.
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
-import {
-  FinancialsPageFrame,
-  FinancialsHonestSection,
-  FinancialFigure,
-  FinAnnotation,
-} from "./FinancialsPrimitives.jsx";
+import { FinancialsPageFrame, FinancialsHonestSection, FinancialFigure, FinAnnotation, FinSortableHeader } from "./FinancialsPrimitives.jsx";
+import { companyWords } from "./financialsDisplay.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useAccountNames } from "../../hooks/useAccountNames.js";
 import {
@@ -34,6 +31,11 @@ import {
 
 const dateWords = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateString() : "Not recorded");
 const money = (minor, currency) => formatByCurrency(currency ? { [currency]: minor } : {});
+const APPLICATION_COLUMNS = Object.freeze({
+  invoice: { value: (a) => (a.invoice ? a.invoiceNumber : null) },
+  appliedOn: { value: (a) => (typeof a.appliedAtMillis === "number" ? a.appliedAtMillis : null) },
+  amount: { value: (a) => a.appliedAmountMinor ?? null },
+});
 
 export default function FinancialsPaymentDetail() {
   const { paymentId } = useParams();
@@ -60,6 +62,9 @@ export default function FinancialsPaymentDetail() {
 
   const names = useAccountNames(payment?.accountId ? [payment.accountId] : []);
   const customerName = payment?.accountId ? (names.get(payment.accountId) ?? null) : null;
+
+  // Column sorting is a display order over the applications already returned.
+  const { sort, toggle, sorted: sortedApplications } = useTableSort({ rows: applications, columns: APPLICATION_COLUMNS });
 
   const identity = payment ? paymentIdentity(payment, customerName) : "Payment";
   const context = payment ? paymentContext(payment, applications) : null;
@@ -130,11 +135,11 @@ export default function FinancialsPaymentDetail() {
                       )}
                     </td>
                   </tr>
-                  <tr><th scope="row">Operating company</th><td>{payment.companyId ?? "Not attributed"}</td></tr>
-                  <tr><th scope="row">Cash received</th><td>{dateWords(payment.receivedAtMillis)}</td></tr>
+                  <tr><th scope="row">Operating Company</th><td>{companyWords(payment.companyId, { short: false })}</td></tr>
+                  <tr><th scope="row">Cash Received</th><td>{dateWords(payment.receivedAtMillis)}</td></tr>
                   <tr><th scope="row">Method</th><td>{payment.method ?? "Not recorded"}</td></tr>
                   <tr>
-                    <th scope="row">External reference</th>
+                    <th scope="row">External Reference</th>
                     {/* undefined and null mean different things here. The deployed function can be
                         older than this bundle, in which case the field is simply ABSENT from the
                         response — saying "None recorded" then would assert the receipt carries no
@@ -154,7 +159,7 @@ export default function FinancialsPaymentDetail() {
 
             <section className="ns-section" aria-label="Applications">
               <div className="ns-section__head">
-                <h2 className="ns-section__title">Applied to</h2>
+                <h2 className="ns-section__title">Applied To</h2>
                 <span className="ns-section__meta">· each application is its own governed fact</span>
               </div>
               {applications.length > 0 ? (
@@ -163,13 +168,13 @@ export default function FinancialsPaymentDetail() {
                     <caption className="fo-sr-only">Invoices this receipt was applied to</caption>
                     <thead>
                       <tr>
-                        <th scope="col">Invoice</th>
-                        <th scope="col">Applied on</th>
-                        <th scope="col" className="ns-num">Amount</th>
+                        <FinSortableHeader columnKey="invoice" label="Invoice" sort={sort} onSort={toggle} />
+                        <FinSortableHeader columnKey="appliedOn" label="Applied On" sort={sort} onSort={toggle} />
+                        <FinSortableHeader columnKey="amount" label="Amount" sort={sort} onSort={toggle} className="ns-num" />
                       </tr>
                     </thead>
                     <tbody>
-                      {applications.map((a) => (
+                      {sortedApplications.map((a) => (
                         <tr key={a.applicationId}>
                           <td className="fin-nowrap">
                             {a.invoice ? (
@@ -207,7 +212,7 @@ export default function FinancialsPaymentDetail() {
 
             <section className="ns-section" aria-label="Technical details">
               <div className="ns-section__head">
-                <h2 className="ns-section__title">Technical details</h2>
+                <h2 className="ns-section__title">Technical Details</h2>
               </div>
               <p className="fin-section-note fin-identity-line">
                 Record identifier <code>{payment.paymentId}</code>

@@ -56,6 +56,18 @@ import { useLocationsForAccount } from "../src/hooks/useLocationsForAccount";
 import { useContactsForAccount } from "../src/hooks/useContactsForAccount";
 import AccountDetail from "../src/modules/accounts/AccountDetail.jsx";
 
+// UI corrections integration (2026-10-08): these pages read names from the GOVERNED EOS directory
+// (useGovernedEmployeeDirectory). It is mocked to answer from the same fixture directory as before.
+vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
+  const legacy = await import("../src/hooks/useEmployeeDirectory");
+  return {
+    useGovernedEmployeeDirectory: (...args) => legacy.useEmployeeDirectory(...args),
+    ...(await vi.importActual("../src/domain/actorDisplayName.js")),
+    resetGovernedEmployeeDirectory: () => {},
+  };
+});
+
+
 const PERMISSION_ERROR_COPY = "You do not have permission to view these customers.";
 
 function renderDetail() {
@@ -202,7 +214,7 @@ describe("AccountDetail -- Edit save fail-closed on a blocked write", () => {
     mockUpdateAccount.mockResolvedValue({ blocked: true });
     renderDetail();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit customer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Customer" }));
     expect(screen.getByRole("button", { name: "Save Changes" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
@@ -216,7 +228,7 @@ describe("AccountDetail -- Edit save fail-closed on a blocked write", () => {
     );
     expect(screen.getByRole("button", { name: "Save Changes" })).toBeTruthy();
     // The read-only Account Summary (rendered only when NOT editing) never appears.
-    expect(screen.queryByRole("button", { name: "Edit customer" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit Customer" })).toBeNull();
   });
 
   it("a successful save closes the edit form as before", async () => {
@@ -224,11 +236,11 @@ describe("AccountDetail -- Edit save fail-closed on a blocked write", () => {
     mockUpdateAccount.mockResolvedValue({ id: "acct-1" });
     renderDetail();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit customer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Customer" }));
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 
     await waitFor(() => expect(mockUpdateAccount).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Edit customer" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit Customer" })).toBeTruthy());
     expect(screen.queryByRole("button", { name: "Save Changes" })).toBeNull();
   });
 });

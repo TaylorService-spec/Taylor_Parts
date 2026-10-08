@@ -4,9 +4,10 @@ import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isValidPaymentTe
 import { accountSaveErrorMessage } from "../../domain/accountPortfolio";
 import { useAuth } from "../../auth/AuthContext";
 import { ACCOUNT_FIELD_INPUT_ID } from "./accountFieldInputs.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import AddressFields from "../../shared/address/AddressFields";
-import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
+import Autocomplete from "../../shared/ui/Autocomplete.jsx";
+import { callWorkspaceApi } from "../../services/workspaceApiClient.js";
 import IdentityLine from "./IdentityLine";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
@@ -27,13 +28,11 @@ import { Button } from "../../shared/ui/primitives";
 // it). `contacts`/`contactsLoading` (this Account's own contacts) are passed
 // in edit mode so the billing-contact picker only offers a contact belonging
 // to this Account, and billing validation waits for the list to resolve.
-// accountOwner is captured as a COMPLETE Person Assignment: the reciprocally
-// linked assignee (employeeId + userId) and resolved name snapshot from the
-// picker, plus the assignor's employee/user IDs from the authenticated
-// session and a timestamp. NOTE (interim, per the Implementation Plan's
-// audit-integrity invariant): these are client-direct edits for now; once the
-// audit log + trusted server-side writer ship, mutation moves there and direct
-// client writes are denied.
+// accountOwner is the governed EOS_CRM owner: an Employee id picked from the
+// server's offer (searchAccountOwnerCandidates -- ACTIVE/CONTRACTOR Employees
+// of this tenant, no Firebase uid) plus its display name. The CRM write (domain/accounts.js ->
+// updateAccount / createAccount) sends the Employee id only, and the server
+// re-validates it and records who assigned it.
 //
 // Issue #214 PR-1 -- migrated to the shared form primitives (Field / FormActions
 // / FormError / FormStatus) built on the System-A `fo-wizard-*` visual tokens:
@@ -45,8 +44,7 @@ import { Button } from "../../shared/ui/primitives";
 // presentation-only migration. The `.fo-account-form` class + its two-column
 // grid, `.fo-btn-row`, all control ids and label text are preserved.
 export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false, contactsError = null, onSavingChange, focusFieldId = null }) {
-  const { user, employeeId: sessionEmployeeId, displayName: sessionDisplayName, loading: authLoading } = useAuth();
-  const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
+  const { loading: authLoading } = useAuth();
 
   const [name, setName] = useState(initialValues?.name ?? "");
   const [address, setAddress] = useState({
@@ -82,6 +80,8 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   const [taxStatus, setTaxStatus] = useState(initialValues?.taxStatus ?? "");
   const [billingContactId, setBillingContactId] = useState(initialValues?.billingContact?.contactId ?? "");
   const [accountOwner, setAccountOwner] = useState(initialValues?.accountOwner ?? null);
+  // The CURRENT owner, named by resolveEmployeeDisplayNames -- this one id, not the Employee directory.
+  const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory({ employeeIds: [accountOwner?.assignedToEmployeeId] });
   const [submitAttempted, setSubmitAttempted] = useState(false);
   // Save-time (post-validation) failure -- e.g. a Rules permission-denied. Shown
   // inside the form so the creation overlay stays open and the user can retry.
@@ -155,19 +155,22 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   // unresolved (broken-link) session yields an incomplete record that
   // validation blocks -- a bare employeeId can't pass as a provisioned
   // assignor. Any missing required piece is likewise rejected.
+  async function searchAccountOwners(query) {
+    const res = await callWorkspaceApi("searchAccountOwnerCandidates", { query });
+    return res?.ok ? { ok: true, items: res.result?.candidates ?? [], total: res.result?.candidates?.length ?? 0 } : { ok: false, code: res?.code, message: res?.message };
+  }
+
   function handleOwnerSelect(sel) {
     if (!sel) {
       setAccountOwner(null);
       return;
     }
+    // The governed owner (UI corrections integration): the CRM write takes the owner's Employee id only (ownerFromForm),
+    // and the server re-validates it. No Firebase uid pair, no client-side assignment snapshot.
     setAccountOwner({
       assignedToEmployeeId: sel.employeeId ?? null,
-      assignedToUserId: sel.userId ?? null,
       assignedToDisplayName: sel.displayName ?? null,
-      assignedByEmployeeId: sessionEmployeeId ?? null,
-      assignedByUserId: user?.uid ?? null,
-      assignedByDisplayName: sessionDisplayName ?? null,
-      assignedAt: Date.now(),
+      source: "EOS_CRM",
     });
   }
 
@@ -275,7 +278,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
     // control styling/behavior; global `.fo-form` used by other forms is
     // unchanged). See index.css's `.fo-account-form` block.
     <form className="fo-form fo-account-form" onSubmit={handleSubmit}>
-      <Field id="account-name" label="Customer name" required error={nameError}>
+      <Field id="account-name" label="Customer Name" required error={nameError}>
         <input
           id="account-name"
           className="fo-wizard-control"
@@ -351,7 +354,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       <fieldset className="fo-fieldset">
         <legend>Commercial Profile</legend>
 
-        <Field id="cp-currency" label="Default currency (ISO 4217)" error={errors.defaultCurrency}>
+        <Field id="cp-currency" label="Default Currency (ISO 4217)" error={errors.defaultCurrency}>
           <input
             id="cp-currency"
             className="fo-wizard-control"
@@ -378,7 +381,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
           <FormError id="cp-po-required-error">{errors.purchaseOrderRequired}</FormError>
         </div>
 
-        <Field id="cp-invoice-delivery" label="Invoice delivery method" error={errors.invoiceDeliveryMethod}>
+        <Field id="cp-invoice-delivery" label="Invoice Delivery Method" error={errors.invoiceDeliveryMethod}>
           <select
             id="cp-invoice-delivery"
             className="fo-wizard-control"
@@ -400,7 +403,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             not by hiding them here. Shown to any admin/dispatcher who can
             open this form; a non-admin's write that CHANGES either is
             rejected at the Firestore Rules layer. */}
-        <Field id="cp-payment-terms" label="Payment terms" error={errors.paymentTerms}>
+        <Field id="cp-payment-terms" label="Payment Terms" error={errors.paymentTerms}>
           <select
             id="cp-payment-terms"
             className="fo-wizard-control"
@@ -418,7 +421,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
           </select>
         </Field>
 
-        <Field id="cp-tax-status" label="Tax status" error={errors.taxStatus}>
+        <Field id="cp-tax-status" label="Tax Status" error={errors.taxStatus}>
           <select
             id="cp-tax-status"
             className="fo-wizard-control"
@@ -440,7 +443,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             picker is shown once this Account has contacts; the error is shown
             regardless (so a foreign stored id surfaces even with no contacts). */}
         {contacts.length > 0 ? (
-          <Field id="cp-billing-contact" label="Billing contact" error={errors.billingContact}>
+          <Field id="cp-billing-contact" label="Billing Contact" error={errors.billingContact}>
             <select
               id="cp-billing-contact"
               className="fo-wizard-control"
@@ -470,15 +473,24 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             <div className="fo-muted">
               {/* CURRENT owner, re-resolved from userId -- not the stored
                   historical snapshot; loading/error/unknown states preserved. */}
-              <IdentityLine label="Current owner" identity={currentOwnerIdentity} />
-              <Button type="button" variant="tertiary" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear owner</Button>
+              <IdentityLine label="Current Owner" identity={currentOwnerIdentity} />
+              <Button type="button" variant="tertiary" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear Owner</Button>
             </div>
           )}
-          <EmployeeAssignmentPicker
-            onSelect={handleOwnerSelect}
-            label="Account owner"
+          {/* The OFFER is the server's: searchAccountOwnerCandidates answers, for a caller who may write Accounts, exactly
+              the owners the CRM write accepts (ACTIVE / CONTRACTOR Employees of this tenant). 2 characters, debounced. */}
+          <Autocomplete
+            id="account-owner"
+            label="Account Owner"
             placeholder="Search owner by name..."
+            search={searchAccountOwners}
+            selected={null}
+            getKey={(e) => e.employeeId}
+            getLabel={(e) => e.displayName ?? e.employeeId}
+            getContext={() => null}
+            onSelect={(e) => { if (e) handleOwnerSelect(e); }}
             disabled={authLoading}
+            emptyText="No eligible owner matches."
           />
           <FormError>{errors.accountOwner}</FormError>
         </div>
@@ -507,12 +519,12 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       </Field>
 
       <Button type="button" variant="tertiary" onClick={() => setShowExternalIds((v) => !v)} className="fo-link-btn">
-        {showExternalIds ? "Hide" : "Show"} external IDs (future integrations)
+        {showExternalIds ? "Hide" : "Show"} External IDs (Future Integrations)
       </Button>
 
       {showExternalIds && (
         <>
-          <Field id="account-customer-number" label="Customer number">
+          <Field id="account-customer-number" label="Customer Number">
             <input id="account-customer-number" className="fo-wizard-control" placeholder="Customer number (optional)" value={customerNumber} onChange={(e) => setCustomerNumber(e.target.value)} />
           </Field>
           <Field id="account-erp-id" label="ERP ID">

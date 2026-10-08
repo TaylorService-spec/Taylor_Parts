@@ -87,7 +87,7 @@ describe("the screen does not offer what it would refuse", () => {
     async (entityType, headline) => {
       await stageFile(entityType);
       expect(await screen.findByText(headline)).toBeTruthy();
-      expect(screen.queryByText(/Approve and import/)).toBeNull();
+      expect(screen.queryByText(/Approve and import/i)).toBeNull();
       expect(screen.queryByText("3. Preview")).toBeNull();
       expect(H.calls.some(([n]) => n === "executeDataImport")).toBe(false);
     },
@@ -95,7 +95,7 @@ describe("the screen does not offer what it would refuse", () => {
 
   it("a CUSTOMERS file still previews and can be approved", async () => {
     await stageFile("CUSTOMERS");
-    const approve = await screen.findByText(/Approve and import 1 record/);
+    const approve = await screen.findByText(/Approve and Import 1 Record/);
     fireEvent.click(approve);
     await waitFor(() => expect(H.calls.some(([n]) => n === "executeDataImport")).toBe(true));
   });

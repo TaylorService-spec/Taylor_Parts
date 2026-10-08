@@ -60,6 +60,9 @@ import { isPolicyApiConfigured } from "../../services/adminPolicyApiClient.js";
 import { effectiveFieldAnswer, verbAvailable } from "./fieldPermissionState.js";
 import SecurityRoleDetail from "./SecurityRoleDetail.jsx";
 import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
+import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 const VERBS = ["C", "R", "E", "D"];
 const VERB_LABEL = { C: "Create", R: "Read", E: "Edit", D: "Delete" };
@@ -97,7 +100,7 @@ export function SourceReference({ children }) {
         to compare against and cannot be edited.
       </p>
       <Button variant="secondary" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        {open ? "Hide" : "Show"} the measured model
+        {open ? "Hide" : "Show"} the Measured Model
       </Button>
       {open && <div className="fo-panel--nested">{children}</div>}
     </section>
@@ -150,20 +153,20 @@ export function RolesPermissionsSurface() {
                 onClick={() => { setRoleId(role.id === selected?.id ? "" : role.id); setEditingRole(false); }}
                 aria-pressed={role.id === selected?.id}
               >
-                {role.name}{role.protected ? " · protected" : ""}
+                {identifierLabel(role.key, role.name)}{role.protected ? " · Protected" : ""}
               </Button>
             ))}
           </div>
 
           <Button variant="secondary" onClick={() => setCreating((v) => !v)} aria-expanded={creating}>
-            {creating ? "Cancel" : "Create a role"}
+            {creating ? "Cancel" : "Create a Role"}
           </Button>
           {creating && <CreateRoleForm onDone={() => { setCreating(false); roles.reload(); }} mutate={roles.mutate} />}
 
           {selected && (
             <>
               <Button variant="secondary" onClick={() => setEditingRole((v) => !v)} aria-expanded={editingRole}>
-                {editingRole ? "Cancel" : "Edit role details"}
+                {editingRole ? "Cancel" : "Edit Role Details"}
               </Button>
               {editingRole && (
                 <EditRoleForm role={selected} mutate={roles.mutate} onDone={() => setEditingRole(false)} />
@@ -227,7 +230,7 @@ function CreateRoleForm({ onDone, mutate }) {
         rather than a label — the name and description are yours to change afterwards.
       </p>
       <div className="fo-form-actions">
-        <Button type="submit" variant="primary">Create role</Button>
+        <Button type="submit" variant="primary">Create Role</Button>
       </div>
       <Refusal result={result} />
     </form>
@@ -263,7 +266,7 @@ function EditRoleForm({ role, mutate, onDone }) {
         The key <code>{role.key}</code> is identity and cannot change.
       </p>
       <div className="fo-form-actions">
-        <Button type="submit" variant="primary">Save role</Button>
+        <Button type="submit" variant="primary">Save Role</Button>
       </div>
       <Refusal result={result} />
     </form>
@@ -354,7 +357,7 @@ function RoleObjectRows({ object, cred, open, onToggleOpen, overridesByFieldId }
       <tr>
         <td>
           <Button variant="secondary" onClick={onToggleOpen} aria-expanded={open}>
-            {open ? "▾" : "▸"} {object.label}
+            {open ? "▾" : "▸"} {object.label ?? titleCase(object.key)}
           </Button>
           <span className="fo-muted"> <code>{object.key}</code></span>
         </td>
@@ -404,9 +407,17 @@ function RoleFieldRow({ object, cred, field, override }) {
 
 // ════════════════════ OBJECTS ════════════════════
 
+const OBJECT_COLUMNS = Object.freeze({
+  object: { value: (o) => o.label ?? titleCase(o.key) },
+  key: { value: (o) => o.key },
+  origin: { value: (o) => titleCase(o.origin) },
+  deletable: { value: (o) => (o.supportsDelete ? "Yes" : "No") },
+});
+
 export function ObjectsSurface() {
   const objects = usePolicyStore("listObjects");
   const [openKey, setOpenKey] = useState(null);
+  const { sort, toggle, sorted } = useTableSort({ rows: objects.status === "ready" ? objects.data : null, columns: OBJECT_COLUMNS });
 
   if (!isPolicyApiConfigured()) return null;
 
@@ -419,10 +430,15 @@ export function ObjectsSurface() {
       {objects.status === "ready" && (
         <table className="fo-table">
           <thead>
-            <tr><th>Object</th><th>Key</th><th>Origin</th><th>Deletable</th></tr>
+            <tr>
+              <SortableHeader columnKey="object" label="Object" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="key" label="Key" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="origin" label="Origin" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="deletable" label="Deletable" sort={sort} onSort={toggle} />
+            </tr>
           </thead>
           <tbody>
-            {objects.data.map((object) => (
+            {sorted.map((object) => (
               <ObjectRows
                 key={object.id}
                 object={object}
@@ -452,8 +468,8 @@ function ObjectRows({ object, open, onToggleOpen, onChanged }) {
           </Button>
         </td>
         <td className="fo-muted"><code>{object.key}</code></td>
-        <td className="fo-muted">{object.origin}</td>
-        <td className="fo-muted">{object.supportsDelete ? "yes" : "no"}</td>
+        <td className="fo-muted">{titleCase(object.origin)}</td>
+        <td className="fo-muted">{object.supportsDelete ? "Yes" : "No"}</td>
       </tr>
 
       {open && (
@@ -461,7 +477,7 @@ function ObjectRows({ object, open, onToggleOpen, onChanged }) {
           <td colSpan={4}>
             <div className="fo-panel--nested">
               <Button variant="secondary" onClick={() => setEditing((v) => !v)} aria-expanded={editing}>
-                {editing ? "Cancel" : "Edit object details"}
+                {editing ? "Cancel" : "Edit Object Details"}
               </Button>
               {editing && (
                 <EditObjectForm
@@ -521,7 +537,7 @@ function EditObjectForm({ object, mutate, onDone }) {
           <input value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} required />
         </label>
         <label className="fo-form-field">
-          <span>Plural label</span>
+          <span>Plural Label</span>
           <input value={draft.labelPlural} onChange={(e) => setDraft({ ...draft, labelPlural: e.target.value })} />
         </label>
         <label className="fo-form-field">
@@ -535,26 +551,38 @@ function EditObjectForm({ object, mutate, onDone }) {
         enforce rather than preferences.
       </p>
       <div className="fo-form-actions">
-        <Button type="submit" variant="primary">Save object</Button>
+        <Button type="submit" variant="primary">Save Object</Button>
       </div>
       <Refusal result={result} />
     </form>
   );
 }
 
+const FIELD_COLUMNS = Object.freeze({
+  field: { value: (f) => f.label },
+  key: { value: (f) => f.key },
+  type: { value: (f) => titleCase(f.dataType) },
+  origin: { value: (f) => titleCase(f.origin) },
+  required: { value: (f) => (f.required ? "Yes" : "No") },
+  sensitivity: { value: (f) => titleCase(f.sensitivity) },
+  lifecycle: { value: (f) => titleCase(f.lifecycle) },
+});
+
 function FieldTable({ fields, mutate, onResult }) {
   const [editingId, setEditingId] = useState(null);
+  const { sort, toggle, sorted } = useTableSort({ rows: fields, columns: FIELD_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
   return (
     <>
       <table className="fo-table">
         <thead>
           <tr>
-            <th>Field</th><th>Key</th><th>Type</th><th>Origin</th><th>Required</th>
-            <th>Sensitivity</th><th>Lifecycle</th><th />
+            {header("field", "Field")}{header("key", "Key")}{header("type", "Type")}{header("origin", "Origin")}{header("required", "Required")}
+            {header("sensitivity", "Sensitivity")}{header("lifecycle", "Lifecycle")}<th />
           </tr>
         </thead>
         <tbody>
-          {fields.map((field) => (
+          {sorted.map((field) => (
             // THE KEY BELONGS ON THE FRAGMENT. With it on the inner <tr> instead, React reconciles
             // this list positionally and the conditional edit row below never renders -- which is
             // exactly what the browser found: an Edit button that appeared to do nothing.
@@ -563,16 +591,16 @@ function FieldTable({ fields, mutate, onResult }) {
                 <td>{field.label}</td>
                 <td className="fo-muted"><code>{field.key}</code></td>
                 <td className="fo-muted">
-                  {field.dataType}
+                  {titleCase(field.dataType)}
                   {field.referenceTo ? <span className="fo-muted"> → {field.referenceTo}</span> : null}
                   {(field.allowedValues ?? []).length > 0
                     ? <span className="fo-muted"> ({field.allowedValues.join(", ")})</span>
                     : null}
                 </td>
-                <td className="fo-muted">{field.origin}</td>
-                <td className="fo-muted">{field.required ? "yes" : "no"}</td>
-                <td className="fo-muted">{field.sensitivity}</td>
-                <td className="fo-muted">{field.lifecycle}</td>
+                <td className="fo-muted">{titleCase(field.origin)}</td>
+                <td className="fo-muted">{field.required ? "Yes" : "No"}</td>
+                <td className="fo-muted">{titleCase(field.sensitivity)}</td>
+                <td className="fo-muted">{titleCase(field.lifecycle)}</td>
                 <td>
                   {/* SYSTEM fields get no edit affordance, and that is not the enforcement --
                       the server refuses a SYSTEM definition mutation whether or not a button
@@ -586,7 +614,7 @@ function FieldTable({ fields, mutate, onResult }) {
                       Edit
                     </Button>
                   ) : (
-                    <span className="fo-muted" title="A system field's definition is protected">protected</span>
+                    <span className="fo-muted" title="A system field's definition is protected">Protected</span>
                   )}
                 </td>
               </tr>
@@ -669,13 +697,13 @@ function EditFieldForm({ field, mutate, onResult, onDone }) {
         <label className="fo-form-field">
           <span>Sensitivity</span>
           <select value={draft.sensitivity} onChange={(e) => setDraft({ ...draft, sensitivity: e.target.value })}>
-            {SENSITIVITIES.map((s) => <option key={s} value={s}>{s}</option>)}
+            {SENSITIVITIES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
           </select>
         </label>
         <label className="fo-form-field">
           <span>Lifecycle</span>
           <select value={draft.lifecycle} onChange={(e) => setDraft({ ...draft, lifecycle: e.target.value })}>
-            {LIFECYCLES.map((s) => <option key={s} value={s}>{s}</option>)}
+            {LIFECYCLES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
           </select>
         </label>
       </div>
@@ -691,7 +719,7 @@ function EditFieldForm({ field, mutate, onResult, onDone }) {
         already that type, under that name.
       </p>
       <div className="fo-form-actions">
-        <Button type="submit" variant="primary">Save field</Button>
+        <Button type="submit" variant="primary">Save Field</Button>
       </div>
     </form>
   );
@@ -749,7 +777,7 @@ function CreateFieldForm({ objectKey, mutate, onResult }) {
 
   return (
     <form className="fo-form" onSubmit={submit} aria-label="Create a custom field">
-      <h4>Add a custom field</h4>
+      <h4>Add a Custom Field</h4>
       <div className="fo-form-row">
         <label className="fo-form-field">
           <span>Key</span>
@@ -762,13 +790,13 @@ function CreateFieldForm({ objectKey, mutate, onResult }) {
         <label className="fo-form-field">
           <span>Type</span>
           <select value={draft.dataType} onChange={(e) => setDraft({ ...draft, dataType: e.target.value })}>
-            {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {FIELD_TYPES.map((t) => <option key={t} value={t}>{titleCase(t)}</option>)}
           </select>
         </label>
         <label className="fo-form-field">
           <span>Sensitivity</span>
           <select value={draft.sensitivity} onChange={(e) => setDraft({ ...draft, sensitivity: e.target.value })}>
-            {SENSITIVITIES.map((s) => <option key={s} value={s}>{s}</option>)}
+            {SENSITIVITIES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
           </select>
         </label>
       </div>
@@ -779,7 +807,7 @@ function CreateFieldForm({ objectKey, mutate, onResult }) {
       {needsAllowedValues && (
         <div className="fo-form-row">
           <label className="fo-form-field">
-            <span>Allowed values (comma separated)</span>
+            <span>Allowed Values (Comma Separated)</span>
             <input
               value={draft.allowedValues}
               onChange={(e) => setDraft({ ...draft, allowedValues: e.target.value })}
@@ -792,7 +820,7 @@ function CreateFieldForm({ objectKey, mutate, onResult }) {
       {needsReference && (
         <div className="fo-form-row">
           <label className="fo-form-field">
-            <span>References object key</span>
+            <span>References Object Key</span>
             <input
               value={draft.referenceTo}
               onChange={(e) => setDraft({ ...draft, referenceTo: e.target.value })}
@@ -814,7 +842,7 @@ function CreateFieldForm({ objectKey, mutate, onResult }) {
         <input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
       </label>
       <div className="fo-form-actions">
-        <Button type="submit" variant="primary">Create field</Button>
+        <Button type="submit" variant="primary">Create Field</Button>
       </div>
     </form>
   );

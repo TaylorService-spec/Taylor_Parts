@@ -43,7 +43,7 @@ export default function ReorderWarehouseSelect({ id, options, loading, error, va
 
   return (
     <label className="fo-muted" htmlFor={id}>
-      Reorder for warehouse{" "}
+      Reorder for Warehouse{" "}
       <select id={id} value={value ?? ""} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
         {/* The empty option is not a placeholder trick: it is the honest initial state, and it
             stays selectable so a chooser can withdraw a choice rather than being locked into

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAccountPicker } from "../../hooks/useAccountPicker";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { createWorkOrder, listWorkOrderOperatingCompanies } from "../../services/workOrderService";
 import {
@@ -19,6 +18,8 @@ import EquipmentPicker from "./EquipmentPicker";
 import { equipmentAllowedAtCreate } from "../../domain/workOrderEquipmentRule.js";
 import { WORK_ORDER_PRIORITY_OPTIONS } from "../../domain/workOrderPriority";
 import { Button } from "../../shared/ui/primitives";
+import { operatingCompanyLabel, statusLabel } from "../../shared/display/displayLabels.js";
+import { workOrderTypeLabel } from "../../domain/workOrderType.js";
 
 // Sprint 2.0.3 -- Work Order creation wizard. Four steps, mapped onto the
 // GOVERNED EOS createWorkOrder command (services/workOrderService.ts ->
@@ -89,12 +90,8 @@ function StepHint({ reason }) {
 
 export default function WorkOrderWizard() {
   const navigate = useNavigate();
-  // BOUNDED (§9). This previously read the ENTIRE accounts collection to populate a
-  // customer picker. The picker read is capped and discloses truncation; see
-  // hooks/useAccountPicker.js for why bounding without disclosing would have been worse
-  // than the original defect.
-  const accountPicker = useAccountPicker();
-  const accounts = accountPicker.options;
+  // CUSTOMERS ARE SEARCHED ON THE SERVER (UI corrections integration): CustomerPicker asks the governed CRM search, so
+  // there is no capped preload to disclose any more -- every customer the caller may read can be found.
 
   const [step, setStep] = useState(1);
   const [selectedAccount, setSelectedAccount] = useState(null);
@@ -204,8 +201,7 @@ export default function WorkOrderWizard() {
           <h3 className="fo-wizard-step-title">Step 1: Customer</h3>
           <div className="fo-wizard-field">
             <label className="fo-wizard-field-label" htmlFor="wo-customer-search">Customer</label>
-            <CustomerPicker inputId="wo-customer-search" accounts={accounts} onSelect={handleAccountSelect} />
-            {accountPicker.message && <p className="fo-muted">{accountPicker.message}</p>}
+            <CustomerPicker inputId="wo-customer-search" onSelect={handleAccountSelect} />
           </div>
           <StepHint reason={stepBlockedReason(1, { selectedAccountId: selectedAccount?.id })} />
         </div>
@@ -288,7 +284,7 @@ export default function WorkOrderWizard() {
               <option value="">Select a type…</option>
               {TYPE_OPTIONS.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {workOrderTypeLabel(t)}
                 </option>
               ))}
             </select>
@@ -310,19 +306,19 @@ export default function WorkOrderWizard() {
           </div>
 
           <div className="fo-wizard-field">
-            <label className="fo-wizard-field-label" htmlFor="wo-severity">Severity (optional)</label>
+            <label className="fo-wizard-field-label" htmlFor="wo-severity">Severity (Optional)</label>
             <select id="wo-severity" className="fo-wizard-control" value={severity} onChange={(e) => setSeverity(e.target.value)}>
-              <option value="">Severity (optional)</option>
+              <option value="">Severity (Optional)</option>
               {SEVERITY_OPTIONS.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {statusLabel(s)}
                 </option>
               ))}
             </select>
           </div>
 
           <div className="fo-wizard-field fo-wizard-field-wide">
-            <label className="fo-wizard-field-label" htmlFor="wo-complaint">Complaint (optional)</label>
+            <label className="fo-wizard-field-label" htmlFor="wo-complaint">Complaint (Optional)</label>
             <textarea
               id="wo-complaint"
               className="fo-wizard-control"
@@ -356,13 +352,13 @@ export default function WorkOrderWizard() {
             {type && (
               <>
                 <dt>Type</dt>
-                <dd>{type}</dd>
+                <dd>{workOrderTypeLabel(type)}</dd>
               </>
             )}
             {severity && (
               <>
                 <dt>Severity</dt>
-                <dd>{severity}</dd>
+                <dd>{statusLabel(severity)}</dd>
               </>
             )}
             {complaint && (
@@ -375,7 +371,7 @@ export default function WorkOrderWizard() {
 
           {companies.mustChoose ? (
             <div className="fo-wizard-field">
-              <label className="fo-wizard-field-label" htmlFor="wo-operating-company">Operating company</label>
+              <label className="fo-wizard-field-label" htmlFor="wo-operating-company">Operating Company</label>
               <select
                 id="wo-operating-company"
                 className="fo-wizard-control"
@@ -385,18 +381,18 @@ export default function WorkOrderWizard() {
                 <option value="" disabled>Select the operating company…</option>
                 {companies.options.map((c) => (
                   <option key={c.operatingCompanyId} value={c.operatingCompanyId}>
-                    {c.operatingCompanyKey || c.operatingCompanyId}
+                    {operatingCompanyLabel(c.operatingCompanyId, { short: false })}
                   </option>
                 ))}
               </select>
             </div>
           ) : (
             <dl className="fo-wizard-review">
-              <dt>Operating company</dt>
+              <dt>Operating Company</dt>
               {companies.preselectedId ? (
                 // The only governed company -- STATED, not inferred.
                 <dd data-operating-company={companies.preselectedId}>
-                  {companies.options[0].operatingCompanyKey || companies.preselectedId}
+                  {operatingCompanyLabel(companies.preselectedId, { short: false })}
                   {" "}<span className="fo-muted">(the only operating company available to you)</span>
                 </dd>
               ) : (

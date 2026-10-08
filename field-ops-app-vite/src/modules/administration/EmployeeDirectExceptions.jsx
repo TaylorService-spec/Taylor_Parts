@@ -22,6 +22,21 @@ import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { useConditionVocabulary } from "./useConditionVocabulary.js";
 import { ConditionFields, Outcome, ReasonField } from "./GrantControls.jsx";
 import { buildCondition, directExceptionRows, explanationModel, statedReason } from "./controlPlaneModel.js";
+import { titleCase, titleCasePhrase } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+
+const objectActionWords = (row) => `${row.objectKey ? titleCase(row.objectKey) : "?"} · ${row.actionKey ? titleCase(row.actionKey) : "?"}`;
+const EXCEPTION_COLUMNS = Object.freeze({
+  objectAction: { value: objectActionWords },
+  source: { value: (row) => (row.enforced ? 0 : row.notEnforced ? 1 : 2) },
+  reason: { value: (row) => row.exceptionReason },
+  grantedBy: { value: (row) => row.grantedBy },
+  created: { value: (row) => row.grantedAt },
+  expires: { value: (row) => row.expiresAt },
+  condition: { value: (row) => row.condition },
+  evaluator: { value: (row) => row.resultWords },
+});
 
 const NO_CONDITION = "";
 
@@ -64,10 +79,10 @@ function DirectExceptionRowControls({ api, principalId, row, vocabulary, onChang
       <div className="fo-btn-row">
         <Button type="button" variant="secondary" onClick={() => open("revoke")} aria-label={`Revoke direct exception ${row.capabilityKey}`}>Revoke</Button>
         <Button type="button" variant="secondary" onClick={() => open("setCondition")} aria-label={`Attach condition to direct exception ${row.capabilityKey}`}>
-          {row.conditionRaw ? "Replace condition" : "Attach condition"}
+          {row.conditionRaw ? "Replace Condition" : "Attach Condition"}
         </Button>
         {row.conditionRaw ? (
-          <Button type="button" variant="secondary" onClick={() => open("retireCondition")} aria-label={`Retire condition on direct exception ${row.capabilityKey}`}>Retire condition</Button>
+          <Button type="button" variant="secondary" onClick={() => open("retireCondition")} aria-label={`Retire condition on direct exception ${row.capabilityKey}`}>Retire Condition</Button>
         ) : null}
       </div>
       {mode ? (
@@ -80,7 +95,7 @@ function DirectExceptionRowControls({ api, principalId, row, vocabulary, onChang
           ) : null}
           <ReasonField value={reason} onChange={setReason} />
           <div className="fo-btn-row">
-            <Button type="submit" variant="primary" disabled={!ready || busy}>{`Confirm ${verb?.toLowerCase()}`}</Button>
+            <Button type="submit" variant="primary" disabled={!ready || busy}>{`Confirm ${titleCasePhrase(verb ?? "")}`}</Button>
             <Button type="button" variant="secondary" onClick={() => setMode(null)}>Cancel</Button>
           </div>
         </form>
@@ -139,15 +154,15 @@ function GrantDirectExceptionForm({ api, principalId, vocabulary, onChanged }) {
         <span>Object</span>
         <select aria-label="Object" value={objectKey} onChange={(e) => { setObjectKey(e.target.value); setActionKey(""); setCondition({ kind: NO_CONDITION }); }}>
           <option value="">{objects.status === "ready" ? "Choose an Object…" : "Reading the governed Objects…"}</option>
-          {objectList.map((o) => <option key={o.key} value={o.key}>{o.label ? `${o.label} (${o.key})` : o.key}</option>)}
+          {objectList.map((o) => <option key={o.key} value={o.key}>{o.label ? `${o.label} (${o.key})` : titleCase(o.key)}</option>)}
         </select>
       </label>
       <label className="fo-form-field">
         <span>Action</span>
         <select aria-label="Action" value={actionKey} disabled={!object} onChange={(e) => { setActionKey(e.target.value); setCondition({ kind: NO_CONDITION }); }}>
-          <option value="">Choose an action…</option>
+          <option value="">Choose an Action…</option>
           {(object?.actions ?? []).map((a) => (
-            <option key={a.actionKey} value={a.actionKey}>{`${a.displayLabel ?? a.actionKey} — ${a.capabilityKey}`}</option>
+            <option key={a.actionKey} value={a.actionKey}>{`${a.displayLabel ?? titleCase(a.actionKey)} — ${a.capabilityKey}`}</option>
           ))}
         </select>
       </label>
@@ -155,12 +170,12 @@ function GrantDirectExceptionForm({ api, principalId, vocabulary, onChanged }) {
         <ConditionFields value={condition} onChange={setCondition} vocabulary={vocabulary} capabilityKey={action.capabilityKey} allowNone idPrefix="dx-grant" />
       ) : null}
       <label className="fo-form-field">
-        <span>Expires (optional; must be in the future)</span>
+        <span>Expires (Optional; must be in the future)</span>
         <input type="datetime-local" aria-label="Expires" value={expires} onChange={(e) => setExpires(e.target.value)} />
       </label>
       <ReasonField value={reason} onChange={setReason} />
       <div className="fo-btn-row">
-        <Button type="submit" variant="primary" disabled={!ready || busy}>Grant direct exception</Button>
+        <Button type="submit" variant="primary" disabled={!ready || busy}>Grant Direct Exception</Button>
       </div>
       <Outcome result={result} success="Granted by the server; re-reading." />
     </form>
@@ -173,6 +188,8 @@ export default function EmployeeDirectExceptions({ api = adminControlPlaneClient
   const model = useMemo(() => (read.status === "ready" ? explanationModel(read.data) : null), [read.status, read.data]);
   const rows = useMemo(() => directExceptionRows(model), [model]);
   const [granting, setGranting] = useState(false);
+  const { sort, toggle, sorted } = useTableSort({ rows, columns: EXCEPTION_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
   const changed = () => { read.reload(); onChanged?.(); };
 
   if (!principalId) {
@@ -191,12 +208,15 @@ export default function EmployeeDirectExceptions({ api = adminControlPlaneClient
       {rows.length === 0 ? <p className="fo-muted">This Principal holds no unexpired direct exception.</p> : (
         <table className="fo-table" aria-label="Direct exceptions">
           <thead>
-            <tr><th>Object action</th><th>Source</th><th>Reason</th><th>Granted by</th><th>Created</th><th>Expires</th><th>Condition</th><th>Evaluator</th><th /></tr>
+            <tr>
+              {header("objectAction", "Object Action")}{header("source", "Source")}{header("reason", "Reason")}{header("grantedBy", "Granted By")}
+              {header("created", "Created")}{header("expires", "Expires")}{header("condition", "Condition")}{header("evaluator", "Evaluator")}<th />
+            </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {sorted.map((row) => (
               <tr key={row.capabilityKey} data-direct-exception={row.capabilityKey} data-enforced={row.enforced ? "true" : "false"}>
-                <td>{`${row.objectKey ?? "?"} · ${row.actionKey ?? "?"}`} <span className="fo-muted"><code>{row.capabilityKey}</code></span></td>
+                <td>{objectActionWords(row)} <span className="fo-muted"><code>{row.capabilityKey}</code></span></td>
                 <td>
                   <span className="fo-cp-tag fo-cp-tag--direct">DIRECT EXCEPTION</span>
                   <div className="fo-muted">
@@ -218,7 +238,7 @@ export default function EmployeeDirectExceptions({ api = adminControlPlaneClient
       )}
       <div className="fo-btn-row">
         <Button type="button" variant="secondary" onClick={() => setGranting((g) => !g)} aria-expanded={granting}>
-          {granting ? "Close" : "Grant a direct exception"}
+          {granting ? "Close" : "Grant a Direct Exception"}
         </Button>
       </div>
       {granting ? <GrantDirectExceptionForm api={api} principalId={principalId} vocabulary={vocabulary} onChanged={changed} /> : null}

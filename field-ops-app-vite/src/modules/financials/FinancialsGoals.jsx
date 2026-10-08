@@ -21,7 +21,7 @@ import FilterBar from "../../shared/ui/FilterBar";
 import { MEASUREMENT_BASES } from "../../domain/financialsSurface.js";
 
 const SCOPE_OPTIONS = [
-  { key: "all", label: "All scopes" },
+  { key: "all", label: "All Scopes" },
   { key: "unit", label: "Unit" },
   { key: "team", label: "Team" },
   { key: "person", label: "Person" },
@@ -40,7 +40,7 @@ export default function FinancialsGoals() {
       action={
         <span className="fin-action-slot">
           <button type="button" className="fin-primary-action" disabled>
-            New goal
+            New Goal
           </button>
           <span className="fin-inact">
             Goal changes aren&rsquo;t wired to this surface · approval policy not configured
@@ -50,7 +50,7 @@ export default function FinancialsGoals() {
       }
     >
       <FinancialsFilterRail company={company} onCompanyChange={setCompany} />
-      <FilterBar variant="chips" label="Scope type" options={SCOPE_OPTIONS} activeKey={scope} onChange={setScope} />
+      <FilterBar variant="chips" label="Scope Type" options={SCOPE_OPTIONS} activeKey={scope} onChange={setScope} />
 
       <FinancialsHonestSection
         id="fin-goals"

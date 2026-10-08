@@ -75,7 +75,7 @@ describe("Employee > Security Roles: assignment scope from the server", () => {
     expect(within(scoped).getByText("Taylor")).toBeTruthy();
     expect(within(scoped).getByText("2026-09-26")).toBeTruthy();
     const global = table.querySelector('[data-assignment="asg-2"]');
-    expect(within(global).getByText("All (global)")).toBeTruthy();
+    expect(within(global).getByText("All (Global)")).toBeTruthy();
     expect(table.querySelector('[data-assignment="asg-0"]')).toBeNull();
   });
 
@@ -89,7 +89,7 @@ describe("Employee > Security Roles: assignment scope from the server", () => {
     await waitFor(() => expect(document.querySelector('[data-assignment-scope-picker="READY"]')).toBeTruthy());
     const scopeOptions = within(screen.getByRole("combobox", { name: "Assignment scope" })).getAllByRole("option");
     expect(scopeOptions.map((o) => [o.textContent, o.disabled])).toEqual([
-      ["All (global)", false], ["Company — not available for this Role (SCOPE_AMBIGUOUS_ADMINISTRATION)", true]]);
+      ["All (Global)", false], ["Company — not available for this Role (SCOPE_AMBIGUOUS_ADMINISTRATION)", true]]);
     // The unconsumed scope types are listed with the SERVER's reason, never offered.
     expect(document.querySelector("[data-unsupported-scopes]").textContent).toMatch(/Business Unit \(no PostgreSQL gate supplies a record's business unit\)/);
     expect(document.querySelector("[data-unsupported-scopes]").textContent).toMatch(/Warehouse/);
@@ -146,7 +146,7 @@ describe("Employee > Security Roles: assignment scope from the server", () => {
     fireEvent.change(await screen.findByRole("combobox", { name: "Security Role to assign" }), { target: { value: "role-gm" } });
     await waitFor(() => expect(document.querySelector('[data-assignment-scope-picker="UNAVAILABLE"]')).toBeTruthy());
     expect(screen.queryByRole("combobox", { name: "Assignment scope" })).toBeNull();
-    expect(document.querySelector('[data-assignment-scope-picker="UNAVAILABLE"]').textContent).toMatch(/Scope: All \(global\)/);
+    expect(document.querySelector('[data-assignment-scope-picker="UNAVAILABLE"]').textContent).toMatch(/Scope: All \(Global\)/);
   });
 
   it("the production seam sends scope only for a scoped choice, and reads the vocabulary on the one endpoint", async () => {
@@ -205,9 +205,10 @@ describe("Effective Access renders assignment scope as the server states it", ()
     expect(row.textContent).toMatch(/Scoped/);
     expect(row.textContent).toMatch(/SCOPE_CONTEXT_REQUIRED/);
     const source = row.querySelector('[data-scoped-source="operatingCompany = taylor"]');
-    expect(source.textContent).toBe("Security Role generalManager · Scope: operatingCompany = taylor · Inside the scope: Allowed (ALLOWED)");
+    // Role keys are shown by display name (UI corrections item A); the scope stays the server's own words.
+    expect(source.textContent).toBe("General Manager · Scope: operatingCompany = taylor · Inside the scope: Allowed (ALLOWED)");
     const global = document.querySelector('[data-capability="workOrder.record.read"]');
-    expect(global.textContent).toMatch(/Security Role dispatcher · Scope: all \(global\)/);
+    expect(global.textContent).toMatch(/Dispatcher · Scope: All \(Global\)/);
     const scopedTable = screen.getByRole("table", { name: "Scoped assignments" });
     expect(within(scopedTable).getByText("operatingCompany = taylor")).toBeTruthy();
     expect(within(scopedTable).getByText("employee.record.read")).toBeTruthy();

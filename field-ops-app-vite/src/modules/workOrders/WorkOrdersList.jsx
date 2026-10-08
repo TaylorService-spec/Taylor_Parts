@@ -1,3 +1,4 @@
+import { useMyWorkOrderCapabilities, WORK_ORDER_CREATE_CAPABILITY } from "../../hooks/useMyWorkOrderCapabilities.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { workOrderEntity, workOrderIndexList } from "../../metadata/definitions/workOrder.js";
@@ -160,11 +161,15 @@ export default function WorkOrdersList() {
   const search = useWorkOrderSearch(searchTerm);
 
   // ONE filled primary -- the likeliest next act from this workspace (Grammar R07).
-  const actions = (
+  // Offered unless the governed Work Order authority positively says this caller cannot create (UI corrections integration):
+  // the route itself is gated the same way, and createWorkOrder re-checks workOrder.create on the server.
+  const myWorkOrderCapabilities = useMyWorkOrderCapabilities();
+  const canOfferCreate = !(myWorkOrderCapabilities.status === "ready" && !myWorkOrderCapabilities.has(WORK_ORDER_CREATE_CAPABILITY));
+  const actions = canOfferCreate ? (
     <Link to="/service/work-orders/new">
-      <Button variant="primary">New work order</Button>
+      <Button variant="primary">New Work Order</Button>
     </Link>
-  );
+  ) : null;
 
   // THE SUMMARY LINE STATES ONLY WHAT THIS PAGE CAN COUNT TRUTHFULLY.
   //
@@ -314,6 +319,7 @@ export default function WorkOrdersList() {
       ) : (
         <MetadataListGrid
           presentation={presentation}
+          sorting={{ entity: workOrderEntity, criteria, onSort: (fieldId, direction) => apply(setSort(criteria, fieldId, direction)) }}
           caption="Work Orders"
           // THE DESTINATION THE DEFINITION NAMES, not a path typed here.
           //

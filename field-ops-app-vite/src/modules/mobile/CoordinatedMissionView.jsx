@@ -58,8 +58,8 @@ function Mission({ mission, ctx }) {
   const facts = [
     { key: "customer", label: "Customer", value: nameOr(ctx.accountNameById, mission.customerId) },
     { key: "location", label: "Location", value: nameOr(ctx.locationNameById, mission.locationId) },
-    { key: "load", label: "Coordinated load", value: <StatusPill tone={missionReadinessTone(mission.loadReadiness)} label={visitReadinessLabel(mission.loadReadiness)} /> },
-    { key: "readiness", label: "Mission readiness", value: <StatusPill tone={missionReadinessTone(mission.missionReadiness)} label={missionReadinessLabel(mission.missionReadiness)} /> },
+    { key: "load", label: "Coordinated Load", value: <StatusPill tone={missionReadinessTone(mission.loadReadiness)} label={visitReadinessLabel(mission.loadReadiness)} /> },
+    { key: "readiness", label: "Mission Readiness", value: <StatusPill tone={missionReadinessTone(mission.missionReadiness)} label={missionReadinessLabel(mission.missionReadiness)} /> },
   ];
   const p = mission.progress;
   return (
@@ -73,7 +73,7 @@ function Mission({ mission, ctx }) {
         <p className="fo-covisit-warn"><StatusPill tone="attention" label="Units disagree on customer/location" asText /></p>
       )}
       <section className="fo-mission__progress">
-        <h4>Overall progress</h4>
+        <h4>Overall Progress</h4>
         <p>
           <span className="fo-mission-count">{`${p.completed} of ${p.total} complete`}</span>
           {p.blocked > 0 ? <> · <StatusPill tone="attention" label={`${p.blocked} blocked`} asText /></> : null}
@@ -82,7 +82,7 @@ function Mission({ mission, ctx }) {
         {p.completed < p.total && <p className="fo-muted">Mission not complete — each unit is completed independently.</p>}
       </section>
       <section className="fo-mission__units">
-        <h4>Equipment units ({p.total})</h4>
+        <h4>Equipment Units ({p.total})</h4>
         <ul className="fo-mission-units">
           {mission.units.map((u) => <UnitCard key={u.workOrderId} unit={u} />)}
         </ul>
@@ -119,7 +119,7 @@ export default function CoordinatedMissionView({ source } = {}) {
           {nameOr(ctx.accountNameById, v.customerId)}
           {/* A technician saw a SAMPLE "unit 3 COMPLETED" beside their real "unit 3 Working".
               Same model, same unit number, opposite status. The tab must say which is which. */}
-          {synthetic && <span className="fo-sample-badge">SAMPLE</span>}
+          {synthetic && <span className="fo-sample-badge">Sample Data</span>}
         </Button>
       ))}
     </div>
@@ -129,7 +129,7 @@ export default function CoordinatedMissionView({ source } = {}) {
     <WorkspaceShell title="Coordinated Mission" density="field" context={switcher}>
       {synthetic && (
         <p className="fo-sales-banner fo-muted">
-          Showing a synthetic sample mission (C713×5). The live coordinated-operations feed connects in a later cycle.
+          Sample Data: showing a sample mission (C713×5). The live coordinated-operations feed connects in a later cycle.
         </p>
       )}
       {status === "loading" ? (

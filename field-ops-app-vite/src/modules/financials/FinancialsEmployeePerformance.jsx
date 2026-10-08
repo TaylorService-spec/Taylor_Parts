@@ -24,7 +24,9 @@
 // earlier revision of this page asserted "no financial visibility scope granted" without ever
 // resolving it, and in sandbox that assertion was false.
 import { useState } from "react";
-import { FinancialsPageFrame, FinancialsHonestSection, FinancialsPeriodControl, FinAnnotation } from "./FinancialsPrimitives.jsx";
+import { FinancialsPageFrame, FinancialsHonestSection, FinancialsPeriodControl, FinAnnotation, FinSortableHeader } from "./FinancialsPrimitives.jsx";
+import { byCurrencySortValue } from "./financialsDisplay.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import FilterBar from "../../shared/ui/FilterBar";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
@@ -40,8 +42,8 @@ import {
 } from "../../domain/financialFactsView.js";
 
 const VIEW_OPTIONS = [
-  { key: "credit", label: "Salesperson credit" },
-  { key: "responsibility", label: "Service responsibility" },
+  { key: "credit", label: "Salesperson Credit" },
+  { key: "responsibility", label: "Service Responsibility" },
 ];
 
 const RESPONSIBILITY_DETAIL =
@@ -66,6 +68,19 @@ export default function FinancialsEmployeePerformance() {
   const { byEmployeeId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
 
   const rows = ready && view === "credit" ? (result.byCreditedSalesperson ?? []).map(rollupRow) : [];
+  // Sorting reads the server's own per-currency figures for the same row, keyed by the credited id.
+  const rawByKey = new Map((ready ? (result.byCreditedSalesperson ?? []) : []).map((r) => [r.key, r]));
+  const personWords = (row) =>
+    resolveEmployeeIdentity(row.key, { byEmployeeId, loading: directoryLoading, error: directoryError, noun: "salesperson" }).name ?? "Resolving…";
+  // Column sorting is a display order over the rows already returned — the server's order is the default.
+  // Money sorts by the server's per-currency figure; a mixed-currency figure is never added up to sort it.
+  const columns = {
+    person: { value: (r) => personWords(r) },
+    billed: { value: (r) => byCurrencySortValue(rawByKey.get(r.key)?.billedByCurrency) },
+    collected: { value: (r) => byCurrencySortValue(rawByKey.get(r.key)?.collectedByCurrency) },
+    outstanding: { value: (r) => byCurrencySortValue(rawByKey.get(r.key)?.outstandingByCurrency) },
+  };
+  const { sort, toggle, sorted } = useTableSort({ rows, columns });
   const unattributed = ready && view === "credit" ? unattributedNote(result, "creditedSalesperson") : null;
   const scope = ready ? scopeSentence(result) : null;
 
@@ -95,14 +110,14 @@ export default function FinancialsEmployeePerformance() {
       </p>
 
       <div className="fin-filter-rail">
-        <FilterBar variant="chips" label="Attribution view" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
+        <FilterBar variant="chips" label="Attribution View" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
         <FinancialsPeriodControl {...period.controlProps} />
       </div>
 
       <div className="fin-overview-grid">
         <FinancialsHonestSection
           id="fin-employee-performance"
-          title={view === "credit" ? "Salesperson credit" : "Service responsibility"}
+          title={view === "credit" ? "Salesperson Credit" : "Service Responsibility"}
           meta="two attributions, never merged · per-row attribution label when rows render"
           honest={honest}
           subject="Performance reads"
@@ -113,14 +128,17 @@ export default function FinancialsEmployeePerformance() {
               <caption className="fo-sr-only">Performance by person</caption>
               <thead>
                 <tr>
-                  <th scope="col">
-                    Person
-                    <FinAnnotation tip="Attribution is labelled per row: creditedSalespersonId ≠ ownerEmployeeId ≠ createdBy ≠ responsibleEmployeeId. The credit view attributes strictly by the invoice's frozen creditedSalespersonId (a FIN-002 fact), never by who owns the customer or who created the record." />
-                  </th>
+                  <FinSortableHeader
+                    columnKey="person"
+                    label="Person"
+                    sort={sort}
+                    onSort={toggle}
+                    tip="Attribution is labelled per row: creditedSalespersonId ≠ ownerEmployeeId ≠ createdBy ≠ responsibleEmployeeId. The credit view attributes strictly by the invoice's frozen creditedSalespersonId (a FIN-002 fact), never by who owns the customer or who created the record."
+                  />
                   <th scope="col">Basis</th>
-                  <th scope="col" className="ns-num">Billed</th>
-                  <th scope="col" className="ns-num">Collected</th>
-                  <th scope="col" className="ns-num">Outstanding</th>
+                  <FinSortableHeader columnKey="billed" label="Billed" sort={sort} onSort={toggle} className="ns-num" />
+                  <FinSortableHeader columnKey="collected" label="Collected" sort={sort} onSort={toggle} className="ns-num" />
+                  <FinSortableHeader columnKey="outstanding" label="Outstanding" sort={sort} onSort={toggle} className="ns-num" />
                   <th scope="col" className="ns-num">
                     Goal
                     <FinAnnotation tip="No goal records exist: FIN-005 goal authority is merged and dormant with no persisted goals, so attainment cannot be computed truthfully and is never estimated." />
@@ -129,15 +147,10 @@ export default function FinancialsEmployeePerformance() {
               </thead>
               {rows.length > 0 ? (
                 <tbody>
-                  {rows.map((row) => (
+                  {sorted.map((row) => (
                     <tr key={row.key}>
                       <td>
-                        {resolveEmployeeIdentity(row.key, {
-                          byEmployeeId,
-                          loading: directoryLoading,
-                          error: directoryError,
-                          noun: "salesperson",
-                        }).name ?? "Resolving…"}
+                        {personWords(row)}
                         <span className="fin-attr-label"> · credited salesperson</span>
                       </td>
                       <td>Billed</td>
@@ -158,7 +171,7 @@ export default function FinancialsEmployeePerformance() {
         <aside className="fin-rail">
           <section className="ns-section" aria-label="Outside your scope">
             <div className="ns-section__head">
-              <h2 className="ns-section__title">Outside your scope</h2>
+              <h2 className="ns-section__title">Outside Your Scope</h2>
             </div>
             <p className="ns-state ns-state--denied">
               Figures beyond your visibility scope are withheld by the server and named here — they
@@ -167,7 +180,7 @@ export default function FinancialsEmployeePerformance() {
           </section>
           <section className="ns-section" aria-label="Margin by person">
             <div className="ns-section__head">
-              <h2 className="ns-section__title">Margin by person</h2>
+              <h2 className="ns-section__title">Margin by Person</h2>
             </div>
             <p className="ns-state ns-state--na">
               Unavailable: gross margin requires FIN-006 cost supply, and who may see margin by

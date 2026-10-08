@@ -92,6 +92,14 @@ function makeWorkforce(commands = {}) {
               nextCursor: null,
             },
           };
+        // The governed roster read behind the Manager TYPEAHEAD (UI corrections item E): query + limit, like the server.
+        case "listWorkforceRoster": {
+          const q = String(input?.query ?? "").toLowerCase();
+          const items = Object.values(records)
+            .filter((r) => !q || [r.displayName, r.employeeNumber, r.employeeId].some((v) => v && v.toLowerCase().includes(q)))
+            .map((r) => ({ employeeId: r.employeeId, displayName: r.displayName, employeeNumber: r.employeeNumber, employmentStatus: r.employmentStatus, operatingCompanyId: r.operatingCompanyId, jobRole: null }));
+          return { ok: true, result: { items: items.slice(0, input?.limit ?? 500), total: items.length, truncated: false } };
+        }
         case "readEmployee":
           return rec ? { ok: true, result: rec } : { ok: false, code: "NOT_FOUND", reason: "EMPLOYEE_NOT_FOUND", status: 404 };
         case "readEmployeePrincipalLink":
@@ -187,9 +195,13 @@ const deniedAccessRead = (rows = []) => ({
 // `hasCapability` defaults to UNDEFINED, which is what the running app passes when the trusted feed
 // has not returned a positive decision -- so every test that omits it is exercising the real
 // fail-closed path rather than a test-only one.
+// UI corrections item D: the record is TABBED. A describe block that exercises one tab's sections sets TAB, and the page
+// opens on that tab (?tab=) exactly as a link would; "" is the default Overview tab.
+let TAB = "";
+const withTab = (search) => (TAB ? `${search ? `${search}&` : "?"}tab=${TAB}` : search);
 const renderDetail = (client, employeeId = "emp-1", search = "", hasCapability = undefined, workforce = makeWorkforce()) =>
   render(
-    <MemoryRouter initialEntries={[`/administration/users/${employeeId}${search}`]}>
+    <MemoryRouter initialEntries={[`/administration/users/${employeeId}${withTab(search)}`]}>
       <Routes>
         <Route
           path="/administration/users/:employeeId"
@@ -222,24 +234,27 @@ describe("User Detail is read-only by default", () => {
   it("renders identity, employment, Job Role & eligibility and User Access as separate sections", async () => {
     renderDetail(okHistory());
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
-    // Employee design v4.1: "Operational assignment" became "Job Role & operational eligibility" (the
-    // word assignment belongs to the Assigned Person axis), and "EOS access & security" became
-    // "User Access" -- the access concept, kept apart from the Employee business record.
-    for (const title of [
-      "Identity & contact",
-      "Employment & business context",
-      "Job Role",
-      "Security Roles",
-      "Work Eligibility",
-      "Operational Scope",
-      "User Access",
-      "Effective Access",
-      "Access Audit History",
-      "Responsibility",
-    ]) {
-      expect(screen.getByRole("heading", { name: title }), title).toBeTruthy();
+    // UI corrections item D: ONE persistent header (name, Employee ID, Job Role, Operating Company, status) over FIVE tabs;
+    // every section is in exactly one tab, so nothing is duplicated and nothing was removed.
+    const header = document.querySelector(".ns-identity");
+    for (const fact of ["Employee ID", "Job Role", "Operating Company"]) expect(within(header).getByText(fact), fact).toBeTruthy();
+    expect(within(header).getByText("TAZ-0042")).toBeTruthy();
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Overview", "Roles & Access", "Assignments", "Workflows", "Activity"]);
+    const tabSections = {
+      Overview: ["Identity & Contact", "Employment & Business Context", "Job Role"],
+      "Roles & Access": ["Security Roles", "Effective Access", "Operational Scope", "Work Eligibility", "Direct Exceptions", "View As User", "User Access"],
+      Assignments: ["Responsibility"],
+      Workflows: ["Workflow Responsibilities"],
+      Activity: ["Access Audit History"],
+    };
+    for (const [tab, titles] of Object.entries(tabSections)) {
+      fireEvent.click(screen.getByRole("tab", { name: tab }));
+      for (const title of titles) {
+        const headings = await screen.findAllByRole("heading", { name: title });
+        expect(headings.length, `${tab} → ${title}`).toBe(1);
+      }
     }
-    // The operating company appears in the header facts AND in the business context section.
+    // The operating company appears in the header facts.
     expect(screen.getAllByText("Taylor Freezer of Arizona").length).toBeGreaterThan(0);
   });
 
@@ -282,6 +297,8 @@ describe("User Detail is read-only by default", () => {
 // ════════════════════ ACCESS & SECURITY ════════════════════
 
 describe("EOS access and security stay independent, and fail closed", () => {
+  beforeEach(() => { TAB = "access"; });
+  afterEach(() => { TAB = ""; });
   it("the account's enabled/disabled state comes from the trusted read, never an inference", async () => {
     const client = okHistory();
     renderDetail(client, "emp-1", "", () => true);
@@ -360,9 +377,8 @@ describe("EOS access and security stay independent, and fail closed", () => {
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
     expect(screen.getByText(/Security Roles are access\. They are not Job Roles/)).toBeTruthy();
     const select = await screen.findByRole("combobox", { name: /Security Role to assign/i });
-    // Not inside the Job Role section: the two are different authorities with different commands.
-    const jobRoleSection = screen.getByRole("heading", { name: "Job Role" }).closest("section");
-    expect(jobRoleSection.contains(select)).toBe(false);
+    // Not with the Job Role: the Job Role is on the Overview tab, a different authority with a different command.
+    expect(screen.queryByRole("heading", { name: "Job Role" })).toBeNull();
     const securitySection = screen.getByRole("heading", { name: "Security Roles" }).closest("section");
     expect(securitySection.contains(select)).toBe(true);
   });
@@ -423,7 +439,7 @@ describe("EOS access and security stay independent, and fail closed", () => {
     const form = screen.getByRole("form", { name: "Remove a Security Role" });
     expect(within(form).getByText(/John Smith/)).toBeTruthy();
     fireEvent.change(within(form).getByLabelText("Reason"), { target: { value: "Left dispatch" } });
-    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm removal" })); });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Removal" })); });
     expect(policyCalls("revokeRole")[0][1]).toEqual({ assignmentId: "asg-7", reason: "Left dispatch" });
     expect(client.revokeRole).not.toHaveBeenCalled();
     expect(policyCalls("listPrincipalRoleAssignments").length).toBeGreaterThan(1);
@@ -532,8 +548,16 @@ async function openEditor(workforce, { client = okHistory(), search = "" } = {})
   renderDetail(client, "emp-1", search, () => false, grant(workforce, EDIT_GRANTED));
   if (!search) fireEvent.click(await screen.findByRole("button", { name: "Edit Employee" }));
   await screen.findByRole("button", { name: "Save" });
-  // The Manager control is usable only once the governed directory has been read.
   await waitFor(() => expect(screen.getByLabelText("Manager").disabled).toBe(false));
+}
+
+/** Choose a manager through the TYPEAHEAD: type, wait for the governed suggestion, choose it. */
+async function chooseManager(name) {
+  const input = screen.getByLabelText("Manager");
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: name.slice(0, 3) } });
+  const option = await screen.findByRole("option", { name: new RegExp(name) });
+  fireEvent.pointerDown(option);
 }
 
 describe("Edit Employee is offered by capability, and the server stays the authority", () => {
@@ -567,7 +591,8 @@ describe("Edit Employee is offered by capability, and the server stays the autho
     expect((await screen.findByLabelText("Job Title")).value).toBe("Senior Service Technician");
     expect(screen.getByLabelText("Employee ID").value).toBe("TAZ-0042");
     expect(screen.getByLabelText("Display Name").value).toBe("John Smith");
-    await waitFor(() => expect(screen.getByLabelText("Manager").value).toBe("emp-2"));
+    // The current manager is shown by NAME in the Manager typeahead (the id is what is sent).
+    await waitFor(() => expect(screen.getByLabelText("Manager").value).toBe("Mike Jones"));
   });
 
   it("?edit=1 with the capability opens the editor directly", async () => {
@@ -594,9 +619,16 @@ describe("Edit Employee is offered by capability, and the server stays the autho
     const workforce = makeWorkforce();
     await openEditor(workforce);
     const manager = screen.getByLabelText("Manager");
-    expect(manager.tagName).toBe("SELECT");
-    expect(within(manager).getAllByRole("option").map((o) => o.textContent)).toEqual(["No manager recorded", "Mike Jones", "Pat Lee"]);
-    expect(workforce.call.mock.calls.some(([operation]) => operation === "listEmployees")).toBe(true);
+    // UI corrections item E: a TYPEAHEAD (combobox) over the governed roster -- not free text, not a long select.
+    expect(manager.getAttribute("role")).toBe("combobox");
+    fireEvent.focus(manager);
+    fireEvent.change(manager, { target: { value: "jo" } });
+    // "John Smith" (this Employee) matches the text but is never offered as his own manager.
+    await waitFor(() => expect(document.querySelector('[data-autocomplete="ready"]')).toBeTruthy());
+    expect(screen.queryAllByRole("option").map((o) => o.textContent)).not.toContain("John Smith");
+    fireEvent.change(manager, { target: { value: "Pat" } });
+    expect(await screen.findByRole("option", { name: /Pat Lee/ })).toBeTruthy();
+    expect(workforce.call.mock.calls.some(([operation, input]) => operation === "listWorkforceRoster" && input.query === "Pat" && input.limit === 9)).toBe(true);
   });
 });
 
@@ -636,7 +668,7 @@ describe("Save sends only what changed, as ONE governed command per Save", () =>
     });
     await openEditor(workforce);
     fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Lead" } });
-    fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "emp-3" } });
+    await chooseManager("Pat Lee");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(commandCalls(workforce).length).toBe(1));
     expect(commandCalls(workforce)).toEqual([
@@ -648,7 +680,7 @@ describe("Save sends only what changed, as ONE governed command per Save", () =>
     seedRecords([JOHN_REC, MIKE_REC, PAT_REC]);
     const workforce = makeWorkforce({ establishReportingRelationship: { ok: true, result: { outcome: "CHANGED" } } });
     await openEditor(workforce);
-    fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "emp-3" } });
+    await chooseManager("Pat Lee");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(commandCalls(workforce).length).toBe(1));
     expect(commandCalls(workforce)[0]).toEqual(["establishReportingRelationship", { employeeId: "emp-1", managerEmployeeId: "emp-3" }]);
@@ -782,6 +814,8 @@ const HISTORY = [
 ];
 
 describe("Change History sits at the bottom of the record and shows AUDITED events", () => {
+  beforeEach(() => { TAB = "activity"; });
+  afterEach(() => { TAB = ""; });
   it("renders the audited rows newest first, with field, values and actor", async () => {
     renderDetail(okHistory(HISTORY));
     const table = await screen.findByTestId("change-history-table");
@@ -1045,7 +1079,8 @@ describe("assigning a Job Role is ONE governed command, then a re-read", () => {
     expect(await within(jobRoleSection()).findByText(/Job Role assigned: Retail Sales\. Access, Security Roles and permissions are unchanged\./)).toBeTruthy();
     expect(assignCalls(workforce)).toEqual([["assignEmployeeJobRole", { employeeId: "emp-1", jobRoleId: "retail-sales" }]]);
     await waitFor(() => expect(jobRoleSection().querySelector('[data-employee-job-role="ASSIGNED"]')).toBeTruthy());
-    expect(historyReads(workforce)).toBe(readsBefore + 1);
+    // Re-read twice: once by the Job Role section and once by the persistent header's Job Role fact (UI corrections item D).
+    await waitFor(() => expect(historyReads(workforce)).toBe(readsBefore + 2));
     expect(within(jobRoleSection()).getByRole("button", { name: "Change Job Role" })).toBeTruthy();
     // No other writer and no profile command ran.
     expect(workforce.call.mock.calls.filter(([operation]) => WRITE_OPERATIONS.includes(operation)).map(([operation]) => operation)).toEqual(["assignEmployeeJobRole"]);
@@ -1055,7 +1090,7 @@ describe("assigning a Job Role is ONE governed command, then a re-read", () => {
     const workforce = makeWorkforce({ assignEmployeeJobRole: { ok: true, result: { outcome: "CHANGED", employeeId: "emp-1", jobRoleId: "national-accounts-sales", assignmentId: "ejr-2", endedAssignmentId: "ejr-1" } } });
     const select = await openJobRoleControl(workforce);
     fireEvent.change(select, { target: { value: "national-accounts-sales" } });
-    fireEvent.change(within(jobRoleSection()).getByLabelText("Reason (optional)"), { target: { value: "  Moved to national accounts  " } });
+    fireEvent.change(within(jobRoleSection()).getByLabelText("Reason (Optional)"), { target: { value: "  Moved to national accounts  " } });
     fireEvent.click(within(jobRoleSection()).getByRole("button", { name: "Save Job Role" }));
     expect(await within(jobRoleSection()).findByText(/Job Role changed to National Accounts Sales/)).toBeTruthy();
     const [[, input]] = assignCalls(workforce);
@@ -1145,7 +1180,8 @@ describe("finding #17: Workforce controls are offered from the PostgreSQL capabi
     });
     expect(within(control).getByRole("button", { name: "Assign Job Role" }).hasAttribute("disabled")).toBe(true);
     expect(workforce.call.mock.calls.some(([operation]) => operation === "listJobRoles" || operation === "listEmployees")).toBe(false);
-    // ...while the User Access actions, whose authority is still the feed, stay live from it.
+    // ...while the User Access actions (Roles & Access tab), whose authority is still the feed, stay live from it.
+    fireEvent.click(screen.getByRole("tab", { name: "Roles & Access" }));
     expect((await screen.findByRole("button", { name: /Disable Account/ })).hasAttribute("disabled")).toBe(false);
   });
 
@@ -1159,6 +1195,7 @@ describe("finding #17: Workforce controls are offered from the PostgreSQL capabi
     fireEvent.click(assign);
     expect(await within(jobRoleSection()).findByLabelText("Job Role")).toBeTruthy();
     // admin.principalAccess.read held in PostgreSQL does NOT unlock the Firebase-authorized account actions.
+    fireEvent.click(screen.getByRole("tab", { name: "Roles & Access" }));
     await waitFor(() => expect(document.querySelector("[data-user-account-status]")).toBeTruthy());
     const accountActions = screen.queryAllByRole("button", { name: /Disable Account|Enable Account|Add Role|Send password reset/ });
     for (const button of accountActions) expect(button.hasAttribute("disabled"), button.textContent).toBe(true);
@@ -1292,6 +1329,8 @@ const GOVERNED_ITEMS = [
 const governedPage = (items, nextCursor = null) => ({ ok: true, result: { employeeId: "emp-1", items, truncated: nextCursor !== null, nextCursor } });
 
 describe("the governed Change History (EMP-RT-H1)", () => {
+  beforeEach(() => { TAB = "activity"; });
+  afterEach(() => { TAB = ""; });
   it("renders human labels newest first, names the actor only when the server did, and is scoped to this Employee", async () => {
     const workforce = makeWorkforce({ listEmployeeChangeHistory: governedPage(GOVERNED_ITEMS) });
     renderDetail(okHistory(HISTORY), "emp-1", "", undefined, workforce);
@@ -1389,10 +1428,10 @@ describe("the governed Change History (EMP-RT-H1)", () => {
     renderDetail(okHistory(), "emp-1", "", undefined, workforce);
     await screen.findByTestId("governed-change-history-table");
     expect(within(screen.getByTestId("governed-change-history-table")).getAllByRole("row").length - 1).toBe(2);
-    fireEvent.click(within(governedSection()).getByRole("button", { name: "Show more" }));
+    fireEvent.click(within(governedSection()).getByRole("button", { name: "Show More" }));
     await waitFor(() => expect(within(screen.getByTestId("governed-change-history-table")).getAllByRole("row").length - 1).toBe(3));
     expect(governedReads(workforce).at(-1)).toEqual(["listEmployeeChangeHistory", { employeeId: "emp-1", limit: 50, cursor: "c-2" }]);
-    expect(within(governedSection()).queryByRole("button", { name: "Show more" })).toBeNull();
+    expect(within(governedSection()).queryByRole("button", { name: "Show More" })).toBeNull();
   });
 
   it("is re-read after a successful Edit Employee save", async () => {
@@ -1408,17 +1447,22 @@ describe("the governed Change History (EMP-RT-H1)", () => {
   });
 
   it("is re-read after a Job Role assignment", async () => {
+    // The Job Role control is on Overview and the history on Activity (UI corrections item D): only the active tab is
+    // mounted, so opening Activity AFTER the assignment reads the governed history then -- never a stale copy.
+    TAB = "";
     const workforce = makeWorkforce({
       listEmployeeChangeHistory: governedPage([]),
       assignEmployeeJobRole: { ok: true, result: { outcome: "ASSIGNED", employeeId: "emp-1", jobRoleId: "retail-sales", assignmentId: "ejr-1", endedAssignmentId: null } },
     });
     const select = await openJobRoleControl(workforce);
-    await waitFor(() => expect(governedState()).toBe("READY"));
-    const before = governedReads(workforce).length;
     fireEvent.change(select, { target: { value: "retail-sales" } });
     fireEvent.click(within(jobRoleSection()).getByRole("button", { name: "Save Job Role" }));
     await within(jobRoleSection()).findByText(/Job Role assigned: Retail Sales\./);
-    await waitFor(() => expect(governedReads(workforce).length).toBe(before + 1));
+    const assignedAt = workforce.call.mock.calls.findIndex(([operation]) => operation === "assignEmployeeJobRole");
+    fireEvent.click(screen.getByRole("tab", { name: "Activity" }));
+    await waitFor(() => expect(governedState()).toBe("READY"));
+    const readsAfter = workforce.call.mock.calls.map(([operation], i) => [operation, i]).filter(([operation, i]) => operation === "listEmployeeChangeHistory" && i > assignedAt);
+    expect(readsAfter.length).toBeGreaterThan(0);
   });
 
   it("static: the governed history modules add no Firebase import and read only through the injected Workforce client", async () => {

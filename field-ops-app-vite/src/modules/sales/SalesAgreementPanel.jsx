@@ -108,10 +108,10 @@ function CreateForm({ onCreate, pending, canCreate }) {
         </label>
         <label>Fulfillment
           <select value={fulfillmentIntent} disabled={pending || !canCreate} onChange={(e) => setIntent(e.target.value)}>
-            <option value="">Not stated</option>
+            <option value="">Not Stated</option>
             <option value="DELIVER">Deliver</option>
             <option value="INSTALL">Install</option>
-            <option value="BOTH">Deliver and install</option>
+            <option value="BOTH">Deliver and Install</option>
           </select>
         </label>
       </div>
@@ -190,7 +190,7 @@ function TermsForm({ view, pending, onSave }) {
     if (res.ok) setOpen(false);
   };
 
-  if (!open) return <Button variant="ghost" onClick={start}>Edit terms</Button>;
+  if (!open) return <Button variant="ghost" onClick={start}>Edit Terms</Button>;
 
   const field = (key, label, type = "text") => (
     <label key={key}>{label}
@@ -205,38 +205,38 @@ function TermsForm({ view, pending, onSave }) {
       <label>Fulfillment
         <select value={form.fulfillmentIntent} disabled={pending === "updateDraft"}
           onChange={(e) => setForm({ ...form, fulfillmentIntent: e.target.value })}>
-          <option value="">Not stated</option>
+          <option value="">Not Stated</option>
           <option value="DELIVER">Deliver</option>
           <option value="INSTALL">Install</option>
-          <option value="BOTH">Deliver and install</option>
+          <option value="BOTH">Deliver and Install</option>
         </select>
       </label>
       <label>Lease
         <input type="checkbox" checked={form.isLease} disabled={pending === "updateDraft"}
           onChange={(e) => setForm({ ...form, isLease: e.target.checked })} />
       </label>
-      {field("shipVia", "Ship via")}
-      {field("shippingInstructions", "Shipping instructions")}
-      {field("specialInstructions", "Special instructions")}
+      {field("shipVia", "Ship Via")}
+      {field("shippingInstructions", "Shipping Instructions")}
+      {field("specialInstructions", "Special Instructions")}
       {field("shippingMinor", "Shipping")}
-      {field("installChargeMinor", "Install charge")}
+      {field("installChargeMinor", "Install Charge")}
       <TaxEvidenceControl value={form.tax} disabled={pending === "updateDraft"} onChange={(tax) => setForm({ ...form, tax })} />
-      <label>Customer discount
+      <label>Customer Discount
         <select value={form.discountKind} disabled={pending === "updateDraft"} onChange={(e) => setForm({ ...form, discountKind: e.target.value })}>
-          <option value="">No discount</option>
+          <option value="">No Discount</option>
           <option value="PERCENT">Percent</option>
-          <option value="FIXED_AMOUNT">Fixed amount</option>
+          <option value="FIXED_AMOUNT">Fixed Amount</option>
         </select>
       </label>
       {form.discountKind ? (
-        <label>{form.discountKind === "PERCENT" ? "Discount percent" : "Discount amount"}
-          <input inputMode="decimal" aria-label={form.discountKind === "PERCENT" ? "Discount percent" : "Discount amount"} value={form.discountValue}
+        <label>{form.discountKind === "PERCENT" ? "Discount Percent" : "Discount Amount"}
+          <input inputMode="decimal" aria-label={form.discountKind === "PERCENT" ? "Discount Percent" : "Discount Amount"} value={form.discountValue}
             disabled={pending === "updateDraft"} onChange={(e) => setForm({ ...form, discountValue: e.target.value })} />
         </label>
       ) : null}
-      {field("downPaymentMinor", "Cash / down payment")}
+      {field("downPaymentMinor", "Cash / Down Payment")}
       {error && <p role="alert" className="fo-error">{error}</p>}
-      <Button variant="primary" disabled={pending === "updateDraft"} onClick={submit}>Save terms</Button>
+      <Button variant="primary" disabled={pending === "updateDraft"} onClick={submit}>Save Terms</Button>
       <Button variant="ghost" disabled={pending === "updateDraft"} onClick={() => setOpen(false)}>Cancel</Button>
     </div>
   );
@@ -324,13 +324,13 @@ export default function SalesAgreementPanel({ agreement, hasCapability = () => f
         {editingLines ? (
           <>
             <LinesEditor lines={editingLines} onChange={setEditingLines} disabled={pending === "updateDraft"} />
-            <Button variant="primary" disabled={pending === "updateDraft"} onClick={saveLines}>Save lines</Button>
+            <Button variant="primary" disabled={pending === "updateDraft"} onClick={saveLines}>Save Lines</Button>
             <Button variant="ghost" disabled={pending === "updateDraft"} onClick={() => setEditingLines(null)}>Cancel</Button>
           </>
         ) : (
           <>
             <table className="fo-table">
-              <thead><tr><th>Item</th><th>Qty</th><th>Unit price</th><th>Extended</th></tr></thead>
+              <thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Extended</th></tr></thead>
               <tbody>
                 {view.lines.map((l) => (
                   <tr key={l.lineId}>

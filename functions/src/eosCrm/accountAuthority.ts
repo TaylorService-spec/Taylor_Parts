@@ -592,7 +592,7 @@ export function listAccounts(deps: CrmDeps, actor: CrmActorContext, input: unkno
     actor,
     CRM_CAPABILITIES.CUSTOMER_RECORD_READ,
     () => {
-      const i = requireAllowlistedInput(input, ["limit", "cursor", "status", "nameStartsWith"]);
+      const i = requireAllowlistedInput(input, ["limit", "cursor", "status", "nameStartsWith", "search"]);
       let statuses: string[] | null = null;
       if (i.status !== undefined) {
         const values = typeof i.status === "string" ? [i.status] : i.status;
@@ -609,9 +609,19 @@ export function listAccounts(deps: CrmDeps, actor: CrmActorContext, input: unkno
         // The SAME fold as eos_crm's `lower(btrim(name))` index and customerIdentity.foldCustomerName.
         prefix = (i.nameStartsWith as string).trim().toLowerCase();
       }
-      return { limit: requirePageSize(i.limit), cursor: decodeCrmCursor("account", i.cursor), statuses, prefix };
+      // SEARCH (UI corrections integration, 2026-10-08): the Customer typeahead's server-side match -- the name OR the
+      // customer number CONTAINS the words, case-insensitively, inside THIS tenant only and under customer.record.read, paged
+      // with the same keyset as every other listAccounts read. LIKE metacharacters are escaped, so a query is literal text.
+      let search: string | null = null;
+      if (i.search !== undefined) {
+        if (typeof i.search !== "string" || i.search.trim().length < 2 || i.search.length > MAX_NAME_PREFIX) {
+          fail("FILTER_INVALID", "INVALID_INPUT", `search must be a string of 2 to ${MAX_NAME_PREFIX} characters`);
+        }
+        search = `%${(i.search as string).trim().toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      }
+      return { limit: requirePageSize(i.limit), cursor: decodeCrmCursor("account", i.cursor), statuses, prefix, search };
     },
-    async (db, tenantId, { limit, cursor, statuses, prefix }) => {
+    async (db, tenantId, { limit, cursor, statuses, prefix, search }) => {
       const { rows } = await db.query<AccountRow & { folded_name: string }>(
         `SELECT ${COLUMNS}, lower(btrim(a.name)) AS folded_name
            FROM eos_crm.accounts a
@@ -619,9 +629,10 @@ export function listAccounts(deps: CrmDeps, actor: CrmActorContext, input: unkno
             AND ($2::text[] IS NULL OR a.status::text = ANY($2::text[]))
             AND ($3::text IS NULL OR left(lower(btrim(a.name)), char_length($3::text)) = $3::text)
             AND ($4::text IS NULL OR (lower(btrim(a.name)), a.id) > ($4::text, $5::text))
+            AND ($7::text IS NULL OR lower(a.name) LIKE $7::text OR lower(coalesce(a.customer_number, '')) LIKE $7::text)
           ORDER BY lower(btrim(a.name)), a.id
           LIMIT $6`,
-        [tenantId, statuses, prefix, cursor?.name ?? null, cursor?.id ?? null, limit + 1],
+        [tenantId, statuses, prefix, cursor?.name ?? null, cursor?.id ?? null, limit + 1, search],
       );
       return pageOf("account", rows, limit, project);
     },

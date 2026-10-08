@@ -277,6 +277,8 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
 
 interface SearchKind {
   readonly kind: string; readonly label: string; readonly capabilities: readonly string[]; readonly channelScopedBy?: string; readonly reach?: "REORDER_QUEUE";
+  /** Admit a holder of this capability WITHIN operatingCompany scopes, narrowed to those companies ($3), like listEmployees. */
+  readonly companyScopedBy?: string;
   readonly sql: string;   // $1 tenant, $2 pattern, $3 channels (text[] | null), $4 reach keys (text[] | null)
 }
 
@@ -318,9 +320,14 @@ const SEARCH_KINDS: readonly SearchKind[] = Object.freeze([
   { kind: "reorderRequest", label: "Reorder Request", capabilities: ["reorder.request.read"], reach: "REORDER_QUEUE",
     sql: `SELECT r.id, r.reorder_request_number AS label, concat_ws(' · ', r.part_id, r.status::text) AS detail FROM eos_ops.reorder_requests r
            WHERE r.tenant_id = $1 AND (r.reorder_request_number ILIKE $2 OR r.part_id ILIKE $2) AND r.operating_company_key = ANY($4) ORDER BY r.created_at DESC LIMIT 8` },
-  { kind: "employee", label: "Employee", capabilities: ["employee.record.read"],
-    sql: `SELECT e.id, e.display_name AS label, e.employment_status::text AS detail FROM eos_workforce.employees e
-           WHERE e.tenant_id = $1 AND e.display_name ILIKE $2 ORDER BY lower(e.display_name) LIMIT 8` },
+  // UI corrections item E (2026-10-08): a holder of employee.record.read only WITHIN operating-company scopes is searched
+  // inside exactly those companies ($3), the same reach listEmployees / listWorkforceRoster apply; a flat holder is global.
+  { kind: "employee", label: "Employee", capabilities: ["employee.record.read"], companyScopedBy: "employee.record.read",
+    sql: `SELECT e.id, COALESCE(e.preferred_name, e.display_name, concat_ws(' ', e.first_name, e.last_name)) AS label,
+                 concat_ws(' · ', e.employee_number, e.employment_status::text) AS detail FROM eos_workforce.employees e
+           WHERE e.tenant_id = $1 AND (e.display_name ILIKE $2 OR e.preferred_name ILIKE $2 OR concat_ws(' ', e.first_name, e.last_name) ILIKE $2 OR e.employee_number ILIKE $2)
+             AND ($3::text[] IS NULL OR e.operating_company_id = ANY($3))
+           ORDER BY lower(COALESCE(e.last_name, e.display_name)), lower(COALESCE(e.first_name, '')), e.id LIMIT 8` },
 ]);
 
 /**
@@ -340,7 +347,8 @@ export async function searchEos(deps: WorkOrderOperationDeps, caller: WorkOrderC
   let reachKeys: readonly string[] | null = null;
   for (const k of SEARCH_KINDS) {
     const flat = k.capabilities.some((c) => actor.capabilities.has(c));
-    const channels = k.channelScopedBy && !flat ? admittedScopeValues(caller.operational?.scopedHeld as never, k.channelScopedBy, "salesChannel") : null;
+    const channels = k.channelScopedBy && !flat ? admittedScopeValues(caller.operational?.scopedHeld as never, k.channelScopedBy, "salesChannel")
+      : k.companyScopedBy && !flat ? admittedScopeValues(caller.operational?.scopedHeld as never, k.companyScopedBy, "operatingCompany") : null;
     if (!flat && (!channels || channels.length === 0)) { notSearched.push(k.kind); continue; }
     let reach: readonly string[] | null = null;
     if (k.reach === "REORDER_QUEUE") {

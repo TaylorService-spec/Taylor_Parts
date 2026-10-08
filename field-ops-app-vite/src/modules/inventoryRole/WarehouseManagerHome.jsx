@@ -17,7 +17,11 @@ import { formatTimestamp } from "../../domain/displayTimestamp.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
-import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
+import { inventoryUrgencyTone, inventoryUrgencyLabel } from "../../domain/inventoryUrgencyTone.js";
+import { toMillis } from "../../domain/timestampMillis.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 import { LEDGER_UNAVAILABLE_TEXT } from "../../domain/ledgerRowIntegrity.js";
 import { Button } from "../../shared/ui/primitives/index.js";
 
@@ -87,8 +91,18 @@ const INVENTORY_ACTION_LABEL = {
   [INVENTORY_ACTION_TYPE.CORRECT_MISTAKE]: "Correction Note (log only)",
 };
 
+// Part Activity, sortable by column over the actions already read (default = the read's order).
+const ACTION_SORT_COLUMNS = Object.freeze({
+  type: { value: (action) => statusLabel(action.transactionType, INVENTORY_ACTION_LABEL) },
+  qty: { value: (action) => (typeof action.quantityDelta === "number" ? action.quantityDelta : null) },
+  reason: { value: (action) => action.reason ?? null },
+  when: { value: (action) => toMillis(action.createdAt) },
+});
+const NO_ACTIONS = Object.freeze([]);
+
 function PartActivityPanel({ partId, resolveName, onClose }) {
   const { data: actions, loading, error: actionsError } = useInventoryActionsForPart(partId);
+  const { sort, toggle, sorted } = useTableSort({ rows: actions ?? NO_ACTIONS, columns: ACTION_SORT_COLUMNS });
   const partName = resolveName(partId);
 
   return (
@@ -111,16 +125,16 @@ function PartActivityPanel({ partId, resolveName, onClose }) {
           <table className="fo-table fo-table--stack">
             <thead>
               <tr>
-                <th>Type</th>
-                <th>Qty</th>
-                <th>Reason</th>
-                <th>When</th>
+                <SortableHeader columnKey="type" label="Type" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="qty" label="Qty" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="reason" label="Reason" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="when" label="When" sort={sort} onSort={toggle} />
               </tr>
             </thead>
             <tbody>
-              {actions.map((action) => (
+              {sorted.map((action) => (
                 <tr key={action.id}>
-                  <td>{INVENTORY_ACTION_LABEL[action.transactionType] ?? action.transactionType}</td>
+                  <td>{statusLabel(action.transactionType, INVENTORY_ACTION_LABEL)}</td>
                   <td>{action.quantityDelta > 0 ? `+${action.quantityDelta}` : action.quantityDelta}</td>
                   <td className="fo-muted">{action.reason ?? "—"}</td>
                   <td className="fo-muted">{formatTimestamp(action.createdAt, { unknown: "—" })}</td>
@@ -139,8 +153,8 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
   // DQ-027: opted in to partial integrity. Parts with an unreadable ledger record are LISTED as
   // unavailable (panels + catalog column), never dropped and never shown as a number.
   const { healthEntries, loading, error, integrity } = useInventoryLedger({ allowPartial: true });
-  const unavailablePartIds = integrity?.unavailablePartIds ?? [];
-  const unavailableSet = new Set(unavailablePartIds);
+  const unavailablePartIds = useMemo(() => integrity?.unavailablePartIds ?? [], [integrity]);
+  const unavailableSet = useMemo(() => new Set(unavailablePartIds), [unavailablePartIds]);
 
   // INV-CONVERGENCE-E cutover -- live canonical `parts` read (one-shot, the same
   // searchParts PartsList/PartDetail use; no new query surface). Stored TAGGED with
@@ -251,9 +265,38 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
     [catalogRows, category]
   );
 
+  // Column-header sort over the WHOLE filtered catalog (it is all on the client), applied BEFORE
+  // paging so page 1 of a sorted list is the true first page. Available / Risk sort by what the
+  // cell states: unknown (ledger loading/failed, or the part's ledger unreadable) sorts last.
+  const ledgerKnownForSort = !loading && !error;
+  const catalogSortColumns = useMemo(() => ({
+    part: { value: (part) => part.name ?? null },
+    sku: { value: (part) => part.sku ?? null },
+    category: { value: (part) => part.category ?? null },
+    available: {
+      value: (part) => {
+        if (!ledgerKnownForSort || unavailableSet.has(part.sku)) return null;
+        const health = healthByPartId.get(part.sku);
+        const qty = health ? health.stock.availableStock : part.warehouseQty;
+        return typeof qty === "number" ? qty : null;
+      },
+    },
+    risk: {
+      value: (part) => {
+        if (!ledgerKnownForSort || unavailableSet.has(part.sku)) return null;
+        const health = healthByPartId.get(part.sku);
+        if (!health) return null;
+        return health.recommendation.urgency ? inventoryUrgencyLabel(health.recommendation.urgency) : "Needs Planning";
+      },
+    },
+  }), [ledgerKnownForSort, unavailableSet, healthByPartId]);
+  const catalogSort = useTableSort({ rows: filteredParts, columns: catalogSortColumns });
+  const sortedParts = catalogSort.sorted;
+  const toggleCatalogSort = (key) => { catalogSort.toggle(key); setPage(0); };
+
   const pageCount = Math.max(1, Math.ceil(filteredParts.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
-  const pagedParts = filteredParts.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
+  const pagedParts = sortedParts.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
 
   function handleCategoryChange(value) {
     setCategory(value);
@@ -360,11 +403,11 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
                 <table className="fo-table fo-table--stack">
                   <thead>
                     <tr>
-                      <th>Part</th>
-                      <th>SKU</th>
-                      <th>Category</th>
-                      <th>Available</th>
-                      <th>Risk</th>
+                      <SortableHeader columnKey="part" label="Part" sort={catalogSort.sort} onSort={toggleCatalogSort} />
+                      <SortableHeader columnKey="sku" label="SKU" sort={catalogSort.sort} onSort={toggleCatalogSort} />
+                      <SortableHeader columnKey="category" label="Category" sort={catalogSort.sort} onSort={toggleCatalogSort} />
+                      <SortableHeader columnKey="available" label="Available" sort={catalogSort.sort} onSort={toggleCatalogSort} />
+                      <SortableHeader columnKey="risk" label="Risk" sort={catalogSort.sort} onSort={toggleCatalogSort} />
                       <th>Activity</th>
                     </tr>
                   </thead>
@@ -388,9 +431,9 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
                             ) : !health ? (
                               <span className="fo-muted">No ledger activity</span>
                             ) : health.recommendation.urgency ? (
-                              <StatusPill tone={inventoryUrgencyTone(health.recommendation.urgency)} label={health.recommendation.urgency} />
+                              <StatusPill tone={inventoryUrgencyTone(health.recommendation.urgency)} label={inventoryUrgencyLabel(health.recommendation.urgency)} />
                             ) : (
-                              <StatusPill tone="unknown" label="Needs planning" />
+                              <StatusPill tone="unknown" label="Needs Planning" />
                             )}
                           </td>
                           <td>

@@ -26,6 +26,18 @@ import { useSalesAgreementById } from "../src/hooks/useSalesAgreementById.js";
 import { salesAgreementView } from "../src/domain/salesAgreementView.js";
 import { salesAgreementAbsence, SALES_AGREEMENT_READ_MODE } from "../src/domain/salesAgreementRead.js";
 
+// UI corrections integration (2026-10-08): these pages read names from the GOVERNED EOS directory
+// (useGovernedEmployeeDirectory). It is mocked to answer from the same fixture directory as before.
+vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
+  const legacy = await import("../src/hooks/useEmployeeDirectory");
+  return {
+    useGovernedEmployeeDirectory: (...args) => legacy.useEmployeeDirectory(...args),
+    ...(await vi.importActual("../src/domain/actorDisplayName.js")),
+    resetGovernedEmployeeDirectory: () => {},
+  };
+});
+
+
 vi.mock("../src/hooks/useSalesAgreementById.js", () => ({ useSalesAgreementById: vi.fn() }));
 vi.mock("../src/hooks/useEmployeeDirectory", () => ({
   useEmployeeDirectory: () => ({
@@ -162,16 +174,16 @@ describe("agreed lines", () => {
     ready({ lines: [LINE_EQUIPMENT, { ...LINE_PART, unitPriceMinor: null, extendedMinor: null }] });
     expect(document.body.textContent).toContain("No subtotal, total or balance is claimed");
     expect(document.body.textContent).toContain("Incomplete — 1 line with no price");
-    const attention = screen.getByLabelText("Blocking acceptance");
+    const attention = screen.getByLabelText("Blocking Acceptance");
     expect(attention.textContent).toContain("X49463-3");
   });
 
   it("renders the two-block ladder with balance subordinate to the total", () => {
     ready();
     const sale = screen.getByLabelText("Sale composition");
-    expect(within(sale).getByText("Total committed")).toBeTruthy();
+    expect(within(sale).getByText("Total Committed")).toBeTruthy();
     const credits = screen.getByLabelText("Credits recorded at commitment");
-    expect(credits.textContent).toContain("Remaining balance");
+    expect(credits.textContent).toContain("Remaining Balance");
     expect(credits.textContent).toContain("Not an accounts-receivable balance");
   });
 });

@@ -68,9 +68,9 @@ export default function WorkOrderAttentionPanel({ attention }) {
   if (total === 0) return null;
 
   return (
-    <section className="ns-section ns-attention" id={SECTION_ID.attention} aria-label="Needs attention">
+    <section className="ns-section ns-attention" id={SECTION_ID.attention} aria-label="Needs Attention">
       <div className="ns-section__head">
-        <h2 className="ns-section__title">Needs attention</h2>
+        <h2 className="ns-section__title">Needs Attention</h2>
         {total > 0 ? <StatusPill tone="attention" label={String(total)} asText /> : null}
       </div>
 

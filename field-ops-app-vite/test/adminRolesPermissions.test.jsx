@@ -25,8 +25,8 @@ describe("Roles & Permissions (it shows real content, not an explanation of its 
 
   it("counts what the role can actually do separately from what it merely holds", () => {
     render(<AdminRolesPermissions />);
-    expect(screen.getByText("Can actually do")).toBeTruthy();
-    expect(screen.getByText("Granted but inert")).toBeTruthy();
+    expect(screen.getByText("Can Actually Do")).toBeTruthy();
+    expect(screen.getByText("Granted but Inert")).toBeTruthy();
   });
 
   it("switching role changes what is shown", () => {

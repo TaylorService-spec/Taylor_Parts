@@ -648,8 +648,8 @@ export default function DispatcherBoard() {
           {view === DISPATCH_VIEW.MAP ? <DispatchMapView /> : null}
 
           {scheduledWithoutWindow.length > 0 ? (
-            <section className="ns-dispatch-unplaced" aria-label="Scheduled without a window">
-              <h2 className="ns-dispatch-unplaced__title">Scheduled without a window</h2>
+            <section className="ns-dispatch-unplaced" aria-label="Scheduled Without a Window">
+              <h2 className="ns-dispatch-unplaced__title">Scheduled Without a Window</h2>
               <p className="ns-dispatch-unplaced__note">
                 These are scheduled but carry no start and end, so they cannot be drawn on a lane.
                 Open one to give it a window.
@@ -699,7 +699,7 @@ export default function DispatcherBoard() {
 
           <div className="ns-dispatch__footer">
             <section className="ns-dispatch__rules">
-              <h3 className="ns-dispatch__footer-title">Board rules (unchanged authority)</h3>
+              <h3 className="ns-dispatch__footer-title">Board Rules (Unchanged Authority)</h3>
               <p>
                 A drop proposes the governed command through the existing engine — the board is a
                 faster hand, not a new authority. Illegal moves (a start in the past, a window that
@@ -710,7 +710,7 @@ export default function DispatcherBoard() {
               </p>
             </section>
             <aside className="ns-dispatch__session">
-              <h3 className="ns-dispatch__footer-title">This session</h3>
+              <h3 className="ns-dispatch__footer-title">This Session</h3>
               <DispatcherActivityFeed entries={activityEntries} />
             </aside>
           </div>

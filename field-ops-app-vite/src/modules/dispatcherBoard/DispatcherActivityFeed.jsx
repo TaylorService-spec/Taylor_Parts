@@ -19,7 +19,7 @@ function DispatcherActivityFeed({ entries }) {
   return (
     <div className="disp-activity-feed">
       <div className="disp-activity-feed-header">
-        <h4>Recent Activity (this session)</h4>
+        <h4>Recent Activity (This Session)</h4>
         <Button variant="tertiary" onClick={() => setCollapsed((c) => !c)} aria-expanded={!collapsed}>
           {collapsed ? "Show" : "Hide"}
         </Button>

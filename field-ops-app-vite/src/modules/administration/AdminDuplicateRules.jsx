@@ -55,7 +55,7 @@ function RuleCard({ rule }) {
       </header>
 
       <dl className="fo-duprule__detail">
-        <dt>Matches on</dt>
+        <dt>Matches On</dt>
         <dd>
           <ul className="fo-duprule__criteria-list">
             {rule.criteria.map((c) => (
@@ -71,13 +71,13 @@ function RuleCard({ rule }) {
           </ul>
         </dd>
 
-        <dt>When someone creates</dt>
+        <dt>When Someone Creates</dt>
         <dd>{rule.onCreate.action === "block" ? "Blocked, with the message below" : "Allowed, with a warning"}</dd>
 
-        <dt>When someone edits</dt>
+        <dt>When Someone Edits</dt>
         <dd>{rule.onEdit.action === "block" ? "Blocked, with the message below" : "Allowed, with a warning"}</dd>
 
-        <dt>Message shown</dt>
+        <dt>Message Shown</dt>
         <dd className="fo-duprule__message">{rule.alertText}</dd>
 
         {rule.rationale && (
@@ -90,10 +90,10 @@ function RuleCard({ rule }) {
 
       <footer className="fo-duprule__actions">
         <Button variant="protected" reason={NOT_YET_EDITABLE}>
-          Edit rule
+          Edit Rule
         </Button>
         <Button variant="protected" reason={NOT_YET_EDITABLE}>
-          {rule.active ? "Turn off" : "Turn on"}
+          {rule.active ? "Turn Off" : "Turn On"}
         </Button>
       </footer>
     </article>
@@ -115,8 +115,8 @@ export default function AdminDuplicateRules() {
 
       <div className="fo-duprules__summary">
         <CompactMetric value={RULE_OBJECTS.length} label="Objects" />
-        <CompactMetric value={objectsWithActiveRules()} label="With active rules" />
-        <CompactMetric value={SEEDED_RULES.filter((r) => r.active).length} label="Active rules" />
+        <CompactMetric value={objectsWithActiveRules()} label="With Active Rules" />
+        <CompactMetric value={SEEDED_RULES.filter((r) => r.active).length} label="Active Rules" />
       </div>
 
       <SectionHeader

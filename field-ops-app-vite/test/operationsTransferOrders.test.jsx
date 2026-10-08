@@ -72,12 +72,14 @@ describe("WarehousePanel location-aware Transfer Orders table", () => {
     expect(screen.getByText("Main Warehouse")).toBeTruthy();
     expect(screen.getByText("Satellite")).toBeTruthy();
     expect(screen.getByText("NAME(PART-1)")).toBeTruthy();
-    expect(screen.getByText("COMPLETED")).toBeTruthy();
+    expect(screen.getByText("Completed")).toBeTruthy();
   });
 
   it("shows a type badge + raw locationId for non-warehouse endpoints", () => {
     renderPanel([{ docId: "TO-2", data: { partId: "PART-1", origin: { type: "WAREHOUSE", locationId: "WH-1" }, destination: { type: "MOBILE", locationId: "TRUCK-7" }, status: "IN_TRANSIT" } }]);
-    const badge = screen.getByText("MOBILE");
+    // Item A (2026-10-08): the location type is shown as words ("Mobile"), never the raw enum.
+    const badge = screen.getByText("Mobile");
+    expect(screen.queryByText("MOBILE")).toBeNull();
     expect(badge.className).toContain("fo-status-pill");
     expect(screen.getByText("TRUCK-7")).toBeTruthy();
     expect(screen.getByText("Main Warehouse")).toBeTruthy();
@@ -91,6 +93,7 @@ describe("WarehousePanel location-aware Transfer Orders table", () => {
     expect(screen.getByText(/1 transfer order hidden/i)).toBeTruthy();
     expect(screen.getByText("NAME(PART-1)")).toBeTruthy();
     expect(screen.queryByText("PENDING")).toBeNull();
+    expect(screen.queryByText("Pending")).toBeNull();
     expect(screen.queryByText("NAME(PART-2)")).toBeNull();
   });
 
@@ -101,7 +104,9 @@ describe("WarehousePanel location-aware Transfer Orders table", () => {
 
   it("has no action/write controls and wraps the table for horizontal scrolling", () => {
     const { container } = renderPanel([legacyDoc("TO-1", "REQUESTED")]);
-    expect(container.querySelector("button")).toBeNull();
+    // Sortable column headers (item C, 2026-10-08) are the only buttons: they reorder loaded rows, write nothing.
+    expect(container.querySelector("button:not(.fo-sortable-th__button)")).toBeNull();
+    expect(container.querySelectorAll(".fo-sortable-th__button")).toHaveLength(4);
     expect(container.querySelector("input")).toBeNull();
     expect(container.querySelector(".fo-table-scroll")).toBeTruthy();
   });
@@ -123,7 +128,7 @@ describe("Operations accessVersion fail-closed invalidation", () => {
     await act(async () => {
       view = render(<Operations accessVersion={1} />);
     });
-    expect(screen.getByText("REQUESTED")).toBeTruthy();
+    expect(screen.getByText("Requested")).toBeTruthy();
 
     // Access changes; the new read is hung (never settles).
     const hung = deferred();
@@ -132,7 +137,7 @@ describe("Operations accessVersion fail-closed invalidation", () => {
       view.rerender(<Operations accessVersion={2} />);
     });
     // Prior-scope row is gone immediately even though the new read has not settled.
-    expect(screen.queryByText("REQUESTED")).toBeNull();
+    expect(screen.queryByText("Requested")).toBeNull();
 
     // Clean up the pending read.
     await act(async () => {
@@ -149,7 +154,7 @@ describe("Operations accessVersion fail-closed invalidation", () => {
     await act(async () => {
       view = render(<Operations accessVersion={1} />);
     });
-    expect(screen.queryByText("CANCELLED")).toBeNull();
+    expect(screen.queryByText("Cancelled")).toBeNull();
 
     // Access changes to v2 (own deferred) BEFORE v1 settles.
     const d2 = deferred();
@@ -162,12 +167,12 @@ describe("Operations accessVersion fail-closed invalidation", () => {
     await act(async () => {
       d1.resolve([legacyDoc("TO-STALE", "CANCELLED")]);
     });
-    expect(screen.queryByText("CANCELLED")).toBeNull();
+    expect(screen.queryByText("Cancelled")).toBeNull();
 
     // The fresh v2 read completes -> its rows render.
     await act(async () => {
       d2.resolve([legacyDoc("TO-FRESH", "COMPLETED")]);
     });
-    expect(screen.getByText("COMPLETED")).toBeTruthy();
+    expect(screen.getByText("Completed")).toBeTruthy();
   });
 });

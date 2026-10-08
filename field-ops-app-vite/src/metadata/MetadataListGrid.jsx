@@ -1,3 +1,6 @@
+import SortableHeader from "../shared/ui/sorting/SortableHeader.jsx";
+import { nextSort } from "../shared/ui/sorting/useTableSort.js";
+import { sortableFieldIds } from "./MetadataListControls.jsx";
 import { useEffect, useRef } from "react";
 import LoadingState from "../shared/ui/LoadingState";
 import EmptyState from "../shared/ui/EmptyState";
@@ -87,6 +90,10 @@ function StateBody({ presentation, onRetry }) {
 
 export default function MetadataListGrid({
   presentation,
+  // UI corrections item C: { entity, criteria, onSort(fieldId|null, "ASC"|"DESC"|null), hasCapability } makes every
+  // sortable column header clickable -- ascending, descending, then the list's default order -- over the SAME criteria
+  // the Sort menu edits, so the query (not this page) orders the complete result. Absent = plain headers, unchanged.
+  sorting = null,
   onRowClick,
   onLoadMore,
   onViewAll,
@@ -110,6 +117,14 @@ export default function MetadataListGrid({
   onFocusHandled,
 }) {
   const { state, columns, rows, hasMore, viewAllListId, truncated, listId } = presentation;
+  const sortableIds = sorting ? sortableFieldIds(sorting.entity, sorting.hasCapability ?? null) : null;
+  const active = sorting?.criteria?.sort?.[0] ?? null;
+  const headerSort = active ? { key: active.fieldId, direction: active.direction === "DESC" ? "desc" : "asc" } : null;
+  const onHeaderSort = (fieldId) => {
+    const next = nextSort(headerSort, fieldId);
+    if (!next) sorting.onSort(null, null);
+    else sorting.onSort(next.key, next.direction === "desc" ? "DESC" : "ASC");
+  };
 
   const containerRef = useRef(null);
   const rowElementsRef = useRef(new Map());
@@ -219,13 +234,24 @@ export default function MetadataListGrid({
                 // A numeric HEADER sits over its column, not beside it. `.ns-table th.ns-num` is
                 // the matching rule; without it the heading stayed left while its values moved
                 // right, which reads as a mislabelled column rather than an aligned one.
-                <th
-                  key={column.fieldId}
-                  scope="col"
-                  className={NUMERIC_CELL_TYPES.has(column?.type) ? "ns-num" : undefined}
-                >
-                  {column.label}
-                </th>
+                sortableIds?.has(column.fieldId) ? (
+                  <SortableHeader
+                    key={column.fieldId}
+                    columnKey={column.fieldId}
+                    label={column.label}
+                    sort={headerSort}
+                    onSort={onHeaderSort}
+                    className={NUMERIC_CELL_TYPES.has(column?.type) ? "ns-num" : undefined}
+                  />
+                ) : (
+                  <th
+                    key={column.fieldId}
+                    scope="col"
+                    className={NUMERIC_CELL_TYPES.has(column?.type) ? "ns-num" : undefined}
+                  >
+                    {column.label}
+                  </th>
+                )
               ))}
               {actions && (
                 <th scope="col" className="fo-sr-only">

@@ -16,6 +16,7 @@ import {
   snapshotPartUnit,
 } from "../../domain/workOrderInventorySnapshot";
 import { Button } from "../../shared/ui/primitives";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 
 // WO Parts Planning -- the operational planning surface for a single Work Order.
 //
@@ -272,7 +273,7 @@ export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps,
           (access/useOpportunityCapabilities.js / opportunityWriteReadiness.js). */}
       {!editing && editableStatus && !unresolved && canEdit && (
         <Button variant="secondary" onClick={beginEditing}>
-          Edit parts plan
+          Edit Parts Plan
         </Button>
       )}
 
@@ -294,7 +295,7 @@ export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps,
 
       {!editableStatus && (
         <div className="fo-muted">
-          This Work Order is {String(workOrder?.status ?? "in a terminal state").toLowerCase()}; its parts
+          This Work Order is {(workOrder?.status ? statusLabel(workOrder.status) : "in a terminal state").toLowerCase()}; its parts
           plan can no longer be changed.
         </div>
       )}
@@ -302,7 +303,7 @@ export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps,
       {editing && (
         <div>
           <div>
-            <label htmlFor="wo-plan-part-search">Add a part</label>
+            <label htmlFor="wo-plan-part-search">Add a Part</label>
             <input
               id="wo-plan-part-search"
               type="search"
@@ -355,7 +356,7 @@ export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps,
             loading={saving}
             disabled={!dirty || blockedPartIds.length > 0}
           >
-            Save parts plan
+            Save Parts Plan
           </Button>
           <Button variant="tertiary" onClick={cancelEditing} disabled={saving}>
             Cancel

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
-import ScanInput from "../../shared/ui/ScanInput.jsx";
+import ScanInput, { SCAN_ITEM_LABEL } from "../../shared/ui/ScanInput.jsx";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import { normalizeScanToken } from "../../domain/scannedIdentity.js";
 import { resolveTrackingModeFromControlType } from "../../domain/inventoryLedgerEvent.js";
@@ -65,7 +65,7 @@ function LocationPicker({ title, which, endpoint, warehouse, allowTruck, trucks,
       ) : (
         <>
           <Button variant="secondary" onClick={onWarehouse} disabled={!warehouse || busy}>
-            {warehouse ? `${warehouse.name || warehouse.id} — not in a bin` : "Choose a warehouse first"}
+            {warehouse ? `${warehouse.name || warehouse.id} — not in a bin` : "Choose a Warehouse First"}
           </Button>
           <ScanInput
             onScan={onBinScan}
@@ -82,7 +82,7 @@ function LocationPicker({ title, which, endpoint, warehouse, allowTruck, trucks,
           )}
           {allowTruck && trucks.length > 0 && (
             <label className="fo-muted">
-              Or a truck{" "}
+              Or a Truck{" "}
               <select className="fo-input" defaultValue="" onChange={(e) => e.target.value && onTruck(e.target.value)} disabled={busy}>
                 <option value="">Choose a truck</option>
                 {trucks.map((t) => <option key={t.locationId} value={t.locationId}>{t.label}</option>)}
@@ -303,12 +303,12 @@ export default function MoveStockScan({ deps }) {
         </select>
       </section>
 
-      <LocationPicker title="Moving from" which="source" endpoint={source} warehouse={warehouse}
+      <LocationPicker title="Moving From" which="source" endpoint={source} warehouse={warehouse}
         allowTruck={false} trucks={[]} busy={busy} scanInputDeps={deps?.scanInputDeps}
         onWarehouse={() => warehouse && setSource(warehouseEndpoint(warehouse))}
         onBinScan={scanLocation(setSource)} onClear={() => setSource(null)} />
 
-      <LocationPicker title="Moving to" which="destination" endpoint={destination} warehouse={warehouse}
+      <LocationPicker title="Moving To" which="destination" endpoint={destination} warehouse={warehouse}
         allowTruck={canSendToTruck} trucks={trucks} truckRead={truckRead} busy={busy} scanInputDeps={deps?.scanInputDeps}
         onWarehouse={() => warehouse && setDestination(warehouseEndpoint(warehouse))}
         onBinScan={scanLocation(setDestination)}
@@ -324,14 +324,14 @@ export default function MoveStockScan({ deps }) {
       )}
 
       <section className="fo-receiving-session__section" aria-label="Items">
-        <h3 className="fo-receiving-session__kicker">What is moving</h3>
+        <h3 className="fo-receiving-session__kicker">What Is Moving</h3>
         {awaitingSerial && (
           <p className="fo-scan__notice fo-scan__notice--pending" role="status">
             Scan the serial number for {parts.get(awaitingSerial)?.label ?? awaitingSerial}.{" "}
             <button type="button" className="fo-link-btn" onClick={() => setExpecting(null)}>Cancel</button>
           </p>
         )}
-        <ScanInput onScan={scanItem} label={awaitingSerial ? "Scan serial number" : "Scan item"}
+        <ScanInput onScan={scanItem} label={awaitingSerial ? "Scan serial number" : SCAN_ITEM_LABEL}
           placeholder={awaitingSerial ? "Scan the serial on the unit" : "Scan each item going"}
           disabled={busy || route.route === MOVE_ROUTE.INVALID} deps={deps?.scanInputDeps} />
         <p className="fo-muted">Scanning records what is going. Nothing moves until you confirm.</p>
@@ -354,7 +354,7 @@ export default function MoveStockScan({ deps }) {
           </div>
         )}
         {queue.observations.length > 0 && (
-          <button type="button" className="fo-link-btn" onClick={() => setQueue((q) => undoLastScan(q))} disabled={busy}>Undo last scan</button>
+          <button type="button" className="fo-link-btn" onClick={() => setQueue((q) => undoLastScan(q))} disabled={busy}>Undo Last Scan</button>
         )}
         {unresolved.length > 0 && (
           <ul className="fo-list" aria-label="Scans that did not match">
@@ -379,7 +379,7 @@ export default function MoveStockScan({ deps }) {
           <p className="fo-warning" role="status">Deal with the lines that did not move before moving more.</p>
         )}
         <Button onClick={confirm} disabled={busy || blockedByPrior || !canConfirm(lines, route)}>
-          {lines.length === 0 ? "Scan items to move" : `Move ${lines.length} line${lines.length === 1 ? "" : "s"}`}
+          {lines.length === 0 ? "Scan Items to Move" : `Move ${lines.length} line${lines.length === 1 ? "" : "s"}`}
         </Button>
         {notice && <p className="fo-inline-error" role="alert">{notice}</p>}
       </section>
@@ -404,7 +404,7 @@ export default function MoveStockScan({ deps }) {
             })}
           </ul>
           {toRetry.length > 0 && (
-            <Button variant="secondary" onClick={retry} disabled={busy}>Try again ({toRetry.length})</Button>
+            <Button variant="secondary" onClick={retry} disabled={busy}>Try Again ({toRetry.length})</Button>
           )}
           {!summary.complete && summary.pending === 0 && (
             <Button variant="tertiary" onClick={() => { setBatch(null); setResults({}); }} disabled={busy}>

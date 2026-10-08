@@ -22,6 +22,66 @@ import { useWorkforceCapabilities } from "../../hooks/useWorkforceCapabilities.j
 import { statedReason } from "./controlPlaneModel.js";
 import { workforceRefusal } from "./EmployeeWorkAuthorization.jsx";
 import { FUNCTIONAL_ROLE_WRITE_CAPABILITY } from "./EmployeeFunctionalRoles.jsx";
+import { statusLabel, titleCase } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+
+const HOLDER_COLUMNS = Object.freeze({
+  employee: { value: (h) => h.employee?.displayName ?? h.employee?.employeeId },
+  state: { value: (h) => statusLabel(h.state) },
+  from: { value: (h) => h.effectiveFrom },
+  to: { value: (h) => h.effectiveTo },
+  reason: { value: (h) => h.reason },
+});
+
+function HolderTable({ rows }) {
+  const { sort, toggle, sorted } = useTableSort({ rows, columns: HOLDER_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table" aria-label="Functional Role holders" data-functional-role-holders={rows.length}>
+      <thead><tr>{header("employee", "Employee")}{header("state", "State")}{header("from", "From")}{header("to", "To")}{header("reason", "Reason")}</tr></thead>
+      <tbody>
+        {sorted.map((h) => (
+          <tr key={h.assignmentId}>
+            <td><Link to={`/administration/users/${h.employee?.employeeId}`}>{h.employee?.displayName ?? h.employee?.employeeId}</Link></td>
+            <td>{statusLabel(h.state)}</td>
+            <td className="fo-muted">{h.effectiveFrom}</td>
+            <td className="fo-muted">{h.effectiveTo ?? "—"}</td>
+            <td className="fo-muted">{h.reason}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+const CATALOG_COLUMNS = Object.freeze({
+  name: { value: (r) => r.name },
+  key: { value: (r) => r.key },
+  status: { value: (r) => statusLabel(r.status) },
+  holders: { value: (r) => (typeof r.currentHolderCount === "number" ? r.currentHolderCount : null) },
+});
+
+function CatalogTable({ items, onOpen }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: items, columns: CATALOG_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table" aria-label="Functional Roles" data-functional-role-rows={items.length}>
+      <thead><tr>{header("name", "Name")}{header("key", "Key")}{header("status", "Status")}{header("holders", "Current Holders")}<th /></tr></thead>
+      <tbody>
+        {sorted.map((r) => (
+          <tr key={r.functionalRoleId} data-functional-role-row={r.key}>
+            <td>{r.name}</td>
+            <td><code>{r.key}</code></td>
+            <td>{statusLabel(r.status)}</td>
+            <td>{r.currentHolderCount}</td>
+            <td><Button type="button" variant="secondary" onClick={() => onOpen(r.functionalRoleId)} aria-label={`Open ${r.key}`}>Open</Button></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 // NOT GrantControls' ReasonField: that one is `required`, and here the reason is optional for a create or a metadata
 // edit (the server requires it only for a status change, and says so if it is missing).
@@ -75,7 +135,7 @@ function CreateFunctionalRole({ workforce, onCreated }) {
         <input aria-label="Functional Role name" value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       <label className="fo-form-field">
-        <span>Description (optional)</span>
+        <span>Description (Optional)</span>
         <textarea aria-label="Functional Role description" value={description} onChange={(e) => setDescription(e.target.value)} />
       </label>
       <ReasonText value={reason} onChange={setReason} label="Reason (optional, recorded in the audit trail)" />
@@ -115,7 +175,7 @@ function FunctionalRoleDetail({ role, workforce, canWrite, onChanged }) {
 
   return (
     <div className="fo-cp-panel" data-functional-role-detail={role.key}>
-      <h3>{role.name} <span className="fo-muted"><code>{role.key}</code> · {role.status}</span></h3>
+      <h3>{role.name} <span className="fo-muted"><code>{role.key}</code> · {statusLabel(role.status)}</span></h3>
       {role.description ? <p className="fo-muted">{role.description}</p> : null}
 
       {canWrite ? (
@@ -134,7 +194,7 @@ function FunctionalRoleDetail({ role, workforce, canWrite, onChanged }) {
           </label>
           <ReasonText value={reason} onChange={setReason} label="Reason (required to activate or deactivate; recorded in the audit trail)" />
           <div className="fo-btn-row">
-            <Button type="submit" variant="secondary">Save name and description</Button>
+            <Button type="submit" variant="secondary">Save Name and Description</Button>
             <Button
               type="button"
               variant={nextStatus === "INACTIVE" ? "destructive" : "primary"}
@@ -155,29 +215,16 @@ function FunctionalRoleDetail({ role, workforce, canWrite, onChanged }) {
       <h4>Holders</h4>
       <ReadState read={holders} what="holders" />
       {holderRows ? (holderRows.length === 0 ? <p className="fo-muted">Nobody holds this Functional Role.</p> : (
-        <table className="fo-table" aria-label="Functional Role holders" data-functional-role-holders={holderRows.length}>
-          <thead><tr><th>Employee</th><th>State</th><th>From</th><th>To</th><th>Reason</th></tr></thead>
-          <tbody>
-            {holderRows.map((h) => (
-              <tr key={h.assignmentId}>
-                <td><Link to={`/administration/users/${h.employee?.employeeId}`}>{h.employee?.displayName ?? h.employee?.employeeId}</Link></td>
-                <td>{h.state}</td>
-                <td className="fo-muted">{h.effectiveFrom}</td>
-                <td className="fo-muted">{h.effectiveTo ?? "—"}</td>
-                <td className="fo-muted">{h.reason}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <HolderTable rows={holderRows} />
       )) : null}
 
-      <h4>Audit history</h4>
+      <h4>Audit History</h4>
       <ReadState read={history} what="history" />
       {events ? (events.length === 0 ? <p className="fo-muted">No recorded change.</p> : (
         <ul className="fo-cp-history" data-functional-role-events={events.length}>
           {events.map((ev, i) => (
             <li key={`${ev.occurredAt}-${i}`}>
-              <code>{ev.action}</code> <span className="fo-muted">{ev.occurredAt}{ev.employeeId ? ` · Employee ${ev.employeeId}` : ""}{ev.reason ? ` · ${ev.reason}` : ""}</span>
+              {titleCase(ev.action)} <code>{ev.action}</code> <span className="fo-muted">{ev.occurredAt}{ev.employeeId ? ` · Employee ${ev.employeeId}` : ""}{ev.reason ? ` · ${ev.reason}` : ""}</span>
             </li>
           ))}
         </ul>
@@ -203,23 +250,10 @@ export default function AdminFunctionalRoles({ workforce = workforceApiClient })
         Business responsibilities an Employee may hold. A Functional Role is not a Security Role and not a Job Role, and
         it grants nothing: a workflow may require one in addition to a Security Role, which only narrows who may act.
       </p>
-      <RuledSection title="Catalog" meta="Tenant Functional Roles — ACTIVE and INACTIVE">
+      <RuledSection title="Catalog" meta="Tenant Functional Roles — Active and Inactive">
         <ReadState read={catalog} what="Functional Roles" />
         {items ? (items.length === 0 ? <p className="fo-muted">No Functional Role exists yet.</p> : (
-          <table className="fo-table" aria-label="Functional Roles" data-functional-role-rows={items.length}>
-            <thead><tr><th>Name</th><th>Key</th><th>Status</th><th>Current holders</th><th /></tr></thead>
-            <tbody>
-              {items.map((r) => (
-                <tr key={r.functionalRoleId} data-functional-role-row={r.key}>
-                  <td>{r.name}</td>
-                  <td><code>{r.key}</code></td>
-                  <td>{r.status}</td>
-                  <td>{r.currentHolderCount}</td>
-                  <td><Button type="button" variant="secondary" onClick={() => setSelected(r.functionalRoleId)} aria-label={`Open ${r.key}`}>Open</Button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <CatalogTable items={items} onOpen={setSelected} />
         )) : null}
       </RuledSection>
       {current ? (

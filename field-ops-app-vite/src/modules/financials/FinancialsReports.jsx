@@ -56,7 +56,7 @@ export default function FinancialsReports() {
             <caption className="fo-sr-only">Report catalog groups and their current availability</caption>
             <thead>
               <tr>
-                <th scope="col">Report group</th>
+                <th scope="col">Report Group</th>
                 <th scope="col">Availability</th>
               </tr>
             </thead>

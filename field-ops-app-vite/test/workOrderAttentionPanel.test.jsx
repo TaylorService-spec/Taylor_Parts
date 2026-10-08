@@ -43,7 +43,7 @@ describe("WorkOrderAttentionPanel -- WO/Dispatch attention projection wiring", (
   it("clean: the block renders nothing at all", () => {
     const { container } = renderPanel({ workOrders: [], technicians: [] });
     expect(container.textContent).toBe("");
-    expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Needs Attention" })).toBeNull();
   });
 
   it("renders a READY_TO_DISPATCH work order under 'Ready to Schedule' with an Action needed label and a correct deep link", () => {
@@ -51,7 +51,7 @@ describe("WorkOrderAttentionPanel -- WO/Dispatch attention projection wiring", (
       workOrders: [{ id: "WO-1", woNumber: "WO-1001", status: "READY_TO_DISPATCH" }],
       technicians: [],
     });
-    expect(screen.getByRole("heading", { name: "Needs attention" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Needs Attention" })).toBeTruthy();
     expect(screen.getByText("Ready to Schedule")).toBeTruthy();
     expect(screen.getByText("WO-1001")).toBeTruthy();
     expect(screen.getByText("Action needed")).toBeTruthy();

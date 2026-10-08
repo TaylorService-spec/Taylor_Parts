@@ -3,7 +3,7 @@ import { ACTIVITY_FILTER } from "../../../domain/serviceOperationsNorthStar";
 
 const FILTERS = [
   { value: ACTIVITY_FILTER.ALL, label: "All" },
-  { value: ACTIVITY_FILTER.WORK_ORDER, label: "Work order" },
+  { value: ACTIVITY_FILTER.WORK_ORDER, label: "Work Order" },
   { value: ACTIVITY_FILTER.JOB, label: "Job" },
   { value: ACTIVITY_FILTER.SYSTEM, label: "System" },
 ];

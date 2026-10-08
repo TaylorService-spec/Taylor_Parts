@@ -21,6 +21,7 @@ import RuledSection from "../../shared/ui/RuledSection.jsx";
 import { WORKFORCE_READ_STATE, useWorkforceRead } from "../../hooks/useWorkforceRead.js";
 import { statedReason } from "./controlPlaneModel.js";
 import { ReasonField } from "./GrantControls.jsx";
+import { statusLabel, titleCase } from "../../shared/display/displayLabels.js";
 
 export const WORK_ELIGIBILITY_WRITE_CAPABILITY = "admin.employeeWorkEligibility.write";
 export const OPERATIONAL_SCOPE_WRITE_CAPABILITY = "admin.employeeOperationalScope.write";
@@ -77,7 +78,7 @@ export function WorkEligibilitySection({ employeeId, workforce, canWrite, onChan
           <ul className="fo-role-list" data-work-eligibility={items.length}>
             {items.map((i) => (
               <li key={i.qualificationId ?? i.qualificationCode}>
-                <span>{i.label ?? i.qualificationCode}</span>{" "}
+                <span>{i.label ?? titleCase(i.qualificationCode)}</span>{" "}
                 <span className="fo-muted"><code>{i.qualificationCode}</code>{i.effectiveFrom ? ` · since ${i.effectiveFrom}` : ""}</span>{" "}
                 {canWrite ? (
                   <Button type="button" variant="secondary" onClick={() => { setEnding(i); setReason(""); setOutcome(null); }} aria-label={`End ${i.qualificationCode}`}>End</Button>
@@ -98,18 +99,18 @@ export function WorkEligibilitySection({ employeeId, workforce, canWrite, onChan
             else if (code) run("assignEmployeeWorkEligibility", { employeeId, qualificationCode: code, reason: reasonText });
           }}
         >
-          {ending ? <p>{`End ${ending.label ?? ending.qualificationCode}?`}</p> : (
+          {ending ? <p>{`End ${ending.label ?? titleCase(ending.qualificationCode)}?`}</p> : (
             <label className="fo-form-field">
               <span>Qualification</span>
               <select aria-label="Qualification to assign" value={code} onChange={(e) => setCode(e.target.value)}>
                 <option value="">Choose…</option>
-                {WORK_ELIGIBILITY_CODES.filter((c) => !held.has(c)).map((c) => <option key={c} value={c}>{c}</option>)}
+                {WORK_ELIGIBILITY_CODES.filter((c) => !held.has(c)).map((c) => <option key={c} value={c}>{titleCase(c)}</option>)}
               </select>
             </label>
           )}
           <ReasonField value={reason} onChange={setReason} />
           <div className="fo-btn-row">
-            <Button type="submit" variant="primary" disabled={!reasonText || (!ending && !code)}>{ending ? "Confirm end" : "Assign"}</Button>
+            <Button type="submit" variant="primary" disabled={!reasonText || (!ending && !code)}>{ending ? "Confirm End" : "Assign"}</Button>
             {ending ? <Button type="button" variant="secondary" onClick={() => setEnding(null)}>Cancel</Button> : null}
           </div>
         </form>
@@ -151,8 +152,8 @@ export function OperationalScopeSection({ employeeId, workforce, canWrite, onCha
           <ul className="fo-role-list" data-operational-scope={items.length}>
             {items.map((i) => (
               <li key={i.operationalScopeId ?? `${i.scopeType}:${i.scopeId}`}>
-                <span>{`${i.scopeTypeLabel ?? i.scopeType}: ${i.scopeName ?? i.scopeId}`}</span>{" "}
-                <span className="fo-muted"><code>{i.scopeId}</code>{i.warehouseStatus && i.warehouseStatus !== "ACTIVE" ? ` · target ${i.warehouseStatus}` : ""}</span>{" "}
+                <span>{`${i.scopeTypeLabel ?? titleCase(i.scopeType)}: ${i.scopeName ?? i.scopeId}`}</span>{" "}
+                <span className="fo-muted"><code>{i.scopeId}</code>{i.warehouseStatus && i.warehouseStatus !== "ACTIVE" ? ` · target ${statusLabel(i.warehouseStatus)}` : ""}</span>{" "}
                 {canWrite ? (
                   <Button type="button" variant="secondary" onClick={() => { setEnding(i); setReason(""); setOutcome(null); }} aria-label={`End scope ${i.scopeId}`}>End</Button>
                 ) : null}
@@ -172,7 +173,7 @@ export function OperationalScopeSection({ employeeId, workforce, canWrite, onCha
             else if (scopeType && target) run("assignEmployeeOperationalScope", { employeeId, scopeType, scopeId: target, reason: reasonText });
           }}
         >
-          {ending ? <p>{`End ${ending.scopeTypeLabel ?? ending.scopeType} ${ending.scopeName ?? ending.scopeId}?`}</p> : (
+          {ending ? <p>{`End ${ending.scopeTypeLabel ?? titleCase(ending.scopeType)} ${ending.scopeName ?? ending.scopeId}?`}</p> : (
             <ScopeTargetPicker
               targetsRead={targetsRead} targets={targets} scopeType={scopeType} scopeId={scopeId} chosenType={chosenType} offered={offered}
               onScopeType={(t) => { setScopeType(t); setScopeId(""); }} onScopeId={setScopeId}
@@ -180,7 +181,7 @@ export function OperationalScopeSection({ employeeId, workforce, canWrite, onCha
           )}
           <ReasonField value={reason} onChange={setReason} />
           <div className="fo-btn-row">
-            <Button type="submit" variant="primary" disabled={!reasonText || (!ending && (!scopeType || !target))}>{ending ? "Confirm end" : "Assign"}</Button>
+            <Button type="submit" variant="primary" disabled={!reasonText || (!ending && (!scopeType || !target))}>{ending ? "Confirm End" : "Assign"}</Button>
             {ending ? <Button type="button" variant="secondary" onClick={() => setEnding(null)}>Cancel</Button> : null}
           </div>
         </form>
@@ -209,19 +210,19 @@ function ScopeTargetPicker({ targetsRead, targets, scopeType, scopeId, chosenTyp
   return (
     <div data-operational-scope-picker="READY">
       <label className="fo-form-field">
-        <span>Scope type</span>
+        <span>Scope Type</span>
         <select aria-label="Scope type to assign" value={scopeType} onChange={(e) => onScopeType(e.target.value)}>
           <option value="">Choose…</option>
           {targets.map((t) => (
             <option key={t.scopeType} value={t.scopeType} disabled={!t.available}>
-              {t.available ? (t.label ?? t.scopeType) : `${t.label ?? t.scopeType} — unavailable`}
+              {t.available ? (t.label ?? titleCase(t.scopeType)) : `${t.label ?? titleCase(t.scopeType)} — unavailable`}
             </option>
           ))}
         </select>
       </label>
       {chosenType?.available ? (
         <label className="fo-form-field">
-          <span>{chosenType.label ?? chosenType.scopeType}</span>
+          <span>{chosenType.label ?? titleCase(chosenType.scopeType)}</span>
           <select aria-label="Scope target" value={scopeId} onChange={(e) => onScopeId(e.target.value)}>
             <option value="">{offered.length === 0 ? "Every governed target is already held" : "Choose…"}</option>
             {offered.map((v) => <option key={v.value} value={v.value}>{v.label ?? v.value}</option>)}
@@ -230,7 +231,7 @@ function ScopeTargetPicker({ targetsRead, targets, scopeType, scopeId, chosenTyp
       ) : null}
       {unavailable.length > 0 ? (
         <p className="fo-muted" data-unavailable-scope-types>
-          {`Unavailable: ${unavailable.map((t) => `${t.label ?? t.scopeType} (${t.reason ?? "no governed value"})`).join("; ")}.`}
+          {`Unavailable: ${unavailable.map((t) => `${t.label ?? titleCase(t.scopeType)} (${t.reason ?? "no governed value"})`).join("; ")}.`}
         </p>
       ) : null}
     </div>

@@ -119,7 +119,7 @@ export default function OpportunityAgreementCard({
         return (
           <p className="ns-state">
             Couldn’t load the agreement — {" "}
-            <button type="button" className="fo-link-button" onClick={agreement?.refresh}>try again</button>.
+            <button type="button" className="fo-link-button" onClick={agreement?.refresh}>Try Again</button>.
             Your work elsewhere is unaffected.
           </p>
         );
@@ -191,13 +191,13 @@ export default function OpportunityAgreementCard({
               {pricing}
               {total ? <> · total <strong className="ns-num-inline">{total}</strong></> : null}
               {view.salesOrderId ? (
-                <> · <Link to={`/customers/opportunities/sales-order/${view.salesOrderId}`}>Sales order</Link></>
+                <> · <Link to={`/customers/opportunities/sales-order/${view.salesOrderId}`}>Sales Order</Link></>
               ) : (
                 <> · not yet tied to a sales order</>
               )}
             </div>
           </div>
-          {href ? <Link to={href} className="fo-button ns-agreement__action">View agreement</Link> : null}
+          {href ? <Link to={href} className="fo-button ns-agreement__action">View Agreement</Link> : null}
         </div>
         <p className="ns-gap-note">
           The agreement carries its own currency, so its money renders as money — unlike the

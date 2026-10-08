@@ -27,15 +27,15 @@ export const ALIAS_TYPES = Object.freeze([
 // Plain-language labels. The stored value is the enum; a person should never have to read
 // `BARCODE_OTHER` to understand what they are choosing.
 export const ALIAS_TYPE_LABEL = Object.freeze({
-  INTERNAL_PN: "Internal part number",
-  MANUFACTURER_PN: "Manufacturer part number",
+  INTERNAL_PN: "Internal Part Number",
+  MANUFACTURER_PN: "Manufacturer Part Number",
   SUPPLIER_SKU: "Supplier SKU",
-  UPC: "UPC barcode",
-  EAN: "EAN barcode",
-  GTIN: "GTIN barcode",
-  LEGACY: "Legacy identifier",
-  CUSTOMER_REF: "Customer reference",
-  VENDOR_REF: "Vendor reference",
+  UPC: "UPC Barcode",
+  EAN: "EAN Barcode",
+  GTIN: "GTIN Barcode",
+  LEGACY: "Legacy Identifier",
+  CUSTOMER_REF: "Customer Reference",
+  VENDOR_REF: "Vendor Reference",
   BARCODE_OTHER: "Other barcode",
 });
 

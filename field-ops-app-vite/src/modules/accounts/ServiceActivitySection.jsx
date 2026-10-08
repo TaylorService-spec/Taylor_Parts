@@ -141,11 +141,11 @@ export default function ServiceActivitySection({ accountId }) {
   const techniciansError = null;
 
   return (
-    <section className="ns-section" aria-label="Service activity">
+    <section className="ns-section" aria-label="Service Activity">
       <div className="ns-section__head">
-        <h2 className="ns-section__title">Service activity</h2>
+        <h2 className="ns-section__title">Service Activity</h2>
         <span className="ns-section__meta ns-svc__counts">
-          <CountCell label="Open work orders" state={open} />
+          <CountCell label="Open Work Orders" state={open} />
           <CountCell label="Completed" state={completed} />
         </span>
       </div>

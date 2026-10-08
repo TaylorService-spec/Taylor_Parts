@@ -72,7 +72,7 @@ const AccountDetail = lazy(() => import("./modules/accounts/AccountDetail"));
 const PartsShadowParityDiagnostics = lazy(() => import("./modules/inventory/PartsShadowParityDiagnostics"));
 const AdministrationOverview = lazy(() => import("./modules/administration/AdministrationOverview"));
 const AdminAuditLogs = lazy(() => import("./modules/administration/AdminAuditLogs.jsx"));
-const AdminPermissionPreview = lazy(() => import("./modules/administration/AdminPermissionPreview.jsx"));
+const PrincipalQaInspection = lazy(() => import("./modules/administration/PrincipalQaInspection.jsx"));
 const AdminUsers = lazy(() => import("./modules/administration/AdminUsers"));
 const AdminRolesPermissions = lazy(() => import("./modules/administration/AdminRolesPermissions"));
 const AdminDuplicateRules = lazy(() => import("./modules/administration/AdminDuplicateRules"));
@@ -161,6 +161,7 @@ const FinancialsAudit = lazy(() => import("./modules/financials/FinancialsAudit.
 const FinancialsReports = lazy(() => import("./modules/financials/FinancialsReports.jsx"));
 const FinancialsGovernance = lazy(() => import("./modules/financials/FinancialsGovernance.jsx"));
 import FailureState from "./shared/ui/FailureState";
+import { useMyWorkOrderCapabilities, WORK_ORDER_CREATE_CAPABILITY } from "./hooks/useMyWorkOrderCapabilities.js";
 
 const previewHasPermission = createPermissionPreviewer(
   resolveEffectivePermission,
@@ -745,11 +746,11 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   if (domain.key === "reporting" && item.key === "savedReports") {
     return <SavedReports hasCapability={operationalContext?.hasCapability} accessVersion={operationalContext?.accessVersion} />;
   }
-  // Permission Preview now reads the canonical Principal effective-access projection from the
-  // deployed EOS Administration API. It is read-only and the server re-authorizes the caller;
-  // the client never derives access from Firebase claims or a frontend role map.
+  // UI corrections §15: the retired Permission Preview item is now NONPROD QA tooling (navHidden). It draws the SAME runtime
+  // evaluator as the Employee record (explainEffectiveAccess) and renders "not available" in a production bundle; the
+  // server re-authorizes every read.
   if (domain.key === "administration" && item.key === "permissionPreview") {
-    return <AdminPermissionPreview />;
+    return <PrincipalQaInspection />;
   }
   // Audit Logs: the governed audit is deployed and shown per Employee (Access Audit History) and per
   // Security Role (Decision history); this page has no consolidated list yet and says where to look.
@@ -957,6 +958,9 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   // and navigation is what is cut over.
   const eosIsNavigationSource = isEosNavigationSource(operationalContext);
   const navRole = eosIsNavigationSource ? null : role;
+  const eosWorkOrderSurface = eosIsNavigationSource && Boolean(operationalContext?.eosNavigationAuthority?.grants?.("service.workOrders"));
+  const myWorkOrderCapabilities = useMyWorkOrderCapabilities({ enabled: eosWorkOrderSurface });
+  const workOrderRoutes = { record: eosWorkOrderSurface, create: eosWorkOrderSurface && myWorkOrderCapabilities.has(WORK_ORDER_CREATE_CAPABILITY) };
   const navAllowedLegacyKeys = eosIsNavigationSource ? NO_LEGACY_KEYS : allowedLegacyKeys;
   return (
     // ONE boundary around every route. A lazily-loaded surface that arrives a moment later shows this
@@ -1122,6 +1126,9 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
             <>
               <Route index element={<Navigate to="/administration/users" replace />} />
               <Route path="employees" element={<Navigate to="/administration/users" replace />} />
+              {/* UI corrections §15: the retired Permission Preview address. Its business function is the Employee
+                  record's Roles & Access tab, so a bookmark lands on Users -- never on the QA tool. */}
+              <Route path="permission-preview" element={<Navigate to="/administration/users" replace />} />
             </>
           )}
           {domain.key === "administration" && isDomainVisible(domain, navRole, navAllowedLegacyKeys, operationalContext) && (
@@ -1154,15 +1161,28 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               comment. workOrder.create is the representative permission
               for this combined Wizard+Detail gate; today only admin/
               dispatcher hold it, matching the original check exactly. */}
-          {domain.key === "service" &&
-            previewHasPermission("workOrder.create", navRole, {
-              // `navRole` is null under the EOS source, so both the preview and this fallback are
-              // false there and neither route is emitted from a role literal. Under the legacy
-              // source it is byte-for-byte the previous check.
-              fallback: navRole === "admin" || navRole === "dispatcher",
-            }) && (
+          {/* UI corrections integration (2026-10-08): UNDER THE EOS SOURCE these two routes are decided by the GOVERNED
+              authority, not by a role literal. The Work Order record route exists for a principal the server grants the
+              `service.workOrders` surface (the same surface that opens the Work Orders list); the New Work Order route
+              additionally needs workOrder.create, from the caller's OWN governed Work Order capabilities
+              (readMyWorkOrderCapabilities). Fail closed while either answer is loading or failed. Every Work Order read
+              and command re-checks the server. Under the legacy source the previous check is byte-for-byte unchanged. */}
+          {domain.key === "service" && (eosIsNavigationSource
+            ? workOrderRoutes.record
+            : previewHasPermission("workOrder.create", navRole, { fallback: navRole === "admin" || navRole === "dispatcher" })) && (
               <>
-                <Route path="work-orders/new" element={<WorkOrderWizard />} />
+                {(eosIsNavigationSource ? workOrderRoutes.create : true)
+                  ? <Route path="work-orders/new" element={<WorkOrderWizard />} />
+                  // A STATIC "new" route either way: without it the address would fall through to :workOrderId and read a
+                  // record called "new". Without workOrder.create it states the refusal (and waits while the answer loads).
+                  : <Route path="work-orders/new" element={myWorkOrderCapabilities.status === "loading"
+                    ? <div className="fo-panel" data-route-state="LOADING"><p className="fo-muted">Checking your Work Order permissions…</p></div>
+                    : (
+                      <div className="fo-panel" data-route-refused={WORK_ORDER_CREATE_CAPABILITY}>
+                        <h2>New Work Order</h2>
+                        <p className="fo-muted">Creating work orders is not available to you. It requires the Work Order create permission (workOrder.create).</p>
+                      </div>
+                    )} />}
                 <Route path="work-orders/:workOrderId" element={<WorkOrderDetailPage />} />
               </>
             )}

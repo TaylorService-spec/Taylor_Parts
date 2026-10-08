@@ -38,19 +38,19 @@ const readySerialized = (assets = []) => ({ status: READ_STATUS.READY, assets })
 
 test("a READY balance renders the four figures as values", () => {
   const rows = describePartLookup(part(), { balance: readyBalance(), location: readyLocations() });
-  assert.equal(rowFor(rows, "On hand").value, "12");
+  assert.equal(rowFor(rows, "On Hand").value, "12");
   assert.equal(rowFor(rows, "Reserved").value, "4");
   assert.equal(rowFor(rows, "Available").value, "8");
-  assert.equal(rowFor(rows, "On order").value, "6");
-  for (const label of ["On hand", "Reserved", "Available", "On order"]) {
+  assert.equal(rowFor(rows, "On Order").value, "6");
+  for (const label of ["On Hand", "Reserved", "Available", "On Order"]) {
     assert.equal(rowFor(rows, label).state, FIELD_STATE.KNOWN);
   }
 });
 
 test("a KNOWN ZERO renders as 0 — the one place a zero is honest", () => {
   const rows = describePartLookup(part(), { balance: readyBalance({ onHand: known(0), available: known(0) }) });
-  assert.equal(rowFor(rows, "On hand").value, "0");
-  assert.equal(rowFor(rows, "On hand").state, FIELD_STATE.KNOWN);
+  assert.equal(rowFor(rows, "On Hand").value, "0");
+  assert.equal(rowFor(rows, "On Hand").state, FIELD_STATE.KNOWN);
 });
 
 test("location shows WHERE and HOW MUCH, using the resolver's label", () => {
@@ -74,7 +74,7 @@ test("a READY balance holding stock nowhere is a KNOWN answer, not a gap", () =>
 
 test("an UNKNOWN figure stays UNKNOWN — it is never rendered as 0", () => {
   const rows = describePartLookup(part(), { balance: readyBalance({ onHand: unknownFigure, available: unknownFigure }) });
-  for (const label of ["On hand", "Available"]) {
+  for (const label of ["On Hand", "Available"]) {
     const row = rowFor(rows, label);
     assert.equal(row.state, FIELD_STATE.UNKNOWN);
     assert.equal(row.value, null);
@@ -84,7 +84,7 @@ test("an UNKNOWN figure stays UNKNOWN — it is never rendered as 0", () => {
 
 test("a DENIED read says NOT SWITCHED ON for every figure, and carries no numbers", () => {
   const rows = describePartLookup(part(), { balance: { status: READ_STATUS.DENIED } });
-  for (const label of ["On hand", "Reserved", "Available", "On order"]) {
+  for (const label of ["On Hand", "Reserved", "Available", "On Order"]) {
     const row = rowFor(rows, label);
     assert.equal(row.state, FIELD_STATE.CAPABILITY_INACTIVE);
     assert.equal(row.value, null);
@@ -94,15 +94,15 @@ test("a DENIED read says NOT SWITCHED ON for every figure, and carries no number
 
 test("a LOADING read says it is READING — never that it failed", () => {
   const rows = describePartLookup(part(), { balance: { status: READ_STATUS.LOADING } });
-  const row = rowFor(rows, "On hand");
+  const row = rowFor(rows, "On Hand");
   assert.match(row.detail, /reading/i);
   assert.doesNotMatch(row.detail, /could not/i);
   assert.equal(row.value, null);
 });
 
 test("a FAILED read is distinguished from a refused one", () => {
-  const failed = rowFor(describePartLookup(part(), { balance: { status: READ_STATUS.UNAVAILABLE } }), "On hand");
-  const denied = rowFor(describePartLookup(part(), { balance: { status: READ_STATUS.DENIED } }), "On hand");
+  const failed = rowFor(describePartLookup(part(), { balance: { status: READ_STATUS.UNAVAILABLE } }), "On Hand");
+  const denied = rowFor(describePartLookup(part(), { balance: { status: READ_STATUS.DENIED } }), "On Hand");
   assert.equal(failed.state, FIELD_STATE.READ_FAILED);
   assert.equal(denied.state, FIELD_STATE.CAPABILITY_INACTIVE);
   assert.notEqual(failed.detail, denied.detail, "different problems, different fixes");
@@ -110,7 +110,7 @@ test("a FAILED read is distinguished from a refused one", () => {
 
 test("a MISSING read envelope fails closed, and never produces a value", () => {
   for (const rows of [describePartLookup(part()), describePartLookup(part(), {}), describePartLookup(part(), { balance: null })]) {
-    const row = rowFor(rows, "On hand");
+    const row = rowFor(rows, "On Hand");
     assert.notEqual(row.state, FIELD_STATE.KNOWN);
     assert.equal(row.value, null);
   }
@@ -118,7 +118,7 @@ test("a MISSING read envelope fails closed, and never produces a value", () => {
 
 test("a malformed balance projection is UNKNOWN, never zero", () => {
   const rows = describePartLookup(part(), { balance: { status: READ_STATUS.READY, projection: { partId: "PRT-1001" } } });
-  const row = rowFor(rows, "On hand");
+  const row = rowFor(rows, "On Hand");
   assert.equal(row.state, FIELD_STATE.UNKNOWN);
   assert.equal(row.value, null);
 });
@@ -135,10 +135,10 @@ test("a serialized part counts UNITS, and does not claim a quantity", () => {
     location: readyLocations(),
     balance: { status: READ_STATUS.READY, projection: { onHand: { state: "NOT_COUNTED_BY_QUANTITY", value: null }, reserved: { state: "NOT_COUNTED_BY_QUANTITY", value: null }, available: { state: "NOT_COUNTED_BY_QUANTITY", value: null }, onOrder: known(2), byLocation: [] } },
   });
-  assert.equal(rowFor(rows, "Serialized units").value, "2", "units of OTHER parts are not this part's units");
-  assert.equal(rowFor(rows, "On hand").state, FIELD_STATE.NOT_APPLICABLE);
-  assert.match(rowFor(rows, "On hand").detail, /counted individually/i);
-  assert.equal(rowFor(rows, "On order").value, "2", "on order IS a quantity, even for a serial part");
+  assert.equal(rowFor(rows, "Serialized Units").value, "2", "units of OTHER parts are not this part's units");
+  assert.equal(rowFor(rows, "On Hand").state, FIELD_STATE.NOT_APPLICABLE);
+  assert.match(rowFor(rows, "On Hand").detail, /counted individually/i);
+  assert.equal(rowFor(rows, "On Order").value, "2", "on order IS a quantity, even for a serial part");
 });
 
 test("a serialized part locates its UNITS, deduplicated and labelled", () => {
@@ -153,21 +153,21 @@ test("a serialized part locates its UNITS, deduplicated and labelled", () => {
 });
 
 test("a NON-serialized part reports serialized units as NOT APPLICABLE", () => {
-  const row = rowFor(describePartLookup(part(), { serialized: readySerialized() }), "Serialized units");
+  const row = rowFor(describePartLookup(part(), { serialized: readySerialized() }), "Serialized Units");
   assert.equal(row.state, FIELD_STATE.NOT_APPLICABLE);
   assert.match(row.detail, /not serialized/i);
 });
 
 test("a serialized part with a READY registry and no units is a KNOWN zero", () => {
   const rows = describePartLookup(serialPart(), { serialized: readySerialized([]), location: readyLocations() });
-  const row = rowFor(rows, "Serialized units");
+  const row = rowFor(rows, "Serialized Units");
   assert.equal(row.state, FIELD_STATE.KNOWN);
   assert.equal(row.value, "0");
   assert.match(row.detail, /none available/i);
 });
 
 test("a DENIED registry is not a count of zero", () => {
-  const row = rowFor(describePartLookup(serialPart(), { serialized: { status: READ_STATUS.DENIED } }), "Serialized units");
+  const row = rowFor(describePartLookup(serialPart(), { serialized: { status: READ_STATUS.DENIED } }), "Serialized Units");
   assert.equal(row.state, FIELD_STATE.CAPABILITY_INACTIVE);
   assert.equal(row.value, null, "a refused read must never look like an empty shelf");
 });
@@ -186,7 +186,7 @@ test("units the registry holds no location for are UNKNOWN, not 'nowhere'", () =
 
 test("a refused LOCATION read does not cost the balance figures", () => {
   const rows = describePartLookup(part(), { balance: readyBalance(), location: { status: READ_STATUS.DENIED } });
-  assert.equal(rowFor(rows, "On hand").value, "12");
+  assert.equal(rowFor(rows, "On Hand").value, "12");
   assert.equal(rowFor(rows, "Location").state, FIELD_STATE.KNOWN, "ids still answer WHERE, just unlabelled");
   assert.equal(rowFor(rows, "Location").value, "WH-1 (12)");
 });
@@ -197,8 +197,8 @@ test("a refused BALANCE read does not cost the serialized count", () => {
     balance: { status: READ_STATUS.DENIED },
     location: readyLocations(),
   });
-  assert.equal(rowFor(rows, "Serialized units").value, "1");
-  assert.equal(rowFor(rows, "On hand").state, FIELD_STATE.CAPABILITY_INACTIVE);
+  assert.equal(rowFor(rows, "Serialized Units").value, "1");
+  assert.equal(rowFor(rows, "On Hand").state, FIELD_STATE.CAPABILITY_INACTIVE);
 });
 
 // ─────────────────────────────────────────── every row is one thing or the other

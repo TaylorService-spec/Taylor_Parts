@@ -9,6 +9,8 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader, SectionHeader, Button } from "../../shared/ui/primitives";
 import { Field, FormError } from "../../shared/ui/form";
 import { callPolicyApi } from "../../services/adminPolicyApiClient";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 const refusalText = (res) => {
   if (res.code === "FORBIDDEN") return "Sales Configuration is not available to you. It needs sales.discountAuthority.manage, which your account does not currently hold.";
@@ -25,9 +27,15 @@ export function percentToBasisPoints(text) {
   return bp <= 10000 ? bp : null;
 }
 
-const authorityWords = (item) => item.state === "NOT_CONFIGURED" ? "Not configured — no discount can be applied"
+const authorityWords = (item) => item.state === "NOT_CONFIGURED" ? "Not Configured — no discount can be applied"
   : item.maxDiscountBasisPoints === 0 ? "No discount authority (0%)"
     : `Up to ${(item.maxDiscountBasisPoints / 100).toFixed(2)}%`;
+
+const AUTHORITY_COLUMNS = Object.freeze({
+  person: { value: (i) => i.displayName ?? i.principalId },
+  // Not configured sorts after every configured maximum (empty last); configured ones by their basis points.
+  maximum: { value: (i) => (i.state === "NOT_CONFIGURED" || typeof i.maxDiscountBasisPoints !== "number" ? null : i.maxDiscountBasisPoints) },
+});
 
 export default function AdminSalesConfiguration({ callApi = callPolicyApi }) {
   const [items, setItems] = useState(null);
@@ -36,6 +44,7 @@ export default function AdminSalesConfiguration({ callApi = callPolicyApi }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  const { sort, toggle, sorted } = useTableSort({ rows: items, columns: AUTHORITY_COLUMNS });
 
   const load = useCallback(async () => {
     const res = await callApi("listSalesDiscountAuthorities", {});
@@ -66,11 +75,15 @@ export default function AdminSalesConfiguration({ callApi = callPolicyApi }) {
       {refusal && <p className="fo-muted" role="status">{refusal}</p>}
       {items && (
         <section className="fo-panel" aria-labelledby="employee-sales-authority">
-          <SectionHeader id="employee-sales-authority" title="Maximum customer discount" description="Applies to percentage and fixed-amount discounts alike: a fixed amount is measured against the selling price. Each change states a reason and is audited." />
+          <SectionHeader id="employee-sales-authority" title="Maximum Customer Discount" description="Applies to percentage and fixed-amount discounts alike: a fixed amount is measured against the selling price. Each change states a reason and is audited." />
           <table className="fo-table" aria-label="Maximum customer discount">
-            <thead><tr><th>Person</th><th>Maximum customer discount</th><th>Change to (%)</th></tr></thead>
+            <thead><tr>
+              <SortableHeader columnKey="person" label="Person" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="maximum" label="Maximum Customer Discount" sort={sort} onSort={toggle} />
+              <th>Change To (%)</th>
+            </tr></thead>
             <tbody>
-              {items.map((i) => (
+              {sorted.map((i) => (
                 <tr key={i.principalId}>
                   <td>{i.displayName ?? i.principalId}</td>
                   <td>{authorityWords(i)}</td>
@@ -84,7 +97,7 @@ export default function AdminSalesConfiguration({ callApi = callPolicyApi }) {
               ))}
             </tbody>
           </table>
-          <Field label="Reason (required for every change)"><input className="fo-input" aria-label="Reason for the change" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+          <Field label="Reason (Required for Every Change)"><input className="fo-input" aria-label="Reason for the change" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
           {notice && <FormError>{notice.tone === "danger" ? notice.text : null}</FormError>}
           {notice?.tone === "positive" && <p className="fo-muted" role="status">{notice.text}</p>}
         </section>

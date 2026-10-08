@@ -208,6 +208,7 @@ export default function SalesOrdersList() {
       ) : (
       <MetadataListGrid
         presentation={presentation}
+        sorting={{ entity: salesOrderEntity, criteria, onSort: (fieldId, direction) => apply(setSort(criteria, fieldId, direction)) }}
         caption="Sales Orders"
         // THE DESTINATION THE DEFINITION NAMES — and now actually read from it. This comment
         // already claimed exactly that ("not a path this screen invents -- so the row target cannot

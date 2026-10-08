@@ -13,6 +13,9 @@ import {
   validateIdentifierDraft,
   describeProbe,
 } from "../../domain/partIdentifiers.js";
+import { useTableSort } from "../ui/sorting/useTableSort.js";
+import SortableHeader from "../ui/sorting/SortableHeader.jsx";
+import { titleCase } from "../display/displayLabels.js";
 
 // PART MASTER > BARCODE / IDENTIFIERS.
 //
@@ -146,7 +149,7 @@ function AddIdentifierForm({ onAdd, onProbe, partId, busy, mutationHeld }) {
             type="text"
             autoComplete="off"
             value={draft.manufacturerId}
-            placeholder="Manufacturer id"
+            placeholder="Manufacturer ID"
             onChange={(e) => set("manufacturerId", e.target.value)}
             aria-invalid={error?.field === "manufacturerId" ? "true" : undefined}
           />
@@ -161,21 +164,67 @@ function AddIdentifierForm({ onAdd, onProbe, partId, busy, mutationHeld }) {
             beside it is a READ and stays. */}
         {mutationHeld ? (
           <Button variant="protected" reason={CATALOG_MUTATION_PAUSED_REASON} id="alias-add">
-            Add identifier
+            Add Identifier
           </Button>
         ) : (
           <Button type="submit" variant="primary" disabled={busy}>
-            {busy ? "Adding…" : "Add identifier"}
+            {busy ? "Adding…" : "Add Identifier"}
           </Button>
         )}
         {/* Scan-to-test uses the SAME resolver the real scan path uses. A test-only matcher could
             agree with the administrator and disagree with the scanner, which is the whole failure
             this control exists to catch. */}
         <Button type="button" variant="secondary" onClick={runProbe} disabled={busy}>
-          Test this scan
+          Test This Scan
         </Button>
       </div>
     </form>
+  );
+}
+
+function aliasTypeLabel(aliasType) {
+  return ALIAS_TYPE_LABEL[aliasType] ?? titleCase(aliasType);
+}
+
+// UI corrections item C: client sort over the identifiers already read (bounded; see `truncated`). Values are the words
+// shown in each cell; the default order is the read's own.
+const IDENTIFIER_SORT_COLUMNS = Object.freeze({
+  type: { value: (a) => aliasTypeLabel(a.aliasType) },
+  value: { value: (a) => a.value ?? null },
+  status: { value: (a) => (a.status === "ACTIVE" ? "Identifier Active" : "Identifier Inactive") },
+  source: { value: (a) => (a.source ? titleCase(a.source) : null) },
+});
+
+function IdentifiersTable({ aliases, label, pending, onDeactivate, onReactivate, mutationHeld }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: aliases, columns: IDENTIFIER_SORT_COLUMNS });
+  return (
+    <div className="fo-table-scroll">
+      <table className="fo-table" aria-label={`Identifiers for ${label}`}>
+        <thead>
+          <tr>
+            <SortableHeader columnKey="type" label="Type" sort={sort} onSort={toggle} />
+            <SortableHeader columnKey="value" label="Value" sort={sort} onSort={toggle} />
+            <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
+            <SortableHeader columnKey="source" label="Source" sort={sort} onSort={toggle} />
+            <th scope="col">
+              <span className="fo-sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((a) => (
+            <IdentifierRow
+              key={a.aliasId}
+              alias={a}
+              pending={pending}
+              onDeactivate={onDeactivate}
+              onReactivate={onReactivate}
+              mutationHeld={mutationHeld}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -184,7 +233,7 @@ function IdentifierRow({ alias, onDeactivate, onReactivate, pending, mutationHel
   const busy = !!pending[`${isActive ? "deactivate" : "reactivate"}:${alias.aliasId}`];
   return (
     <tr className={isActive ? undefined : "is-inactive"}>
-      <td>{ALIAS_TYPE_LABEL[alias.aliasType] ?? alias.aliasType}</td>
+      <td>{aliasTypeLabel(alias.aliasType)}</td>
       <td>
         <code>{alias.value}</code>
         {alias.manufacturerId && <span className="fo-muted"> · {alias.manufacturerId}</span>}
@@ -195,16 +244,16 @@ function IdentifierRow({ alias, onDeactivate, onReactivate, pending, mutationHel
             whichever of those the reader had in mind. The title attribute says what the state
             MEANS — whether a scan resolves — which is what an administrator actually needs. */}
         {isActive ? (
-          <span title="A scan resolves this identifier to this part">Identifier active</span>
+          <span title="A scan resolves this identifier to this part">Identifier Active</span>
         ) : (
           // Inactive is shown, not hidden. Re-adding a deactivated identifier is refused as a
           // conflict, and an administrator who cannot see this record cannot understand why.
           <span className="fo-muted" title="A scan will not resolve this identifier">
-            Identifier inactive
+            Identifier Inactive
           </span>
         )}
       </td>
-      <td className="fo-muted">{alias.source}</td>
+      <td className="fo-muted">{alias.source ? titleCase(alias.source) : "—"}</td>
       <td>
         <Button
           type="button"
@@ -319,33 +368,14 @@ export default function PartIdentifiersSection({ partId, partNumber, deps }) {
               one is added.
             </p>
           ) : (
-            <div className="fo-table-scroll">
-              <table className="fo-table" aria-label={`Identifiers for ${label}`}>
-                <thead>
-                  <tr>
-                    <th scope="col">Type</th>
-                    <th scope="col">Value</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Source</th>
-                    <th scope="col">
-                      <span className="fo-sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {aliases.map((a) => (
-                    <IdentifierRow
-                      key={a.aliasId}
-                      alias={a}
-                      pending={pending}
-                      onDeactivate={deactivate}
-                      onReactivate={reactivate}
-                      mutationHeld={mutationHeld}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <IdentifiersTable
+              aliases={aliases}
+              label={label}
+              pending={pending}
+              onDeactivate={deactivate}
+              onReactivate={reactivate}
+              mutationHeld={mutationHeld}
+            />
           )}
 
           {truncated && (

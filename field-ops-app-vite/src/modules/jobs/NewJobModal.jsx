@@ -93,7 +93,7 @@ export default function NewJobModal({ onCreate, onClose }) {
           />
         </Field>
 
-        <Field id="job-description" label="Work order description" required error={descriptionError}>
+        <Field id="job-description" label="Work Order Description" required error={descriptionError}>
           <input
             id="job-description"
             className="fo-wizard-control"

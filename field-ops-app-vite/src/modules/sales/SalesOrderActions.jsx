@@ -106,7 +106,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapa
                 disabled={anyBusy}
                 onClick={writeGranted ? () => setOpenDialog("CANCEL") : undefined}
               >
-                Cancel order
+                Cancel Order
               </Button>
             )}
           </>
@@ -122,7 +122,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapa
             >
               {nextState === "IN_FULFILLMENT" && "Move to In Fulfillment"}
               {nextState === "FULFILLED" && "Mark Fulfilled"}
-              {nextState === "CLOSED" && "Close order"}
+              {nextState === "CLOSED" && "Close Order"}
             </Button>
           )
         }
@@ -147,8 +147,8 @@ export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapa
         <ConfirmDialog
           title="Cancel Sales Order"
           consequence={`This cancels ${orderLabel}. It cannot be resumed from here.`}
-          confirmLabel="Confirm cancel"
-          cancelLabel="Keep order"
+          confirmLabel="Confirm Cancel"
+          cancelLabel="Keep Order"
           onConfirm={async () => {
             await runTransition("CANCEL");
             await handleChanged();
@@ -163,7 +163,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapa
           title="Allocate Sales Order"
           destructive={false}
           consequence={`This computes and records current availability against ${orderLabel}'s lines. It does not change pricing or quote terms.`}
-          confirmLabel="Confirm allocate"
+          confirmLabel="Confirm Allocate"
           onConfirm={async () => {
             await runAllocate();
             await handleChanged();

@@ -76,7 +76,9 @@ describe("PartWorkOrderDemandSection", () => {
     withRouter(<PartWorkOrderDemandSection partId="P-1" />);
     const link = screen.getByRole("link", { name: "WO-2026-000123" });
     expect(link.getAttribute("href")).toBe("/service/work-orders/wo1");
-    expect(screen.getByText("SCHEDULED")).toBeTruthy();
+    // UI corrections package: the status renders as its display label, never the raw enum.
+    expect(screen.getByRole("cell", { name: "Scheduled" })).toBeTruthy();
+    expect(screen.queryByText("SCHEDULED")).toBeNull();
     // CHANGED, and the old expectation was the defect. This asserted that the raw customerId
     // rendered as the visible Customer -- a Firestore document id shown as content, the same
     // defect the Sales Order surfaces carried.

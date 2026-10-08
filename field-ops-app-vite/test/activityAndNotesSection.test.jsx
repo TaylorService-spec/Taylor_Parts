@@ -4,6 +4,18 @@ import ActivityAndNotesSection from "../src/modules/accounts/ActivityAndNotesSec
 import { useCrmActivities } from "../src/hooks/useCrmActivities.js";
 import { useEmployeeDirectory } from "../src/hooks/useEmployeeDirectory.js";
 
+// UI corrections integration (2026-10-08): these pages read names from the GOVERNED EOS directory
+// (useGovernedEmployeeDirectory). It is mocked to answer from the same fixture directory as before.
+vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
+  const legacy = await import("../src/hooks/useEmployeeDirectory.js");
+  return {
+    useGovernedEmployeeDirectory: (...args) => legacy.useEmployeeDirectory(...args),
+    ...(await vi.importActual("../src/domain/actorDisplayName.js")),
+    resetGovernedEmployeeDirectory: () => {},
+  };
+});
+
+
 vi.mock("../src/hooks/useCrmActivities.js", () => ({ useCrmActivities: vi.fn() }));
 vi.mock("../src/hooks/useEmployeeDirectory.js", async () => {
   const actual = await vi.importActual("../src/hooks/useEmployeeDirectory.js");

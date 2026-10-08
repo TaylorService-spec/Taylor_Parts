@@ -77,7 +77,7 @@ export default function JobRoleRemediation({ workforce }) {
       </p>
       <p className="fo-muted ns-emp-note">{remediation.note}</p>
       <details className="ns-emp-disclosure">
-        <summary>Show Employees without a Job Role</summary>
+        <summary>Show Employees Without a Job Role</summary>
         <ul className="ns-emp-records" aria-label="Employees without a Job Role">
           {state.items.map((item) => (
             <li key={item.employeeId} className="ns-emp-record">
@@ -94,7 +94,7 @@ export default function JobRoleRemediation({ workforce }) {
         {state.nextCursor ? (
           <div className="fo-btn-row">
             <Button variant="secondary" onClick={loadMore} disabled={state.loadingMore} loading={state.loadingMore}>
-              Show more Employees without a Job Role
+              Show More Employees Without a Job Role
             </Button>
           </div>
         ) : null}

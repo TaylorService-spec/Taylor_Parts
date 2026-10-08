@@ -190,7 +190,7 @@ export function describePartLookup(part, context = {}) {
   if (!part || typeof part !== "object") return Object.freeze([]);
 
   const rows = [
-    known("Part number", part.internalPartNumber),
+    known("Part Number", part.internalPartNumber),
     known("Part ID", part.partId),
     known("Name", part.name),
   ];
@@ -208,10 +208,10 @@ export function describePartLookup(part, context = {}) {
       : field("Category", FIELD_STATE.UNKNOWN, null, "No category on the Part record."),
   );
 
-  rows.push(known("Catalog status", part.status));
-  rows.push(known("Control type", part.controlType));
-  rows.push(known("Stocking class", part.stockingClass));
-  rows.push(known("Stocking unit", part.stockingUnit));
+  rows.push(known("Catalog Status", part.status));
+  rows.push(known("Control Type", part.controlType));
+  rows.push(known("Stocking Class", part.stockingClass));
+  rows.push(known("Stocking Unit", part.stockingUnit));
 
   const mode = trackingModeForDisplay(part.controlType);
   rows.push(
@@ -266,17 +266,17 @@ function serializedRow(serialized, partId, serialTracked) {
   if (!serialTracked) {
     // Not a gap. A STANDARD part has no serialized units by definition, and reporting "unknown"
     // would invite someone to go looking for a registry entry that should not exist.
-    return field("Serialized units", FIELD_STATE.NOT_APPLICABLE, null, "This part is not serialized.");
+    return field("Serialized Units", FIELD_STATE.NOT_APPLICABLE, null, "This part is not serialized.");
   }
   const status = serialized?.status ?? READ_STATUS.UNAVAILABLE;
   if (status !== READ_STATUS.READY) {
-    return field("Serialized units", stateForStatus(status), null,
+    return field("Serialized Units", stateForStatus(status), null,
       detailForStatus(status, "The serialized asset registry could not be read."));
   }
   const units = (serialized.assets ?? []).filter((a) => a?.partId === partId);
   // A READY read that returned none is a real, known answer: none available. Distinct from a read
   // that never happened, which is why it is only reachable through the READY branch.
-  return field("Serialized units", FIELD_STATE.KNOWN, String(units.length), units.length === 0 ? "None available." : null);
+  return field("Serialized Units", FIELD_STATE.KNOWN, String(units.length), units.length === 0 ? "None available." : null);
 }
 
 /** On hand, reserved, available and on order. */
@@ -286,7 +286,7 @@ function balanceRows(balance, serialTracked) {
   if (status !== READ_STATUS.READY) {
     const state = stateForStatus(status);
     const detail = detailForStatus(status, "Stock balances could not be read.");
-    return ["On hand", "Reserved", "Available", "On order"].map((label) => field(label, state, null, detail));
+    return ["On Hand", "Reserved", "Available", "On Order"].map((label) => field(label, state, null, detail));
   }
 
   const projection = balance.projection ?? {};
@@ -306,10 +306,10 @@ function balanceRows(balance, serialTracked) {
 
   const serialDetail = "Serialized units are counted individually, not as a quantity.";
   return [
-    figure("On hand", "onHand", serialDetail),
+    figure("On Hand", "onHand", serialDetail),
     figure("Reserved", "reserved", serialDetail),
     figure("Available", "available", serialDetail),
-    figure("On order", "onOrder", serialTracked ? null : undefined),
+    figure("On Order", "onOrder", serialTracked ? null : undefined),
   ];
 }
 

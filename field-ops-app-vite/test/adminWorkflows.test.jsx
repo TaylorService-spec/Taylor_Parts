@@ -54,6 +54,12 @@ const STALE_VALIDATION = {
 function fakeApi(overrides = {}) {
   return {
     listWorkflows: vi.fn(() => ok(LIST)),
+    // The tenant's Security Roles for the binding TYPEAHEAD (UI corrections item E).
+    listRoles: vi.fn(() => ok([
+      { id: "r-admin", key: "admin", name: "Administrator" },
+      { id: "r-om", key: "operationsManager", name: "Operations Manager" },
+      { id: "r-sm", key: "salesManager", name: "Sales Manager" },
+    ])),
     readWorkflowVersion: vi.fn((id) => (id === "so-v1" ? ok(SO_DRAFT) : ok({ ...SO_DRAFT, version: { id, version: 2, status: "PUBLISHED" }, active: id === "wo-v2" }))),
     validateWorkflowVersion: vi.fn(() => ok(STALE_VALIDATION)),
     validateUnsavedDefinition: vi.fn(() => ok({ valid: true, errors: [], warnings: [] })),
@@ -100,7 +106,7 @@ describe("Administration > Workflows", () => {
     expect(api.validateWorkflowVersion).toHaveBeenCalledWith("so-v1");
     const row = document.querySelector('[data-workflow-action="close"]');
     expect(within(row).getByText("salesOrder.write")).toBeTruthy();
-    expect(row.textContent).toContain("admin, operationsManager");
+    expect(row.textContent).toContain("Admin, Operations Manager");
     const error = await waitFor(() => {
       const el = document.querySelector('[data-validation-code="BINDING_WITHOUT_CAPABILITY"]');
       expect(el).not.toBeNull();
@@ -152,9 +158,15 @@ describe("Administration > Workflows", () => {
   it("the DRAFT editor edits states, transitions, capability, guard and bindings, validates on the server and saves", async () => {
     const api = fakeApi();
     await openSalesOrder(api);
-    fireEvent.change(screen.getByLabelText("Action 1 Security Roles"), { target: { value: "admin, salesManager" } });
+    // Bindings are chosen by TYPEAHEAD from the tenant's Security Roles, shown by name; each chip is removable.
+    fireEvent.click(screen.getByRole("button", { name: "Remove Operations Manager" }));
+    const roles = screen.getByLabelText("Action 1 Security Roles");
+    fireEvent.focus(roles);
+    fireEvent.change(roles, { target: { value: "sales" } });
+    fireEvent.pointerDown(await screen.findByRole("option", { name: /Sales Manager/ }));
+    expect(document.querySelector('[data-keylist="wf-action-0-roles"] [data-key="salesManager"]')).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Action 1 guard"), { target: { value: "RECORD_ASSIGNMENT" } });
-    fireEvent.click(screen.getByRole("button", { name: "Validate (server)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Validate (Server)" }));
     await waitFor(() => expect(api.validateUnsavedDefinition).toHaveBeenCalledTimes(1));
     const [{ objectKey, definition }] = api.validateUnsavedDefinition.mock.calls[0];
     expect(objectKey).toBe("salesOrder");
@@ -163,13 +175,47 @@ describe("Administration > Workflows", () => {
       guardKind: "RECORD_ASSIGNMENT", requiresOwnAssignment: true, roleKeys: ["admin", "salesManager"], functionalRoleKeys: [],
     });
     fireEvent.change(screen.getByLabelText("Reason for saving the draft"), { target: { value: "remove stale binding" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save as new draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save as New Draft" }));
     await waitFor(() => expect(api.updateWorkflowDefinition).toHaveBeenCalledTimes(1));
     expect(api.updateWorkflowDefinition.mock.calls[0][0]).toMatchObject({ versionId: "so-v1", reason: "remove stale binding" });
     expect(api.updateWorkflowDefinition.mock.calls[0][0].definition.steps).toEqual([
       { key: "CONFIRMED", label: "Confirmed", initial: true, terminal: false },
       { key: "CLOSED", label: "Closed", initial: false, terminal: true },
     ]);
+  });
+});
+
+describe("Administration > Workflows: selection is a view, never a change (UI corrections item F)", () => {
+  const MUTATIONS = ["createWorkflowDraft", "createWorkflowVersion", "updateWorkflowDefinition", "publishWorkflowVersion", "activateWorkflowVersion", "retireWorkflowVersion"];
+  const noMutation = (api) => MUTATIONS.forEach((m) => expect(api[m], m).not.toHaveBeenCalled());
+
+  it("click selects, click again DESELECTS to a neutral empty state, another click switches -- and nothing is written", async () => {
+    const api = fakeApi();
+    await openSalesOrder(api);
+    const so = screen.getByRole("button", { name: "Sales — Order" });
+    expect(so.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(so);
+    await waitFor(() => expect(document.querySelector('[data-workflow-selection="NONE"]')).not.toBeNull());
+    expect(document.querySelector('[data-workflow-version="so-v1"]')).toBeNull();
+    expect(screen.getByRole("button", { name: "Sales — Order" }).getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "Sales — Order" }));
+    await waitFor(() => expect(document.querySelector('[data-workflow-version="so-v1"]')).not.toBeNull());
+    noMutation(api);
+  });
+
+  it("unsaved draft changes ask before leaving: Keep Editing keeps everything, Discard Changes deselects -- still nothing written", async () => {
+    const api = fakeApi();
+    await openSalesOrder(api);
+    fireEvent.change(screen.getByLabelText("Action 1 guard"), { target: { value: "RECORD_ASSIGNMENT" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sales — Order" }));
+    expect(await screen.findByText("Discard Unsaved Changes?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep Editing" }));
+    expect(screen.getByLabelText("Action 1 guard").value).toBe("RECORD_ASSIGNMENT");
+    expect(document.querySelector('[data-workflow-version="so-v1"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sales — Order" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Discard Changes" }));
+    await waitFor(() => expect(document.querySelector('[data-workflow-selection="NONE"]')).not.toBeNull());
+    noMutation(api);
   });
 });
 
@@ -188,7 +234,7 @@ describe("Employee > Workflow responsibilities", () => {
     render(<EmployeeWorkflowResponsibilities api={api} principalId="p-1" />);
     await waitFor(() => expect(document.querySelector('[data-workflow-responsibilities="READY"]')).not.toBeNull());
     expect(api.listPrincipalWorkflowResponsibilities).toHaveBeenCalledWith("p-1");
-    expect(document.querySelector('[data-responsibility="workOrder/Dispatch"]').textContent).toContain("dispatcher");
+    expect(document.querySelector('[data-responsibility="workOrder/Dispatch"]').textContent).toContain("Dispatcher");
     expect(document.querySelector('[data-inert-binding="salesOrder/close"]').textContent).toContain("CAPABILITY_MISSING");
   });
 

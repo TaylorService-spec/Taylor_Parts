@@ -143,6 +143,93 @@ test("my work + search over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     const ds = ok(await search(dispatcher, "Harbor"));
     assert.ok(ds.results.some((x) => x.kind === "workOrder"));
     refused(await search(tech, "x"), 400, "QUERY_INVALID");
+  });
+
+  await t.test("readMyWorkOrderCapabilities: the caller's OWN workOrder.* keys, nothing else, no input", async () => {
+    const dc = ok(await call(dispatcher, WO, "readMyWorkOrderCapabilities", {}));
+    assert.ok(dc.capabilities.includes("workOrder.create"));
+    assert.ok(dc.capabilities.every((k) => k.startsWith("workOrder.")));
+    const tc = ok(await call(tech, WO, "readMyWorkOrderCapabilities", {}));
+    assert.equal(tc.capabilities.includes("workOrder.create"), false, "a technician is not offered New Work Order");
+    const nc = ok(await call(nobody, WO, "readMyWorkOrderCapabilities", {}));
+    assert.deepEqual(nc.capabilities, []);
+    refused(await call(dispatcher, WO, "readMyWorkOrderCapabilities", { principalId: "someone-else" }), 400, "INPUT_FIELD_NOT_ACCEPTED");
+  });
+
+  await t.test("resolvePrincipalDisplayNames: display names only, caller's tenant only, for record readers -- not Principal administration", async () => {
+    await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, display_name, status) VALUES ('pr-foreign','foreign-subject','eos','Foreign Person','active') ON CONFLICT DO NOTHING`);
+    const ids = [dispatcher.principalId, tech.principalId, "pr-foreign", "pr-unknown"];
+    // A channel-scoped seller (opportunity.read only within RETAIL) may name the actors on records it reads.
+    const r = ok(await call(retail, WS, "resolvePrincipalDisplayNames", { principalIds: ids }));
+    assert.deepEqual(r.names.map((n) => n.key).sort(), [dispatcher.principalId, tech.principalId].sort(), "a Principal outside the tenant, or unknown, is absent");
+    for (const n of r.names) assert.deepEqual(Object.keys(n).sort(), ["displayName", "key"], "no Employee id, Role, subject or status");
+    // A record written outside EOS stores the actor's external subject; it is named under THAT key -- the answer never
+    // translates a subject into a Principal id -- and a subject of another tenant's Principal is absent.
+    const bySubject = ok(await call(retail, WS, "resolvePrincipalDisplayNames", { actorSubjects: ["uid-dispatch", "foreign-subject"] }));
+    assert.deepEqual(bySubject.names.map((n) => n.key), ["uid-dispatch"]);
+    assert.ok(!JSON.stringify(bySubject).includes(dispatcher.principalId));
+    // Someone who reads none of the record kinds that show actors is refused, never answered empty.
+    refused(await call(nobody, WS, "resolvePrincipalDisplayNames", { principalIds: ids }), 403, "CAPABILITY_REQUIRED");
+    refused(await call(retail, WS, "resolvePrincipalDisplayNames", { principalIds: [] }), 400, "PRINCIPAL_IDS_INVALID");
+    refused(await call(retail, WS, "resolvePrincipalDisplayNames", { principalIds: Array.from({ length: 101 }, (_, i) => `p${i}`) }), 400, "PRINCIPAL_IDS_INVALID");
+    refused(await call(retail, WS, "resolvePrincipalDisplayNames", { principalIds: ids, tenantId: "other" }), 400, "FIELD_NOT_ACCEPTED");
+    // The seller still cannot read the tenant's Principal population (Administration).
+    const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
+    const adminRead = await executeAdminOperation({ repo }, { caller: { externalSubject: "uid-retail", identityProvider: "firebase" }, operation: "listTenantPrincipals", input: {}, requestId: "r-np" });
+    assert.equal(adminRead.ok, false);
+  });
+
+  await t.test("resolveEmployeeDisplayNames: a record reader names the owners it holds -- names only, every status, caller's tenant", async () => {
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,display_name,first_name,last_name) VALUES
+             ('e-gone',$1,'TERMINATED','taylor','Gale Gone','Gale','Gone') ON CONFLICT DO NOTHING`, [TENANT]);
+    // The channel-scoped seller holds no employee.record.read (the Employee directory), yet it may name the owner /
+    // accountable on a record it reads -- including a former Employee.
+    const r = ok(await call(retail, WS, "resolveEmployeeDisplayNames", { employeeIds: ["e-retail", "e-dispatch", "e-gone", "e-unknown"] }));
+    assert.deepEqual(r.names.map((n) => [n.key, n.displayName]), [["e-dispatch", "Emerson Dispatch"], ["e-gone", "Gale Gone"], ["e-retail", "Robin Retail"]]);
+    for (const n of r.names) assert.deepEqual(Object.keys(n).sort(), ["displayName", "key"], "no status, company or Principal link");
+    refused(await call(nobody, WS, "resolveEmployeeDisplayNames", { employeeIds: ["e-retail"] }), 403, "CAPABILITY_REQUIRED");
+    refused(await call(retail, WS, "resolveEmployeeDisplayNames", { employeeIds: [] }), 400, "EMPLOYEE_IDS_INVALID");
+    refused(await call(retail, WS, "resolveEmployeeDisplayNames", { employeeIds: Array.from({ length: 101 }, (_, i) => `e${i}`) }), 400, "EMPLOYEE_IDS_INVALID");
+    refused(await call(retail, WS, "resolveEmployeeDisplayNames", { employeeIds: ["e-retail"], tenantId: "other" }), 400, "FIELD_NOT_ACCEPTED");
+  });
+
+  await t.test("searchAccountOwnerCandidates: the owners an Account write accepts (ACTIVE / CONTRACTOR), for an Account writer only", async () => {
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,display_name,first_name,last_name) VALUES
+             ('e-own-a',$1,'ACTIVE','taylor','Owen Zimmer','Owen','Zimmer'), ('e-own-c',$1,'CONTRACTOR','ventana','Owena Adams','Owena','Adams'),
+             ('e-own-x',$1,'TERMINATED','taylor','Owenby Gone','Owenby','Gone') ON CONFLICT DO NOTHING`, [TENANT]);
+    const role = await admin("createRole", { key: "accountWriterFixture", name: "Account Writer Fixture", reason: "fixture" });
+    assert.equal(role.ok, true, JSON.stringify(role));
+    for (const actionKey of ["read", "edit"]) {
+      const g = await admin("grantObjectActionToRole", { roleKey: "accountWriterFixture", objectKey: "account", actionKey, reason: "fixture" });
+      assert.equal(g.ok, true, JSON.stringify(g));
+    }
+    const writer = await person("uid-acct-writer", ["accountWriterFixture"], { id: "e-acct-writer", name: "Wren Writer" });
+    const r = ok(await call(writer, WS, "searchAccountOwnerCandidates", { query: "owen" }));
+    assert.deepEqual(r.candidates.map((c) => [c.employeeId, c.displayName]), [["e-own-c", "Owena Adams"], ["e-own-a", "Owen Zimmer"]],
+      "ACTIVE and CONTRACTOR in every operating company, last name first; a TERMINATED Employee is never offered");
+    for (const c of r.candidates) assert.deepEqual(Object.keys(c).sort(), ["displayName", "employeeId"]);
+    assert.deepEqual(ok(await call(writer, WS, "searchAccountOwnerCandidates", { query: "%_" })).candidates, [], "LIKE metacharacters are literal");
+    refused(await call(nobody, WS, "searchAccountOwnerCandidates", { query: "owen" }), 403, "CAPABILITY_REQUIRED");
+    refused(await call(writer, WS, "searchAccountOwnerCandidates", { query: "o" }), 400, "QUERY_INVALID");
+    refused(await call(writer, WS, "searchAccountOwnerCandidates", { query: "owen", status: "TERMINATED" }), 400, "FIELD_NOT_ACCEPTED");
+  });
+
+  await t.test("SEARCH employees (UI corrections item E): a flat holder is global; an operatingCompany-scoped holder is searched inside its companies only", async () => {
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,first_name,last_name,employee_number) VALUES
+             ('e-q-t',$1,'ACTIVE','taylor','Quinn','Northside','Q-T'), ('e-q-v',$1,'ACTIVE','ventana','Quinn','Southside','Q-V')`, [TENANT]);
+    const flat = await person("uid-gm-flat", ["generalManager"], { id: "e-gm-flat", name: "Glen Flat" });
+    const fs = ok(await search(flat, "Quinn"));
+    assert.deepEqual(fs.results.filter((x) => x.kind === "employee").map((x) => x.id).sort(), ["e-q-t", "e-q-v"]);
+    const scoped = await person("uid-gm-scoped", [], { id: "e-gm-scoped", name: "Gail Scoped" });
+    // A role that reads Employees and carries no Administration authority (only those may be scoped), in this disposable tenant.
+    assert.equal((await admin("createRole", { key: "companyStaffReader", name: "Company Staff Reader", reason: "scope fixture" })).ok, true);
+    assert.equal((await admin("grantObjectActionToRole", { objectKey: "employee", actionKey: "read", roleKey: "companyStaffReader", reason: "scope fixture" })).ok, true);
+    const a = await admin("assignRole", { principalId: scoped.principalId, roleId: (await repo.getRoleByKey(TENANT, "companyStaffReader")).id, scopeType: "operatingCompany", scopeValue: "ventana", reason: "ventana only" });
+    assert.equal(a.ok, true, JSON.stringify(a).slice(0, 300));
+    const ss = ok(await search(scoped, "Quinn"));
+    assert.deepEqual(ss.results.filter((x) => x.kind === "employee").map((x) => x.id), ["e-q-v"], "the scoped holder never finds the Taylor employee");
+    // The employee number is searchable too, and the label is the governed name.
+    assert.deepEqual(ok(await search(flat, "Q-V")).results.filter((x) => x.kind === "employee").map((x) => x.label), ["Quinn Southside"]);
     refused(await call(tech, WS, "readMyWork", { asEmployee: "e-dispatch" }), 400, "FIELD_NOT_ACCEPTED");
   });
 });

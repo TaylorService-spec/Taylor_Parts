@@ -61,7 +61,7 @@ describe("write-readiness fail-closed", () => {
 
     const drawer = await openManage("TRK-101");
     expect(within(drawer).getByTestId("truck-management-not-ready")).toBeTruthy();
-    expect(within(drawer).getByRole("button", { name: /Unassign driver/ }).disabled).toBe(true);
+    expect(within(drawer).getByRole("button", { name: /Unassign Driver/ }).disabled).toBe(true);
     for (const key of Object.keys(client)) expect(client[key]).not.toHaveBeenCalled();
   });
 });
@@ -70,25 +70,25 @@ describe("create", () => {
   it("Add Truck happy path adds a visible truck tile", async () => {
     render(<TruckManagementPreview />);
     fireEvent.click(screen.getByTestId("add-truck"));
-    expect(await screen.findByRole("dialog", { name: /Add truck/ })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: /Add Truck/ })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText(/Truck ID/), { target: { value: "TRK-900" } });
-    fireEvent.change(screen.getByLabelText(/Vehicle number/), { target: { value: "V-900" } });
-    fireEvent.change(screen.getByLabelText(/Display label/), { target: { value: "Truck 900" } });
-    fireEvent.change(screen.getByLabelText(/Mobile location ID/), { target: { value: "MOBILE-900" } });
-    fireEvent.change(screen.getByLabelText(/Home warehouse/), { target: { value: "WH-SOUTH" } });
-    fireEvent.change(screen.getByLabelText(/Initial status/), { target: { value: "ACTIVE" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add truck" }));
+    fireEvent.change(screen.getByLabelText(/Vehicle Number/), { target: { value: "V-900" } });
+    fireEvent.change(screen.getByLabelText(/Display Label/), { target: { value: "Truck 900" } });
+    fireEvent.change(screen.getByLabelText(/Mobile Location ID/), { target: { value: "MOBILE-900" } });
+    fireEvent.change(screen.getByLabelText(/Home Warehouse/), { target: { value: "WH-SOUTH" } });
+    fireEvent.change(screen.getByLabelText(/Initial Status/), { target: { value: "ACTIVE" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add Truck" }));
 
     expect(await screen.findByText("TRK-900")).toBeTruthy();
-    expect(screen.queryByRole("dialog", { name: /Add truck/ })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: /Add Truck/ })).toBeNull();
   });
 
   it("status selector offers EXACTLY the three governed options (plus a placeholder)", async () => {
     render(<TruckManagementPreview />);
     fireEvent.click(screen.getByTestId("add-truck"));
-    await screen.findByRole("dialog", { name: /Add truck/ });
-    const select = screen.getByLabelText(/Initial status/);
+    await screen.findByRole("dialog", { name: /Add Truck/ });
+    const select = screen.getByLabelText(/Initial Status/);
     const values = Array.from(select.options).map((o) => o.value);
     expect(values).toEqual(["", "ACTIVE", "IDLE", "OUT_OF_SERVICE"]);
   });
@@ -96,10 +96,10 @@ describe("create", () => {
   it("keyboard: Escape closes the create modal and focus starts inside the dialog", async () => {
     render(<TruckManagementPreview />);
     fireEvent.click(screen.getByTestId("add-truck"));
-    const dialog = await screen.findByRole("dialog", { name: /Add truck/ });
+    const dialog = await screen.findByRole("dialog", { name: /Add Truck/ });
     expect(dialog.contains(document.activeElement)).toBe(true);
     fireEvent.keyDown(dialog, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Add truck/ })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Add Truck/ })).toBeNull());
   });
 });
 
@@ -110,7 +110,7 @@ describe("manage: driver / status / warehouse / lifecycle", () => {
     const driver = within(drawer).getByLabelText("Employee");
     expect(Array.from(driver.options).filter((o) => o.value).length).toBe(3); // all fixture drivers, no N+1
     fireEvent.change(driver, { target: { value: "EMP-2" } });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Assign driver" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Assign Driver" }));
     expect(await within(drawer).findByTestId("truck-command-outcome")).toBeTruthy();
     await waitFor(() => expect(within(drawer).getByTestId("tm-current-driver").textContent).toBe("Sam Okafor"));
   });
@@ -119,17 +119,17 @@ describe("manage: driver / status / warehouse / lifecycle", () => {
     render(<TruckManagementPreview />);
     let drawer = await openManage("TRK-101");
     fireEvent.change(within(drawer).getByLabelText("Employee"), { target: { value: "EMP-3" } });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Reassign driver" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Reassign Driver" }));
     await waitFor(() => expect(within(drawer).getByTestId("tm-current-driver").textContent).toBe("Jordan Lee"));
-    fireEvent.click(within(drawer).getByRole("button", { name: "Unassign driver" }));
-    await waitFor(() => expect(within(drawer).getByRole("button", { name: "Assign driver" })).toBeTruthy());
+    fireEvent.click(within(drawer).getByRole("button", { name: "Unassign Driver" }));
+    await waitFor(() => expect(within(drawer).getByRole("button", { name: "Assign Driver" })).toBeTruthy());
   });
 
   it("change status ACTIVE<->IDLE via changeStatus (no confirm)", async () => {
     render(<TruckManagementPreview />);
     const drawer = await openManage("TRK-102"); // IDLE
     fireEvent.change(within(drawer).getByLabelText("Status"), { target: { value: "ACTIVE" } });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Update status" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Update Status" }));
     expect(await within(drawer).findByTestId("truck-command-outcome")).toBeTruthy();
     await waitFor(() => expect(within(drawer).getByTestId("tm-current-status").textContent).toBe("Active"));
   });
@@ -138,8 +138,8 @@ describe("manage: driver / status / warehouse / lifecycle", () => {
     render(<TruckManagementPreview />);
     const drawer = await openManage("TRK-101"); // ACTIVE
     fireEvent.change(within(drawer).getByLabelText("Status"), { target: { value: "OUT_OF_SERVICE" } });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Update status" }));
-    const confirm = await within(drawer).findByRole("button", { name: "Confirm deactivate" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Update Status" }));
+    const confirm = await within(drawer).findByRole("button", { name: "Confirm Deactivate" });
     fireEvent.click(confirm);
     expect(await within(drawer).findByTestId("truck-command-outcome")).toBeTruthy();
   });
@@ -149,8 +149,8 @@ describe("manage: driver / status / warehouse / lifecycle", () => {
     render(<TruckManagementPreview seedTrucks={seed} />);
     const drawer = await openManage("TRK-OOS");
     fireEvent.change(within(drawer).getByLabelText("Status"), { target: { value: "ACTIVE" } });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Update status" }));
-    fireEvent.click(await within(drawer).findByRole("button", { name: "Confirm reactivate" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Update Status" }));
+    fireEvent.click(await within(drawer).findByRole("button", { name: "Confirm Reactivate" }));
     expect(await within(drawer).findByTestId("truck-command-outcome")).toBeTruthy();
   });
 
@@ -158,7 +158,7 @@ describe("manage: driver / status / warehouse / lifecycle", () => {
     render(<TruckManagementPreview />);
     const drawer = await openManage("TRK-101");
     fireEvent.change(within(drawer).getByLabelText("Warehouse"), { target: { value: "WH-SOUTH" } });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Update home warehouse" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Update Home Warehouse" }));
     expect(await within(drawer).findByTestId("truck-command-outcome")).toBeTruthy();
   });
 
@@ -182,7 +182,7 @@ describe("sanitized failure surfaces", () => {
     render(<TruckManagementPreview client={client} />);
     const drawer = await openManage("TRK-102");
     fireEvent.change(within(drawer).getByLabelText("Employee"), { target: { value: "EMP-2" } });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Assign driver" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Assign Driver" }));
     const banner = await within(drawer).findByTestId("truck-command-outcome");
     expect(banner.textContent).toMatch(/Reload and retry/i);
     expect(within(drawer).getByRole("button", { name: "Reload" })).toBeTruthy();
@@ -219,9 +219,9 @@ describe("Created-in-Error delete (admin-only)", () => {
     render(<TruckManagementPreview />);
     const drawer = await openManage("TRK-102"); // no driver -> deletable in the mock
     fireEvent.click(within(drawer).getByTestId("tm-delete-cie"));
-    const dialog = await screen.findByRole("dialog", { name: /Delete truck TRK-102/ });
-    fireEvent.change(within(dialog).getByLabelText(/Reason for deletion/), { target: { value: "created in error - duplicate" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete truck" }));
+    const dialog = await screen.findByRole("dialog", { name: /Delete Truck TRK-102/ });
+    fireEvent.change(within(dialog).getByLabelText(/Reason for Deletion/), { target: { value: "created in error - duplicate" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Truck" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: /TRK-102/ })).toBeNull());
     expect(screen.queryByTestId("manage-truck-drawer")).toBeNull();
   });
@@ -230,8 +230,8 @@ describe("Created-in-Error delete (admin-only)", () => {
     render(<TruckManagementPreview />);
     const drawer = await openManage("TRK-102");
     fireEvent.click(within(drawer).getByTestId("tm-delete-cie"));
-    const dialog = await screen.findByRole("dialog", { name: /Delete truck TRK-102/ });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete truck" })); // no reason entered
+    const dialog = await screen.findByRole("dialog", { name: /Delete Truck TRK-102/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Truck" })); // no reason entered
     expect(await within(dialog).findByText(/Enter a reason to delete/)).toBeTruthy();
     expect(screen.getByTestId("manage-truck-drawer")).toBeTruthy(); // drawer still open -> not deleted
   });
@@ -240,9 +240,9 @@ describe("Created-in-Error delete (admin-only)", () => {
     render(<TruckManagementPreview />);
     const drawer = await openManage("TRK-101"); // has a driver -> the mock rejects failed-precondition
     fireEvent.click(within(drawer).getByTestId("tm-delete-cie"));
-    const dialog = await screen.findByRole("dialog", { name: /Delete truck TRK-101/ });
-    fireEvent.change(within(dialog).getByLabelText(/Reason for deletion/), { target: { value: "attempted delete" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete truck" }));
+    const dialog = await screen.findByRole("dialog", { name: /Delete Truck TRK-101/ });
+    fireEvent.change(within(dialog).getByLabelText(/Reason for Deletion/), { target: { value: "attempted delete" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Truck" }));
     await waitFor(() => expect(within(dialog).getByText(/completed|could not be deleted/i)).toBeTruthy());
     expect(screen.queryByText(/INTERNAL mock detail/)).toBeNull();
     expect(screen.getByTestId("manage-truck-drawer")).toBeTruthy(); // drawer still open -> truck not deleted

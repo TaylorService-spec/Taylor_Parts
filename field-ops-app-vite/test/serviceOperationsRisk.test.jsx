@@ -69,7 +69,7 @@ describe("AtRiskPanel — Service Operations render path (was crashing)", () => 
   it("renders stalled work orders without a runtime exception", () => {
     const workOrders = [{ id: "old", woNumber: "WO-2026-000042", status: "CREATED", createdAt: NOW - 100 * HOUR }];
     renderTable(workOrders);
-    expect(screen.getByRole("heading", { name: "At risk" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "At Risk" })).toBeTruthy();
     expect(screen.getByText(/WO-2026-000042/)).toBeTruthy();
   });
 

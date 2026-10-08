@@ -143,7 +143,7 @@ export default function ControlTower() {
       <div className="ns-page">
         <h1 className="ns-identity__title">Service Operations</h1>
         <FailureState
-          title="Service operations could not be loaded"
+          title="Service Operations Could Not Be Loaded"
           message={`${loadErrorMessage(error, { entity: "work orders" })} Your work elsewhere is unaffected.`}
         />
       </div>

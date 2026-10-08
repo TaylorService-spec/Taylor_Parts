@@ -35,11 +35,11 @@ describe("FinanceConfiguration (Administration)", () => {
     const callApi = api();
     render(<FinanceConfiguration callApi={callApi} />);
     await screen.findByText("Taylor ledger");
-    fireEvent.change(screen.getByLabelText("Operating company id (who is owed)"), { target: { value: "taylor" } });
-    fireEvent.change(screen.getByLabelText("Counterparty company id"), { target: { value: "ventana" } });
-    fireEvent.change(screen.getByLabelText("Net days"), { target: { value: "90" } });
+    fireEvent.change(screen.getByLabelText("Operating Company (Who Is Owed)"), { target: { value: "taylor" } });
+    fireEvent.change(screen.getByLabelText("Counterparty Company"), { target: { value: "ventana" } });
+    fireEvent.change(screen.getByLabelText("Net Days"), { target: { value: "90" } });
     fireEvent.change(screen.getByLabelText("Reason for the change"), { target: { value: "intercompany terms" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save payment terms" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Payment Terms" }));
     await waitFor(() => expect(callApi).toHaveBeenCalledWith("setCounterpartyPaymentTerms", { operatingCompanyId: "taylor",
       counterparty: { kind: "INTERNAL_OPERATING_COMPANY", operatingCompanyId: "ventana" }, paymentTermsNetDays: 90, reason: "intercompany terms" }));
   });

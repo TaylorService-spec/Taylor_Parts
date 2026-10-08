@@ -13,15 +13,50 @@ import { PageHeader, SectionHeader, Button, StatusIndicator } from "../../shared
 import { Field, FormError } from "../../shared/ui/form";
 import { callFinanceApi } from "../../services/financeApiClient";
 import { formatMinorUnits } from "../../domain/money.js";
+import { OPERATING_COMPANIES, OPERATING_COMPANY_IDS } from "../../domain/operatingCompanyAuthority.js";
+import { operatingCompanyLabel, statusLabel } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
-const COMPANIES = [["taylor", "Taylor"], ["ventana", "Ventana"], ["consolidated", "Consolidated (reporting view)"]];
-const STATUS_WORDS = Object.freeze({ OPEN: "Open", PARTIAL: "Partially paid", SETTLED: "Settled", VOID: "Void" });
-const SETTLEMENT_WORDS = Object.freeze({ CUSTOMER_PAYMENT: "Customer payment", PROVIDER_FUNDING: "Provider funding", VENDOR_PAYMENT: "Vendor payment",
-  INTERCOMPANY_PAYMENT: "Intercompany payment", INTERCOMPANY_RECEIPT: "Intercompany receipt" });
+// Company choices come from the governed table; the Consolidated reporting view is not a company.
+const COMPANIES = [
+  ...OPERATING_COMPANIES.filter((c) => c.active).map((c) => [c.id, operatingCompanyLabel(c.id)]),
+  ["consolidated", "Consolidated (Reporting View)"],
+];
+const STATUS_WORDS = Object.freeze({ OPEN: "Open", PARTIAL: "Partially Paid", SETTLED: "Settled", VOID: "Void" });
+const SETTLEMENT_WORDS = Object.freeze({ CUSTOMER_PAYMENT: "Customer Payment", PROVIDER_FUNDING: "Provider Funding", VENDOR_PAYMENT: "Vendor Payment",
+  INTERCOMPANY_PAYMENT: "Intercompany Payment", INTERCOMPANY_RECEIPT: "Intercompany Receipt" });
 const HANDOFF_WORDS = Object.freeze({ PENDING_DESTINATION: "Waiting for an accounting destination", READY_FOR_DELIVERY: "Ready for accounting",
   REJECTED: "Rejected by accounting", FAILED_RETRYABLE: "Delivery failed — retry possible", FAILED_FINAL: "Delivery failed" });
 const money = (minor, currency = "USD") => (minor === null || minor === undefined ? "—" : formatMinorUnits(Number(minor), currency));
-const counterpartyWords = (cp) => cp?.kind === "INTERNAL_OPERATING_COMPANY" ? cp.operatingCompanyId : (cp?.name ?? cp?.crmAccountId ?? "—");
+const counterpartyWords = (cp) => cp?.kind === "INTERNAL_OPERATING_COMPANY" ? operatingCompanyLabel(cp.operatingCompanyId) : (cp?.name ?? cp?.crmAccountId ?? "—");
+const companyWords = (id) => operatingCompanyLabel(id) || "—";
+const minorValue = (minor) => (minor === null || minor === undefined || minor === "" ? null : Number(minor));
+const PAYLOAD_WORDS = Object.freeze({ OPERATIONAL_BILLING_PACKAGE: "Billing Package", VENDOR_PAYABLE: "Vendor Payable" });
+const payloadWords = (kind) => PAYLOAD_WORDS[kind] ?? "Intercompany Obligation";
+
+// Sortable columns (client-side over the rows the governed read returned; the server's order is the default).
+const OBLIGATION_COLUMNS = Object.freeze({
+  company: { value: (o) => companyWords(o.operatingCompanyId) },
+  counterparty: { value: (o) => counterpartyWords(o.counterparty) },
+  status: { value: (o) => statusLabel(o.status, STATUS_WORDS) },
+  due: { value: (o) => o.dueOn ?? null },
+  originated: { value: (o) => minorValue(o.originatedMinor) },
+  outstanding: { value: (o) => minorValue(o.outstandingMinor) },
+  record: { value: (o) => o.id },
+});
+const HANDOFF_COLUMNS = Object.freeze({
+  company: { value: (h) => companyWords(h.operatingCompanyId) },
+  what: { value: (h) => payloadWords(h.payloadKind) },
+  status: { value: (h) => statusLabel(h.status, HANDOFF_WORDS) },
+  record: { value: (h) => h.obligationId },
+});
+const COST_EVIDENCE_COLUMNS = Object.freeze({
+  company: { value: (x) => companyWords(x.operatingCompanyId) },
+  receipt: { value: (x) => x.receivingId },
+  part: { value: (x) => x.partId },
+  quantity: { value: (x) => (typeof x.receivedQuantity === "number" ? x.receivedQuantity : minorValue(x.receivedQuantity)) },
+});
 
 /** "1250.50" -> 125050 minor units; null when it is not an amount with at most two decimals. Integer arithmetic only. */
 export function toMinorUnits(text) {
@@ -32,20 +67,31 @@ export function toMinorUnits(text) {
 }
 
 function ObligationTable({ title, section }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: section?.items ?? EMPTY, columns: OBLIGATION_COLUMNS });
   if (!section) return null;
   return (
     <section className="fo-panel" aria-label={title}>
       <SectionHeader title={title} description={section.count === 0 ? "None outstanding." : `${section.count} outstanding — ${Object.entries(section.outstandingByCurrency).map(([c, m]) => money(m, c) + " " + c).join(", ")}`} />
       {section.items.length > 0 && (
         <table className="fo-table">
-          <thead><tr><th>Company</th><th>Counterparty</th><th>Status</th><th>Due</th><th>Originated</th><th>Outstanding</th><th>Record</th></tr></thead>
+          <thead>
+            <tr>
+              <SortableHeader columnKey="company" label="Company" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="counterparty" label="Counterparty" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="due" label="Due" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="originated" label="Originated" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="outstanding" label="Outstanding" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="record" label="Record" sort={sort} onSort={toggle} />
+            </tr>
+          </thead>
           <tbody>
-            {section.items.map((o) => (
+            {sorted.map((o) => (
               <tr key={o.id}>
-                <td>{o.operatingCompanyId}</td>
+                <td>{companyWords(o.operatingCompanyId)}</td>
                 <td>{counterpartyWords(o.counterparty)}</td>
-                <td>{STATUS_WORDS[o.status] ?? o.status}{o.overdue ? " · overdue" : ""}</td>
-                <td>{o.dueOn ?? <span className="fo-muted">no due date governed</span>}</td>
+                <td>{statusLabel(o.status, STATUS_WORDS)}{o.overdue ? " · overdue" : ""}</td>
+                <td>{o.dueOn ?? <span className="fo-muted">No due date governed</span>}</td>
                 <td>{money(o.originatedMinor, o.currency)}</td>
                 <td>{money(o.outstandingMinor, o.currency)}</td>
                 <td className="fo-muted">{o.id}</td>
@@ -58,8 +104,10 @@ function ObligationTable({ title, section }) {
   );
 }
 
+const EMPTY = Object.freeze([]);
+
 export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded = false }) {
-  const [company, setCompany] = useState("taylor");
+  const [company, setCompany] = useState(OPERATING_COMPANY_IDS.TAYLOR);
   const [ws, setWs] = useState(null);
   const [refusal, setRefusal] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -109,6 +157,8 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
   };
 
   const counts = ws?.exceptionCounts;
+  const handoffSort = useTableSort({ rows: ws?.accountingHandoffs ?? EMPTY, columns: HANDOFF_COLUMNS });
+  const costEvidenceSort = useTableSort({ rows: ws?.missingCostEvidence ?? EMPTY, columns: COST_EVIDENCE_COLUMNS });
   return (
     <div>
       {embedded
@@ -123,10 +173,10 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
       {ws && (
         <>
           {ws.scope.projection === "CONSOLIDATED_REPORTING_PROJECTION" && (
-            <StatusIndicator tone="neutral">Consolidated is a reporting view across {ws.scope.companies.join(" and ")}. Nothing is recorded in it.</StatusIndicator>
+            <StatusIndicator tone="neutral">Consolidated is a reporting view across {ws.scope.companies.map((id) => operatingCompanyLabel(id)).join(" and ")}. Nothing is recorded in it.</StatusIndicator>
           )}
           <section className="fo-panel" aria-label="Needs attention">
-            <SectionHeader title="Needs attention" />
+            <SectionHeader title="Needs Attention" />
             <dl>
               <dt className="fo-muted">Overdue obligations</dt><dd>{counts.overdueObligations}</dd>
               <dt className="fo-muted">Partially paid obligations</dt><dd>{counts.partiallyPaidObligations}</dd>
@@ -140,20 +190,20 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
           </section>
 
           <ObligationTable title="Receivables" section={ws.receivables} />
-          <ObligationTable title="Funding receivables (financing providers)" section={ws.fundingReceivables} />
+          <ObligationTable title="Funding Receivables (Financing Providers)" section={ws.fundingReceivables} />
           <ObligationTable title="Payables" section={ws.payables} />
-          <ObligationTable title="Intercompany receivables" section={ws.intercompanyReceivables} />
-          <ObligationTable title="Intercompany payables" section={ws.intercompanyPayables} />
+          <ObligationTable title="Intercompany Receivables" section={ws.intercompanyReceivables} />
+          <ObligationTable title="Intercompany Payables" section={ws.intercompanyPayables} />
 
           <section className="fo-panel" aria-label="Unapplied settlements">
-            <SectionHeader title="Unapplied settlements" description={ws.unappliedSettlements.length === 0 ? "Every recorded settlement is fully applied." : "Received or paid, not yet applied in full."} />
+            <SectionHeader title="Unapplied Settlements" description={ws.unappliedSettlements.length === 0 ? "Every recorded settlement is fully applied." : "Received or paid, not yet applied in full."} />
             {ws.unappliedSettlements.length > 0 && (
               <table className="fo-table">
-                <thead><tr><th>Company</th><th>Kind</th><th>Reference</th><th>Date</th><th>Amount</th><th>Unapplied</th><th>Apply to an obligation</th></tr></thead>
+                <thead><tr><th>Company</th><th>Kind</th><th>Reference</th><th>Date</th><th>Amount</th><th>Unapplied</th><th>Apply to an Obligation</th></tr></thead>
                 <tbody>
                   {ws.unappliedSettlements.map((s) => (
                     <tr key={s.id}>
-                      <td>{s.operatingCompanyId}</td><td>{SETTLEMENT_WORDS[s.kind] ?? s.kind}</td><td>{s.sourceReference}</td><td>{s.businessDate}</td>
+                      <td>{companyWords(s.operatingCompanyId)}</td><td>{statusLabel(s.kind, SETTLEMENT_WORDS)}</td><td>{s.sourceReference}</td><td>{s.businessDate}</td>
                       <td>{money(s.amountMinor, s.currency)}</td><td>{money(s.unappliedMinor, s.currency)}</td>
                       <td>
                         <input className="fo-input" aria-label={`Obligation for ${s.sourceReference}`} placeholder="Obligation record" value={applyDraft[s.id]?.obligationId ?? ""}
@@ -170,15 +220,22 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
           </section>
 
           <section className="fo-panel" aria-label="Accounting handoffs">
-            <SectionHeader title="Accounting handoffs" description={ws.accountingHandoffs.length === 0 ? "Nothing waiting for accounting." : "Each company's records waiting for, or refused by, its own accounting destination."} />
+            <SectionHeader title="Accounting Handoffs" description={ws.accountingHandoffs.length === 0 ? "Nothing waiting for accounting." : "Each company's records waiting for, or refused by, its own accounting destination."} />
             {ws.accountingHandoffs.length > 0 && (
               <table className="fo-table">
-                <thead><tr><th>Company</th><th>What</th><th>Status</th><th>Record</th></tr></thead>
+                <thead>
+                  <tr>
+                    <SortableHeader columnKey="company" label="Company" sort={handoffSort.sort} onSort={handoffSort.toggle} />
+                    <SortableHeader columnKey="what" label="What" sort={handoffSort.sort} onSort={handoffSort.toggle} />
+                    <SortableHeader columnKey="status" label="Status" sort={handoffSort.sort} onSort={handoffSort.toggle} />
+                    <SortableHeader columnKey="record" label="Record" sort={handoffSort.sort} onSort={handoffSort.toggle} />
+                  </tr>
+                </thead>
                 <tbody>
-                  {ws.accountingHandoffs.map((h) => (
-                    <tr key={h.id}><td>{h.operatingCompanyId}</td>
-                      <td>{h.payloadKind === "OPERATIONAL_BILLING_PACKAGE" ? "Billing package" : h.payloadKind === "VENDOR_PAYABLE" ? "Vendor payable" : "Intercompany obligation"}</td>
-                      <td>{HANDOFF_WORDS[h.status] ?? h.status}{h.failureReason ? ` — ${h.failureReason}` : ""}</td><td className="fo-muted">{h.obligationId}</td></tr>
+                  {handoffSort.sorted.map((h) => (
+                    <tr key={h.id}><td>{companyWords(h.operatingCompanyId)}</td>
+                      <td>{payloadWords(h.payloadKind)}</td>
+                      <td>{statusLabel(h.status, HANDOFF_WORDS)}{h.failureReason ? ` — ${h.failureReason}` : ""}</td><td className="fo-muted">{h.obligationId}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -189,11 +246,11 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
             <SectionHeader title="Reconciliation" description={ws.reconciliation.length === 0 ? "Every settlement is reconciled with accounting." : "Settlements not yet confirmed by accounting, or where accounting shows something different."} />
             {ws.reconciliation.length > 0 && (
               <table className="fo-table">
-                <thead><tr><th>Company</th><th>Kind</th><th>Amount</th><th>Status</th><th>Record what accounting shows</th></tr></thead>
+                <thead><tr><th>Company</th><th>Kind</th><th>Amount</th><th>Status</th><th>Record What Accounting Shows</th></tr></thead>
                 <tbody>
                   {ws.reconciliation.map((r) => (
                     <tr key={r.settlementId}>
-                      <td>{r.operatingCompanyId}</td><td>{SETTLEMENT_WORDS[r.kind] ?? r.kind}</td><td>{money(r.amountMinor, r.currency)}</td>
+                      <td>{companyWords(r.operatingCompanyId)}</td><td>{statusLabel(r.kind, SETTLEMENT_WORDS)}</td><td>{money(r.amountMinor, r.currency)}</td>
                       <td>{r.status === "MISMATCH" ? `Mismatch — accounting shows ${money(r.externalAmountMinor, r.currency)}` : "Not yet reconciled"}</td>
                       <td>
                         <input className="fo-input" aria-label={`Accounting reference for ${r.settlementId}`} placeholder="Accounting reference" value={reconDraft[r.settlementId]?.reference ?? ""}
@@ -212,18 +269,25 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
           </section>
 
           <section className="fo-panel" aria-label="Missing cost evidence">
-            <SectionHeader title="Receipts missing cost evidence" description={ws.missingCostEvidence.length === 0 ? "Every received line has its cost." : "Received without a price: no cost is assumed and no obligation is created until the evidence is supplied."} />
+            <SectionHeader title="Receipts Missing Cost Evidence" description={ws.missingCostEvidence.length === 0 ? "Every received line has its cost." : "Received without a price: no cost is assumed and no obligation is created until the evidence is supplied."} />
             {ws.missingCostEvidence.length > 0 && (
               <table className="fo-table">
-                <thead><tr><th>Company</th><th>Receipt</th><th>Part</th><th>Quantity</th></tr></thead>
-                <tbody>{ws.missingCostEvidence.map((x) => <tr key={x.exceptionId}><td>{x.operatingCompanyId}</td><td>{x.receivingId}</td><td>{x.partId}</td><td>{x.receivedQuantity}</td></tr>)}</tbody>
+                <thead>
+                  <tr>
+                    <SortableHeader columnKey="company" label="Company" sort={costEvidenceSort.sort} onSort={costEvidenceSort.toggle} />
+                    <SortableHeader columnKey="receipt" label="Receipt" sort={costEvidenceSort.sort} onSort={costEvidenceSort.toggle} />
+                    <SortableHeader columnKey="part" label="Part" sort={costEvidenceSort.sort} onSort={costEvidenceSort.toggle} />
+                    <SortableHeader columnKey="quantity" label="Quantity" sort={costEvidenceSort.sort} onSort={costEvidenceSort.toggle} />
+                  </tr>
+                </thead>
+                <tbody>{costEvidenceSort.sorted.map((x) => <tr key={x.exceptionId}><td>{companyWords(x.operatingCompanyId)}</td><td>{x.receivingId}</td><td>{x.partId}</td><td>{x.receivedQuantity}</td></tr>)}</tbody>
               </table>
             )}
           </section>
 
           {ws.scope.projection === "OPERATING_COMPANY" && (
             <section className="fo-panel" aria-label="Record a settlement">
-              <SectionHeader title="Record a settlement" description="Evidence of money received or paid — never a bank feed. It is applied to obligations separately." />
+              <SectionHeader title="Record a Settlement" description="Evidence of money received or paid — never a bank feed. It is applied to obligations separately." />
               <div className="fo-form-row">
                 <Field label="Kind">
                   <select className="fo-input" aria-label="Settlement kind" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
@@ -235,10 +299,10 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
                 </Field>
                 <Field label="Amount"><input className="fo-input" aria-label="Settlement amount" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
                 <Field label="Reference"><input className="fo-input" aria-label="Settlement reference" value={form.sourceReference} onChange={(e) => setForm({ ...form, sourceReference: e.target.value })} /></Field>
-                <Field label="Business date (optional)"><input className="fo-input" aria-label="Business date" placeholder="YYYY-MM-DD" value={form.businessDate} onChange={(e) => setForm({ ...form, businessDate: e.target.value })} /></Field>
+                <Field label="Business Date (Optional)"><input className="fo-input" aria-label="Business date" placeholder="YYYY-MM-DD" value={form.businessDate} onChange={(e) => setForm({ ...form, businessDate: e.target.value })} /></Field>
               </div>
               <div className="fo-form-actions">
-                <Button disabled={busy || !form.counterpartyRef || !form.amount || !form.sourceReference} onClick={recordSettlement}>Record settlement</Button>
+                <Button disabled={busy || !form.counterpartyRef || !form.amount || !form.sourceReference} onClick={recordSettlement}>Record Settlement</Button>
               </div>
             </section>
           )}

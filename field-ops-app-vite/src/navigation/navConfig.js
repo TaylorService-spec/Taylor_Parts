@@ -619,8 +619,9 @@ export const NAV_DOMAINS = [
     label: "Administration",
     path: "administration",
     subnav: [
-      // Issue #226 Row 10 -- Admin Portal foundation (Spec sec16 MVP surfaces:
-      // Overview, Users, Roles & Permissions, Permission Preview, Audit Logs).
+      // Issue #226 Row 10 -- Admin Portal foundation (Spec sec16 MVP surfaces). Normal navigation since the UI
+      // corrections package (2026-10-08): Overview, Users, Roles & Permissions, Objects, Workflows, Data Import,
+      // Audit Logs, plus the governed-configuration destinations below; Permission Preview is retired (see its item).
       // "Overview" is net-new and deliberately does NOT take path "" -- Employees
       // (docs/implementation-plans/enterprise-access-prototype-reconciliation.md
       // sec2) keeps its existing index route/legacyKey byte-for-byte untouched, so
@@ -663,10 +664,14 @@ export const NAV_DOMAINS = [
       // no data access and a data grant permits no action, and putting them on one screen would
       // invite exactly that conflation.
       { key: "workflows", label: "Workflows", path: "workflows" },
-      // Net-new per Spec sec16's "permission preview/explanation" MVP surface.
-      // Real read-only content (effective-permission preview render) lands in
-      // Row 11 (Task 16) -- this row only adds the reachable nav slot.
-      { key: "permissionPreview", label: "Permission Preview", path: "permission-preview" },
+      // PERMISSION PREVIEW IS RETIRED FROM NORMAL NAVIGATION (UI corrections package §15, 2026-10-08).
+      // Its business function is Users → Employee → Roles & Access (explainEffectiveAccess, with provenance). What only
+      // it could do -- inspect a Principal with no linked Employee, pick a sample persona by name -- is NONPROD QA
+      // tooling: this item is navHidden (never in the rail or tab bar), moved to /administration/qa/principal-inspection,
+      // and the page renders "not available in this environment" in a production bundle. The item KEY and its governed
+      // surface (administration.permissionPreview) are unchanged on purpose: no authority, grant or surface moves here.
+      // The old /administration/permission-preview address redirects to Users (App.jsx).
+      { key: "permissionPreview", label: "Principal Inspection (QA)", path: "qa/principal-inspection", navHidden: true },
       { key: "vehicles", label: "Vehicles", path: "vehicles", navHidden: true },
       { key: "regions", label: "Regions", path: "regions", navHidden: true },
       { key: "companySettings", label: "Company Settings", path: "company-settings", navHidden: true },

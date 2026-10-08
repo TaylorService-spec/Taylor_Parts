@@ -598,7 +598,7 @@ test("the A/R aging scorecard states its company span rather than implying one c
 test("the Account AR section shows a company column only when the read says it spans companies", () => {
   const src = readFileSync(new URL("../src/modules/accounts/AccountArSection.jsx", import.meta.url), "utf8");
   assert.ok(/view\.company\?\.supplied === true && view\.company\.spansMultipleCompanies === true/.test(src));
-  assert.ok(/\{showCompany \? <th scope="col">Company<\/th> : null\}/.test(src), "the header cell must be conditional");
+  assert.ok(/\{showCompany \? <SortableHeader columnKey="company" label="Company"[^\n]*\/> : null\}/.test(src), "the header cell must be conditional");
   assert.ok(/row\.companyLabel/.test(src), "rows must render the shared words, never a raw governed id");
   // The section still totals nothing — the disclosure must not have smuggled in a total.
   assert.ok(!/reduce\(/.test(src));

@@ -54,7 +54,7 @@ describe("TruckLocationScopeBindings", () => {
     render(<TruckLocationScopeBindings callApi={call} />);
     await screen.findByText("Truck A");
     fireEvent.click(screen.getByRole("button", { name: "Change" }));
-    const save = screen.getByRole("button", { name: "Save binding" });
+    const save = screen.getByRole("button", { name: "Save Binding" });
     expect(save.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/Warehouse/), { target: { value: "WH-2" } });
     expect(save.disabled).toBe(true);
@@ -73,7 +73,7 @@ describe("TruckLocationScopeBindings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(screen.getByText(/will be refused until a new binding is set/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: "retired" } });
-    fireEvent.click(screen.getByRole("button", { name: "Remove binding" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Binding" }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith({ locationId: "truck-a", reason: "retired" }));
     await screen.findByText(/does not currently hold/);
   });

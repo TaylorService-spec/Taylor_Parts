@@ -259,7 +259,7 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
 
       {/* READ-ONLY, and there is no control to change either. The work order owns them. */}
       <dl className="fo-detail-list">
-        <dt>Work order</dt>
+        <dt>Work Order</dt>
         <dd>{wo?.woNumber ?? workOrderId}</dd>
         <dt>Customer</dt>
         <dd>{wo?.customerId ?? "—"}</dd>
@@ -296,7 +296,7 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
       {state.state === CLOSEOUT_STATE.DONE || state.state === CLOSEOUT_STATE.INSTALLED_COMPLETION_PENDING || queued?.ok ? null : (
         <>
           <label>
-            Scan or type a serial
+            Scan or Type a Serial
             <input
               type="text" value={scan} onChange={(e) => setScan(e.target.value)}
               placeholder="Serial number" disabled={busy}
@@ -332,7 +332,7 @@ export default function EquipmentInstallCloseout({ workOrderId, onCompleteWorkOr
           ) : null}
 
           <label>
-            Installation notes
+            Installation Notes
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={busy} rows={2} />
           </label>
 

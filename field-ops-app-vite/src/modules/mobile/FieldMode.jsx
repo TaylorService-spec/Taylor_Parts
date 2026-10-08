@@ -251,7 +251,7 @@ export default function FieldMode({ deps } = {}) {
 
       {upNext.length > 0 && (
         <section className="fo-field__section" aria-labelledby="fo-upnext">
-          <h3 id="fo-upnext" className="fo-field__section-title">Up next</h3>
+          <h3 id="fo-upnext" className="fo-field__section-title">Up Next</h3>
           <ul className="fo-upnext">
             {upNext.map((wo) => (
               <li key={wo.id} className="fo-upnext__row">
@@ -303,7 +303,7 @@ function CurrentJob({ job, workOrder, inventoryState = null, pending, failure, o
           onClick={() => toggle("scan")}
           aria-expanded={tool === "scan"}
         >
-          Scan a part
+          Scan a Part
         </Button>
         <Button
           type="button"
@@ -312,7 +312,7 @@ function CurrentJob({ job, workOrder, inventoryState = null, pending, failure, o
           onClick={() => toggle("note")}
           aria-expanded={tool === "note"}
         >
-          Add a note
+          Add a Note
         </Button>
         {/* SAME CLASS AS ITS TWO SIBLINGS. Without it this rendered at 31px beside two 52px controls
             in the same row -- measured on a real phone once the shell was actually mounted. */}

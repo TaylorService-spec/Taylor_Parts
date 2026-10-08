@@ -62,7 +62,7 @@ describe("SalesOrderActions -- ConfirmDialog destructive styling matches actual 
 
   it("CANCEL dialog IS still styled as destructive (regression pin -- this one genuinely is)", () => {
     render(<SalesOrderActions view={BASE_VIEW} onChanged={() => {}} hasCapability={GRANTED} />);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel order" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel Order" }));
     expect(screen.getByText("Cancel Sales Order")).toBeTruthy();
     expect(screen.getByText("Destructive action")).toBeTruthy();
   });

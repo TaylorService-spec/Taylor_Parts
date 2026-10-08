@@ -23,9 +23,13 @@
 //     section. Only a genuine READY `items: []` asserts empty stock; a malformed non-empty
 //     payload is an integrity failure -- never a false "empty", never a partial mix. No raw
 //     values, error details, or location identifiers reach the UI.
-//   * DETERMINISTIC. Pure function of its `section` prop; row order preserved (no sort), the
-//     prop is never mutated.
+//   * DETERMINISTIC. Pure function of its `section` prop; the DEFAULT row order is the order
+//     given (no implicit sort), the prop is never mutated. A person may sort the already-loaded
+//     rows by a column header (shared useTableSort, tri-state back to the default order); that
+//     only reorders a copy for display and never derives a value.
 import { useId } from "react";
+import { useTableSort } from "../../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../../shared/ui/sorting/SortableHeader.jsx";
 import { MOBILE_INVENTORY_SECTION_STATE } from "../../../domain/mobileLocationInventoryProjection.js";
 
 const { UNAVAILABLE, LOADING, DENIED, ERROR, READY } = MOBILE_INVENTORY_SECTION_STATE;
@@ -56,6 +60,14 @@ const FIELD_TYPES = Object.freeze({
   reorderStatus: "string",
 });
 const RECOGNIZED_KEYS = Object.freeze(Object.keys(FIELD_TYPES));
+
+// Client-side sort over the loaded rows: the governed value itself (number for quantities,
+// text otherwise); a non-governed value sorts as empty (last).
+const SORT_COLUMNS = Object.freeze(Object.fromEntries(DISPLAY_COLUMNS.map((col) => [col.key, {
+  value: (row) => (col.type === "number"
+    ? (typeof row[col.key] === "number" && Number.isFinite(row[col.key]) ? row[col.key] : null)
+    : displayString(row[col.key])),
+}])));
 
 function isPlainObject(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -123,6 +135,7 @@ function StateMessage({ testId, role, live, children }) {
 }
 
 function ReadyBody({ items }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: items, columns: SORT_COLUMNS });
   if (items.length === 0) {
     return (
       <StateMessage testId="ps-empty">
@@ -139,12 +152,12 @@ function ReadyBody({ items }) {
         <thead>
           <tr>
             {DISPLAY_COLUMNS.map((col) => (
-              <th key={col.key} scope="col">{col.label}</th>
+              <SortableHeader key={col.key} columnKey={col.key} label={col.label} sort={sort} onSort={toggle} />
             ))}
           </tr>
         </thead>
         <tbody>
-          {items.map((row, i) => {
+          {sorted.map((row, i) => {
             // Row key combines the governed SKU identity with the render index so duplicate
             // internalSku values can never collide (order is preserved, read-only slice).
             const identity = displayString(row.internalSku) ?? "row";

@@ -24,6 +24,8 @@ import { Field, FormActions, FormStatus } from "../ui/form";
 import StatusPill from "../ui/StatusPill.jsx";
 import { Button } from "../ui/primitives/index.js";
 import CatalogMutationPausedNotice from "./CatalogMutationPausedNotice.jsx";
+import { CONTROL_TYPE_LABEL, PART_STATUS_LABEL, STOCKING_CLASS_LABEL, UNIT_CODE_LABEL } from "../../domain/partVocabulary.js";
+import { statusLabel } from "../display/displayLabels.js";
 
 const OUTCOME_TONE = {
   applied: "positive",
@@ -95,7 +97,7 @@ function PartForm({ mode, form, setForm, disabled }) {
           <Field id="parts-write-id" label="Part ID">
             <input id="parts-write-id" className="fo-wizard-control" value={form.partId ?? ""} onChange={set("partId")} disabled={disabled} />
           </Field>
-          <Field id="parts-write-number" label="Internal part number">
+          <Field id="parts-write-number" label="Internal Part Number">
             <input id="parts-write-number" className="fo-wizard-control" value={form.internalPartNumber ?? ""} onChange={set("internalPartNumber")} disabled={disabled} />
           </Field>
         </>
@@ -110,19 +112,19 @@ function PartForm({ mode, form, setForm, disabled }) {
         <input id="parts-write-category" className="fo-wizard-control" value={form.category ?? ""} onChange={set("category")} disabled={disabled} />
       </Field>
       <ManufacturerField form={form} setForm={setForm} disabled={disabled} />
-      <Field id="parts-write-unit" label="Stocking unit">
+      <Field id="parts-write-unit" label="Stocking Unit">
         <select id="parts-write-unit" className="fo-wizard-control" value={form.stockingUnit ?? "EACH"} onChange={set("stockingUnit")} disabled={disabled}>
-          {UNIT_CODES.map((u) => <option key={u} value={u}>{u}</option>)}
+          {UNIT_CODES.map((u) => <option key={u} value={u}>{statusLabel(u, UNIT_CODE_LABEL)}</option>)}
         </select>
       </Field>
-      <Field id="parts-write-control" label="Control type">
+      <Field id="parts-write-control" label="Control Type">
         <select id="parts-write-control" className="fo-wizard-control" value={form.controlType ?? "STANDARD"} onChange={set("controlType")} disabled={disabled}>
-          {CONTROL_TYPES.map((c) => <option key={c} value={c}>{c}</option>)}
+          {CONTROL_TYPES.map((c) => <option key={c} value={c}>{statusLabel(c, CONTROL_TYPE_LABEL)}</option>)}
         </select>
       </Field>
-      <Field id="parts-write-class" label="Stocking class">
+      <Field id="parts-write-class" label="Stocking Class">
         <select id="parts-write-class" className="fo-wizard-control" value={form.stockingClass ?? "STOCKED"} onChange={set("stockingClass")} disabled={disabled}>
-          {STOCKING_CLASSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          {STOCKING_CLASSES.map((s) => <option key={s} value={s}>{statusLabel(s, STOCKING_CLASS_LABEL)}</option>)}
         </select>
       </Field>
     </>
@@ -155,7 +157,7 @@ export default function PartWriteModal({ mode, part, onClose, onSaved, writeDeps
   const submitStatus = (newStatus) => finish(runChangeStatus(part.partId, part.version, newStatus));
 
   const title =
-    mode === "create" ? "New part" : mode === "edit" ? `Edit ${part.internalPartNumber}` : `Change status — ${part.internalPartNumber}`;
+    mode === "create" ? "New Part" : mode === "edit" ? `Edit ${part.internalPartNumber}` : `Change Status — ${part.internalPartNumber}`;
 
   return (
     <Modal title={title} onClose={requestClose}>
@@ -171,13 +173,13 @@ export default function PartWriteModal({ mode, part, onClose, onSaved, writeDeps
       {mode === "status" ? (
         <div className="fo-form fo-create-modal-form">
           <p className="fo-muted">
-            Current status: <StatusPill tone={partStatusTone(part.status)} label={part.status} />. Choose a governed transition:
+            Current status: <StatusPill tone={partStatusTone(part.status)} label={statusLabel(part.status, PART_STATUS_LABEL)} />. Choose a governed transition:
           </p>
           <FormActions>
             {allowedStatusTransitions(part.status).length === 0
-              ? <span className="fo-muted">No status changes are available from {part.status}.</span>
+              ? <span className="fo-muted">No status changes are available from {statusLabel(part.status, PART_STATUS_LABEL)}.</span>
               : allowedStatusTransitions(part.status).map((s) => (
-                  <Button key={s} type="button" variant="secondary" onClick={() => submitStatus(s)} disabled={busy || !writeReady}>→ {s}</Button>
+                  <Button key={s} type="button" variant="secondary" onClick={() => submitStatus(s)} disabled={busy || !writeReady}>→ {statusLabel(s, PART_STATUS_LABEL)}</Button>
                 ))}
             <Button type="button" variant="secondary" onClick={requestClose} disabled={busy}>Cancel</Button>
           </FormActions>
@@ -187,7 +189,7 @@ export default function PartWriteModal({ mode, part, onClose, onSaved, writeDeps
           <PartForm mode={mode} form={form} setForm={setForm} disabled={busy || !writeReady} />
           <FormStatus>{busy ? "Saving…" : ""}</FormStatus>
           <FormActions>
-            <Button type="submit" variant="primary" disabled={!writeReady} loading={busy}>{mode === "create" ? "Create part" : "Save changes"}</Button>
+            <Button type="submit" variant="primary" disabled={!writeReady} loading={busy}>{mode === "create" ? "Create Part" : "Save Changes"}</Button>
             <Button type="button" variant="secondary" onClick={requestClose} disabled={busy}>Cancel</Button>
           </FormActions>
         </form>

@@ -199,7 +199,7 @@ export default function EmployeeJobRoleControl({
             ))}
           </select>
         </Field>
-        <Field id="employee-job-role-reason" label="Reason (optional)" hint="Kept with this Job Role in the history.">
+        <Field id="employee-job-role-reason" label="Reason (Optional)" hint="Kept with this Job Role in the history.">
           <input type="text" value={reason} maxLength={JOB_ROLE_REASON_MAX} onChange={(e) => setReason(e.target.value)} disabled={submitting} />
         </Field>
       </>

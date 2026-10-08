@@ -1,3 +1,4 @@
+import Autocomplete, { searchLoaded } from "../../shared/ui/Autocomplete.jsx";
 import { useMemo, useState } from "react";
 import { useWorkOrderTechnicians } from "../../hooks/useWorkOrderTechnicians";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
@@ -218,23 +219,20 @@ export default function Dispatch() {
                       Scheduled for: {technicianName(job.scheduledTechId)}
                     </div>
                   )}
-                  <select
-                    value={pendingReassignment?.job.id === job.id ? pendingReassignment.technicianId : ""}
-                    onChange={(e) => handleSelectTechnician(job, e.target.value)}
-                  >
-                    <option value="" disabled>
-                      Select technician…
-                    </option>
-                    {technicians
-                      // Only the governed roster is offered (plus the scheduled assignee); there is no field
-                      // "available" status on a governed Employee, and the server re-checks eligibility.
-                      .filter((t) => rosterIds.has(t.id) || t.id === job.scheduledTechId)
-                      .map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                  </select>
+                  {/* ASSIGNEE TYPEAHEAD (UI corrections item E): over the governed roster only (plus the scheduled
+                      assignee) -- the same list the select offered; there is no field "available" status on a governed
+                      Employee, and the server re-checks eligibility. Choosing one behaves exactly as the select did. */}
+                  <Autocomplete
+                    label={`Technician for ${job.workOrderNumber ?? job.id}`}
+                    hideLabel
+                    placeholder="Type a technician's name"
+                    search={searchLoaded(technicians.filter((t) => rosterIds.has(t.id) || t.id === job.scheduledTechId), (t) => t.name)}
+                    selected={pendingReassignment?.job.id === job.id ? technicians.find((t) => t.id === pendingReassignment.technicianId) ?? null : null}
+                    getKey={(t) => t.id}
+                    getLabel={(t) => t.name}
+                    getContext={(t) => (t.id === job.scheduledTechId ? "Scheduled technician" : null)}
+                    onSelect={(t) => { if (t) handleSelectTechnician(job, t.id); }}
+                  />
                   {/* H20 fix: dispatching to anyone OTHER than job.scheduledTechId is a reassignment --
                       the Owner ruling requires a reason before it can be confirmed. Same-technician
                       dispatch never reaches this prompt (handleSelectTechnician dispatches it immediately). */}

@@ -211,13 +211,14 @@ check("BLOCKED and FAIL results yield a copyable payload (diagnostic evidence on
 
 check("component renders sanitized timestamps + sourceCounts + a manual Copy action (gated on a result)", () => {
   const comp = read("src/modules/inventory/PartsShadowParityDiagnostics.jsx");
-  assert.ok(/capturedAtStart:/.test(comp) && /capturedAtEnd:/.test(comp), "renders capture timestamps");
-  assert.ok(/sourceCounts:/.test(comp), "renders sourceCounts");
-  assert.ok(/Copy sanitized evidence/.test(comp), "manual Copy action present");
+  // UI corrections package: the evidence keys render as display labels (the key stays on data-evidence-key).
+  assert.ok(/data-evidence-key="capturedAtStart">Captured At Start:/.test(comp) && /data-evidence-key="capturedAtEnd">Captured At End:/.test(comp), "renders capture timestamps");
+  assert.ok(/data-evidence-key="sourceCounts">Source Counts:/.test(comp), "renders sourceCounts");
+  assert.ok(/Copy Sanitized Evidence/.test(comp), "manual Copy action present");
   assert.ok(/sanitizedEvidencePayload\(v\)/.test(comp), "copies from the sanitized view model");
   // copy action lives inside the result-present branch (unavailable before a result)
   const resultBranch = comp.slice(comp.indexOf("v && !v.invalid ? ("));
-  assert.ok(/Copy sanitized evidence/.test(resultBranch), "Copy button only rendered when a result exists");
+  assert.ok(/Copy Sanitized Evidence/.test(resultBranch), "Copy button only rendered when a result exists");
 });
 check("copy action performs no write / network / download / persistence", () => {
   const comp = read("src/modules/inventory/PartsShadowParityDiagnostics.jsx");

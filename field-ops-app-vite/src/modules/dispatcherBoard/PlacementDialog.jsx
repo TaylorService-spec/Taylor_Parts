@@ -39,22 +39,22 @@ const REASON_REQUIRED = new Set([PLACEMENT_INTENT.RESCHEDULE, PLACEMENT_INTENT.R
 
 const COPY = {
   [PLACEMENT_INTENT.SCHEDULE]: {
-    title: "Schedule this work order",
+    title: "Schedule This Work Order",
     confirm: "Schedule",
     reasonPrompt: null,
   },
   [PLACEMENT_INTENT.RESCHEDULE]: {
-    title: "Move this work order to a new time",
+    title: "Move This Work Order to a New Time",
     confirm: "Confirm new time",
     reasonPrompt: "Why is this job being moved?",
   },
   [PLACEMENT_INTENT.REASSIGN]: {
-    title: "Reassign this work order",
+    title: "Reassign This Work Order",
     confirm: "Confirm reassignment",
     reasonPrompt: "Why is this job being reassigned?",
   },
   [PLACEMENT_INTENT.UNSCHEDULE]: {
-    title: "Return this work order to the queue",
+    title: "Return This Work Order to the Queue",
     confirm: "Return to queue",
     reasonPrompt: "Why is this job being returned to the queue?",
   },

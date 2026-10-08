@@ -1,5 +1,8 @@
 import { useMemo } from "react";
 import LifecycleChevrons from "../../shared/ui/LifecycleChevrons.jsx";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 import {
   projectFulfillmentProgress,
   STEP_STATE,
@@ -99,30 +102,45 @@ export default function SalesOrderFulfillmentSection({ salesOrder, workOrders = 
       )}
 
       {Array.isArray(workOrders) && progress.workOrders.length > 0 && (
-        <table className="fo-table">
-          <caption className="fo-muted">Linked Work Orders</caption>
-          <thead>
-            <tr>
-              <th scope="col">Work Order</th>
-              <th scope="col">Status</th>
-              <th scope="col">Scheduled</th>
-              <th scope="col">Technician</th>
-            </tr>
-          </thead>
-          <tbody>
-            {progress.workOrders.map((w) => (
-              <tr key={w.id}>
-                {/* The business reference, never the document id. A row that shows a Firestore
-                    id is asking a human to read a value meant for a database. */}
-                <td>{w.workOrderNumber ?? <span className="fo-muted">Number unavailable</span>}</td>
-                <td>{w.cancelled ? "Cancelled" : (w.status ?? <span className="fo-muted">Unknown</span>)}</td>
-                <td>{fmtDate(w.scheduledAtMillis) ?? <span className="fo-muted">Not scheduled</span>}</td>
-                <td>{w.technicianName ?? <span className="fo-muted">Unassigned</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <LinkedWorkOrdersTable rows={progress.workOrders} />
       )}
     </section>
+  );
+}
+
+// HEADER SORTING over the linked Work Orders already projected; no sort = the projection's order.
+const LINKED_WO_SORT_COLUMNS = Object.freeze({
+  workOrder: { value: (w) => w.workOrderNumber },
+  status: { value: (w) => (w.cancelled ? "Cancelled" : (w.status ? statusLabel(w.status) : null)) },
+  scheduled: { value: (w) => (Number.isFinite(w.scheduledAtMillis) ? w.scheduledAtMillis : null) },
+  technician: { value: (w) => w.technicianName },
+});
+
+function LinkedWorkOrdersTable({ rows }) {
+  const { sort, toggle, sorted } = useTableSort({ rows, columns: LINKED_WO_SORT_COLUMNS });
+  return (
+    <table className="fo-table">
+      <caption className="fo-muted">Linked Work Orders</caption>
+      <thead>
+        <tr>
+          <SortableHeader columnKey="workOrder" label="Work Order" sort={sort} onSort={toggle} />
+          <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
+          <SortableHeader columnKey="scheduled" label="Scheduled" sort={sort} onSort={toggle} />
+          <SortableHeader columnKey="technician" label="Technician" sort={sort} onSort={toggle} />
+        </tr>
+      </thead>
+      <tbody>
+        {sorted.map((w) => (
+          <tr key={w.id}>
+            {/* The business reference, never the document id. A row that shows a Firestore
+                id is asking a human to read a value meant for a database. */}
+            <td>{w.workOrderNumber ?? <span className="fo-muted">Number unavailable</span>}</td>
+            <td>{w.cancelled ? "Cancelled" : (w.status ? statusLabel(w.status) : <span className="fo-muted">Unknown</span>)}</td>
+            <td>{fmtDate(w.scheduledAtMillis) ?? <span className="fo-muted">Not scheduled</span>}</td>
+            <td>{w.technicianName ?? <span className="fo-muted">Unassigned</span>}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

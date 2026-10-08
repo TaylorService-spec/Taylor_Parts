@@ -10,6 +10,9 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader, SectionHeader, Button } from "../../shared/ui/primitives";
 import { Field, FormError } from "../../shared/ui/form";
 import { callPolicyApi } from "../../services/adminPolicyApiClient";
+import { operatingCompanyLabel } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 const refusalText = (res) => {
   if (res.code === "FORBIDDEN") return "System Configuration is not available to you. It needs admin.systemConfiguration.manage, which your account does not currently hold.";
@@ -24,6 +27,16 @@ export default function AdminSystemConfiguration({ callApi = callPolicyApi }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  const languageName = (tag) => config?.supportedLanguages?.find((l) => l.languageTag === tag)?.displayName ?? tag;
+  const { sort, toggle, sorted } = useTableSort({
+    rows: config?.companies ?? null,
+    columns: {
+      company: { value: (c) => operatingCompanyLabel(c.operatingCompanyId) },
+      timeZone: { value: (c) => c.values?.businessTimeZone?.value },
+      language: { value: (c) => languageName(c.values?.defaultLanguage?.value) },
+    },
+  });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
 
   const load = useCallback(async () => {
     const res = await callApi("listSystemConfiguration", {});
@@ -47,8 +60,6 @@ export default function AdminSystemConfiguration({ callApi = callPolicyApi }) {
     await load();
   };
 
-  const languageName = (tag) => config?.supportedLanguages?.find((l) => l.languageTag === tag)?.displayName ?? tag;
-
   return (
     <div>
       <PageHeader title="System Configuration" subtitle="Company settings: business time zone and default language. Each change is validated, states a reason and is audited." />
@@ -57,35 +68,35 @@ export default function AdminSystemConfiguration({ callApi = callPolicyApi }) {
         <section className="fo-panel" aria-labelledby="system-configuration-company">
           <SectionHeader id="system-configuration-company" title="Company" description="The business date of an event is its date in the company's time zone; timestamps are kept as recorded. A change applies from now on." />
           <table className="fo-table" aria-label="Company settings">
-            <thead><tr><th>Operating company</th><th>Time zone</th><th>Language</th></tr></thead>
+            <thead><tr>{header("company", "Operating Company")}{header("timeZone", "Time Zone")}{header("language", "Language")}</tr></thead>
             <tbody>
-              {config.companies.map((c) => (
+              {sorted.map((c) => (
                 <tr key={c.operatingCompanyId}>
-                  <td>{c.operatingCompanyId}</td>
+                  <td>{operatingCompanyLabel(c.operatingCompanyId)}</td>
                   <td>
                     <div>{c.values.businessTimeZone?.value}</div>
-                    <input className="fo-input" aria-label={`New time zone for ${c.operatingCompanyId}`} placeholder="e.g. America/Phoenix"
+                    <input className="fo-input" aria-label={`New time zone for ${operatingCompanyLabel(c.operatingCompanyId)}`} placeholder="e.g. America/Phoenix"
                       value={drafts[draftKey(c.operatingCompanyId, "businessTimeZone")] ?? ""}
                       onChange={(e) => setDrafts({ ...drafts, [draftKey(c.operatingCompanyId, "businessTimeZone")]: e.target.value })} />
                     <Button size="sm" variant="secondary" disabled={busy || !reason.trim() || !drafts[draftKey(c.operatingCompanyId, "businessTimeZone")]}
-                      onClick={() => save(c.operatingCompanyId, "businessTimeZone")}>Set time zone for {c.operatingCompanyId}</Button>
+                      onClick={() => save(c.operatingCompanyId, "businessTimeZone")}>Set Time Zone for {operatingCompanyLabel(c.operatingCompanyId)}</Button>
                   </td>
                   <td>
-                    <div>{languageName(c.values.defaultLanguage?.value)}{c.values.defaultLanguage?.source === "DEFAULT" ? <span className="fo-muted"> (default)</span> : null}</div>
-                    <select className="fo-input" aria-label={`New language for ${c.operatingCompanyId}`}
+                    <div>{languageName(c.values.defaultLanguage?.value)}{c.values.defaultLanguage?.source === "DEFAULT" ? <span className="fo-muted"> (Default)</span> : null}</div>
+                    <select className="fo-input" aria-label={`New language for ${operatingCompanyLabel(c.operatingCompanyId)}`}
                       value={drafts[draftKey(c.operatingCompanyId, "defaultLanguage")] ?? ""}
                       onChange={(e) => setDrafts({ ...drafts, [draftKey(c.operatingCompanyId, "defaultLanguage")]: e.target.value })}>
-                      <option value="">Choose a language…</option>
+                      <option value="">Choose a Language…</option>
                       {config.supportedLanguages.map((l) => <option key={l.languageTag} value={l.languageTag}>{l.displayName}</option>)}
                     </select>
                     <Button size="sm" variant="secondary" disabled={busy || !reason.trim() || !drafts[draftKey(c.operatingCompanyId, "defaultLanguage")]}
-                      onClick={() => save(c.operatingCompanyId, "defaultLanguage")}>Set language for {c.operatingCompanyId}</Button>
+                      onClick={() => save(c.operatingCompanyId, "defaultLanguage")}>Set Language for {operatingCompanyLabel(c.operatingCompanyId)}</Button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <Field label="Reason (required for every change)"><input className="fo-input" aria-label="Reason for the change" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+          <Field label="Reason (Required for Every Change)"><input className="fo-input" aria-label="Reason for the change" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
           {notice && <FormError>{notice.tone === "danger" ? notice.text : null}</FormError>}
           {notice?.tone === "positive" && <p className="fo-muted" role="status">{notice.text}</p>}
         </section>

@@ -20,12 +20,10 @@
 // that would fail.
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
-import {
-  FinancialsPageFrame,
-  FinancialsHonestSection,
-  FinancialFigure,
-  FinAnnotation,
-} from "./FinancialsPrimitives.jsx";
+import { FinancialsPageFrame, FinancialsHonestSection, FinancialFigure, FinAnnotation, FinSortableHeader } from "./FinancialsPrimitives.jsx";
+import { companyWords, businessUnitWords } from "./financialsDisplay.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
 import { useAccountNames } from "../../hooks/useAccountNames.js";
@@ -66,6 +64,18 @@ export default function FinancialsInvoiceDetail() {
     return (result?.payments ?? []).filter((p) => ids.has(p.paymentId));
   }, [applications, result]);
 
+  // Column sorting is a display order over the applications already returned.
+  const applicationColumns = useMemo(() => {
+    const paymentOf = (a) => payments.find((x) => x.paymentId === a.paymentId) ?? null;
+    return {
+      applied: { value: (a) => (typeof a.appliedAtMillis === "number" ? a.appliedAtMillis : null) },
+      received: { value: (a) => (typeof paymentOf(a)?.receivedAtMillis === "number" ? paymentOf(a).receivedAtMillis : null) },
+      method: { value: (a) => paymentOf(a)?.method ?? null },
+      amount: { value: (a) => a.appliedAmountMinor ?? null },
+    };
+  }, [payments]);
+  const { sort, toggle, sorted: sortedApplications } = useTableSort({ rows: applications, columns: applicationColumns });
+
   const names = useAccountNames(found?.accountId ? [found.accountId] : []);
   const customerName = found?.accountId ? (names.get(found.accountId) ?? null) : null;
 
@@ -105,7 +115,7 @@ export default function FinancialsInvoiceDetail() {
 
       <FinancialsHonestSection
         id="fin-invoice-record"
-        title="Invoice record"
+        title="Invoice Record"
         meta={row ? `${row.companyId ?? "company not attributed"} · ${row.position}` : null}
         honest={honest}
         subject="Invoice record"
@@ -116,7 +126,7 @@ export default function FinancialsInvoiceDetail() {
               <div className="fin-scorecard fin-scorecard--three">
                 <div className="fin-scorecard__slot">
                   <FinancialFigure
-                    label="Original amount"
+                    label="Original Amount"
                     factClass="OPERATIONAL_ACTUAL"
                     valueText={money(found.totalMinor, found.currency)}
                   />
@@ -143,7 +153,7 @@ export default function FinancialsInvoiceDetail() {
                 <caption className="fo-sr-only">Invoice facts</caption>
                 <tbody>
                   <tr>
-                    <th scope="row">Invoice number</th>
+                    <th scope="row">Invoice Number</th>
                     <td className="fin-nowrap">{row.invoiceNumber}</td>
                   </tr>
                   <tr>
@@ -154,8 +164,8 @@ export default function FinancialsInvoiceDetail() {
                     </td>
                   </tr>
                   <tr>
-                    <th scope="row">Lifecycle state</th>
-                    <td>{found.state ?? "Not recorded"}</td>
+                    <th scope="row">Lifecycle State</th>
+                    <td>{found.state ? statusLabel(found.state) : "Not recorded"}</td>
                   </tr>
                   <tr>
                     <th scope="row">Customer</th>
@@ -170,20 +180,20 @@ export default function FinancialsInvoiceDetail() {
                     </td>
                   </tr>
                   <tr>
-                    <th scope="row">Operating company</th>
-                    <td>{found.companyId ?? "Not attributed"}</td>
+                    <th scope="row">Operating Company</th>
+                    <td>{companyWords(found.companyId, { short: false })}</td>
                   </tr>
                   <tr>
-                    <th scope="row">Business unit</th>
+                    <th scope="row">Business Unit</th>
                     <td>
-                      {found.businessUnitIds.length === 0 ? "Not attributed" : found.businessUnitIds.join(" · ")}
+                      {found.businessUnitIds.length === 0 ? "Not attributed" : found.businessUnitIds.map(businessUnitWords).join(" · ")}
                       {found.businessUnitIds.length === 0 ? (
                         <FinAnnotation tip="This invoice was issued by a command generation that predates FIN-002 line attribution. The absence is truthful history — it is not backfilled, and no unit is inferred for it." />
                       ) : null}
                     </td>
                   </tr>
                   <tr>
-                    <th scope="row">Credited salesperson</th>
+                    <th scope="row">Credited Salesperson</th>
                     <td>
                       {found.creditedSalespersonId ? (credited?.name ?? "Resolving…") : "Not attributed"}
                       <FinAnnotation tip="Frozen on the invoice at issuance (FIN-002). Never re-derived from the customer's current owner, from who created the record, or from any mutable Sales Order." />
@@ -214,7 +224,7 @@ export default function FinancialsInvoiceDetail() {
                     </td>
                   </tr>
                   <tr>
-                    <th scope="row">Credits · charges · write-offs</th>
+                    <th scope="row">Credits · Charges · Write-Offs</th>
                     <td>
                       {money(found.creditsMinor, found.currency)} · {money(found.chargesMinor, found.currency)} ·{" "}
                       {money(found.writeOffMinor, found.currency)}
@@ -232,7 +242,7 @@ export default function FinancialsInvoiceDetail() {
 
             <section className="ns-section" aria-label="Payment applications">
               <div className="ns-section__head">
-                <h2 className="ns-section__title">Payment applications</h2>
+                <h2 className="ns-section__title">Payment Applications</h2>
                 <span className="ns-section__meta">· each application is its own governed fact</span>
               </div>
               {applications.length > 0 ? (
@@ -241,14 +251,14 @@ export default function FinancialsInvoiceDetail() {
                     <caption className="fo-sr-only">Applications against this invoice</caption>
                     <thead>
                       <tr>
-                        <th scope="col">Applied</th>
-                        <th scope="col">Cash received</th>
-                        <th scope="col">Method</th>
-                        <th scope="col" className="ns-num">Amount</th>
+                        <FinSortableHeader columnKey="applied" label="Applied" sort={sort} onSort={toggle} />
+                        <FinSortableHeader columnKey="received" label="Cash Received" sort={sort} onSort={toggle} />
+                        <FinSortableHeader columnKey="method" label="Method" sort={sort} onSort={toggle} />
+                        <FinSortableHeader columnKey="amount" label="Amount" sort={sort} onSort={toggle} className="ns-num" />
                       </tr>
                     </thead>
                     <tbody>
-                      {applications.map((a) => {
+                      {sortedApplications.map((a) => {
                         const p = payments.find((x) => x.paymentId === a.paymentId) ?? null;
                         return (
                           <tr key={a.applicationId}>
@@ -269,7 +279,7 @@ export default function FinancialsInvoiceDetail() {
 
             <section className="ns-section" aria-label="Invoice lines">
               <div className="ns-section__head">
-                <h2 className="ns-section__title">Invoice lines</h2>
+                <h2 className="ns-section__title">Invoice Lines</h2>
               </div>
               <p className="ns-state ns-state--na">
                 Line detail is not carried by the governed reporting read. It exposes this invoice's

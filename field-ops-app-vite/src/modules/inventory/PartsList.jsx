@@ -24,6 +24,10 @@ import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import ReorderWarehouseSelect from "../../shared/inventory/ReorderWarehouseSelect.jsx";
 import { useReorderWarehouseOptions } from "../../hooks/useReorderWarehouseOptions";
 import { formatTimestamp, formatAge } from "../../domain/displayTimestamp.js";
+import { toMillis } from "../../domain/timestampMillis.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
@@ -507,6 +511,19 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
   // area reflects the failure) -- a load-more failure must never blank
   // out real, already-fetched history data.
   const historyInitialLoadFailed = historyError && historyData.length === 0;
+  // UI corrections item C: History is read in "Load More" pages, so a header sort orders the requests LOADED so far;
+  // the default order is the read's own (newest first).
+  const historySortColumns = useMemo(() => ({
+    part: { value: (request) => resolveName(request.partId) },
+    qty: { value: (request) => (typeof getDisplayQty(request) === "number" ? getDisplayQty(request) : null) },
+    status: { value: (request) => (request.status ? statusLabel(request.status, HISTORY_STATUS_LABEL) : null) },
+    date: { value: (request) => toMillis(request.createdAt) },
+  }), [resolveName]);
+  const {
+    sort: historySort,
+    toggle: toggleHistorySort,
+    sorted: sortedHistoryData,
+  } = useTableSort({ rows: historyData, columns: historySortColumns });
   const historyStatusMessage = historyInitialLoadFailed
     ? `Unable to load History (${historyError}).`
     : historyLoading && historyData.length === 0
@@ -650,9 +667,33 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     return sortPartsCollectionRows(matched, sort);
   }, [catalogRows, view, attentionByPartId, category, sort, catalogQuery]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredParts.length / PAGE_SIZE));
+  // UI corrections item C: header sort over the WHOLE filtered catalogue (it is read in full and paged here), applied
+  // before paging so page 1 is the true first page of the chosen order. With no header sort the Sort control's order
+  // stands; choosing a Sort option clears any header sort.
+  const catalogSortColumns = useMemo(() => {
+    const rowOf = (part) => partsCollectionRow(part, { manufacturerNames, attentionByPartId });
+    return {
+      part: { value: (part) => { const r = rowOf(part); return r.partNumber ?? r.name; } },
+      category: { value: (part) => rowOf(part).category },
+      control: { value: (part) => rowOf(part).control },
+      status: { value: (part) => rowOf(part).status },
+      attention: { value: (part) => rowOf(part).attention?.label ?? null },
+    };
+  }, [manufacturerNames, attentionByPartId]);
+  const {
+    sort: catalogHeaderSort,
+    toggle: toggleCatalogHeaderSort,
+    reset: resetCatalogHeaderSort,
+    sorted: sortedParts,
+  } = useTableSort({ rows: filteredParts, columns: catalogSortColumns });
+  const onCatalogHeaderSort = (key) => {
+    toggleCatalogHeaderSort(key);
+    setPage(0);
+  };
+
+  const pageCount = Math.max(1, Math.ceil(sortedParts.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
-  const pagedParts = filteredParts.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
+  const pagedParts = sortedParts.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
 
   function handleCategoryChange(value) {
     setCategory(value);
@@ -691,12 +732,12 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     <div className="ns-parts-rail">
       <section className="ns-parts-rail__group" aria-labelledby="parts-group-work">
         <h2 id="parts-group-work" className="ns-parts-rail__heading">
-          My work
+          My Work
         </h2>
 
         <details className="ns-parts-rail__item" open={queueEntries.length > 0}>
           <summary>
-            Needs reorder <span className="ns-parts-rail__count">{railCount(queueEntries.length)}</span>
+            Needs Reorder <span className="ns-parts-rail__count">{railCount(queueEntries.length)}</span>
           </summary>
           <p className="fo-muted ns-parts-rail__note">
             Parts ranked by urgency, from the same analytics used by the Operations dashboard&rsquo;s
@@ -746,7 +787,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
             props, same server-enforced authority. */}
         <details className="ns-parts-rail__item" open={partsManagerQueue.length > 0}>
           <summary>
-            Parts Manager queue{" "}
+            Parts Manager Queue{" "}
             <span className="ns-parts-rail__count">{railCount(partsManagerQueue.length)}</span>
           </summary>
           <ManagerQueuePanel
@@ -781,7 +822,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
 
         <details className="ns-parts-rail__item" open={partsAssociateInProgress.length > 0}>
           <summary>
-            In progress{" "}
+            In Progress{" "}
             <span className="ns-parts-rail__count">{railCount(partsAssociateInProgress.length)}</span>
           </summary>
           <LoadingEmptyState
@@ -805,7 +846,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
             says so itself ("Your own assignments above are a subset of this list"). */}
         <details className="ns-parts-rail__item">
           <summary>
-            Team work <span className="ns-parts-rail__count">{railCount(allAssignedWork.length)}</span>
+            Team Work <span className="ns-parts-rail__count">{railCount(allAssignedWork.length)}</span>
           </summary>
           <p className="fo-muted ns-parts-rail__note">
             Every Reorder Request currently assigned to a Parts Associate, regardless of who it is
@@ -846,7 +887,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
           </p>
 
           <form className="fo-inline-form" onSubmit={handleHistoryLookupSubmit}>
-            <label htmlFor="history-lookup-input">Find by exact request ID</label>
+            <label htmlFor="history-lookup-input">Find by Exact Request ID</label>
             <input
               id="history-lookup-input"
               type="text"
@@ -877,7 +918,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                           <Link to={`/inventory/${historyLookupResult.partId}?requestId=${historyLookupResult.id}`}>
                             {resolveName(historyLookupResult.partId)}
                           </Link>{" "}
-                          -- {HISTORY_STATUS_LABEL[historyLookupResult.status] ?? historyLookupResult.status}
+                          -- {statusLabel(historyLookupResult.status, HISTORY_STATUS_LABEL)}
                         </>
                       )}
             </p>
@@ -899,14 +940,14 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                 <table className="fo-table">
                   <thead>
                     <tr>
-                      <th>Part</th>
-                      <th>Qty</th>
-                      <th>Status</th>
-                      <th>Date</th>
+                      <SortableHeader columnKey="part" label="Part" sort={historySort} onSort={toggleHistorySort} />
+                      <SortableHeader columnKey="qty" label="Qty" sort={historySort} onSort={toggleHistorySort} />
+                      <SortableHeader columnKey="status" label="Status" sort={historySort} onSort={toggleHistorySort} />
+                      <SortableHeader columnKey="date" label="Date" sort={historySort} onSort={toggleHistorySort} />
                     </tr>
                   </thead>
                   <tbody>
-                    {historyData.map((request) => (
+                    {sortedHistoryData.map((request) => (
                       <tr key={request.id}>
                         <td>
                           <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
@@ -914,7 +955,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                           </Link>
                         </td>
                         <td>{getDisplayQty(request)}</td>
-                        <td className="fo-muted">{HISTORY_STATUS_LABEL[request.status] ?? request.status}</td>
+                        <td className="fo-muted">{statusLabel(request.status, HISTORY_STATUS_LABEL)}</td>
                         <td className="fo-muted">{formatTimestamp(request.createdAt, { unknown: "—" })}</td>
                       </tr>
                     ))}
@@ -1146,6 +1187,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
               value={sort}
               onChange={(e) => {
                 setSort(e.target.value);
+                resetCatalogHeaderSort();
                 setPage(0);
               }}
             >
@@ -1205,11 +1247,11 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                   beside the description it costs nothing when absent and reads naturally when
                   present, which is what P1v2 draws. */}
               <tr>
-                <th>Part</th>
-                <th>Category</th>
-                <th>Control</th>
-                <th>Status</th>
-                <th>Attention</th>
+                <SortableHeader columnKey="part" label="Part" sort={catalogHeaderSort} onSort={onCatalogHeaderSort} />
+                <SortableHeader columnKey="category" label="Category" sort={catalogHeaderSort} onSort={onCatalogHeaderSort} />
+                <SortableHeader columnKey="control" label="Control" sort={catalogHeaderSort} onSort={onCatalogHeaderSort} />
+                <SortableHeader columnKey="status" label="Status" sort={catalogHeaderSort} onSort={onCatalogHeaderSort} />
+                <SortableHeader columnKey="attention" label="Attention" sort={catalogHeaderSort} onSort={onCatalogHeaderSort} />
               </tr>
             </thead>
             <tbody>
@@ -1231,7 +1273,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                         recognisable. The key is never substituted. */}
                     <td data-label="Part">
                       <Link to={partCatalogRoute(part)}>
-                        {row.partNumber ?? row.name ?? "Unnamed part"}
+                        {row.partNumber ?? row.name ?? "Unnamed Part"}
                       </Link>
                       {/* DESCRIPTION, THEN MANUFACTURER, THEN THE CONTROL MARKER -- Frame 1a's second
                           line. Each part of it renders ONLY when the fact is recorded: an absent

@@ -125,22 +125,22 @@ export default function IntegrationsFaq() {
         <div className="integration-faq-status" aria-label="Integration architecture status">
           <span className="integration-faq-status-dot" aria-hidden="true" />
           <div>
-            <strong>Architecture ready</strong>
+            <strong>Architecture Ready</strong>
             <span>Connections are reviewed individually</span>
           </div>
         </div>
       </section>
 
       <section className="integration-faq-summary" aria-label="Integration principles">
-        <div><strong>Field Ops stays authoritative</strong><span>Operational records keep one trusted owner.</span></div>
-        <div><strong>Secure by design</strong><span>Every connection uses a controlled boundary.</span></div>
-        <div><strong>Operations keep moving</strong><span>External outages do not block field work.</span></div>
+        <div><strong>Field Ops Stays Authoritative</strong><span>Operational records keep one trusted owner.</span></div>
+        <div><strong>Secure by Design</strong><span>Every connection uses a controlled boundary.</span></div>
+        <div><strong>Operations Keep Moving</strong><span>External outages do not block field work.</span></div>
       </section>
 
       <div className="integration-faq-layout">
         <aside className="integration-readiness fo-panel">
           <span className="integration-faq-eyebrow">Before you request</span>
-          <h3>Integration readiness checklist</h3>
+          <h3>Integration Readiness Checklist</h3>
           <ul>
             <li>Business outcome and sponsor</li>
             <li>Systems to be connected</li>
@@ -159,7 +159,7 @@ export default function IntegrationsFaq() {
           <div className="integration-faq-heading">
             <div>
               <span className="integration-faq-eyebrow">Frequently asked questions</span>
-              <h3>What your team needs to know</h3>
+              <h3>What Your Team Needs to Know</h3>
             </div>
             <label className="integration-faq-search">
               <span className="sr-only">Search integration questions</span>
@@ -201,7 +201,7 @@ export default function IntegrationsFaq() {
             ))}
             {filteredFaqs.length === 0 && (
               <div className="integration-faq-empty">
-                <strong>No matching questions</strong>
+                <strong>No Matching Questions</strong>
                 <p>Try a broader search or select another category.</p>
               </div>
             )}

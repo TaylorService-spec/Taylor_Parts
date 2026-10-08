@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
-import ScanInput from "../../shared/ui/ScanInput.jsx";
+import ScanInput, { SCAN_ITEM_LABEL } from "../../shared/ui/ScanInput.jsx";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import { transferCommandClient } from "../../services/transferCommandClient.js";
 import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
@@ -128,7 +128,7 @@ function TransferPicker({ orders, loading, failureText, onRetry, heading, emptyT
     return (
       <>
         <p className="fo-scan__state fo-scan__state--denied" role="alert">{failureText}</p>
-        {onRetry && <Button type="button" variant="secondary" onClick={onRetry}>Try again</Button>}
+        {onRetry && <Button type="button" variant="secondary" onClick={onRetry}>Try Again</Button>}
       </>
     );
   }
@@ -284,7 +284,7 @@ function TransferVerify({ order, deps, onBack }) {
 
   return (
     <div className="fo-transfer-scan">
-      <button type="button" className="fo-link-btn" onClick={onBack}>← All transfers</button>
+      <button type="button" className="fo-link-btn" onClick={onBack}>← All Transfers</button>
 
       <section className="fo-scan__result" aria-label={`Transfer ${transferOrderId}`}>
         <p className="fo-scan__kind">{state.action === TRANSFER_ACTION.RECEIVE ? "Receive" : "Send"}</p>
@@ -314,7 +314,7 @@ function TransferVerify({ order, deps, onBack }) {
 
           <ScanInput
             onScan={scan}
-            label="Scan item"
+            label={SCAN_ITEM_LABEL}
             placeholder={state.serialTracked ? "Scan a serial number" : "Scan the part"}
             deps={deps?.scanInputDeps}
           />
@@ -351,12 +351,12 @@ function LocationConfirm({ expected, confirmed, onConfirm, onClear }) {
       {confirmed ? (
         <>
           <span className="fo-transfer-scan__ok">✓ At {endpointLabel(expected)}</span>{" "}
-          <button type="button" className="fo-link-btn" onClick={onClear}>Not here</button>
+          <button type="button" className="fo-link-btn" onClick={onClear}>Not Here</button>
         </>
       ) : (
         <>
           <span>Are you at <strong>{endpointLabel(expected)}</strong>?</span>{" "}
-          <Button type="button" variant="secondary" onClick={onConfirm}>Yes, I am here</Button>
+          <Button type="button" variant="secondary" onClick={onConfirm}>Yes, I Am Here</Button>
         </>
       )}
     </p>
@@ -376,7 +376,7 @@ function ObservationList({ observations, onUndo }) {
           </li>
         ))}
       </ul>
-      <button type="button" className="fo-link-btn" onClick={onUndo}>Undo last scan</button>
+      <button type="button" className="fo-link-btn" onClick={onUndo}>Undo Last Scan</button>
     </>
   );
 }

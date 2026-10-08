@@ -4,7 +4,7 @@
 //
 //   ND-25  TRUTHFUL ABSENCE > FALSE COMFORT. warehouseQty is not a stock authority and no surface
 //          may present it as one. No client-side N-part balance derivation, no second inventory
-//          authority, no relabelling of a derived figure as "On hand".
+//          authority, no relabelling of a derived figure as "On Hand".
 //   ND-26  internalPartNumber is the human-facing Part Number; partId stays the immutable document
 //          and routing key. Never label partId "Part Number".
 //   ND-27  unitCost stays refused for display, report and export.

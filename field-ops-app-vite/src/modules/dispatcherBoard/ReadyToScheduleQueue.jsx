@@ -50,14 +50,14 @@ function ReadyToScheduleQueue({
   return (
     <section
       className={`ns-dispatch-queue${isDragOver && canReturnToQueue ? " ns-dispatch-queue--over" : ""}`}
-      aria-label="Ready to schedule"
+      aria-label="Ready to Schedule"
       onDragOver={canReturnToQueue ? (e) => { e.preventDefault(); onDragOverQueue?.(); } : undefined}
       onDragLeave={canReturnToQueue ? onDragLeaveQueue : undefined}
       onDrop={canReturnToQueue ? (e) => { e.preventDefault(); onDropOnQueue?.(); } : undefined}
     >
       <div className="ns-dispatch-queue__head">
         <h2 className="ns-dispatch-queue__title">
-          Ready to schedule
+          Ready to Schedule
           <span className="ns-dispatch-queue__count">{workOrders.length}</span>
         </h2>
         <p className="ns-dispatch-queue__note">

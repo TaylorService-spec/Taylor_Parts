@@ -30,9 +30,9 @@ export default function DispatchQueuePanel({
   if (rows.length === 0) return null;
 
   return (
-    <section className="ns-section ns-section--panel" aria-label="Recommended dispatch">
+    <section className="ns-section ns-section--panel" aria-label="Recommended Dispatch">
       <div className="ns-section__head">
-        <h2 className="ns-section__title">Recommended dispatch</h2>
+        <h2 className="ns-section__title">Recommended Dispatch</h2>
         <span className="ns-section__meta">
           {openCount} open · {placeableCount} placeable
         </span>

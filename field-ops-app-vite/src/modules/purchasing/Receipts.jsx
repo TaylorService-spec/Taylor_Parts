@@ -9,6 +9,8 @@ import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import EmptyState from "../../shared/ui/EmptyState";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 
 // Purchasing > Receipts -- NOT a separate capability. It is the received/result side of the ONE
 // governed Receiving capability, rendered as a reuse-only LAUNCH POINT into the CANONICAL purchase-
@@ -24,6 +26,15 @@ import EmptyState from "../../shared/ui/EmptyState";
 // path; admin/dispatcher (matching the reorder_requests/reorder_purchase_orders read rules).
 const RECEIVED_ONLY = [REORDER_REQUEST_STATUS.RECEIVED];
 
+// Client-side sort over the already-loaded received rows (item C); the view-model's order is the default.
+const SORT_COLUMNS = {
+  part: { value: (row) => row.partId },
+  supplier: { value: (row) => row.supplierName },
+  poNumber: { value: (row) => row.externalPoNumber },
+  quantity: { value: (row) => (typeof row.orderedQuantity === "number" ? row.orderedQuantity : null) },
+  ordered: { value: (row) => row.orderedDate },
+};
+
 export default function Receipts() {
   const requestsRead = useReorderRequestsByStatuses(RECEIVED_ONLY);
   const ids = useMemo(() => requestsRead.data.map((r) => r.id), [requestsRead.data]);
@@ -32,6 +43,7 @@ export default function Receipts() {
     () => buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead }),
     [requestsRead, purchaseOrdersRead]
   );
+  const { sort, toggle, sorted } = useTableSort({ rows: view.rows, columns: SORT_COLUMNS });
 
   const intro = (
     <p className="fo-muted">
@@ -84,15 +96,15 @@ export default function Receipts() {
           <table className="fo-table fo-table--stack ns-table" aria-label="Receipts">
             <thead>
               <tr>
-                <th scope="col">Part</th>
-                <th scope="col">Supplier</th>
-                <th scope="col">PO #</th>
-                <th scope="col" className="fo-po-qty">Qty</th>
-                <th scope="col">Ordered</th>
+                <SortableHeader columnKey="part" label="Part" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="supplier" label="Supplier" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="poNumber" label="PO #" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="quantity" label="Qty" sort={sort} onSort={toggle} className="fo-po-qty" />
+                <SortableHeader columnKey="ordered" label="Ordered" sort={sort} onSort={toggle} />
               </tr>
             </thead>
             <tbody>
-              {view.rows.map((row) => (
+              {sorted.map((row) => (
                 <tr key={row.reorderRequestId}>
                   <td>{row.partId ? <Link to={`/inventory/${row.partId}?requestId=${row.reorderRequestId}`}>{row.partId}</Link> : <span className="fo-muted">—</span>}</td>
                   <td>{row.supplierName ?? <span className="fo-muted">—</span>}</td>

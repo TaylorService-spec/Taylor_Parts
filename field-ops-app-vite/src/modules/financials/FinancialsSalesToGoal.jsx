@@ -42,7 +42,7 @@ export default function FinancialsSalesToGoal() {
       <div className="fin-overview-grid">
         <FinancialsHonestSection
           id="fin-sales-to-goal"
-          title="Attainment by scope"
+          title="Attainment by Scope"
           meta="company → unit → person · attainment bars cap at 100% fill, the number carries truth past 100"
           honest={{ state: "NOT_ENABLED", detail: `${READ_STATE_DETAIL.noReadOnSurface} Goals themselves have no records yet — the FIN-003 plan core (versioned, explicit basis, APPROVED plans measurable) is merged with no storage.` }}
           subject="Goal and actual reads"
@@ -70,7 +70,7 @@ export default function FinancialsSalesToGoal() {
         <aside className="fin-rail">
           <section className="ns-section" aria-label="Period summary by basis">
             <div className="ns-section__head">
-              <h2 className="ns-section__title">Period summary</h2>
+              <h2 className="ns-section__title">Period Summary</h2>
               <span className="ns-section__meta">· grouped by basis — deliberately no single total</span>
             </div>
             <ul className="fin-exception-list">

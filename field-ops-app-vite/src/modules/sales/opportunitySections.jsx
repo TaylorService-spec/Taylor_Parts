@@ -68,7 +68,7 @@ function FieldRead({ field }) {
 // Edit control for one USER_MAINTAINED field, bound to the section draft. These render ONLY inside an active
 // section edit form (never as a standing wall of controls). No control performs a write — Save is what would
 // hand the draft to the governed command, and Save is itself gated by readiness + a wired command.
-function FieldEdit({ field, value, onChange, directory }) {
+function FieldEdit({ field, value, onChange }) {
   const id = `opp-edit-${field.key}`;
   switch (field.control) {
     case "select":
@@ -90,10 +90,10 @@ function FieldEdit({ field, value, onChange, directory }) {
     case "textarea":
       return <textarea id={id} className="fo-input" rows={3} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
     case "owner":
-      // Owner reassignment (governed), now a real picker over the employee directory. OwnerSelect
+      // Owner reassignment (governed): a typeahead over the governed EOS roster (UI corrections item E). OwnerSelect
       // owns the degradation: a caller who cannot read the directory keeps the bounded id field
       // and is told why, rather than being shown an empty dropdown.
-      return <OwnerSelect id={id} value={value} onChange={onChange} describedBy={`${id}-note`} directory={directory} />;
+      return <OwnerSelect id={id} value={value} onChange={onChange} describedBy={`${id}-note`} />;
     case "lines":
       // Solution-line editing is the richest control; kept honest + minimal here (the responsive composition
       // is the deliverable, not a full line-item builder). Lines are product/model/part refs + qty.

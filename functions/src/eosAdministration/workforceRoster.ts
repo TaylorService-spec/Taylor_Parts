@@ -28,6 +28,15 @@ import { EMPLOYEE_RECORD_READ, EMPLOYMENT_STATUSES } from "../eosWorkforce/reads
 export const PRINCIPAL_ACCESS_READ = "admin.principalAccess.read";
 export const WORKFORCE_ROSTER_LIMIT = 500;
 
+/**
+ * Roster ordering (UI corrections package, 2026-10-08). The DEFAULT is Last Name A-Z, then First Name A-Z, then the Employee id
+ * as the deterministic tie-breaker, over the COMPLETE authorized match set -- sorted BEFORE the bound is applied, so a truncated
+ * page is the first N of the sorted whole, never a sorted slice of an arbitrary N. A column sort is the same: the server orders
+ * the whole authorized set. Ordering only; it narrows and widens nothing.
+ */
+export const WORKFORCE_ROSTER_SORT_KEYS = Object.freeze(["name", "employeeNumber", "jobRole", "securityRoles", "operatingCompany", "status", "scope", "manager"] as const);
+export type WorkforceRosterSortKey = typeof WORKFORCE_ROSTER_SORT_KEYS[number];
+
 export interface WorkforceRosterItem extends EmployeeDirectoryItem {
   readonly jobRole: { readonly id: string; readonly label: string; readonly since: string } | null;
   readonly manager: { readonly employeeId: string; readonly displayName: string | null } | null;
@@ -38,6 +47,9 @@ export interface WorkforceRosterItem extends EmployeeDirectoryItem {
   readonly principalId: string | null;
   /** null when the caller may not read Security Role assignments (see securityRolesWithheld). */
   readonly securityRoles: readonly { readonly roleKey: string; readonly name: string; readonly scopeType: string; readonly scopeValue: string | null }[] | null;
+  /** The governed name parts the default order uses (null when the Employee record has none). */
+  readonly firstName: string | null;
+  readonly lastName: string | null;
 }
 
 export interface WorkforceRoster {
@@ -45,6 +57,8 @@ export interface WorkforceRoster {
   readonly total: number;
   readonly truncated: boolean;
   readonly securityRolesWithheld: string | null;
+  /** The order actually applied: the default (name ascending) unless the caller asked for a column. */
+  readonly sort: { readonly key: WorkforceRosterSortKey; readonly direction: "asc" | "desc"; readonly isDefault: boolean };
   readonly facets: {
     readonly jobRoles: readonly { readonly id: string; readonly label: string; readonly count: number }[];
     readonly securityRoles: readonly { readonly roleKey: string; readonly name: string; readonly count: number }[] | null;
@@ -63,7 +77,7 @@ const text = (v: unknown, field: string, max = 120): string | null => {
 export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadActor, input?: Record<string, unknown>): Promise<WorkforceRoster> {
   return runEmployeeRead(deps, actor,
     () => {
-      acceptOnly(input, ["jobRoleId", "securityRoleKey", "employmentStatus", "operatingCompanyId", "scopeType", "noJobRole", "query"]);
+      acceptOnly(input, ["jobRoleId", "securityRoleKey", "employmentStatus", "operatingCompanyId", "scopeType", "noJobRole", "query", "sort", "limit"]);
       const status = text(input?.employmentStatus, "employmentStatus");
       if (status && !(EMPLOYMENT_STATUSES as readonly string[]).includes(status)) refuse("FILTER_INVALID", "INVALID_INPUT", `employmentStatus must be one of ${EMPLOYMENT_STATUSES.join(", ")}`);
       const scopeType = text(input?.scopeType, "scopeType");
@@ -74,7 +88,7 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
         refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `filtering by Security Role requires ${PRINCIPAL_ACCESS_READ}`);
       }
       return { jobRoleId: text(input?.jobRoleId, "jobRoleId"), securityRoleKey, status, operatingCompanyId: text(input?.operatingCompanyId, "operatingCompanyId"),
-        scopeType, noJobRole: input?.noJobRole === true, query: text(input?.query, "query", 100) };
+        scopeType, noJobRole: input?.noJobRole === true, query: text(input?.query, "query", 100), sort: rosterSortOf(input?.sort), limit: limitOf(input?.limit) };
     },
     () => [EMPLOYEE_RECORD_READ],
     async (db, tenantId, _principalId, f, reach) => {
@@ -110,7 +124,7 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
                              WHERE a.tenant_id = $1 AND a.principal_id = r.principal_id AND a.status = 'active'), '[]')
                 END AS security_roles
            FROM roster r
-          ORDER BY r.job_role_label NULLS LAST, r.display_name, r.id`,
+          ORDER BY r.id`,
         [tenantId, reach.global ? null : [...reach.operatingCompanyIds], roles],
       );
       const all: WorkforceRosterItem[] = rows.map((r) => ({
@@ -122,6 +136,8 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
         applicationUser: r.principal_id ? "LINKED" : "UNLINKED",
         principalId: roles && r.principal_id ? String(r.principal_id) : null,
         securityRoles: roles ? ((r.security_roles ?? []) as NonNullable<WorkforceRosterItem["securityRoles"]>) : null,
+        firstName: r.first_name ?? null,
+        lastName: r.last_name ?? null,
       }));
       const facet = <K extends string>(keyOf: (i: WorkforceRosterItem) => readonly K[]) => {
         const m = new Map<K, number>();
@@ -138,11 +154,13 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
         && (!f.operatingCompanyId || i.operatingCompanyId === f.operatingCompanyId)
         && (!f.scopeType || i.operationalScopes.some((s) => s.scopeType === f.scopeType))
         && (!pattern || [i.displayName, i.employeeNumber, i.employeeId].some((v) => v && v.toLowerCase().includes(f.query!.toLowerCase()))));
+      matches.sort(rosterComparator(f.sort));
       return {
-        items: matches.slice(0, WORKFORCE_ROSTER_LIMIT),
+        items: matches.slice(0, f.limit),
         total: matches.length,
-        truncated: matches.length > WORKFORCE_ROSTER_LIMIT,
+        truncated: matches.length > f.limit,
         securityRolesWithheld: roles ? null : `Security Roles are shown only to holders of ${PRINCIPAL_ACCESS_READ}`,
+        sort: { key: f.sort.key, direction: f.sort.direction, isDefault: f.sort.isDefault },
         facets: {
           jobRoles: [...facet((i) => (i.jobRole ? [i.jobRole.id] : []))].map(([id, count]) => ({ id, label: jobRoleLabels.get(id) ?? id, count })).sort((a, b) => a.label.localeCompare(b.label)),
           securityRoles: roles ? [...facet((i) => (i.securityRoles ?? []).map((s) => s.roleKey))].map(([roleKey, count]) => ({ roleKey, name: roleNames.get(roleKey) ?? roleKey, count })).sort((a, b) => a.name.localeCompare(b.name)) : null,
@@ -151,4 +169,67 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
         },
       };
     }, { recordScope: "operatingCompany" as const });
+}
+
+/** A caller may ask for FEWER rows (a typeahead asks for 8); never more than the bound. */
+function limitOf(v: unknown): number {
+  if (v === undefined || v === null) return WORKFORCE_ROSTER_LIMIT;
+  if (typeof v !== "number" || !Number.isInteger(v) || v < 1 || v > WORKFORCE_ROSTER_LIMIT) {
+    refuse("FILTER_INVALID", "INVALID_INPUT", `limit must be an integer from 1 to ${WORKFORCE_ROSTER_LIMIT}`);
+  }
+  return v as number;
+}
+
+function rosterSortOf(v: unknown): { key: WorkforceRosterSortKey; direction: "asc" | "desc"; isDefault: boolean } {
+  if (v === undefined || v === null) return { key: "name", direction: "asc", isDefault: true };
+  const o = v as Record<string, unknown>;
+  if (typeof v !== "object" || Array.isArray(v) || Object.keys(o).some((k) => k !== "key" && k !== "direction")
+    || !(WORKFORCE_ROSTER_SORT_KEYS as readonly unknown[]).includes(o.key) || (o.direction !== "asc" && o.direction !== "desc")) {
+    refuse("FILTER_INVALID", "INVALID_INPUT", `sort must be { key: ${WORKFORCE_ROSTER_SORT_KEYS.join(" | ")}, direction: asc | desc }`);
+  }
+  return { key: o.key as WorkforceRosterSortKey, direction: o.direction as "asc" | "desc", isDefault: false };
+}
+
+const collator = new Intl.Collator("en", { sensitivity: "base", numeric: true });
+
+/** Last name, then first name. An Employee with no name parts sorts by the last word of its display name. */
+export function rosterNameKey(i: Pick<WorkforceRosterItem, "firstName" | "lastName" | "displayName" | "employeeId">): [string, string] {
+  if (i.lastName || i.firstName) return [i.lastName ?? "", i.firstName ?? ""];
+  const words = (i.displayName ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return ["", ""];
+  return [words[words.length - 1], words.slice(0, -1).join(" ")];
+}
+
+function columnValue(i: WorkforceRosterItem, key: WorkforceRosterSortKey): string {
+  switch (key) {
+    case "employeeNumber": return i.employeeNumber ?? "";
+    case "jobRole": return i.jobRole?.label ?? "";
+    case "securityRoles": return (i.securityRoles ?? []).map((r) => r.name).join(", ");
+    case "operatingCompany": return i.operatingCompanyId;
+    case "status": return i.employmentStatus;
+    case "scope": return i.operationalScopes.map((s) => s.label ?? s.scopeId).join(", ");
+    case "manager": return i.manager?.displayName ?? "";
+    default: return "";
+  }
+}
+
+/** Empty values sort last in BOTH directions; ties fall back to the default name order and then the Employee id. */
+export function rosterComparator(sort: { key: WorkforceRosterSortKey; direction: "asc" | "desc" }) {
+  const byName = (a: WorkforceRosterItem, b: WorkforceRosterItem) => {
+    const [al, af] = rosterNameKey(a); const [bl, bf] = rosterNameKey(b);
+    return collator.compare(al, bl) || collator.compare(af, bf);
+  };
+  const sign = sort.direction === "desc" ? -1 : 1;
+  return (a: WorkforceRosterItem, b: WorkforceRosterItem): number => {
+    let primary = 0;
+    if (sort.key === "name") primary = sign * byName(a, b);
+    else {
+      const av = columnValue(a, sort.key); const bv = columnValue(b, sort.key);
+      if (av === "" && bv !== "") return 1;
+      if (bv === "" && av !== "") return -1;
+      primary = sign * collator.compare(av, bv);
+      if (primary === 0) primary = byName(a, b);
+    }
+    return primary || (a.employeeId < b.employeeId ? -1 : a.employeeId > b.employeeId ? 1 : 0);
+  };
 }

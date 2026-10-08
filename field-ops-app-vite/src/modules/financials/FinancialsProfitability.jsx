@@ -21,10 +21,10 @@ import {
 } from "./FinancialsPrimitives.jsx";
 
 const PIVOT_OPTIONS = [
-  { key: "unit", label: "By unit" },
-  { key: "salesperson", label: "By salesperson" },
-  { key: "customer", label: "By customer" },
-  { key: "source", label: "By source" },
+  { key: "unit", label: "By Unit" },
+  { key: "salesperson", label: "By Salesperson" },
+  { key: "customer", label: "By Customer" },
+  { key: "source", label: "By Source" },
 ];
 
 export default function FinancialsProfitability() {
@@ -71,7 +71,7 @@ export default function FinancialsProfitability() {
       <div className="fin-overview-grid">
         <FinancialsHonestSection
           id="fin-profitability"
-          title="What is reportable today"
+          title="What Is Reportable Today"
           meta="revenue at full strength when billed reads activate · cost, GM and GM% reserved"
           honest={{
             state: "NOT_ENABLED",
@@ -85,13 +85,13 @@ export default function FinancialsProfitability() {
               <caption className="fo-sr-only">Revenue with reserved margin columns</caption>
               <thead>
                 <tr>
-                  <th scope="col">Business unit</th>
-                  <th scope="col" className="ns-num">Billed revenue</th>
+                  <th scope="col">Business Unit</th>
+                  <th scope="col" className="ns-num">Billed Revenue</th>
                   <th scope="col" className="ns-num">
                     Cost
                     <FinAnnotation tip="UNKNOWN until every required governed cost fact exists — never derived from sell price." />
                   </th>
-                  <th scope="col" className="ns-num">Gross margin</th>
+                  <th scope="col" className="ns-num">Gross Margin</th>
                   <th scope="col" className="ns-num">GM %</th>
                 </tr>
               </thead>
@@ -114,7 +114,7 @@ export default function FinancialsProfitability() {
           </section>
           <section className="ns-section" aria-label="Never on this page">
             <div className="ns-section__head">
-              <h2 className="ns-section__title">Never on this page</h2>
+              <h2 className="ns-section__title">Never on This Page</h2>
             </div>
             <p className="ns-state ns-state--na">
               Statutory net profit, overhead allocation and tax — those belong to the future

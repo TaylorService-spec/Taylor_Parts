@@ -41,7 +41,7 @@ const mount = (props = {}) => render(
   <BinLabelsAndExport bins={props.bins ?? bins} warehouse={WAREHOUSE} download={props.download ?? vi.fn()} />,
 );
 
-const selectAll = () => fireEvent.click(screen.getByText("Select all shown"));
+const selectAll = () => fireEvent.click(screen.getByText("Select All Shown"));
 
 describe("selection defaults to bins that are in use", () => {
   it("out-of-use bins are not offered by default", () => {
@@ -54,7 +54,7 @@ describe("selection defaults to bins that are in use", () => {
     mount();
     fireEvent.click(screen.getByLabelText("Include bins that are out of use"));
     expect(screen.getByText("A02-001")).toBeTruthy();
-    expect(screen.getAllByText("Out of use").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Out of Use").length).toBeGreaterThan(0);
   });
 
   it("an inactive label carries a visible OUT OF USE mark, so it cannot read as operational", () => {
@@ -70,19 +70,19 @@ describe("selection defaults to bins that are in use", () => {
     fireEvent.click(toggle);
     selectAll();
     fireEvent.click(toggle);
-    expect(screen.getByText("Select labels to print")).toBeTruthy();
+    expect(screen.getByText("Select Labels to Print")).toBeTruthy();
   });
 
   it("select all shown picks exactly the visible bins", () => {
     mount();
     selectAll();
-    expect(screen.getByText("Print 2 labels")).toBeTruthy();
+    expect(screen.getByText("Print 2 Labels")).toBeTruthy();
   });
 
   it("a single selection is named in the singular", () => {
     mount();
     fireEvent.click(screen.getByLabelText(/A01-001/i, { selector: "input" }) ?? screen.getAllByRole("checkbox")[1]);
-    expect(screen.getByText("Print 1 label")).toBeTruthy();
+    expect(screen.getByText("Print 1 Label")).toBeTruthy();
   });
 });
 
@@ -90,7 +90,7 @@ describe("nothing selected produces nothing", () => {
   it("says so, and offers no print or export", () => {
     mount();
     expect(screen.getByText(/Nothing is selected/)).toBeTruthy();
-    expect(screen.getByText("Select labels to print").closest("button").disabled).toBe(true);
+    expect(screen.getByText("Select Labels to Print").closest("button").disabled).toBe(true);
     expect(screen.getByText("Export CSV").closest("button").disabled).toBe(true);
   });
 
@@ -147,7 +147,7 @@ describe("the preview is what prints, and what exports", () => {
     vi.stubGlobal("print", print);
     mount();
     selectAll();
-    fireEvent.click(screen.getByText("Print 2 labels"));
+    fireEvent.click(screen.getByText("Print 2 Labels"));
     expect(print).toHaveBeenCalledTimes(1);
     vi.unstubAllGlobals();
   });

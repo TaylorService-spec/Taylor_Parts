@@ -15,6 +15,7 @@ import LoadingState from "../../shared/ui/LoadingState";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import DictatableNote from "../../shared/ui/DictatableNote.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 
 // CYCLE COUNTS -- the durable workspace over count SHEETS (Cycle Count A1 + A4, Decision #179).
 //
@@ -59,7 +60,9 @@ const FILTERS = [
   { value: "", label: "All" },
 ];
 const TYPE_LABEL = { BIN: "Bin", WAREHOUSE: "Warehouse" };
-const STATUS_TEXT = { OPEN: "Not counted", COUNTED: "Counted -- awaiting review", RECONCILED: "Approved", REJECTED: "Rejected", CANCELLED: "Removed" };
+const STATUS_TEXT = { OPEN: "Not Counted", COUNTED: "Counted -- Awaiting Review", RECONCILED: "Approved", REJECTED: "Rejected", CANCELLED: "Removed" };
+// Sheet status words, the same words the "Show" filter uses (never the raw enum).
+const SHEET_STATUS_TEXT = Object.freeze(Object.fromEntries(FILTERS.filter((f) => f.value).map((f) => [f.value, f.label])));
 
 export default function CycleCounts({ deps }) {
   const client = deps?.cycleCountClient ?? cycleCountCommandClient;
@@ -98,7 +101,7 @@ export default function CycleCounts({ deps }) {
   return (
     <div className="fo-panel">
       <WorkspaceHeader title="Cycle Counts">
-        {!showCreate && <Button variant="primary" onClick={() => setShowCreate(true)}>New count</Button>}
+        {!showCreate && <Button variant="primary" onClick={() => setShowCreate(true)}>New Count</Button>}
       </WorkspaceHeader>
       <p className="fo-muted">
         Verify what is physically present without showing the expected answer first. Counts are kept on
@@ -153,12 +156,12 @@ export default function CycleCounts({ deps }) {
                   <button type="button" className="fo-link-btn" onClick={() => setSelected(s.sheetId)}>
                     {TYPE_LABEL[s.location?.type] ?? "Location"} {s.locationLabel ?? s.location?.locationId}
                   </button>{" "}
-                  <span className="fo-muted">· {s.status}{s.createdAt ? ` · started ${new Date(s.createdAt).toLocaleString()}` : ""}</span>
+                  <span className="fo-muted">· {statusLabel(s.status, SHEET_STATUS_TEXT)}{s.createdAt ? ` · started ${new Date(s.createdAt).toLocaleString()}` : ""}</span>
                 </li>
               ))}
             </ul>
           )}
-          {sheets.nextCursor && <Button variant="secondary" onClick={() => load(sheets.nextCursor)} disabled={sheets.loading}>Load more</Button>}
+          {sheets.nextCursor && <Button variant="secondary" onClick={() => load(sheets.nextCursor)} disabled={sheets.loading}>Load More</Button>}
         </>
       )}
     </div>
@@ -211,7 +214,7 @@ function CreateSheetForm({ client, onCancel, onCreated }) {
       </label>
       {error && <p className="fo-form-error" role="alert">{error}</p>}
       <div className="fo-form-actions">
-        <Button type="submit" variant="primary" disabled={busy}>{busy ? "Starting…" : "Start count"}</Button>
+        <Button type="submit" variant="primary" disabled={busy}>{busy ? "Starting…" : "Start Count"}</Button>
         <button type="button" className="fo-btn-secondary" onClick={onCancel} disabled={busy}>Cancel</button>
       </div>
     </form>
@@ -250,7 +253,7 @@ function SheetDetail({ client, sheetId, onBack, onStatus }) {
   };
 
   if (state.loading) return <LoadingState>Loading count…</LoadingState>;
-  if (state.error) return <><p className="fo-warning" role="alert">{state.error}</p><Button variant="secondary" onClick={onBack}>Back to counts</Button></>;
+  if (state.error) return <><p className="fo-warning" role="alert">{state.error}</p><Button variant="secondary" onClick={onBack}>Back to Counts</Button></>;
   const { sheet, lines } = state;
   const open = sheet.status === "OPEN";
   const { canClose, reason: closeReason } = deriveCloseEligibility(sheet, lines);
@@ -262,7 +265,7 @@ function SheetDetail({ client, sheetId, onBack, onStatus }) {
 
   const renderLine = (l) => (
     <li key={l.partId}>
-      <strong>{l.partId}</strong> <span className="fo-muted">· {STATUS_TEXT[l.status] ?? l.status}</span>
+      <strong>{l.partId}</strong> <span className="fo-muted">· {statusLabel(l.status, STATUS_TEXT)}</span>
       <LineFigures line={l} />
       {l.reconciliationReason && <p className="fo-muted">Reason: {l.reconciliationReason}</p>}
       {open && l.status === "OPEN" && (
@@ -289,8 +292,8 @@ function SheetDetail({ client, sheetId, onBack, onStatus }) {
 
   return (
     <section aria-label="Count sheet">
-      <Button variant="tertiary" onClick={onBack}>← All counts</Button>
-      <h3>{TYPE_LABEL[sheet.location?.type] ?? "Location"} {sheet.locationLabel ?? sheet.location?.locationId} <span className="fo-muted">· {sheet.status}</span></h3>
+      <Button variant="tertiary" onClick={onBack}>← All Counts</Button>
+      <h3>{TYPE_LABEL[sheet.location?.type] ?? "Location"} {sheet.locationLabel ?? sheet.location?.locationId} <span className="fo-muted">· {statusLabel(sheet.status, SHEET_STATUS_TEXT)}</span></h3>
 
       {open && sheet.location?.type !== "BIN" && <AddPartLine onAdd={(partId) => act("add", () => client.openCycleCountLine({ sheetId, partId }), "openLine")} busy={busy !== null} />}
       {lineErrors.add && <p className="fo-warning" role="alert">{lineErrors.add}</p>}
@@ -299,13 +302,13 @@ function SheetDetail({ client, sheetId, onBack, onStatus }) {
         <>
           {needsReview.length > 0 && (
             <>
-              <h4>Needs review · {needsReview.length}</h4>
+              <h4>Needs Review · {needsReview.length}</h4>
               <ul className="fo-list" aria-label="Lines needing review">{needsReview.map(renderLine)}</ul>
             </>
           )}
           {other.length > 0 && (
             <>
-              {needsReview.length > 0 && <h4>Other lines</h4>}
+              {needsReview.length > 0 && <h4>Other Lines</h4>}
               <ul className="fo-list" aria-label={needsReview.length > 0 ? "Other lines" : "Lines"}>{other.map(renderLine)}</ul>
             </>
           )}
@@ -313,9 +316,9 @@ function SheetDetail({ client, sheetId, onBack, onStatus }) {
       )}
 
       <div className="fo-form-actions">
-        {canClose && <Button variant="primary" disabled={busy !== null} onClick={() => act("sheet", () => client.closeCycleCountSheet({ sheetId }), "closeSheet")}>Close this count</Button>}
+        {canClose && <Button variant="primary" disabled={busy !== null} onClick={() => act("sheet", () => client.closeCycleCountSheet({ sheetId }), "closeSheet")}>Close This Count</Button>}
         {!canClose && open && lines.length > 0 && <span className="fo-cc-disabled-reason">{closeReason}</span>}
-        {canCancel && <button type="button" className="fo-btn-secondary" disabled={busy !== null} onClick={() => act("sheet", () => client.cancelCycleCountSheet({ sheetId }), "cancelSheet")}>Cancel this count</button>}
+        {canCancel && <button type="button" className="fo-btn-secondary" disabled={busy !== null} onClick={() => act("sheet", () => client.cancelCycleCountSheet({ sheetId }), "cancelSheet")}>Cancel This Count</button>}
       </div>
       {lineErrors.sheet && <p className="fo-warning" role="alert">{lineErrors.sheet}</p>}
     </section>
@@ -348,7 +351,7 @@ function AddPartLine({ onAdd, busy }) {
   return (
     <form className="fo-inline-form" onSubmit={(e) => { e.preventDefault(); if (partId.trim()) { onAdd(partId.trim()); setPartId(""); } }}>
       <input value={partId} onChange={(e) => setPartId(e.target.value)} placeholder="Part ID" aria-label="Part to count" />
-      <button type="submit" className="fo-transfer-action-btn" disabled={busy || partId.trim() === ""}>Add part</button>
+      <button type="submit" className="fo-transfer-action-btn" disabled={busy || partId.trim() === ""}>Add Part</button>
     </form>
   );
 }
@@ -365,8 +368,8 @@ function CountEntry({ line, busy, onSubmit, onRemove }) {
       {serial
         ? <textarea value={value} onChange={(e) => setValue(e.target.value)} placeholder="Serial numbers found (one per line)" aria-label="Serial numbers counted" />
         : <input type="number" min="0" step="1" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Counted quantity" aria-label="Counted quantity" />}
-      <button type="submit" className="fo-transfer-action-btn" disabled={busy || (!serial && value === "")}>{busy ? "Recording…" : "Record count"}</button>
-      <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={busy} onClick={onRemove}>Remove part</button>
+      <button type="submit" className="fo-transfer-action-btn" disabled={busy || (!serial && value === "")}>{busy ? "Recording…" : "Record Count"}</button>
+      <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={busy} onClick={onRemove}>Remove Part</button>
     </form>
   );
 }
@@ -385,11 +388,11 @@ function ReviewLine({ line, busy, selfSubmitted, onDecide }) {
   const locked = selfSubmitted;
   return (
     <form className="fo-inline-form fo-inline-form--stacked" onSubmit={(e) => e.preventDefault()}>
-      <DictatableNote value={reason} onChange={setReason} label="Review reason" placeholder={differs ? "Reason (required)" : "Reason (optional)"} />
+      <DictatableNote value={reason} onChange={setReason} label="Review Reason" placeholder={differs ? "Reason (required)" : "Reason (optional)"} />
       <div className="fo-form-actions">
         {serialDiffers ? null : (
           <button type="button" className="fo-transfer-action-btn" disabled={busy || needsReason || locked} onClick={() => onDecide(reason, "APPROVE")}>
-            {differs ? "Approve and adjust" : "Approve"}
+            {differs ? "Approve and Adjust" : "Approve"}
           </button>
         )}
         <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={busy || needsReason || locked} onClick={() => onDecide(reason, "REJECT")}>Reject</button>

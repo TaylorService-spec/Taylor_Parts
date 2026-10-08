@@ -481,3 +481,14 @@ test("terms omit absent fields rather than dashing them, and never leak a raw en
   const odd = salesAgreementTerms(view({ fulfillmentIntent: "TELEPORT" }));
   assert.equal(odd.rows.find((r) => r.id === "fulfillmentIntent"), undefined);
 });
+
+test("an EOS acceptance names the accepting PRINCIPAL through the governed actor names (UI corrections integration)", () => {
+  // EOS records acceptedByPrincipalId (never a Firebase uid); the governed resolvePrincipalDisplayNames read keys its answer by it.
+  const names = new Map([["pr-accepting", { id: "pr-accepting", displayName: "Robin Retail" }]]);
+  const a = salesAgreementAcceptance(view({ state: "ACCEPTED", acceptedAtMillis: ACCEPTED_AT, acceptedByUid: null, acceptedByPrincipalId: "pr-accepting" }),
+    { byUserId: names, formatWhen: () => "x" });
+  assert.equal(a.actorName, "Robin Retail");
+  const unresolved = salesAgreementAcceptance(view({ state: "ACCEPTED", acceptedAtMillis: ACCEPTED_AT, acceptedByUid: null, acceptedByPrincipalId: "pr-other" }),
+    { byUserId: names, formatWhen: () => "x" });
+  assert.equal(unresolved.actorName, UNKNOWN_ACTOR_DISPLAY_NAME, "never the raw id");
+});

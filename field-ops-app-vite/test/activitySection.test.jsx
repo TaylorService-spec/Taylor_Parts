@@ -7,6 +7,9 @@ import ActivitySection, { __test__ } from "../src/modules/inventory/mobile/Activ
 
 afterEach(cleanup);
 
+// A sortable header's visible label (the SortableHeader button's first span), else the header text.
+const headerLabel = (th) => th.querySelector(".fo-sortable-th__button > span")?.textContent ?? th.textContent;
+
 // A fully-populated governed row plus extra/unsupported fields that must never render.
 const FULL_ROW = Object.freeze({
   time: "2026-08-03T10:00:00Z",
@@ -53,8 +56,8 @@ describe("ActivitySection -- governed states", () => {
 describe("ActivitySection -- READY rows", () => {
   it("renders one row per item using only the allowlist columns", () => {
     const table = render(<ActivitySection section={readySection([FULL_ROW])} />).getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((th) => th.textContent)).toEqual(COLUMN_LABELS);
-    expect(within(table).getAllByRole("cell").map((td) => td.textContent)).toEqual(["2026-08-03T10:00:00Z", "TRANSFER", "Truck loaded"]);
+    expect(within(table).getAllByRole("columnheader").map(headerLabel)).toEqual(COLUMN_LABELS);
+    expect(within(table).getAllByRole("cell").map((td) => td.textContent)).toEqual(["2026-08-03T10:00:00Z", "Transfer", "Truck loaded"]);
   });
 
   it("renders a sparse valid row (one governed value) with em dashes elsewhere", () => {

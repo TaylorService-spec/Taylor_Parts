@@ -1,5 +1,23 @@
 import { useAccountAr } from "../../hooks/useAccountAr.js";
 import { accountArView, ACCOUNT_AR_STATE } from "../../domain/accountArView.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+
+const EMPTY_ROWS = Object.freeze([]);
+// The amount inside the formatted outstanding text (the row carries no raw minor-units field). Amounts in different
+// currencies compare by number only -- this orders rows, it never sums them.
+function outstandingAmount(text) {
+  if (typeof text !== "string") return null;
+  const n = Number(text.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) && /\d/.test(text) ? n : null;
+}
+// Client-side sort over the invoices already read; no sort keeps the server's order.
+const AR_SORT_COLUMNS = Object.freeze({
+  invoice: { value: (row) => row.invoiceNumber },
+  company: { value: (row) => row.companyLabel },
+  position: { value: (row) => row.positionWords },
+  outstanding: { value: (row) => outstandingAmount(row.outstandingText) },
+});
 
 // ACCOUNTS RECEIVABLE -- its own main-column section, per invoice.
 //
@@ -52,15 +70,16 @@ export default function AccountArSection({ accountId }) {
   const view = accountArView({ loading, errorStatus, result });
   // The server's own flag, read — never `companyIds.length > 1` recomputed here.
   const showCompany = view.company?.supplied === true && view.company.spansMultipleCompanies === true;
+  const { sort, toggle, sorted: sortedRows } = useTableSort({ rows: view.rows ?? EMPTY_ROWS, columns: AR_SORT_COLUMNS });
 
   return (
     // The `id` is a REAL anchor the Account Attention projection deep-links to
     // (`/customers/:accountId#account-ar-section`) rather than a fabricated route. AR resolution
     // stays here, in this section, exactly where it already lived -- Attention references it and
     // never restates it.
-    <section id="account-ar-section" className="ns-section" aria-label="Accounts receivable">
+    <section id="account-ar-section" className="ns-section" aria-label="Accounts Receivable">
       <div className="ns-section__head">
-        <h2 className="ns-section__title">Accounts receivable</h2>
+        <h2 className="ns-section__title">Accounts Receivable</h2>
         <span className="ns-section__meta">
           · per invoice — multi-currency balances list per currency, never summed
         </span>
@@ -91,14 +110,14 @@ export default function AccountArSection({ accountId }) {
               <caption className="fo-sr-only">Invoices on this account</caption>
               <thead>
                 <tr>
-                  <th scope="col">Invoice</th>
-                  {showCompany ? <th scope="col">Company</th> : null}
-                  <th scope="col">Position</th>
-                  <th scope="col" className="ns-num">Outstanding</th>
+                  <SortableHeader columnKey="invoice" label="Invoice" sort={sort} onSort={toggle} />
+                  {showCompany ? <SortableHeader columnKey="company" label="Company" sort={sort} onSort={toggle} /> : null}
+                  <SortableHeader columnKey="position" label="Position" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="outstanding" label="Outstanding" sort={sort} onSort={toggle} className="ns-num" />
                 </tr>
               </thead>
               <tbody>
-                {view.rows.map((row) => (
+                {sortedRows.map((row) => (
                   <tr key={row.key}>
                     <td data-label="Invoice">{row.invoiceNumber}</td>
                     {showCompany ? (

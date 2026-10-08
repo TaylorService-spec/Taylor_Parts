@@ -165,7 +165,7 @@ export default function ReturnIntakeScan({ deps }) {
     return (
       <div className="fo-returns">
         <p className="fo-scan__notice fo-scan__notice--pending" role="status">{outcome.pendingText}</p>
-        <Button type="button" variant="primary" onClick={startAnother}>Take another return</Button>
+        <Button type="button" variant="primary" onClick={startAnother}>Take Another Return</Button>
       </div>
     );
   }
@@ -180,7 +180,7 @@ export default function ReturnIntakeScan({ deps }) {
           It is <strong>awaiting a disposition decision</strong> and has <strong>not</strong> gone back
           into sellable stock. Stock counts are unchanged.
         </p>
-        <Button type="button" variant="primary" onClick={startAnother}>Take another return</Button>
+        <Button type="button" variant="primary" onClick={startAnother}>Take Another Return</Button>
       </div>
     );
   }
@@ -218,7 +218,7 @@ export default function ReturnIntakeScan({ deps }) {
           </label>
 
           <label className="fo-returns__field">
-            <span>Reference <span className="fo-muted">(optional)</span></span>
+            <span>Reference <span className="fo-muted">(Optional)</span></span>
             <input
               value={sourceReference}
               onChange={(e) => setSourceReference(e.target.value)}
@@ -248,7 +248,7 @@ export default function ReturnIntakeScan({ deps }) {
           {error && <p className="fo-scan__notice fo-scan__notice--warn" role="alert">{error}</p>}
 
           <Button type="button" variant="primary" className="fo-returns__submit" onClick={submit} disabled={condition === "" || busy}>
-            {busy ? "Recording…" : "Record this return"}
+            {busy ? "Recording…" : "Record This Return"}
           </Button>
           {condition === "" && (
             <p className="fo-scan__reason">Choose a condition before recording. It is an observation, so nobody can choose it for you.</p>

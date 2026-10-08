@@ -54,20 +54,20 @@ export default function CustomerSchedulingLinkPanel({ workOrder, call = callWork
   const active = sessions.items.find((s) => s.status === "ACTIVE");
 
   return (
-    <section className="fo-panel fo-self-schedule-link" aria-label="Customer scheduling link">
-      <h3>Customer scheduling link</h3>
+    <section className="fo-panel fo-self-schedule-link" aria-label="Customer Scheduling Link">
+      <h3>Customer Scheduling Link</h3>
       {error && <p className="fo-inline-error" role="alert">{error}</p>}
       {issued && (
         <div role="status">
           <p>Send this link to the customer. It is shown once, and expires {new Date(issued.expiresAt).toLocaleString()}.</p>
-          <input className="fo-wizard-control" readOnly value={issued.url} onFocus={(e) => e.target.select()} aria-label="Scheduling link" />
-          <Button variant="tertiary" onClick={() => navigator.clipboard?.writeText(issued.url)}>Copy link</Button>
+          <input className="fo-wizard-control" readOnly value={issued.url} onFocus={(e) => e.target.select()} aria-label="Scheduling Link" />
+          <Button variant="tertiary" onClick={() => navigator.clipboard?.writeText(issued.url)}>Copy Link</Button>
         </div>
       )}
       {schedulable && (
-        <Button variant="secondary" disabled={busy} onClick={issue}>{active ? "Replace the link" : "Create scheduling link"}</Button>
+        <Button variant="secondary" disabled={busy} onClick={issue}>{active ? "Replace the Link" : "Create Scheduling Link"}</Button>
       )}
-      {active && <Button variant="tertiary" className="fo-link-btn" disabled={busy} onClick={revoke}>Withdraw link</Button>}
+      {active && <Button variant="tertiary" className="fo-link-btn" disabled={busy} onClick={revoke}>Withdraw Link</Button>}
       {sessions.items.length > 0 && (
         <ul className="fo-muted">
           {sessions.items.map((s) => (

@@ -278,7 +278,7 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
           </Field>
         )}
 
-        <Field id="equipment-edit-name" label="Equipment name" required error={nameError} hint="e.g. Rooftop Unit 1">
+        <Field id="equipment-edit-name" label="Equipment Name" required error={nameError} hint="e.g. Rooftop Unit 1">
           <input
             id="equipment-edit-name"
             className="fo-wizard-control"
@@ -289,7 +289,7 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
           />
         </Field>
 
-<Field id="equipment-edit-model" label="Equipment model" error={modelsError} hint="From the catalog (optional)">
+<Field id="equipment-edit-model" label="Equipment Model" error={modelsError} hint="From the catalog (optional)">
           <select id="equipment-edit-model" className="fo-wizard-control" value={equipmentModelId}
             onChange={(e) => setEquipmentModelId(e.target.value)}>
             <option value="">No catalog model</option>
@@ -299,23 +299,23 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
           </select>
         </Field>
 
-        <Field id="equipment-edit-serial" label="Serial number">
+        <Field id="equipment-edit-serial" label="Serial Number">
           <input id="equipment-edit-serial" className="fo-wizard-control" value={values.serialNumber}
             onChange={(e) => setField("serialNumber", e.target.value)} />
         </Field>
 
-        <Field id="equipment-edit-asset-tag" label="Asset tag">
+        <Field id="equipment-edit-asset-tag" label="Asset Tag">
           <input id="equipment-edit-asset-tag" className="fo-wizard-control" value={values.assetTag}
             onChange={(e) => setField("assetTag", e.target.value)} />
         </Field>
 
-        <Field id="equipment-edit-installed" label="Installed date" hint="YYYY-MM-DD">
+        <Field id="equipment-edit-installed" label="Installed Date" hint="YYYY-MM-DD">
           <input id="equipment-edit-installed" className="fo-wizard-control" type="date" value={values.installedDate}
             aria-describedby={describedBy("equipment-edit-installed", { hasHint: true, hasError: false })}
             onChange={(e) => setField("installedDate", e.target.value)} />
         </Field>
 
-        <Field id="equipment-edit-warranty" label="Warranty expires" hint="YYYY-MM-DD">
+        <Field id="equipment-edit-warranty" label="Warranty Expires" hint="YYYY-MM-DD">
           <input id="equipment-edit-warranty" className="fo-wizard-control" type="date" value={values.warrantyExpiresDate}
             aria-describedby={describedBy("equipment-edit-warranty", { hasHint: true, hasError: false })}
             onChange={(e) => setField("warrantyExpiresDate", e.target.value)} />

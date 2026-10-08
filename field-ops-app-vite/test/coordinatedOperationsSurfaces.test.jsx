@@ -57,7 +57,7 @@ describe("CoordinatedMissionView (Technician)", () => {
     render(<CoordinatedMissionView source={src} />);
     expect(screen.getByRole("heading", { name: "Coordinated Mission" })).toBeTruthy();
     // 5 equipment units, each its own execution card
-    expect(screen.getByText(/Equipment units \(5\)/)).toBeTruthy();
+    expect(screen.getByText(/Equipment Units \(5\)/)).toBeTruthy();
     expect(screen.getByText("Taylor C713 · unit 1")).toBeTruthy();
     expect(screen.getByText("Taylor C713 · unit 5")).toBeTruthy();
   });

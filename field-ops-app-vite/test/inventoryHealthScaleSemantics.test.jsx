@@ -216,8 +216,9 @@ test("the workspace states NO quantity — the third and strongest form of the s
   expect(/data-label="Warehouse Available"/.test(src)).toBe(false);
 
   // 3: no quantity heading, and no cell reading the derived figure.
-  for (const heading of ["Warehouse Available", "On Hand", "On hand", "Available"]) {
-    expect(src.includes(`<th>${heading}</th>`), `"${heading}" is a quantity column`).toBe(false);
+  for (const heading of ["Warehouse Available", "On Hand", "On Hand", "Available"]) {
+    // A sortable heading (<SortableHeader label="X" />) is a heading too -- UI corrections package.
+    expect(src.includes(`<th>${heading}</th>`) || src.includes(`label="${heading}"`), `"${heading}" is a quantity column`).toBe(false);
   }
   expect(/health\.stock\.availableStock/.test(src)).toBe(false);
 
@@ -241,7 +242,7 @@ test("Inventory Health’s vocabulary guarantee still has an owner after Frame 1
   const list = read("src/modules/inventory/PartsList.jsx");
   expectMatch(list, /InventoryHealthPanel/, "health must still be surfaced on the workspace");
   // ...and the catalogue table kept no half-migrated copy of it.
-  expect(list.includes("<th>Inventory Health</th>")).toBe(false);
+  expect(list.includes("<th>Inventory Health</th>") || /<SortableHeader[^>]*label="Inventory Health"/.test(list)).toBe(false);
 });
 
 test("a link inside a stacked card is a real tap target", () => {

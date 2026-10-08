@@ -56,7 +56,7 @@ describe("ReceiveAgainstPurchaseOrder — NONE part (legacy flow, unchanged)", (
     await chooseAndSelectLocation(/P-1/i);
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     // NONE parts skip straight to Confirm -- no serial step is shown.
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm receipt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm Receipt" }));
     await waitFor(() => expect(submitReceipt).toHaveBeenCalledOnce());
     const sentInput = submitReceipt.mock.calls[0][0];
     expect(sentInput.lines).toHaveLength(1);
@@ -77,12 +77,12 @@ describe("ReceiveAgainstPurchaseOrder — NONE part (legacy flow, unchanged)", (
     render(<ReceiveAgainstPurchaseOrder onDone={vi.fn()} />);
     await chooseAndSelectLocation(/P-1/i);
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm receipt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm Receipt" }));
     await waitFor(() => expect(submitReceipt).toHaveBeenCalledTimes(1));
-    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Try Again" }));
     await chooseAndSelectLocation(/P-1/i);
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm receipt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm Receipt" }));
     await waitFor(() => expect(submitReceipt).toHaveBeenCalledTimes(2));
     expect(submitReceipt.mock.calls[0][0].idempotencyKey).toBe("receive:rr-1");
     expect(submitReceipt.mock.calls[1][0].idempotencyKey).toBe("receive:rr-1");
@@ -118,7 +118,7 @@ describe("ReceiveAgainstPurchaseOrder — SERIAL part", () => {
     expect(screen.getByRole("button", { name: "Continue" }).disabled).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm receipt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm Receipt" }));
     await waitFor(() => expect(submitReceipt).toHaveBeenCalledOnce());
     const sentInput = submitReceipt.mock.calls[0][0];
     expect(sentInput.lines[0]).toEqual({
@@ -203,7 +203,7 @@ describe("Frame 1d — journey identity, numbering truth, and the linear stages"
     render(<ReceiveAgainstPurchaseOrder onDone={vi.fn()} />);
     await chooseAndSelectLocation(new RegExp(row.partId, "i"));
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    await screen.findByRole("button", { name: "Confirm receipt" });
+    await screen.findByRole("button", { name: "Confirm Receipt" });
   }
 
   it("renders ONE subordinate journey heading (h2), and never a page H1", async () => {
@@ -253,14 +253,14 @@ describe("Frame 1d — journey identity, numbering truth, and the linear stages"
     submitReceipt.mockResolvedValue({ status: "applied" });
     await reachConfirm();
     expect(submitReceipt).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Confirm receipt" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Receipt" }));
     await waitFor(() => expect(submitReceipt).toHaveBeenCalledOnce());
   });
 
   it("MUTATION PROOF: the result never prints a receiving id or a manufactured RO number", async () => {
     submitReceipt.mockResolvedValue({ status: "applied" });
     await reachConfirm();
-    fireEvent.click(screen.getByRole("button", { name: "Confirm receipt" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Receipt" }));
     await screen.findByText("Receipt recorded");
     expect(screen.getByText("The receiving order number is not yet readable here.")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/RO-\d/);
@@ -274,7 +274,7 @@ describe("Frame 1d — journey identity, numbering truth, and the linear stages"
     fireEvent.click(screen.getByRole("button", { name: /P-7/i }));
     await screen.findByText(/not permitted/i);
     expect(screen.queryByLabelText(/receiving location/i)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Confirm receipt" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm Receipt" })).toBeNull();
   });
 
   it("the hosted journey itself offers no queue-back control — the workspace owns the single one", async () => {
@@ -289,7 +289,7 @@ describe("Frame 1d — journey identity, numbering truth, and the linear stages"
     readyLocation();
     fetchParts.mockResolvedValue({ ok: true, parts: [{ partId: "P-1", controlType: "STANDARD" }], invalid: [] });
     render(<ReceiveAgainstPurchaseOrder onDone={vi.fn()} />);
-    expect(await screen.findByText(/Step 1 · Choose the purchase order/)).toBeTruthy();
+    expect(await screen.findByText(/Step 1 · Choose the Purchase Order/)).toBeTruthy();
     await chooseAndSelectLocation(/P-1/i);
     expect(screen.getByText(/Step 2 of 3 · Destination/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));

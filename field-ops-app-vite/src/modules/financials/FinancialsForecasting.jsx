@@ -45,7 +45,7 @@ export default function FinancialsForecasting() {
 
       <FinancialsHonestSection
         id="fin-forecast-table"
-        title="Forecast by unit"
+        title="Forecast by Unit"
         meta="forecast · goal (by basis) · actual to date · method"
         honest={{
           state: "NOT_ENABLED",
@@ -59,10 +59,10 @@ export default function FinancialsForecasting() {
             <caption className="fo-sr-only">Forecast versus goal and actual to date by business unit</caption>
             <thead>
               <tr>
-                <th scope="col">Business unit</th>
+                <th scope="col">Business Unit</th>
                 <th scope="col" className="ns-num">Forecast</th>
                 <th scope="col" className="ns-num">Goal</th>
-                <th scope="col" className="ns-num">Actual to date</th>
+                <th scope="col" className="ns-num">Actual to Date</th>
                 <th scope="col">
                   Method
                   <FinAnnotation tip="Method TBD — FIN-005: forecast methodology is an unconfigured policy. No confidence fan is drawn (no governed model — FIN-PQ-10a)." />
@@ -75,7 +75,7 @@ export default function FinancialsForecasting() {
 
       <section className="ns-section" aria-label="Version history">
         <div className="ns-section__head">
-          <h2 className="ns-section__title">Version history</h2>
+          <h2 className="ns-section__title">Version History</h2>
           <span className="ns-section__meta">· immutable — newer as-of supersedes, never rewrites</span>
         </div>
         <p className="ns-state ns-state--na">

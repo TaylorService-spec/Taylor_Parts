@@ -21,6 +21,7 @@ import { useMemo, useState } from "react";
 import { adminControlPlaneClient, refusalText } from "../../services/adminControlPlaneClient.js";
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { explanationModel, groupByObject } from "./controlPlaneModel.js";
+import { identifierLabel, operatingCompanyLabel, statusLabel, titleCase } from "../../shared/display/displayLabels.js";
 
 const RESULT_TAG = Object.freeze({
   ALLOWED: "fo-cp-tag fo-cp-tag--allowed",
@@ -29,12 +30,24 @@ const RESULT_TAG = Object.freeze({
   DENIED: "fo-cp-tag fo-cp-tag--denied",
 });
 
-const list = (items) => (items.length > 0 ? items.join(", ") : "none");
+const list = (items) => (items.length > 0 ? items.join(", ") : "None");
+// Display words for identifiers (UI corrections item A). The raw key stays visible in <code> where it is evidence.
+const roleWords = (key) => identifierLabel(key);
+const scopeWords = (s) => `${titleCase(s.scopeType)} ${s.label ?? (s.scopeType === "REORDER_QUEUE" ? operatingCompanyLabel(s.scopeId) : s.scopeId)}`;
+const PROVENANCE_TAG = Object.freeze({
+  ROLE: "fo-cp-tag",
+  DIRECT: "fo-cp-tag fo-cp-tag--direct",
+  ROLE_AND_DIRECT: "fo-cp-tag fo-cp-tag--direct",
+  NONE: "fo-cp-tag",
+});
 
 export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient, principalId }) {
   const read = useControlPlaneRead(principalId ? () => api.explainEffectiveAccess(principalId) : null, `explain:${principalId}`);
   const model = useMemo(() => (read.status === "ready" ? explanationModel(read.data) : null), [read.status, read.data]);
   const [filter, setFilter] = useState("");
+  // Presentation only (UI corrections): the server answers for EVERY catalog action; the page opens on the ones this person
+  // actually reaches (any result but Denied, or any source) and shows the rest on request. Nothing is re-decided here.
+  const [scope, setScope] = useState("held");
 
   if (!principalId) {
     return <p className="fo-muted" data-effective-access="NO_PRINCIPAL">No governed Principal is linked to this Employee, so there is no access to explain.</p>;
@@ -59,10 +72,17 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
     return <p className="fo-warning" role="alert" data-effective-access="UNREADABLE">The server returned an Effective Access payload this screen cannot read, so nothing is shown.</p>;
   }
 
+  const restricted = model.actions.filter((a) => a.result === "CONDITIONAL");
+  const held = model.actions.filter((a) => a.provenance && a.provenance !== "NONE");
+  const provenanceCount = (p) => held.filter((a) => a.provenance === p).length;
+  const provenanceUnreported = model.actions.length > 0 && model.actions.every((a) => a.provenance === null);
   const needle = filter.trim().toLowerCase();
+  const reaches = (r) => r.result !== "DENIED" || r.sourceRoles.length > 0 || r.scopedSources.length > 0 || Boolean(r.directGrant);
+  const heldCount = model.actions.filter(reaches).length;
+  const scoped = scope === "held" ? model.actions.filter(reaches) : model.actions;
   const shown = needle
-    ? model.actions.filter((r) => `${r.capabilityKey} ${r.objectKey ?? ""} ${r.actionKey ?? ""}`.toLowerCase().includes(needle))
-    : model.actions;
+    ? scoped.filter((r) => `${r.capabilityKey} ${r.objectKey ?? ""} ${r.actionKey ?? ""}`.toLowerCase().includes(needle))
+    : scoped;
 
   return (
     <div data-effective-access="READY" data-effective-access-rows={model.actions.length}>
@@ -76,36 +96,57 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
       <ol className="fo-access-chain" aria-label="Resolved access chain" data-access-chain>
         <li><span className="fo-access-chain__k">Principal</span> <code>{model.principalId ?? "—"}</code></li>
         <li><span className="fo-access-chain__k">Employee</span> {model.employee?.displayName ?? model.employeeId ?? "not linked"}
-          {model.employee ? <span className="fo-muted">{` · ${model.employee.operatingCompanyId ?? "—"} · ${model.employee.employmentStatus ?? "—"}`}</span> : null}</li>
-        <li><span className="fo-access-chain__k">Job Role</span> {model.jobRole?.label ?? "none"} <span className="fo-muted">— the job performed; grants nothing</span></li>
-        <li><span className="fo-access-chain__k">Security Roles</span> {list(model.securityRoleKeys)}
-          {model.scopedAssignments.length > 0 ? <span className="fo-muted">{` · scoped: ${model.scopedAssignments.map((a) => `${a.roleKey} @ ${a.scope}`).join(", ")}`}</span> : null}</li>
+          {model.employee ? <span className="fo-muted">{` · ${operatingCompanyLabel(model.employee.operatingCompanyId) || "—"} · ${statusLabel(model.employee.employmentStatus) || "—"}`}</span> : null}</li>
+        <li><span className="fo-access-chain__k">Job Role</span> {model.jobRole?.label ?? "None"} <span className="fo-muted">— the job performed; grants nothing</span></li>
+        <li><span className="fo-access-chain__k">Security Roles</span> {list(model.securityRoleKeys.map(roleWords))}
+          {model.scopedAssignments.length > 0 ? <span className="fo-muted">{` · scoped: ${model.scopedAssignments.map((a) => `${roleWords(a.roleKey)} @ ${a.scope}`).join(", ")}`}</span> : null}</li>
         <li><span className="fo-access-chain__k">Effective capabilities</span> {model.capabilities.length} unconditional
           {model.conditionallyHeld.length ? `, ${model.conditionallyHeld.length} conditional` : ""}{model.scopedHeld.length ? `, ${model.scopedHeld.length} scope-qualified` : ""}</li>
-        <li><span className="fo-access-chain__k">Operational scope</span> {list(model.operationalScopes.map((s) => `${s.scopeType} ${s.scopeId}`))}
-          {model.workEligibility.length ? <span className="fo-muted">{` · eligibility: ${model.workEligibility.join(", ")}`}</span> : null}</li>
-        <li><span className="fo-access-chain__k">Record relationships</span> {(() => {
-          const conditioned = model.actions.filter((a) => a.result === "CONDITIONAL");
-          return conditioned.length === 0 ? "none restrict" : `${conditioned.length} action(s) restricted, e.g. ${conditioned.slice(0, 3).map((a) => `${a.capabilityKey} (${a.reasonCode})`).join(", ")}`;
-        })()}</li>
-        <li><span className="fo-access-chain__k">Domain preconditions</span> <span className="fo-muted">decided per record by each command (state, scope, operating company) — never granted here</span></li>
+        <li><span className="fo-access-chain__k">Operational Scope</span> {list(model.operationalScopes.map(scopeWords))}
+          {model.workEligibility.length ? <span className="fo-muted">{` · eligibility: ${model.workEligibility.map(titleCase).join(", ")}`}</span> : null}</li>
+        <li><span className="fo-access-chain__k">Record Restrictions</span> {restricted.length === 0 ? "None restrict" : `${restricted.length} action${restricted.length === 1 ? "" : "s"} restricted to particular records — listed below`}</li>
+        <li><span className="fo-access-chain__k">Domain Preconditions</span> <span className="fo-muted">decided per record by each command (state, scope, operating company) — never granted here</span></li>
       </ol>
-      <dl className="fo-detail-list" data-effective-access-context>
-        <dt>Security Roles that grant</dt><dd>{list(model.securityRoleKeys)}</dd>
-        <dt>Access version</dt><dd>{model.accessVersion ?? "—"}</dd>
-        <dt>Work Eligibility</dt><dd>{list(model.workEligibility)}</dd>
-        <dt>Operational Scope</dt><dd>{list(model.operationalScopes.map((s) => `${s.scopeType} ${s.scopeId}`))}</dd>
-        <dt>Capabilities</dt><dd>{model.capabilities.length}</dd>
-        <dt>Surfaces</dt><dd>{list(model.surfaces)}</dd>
-      </dl>
+      {/* One context line, not a second list of what the chain above already states (deduplicated, item D). */}
+      <p className="fo-muted" data-effective-access-context>
+        {`Access version ${model.accessVersion ?? "—"} · ${model.capabilities.length} capabilities · Work Eligibility: ${list(model.workEligibility.map(titleCase))} · Surfaces: ${model.surfaces.length}`}
+      </p>
+      <div className="fo-cp-provenance" data-provenance-summary>
+        <p className="fo-cp-facts__title">Capability Provenance</p>
+        <p className="fo-muted">How each held capability reaches this person, as the server evaluator reports it.</p>
+        <dl className="fo-detail-list">
+          <dt>Through Security Roles</dt><dd data-provenance-count="ROLE">{provenanceCount("ROLE")}</dd>
+          <dt>Through a Direct Exception</dt><dd data-provenance-count="DIRECT">{provenanceCount("DIRECT")}</dd>
+          <dt>Through Both</dt><dd data-provenance-count="ROLE_AND_DIRECT">{provenanceCount("ROLE_AND_DIRECT")}</dd>
+        </dl>
+        {provenanceUnreported ? <p className="fo-muted">This server does not report provenance; the Source column below shows each Security Role and direct exception.</p> : null}
+      </div>
+      {restricted.length > 0 ? (
+        <div className="fo-table-scroll">
+          <table className="fo-table" aria-label="Record restrictions" data-record-restrictions={restricted.length}>
+            <caption className="fo-cp-facts__title">Record Restrictions</caption>
+            <thead><tr><th>Object Action</th><th>Restriction</th><th>Source</th></tr></thead>
+            <tbody>
+              {restricted.map((a) => (
+                <tr key={a.capabilityKey} data-restricted-capability={a.capabilityKey}>
+                  <td>{`${titleCase(a.objectKey)} · ${titleCase(a.actionKey ?? a.capabilityKey)}`} <span className="fo-muted"><code>{a.capabilityKey}</code></span></td>
+                  <td>{a.reasonCode === "RECORD_ASSIGNMENT_REQUIRED" ? "Only records this person is assigned to or owns" : titleCase(a.reasonCode)}
+                    {a.sourceRoles.filter((r) => r.condition).map((r) => <div key={r.roleKey} className="fo-muted">{`Condition: ${r.condition}`}</div>)}</td>
+                  <td>{a.provenanceWords ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       {model.scopedAssignments.length > 0 ? (
         <table className="fo-table" aria-label="Scoped assignments">
-          <thead><tr><th>Scoped assignment</th><th>Scope</th><th>Grants within the scope</th><th>Not granted at this scope</th></tr></thead>
+          <thead><tr><th>Scoped Assignment</th><th>Scope</th><th>Grants Within the Scope</th><th>Not Granted at This Scope</th></tr></thead>
           <tbody>
             {model.scopedAssignments.map((a) => (
               <tr key={a.assignmentId ?? `${a.roleKey}-${a.scope}`} data-scoped-assignment={a.roleKey}>
-                <td>Security Role <code>{a.roleKey}</code></td>
+                <td>{roleWords(a.roleKey)} <span className="fo-muted"><code>{a.roleKey}</code></span></td>
                 <td>{a.scope}</td>
                 <td>{list(a.capabilities)}</td>
                 <td className="fo-muted">{list(a.inertCapabilities)}</td>
@@ -115,14 +156,14 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
         </table>
       ) : null}
       <div className="fo-cp-facts" data-employee-facts={model.functionalRoles.length}>
-        <p className="fo-cp-facts__title">Employee facts — not a permission source</p>
+        <p className="fo-cp-facts__title">Employee Facts — Not a Permission Source</p>
         <p className="fo-muted">
           Business facts about the linked Employee. No capability, surface or action above comes from them;
           a Functional Role can only narrow a workflow action a Security Role already authorizes.
         </p>
         <dl className="fo-detail-list">
           <dt>Functional Roles</dt>
-          <dd>{model.functionalRoles.length === 0 ? "none" : model.functionalRoles.map((f) => (
+          <dd>{model.functionalRoles.length === 0 ? "None" : model.functionalRoles.map((f) => (
             <span key={f.functionalRoleId ?? f.key} className="fo-cp-tag" data-functional-role-fact={f.key}>{f.name ? `${f.name} (${f.key})` : f.key}</span>
           ))}</dd>
         </dl>
@@ -130,11 +171,11 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
 
       {model.excluded.length > 0 ? (
         <table className="fo-table" aria-label="Excluded assignments">
-          <thead><tr><th>Excluded assignment</th><th>Reason</th><th>Scope</th></tr></thead>
+          <thead><tr><th>Excluded Assignment</th><th>Reason</th><th>Scope</th></tr></thead>
           <tbody>
             {model.excluded.map((e) => (
               <tr key={e.assignmentId ?? `${e.roleKey}-${e.reason}`} data-excluded-assignment={e.roleKey}>
-                <td>Security Role <code>{e.roleKey}</code></td>
+                <td>{roleWords(e.roleKey)} <span className="fo-muted"><code>{e.roleKey}</code></span></td>
                 <td><code>{e.reason}</code> <span className="fo-muted">{e.reasonWords}</span></td>
                 <td className="fo-muted">{e.scope ?? "—"}</td>
               </tr>
@@ -147,38 +188,46 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
         <span>Filter</span>
         <input type="search" aria-label="Filter effective access" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </label>
+      <div className="fo-chip-row" role="group" aria-label="Which actions to show" data-effective-access-scope={scope}>
+        <button type="button" className="fo-linkbutton" aria-pressed={scope === "held"} onClick={() => setScope("held")}>{`Actions This Person Reaches (${heldCount})`}</button>
+        {" · "}
+        <button type="button" className="fo-linkbutton" aria-pressed={scope === "all"} onClick={() => setScope("all")}>{`All Catalog Actions (${model.actions.length})`}</button>
+      </div>
       {model.actions.length === 0 ? <p className="fo-muted">The evaluator reports no Object action.</p> : null}
       {groupByObject(shown).map((group) => (
         // #210: the shared scroll container -- a long capability key or source list must not widen the page (1024px).
         <div key={group.objectKey} className="fo-table-scroll">
-        <table className="fo-table" aria-label={`Effective access on ${group.objectKey}`}>
+        <table className="fo-table" aria-label={`Effective access on ${titleCase(group.objectKey)}`} data-object={group.objectKey}>
           <thead>
-            <tr><th>{group.objectKey}</th><th>Result</th><th>Source</th><th>Direct exception</th><th>Surfaces / workflow</th></tr>
+            <tr><th>{titleCase(group.objectKey)}</th><th>Result</th><th>Provenance</th><th>Source</th><th>Direct Exception</th><th>Surfaces / Workflow</th></tr>
           </thead>
           <tbody>
             {group.items.map((row) => (
               <tr key={row.capabilityKey} data-capability={row.capabilityKey} data-result={row.result ?? "NONE"}>
                 <td>
-                  {row.actionKey ?? row.capabilityKey}{" "}
-                  <span className="fo-muted"><code>{row.capabilityKey}</code>{row.actionKind ? ` · ${row.actionKind}` : ""}</span>
+                  {titleCase(row.actionKey ?? row.capabilityKey)}{" "}
+                  <span className="fo-muted"><code>{row.capabilityKey}</code>{row.actionKind ? ` · ${titleCase(row.actionKind)}` : ""}</span>
                 </td>
                 <td>
                   <span className={RESULT_TAG[row.result] ?? "fo-cp-tag"}>{row.resultWords}</span>{" "}
                   <span className="fo-muted"><code>{row.reasonCode ?? "—"}</code></span>
                   {row.withheldFromFlatSetKernels ? <div className="fo-muted">Withheld from flat-set kernels (Commercial, CRM): held only through a conditioned grant.</div> : null}
                 </td>
+                <td data-provenance={row.provenance ?? "UNREPORTED"}>
+                  {row.provenanceWords ? <span className={PROVENANCE_TAG[row.provenance] ?? "fo-cp-tag"}>{row.provenanceWords}</span> : <span className="fo-muted">—</span>}
+                </td>
                 <td>
                   {row.sourceRoles.length === 0 && row.scopedSources.length === 0 ? <span className="fo-muted">No Security Role</span> : null}
                   {row.sourceRoles.map((r) => (
                     <div key={r.roleKey}>
-                      {`Security Role ${r.roleKey}`}
+                      {roleWords(r.roleKey)}
                       {r.condition ? <span className="fo-muted">{` · Condition: ${r.condition}`}</span> : null}
-                      <span className="fo-muted">{" · Scope: all (global)"}</span>
+                      <span className="fo-muted">{" · Scope: All (Global)"}</span>
                     </div>
                   ))}
                   {row.scopedSources.map((r) => (
                     <div key={`${r.roleKey}-${r.scope}`} data-scoped-source={r.scope}>
-                      {`Security Role ${r.roleKey}`}
+                      {roleWords(r.roleKey)}
                       {r.condition ? <span className="fo-muted">{` · Condition: ${r.condition}`}</span> : null}
                       {` · Scope: ${r.scope}`}
                       <span className="fo-muted">{` · Inside the scope: ${r.resultWords} (${r.reasonCode ?? "—"})`}</span>
@@ -188,7 +237,7 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
                 <td>
                   {row.directGrant ? (
                     <div data-direct-grant={row.directGrant.label}>
-                      <span className="fo-cp-tag fo-cp-tag--direct">DIRECT EXCEPTION</span>
+                      <span className="fo-cp-tag fo-cp-tag--direct">Direct Exception</span>
                       <div className="fo-muted">{`Reason: ${row.directGrant.exceptionReason ?? "none recorded"}`}</div>
                       <div className="fo-muted">{`Expires: ${row.directGrant.expiresAt ?? "never"}`}</div>
                       {row.directGrant.condition ? <div className="fo-muted">{`Condition: ${row.directGrant.condition}`}</div> : null}
@@ -200,7 +249,7 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
                 <td className="fo-muted">
                   {row.surfaces.length > 0 ? <div>{`Surfaces: ${row.surfaces.join(", ")}`}</div> : null}
                   {row.workflowSource?.length ? row.workflowSource.map((w, i) => (
-                    <div key={i}>{`Workflow ${w.workflowKey} v${w.version} · ${w.actionKey} via ${w.roleKey}`}</div>
+                    <div key={i}>{`Workflow ${titleCase(w.workflowKey)} v${w.version} · ${titleCase(w.actionKey)} via ${roleWords(w.roleKey)}`}</div>
                   )) : null}
                   {row.surfaces.length === 0 && !row.workflowSource?.length ? "—" : null}
                 </td>

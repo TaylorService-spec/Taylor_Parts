@@ -1,5 +1,5 @@
 // Issue #226 Row 10 -- Admin Portal foundation. Deterministic unit tests for the
-// two net-new Administration subnav items (Overview, Permission Preview) and
+// net-new Administration subnav items (Overview; Permission Preview, now the hidden nonprod QA tool) and
 // the preserved behavior of every existing Administration item (Spec sec16 MVP
 // surfaces: Overview, Users, Roles & Permissions, Permission Preview, Audit
 // Logs). Per docs/implementation-plans/enterprise-access-prototype-
@@ -88,12 +88,21 @@ ok("Overview asserts NO authority of its own, and follows its children under bot
     "technician reached an Administration index with nothing on it");
 });
 
-// ----- Permission Preview: net-new, reachable, admin/dispatcher-only -----
-ok("Permission Preview subnav item exists at a named path", () => {
+// ----- Permission Preview: RETIRED from normal navigation (UI corrections §15, 2026-10-08) -----
+// The item key and its governed surface are kept (no authority moves), but it is navHidden -- never in the rail or
+// tab bar -- and its path is the NONPROD QA tool's. The retired /administration/permission-preview address redirects
+// to Users (asserted in adminSecurityReadModel.test.jsx against App.jsx).
+ok("Permission Preview is no longer a normal navigation item -- it is the hidden nonprod QA tool", () => {
   const preview = byKey("permissionPreview");
-  assert.ok(preview, "permissionPreview subnav item present");
-  assert.equal(preview.path, "permission-preview");
+  assert.ok(preview, "permissionPreview item (the QA tool) present");
+  assert.equal(preview.navHidden, true, "the retired Permission Preview is still shown in normal navigation");
+  assert.equal(preview.path, "qa/principal-inspection");
   assert.equal(preview.legacyKey, undefined);
+  const shown = adminDomain.subnav.filter((i) => !i.navHidden).map((i) => i.label);
+  assert.ok(!shown.includes("Permission Preview"), "Permission Preview is still a visible Administration label");
+  for (const label of ["Overview", "Users", "Roles & Permissions", "Objects", "Workflows", "Data Import", "Audit Logs"]) {
+    assert.ok(shown.includes(label), `${label} missing from normal Administration navigation`);
+  }
 });
 // WAVE 16 / LANE BQ, CORRECTED BY LANE BR: governed-source-only WHERE THE GOVERNED SOURCE ANSWERS.
 // Permission Preview reads and evaluates a named principal's effective access, so

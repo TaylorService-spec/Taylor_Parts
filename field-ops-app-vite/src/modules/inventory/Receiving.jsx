@@ -20,6 +20,8 @@ import {
 } from "../../domain/receivingWorkspaceQueue";
 import { fetchReceivablePurchaseOrders } from "../../services/receivingCallableClient";
 import { RECEIVING_OUTCOME } from "../../domain/receivingTransport";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 // Inventory > Receiving — the Receiving workspace, recomposed to the North Star P1 design
 // (docs/north-star/receiving/, frame 1a). ONE page identity, ONE "Awaiting receipt" queue over the
@@ -158,7 +160,7 @@ export default function Receiving({ deps }) {
           <div className="fo-receiving-bottom">
             {/* ND-33: the exceptional path. Set apart below the queue — it is not a way to receive. */}
             <section className="fo-receiving-exception" aria-labelledby="acquire-existing-heading">
-              <h3 id="acquire-existing-heading">A unit the company already owns</h3>
+              <h3 id="acquire-existing-heading">A Unit the Company Already Owns</h3>
               <p className="fo-muted">
                 For an opening balance, a legacy migration, or a machine the company owns that was never
                 recorded. This does not create a purchase order or supplier receipt, and it does not assign
@@ -166,7 +168,7 @@ export default function Receiving({ deps }) {
               </p>
               {/* ABSENT, not merely disabled, for a principal who does not hold the capability. */}
               {canAcquire ? (
-                <Button variant="secondary" onClick={() => setAcquiring(true)}>Add existing unit</Button>
+                <Button variant="secondary" onClick={() => setAcquiring(true)}>Add Existing Unit</Button>
               ) : null}
             </section>
 
@@ -176,7 +178,7 @@ export default function Receiving({ deps }) {
                 built, it lights here — and rows will be labelled by the receiving order number,
                 never the document id (RCV-G2). */}
             <section aria-labelledby="recent-receipts-heading">
-              <h3 id="recent-receipts-heading">Recent receipts</h3>
+              <h3 id="recent-receipts-heading">Recent Receipts</h3>
               <div className="fo-receiving-slot">
                 <strong>Not connected yet.</strong> Receipts are recorded by the platform, but no
                 governed read exists to show them back, so receipt history cannot honestly render today.
@@ -187,7 +189,7 @@ export default function Receiving({ deps }) {
       ) : (
         <div className="fo-receiving-journey">
           <button type="button" className="fo-link-btn" onClick={closeJourney}>
-            ← Back to the receipt queue
+            ← Back to the Receipt Queue
           </button>
           {open.journey === RECEIVING_JOURNEY.SUPPLIER ? (
             <MultiScanReceiving
@@ -224,13 +226,24 @@ export default function Receiving({ deps }) {
 
 // ─────────────────────────────────────────────── the queue section
 
+// Client-side sort over the queue rows already read (both governed sources; default = queue order).
+const QUEUE_SORT_COLUMNS = Object.freeze({
+  order: { value: (row) => row.orderReference ?? row.orderReferenceAbsence ?? null },
+  journey: { value: (row) => row.journeyWords ?? null },
+  supplier: { value: (row) => row.supplierName ?? null },
+  lines: { value: (row) => (typeof row.lineCount === "number" ? row.lineCount : null) },
+  status: { value: (row) => row.statusWords ?? null },
+});
+const NO_QUEUE_ROWS = Object.freeze([]);
+
 function AwaitingReceiptQueue({ queue, onOpen }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: queue.rows ?? NO_QUEUE_ROWS, columns: QUEUE_SORT_COLUMNS });
   const heading =
     queue.state === QUEUE_STATE.READY
-      ? `Awaiting receipt · ${queue.rows.length} order${queue.rows.length === 1 ? "" : "s"}`
+      ? `Awaiting Receipt · ${queue.rows.length} order${queue.rows.length === 1 ? "" : "s"}`
       : queue.state === QUEUE_STATE.READY_PARTIAL
-        ? `Awaiting receipt · ${queue.rows.length} shown · incomplete`
-        : "Awaiting receipt";
+        ? `Awaiting Receipt · ${queue.rows.length} shown · incomplete`
+        : "Awaiting Receipt";
 
   return (
     <section aria-labelledby="awaiting-receipt-heading">
@@ -282,16 +295,16 @@ function AwaitingReceiptQueue({ queue, onOpen }) {
               <table className="fo-table fo-receiving-queue" aria-label="Orders awaiting receipt">
                 <thead>
                   <tr>
-                    <th scope="col">Order</th>
-                    <th scope="col">Journey</th>
-                    <th scope="col">Supplier</th>
-                    <th scope="col">Lines</th>
-                    <th scope="col">Order status</th>
+                    <SortableHeader columnKey="order" label="Order" sort={sort} onSort={toggle} />
+                    <SortableHeader columnKey="journey" label="Journey" sort={sort} onSort={toggle} />
+                    <SortableHeader columnKey="supplier" label="Supplier" sort={sort} onSort={toggle} />
+                    <SortableHeader columnKey="lines" label="Lines" sort={sort} onSort={toggle} />
+                    <SortableHeader columnKey="status" label="Order Status" sort={sort} onSort={toggle} />
                     <th scope="col" className="fo-receiving-queue__action-col"><span className="sr-only">Action</span></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {queue.rows.map((row) => (
+                  {sorted.map((row) => (
                     <tr key={row.key}>
                       <td data-label="Order">
                         {/* A stated absence, never a document id (RCV-G5; RR numbering unwired) —
@@ -311,7 +324,7 @@ function AwaitingReceiptQueue({ queue, onOpen }) {
                         {row.supplierName ?? <span className="fo-muted">Supplier not resolved</span>}
                       </td>
                       <td data-label="Lines" className="fo-receiving-queue__num">{row.lineCount ?? "—"}</td>
-                      <td data-label="Order status">{row.statusWords ?? <span className="fo-muted">Not recorded</span>}</td>
+                      <td data-label="Order Status">{row.statusWords ?? <span className="fo-muted">Not recorded</span>}</td>
                       <td data-label="Action" className="fo-receiving-queue__action-col">
                         <Button
                           type="button"

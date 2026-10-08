@@ -173,7 +173,6 @@ const KNOWN_RAW_WO_STATUS_ALLOWLIST = new Set([
   "modules/accounts/ServiceActivitySection.jsx",
   "modules/controlTower/WorkOrderDetail.jsx",
   "modules/dispatcherBoard/DispatcherBoard.jsx", // handleDispatchDrop's error sentence, NOT the (now-fixed) filter dropdown
-  "modules/jobs/Jobs.jsx",
   "modules/scheduling/SchedulingWorkspace.jsx",
   "modules/service/CoordinatedVisitsWorkspace.jsx",
 ]);

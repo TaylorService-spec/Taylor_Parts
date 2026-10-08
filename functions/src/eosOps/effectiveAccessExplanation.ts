@@ -88,6 +88,13 @@ export interface ExplainedAction {
     readonly condition: GrantCondition | null;
     readonly enforced: true;
   } | null;
+  /**
+   * HOW the capability reaches the Principal (UI corrections §15, the provenance the retired Permission Preview showed):
+   * ROLE = only through Security Roles (global or scoped), DIRECT = only through a direct exception, ROLE_AND_DIRECT =
+   * both (reported once, never twice), NONE = neither. Derived here from the SAME sourceRoles / scopedSources / directGrant
+   * rows above -- a label over the evaluator's sources, never an input to any decision.
+   */
+  readonly provenance: "ROLE" | "DIRECT" | "ROLE_AND_DIRECT" | "NONE";
   /** True when every path (Role and direct) is conditioned: flat-set kernels (Commercial, CRM) withhold it. */
   readonly withheldFromFlatSetKernels: boolean;
   /** Experience surfaces this capability earns for this Principal. */
@@ -248,6 +255,7 @@ export async function explainEffectiveAccess(
         condition: directEntitlement?.condition ?? null,
         enforced: true as const,
       }) : null,
+      provenance: provenanceOf(sourceRoles.length + scopedSources.length > 0, Boolean(direct)),
       withheldFromFlatSetKernels: reaching.length > 0 && reaching.every((e) => e.condition !== null),
       surfaces: Object.freeze(EXPERIENCE_SURFACES
         .filter((s) => surfaceSet.has(s.key) && s.grants.some((g) => g.capabilityKey === capability.key))
@@ -317,4 +325,12 @@ export async function explainEffectiveAccess(
       grantsCapabilities: false as const,
     }),
   });
+}
+
+/** The ROLE / DIRECT / ROLE_AND_DIRECT vocabulary of objectSecurityAuthority's source, over the explanation's own sources. */
+export function provenanceOf(viaRole: boolean, viaDirect: boolean): ExplainedAction["provenance"] {
+  if (viaRole && viaDirect) return "ROLE_AND_DIRECT";
+  if (viaDirect) return "DIRECT";
+  if (viaRole) return "ROLE";
+  return "NONE";
 }

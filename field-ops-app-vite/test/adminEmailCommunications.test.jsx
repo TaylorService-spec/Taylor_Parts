@@ -72,7 +72,7 @@ describe("Email & Communications reads in words", () => {
   it("names the provider rather than printing its stored token", async () => {
     await show("Connections");
     expect(await screen.findByText(/Google Workspace · service@sandbox.example/)).toBeTruthy();
-    expect(screen.getByText("Awaiting consent")).toBeTruthy();
+    expect(screen.getByText("Awaiting Consent")).toBeTruthy();
     expect(screen.queryByText(/GOOGLE_WORKSPACE|PENDING_AUTHORIZATION/)).toBeNull();
   });
 
@@ -84,7 +84,7 @@ describe("Email & Communications reads in words", () => {
 
   it("says what a delivery failure needs, against the mailbox's name and not its id", async () => {
     await show("Exceptions");
-    expect(await screen.findByText("Needs attention")).toBeTruthy();
+    expect(await screen.findByText("Needs Attention")).toBeTruthy();
     expect(screen.getByText("The connected account cannot read that mailbox. Grant it access, then retry.")).toBeTruthy();
     expect(screen.queryByText("mb-warranty")).toBeNull();
   });
@@ -104,9 +104,9 @@ describe("Mailboxes with no connection configured", () => {
     fireEvent.click((await screen.findAllByRole("tab")).find((t) => t.textContent === "Mailboxes"));
 
     expect(await screen.findByText(/A mailbox belongs to a connection/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add a connection first" })).toBeTruthy();
-    expect(screen.queryByText("Add a mailbox")).toBeNull();
-    expect(screen.queryByText("Select a connection…")).toBeNull();
+    expect(screen.getByRole("button", { name: "Add a Connection First" })).toBeTruthy();
+    expect(screen.queryByText("Add a Mailbox")).toBeNull();
+    expect(screen.queryByText("Select a Connection…")).toBeNull();
   });
 });
 

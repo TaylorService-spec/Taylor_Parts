@@ -55,6 +55,8 @@ import { buildListPresentation } from "../../metadata/listPresentation.js";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
+import { sortRows } from "../../shared/ui/sorting/useTableSort.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 
 const STATUS_TONE_CLASS = {
   ACTIVE: "fo-mfr__badge--active",
@@ -63,10 +65,18 @@ const STATUS_TONE_CLASS = {
 // Still used by the Change Status dialog (not the list -- the list's own status cell now
 // renders through cellValue's ENUM branch, using manufacturerEntity's declared enumLabels,
 // same as every other migrated list's status column).
+const STATUS_WORDS = manufacturerEntity.fields.find((f) => f.id === "status")?.enumLabels ?? {};
 function StatusBadge({ status }) {
   const toneClass = STATUS_TONE_CLASS[status] ?? STATUS_TONE_CLASS.INACTIVE;
-  return <span className={`fo-mfr__badge ${toneClass}`}>{status}</span>;
+  return <span className={`fo-mfr__badge ${toneClass}`}>{statusLabel(status, STATUS_WORDS)}</span>;
 }
+
+// UI corrections item C: header sorting. getManufacturerCatalog returns the WHOLE catalog, so ordering the rows in
+// memory orders the complete result (no page boundary to misrepresent). Values are what the person reads.
+const MANUFACTURER_SORT_COLUMNS = Object.freeze({
+  name: { value: (row) => row.name ?? null },
+  status: { value: (row) => (row.status ? statusLabel(row.status, STATUS_WORDS) : null) },
+});
 const OUTCOME_TONE_CLASS = {
   applied: "fo-mfr__outcome--applied", replayed: "fo-mfr__outcome--replayed",
   noop: "fo-mfr__outcome--noop", denied: "fo-mfr__outcome--denied",
@@ -83,7 +93,7 @@ function OutcomeBanner({ outcome }) {
 // Preserves this workspace's own, more specific copy over buildListPresentation's generic
 // per-state defaults (emptyMessageFor, listPresentation.js) -- overriding is the same
 // explicitly-supported "own copy" choice buildAccountRelatedListPresentation exercises.
-const EMPTY_MESSAGE = "No manufacturers are recorded yet. Use “New manufacturer” to create the first governed record.";
+const EMPTY_MESSAGE = "No manufacturers are recorded yet. Use “New Manufacturer” to create the first governed record.";
 const DENIED_MESSAGE = "You do not have access to Manufacturers. Contact an administrator if you believe this is an error.";
 const UNAVAILABLE_MESSAGE = "Manufacturers are currently unavailable. Try again later.";
 
@@ -93,13 +103,17 @@ const UNAVAILABLE_MESSAGE = "Manufacturers are currently unavailable. Try again 
  * fetchManufacturerList() result the workspace already holds for the write dialogs'
  * `expectedVersion` -- reused, not re-fetched.
  */
-export function buildManufacturersPresentation(state) {
+export function buildManufacturersPresentation(state, sort = null) {
   const loading = state.phase === "loading";
   const errorStatus = state.phase === "denied" ? "denied" : state.phase === "error" ? "unavailable" : null;
   const manufacturers = state.phase === "ready" ? state.manufacturers ?? [] : [];
   // `id` is the routing/keying field ONLY -- it is never among the declared columns
   // (manufacturerIndexList: name, status), so cellValue never has a chance to render it.
-  const rows = manufacturers.map((m) => ({ id: m.manufacturerId, name: m.name, status: m.status }));
+  const rows = sortRows(
+    manufacturers.map((m) => ({ id: m.manufacturerId, name: m.name, status: m.status })),
+    sort,
+    MANUFACTURER_SORT_COLUMNS,
+  );
   // getManufacturerCatalog returns the WHOLE catalog, unbounded -- there is no truncation
   // to disclose here (unlike a capped RELATED section), so hasMore is always false.
   const presentation = buildListPresentation({
@@ -163,7 +177,14 @@ export default function Manufacturers(props) {
   const submitEdit = async () => { setBusy(true); afterWrite(await runRename(panel.m.manufacturerId, panel.m.version, form, panel.m)); setBusy(false); };
   const submitStatus = async (s) => { setBusy(true); afterWrite(await runChangeStatus(panel.m.manufacturerId, panel.m.version, s)); setBusy(false); };
 
-  const presentation = useMemo(() => buildManufacturersPresentation(state), [state]);
+  // Header sort state ({ key, direction } | null = the catalog's default order), in the grid's criteria shape.
+  const [headerSort, setHeaderSort] = useState(null);
+  const presentation = useMemo(() => buildManufacturersPresentation(state, headerSort), [state, headerSort]);
+  const sorting = useMemo(() => ({
+    entity: manufacturerEntity,
+    criteria: { sort: headerSort ? [{ fieldId: headerSort.key, direction: headerSort.direction === "desc" ? "DESC" : "ASC" }] : [] },
+    onSort: (fieldId, direction) => setHeaderSort(fieldId ? { key: fieldId, direction: direction === "DESC" ? "desc" : "asc" } : null),
+  }), [headerSort]);
 
   // Row actions mirror the original table's per-row Rename/Status buttons exactly:
   // disabled while a write is in flight (`busy`), same as before -- never gated on
@@ -211,7 +232,7 @@ export default function Manufacturers(props) {
           ? [{ key: "invalid", label: `${state.invalidCount} malformed record${state.invalidCount === 1 ? "" : "s"} excluded`, tone: "attention" }]
           : []
       }
-      action={<Button variant="primary" onClick={openCreate} disabled={busy}>New manufacturer</Button>}
+      action={<Button variant="primary" onClick={openCreate} disabled={busy}>New Manufacturer</Button>}
     >
       <p className="fo-mfr__hint">
         Governed manufacturer reference records that Parts link to. Create, rename, and activate/deactivate
@@ -229,7 +250,7 @@ export default function Manufacturers(props) {
       {panel && (
         <div className="fo-mfr__panel">
           <div className="fo-mfr__panel-header">
-            <h3 className="fo-mfr__panel-title">{panel.mode === "create" ? "New manufacturer" : panel.mode === "edit" ? `Rename ${panel.m.name}` : `Change status — ${panel.m.name}`}</h3>
+            <h3 className="fo-mfr__panel-title">{panel.mode === "create" ? "New Manufacturer" : panel.mode === "edit" ? `Rename ${panel.m.name}` : `Change Status — ${panel.m.name}`}</h3>
             <Button variant="tertiary" className="fo-mfr__close-btn" onClick={close} disabled={busy}>×</Button>
           </div>
           <OutcomeBanner outcome={outcome} />
@@ -238,7 +259,7 @@ export default function Manufacturers(props) {
               <p className="fo-mfr__status-desc">Current status: <StatusBadge status={panel.m.status} />. Choose a governed transition:</p>
               <div className="fo-mfr__status-actions">
                 {allowedStatusTransitions(panel.m.status).map((s) => (
-                  <Button key={s} variant="secondary" onClick={() => submitStatus(s)} disabled={busy || !writeReady} className="fo-mfr__status-btn">→ {s}</Button>
+                  <Button key={s} variant="secondary" onClick={() => submitStatus(s)} disabled={busy || !writeReady} className="fo-mfr__status-btn">→ {statusLabel(s, STATUS_WORDS)}</Button>
                 ))}
               </div>
             </div>
@@ -249,7 +270,7 @@ export default function Manufacturers(props) {
               )}
               <div className="fo-mfr__field"><label className="fo-mfr__label" htmlFor={nameFieldId}>Name</label><input id={nameFieldId} className="fo-mfr__input" value={form.name ?? ""} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} disabled={busy || !writeReady} /></div>
               <div className="fo-mfr__form-actions">
-                <Button variant="primary" onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={!writeReady} loading={busy}>{panel.mode === "create" ? "Create manufacturer" : "Save name"}</Button>
+                <Button variant="primary" onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={!writeReady} loading={busy}>{panel.mode === "create" ? "Create Manufacturer" : "Save Name"}</Button>
                 <Button variant="secondary" onClick={close} disabled={busy}>Cancel</Button>
               </div>
             </div>
@@ -266,7 +287,7 @@ export default function Manufacturers(props) {
           NO ROW NAVIGATION either: there is no Manufacturer record route, and one is not invented
           to make rows clickable. The rows carry governed row ACTIONS (rename, status) instead,
           which is the affordance this object genuinely has. */}
-      <MetadataListGrid presentation={presentation} rowActions={rowActions} caption="Manufacturers" onRetry={load} />
+      <MetadataListGrid presentation={presentation} sorting={sorting} rowActions={rowActions} caption="Manufacturers" onRetry={load} />
     </WorkspaceIdentity>
   );
 }

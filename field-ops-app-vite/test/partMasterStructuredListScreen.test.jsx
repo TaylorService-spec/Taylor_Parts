@@ -141,7 +141,10 @@ describe("the list renders business words, not storage tokens", () => {
   it("column headings come from the metadata, so Sort and the table agree", async () => {
     setup();
     await screen.findByText("PRT-1001");
-    const headings = [...document.querySelectorAll("th")].map((t) => t.textContent);
+    // UI corrections package: a sortable heading is a button inside the <th>; its label is the button's first span
+    // (the indicator and the spoken sort state ride beside it).
+    const headings = [...document.querySelectorAll("th")]
+      .map((t) => t.querySelector(".fo-sortable-th__button > span")?.textContent ?? t.textContent);
     for (const id of ["internalPartNumber", "name", "status", "controlType", "stockingClass"]) {
       const field = partEntity.fields.find((f) => f.id === id);
       expect(headings, id).toContain(field.label);
@@ -198,6 +201,25 @@ describe("the controls come from metadata, not from this screen", () => {
     const declared = partEntity.fields
       .filter((f) => f.sortable && f.displayable !== false).map((f) => f.id);
     expect([...new Set(sortValues)].sort()).toEqual([...new Set(declared)].sort());
+  });
+
+  it("an index-backed column heading sorts through the URL criteria (the query orders the whole result)", async () => {
+    setup();
+    await screen.findByText("PRT-1001");
+    fireEvent.click(screen.getByRole("button", { name: /^Name/ }));
+    await waitFor(() => expect(h.setSearchParams).toHaveBeenCalled());
+    expect(h.setSearchParams.mock.calls.at(-1)[0].toString()).toMatch(/name/);
+  });
+
+  it("a non-indexed column heading orders only the loaded rows, never the URL", async () => {
+    setup();
+    await screen.findByText("PRT-1001");
+    const firstCell = () => document.querySelector("tbody tr td").textContent;
+    expect(firstCell()).toBe("PRT-1001");
+    fireEvent.click(screen.getByRole("button", { name: /^Category/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Category/ })); // descending: Refrigeration first
+    expect(firstCell()).toBe("CW-P-0004");
+    expect(h.setSearchParams).not.toHaveBeenCalled();
   });
 
   it("explains a field a person can see but cannot filter", async () => {

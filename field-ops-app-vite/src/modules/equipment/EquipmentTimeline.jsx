@@ -24,6 +24,15 @@ import {
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+
+// Client-side sort over the rows already built; the default (no sort) is the timeline's newest-first order.
+const TIMELINE_SORT_COLUMNS = Object.freeze({
+  source: { value: (row) => timelineEventWords(row).sourceLabel },
+  date: { value: (row) => (Number.isFinite(row.at) ? row.at : null) },
+  event: { value: (row) => { const w = timelineEventWords(row); return w.reference ?? w.fallbackEvent; } },
+});
 
 function formatDate(at) {
   if (typeof at !== "number") return "";
@@ -44,6 +53,7 @@ export default function EquipmentTimeline({
   const { status: inventoryStatus, events: inventoryEvents } = readInventoryHistorySource(inventorySource);
   const serviceEvents = useMemo(() => mapServiceEvents(workOrders, equipmentId), [workOrders, equipmentId]);
   const { rows } = useMemo(() => buildEquipmentTimeline({ serviceEvents, inventoryEvents }), [serviceEvents, inventoryEvents]);
+  const { sort, toggle, sorted: sortedRows } = useTableSort({ rows, columns: TIMELINE_SORT_COLUMNS });
   const state = deriveTimelineState({
     serviceLoading: workOrdersLoading,
     serviceError: !!workOrdersError,
@@ -54,7 +64,7 @@ export default function EquipmentTimeline({
 
   return (
     <section className="fo-panel" aria-labelledby="equip-timeline" data-history-section>
-      <h2 id="equip-timeline">Activity timeline</h2>
+      <h2 id="equip-timeline">Activity Timeline</h2>
 
       {!inventoryConnected && (
         <p className="fo-muted" role="status">
@@ -76,13 +86,13 @@ export default function EquipmentTimeline({
 
       {state === TIMELINE_STATE.UNAVAILABLE && (
         <FailureState
-          title="Activity unavailable"
+          title="Activity Unavailable"
           message={typeof workOrdersError === "string" && workOrdersError ? workOrdersError : "This asset’s activity is temporarily unavailable."}
         />
       )}
 
       {state === TIMELINE_STATE.EMPTY && (
-        <EmptyState variant="database" title="No activity yet" message="No service activity references this equipment yet." />
+        <EmptyState variant="database" title="No Activity Yet" message="No service activity references this equipment yet." />
       )}
 
       {(state === TIMELINE_STATE.READY || state === TIMELINE_STATE.PARTIAL) && (
@@ -99,16 +109,16 @@ export default function EquipmentTimeline({
         // is precisely what was wrong.
         <div className="ns-table-wrap">
           <table className="ns-table ns-table--cards">
-            <caption className="fo-sr-only">Equipment activity timeline, newest first</caption>
+            <caption className="fo-sr-only">{sort ? "Equipment activity timeline" : "Equipment activity timeline, newest first"}</caption>
             <thead>
               <tr>
-                <th scope="col">Source</th>
-                <th scope="col">Date</th>
-                <th scope="col">Event</th>
+                <SortableHeader columnKey="source" label="Source" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="date" label="Date" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="event" label="Event" sort={sort} onSort={toggle} />
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, i) => {
+              {sortedRows.map((row, i) => {
                 const e = row.ref || {};
                 const words = timelineEventWords(row);
                 // rows are pre-sanitized to finite `at`; guard defensively anyway so a Date

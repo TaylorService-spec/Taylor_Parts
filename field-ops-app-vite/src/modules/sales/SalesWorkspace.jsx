@@ -9,7 +9,7 @@ import { useOpportunities } from "../../hooks/useOpportunities.js";
 import { useOpportunityTransitions } from "../../hooks/useOpportunityTransitions.js";
 import {
   buildOpportunityPipeline, channelLabel, stageProgress,
-  OPPORTUNITY_VIEW, OPPORTUNITY_VIEW_LABEL, OPPORTUNITY_EMPTY_TEXT,
+  OPPORTUNITY_VIEW, OPPORTUNITY_VIEW_LABEL, OPPORTUNITY_EMPTY_TEXT, OPPORTUNITY_STAGES,
   normalizeOpportunityView, selectOpportunityView,
 } from "../../domain/opportunityLifecycle.js";
 import { useSearchParams } from "react-router-dom";
@@ -24,6 +24,9 @@ import { SALES_AGREEMENT_READ_CAPABILITY } from "../../access/salesAgreementCapa
 import { useOpportunitySectionSave } from "../../hooks/useOpportunitySectionSave.js";
 import { isOpportunityEditable } from "../../domain/opportunitySectionSave.js";
 import StageProgressTrack from "../../shared/ui/StageProgressTrack.jsx";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { titleCasePhrase } from "../../shared/display/displayLabels.js";
 import NewOpportunityForm from "./NewOpportunityForm.jsx";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 
@@ -159,8 +162,8 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps,
     { key: "customer", label: "Customer", value: row.customerName },
     { key: "channel", label: "Channel", value: channelLabel(row.channel) },
     { key: "stage", label: "State", value: <StatusPill tone={row.commercial.tone} label={row.commercial.label} /> },
-    { key: "value", label: "Est. value", value: currency(row.expectedValue) },
-    { key: "close", label: "Expected close", value: shortDate(row.expectedCloseAt) },
+    { key: "value", label: "Est. Value", value: currency(row.expectedValue) },
+    { key: "close", label: "Expected Close", value: shortDate(row.expectedCloseAt) },
     // AN EMPLOYEE ID IS NOT A PERSON (DECISIONS #106). This rendered `row.ownerEmployeeId` raw —
     // found by the new dynamic-detail certification sweep the moment this pane became reachable,
     // which is exactly what that sweep was added to do.
@@ -276,6 +279,16 @@ function OpportunityDetail({ row, readiness, onSaveSection, onChanged, saveDeps,
 
 // One scannable pipeline row. Attention-bearing rows carry a left marker + an inline pill so the queue reads
 // at a glance; the stage pill uses the shared semantic tone so "attention looks like attention" everywhere.
+// Sort comparables for the pipeline table. Absent values sort last.
+const PIPELINE_SORT_COLUMNS = Object.freeze({
+  customer: { value: (row) => row.customerName },
+  stage: { value: (row) => (row.outcome ? OPPORTUNITY_STAGES.length + (row.outcome === "WON" ? 0 : 1) : (OPPORTUNITY_STAGES.indexOf(row.stage) >= 0 ? OPPORTUNITY_STAGES.indexOf(row.stage) : null)) },
+  channel: { value: (row) => (row.channel ? channelLabel(row.channel) : null) },
+  value: { value: (row) => (typeof row.expectedValue === "number" ? row.expectedValue : null) },
+  close: { value: (row) => (typeof row.expectedCloseAt === "number" ? row.expectedCloseAt : null) },
+  next: { value: (row) => (row.attention.length > 0 ? row.attention[0].label : row.nextAction || null) },
+});
+
 function PipelineRow({ row, selected, onSelect }) {
   const progress = stageProgress(row);
   return (
@@ -310,9 +323,9 @@ function PipelineRow({ row, selected, onSelect }) {
         </div>
       </td>
       <td className="fo-sales-col--secondary" data-label="Channel">{channelLabel(row.channel)}</td>
-      <td className="fo-sales-row__value" data-label="Est. value">{currency(row.expectedValue)}</td>
-      <td className="fo-sales-col--secondary" data-label="Expected close">{shortDate(row.expectedCloseAt)}</td>
-      <td className="fo-sales-row__next" data-label="Attention / next">
+      <td className="fo-sales-row__value" data-label="Est. Value">{currency(row.expectedValue)}</td>
+      <td className="fo-sales-col--secondary" data-label="Expected Close">{shortDate(row.expectedCloseAt)}</td>
+      <td className="fo-sales-row__next" data-label="Attention / Next">
         {row.attention.length > 0 ? (
           <StatusPill tone={row.attentionTone} label={row.attention[0].label} asText />
         ) : (
@@ -369,6 +382,8 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
 
   // FILTERS facts that already exist -- it never re-derives stage, attention or closure.
   const selected = useMemo(() => selectOpportunityView(pipeline, view), [pipeline, view]);
+  // HEADER SORTING over the rows in this view; no sort = the pipeline's attention-first order.
+  const { sort, toggle, sorted: sortedPipelineRows } = useTableSort({ rows: selected.rows, columns: PIPELINE_SORT_COLUMNS });
 
   const selectedRow = useMemo(
     // ADDRESSABLE SELECTION. `?opportunity=<id>` selects a row, so another surface can link to a
@@ -388,7 +403,7 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
 
   const contextItems = [
     { key: "open", label: "Open", value: pipeline.counts.open },
-    { key: "attention", label: "Needs attention", value: pipeline.counts.needsAttention },
+    { key: "attention", label: "Needs Attention", value: pipeline.counts.needsAttention },
     { key: "won", label: "Won", value: pipeline.counts.won },
     { key: "lost", label: "Lost", value: pipeline.counts.lost },
   ];
@@ -404,12 +419,12 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
         <Button
           type="button"
           variant={createEnabled ? "primary" : "protected"}
-          aria-label={createEnabled ? "New opportunity" : `New opportunity — ${writeReadiness.reason}`}
+          aria-label={createEnabled ? "New Opportunity" : `New Opportunity — ${writeReadiness.reason}`}
           title={createEnabled ? undefined : writeReadiness.reason}
           reason={createEnabled ? undefined : writeReadiness.reason}
           onClick={createEnabled ? () => setCreating(true) : undefined}
         >
-          New opportunity
+          New Opportunity
         </Button>
       }
     />
@@ -464,7 +479,7 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
       )}
       {isSynthetic && (
         <p className="fo-sales-banner fo-muted">
-          Showing synthetic sample opportunities. The live sales pipeline connects in a later cycle.
+          Sample Data: showing sample opportunities. The live sales pipeline connects in a later cycle.
           {!createEnabled && <>{" "}{writeReadiness.reason}</>}
         </p>
       )}
@@ -509,7 +524,7 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
                 className={`fo-sales-view ${view === v ? "is-active" : ""}`.trim()}
                 onClick={() => setView(v)}
               >
-                {OPPORTUNITY_VIEW_LABEL[v]}
+                {titleCasePhrase(OPPORTUNITY_VIEW_LABEL[v])}
                 {v !== OPPORTUNITY_VIEW.ALL && (
                   <span className="fo-sales-view__count">
                     {v === OPPORTUNITY_VIEW.OPEN ? pipeline.counts.open
@@ -534,16 +549,16 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
           <table className="fo-sales-pipeline">
             <thead>
               <tr>
-                <th>Customer</th>
-                <th>Stage</th>
-                <th className="fo-sales-col--secondary">Channel</th>
-                <th>Est. value</th>
-                <th className="fo-sales-col--secondary">Expected close</th>
-                <th>Attention / next</th>
+                <SortableHeader columnKey="customer" label="Customer" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="stage" label="Stage" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="channel" label="Channel" sort={sort} onSort={toggle} className="fo-sales-col--secondary" />
+                <SortableHeader columnKey="value" label="Est. Value" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="close" label="Expected Close" sort={sort} onSort={toggle} className="fo-sales-col--secondary" />
+                <SortableHeader columnKey="next" label="Attention / Next" sort={sort} onSort={toggle} />
               </tr>
             </thead>
             <tbody>
-              {selected.rows.map((row) => (
+              {sortedPipelineRows.map((row) => (
                 <PipelineRow key={row.id} row={row} selected={selectedRow?.id === row.id} onSelect={setSelectedId} />
               ))}
             </tbody>

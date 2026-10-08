@@ -10,6 +10,10 @@ import { useCallback, useEffect, useState } from "react";
 import { SectionHeader, StatusIndicator, Button } from "../../shared/ui/primitives";
 import { Field, FormError } from "../../shared/ui/form";
 import { callPolicyApi } from "../../services/adminPolicyApiClient";
+import { OPERATING_COMPANIES } from "../../domain/operatingCompanyAuthority.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 const refusalText = (res) => {
   if (res.code === "FORBIDDEN") return "The truck registry is not available to you. It needs inventory.truckRegistry.manage, which your account does not currently hold.";
@@ -19,6 +23,15 @@ const refusalText = (res) => {
 
 const EMPTY_LOCATION = { locationId: "", displayLabel: "", operatingCompanyId: "" };
 const EMPTY_TRUCK = { truckId: "", vehicleNumber: "", displayLabel: "", homeWarehouseId: "", mobileLocationId: "" };
+
+const TRUCK_COLUMNS = Object.freeze({
+  truck: { value: (t) => t.displayLabel ?? t.truckId },
+  vehicle: { value: (t) => t.vehicleNumber },
+  location: { value: (t) => t.mobileLocation?.displayLabel ?? null },
+  warehouse: { value: (t) => t.boundWarehouseId },
+  employees: { value: (t) => (t.scopedEmployeeIds?.length ? t.scopedEmployeeIds.join(", ") : null) },
+  status: { value: (t) => statusLabel(t.status) },
+});
 
 export default function TruckRegistry({ callApi = callPolicyApi }) {
   const [trucks, setTrucks] = useState(null);
@@ -30,6 +43,8 @@ export default function TruckRegistry({ callApi = callPolicyApi }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  const { sort, toggle, sorted } = useTableSort({ rows: trucks, columns: TRUCK_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
 
   const load = useCallback(async () => {
     const res = await callApi("listTrucks", {});
@@ -65,57 +80,65 @@ export default function TruckRegistry({ callApi = callPolicyApi }) {
 
   return (
     <section aria-labelledby="truck-registry-title">
-      <SectionHeader id="truck-registry-title" title="Truck registry" description="Trucks and their MOBILE stock locations. Each change states a reason and is audited. Who works from a truck is the Employee's MOBILE scope." />
+      <SectionHeader id="truck-registry-title" title="Truck Registry" description="Trucks and their mobile stock locations. Each change states a reason and is audited. Who works from a truck is the Employee's MOBILE scope." />
       {refusal && <p className="fo-muted" role="status">{refusal}</p>}
       {trucks && (
         <>
           <table className="fo-table">
-            <thead><tr><th>Truck</th><th>Vehicle</th><th>Stock location</th><th>Bound warehouse</th><th>Employees (MOBILE scope)</th><th>Status</th><th /></tr></thead>
+            <thead><tr>
+              {header("truck", "Truck")}{header("vehicle", "Vehicle")}{header("location", "Stock Location")}{header("warehouse", "Bound Warehouse")}
+              {header("employees", "Employees (Mobile Scope)")}{header("status", "Status")}<th />
+            </tr></thead>
             <tbody>
-              {trucks.map((t) => (
+              {sorted.map((t) => (
                 <tr key={t.truckId}>
                   <td>{t.displayLabel} <span className="fo-muted">({t.truckId})</span></td>
                   <td>{t.vehicleNumber}</td>
                   <td>{t.mobileLocation ? `${t.mobileLocation.displayLabel} (${t.mobileLocation.locationId})` : <span className="fo-muted">— not linked</span>}</td>
                   <td>{t.boundWarehouseId ?? <span className="fo-muted">— unbound</span>}</td>
                   <td>{t.scopedEmployeeIds.length ? t.scopedEmployeeIds.join(", ") : <span className="fo-muted">none</span>}</td>
-                  <td><StatusIndicator tone={t.status === "ACTIVE" ? "positive" : "neutral"}>{t.status}</StatusIndicator></td>
+                  <td><StatusIndicator tone={t.status === "ACTIVE" ? "positive" : "neutral"}>{statusLabel(t.status)}</StatusIndicator></td>
                   <td>
                     <select className="fo-input" aria-label={`Stock location for ${t.truckId}`} value={relink[t.truckId] ?? ""} onChange={(e) => setRelink({ ...relink, [t.truckId]: e.target.value })}>
-                      <option value="">Choose a free location…</option>
+                      <option value="">Choose a Free Location…</option>
                       {freeLocations.map((l) => <option key={l.locationId} value={l.locationId}>{l.displayLabel}</option>)}
                     </select>
                     <Button size="sm" variant="secondary" disabled={busy || !reason.trim() || !relink[t.truckId]} onClick={() => link(t)}>{t.mobileLocation ? "Relink" : "Link"}</Button>
                     {t.mobileLocation && <Button size="sm" variant="secondary" disabled={busy || !reason.trim()} onClick={() => unlink(t)}>Unlink</Button>}
-                    {t.status !== "OUT_OF_SERVICE" && <Button size="sm" variant="secondary" disabled={busy || !reason.trim()} onClick={() => toggleStatus(t)}>{t.status === "ACTIVE" ? "Mark idle" : "Mark active"}</Button>}
+                    {t.status !== "OUT_OF_SERVICE" && <Button size="sm" variant="secondary" disabled={busy || !reason.trim()} onClick={() => toggleStatus(t)}>{t.status === "ACTIVE" ? "Mark Idle" : "Mark Active"}</Button>}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <h4>New MOBILE stock location</h4>
+          <h4>New Mobile Stock Location</h4>
           <div className="fo-form-row">
-            <Field label="Location id"><input className="fo-input" value={locationDraft.locationId} onChange={(e) => setLocationDraft({ ...locationDraft, locationId: e.target.value })} /></Field>
+            <Field label="Location ID"><input className="fo-input" value={locationDraft.locationId} onChange={(e) => setLocationDraft({ ...locationDraft, locationId: e.target.value })} /></Field>
             <Field label="Label"><input className="fo-input" value={locationDraft.displayLabel} onChange={(e) => setLocationDraft({ ...locationDraft, displayLabel: e.target.value })} /></Field>
-            <Field label="Operating company id"><input className="fo-input" value={locationDraft.operatingCompanyId} onChange={(e) => setLocationDraft({ ...locationDraft, operatingCompanyId: e.target.value })} /></Field>
+            <Field label="Operating Company">
+              <select className="fo-input" value={locationDraft.operatingCompanyId} onChange={(e) => setLocationDraft({ ...locationDraft, operatingCompanyId: e.target.value })}>
+                <option value="">Choose an Operating Company…</option>
+                {OPERATING_COMPANIES.map((c) => <option key={c.id} value={c.id}>{c.displayName}</option>)}
+              </select>
+            </Field>
           </div>
-          <h4>New truck</h4>
+          <h4>New Truck</h4>
           <div className="fo-form-row">
-            <Field label="Truck id"><input className="fo-input" value={truckDraft.truckId} onChange={(e) => setTruckDraft({ ...truckDraft, truckId: e.target.value })} /></Field>
-            <Field label="Vehicle number"><input className="fo-input" value={truckDraft.vehicleNumber} onChange={(e) => setTruckDraft({ ...truckDraft, vehicleNumber: e.target.value })} /></Field>
+            <Field label="Truck ID"><input className="fo-input" value={truckDraft.truckId} onChange={(e) => setTruckDraft({ ...truckDraft, truckId: e.target.value })} /></Field>
+            <Field label="Vehicle Number"><input className="fo-input" value={truckDraft.vehicleNumber} onChange={(e) => setTruckDraft({ ...truckDraft, vehicleNumber: e.target.value })} /></Field>
             <Field label="Label"><input className="fo-input" value={truckDraft.displayLabel} onChange={(e) => setTruckDraft({ ...truckDraft, displayLabel: e.target.value })} /></Field>
-            <Field label="Home warehouse id"><input className="fo-input" value={truckDraft.homeWarehouseId} onChange={(e) => setTruckDraft({ ...truckDraft, homeWarehouseId: e.target.value })} /></Field>
-            <Field label="Stock location (optional)">
+            <Field label="Home Warehouse ID"><input className="fo-input" value={truckDraft.homeWarehouseId} onChange={(e) => setTruckDraft({ ...truckDraft, homeWarehouseId: e.target.value })} /></Field>
+            <Field label="Stock Location (Optional)">
               <select className="fo-input" value={truckDraft.mobileLocationId} onChange={(e) => setTruckDraft({ ...truckDraft, mobileLocationId: e.target.value })}>
-                <option value="">Not linked yet</option>
+                <option value="">Not Linked Yet</option>
                 {freeLocations.map((l) => <option key={l.locationId} value={l.locationId}>{l.displayLabel}</option>)}
               </select>
             </Field>
           </div>
-          <Field label="Reason (required for every change)"><input className="fo-input" aria-label="Reason for the change" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+          <Field label="Reason (Required for Every Change)"><input className="fo-input" aria-label="Reason for the change" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
           <div className="fo-form-actions">
-            <Button disabled={busy || !reason.trim() || !locationDraft.locationId || !locationDraft.displayLabel || !locationDraft.operatingCompanyId} onClick={createLocation}>Create stock location</Button>
-            <Button disabled={busy || !reason.trim() || !truckDraft.truckId || !truckDraft.vehicleNumber || !truckDraft.displayLabel || !truckDraft.homeWarehouseId} onClick={createTruck}>Create truck</Button>
+            <Button disabled={busy || !reason.trim() || !locationDraft.locationId || !locationDraft.displayLabel || !locationDraft.operatingCompanyId} onClick={createLocation}>Create Stock Location</Button>
+            <Button disabled={busy || !reason.trim() || !truckDraft.truckId || !truckDraft.vehicleNumber || !truckDraft.displayLabel || !truckDraft.homeWarehouseId} onClick={createTruck}>Create Truck</Button>
           </div>
           {notice && <FormError>{notice.tone === "danger" ? notice.text : null}</FormError>}
           {notice?.tone === "positive" && <p className="fo-muted" role="status">{notice.text}</p>}

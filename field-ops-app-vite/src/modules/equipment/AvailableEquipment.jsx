@@ -66,10 +66,23 @@ import { Button } from "../../shared/ui/primitives";
 // applies the identical rule (`locationResolved === false` is an absence, never the raw key), which
 // is why they agree by construction rather than by coincidence.
 import { availableRowCells } from "../../domain/equipmentNorthStar";
+import { sortRows, useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { statusLabel } from "../../shared/display/displayLabels.js";
+
+// Client-side sort over the rows already loaded; one sort state is shared by every business-line table.
+const AVAILABLE_SORT_COLUMNS = Object.freeze({
+  unit: { value: (r) => availableRowCells(r).unit },
+  serial: { value: (r) => availableRowCells(r).serial },
+  model: { value: (r) => availableRowCells(r).model },
+  condition: { value: (r) => availableRowCells(r).condition },
+  location: { value: (r) => availableRowCells(r).location },
+});
 
 const EMPTY_FILTERS = { term: "", category: "", manufacturer: "", model: "", status: "", location: "" };
 
 export default function AvailableEquipment() {
+  const { sort, toggle } = useTableSort();
   const liveSource = useAvailableEquipmentSource();
   const { status: sourceStatus, assets: rawAssets } = readSerializedAssetSource(liveSource);
 
@@ -101,7 +114,7 @@ export default function AvailableEquipment() {
   if (state === AVAILABLE_STATE.DENIED) {
     return (
       <FailureState
-        title="Available Equipment unavailable"
+        title="Available Equipment Unavailable"
         message="You are not able to view available Serialized Assets."
       />
     );
@@ -112,7 +125,7 @@ export default function AvailableEquipment() {
     // denial). Visible, never blank, never a silent fallback to a fabricated or stale "doesn't exist" claim.
     return (
       <FailureState
-        title="Available Equipment temporarily unavailable"
+        title="Available Equipment Temporarily Unavailable"
         message="The Available Equipment read could not be completed. Try again later."
       />
     );
@@ -162,7 +175,7 @@ export default function AvailableEquipment() {
         {select("status", "Condition / status", options.statuses)}
         {select("location", "Location", options.locations)}
         {filtersActive && (
-          <Button variant="secondary" onClick={clearFilters}>Clear filters</Button>
+          <Button variant="secondary" onClick={clearFilters}>Clear Filters</Button>
         )}
       </div>
 
@@ -185,7 +198,7 @@ export default function AvailableEquipment() {
 
       {state === AVAILABLE_STATE.EMPTY ? (
         <EmptyState
-          title="No available Equipment"
+          title="No Available Equipment"
           message={filtersActive ? "No available inventory matches these filters." : "No serialized assets are currently available for assignment."}
         />
       ) : (
@@ -215,15 +228,15 @@ export default function AvailableEquipment() {
                 <caption className="fo-sr-only">{group.label} available serialized assets</caption>
                 <thead>
                   <tr>
-                    <th scope="col">Unit</th>
-                    <th scope="col">Serial</th>
-                    <th scope="col">Model</th>
-                    <th scope="col">Condition</th>
-                    <th scope="col">Location</th>
+                    <SortableHeader columnKey="unit" label="Unit" sort={sort} onSort={toggle} />
+                    <SortableHeader columnKey="serial" label="Serial" sort={sort} onSort={toggle} />
+                    <SortableHeader columnKey="model" label="Model" sort={sort} onSort={toggle} />
+                    <SortableHeader columnKey="condition" label="Condition" sort={sort} onSort={toggle} />
+                    <SortableHeader columnKey="location" label="Location" sort={sort} onSort={toggle} />
                   </tr>
                 </thead>
                 <tbody>
-                  {group.rows.map((r) => {
+                  {sortRows(group.rows, sort, AVAILABLE_SORT_COLUMNS).map((r) => {
                     const cells = availableRowCells(r);
                     return (
                       <tr key={r.serialNo} data-available-serial={r.serialNo}>
@@ -238,7 +251,7 @@ export default function AvailableEquipment() {
                           {cells.model ?? <span className="ns-state--na">Model unavailable</span>}
                         </td>
                         <td data-label="Condition">
-                          {cells.condition ?? <span className="ns-state--na">Not recorded</span>}
+                          {cells.condition ? statusLabel(cells.condition) : <span className="ns-state--na">Not recorded</span>}
                         </td>
                         {/* AN UNRESOLVED LOCATION IS AN ABSENCE, never the raw key: showing the id
                             teaches people to memorise internal identifiers and gives them nothing

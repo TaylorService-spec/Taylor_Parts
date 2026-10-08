@@ -1,6 +1,6 @@
 import { useAccountOpportunities } from "../../hooks/useAccountOpportunities.js";
 import { accountOpportunitiesView, ACCOUNT_OPPORTUNITIES_STATE } from "../../domain/accountOpportunitiesView.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import { stageLabel } from "../../domain/opportunityLifecycle.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
@@ -32,8 +32,9 @@ function formatValue(expectedValue) {
 
 export default function AccountOpportunitiesSection({ accountId }) {
   const { loading, errorStatus, result } = useAccountOpportunities(accountId);
-  const { byEmployeeId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
   const view = accountOpportunitiesView({ loading, errorStatus, result });
+  // Name ONLY the people on these records (resolveEmployeeDisplayNames) -- not the Employee directory, which this reader may not hold.
+  const { byEmployeeId, loading: directoryLoading, error: directoryError } = useGovernedEmployeeDirectory({ employeeIds: (view.rows ?? []).map((r) => r.ownerEmployeeId) });
 
   return (
     <section id="account-opportunities-section" className="wo-history" aria-label="Opportunities">
@@ -42,7 +43,7 @@ export default function AccountOpportunitiesSection({ accountId }) {
       {view.kind === ACCOUNT_OPPORTUNITIES_STATE.LOADING && <p className="fo-muted">Loading opportunities…</p>}
 
       {view.kind === ACCOUNT_OPPORTUNITIES_STATE.DENIED && (
-        <FailureState title="Opportunities unavailable" message="You are not authorized to view Opportunities for this account." />
+        <FailureState title="Opportunities Unavailable" message="You are not authorized to view Opportunities for this account." />
       )}
 
       {view.kind === ACCOUNT_OPPORTUNITIES_STATE.UNAVAILABLE && (

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, SectionHeader, StatusIndicator, Button } from "../../shared/ui/primitives";
 import { buildDataImportView, dataImportSubtitle, rowTone, IMPORT_STAGE } from "../../domain/dataImportView";
 import {
@@ -9,6 +9,9 @@ import {
   readFileBase64,
   isWorkbookFile,
 } from "../../access/dataImportClient";
+import { statusLabel, titleCase } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 // Administration -> Data Import.
 //
@@ -49,27 +52,37 @@ function Findings({ findings }) {
   );
 }
 
+const outcomeWords = (row) => (row.classification === "ERROR" ? "Will Not Import" : "Will Import");
+const PREVIEW_COLUMNS = Object.freeze({
+  row: { value: (row) => row.sourceRowNumber },
+  identity: { value: (row) => row.identity },
+  outcome: { value: outcomeWords },
+  notes: { value: (row) => (row.findings?.length ? row.findings.map((f) => f.message).join("; ") : null) },
+});
+
 function PreviewTable({ rows }) {
+  const { sort, toggle, sorted } = useTableSort({ rows, columns: PREVIEW_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
   return (
     <div className="fo-data-import__preview">
       <table className="fo-table">
         <thead>
           <tr>
-            <th scope="col">Row</th>
-            <th scope="col">Identity</th>
-            <th scope="col">Outcome</th>
-            <th scope="col">Notes</th>
+            {header("row", "Row")}
+            {header("identity", "Identity")}
+            {header("outcome", "Outcome")}
+            {header("notes", "Notes")}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {sorted.map((row) => (
             <tr key={row.sourceRowNumber}>
               <td className="fo-tabular-nums">{row.sourceRowNumber}</td>
-              <td>{row.identity ?? <span className="fo-muted">could not be read</span>}</td>
+              <td>{row.identity ?? <span className="fo-muted">Could not be read</span>}</td>
               <td>
                 <StatusIndicator
                   tone={rowTone(row.classification)}
-                  label={row.classification === "ERROR" ? "Will not import" : row.classification === "WARNING" ? "Will import" : "Will import"}
+                  label={outcomeWords(row)}
                 />
               </td>
               <td>
@@ -83,21 +96,28 @@ function PreviewTable({ rows }) {
   );
 }
 
+const RESULT_COLUMNS = Object.freeze({
+  row: { value: (r) => r.sourceRowNumber },
+  identity: { value: (r) => r.identity },
+  why: { value: (r) => r.failureMessage },
+});
+
 function ResultTable({ rows }) {
-  const failed = rows.filter((r) => r.outcome === "failed");
+  const failed = useMemo(() => rows.filter((r) => r.outcome === "failed"), [rows]);
+  const { sort, toggle, sorted } = useTableSort({ rows: failed, columns: RESULT_COLUMNS });
   if (failed.length === 0) return null;
   return (
     <div className="fo-data-import__preview">
       <table className="fo-table">
         <thead>
           <tr>
-            <th scope="col">Row</th>
-            <th scope="col">Identity</th>
-            <th scope="col">Why it was refused</th>
+            <SortableHeader columnKey="row" label="Row" sort={sort} onSort={toggle} />
+            <SortableHeader columnKey="identity" label="Identity" sort={sort} onSort={toggle} />
+            <SortableHeader columnKey="why" label="Why It Was Refused" sort={sort} onSort={toggle} />
           </tr>
         </thead>
         <tbody>
-          {failed.map((r) => (
+          {sorted.map((r) => (
             <tr key={r.sourceRowNumber}>
               <td className="fo-tabular-nums">{r.sourceRowNumber}</td>
               <td>{r.identity ?? <span className="fo-muted">-</span>}</td>
@@ -122,7 +142,17 @@ function ResultTable({ rows }) {
  * This is the rule the rest of this feature is built on, applied to the one place it had been
  * missed: an absence must say WHICH absence it is.
  */
+const HISTORY_COLUMNS = Object.freeze({
+  when: { value: (job) => (job.stagedAt ? new Date(job.stagedAt) : null) },
+  file: { value: (job) => job.fileName },
+  entity: { value: (job) => titleCase(job.entityType) },
+  status: { value: (job) => statusLabel(job.status) },
+  written: { value: (job) => (job.result ? job.result.created + job.result.replayed : 0) },
+});
+
 function History({ status, jobs }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: jobs, columns: HISTORY_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
   if (status === "loading") return <p className="fo-muted">Loading import history…</p>;
   if (status === "denied") {
     return <p className="fo-muted">Import history is not available to your account.</p>;
@@ -137,20 +167,20 @@ function History({ status, jobs }) {
     <table className="fo-table">
       <thead>
         <tr>
-          <th scope="col">When</th>
-          <th scope="col">File</th>
-          <th scope="col">Entity</th>
-          <th scope="col">Status</th>
-          <th scope="col">Written</th>
+          {header("when", "When")}
+          {header("file", "File")}
+          {header("entity", "Entity")}
+          {header("status", "Status")}
+          {header("written", "Written")}
         </tr>
       </thead>
       <tbody>
-        {jobs.map((job) => (
+        {sorted.map((job) => (
           <tr key={job.jobId}>
             <td>{new Date(job.stagedAt).toLocaleString()}</td>
             <td>{job.fileName}</td>
-            <td>{job.entityType}</td>
-            <td>{job.status.replace(/_/g, " ").toLowerCase()}</td>
+            <td>{titleCase(job.entityType)}</td>
+            <td>{statusLabel(job.status)}</td>
             <td className="fo-tabular-nums">
               {job.result ? job.result.created + job.result.replayed : 0}
             </td>
@@ -288,7 +318,7 @@ export default function AdminDataImport({ hasCapability }) {
       ) : (
         <>
           <div className="fo-panel">
-            <SectionHeader title="1. Choose a file" />
+            <SectionHeader title="1. Choose a File" />
             <p className="fo-wizard-hint">{view.stage === IMPORT_STAGE.IDLE ? view.detail : "Choosing another file discards the current preview."}</p>
             <input
               type="file"
@@ -310,17 +340,17 @@ export default function AdminDataImport({ hasCapability }) {
             <div className="fo-panel">
               <StatusIndicator tone="critical" label={view.headline} />
               <p className="fo-wizard-hint">{view.detail}</p>
-              <Button variant="secondary" onClick={onReset}>Start over</Button>
+              <Button variant="secondary" onClick={onReset}>Start Over</Button>
             </div>
           ) : null}
 
           {view.stage === IMPORT_STAGE.CATALOG_REFUSED ? (
             <div className="fo-panel">
-              <SectionHeader title="2. Not available" />
+              <SectionHeader title="2. Not Available" />
               <StatusIndicator tone="critical" label={view.headline} />
               <p className="fo-wizard-hint">{view.detail}</p>
               <p className="fo-wizard-hint">Nothing from this file has been written.</p>
-              <Button variant="secondary" onClick={onReset}>Start over</Button>
+              <Button variant="secondary" onClick={onReset}>Start Over</Button>
             </div>
           ) : null}
 
@@ -336,9 +366,9 @@ export default function AdminDataImport({ hasCapability }) {
           {view.stage === IMPORT_STAGE.PREVIEWED ? (
             <>
               <div className="fo-panel">
-                <SectionHeader title="2. What this file contains" />
+                <SectionHeader title="2. What This File Contains" />
                 <p className="fo-data-import__summary">
-                  <strong>{view.job.entityType}</strong> from <strong>{view.job.fileName}</strong>.{" "}
+                  <strong>{titleCase(view.job.entityType)}</strong> from <strong>{view.job.fileName}</strong>.{" "}
                   {Object.keys(view.job.mapping).length} column
                   {Object.keys(view.job.mapping).length === 1 ? "" : "s"} mapped.
                 </p>
@@ -355,11 +385,11 @@ export default function AdminDataImport({ hasCapability }) {
                 <SectionHeader title="4. Approve" />
                 {view.approvalBlockedReason ? (
                   <Button variant="protected" reason={view.approvalBlockedReason}>
-                    Approve and import
+                    Approve and Import
                   </Button>
                 ) : (
                   <Button variant="primary" onClick={onApprove} loading={busy}>
-                    Approve and import {view.importable} record{view.importable === 1 ? "" : "s"}
+                    Approve and Import {view.importable} Record{view.importable === 1 ? "" : "s"}
                   </Button>
                 )}
                 <p className="fo-wizard-hint">
@@ -378,12 +408,12 @@ export default function AdminDataImport({ hasCapability }) {
               />
               <p className="fo-wizard-hint">{view.detail}</p>
               <ResultTable rows={view.result.result?.rows ?? []} />
-              <Button variant="secondary" onClick={onReset}>Import another file</Button>
+              <Button variant="secondary" onClick={onReset}>Import Another File</Button>
             </div>
           ) : null}
 
           <div className="fo-panel">
-            <SectionHeader title="Import history" />
+            <SectionHeader title="Import History" />
             <History status={historyStatus} jobs={jobs} />
           </div>
         </>

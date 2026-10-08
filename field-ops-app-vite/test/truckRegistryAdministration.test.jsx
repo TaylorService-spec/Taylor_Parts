@@ -19,7 +19,7 @@ describe("TruckRegistry (Administration)", () => {
     await screen.findByText(/Taylor Truck 1/);
     expect(screen.getByText("e-tech-a")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Reason for the change"), { target: { value: "seasonal" } });
-    fireEvent.click(screen.getByRole("button", { name: "Mark idle" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark Idle" }));
     await waitFor(() => expect(callApi).toHaveBeenCalledWith("changeTruckStatus", { truckId: "trk-1", status: "IDLE", reason: "seasonal" }));
   });
 

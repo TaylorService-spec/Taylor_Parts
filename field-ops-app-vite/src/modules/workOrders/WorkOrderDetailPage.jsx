@@ -161,7 +161,7 @@ export default function WorkOrderDetailPage() {
           state={HONEST_STATE.UNAVAILABLE}
           subject="This work order"
           detail={error}
-          action={<Button variant="secondary" onClick={retry}>Try again</Button>}
+          action={<Button variant="secondary" onClick={retry}>Try Again</Button>}
         />
       </div>
     );
@@ -303,7 +303,7 @@ export default function WorkOrderDetailPage() {
               disabled
               title="Not available yet — there is no technician notification channel to send to (backlog B2). Not a permission limit."
             >
-              Message technician
+              Message Technician
             </button>
             <WorkOrderActions
               workOrder={workOrder}
@@ -375,7 +375,7 @@ export default function WorkOrderDetailPage() {
               scanned as data — hence the measure and the prose line-height. Each lead-in is
               rendered only when the field it introduces exists: an empty "Working diagnosis."
               would read as a diagnosis of nothing. */}
-          <RuledSection title="The job">
+          <RuledSection title="The Job">
             <div className="ns-prose">
               {workOrder.complaint ? (
                 <p><strong>Complaint.</strong> {workOrder.complaint}</p>
@@ -468,7 +468,7 @@ export default function WorkOrderDetailPage() {
               context the panel variant is admitted for (Grammar R13), and it owns the governed
               write and its capability gate. It is BELOW the readiness table on purpose — a
               dispatcher reads what is ready before deciding what to change. */}
-          <RuledSection title="Edit parts plan" panel>
+          <RuledSection title="Edit Parts Plan" panel>
             <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
           </RuledSection>
 
@@ -525,7 +525,7 @@ export default function WorkOrderDetailPage() {
               this job can slip, sibling work orders at the same site. All three need scheduling
               reads this route does not perform, and #1494 adds no read. The section keeps its
               place in the rail and says so once. */}
-          <RuledSection title="Dispatcher context">
+          <RuledSection title="Dispatcher Context">
             <p className="ns-gap-note">
               Technician day load, slip windows and sibling work orders require scheduling reads
               this route doesn’t perform yet.

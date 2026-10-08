@@ -115,10 +115,10 @@ function ScanBackControl({ pendingWork, onLeave }) {
           {" "}Leaving discards them.
         </span>
         <button type="button" className="fo-link-btn fo-scan__leave-discard" onClick={onLeave}>
-          Discard and leave
+          Discard and Leave
         </button>
         <button type="button" className="fo-link-btn" onClick={() => setConfirming(false)}>
-          Keep counting
+          Keep Counting
         </button>
       </p>
     );
@@ -130,7 +130,7 @@ function ScanBackControl({ pendingWork, onLeave }) {
       className="fo-link-btn"
       onClick={() => (pendingWork > 0 ? setConfirming(true) : onLeave())}
     >
-      ← All scanning workflows
+      ← All Scanning Workflows
     </button>
   );
 }
@@ -217,7 +217,7 @@ function ScanWorkspaceBody({ deps }) {
   if (active === SCAN_WORKFLOW.LOOKUP) {
     return (
       <div className="fo-panel">
-        <WorkspaceHeader title="Scan · Look up" />
+        <WorkspaceHeader title="Scan · Look Up" />
         <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* Read-only. It has no command and cannot move anything. */}
         <LookupScan deps={deps?.lookupDeps} />
@@ -260,7 +260,7 @@ function ScanWorkspaceBody({ deps }) {
   if (active === SCAN_WORKFLOW.PUT_AWAY) {
     return (
       <div className="fo-panel">
-        <WorkspaceHeader title="Scan · Put away" />
+        <WorkspaceHeader title="Scan · Put Away" />
         <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* Records WHERE, never WHAT: a stow changes no balance (DECISIONS #116). */}
         <PutAwayScan deps={deps?.putAwayDeps} />
@@ -271,7 +271,7 @@ function ScanWorkspaceBody({ deps }) {
   if (active === SCAN_WORKFLOW.MOVE_STOCK) {
     return (
       <div className="fo-panel">
-        <WorkspaceHeader title="Scan · Move stock" />
+        <WorkspaceHeader title="Scan · Move Stock" />
         <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* Many items, one confirmation, one governed command per line (Decision #170). */}
         <MoveStockScan deps={{ ...deps?.moveStockDeps, hasCapability: deps?.hasCapability, onPendingWorkChange: setPendingWork }} />
@@ -294,7 +294,7 @@ function ScanWorkspaceBody({ deps }) {
   if (active === SCAN_WORKFLOW.RETURN_INTAKE) {
     return (
       <div className="fo-panel">
-        <WorkspaceHeader title="Scan · Take a return in" />
+        <WorkspaceHeader title="Scan · Take a Return In" />
         <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* Records an ARRIVAL. Disposition is a separate authority that does not exist (#118), so
             nothing here can put stock back on the shelf. */}
@@ -317,7 +317,7 @@ function ScanWorkspaceBody({ deps }) {
   if (active === SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER) {
     return (
       <div className="fo-panel">
-        <WorkspaceHeader title="Scan · Work order" />
+        <WorkspaceHeader title="Scan · Work Order" />
         <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* The existing technician scanner, unchanged and still mounted in FieldMode too. */}
         <PartsScanner technicianId={technicianId} />
@@ -338,7 +338,7 @@ function ScanWorkspaceBody({ deps }) {
         // NEVER A BLANK SCREEN. An empty workspace with no explanation is indistinguishable from a
         // broken one, and the reasons below are what tell the user which it is.
         <section className="fo-panel" aria-label="No scanning workflows available">
-          <h3>No scanning workflows are available to you</h3>
+          <h3>No Scanning Workflows Are Available to You</h3>
           <p className="fo-muted">
             Nothing here is broken — there is simply no scanning workflow your current access and
             assignments allow. The reasons are listed below.
@@ -359,7 +359,7 @@ function ScanWorkspaceBody({ deps }) {
 
       {workflows.unavailable.length > 0 && (
         <section className="fo-panel" aria-label="Not available to you">
-          <h3>Not available to you</h3>
+          <h3>Not Available to You</h3>
           <ul className="fo-list">
             {workflows.unavailable.map(({ workflow, reason }) => (
               <li key={workflow} className="fo-muted">

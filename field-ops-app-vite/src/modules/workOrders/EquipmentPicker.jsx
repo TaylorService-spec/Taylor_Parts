@@ -1,3 +1,4 @@
+import Autocomplete, { searchLoaded } from "../../shared/ui/Autocomplete.jsx";
 import { useEquipmentForAccount } from "../../hooks/useEquipment";
 import { equipmentDisplayName, equipmentSummary } from "../../domain/equipment";
 import { WORK_ORDER_EQUIPMENT_RULE } from "../../domain/workOrderEquipmentRule.js";
@@ -73,24 +74,27 @@ export default function EquipmentPicker({ accountId, locationId = null, type, va
     );
   }
 
+  // TYPEAHEAD (UI corrections item E): find the unit by name, manufacturer, model, serial or asset tag among THIS
+  // customer's machines (the server-scoped list above). Not choosing stays a real answer ("Not Specified").
+  const selected = options.find((e) => e.id === value) ?? null;
   return (
-    <select
-      id="wo-equipment"
-      className="fo-wizard-control"
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value || null)}
-      data-equipment-picker="ready"
-    >
-      {/* Not choosing is a real answer: a service call can be raised before anyone knows the unit. */}
-      <option value="">Not specified</option>
-      {options.map((e) => {
-        const summary = equipmentSummary(e);
-        return (
-          <option key={e.id} value={e.id}>
-            {equipmentDisplayName(e)}{summary ? ` — ${summary}` : ""}
-          </option>
-        );
-      })}
-    </select>
+    <div data-equipment-picker="ready">
+      <Autocomplete
+        id="wo-equipment"
+        label="Equipment"
+        hideLabel
+        placeholder={`Type to find one of ${options.length} unit${options.length === 1 ? "" : "s"}`}
+        search={searchLoaded(options, (e) => `${equipmentDisplayName(e)} ${equipmentSummary(e) ?? ""}`)}
+        selected={selected}
+        getKey={(e) => e.id}
+        getLabel={(e) => equipmentDisplayName(e)}
+        getContext={(e) => equipmentSummary(e) || null}
+        onSelect={(e) => onChange(e ? e.id : null)}
+      />
+      <p className="fo-muted">
+        {selected ? `Selected: ${equipmentDisplayName(selected)}. ` : "Not specified — a service call can be raised before anyone knows the unit. "}
+        {selected ? <button type="button" className="fo-linkbutton" onClick={() => onChange(null)}>Not Specified</button> : null}
+      </p>
+    </div>
   );
 }

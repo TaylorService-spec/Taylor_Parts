@@ -23,7 +23,7 @@ export default function AdminAuditLogs() {
           that Employee&rsquo;s sign-in identity.
         </li>
         <li>
-          <strong>Decision history</strong> — choose a Security Role in{" "}
+          <strong>Decision History</strong> — choose a Security Role in{" "}
           <Link to="/administration/roles-permissions">Roles &amp; Permissions</Link>: the grants and
           revokes recorded for that Security Role.
         </li>

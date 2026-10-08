@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import Autocomplete from "../../shared/ui/Autocomplete.jsx";
+import { useCallback, useRef, useState } from "react";
 import RuledSection from "../../shared/ui/RuledSection.jsx";
 import { Field, FormActions, FormError } from "../../shared/ui/form";
 import { Button } from "../../shared/ui/primitives/index.js";
-import { useWorkforceEmployeeDirectory, WORKFORCE_READ_STATE } from "../../hooks/useWorkforceEmployeeDirectory.js";
 import {
   EMPLOYEE_EDIT_RESULT,
   MANAGER_FIELD_KEY,
@@ -16,7 +16,6 @@ import {
 import {
   RUNTIME_DEPENDENCIES,
   describeLifecycle,
-  describeWorkforceFailure,
   recordCompanyName,
   recordDisplayName,
 } from "../../domain/employeeOperatingProfile.js";
@@ -54,10 +53,9 @@ import { RuntimeDependency } from "../employees/EmployeeProfileSections.jsx";
 //
 // ════════════════════ MANAGER CANDIDATES: THE GOVERNED DIRECTORY, ONLY ════════════════════
 //
-// Real Employees from EMP-RT-01 listEmployees (the same governed read the Users directory uses), excluding this
-// Employee -- never free text and never the Firestore directory. The directory is paged; Load more reads the next
-// page. A directory that cannot be read leaves the Manager unchangeable here and says why, rather than offering a
-// list that silently omits people. The command re-validates the chosen id regardless of what this offers.
+// Real Employees from the governed roster read (listWorkforceRoster, the read behind Administration → Users), found by
+// TYPEAHEAD and excluding this Employee -- never free text and never the Firestore directory. A search that cannot be
+// read says so in the suggestion list and changes nothing. The command re-validates the chosen id regardless.
 export default function EmployeeEditPanel({ employee, workforce, onCancel, onSaved }) {
   const [base] = useState(employee);
   const [values, setValues] = useState(() => seedEditValues(employee));
@@ -66,8 +64,6 @@ export default function EmployeeEditPanel({ employee, workforce, onCancel, onSav
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
 
-  const directory = useWorkforceEmployeeDirectory({ client: workforce });
-
   const setField = useCallback((key, value) => {
     setValues((cur) => ({ ...cur, [key]: value }));
     // An error must not outlive the input it describes.
@@ -75,28 +71,23 @@ export default function EmployeeEditPanel({ employee, workforce, onCancel, onSav
     setSaveError(null);
   }, []);
 
-  const managerOptions = useMemo(() => {
-    const options = new Map();
-    for (const item of directory.items) {
-      if (!item?.employeeId || item.employeeId === base.employeeId) continue;
-      options.set(item.employeeId, { value: item.employeeId, label: recordDisplayName(item) });
-    }
-    // The CURRENT manager stays selectable even when the loaded page does not include them, so opening the form
-    // never silently proposes "no manager".
-    const current = base.currentManager;
-    if (current?.managerEmployeeId && !options.has(current.managerEmployeeId)) {
-      options.set(current.managerEmployeeId, { value: current.managerEmployeeId, label: recordDisplayName(current) });
-    }
-    return [...options.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }, [directory.items, base]);
-
-  const directoryReady = directory.status === WORKFORCE_READ_STATE.READY;
-  const directoryFailure = directory.status === WORKFORCE_READ_STATE.FAILED ? describeWorkforceFailure(directory.error, "The Employee directory") : null;
-  const managerHint = directoryFailure
-    ? `${directoryFailure.words} The manager cannot be changed here until it can be read.`
-    : directoryReady
-      ? "A real Employee from the governed directory. Changing it ends any current reporting relationship; its history is kept."
-      : "Reading the Employee directory…";
+  // MANAGER: a TYPEAHEAD over the governed roster read (UI corrections item E) -- real Employees the caller may read
+  // (the server applies employee.record.read and operating-company reach), excluding this Employee. Never free text:
+  // only a chosen suggestion sets the value, and "No Manager" clears it. The command re-validates the chosen id.
+  const [managerChoice, setManagerChoice] = useState(() => (base.currentManager?.managerEmployeeId
+    ? { employeeId: base.currentManager.managerEmployeeId, displayName: recordDisplayName(base.currentManager) }
+    : null));
+  const searchManagers = useCallback(async (query) => {
+    const res = await workforce.call("listWorkforceRoster", { query, limit: 9 });
+    if (!res.ok) return { ok: false, code: res.code, message: res.message };
+    const items = res.result.items.filter((i) => i.employeeId !== base.employeeId).slice(0, 8);
+    return { ok: true, items, total: items.length };
+  }, [workforce, base.employeeId]);
+  const chooseManager = (item) => {
+    setManagerChoice(item ? { employeeId: item.employeeId, displayName: item.displayName ?? item.employeeId } : null);
+    setField(MANAGER_FIELD_KEY, item ? item.employeeId : "");
+  };
+  const managerHint = "Type at least 2 characters to find a real Employee. Changing it ends any current reporting relationship; its history is kept.";
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -168,20 +159,22 @@ export default function EmployeeEditPanel({ employee, workforce, onCancel, onSav
             hint: "Descriptive. A job title grants no permission and sets no role.",
           })}
 
-          <Field id="employee-edit-managerEmployeeId" label="Manager" hint={managerHint}>
-            <select
-              value={values[MANAGER_FIELD_KEY] ?? ""}
-              onChange={(e) => setField(MANAGER_FIELD_KEY, e.target.value)}
-              disabled={!directoryReady || submitting}
-            >
-              <option value="">No manager recorded</option>
-              {managerOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <div className="fo-form-field" data-manager-field>
+            <Autocomplete
+              id="employee-edit-managerEmployeeId"
+              label="Manager"
+              placeholder="Type a name or employee number"
+              search={searchManagers}
+              selected={managerChoice}
+              getKey={(e) => e.employeeId}
+              getLabel={(e) => e.displayName ?? e.employeeId}
+              getContext={(e) => [e.jobRole?.label, e.employeeNumber ? `Employee ${e.employeeNumber}` : null].filter(Boolean).join(" · ")}
+              onSelect={chooseManager}
+              disabled={submitting}
+            />
+            <p className="fo-muted">{managerChoice ? `Manager: ${managerChoice.displayName}. ` : "No manager recorded. "}{managerHint}</p>
+            {managerChoice ? <button type="button" className="fo-linkbutton" onClick={() => chooseManager(null)} disabled={submitting}>No Manager</button> : null}
+          </div>
 
           {text("hireDate", "Hire Date", { type: "date" })}
           {text("separationDate", "Separation Date", {
@@ -189,20 +182,6 @@ export default function EmployeeEditPanel({ employee, workforce, onCancel, onSav
             hint: "Recording a separation date does not change Employment Status or disable this person's EOS account. Those are separate.",
           })}
         </div>
-        {directoryReady && directory.hasMore ? (
-          <div className="fo-btn-row">
-            <Button type="button" variant="secondary" onClick={directory.loadMore} disabled={directory.loadingMore} loading={directory.loadingMore}>
-              Load more Employees
-            </Button>
-          </div>
-        ) : null}
-        {directoryFailure?.retryable ? (
-          <div className="fo-btn-row">
-            <Button type="button" variant="secondary" onClick={directory.retry}>
-              Retry the Employee directory
-            </Button>
-          </div>
-        ) : null}
       </RuledSection>
 
       {/* READ-ONLY, WITH ITS AUTHORITY NAMED. Not disabled controls: a disabled select still reads as "you could

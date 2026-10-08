@@ -1,5 +1,19 @@
 import { Link } from "react-router-dom";
 import { AT_RISK_SORT, SECTION_ID } from "../../../domain/serviceOperationsNorthStar";
+import { useTableSort } from "../../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../../shared/ui/sorting/SortableHeader.jsx";
+
+// Column-header sorting over the rows already composed. With no header sort the rows keep the order the
+// "Sorted by" control asked the domain for -- that order stays the table's default.
+const SEVERITY_RANK = Object.freeze({ CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 });
+const AT_RISK_COLUMNS = Object.freeze({
+  reference: { value: (row) => row.reference },
+  account: { value: (row) => row.account },
+  severity: { value: (row) => SEVERITY_RANK[row.severity] ?? null },
+  age: { value: (row) => row.ageHours },
+  why: { value: (row) => row.why },
+  technician: { value: (row) => row.technicianName },
+});
 
 // At risk — the page's primary operational table (Service Operations North Star P1, pattern 5).
 //
@@ -17,13 +31,14 @@ import { AT_RISK_SORT, SECTION_ID } from "../../../domain/serviceOperationsNorth
 //
 // Severity renders as a WORD (severityWord). The panel this replaces printed the raw enum "CRITICAL".
 export default function AtRiskPanel({ rows = [], sort, onSortChange, openWorkOrderCount = null }) {
+  const { sort: headerSort, toggle, sorted } = useTableSort({ rows, columns: AT_RISK_COLUMNS });
   return (
-    <section className="ns-section" id={SECTION_ID.atRisk} aria-label="At risk">
+    <section className="ns-section" id={SECTION_ID.atRisk} aria-label="At Risk">
       <div className="ns-section__head">
-        <h2 className="ns-section__title">At risk</h2>
+        <h2 className="ns-section__title">At Risk</h2>
         <div className="ns-section__actions">
           <label className="ns-section__meta" htmlFor="service-ops-at-risk-sort">
-            Sorted by
+            Sorted By
           </label>
           <select
             id="service-ops-at-risk-sort"
@@ -53,17 +68,17 @@ export default function AtRiskPanel({ rows = [], sort, onSortChange, openWorkOrd
           <table className="ns-table">
             <thead>
               <tr>
-                <th scope="col">Work order</th>
-                <th scope="col">Account</th>
-                <th scope="col">Severity</th>
-                <th scope="col" className="ns-num">Age</th>
-                <th scope="col">Why</th>
-                <th scope="col">Technician</th>
+                <SortableHeader columnKey="reference" label="Work Order" sort={headerSort} onSort={toggle} />
+                <SortableHeader columnKey="account" label="Account" sort={headerSort} onSort={toggle} />
+                <SortableHeader columnKey="severity" label="Severity" sort={headerSort} onSort={toggle} />
+                <SortableHeader columnKey="age" label="Age" sort={headerSort} onSort={toggle} className="ns-num" />
+                <SortableHeader columnKey="why" label="Why" sort={headerSort} onSort={toggle} />
+                <SortableHeader columnKey="technician" label="Technician" sort={headerSort} onSort={toggle} />
                 <th scope="col"><span className="ns-visually-hidden">Open</span></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {sorted.map((row) => (
                 <tr key={row.id}>
                   <td>{row.reference}</td>
                   <td>{row.account ?? <span className="ns-muted">Account not resolved</span>}</td>

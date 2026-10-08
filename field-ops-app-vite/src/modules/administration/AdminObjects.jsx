@@ -302,10 +302,10 @@ export default function AdminObjects() {
   const viewToggle = (
     <div className="fo-chip-row" role="group" aria-label="View">
       <Button variant={view === "role" ? "primary" : "secondary"} onClick={() => setView("role")}>
-        By role
+        By Role
       </Button>
       <Button variant={view === "object" ? "primary" : "secondary"} onClick={() => setView("object")}>
-        By object
+        By Object
       </Button>
     </div>
   );

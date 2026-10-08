@@ -20,7 +20,7 @@ import {
 import FilterBar from "../../shared/ui/FilterBar";
 
 const DIRECTION_OPTIONS = [
-  { key: "all", label: "All directions" },
+  { key: "all", label: "All Directions" },
   { key: "taylorToVentana", label: "Taylor → Ventana" },
   { key: "ventanaToTaylor", label: "Ventana → Taylor" },
   { key: "unclassified", label: "Unclassified" },
@@ -40,7 +40,7 @@ export default function FinancialsIntercompany() {
 
       <FinancialsHonestSection
         id="fin-intercompany"
-        title="Cross-company events"
+        title="Cross-Company Events"
         meta="classification is a governed, audited act · unclassified excluded from splits"
         honest={{
           state: "NOT_ENABLED",
@@ -56,14 +56,14 @@ export default function FinancialsIntercompany() {
               <tr>
                 <th scope="col">Event</th>
                 <th scope="col">Direction</th>
-                <th scope="col">Inventory owner</th>
-                <th scope="col">Charge bears on</th>
+                <th scope="col">Inventory Owner</th>
+                <th scope="col">Charge Bears On</th>
                 <th scope="col" className="ns-num">Amount</th>
                 <th scope="col">
                   Classification
                   <FinAnnotation tip="Classification is an appended governed event, audited, never an in-place edit. Who may classify is an open product question (FIN-PQ-17a); the capability is conceptual until FIN-009 governance exists." />
                 </th>
-                <th scope="col">Reporting treatment</th>
+                <th scope="col">Reporting Treatment</th>
               </tr>
             </thead>
           </table>

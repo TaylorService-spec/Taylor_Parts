@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ACCOUNT_STATUS, accountStatusLabel } from "../../domain/constants";
 import { createAccount } from "../../domain/accounts";
@@ -16,7 +16,7 @@ import {
   addFilter, removeFilter, clearFilters, setSort, makeCriterion, describeDropped, describeRefusal,
 } from "../../metadata/listUrlState.js";
 import { useListCriteria } from "../../hooks/useListCriteria.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
@@ -102,24 +102,34 @@ export default function AccountsList() {
   // the CURRENT directory name — a person who changed their name, or a record written before they
   // did, would otherwise be shown as somebody who no longer exists. The list follows that rule.
   //
-  // ONE directory read for the whole page, not one per row: useEmployeeDirectory is a single
-  // subscription keyed by employee id, so adding an Owner column costs no reads per record.
-  const directory = useEmployeeDirectory();
+  // ONE batched read for the owners on the loaded rows, not one per row. Only those owners are named
+  // (resolveEmployeeDisplayNames) -- not the Employee directory, which a seller does not hold. The rows
+  // render through the metadata list, so the owner ids are the ones resolveReference is ASKED about:
+  // collected as rows render, and read once per new set after the render (the effect below useMetadataList) (an id not yet read is LOADING).
+  const askedOwnersRef = useRef(new Set());
+  const [ownerIds, setOwnerIds] = useState([]);
+  const directory = useGovernedEmployeeDirectory({ employeeIds: ownerIds });
   const resolveReference = useCallback((fieldId, id) => {
     if (fieldId !== "accountOwnerEmployeeId") return undefined;
-    if (directory.loading) return { state: REFERENCE_STATE.LOADING };
+    if (typeof id === "string" && id) askedOwnersRef.current.add(id);
+    if (directory.loading || !ownerIds.includes(id)) return { state: REFERENCE_STATE.LOADING };
     const employee = directory.byEmployeeId?.get(id);
     const name = employee?.displayName ?? employee?.name ?? null;
     // NOT_FOUND rather than a raw id. An owner who no longer resolves reads as gone; the employee
     // id is a routing key and never content.
     return name ? { state: REFERENCE_STATE.FOUND, label: name } : { state: REFERENCE_STATE.NOT_FOUND };
-  }, [directory]);
+  }, [directory, ownerIds]);
 
   const { presentation, loadMore, retry, descriptorErrors } = useMetadataList(accountIndexList, accountEntity, {
     filters: criteria.filters,
     sort: criteria.sort,
     resolveReference,
   });
+  // After the rows render (asking resolveReference about their owners), read any owner not yet read.
+  useEffect(() => {
+    const asked = [...askedOwnersRef.current].sort();
+    if (asked.join("|") !== ownerIds.join("|")) setOwnerIds(asked);
+  }, [presentation, ownerIds]);
 
   // What was ASKED FOR and is not in effect, from both places it can fail: parsing the URL against
   // this build, and planning the query. The second one matters here more than anywhere else in the
@@ -403,6 +413,7 @@ export default function AccountsList() {
       ) : (
       <MetadataListGrid
         presentation={presentation}
+        sorting={{ entity: accountEntity, criteria, onSort: (fieldId, direction) => apply(setSort(criteria, fieldId, direction)) }}
         caption="Customers"
         // THE DESTINATION THE DEFINITION NAMES. accountIndexList.rowNavigationTo is "/customers/:id"
         // and agreed with the literal this replaces -- which is luck, not a property. Work Orders

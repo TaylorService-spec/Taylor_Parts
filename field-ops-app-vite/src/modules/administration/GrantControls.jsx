@@ -10,6 +10,7 @@
 // only things this screen withholds are the ones the server has said are not grantable: a
 // SYSTEM_INVARIANT cell (refused on write) and a condition kind the server's own vocabulary
 // (listSupportedConditionKinds) marks unsupported or inapplicable. With no vocabulary, no condition.
+import { titleCasePhrase } from "../../shared/display/displayLabels.js";
 import { useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { refusalText } from "../../services/adminControlPlaneClient.js";
@@ -74,7 +75,7 @@ export function ConditionFields({ value, onChange, vocabulary, capabilityKey, al
       {unavailable ? <p className="fo-muted" data-condition-vocabulary={vocabulary?.status ?? "none"}>{unavailable}</p> : null}
       {(spec?.parameters ?? []).map((p) => (
         <label className="fo-form-field" key={p.name}>
-          <span>{p.required ? p.label : `${p.label} (optional)`}</span>
+          <span>{p.required ? p.label : `${p.label} (Optional)`}</span>
           {p.values ? (
             <select aria-label={p.label} value={value[p.name] ?? ""} onChange={(e) => set(p.name, e.target.value)}>
               <option value="">Choose…</option>
@@ -162,10 +163,10 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, capabili
           <Button type="button" variant="secondary" onClick={() => open("grant")} aria-label={`Grant ${actionKey} to ${roleKey}`}>Grant</Button>
         )}
         <Button type="button" variant="secondary" onClick={() => open("setCondition")} aria-label={`Set condition on ${actionKey} for ${roleKey}`}>
-          {active ? "Replace condition" : "Set condition"}
+          {active ? "Replace Condition" : "Set Condition"}
         </Button>
         {active ? (
-          <Button type="button" variant="secondary" onClick={() => open("retireCondition")} aria-label={`Retire condition on ${actionKey} for ${roleKey}`}>Retire condition</Button>
+          <Button type="button" variant="secondary" onClick={() => open("retireCondition")} aria-label={`Retire condition on ${actionKey} for ${roleKey}`}>Retire Condition</Button>
         ) : null}
       </div>
       {mode ? (
@@ -179,7 +180,7 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, capabili
           ) : null}
           <ReasonField value={reason} onChange={setReason} />
           <div className="fo-btn-row">
-            <Button type="submit" variant="primary" disabled={!ready || busy}>{`Confirm ${verb?.toLowerCase()}`}</Button>
+            <Button type="submit" variant="primary" disabled={!ready || busy}>{`Confirm ${titleCasePhrase(verb ?? "")}`}</Button>
             <Button type="button" variant="secondary" onClick={() => setMode(null)}>Cancel</Button>
           </div>
         </form>

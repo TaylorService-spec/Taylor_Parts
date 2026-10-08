@@ -33,7 +33,7 @@ check("status meta covers exactly the domain-authority statuses (no drift)", () 
   assert.deepEqual(Object.keys(TRANSFER_STATUS_META).sort(), [...TRANSFER_ORDER_STATUSES].sort());
 });
 check("labels avoid raw enum casing; tone falls back safely", () => {
-  assert.equal(transferStatusLabel("IN_TRANSIT"), "In transit");
+  assert.equal(transferStatusLabel("IN_TRANSIT"), "In Transit");
   assert.equal(transferStatusLabel("REQUESTED"), "Requested");
   assert.equal(transferStatusLabel("NONSENSE"), "NONSENSE"); // never throws
   assert.equal(transferStatusTone("COMPLETED"), "done");

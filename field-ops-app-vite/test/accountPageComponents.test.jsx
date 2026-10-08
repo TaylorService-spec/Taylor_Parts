@@ -41,6 +41,18 @@ import { useAccount } from "../src/hooks/useAccount";
 import { useLocationsForAccount } from "../src/hooks/useLocationsForAccount";
 import { useContactsForAccount } from "../src/hooks/useContactsForAccount";
 
+// UI corrections integration (2026-10-08): these pages read names from the GOVERNED EOS directory
+// (useGovernedEmployeeDirectory). It is mocked to answer from the same fixture directory as before.
+vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
+  const legacy = await import("../src/hooks/useEmployeeDirectory");
+  return {
+    useGovernedEmployeeDirectory: (...args) => legacy.useEmployeeDirectory(...args),
+    ...(await vi.importActual("../src/domain/actorDisplayName.js")),
+    resetGovernedEmployeeDirectory: () => {},
+  };
+});
+
+
 // The X-ACCOUNT-WIRE-CALLABLE-LISTS re-evaluation below renders the REAL Opportunities /
 // Sales Orders RELATED_LIST sections (straight off accountRecordPage — not test doubles),
 // through the REAL default RELATED_LIST binding (DefaultRelatedList, MetadataRecordPage.jsx).
@@ -689,9 +701,9 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
     useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
     useLocationsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
     renderDetail();
-    expect(screen.getByRole("button", { name: "+ Add contact" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "+ Add Contact" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Import" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "+ Add location" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "+ Add Location" })).toBeTruthy();
   });
 
   it("denied Contacts read shows the hook's real error text, never the false 'No contacts yet' empty state (still true through the metadata path)", () => {
@@ -738,7 +750,7 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
     mockCreateContact.mockResolvedValue({ id: "contact-new", name: "New Contact" });
 
     const { rerender } = renderDetail();
-    fireEvent.click(screen.getByRole("button", { name: "+ Add contact" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Contact" }));
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "New Contact" } });
     fireEvent.click(screen.getByRole("button", { name: "Add Contact" }));
 
@@ -783,7 +795,7 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
     mockCreateLocation.mockResolvedValue({ id: "location-new", name: "New Site" });
 
     const { rerender } = renderDetail();
-    fireEvent.click(screen.getByRole("button", { name: "+ Add location" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Location" }));
     fireEvent.change(screen.getByLabelText(/site name/i), { target: { value: "New Site" } });
     fireEvent.click(screen.getByRole("button", { name: "Add Location" }));
 

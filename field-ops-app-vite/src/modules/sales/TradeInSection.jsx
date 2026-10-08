@@ -9,7 +9,7 @@ import { useState } from "react";
 import { formatMinorUnits } from "../../domain/money.js";
 import { toMinor, toMajorText } from "./salesAgreementLines.jsx";
 
-const STATUS_WORDS = Object.freeze({ PROPOSED: "Proposed — awaiting approval", APPROVED: "Approved", DECLINED: "Declined" });
+const STATUS_WORDS = Object.freeze({ PROPOSED: "Proposed — Awaiting Approval", APPROVED: "Approved", DECLINED: "Declined" });
 const BLANK = { description: "", manufacturer: "", modelNumber: "", serialNumber: "", proposedValue: "", notes: "", evidenceReference: "" };
 const money = (minor, currency) => (typeof minor === "number" ? formatMinorUnits(minor, currency) : "—");
 
@@ -42,14 +42,14 @@ function ProposalForm({ busy, onSubmit, onCancel }) {
     }}>
       {field("description", "Equipment description")}
       {field("manufacturer", "Manufacturer (if known)")}
-      {field("modelNumber", "Model (if known)")}
-      {field("serialNumber", "Serial number (if known)")}
-      {field("proposedValue", "Proposed value")}
+      {field("modelNumber", "Model (If Known)")}
+      {field("serialNumber", "Serial Number (If Known)")}
+      {field("proposedValue", "Proposed Value")}
       {field("notes", "Notes")}
-      {field("evidenceReference", "Evidence reference (photos, inspection)")}
+      {field("evidenceReference", "Evidence Reference (Photos, Inspection)")}
       {error ? <p className="ns-action-reason" role="alert">{error}</p> : null}
       <div className="ns-terms-edit__actions">
-        <button type="submit" className="fo-button fo-button--primary" disabled={busy}>Propose trade-in</button>
+        <button type="submit" className="fo-button fo-button--primary" disabled={busy}>Propose Trade-In</button>
         <button type="button" className="fo-button" disabled={busy} onClick={onCancel}>Cancel</button>
       </div>
     </form>
@@ -63,7 +63,7 @@ function Decision({ item, currency, busy, onApprove, onDecline }) {
   return (
     <div className="ns-terms-edit__actions">
       <label className="ns-terms-edit__field">
-        <span>Approved value</span>
+        <span>Approved Value</span>
         <input type="text" aria-label={`Approved value for item ${item.itemNumber}`} value={value} disabled={busy} onChange={(e) => setValue(e.target.value)} />
       </label>
       <label className="ns-terms-edit__field">
@@ -75,12 +75,12 @@ function Decision({ item, currency, busy, onApprove, onDecline }) {
         if (!Number.isFinite(minor) || minor <= 0) return setError(`The approved value must look like ${toMajorText(item.proposedValueMinor) || "2500.00"}.`);
         setError(null);
         onApprove({ itemNumber: item.itemNumber, approvedCreditMinor: minor, ...(reason.trim() ? { reason: reason.trim() } : {}) });
-      }}>Approve trade-in {item.itemNumber}</button>
+      }}>Approve Trade-In {item.itemNumber}</button>
       <button type="button" className="fo-button" disabled={busy} onClick={() => {
         if (!reason.trim()) return setError("A declined trade-in states its reason.");
         setError(null);
         onDecline({ itemNumber: item.itemNumber, reason: reason.trim() });
-      }}>Decline trade-in {item.itemNumber}</button>
+      }}>Decline Trade-In {item.itemNumber}</button>
       {error ? <p className="ns-action-reason" role="alert">{error}</p> : null}
       <p className="ns-section__note">Proposed at {money(item.proposedValueMinor, currency)}. The value you approve is the credit.</p>
     </div>
@@ -100,9 +100,9 @@ export default function TradeInSection({ tradeIns = [], currency = "USD", editab
             <thead>
               <tr>
                 <th scope="col">Equipment</th>
-                <th scope="col" className="ns-num">Proposed value</th>
+                <th scope="col" className="ns-num">Proposed Value</th>
                 <th scope="col">Status</th>
-                <th scope="col" className="ns-num">Trade-in credit</th>
+                <th scope="col" className="ns-num">Trade-In Credit</th>
               </tr>
             </thead>
             <tbody>
@@ -134,7 +134,7 @@ export default function TradeInSection({ tradeIns = [], currency = "USD", editab
           if (outcome?.ok) setProposing(false);
         }} />
       ) : (
-        <button type="button" className="fo-button" disabled={busy} onClick={() => setProposing(true)}>Propose a trade-in</button>
+        <button type="button" className="fo-button" disabled={busy} onClick={() => setProposing(true)}>Propose a Trade-In</button>
       )) : null}
       {commandError ? <p className="ns-action-reason" data-restriction="command">{commandError}</p> : null}
     </div>

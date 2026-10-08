@@ -64,7 +64,7 @@ export function DispatchViewSwitcher({ view, onChange, dayLabel, weekLabel, anch
           <button type="button" className="ns-dispatch-views__step" onClick={() => onAnchorChange?.(Date.now())} disabled={isToday}>Today</button>
           <button type="button" className="ns-dispatch-views__step" onClick={() => onAnchorChange?.(stepAnchor(anchorMillis, view, 1))} aria-label={view === DISPATCH_VIEW.DAY ? "Next day" : "Next week"}>›</button>
           <label className="ns-dispatch-views__jump">
-            <span className="ns-dispatch-views__jump-label">Go to</span>
+            <span className="ns-dispatch-views__jump-label">Go To</span>
             <input type="date" value={toDateInput(anchorMillis)} onChange={(e) => { const t = fromDateInput(e.target.value); if (t != null) onAnchorChange?.(t); }} />
           </label>
         </div>

@@ -521,7 +521,7 @@ describe("P1v2 structural slots: present, and truthful about what is missing", (
       expect(b.getAttribute("title")).toMatch(/Not a permission limit/);
       expect(b.getAttribute("title")).toMatch(/Not available yet/);
     }
-    expect(pending.map((b) => b.textContent)).toEqual(["Reschedule", "Message technician"]);
+    expect(pending.map((b) => b.textContent)).toEqual(["Reschedule", "Message Technician"]);
   });
 
   it("the backlog buttons hold their positions on EVERY status, so the header never reflows", () => {

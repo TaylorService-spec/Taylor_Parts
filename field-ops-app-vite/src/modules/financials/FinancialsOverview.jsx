@@ -112,7 +112,7 @@ export default function FinancialsOverview() {
         <div>
           <section className="ns-section" aria-label="Performance against plan">
             <div className="ns-section__head">
-              <h2 className="ns-section__title">Performance against plan</h2>
+              <h2 className="ns-section__title">Performance Against Plan</h2>
               <span className="ns-section__meta">· every goal states its measurement basis</span>
             </div>
             <HonestState
@@ -128,7 +128,7 @@ export default function FinancialsOverview() {
 
           <section className="ns-section fin-ov-cost" aria-label="Cost and margin">
             <div className="ns-section__head">
-              <h2 className="ns-section__title">Cost &amp; margin</h2>
+              <h2 className="ns-section__title">Cost &amp; Margin</h2>
             </div>
             <div className="fin-truth-band">
               <strong>Gross margin cannot be reported yet.</strong>

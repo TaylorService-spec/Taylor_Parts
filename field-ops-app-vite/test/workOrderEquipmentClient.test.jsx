@@ -58,8 +58,12 @@ describe("the client rule mirrors the server", () => {
 // ═════════════════════════════════════════ never a raw id
 
 describe("the machine is chosen and shown by what it is", () => {
-  it("the picker is a select of labelled options, not an id input", () => {
-    expect(PICKER).toMatch(/<select/);
+  it("the picker is a closed choice of labelled units, not an id input", () => {
+    // UI corrections item E: a TYPEAHEAD over THIS customer's server-scoped units (searchLoaded narrows, never widens);
+    // only a chosen suggestion sets the value -- there is still no free-text id field.
+    expect(PICKER).toMatch(/<Autocomplete/);
+    expect(PICKER).toMatch(/searchLoaded\(options/);
+    expect(PICKER).toMatch(/onSelect=\{\(e\) => onChange\(e \? e\.id : null\)\}/);
     expect(PICKER).not.toMatch(/type="text"/);
     expect(PICKER).toMatch(/equipmentDisplayName\(e\)/);
     expect(PICKER).toMatch(/equipmentSummary\(e\)/);

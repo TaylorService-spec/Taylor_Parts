@@ -18,10 +18,10 @@ describe("System Configuration", () => {
     render(<AdminSystemConfiguration callApi={callApi} />);
     await screen.findByText("America/Phoenix");
     expect(screen.getByRole("table").querySelector("tbody td:nth-child(3) div").textContent).toMatch(/^English \(United States\)/);
-    expect(screen.getByText("(default)")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("New language for taylor"), { target: { value: "es-US" } });
+    expect(screen.getByText("(Default)")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("New language for Taylor"), { target: { value: "es-US" } });
     fireEvent.change(screen.getByLabelText("Reason for the change"), { target: { value: "bilingual staff" } });
-    fireEvent.click(screen.getByRole("button", { name: "Set language for taylor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Set Language for Taylor" }));
     await waitFor(() => expect(callApi).toHaveBeenCalledWith("setSystemConfigurationSetting",
       { operatingCompanyId: "taylor", settingKey: "defaultLanguage", value: "es-US", reason: "bilingual staff" }));
   });
@@ -43,7 +43,7 @@ describe("Sales Configuration -- Employee Sales Authority", () => {
     render(<AdminSalesConfiguration callApi={vi.fn(async () => ({ ok: true, data: { items: ITEMS } }))} />);
     await screen.findByText("Up to 10.00%");
     expect(screen.getByText("No discount authority (0%)")).toBeTruthy();
-    expect(screen.getByText(/Not configured — no discount can be applied/)).toBeTruthy();
+    expect(screen.getByText(/Not Configured — no discount can be applied/)).toBeTruthy();
   });
   it("sends a percentage as whole basis points with a reason", async () => {
     const callApi = vi.fn(async (op) => (op === "listSalesDiscountAuthorities" ? { ok: true, data: { items: ITEMS } } : { ok: true, data: {} }));

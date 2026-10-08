@@ -1,48 +1,44 @@
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
+import { useEffect, useState } from "react";
+import Autocomplete from "../../shared/ui/Autocomplete.jsx";
+import { workforceApiClient } from "../../services/workforceApiClient.js";
 
-// OWNER REASSIGNMENT control. Opportunity.ownerEmployeeId is an Employee DOCUMENT id, so the
-// honest control is a picker over the employee directory — not a text box the user has to type
-// an opaque id into, which is what this was before (its own note: "the employee directory is not
-// connected yet"). It is connected now: useEmployeeDirectory already exposes byEmployeeId,
-// added for exactly this class of lookup.
+// OWNER REASSIGNMENT control. Opportunity.ownerEmployeeId is a governed Employee id -- the Commercial reads resolve it
+// against eos_workforce.employees (owner_resolved) -- so the honest control is a TYPEAHEAD over the governed Employee roster
+// (UI corrections item E, 2026-10-08): EOS API + PostgreSQL, the server applying employee.record.read and operating-company
+// reach. It replaces the Firestore employee-directory listener this control used to open.
 //
-// IT DEGRADES INSTEAD OF BREAKING, and that is the load-bearing part. The employees collection
-// is readable by admin/dispatcher only (domain/employees.js's buildEmployeeDirectoryQuery). A
-// salesperson holding a real, valid opportunity.write capability CANNOT read it — their listener
-// errors. If this rendered a picker regardless, that user would see an empty dropdown and
-// conclude there are no employees, or worse, be unable to keep the owner the Opportunity already
-// has. So an unreadable directory falls back to the bounded id field, preserving the current
-// value and SAYING WHY. Losing the ability to pick is acceptable; silently losing the ability to
-// save is not.
+// IT DEGRADES INSTEAD OF BREAKING, and that is the load-bearing part. A salesperson holding a real, valid opportunity.write
+// capability may not hold employee.record.read. For them the roster read is refused, and rendering a picker regardless would
+// make them unable to keep the owner the Opportunity already has. So a refused roster falls back to the bounded id field,
+// preserving the current value and SAYING WHY. Losing the ability to pick is acceptable; silently losing the ability to save
+// is not.
 //
-// The current owner is always offered even when the directory does not list them (an owner who
-// has since left the directory, or a record predating it). A picker that cannot represent the
-// value it was given would force an unrelated change just to save the section.
-export default function OwnerSelect({ id, value, onChange, describedBy, directory }) {
-  // `directory` is a test seam; production uses the real hook. Called unconditionally either way
-  // (rules of hooks) — `enabled: false` makes it inert when a double is supplied.
-  const live = useEmployeeDirectory({ enabled: !directory });
-  const { byEmployeeId, loading, error } = directory ?? live;
+// The current owner is always shown even when the roster cannot name them (an owner who has since left, a record predating
+// the roster): the field keeps the id and says it is not in the directory.
+export default function OwnerSelect({ id, value, onChange, describedBy, workforce = workforceApiClient }) {
+  // The current owner's name and whether this caller may browse the roster at all: one bounded read.
+  const [current, setCurrent] = useState({ status: "loading", owner: null });
+  useEffect(() => {
+    let alive = true;
+    setCurrent({ status: "loading", owner: null });
+    (async () => {
+      // Is there a roster this caller may browse at all? (A denied read and an EMPTY one are different statements.)
+      const probe = await workforce.call("listWorkforceRoster", { limit: 1 });
+      if (!alive) return;
+      if (!probe.ok) { setCurrent({ status: probe.code === "FORBIDDEN" ? "denied" : "failed", owner: null }); return; }
+      if (probe.result.total === 0) { setCurrent({ status: "empty", owner: null }); return; }
+      // The current owner, by name when the roster can name them.
+      const found = value ? await workforce.call("listWorkforceRoster", { query: value, limit: 5 }) : null;
+      if (!alive) return;
+      const owner = found?.ok ? found.result.items.find((i) => i.employeeId === value) ?? null : null;
+      setCurrent({ status: "ready", owner: owner ?? (value ? { employeeId: value, displayName: `${value} (not in directory)` } : null) });
+    })();
+    return () => { alive = false; };
+    // Read once per mount and per owner change made elsewhere; a pick made here does not need a re-read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workforce]);
 
-  const options = [];
-  const seen = new Set();
-  for (const [employeeId, employee] of byEmployeeId ?? new Map()) {
-    const name = employee?.displayName || employee?.name || employeeId;
-    options.push({ value: employeeId, label: employee?.securityRole ? `${name} — ${employee.securityRole}` : name });
-    seen.add(employeeId);
-  }
-  options.sort((a, b) => a.label.localeCompare(b.label));
-
-  // WHETHER THERE IS A DIRECTORY is decided BEFORE the current owner is added to the list.
-  // Otherwise an empty directory plus an existing owner produced a dropdown whose only entry was
-  // that owner -- a picker offering exactly one choice, the one already selected. It looks like a
-  // functioning control and can do nothing, which is worse than the honest id field.
-  const directoryEmpty = seen.size === 0;
-  if (value && !seen.has(value)) {
-    options.unshift({ value, label: `${value} (not in directory)` });
-  }
-
-  if (loading) {
+  if (current.status === "loading") {
     return (
       <>
         <input id={id} className="fo-input" type="text" value={value ?? ""} readOnly aria-describedby={describedBy} />
@@ -51,40 +47,38 @@ export default function OwnerSelect({ id, value, onChange, describedBy, director
     );
   }
 
-  if (error || directoryEmpty) {
+  if (current.status !== "ready") {
     return (
       <>
-        <input
-          id={id}
-          className="fo-input"
-          type="text"
-          value={value ?? ""}
-          onChange={(e) => onChange(e.target.value)}
-          aria-describedby={describedBy}
-        />
+        <input id={id} className="fo-input" type="text" value={value ?? ""} onChange={(e) => onChange(e.target.value)} aria-describedby={describedBy} />
         <p className="fo-muted fo-sales-editform__note">
-          {error
+          {current.status === "denied"
             ? "You are not authorized to browse the employee directory, so the owner is shown as an employee id. The id can still be changed and saved."
-            : "The employee directory returned no records, so the owner is shown as an employee id."}
+            : current.status === "empty"
+              ? "The employee directory returned no records, so the owner is shown as an employee id."
+              : "The employee directory could not be read, so the owner is shown as an employee id. The id can still be changed and saved."}
         </p>
       </>
     );
   }
 
+  const search = async (query) => {
+    const res = await workforce.call("listWorkforceRoster", { query, limit: 8 });
+    return res.ok ? { ok: true, items: res.result.items, total: res.result.total } : { ok: false, code: res.code, message: res.message };
+  };
   return (
-    <select
+    <Autocomplete
       id={id}
-      className="fo-input"
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value)}
-      aria-describedby={describedBy}
-    >
-      {!value && <option value="">Select an owner…</option>}
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+      label="Owner"
+      hideLabel
+      placeholder="Type an employee's name"
+      search={search}
+      selected={current.owner}
+      getKey={(e) => e.employeeId}
+      getLabel={(e) => e.displayName ?? e.employeeId}
+      getContext={(e) => [e.jobRole?.label, e.employeeNumber ? `Employee ${e.employeeNumber}` : null].filter(Boolean).join(" · ")}
+      onSelect={(e) => { if (e) { setCurrent({ status: "ready", owner: e }); onChange(e.employeeId); } }}
+      inputProps={{ "aria-describedby": describedBy }}
+    />
   );
 }

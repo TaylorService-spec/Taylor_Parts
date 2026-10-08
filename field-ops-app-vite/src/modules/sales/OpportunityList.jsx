@@ -18,6 +18,9 @@ import {
   opportunityResultContext,
 } from "../../domain/opportunityListView.js";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
+import { titleCasePhrase } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 // THE RATIFIED COLLECTION HEADER. Not a bespoke one: the North Star pilot names the workspace
 // header as a distinct pattern from the record header, and this primitive is it -- crumb, rule
 // pair, serif title, count, and the operational summary line that answers "what matters" before
@@ -32,7 +35,8 @@ import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 // primary actions and therefore none. The variants below restore the hierarchy the artifact
 // draws: one filled action, everything else quiet.
 import { Button } from "../../shared/ui/primitives/index.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
+import { WORKFORCE_READ_STATE, useWorkforceRead } from "../../hooks/useWorkforceRead.js";
 // THE SAME owner resolution the record page uses, imported rather than reimplemented so a deal
 // cannot be owned by one person in the list and another on the record that list opens.
 import { ownerName as resolveOwnerName } from "./opportunitySections.jsx";
@@ -112,12 +116,13 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
   const { opportunities, accountNameById, status, synthetic, loading, error, refetch } = useOpportunities(source);
   // ONE directory subscription for the whole page. Owner names then resolve as a map lookup per
   // row -- never a read per row, which on a scanning surface is one round trip per visible deal.
-  const directory = useEmployeeDirectory();
-  // WHO IS LOOKING, resolved from the directory subscription already open above -- no extra read,
-  // and no new authority. `byUserId` is keyed by the Firebase uid; an account with no linked
-  // Employee record simply has no entry, and the "My opportunities" view says so rather than
-  // reporting an empty queue (see selectOpportunityView).
-  const viewerEmployeeId = viewerUid ? (directory.byUserId?.get(viewerUid)?.id ?? null) : null;
+  // Name ONLY the people on these records (resolveEmployeeDisplayNames) -- not the Employee directory, which this reader may not hold.
+  const directory = useGovernedEmployeeDirectory({ employeeIds: (opportunities ?? []).map((o) => o?.ownerEmployeeId) });
+  // WHO IS LOOKING: the caller's OWN governed Employee (EMP-RT-07 readMyEmployeeProfile, resolved by the server from the
+  // verified sign-in -- never from a uid in the client). A sign-in with no linked Employee has none, and the "My
+  // opportunities" view says so rather than reporting an empty queue (see selectOpportunityView).
+  const me = useWorkforceRead("readMyEmployeeProfile", viewerUid ? undefined : null);
+  const viewerEmployeeId = me.status === WORKFORCE_READ_STATE.READY ? (me.data?.employee?.employeeId ?? null) : null;
 
   // Fail-closed by default: a caller that injects nothing gets the seam's own inert readiness and
   // this page writes nothing. Production injects the real trusted capability decision.
@@ -155,9 +160,15 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
   );
   const counts = useMemo(() => opportunityListCounts(pipeline, { viewerEmployeeId }), [pipeline, viewerEmployeeId]);
   const viewRows = useMemo(
-    () => selected.rows.map((r) => opportunityListRow(r, {
-      nowMillis,
-      resolveOwner: (employeeId) => resolveOwnerName(employeeId, directory),
+    () => selected.rows.map((r) => ({
+      ...opportunityListRow(r, {
+        nowMillis,
+        resolveOwner: (employeeId) => resolveOwnerName(employeeId, directory),
+      }),
+      // Raw comparables for header sorting only (never rendered).
+      sortValue: typeof r?.expectedValue === "number" ? r.expectedValue : null,
+      sortClose: typeof r?.expectedCloseAt === "number" ? r.expectedCloseAt : null,
+      sortStage: r?.outcome ? OPPORTUNITY_STAGES.length + (r.outcome === "WON" ? 0 : 1) : OPPORTUNITY_STAGES.indexOf(r?.stage),
     })),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see nowMillis above
     [selected, directory],
@@ -172,6 +183,8 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
     [viewRows, query, stageFilter],
   );
   const narrowed = query.trim().length > 0 || stageFilter.size > 0;
+  // HEADER SORTING over the rows already in hand; no sort = the pipeline's own order.
+  const { sort, toggle, sorted: sortedRows } = useTableSort({ rows, columns: OPPORTUNITY_SORT_COLUMNS });
 
   const ready = status === "ready" && !loading;
 
@@ -250,7 +263,7 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
               className={`ns-view ${view === v ? "is-active" : ""}`.trim()}
               onClick={() => setView(v)}
             >
-              {OPPORTUNITY_VIEW_LABEL[v]}
+              {titleCasePhrase(OPPORTUNITY_VIEW_LABEL[v])}
               {/* A null count renders NOTHING. The My-opportunities tab has no count when the
                   viewer cannot be identified, and "0" there would assert they have no work. */}
               {counts.byView[v] == null ? null : (
@@ -263,10 +276,9 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
         </div>
       ) : null}
 
-      {/* THE TOOLBAR. Search and stage narrowing only — no sort control and no column chooser,
-          because the pipeline's order (attention first, then closing soonest) is a governed
-          derivation this page does not own, and re-ordering by an arbitrary column would quietly
-          replace the queue's meaning with a spreadsheet's. */}
+      {/* THE TOOLBAR. Search and stage narrowing only. The pipeline's order (attention first, then
+          closing soonest) stays the DEFAULT; the column headers sort the loaded rows client-side and
+          a third click restores that governed order (UI corrections package, item C). */}
       {ready ? (
         <div className="ns-toolbar">
           <label className="ns-toolbar__search">
@@ -296,7 +308,7 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
           </Button>
           {narrowed ? (
             <Button variant="tertiary" onClick={() => { setQuery(""); setStageFilter(new Set()); }}>
-              Clear all
+              Clear All
             </Button>
           ) : null}
         </div>
@@ -374,7 +386,7 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
                 scope={`the ${viewRows.length === 1 ? "1 opportunity" : `${viewRows.length} opportunities`} loaded in this view`}
                 action={
                   <Button variant="secondary" onClick={() => { setQuery(""); setStageFilter(new Set()); }}>
-                    Clear filters
+                    Clear Filters
                   </Button>
                 }
               />
@@ -388,7 +400,7 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
                 } being narrowed to none.`}
                 action={
                   <Button variant="secondary" onClick={() => setStageFilter(new Set())}>
-                    Clear filters
+                    Clear Filters
                   </Button>
                 }
               />
@@ -417,7 +429,7 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
               action={
                 selected.emptyReason !== "none" ? (
                   <Button variant="secondary" onClick={() => setView(OPPORTUNITY_VIEW.ALL)}>
-                    Show all opportunities
+                    Show All Opportunities
                   </Button>
                 ) : null
               }
@@ -427,7 +439,7 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
       ) : (
         <>
           {synthetic === true ? (
-            <p className="ns-gap-note">Showing synthetic sample opportunities — the live pipeline connects in a later cycle.</p>
+            <p className="ns-gap-note">Sample Data: showing sample opportunities — the live pipeline connects in a later cycle.</p>
           ) : null}
           <p className="ns-collection__result">
             {opportunityResultContext({
@@ -442,18 +454,18 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
             <table className="ns-table ns-collection__table">
               <thead>
                 <tr>
-                  <th scope="col">Opportunity</th>
-                  <th scope="col">Customer</th>
-                  <th scope="col">Stage</th>
-                  <th scope="col">Attention</th>
-                  <th scope="col" className="ns-num">Est. value</th>
-                  <th scope="col">Expected close</th>
-                  <th scope="col" className="ns-col--commercial">Agreement / Order</th>
-                  <th scope="col" className="ns-col--owner">Owner</th>
+                  <SortableHeader columnKey="reference" label="Opportunity" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="customer" label="Customer" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="stage" label="Stage" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="attention" label="Attention" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="value" label="Est. Value" sort={sort} onSort={toggle} className="ns-num" />
+                  <SortableHeader columnKey="close" label="Expected Close" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="commercial" label="Agreement / Order" sort={sort} onSort={toggle} className="ns-col--commercial" />
+                  <SortableHeader columnKey="owner" label="Owner" sort={sort} onSort={toggle} className="ns-col--owner" />
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {sortedRows.map((row) => (
                   <OpportunityRow key={row.id} row={row} navigate={navigate} />
                 ))}
               </tbody>
@@ -464,6 +476,18 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
       </WorkspaceIdentity>
   );
 }
+
+// Sort comparables per column. Absent values sort last (useTableSort), so "Not estimated" never reads as zero.
+const OPPORTUNITY_SORT_COLUMNS = Object.freeze({
+  reference: { value: (row) => row.reference },
+  customer: { value: (row) => row.customer.name },
+  stage: { value: (row) => (row.sortStage >= 0 ? row.sortStage : null) },
+  attention: { value: (row) => row.attention.words },
+  value: { value: (row) => row.sortValue },
+  close: { value: (row) => row.sortClose },
+  commercial: { value: (row) => (row.commercial.agreement.known ? 0 : 2) + (row.commercial.order.known ? 0 : 1) },
+  owner: { value: (row) => row.owner.name },
+});
 
 /**
  * ONE ROW, ONE DESTINATION.
@@ -519,10 +543,10 @@ function OpportunityRow({ row, navigate }) {
       {/* BARE NUMBER, NO SYMBOL (G5). expectedValue is stored with no currency field; a "$" here
           would assert a unit nobody recorded. Absent is "Not estimated", never 0 — zero would read
           as a worthless deal rather than an unestimated one. */}
-      <td className="ns-num" data-label="Est. value">
+      <td className="ns-num" data-label="Est. Value">
         {row.value.amount ?? <span className="ns-state--na">{row.value.fallback}</span>}
       </td>
-      <td data-label="Expected close">
+      <td data-label="Expected Close">
         {row.close.date ? (
           <>
             <span className={row.close.overdue ? "ns-row__overdue" : undefined}>{row.close.date}</span>

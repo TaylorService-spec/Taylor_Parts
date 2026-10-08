@@ -187,7 +187,7 @@ describe("Part Master reaches its record, and keeps its frame while it cannot", 
     // The opposite of Manufacturers, and for the opposite reason: fetchPartMasterPage asks for one
     // document more than it shows, so "there is more" is something the query answered.
     expect(PART_MASTER).toMatch(/state\.hasMore &&/);
-    expect(PART_MASTER).toMatch(/Load more parts/);
+    expect(PART_MASTER).toMatch(/Load More Parts/);
   });
 });
 

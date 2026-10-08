@@ -5,6 +5,9 @@ import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import { Button } from "../../shared/ui/primitives";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { operatingCompanyLabel, titleCase } from "../../shared/display/displayLabels.js";
 import CustomerPicker from "../workOrders/CustomerPicker.jsx";
 import EquipmentPicker from "../workOrders/EquipmentPicker.jsx";
 import { useAccountPicker } from "../../hooks/useAccountPicker";
@@ -38,12 +41,12 @@ import {
 // never be one: inbound email is untrusted external input.
 
 const DECLINE_REASONS = [
-  ["OUTSIDE_SERVICE_AREA", "Outside service area"],
-  ["UNSUPPORTED_EQUIPMENT", "Unsupported equipment"],
-  ["CAPACITY", "No capacity"],
-  ["DUPLICATE", "Duplicate request"],
-  ["CUSTOMER_ACCOUNT_ISSUE", "Customer account issue"],
-  ["INVALID_REQUEST", "Invalid request"],
+  ["OUTSIDE_SERVICE_AREA", "Outside Service Area"],
+  ["UNSUPPORTED_EQUIPMENT", "Unsupported Equipment"],
+  ["CAPACITY", "No Capacity"],
+  ["DUPLICATE", "Duplicate Request"],
+  ["CUSTOMER_ACCOUNT_ISSUE", "Customer Account Issue"],
+  ["INVALID_REQUEST", "Invalid Request"],
   ["OTHER", "Other"],
 ];
 
@@ -69,14 +72,14 @@ const STATUS_TONE = {
 };
 
 const STATUS_LABELS = {
-  AWAITING_DECISION: "Awaiting decision",
-  NEEDS_REVIEW: "Needs review",
-  ACCEPTING: "Acceptance in progress",
+  AWAITING_DECISION: "Awaiting Decision",
+  NEEDS_REVIEW: "Needs Review",
+  ACCEPTING: "Acceptance in Progress",
   ACCEPTED: "Accepted",
   DECLINED: "Declined",
-  ATTACHED: "Attached to existing work",
-  DUPLICATE: "Duplicate of an earlier message",
-  FAILED: "Processing failed",
+  ATTACHED: "Attached to Existing Work",
+  DUPLICATE: "Duplicate of an Earlier Message",
+  FAILED: "Processing Failed",
   QUARANTINED: "Quarantined",
 };
 
@@ -86,15 +89,15 @@ const REQUEST_TYPE_LABELS = {
   SERVICE: "Service",
   WARRANTY: "Warranty",
   INSTALL: "Install",
-  PM: "Planned maintenance",
+  PM: "Planned Maintenance",
   PARTS: "Parts",
   OTHER: "Other",
 };
 
-/** A stored token as a sentence. Unmapped values degrade to sentence case, never to a raw enum. */
+/** A stored token as a label. Unmapped values degrade to Title Case, never to a raw enum. */
 function label(map, value) {
   if (!value) return "—";
-  return map[value] ?? String(value).toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+  return map[value] ?? titleCase(value);
 }
 
 /** File size as a person reads it. "2412881 bytes" is a number; "2.4 MB" is a size. */
@@ -106,9 +109,9 @@ function fileSize(bytes) {
 }
 
 const WARNING_LABELS = {
-  NO_PROBLEM_DESCRIPTION: "No problem description found",
-  NO_SERIAL_NUMBER: "No serial number found",
-  NO_EXTERNAL_REFERENCE: "No warranty or reference number found",
+  NO_PROBLEM_DESCRIPTION: "No Problem Description Found",
+  NO_SERIAL_NUMBER: "No Serial Number Found",
+  NO_EXTERNAL_REFERENCE: "No Warranty or Reference Number Found",
 };
 
 const formatWhen = (millis) => (millis ? new Date(millis).toLocaleString() : "—");
@@ -167,8 +170,8 @@ function Fact({ label, children }) {
 function OriginalMessage({ detail, source }) {
   const [downloadError, setDownloadError] = useState(null);
   return (
-    <section className="fo-inbound-pane" aria-label="Original message">
-      <h2 className="fo-inbound-pane__title">Original message</h2>
+    <section className="fo-inbound-pane" aria-label="Original Message">
+      <h2 className="fo-inbound-pane__title">Original Message</h2>
       <Fact label="From">{detail.sender || "Unknown sender"}</Fact>
       <Fact label="To">{detail.recipients.join(", ") || "—"}</Fact>
       {detail.cc.length > 0 && <Fact label="CC">{detail.cc.join(", ")}</Fact>}
@@ -212,7 +215,7 @@ function OriginalMessage({ detail, source }) {
       {detail.statusNote && <p className="fo-muted" role="note">{detail.statusNote}</p>}
       {detail.threadMessages.length > 0 && (
         <>
-          <h3 className="fo-inbound-pane__subtitle">Later messages on this thread</h3>
+          <h3 className="fo-inbound-pane__subtitle">Later Messages on This Thread</h3>
           <ul className="fo-inbound-thread">
             {detail.threadMessages.map((m) => (
               <li key={m.messageId}>
@@ -298,8 +301,8 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
   };
 
   return (
-    <section className="fo-inbound-pane" aria-label="EOS work interpretation">
-      <h2 className="fo-inbound-pane__title">EOS work interpretation</h2>
+    <section className="fo-inbound-pane" aria-label="EOS Work Interpretation">
+      <h2 className="fo-inbound-pane__title">EOS Work Interpretation</h2>
 
       {detail.warnings.length > 0 && (
         <p className="fo-inbound-warnings">
@@ -315,7 +318,7 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
       )}
 
       <div className="fo-inbound-field">
-        <label className="fo-wizard-field-label" htmlFor="inbound-type">Request type</label>
+        <label className="fo-wizard-field-label" htmlFor="inbound-type">Request Type</label>
         <select id="inbound-type" className="fo-wizard-control" value={requestType} disabled={decided}
           onChange={(e) => setRequestType(e.target.value)}>
           {REQUEST_TYPES.map((t) => (
@@ -341,7 +344,7 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
             )}
           </p>
         ) : (
-          <CustomerPicker inputId="inbound-customer" accounts={accountPicker.options} onSelect={chooseCustomer} />
+          <CustomerPicker inputId="inbound-customer" onSelect={chooseCustomer} />
         )}
       </div>
 
@@ -373,24 +376,24 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
 
       <Fact label="Model">{detail.modelNumber}</Fact>
       <Fact label="Serial">{detail.serialNumber}</Fact>
-      <Fact label="Warranty / authorization">{detail.authorizationNumber}</Fact>
-      <Fact label="External reference">{detail.externalReference}</Fact>
+      <Fact label="Warranty / Authorization">{detail.authorizationNumber}</Fact>
+      <Fact label="External Reference">{detail.externalReference}</Fact>
       <Fact label="Routing">
         {detail.routingRuleName || (detail.routingRuleId ? "Matched a routing rule that has since been removed" : "No rule matched — review required")}
         {detail.queue ? ` · queue ${detail.queue}` : ""}
       </Fact>
-      <Fact label="Suggested operating company">{detail.suggestedOperatingCompanyId}</Fact>
+      <Fact label="Suggested Operating Company">{operatingCompanyLabel(detail.suggestedOperatingCompanyId, { short: false })}</Fact>
       {decided ? (
-        <Fact label="Operating company">{detail.operatingCompanyId}</Fact>
+        <Fact label="Operating Company">{operatingCompanyLabel(detail.operatingCompanyId, { short: false })}</Fact>
       ) : (
         <div className="fo-inbound-field">
-          <label className="fo-wizard-field-label" htmlFor="inbound-company">Operating company</label>
+          <label className="fo-wizard-field-label" htmlFor="inbound-company">Operating Company</label>
           <select id="inbound-company" className="fo-wizard-control" value={operatingCompanyId}
             disabled={!capabilities.canAccept || companies.status !== "ready"}
             onChange={(e) => setOperatingCompanyId(e.target.value)}>
             <option value="">Select the operating company…</option>
             {companies.items.map((c) => (
-              <option key={c.operatingCompanyId} value={c.operatingCompanyId}>{c.operatingCompanyId}</option>
+              <option key={c.operatingCompanyId} value={c.operatingCompanyId}>{operatingCompanyLabel(c.operatingCompanyId, { short: false })}</option>
             ))}
           </select>
           {companies.status !== "ready" && companies.status !== "loading" && companies.status !== "skipped" && (
@@ -400,7 +403,7 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
       )}
       {detail.threadAssociation === "AMBIGUOUS" && (
         <p className="fo-inbound-warnings">
-          <StatusPill tone="attention" label="Reply matched more than one open request" asText />
+          <StatusPill tone="attention" label="Reply Matched More Than One Open Request" asText />
         </p>
       )}
 
@@ -425,7 +428,7 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
           <StatusPill tone={STATUS_TONE[detail.status] ?? "unknown"} label={label(STATUS_LABELS, detail.status)} asText />
           {detail.workItemId ? (
             <Button variant="tertiary" className="fo-link-btn" onClick={() => onOpenWorkOrder(detail.workItemId)}>
-              Open the work order{detail.workOrderNumber ? ` ${detail.workOrderNumber}` : ""}
+              Open the Work Order{detail.workOrderNumber ? ` ${detail.workOrderNumber}` : ""}
             </Button>
           ) : null}
         </p>
@@ -434,7 +437,7 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
           {error && <p className="fo-inline-error" role="alert">{error}</p>}
           <div className="fo-inbound-actions">
             <div className="fo-inbound-decline">
-              <label className="fo-wizard-field-label" htmlFor="inbound-decline-reason">Decline reason</label>
+              <label className="fo-wizard-field-label" htmlFor="inbound-decline-reason">Decline Reason</label>
               <select id="inbound-decline-reason" className="fo-wizard-control" value={declineReason}
                 onChange={(e) => setDeclineReason(e.target.value)}>
                 {DECLINE_REASONS.map(([value, label]) => (
@@ -442,14 +445,14 @@ function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
                 ))}
               </select>
               <input className="fo-wizard-control" placeholder="Note (optional)" value={declineNote}
-                onChange={(e) => setDeclineNote(e.target.value)} aria-label="Decline note" />
+                onChange={(e) => setDeclineNote(e.target.value)} aria-label="Decline Note" />
               <Button variant="secondary" disabled={busy || !capabilities.canDecline}
                 onClick={() => run(() => capabilities.source.decline({ requestId: detail.id, reason: declineReason, note: declineNote || null }))}>
                 Decline Job
               </Button>
             </div>
             <div className="fo-inbound-attach">
-              <label className="fo-wizard-field-label" htmlFor="inbound-attach-wo">Existing work order</label>
+              <label className="fo-wizard-field-label" htmlFor="inbound-attach-wo">Existing Work Order</label>
               <input id="inbound-attach-wo" className="fo-wizard-control" value={attachWorkOrderId}
                 placeholder="Work Order id" onChange={(e) => setAttachWorkOrderId(e.target.value)} />
               <Button variant="secondary" disabled={busy || !capabilities.canAttach || !attachWorkOrderId}
@@ -527,7 +530,7 @@ function ClaimPanel({ detail, capabilities, onRecovered }) {
         </p>
       )}
       {history.length > 0 && (
-        <ol className="fo-inbound-thread" aria-label="Reviewer history">
+        <ol className="fo-inbound-thread" aria-label="Reviewer History">
           {history.map((e, i) => (
             <li key={`${e.kind}-${i}`}>
               <span className="fo-muted">{formatWhen(e.at)}</span>{" "}
@@ -542,15 +545,15 @@ function ClaimPanel({ detail, capabilities, onRecovered }) {
         <div className="fo-inbound-form">
           {error && <p className="fo-inline-error" role="alert">{error}</p>}
           <label className="fo-wizard-field">
-            <span>Reason (required)</span>
+            <span>Reason (Required)</span>
             <input className="fo-wizard-control" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
           </label>
           <Button variant="secondary" disabled={busy || !reason.trim()}
             onClick={() => act(() => capabilities.source.release({ requestId: detail.id, reason: reason.trim() }))}>
-            Release to queue
+            Release to Queue
           </Button>
           <label className="fo-wizard-field">
-            <span>Reassign to</span>
+            <span>Reassign To</span>
             <select className="fo-wizard-control" value={target} onChange={(e) => setTarget(e.target.value)} disabled={targets.status !== "ready"}>
               <option value="">{targets.status === "loading" ? "Loading reviewers…" : "Choose a reviewer…"}</option>
               {targets.items.map((t) => (
@@ -567,6 +570,19 @@ function ClaimPanel({ detail, capabilities, onRecovered }) {
     </section>
   );
 }
+
+const QUEUE_SORT_COLUMNS = Object.freeze({
+  received: { value: (row) => row.receivedAt || null },
+  // Age is "now minus arrival": ascending = youngest (latest arrival) first.
+  age: { value: (row) => { const at = row.receivedAt || row.createdAt; return at ? -at : null; } },
+  mailbox: { value: (row) => row.sourceMailboxName ?? null },
+  from: { value: (row) => row.sender || null },
+  subject: { value: (row) => row.subject || null },
+  type: { value: (row) => (row.requestType ? label(REQUEST_TYPE_LABELS, row.requestType) : null) },
+  status: { value: (row) => (row.status ? label(STATUS_LABELS, row.status) : null) },
+  reviewer: { value: (row) => (row.status === "ACCEPTING" ? (row.claimedByName ?? "Another reviewer") : null) },
+  flags: { value: (row) => queueFlags(row).join(" · ") || null },
+});
 
 export default function InboundWorkWorkspace({ source = EOS_INBOUND_WORK_SOURCE } = {}) {
   const navigate = useNavigate();
@@ -637,14 +653,17 @@ export default function InboundWorkWorkspace({ source = EOS_INBOUND_WORK_SOURCE 
     const rows = queue.rows;
     const by = (status) => rows.filter((r) => r.status === status).length;
     return [
-      { key: "awaiting", label: "Awaiting decision", value: by("AWAITING_DECISION") },
-      { key: "review", label: "Needs review", value: by("NEEDS_REVIEW") },
-      { key: "accepting", label: "Accepted, unfinished", value: by("ACCEPTING") },
+      { key: "awaiting", label: "Awaiting Decision", value: by("AWAITING_DECISION") },
+      { key: "review", label: "Needs Review", value: by("NEEDS_REVIEW") },
+      { key: "accepting", label: "Accepted, Unfinished", value: by("ACCEPTING") },
       { key: "quarantined", label: "Quarantined", value: by("QUARANTINED") },
       { key: "accepted", label: "Accepted", value: by("ACCEPTED") },
       { key: "declined", label: "Declined", value: by("DECLINED") },
     ];
   }, [queue.rows]);
+
+  // HEADER SORTING over the queue already read; no sort = the server's queue order.
+  const { sort, toggle, sorted: sortedQueueRows } = useTableSort({ rows: queue.rows, columns: QUEUE_SORT_COLUMNS });
 
   const capabilities = useMemo(() => ({
     canAccept: access.value?.canAccept === true,
@@ -671,7 +690,7 @@ export default function InboundWorkWorkspace({ source = EOS_INBOUND_WORK_SOURCE 
         <HonestState state={HONEST_STATE.LOADING} subject="inbound work" />
       ) : queue.status === SOURCE_STATUS.NOT_ACTIVATED ? (
         <div className="fo-muted fo-work-order-readiness" role="status" data-inbound-work-readiness="NOT_YET_ACTIVATED">
-          <strong>Inbound Work: NOT_YET_ACTIVATED.</strong> {INBOUND_WORK_NOT_YET_ACTIVATED_MESSAGE}
+          <strong>Inbound Work: Not Yet Activated.</strong> {INBOUND_WORK_NOT_YET_ACTIVATED_MESSAGE}
         </div>
       ) : queue.status === SOURCE_STATUS.DENIED ? (
         <HonestState state={HONEST_STATE.DENIED} subject="Inbound Work" />
@@ -684,19 +703,19 @@ export default function InboundWorkWorkspace({ source = EOS_INBOUND_WORK_SOURCE 
           <table className="fo-sales-pipeline">
             <thead>
               <tr>
-                <th>Received</th>
-                <th>Age</th>
-                <th>Mailbox</th>
-                <th>From</th>
-                <th>Subject</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Reviewer</th>
-                <th>Flags</th>
+                <SortableHeader columnKey="received" label="Received" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="age" label="Age" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="mailbox" label="Mailbox" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="from" label="From" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="subject" label="Subject" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="type" label="Type" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="reviewer" label="Reviewer" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="flags" label="Flags" sort={sort} onSort={toggle} />
               </tr>
             </thead>
             <tbody>
-              {queue.rows.map((row) => (
+              {sortedQueueRows.map((row) => (
                 <tr
                   key={row.id}
                   className={`fo-sales-row ${selectedId === row.id ? "is-selected" : ""}`.trim()}

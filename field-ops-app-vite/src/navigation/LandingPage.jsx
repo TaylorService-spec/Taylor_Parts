@@ -129,7 +129,7 @@ export function ReachableDestinations({ groups, operationalContext }) {
             <Link key={item.key} to={itemHref(domain, item)} className="fo-landing-card">
               <span className="fo-landing-card-title">{item.label}</span>
               {hasGrantedCapability(item, operationalContext) && (
-                <StatusIndicator tone="info" label="Capability granted" />
+                <StatusIndicator tone="info" label="Capability Granted" />
               )}
             </Link>
           ))}
@@ -147,7 +147,7 @@ export default function LandingPage({ role, allowedLegacyKeys = [], operationalC
     <div className="fo-panel fo-landing">
       <PageHeader
         eyebrow="My Dashboard"
-        title="What needs you right now"
+        title="What Needs You Right Now"
         description={`Every destination below is one your ${roleLabel} access already opens. Nothing here is a placeholder, and nothing here is a count you can't otherwise see.`}
       />
 
@@ -155,7 +155,7 @@ export default function LandingPage({ role, allowedLegacyKeys = [], operationalC
         <EmptyState
           icon={Compass}
           variant="database"
-          title="Nothing to show yet"
+          title="Nothing to Show Yet"
           message="Your account doesn't currently resolve access to any business area. If this looks wrong, ask an administrator to check your role and employment status in Administration > Employees."
         />
       ) : (

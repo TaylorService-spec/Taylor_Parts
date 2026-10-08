@@ -56,10 +56,10 @@ const selectWarehouse = async (id = "WH-1") => {
 
 const describeRack = ({ area = "parts room", bays = "1", positions = "2" } = {}) => {
   fireEvent.change(screen.getByLabelText("Area"), { target: { value: area } });
-  fireEvent.change(screen.getByLabelText("From aisle"), { target: { value: "A" } });
-  fireEvent.change(screen.getByLabelText("To aisle"), { target: { value: "A" } });
-  fireEvent.change(screen.getByLabelText("Bays in each aisle"), { target: { value: bays } });
-  fireEvent.change(screen.getByLabelText("Positions in each bay"), { target: { value: positions } });
+  fireEvent.change(screen.getByLabelText("From Aisle"), { target: { value: "A" } });
+  fireEvent.change(screen.getByLabelText("To Aisle"), { target: { value: "A" } });
+  fireEvent.change(screen.getByLabelText("Bays in Each Aisle"), { target: { value: bays } });
+  fireEvent.change(screen.getByLabelText("Positions in Each Bay"), { target: { value: positions } });
 };
 
 describe("capability posture is stated, independently, and never faked", () => {
@@ -84,8 +84,8 @@ describe("capability posture is stated, independently, and never faked", () => {
     await waitFor(() => expect(document.querySelector("table.fo-table")).toBeTruthy());
     expect(within(document.querySelector("table.fo-table")).getByText("A01-003")).toBeTruthy();
     expect(screen.getByText("inventory.location.bin.manage")).toBeTruthy();
-    expect(screen.queryByText("Preview these bins")).toBeNull();
-    expect(screen.getAllByText("View only").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Preview These Bins")).toBeNull();
+    expect(screen.getAllByText("View Only").length).toBeGreaterThan(0);
   });
 
   it("an absent capability previewer fails closed", async () => {
@@ -127,7 +127,7 @@ describe("preview is the registry's answer, never the client's guess", () => {
     mount({ client });
     await selectWarehouse();
     describeRack({ bays: "2", positions: "2" });
-    fireEvent.click(screen.getByText("Preview these bins"));
+    fireEvent.click(screen.getByText("Preview These Bins"));
     await waitFor(() => expect(client.previewBinCreates).toHaveBeenCalledTimes(1));
     expect(client.previewBinCreates.mock.calls[0][0].proposals).toHaveLength(4);
   });
@@ -137,7 +137,7 @@ describe("preview is the registry's answer, never the client's guess", () => {
     mount({ client });
     await selectWarehouse();
     describeRack();
-    fireEvent.click(screen.getByText("Preview these bins"));
+    fireEvent.click(screen.getByText("Preview These Bins"));
     await waitFor(() => expect(client.previewBinCreates).toHaveBeenCalled());
     for (const p of client.previewBinCreates.mock.calls[0][0].proposals) {
       expect(p).not.toHaveProperty("code");
@@ -155,7 +155,7 @@ describe("preview is the registry's answer, never the client's guess", () => {
     mount({ client });
     await selectWarehouse();
     describeRack({ positions: "1" });
-    fireEvent.click(screen.getByText("Preview these bins"));
+    fireEvent.click(screen.getByText("Preview These Bins"));
     expect(await screen.findByText("SERVER-SAYS")).toBeTruthy();
   });
 
@@ -164,7 +164,7 @@ describe("preview is the registry's answer, never the client's guess", () => {
     mount({ client });
     await selectWarehouse();
     describeRack();
-    fireEvent.click(screen.getByText("Preview these bins"));
+    fireEvent.click(screen.getByText("Preview These Bins"));
     expect(await screen.findByText(/unavailable/)).toBeTruthy();
     expect(screen.queryByText("Will be created.")).toBeNull();
   });
@@ -183,19 +183,19 @@ describe("preview is the registry's answer, never the client's guess", () => {
     mount({ client });
     await selectWarehouse();
     describeRack({ positions: "2" });
-    fireEvent.click(screen.getByText("Preview these bins"));
-    expect((await screen.findAllByText("Code taken")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText("Preview These Bins"));
+    expect((await screen.findAllByText("Code Taken")).length).toBeGreaterThan(0);
     // Only the NEW row is creatable.
-    expect(screen.getByText("Create 1 bin")).toBeTruthy();
+    expect(screen.getByText("Create 1 Bin")).toBeTruthy();
   });
 
   it("editing the description invalidates the preview rather than leaving a stale verdict", async () => {
     mount();
     await selectWarehouse();
     describeRack();
-    fireEvent.click(screen.getByText("Preview these bins"));
+    fireEvent.click(screen.getByText("Preview These Bins"));
     expect(await screen.findByText("Preview")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Bays in each aisle"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Bays in Each Aisle"), { target: { value: "3" } });
     await waitFor(() => expect(screen.queryByText("Preview")).toBeNull());
   });
 
@@ -207,7 +207,7 @@ describe("preview is the registry's answer, never the client's guess", () => {
     fireEvent.change(screen.getByLabelText("Aisle"), { target: { value: "a" } });
     fireEvent.change(screen.getByLabelText("Bay"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Position"), { target: { value: "2" } });
-    fireEvent.click(screen.getByText("Preview this bin"));
+    fireEvent.click(screen.getByText("Preview This Bin"));
     await waitFor(() => expect(client.previewBinCreates).toHaveBeenCalled());
     expect(client.previewBinCreates.mock.calls[0][0].proposals[0].idempotencyKey)
       .toBe("binadm:v1:WH-1:PARTS_ROOM:A:1:2");
@@ -227,8 +227,8 @@ describe("apply", () => {
     mount({ client });
     await selectWarehouse();
     describeRack({ positions: "2" });
-    fireEvent.click(screen.getByText("Preview these bins"));
-    fireEvent.click(await screen.findByText("Create 1 bin"));
+    fireEvent.click(screen.getByText("Preview These Bins"));
+    fireEvent.click(await screen.findByText("Create 1 Bin"));
     await waitFor(() => expect(client.createBin).toHaveBeenCalledTimes(1));
   });
 
@@ -244,12 +244,12 @@ describe("apply", () => {
     mount({ client });
     await selectWarehouse();
     describeRack({ positions: "3" });
-    fireEvent.click(screen.getByText("Preview these bins"));
-    fireEvent.click(await screen.findByText("Create 3 bins"));
+    fireEvent.click(screen.getByText("Preview These Bins"));
+    fireEvent.click(await screen.findByText("Create 3 Bins"));
     expect(await screen.findByText(/already reserved/)).toBeTruthy();
     // Both outcomes stand side by side. There is no aggregate verdict to read instead.
     expect(screen.getAllByText("Created").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Not created").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Not Created").length).toBeGreaterThan(0);
   });
 
   it("applying re-reads the bin list, so the screen reflects what is stored", async () => {
@@ -258,8 +258,8 @@ describe("apply", () => {
     await selectWarehouse();
     describeRack({ positions: "1" });
     const before = client.listBins.mock.calls.length;
-    fireEvent.click(screen.getByText("Preview these bins"));
-    fireEvent.click(await screen.findByText("Create 1 bin"));
+    fireEvent.click(screen.getByText("Preview These Bins"));
+    fireEvent.click(await screen.findByText("Create 1 Bin"));
     await waitFor(() => expect(client.listBins.mock.calls.length).toBeGreaterThan(before));
   });
 });
@@ -271,7 +271,7 @@ describe("existing bins can be renamed and retired, never deleted", () => {
     await selectWarehouse();
     fireEvent.click(await screen.findByText("Rename"));
     fireEvent.change(screen.getByLabelText("Name for A01-003"), { target: { value: "Fast movers" } });
-    fireEvent.click(screen.getByText("Save name"));
+    fireEvent.click(screen.getByText("Save Name"));
     await waitFor(() => expect(client.renameBin).toHaveBeenCalledWith({ binId: "bin_abc", name: "Fast movers" }));
   });
 

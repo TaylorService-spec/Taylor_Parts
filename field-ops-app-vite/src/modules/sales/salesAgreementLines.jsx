@@ -75,7 +75,7 @@ function LinesEditor({ lines, onChange, disabled }) {
               submit. Clearing says so immediately, at the moment the user made the choice. */}
           <select aria-label={`Line ${i + 1} kind`} value={l.kind} disabled={disabled}
             onChange={(e) => set(i, { kind: e.target.value, ref: "" })}>
-            <option value="EQUIPMENT_MODEL">Equipment model</option>
+            <option value="EQUIPMENT_MODEL">Equipment Model</option>
             <option value="PART">Part</option>
             <option value="SERVICE">Service</option>
           </select>
@@ -100,7 +100,7 @@ function LinesEditor({ lines, onChange, disabled }) {
         </div>
       ))}
       <Button variant="ghost" disabled={disabled} onClick={() => onChange([...lines, { ...BLANK_LINE }])}>
-        Add line
+        Add Line
       </Button>
     </div>
   );

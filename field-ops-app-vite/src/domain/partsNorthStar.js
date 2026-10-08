@@ -227,7 +227,7 @@ export function partLocationSection() {
  * instead of being collapsed into SERIAL and quietly minting a serialized treatment.
  *
  * An untracked part gets NOT_APPLICABLE: no section, no empty table. It has no unit identity, and
- * an empty "Serialized units" heading on a bulk part is a question the part cannot be asked.
+ * an empty "Serialized Units" heading on a bulk part is a question the part cannot be asked.
  */
 export function partUnitSection(part) {
   const { mode, reason } = resolveTrackingModeFromControlType(part?.controlType);
@@ -243,7 +243,7 @@ export function partUnitSection(part) {
   if (mode === "SERIAL") {
     return {
       state: PART_SECTION_STATE.CAPABILITY_INACTIVE,
-      heading: "Serialized units",
+      heading: "Serialized Units",
       note: "This part is serial-tracked — each unit is its own governed asset, never loose quantity.",
       detail:
         "Serialized-asset detail comes from the governed registry read, which is built and not " +
@@ -276,7 +276,7 @@ export function partPurchasingSection() {
     rows: [
       {
         key: "onOrder",
-        label: "On order",
+        label: "On Order",
         value: null,
         absence: "Not available in this environment",
       },
@@ -406,7 +406,7 @@ export const PARTS_COLLECTION_SORT = Object.freeze({
 });
 
 export const PARTS_COLLECTION_SORT_LABEL = Object.freeze({
-  PART_NUMBER: "Part number",
+  PART_NUMBER: "Part Number",
   NAME: "Description",
   CATEGORY: "Category",
 });

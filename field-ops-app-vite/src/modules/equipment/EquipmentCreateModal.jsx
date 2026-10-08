@@ -3,6 +3,7 @@ import Modal from "../../shared/ui/Modal";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
 import { Button } from "../../shared/ui/primitives";
+import { operatingCompanyLabel } from "../../shared/display/displayLabels.js";
 
 // Issue #232 unit E6 -- Equipment creation, on the same shared Modal + form-primitive
 // pattern as LocationCreateModal/ContactCreateModal (Issue #214 PR-2). Close paths are
@@ -137,7 +138,7 @@ export default function EquipmentCreateModal({ accountName, locations, locations
           Adding to: <strong>{accountName}</strong> (the customer is fixed and cannot be changed here).
         </p>
 
-        <Field id="equipment-create-name" label="Equipment name" required error={nameError} hint="e.g. Rooftop Unit 1">
+        <Field id="equipment-create-name" label="Equipment Name" required error={nameError} hint="e.g. Rooftop Unit 1">
           <input
             id="equipment-create-name"
             className="fo-wizard-control"
@@ -188,16 +189,16 @@ export default function EquipmentCreateModal({ accountName, locations, locations
           </Field>
         )}
 
-        <Field id="equipment-create-company" label="Operating company" required error={companiesError ?? companyError}>
+        <Field id="equipment-create-company" label="Operating Company" required error={companiesError ?? companyError}>
           <select id="equipment-create-company" className="fo-wizard-control" value={operatingCompanyId}
             aria-invalid={companyError ? true : undefined}
             onChange={(e) => { setOperatingCompanyId(e.target.value); clearFieldError("operatingCompanyId"); }}>
             <option value="">Select an operating company…</option>
-            {companyOptions.map((c) => <option key={c.operatingCompanyId} value={c.operatingCompanyId}>{c.operatingCompanyId}</option>)}
+            {companyOptions.map((c) => <option key={c.operatingCompanyId} value={c.operatingCompanyId}>{c.displayName || operatingCompanyLabel(c.operatingCompanyId, { short: false })}</option>)}
           </select>
         </Field>
 
-        <Field id="equipment-create-model" label="Equipment model" error={modelsError} hint="From the catalog (optional)">
+        <Field id="equipment-create-model" label="Equipment Model" error={modelsError} hint="From the catalog (optional)">
           <select id="equipment-create-model" className="fo-wizard-control" value={equipmentModelId}
             onChange={(e) => setEquipmentModelId(e.target.value)}>
             <option value="">No catalog model</option>
@@ -205,23 +206,23 @@ export default function EquipmentCreateModal({ accountName, locations, locations
           </select>
         </Field>
 
-        <Field id="equipment-create-serial" label="Serial number">
+        <Field id="equipment-create-serial" label="Serial Number">
           <input id="equipment-create-serial" className="fo-wizard-control" value={serialNumber}
             onChange={(e) => setSerialNumber(e.target.value)} />
         </Field>
 
-        <Field id="equipment-create-asset-tag" label="Asset tag">
+        <Field id="equipment-create-asset-tag" label="Asset Tag">
           <input id="equipment-create-asset-tag" className="fo-wizard-control" value={assetTag}
             onChange={(e) => setAssetTag(e.target.value)} />
         </Field>
 
-        <Field id="equipment-create-installed" label="Installed date" hint="YYYY-MM-DD">
+        <Field id="equipment-create-installed" label="Installed Date" hint="YYYY-MM-DD">
           <input id="equipment-create-installed" className="fo-wizard-control" type="date" value={installedDate}
             aria-describedby={describedBy("equipment-create-installed", { hasHint: true, hasError: false })}
             onChange={(e) => setInstalledDate(e.target.value)} />
         </Field>
 
-        <Field id="equipment-create-warranty" label="Warranty expires" hint="YYYY-MM-DD">
+        <Field id="equipment-create-warranty" label="Warranty Expires" hint="YYYY-MM-DD">
           <input id="equipment-create-warranty" className="fo-wizard-control" type="date" value={warrantyExpiresDate}
             aria-describedby={describedBy("equipment-create-warranty", { hasHint: true, hasError: false })}
             onChange={(e) => setWarrantyExpiresDate(e.target.value)} />

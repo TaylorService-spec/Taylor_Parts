@@ -15,6 +15,18 @@ import { toSalesAgreementProjection } from "../src/services/commercialEosAdapter
 import { taxEvidenceDisplay, taxEvidencePatch, TAX_CHOICE } from "../src/domain/taxEvidenceView.js";
 import { toMinor } from "../src/modules/sales/salesAgreementLines.jsx";
 
+// UI corrections integration (2026-10-08): these pages read names from the GOVERNED EOS directory
+// (useGovernedEmployeeDirectory). It is mocked to answer from the same fixture directory as before.
+vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
+  const legacy = await import("../src/hooks/useEmployeeDirectory");
+  return {
+    useGovernedEmployeeDirectory: (...args) => legacy.useEmployeeDirectory(...args),
+    ...(await vi.importActual("../src/domain/actorDisplayName.js")),
+    resetGovernedEmployeeDirectory: () => {},
+  };
+});
+
+
 vi.mock("../src/hooks/useSalesAgreementById.js", () => ({ useSalesAgreementById: vi.fn() }));
 vi.mock("../src/hooks/useEmployeeDirectory", () => ({
   useEmployeeDirectory: () => ({ loading: false, error: null, byEmployeeId: new Map(), byUserId: new Map() }),
@@ -51,8 +63,8 @@ function mountPanel(view, updateDraft = vi.fn().mockResolvedValue({ ok: true }))
   const utils = render(<MemoryRouter><SalesAgreementPanel agreement={agreement} hasCapability={() => true} /></MemoryRouter>);
   return { ...utils, updateDraft };
 }
-const openTerms = () => fireEvent.click(screen.getByRole("button", { name: "Edit terms" }));
-const save = () => fireEvent.click(screen.getByRole("button", { name: "Save terms" }));
+const openTerms = () => fireEvent.click(screen.getByRole("button", { name: "Edit Terms" }));
+const save = () => fireEvent.click(screen.getByRole("button", { name: "Save Terms" }));
 const noServerVocabulary = (container) => { for (const re of FORBIDDEN) expect(container.textContent).not.toMatch(re); };
 
 beforeEach(() => { vi.clearAllMocks(); });
@@ -64,9 +76,9 @@ describe("5 — the two human choices", () => {
     const fs = container.querySelector("fieldset.fo-agreement-tax-control");
     const radios = within(fs).getAllByRole("radio");
     expect(radios.map((r) => r.parentElement.textContent.trim())).toEqual(["Tax not yet determined", "Tax determined"]);
-    expect(within(fs).queryByLabelText("Tax amount")).toBeNull();
+    expect(within(fs).queryByLabelText("Tax Amount")).toBeNull();
     fireEvent.click(radios[1]);
-    expect(within(fs).getByLabelText("Tax amount")).toBeTruthy();
+    expect(within(fs).getByLabelText("Tax Amount")).toBeTruthy();
     // The old bare "Tax" charge box is gone.
     expect(container.querySelectorAll("input:not([type=radio]):not([type=checkbox])").length).toBeGreaterThan(0);
     expect([...container.querySelectorAll("label")].some((l) => l.textContent.trim() === "Tax" && l.querySelector("input"))).toBe(false);
@@ -78,7 +90,7 @@ describe("6 — a determined amount sends governed evidence, never a bare tax am
     const { updateDraft } = mountPanel(viewOf({ status: "NOT_DETERMINED" }));
     openTerms();
     fireEvent.click(screen.getByRole("radio", { name: "Tax determined" }));
-    fireEvent.change(screen.getByLabelText("Tax amount"), { target: { value: "18.50" } });
+    fireEvent.change(screen.getByLabelText("Tax Amount"), { target: { value: "18.50" } });
     save();
     await vi.waitFor(() => expect(updateDraft).toHaveBeenCalledTimes(1));
     const patch = updateDraft.mock.calls[0][1];
@@ -100,7 +112,7 @@ describe("7 — zero is allowed and reads as a determined zero", () => {
     const { updateDraft, unmount } = mountPanel(viewOf({ status: "NOT_DETERMINED" }));
     openTerms();
     fireEvent.click(screen.getByRole("radio", { name: "Tax determined" }));
-    fireEvent.change(screen.getByLabelText("Tax amount"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("Tax Amount"), { target: { value: "0" } });
     save();
     await vi.waitFor(() => expect(updateDraft).toHaveBeenCalledTimes(1));
     expect(updateDraft.mock.calls[0][1].taxEvidence).toEqual({ status: "DETERMINED", amountMinor: 0, currency: "USD" });
@@ -133,7 +145,7 @@ describe("8 — choosing 'not yet determined' sends that, and nothing when uncha
     const { updateDraft } = mountPanel(viewOf({ status: "DETERMINED", taxMinor: 1850 }));
     openTerms();
     expect(screen.getByRole("radio", { name: "Tax determined" }).checked).toBe(true);
-    expect(screen.getByLabelText("Tax amount").value).toBe("18.50");
+    expect(screen.getByLabelText("Tax Amount").value).toBe("18.50");
     fireEvent.click(screen.getByRole("radio", { name: "Tax not yet determined" }));
     save();
     await vi.waitFor(() => expect(updateDraft).toHaveBeenCalledTimes(1));

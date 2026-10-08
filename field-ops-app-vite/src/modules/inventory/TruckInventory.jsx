@@ -14,7 +14,7 @@
 //     an ungoverned row value shows "Unavailable" and is never a selectable option.
 //   * It computes no inventory value, on-hand, reserved, available, reorder, or discrepancy.
 //   * The scan panel is IDENTIFICATION + REVIEW ONLY: no scanner library, movement disabled.
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { inertTruckInventorySource, readTruckInventorySource } from "../../access/truckInventorySource";
 import { TRUCK_FLEET_STATE, buildTruckFleetView, buildTruckDetailView, buildTruckInventoryOptions, truckAssetStatusTone, truckReorderTone, truckFleetStatusTone } from "../../domain/truckInventoryView";
 import EmptyState from "../../shared/ui/EmptyState";
@@ -33,6 +33,9 @@ import TruckFleetCard from "./TruckFleetCard.jsx";
 import CreateTruckModal from "./truckManagement/CreateTruckModal";
 import ManageTruckDrawer from "./truckManagement/ManageTruckDrawer";
 import { indexManagementRecords } from "../../domain/truckManagement.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 const EMPTY_FILTERS = { q: "", technician: "", warehouse: "", status: "", discrepancy: "" };
 const TABS = [
@@ -43,14 +46,47 @@ const TABS = [
 ];
 const SCAN_OUTCOMES = [
   { id: "success", label: "Identified", message: "Item matched to a governed Asset/Part. Review the action before it happens." },
-  { id: "unknown", label: "Unknown item", message: "This code isn’t registered to any Part or Asset — it can’t be moved." },
-  { id: "wrong", label: "Wrong truck", message: "This asset belongs to another truck. Confirm the correct truck first." },
-  { id: "duplicate", label: "Duplicate scan", message: "Already scanned in this session — no second movement is created." },
-  { id: "missing", label: "Flagged missing", message: "This asset is flagged missing here. Locating it clears the discrepancy after review." },
+  { id: "unknown", label: "Unknown Item", message: "This code isn’t registered to any Part or Asset — it can’t be moved." },
+  { id: "wrong", label: "Wrong Truck", message: "This asset belongs to another truck. Confirm the correct truck first." },
+  { id: "duplicate", label: "Duplicate Scan", message: "Already scanned in this session — no second movement is created." },
+  { id: "missing", label: "Flagged Missing", message: "This asset is flagged missing here. Locating it clears the discrepancy after review." },
 ];
 const dash = (v) => (v == null ? "—" : v);
-// Governed status/condition display: an ungoverned/absent value reads "Unavailable".
-const gov = (v) => (v == null ? "Unavailable" : v);
+// Governed status/condition display: an ungoverned/absent value reads "Unavailable"; a governed
+// enum value ("IN_SERVICE") reads as words ("In Service") -- the value itself is unchanged.
+const gov = (v) => (v == null ? "Unavailable" : statusLabel(v));
+// A displayed quantity sorts as a number; anything else (absent / non-numeric) sorts last.
+const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const makeModel = (e) => (e.manufacturer || e.model ? `${e.manufacturer || ""}${e.manufacturer && e.model ? " · " : ""}${e.model || ""}` : "");
+
+// Client-side sort columns for the truck detail tables (rows already loaded; default = given order).
+const EQUIPMENT_SORT = Object.freeze({
+  assetId: { value: (e) => e.assetId ?? null },
+  internalSku: { value: (e) => e.internalSku ?? null },
+  makeModel: { value: makeModel },
+  serial: { value: (e) => e.serial ?? null },
+  condition: { value: (e) => (e.condition == null ? null : statusLabel(e.condition)) },
+  status: { value: (e) => (e.status ? statusLabel(e.status) : null) },
+  destination: { value: (e) => e.destination ?? null },
+  currentLocation: { value: (e) => e.currentLocation ?? null },
+});
+const PARTS_SORT = Object.freeze({
+  internalSku: { value: (p) => p.internalSku ?? null },
+  description: { value: (p) => p.description ?? null },
+  bin: { value: (p) => p.bin ?? null },
+  onHand: { value: (p) => num(p.onHand) },
+  reserved: { value: (p) => num(p.reserved) },
+  // Keyed "availableQty": a sort accessor over the governed pass-through value, never a derivation.
+  availableQty: { value: (p) => num(p.available) },
+  reorderStatus: { value: (p) => (p.reorderStatus ? statusLabel(p.reorderStatus) : null) },
+});
+const MANIFEST_SORT = Object.freeze({
+  label: { value: (l) => l.label ?? null },
+  internalSku: { value: (l) => l.internalSku ?? null },
+  serial: { value: (l) => l.serial ?? null },
+  state: { value: (l) => (l.state ? statusLabel(l.state) : null) },
+});
+const NO_ROWS = Object.freeze([]);
 
 // Fail-closed default: with no management prop the workspace is the pre-existing
 // read-only surface (canManage false -> no Add/Manage controls, no callable seam).
@@ -140,7 +176,7 @@ export default function TruckInventory({
   const scanModal = scan && (
     <div className="fo-modal-overlay" role="presentation" onClick={() => setScan(null)}>
       <div className="fo-panel fo-scan-review-panel" role="dialog" aria-modal="true" aria-label="Scan review" onClick={(e) => e.stopPropagation()}>
-        <h3>Scan review</h3>
+        <h3>Scan Review</h3>
         <p className="fo-muted">A scan <b>identifies</b> an item and opens this review — it never moves inventory on its own. Movement isn’t wired in this workspace.</p>
         <div className="fo-chip-row" role="group" aria-label="Scan outcomes">
           {SCAN_OUTCOMES.map((o) => (
@@ -150,7 +186,7 @@ export default function TruckInventory({
         <p role="status" aria-live="polite">{SCAN_OUTCOMES.find((o) => o.id === scan)?.message}</p>
         <div className="fo-btn-row">
           <button type="button" className="fo-btn-secondary" onClick={() => setScan(null)}>Close</button>
-          <button type="button" disabled title="Movement is not available in this workspace">Confirm (not available)</button>
+          <button type="button" disabled title="Movement is not available in this workspace">Confirm (Not Available)</button>
         </div>
       </div>
     </div>
@@ -163,7 +199,7 @@ export default function TruckInventory({
         <WorkspaceIdentity
           crumb="Inventory → Trucks"
           title="Truck Inventory"
-          action={<ActionRail start={<button type="button" className="fo-back-link" onClick={() => setSelectedId(null)}>← All trucks</button>} />}
+          action={<ActionRail start={<button type="button" className="fo-back-link" onClick={() => setSelectedId(null)}>← All Trucks</button>} />}
         >
           <EmptyState title="Truck not available" message="This truck is no longer in the connected view." />
         </WorkspaceIdentity>
@@ -219,7 +255,7 @@ export default function TruckInventory({
           reason={management.writeReady ? undefined : "Truck management is not yet enabled"}
           data-testid="add-truck"
         >
-          + Add truck{management.writeReady ? "" : " (not yet enabled)"}
+          + Add Truck{management.writeReady ? "" : " (Not Yet Enabled)"}
         </Button>
       ) : null}
       secondary={<button type="button" className="fo-btn-secondary" onClick={() => setScan("success")}>▣ Scan</button>}
@@ -229,7 +265,7 @@ export default function TruckInventory({
     <ContextBand
       items={[
         { key: "trucks", label: "Trucks", value: fleet.trucks.length },
-        { key: "discrepancies", label: "With discrepancies", value: discrepancyTrucks },
+        { key: "discrepancies", label: "With Discrepancies", value: discrepancyTrucks },
         { key: "showing", label: "Showing", value: rows.length },
       ]}
     />
@@ -259,8 +295,8 @@ export default function TruckInventory({
         <label>Truck<input type="text" value={filters.q} onChange={setField("q")} placeholder="Truck # or technician…" /></label>
         <label>Technician<select value={filters.technician} onChange={setField("technician")}><option value="">All</option>{distinct("technician").map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
         <label>Warehouse<select value={filters.warehouse} onChange={setField("warehouse")}><option value="">All</option>{distinct("homeWarehouse").map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
-        <label>Status<select value={filters.status} onChange={setField("status")}><option value="">All</option>{options.fleetStatus.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
-        <label>Discrepancy<select value={filters.discrepancy} onChange={setField("discrepancy")}><option value="">All</option><option value="yes">With discrepancies</option><option value="no">Clean</option></select></label>
+        <label>Status<select value={filters.status} onChange={setField("status")}><option value="">All</option>{options.fleetStatus.map((v) => <option key={v} value={v}>{statusLabel(v)}</option>)}</select></label>
+        <label>Discrepancy<select value={filters.discrepancy} onChange={setField("discrepancy")}><option value="">All</option><option value="yes">With Discrepancies</option><option value="no">Clean</option></select></label>
       </div>
 
       {fleet.state === TRUCK_FLEET_STATE.EMPTY ? (
@@ -295,24 +331,24 @@ export default function TruckInventory({
 // tone map. An absent value reads as "Unavailable" text (unknown tone), never a coloured pill.
 function StatusBadge({ value }) {
   if (!value) return <StatusPill tone="unknown" asText label="Unavailable" />;
-  return <StatusPill tone={truckAssetStatusTone(value)} label={value.replace(/_/g, " ")} />;
+  return <StatusPill tone={truckAssetStatusTone(value)} label={statusLabel(value)} />;
 }
 
 function TruckDetail({ truck, options, tab, setTab, onBack, onScan, scanModal, onManage }) {
   const actions = (
     <ActionRail
-      start={<button type="button" className="fo-back-link" onClick={onBack}>← All trucks</button>}
-      primary={onManage ? <Button variant="primary" onClick={onManage} data-testid="manage-truck">Manage truck</Button> : null}
+      start={<button type="button" className="fo-back-link" onClick={onBack}>← All Trucks</button>}
+      primary={onManage ? <Button variant="primary" onClick={onManage} data-testid="manage-truck">Manage Truck</Button> : null}
       secondary={<button type="button" className="fo-btn-secondary" onClick={onScan}>▣ Scan</button>}
     />
   );
   const context = (
     <ContextBand
       items={[
-        { key: "status", label: "Status", value: truck.status == null ? <StatusPill tone="unknown" asText label="Unavailable" /> : <StatusPill tone={truckFleetStatusTone(truck.status)} label={truck.status} /> },
+        { key: "status", label: "Status", value: truck.status == null ? <StatusPill tone="unknown" asText label="Unavailable" /> : <StatusPill tone={truckFleetStatusTone(truck.status)} label={statusLabel(truck.status)} /> },
         { key: "tech", label: "Technician", value: truck.technician || "Unassigned" },
         { key: "loc", label: "Location", value: truck.location || "—" },
-        { key: "home", label: "Home warehouse", value: truck.homeWarehouse || "—" },
+        { key: "home", label: "Home Warehouse", value: truck.homeWarehouse || "—" },
       ]}
     />
   );
@@ -345,12 +381,17 @@ function TruckDetail({ truck, options, tab, setTab, onBack, onScan, scanModal, o
 
 function InventoryTab({ truck, options }) {
   const [condition, setCondition] = useState("");
-  const equipment = condition ? truck.serializedEquipment.filter((e) => e.condition === condition) : truck.serializedEquipment;
+  const equipment = useMemo(
+    () => (condition ? truck.serializedEquipment.filter((e) => e.condition === condition) : truck.serializedEquipment),
+    [condition, truck.serializedEquipment]
+  );
+  const equipmentSort = useTableSort({ rows: equipment, columns: EQUIPMENT_SORT });
+  const partsSort = useTableSort({ rows: truck.parts, columns: PARTS_SORT });
   return (
     <>
       <div className="fo-btn-row fo-btn-row--spread">
         <h4>Serialized Equipment</h4>
-        <label>Condition<select value={condition} onChange={(e) => setCondition(e.target.value)}><option value="">All</option>{options.equipmentCondition.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
+        <label>Condition<select value={condition} onChange={(e) => setCondition(e.target.value)}><option value="">All</option>{options.equipmentCondition.map((c) => <option key={c} value={c}>{statusLabel(c)}</option>)}</select></label>
       </div>
       {truck.serializedEquipment.length === 0 ? (
         <EmptyState title="No serialized equipment" message="No serialized units are reported on this truck." />
@@ -359,12 +400,16 @@ function InventoryTab({ truck, options }) {
       ) : (
         <div className="fo-table-scroll">
           <table className="fo-table">
-            <thead><tr><th>Asset ID</th><th>Internal SKU</th><th>Manufacturer / Model</th><th>Serial</th><th>Condition</th><th>Status</th><th>Destination</th><th>Current location</th></tr></thead>
+            <thead><tr>
+              {[["assetId", "Asset ID"], ["internalSku", "Internal SKU"], ["makeModel", "Manufacturer / Model"], ["serial", "Serial"], ["condition", "Condition"], ["status", "Status"], ["destination", "Destination"], ["currentLocation", "Current Location"]].map(([key, label]) => (
+                <SortableHeader key={key} columnKey={key} label={label} sort={equipmentSort.sort} onSort={equipmentSort.toggle} />
+              ))}
+            </tr></thead>
             <tbody>
-              {equipment.map((e, i) => (
+              {equipmentSort.sorted.map((e, i) => (
                 <tr key={e.assetId || e.serial || i}>
                   <td>{dash(e.assetId)}</td><td>{dash(e.internalSku)}</td>
-                  <td>{e.manufacturer || e.model ? `${e.manufacturer || ""}${e.manufacturer && e.model ? " · " : ""}${e.model || ""}` : "—"}</td>
+                  <td>{makeModel(e) || "—"}</td>
                   <td>{dash(e.serial)}</td><td>{gov(e.condition)}</td><td><StatusBadge value={e.status} /></td>
                   <td>{dash(e.destination)}</td><td>{dash(e.currentLocation)}</td>
                 </tr>
@@ -379,13 +424,17 @@ function InventoryTab({ truck, options }) {
       ) : (
         <div className="fo-table-scroll">
           <table className="fo-table">
-            <thead><tr><th>Internal SKU</th><th>Description</th><th>Bin</th><th>On hand</th><th>Reserved</th><th>Available</th><th>Reorder</th></tr></thead>
+            <thead><tr>
+              {[["internalSku", "Internal SKU"], ["description", "Description"], ["bin", "Bin"], ["onHand", "On Hand"], ["reserved", "Reserved"], ["availableQty", "Available"], ["reorderStatus", "Reorder"]].map(([key, label]) => (
+                <SortableHeader key={key} columnKey={key} label={label} sort={partsSort.sort} onSort={partsSort.toggle} />
+              ))}
+            </tr></thead>
             <tbody>
-              {truck.parts.map((p, i) => (
+              {partsSort.sorted.map((p, i) => (
                 <tr key={p.internalSku || i}>
                   <td>{p.internalSku}</td><td>{dash(p.description)}</td><td>{dash(p.bin)}</td>
                   <td>{dash(p.onHand)}</td><td>{dash(p.reserved)}</td><td>{dash(p.available)}</td>
-                  <td>{p.reorderStatus ? <StatusPill tone={truckReorderTone(p.reorderStatus)} label={p.reorderStatus} /> : "—"}</td>
+                  <td>{p.reorderStatus ? <StatusPill tone={truckReorderTone(p.reorderStatus)} label={statusLabel(p.reorderStatus)} /> : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -397,6 +446,7 @@ function InventoryTab({ truck, options }) {
 }
 
 function ManifestTab({ manifest }) {
+  const lineSort = useTableSort({ rows: manifest?.lines ?? NO_ROWS, columns: MANIFEST_SORT });
   if (!manifest || manifest.lines.length === 0) {
     return <EmptyState title="No active load manifest" message="There are no planned warehouse → truck transfers reported for this truck." />;
   }
@@ -406,9 +456,13 @@ function ManifestTab({ manifest }) {
       {manifest.fromWarehouse ? <p className="fo-muted">From {manifest.fromWarehouse}</p> : null}
       <div className="fo-table-scroll">
         <table className="fo-table">
-          <thead><tr><th>Item</th><th>Internal SKU</th><th>Serial</th><th>State</th></tr></thead>
+          <thead><tr>
+            {[["label", "Item"], ["internalSku", "Internal SKU"], ["serial", "Serial"], ["state", "State"]].map(([key, label]) => (
+              <SortableHeader key={key} columnKey={key} label={label} sort={lineSort.sort} onSort={lineSort.toggle} />
+            ))}
+          </tr></thead>
           <tbody>
-            {manifest.lines.map((l, i) => (
+            {lineSort.sorted.map((l, i) => (
               <tr key={(l.internalSku || "") + (l.serial || "") + i}><td>{dash(l.label)}</td><td>{dash(l.internalSku)}</td><td>{dash(l.serial)}</td><td><StatusBadge value={l.state} /></td></tr>
             ))}
           </tbody>
@@ -423,7 +477,7 @@ function ActivityTab({ activity }) {
   return (
     <ul className="fo-activity-list">
       {activity.map((a, i) => (
-        <li key={i}><b>{dash(a.type)}</b> <span className="fo-muted">{dash(a.time)}</span><div>{dash(a.message)}</div></li>
+        <li key={i}><b>{a.type == null ? "—" : statusLabel(a.type)}</b> <span className="fo-muted">{dash(a.time)}</span><div>{dash(a.message)}</div></li>
       ))}
     </ul>
   );
@@ -436,10 +490,10 @@ function ReconciliationTab({ reconciliation }) {
     <div className="fo-panel">
       <h4>Expected vs Scanned</h4>
       <dl className="fo-reconciliation-summary">
-        <div><dt className="fo-muted">Serialized expected</dt><dd className="fo-dd-tight">{dash(r.expectedSerialized)}</dd></div>
-        <div><dt className="fo-muted">Serialized scanned</dt><dd className="fo-dd-tight">{dash(r.scannedSerialized)}</dd></div>
-        <div><dt className="fo-muted">Parts expected</dt><dd className="fo-dd-tight">{dash(r.expectedParts)}</dd></div>
-        <div><dt className="fo-muted">Parts scanned</dt><dd className="fo-dd-tight">{dash(r.scannedParts)}</dd></div>
+        <div><dt className="fo-muted">Serialized Expected</dt><dd className="fo-dd-tight">{dash(r.expectedSerialized)}</dd></div>
+        <div><dt className="fo-muted">Serialized Scanned</dt><dd className="fo-dd-tight">{dash(r.scannedSerialized)}</dd></div>
+        <div><dt className="fo-muted">Parts Expected</dt><dd className="fo-dd-tight">{dash(r.expectedParts)}</dd></div>
+        <div><dt className="fo-muted">Parts Scanned</dt><dd className="fo-dd-tight">{dash(r.scannedParts)}</dd></div>
       </dl>
       <h4>Missing</h4>
       {r.missing.length === 0 ? <p className="fo-muted">None reported.</p> : (

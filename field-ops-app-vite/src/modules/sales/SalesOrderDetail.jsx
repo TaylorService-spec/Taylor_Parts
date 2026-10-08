@@ -15,7 +15,7 @@ import { REFERENCE_STATE, REFERENCE_STATE_LABEL } from "../../metadata/reference
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import { salesOrderRecordPageRailSubset } from "../../metadata/definitions/salesOrderPage.js";
 import { salesOrderEntity } from "../../metadata/definitions/salesOrder.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import { salesOrderDollars } from "../../domain/salesOrderMoneyDisplay.js";
 import { formatMoment } from "../../domain/displayTimestamp";
 import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
@@ -101,7 +101,8 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
 
   // ONE DIRECTORY READ FOR THE PAGE, resolving the owner to a person. An employee id is a routing
   // key and never content.
-  const directory = useEmployeeDirectory();
+  // Name ONLY the people on this record (resolveEmployeeDisplayNames) -- not the Employee directory, which this reader may not hold.
+  const directory = useGovernedEmployeeDirectory({ employeeIds: ready ? [view.ownerEmployeeId, view.accountableEmployeeId] : [] });
   const ownerName = useMemo(() => {
     if (!ready || !view.ownerEmployeeId) return null;
     if (directory.loading) return null;
@@ -171,7 +172,7 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
         <HonestState
           state={HONEST_STATE.UNAVAILABLE}
           detail="This Sales Order is currently unavailable."
-          action={<button type="button" className="fo-button" onClick={refetch}>Try again</button>}
+          action={<button type="button" className="fo-button" onClick={refetch}>Try Again</button>}
         />
       </div>
     );

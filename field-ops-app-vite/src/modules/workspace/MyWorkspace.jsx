@@ -20,11 +20,16 @@ import { Button } from "../../shared/ui/primitives";
 import { callWorkspaceApi } from "../../services/workspaceApiClient";
 import { figure, BASIS_WORDS } from "../analysis/AnalysisWorkspace";
 import WorkflowWork from "./WorkflowWork.jsx";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { operatingCompanyLabel, statusLabel, titleCase } from "../../shared/display/displayLabels.js";
 
-const COMPANIES = [["consolidated", "Consolidated (reporting view)"], ["taylor", "Taylor"], ["ventana", "Ventana"]];
+// Company names come from the governed table; "consolidated" is the reporting projection, not a company.
+const COMPANIES = [["consolidated", "Consolidated (Reporting View)"], ["taylor", operatingCompanyLabel("taylor")], ["ventana", operatingCompanyLabel("ventana")]];
 
-const PRIORITY_WORDS = Object.freeze({ HIGH: "High priority", MEDIUM: "Medium priority", LOW: "Low priority" });
+const PRIORITY_WORDS = Object.freeze({ HIGH: "High Priority", MEDIUM: "Medium Priority", LOW: "Low Priority" });
 
+const EMPTY = Object.freeze([]);
 const recordLink = (item) => (item.path ? <Link to={item.path}>{item.label}</Link> : item.label);
 
 /** OWNER / ACCOUNTABLE / ASSIGNEE are three answers -- rendered as three, never merged into one "responsible" word. */
@@ -41,7 +46,37 @@ function responsibilityWords(item) {
 
 function actionWords(action) {
   if (!action || typeof action.available !== "boolean") return null;
-  return action.available ? action.label : `${action.label} — needs ${action.capability}`;
+  return action.available ? action.label : `${action.label} — needs ${titleCase(action.capability)} access`;
+}
+
+const statusWords = (item) => `${item.severity ? `${item.severity === "BLOCKING" ? "Blocking" : "Needs Attention"} · ` : ""}${item.status ? statusLabel(item.status) : "—"}`;
+const LABEL_OF = (item) => (typeof item.label === "string" ? item.label : null);
+// HEADER SORTING over the section's items already read; no sort = the server's order.
+const ITEM_SORT_COLUMNS = Object.freeze({
+  record: { value: LABEL_OF },
+  what: { value: (item) => item.detail ?? null },
+  status: { value: (item) => (item.severity || item.status ? statusWords(item) : null) },
+  people: { value: (item) => responsibilityWords(item) || null },
+});
+
+function SectionItemsTable({ items }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: items, columns: ITEM_SORT_COLUMNS });
+  const th = (k, label) => <SortableHeader columnKey={k} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table fo-table--stack">
+      <thead><tr>{th("record", "Record")}{th("what", "What")}{th("status", "Status")}{th("people", "People")}</tr></thead>
+      <tbody>
+        {sorted.map((item) => (
+          <tr key={`${item.kind}-${item.id}`}>
+            <td data-label="Record">{recordLink(item)}</td>
+            <td data-label="What">{item.detail ?? "—"}{actionWords(item.action) ? <span className="fo-muted"> · {actionWords(item.action)}</span> : null}</td>
+            <td data-label="Status">{statusWords(item)}</td>
+            <td data-label="People">{responsibilityWords(item) || "—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }
 
 function SectionBody({ section }) {
@@ -52,41 +87,43 @@ function SectionBody({ section }) {
   return (
     <>
       {section.key === "rental" && section.summary?.counts && (
-        <ContextBand items={Object.entries(section.summary.counts).map(([k, v]) => ({ key: k, label: k, value: String(v) }))} />
+        <ContextBand items={Object.entries(section.summary.counts).map(([k, v]) => ({ key: k, label: titleCase(k), value: String(v) }))} />
       )}
-      <table className="fo-table fo-table--stack">
-        <thead><tr><th>Record</th><th>What</th><th>Status</th><th>People</th></tr></thead>
-        <tbody>
-          {section.items.map((item) => (
-            <tr key={`${item.kind}-${item.id}`}>
-              <td data-label="Record">{recordLink(item)}</td>
-              <td data-label="What">{item.detail ?? "—"}{actionWords(item.action) ? <span className="fo-muted"> · {actionWords(item.action)}</span> : null}</td>
-              <td data-label="Status">{item.severity ? `${item.severity === "BLOCKING" ? "Blocking" : "Needs attention"} · ` : ""}{item.status ?? "—"}</td>
-              <td data-label="People">{responsibilityWords(item) || "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <SectionItemsTable items={section.items} />
       {section.count > section.items.length && <p className="fo-muted">Showing {section.items.length} of {section.count}.</p>}
       {section.summary?.notReadable?.length > 0 && <p className="fo-muted">Not readable with your access: {section.summary.notReadable.join(", ")}.</p>}
     </>
   );
 }
 
+const MEASURE_SORT_COLUMNS = Object.freeze({
+  measure: { value: (m) => m.name },
+  figure: { value: (m) => {
+    if (m.status !== "COMPUTED") return null;
+    if (m.unit === "MONEY") { const v = Object.values(m.aggregate?.money ?? {}); return v.length === 1 ? Number(v[0]) : null; }
+    const v = m.value?.value;
+    return v === null || v === undefined ? null : Number(v);
+  } },
+  basis: { value: (m) => statusLabel(m.basis, BASIS_WORDS) },
+  change: { value: (m) => (m.variance && typeof m.variance.percent === "number" ? m.variance.percent : null) },
+});
+
 function Measures({ summary }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: summary?.measures ?? EMPTY, columns: MEASURE_SORT_COLUMNS });
+  const th = (k, label) => <SortableHeader columnKey={k} label={label} sort={sort} onSort={toggle} />;
   if (!summary || summary.measures.length === 0) return <HonestState state={HONEST_STATE.EMPTY} subject="Measures" />;
   return (
     <>
       {summary.scope?.note && <p className="fo-muted">{summary.scope.note}</p>}
       <p className="fo-muted">{summary.period.currentFirstDay} – {summary.period.currentLastDay}</p>
       <table className="fo-table fo-table--stack">
-        <thead><tr><th>Measure</th><th>Figure</th><th>Basis</th><th>Change</th></tr></thead>
+        <thead><tr>{th("measure", "Measure")}{th("figure", "Figure")}{th("basis", "Basis")}{th("change", "Change")}</tr></thead>
         <tbody>
-          {summary.measures.map((m) => (
+          {sorted.map((m) => (
             <tr key={m.id}>
               <td data-label="Measure">{m.name}</td>
               <td data-label="Figure">{m.status === "COMPUTED" ? <strong>{figure(m.unit, m.value?.value, m.aggregate)}</strong> : <span className="fo-muted">{m.status === "REFUSED" ? `Not available to you — ${m.reason}` : m.reason}</span>}</td>
-              <td data-label="Basis">{BASIS_WORDS[m.basis] ?? m.basis}</td>
+              <td data-label="Basis">{statusLabel(m.basis, BASIS_WORDS)}</td>
               <td data-label="Change">{m.variance && typeof m.variance.percent === "number" ? `${m.variance.percent >= 0 ? "+" : ""}${m.variance.percent}% vs prior` : "—"}</td>
             </tr>
           ))}
@@ -110,8 +147,8 @@ export default function MyWorkspace({ callApi = callWorkspaceApi, preview = fals
   }, [callApi, company]);
   useEffect(() => { load(); }, [load]);
 
-  if (refusal) return <WorkspaceShell title="My work"><HonestState state={HONEST_STATE.UNAVAILABLE} subject="Your workspace" detail={refusal} action={<Button variant="secondary" onClick={load}>Try again</Button>} /></WorkspaceShell>;
-  if (!work) return <WorkspaceShell title="My work"><HonestState state={HONEST_STATE.LOADING} subject="Your workspace" /></WorkspaceShell>;
+  if (refusal) return <WorkspaceShell title="My Work"><HonestState state={HONEST_STATE.UNAVAILABLE} subject="Your workspace" detail={refusal} action={<Button variant="secondary" onClick={load}>Try Again</Button>} /></WorkspaceShell>;
+  if (!work) return <WorkspaceShell title="My Work"><HonestState state={HONEST_STATE.LOADING} subject="Your workspace" /></WorkspaceShell>;
 
   const attention = work.sections.find((s) => s.key === "attention");
   const others = work.sections.filter((s) => s.key !== "attention");
@@ -123,9 +160,9 @@ export default function MyWorkspace({ callApi = callWorkspaceApi, preview = fals
 
   return (
     <WorkspaceShell
-      title={`My work — ${work.persona.label}`}
+      title={`My Work — ${work.persona.label}`}
       context={<ContextBand items={[
-        { key: "me", label: "Signed in as", value: work.me.displayName ?? "No linked Employee" },
+        { key: "me", label: "Signed In As", value: work.me.displayName ?? "No linked Employee" },
         { key: "role", label: "Job Role", value: work.me.jobRole?.label ?? "No current Job Role (General Employee layout)" },
       ]} />}
       attention={<AttentionBand items={attentionItems} />}

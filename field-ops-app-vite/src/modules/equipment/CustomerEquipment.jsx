@@ -166,7 +166,8 @@ export default function CustomerEquipment() {
       ) : (
         <MetadataListGrid
           presentation={presentation}
-          caption="Installed equipment"
+          sorting={{ entity: equipmentEntity, criteria, onSort: (fieldId, direction) => apply(setSort(criteria, fieldId, direction)) }}
+          caption="Installed Equipment"
           // THE DESTINATION THE DEFINITION NAMES. equipmentIndexList.rowNavigationTo is
           // "/equipment/:equipmentId" and agreed with the literal this replaces -- which was luck,
           // not a property: the same pair disagreed on Work Orders and Part Master and named routes

@@ -1,5 +1,8 @@
 import { findAdministrationProfile } from "../../metadata/administration/administrationProfileRegistry.js";
 import { ADMIN_EDIT_SCOPE, MUTABILITY } from "../../metadata/administration/objectAdministrationProfile.js";
+import { titleCase } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 // ADMINISTRATION > OBJECTS -- an object's ADMINISTRATION PROFILE, rendered.
 //
@@ -31,10 +34,10 @@ import { ADMIN_EDIT_SCOPE, MUTABILITY } from "../../metadata/administration/obje
 // two-states-drawn-as-one failure the CRED grid's dash exists to prevent.
 
 const MUTABILITY_LABEL = {
-  [MUTABILITY.SET_AT_CREATE]: "Fixed at creation",
+  [MUTABILITY.SET_AT_CREATE]: "Fixed at Creation",
   [MUTABILITY.MUTABLE]: "Editable",
   [MUTABILITY.SYSTEM_MANAGED]: "Server-stamped",
-  [MUTABILITY.NOT_STORED]: "Not stored here",
+  [MUTABILITY.NOT_STORED]: "Not Stored Here",
 };
 
 const EDIT_SCOPE_LABEL = {
@@ -55,13 +58,51 @@ function Citation({ of }) {
   );
 }
 
+/** The field-policy list. Sorting reorders the declared policies for reading; it changes no policy. */
+function FieldPolicyTable({ fieldPolicies, commandsByField }) {
+  const changedBy = (policy) => commandsByField.get(policy.fieldId)?.join(", ") ?? (policy.heldBy ? policy.heldBy : null);
+  const { sort, toggle, sorted } = useTableSort({
+    rows: fieldPolicies,
+    columns: {
+      field: { value: (policy) => titleCase(policy.fieldId) },
+      mutability: { value: (policy) => MUTABILITY_LABEL[policy.mutability] ?? titleCase(policy.mutability) },
+      changedBy: { value: changedBy },
+      rule: { value: (policy) => policy.reason },
+    },
+  });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table">
+      <thead>
+        <tr>{header("field", "Field")}{header("mutability", "After Creation")}{header("changedBy", "Changed By")}{header("rule", "Rule")}</tr>
+      </thead>
+      <tbody>
+        {sorted.map((policy) => (
+          <tr key={policy.fieldId}>
+            <td>
+              {titleCase(policy.fieldId)} <code>{policy.fieldId}</code>
+              {policy.requiredAtCreate && <span className="fo-muted"> · required</span>}
+            </td>
+            <td>{MUTABILITY_LABEL[policy.mutability] ?? titleCase(policy.mutability)}</td>
+            <td className="fo-muted">{changedBy(policy) ?? "—"}</td>
+            <td className="fo-muted">
+              {policy.reason}
+              <Citation of={policy.enforcedBy} />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function ObjectAdministrationPanel({ entityId }) {
   const profile = entityId ? findAdministrationProfile(entityId) : null;
 
   if (!profile) {
     return (
       <section className="fo-panel--nested" aria-label="Object administration">
-        <h4>Administration profile</h4>
+        <h4>Administration Profile</h4>
         <p className="fo-muted">
           Not traced yet. This object has no administration profile, so its identity rule, field
           mutability, ownership and migration status are not stated anywhere the platform can read —
@@ -82,7 +123,7 @@ export default function ObjectAdministrationPanel({ entityId }) {
 
   return (
     <section className="fo-panel--nested" aria-label="Object administration">
-      <h4>Administration profile</h4>
+      <h4>Administration Profile</h4>
       {profile.description && <p className="fo-muted">{profile.description}</p>}
 
       <h5>Identity</h5>
@@ -100,9 +141,9 @@ export default function ObjectAdministrationPanel({ entityId }) {
         ))}
       </ul>
 
-      <h5>Ownership and operating company</h5>
+      <h5>Ownership and Operating Company</h5>
       <p>
-        <strong>{ownership.ownerClass}</strong> · {ownership.companyScope} ·{" "}
+        <strong>{titleCase(ownership.ownerClass)}</strong> · {titleCase(ownership.companyScope)} ·{" "}
         {ownership.companyField ? (
           <>owning company on <code>{ownership.companyField}</code></>
         ) : (
@@ -122,7 +163,7 @@ export default function ObjectAdministrationPanel({ entityId }) {
         </>
       )}
 
-      <h5>How it is read</h5>
+      <h5>How It Is Read</h5>
       <p>
         {readModel.path}
         {readModel.collection ? <> · <code>{readModel.collection}</code></> : null} · gated by{" "}
@@ -137,41 +178,14 @@ export default function ObjectAdministrationPanel({ entityId }) {
 
       <h5>Fields ({fieldPolicies.length})</h5>
       <div className="fo-table-scroll">
-        <table className="fo-table">
-          <thead>
-            <tr>
-              <th scope="col">Field</th>
-              <th scope="col">After creation</th>
-              <th scope="col">Changed by</th>
-              <th scope="col">Rule</th>
-            </tr>
-          </thead>
-          <tbody>
-            {fieldPolicies.map((policy) => (
-              <tr key={policy.fieldId}>
-                <td>
-                  <code>{policy.fieldId}</code>
-                  {policy.requiredAtCreate && <span className="fo-muted"> · required</span>}
-                </td>
-                <td>{MUTABILITY_LABEL[policy.mutability] ?? policy.mutability}</td>
-                <td className="fo-muted">
-                  {commandsByField.get(policy.fieldId)?.join(", ") ?? (policy.heldBy ? policy.heldBy : "—")}
-                </td>
-                <td className="fo-muted">
-                  {policy.reason}
-                  <Citation of={policy.enforcedBy} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <FieldPolicyTable fieldPolicies={fieldPolicies} commandsByField={commandsByField} />
       </div>
 
-      <h5>Governed commands ({commands.length})</h5>
+      <h5>Governed Commands ({commands.length})</h5>
       <ul className="fo-role-caps">
         {commands.map((command) => (
           <li key={command.id}>
-            <strong>{command.label}</strong> <span className="fo-muted">({command.phase})</span> — requires{" "}
+            <strong>{command.label}</strong> <span className="fo-muted">({titleCase(command.phase)})</span> — requires{" "}
             <code>{command.capability}</code>, audits <code>{command.auditAction}</code>
             {command.versionChecked ? ", version-checked" : ""}
             {command.idempotent ? ", idempotent" : ""}
@@ -187,7 +201,7 @@ export default function ObjectAdministrationPanel({ entityId }) {
           <ul className="fo-role-caps">
             {representations.map((rep) => (
               <li key={rep.id}>
-                <strong>{rep.label}</strong> <span className="fo-muted">· {rep.disposition}</span>
+                <strong>{rep.label}</strong> <span className="fo-muted">· {titleCase(rep.disposition)}</span>
                 <Citation of={rep.location} />
                 {rep.description && <div className="fo-muted">{rep.description}</div>}
                 {rep.blockedBy && <div className="fo-muted">Blocked by: {rep.blockedBy}</div>}
@@ -199,7 +213,7 @@ export default function ObjectAdministrationPanel({ entityId }) {
 
       <h5>Migration</h5>
       <p>
-        <strong>{migration.readiness}</strong>
+        <strong>{titleCase(migration.readiness)}</strong>
         {migration.targetAuthority ? <> — target: {migration.targetAuthority}</> : null}
         <Citation of={migration.evaluator} />
       </p>
@@ -212,7 +226,7 @@ export default function ObjectAdministrationPanel({ entityId }) {
         </ul>
       )}
 
-      <h5>What you can change here</h5>
+      <h5>What You Can Change Here</h5>
       <p className="fo-warning">{EDIT_SCOPE_LABEL[adminEditing.scope] ?? adminEditing.scope}</p>
       <p className="fo-muted">{adminEditing.reason}</p>
     </section>

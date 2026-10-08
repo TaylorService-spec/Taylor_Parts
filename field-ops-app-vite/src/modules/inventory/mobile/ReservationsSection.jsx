@@ -24,9 +24,16 @@
 //     READY `items: []` asserts empty reservations; a malformed non-empty payload is an
 //     integrity failure -- never a false "empty", never a partial mix. No raw values, error
 //     details, or location identifiers reach the UI.
-//   * DETERMINISTIC. Pure function of its `section` prop; row order preserved (no sort), the
-//     prop is never mutated.
+//   * DETERMINISTIC. Pure function of its `section` prop; the DEFAULT row order is the order
+//     given (no implicit sort), the prop is never mutated. A person may sort the loaded rows by
+//     a column header (shared useTableSort, tri-state back to the default); that reorders a
+//     display copy only. Enum-valued cells (kind, state) are shown through the shared statusLabel
+//     ("IN_TRANSIT" -> "In Transit") -- a display mapping of the same governed value, never an
+//     inference.
 import { useId } from "react";
+import { useTableSort } from "../../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../../shared/ui/sorting/SortableHeader.jsx";
+import { statusLabel } from "../../../shared/display/displayLabels.js";
 import { MOBILE_INVENTORY_SECTION_STATE } from "../../../domain/mobileLocationInventoryProjection.js";
 
 const { UNAVAILABLE, LOADING, DENIED, ERROR, READY } = MOBILE_INVENTORY_SECTION_STATE;
@@ -35,11 +42,11 @@ const KNOWN_STATES = Object.freeze([UNAVAILABLE, LOADING, DENIED, ERROR, READY])
 // The ONLY fields this slice renders, in display order, each with its governed value TYPE.
 const DISPLAY_COLUMNS = Object.freeze([
   { key: "order", label: "Order", type: "string" },
-  { key: "kind", label: "Kind", type: "string" },
+  { key: "kind", label: "Kind", type: "string", enumValue: true },
   { key: "internalSku", label: "SKU", type: "string" },
   { key: "serial", label: "Serial", type: "string" },
   { key: "quantity", label: "Quantity", type: "number" },
-  { key: "state", label: "State", type: "string" },
+  { key: "state", label: "State", type: "string", enumValue: true },
 ]);
 
 // Every recognized merged-contract field and its governed value type. A projected row's value
@@ -72,8 +79,17 @@ function displayNumber(v) {
 
 // The rendered display value for a column, dispatched by its governed type.
 function cellValue(row, col) {
-  return col.type === "number" ? displayNumber(row[col.key]) : displayString(row[col.key]);
+  if (col.type === "number") return displayNumber(row[col.key]);
+  const v = displayString(row[col.key]);
+  return v !== null && col.enumValue ? statusLabel(v) : v;
 }
+
+// Client-side sort over the loaded rows: the governed number for quantity, display text otherwise.
+const SORT_COLUMNS = Object.freeze(Object.fromEntries(DISPLAY_COLUMNS.map((col) => [col.key, {
+  value: (row) => (col.type === "number"
+    ? (typeof row[col.key] === "number" && Number.isFinite(row[col.key]) ? row[col.key] : null)
+    : cellValue(row, col)),
+}])));
 
 // A recognized field is governed-shaped iff it is absent, null, or matches its declared type
 // (a non-blank string, or a finite number).
@@ -117,6 +133,7 @@ function StateMessage({ testId, role, live, children }) {
 }
 
 function ReadyBody({ items }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: items, columns: SORT_COLUMNS });
   if (items.length === 0) {
     return (
       <StateMessage testId="rs-empty">
@@ -133,12 +150,12 @@ function ReadyBody({ items }) {
         <thead>
           <tr>
             {DISPLAY_COLUMNS.map((col) => (
-              <th key={col.key} scope="col">{col.label}</th>
+              <SortableHeader key={col.key} columnKey={col.key} label={col.label} sort={sort} onSort={toggle} />
             ))}
           </tr>
         </thead>
         <tbody>
-          {items.map((row, i) => {
+          {sorted.map((row, i) => {
             // Row key combines a governed identity with the render index so repeated
             // order/SKU/serial values can never collide (order preserved, read-only slice).
             const identity = displayString(row.order) ?? displayString(row.internalSku) ?? displayString(row.serial) ?? "row";

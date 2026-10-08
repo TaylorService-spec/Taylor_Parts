@@ -18,12 +18,12 @@ describe("Supplier administration panel", () => {
 
   it("creates a supplier from an organization chosen by name -- no name is typed, no organization id is shown", async () => {
     render(<SupplierAdministration />);
-    const select = await screen.findByLabelText("Vendor organization");
+    const select = await screen.findByLabelText("Vendor Organization");
     expect(screen.getByRole("option", { name: "Arctic Parts Supply (SAMPLE)" })).toBeTruthy();
     expect(screen.queryByText("acct-arctic")).toBeNull();
     fireEvent.change(select, { target: { value: "acct-arctic" } });
-    fireEvent.change(screen.getByLabelText("Supplier id"), { target: { value: "sup-arcticparts" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create supplier" }));
+    fireEvent.change(screen.getByLabelText("Supplier ID"), { target: { value: "sup-arcticparts" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Supplier" }));
     await waitFor(() => expect(calls).toEqual([["createSupplier", { supplierId: "sup-arcticparts", crmAccountId: "acct-arctic" }]]));
     expect(calls[0][1]).not.toHaveProperty("name");
   });

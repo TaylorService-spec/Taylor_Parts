@@ -170,7 +170,8 @@ describe("the Job Role remediation count is its own governed read", () => {
     expect(within(list).getByRole("link", { name: "Sol Vega" }).getAttribute("href")).toBe("/administration/users/pg-emp-22");
     // #210 (Owner): the workforce roster DOES show each person's Job Role -- from the governed read (listWorkforceRoster), never
     // inferred; the remediation count above remains its own read.
-    expect(await screen.findByRole("columnheader", { name: "Job Role" })).toBeTruthy();
+    // The header is now a sortable column (UI corrections item C): its accessible name carries the sort state.
+    expect(await screen.findByRole("columnheader", { name: /^Job Role/ })).toBeTruthy();
   });
 
   it("one Employee reads in the singular", async () => {
@@ -188,11 +189,11 @@ describe("the Job Role remediation count is its own governed read", () => {
       }),
     );
     await screen.findByText("2 Employees have no Job Role");
-    fireEvent.click(screen.getByRole("button", { name: "Show more Employees without a Job Role" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show More Employees Without a Job Role" }));
     expect(await screen.findByRole("link", { name: "Sol Vega" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Rae Quinn" })).toBeTruthy();
     expect(workforce.call).toHaveBeenCalledWith("listEmployeesWithoutJobRole", { cursor: "jr-cursor" });
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Show more Employees without a Job Role" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Show More Employees Without a Job Role" })).toBeNull());
   });
 
   it("a zero count renders nothing", async () => {

@@ -65,7 +65,7 @@ export default function ReasonPrompt({
         {context ? <p className="ns-dispatch-reason__context">{context}</p> : null}
 
         <label className="ns-dispatch-reason__label" htmlFor="ns-dispatch-reason-input">
-          Reason for schedule change
+          Reason for Schedule Change
         </label>
         <input
           id="ns-dispatch-reason-input"

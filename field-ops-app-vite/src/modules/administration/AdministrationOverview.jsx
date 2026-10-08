@@ -22,7 +22,7 @@ const MVP_SURFACES = [
     path: "users",
     title: "Users",
     description:
-      "Manage employee profiles, Job Roles, Work Eligibility, Operational Scope, Security Roles, EOS access and account status.",
+      "Manage employee profiles, Job Roles, Work Eligibility, Operational Scope, Security Roles, EOS access and account status. Each employee's Roles & Access tab shows their Effective Access, why they hold it, and a read-only View As.",
   },
   {
     key: "rolesPermissions",
@@ -32,17 +32,29 @@ const MVP_SURFACES = [
       "Review each Security Role: its holders, the Object actions it holds and its decision history. Configure what a Role may do in Objects; assign Security Roles to people on their Employee record under Users.",
   },
   {
-    key: "permissionPreview",
-    path: "permission-preview",
-    title: "Permission Preview",
-    description: "Read-only explanation of why a selected user can or can't perform a given action.",
+    key: "objects",
+    path: "objects",
+    title: "Objects",
+    description: "What each Security Role may do to each business object: whole-object authority, domain actions and governed field groups.",
+  },
+  {
+    key: "workflows",
+    path: "workflows",
+    title: "Workflows",
+    description: "Business processes, their versions and stages, and which Security Roles may act at each step.",
+  },
+  {
+    key: "dataImport",
+    path: "data-import",
+    title: "Data Import",
+    description: "Load an existing data set into EOS, review what was accepted or refused, and import it.",
   },
   {
     key: "auditLogs",
     path: "audit-logs",
     title: "Audit Logs",
     description:
-      "Where to find the governed audit of access changes: each Employee's Access Audit History and each Security Role's Decision history.",
+      "Where to find the governed audit of access changes: each Employee's Access Audit History and each Security Role's Decision History.",
   },
 ];
 
