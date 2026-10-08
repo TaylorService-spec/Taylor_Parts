@@ -201,21 +201,21 @@ export default function AcquireExistingUnit({
   // that vanishes mid-command leaves the operator unable to see the answer.
   return (
     <Modal
-      title="Add existing unit"
+      title="Add Existing Unit"
       variant="sheet"
       closeLabel="Close the sheet"
       onClose={busy ? () => {} : onClose}
     >
       <div className="fo-acquire" data-acquire-stage={stage}>
       {stage === ACQUIRE_STAGE.CONFIRM ? (
-        <h3 className="fo-acquire__stage">Confirm acquisition</h3>
+        <h3 className="fo-acquire__stage">Confirm Acquisition</h3>
       ) : null}
       <p className="fo-muted fo-acquire__lede">
         {stage === ACQUIRE_STAGE.FORM
           ? "This records a serialized unit the company already owns. It does not create a purchase order or supplier receipt."
           : stage === ACQUIRE_STAGE.CONFIRM
             ? ACQUIRE_CONSEQUENCE
-            : "The unit is recorded as company-owned, AVAILABLE stock at the chosen company location. No purchase order, supplier receipt, Equipment record, or customer assignment was created."}
+            : "The unit is recorded as company-owned, available stock at the chosen company location. No purchase order, supplier receipt, Equipment record, or customer assignment was created."}
       </p>
 
       {/* THE CAPABILITY IS SAID OUT LOUD, not implied by a greyed control. The server re-checks it
@@ -250,7 +250,7 @@ export default function AcquireExistingUnit({
             ) : null}
           </Field>
 
-          <Field id="acquire-serial" label="Serial number" problem={problemFor("serialNo")}>
+          <Field id="acquire-serial" label="Serial Number" problem={problemFor("serialNo")}>
             <input
               id="acquire-serial"
               className="fo-wizard-control"
@@ -267,7 +267,7 @@ export default function AcquireExistingUnit({
           {/* ── THE GOVERNED LOCATION. One state, one message, and no selection unless it is READY. */}
           <Field
             id="acquire-location"
-            label="Company location"
+            label="Company Location"
             problem={locations.selectable ? problemFor("location") : null}
           >
             <select
@@ -299,7 +299,7 @@ export default function AcquireExistingUnit({
               </p>
             ) : null}
             {locations.retryable && onRetryLocations ? (
-              <Button variant="secondary" onClick={onRetryLocations}>Try again</Button>
+              <Button variant="secondary" onClick={onRetryLocations}>Try Again</Button>
             ) : null}
           </Field>
 
@@ -334,7 +334,7 @@ export default function AcquireExistingUnit({
 
           <Field
             id="acquire-note"
-            label="Provenance note"
+            label="Provenance Note"
             optional
             hint="Supporting context only. It does not replace the required reason."
           >
@@ -357,7 +357,7 @@ export default function AcquireExistingUnit({
           fields wrote, so nothing here can disagree with what was entered. */}
       {stage !== ACQUIRE_STAGE.FORM && readback ? (
         <section className="fo-confirm-readback" aria-labelledby="acquire-confirm-heading">
-          <h4 id="acquire-confirm-heading" className="fo-visually-hidden">Acquisition details</h4>
+          <h4 id="acquire-confirm-heading" className="fo-visually-hidden">Acquisition Details</h4>
           <dl className="fo-detail-list">
             {readback.map((row) => (
               <Fragment key={row.key}>
@@ -382,13 +382,13 @@ export default function AcquireExistingUnit({
       <div className="fo-form-actions">
         {stage === ACQUIRE_STAGE.FORM ? (
           <Button variant="primary" onClick={() => setStage(ACQUIRE_STAGE.CONFIRM)} disabled={!review.enabled}>
-            Review acquisition
+            Review Acquisition
           </Button>
         ) : null}
         {stage === ACQUIRE_STAGE.CONFIRM ? (
           <>
             <Button variant="primary" onClick={acquire} disabled={!confirm.enabled}>
-              {busy ? "Adding…" : "Confirm acquisition"}
+              {busy ? "Adding…" : "Confirm Acquisition"}
             </Button>
             <Button variant="secondary" onClick={() => setStage(ACQUIRE_STAGE.FORM)} disabled={busy}>
               Back

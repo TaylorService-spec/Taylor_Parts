@@ -15,6 +15,7 @@ import {
   FinAnnotation,
 } from "./FinancialsPrimitives.jsx";
 import { OPERATING_COMPANIES } from "../../domain/operatingCompanyAuthority.js";
+import { operatingCompanyLabel, titleCasePhrase } from "../../shared/display/displayLabels.js";
 import { BUSINESS_UNIT_FILTER_OPTIONS } from "../../domain/financialsSurface.js";
 
 // FOUR STATES, FOUR TREATMENTS (Owner visual review, F12). "Not configured" and "Future
@@ -33,7 +34,8 @@ const CHIP_TONES = Object.freeze({
 });
 
 function StateChip({ state }) {
-  return <span className={`fin-gov-chip ${CHIP_TONES[state] ?? "fin-gov-chip--notconfigured"}`}>{state}</span>;
+  // The tone is keyed by the state's own words; the chip shows them as a Title Case status label.
+  return <span className={`fin-gov-chip ${CHIP_TONES[state] ?? "fin-gov-chip--notconfigured"}`}>{titleCasePhrase(state)}</span>;
 }
 
 function Row({ label, state = null, words = null, tip = null, last = false }) {
@@ -50,7 +52,7 @@ function Row({ label, state = null, words = null, tip = null, last = false }) {
 }
 
 const COMPANY_WORDS = OPERATING_COMPANIES.filter((c) => c.active)
-  .map((c) => (c.code === "TAYLOR" ? "Taylor" : c.displayName))
+  .map((c) => operatingCompanyLabel(c.id, { short: true }))
   .join(" · ");
 
 const UNIT_WORDS = BUSINESS_UNIT_FILTER_OPTIONS.filter((u) => u.key !== "all")
@@ -69,18 +71,18 @@ export default function FinancialsGovernance() {
         <div>
           <section className="ns-section" aria-label="Authority and scope">
             <div className="ns-section__head">
-              <h2 className="ns-section__title">Authority &amp; scope</h2>
+              <h2 className="ns-section__title">Authority &amp; Scope</h2>
             </div>
-            <Row label="Financial authority mode" state="Configured" words="Operational subledger" />
-            <Row label="External accounting authority" state="Future integration" words="Not selected" />
-            <Row label="Reconciliation provider (FIN-010)" state="Not configured" tip="Internal operational reconciliation (IN_SYNC/DRIFT) is merged and dormant; the external provider decision has not been made." />
+            <Row label="Financial Authority Mode" state="Configured" words="Operational subledger" />
+            <Row label="External Accounting Authority" state="Future integration" words="Not selected" />
+            <Row label="Reconciliation Provider (FIN-010)" state="Not configured" tip="Internal operational reconciliation (IN_SYNC/DRIFT) is merged and dormant; the external provider decision has not been made." />
             <Row
-              label="Cost authority (FIN-006)"
+              label="Cost Authority (FIN-006)"
               state="Built dormant"
               words="Cost-fact supply missing"
               tip="The margin derivation core is merged. Margin computes only when every required governed cost fact exists; otherwise UNKNOWN. Real cost-fact supply is an Owner decision (FIN-BLOCK-003)."
             />
-            <Row label="Operating currency" state="Configured" words="USD" last />
+            <Row label="Operating Currency" state="Configured" words="USD" last />
           </section>
 
           {/* ACCOUNTING POLICY — READ-ONLY, DELIBERATELY. Financials is not a second configuration
@@ -94,34 +96,34 @@ export default function FinancialsGovernance() {
               never implies a costing method nobody chose. */}
           <section className="ns-section" aria-label="Accounting policy">
             <div className="ns-section__head">
-              <h2 className="ns-section__title">Accounting policy</h2>
+              <h2 className="ns-section__title">Accounting Policy</h2>
             </div>
             <Row
-              label="Inventory costing"
+              label="Inventory Costing"
               state="Not configured"
               words="Chosen at deployment"
               tip="Weighted average or FIFO. Selected with the accounting team during deployment; EOS applies no method until one is configured and never assumes one."
             />
             <Row
-              label="Serialized equipment"
+              label="Serialized Equipment"
               state="Not configured"
               words="Chosen at deployment"
               tip="Specific identification, or pooled with the part's other stock. A serialized unit's own acquisition cost is derivable from its receipt lineage."
             />
             <Row
-              label="COGS recognition"
+              label="COGS Recognition"
               state="Not configured"
               words="Chosen at deployment"
               tip="The governed event at which cost becomes COGS. Physical movement — transfer, put-away, staging, receipt, cycle count — is never one. Work-order consumption is unavailable until consumption removes physical stock."
             />
             <Row
-              label="Unknown cost"
+              label="Unknown Cost"
               state="Configured"
               words="Preserved as unknown"
               tip="A platform invariant, not a deployment choice: EOS never substitutes zero for a cost it does not know."
             />
             <Row
-              label="Policy profile"
+              label="Policy Profile"
               words={<Link to="/administration/financial-policy">View Financial Policy →</Link>}
               last
             />
@@ -132,9 +134,9 @@ export default function FinancialsGovernance() {
               <h2 className="ns-section__title">Structure</h2>
             </div>
             <Row label="Companies" words={COMPANY_WORDS} />
-            <Row label="Business units" words={UNIT_WORDS} />
+            <Row label="Business Units" words={UNIT_WORDS} />
             <Row
-              label="Financial periods (FIN-008)"
+              label="Financial Periods (FIN-008)"
               state="Built dormant"
               words="Policy not configured"
               tip="The period model is merged: OPEN/CLOSED per operating company; close records preserve actor, time and reason; closed-period event writes refuse; reopen is not modeled. What remains policy: cadence/fiscal calendar, closer role, late-event treatment — none configured. No calendar configuration is asserted; common practice is not authority (FIN-PQ-20a)."
@@ -149,31 +151,31 @@ export default function FinancialsGovernance() {
               <h2 className="ns-section__title">Policy</h2>
             </div>
             <Row
-              label="Goal governance — bases, approval"
+              label="Goal Governance — Bases, Approval"
               state="Built dormant"
               words="Policy not configured"
               tip="The FIN-003 plan core (GOAL distinct from BUDGET, versioned, explicit basis) is merged and dormant. Approval routing and thresholds remain FIN-007 policy — not configured."
             />
-            <Row label="Budget governance — versioning, approval" state="Built dormant" words="Policy not configured" />
+            <Row label="Budget Governance — Versioning, Approval" state="Built dormant" words="Policy not configured" />
             <Row
-              label="Correction approval policy (FIN-007)"
+              label="Correction Approval Policy (FIN-007)"
               state="Built dormant"
               words="Policy not configured"
               tip="The approval mechanism is merged — self-approval is forbidden by current authority and missing policy fails closed. Thresholds, approver roles, escalations and expiry remain unconfigured."
             />
             <Row
-              label="Visibility policy summary"
+              label="Visibility Policy Summary"
               words="SELF / TEAM / BUSINESS_UNIT / OPERATING_COMPANY / CONSOLIDATED"
               tip="Read-only summary of the visibility scope VOCABULARY as it applies to financial facts. It lists the scopes that exist, not who holds them and not which are active — grants and activation live in the platform's role system and are resolved server-side per principal; this page never duplicates or asserts them."
             />
-            <Row label="Financial classifications (FIN-009)" state="Not configured" last />
+            <Row label="Financial Classifications (FIN-009)" state="Not configured" last />
           </section>
 
           <section className="ns-section" aria-label="References">
             <div className="ns-section__head">
               <h2 className="ns-section__title">References</h2>
             </div>
-            <Row label="Financial audit lens" words={<Link to="/financials/audit">Audit &amp; History →</Link>} last />
+            <Row label="Financial Audit Lens" words={<Link to="/financials/audit">Audit &amp; History →</Link>} last />
           </section>
         </div>
       </div>

@@ -171,7 +171,7 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
         <HonestState
           state={HONEST_STATE.UNAVAILABLE}
           detail="This Sales Order is currently unavailable."
-          action={<button type="button" className="fo-button" onClick={refetch}>Try again</button>}
+          action={<button type="button" className="fo-button" onClick={refetch}>Try Again</button>}
         />
       </div>
     );

@@ -3,6 +3,14 @@ import { inventoryUrgencyTone } from "../../../domain/inventoryUrgencyTone";
 import RequestReorderControl from "../../../shared/inventory/RequestReorderControl";
 import StatusPill from "../../../shared/ui/StatusPill.jsx";
 import { LEDGER_UNAVAILABLE_TEXT } from "../../../domain/ledgerRowIntegrity.js";
+import { useMemo } from "react";
+import { statusLabel } from "../../../shared/display/displayLabels.js";
+import SortableHeader from "../../../shared/ui/sorting/SortableHeader.jsx";
+import { useTableSort } from "../../../shared/ui/sorting/useTableSort.js";
+
+// Sortable values of one health row (item C). A part without usage history has no rate, no days
+// remaining and no recommended qty -- those sort as empty (last), never as zero.
+const riskRank = (urgency) => (urgency ? URGENCY_ORDER[urgency] : URGENCY_ORDER.LOW + 1);
 
 // Epic 3 Analytics -- pure renderer, all computation already done by
 // Operations.jsx (domain/inventoryAnalyticsEngine.ts). Only shows parts
@@ -81,11 +89,20 @@ export default function InventoryHealthPanel({
   // NEEDS_PLANNING into its own visible section is PR 3's job (see
   // docs/implementation-plans/inventory-zero-history-reorder-behavior.md),
   // not decided here.
-  const sorted = [...healthEntries].sort(
-    (a, b) =>
-      (a.recommendation.urgency ? URGENCY_ORDER[a.recommendation.urgency] : URGENCY_ORDER.LOW + 1) -
-      (b.recommendation.urgency ? URGENCY_ORDER[b.recommendation.urgency] : URGENCY_ORDER.LOW + 1)
-  );
+  const riskOrdered = useMemo(() => [...healthEntries].sort(
+    (a, b) => riskRank(a.recommendation.urgency) - riskRank(b.recommendation.urgency)
+  ), [healthEntries]);
+  // Header sorting over the rows already loaded; riskiest-first stays the default order. Unavailable
+  // (unreadable-ledger) rows are not sortable data and always stay listed after the sorted rows.
+  const sortColumns = useMemo(() => ({
+    part: { value: (e) => resolveName(e.partId) },
+    available: { value: (e) => e.stock?.availableStock },
+    avgDailyUsage: { value: (e) => (hasUsageHistory(e.usage) ? e.usage.avgDailyUsage : null) },
+    daysRemaining: { value: (e) => (hasUsageHistory(e.usage) && e.recommendation.daysRemaining !== Infinity ? e.recommendation.daysRemaining : null) },
+    risk: { value: (e) => (hasUsageHistory(e.usage) ? riskRank(e.recommendation.urgency) : URGENCY_ORDER.LOW + 1) },
+    recommendedQty: { value: (e) => (hasUsageHistory(e.usage) ? Math.ceil(e.recommendation.recommendedOrderQty) : null) },
+  }), [resolveName]);
+  const { sort, toggle, sorted } = useTableSort({ rows: riskOrdered, columns: sortColumns });
 
   return (
     <div className="fo-card">
@@ -110,12 +127,12 @@ export default function InventoryHealthPanel({
         <table className="fo-table fo-table--stack">
           <thead>
             <tr>
-              <th>Part</th>
-              <th>Available</th>
-              <th>Avg Daily Usage</th>
-              <th>Days Remaining</th>
-              <th>Risk</th>
-              <th>Recommended Reorder Qty</th>
+              <SortableHeader columnKey="part" label="Part" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="available" label="Available" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="avgDailyUsage" label="Avg Daily Usage" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="daysRemaining" label="Days Remaining" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="risk" label="Risk" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="recommendedQty" label="Recommended Reorder Qty" sort={sort} onSort={toggle} />
               {onRequestReorder && <th>Action</th>}
             </tr>
           </thead>
@@ -130,9 +147,9 @@ export default function InventoryHealthPanel({
                 <td data-label="Days remaining">{hasHistory && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>
                 <td data-label="Risk">
                   {hasHistory ? (
-                    <StatusPill tone={inventoryUrgencyTone(recommendation.urgency)} label={recommendation.urgency} />
+                    <StatusPill tone={inventoryUrgencyTone(recommendation.urgency)} label={statusLabel(recommendation.urgency)} />
                   ) : (
-                    <StatusPill tone="unknown" label="Needs planning" />
+                    <StatusPill tone="unknown" label="Needs Planning" />
                   )}
                 </td>
                 <td data-label="Recommended qty">{hasHistory ? Math.ceil(recommendation.recommendedOrderQty) : <span className="fo-muted">Insufficient usage history</span>}</td>

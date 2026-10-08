@@ -18,6 +18,30 @@ import {
   BUSINESS_UNIT_FILTER_OPTIONS,
 } from "../../domain/financialsSurface.js";
 import { PERIOD_PRESETS, periodNote } from "../../domain/financialsPeriod.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { ariaSortOf } from "../../shared/ui/sorting/useTableSort.js";
+import { labelWords } from "./financialsDisplay.js";
+
+// ─── Sortable column header for the Financials tables (item C). ───
+// The shared SortableHeader, plus the family's hover-ⓘ annotation when a column carries contract
+// copy (SortableHeader renders only its label, so an annotated column composes the same markup).
+export function FinSortableHeader({ columnKey, label, sort, onSort, tip = null, className = "" }) {
+  if (!tip) return <SortableHeader columnKey={columnKey} label={label} sort={sort} onSort={onSort} className={className} />;
+  const state = ariaSortOf(sort, columnKey);
+  const indicator = { ascending: "▲", descending: "▼", none: "↕" }[state];
+  const spoken = { ascending: "sorted ascending", descending: "sorted descending", none: "not sorted" }[state];
+  return (
+    <th scope="col" aria-sort={state} className={`fo-sortable-th ${className}`.trim()} data-sort-key={columnKey} data-sort-state={state}>
+      <button type="button" className="fo-sortable-th__button" onClick={() => onSort(columnKey)}
+        title={state === "none" ? `Sort by ${label}` : state === "ascending" ? `Sort by ${label}, descending` : "Restore the default order"}>
+        <span>{label}</span>
+        <span className={`fo-sortable-th__indicator fo-sortable-th__indicator--${state}`} aria-hidden="true">{indicator}</span>
+        <span className="fo-sr-only">{`, ${spoken}`}</span>
+      </button>
+      <FinAnnotation tip={tip} />
+    </th>
+  );
+}
 
 // ─── Hover-ⓘ annotation (the design's binding convention: .hlp/.tip) ───
 // Only contract copy stays visible; the explanation sits behind a focusable ⓘ. Rendered
@@ -54,7 +78,7 @@ export function FactClassLabel({ factClass, derivation = null }) {
 export function FinancialFigure({ label, valueMinor = null, valueText = null, currency = "USD", factClass, derivation = null, absence = null, detail = null }) {
   return (
     <div className="fin-figure">
-      <div className="fin-figure__label">{label}</div>
+      <div className="fin-figure__label">{labelWords(label)}</div>
       {valueText != null ? (
         <div className="fin-figure__value">{valueText}</div>
       ) : valueMinor != null ? (
@@ -72,7 +96,7 @@ export function FinancialFigure({ label, valueMinor = null, valueText = null, cu
 
 // ─── Measurement-basis chip (pages 08/10/13): the basis is unmissable, in its own slot. ───
 export function BasisChip({ basis }) {
-  return <span className="fin-basis">{basis}</span>;
+  return <span className="fin-basis">{labelWords(basis)}</span>;
 }
 
 // ─── The shared filter rail: Company · Business Unit · Period. ───
@@ -92,15 +116,15 @@ export function FinancialsFilterRail({
       <FilterBar
         variant="chips"
         label="Company"
-        options={COMPANY_FILTER_OPTIONS.map((o) => ({ key: o.key, label: o.label }))}
+        options={COMPANY_FILTER_OPTIONS.map((o) => ({ key: o.key, label: labelWords(o.label) }))}
         activeKey={company}
         onChange={onCompanyChange}
       />
       {onBusinessUnitChange ? (
         <FilterBar
           variant="chips"
-          label="Business unit"
-          options={BUSINESS_UNIT_FILTER_OPTIONS.map((o) => ({ key: o.key, label: o.label }))}
+          label="Business Unit"
+          options={BUSINESS_UNIT_FILTER_OPTIONS.map((o) => ({ key: o.key, label: labelWords(o.label) }))}
           activeKey={businessUnit}
           onChange={onBusinessUnitChange}
         />

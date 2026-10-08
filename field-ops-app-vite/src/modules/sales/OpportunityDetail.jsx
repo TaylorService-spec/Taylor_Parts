@@ -157,7 +157,7 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
         <HonestState
           state={HONEST_STATE.UNAVAILABLE}
           detail="Couldn’t load this opportunity."
-          action={<button type="button" className="fo-button" onClick={refetch}>Try again</button>}
+          action={<button type="button" className="fo-button" onClick={refetch}>Try Again</button>}
         />
       </div>
     );

@@ -31,7 +31,7 @@ export default function FinancialsReconciliation() {
     >
       <section className="ns-section" aria-label="Operational integrity">
         <div className="ns-section__head">
-          <h2 className="ns-section__title">Operational integrity — internal reconciliation</h2>
+          <h2 className="ns-section__title">Operational Integrity — Internal Reconciliation</h2>
           <span className="ns-section__meta">· FIN-010 · IN_SYNC / DRIFT · nothing auto-fixes</span>
         </div>
         <p className="fin-custody-note">
@@ -51,7 +51,7 @@ export default function FinancialsReconciliation() {
 
       <section className="ns-section" aria-label="External accounting reconciliation">
         <div className="ns-section__head">
-          <h2 className="ns-section__title">External accounting reconciliation</h2>
+          <h2 className="ns-section__title">External Accounting Reconciliation</h2>
           <span className="ns-section__meta">· FUTURE INTEGRATION · no accounting authority selected</span>
         </div>
         <div className="fin-truth-band">
@@ -72,10 +72,10 @@ export default function FinancialsReconciliation() {
                 <th scope="col">Record</th>
                 <th scope="col">Source</th>
                 <th scope="col">Company</th>
-                <th scope="col" className="ns-num">EOS amount</th>
-                <th scope="col" className="ns-num">External amount</th>
+                <th scope="col" className="ns-num">EOS Amount</th>
+                <th scope="col" className="ns-num">External Amount</th>
                 <th scope="col">Difference</th>
-                <th scope="col">External ref</th>
+                <th scope="col">External Ref</th>
                 <th scope="col">State</th>
               </tr>
             </thead>

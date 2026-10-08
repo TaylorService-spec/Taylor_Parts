@@ -33,7 +33,7 @@ export default function EmployeeExperiencePreview({ employeeId, callApi = callWo
       <div>
         <p className="fo-muted">See the workspace EOS resolves for this person — their persona, sections, reach and refusals — read-only.
           No session is issued for them and nothing can be changed from the preview. Every preview is audited.</p>
-        <Button variant="secondary" onClick={() => setOpen(true)}>View as user (preview)</Button>
+        <Button variant="secondary" onClick={() => setOpen(true)}>View as User (Preview)</Button>
       </div>
     );
   }
@@ -47,7 +47,7 @@ export default function EmployeeExperiencePreview({ employeeId, callApi = callWo
       )}
       {error && <FormError>{error}</FormError>}
       <MyWorkspace callApi={previewCall} preview />
-      <Button variant="secondary" onClick={() => { setOpen(false); setMeta(null); }}>Close preview</Button>
+      <Button variant="secondary" onClick={() => { setOpen(false); setMeta(null); }}>Close Preview</Button>
     </div>
   );
 }

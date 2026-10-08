@@ -11,12 +11,9 @@
 // computed here — every amount is the server's own derivation.
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  FinancialsPageFrame,
-  FinancialsFilterRail,
-  FinancialsHonestSection,
-  FinAnnotation,
-} from "./FinancialsPrimitives.jsx";
+import { FinancialsPageFrame, FinancialsFilterRail, FinancialsHonestSection, FinSortableHeader } from "./FinancialsPrimitives.jsx";
+import { companyWords, businessUnitWords } from "./financialsDisplay.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import FilterBar from "../../shared/ui/FilterBar";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useAccountNames } from "../../hooks/useAccountNames.js";
@@ -46,6 +43,7 @@ function applyView(rows, view) {
 }
 
 const dateWords = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateString() : "—");
+const COMPANY_UNIT_TIP = "Line-level business unit is the only unit truth (FIN-002). An invoice whose lines span units reads 'Mixed' here; unit filtering resolves per line, never per header.";
 
 export default function FinancialsInvoices() {
   const [company, setCompany] = useState("consolidated");
@@ -83,6 +81,21 @@ export default function FinancialsInvoices() {
 
   // A view that legitimately selects nothing from a ready read is EMPTY — a fact about the filter,
   // not about authorization or availability, so it must not borrow either of those sentences.
+  // Column sorting is a display order over the rows already returned — the server's order is the default.
+  const columns = {
+    invoice: { value: (r) => r.invoiceNumber },
+    customer: { value: (r) => (r.accountId ? (names.get(r.accountId) ?? null) : null) },
+    companyUnit: { value: (r) => `${companyWords(r.companyId)} · ${businessUnitWords(r.businessUnit)}` },
+    issued: { value: (r) => (typeof r.issuedAtMillis === "number" ? r.issuedAtMillis : null) },
+    due: { value: (r) => (typeof r.dueDate === "number" ? r.dueDate : null) },
+    total: { value: (r) => r.raw.totalMinor ?? null },
+    applied: { value: (r) => r.raw.appliedMinor ?? null },
+    outstanding: { value: (r) => r.raw.outstandingMinor ?? null },
+    status: { value: (r) => r.position },
+  };
+  const { sort, toggle, sorted } = useTableSort({ rows, columns });
+  const th = (key, label, extra = {}) => <FinSortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} {...extra} />;
+
   const honest =
     answered && rows.length === 0
       ? {
@@ -106,11 +119,11 @@ export default function FinancialsInvoices() {
       custodyTip="Invoice issuance is Billing Queue-owned: there is deliberately no New Invoice action on this collection. Company authority comes from the Sales Order's operatingCompanyId (FIN-002); business unit is line-level, so a mixed invoice reads 'Mixed' at collection level rather than forcing one unit onto it."
     >
       <FinancialsFilterRail company={company} onCompanyChange={setCompany} period={period.controlProps} />
-      <FilterBar variant="views" label="Invoice views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
+      <FilterBar variant="views" label="Invoice Views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
 
       <FinancialsHonestSection
         id="fin-invoices-collection"
-        title="Invoice collection"
+        title="Invoice Collection"
         meta="reconciliation status column reserved until FIN-010 activates"
         honest={honest}
         subject="Invoice reads"
@@ -120,23 +133,20 @@ export default function FinancialsInvoices() {
             <caption className="fo-sr-only">Governed invoices</caption>
             <thead>
               <tr>
-                <th scope="col">Invoice</th>
-                <th scope="col">Customer</th>
-                <th scope="col">
-                  Company · Unit
-                  <FinAnnotation tip="Line-level business unit is the only unit truth (FIN-002). An invoice whose lines span units reads 'Mixed' here; unit filtering resolves per line, never per header." />
-                </th>
-                <th scope="col">Issued</th>
-                <th scope="col">Due</th>
-                <th scope="col" className="ns-num">Total</th>
-                <th scope="col" className="ns-num">Applied</th>
-                <th scope="col" className="ns-num">Outstanding</th>
-                <th scope="col">Status</th>
+                {th("invoice", "Invoice")}
+                {th("customer", "Customer")}
+                {th("companyUnit", "Company · Unit", { tip: COMPANY_UNIT_TIP })}
+                {th("issued", "Issued")}
+                {th("due", "Due")}
+                {th("total", "Total", { className: "ns-num" })}
+                {th("applied", "Applied", { className: "ns-num" })}
+                {th("outstanding", "Outstanding", { className: "ns-num" })}
+                {th("status", "Status")}
               </tr>
             </thead>
             {rows.length > 0 ? (
               <tbody>
-                {rows.map((row) => (
+                {sorted.map((row) => (
                   <tr key={row.invoiceId}>
                     {/* The number is the human identity; the URL carries the document id, because
                         numbers repeat across operating companies. */}
@@ -153,7 +163,7 @@ export default function FinancialsInvoices() {
                       )}
                     </td>
                     <td>
-                      {row.companyId ?? "Not attributed"} · {row.businessUnit}
+                      {companyWords(row.companyId)} · {businessUnitWords(row.businessUnit)}
                     </td>
                     <td>{dateWords(row.issuedAtMillis)}</td>
                     <td>{dateWords(row.dueDate)}</td>

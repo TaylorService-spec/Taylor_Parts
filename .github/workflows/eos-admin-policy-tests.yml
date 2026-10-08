@@ -677,6 +677,11 @@ on:
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
       - "field-ops-app-vite/src/services/workflowAdminClient.js"
       - "field-ops-app-vite/test/adminWorkflows.test.jsx"
+      - "field-ops-app-vite/test/uiCorrectionsShared.test.jsx"
+      - "field-ops-app-vite/src/shared/display/**"
+      - "field-ops-app-vite/src/shared/ui/**"
+      - "field-ops-app-vite/src/hooks/useTypeahead.js"
+      - "field-ops-app-vite/src/modules/administration/WorkforceRoster.jsx"
       - "field-ops-app-vite/src/modules/administration/AdminFunctionalRoles.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeFunctionalRoles.jsx"
       - "field-ops-app-vite/test/adminFunctionalRoles.test.jsx"
@@ -1184,6 +1189,11 @@ on:
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
       - "field-ops-app-vite/src/services/workflowAdminClient.js"
       - "field-ops-app-vite/test/adminWorkflows.test.jsx"
+      - "field-ops-app-vite/test/uiCorrectionsShared.test.jsx"
+      - "field-ops-app-vite/src/shared/display/**"
+      - "field-ops-app-vite/src/shared/ui/**"
+      - "field-ops-app-vite/src/hooks/useTypeahead.js"
+      - "field-ops-app-vite/src/modules/administration/WorkforceRoster.jsx"
       - "field-ops-app-vite/src/modules/administration/AdminFunctionalRoles.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeFunctionalRoles.jsx"
       - "field-ops-app-vite/test/adminFunctionalRoles.test.jsx"
@@ -1491,6 +1501,12 @@ jobs:
       # and the Employee page draws the server-derived workflow responsibilities.
       - name: Administration workflows -- client (vitest + jsdom)
         run: npx vitest run test/adminWorkflows.test.jsx
+        working-directory: field-ops-app-vite
+
+      # UI CORRECTIONS PACKAGE (2026-10-08): the shared display labels, tri-state column sort, tabs and typeahead, and the
+      # Users roster (default Last/First/id order on the server, column sort, pages, suggestions, stale responses dropped).
+      - name: UI corrections shared patterns -- client (vitest + jsdom)
+        run: npx vitest run test/uiCorrectionsShared.test.jsx
         working-directory: field-ops-app-vite
 
       # LANE WR: Employee > Workflow responsibilities names each entry's admin location (Security Role / Functional Role

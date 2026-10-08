@@ -137,7 +137,7 @@ describe("Employee > Security Roles: Sales Channel scope values come from the se
     fireEvent.change(screen.getByRole("combobox", { name: "Security Role to assign" }), { target: { value: "role-lead" } });
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Assignment scope" })).toBeTruthy());
     expect(within(screen.getByRole("combobox", { name: "Assignment scope" })).getAllByRole("option").map((o) => [o.textContent, o.disabled])).toEqual([
-      ["All (global)", false], ["Company — not available for this Role (SCOPE_NOT_EVALUABLE_FOR_ROLE)", true], ["Sales Channel", false]]);
+      ["All (Global)", false], ["Company — not available for this Role (SCOPE_NOT_EVALUABLE_FOR_ROLE)", true], ["Sales Channel", false]]);
     fireEvent.change(screen.getByRole("combobox", { name: "Assignment scope" }), { target: { value: "salesChannel" } });
     const value = screen.getByRole("combobox", { name: "Scope value" });
     expect(within(value).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a Sales Channel…", "National Accounts", "Retail"]);

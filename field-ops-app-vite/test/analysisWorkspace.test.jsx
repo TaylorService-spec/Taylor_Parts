@@ -24,8 +24,8 @@ describe("AnalysisWorkspace", () => {
   it("leads with exceptions, labels basis, shows absence and refusal honestly, offers an action only as the server allows", async () => {
     const { container } = render(<AnalysisWorkspace callApi={api()} />);
     await screen.findByText("Harbor Grill");
-    expect(container.textContent).toMatch(/Record the customer's payment — needs finance.settlement.record/);
-    expect(container.textContent).toMatch(/EOS operational actual/);
+    expect(container.textContent).toMatch(/Record the customer's payment — needs Finance Settlement Record access/);
+    expect(container.textContent).toMatch(/EOS Operational Actual/);
     expect(container.textContent).toMatch(/not the GL/);
     expect(container.textContent).toMatch(/Not available to you — requires salesOrder.read/);
     expect(container.textContent).toMatch(/un-eliminated projection/);
@@ -36,7 +36,7 @@ describe("AnalysisWorkspace", () => {
     const callApi = api();
     render(<AnalysisWorkspace callApi={callApi} />);
     fireEvent.click(await screen.findByRole("button", { name: "Explain Open receivables" }));
-    await screen.findByText(/readObligation/);
+    await screen.findByText(/Read Obligation/);
     await waitFor(() => expect(callApi).toHaveBeenCalledWith("readMeasureAnalysis", expect.objectContaining({ measureId: "finance.receivables.open", operatingCompanyId: "consolidated" })));
   });
 

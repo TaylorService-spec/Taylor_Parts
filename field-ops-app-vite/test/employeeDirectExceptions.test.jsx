@@ -96,9 +96,9 @@ describe("Direct Exceptions: the mutable Employee section", () => {
     await ready();
     fireEvent.click(screen.getByRole("button", { name: "Revoke direct exception workOrder.lifecycle.dispatch" }));
     const form = screen.getByRole("form", { name: "Revoke workOrder.lifecycle.dispatch" });
-    expect(within(form).getByRole("button", { name: "Confirm revoke" }).disabled).toBe(true);
+    expect(within(form).getByRole("button", { name: "Confirm Revoke" }).disabled).toBe(true);
     typeReason(form, "cover ended");
-    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm revoke" })); });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Revoke" })); });
     expect(api.revokeObjectActionFromPrincipal).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "dispatch", principalId: "pr-9", reason: "cover ended" });
     await waitFor(() => expect(api.explainEffectiveAccess.mock.calls.length).toBeGreaterThan(1));
     expect(onChanged).toHaveBeenCalled();
@@ -116,13 +116,13 @@ describe("Direct Exceptions: the mutable Employee section", () => {
     fireEvent.change(within(form).getByLabelText("Condition kind"), { target: { value: "RECORD_ASSIGNMENT" } });
     fireEvent.change(within(form).getByLabelText("Record kind"), { target: { value: "workOrder" } });
     typeReason(form, "own records only");
-    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm replace condition" })); });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Replace Condition" })); });
     expect(api.setGrantCondition).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", principalId: "pr-9", reason: "own records only", condition: RA_WO });
 
     fireEvent.click(await screen.findByRole("button", { name: "Retire condition on direct exception workOrder.record.read" }));
     const retire = screen.getByRole("form", { name: "Retire condition workOrder.record.read" });
     typeReason(retire, "lift it");
-    await act(async () => { fireEvent.click(within(retire).getByRole("button", { name: "Confirm retire condition" })); });
+    await act(async () => { fireEvent.click(within(retire).getByRole("button", { name: "Confirm Retire Condition" })); });
     expect(api.retireGrantCondition).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", principalId: "pr-9", reason: "lift it" });
     const refusal = await screen.findByRole("alert");
     expect(refusal.getAttribute("data-control-plane-refusal")).toBe("CONFLICT");
@@ -133,10 +133,10 @@ describe("Direct Exceptions: the mutable Employee section", () => {
     const api = makeApi();
     render(<EmployeeDirectExceptions api={api} principalId="pr-9" />);
     await ready();
-    fireEvent.click(screen.getByRole("button", { name: "Grant a direct exception" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grant a Direct Exception" }));
     const form = await screen.findByRole("form", { name: "Grant a direct exception" });
     await waitFor(() => expect(within(form).getAllByRole("option").length).toBeGreaterThan(1));
-    const submit = within(form).getByRole("button", { name: "Grant direct exception" });
+    const submit = within(form).getByRole("button", { name: "Grant Direct Exception" });
     fireEvent.change(within(form).getByLabelText("Object"), { target: { value: "workOrder" } });
     fireEvent.change(within(form).getByLabelText("Action"), { target: { value: "cancel" } });
     expect(submit.disabled).toBe(true);
@@ -158,13 +158,13 @@ describe("Direct Exceptions: the mutable Employee section", () => {
     });
     render(<EmployeeDirectExceptions api={api} principalId="pr-9" />);
     await ready();
-    fireEvent.click(screen.getByRole("button", { name: "Grant a direct exception" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grant a Direct Exception" }));
     const form = await screen.findByRole("form", { name: "Grant a direct exception" });
     await waitFor(() => expect(within(form).getAllByRole("option").length).toBeGreaterThan(1));
     fireEvent.change(within(form).getByLabelText("Object"), { target: { value: "workOrder" } });
     fireEvent.change(within(form).getByLabelText("Action"), { target: { value: "cancel" } });
     typeReason(form, "why");
-    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Grant direct exception" })); });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Grant Direct Exception" })); });
     expect((await screen.findByRole("alert")).textContent).toBe("FORBIDDEN: SELF_ADMINISTRATION: a principal may not grant a capability to itself");
     expect(api.explainEffectiveAccess).toHaveBeenCalledTimes(1);
   });

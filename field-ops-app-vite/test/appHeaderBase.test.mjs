@@ -88,7 +88,7 @@ check("the dead email rule is gone from the stylesheet too", () => {
 
 check("the rail keeps the ONE identity block: name, role, Sign out", () => {
   assert.match(rail, /fo-rail-identity/);
-  assert.match(rail, /Sign out/);
+  assert.match(rail, /Sign Out/);
   assert.match(rail, /fo-rail-identity__name/);
   assert.match(rail, /fo-rail-identity__role/);
 });

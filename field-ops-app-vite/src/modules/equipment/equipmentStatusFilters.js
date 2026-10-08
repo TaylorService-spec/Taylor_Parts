@@ -18,7 +18,7 @@ import { EQUIPMENT_STATUS } from "../../domain/constants.js";
 // Note `?? null` at the call site does NOT protect against this: ?? only coalesces
 // null/undefined, so an empty string would pass straight through.
 export const STATUS_FILTERS = Object.freeze([
-  { key: "all", label: "All statuses", value: null },
+  { key: "all", label: "All Statuses", value: null },
   { key: "active", label: "Active", value: EQUIPMENT_STATUS.ACTIVE },
   { key: "inactive", label: "Inactive", value: EQUIPMENT_STATUS.INACTIVE },
   { key: "retired", label: "Retired", value: EQUIPMENT_STATUS.RETIRED },

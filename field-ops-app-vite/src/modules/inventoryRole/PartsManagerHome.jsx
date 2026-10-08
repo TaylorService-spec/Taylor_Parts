@@ -13,6 +13,10 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import ManagerQueuePanel from "../../shared/reorder/ManagerQueuePanel.jsx";
 import AssignedWorkOversightTable from "../../shared/reorder/AssignedWorkOversightTable.jsx";
+import { toMillis } from "../../domain/timestampMillis.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 // Issue #100 PR 1b (docs/specifications/inventory-nav-access-alignment.md,
 // docs/implementation-plans/inventory-nav-access-alignment.md) -- the
@@ -145,27 +149,41 @@ export default function PartsManagerHome({ accessVersion, title = "Parts Manager
         failedText="Unable to load Relevant History right now. Try again shortly."
         emptyText="No terminal Reorder Requests you reviewed or assigned yet."
       >
-        <table className="fo-table">
-          <thead>
-            <tr>
-              <th>Part</th>
-              <th>Qty</th>
-              <th>Status</th>
-              <th>Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((request) => (
-              <tr key={request.id}>
-                <td>{resolveName(request.partId)}</td>
-                <td>{getDisplayQty(request)}</td>
-                <td className="fo-muted">{HISTORY_STATUS_LABEL[request.status] ?? request.status}</td>
-                <td className="fo-muted">{formatTimestamp(request.createdAt, { unknown: "—" })}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <HistoryTable history={history} resolveName={resolveName} />
       </LoadingEmptyState>
     </WorkspaceShell>
+  );
+}
+
+// Relevant History, sortable by column over the rows already read (default = the read's order).
+function HistoryTable({ history, resolveName }) {
+  const columns = useMemo(() => ({
+    part: { value: (request) => resolveName(request.partId) },
+    qty: { value: (request) => { const q = getDisplayQty(request); return typeof q === "number" ? q : q ?? null; } },
+    status: { value: (request) => statusLabel(request.status, HISTORY_STATUS_LABEL) },
+    date: { value: (request) => toMillis(request.createdAt) },
+  }), [resolveName]);
+  const { sort, toggle, sorted } = useTableSort({ rows: history, columns });
+  return (
+    <table className="fo-table">
+      <thead>
+        <tr>
+          <SortableHeader columnKey="part" label="Part" sort={sort} onSort={toggle} />
+          <SortableHeader columnKey="qty" label="Qty" sort={sort} onSort={toggle} />
+          <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
+          <SortableHeader columnKey="date" label="Date" sort={sort} onSort={toggle} />
+        </tr>
+      </thead>
+      <tbody>
+        {sorted.map((request) => (
+          <tr key={request.id}>
+            <td>{resolveName(request.partId)}</td>
+            <td>{getDisplayQty(request)}</td>
+            <td className="fo-muted">{statusLabel(request.status, HISTORY_STATUS_LABEL)}</td>
+            <td className="fo-muted">{formatTimestamp(request.createdAt, { unknown: "—" })}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

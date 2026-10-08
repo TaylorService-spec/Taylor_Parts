@@ -16,12 +16,15 @@ import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ReadState } from "./ObjectActionSecurity.jsx";
 import WorkflowDraftEditor from "./WorkflowDraftEditor.jsx";
 import ValidationResults from "./WorkflowValidationResults.jsx";
+import { identifierLabel, statusLabel, titleCase } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 const ACTION_WORDS = Object.freeze({
-  publish: "Publish (becomes ACTIVE)",
-  activate: "Make ACTIVE",
+  publish: "Publish (Becomes Active)",
+  activate: "Make Active",
   retire: "Retire",
-  newVersion: "New draft from this version",
+  newVersion: "New Draft from This Version",
 });
 
 /**
@@ -47,26 +50,138 @@ function ActiveVersionRecords({ api, workflow, versionId, steps, reason, onDone 
   };
   return (
     <div className="fo-cp-section" aria-label="Run records on this version">
-      <h4>Run records on this version</h4>
+      <h4>Run Records on This Version</h4>
       <div className="fo-roster__filters">
-        <label className="fo-form-field"><span>Record id</span>
+        <label className="fo-form-field"><span>Record ID</span>
           <input type="text" aria-label="Record to start" value={recordId} onChange={(e) => setRecordId(e.target.value)} /></label>
-        <Button variant="secondary" disabled={!recordId.trim() || !reason.trim()} onClick={start}>Start workflow for record</Button>
+        <Button variant="secondary" disabled={!recordId.trim() || !reason.trim()} onClick={start}>Start Workflow for Record</Button>
       </div>
       {versions.length > 0 ? (
         <div className="fo-roster__filters">
-          <label className="fo-form-field"><span>Move records from</span>
+          <label className="fo-form-field"><span>Move Records From</span>
             <select aria-label="Version to move records from" value={fromVersionId} onChange={(e) => setFromVersionId(e.target.value)}>
-              <option value="">Choose a version…</option>
-              {versions.map((v) => <option key={v.id} value={v.id}>v{v.version} · {v.status}</option>)}
+              <option value="">Choose a Version…</option>
+              {versions.map((v) => <option key={v.id} value={v.id}>v{v.version} · {statusLabel(v.status)}</option>)}
             </select></label>
-          <Button variant="secondary" disabled={!fromVersionId || !reason.trim()} onClick={migrate}>Move in-flight records here</Button>
+          <Button variant="secondary" disabled={!fromVersionId || !reason.trim()} onClick={migrate}>Move In-Flight Records Here</Button>
         </div>
       ) : null}
       <p className="fo-muted">Uses the Reason above. In-flight records stay on the version they started on until moved.</p>
       {result?.ok && <p className="fo-success" role="status">{result.ok}</p>}
       {result?.error && <p className="fo-warning" role="alert">{result.error}</p>}
     </div>
+  );
+}
+
+const bindingWords = (a) => (a.bindings.length === 0 ? "no Role bound" : a.bindings.map((b) => (
+  b.bindingKind === "SECURITY_ROLE" ? identifierLabel(b.roleKey)
+    : b.bindingKind === "FUNCTIONAL_ROLE" ? `Functional Role ${identifierLabel(b.functionalRoleKey)} (narrows)`
+      : `${identifierLabel(b.roleKey ?? b.functionalRoleKey)} (${titleCase(b.bindingKind)})`
+)).join(", "));
+const stepKind = (s) => (s.initial ? "Start" : s.terminal ? "End" : "In Progress");
+
+const STATE_COLUMNS = Object.freeze({
+  state: { value: (s) => s.label ?? s.key },
+  kind: { value: (s) => (s.initial ? 0 : s.terminal ? 2 : 1) },
+  outgoing: { value: (s) => s.outgoing.join(", ") },
+});
+
+function StatesTable({ steps }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: steps, columns: STATE_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table" aria-label="States">
+      <thead><tr>{header("state", "State")}{header("kind", "Kind")}{header("outgoing", "Actions From Here")}</tr></thead>
+      <tbody>
+        {sorted.map((s) => (
+          <tr key={s.key}>
+            <td>{s.label} <span className="fo-muted">· {s.key}</span></td>
+            <td className="fo-muted">{stepKind(s)}</td>
+            <td className="fo-muted">{s.outgoing.length ? s.outgoing.join(", ") : (s.terminal ? "None — terminal" : "None")}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+const ACTION_COLUMNS = Object.freeze({
+  action: { value: (a) => a.label ?? a.key },
+  path: { value: (a) => `${titleCase(a.from)} → ${titleCase(a.to)}` },
+  capability: { value: (a) => a.capabilityKey },
+  guard: { value: (a) => (a.guardKind ? titleCase(a.guardKind) : null) },
+  bindings: { value: (a) => (a.bindings.length === 0 ? null : bindingWords(a)) },
+});
+
+function ActionsTable({ actions }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: actions, columns: ACTION_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table" aria-label="Actions">
+      <thead><tr>{header("action", "Action")}{header("path", "From → To")}{header("capability", "Capability")}{header("guard", "Guard")}{header("bindings", "Bound Security Roles")}</tr></thead>
+      <tbody>
+        {sorted.map((a) => (
+          <tr key={a.key} data-workflow-action={a.key}>
+            <td>{a.label} <span className="fo-muted">· {a.key}</span></td>
+            <td className="fo-muted">{titleCase(a.from)} → {titleCase(a.to)}</td>
+            <td>{a.capabilityKey ? <code>{a.capabilityKey}</code> : <span className="fo-warning">none</span>}</td>
+            <td className="fo-muted">{a.guardKind ? titleCase(a.guardKind) : "—"}</td>
+            <td className="fo-muted">{bindingWords(a)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+const INSTANCE_COLUMNS = Object.freeze({
+  record: { value: (i) => i.recordId },
+  step: { value: (i) => titleCase(i.currentStepKey) },
+  since: { value: (i) => i.updatedAt },
+});
+
+function InstancesTable({ instances }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: instances, columns: INSTANCE_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table" aria-label="Pinned instances">
+      <thead><tr>{header("record", "Record")}{header("step", "Current Step")}{header("since", "Since")}</tr></thead>
+      <tbody>
+        {sorted.map((i) => (
+          <tr key={i.id}><td><code>{i.recordId}</code></td><td>{titleCase(i.currentStepKey)}</td><td className="fo-muted">{i.updatedAt ?? "—"}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+const HISTORY_COLUMNS = Object.freeze({
+  when: { value: (e) => e.occurredAt },
+  change: { value: (e) => titleCase(e.action) },
+  version: { value: (e) => (typeof e.after?.version === "number" ? e.after.version : null) },
+  reason: { value: (e) => e.reason },
+  actor: { value: (e) => e.actorUid },
+});
+
+function HistoryTable({ events }) {
+  const newestFirst = useMemo(() => [...events].reverse(), [events]);
+  const { sort, toggle, sorted } = useTableSort({ rows: newestFirst, columns: HISTORY_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table" aria-label="Workflow history">
+      <thead><tr>{header("when", "When")}{header("change", "Change")}{header("version", "Version")}{header("reason", "Reason")}{header("actor", "Actor")}</tr></thead>
+      <tbody>
+        {sorted.map((e) => (
+          <tr key={e.id} data-history-action={e.action}>
+            <td className="fo-muted">{e.occurredAt}</td>
+            <td>{titleCase(e.action)}</td>
+            <td className="fo-muted">{e.after?.version ? `v${e.after.version}` : "—"}{e.after?.status ? ` · ${statusLabel(e.after.status)}` : ""}</td>
+            <td>{e.reason ?? "—"}</td>
+            <td className="fo-muted"><code>{e.actorUid}</code></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -109,20 +224,20 @@ export default function WorkflowVersionPanel({ api, workflow, versionId, onVersi
         {workflow.name} v{version.version} <span className="fo-muted">· {lifecycleLabel(version)}</span>
       </h3>
       <dl className="fo-wf-meta">
-        <div><dt>Governs</dt><dd><code>{workflow.objectKey ?? "—"}</code></dd></div>
+        <div><dt>Governs</dt><dd>{workflow.objectKey ? <>{titleCase(workflow.objectKey)} <code>{workflow.objectKey}</code></> : "—"}</dd></div>
         <div><dt>States</dt><dd>{view.steps.length}</dd></div>
         <div><dt>Actions</dt><dd>{view.actions.length}</dd></div>
-        <div><dt>Role bindings</dt><dd>{view.bindingCount}</dd></div>
+        <div><dt>Role Bindings</dt><dd>{view.bindingCount}</dd></div>
         {version.publishedAt ? <div><dt>Published</dt><dd>{version.publishedAt}</dd></div> : null}
       </dl>
       {version.status !== "DRAFT" ? (
-        <p className="fo-muted">This version is {version.status} and cannot be edited. Changing the workflow means a new draft.</p>
+        <p className="fo-muted">This version is {statusLabel(version.status)} and cannot be edited. Changing the workflow means a new draft.</p>
       ) : null}
 
       <div className="fo-cp-section" aria-label="Lifecycle">
         <h4>Lifecycle</h4>
         <label className="fo-form-field">
-          <span>Reason (required)</span>
+          <span>Reason (Required)</span>
           <input type="text" aria-label="Reason for the workflow change" value={reason} onChange={(e) => setReason(e.target.value)} />
         </label>
         <div className="fo-pill-row">
@@ -143,46 +258,16 @@ export default function WorkflowVersionPanel({ api, workflow, versionId, onVersi
 
       <div className="fo-cp-section" aria-label="States">
         <h4>States</h4>
-        <table className="fo-table" aria-label="States">
-          <thead><tr><th>State</th><th>Kind</th><th>Actions from here</th></tr></thead>
-          <tbody>
-            {view.steps.map((s) => (
-              <tr key={s.key}>
-                <td>{s.label} <span className="fo-muted">· {s.key}</span></td>
-                <td className="fo-muted">{s.initial ? "Start" : s.terminal ? "End" : "In progress"}</td>
-                <td className="fo-muted">{s.outgoing.length ? s.outgoing.join(", ") : (s.terminal ? "None — terminal" : "None")}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <StatesTable steps={view.steps} />
       </div>
 
       <div className="fo-cp-section" aria-label="Actions and bindings">
-        <h4>Actions, capabilities and bindings</h4>
+        <h4>Actions, Capabilities and Bindings</h4>
         <p className="fo-muted">
           Each action names the capability it IS. A bound Security Role performs the action only while it
           holds that capability (and passes the guard) — the binding itself grants nothing.
         </p>
-        <table className="fo-table" aria-label="Actions">
-          <thead><tr><th>Action</th><th>From → To</th><th>Capability</th><th>Guard</th><th>Bound Security Roles</th></tr></thead>
-          <tbody>
-            {view.actions.map((a) => (
-              <tr key={a.key} data-workflow-action={a.key}>
-                <td>{a.label} <span className="fo-muted">· {a.key}</span></td>
-                <td className="fo-muted">{a.from} → {a.to}</td>
-                <td>{a.capabilityKey ? <code>{a.capabilityKey}</code> : <span className="fo-warning">none</span>}</td>
-                <td className="fo-muted">{a.guardKind ?? "—"}</td>
-                <td className="fo-muted">
-                  {a.bindings.length === 0 ? "no Role bound" : a.bindings.map((b) => (
-                    b.bindingKind === "SECURITY_ROLE" ? b.roleKey
-                      : b.bindingKind === "FUNCTIONAL_ROLE" ? `Functional Role ${b.functionalRoleKey} (narrows)`
-                        : `${b.roleKey ?? b.functionalRoleKey} (${b.bindingKind})`
-                  )).join(", ")}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ActionsTable actions={view.actions} />
       </div>
 
       {version.status === "DRAFT" ? (
@@ -201,18 +286,11 @@ export default function WorkflowVersionPanel({ api, workflow, versionId, onVersi
       ) : null}
 
       <div className="fo-cp-section" aria-label="Pinned instances">
-        <h4>Records running on this version</h4>
+        <h4>Records Running on This Version</h4>
         {!instances.data ? <ReadState read={instances} what="the pinned instances" /> : null}
         {Array.isArray(instances.data) && instances.data.length === 0 ? <p className="fo-muted">No record is pinned to this version.</p> : null}
         {Array.isArray(instances.data) && instances.data.length > 0 ? (
-          <table className="fo-table" aria-label="Pinned instances">
-            <thead><tr><th>Record</th><th>Current step</th><th>Since</th></tr></thead>
-            <tbody>
-              {instances.data.map((i) => (
-                <tr key={i.id}><td><code>{i.recordId}</code></td><td>{i.currentStepKey}</td><td className="fo-muted">{i.updatedAt ?? "—"}</td></tr>
-              ))}
-            </tbody>
-          </table>
+          <InstancesTable instances={instances.data} />
         ) : null}
       </div>
 
@@ -221,20 +299,7 @@ export default function WorkflowVersionPanel({ api, workflow, versionId, onVersi
         {!history.data ? <ReadState read={history} what="the workflow history" /> : null}
         {Array.isArray(history.data) && history.data.length === 0 ? <p className="fo-muted">No workflow change has been recorded.</p> : null}
         {Array.isArray(history.data) && history.data.length > 0 ? (
-          <table className="fo-table" aria-label="Workflow history">
-            <thead><tr><th>When</th><th>Change</th><th>Version</th><th>Reason</th><th>Actor</th></tr></thead>
-            <tbody>
-              {[...history.data].reverse().map((e) => (
-                <tr key={e.id} data-history-action={e.action}>
-                  <td className="fo-muted">{e.occurredAt}</td>
-                  <td>{e.action}</td>
-                  <td className="fo-muted">{e.after?.version ? `v${e.after.version}` : "—"}{e.after?.status ? ` · ${e.after.status}` : ""}</td>
-                  <td>{e.reason ?? "—"}</td>
-                  <td className="fo-muted"><code>{e.actorUid}</code></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <HistoryTable events={history.data} />
         ) : null}
       </div>
     </section>

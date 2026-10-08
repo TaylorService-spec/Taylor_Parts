@@ -314,6 +314,7 @@ export default function WorkOrdersList() {
       ) : (
         <MetadataListGrid
           presentation={presentation}
+          sorting={{ entity: workOrderEntity, criteria, onSort: (fieldId, direction) => apply(setSort(criteria, fieldId, direction)) }}
           caption="Work Orders"
           // THE DESTINATION THE DEFINITION NAMES, not a path typed here.
           //

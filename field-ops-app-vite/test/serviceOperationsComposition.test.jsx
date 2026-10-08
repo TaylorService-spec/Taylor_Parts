@@ -79,9 +79,9 @@ describe("1a — the Overview composition", () => {
   it("puts attention FIRST in the work area, before the metric strip and the tables", () => {
     renderPage();
     const order = [...document.querySelectorAll("section")].map((s) => s.getAttribute("aria-label"));
-    const attentionAt = order.indexOf("Needs attention");
+    const attentionAt = order.indexOf("Needs Attention");
     const metricsAt = order.indexOf("Service operations at a glance");
-    const riskAt = order.indexOf("At risk");
+    const riskAt = order.indexOf("At Risk");
     expect(attentionAt).toBeGreaterThanOrEqual(0);
     expect(attentionAt).toBeLessThan(metricsAt);
     expect(metricsAt).toBeLessThan(riskAt);
@@ -99,7 +99,7 @@ describe("1a — the Overview composition", () => {
 
   it("renders the at-risk work order with a resolved account and an approximate age", () => {
     renderPage();
-    const table = screen.getByRole("region", { name: "At risk" });
+    const table = screen.getByRole("region", { name: "At Risk" });
     expect(within(table).getByText(/WO-1002/)).toBeTruthy();
     expect(within(table).getByText("Northline Cold Storage")).toBeTruthy();
     expect(within(table).getByText(/^~\d+h$/)).toBeTruthy();
@@ -107,7 +107,7 @@ describe("1a — the Overview composition", () => {
 
   it("names technicians and states their status in words, never a raw enum", () => {
     renderPage();
-    const table = screen.getByRole("region", { name: "Technician load" });
+    const table = screen.getByRole("region", { name: "Technician Load" });
     expect(within(table).getByText("Jordan Reyes")).toBeTruthy();
     expect(within(table).getByText("Busy")).toBeTruthy();
     expect(table.textContent).not.toMatch(/on_job|off_shift|available[^A-Za-z]/);
@@ -151,7 +151,7 @@ describe("1b — a clean day", () => {
     };
     renderPage();
     // Not an empty box and not an "all clear" banner -- absent.
-    expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Needs Attention" })).toBeNull();
     expect(screen.queryByText(/all clear/i)).toBeNull();
   });
 
@@ -172,7 +172,7 @@ describe("1b — a clean day", () => {
       error: null,
     };
     renderPage();
-    expect(screen.queryByRole("region", { name: "Recommended dispatch" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Recommended Dispatch" })).toBeNull();
   });
 });
 
@@ -199,9 +199,9 @@ describe("1c — loading, failure, and a degraded technician read", () => {
     // Announced, not silently degraded into ids.
     expect(screen.getByRole("alert").textContent).toMatch(/Technician names could not be loaded/);
     // The work-order side of the page survives.
-    expect(screen.getByRole("region", { name: "At risk" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "At Risk" })).toBeTruthy();
     // The load table states unavailability rather than computing over ids or looking empty.
-    const load = screen.getByRole("region", { name: "Technician load" });
+    const load = screen.getByRole("region", { name: "Technician Load" });
     expect(within(load).getByText(/Technician load is unavailable/)).toBeTruthy();
   });
 

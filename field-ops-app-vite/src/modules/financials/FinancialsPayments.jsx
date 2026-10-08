@@ -18,7 +18,9 @@ import {
   FinancialsFilterRail,
   FinancialsHonestSection,
   FinAnnotation,
+  FinSortableHeader,
 } from "./FinancialsPrimitives.jsx";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import FilterBar from "../../shared/ui/FilterBar";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
@@ -28,7 +30,7 @@ import { useAccountNames } from "../../hooks/useAccountNames.js";
 const VIEW_OPTIONS = [
   { key: "all", label: "All" },
   { key: "unapplied", label: "Unapplied" },
-  { key: "applied", label: "Fully applied" },
+  { key: "applied", label: "Fully Applied" },
 ];
 
 const dateWords = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateString() : "—");
@@ -74,6 +76,19 @@ export default function FinancialsPayments() {
   }, [result]);
   const names = useAccountNames(rows.map((r) => r.accountId).filter(Boolean));
 
+  // Column sorting is a display order over the rows already returned — the server's order is the default.
+  const columns = {
+    payment: { value: (p) => (typeof p.receivedAtMillis === "number" ? p.receivedAtMillis : null) },
+    customer: { value: (p) => (p.accountId ? (names.get(p.accountId) ?? null) : null) },
+    received: { value: (p) => (typeof p.receivedAtMillis === "number" ? p.receivedAtMillis : null) },
+    method: { value: (p) => p.method ?? null },
+    appliedTo: { value: (p) => paymentContext(p, applications) },
+    amount: { value: (p) => p.amountMinor ?? null },
+    applied: { value: (p) => p.appliedMinor ?? null },
+  };
+  const { sort, toggle, sorted } = useTableSort({ rows, columns });
+  const th = (key, label, extra = {}) => <FinSortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} {...extra} />;
+
   const honest =
     answered && rows.length === 0
       ? {
@@ -97,7 +112,7 @@ export default function FinancialsPayments() {
       custodyTip="The payment core records cash receipt and application to an invoice, derives outstanding balance, and refuses over-application. Applied-in-full is an operational state, not reconciliation — no banking or settlement authority is drawn, deliberately."
     >
       <FinancialsFilterRail company={company} onCompanyChange={setCompany} period={period.controlProps} />
-      <FilterBar variant="views" label="Payment views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
+      <FilterBar variant="views" label="Payment Views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
 
       <div className="fin-truth-band fin-truth-band--future" role="note">
         <strong>Unapplied cash — FUTURE AUTHORITY.</strong>
@@ -113,7 +128,7 @@ export default function FinancialsPayments() {
 
       <FinancialsHonestSection
         id="fin-payments-collection"
-        title="Payment collection"
+        title="Payment Collection"
         meta="applications drill to invoice records · reconciliation absence stated, never implied"
         honest={honest}
         subject="Payment reads"
@@ -123,13 +138,13 @@ export default function FinancialsPayments() {
             <caption className="fo-sr-only">Governed payments</caption>
             <thead>
               <tr>
-                <th scope="col">Payment</th>
-                <th scope="col">Customer</th>
-                <th scope="col">Received</th>
-                <th scope="col">Method · Reference</th>
-                <th scope="col">Applied to</th>
-                <th scope="col" className="ns-num">Amount</th>
-                <th scope="col" className="ns-num">Applied</th>
+                {th("payment", "Payment")}
+                {th("customer", "Customer")}
+                {th("received", "Received")}
+                {th("method", "Method · Reference")}
+                {th("appliedTo", "Applied To")}
+                {th("amount", "Amount", { className: "ns-num" })}
+                {th("applied", "Applied", { className: "ns-num" })}
                 <th scope="col" className="ns-num">
                   Unapplied
                   <FinAnnotation tip="Never computed on this page. Unapplied cash has no governed record under current authority, and printing amount minus applied here would assert a balance the payment core forbids." />
@@ -138,7 +153,7 @@ export default function FinancialsPayments() {
             </thead>
             {rows.length > 0 ? (
               <tbody>
-                {rows.map((p) => (
+                {sorted.map((p) => (
                   <tr key={p.paymentId}>
                     {/* THE RAW DOCUMENT ID IS NOT THE LABEL. It is a database key and told the
                         operator nothing; the identity is composed from the receipt's own facts. */}

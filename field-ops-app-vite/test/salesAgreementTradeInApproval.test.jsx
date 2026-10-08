@@ -11,7 +11,7 @@ const FORBIDDEN = [/PROPOSED\b/, /APPROVED\b/, /DECLINED\b/, /acquisition/i, /ma
 describe("TradeInSection", () => {
   it("a proposal shows its proposed value and no credit, in words; identity unknown is said", () => {
     const { container } = render(<TradeInSection tradeIns={[PROPOSED]} />);
-    expect(screen.getByText("Proposed — awaiting approval")).toBeTruthy();
+    expect(screen.getByText("Proposed — Awaiting Approval")).toBeTruthy();
     expect(screen.getByText("None until approved")).toBeTruthy();
     expect(container.textContent).toMatch(/serial not known/);
     expect(container.textContent).toMatch(/does not reduce the balance until it is approved/);
@@ -22,10 +22,10 @@ describe("TradeInSection", () => {
   it("a salesperson proposes: the whole list is sent as proposals, never a credit", async () => {
     const onPropose = vi.fn().mockResolvedValue({ ok: true });
     render(<TradeInSection tradeIns={[PROPOSED]} editable onPropose={onPropose} />);
-    fireEvent.click(screen.getByRole("button", { name: "Propose a trade-in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Propose a Trade-In" }));
     fireEvent.change(screen.getByLabelText("Equipment description"), { target: { value: "Reach-in cooler" } });
-    fireEvent.change(screen.getByLabelText("Proposed value"), { target: { value: "800.00" } });
-    fireEvent.click(screen.getByRole("button", { name: "Propose trade-in" }));
+    fireEvent.change(screen.getByLabelText("Proposed Value"), { target: { value: "800.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Propose Trade-In" }));
     await waitFor(() => expect(onPropose).toHaveBeenCalledTimes(1));
     expect(onPropose.mock.calls[0][0]).toEqual([
       { description: "Used ice machine", proposedValueMinor: 550000, manufacturer: "Acme", modelNumber: "IM-500", notes: "compressor noisy", evidenceReference: "photos-77" },
@@ -39,11 +39,11 @@ describe("TradeInSection", () => {
     const onDecline = vi.fn().mockResolvedValue({ ok: true });
     render(<TradeInSection tradeIns={[PROPOSED]} mayApprove onApprove={onApprove} onDecline={onDecline} />);
     expect(screen.getByLabelText("Approved value for item 1").value).toBe("5500.00");
-    fireEvent.click(screen.getByRole("button", { name: "Decline trade-in 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Decline Trade-In 1" }));
     expect(screen.getByRole("alert").textContent).toMatch(/states its reason/);
     expect(onDecline).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Approved value for item 1"), { target: { value: "5000.00" } });
-    fireEvent.click(screen.getByRole("button", { name: "Approve trade-in 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve Trade-In 1" }));
     await waitFor(() => expect(onApprove).toHaveBeenCalledWith({ itemNumber: 1, approvedCreditMinor: 500000 }));
   });
 

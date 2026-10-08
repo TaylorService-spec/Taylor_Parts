@@ -14,6 +14,9 @@ import { useMemo } from "react";
 import { adminControlPlaneClient } from "../../services/adminControlPlaneClient.js";
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ReadState } from "./ObjectActionSecurity.jsx";
+import { titleCase } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 export const ACCESS_AUDIT_LIMIT = 500;
 
@@ -25,6 +28,40 @@ export function principalAuditEvents(events, principalId) {
   return events
     .filter((e) => e && (e.targetId === principalId || names(e.before, principalId) || names(e.after, principalId)))
     .sort((a, b) => String(b.occurredAt ?? "").localeCompare(String(a.occurredAt ?? "")));
+}
+
+const AUDIT_COLUMNS = Object.freeze({
+  when: { value: (e) => e.occurredAt },
+  action: { value: (e) => titleCase(e.action) },
+  target: { value: (e) => `${e.targetKind ?? ""} ${e.targetId ?? ""}`.trim() },
+  reason: { value: (e) => e.reason },
+  actor: { value: (e) => e.actorUid },
+});
+
+function AccessAuditTable({ events }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: events, columns: AUDIT_COLUMNS });
+  return (
+    <table className="fo-table" aria-label="Access audit">
+      <thead><tr>
+        <SortableHeader columnKey="when" label="When" sort={sort} onSort={toggle} />
+        <SortableHeader columnKey="action" label="Action" sort={sort} onSort={toggle} />
+        <SortableHeader columnKey="target" label="Target" sort={sort} onSort={toggle} />
+        <SortableHeader columnKey="reason" label="Reason" sort={sort} onSort={toggle} />
+        <SortableHeader columnKey="actor" label="Actor" sort={sort} onSort={toggle} />
+      </tr></thead>
+      <tbody>
+        {sorted.map((e) => (
+          <tr key={e.id}>
+            <td className="fo-muted">{e.occurredAt}</td>
+            <td>{titleCase(e.action)}</td>
+            <td className="fo-muted">{`${titleCase(e.targetKind)} `}<code>{e.targetId}</code></td>
+            <td>{e.reason ?? "—"}</td>
+            <td className="fo-muted"><code>{e.actorUid}</code></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }
 
 export default function EmployeeAccessAudit({ api = adminControlPlaneClient, principalId }) {
@@ -39,20 +76,7 @@ export default function EmployeeAccessAudit({ api = adminControlPlaneClient, pri
     <div data-access-audit={events.length}>
       <p className="fo-muted">{`Security Role and direct-grant events for this Principal, from the tenant's most recent ${ACCESS_AUDIT_LIMIT} policy audit events.`}</p>
       {events.length === 0 ? <p className="fo-muted">No access event for this Principal in that window.</p> : (
-        <table className="fo-table" aria-label="Access audit">
-          <thead><tr><th>When</th><th>Action</th><th>Target</th><th>Reason</th><th>Actor</th></tr></thead>
-          <tbody>
-            {events.map((e) => (
-              <tr key={e.id}>
-                <td className="fo-muted">{e.occurredAt}</td>
-                <td>{e.action}</td>
-                <td className="fo-muted">{`${e.targetKind} `}<code>{e.targetId}</code></td>
-                <td>{e.reason ?? "—"}</td>
-                <td className="fo-muted"><code>{e.actorUid}</code></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <AccessAuditTable events={events} />
       )}
     </div>
   );

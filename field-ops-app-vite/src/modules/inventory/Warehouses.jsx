@@ -75,7 +75,20 @@ import FilterBar from "../../shared/ui/FilterBar";
 // there is no per-warehouse route to navigate to), matching the hand-written surface,
 // which never made a row clickable either.
 export default function Warehouses({ accessVersion }) {
-  const { presentation, loadMore, retry } = useMetadataList(warehouseIndexList, warehouseEntity, {});
+  // Column-header sort (UI corrections item C). Applied by the warehouse list source over the WHOLE
+  // bounded warehouse set before paging, so a sorted list is never "sorted loaded rows only". No sort
+  // = the list's default order.
+  const [headerSort, setHeaderSort] = useState(null);
+  const sortCriteria = useMemo(
+    () => (headerSort ? [{ fieldId: headerSort.fieldId, direction: headerSort.direction }] : []),
+    [headerSort]
+  );
+  const { presentation, loadMore, retry } = useMetadataList(warehouseIndexList, warehouseEntity, { sort: sortCriteria });
+  const sorting = useMemo(() => ({
+    entity: warehouseEntity,
+    criteria: { sort: sortCriteria },
+    onSort: (fieldId, direction) => setHeaderSort(fieldId ? { fieldId, direction } : null),
+  }), [sortCriteria]);
   const [filterKey, setFilterKey] = useState("all");
 
   // accessVersion is threaded so the read re-runs on any access change (the inventory
@@ -180,10 +193,10 @@ export default function Warehouses({ accessVersion }) {
 
       <FilterBar options={filterOptions} activeKey={filterKey} onChange={setFilterKey} />
 
-      <MetadataListGrid presentation={gridPresentation} caption="Warehouses" onLoadMore={loadMore} onRetry={retry} />
+      <MetadataListGrid presentation={gridPresentation} sorting={sorting} caption="Warehouses" onLoadMore={loadMore} onRetry={retry} />
 
       <p className="fo-muted fo-wh-footnote">
-        For bin-level stock and reconciliation, see the <Link to="/dashboard/operations">Operations overview</Link>.
+        For bin-level stock and reconciliation, see the <Link to="/dashboard/operations">Operations Overview</Link>.
       </p>
     </WorkspaceIdentity>
   );

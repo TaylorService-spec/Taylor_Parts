@@ -106,7 +106,7 @@ describe("Administration > Workflows", () => {
     expect(api.validateWorkflowVersion).toHaveBeenCalledWith("so-v1");
     const row = document.querySelector('[data-workflow-action="close"]');
     expect(within(row).getByText("salesOrder.write")).toBeTruthy();
-    expect(row.textContent).toContain("admin, operationsManager");
+    expect(row.textContent).toContain("Admin, Operations Manager");
     const error = await waitFor(() => {
       const el = document.querySelector('[data-validation-code="BINDING_WITHOUT_CAPABILITY"]');
       expect(el).not.toBeNull();
@@ -234,7 +234,7 @@ describe("Employee > Workflow responsibilities", () => {
     render(<EmployeeWorkflowResponsibilities api={api} principalId="p-1" />);
     await waitFor(() => expect(document.querySelector('[data-workflow-responsibilities="READY"]')).not.toBeNull());
     expect(api.listPrincipalWorkflowResponsibilities).toHaveBeenCalledWith("p-1");
-    expect(document.querySelector('[data-responsibility="workOrder/Dispatch"]').textContent).toContain("dispatcher");
+    expect(document.querySelector('[data-responsibility="workOrder/Dispatch"]').textContent).toContain("Dispatcher");
     expect(document.querySelector('[data-inert-binding="salesOrder/close"]').textContent).toContain("CAPABILITY_MISSING");
   });
 

@@ -14,6 +14,7 @@ import { deriveScanActions, SCAN_ACTIONS } from "../../domain/scanActions";
 import { snapshotPartName } from "../../domain/workOrderInventorySnapshot";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { titleCase } from "../../shared/display/displayLabels.js";
 
 /**
  * F2 — the field scanner, rebuilt on the entity resolution boundary.
@@ -316,7 +317,7 @@ export default function PartsScanner({ workOrderId = null, offline: offlineProp 
 
       {myTrucks.length > 1 && (
         <label className="fo-form-row">
-          Parts come from
+          Parts Come From
           <select value={truckChoice} onChange={(e) => setTruckChoice(e.target.value)} aria-label="Truck the parts come from">
             <option value="">Not from a truck</option>
             {myTrucks.map((t) => <option key={t.mobileLocationId} value={t.mobileLocationId}>{t.label}</option>)}
@@ -387,7 +388,7 @@ function ScanResult({ phase, identity, actions, scope, loading, denied, pendingA
         <p>That code matches more than one record. Pick the right one from your job.</p>
         <ul>
           {identity.candidates.map((c) => (
-            <li key={`${c.entityType}:${c.entityId}`}>{c.entityType.replace("_", " ").toLowerCase()} · {c.entityId}</li>
+            <li key={`${c.entityType}:${c.entityId}`}>{titleCase(c.entityType)} · {c.entityId}</li>
           ))}
         </ul>
       </div>
@@ -396,7 +397,7 @@ function ScanResult({ phase, identity, actions, scope, loading, denied, pendingA
 
   return (
     <section className="fo-scan__result" aria-label="Scan result">
-      <p className="fo-scan__kind">{identity.entityType.replace("_", " ").toLowerCase()}</p>
+      <p className="fo-scan__kind">{titleCase(identity.entityType)}</p>
       {/* The NAME, not the code I just typed echoed back. A result card that
           repeats your own input cannot confirm you picked the right part. */}
       <h3 className="fo-scan__id">{identity.displayName ?? identity.entityId}</h3>

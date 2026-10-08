@@ -3,6 +3,9 @@ import { salesOrderAnchorLabel } from "../../domain/coordinatedVisit.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 import { useCoordinatedOperations } from "../../hooks/useCoordinatedOperations.js";
 import { visitReadinessTone, visitReadinessLabel, workOrderStatusTone } from "../../domain/coordinatedVisit.js";
 import { buildCoordinatedFieldMission, normalizeMaterialBlocker, partsReadinessLabel, partsReadinessTone } from "../../domain/coordinatedFieldMission.js";
@@ -31,7 +34,7 @@ function UnitRow({ wo, opContext, signal }) {
     <li className="fo-covisit-unit">
       <div className="fo-covisit-unit__head">
         <span className="fo-covisit-unit__label">{wo.equipmentLabel || wo.woNumber || wo.id}</span>
-        <StatusPill tone={workOrderStatusTone(wo.status)} label={wo.status || "Unknown"} asText />
+        <StatusPill tone={workOrderStatusTone(wo.status)} label={wo.status ? statusLabel(wo.status) : "Unknown"} asText />
       </div>
       <div className="fo-covisit-unit__meta">
         <span className="fo-covisit-unit__wo">{wo.woNumber || wo.id}</span>
@@ -72,7 +75,7 @@ function VisitDetail({ visit, ctx }) {
   const facts = [
     { key: "customer", label: "Customer", value: nameOr(ctx.accountNameById, visit.customerId) },
     { key: "location", label: "Location", value: nameOr(ctx.locationNameById, visit.locationId) },
-    { key: "obligation", label: "Coordinated obligation", value: `${visit.total} equipment unit${visit.total === 1 ? "" : "s"}` },
+    { key: "obligation", label: "Coordinated Obligation", value: `${visit.total} equipment unit${visit.total === 1 ? "" : "s"}` },
     { key: "readiness", label: "Readiness", value: <StatusPill tone={visitReadinessTone(visit.readiness)} label={visitReadinessLabel(visit.readiness)} /> },
   ];
   // Committed-obligation attention — the HONEST operational-attention signal derived from existing facts only
@@ -91,13 +94,13 @@ function VisitDetail({ visit, ctx }) {
       <p className="fo-covisit-anchor fo-muted">{salesOrderAnchorLabel(ctx.salesOrderLabelById, visit.salesOrderId)}</p>
       {!visit.contextConsistent && (
         <p className="fo-covisit-warn">
-          <StatusPill tone="attention" label="Units disagree on customer/location" asText /> — data to reconcile.
+          <StatusPill tone="attention" label="Units Disagree on Customer/Location" asText /> — data to reconcile.
         </p>
       )}
       <section className="fo-covisit-block">
-        <h4>Obligation attention</h4>
+        <h4>Obligation Attention</h4>
         {obligation.satisfied ? (
-          <StatusPill tone="positive" label="On track — obligation satisfied" asText />
+          <StatusPill tone="positive" label="On Track — Obligation Satisfied" asText />
         ) : (
           <p className="fo-covisit-obligation">
             {obligation.reasons.map((r) => (
@@ -108,7 +111,7 @@ function VisitDetail({ visit, ctx }) {
         )}
       </section>
       <section className="fo-covisit-block">
-        <h4>Completion progress</h4>
+        <h4>Completion Progress</h4>
         <p>
           <span className="fo-covisit-count">{`${visit.completed} of ${visit.total} complete`}</span>
           {visit.blocked > 0 ? <> · <StatusPill tone="attention" label={`${visit.blocked} blocked`} asText /></> : null}
@@ -119,7 +122,7 @@ function VisitDetail({ visit, ctx }) {
         )}
       </section>
       <section className="fo-covisit-block">
-        <h4>Related Work Orders / equipment units</h4>
+        <h4>Related Work Orders / Equipment Units</h4>
         <ul className="fo-covisit-units">
           {visit.workOrders.map((wo) => (
             <UnitRow
@@ -172,11 +175,21 @@ export default function CoordinatedVisitsWorkspace({ source } = {}) {
     [visits, selectedId]
   );
 
+  // HEADER SORTING over the visits already read; no sort = the hook's attention-first order.
+  const sortColumns = useMemo(() => ({
+    customer: { value: (v) => nameOr(ctx.accountNameById, v.customerId) },
+    location: { value: (v) => nameOr(ctx.locationNameById, v.locationId) },
+    progress: { value: (v) => (v.total > 0 ? v.completed / v.total : null) },
+    remaining: { value: (v) => (typeof v.remaining === "number" ? v.remaining : null) },
+    readiness: { value: (v) => visitReadinessLabel(v.readiness) },
+  }), [ctx.accountNameById, ctx.locationNameById]);
+  const { sort, toggle, sorted: sortedVisits } = useTableSort({ rows: visits, columns: sortColumns });
+
   const needsAttention = visits.filter((v) => v.readiness === "ATTENTION").length;
   const ready = visits.filter((v) => v.readiness === "READY").length;
   const contextItems = [
-    { key: "open", label: "Coordinated visits", value: visits.length },
-    { key: "attention", label: "Needs attention", value: needsAttention },
+    { key: "open", label: "Coordinated Visits", value: visits.length },
+    { key: "attention", label: "Needs Attention", value: needsAttention },
     { key: "ready", label: "Ready", value: ready },
   ];
   const attention = needsAttention > 0 ? (
@@ -213,15 +226,15 @@ export default function CoordinatedVisitsWorkspace({ source } = {}) {
           <table className="fo-sales-pipeline">
             <thead>
               <tr>
-                <th>Customer</th>
-                <th className="fo-sales-col--secondary">Location</th>
-                <th>Progress</th>
-                <th className="fo-sales-col--secondary">Remaining</th>
-                <th>Readiness</th>
+                <SortableHeader columnKey="customer" label="Customer" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="location" label="Location" sort={sort} onSort={toggle} className="fo-sales-col--secondary" />
+                <SortableHeader columnKey="progress" label="Progress" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="remaining" label="Remaining" sort={sort} onSort={toggle} className="fo-sales-col--secondary" />
+                <SortableHeader columnKey="readiness" label="Readiness" sort={sort} onSort={toggle} />
               </tr>
             </thead>
             <tbody>
-              {visits.map((v) => (
+              {sortedVisits.map((v) => (
                 <VisitRow key={v.salesOrderId} visit={v} ctx={ctx} selected={selected?.salesOrderId === v.salesOrderId} onSelect={setSelectedId} synthetic={synthetic} />
               ))}
             </tbody>

@@ -94,10 +94,10 @@ export default function BinLabelsAndExport({ bins, warehouse, labelRequest, down
 
       <div className="fo-labels__controls">
         <Button variant="tertiary" onClick={selectAllVisible} disabled={available.length === 0}>
-          Select all shown
+          Select All Shown
         </Button>
         <Button variant="tertiary" onClick={clearSelection} disabled={chosen.length === 0}>
-          Clear selection
+          Clear Selection
         </Button>
         <label className="fo-labels__toggle">
           <input
@@ -130,7 +130,7 @@ export default function BinLabelsAndExport({ bins, warehouse, labelRequest, down
                 <span className="fo-tabular-nums">{label.canonicalCode}</span>
                 <span className="fo-muted">{label.area}</span>
                 {label.status !== "ACTIVE" && (
-                  <StatusIndicator tone="neutral">Out of use</StatusIndicator>
+                  <StatusIndicator tone="neutral">Out of Use</StatusIndicator>
                 )}
               </label>
             </li>
@@ -140,7 +140,7 @@ export default function BinLabelsAndExport({ bins, warehouse, labelRequest, down
 
       <div className="fo-labels__actions">
         <Button onClick={onPrint} disabled={chosen.length === 0}>
-          {chosen.length === 0 ? "Select labels to print" : `Print ${chosen.length} label${chosen.length === 1 ? "" : "s"}`}
+          {chosen.length === 0 ? "Select Labels to Print" : `Print ${chosen.length} Label${chosen.length === 1 ? "" : "s"}`}
         </Button>
         <Button variant="secondary" onClick={onExport} disabled={chosen.length === 0}>
           Export CSV

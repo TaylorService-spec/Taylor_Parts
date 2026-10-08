@@ -82,13 +82,13 @@ describe("EmployeeExperiencePreview", () => {
       work: { me: { displayName: "Sofia Alvarez", jobRole: { label: "Service Technician" } }, persona: { key: "service-technician", label: "Technician", analysisArea: null }, operatingCompanyId: null,
         sections: [{ key: "assignedWork", title: "Work assigned to me", status: "READY", reason: null, count: 1, items: [{ id: "w1", kind: "workOrder", label: "WO-1", detail: "PM", status: "SCHEDULED", path: "/x", action: { assignee: "Sofia Alvarez" } }] }] } } }));
     render(<MemoryRouter><EmployeeExperiencePreview employeeId="e-tech" callApi={callApi} /></MemoryRouter>);
-    fireEvent.click(screen.getByRole("button", { name: "View as user (preview)" }));
+    fireEvent.click(screen.getByRole("button", { name: "View as User (Preview)" }));
     await screen.findByText(/PREVIEW — read-only/);
     await screen.findByText("WO-1");
     await new Promise((r) => setTimeout(r, 50));
     expect(callApi).toHaveBeenCalledTimes(1);
     expect(callApi).toHaveBeenCalledWith("previewMyWorkAs", expect.objectContaining({ employeeId: "e-tech" }));
-    expect(screen.queryByText("Workflow work")).toBeNull();
+    expect(screen.queryByText("Workflow Work")).toBeNull();
   });
 });
 

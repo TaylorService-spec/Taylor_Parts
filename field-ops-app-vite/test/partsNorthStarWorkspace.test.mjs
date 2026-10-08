@@ -130,11 +130,15 @@ test("the catalogue table states Frame 1a's grammar — P1v2 SUPERSEDES ND-30's 
   //     THE FACT IS STILL ASSERTED, one line down, in the cell it moved to. A test that stopped
   //     asserting something without saying why is how a ruling gets lost, so this says why and then
   //     keeps asserting it.
+  // UI corrections package: the headings are sortable now -- <SortableHeader ... label="X" /> renders the <th>.
   for (const heading of ["Part", "Category", "Control", "Status", "Attention"]) {
-    assert.ok(LIST_SRC.includes(`<th>${heading}</th>`), `Frame 1a column missing: ${heading}`);
+    assert.ok(
+      LIST_SRC.includes(`<th>${heading}</th>`) || new RegExp(`<SortableHeader[^>]*label="${heading}"`).test(LIST_SRC),
+      `Frame 1a column missing: ${heading}`,
+    );
   }
   assert.ok(
-    !LIST_SRC.includes("<th>Manufacturer</th>"),
+    !LIST_SRC.includes("<th>Manufacturer</th>") && !/<SortableHeader[^>]*label="Manufacturer"/.test(LIST_SRC),
     "P1v2 folds the manufacturer into the Part cell; it must not have its own column again"
   );
   assert.ok(

@@ -247,7 +247,7 @@ export default function UserAccessActions({
 
   return (
     <div className="fo-user-actions">
-      <h3 className="fo-user-actions__title">Administrative actions</h3>
+      <h3 className="fo-user-actions__title">Administrative Actions</h3>
 
       {/* ── ACCOUNT STATUS ──
           ONE BUTTON, chosen by the authoritative read. This section used to offer Enable AND
@@ -256,7 +256,7 @@ export default function UserAccessActions({
           which one they needed. readPrincipalAccessState answers that now, so the contextual form
           is available and the ambiguous one is gone. */}
       <dl className="fo-detail-list">
-        <dt>Account status</dt>
+        <dt>Account Status</dt>
         <dd data-user-account-status={accountStatus ?? access.phase}>
           {accountStatus === "enabled" && "Enabled"}
           {accountStatus === "disabled" && "Disabled"}

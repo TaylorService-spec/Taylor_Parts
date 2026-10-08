@@ -4,6 +4,14 @@ import { REORDER_REQUEST_STATUS } from "../../domain/constants.js";
 import { getDisplayQty } from "../../domain/inventoryReorderRequests.js";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 import { formatAge } from "../../domain/displayTimestamp.js";
+import { useMemo } from "react";
+import { statusLabel } from "../display/displayLabels.js";
+import SortableHeader from "../ui/sorting/SortableHeader.jsx";
+import { useTableSort } from "../ui/sorting/useTableSort.js";
+
+const URGENCY_RANK = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+const workStatusLabel = (request) =>
+  request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? "In Progress" : "Waiting";
 
 // Wave 6 -- queue consolidation, safe mechanical dedup (Owner directive §12). The SAME
 // read-only oversight table PartsList.jsx's "All Assigned Work" and PartsManagerHome.jsx's
@@ -32,6 +40,21 @@ export default function AssignedWorkOversightTable({
   title = "All Assigned Work",
   description = "Every Reorder Request currently assigned to a Parts Associate, regardless of who it's assigned to -- oversight only, no action control here.",
 }) {
+  // Client-side sort over the loaded requests (item C); the caller's order is the default.
+  const sortColumns = useMemo(() => ({
+    part: { value: (r) => resolveName(r.partId) },
+    qty: { value: (r) => getDisplayQty(r) },
+    urgency: { value: (r) => (r.urgency ? URGENCY_RANK[r.urgency] ?? 4 : 5) },
+    status: { value: (r) => workStatusLabel(r) },
+    assignee: { value: (r) => resolveAssigneeDisplay(r.assignedEmployeeId ?? r.assignedToUserId) },
+    // Ascending age = most recently assigned first.
+    age: { value: (r) => {
+      const ms = typeof r.assignedAt === "number" ? r.assignedAt : r.assignedAt?.toMillis?.() ?? null;
+      return ms === null ? null : -ms;
+    } },
+  }), [resolveName, resolveAssigneeDisplay]);
+  const { sort, toggle, sorted } = useTableSort({ rows: requests, columns: sortColumns });
+
   const statusMessage = error
     ? `Unable to load ${title} (${error}).`
     : loading
@@ -57,28 +80,28 @@ export default function AssignedWorkOversightTable({
           <table className="fo-table fo-table--stack">
             <thead>
               <tr>
-                <th>Part</th>
-                <th>Qty</th>
-                <th>Urgency</th>
-                <th>Status</th>
-                <th>Assignee</th>
-                <th>Age</th>
+                <SortableHeader columnKey="part" label="Part" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="qty" label="Qty" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="urgency" label="Urgency" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="assignee" label="Assignee" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="age" label="Age" sort={sort} onSort={toggle} />
               </tr>
             </thead>
             <tbody>
-              {requests.map((request) => (
+              {sorted.map((request) => (
                 <tr key={request.id}>
                   <td>{resolveName(request.partId)}</td>
                   <td>{getDisplayQty(request)}</td>
                   <td>
                     {request.urgency ? (
-                      <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
+                      <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={statusLabel(request.urgency)} />
                     ) : (
-                      <StatusPill tone="unknown" label="Needs planning" />
+                      <StatusPill tone="unknown" label="Needs Planning" />
                     )}
                   </td>
                   <td className="fo-muted">
-                    {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? "In Progress" : "Waiting"}
+                    {workStatusLabel(request)}
                   </td>
                   <td className="fo-muted">{resolveAssigneeDisplay(request.assignedEmployeeId ?? request.assignedToUserId)}</td>
                   <td className="fo-muted">{formatAssignmentAge(request.assignedAt)}</td>

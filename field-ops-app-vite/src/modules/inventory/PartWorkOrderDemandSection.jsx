@@ -5,6 +5,9 @@ import { usePartWorkOrderDemand, PART_WORK_ORDER_DEMAND_STATE } from "../../hook
 import { buildPartWorkOrderDemand } from "../../domain/partWorkOrderDemand";
 import { useAccountReferenceResolver } from "../../hooks/useAccountReferenceResolver.js";
 import { normalizeReferenceResult } from "../../metadata/referenceResolution.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 
 // Part -> Work Order Demand (Wave 7 Item 3). Answers "Which Work Orders need this part?" on the Part
 // detail surface -- a READ/PROJECTION over the existing fieldops_wos authority (see
@@ -27,6 +30,12 @@ const EMPTY_ROWS = [];
 function formatScheduled(ts) {
   if (ts && typeof ts.toDate === "function") return ts.toDate().toLocaleDateString();
   return "—";
+}
+
+function scheduledMs(ts) {
+  if (ts && typeof ts.toDate === "function") return ts.toDate().getTime();
+  if (ts instanceof Date) return ts.getTime();
+  return null;
 }
 
 function formatQty(n) {
@@ -52,13 +61,25 @@ export default function PartWorkOrderDemandSection({ partId }) {
     return normalizeReferenceResult(resolveReference("customerId", customerId)).label;
   };
 
+  // Client-side sort over the loaded (bounded) demand rows; the default order is the projection's own.
+  const sortColumns = useMemo(() => ({
+    workOrder: { value: (r) => r.woNumber ?? r.workOrderId },
+    status: { value: (r) => (r.status ? statusLabel(r.status) : null) },
+    customer: { value: (r) => (r.customerId ? normalizeReferenceResult(resolveReference("customerId", r.customerId)).label : null) },
+    scheduled: { value: (r) => scheduledMs(r.scheduledStart) },
+    planned: { value: (r) => (typeof r.qtyPlanned === "number" ? r.qtyPlanned : null) },
+    used: { value: (r) => (typeof r.qtyUsed === "number" ? r.qtyUsed : null) },
+    remaining: { value: (r) => (typeof r.remaining === "number" ? r.remaining : null) },
+  }), [resolveReference]);
+  const { sort, toggle, sorted: sortedRows } = useTableSort({ rows, columns: sortColumns });
+
   return (
     // PARTS NORTH STAR P1. The shared record-section grammar, and the design's own heading --
     // "Open demand", with the sentence that keeps it from being read as a reservation riding
     // beside the title rather than under the table, where it can be scrolled away from the
     // numbers it qualifies.
     <RuledSection
-      title="Open demand"
+      title="Open Demand"
       meta="Work orders that plan this part — planned demand, never a reservation."
     >
 
@@ -100,22 +121,22 @@ export default function PartWorkOrderDemandSection({ partId }) {
             <table className="fo-table">
               <thead>
                 <tr>
-                  <th>Work Order</th>
-                  <th>Status</th>
-                  <th>Customer</th>
-                  <th>Scheduled</th>
-                  <th>Planned</th>
-                  <th>Used</th>
-                  <th>Remaining</th>
+                  <SortableHeader columnKey="workOrder" label="Work Order" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="customer" label="Customer" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="scheduled" label="Scheduled" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="planned" label="Planned" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="used" label="Used" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="remaining" label="Remaining" sort={sort} onSort={toggle} />
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {sortedRows.map((r) => (
                   <tr key={r.workOrderId}>
                     <td>
                       <Link to={`/service/work-orders/${r.workOrderId}`}>{r.woNumber ?? r.workOrderId}</Link>
                     </td>
-                    <td>{r.status ?? <span className="fo-muted">Unknown</span>}</td>
+                    <td>{r.status ? statusLabel(r.status) : <span className="fo-muted">Unknown</span>}</td>
                     <td className="fo-muted">{customerLabel(r.customerId)}</td>
                     <td className="fo-muted">{formatScheduled(r.scheduledStart)}</td>
                     <td>{formatQty(r.qtyPlanned)}</td>

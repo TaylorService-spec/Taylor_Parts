@@ -5,6 +5,7 @@ import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
 import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
 import { workOrderPriorityText } from "../../domain/workOrderPriority";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus";
+import { workOrderTypeLabel } from "../../domain/workOrderType";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 
@@ -72,7 +73,7 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
         <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{workOrderStatusLabel(workOrder.status)}</span>
       </div>
       <div className="fo-muted">
-        Priority: {workOrderPriorityText(workOrder.priority) ?? "Priority not set"} | Type: {workOrder.type}
+        Priority: {workOrderPriorityText(workOrder.priority) ?? "Priority not set"} | Type: {workOrderTypeLabel(workOrder.type) ?? "Type not recorded"}
       </div>
       {/* Dispatcher holds canonical accounts read, so identity resolves through the
           existing useAccountNames path -- same four states as the technician surfaces,

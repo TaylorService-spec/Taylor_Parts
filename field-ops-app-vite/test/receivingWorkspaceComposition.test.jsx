@@ -99,7 +99,7 @@ describe("awaiting-receipt queue", () => {
     expect(rows[0].textContent).toContain("Supplier PO · multi-scan");
     expect(rows[1].textContent).toContain("Reorder PO · full quantity");
     expect(rows[1].textContent).toContain("TP-88112");
-    expect(screen.getByText(/Awaiting receipt · 2 orders/)).toBeTruthy();
+    expect(screen.getByText(/Awaiting Receipt · 2 orders/)).toBeTruthy();
   });
 
   it("MUTATION PROOF: no document id is promoted to a visible label", async () => {
@@ -157,7 +157,7 @@ describe("truth states", () => {
     reorderCandidateReady();
     fetchReceivable.mockResolvedValue({ status: RECEIVING_OUTCOME.UNAVAILABLE, purchaseOrders: [] });
     render(<Receiving deps={deps()} />);
-    expect(await screen.findByText(/Awaiting receipt · 1 shown · incomplete/)).toBeTruthy();
+    expect(await screen.findByText(/Awaiting Receipt · 1 shown · incomplete/)).toBeTruthy();
     expect(screen.getByText(/not an empty list; it is an unread one/i)).toBeTruthy();
     expect(screen.getByText(/TP-88112/)).toBeTruthy();
   });
@@ -181,7 +181,7 @@ describe("row navigation", () => {
     expect(await screen.findByTestId("multi-scan-journey")).toBeTruthy();
     expect(journeyProps.supplier.at(-1).initialPurchaseOrderId).toBe("fs-auto-9pQ7xW");
     // and back returns to the queue
-    fireEvent.click(screen.getByRole("button", { name: /Back to the receipt queue/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Back to the Receipt Queue/ }));
     expect(await screen.findByRole("table", { name: /orders awaiting receipt/i })).toBeTruthy();
   });
 
@@ -214,12 +214,12 @@ describe("beside the queue", () => {
     // acquisition is authorized server-side (inventory.serializedAsset.acquire + eligibility + WAREHOUSE scope) and a
     // refusal is rendered as a refusal.
     await renderReady([]);
-    expect(screen.getByRole("button", { name: "Add existing unit" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add Existing Unit" })).toBeTruthy();
   });
 
   it("the Recent-receipts slot is held honestly (RCV-G1) — a reserved place, not a list and not an error", async () => {
     await renderReady([]);
-    expect(screen.getByText("Recent receipts")).toBeTruthy();
+    expect(screen.getByText("Recent Receipts")).toBeTruthy();
     expect(screen.getByText("Not connected yet.")).toBeTruthy();
     // MUTATION PROOF: the unavailable slot must never become a false empty list — "no receipts"
     // is a claim about the data, and no governed read exists to make it.

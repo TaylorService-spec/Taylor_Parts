@@ -42,7 +42,7 @@ export default function AccountOpportunitiesSection({ accountId }) {
       {view.kind === ACCOUNT_OPPORTUNITIES_STATE.LOADING && <p className="fo-muted">Loading opportunities…</p>}
 
       {view.kind === ACCOUNT_OPPORTUNITIES_STATE.DENIED && (
-        <FailureState title="Opportunities unavailable" message="You are not authorized to view Opportunities for this account." />
+        <FailureState title="Opportunities Unavailable" message="You are not authorized to view Opportunities for this account." />
       )}
 
       {view.kind === ACCOUNT_OPPORTUNITIES_STATE.UNAVAILABLE && (

@@ -75,7 +75,7 @@ describe("Employee > Security Roles: assignment scope from the server", () => {
     expect(within(scoped).getByText("Taylor")).toBeTruthy();
     expect(within(scoped).getByText("2026-09-26")).toBeTruthy();
     const global = table.querySelector('[data-assignment="asg-2"]');
-    expect(within(global).getByText("All (global)")).toBeTruthy();
+    expect(within(global).getByText("All (Global)")).toBeTruthy();
     expect(table.querySelector('[data-assignment="asg-0"]')).toBeNull();
   });
 
@@ -89,7 +89,7 @@ describe("Employee > Security Roles: assignment scope from the server", () => {
     await waitFor(() => expect(document.querySelector('[data-assignment-scope-picker="READY"]')).toBeTruthy());
     const scopeOptions = within(screen.getByRole("combobox", { name: "Assignment scope" })).getAllByRole("option");
     expect(scopeOptions.map((o) => [o.textContent, o.disabled])).toEqual([
-      ["All (global)", false], ["Company — not available for this Role (SCOPE_AMBIGUOUS_ADMINISTRATION)", true]]);
+      ["All (Global)", false], ["Company — not available for this Role (SCOPE_AMBIGUOUS_ADMINISTRATION)", true]]);
     // The unconsumed scope types are listed with the SERVER's reason, never offered.
     expect(document.querySelector("[data-unsupported-scopes]").textContent).toMatch(/Business Unit \(no PostgreSQL gate supplies a record's business unit\)/);
     expect(document.querySelector("[data-unsupported-scopes]").textContent).toMatch(/Warehouse/);
@@ -146,7 +146,7 @@ describe("Employee > Security Roles: assignment scope from the server", () => {
     fireEvent.change(await screen.findByRole("combobox", { name: "Security Role to assign" }), { target: { value: "role-gm" } });
     await waitFor(() => expect(document.querySelector('[data-assignment-scope-picker="UNAVAILABLE"]')).toBeTruthy());
     expect(screen.queryByRole("combobox", { name: "Assignment scope" })).toBeNull();
-    expect(document.querySelector('[data-assignment-scope-picker="UNAVAILABLE"]').textContent).toMatch(/Scope: All \(global\)/);
+    expect(document.querySelector('[data-assignment-scope-picker="UNAVAILABLE"]').textContent).toMatch(/Scope: All \(Global\)/);
   });
 
   it("the production seam sends scope only for a scoped choice, and reads the vocabulary on the one endpoint", async () => {

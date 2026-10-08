@@ -9,6 +9,7 @@
 import OperationalCard from "../../shared/ui/OperationalCard.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { truckFleetStatusTone, truckDiscrepancyTone } from "../../domain/truckInventoryView";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 
 const dash = (v) => (v == null ? "—" : v);
 
@@ -31,7 +32,7 @@ export default function TruckFleetCard({ truck, onOpen }) {
       status={
         status == null
           ? { tone: "unknown", asText: true, label: "Unavailable" }
-          : { tone: truckFleetStatusTone(status), label: status, asText: true }
+          : { tone: truckFleetStatusTone(status), label: statusLabel(status), asText: true }
       }
       subtitle={`${t.technician || "Unassigned"}${t.location ? ` · ${t.location}` : ""}`}
       metadata={[

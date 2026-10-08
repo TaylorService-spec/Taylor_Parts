@@ -174,8 +174,8 @@ export default function JobNote({ workOrderId, offline = null, deps }) {
       {confirmDiscard ? (
         <p className="fo-scan__leave" role="alert">
           <span>This note has not been saved. Leaving discards it.</span>
-          <button type="button" className="fo-link-btn fo-scan__leave-discard" onClick={discard}>Discard note</button>
-          <button type="button" className="fo-link-btn" onClick={() => setConfirmDiscard(false)}>Keep writing</button>
+          <button type="button" className="fo-link-btn fo-scan__leave-discard" onClick={discard}>Discard Note</button>
+          <button type="button" className="fo-link-btn" onClick={() => setConfirmDiscard(false)}>Keep Writing</button>
         </p>
       ) : (
         <div className="fo-jobnote__actions">

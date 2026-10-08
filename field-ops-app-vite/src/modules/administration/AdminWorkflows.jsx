@@ -9,6 +9,8 @@ import { ReadState } from "./ObjectActionSecurity.jsx";
 import WorkflowVersionPanel from "./WorkflowVersionPanel.jsx";
 import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
 import { titleCase } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 // ADMINISTRATION > WORKFLOWS -- the workflow control plane.
 //
@@ -39,6 +41,42 @@ import { titleCase } from "../../shared/display/displayLabels.js";
 // in PostgreSQL. When the open draft editor holds unsaved changes, leaving it (switch, deselect or another version)
 // asks first, and "Keep Editing" leaves everything as it was.
 const DESELECTED = "__deselected__";
+
+const WORKFLOW_COLUMNS = Object.freeze({
+  name: { value: (w) => w.name },
+  governs: { value: (w) => (w.objectKey ? titleCase(w.objectKey) : null) },
+  active: { value: (w) => (typeof w.activeVersion === "number" ? w.activeVersion : null) },
+  versions: { value: (w) => (w.counts?.draft ?? 0) + (w.counts?.published ?? 0) + (w.counts?.retired ?? 0) },
+});
+
+/** One area's workflows. Sorting reorders the rows already read; selection is unchanged by it. */
+function WorkflowAreaTable({ group, selectedId, onChoose }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: group.workflows, columns: WORKFLOW_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table" aria-label={`${group.name} workflows`}>
+      <thead><tr>{header("name", "Workflow")}{header("governs", "Governs")}{header("active", "Active Version")}{header("versions", "Versions")}</tr></thead>
+      <tbody>
+        {sorted.map((w) => (
+          <tr key={w.id} data-workflow={w.key} aria-selected={w.id === selectedId}>
+            <td>
+              <Button type="button" variant={w.id === selectedId ? "primary" : "secondary"} onClick={() => onChoose(w)}
+                aria-pressed={w.id === selectedId}
+                title={w.id === selectedId ? `Deselect ${w.name}` : `Select ${w.name}`}>
+                {w.name}
+              </Button>
+            </td>
+            <td className="fo-muted">{w.objectKey ? titleCase(w.objectKey) : "—"}</td>
+            <td>{w.activeVersion === null ? <span className="fo-muted">None</span> : `v${w.activeVersion}`}</td>
+            <td className="fo-muted">
+              {w.counts.draft} Draft · {w.counts.published} Published · {w.counts.retired} Retired
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 export default function AdminWorkflows({ api = workflowAdminClient }) {
   const list = useControlPlaneRead(() => api.listWorkflows(), "workflows");
@@ -100,27 +138,7 @@ export default function AdminWorkflows({ api = workflowAdminClient }) {
           <div key={group.key} className="fo-wf-area" data-workflow-area={group.key}>
             <h4>{group.name}</h4>
             <p className="fo-muted">{group.description}</p>
-            <table className="fo-table" aria-label={`${group.name} workflows`}>
-              <thead><tr><th>Workflow</th><th>Governs</th><th>Active Version</th><th>Versions</th></tr></thead>
-              <tbody>
-                {group.workflows.map((w) => (
-                  <tr key={w.id} data-workflow={w.key} aria-selected={w.id === effectiveSelectedId}>
-                    <td>
-                      <Button type="button" variant={w.id === effectiveSelectedId ? "primary" : "secondary"} onClick={() => choose(w)}
-                        aria-pressed={w.id === effectiveSelectedId}
-                        title={w.id === effectiveSelectedId ? `Deselect ${w.name}` : `Select ${w.name}`}>
-                        {w.name}
-                      </Button>
-                    </td>
-                    <td className="fo-muted">{w.objectKey ? titleCase(w.objectKey) : "—"}</td>
-                    <td>{w.activeVersion === null ? <span className="fo-muted">None</span> : `v${w.activeVersion}`}</td>
-                    <td className="fo-muted">
-                      {w.counts.draft} draft · {w.counts.published} published · {w.counts.retired} retired
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <WorkflowAreaTable group={group} selectedId={effectiveSelectedId} onChoose={choose} />
           </div>
         ))}
       </section>

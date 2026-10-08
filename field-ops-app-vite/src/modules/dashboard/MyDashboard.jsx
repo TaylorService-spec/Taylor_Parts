@@ -80,6 +80,7 @@ import {
 } from "../../domain/dashboardTeamProjections.js";
 import GoalGrid from "./GoalGrid.jsx";
 import PreviewList from "./PreviewList.jsx";
+import { operatingCompanyLabel } from "../../shared/display/displayLabels.js";
 
 /**
  * One-shot governed callable read.
@@ -197,11 +198,11 @@ function ModuleFrame({ label, children, blocked = false }) {
  */
 function AccountPortfolioModule({ summary, state }) {
   if (state === "LOADING") {
-    return <ModuleFrame label="Account portfolio"><HonestState state={HONEST_STATE.LOADING} subject="Account portfolio" /></ModuleFrame>;
+    return <ModuleFrame label="Account Portfolio"><HonestState state={HONEST_STATE.LOADING} subject="Account Portfolio" /></ModuleFrame>;
   }
   if (state !== "READY" || !summary) {
     return (
-      <ModuleFrame label="Account portfolio" blocked>
+      <ModuleFrame label="Account Portfolio" blocked>
         <HonestState state={HONEST_STATE.UNAVAILABLE} detail="The portfolio count could not be read." />
       </ModuleFrame>
     );
@@ -209,7 +210,7 @@ function AccountPortfolioModule({ summary, state }) {
   // A complete server-side count over the authorized scope -- never a page, never a sample. Unknown
   // status values surface as `unclassified` rather than vanishing from the total.
   return (
-    <ModuleFrame label="Account portfolio">
+    <ModuleFrame label="Account Portfolio">
     <div className="fo-stat-grid">
       {/* Every label NAMES THE CONCEPT rather than standing alone -- ADR-012 section 2.2a, enforced
           by activeLabelConformance. The rule earns its keep on this screen specifically: a dashboard
@@ -218,7 +219,7 @@ function AccountPortfolioModule({ summary, state }) {
           (The conformance gate skips line comments but not JSX ones, so this note is worded to avoid
           quoting the bare word it is about -- tripping the guard that proves the point would be a
           poor joke to leave in the build.) */}
-      <CompactMetric value={summary.total ?? "—"} label="All accounts" />
+      <CompactMetric value={summary.total ?? "—"} label="All Accounts" />
     </div>
     {/* THE BREAKDOWN IS A LINE, NOT FOUR MORE KPI SLOTS.
         This rendered `summary.active` / `.prospect` / `.inactive` -- fields the server has NEVER
@@ -564,7 +565,7 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
    */
   const contextItems = useMemo(() => {
     const items = [
-      { key: "period", label: "Reporting day", value: onDate },
+      { key: "period", label: "Reporting Day", value: onDate },
       { key: "calendar", label: "Calendar", value: TAYLOR_VENTANA_REPORTING_CALENDAR.reportingTimeZone },
     ];
     if (warehouseIds.length > 0) {
@@ -656,11 +657,11 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
 
   if (sections.length === 0) {
     return (
-      <WorkspaceShell title="My dashboard">
+      <WorkspaceShell title="My Dashboard">
         <EmptyState
           icon={Compass}
           variant="database"
-          title="Nothing to show yet"
+          title="Nothing to Show Yet"
           message="Your account doesn't currently resolve access to any business area. If this looks wrong, ask an administrator to check your role and employment status in Administration > Employees."
         />
       </WorkspaceShell>
@@ -669,7 +670,7 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
 
   return (
     <WorkspaceShell
-      title={displayName ? `Hi, ${displayName}` : "My dashboard"}
+      title={displayName ? `Hi, ${displayName}` : "My Dashboard"}
       context={<ContextBand items={contextItems} />}
     >
       {/* ACTION ITEMS FIRST, above every section. Renders nothing when there is nothing wrong --
@@ -971,7 +972,7 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                               <CompactMetric
                                 key={`${row.key}-${currency}`}
                                 value={`${(minor / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`}
-                                label={`${row.key} — ${m.label.toLowerCase()}`}
+                                label={`${operatingCompanyLabel(row.key)} — ${m.label.toLowerCase()}`}
                               />
                             )),
                           )}

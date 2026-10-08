@@ -74,7 +74,7 @@ describe("Employee > Workflow responsibilities: provenance and where to change i
     render(<MemoryRouter><EmployeeWorkflowResponsibilities api={api} principalId="p-1" employeeId="e-1" /></MemoryRouter>);
     await waitFor(() => expect(document.querySelector('[data-workflow-responsibilities="READY"]')).not.toBeNull());
     const row = document.querySelector('[data-responsibility="woProof/complete"]');
-    expect(row.querySelector("[data-responsibility-condition]").textContent).toBe("guard RECORD_ASSIGNMENT; grant condition RECORD_ASSIGNMENT");
+    expect(row.querySelector("[data-responsibility-condition]").textContent).toBe("guard Record Assignment; grant condition Record Assignment");
     expect([...row.querySelectorAll("[data-admin-location]")].map((el) => el.getAttribute("data-admin-location"))).toEqual([
       "SECURITY_ROLE_ASSIGNMENT", "FUNCTIONAL_ROLE_ASSIGNMENT", "WORKFLOW_BINDING", "ROLE_CAPABILITY_GRANT"]);
     const hrefs = [...row.querySelectorAll("a")].map((a) => a.getAttribute("href"));
@@ -84,7 +84,7 @@ describe("Employee > Workflow responsibilities: provenance and where to change i
     expect(hrefs.some((h) => /workflowGrant|per-employee/i.test(h))).toBe(false);
     const scoped = document.querySelector('[data-responsibility="empReview/review"]');
     expect(scoped.getAttribute("data-responsibility-authority")).toBe("SCOPED");
-    expect(scoped.querySelector("[data-via-roles]").textContent).toBe("companyReader @ operatingCompany:taylor");
+    expect(scoped.querySelector("[data-via-roles]").textContent).toBe("Company Reader @ Operating Company: Taylor");
   });
 
   it("works outside a router (plain anchors) and still lists where to fix an inert binding", async () => {

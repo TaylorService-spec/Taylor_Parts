@@ -80,7 +80,7 @@ export default function LocationCreateModal({ accountName, onCreate, onClose }) 
           Adding to: <strong>{accountName}</strong> (the customer is fixed and cannot be changed here).
         </p>
 
-        <Field id="location-name" label="Site name" required error={nameError} hint="e.g. Main Office">
+        <Field id="location-name" label="Site Name" required error={nameError} hint="e.g. Main Office">
           <input
             id="location-name"
             className="fo-wizard-control"
@@ -93,7 +93,7 @@ export default function LocationCreateModal({ accountName, onCreate, onClose }) 
 
         <AddressFields value={address} onChange={handleAddressChange} idPrefix="location-address" />
 
-        <Field id="location-access-notes" label="Access notes">
+        <Field id="location-access-notes" label="Access Notes">
           <input
             id="location-access-notes"
             className="fo-wizard-control"

@@ -403,6 +403,7 @@ export default function AccountsList() {
       ) : (
       <MetadataListGrid
         presentation={presentation}
+        sorting={{ entity: accountEntity, criteria, onSort: (fieldId, direction) => apply(setSort(criteria, fieldId, direction)) }}
         caption="Customers"
         // THE DESTINATION THE DEFINITION NAMES. accountIndexList.rowNavigationTo is "/customers/:id"
         // and agreed with the literal this replaces -- which is luck, not a property. Work Orders

@@ -6,6 +6,7 @@ import OperationalCard, { OperationalCardGrid } from "../ui/OperationalCard.jsx"
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 import { formatTimestamp } from "../../domain/displayTimestamp.js";
 import { Button } from "../ui/primitives/index.js";
+import { statusLabel } from "../display/displayLabels.js";
 import { useReorderAssignmentTargets } from "../../hooks/useReorderAssignmentTargets.js";
 
 // Wave 6 -- queue consolidation (Owner directive, Option A: Parts -> WORK becomes the
@@ -127,8 +128,8 @@ export default function ManagerQueuePanel({
                 title={resolveName(request.partId)}
                 status={
                   request.urgency
-                    ? { tone: inventoryUrgencyTone(request.urgency), label: request.urgency }
-                    : { tone: "unknown", label: "Needs planning" }
+                    ? { tone: inventoryUrgencyTone(request.urgency), label: statusLabel(request.urgency) }
+                    : { tone: "unknown", label: "Needs Planning" }
                 }
                 metadata={[
                   { key: "qty", label: "Qty", value: getDisplayQty(request) },

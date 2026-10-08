@@ -21,7 +21,7 @@
 // the definition via the same trusted get() Saved Reports uses and revalidates it through the
 // existing F2/W-SAVE-UI reconciler (savedReportReconcile.js) -- catalog drift is dropped and
 // surfaced exactly as it is in the Saved Reports "Open" preview, never silently restored.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   availableObjects, availableFieldGroups, defaultComparator,
@@ -37,6 +37,9 @@ import { savedReportService } from "../../domain/reporting/savedReportService.js
 import { reconcileSavedReport, describeReconciliation } from "../../domain/reporting/savedReportReconcile.js";
 import { mapSavedDefinitionError } from "../../domain/reporting/savedReportServiceOutcome.js";
 import EmptyState from "../../shared/ui/EmptyState";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { identifierLabel, titleCasePhrase } from "../../shared/display/displayLabels.js";
 import FailureState from "../../shared/ui/FailureState";
 import LoadingState from "../../shared/ui/LoadingState";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
@@ -122,7 +125,7 @@ export default function ReportBuilder({ runReportFn = runReport, savedReportServ
   return (
     <div className="fo-main">
       <div className="fo-panel">
-        <h2>Report builder</h2>
+        <h2>Report Builder</h2>
         <p className="fo-muted">
           Build a report from a governed business object. Only the data you're authorized to see is
           returned — fields you can't read are left out and shown as omitted.
@@ -145,7 +148,7 @@ export default function ReportBuilder({ runReportFn = runReport, savedReportServ
 
         {!def.objectId ? (
           <EmptyState
-            title="Start by choosing an object"
+            title="Start by Choosing an Object"
             message="Pick a business object above to see the fields you can report on."
           />
         ) : (
@@ -168,7 +171,7 @@ export default function ReportBuilder({ runReportFn = runReport, savedReportServ
               <h3 id="rb-summary-h">Summary</h3>
               <label className="fo-checkbox-label">
                 <input type="checkbox" checked={hasCountRows(def)} onChange={() => setDef(toggleCountRows(def))} />
-                Count rows{def.groupBy.length > 0 ? " (per group)" : " (total)"}
+                Count Rows{def.groupBy.length > 0 ? " (per group)" : " (total)"}
               </label>
             </section>
 
@@ -203,7 +206,7 @@ export default function ReportBuilder({ runReportFn = runReport, savedReportServ
               disabled={status !== "ready" || running}
               loading={running}
             >
-              Run report
+              Run Report
             </Button>
 
             <ResultArea outcome={outcome} def={def} />
@@ -221,7 +224,7 @@ function OpenBanner({ openState }) {
   if (openState.status === "idle") return null;
   if (openState.status === "loading") return <LoadingState>Opening saved report…</LoadingState>;
   if (openState.status === "error") {
-    return <FailureState title="Couldn't open this report" message={openState.message} />;
+    return <FailureState title="Couldn't Open This Report" message={openState.message} />;
   }
   if (!openState.drift && !openState.needsEditing) {
     return (
@@ -247,7 +250,7 @@ function SaveControl({ saveName, setSaveName, saveState, onSave, disabled }) {
     <section aria-labelledby="rb-save-h">
       <h3 id="rb-save-h">Save</h3>
       <div className="fo-form">
-        <label htmlFor="rb-save-name">Report name</label>
+        <label htmlFor="rb-save-name">Report Name</label>
         <input
           id="rb-save-name"
           type="text"
@@ -262,7 +265,7 @@ function SaveControl({ saveName, setSaveName, saveState, onSave, disabled }) {
           disabled={disabled || saveState.status === "saving" || saveName.trim() === ""}
           loading={saveState.status === "saving"}
         >
-          Save as new report
+          Save as New Report
         </Button>
       </div>
       {saveState.status === "success" && (
@@ -320,7 +323,7 @@ function Filters({ def, selected, setDef }) {
           onRemove={() => setDef(removeFilter(def, i))}
         />
       ))}
-      <Button type="button" variant="secondary" className="fo-link-btn" onClick={addBlank}>+ Add filter</Button>
+      <Button type="button" variant="secondary" className="fo-link-btn" onClick={addBlank}>+ Add Filter</Button>
     </section>
   );
 }
@@ -352,7 +355,7 @@ function FilterRow({ filter, filterable, onChange, onRemove }) {
         {comparators.map((op) => <option key={op} value={op}>{op}</option>)}
       </select>
       <FilterValueInput field={field} filter={filter} onChange={onChange} />
-      <Button type="button" variant="secondary" onClick={onRemove} aria-label="Remove filter">Remove</Button>
+      <Button type="button" variant="secondary" onClick={onRemove} aria-label="Remove Filter">Remove</Button>
     </div>
   );
 }
@@ -429,7 +432,7 @@ function GroupBy({ def, selected, setDef }) {
   if (groupable.length === 0) return null;
   return (
     <section aria-labelledby="rb-group-h">
-      <h3 id="rb-group-h">Group by</h3>
+      <h3 id="rb-group-h">Group By</h3>
       {groupable.map((f) => (
         <label key={f.fieldId} className="fo-checkbox-label">
           <input type="checkbox" checked={def.groupBy.includes(f.fieldId)} onChange={() => setDef(toggleGroupBy(def, f.fieldId))} />
@@ -454,15 +457,15 @@ function SortBy({ def, selected, setDef }) {
           <div key={s.fieldId} className="fo-form" role="group" aria-label="Sort">
             <span>{field.label}</span>
             <select aria-label="Direction" value={s.direction} onChange={(e) => setDef(updateSort(def, i, { direction: e.target.value }))}>
-              {SORT_DIRECTIONS.map((dir) => <option key={dir} value={dir}>{dir === "asc" ? "ascending" : "descending"}</option>)}
+              {SORT_DIRECTIONS.map((dir) => <option key={dir} value={dir}>{dir === "asc" ? "Ascending" : "Descending"}</option>)}
             </select>
-            <Button type="button" variant="secondary" onClick={() => setDef(removeSort(def, i))} aria-label="Remove sort">Remove</Button>
+            <Button type="button" variant="secondary" onClick={() => setDef(removeSort(def, i))} aria-label="Remove Sort">Remove</Button>
           </div>
         );
       })}
       {notYetSorted.length > 0 && (
         <div className="fo-form">
-          <label htmlFor="rb-add-sort">Add sort</label>
+          <label htmlFor="rb-add-sort">Add Sort</label>
           <select id="rb-add-sort" value="" onChange={(e) => e.target.value && setDef(addSort(def, e.target.value))}>
             <option value="">Choose a field…</option>
             {notYetSorted.map((f) => <option key={f.fieldId} value={f.fieldId}>{f.label}</option>)}
@@ -499,7 +502,22 @@ function ResultArea({ outcome, def }) {
   );
 }
 
+// A projected cell as a comparable: numbers and text as read, booleans and lists as their display text, a
+// structured value (never rendered) as empty so it sorts last.
+function cellSortValue(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number" || typeof value === "string") return value;
+  if (typeof value === "boolean" || Array.isArray(value)) return formatCell(value);
+  return null;
+}
+
+// HEADER SORTING over the rows the run returned (client-side); no sort = the report definition's own order.
 function ResultsTable({ caption, columns, rows }) {
+  const sortColumns = useMemo(
+    () => Object.fromEntries(columns.map((c) => [c.key, { value: (row) => cellSortValue(row[c.key]) }])),
+    [columns],
+  );
+  const { sort, toggle, sorted } = useTableSort({ rows, columns: sortColumns });
   if (columns.length === 0) return null;
   return (
     <div className="fo-table-scroll">
@@ -508,10 +526,10 @@ function ResultsTable({ caption, columns, rows }) {
           {caption} — {rows.length} row{rows.length === 1 ? "" : "s"}
         </caption>
         <thead>
-          <tr>{columns.map((c) => <th key={c.key} scope="col">{c.label}</th>)}</tr>
+          <tr>{columns.map((c) => <SortableHeader key={c.key} columnKey={c.key} label={titleCasePhrase(identifierLabel(c.key, c.label))} sort={sort} onSort={toggle} />)}</tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
+          {sorted.map((row, i) => (
             <tr key={i}>{columns.map((c) => <td key={c.key}>{formatCell(row[c.key])}</td>)}</tr>
           ))}
         </tbody>

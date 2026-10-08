@@ -132,7 +132,7 @@ describe("Inbound Work queue", () => {
 
   it("says NOT_YET_ACTIVATED -- not an outage, not an empty queue -- while the EOS authority is off", async () => {
     render(<InboundWorkWorkspace source={makeSource({ readAccess: async () => ({ status: "not_activated", payload: null, error: "NOT_ACTIVATED" }) })} />);
-    const notice = (await screen.findByText("Inbound Work: NOT_YET_ACTIVATED.")).closest("[data-inbound-work-readiness]");
+    const notice = (await screen.findByText("Inbound Work: Not Yet Activated.")).closest("[data-inbound-work-readiness]");
     expect(notice.getAttribute("data-inbound-work-readiness")).toBe("NOT_YET_ACTIVATED");
     expect(screen.queryByText("Warranty service required")).toBeNull();
   });
@@ -147,13 +147,13 @@ describe("Inbound Work review", () => {
   const open = async () => {
     render(<InboundWorkWorkspace source={makeSource()} />);
     fireEvent.click(await screen.findByText("Warranty service required"));
-    await screen.findByRole("region", { name: "Original message" });
+    await screen.findByRole("region", { name: "Original Message" });
   };
 
   it("shows the original message and the EOS interpretation together", async () => {
     await open();
-    expect(screen.getByRole("region", { name: "Original message" })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "EOS work interpretation" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Original Message" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "EOS Work Interpretation" })).toBeTruthy();
     expect(screen.getByText("WR-4471")).toBeTruthy();
     expect(screen.getByText("CASE-88213")).toBeTruthy();
     expect(screen.getByText("authorization.pdf")).toBeTruthy();
@@ -161,23 +161,23 @@ describe("Inbound Work review", () => {
 
   it("renders hostile message content as TEXT -- no element is created from it", async () => {
     await open();
-    const region = screen.getByRole("region", { name: "Original message" });
+    const region = screen.getByRole("region", { name: "Original Message" });
     expect(region.textContent).toContain('alert("xss")');
     expect(region.querySelector("img")).toBeNull();
     expect(region.querySelector("script")).toBeNull();
   });
 
   const chooseCompany = async (value = "taylor") => {
-    const select = await screen.findByLabelText("Operating company");
+    const select = await screen.findByLabelText("Operating Company");
     await waitFor(() => expect(select.disabled).toBe(false));
     fireEvent.change(select, { target: { value } });
   };
 
   it("the operating company is STATED by the reviewer: never pre-filled from the suggestion, and Accept waits for it", async () => {
     await open();
-    const select = await screen.findByLabelText("Operating company");
+    const select = await screen.findByLabelText("Operating Company");
     expect(select.value).toBe("");
-    expect(screen.getByText("Suggested operating company").nextSibling.textContent).toBe("ventana"); // SHOWN, not used
+    expect(screen.getByText("Suggested Operating Company").nextSibling.textContent).toBe("Ventana"); // SHOWN, not used
     expect(screen.getByRole("button", { name: "Accept Job" }).disabled).toBe(true);
     await chooseCompany();
     expect(screen.getByRole("button", { name: "Accept Job" }).disabled).toBe(false);
@@ -233,7 +233,7 @@ describe("Inbound Work review", () => {
 
   it("says the attachment bytes are held by the mailbox provider -- and offers no download that cannot work", async () => {
     await open();
-    const region = screen.getByRole("region", { name: "Original message" });
+    const region = screen.getByRole("region", { name: "Original Message" });
     expect(within(region).getByText("authorization.pdf")).toBeTruthy();
     expect(within(region).getAllByText(/Held by the mailbox provider/).length).toBe(2);
     expect(within(region).queryByRole("button", { name: "Download" })).toBeNull();
@@ -243,7 +243,7 @@ describe("Inbound Work review", () => {
     const decline = vi.fn(async () => ({ ok: true, data: { requestId: "req-1", replayed: false } }));
     render(<InboundWorkWorkspace source={makeSource({ decline })} />);
     fireEvent.click(await screen.findByText("Warranty service required"));
-    fireEvent.change(await screen.findByLabelText("Decline reason"), { target: { value: "CAPACITY" } });
+    fireEvent.change(await screen.findByLabelText("Decline Reason"), { target: { value: "CAPACITY" } });
     fireEvent.click(screen.getByRole("button", { name: "Decline Job" }));
     await waitFor(() => expect(decline).toHaveBeenCalledTimes(1));
     expect(decline.mock.calls[0][0].reason).toBe("CAPACITY");
@@ -280,7 +280,7 @@ describe("Inbound Work reviewer, history and recovery", () => {
     fireEvent.click(await screen.findByText("Warranty service required"));
     expect(await screen.findByText(/not yet finished/)).toBeTruthy();
     expect(screen.getByText(/A Work Order was already created/)).toBeTruthy();
-    const release = screen.getByRole("button", { name: "Release to queue" });
+    const release = screen.getByRole("button", { name: "Release to Queue" });
     expect(release.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: "session ended" } });
     fireEvent.click(release);
@@ -292,8 +292,8 @@ describe("Inbound Work reviewer, history and recovery", () => {
     access.value = { ...FULL_ACCESS, canRecover: false };
     render(<InboundWorkWorkspace source={makeSource({ getRequest: async () => ({ status: "ready", payload: stuck, error: null }) })} />);
     fireEvent.click(await screen.findByText("Warranty service required"));
-    expect(await screen.findByLabelText("Reviewer history")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Release to queue" })).toBeNull();
+    expect(await screen.findByLabelText("Reviewer History")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Release to Queue" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Reassign" })).toBeNull();
   });
 

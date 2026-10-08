@@ -143,7 +143,7 @@ describe("the governed commands", () => {
     fireEvent.click(btn("Edit draft"));
     expect(seam.updateDraft).not.toHaveBeenCalled(); // opening a form is not a write
     fireEvent.change(screen.getByLabelText("Customer PO"), { target: { value: "PO-99001" } });
-    fireEvent.click(btn("Save terms"));
+    fireEvent.click(btn("Save Terms"));
     await waitFor(() => expect(seam.updateDraft).toHaveBeenCalledTimes(1));
     expect(seam.accept).not.toHaveBeenCalled();
     const [patch] = seam.updateDraft.mock.calls[0];
@@ -153,7 +153,7 @@ describe("the governed commands", () => {
   it("sends only fields the server's own allowlist permits", async () => {
     mount();
     fireEvent.click(btn("Edit draft"));
-    fireEvent.click(btn("Save terms"));
+    fireEvent.click(btn("Save Terms"));
     await waitFor(() => expect(seam.updateDraft).toHaveBeenCalled());
     const [patch] = seam.updateDraft.mock.calls[0];
     const ALLOWED = ["locationId", "customerPO", "isLease", "fulfillmentIntent",
@@ -231,9 +231,9 @@ describe("a success re-reads; nothing is invented locally", () => {
   it("a refused edit keeps the form open rather than reading as saved", async () => {
     mount({ wiring: { updateDraft: vi.fn().mockResolvedValue({ ok: false, errorStatus: "failed-precondition" }) } });
     fireEvent.click(btn("Edit draft"));
-    fireEvent.click(btn("Save terms"));
+    fireEvent.click(btn("Save Terms"));
     await waitFor(() => expect(seam.updateDraft).toHaveBeenCalled());
-    expect(btn("Save terms")).toBeTruthy();
+    expect(btn("Save Terms")).toBeTruthy();
   });
 });
 
@@ -360,23 +360,23 @@ describe("nothing new was granted", () => {
 // claim in a ledger.
 
 describe("SA-G7 — the agreement is priced from its own record", () => {
-  it("a DRAFT the caller may edit offers Edit lines", () => {
+  it("a DRAFT the caller may edit offers Edit Lines", () => {
     mount();
-    expect(btn("Edit lines")).toBeTruthy();
-    expect(btn("Edit lines").disabled).toBe(false);
+    expect(btn("Edit Lines")).toBeTruthy();
+    expect(btn("Edit Lines").disabled).toBe(false);
   });
 
   it("a TERMINAL agreement offers NO line editing at all — absent, not disabled (SA-D11)", () => {
     // A disabled control here would send somebody hunting for a permission problem that does not
     // exist: the engine forbids editing an accepted agreement, and that is a state fact.
     mount({ overrides: ACCEPTED });
-    expect(btn("Edit lines")).toBeNull();
+    expect(btn("Edit Lines")).toBeNull();
   });
 
   it("a DRAFT the caller may NOT edit shows the control disabled, with the reason", () => {
     // The other half of SA-D11: this one really is permission, so it is stated rather than hidden.
     mount({ grant: (id) => id !== "salesAgreement.updateDraft" });
-    const b = btn("Edit lines");
+    const b = btn("Edit Lines");
     expect(b).toBeTruthy();
     expect(b.disabled).toBe(true);
     expect(b.getAttribute("data-restriction")).toBe("permission");
@@ -386,16 +386,16 @@ describe("SA-G7 — the agreement is priced from its own record", () => {
     // The load-bearing seeding rule. "0.00" would be submitted as a price of zero the moment
     // anybody saved an unrelated change, silently turning "not priced yet" into "free".
     mount({ overrides: { lines: [UNPRICED] } });
-    fireEvent.click(btn("Edit lines"));
+    fireEvent.click(btn("Edit Lines"));
     const price = screen.getByLabelText("Line 1 unit price");
     expect(price.value).toBe("");
   });
 
   it("a priced line seeds as major units, and saving sends INTEGER MINOR UNITS to the governed command", async () => {
     mount({ overrides: { lines: [PRICED] } });
-    fireEvent.click(btn("Edit lines"));
+    fireEvent.click(btn("Edit Lines"));
     fireEvent.change(screen.getByLabelText("Line 1 unit price"), { target: { value: "1250.50" } });
-    fireEvent.click(btn("Save lines"));
+    fireEvent.click(btn("Save Lines"));
     await waitFor(() => expect(seam.updateDraft).toHaveBeenCalled());
     const patch = seam.updateDraft.mock.calls[0][0];
     expect(patch.lines[0].unitPrice).toBe(125050);
@@ -405,8 +405,8 @@ describe("SA-G7 — the agreement is priced from its own record", () => {
 
   it("an unpriced line stays unpriced — the key is OMITTED, never sent as 0", async () => {
     mount({ overrides: { lines: [UNPRICED] } });
-    fireEvent.click(btn("Edit lines"));
-    fireEvent.click(btn("Save lines"));
+    fireEvent.click(btn("Edit Lines"));
+    fireEvent.click(btn("Save Lines"));
     await waitFor(() => expect(seam.updateDraft).toHaveBeenCalled());
     const line = seam.updateDraft.mock.calls[0][0].lines[0];
     expect("unitPrice" in line).toBe(false);
@@ -414,19 +414,19 @@ describe("SA-G7 — the agreement is priced from its own record", () => {
 
   it("a malformed price is REFUSED client-side and never reaches the command", async () => {
     mount();
-    fireEvent.click(btn("Edit lines"));
+    fireEvent.click(btn("Edit Lines"));
     fireEvent.change(screen.getByLabelText("Line 1 unit price"), { target: { value: "twelve fifty" } });
-    fireEvent.click(btn("Save lines"));
+    fireEvent.click(btn("Save Lines"));
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(seam.updateDraft).not.toHaveBeenCalled();
   });
 
   it("a refused save keeps the editor open rather than reading as saved", async () => {
     mount({ wiring: { updateDraft: vi.fn().mockResolvedValue({ ok: false, errorStatus: "failed-precondition" }) } });
-    fireEvent.click(btn("Edit lines"));
-    fireEvent.click(btn("Save lines"));
+    fireEvent.click(btn("Edit Lines"));
+    fireEvent.click(btn("Save Lines"));
     await waitFor(() => expect(seam.updateDraft).toHaveBeenCalled());
-    expect(btn("Save lines")).toBeTruthy();
+    expect(btn("Save Lines")).toBeTruthy();
   });
 
   it("the page adds NO second pricing command — it uses the same updateDraft the terms editor uses", () => {

@@ -83,16 +83,16 @@ export default function ManageTruckDrawer({
   };
 
   return (
-    <Modal title={`Manage truck · ${record.truckId}`} onClose={onClose} closeLabel="Close">
+    <Modal title={`Manage Truck · ${record.truckId}`} onClose={onClose} closeLabel="Close">
       <div className="fo-create-modal-form" data-testid="manage-truck-drawer">
         {!writeReady && <WriteDisabledNotice />}
 
         {/* Read-only identity -- displayLabel/vehicleNumber are NOT editable in this gate. */}
         <dl className="fo-truck-summary-grid">
-          <div><dt className="fo-muted">Display label</dt><dd className="fo-dd-tight" data-testid="tm-displayLabel-readonly">{dash(record.displayLabel)}</dd></div>
-          <div><dt className="fo-muted">Vehicle number</dt><dd className="fo-dd-tight" data-testid="tm-vehicleNumber-readonly">{dash(record.vehicleNumber)}</dd></div>
-          <div><dt className="fo-muted">Current status</dt><dd className="fo-dd-tight" data-testid="tm-current-status">{truckStatusLabel(record.status)}</dd></div>
-          <div><dt className="fo-muted">Current driver</dt><dd className="fo-dd-tight" data-testid="tm-current-driver">{dash(driverName)}</dd></div>
+          <div><dt className="fo-muted">Display Label</dt><dd className="fo-dd-tight" data-testid="tm-displayLabel-readonly">{dash(record.displayLabel)}</dd></div>
+          <div><dt className="fo-muted">Vehicle Number</dt><dd className="fo-dd-tight" data-testid="tm-vehicleNumber-readonly">{dash(record.vehicleNumber)}</dd></div>
+          <div><dt className="fo-muted">Current Status</dt><dd className="fo-dd-tight" data-testid="tm-current-status">{truckStatusLabel(record.status)}</dd></div>
+          <div><dt className="fo-muted">Current Driver</dt><dd className="fo-dd-tight" data-testid="tm-current-driver">{dash(driverName)}</dd></div>
         </dl>
 
         <OutcomeBanner outcome={outcome} onReload={onReconcile} />
@@ -111,19 +111,19 @@ export default function ManageTruckDrawer({
                 <Button type="button" variant="primary" disabled={!writeReady || Boolean(busy) || !driver || driver === record.assignedDriverEmployeeId}
                   loading={busy === "reassign"}
                   onClick={() => runAction("reassign", () => commands.reassignDriver({ truckId: record.truckId, employeeId: driver, expectedVersion }))}>
-                  Reassign driver
+                  Reassign Driver
                 </Button>
                 <Button type="button" variant="secondary" disabled={!writeReady || Boolean(busy)}
                   loading={busy === "unassign"}
                   onClick={() => runAction("unassign", () => commands.unassignDriver({ truckId: record.truckId, expectedVersion }))}>
-                  Unassign driver
+                  Unassign Driver
                 </Button>
               </>
             ) : (
               <Button type="button" variant="primary" disabled={!writeReady || Boolean(busy) || !driver}
                 loading={busy === "assign"}
                 onClick={() => runAction("assign", () => commands.assignDriver({ truckId: record.truckId, employeeId: driver, expectedVersion }))}>
-                Assign driver
+                Assign Driver
               </Button>
             )}
           </div>
@@ -147,7 +147,7 @@ export default function ManageTruckDrawer({
                 <Button type="button" variant="destructive" disabled={Boolean(busy) || !TRUCK_DEACTIVATE_READY}
                   loading={busy === "deactivate"}
                   onClick={() => runAction("deactivate", () => commands.deactivateTruck({ truckId: record.truckId, expectedVersion }))}>
-                  Confirm deactivate
+                  Confirm Deactivate
                 </Button>
                 <Button type="button" variant="secondary" disabled={Boolean(busy)} onClick={() => setConfirm(null)}>Cancel</Button>
               </div>
@@ -159,7 +159,7 @@ export default function ManageTruckDrawer({
                 <Button type="button" variant="primary" disabled={Boolean(busy)}
                   loading={busy === "reactivate"}
                   onClick={() => runAction("reactivate", () => commands.reactivateTruck({ truckId: record.truckId, targetStatus: confirm.targetStatus, expectedVersion }))}>
-                  Confirm reactivate
+                  Confirm Reactivate
                 </Button>
                 <Button type="button" variant="secondary" disabled={Boolean(busy)} onClick={() => setConfirm(null)}>Cancel</Button>
               </div>
@@ -168,7 +168,7 @@ export default function ManageTruckDrawer({
             <div className="fo-btn-row">
               <Button type="button" variant="primary" disabled={!writeReady || Boolean(busy) || !statusTarget || statusTarget === record.status}
                 loading={busy === "status"} onClick={onStatusUpdate}>
-                Update status
+                Update Status
               </Button>
             </div>
           )}
@@ -179,7 +179,7 @@ export default function ManageTruckDrawer({
 
         {/* Home warehouse */}
         <fieldset className="fo-fieldset">
-          <legend>Home warehouse</legend>
+          <legend>Home Warehouse</legend>
           <Field id="tm-manage-warehouse" label="Warehouse">
             <BoundedSelect id="tm-manage-warehouse" value={warehouse} onChange={setWarehouse}
               options={warehouses.options} loading={warehouses.loading} error={warehouses.error}
@@ -189,7 +189,7 @@ export default function ManageTruckDrawer({
             <Button type="button" variant="primary" disabled={!writeReady || Boolean(busy) || !warehouse || warehouse === record.homeWarehouseId}
               loading={busy === "warehouse"}
               onClick={() => runAction("warehouse", () => commands.changeHomeWarehouse({ truckId: record.truckId, homeWarehouseId: warehouse, expectedVersion }))}>
-              Update home warehouse
+              Update Home Warehouse
             </Button>
           </div>
         </fieldset>
@@ -197,7 +197,7 @@ export default function ManageTruckDrawer({
         {/* Danger zone -- ADMIN-ONLY Created-in-Error hard delete. */}
         {isAdmin && (
           <fieldset className="fo-fieldset" data-testid="tm-danger-zone">
-            <legend>Danger zone · admin only</legend>
+            <legend>Danger Zone · Admin Only</legend>
             <p className="fo-muted">
               Permanently delete a truck created in error. This removes the truck, its MOBILE inventory
               location, and the location link. Only trucks with NO operational history can be deleted —
@@ -211,7 +211,7 @@ export default function ManageTruckDrawer({
             <div className="fo-btn-row">
               <Button type="button" variant="destructive" data-testid="tm-delete-cie"
                 disabled={!writeReady || Boolean(busy) || !TRUCK_DELETE_READY} onClick={() => setDeleteOpen(true)}>
-                Delete truck (created in error)
+                Delete Truck (Created in Error)
               </Button>
             </div>
           </fieldset>
@@ -224,12 +224,12 @@ export default function ManageTruckDrawer({
 
       {deleteOpen && (
         <ConfirmDialog
-          title={`Delete truck ${record.truckId} (created in error)`}
+          title={`Delete Truck ${record.truckId} (Created in Error)`}
           consequence="This permanently deletes the truck, its MOBILE inventory location, and the 1:1 location claim. It cannot be undone. Only a truck created in error with NO operational history can be deleted — a truck with inventory, transfers, ledger history, or a driver assignment cannot be deleted."
-          confirmLabel="Delete truck"
+          confirmLabel="Delete Truck"
           cancelLabel="Cancel"
           requireReason
-          reasonLabel="Reason for deletion"
+          reasonLabel="Reason for Deletion"
           reasonHint="Recorded in the immutable deletion audit (e.g. duplicate entry, wrong warehouse)."
           reasonRequiredMessage="Enter a reason to delete."
           onConfirm={async (reason) => {

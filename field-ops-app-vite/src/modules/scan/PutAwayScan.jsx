@@ -246,7 +246,7 @@ export default function PutAwayScan({ deps }) {
             The bin's stock went up and the warehouse total is unchanged.
           </p>
         )}
-        <Button type="button" variant="primary" onClick={startAnother}>Stow something else</Button>
+        <Button type="button" variant="primary" onClick={startAnother}>Stow Something Else</Button>
       </div>
     );
   }
@@ -303,12 +303,12 @@ export default function PutAwayScan({ deps }) {
                 ))}
               </ul>
               <button type="button" className="fo-link-btn" onClick={() => setObservations((p) => Object.freeze(p.slice(0, -1)))}>
-                Undo last scan
+                Undo Last Scan
               </button>
             </>
           )}
 
-          <button type="button" className="fo-link-btn" onClick={() => setBin(null)}>Change bin</button>
+          <button type="button" className="fo-link-btn" onClick={() => setBin(null)}>Change Bin</button>
         </>
       )}
 
@@ -319,7 +319,7 @@ export default function PutAwayScan({ deps }) {
       )}
 
       <Button type="button" variant="primary" onClick={confirm} disabled={!state.canSubmit || busy}>
-        {busy ? "Recording…" : "Confirm put-away"}
+        {busy ? "Recording…" : "Confirm Put-Away"}
       </Button>
 
       {error && <PutAwayError error={error} />}

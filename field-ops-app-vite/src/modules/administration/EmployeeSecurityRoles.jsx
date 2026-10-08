@@ -29,6 +29,9 @@ import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ReadState } from "./ObjectActionSecurity.jsx";
 import { Outcome, ReasonField } from "./GrantControls.jsx";
 import { statedReason } from "./controlPlaneModel.js";
+import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 const GLOBAL = "global";
 
@@ -39,6 +42,42 @@ function scopeVocabularyFrom(data) {
 }
 
 const dateOnly = (iso) => (typeof iso === "string" && iso.length >= 10 ? iso.slice(0, 10) : "—");
+
+/** The held-assignments table; sorting is presentation over the complete server read. */
+function HeldAssignmentsTable({ rows, nameOf, scopeLabel, valueLabel, onRemove }) {
+  const columns = {
+    role: { value: (a) => nameOf(a) },
+    status: { value: (a) => a.status },
+    scope: { value: (a) => scopeLabel(a.scopeType) },
+    value: { value: (a) => (a.scopeValue ? valueLabel(a.scopeType, a.scopeValue) : null) },
+    from: { value: (a) => (typeof a.grantedAt === "string" ? a.grantedAt : null) },
+  };
+  const { sort, toggle, sorted } = useTableSort({ rows, columns });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table" aria-label="Security Roles held">
+      <thead>
+        <tr>{header("role", "Security Role")}{header("status", "Assignment Status")}{header("scope", "Scope")}{header("value", "Scope Value")}{header("from", "Effective From")}<th /></tr>
+      </thead>
+      <tbody>
+        {sorted.map((a) => (
+          <tr key={a.id} data-assignment={a.id} data-assignment-scope={a.scopeType ?? GLOBAL}>
+            <td>{nameOf(a)} <span className="fo-muted"><code>{a.roleKey ?? a.roleId}</code></span></td>
+            <td>{a.status === "active" ? "Role assignment active" : titleCase(a.status)}</td>
+            <td>{scopeLabel(a.scopeType)}</td>
+            <td className="fo-muted">{a.scopeValue ? valueLabel(a.scopeType, a.scopeValue) : "—"}</td>
+            <td className="fo-muted">{dateOnly(a.grantedAt)}</td>
+            <td>
+              <Button type="button" variant="secondary" onClick={() => onRemove(a)} aria-label={`Remove ${nameOf(a)}`}>
+                Remove
+              </Button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, principalId, employeeName = "this Employee" }) {
   const assignments = useControlPlaneRead(principalId ? () => api.listPrincipalRoleAssignments(principalId) : null, `assignments:${principalId}`);
@@ -68,9 +107,9 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
   const roleList = Array.isArray(roles.data) ? roles.data : [];
   const vocabulary = scopes.status === "ready" ? scopeVocabularyFrom(scopes.data) : null;
   const scopeTypeEntry = (type) => vocabulary?.scopeTypes.find((s) => s.scopeType === type) ?? null;
-  const scopeLabel = (type) => (type === GLOBAL || !type ? "All (global)" : scopeTypeEntry(type)?.label ?? type);
+  const scopeLabel = (type) => (type === GLOBAL || !type ? "All (Global)" : scopeTypeEntry(type)?.label ?? titleCase(type));
   const valueLabel = (type, value) => scopeTypeEntry(type)?.values?.find((v) => v.value === value)?.label ?? value;
-  const nameOf = (a) => roleList.find((r) => r.id === a.roleId)?.name ?? a.roleKey ?? a.roleId;
+  const nameOf = (a) => identifierLabel(a.roleKey ?? a.roleId, roleList.find((r) => r.id === a.roleId)?.name);
   const active = rows.filter((a) => a.status === "active");
   const heldGlobally = new Set(active.filter((a) => a.scopeType === GLOBAL && !a.scopeValue).map((a) => a.roleId));
   const assignable = roleList.filter((r) => !heldGlobally.has(r.id));
@@ -115,27 +154,10 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
       {active.length === 0 ? (
         <p className="fo-muted">{`${employeeName} holds no Security Role in the governed policy store.`}</p>
       ) : (
-        <table className="fo-table" aria-label="Security Roles held">
-          <thead>
-            <tr><th>Security Role</th><th>Assignment status</th><th>Scope</th><th>Scope value</th><th>Effective from</th><th /></tr>
-          </thead>
-          <tbody>
-            {active.map((a) => (
-              <tr key={a.id} data-assignment={a.id} data-assignment-scope={a.scopeType ?? GLOBAL}>
-                <td>{nameOf(a)} <span className="fo-muted"><code>{a.roleKey ?? a.roleId}</code></span></td>
-                <td>{a.status === "active" ? "Role assignment active" : String(a.status)}</td>
-                <td>{scopeLabel(a.scopeType)}</td>
-                <td className="fo-muted">{a.scopeValue ? valueLabel(a.scopeType, a.scopeValue) : "—"}</td>
-                <td className="fo-muted">{dateOnly(a.grantedAt)}</td>
-                <td>
-                  <Button type="button" variant="secondary" onClick={() => { setRemoving(a); setReason(""); setResult(null); }} aria-label={`Remove ${nameOf(a)}`}>
-                    Remove
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <HeldAssignmentsTable
+          rows={active} nameOf={nameOf} scopeLabel={scopeLabel} valueLabel={valueLabel}
+          onRemove={(a) => { setRemoving(a); setReason(""); setResult(null); }}
+        />
       )}
 
       {removing ? (
@@ -153,7 +175,7 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
             <span>Assign a Security Role</span>
             <select aria-label="Security Role to assign" value={roleId} onChange={(e) => chooseRole(e.target.value)}>
               <option value="">Choose a Security Role…</option>
-              {assignable.map((r) => <option key={r.id} value={r.id}>{r.name ?? r.key}</option>)}
+              {assignable.map((r) => <option key={r.id} value={r.id}>{identifierLabel(r.key, r.name)}</option>)}
             </select>
           </label>
           {roleId ? (
@@ -187,7 +209,7 @@ function ScopePicker({ scopes, vocabulary, roleScopes, scopeType, scopeValue, ch
       <p className="fo-muted" data-assignment-scope-picker={scopes.status === "idle" ? "UNAVAILABLE" : scopes.status.toUpperCase()}>
         {scopes.status === "loading"
           ? "Reading the assignment scopes the server enforces…"
-          : `Scope: All (global). Scoped assignment is not offered: the server's scope vocabulary (listSupportedAssignmentScopes) is not available${scopes.error ? ` (${refusalText(scopes.error)})` : ""}.`}
+          : `Scope: All (Global). Scoped assignment is not offered: the server's scope vocabulary (listSupportedAssignmentScopes) is not available${scopes.error ? ` (${refusalText(scopes.error)})` : ""}.`}
       </p>
     );
   }
@@ -198,7 +220,7 @@ function ScopePicker({ scopes, vocabulary, roleScopes, scopeType, scopeValue, ch
       <label className="fo-form-field">
         <span>Scope</span>
         <select aria-label="Assignment scope" value={scopeType} onChange={(e) => onScopeType(e.target.value)}>
-          <option value={GLOBAL}>All (global)</option>
+          <option value={GLOBAL}>All (Global)</option>
           {roleScopes.map((s) => {
             // A scope the runtime decides but for which this tenant has NO governed value yet (e.g. no Sales Channel
             // activated) is shown unavailable, never offered with an empty or free-text value.

@@ -265,8 +265,8 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
     billingIdentity.state !== "unset";
 
   return (
-    <section className="ns-rail__section" aria-label="Commercial profile">
-      <h3 className="ns-rail__title">Commercial profile</h3>
+    <section className="ns-rail__section" aria-label="Commercial Profile">
+      <h3 className="ns-rail__title">Commercial Profile</h3>
       {hasAny ? (
         <dl className="ns-rail__dl">
           <IdentityLine label="Owner" identity={ownerIdentity} variant="definition" />
@@ -278,11 +278,11 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
           )}
           {/* Safe default made visible: an Account with a profile always shows a tax status,
               resolving an absent value to UNKNOWN. */}
-          <dt>Tax status</dt>
+          <dt>Tax Status</dt>
           <dd>{taxStatus}</dd>
           {hasPo && (
             <>
-              <dt>PO required</dt>
+              <dt>PO Required</dt>
               <dd>{account.purchaseOrderRequired ? "Yes" : "No"}</dd>
             </>
           )}
@@ -292,7 +292,7 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
               <dd>{invoiceMethod}</dd>
             </>
           )}
-          <IdentityLine label="Billing contact" identity={billingIdentity} variant="definition" />
+          <IdentityLine label="Billing Contact" identity={billingIdentity} variant="definition" />
           {currency && (
             <>
               <dt>Currency</dt>
@@ -447,7 +447,7 @@ export default function AccountDetail() {
     return (
       <div className="fo-panel">
         <FailureState
-          title="Customer unavailable"
+          title="Customer Unavailable"
           message={accountError}
           action={<button type="button" onClick={retryAccount}>Retry</button>}
         />
@@ -553,7 +553,7 @@ export default function AccountDetail() {
           onFocusHandled={() => setPendingContactFocus(null)}
           announcement={contactAnnouncement}
           actions={[
-            { label: "+ Add contact", onClick: () => setShowContactModal(true) },
+            { label: "+ Add Contact", onClick: () => setShowContactModal(true) },
             { label: "Import", onClick: () => setShowImport(true) },
           ]}
         >
@@ -583,7 +583,7 @@ export default function AccountDetail() {
           focusRowKey={pendingLocationFocus}
           onFocusHandled={() => setPendingLocationFocus(null)}
           announcement={locationAnnouncement}
-          actions={[{ label: "+ Add location", onClick: () => setShowLocationModal(true) }]}
+          actions={[{ label: "+ Add Location", onClick: () => setShowLocationModal(true) }]}
         />
       );
     }
@@ -615,7 +615,7 @@ export default function AccountDetail() {
   const actions = (
     <ActionRail
       start={<button type="button" onClick={() => navigate(backToCustomers())} className="fo-link-btn">&larr; Back to Customers</button>}
-      primary={!isEditing ? <Button variant="primary" onClick={() => setIsEditing(true)}>Edit customer</Button> : null}
+      primary={!isEditing ? <Button variant="primary" onClick={() => setIsEditing(true)}>Edit Customer</Button> : null}
     />
   );
 
@@ -633,9 +633,9 @@ export default function AccountDetail() {
   // App.jsx, so a row that looked clickable would 404. The reason is stated rather than left as an
   // unexplained dead row, and no route is invented here to fix it.
   const commercialActivity = (
-    <section className="ns-section" aria-label="Commercial activity">
+    <section className="ns-section" aria-label="Commercial Activity">
       <div className="ns-section__head">
-        <h2 className="ns-section__title">Commercial activity</h2>
+        <h2 className="ns-section__title">Commercial Activity</h2>
         <span className="ns-section__meta">· opportunities and orders for this account</span>
       </div>
       {/* `embedded`: this render is a FRAGMENT of a hand-composed page, not the page. Without it
@@ -684,9 +684,9 @@ export default function AccountDetail() {
       embedded
     />
   ) : (
-    <section className="ns-section" aria-label="Accounts receivable">
+    <section className="ns-section" aria-label="Accounts Receivable">
       <div className="ns-section__head">
-        <h2 className="ns-section__title">Accounts receivable</h2>
+        <h2 className="ns-section__title">Accounts Receivable</h2>
       </div>
       {/* Not zero, not empty, not absent — a different answer from all three. */}
       <p className="ns-state ns-state--denied">Not available to you.</p>
@@ -743,7 +743,7 @@ export default function AccountDetail() {
   const notesAndIdentifiers = (
     <section className="ns-rail__section">
       <details className="ns-rail__details">
-        <summary className="ns-rail__title">Notes &amp; identifiers</summary>
+        <summary className="ns-rail__title">Notes &amp; Identifiers</summary>
         {account.notes ? (
           <p className="ns-rail__meta">{account.notes}</p>
         ) : (

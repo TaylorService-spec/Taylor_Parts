@@ -24,6 +24,18 @@ import FailureState from "../../shared/ui/FailureState";
 import EmptyState from "../../shared/ui/EmptyState";
 import TransferOrderForm from "./TransferOrderForm";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+
+// Client-side sort over the loaded (capped, most-recent) transfer rows. The Part column is not
+// sortable: every row shows the same unresolved-reference label, so there is no displayed value
+// to order by (the part id lives only in the href).
+const TRANSFER_SORT_COLUMNS = Object.freeze({
+  from: { value: (row) => row.origin?.label ?? null },
+  to: { value: (row) => row.destination?.label ?? null },
+  status: { value: (row) => transferStatusLabel(row.status) },
+});
 
 // Inventory > Transfers -- the operating workspace for the governed Transfer command family, now on
 // EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): the read is the governed
@@ -41,13 +53,15 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // Access: the Inventory > Transfers nav item is admin/dispatcher (PLACEHOLDER_DEFAULT_ROLES),
 // matching the transfer_orders read rule's common path; a denied read fails closed to a
 // FailureState. No Rules/deploy/grant/production is part of this workspace.
+// A non-warehouse endpoint's type, in the same words the New Transfer form offers (MOBILE is a Truck).
+const ENDPOINT_TYPE_WORDS = Object.freeze({ MOBILE: "Truck" });
 function Endpoint({ end }) {
   if (!end) return <span className="fo-muted">—</span>;
   const showType = end.type && end.type !== "WAREHOUSE";
   return (
     <span className="fo-transfer-endpoint">
       {end.label}
-      {showType && <span className="fo-transfer-endpoint-type">{end.type.toLowerCase()}</span>}
+      {showType && <span className="fo-transfer-endpoint-type">{statusLabel(end.type, ENDPOINT_TYPE_WORDS)}</span>}
     </span>
   );
 }
@@ -65,6 +79,8 @@ export default function Transfers({ accessVersion }) {
   const summary = useMemo(() => summarizeTransfers(rows), [rows]);
   const [filterKey, setFilterKey] = useState(DEFAULT_TRANSFER_FILTER);
   const [showForm, setShowForm] = useState(false);
+  const visibleRows = useMemo(() => filterTransfers(rows, filterKey), [rows, filterKey]);
+  const { sort, toggle, sorted: sortedRows } = useTableSort({ rows: visibleRows, columns: TRANSFER_SORT_COLUMNS });
 
   const warehouseOptions = useMemo(
     () => (Array.isArray(read.warehouses) ? read.warehouses : []).map((w) => ({ id: w.id, label: w.name || w.id })),
@@ -122,7 +138,6 @@ export default function Transfers({ accessVersion }) {
     );
   }
 
-  const visibleRows = filterTransfers(rows, filterKey);
   const filterOptions = TRANSFER_FILTERS.map((f) => ({ key: f.key, label: f.label, count: countForFilter(rows, f.key) }));
 
   return (
@@ -139,7 +154,7 @@ export default function Transfers({ accessVersion }) {
       summaryItems={summary?.byStatus?.IN_TRANSIT > 0 ? [{ key: "transit", label: `${summary.byStatus.IN_TRANSIT} in transit` }] : []}
       action={!showForm ? (
         <Button variant="primary" onClick={() => setShowForm(true)}>
-          New transfer
+          New Transfer
         </Button>
       ) : null}
     >
@@ -210,15 +225,15 @@ export default function Transfers({ accessVersion }) {
             <thead>
               <tr>
                 <th scope="col">Part</th>
-                <th scope="col">From</th>
+                <SortableHeader columnKey="from" label="From" sort={sort} onSort={toggle} />
                 <th scope="col" aria-hidden="true"></th>
-                <th scope="col">To</th>
-                <th scope="col">Status</th>
+                <SortableHeader columnKey="to" label="To" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
                 <th scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {visibleRows.map((row) => {
+              {sortedRows.map((row) => {
                 const rowBusy = busyId === row.transferOrderId;
                 return (
                   <tr key={row.transferOrderId}>

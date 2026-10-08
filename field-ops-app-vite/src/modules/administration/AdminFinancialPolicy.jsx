@@ -141,16 +141,16 @@ export default function AdminFinancialPolicy({
           {/* ── B. INVENTORY COSTING ──────────────────────────────────────────────────────── */}
           <section className="fo-panel" aria-label="Inventory costing">
             <SectionHeader
-              title="Inventory costing"
+              title="Inventory Costing"
               description="How EOS determines the cost of stock leaving inventory, and the value of what remains."
             />
             <PolicyChoice
-              title="Interchangeable inventory"
+              title="Interchangeable Inventory"
               options={view.inventoryCostMethods}
               selectedId={view.policy?.inventoryCostMethod ?? null}
             />
             <PolicyChoice
-              title="Identifiable or serialized inventory"
+              title="Identifiable or Serialized Inventory"
               options={view.serializedCostMethods}
               selectedId={view.policy?.serializedInventoryCostMethod ?? null}
             />
@@ -159,11 +159,11 @@ export default function AdminFinancialPolicy({
           {/* ── C. COGS RECOGNITION ───────────────────────────────────────────────────────── */}
           <section className="fo-panel" aria-label="COGS recognition">
             <SectionHeader
-              title="COGS recognition"
+              title="COGS Recognition"
               description="The business event at which inventory cost becomes cost of goods sold. Moving stock between locations is never one of them."
             />
             <PolicyChoice
-              title="Recognition event"
+              title="Recognition Event"
               options={view.cogsRecognitionPoints}
               selectedId={view.policy?.cogsRecognitionPointId ?? null}
             />
@@ -184,7 +184,7 @@ export default function AdminFinancialPolicy({
           {/* ── D. COST TREATMENT ─────────────────────────────────────────────────────────── */}
           <section className="fo-panel" aria-label="Cost treatment">
             <SectionHeader
-              title="Cost treatment"
+              title="Cost Treatment"
               description="Deployment choices, and the platform rules that are not choices."
             />
             <div>
@@ -207,7 +207,7 @@ export default function AdminFinancialPolicy({
             {/* Invariants are STATEMENTS. Rendering one as a control would invite a request for the
                 other option, and there is no other option. */}
             <SectionHeader
-              title="Platform rules"
+              title="Platform Rules"
               description="These apply to every deployment and cannot be configured."
             />
             <ul>
@@ -222,7 +222,7 @@ export default function AdminFinancialPolicy({
           {/* ── E. ACCOUNTING APPROVAL ────────────────────────────────────────────────────── */}
           <section className="fo-panel" aria-label="Accounting approval">
             <SectionHeader
-              title="Accounting approval"
+              title="Accounting Approval"
               description="Who signed this policy off during deployment. A record, not an electronic signature."
             />
             {view.approval === null ? (

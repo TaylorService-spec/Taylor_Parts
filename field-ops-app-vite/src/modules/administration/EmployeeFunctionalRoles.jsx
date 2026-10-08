@@ -16,6 +16,9 @@ import { WORKFORCE_READ_STATE, useWorkforceRead } from "../../hooks/useWorkforce
 import { statedReason } from "./controlPlaneModel.js";
 import { ReasonField } from "./GrantControls.jsx";
 import { workforceRefusal } from "./EmployeeWorkAuthorization.jsx";
+import { statusLabel } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 export const FUNCTIONAL_ROLE_WRITE_CAPABILITY = "admin.employeeFunctionalRole.write";
 
@@ -31,6 +34,35 @@ const STATE_TAG = Object.freeze({
   SCHEDULED: "fo-cp-tag fo-cp-tag--conditional",
   ENDED: "fo-cp-tag",
 });
+
+const HISTORY_COLUMNS = Object.freeze({
+  role: { value: (i) => i.name ?? i.key },
+  state: { value: (i) => statusLabel(i.state) },
+  from: { value: (i) => i.effectiveFrom },
+  to: { value: (i) => i.effectiveTo },
+  reason: { value: (i) => i.reason },
+});
+
+function FunctionalRoleHistoryTable({ history }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: history, columns: HISTORY_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table" aria-label="Functional Role history">
+      <thead><tr>{header("role", "Functional Role")}{header("state", "State")}{header("from", "From")}{header("to", "To")}{header("reason", "Reason")}</tr></thead>
+      <tbody>
+        {sorted.map((i) => (
+          <tr key={i.assignmentId}>
+            <td>{i.name} <span className="fo-muted"><code>{i.key}</code></span></td>
+            <td>{statusLabel(i.state)}</td>
+            <td className="fo-muted">{i.effectiveFrom}</td>
+            <td className="fo-muted">{i.effectiveTo ?? "—"}</td>
+            <td className="fo-muted">{i.reason}{i.endReason ? ` · ended: ${i.endReason}` : ""}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 export default function EmployeeFunctionalRoles({ employeeId, workforce, canWrite, onChanged }) {
   const read = useWorkforceRead("listEmployeeFunctionalRoles", employeeId ? { employeeId } : null, { client: workforce });
@@ -68,7 +100,7 @@ export default function EmployeeFunctionalRoles({ employeeId, workforce, canWrit
           <ul className="fo-role-list" data-functional-roles={live.length}>
             {live.map((i) => (
               <li key={i.assignmentId} data-functional-role={i.key}>
-                <span className={STATE_TAG[i.state] ?? "fo-cp-tag"}>{i.state}</span>{" "}
+                <span className={STATE_TAG[i.state] ?? "fo-cp-tag"}>{statusLabel(i.state)}</span>{" "}
                 <span>{i.name}</span>{" "}
                 <span className="fo-muted"><code>{i.key}</code>{` · from ${i.effectiveFrom}`}{i.effectiveTo ? ` · until ${i.effectiveTo}` : ""}</span>{" "}
                 {canWrite && !i.effectiveTo ? (
@@ -104,12 +136,12 @@ export default function EmployeeFunctionalRoles({ employeeId, workforce, canWrit
             </label>
           )}
           <label className="fo-form-field">
-            <span>{ending ? "Effective to (empty = now)" : "Effective from (empty = now)"}</span>
+            <span>{ending ? "Effective To (empty = now)" : "Effective From (empty = now)"}</span>
             <input type="datetime-local" aria-label={ending ? "Effective to" : "Effective from"} value={when} onChange={(e) => setWhen(e.target.value)} />
           </label>
           <ReasonField value={reason} onChange={setReason} />
           <div className="fo-btn-row">
-            <Button type="submit" variant="primary" disabled={!reasonText || (!ending && !functionalRoleId)}>{ending ? "Confirm end" : "Assign"}</Button>
+            <Button type="submit" variant="primary" disabled={!reasonText || (!ending && !functionalRoleId)}>{ending ? "Confirm End" : "Assign"}</Button>
             {ending ? <Button type="button" variant="secondary" onClick={() => setEnding(null)}>Cancel</Button> : null}
           </div>
         </form>
@@ -121,20 +153,7 @@ export default function EmployeeFunctionalRoles({ employeeId, workforce, canWrit
       {history.length > 0 ? (
         <details data-functional-role-history={history.length}>
           <summary>{`History (${history.length})`}</summary>
-          <table className="fo-table" aria-label="Functional Role history">
-            <thead><tr><th>Functional Role</th><th>State</th><th>From</th><th>To</th><th>Reason</th></tr></thead>
-            <tbody>
-              {history.map((i) => (
-                <tr key={i.assignmentId}>
-                  <td>{i.name} <span className="fo-muted"><code>{i.key}</code></span></td>
-                  <td>{i.state}</td>
-                  <td className="fo-muted">{i.effectiveFrom}</td>
-                  <td className="fo-muted">{i.effectiveTo ?? "—"}</td>
-                  <td className="fo-muted">{i.reason}{i.endReason ? ` · ended: ${i.endReason}` : ""}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <FunctionalRoleHistoryTable history={history} />
         </details>
       ) : null}
     </RuledSection>

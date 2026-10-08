@@ -13,10 +13,27 @@
 // the rest of the Operations dashboard is unaffected.
 import { loadErrorMessage } from "../../../domain/loadErrorMessage.js";
 import { classifyWorkOrderOutcome, WORK_ORDER_OUTCOME } from "../../../domain/workOrderOutcome.js";
+import { useMemo } from "react";
+import SortableHeader from "../../../shared/ui/sorting/SortableHeader.jsx";
+import { useTableSort } from "../../../shared/ui/sorting/useTableSort.js";
+
+// Client-side sort over the top-five rows already computed (item C); the ranking is the default order.
+const TECHNICIAN_SORT_COLUMNS = {
+  technician: { value: (t) => t.displayName },
+  completed: { value: (t) => t.completedCount },
+  open: { value: (t) => t.activeCount },
+};
 
 export default function ExecutionInsightsPanel({ consumptionSnapshot, technicianVolume, resolveName, failure = null }) {
-  const topParts = consumptionSnapshot?.parts?.slice(0, 5) ?? [];
-  const topTechnicians = (technicianVolume ?? []).slice(0, 5);
+  const topParts = useMemo(() => consumptionSnapshot?.parts?.slice(0, 5) ?? [], [consumptionSnapshot]);
+  const topTechnicians = useMemo(() => (technicianVolume ?? []).slice(0, 5), [technicianVolume]);
+  const partSortColumns = useMemo(() => ({
+    part: { value: (p) => resolveName(p.partId) },
+    totalUsed: { value: (p) => p.totalQuantityUsed },
+    workOrders: { value: (p) => p.frequency },
+  }), [resolveName]);
+  const partSort = useTableSort({ rows: topParts, columns: partSortColumns });
+  const technicianSort = useTableSort({ rows: topTechnicians, columns: TECHNICIAN_SORT_COLUMNS });
 
   if (failure) {
     const kind = classifyWorkOrderOutcome(failure).kind;
@@ -42,13 +59,13 @@ export default function ExecutionInsightsPanel({ consumptionSnapshot, technician
         <table className="fo-table">
           <thead>
             <tr>
-              <th>Part</th>
-              <th>Total Used</th>
-              <th>Work Orders</th>
+              <SortableHeader columnKey="part" label="Part" sort={partSort.sort} onSort={partSort.toggle} />
+              <SortableHeader columnKey="totalUsed" label="Total Used" sort={partSort.sort} onSort={partSort.toggle} />
+              <SortableHeader columnKey="workOrders" label="Work Orders" sort={partSort.sort} onSort={partSort.toggle} />
             </tr>
           </thead>
           <tbody>
-            {topParts.map((p) => (
+            {partSort.sorted.map((p) => (
               <tr key={p.partId}>
                 <td>{resolveName(p.partId)}</td>
                 <td>{p.totalQuantityUsed}</td>
@@ -66,19 +83,19 @@ export default function ExecutionInsightsPanel({ consumptionSnapshot, technician
         <table className="fo-table">
           <thead>
             <tr>
-              <th>Technician</th>
-              <th>Completed</th>
+              <SortableHeader columnKey="technician" label="Technician" sort={technicianSort.sort} onSort={technicianSort.toggle} />
+              <SortableHeader columnKey="completed" label="Completed" sort={technicianSort.sort} onSort={technicianSort.toggle} />
               {/* "Active vocabulary" note: this is the 5th (Work Order
                   in-progress) sense, and a THIRD distinct population
                   from WorkOrdersList's "Dispatched+" tab and
                   TechnicianCapacityCard's "In Progress" count -- it
                   counts all non-terminal statuses (8), not 5 or 1. See
                   docs/architecture/ADR-012-persona-authority-composition-and-scope.md */}
-              <th>Open Work Orders</th>
+              <SortableHeader columnKey="open" label="Open Work Orders" sort={technicianSort.sort} onSort={technicianSort.toggle} />
             </tr>
           </thead>
           <tbody>
-            {topTechnicians.map((t) => (
+            {technicianSort.sorted.map((t) => (
               <tr key={t.employeeId}>
                 <td>{t.displayName ?? "Name unavailable"}</td>
                 <td>{t.completedCount}</td>

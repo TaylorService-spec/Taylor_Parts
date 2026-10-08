@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchPartMasterPage, countPartMaster, isPartMasterReadDenied } from "../../services/partMasterPageQuery";
 import {
-  AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
+  AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice, sortableFieldIds,
 } from "../../metadata/MetadataListControls.jsx";
 import ListViewHeader, { CollectionResultContext } from "../../metadata/ListViewHeader.jsx";
 import { useListViewChrome } from "../../hooks/useListViewChrome.js";
@@ -27,7 +27,7 @@ import {
 } from "../../metadata/listUrlState.js";
 import { useListCriteria } from "../../hooks/useListCriteria.js";
 import {
-  PART_STATUS_LABEL, CONTROL_TYPE_LABEL, STOCKING_CLASS_LABEL,
+  PART_STATUS_LABEL, CONTROL_TYPE_LABEL, STOCKING_CLASS_LABEL, UNIT_CODE_LABEL,
 } from "../../domain/partVocabulary.js";
 import { usePartMasterWrite } from "../../hooks/usePartMasterWrite";
 import {
@@ -44,6 +44,9 @@ import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import { buildRowHref } from "../../metadata/listPresentation.js";
 import { Button } from "../../shared/ui/primitives/index.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { nextSort, sortRows } from "../../shared/ui/sorting/useTableSort.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 
 // Governed-outcome banner: maps the domain outcome.kind to a StatusPill tone + keeps the governed
 // message verbatim. `applied`/`replayed` are success-shaped; `denied`/`notFound`/`error` are hard
@@ -80,7 +83,7 @@ function PartForm({ mode, form, setForm, disabled }) {
           <Field id="part-create-id" label="Part ID">
             <input id="part-create-id" className="fo-wizard-control" value={form.partId ?? ""} onChange={set("partId")} disabled={disabled} />
           </Field>
-          <Field id="part-create-number" label="Internal part number">
+          <Field id="part-create-number" label="Internal Part Number">
             <input id="part-create-number" className="fo-wizard-control" value={form.internalPartNumber ?? ""} onChange={set("internalPartNumber")} disabled={disabled} />
           </Field>
         </>
@@ -94,19 +97,19 @@ function PartForm({ mode, form, setForm, disabled }) {
       <Field id="part-form-category" label="Category">
         <input id="part-form-category" className="fo-wizard-control" value={form.category ?? ""} onChange={set("category")} disabled={disabled} />
       </Field>
-      <Field id="part-form-unit" label="Stocking unit">
+      <Field id="part-form-unit" label="Stocking Unit">
         <select id="part-form-unit" className="fo-wizard-control" value={form.stockingUnit ?? "EACH"} onChange={set("stockingUnit")} disabled={disabled}>
-          {UNIT_CODES.map((u) => <option key={u} value={u}>{u}</option>)}
+          {UNIT_CODES.map((u) => <option key={u} value={u}>{statusLabel(u, UNIT_CODE_LABEL)}</option>)}
         </select>
       </Field>
-      <Field id="part-form-control" label="Control type">
+      <Field id="part-form-control" label="Control Type">
         <select id="part-form-control" className="fo-wizard-control" value={form.controlType ?? "STANDARD"} onChange={set("controlType")} disabled={disabled}>
-          {CONTROL_TYPES.map((c) => <option key={c} value={c}>{c}</option>)}
+          {CONTROL_TYPES.map((c) => <option key={c} value={c}>{statusLabel(c, CONTROL_TYPE_LABEL)}</option>)}
         </select>
       </Field>
-      <Field id="part-form-class" label="Stocking class">
+      <Field id="part-form-class" label="Stocking Class">
         <select id="part-form-class" className="fo-wizard-control" value={form.stockingClass ?? "STOCKED"} onChange={set("stockingClass")} disabled={disabled}>
-          {STOCKING_CLASSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          {STOCKING_CLASSES.map((s) => <option key={s} value={s}>{statusLabel(s, STOCKING_CLASS_LABEL)}</option>)}
         </select>
       </Field>
     </>
@@ -144,6 +147,24 @@ const PART_FILTER_VALUES = Object.freeze({
   status: Object.entries(PART_STATUS_LABEL).map(([value, label]) => ({ value, label })),
   stockingClass: Object.entries(STOCKING_CLASS_LABEL).map(([value, label]) => ({ value, label })),
 });
+
+/**
+ * UI corrections item C -- header sorting. A column the Part metadata declares sortable (index-backed) drives the SAME
+ * criteria the Sort control edits, so the QUERY orders the complete paged result. A column that is not index-backed
+ * (Category, Control Type, Unit) can only be ordered on the client, over the pages already loaded -- "Load more parts"
+ * appends rows that are not part of that ordering until it is re-applied.
+ */
+const SERVER_SORTABLE = sortableFieldIds(partEntity);
+const CLIENT_SORT_COLUMNS = Object.freeze({
+  category: { value: (part) => part.category || null },
+  controlType: { value: (part) => (part.controlType ? statusLabel(part.controlType, CONTROL_TYPE_LABEL) : null) },
+  stockingUnit: { value: (part) => (part.stockingUnit ? statusLabel(part.stockingUnit, UNIT_CODE_LABEL) : null) },
+  stockingClass: { value: (part) => (part.stockingClass ? statusLabel(part.stockingClass, STOCKING_CLASS_LABEL) : null) },
+  status: { value: (part) => (part.status ? statusLabel(part.status, PART_STATUS_LABEL) : null) },
+  internalPartNumber: { value: (part) => part.internalPartNumber ?? null },
+  name: { value: (part) => part.name ?? null },
+});
+const NO_PARTS = Object.freeze([]);
 
 /** The Part Master is counted by its own authority. Module-level so its identity never changes. */
 const CHROME_OPTIONS = Object.freeze({ count: countPartMaster });
@@ -252,12 +273,27 @@ export default function PartMasterList(props) {
   const submitEdit = async () => { setBusy(true); afterWrite(await runUpdate(panel.part.partId, panel.part.version, form, panel.part)); setBusy(false); };
   const submitStatus = async (newStatus) => { setBusy(true); afterWrite(await runChangeStatus(panel.part.partId, panel.part.version, newStatus)); setBusy(false); };
 
-  const parts = state.parts ?? [];
+  // Client-only header sort (non-index-backed columns); null = the query's order. Index-backed columns use criteria.
+  const [localSort, setLocalSort] = useState(null);
+  const serverSort = criteria.sort?.[0] ?? null;
+  const headerSort = localSort
+    ?? (serverSort ? { key: serverSort.fieldId, direction: serverSort.direction === "DESC" ? "desc" : "asc" } : null);
+  const onHeaderSort = (fieldId) => {
+    const next = nextSort(headerSort, fieldId);
+    if (SERVER_SORTABLE.has(fieldId)) {
+      setLocalSort(null);
+      apply(setSort(criteria, next ? next.key : null, next?.direction === "desc" ? "DESC" : "ASC"));
+    } else {
+      setLocalSort(next);
+    }
+  };
+  const loadedParts = state.parts ?? NO_PARTS;
+  const parts = useMemo(() => sortRows(loadedParts, localSort, CLIENT_SORT_COLUMNS), [loadedParts, localSort]);
   const actions = (
     // DQ-034: while the Catalog mutation hold is on, no create is OFFERED -- the control stays, locked, and says why.
     mutationHeld
-      ? <Button variant="protected" reason={CATALOG_MUTATION_PAUSED_REASON} id="part-master-new-part">New part</Button>
-      : <Button variant="primary" onClick={openCreate} disabled={busy}>New part</Button>
+      ? <Button variant="protected" reason={CATALOG_MUTATION_PAUSED_REASON} id="part-master-new-part">New Part</Button>
+      : <Button variant="primary" onClick={openCreate} disabled={busy}>New Part</Button>
   );
 
   // THE SHELL SURVIVES EVERY STATE (Lists P2 board 2d), and it did not.
@@ -328,20 +364,20 @@ export default function PartMasterList(props) {
 
       {panel && (
         <Modal
-          title={panel.mode === "create" ? "New part" : panel.mode === "edit" ? `Edit ${panel.part.internalPartNumber}` : `Change status — ${panel.part.internalPartNumber}`}
+          title={panel.mode === "create" ? "New Part" : panel.mode === "edit" ? `Edit ${panel.part.internalPartNumber}` : `Change Status — ${panel.part.internalPartNumber}`}
           onClose={requestClose}
         >
           <OutcomeBanner outcome={outcome} />
           {panel.mode === "status" ? (
             <div className="fo-form fo-create-modal-form">
               <p className="fo-muted">
-                Current status: <StatusPill tone={partStatusTone(panel.part.status)} label={panel.part.status} />. Choose a governed transition:
+                Current status: <StatusPill tone={partStatusTone(panel.part.status)} label={statusLabel(panel.part.status, PART_STATUS_LABEL)} />. Choose a governed transition:
               </p>
               <FormActions>
                 {allowedStatusTransitions(panel.part.status).length === 0
-                  ? <span className="fo-muted">No status changes are available from {panel.part.status}.</span>
+                  ? <span className="fo-muted">No status changes are available from {statusLabel(panel.part.status, PART_STATUS_LABEL)}.</span>
                   : allowedStatusTransitions(panel.part.status).map((s) => (
-                      <button key={s} type="button" onClick={() => submitStatus(s)} disabled={busy || !writeReady}>→ {s}</button>
+                      <button key={s} type="button" onClick={() => submitStatus(s)} disabled={busy || !writeReady}>→ {statusLabel(s, PART_STATUS_LABEL)}</button>
                     ))}
                 <button type="button" onClick={requestClose} disabled={busy}>Cancel</button>
               </FormActions>
@@ -351,7 +387,7 @@ export default function PartMasterList(props) {
               <PartForm mode={panel.mode} form={form} setForm={setForm} disabled={busy || !writeReady} />
               <FormStatus>{busy ? "Saving…" : ""}</FormStatus>
               <FormActions>
-                <button type="submit" disabled={busy || !writeReady}>{busy ? "Saving…" : panel.mode === "create" ? "Create part" : "Save changes"}</button>
+                <button type="submit" disabled={busy || !writeReady}>{busy ? "Saving…" : panel.mode === "create" ? "Create Part" : "Save Changes"}</button>
                 <button type="button" onClick={requestClose} disabled={busy}>Cancel</button>
               </FormActions>
             </form>
@@ -381,7 +417,7 @@ export default function PartMasterList(props) {
         <SortControl
           entity={partEntity}
           criteria={criteria}
-          onSort={(fieldId, direction) => apply(setSort(criteria, fieldId, direction))}
+          onSort={(fieldId, direction) => { setLocalSort(null); apply(setSort(criteria, fieldId, direction)); }}
         />
       </div>
       <ActiveCriteria
@@ -406,7 +442,7 @@ export default function PartMasterList(props) {
         <ListEmptyState
           criteria={criteria}
           onClear={() => apply(clearFilters(criteria))}
-          emptyLabel="No canonical Part records exist yet. Use “New part” to create the first governed part."
+          emptyLabel="No canonical Part records exist yet. Use “New Part” to create the first governed part."
         />
       ) : (
         <div className="fo-table-scroll">
@@ -422,7 +458,9 @@ export default function PartMasterList(props) {
                 {/* HEADINGS COME FROM THE METADATA, not from this file. Hand-typed ones drift: this
                     table said "Description" over the `name` column while Sort offered "Name — A to Z"
                     for the same field, so a person sorting could not tell which column moved. */}
-                {COLUMN_FIELDS.map((f) => <th key={f.id}>{f.label}</th>)}
+                {COLUMN_FIELDS.map((f) => (
+                  <SortableHeader key={f.id} columnKey={f.id} label={f.label} sort={headerSort} onSort={onHeaderSort} />
+                ))}
                 <th>Actions</th>
               </tr>
             </thead>
@@ -466,7 +504,7 @@ export default function PartMasterList(props) {
                       inventory ledger's trackingMode -- they are two vocabularies, not one. */}
                   <td data-label={LABEL.controlType} data-raw={part.controlType}>{CONTROL_TYPE_LABEL[part.controlType] ?? part.controlType}</td>
                   <td data-label={LABEL.stockingClass} data-raw={part.stockingClass}>{STOCKING_CLASS_LABEL[part.stockingClass] ?? part.stockingClass}</td>
-                  <td data-label={LABEL.stockingUnit}>{part.stockingUnit}</td>
+                  <td data-label={LABEL.stockingUnit} data-raw={part.stockingUnit}>{part.stockingUnit ? statusLabel(part.stockingUnit, UNIT_CODE_LABEL) : "—"}</td>
                   <td data-label={LABEL.status} data-raw={part.status}>
                     {/* WORDS + TONE, NO PILL — Lists P2 board 2e, and collection-scoped.
                         A pill is a container that says "this is a status"; in a scan-first list the
@@ -500,7 +538,7 @@ export default function PartMasterList(props) {
             onClick={() => loadMore(state.nextCursor)}
             disabled={busy || state.loadingMore}
           >
-            {state.loadingMore ? "Loading…" : "Load more parts"}
+            {state.loadingMore ? "Loading…" : "Load More Parts"}
           </Button>
         </div>
       )}

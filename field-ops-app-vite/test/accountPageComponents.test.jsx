@@ -689,9 +689,9 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
     useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
     useLocationsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
     renderDetail();
-    expect(screen.getByRole("button", { name: "+ Add contact" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "+ Add Contact" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Import" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "+ Add location" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "+ Add Location" })).toBeTruthy();
   });
 
   it("denied Contacts read shows the hook's real error text, never the false 'No contacts yet' empty state (still true through the metadata path)", () => {
@@ -738,7 +738,7 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
     mockCreateContact.mockResolvedValue({ id: "contact-new", name: "New Contact" });
 
     const { rerender } = renderDetail();
-    fireEvent.click(screen.getByRole("button", { name: "+ Add contact" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Contact" }));
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "New Contact" } });
     fireEvent.click(screen.getByRole("button", { name: "Add Contact" }));
 
@@ -783,7 +783,7 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
     mockCreateLocation.mockResolvedValue({ id: "location-new", name: "New Site" });
 
     const { rerender } = renderDetail();
-    fireEvent.click(screen.getByRole("button", { name: "+ Add location" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Location" }));
     fireEvent.change(screen.getByLabelText(/site name/i), { target: { value: "New Site" } });
     fireEvent.click(screen.getByRole("button", { name: "Add Location" }));
 

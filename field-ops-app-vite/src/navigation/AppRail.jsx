@@ -366,7 +366,7 @@ export function RailIdentity() {
         Your Employee profile
       </NavLink>
       <Button variant="tertiary" onClick={logout} className="fo-rail-identity__signout">
-        Sign out
+        Sign Out
       </Button>
     </div>
   );

@@ -166,7 +166,7 @@ describe("the reorder point states what it does not know", () => {
     }];
     await renderRecord();
     const forecast = document.getElementById("part-availability");
-    const row = within(forecast).getByText("Reorder point").closest("tr");
+    const row = within(forecast).getByText("Reorder Point").closest("tr");
     // THE VALUE CELL, asserted exactly. The defect this replaces was a bare 0 sitting beside the
     // sentence explaining why it is zero, so "contains the words" is not enough -- the cell must
     // hold the sentence and nothing else.
@@ -188,7 +188,7 @@ describe("the reorder point states what it does not know", () => {
     }];
     await renderRecord();
     const forecast = document.getElementById("part-availability");
-    const row = within(forecast).getByText("Reorder point").closest("tr");
+    const row = within(forecast).getByText("Reorder Point").closest("tr");
     expect(row.textContent).toContain("4");
     expect(row.textContent).not.toContain("Not established");
   });

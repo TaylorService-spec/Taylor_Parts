@@ -14,6 +14,9 @@ import {
   submitCanonicalReceive,
 } from "../../services/receivingCallableClient.js";
 import { canonicalPoStatusWords } from "../../domain/receivingWorkspaceQueue.js";
+import { titleCase } from "../../shared/display/displayLabels.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 
 // MULTI-SCAN RECEIVING — the canonical warehouse journey.
 //
@@ -77,12 +80,12 @@ function OrderPicker({ deps, onPick }) {
   // list demotes the id to an internal reference rather than promoting it as identity.
   return (
     <section className="fo-panel" aria-label="Choose a purchase order">
-      <h3>Choose a purchase order</h3>
+      <h3>Choose a Purchase Order</h3>
       <form
         className="fo-scanline"
         onSubmit={(e) => { e.preventDefault(); if (typed.trim()) onPick(typed.trim()); }}
       >
-        <label htmlFor="po-scan">Order id</label>
+        <label htmlFor="po-scan">Order ID</label>
         <input
           id="po-scan"
           className="fo-input"
@@ -139,7 +142,19 @@ function OrderPicker({ deps, onPick }) {
 
 // ─────────────────────────────────────────────────────────── reconciliation table
 
+// Client-side sort over the order's lines (item C); the purchase order's line order is the default.
+const RECONCILIATION_SORT_COLUMNS = {
+  line: { value: (l) => l.lineId },
+  part: { value: (l) => l.partId },
+  ordered: { value: (l) => l.orderedQuantity },
+  previouslyReceived: { value: (l) => l.previouslyReceived },
+  remainingBefore: { value: (l) => l.remainingBefore },
+  observedNow: { value: (l) => l.observedNow },
+  remainingAfter: { value: (l) => l.remainingAfter },
+};
+
 function ReconciliationTable({ lines }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: lines, columns: RECONCILIATION_SORT_COLUMNS });
   // data-label on every cell is the handheld structural contract: at phone widths the stylesheet
   // recomposes each row into a labelled stacked block (the .fo-receiving-queue pattern), so a
   // seven-column numeric table never squeezes or pans the page.
@@ -148,17 +163,17 @@ function ReconciliationTable({ lines }) {
       <table className="fo-table fo-receiving-session__table" aria-label="Expected versus observed">
         <thead>
           <tr>
-            <th scope="col">Line</th>
-            <th scope="col">Part</th>
-            <th scope="col" className="num">Ordered</th>
-            <th scope="col" className="num">Already received</th>
-            <th scope="col" className="num">Outstanding</th>
-            <th scope="col" className="num">Scanned now</th>
-            <th scope="col" className="num">Remaining after</th>
+            <SortableHeader columnKey="line" label="Line" sort={sort} onSort={toggle} />
+            <SortableHeader columnKey="part" label="Part" sort={sort} onSort={toggle} />
+            <SortableHeader columnKey="ordered" label="Ordered" sort={sort} onSort={toggle} className="num" />
+            <SortableHeader columnKey="previouslyReceived" label="Already Received" sort={sort} onSort={toggle} className="num" />
+            <SortableHeader columnKey="remainingBefore" label="Outstanding" sort={sort} onSort={toggle} className="num" />
+            <SortableHeader columnKey="observedNow" label="Scanned Now" sort={sort} onSort={toggle} className="num" />
+            <SortableHeader columnKey="remainingAfter" label="Remaining After" sort={sort} onSort={toggle} className="num" />
           </tr>
         </thead>
         <tbody>
-          {lines.map((l) => (
+          {sorted.map((l) => (
             <tr key={l.lineId} className={l.observedNow > 0 ? "is-observed" : undefined}>
               <td data-label="Line">{l.lineId}</td>
               <td data-label="Part">
@@ -370,7 +385,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
         {progress.supplierName ? (
           <p className="fo-receiving-session__kicker">Supplier purchase order · multi-scan receipt</p>
         ) : null}
-        <h2 className="fo-receiving-session__title">{progress.supplierName ?? "Supplier purchase order"}</h2>
+        <h2 className="fo-receiving-session__title">{progress.supplierName ?? "Supplier Purchase Order"}</h2>
         <p className="fo-muted">
           No order number recorded
           {" · "}receipt progress <strong>{progress.derivedState.replace(/_/g, " ").toLowerCase()}</strong>
@@ -392,7 +407,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
 
       {receipt && (
         <section className="fo-panel fo-receipt" aria-label="Receipt" role="status">
-          <h3>{receipt.outcome === "replayed" ? "Already recorded" : "Received"}</h3>
+          <h3>{receipt.outcome === "replayed" ? "Already Recorded" : "Received"}</h3>
           {/* The receipt's receiving order number is not in this response and no governed read
               exposes one (RCV-G1/RCV-G2) — the absence is stated, and the internal receivingId is
               never shown in its place. */}
@@ -407,9 +422,9 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           </ul>
           <p className="fo-muted">
             Order is now <strong>{receipt.derivedState.replace(/_/g, " ").toLowerCase()}</strong>
-            {receipt.storedStatus ? <> · status {receipt.storedStatus}</> : null}.
+            {receipt.storedStatus ? <> · status {canonicalPoStatusWords(receipt.storedStatus) ?? titleCase(receipt.storedStatus)}</> : null}.
           </p>
-          <Button type="button" variant="secondary" onClick={onDone}>Receive another order</Button>
+          <Button type="button" variant="secondary" onClick={onDone}>Receive Another Order</Button>
         </section>
       )}
 
@@ -446,16 +461,16 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
         </p>
         <div className="fo-chip-row">
           <Button type="button" variant="secondary" disabled={reconciliation.scanCount === 0} onClick={() => setQueue(undoLastScan)}>
-            Undo last scan
+            Undo Last Scan
           </Button>
           <Button type="button" variant="tertiary" disabled={reconciliation.scanCount === 0} onClick={() => setQueue(clearQueue)}>
-            Clear queue
+            Clear Queue
           </Button>
         </div>
       </section>
 
       <section className="fo-receiving-session__section" aria-label="Expected versus observed">
-        <h3>Expected versus observed</h3>
+        <h3>Expected Versus Observed</h3>
         <ReconciliationTable lines={reconciliation.lines} />
         {reconciliation.ambiguousParts.length > 0 && (
           <p className="fo-warning" role="status">
@@ -467,7 +482,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
 
       {blocked.length > 0 && (
         <section className="fo-receiving-session__section fo-receiving-session__section--attention" aria-label="Blocked scans">
-          <h3>Needs attention ({blocked.length})</h3>
+          <h3>Needs Attention ({blocked.length})</h3>
           <p className="fo-muted">
             A blocked scan is never silently dropped and never silently included. Resolve each one —
             remove it, or correct it — before this receipt can be submitted.
@@ -487,7 +502,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
       )}
 
       <section className="fo-receiving-session__section" aria-label="Queued scans">
-        <h3>Queued scans</h3>
+        <h3>Queued Scans</h3>
         {reconciliation.entries.length === 0 ? (
           <p className="fo-muted">Nothing scanned yet.</p>
         ) : (
@@ -519,9 +534,9 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
       </section>
 
       <section className="fo-receiving-session__section fo-receiving-session__section--submit" aria-label="Submit">
-        <h3>Submit receipt</h3>
+        <h3>Submit Receipt</h3>
         <div className="fo-identifier-form__row">
-          <label htmlFor="rcv-location">Receiving location</label>
+          <label htmlFor="rcv-location">Receiving Location</label>
           <select
             id="rcv-location"
             className="fo-input"
@@ -575,7 +590,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           }
           onClick={submit}
         >
-          {submitting ? "Submitting…" : "Submit receipt"}
+          {submitting ? "Submitting…" : "Submit Receipt"}
         </Button>
         <p className="fo-muted">
           One atomic receipt against this purchase order. Any line that is still short stays open —
@@ -601,7 +616,7 @@ export default function MultiScanReceiving({ deps, initialPurchaseOrderId = null
     <>
       {onExit === null && (
         <button type="button" className="fo-link-btn" onClick={leave}>
-          ← Choose a different purchase order
+          ← Choose a Different Purchase Order
         </button>
       )}
       <ScanSession

@@ -270,7 +270,7 @@ export default function PickScan({ deps }) {
                 ))}
               </ul>
               <button type="button" className="fo-link-btn" onClick={() => setObservations((p) => Object.freeze(p.slice(0, -1)))}>
-                Undo last scan
+                Undo Last Scan
               </button>
             </>
           )}
@@ -296,11 +296,11 @@ export default function PickScan({ deps }) {
               ? "Staging…"
               // SHORT is offered explicitly rather than hidden behind the same word, so staging four
               // of five is a deliberate act and not something that happened by accident.
-              : (state.state === LINE_STATE.SHORT ? `Stage ${state.quantity} — short by ${state.shortBy}` : "Stage this line")}
+              : (state.state === LINE_STATE.SHORT ? `Stage ${state.quantity} — short by ${state.shortBy}` : "Stage This Line")}
           </Button>
 
           <button type="button" className="fo-link-btn" onClick={() => { setActivePartId(null); setObservations(Object.freeze([])); }}>
-            ← Back to the job
+            ← Back to the Job
           </button>
         </>
       )}

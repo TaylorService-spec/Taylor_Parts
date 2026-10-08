@@ -1,6 +1,6 @@
 // CUSTOMER-FACING PRICING COMPOSITION (Controller, 2026-10-02; DECISIONS #203).
-// The Agreement presents: Selling price, Customer discount, Net selling price, Trade-in credit, Cash / down payment,
-// Remaining balance -- in words, no internal enums, no acquisition cost or margin. The salesperson enters the discount as a
+// The Agreement presents: Selling Price, Customer Discount, Net Selling Price, Trade-In Credit, Cash / Down Payment,
+// Remaining Balance -- in words, no internal enums, no acquisition cost or margin. The salesperson enters the discount as a
 // percent or a fixed amount; the governed input is sent only when it changed.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -42,12 +42,12 @@ describe("customer-facing composition", () => {
       pending: null, commandError: null, clearCommandError: vi.fn(), refresh: vi.fn() });
     const { container } = render(<MemoryRouter initialEntries={["/a/sag_1"]}><Routes><Route path="/a/:salesAgreementId" element={<SalesAgreementDetail hasCapability={() => true} />} /></Routes></MemoryRouter>);
     const text = container.querySelector(".ns-ladder").textContent;
-    for (const [label, amount] of [["Selling price", "40,000.00"], ["Customer discount", "2,000.00"], ["Net selling price", "38,000.00"],
-      ["Trade-in credit", "5,000.00"], ["Cash / down payment", "3,000.00"], ["Remaining balance", "30,000.00"]]) {
+    for (const [label, amount] of [["Selling Price", "40,000.00"], ["Customer Discount", "2,000.00"], ["Net Selling Price", "38,000.00"],
+      ["Trade-In Credit", "5,000.00"], ["Cash / Down Payment", "3,000.00"], ["Remaining Balance", "30,000.00"]]) {
       expect(text).toContain(label);
       expect(text).toContain(amount);
     }
-    expect(text.indexOf("Trade-in credit")).toBeLessThan(text.indexOf("Cash / down payment"));
+    expect(text.indexOf("Trade-In Credit")).toBeLessThan(text.indexOf("Cash / Down Payment"));
     for (const re of FORBIDDEN) expect(container.textContent).not.toMatch(re);
   });
 
@@ -56,10 +56,10 @@ describe("customer-facing composition", () => {
     const agreement = { view: view({ customerDiscount: null, customerDiscountMinor: 0, netSellingMinor: 4000000, totalMinor: 4000000, balanceMinor: 3200000 }),
       create: vi.fn(), updateDraft, accept: vi.fn(), pending: null, commandError: null };
     const { container } = render(<MemoryRouter><SalesAgreementPanel agreement={agreement} hasCapability={() => true} /></MemoryRouter>);
-    fireEvent.click(screen.getByRole("button", { name: "Edit terms" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Customer discount" }), { target: { value: "PERCENT" } });
-    fireEvent.change(screen.getByLabelText("Discount percent"), { target: { value: "5.25" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save terms" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Terms" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Customer Discount" }), { target: { value: "PERCENT" } });
+    fireEvent.change(screen.getByLabelText("Discount Percent"), { target: { value: "5.25" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Terms" }));
     await vi.waitFor(() => expect(updateDraft).toHaveBeenCalledTimes(1));
     expect(updateDraft.mock.calls[0][1].customerDiscount).toEqual({ kind: "PERCENT", percentBasisPoints: 525 });
     expect(container.textContent).not.toMatch(/\bPERCENT\b/);
@@ -68,14 +68,14 @@ describe("customer-facing composition", () => {
   it("a fixed amount; malformed input refused locally; an unchanged discount sends nothing", async () => {
     const updateDraft = vi.fn().mockResolvedValue({ ok: true });
     render(<MemoryRouter><SalesAgreementPanel agreement={{ view: view(), create: vi.fn(), updateDraft, accept: vi.fn(), pending: null, commandError: null }} hasCapability={() => true} /></MemoryRouter>);
-    fireEvent.click(screen.getByRole("button", { name: "Edit terms" }));
-    expect(screen.getByLabelText("Discount amount").value).toBe("2000.00");
-    fireEvent.click(screen.getByRole("button", { name: "Save terms" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Terms" }));
+    expect(screen.getByLabelText("Discount Amount").value).toBe("2000.00");
+    fireEvent.click(screen.getByRole("button", { name: "Save Terms" }));
     await vi.waitFor(() => expect(updateDraft).toHaveBeenCalledTimes(1));
     expect("customerDiscount" in updateDraft.mock.calls[0][1]).toBe(false);
-    fireEvent.click(await screen.findByRole("button", { name: "Edit terms" }));
-    fireEvent.change(screen.getByLabelText("Discount amount"), { target: { value: "20.005" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save terms" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Terms" }));
+    fireEvent.change(screen.getByLabelText("Discount Amount"), { target: { value: "20.005" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Terms" }));
     expect(screen.getByRole("alert").textContent).toMatch(/must look like 20.00/);
   });
 });

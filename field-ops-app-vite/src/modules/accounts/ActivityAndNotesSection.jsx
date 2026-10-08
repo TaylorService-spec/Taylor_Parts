@@ -44,7 +44,7 @@ export default function ActivityAndNotesSection({ accountId }) {
 
       {view.kind === CRM_ACTIVITY_VIEW_STATE.DENIED && (
         <FailureState
-          title="Activity &amp; Notes unavailable"
+          title="Activity &amp; Notes Unavailable"
           message="You are not authorized to view CRM activity for this account."
         />
       )}

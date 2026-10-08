@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { SectionHeader, StatusIndicator, Button } from "../../shared/ui/primitives";
 import { Field, FormError } from "../../shared/ui/form";
 import { callPolicyApi } from "../../services/adminPolicyApiClient";
+import { statusLabel } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 // Administration -> Warehouse Racking -> Truck location warehouse scope (Controller ruling DQ-029).
 //
@@ -26,6 +29,13 @@ const STATE_COPY = {
   NO_BINDING: { tone: "attention", label: "No binding — truck operations refused" },
 };
 
+const stateCopy = (r) => STATE_COPY[r.state] ?? { tone: "critical", label: statusLabel(r.state) };
+const BINDING_COLUMNS = Object.freeze({
+  location: { value: (r) => r.displayLabel || r.locationId },
+  scope: { value: (r) => stateCopy(r).label },
+  warehouse: { value: (r) => r.scopeWarehouseId },
+});
+
 const refusalText = (res) => {
   if (res.code === "FORBIDDEN") {
     return "Truck location warehouse scope is not available to you. It needs inventory.location.scopeBinding.manage, which your account does not currently hold.";
@@ -43,6 +53,7 @@ export default function TruckLocationScopeBindings({ callApi = callPolicyApi, wa
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
   const [history, setHistory] = useState(null);
+  const { sort, toggle, sorted } = useTableSort({ rows, columns: BINDING_COLUMNS });
 
   const load = useCallback(async () => {
     const res = await callApi("listMobileLocationScopeBindings", {});
@@ -91,7 +102,7 @@ export default function TruckLocationScopeBindings({ callApi = callPolicyApi, wa
   return (
     <section aria-label="Truck location warehouse scope">
       <SectionHeader
-        title="Truck location warehouse scope"
+        title="Truck Location Warehouse Scope"
         description="Which warehouse's operational scope governs inventory acts at each truck location. A truck with no binding refuses those acts. Changes are audited and apply to future operations only."
       />
       {refusal && <StatusIndicator tone="neutral">{refusal}</StatusIndicator>}
@@ -101,15 +112,15 @@ export default function TruckLocationScopeBindings({ callApi = callPolicyApi, wa
         <table className="fo-table">
           <thead>
             <tr>
-              <th scope="col">Truck location</th>
-              <th scope="col">Scope</th>
-              <th scope="col">Warehouse</th>
+              <SortableHeader columnKey="location" label="Truck Location" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="scope" label="Scope" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="warehouse" label="Warehouse" sort={sort} onSort={toggle} />
               <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
-              const copy = STATE_COPY[r.state] ?? { tone: "critical", label: r.state };
+            {sorted.map((r) => {
+              const copy = stateCopy(r);
               return (
                 <tr key={r.locationId}>
                   <td>{r.displayLabel || r.locationId}{r.active ? null : <span className="fo-muted"> (inactive)</span>}</td>
@@ -157,7 +168,7 @@ export default function TruckLocationScopeBindings({ callApi = callPolicyApi, wa
           </Field>
           {reason.trim() === "" && <FormError>A reason is required.</FormError>}
           <Button type="submit" disabled={busy || reason.trim() === "" || (editing.mode === "set" && warehouseId.trim() === "")}>
-            {editing.mode === "set" ? "Save binding" : "Remove binding"}
+            {editing.mode === "set" ? "Save Binding" : "Remove Binding"}
           </Button>
           <Button onClick={() => setEditing(null)} disabled={busy}>Cancel</Button>
         </form>

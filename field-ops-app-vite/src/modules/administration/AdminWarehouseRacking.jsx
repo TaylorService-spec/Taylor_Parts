@@ -7,6 +7,8 @@ import BinLabelsAndExport from "./BinLabelsAndExport";
 import TruckLocationScopeBindings from "./TruckLocationScopeBindings";
 import WarehouseMasters from "./WarehouseMasters";
 import TruckRegistry from "./TruckRegistry";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 import { fetchWarehouses } from "../../services/operationsQueries";
 import { applyProposals, summarizeApply, APPLY_CONCURRENCY } from "../../services/rackingApply";
 import {
@@ -58,11 +60,36 @@ const PREVIEW_CHUNK = 250;
 
 const CLASSIFICATION_COPY = {
   NEW: { tone: "positive", label: "New", hint: "Will be created." },
-  ALREADY_EXISTS: { tone: "info", label: "Already exists", hint: "Applying again changes nothing." },
-  CODE_RESERVED: { tone: "attention", label: "Code taken", hint: "Another bin already holds this code. It cannot be created." },
+  ALREADY_EXISTS: { tone: "info", label: "Already Exists", hint: "Applying again changes nothing." },
+  CODE_RESERVED: { tone: "attention", label: "Code Taken", hint: "Another bin already holds this code. It cannot be created." },
   INVALID: { tone: "critical", label: "Invalid", hint: "The registry refused this location." },
-  INTEGRITY_ERROR: { tone: "critical", label: "Needs attention", hint: "The stored record is inconsistent. Do not apply." },
+  INTEGRITY_ERROR: { tone: "critical", label: "Needs Attention", hint: "The stored record is inconsistent. Do not apply." },
 };
+
+// Sort keys for the bin tables: a location sorts aisle, then bay, then position (numbers compared as numbers).
+const pad = (n) => String(n ?? "").padStart(6, "0");
+const locationKey = (r) => `${r.aisle ?? ""} ${pad(r.bay)} ${pad(r.position)}`;
+const BIN_COLUMNS = Object.freeze({
+  code: { value: (b) => b.code },
+  area: { value: (b) => b.area },
+  location: { value: locationKey },
+  name: { value: (b) => b.name },
+  status: { value: (b) => (b.status === "ACTIVE" ? "In Use" : "Out of Use") },
+});
+const PREVIEW_STATUS = (row, verdict) => (row.state === PROPOSAL_STATE.DUPLICATE ? "Listed Twice"
+  : verdict ? CLASSIFICATION_COPY[verdict.classification]?.label ?? null : "Not Classified");
+const PREVIEW_COLUMNS = Object.freeze({
+  code: { value: ({ verdict }) => verdict?.code },
+  location: { value: ({ row }) => locationKey(row) },
+  status: { value: ({ row, verdict }) => PREVIEW_STATUS(row, verdict) },
+  effect: { value: ({ verdict }) => (verdict ? CLASSIFICATION_COPY[verdict.classification]?.hint : null) },
+});
+const OUTCOME_WORDS = (r) => (r.outcome === "failed" ? "Not Created" : r.outcome === "unchanged" ? "Already There" : "Created");
+const RESULT_COLUMNS = Object.freeze({
+  code: { value: (r) => r.code },
+  outcome: { value: OUTCOME_WORDS },
+  detail: { value: (r) => r.error },
+});
 
 const chunk = (items, size) => {
   const out = [];
@@ -120,7 +147,7 @@ function BinRow({ bin, canManage, onRename, onSetStatus, onLabel, busy }) {
           {/* The concept is named rather than left bare (ADR-012 2.2a): a bin's ACTIVE status means the place is
               available to stow into, which is a different thing from an active employee, an active
               role assignment or an active capability. */}
-          {bin.status === "ACTIVE" ? "In use" : "Out of use"}
+          {bin.status === "ACTIVE" ? "In Use" : "Out of Use"}
         </StatusIndicator>
       </td>
       <td>
@@ -131,7 +158,7 @@ function BinRow({ bin, canManage, onRename, onSetStatus, onLabel, busy }) {
           Label
         </Button>
         {!canManage ? (
-          <span className="fo-muted">View only</span>
+          <span className="fo-muted">View Only</span>
         ) : renaming ? (
           <>
             <Button
@@ -143,7 +170,7 @@ function BinRow({ bin, canManage, onRename, onSetStatus, onLabel, busy }) {
               }}
               disabled={busy}
             >
-              Save name
+              Save Name
             </Button>
             <Button variant="tertiary" onClick={() => { setName(bin.name ?? ""); setRenaming(false); }}>
               Cancel
@@ -328,6 +355,10 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
 
   const summary = applied ? summarizeApply(applied) : null;
   const previewRows = plan?.map((row) => ({ row, verdict: preview?.get(row.idempotencyKey) ?? null })) ?? [];
+  const binSort = useTableSort({ rows: bins, columns: BIN_COLUMNS });
+  const previewSort = useTableSort({ rows: previewRows, columns: PREVIEW_COLUMNS });
+  const resultSort = useTableSort({ rows: applied, columns: RESULT_COLUMNS });
+  const sortHeader = (table, key, label) => <SortableHeader columnKey={key} label={label} sort={table.sort} onSort={table.toggle} />;
 
   return (
     <div className="fo-panel">
@@ -346,7 +377,7 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
           value={warehouseId}
           onChange={(e) => { setWarehouseId(e.target.value); invalidate(); }}
         >
-          <option value="">Select a warehouse</option>
+          <option value="">Select a Warehouse</option>
           {warehouses.map((w) => (
             <option key={w.id} value={w.id}>{w.name || w.id}</option>
           ))}
@@ -357,7 +388,7 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
         <>
           <SectionHeader
             level={3}
-            title="Existing bins"
+            title="Existing Bins"
             description="Every bin already configured in this warehouse."
             actions={bins ? <CompactMetric value={bins.length} label="Bins" /> : null}
           />
@@ -369,16 +400,16 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
             <table className="fo-table">
               <thead>
                 <tr>
-                  <th scope="col">Code</th>
-                  <th scope="col">Area</th>
-                  <th scope="col">Aisle / Bay / Position</th>
-                  <th scope="col">Name</th>
-                  <th scope="col">Status</th>
+                  {sortHeader(binSort, "code", "Code")}
+                  {sortHeader(binSort, "area", "Area")}
+                  {sortHeader(binSort, "location", "Aisle / Bay / Position")}
+                  {sortHeader(binSort, "name", "Name")}
+                  {sortHeader(binSort, "status", "Status")}
                   <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {bins.map((bin) => (
+                {binSort.sorted.map((bin) => (
                   <BinRow
                     key={bin.binId}
                     bin={bin}
@@ -413,7 +444,7 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
       {warehouseId && canManage && (
         <>
           <SectionHeader
-            title="Describe the racking"
+            title="Describe the Racking"
             description="Aisles, bays within each aisle, positions within each bay. Positions are numbered 1, 3, 5 and so on, leaving the even numbers free for shelves added later."
           />
 
@@ -423,17 +454,17 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
 
           <Field id="racking-aisle-mode" label="Aisles">
             <select value={aisleMode} onChange={(e) => { setAisleMode(e.target.value); invalidate(); }}>
-              <option value="range">A range of letters</option>
-              <option value="explicit">A specific list</option>
+              <option value="range">A Range of Letters</option>
+              <option value="explicit">A Specific List</option>
             </select>
           </Field>
 
           {aisleMode === "range" ? (
             <>
-              <Field id="racking-aisle-from" label="From aisle">
+              <Field id="racking-aisle-from" label="From Aisle">
                 <input type="text" value={aisleFrom} onChange={(e) => { setAisleFrom(e.target.value); invalidate(); }} />
               </Field>
-              <Field id="racking-aisle-to" label="To aisle">
+              <Field id="racking-aisle-to" label="To Aisle">
                 <input type="text" value={aisleTo} onChange={(e) => { setAisleTo(e.target.value); invalidate(); }} />
               </Field>
             </>
@@ -443,18 +474,18 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
             </Field>
           )}
 
-          <Field id="racking-bays" label="Bays in each aisle">
+          <Field id="racking-bays" label="Bays in Each Aisle">
             <input type="number" min="0" value={bayCount} onChange={(e) => { setBayCount(e.target.value); invalidate(); }} />
           </Field>
-          <Field id="racking-positions" label="Positions in each bay">
+          <Field id="racking-positions" label="Positions in Each Bay">
             <input type="number" min="0" value={positionCount} onChange={(e) => { setPositionCount(e.target.value); invalidate(); }} />
           </Field>
 
-          <Button onClick={onGenerate} disabled={busy}>Preview these bins</Button>
+          <Button onClick={onGenerate} disabled={busy}>Preview These Bins</Button>
 
           <SectionHeader
             level={3}
-            title="Add one bin"
+            title="Add One Bin"
             description="For a single shelf added to racking that already exists."
           />
           <Field id="racking-one-aisle" label="Aisle">
@@ -466,7 +497,7 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
           <Field id="racking-one-position" label="Position" hint="Even numbers are allowed: 002 sits between 001 and 003.">
             <input type="number" min="0" value={single.position} onChange={(e) => { setSingle((s) => ({ ...s, position: e.target.value })); invalidate(); }} />
           </Field>
-          <Button onClick={onAddOne} disabled={busy}>Preview this bin</Button>
+          <Button onClick={onAddOne} disabled={busy}>Preview This Bin</Button>
         </>
       )}
 
@@ -491,14 +522,14 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
               <table className="fo-table">
                 <thead>
                   <tr>
-                    <th scope="col">Code</th>
-                    <th scope="col">Aisle / Bay / Position</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">What happens</th>
+                    {sortHeader(previewSort, "code", "Code")}
+                    {sortHeader(previewSort, "location", "Aisle / Bay / Position")}
+                    {sortHeader(previewSort, "status", "Status")}
+                    {sortHeader(previewSort, "effect", "What Happens")}
                   </tr>
                 </thead>
                 <tbody>
-                  {previewRows.map(({ row, verdict }) => {
+                  {previewSort.sorted.map(({ row, verdict }) => {
                     const copy = verdict ? CLASSIFICATION_COPY[verdict.classification] : null;
                     return (
                       <tr key={row.idempotencyKey ?? `${row.aisle}-${row.bay}-${row.position}`}>
@@ -507,11 +538,11 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
                         <td className="fo-tabular-nums">{`${row.aisle} / ${row.bay} / ${row.position}`}</td>
                         <td>
                           {row.state === PROPOSAL_STATE.DUPLICATE ? (
-                            <StatusIndicator tone="attention">Listed twice</StatusIndicator>
+                            <StatusIndicator tone="attention">Listed Twice</StatusIndicator>
                           ) : copy ? (
                             <StatusIndicator tone={copy.tone}>{copy.label}</StatusIndicator>
                           ) : (
-                            <StatusIndicator tone="neutral">Not classified</StatusIndicator>
+                            <StatusIndicator tone="neutral">Not Classified</StatusIndicator>
                           )}
                         </td>
                         <td>{copy?.hint ?? "The registry was not asked about this row."}</td>
@@ -523,8 +554,8 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
 
               <Button onClick={onApply} disabled={busy || applicable.length === 0}>
                 {applicable.length === 0
-                  ? "Nothing to create"
-                  : `Create ${applicable.length} bin${applicable.length === 1 ? "" : "s"}`}
+                  ? "Nothing to Create"
+                  : `Create ${applicable.length} Bin${applicable.length === 1 ? "" : "s"}`}
               </Button>
               {applicable.length > APPLY_CONCURRENCY && (
                 <p className="fo-wizard-hint">
@@ -542,24 +573,24 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
           <SectionHeader level={3} title="Result" description="One line per bin. A partial result is normal." />
           <div className="fo-racking__summary">
             <CompactMetric value={summary.created} label="Created" />
-            <CompactMetric value={summary.unchanged} label="Already there" />
-            <CompactMetric value={summary.failed} label="Not created" />
+            <CompactMetric value={summary.unchanged} label="Already There" />
+            <CompactMetric value={summary.failed} label="Not Created" />
           </div>
           <table className="fo-table">
             <thead>
               <tr>
-                <th scope="col">Code</th>
-                <th scope="col">Outcome</th>
-                <th scope="col">Detail</th>
+                {sortHeader(resultSort, "code", "Code")}
+                {sortHeader(resultSort, "outcome", "Outcome")}
+                {sortHeader(resultSort, "detail", "Detail")}
               </tr>
             </thead>
             <tbody>
-              {applied.map((r) => (
+              {resultSort.sorted.map((r) => (
                 <tr key={r.idempotencyKey}>
                   <td className="fo-tabular-nums">{r.code ?? <span className="fo-muted">—</span>}</td>
                   <td>
                     <StatusIndicator tone={r.outcome === "failed" ? "critical" : r.outcome === "unchanged" ? "info" : "positive"}>
-                      {r.outcome === "failed" ? "Not created" : r.outcome === "unchanged" ? "Already there" : "Created"}
+                      {OUTCOME_WORDS(r)}
                     </StatusIndicator>
                   </td>
                   <td>{r.error ?? ""}</td>

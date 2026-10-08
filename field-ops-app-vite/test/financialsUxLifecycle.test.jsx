@@ -45,7 +45,7 @@ describe("honest-state token parity", () => {
 describe("01 Overview — /financials", () => {
   test("six lifecycle slots, fact classes, honest absences, no dollar figures", () => {
     const { container } = mount(<FinancialsOverview />);
-    for (const label of ["Booked", "Billable now", "Billed", "Collected", "A/R outstanding", "Unbilled"]) {
+    for (const label of ["Booked", "Billable Now", "Billed", "Collected", "A/R Outstanding", "Unbilled"]) {
       expect(screen.getByText(label)).toBeTruthy();
     }
     // The one derived figure says so; the rest are operational actuals.
@@ -94,7 +94,7 @@ describe("03 Invoices — /financials/invoices", () => {
 describe("04 Accounts Receivable — /financials/accounts-receivable", () => {
   test("one aging grammar, no DSO, no risk score, honest body", () => {
     const { container } = mount(<FinancialsAccountsReceivable />);
-    for (const bucket of ["Total A/R", "Current", "1–30 days", "31–60 days", "61+ days"]) {
+    for (const bucket of ["Total A/R", "Current", "1–30 Days", "31–60 Days", "61+ Days"]) {
       expect(screen.getByText(bucket)).toBeTruthy();
     }
     // No DSO figure and no risk-score column exist (the annotation SAYS they have no
@@ -116,7 +116,7 @@ describe("05 Payments — /financials/payments", () => {
     expect(container.textContent).toMatch(/FUTURE AUTHORITY/);
     expect(container.textContent).toMatch(/refuses over-application/);
     // The approved view grammar stays.
-    for (const label of ["All", "Unapplied", "Fully applied"]) {
+    for (const label of ["All", "Unapplied", "Fully Applied"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
     }
     // No apply/record action is wired — no governed command is activated.
@@ -164,13 +164,13 @@ describe("07 Customer Financials — /financials/customer-financials", () => {
 describe("02 Billing Queue — /financials/billing-queue", () => {
   test("gated bulk action disabled, with a reason that does not assert capability state", () => {
     const { container } = mount(<FinancialsBillingQueue />);
-    const action = screen.getByRole("button", { name: "Create invoices" });
+    const action = screen.getByRole("button", { name: "Create Invoices" });
     expect(action.disabled).toBe(true);
     expect(container.textContent).toMatch(/wired to this queue/);
     // F1: the one-liner must not diagnose a capability the page never resolved.
     expect(container.textContent).not.toMatch(/finance\.[a-z.]+\s*(is\s+)?inactive/i);
     // The approved queue grammar: views with the four states, readiness columns.
-    for (const label of ["Eligible", "Blocked", "Partially invoiced", "All"]) {
+    for (const label of ["Eligible", "Blocked", "Partially Invoiced", "All"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
     }
     for (const col of ["Source", "Responsible", "Eligibility", "Invoice state"]) {
@@ -186,10 +186,10 @@ describe("06 Credits & Adjustments — /financials/credits-adjustments", () => {
   test("invariant sentence visible; New correction disabled with policy truth; declined never hidden", () => {
     const { container } = mount(<FinancialsCreditsAdjustments />);
     expect(container.textContent).toMatch(/Corrections create new governed events\. The original event remains history\./);
-    const action = screen.getByRole("button", { name: "New correction" });
+    const action = screen.getByRole("button", { name: "New Correction" });
     expect(action.disabled).toBe(true);
     expect(container.textContent).toMatch(/approval policy not configured/i);
-    for (const label of ["Credit", "Adjustment", "Refund", "Write-off", "Awaiting approval", "Approved", "Declined"]) {
+    for (const label of ["Credit", "Adjustment", "Refund", "Write-off", "Awaiting Approval", "Approved", "Declined"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
     }
     expect(container.textContent).toMatch(/No governed read surface/);
@@ -204,7 +204,7 @@ describe("08 Sales to Goal — /financials/sales-to-goal", () => {
     const { default: FinancialsSalesToGoal } = await import("../src/modules/financials/FinancialsSalesToGoal.jsx");
     const { container } = mount(<FinancialsSalesToGoal />);
     expect(container.textContent).toMatch(/never summed or compared silently/);
-    for (const basis of ["Booked", "Billed", "Collected", "Revenue", "Gross margin"]) {
+    for (const basis of ["Booked", "Billed", "Collected", "Revenue", "Gross Margin"]) {
       expect(screen.getAllByText(basis).length).toBeGreaterThanOrEqual(1);
     }
     expect(container.textContent).toMatch(/deliberately no single total/);
@@ -240,9 +240,9 @@ describe("12 Budget Management — /financials/budgets", () => {
   test("versioned grammar; New budget disabled with policy truth", async () => {
     const { default: FinancialsBudgets } = await import("../src/modules/financials/FinancialsBudgets.jsx");
     const { container } = mount(<FinancialsBudgets />);
-    expect(screen.getByRole("button", { name: "New budget" }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "New Budget" }).disabled).toBe(true);
     expect(container.textContent).toMatch(/approval policy not configured/i);
-    for (const label of ["Active budgets", "Awaiting approval", "Superseded", "Draft"]) {
+    for (const label of ["Active Budgets", "Awaiting Approval", "Superseded", "Draft"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
     }
     expect(container.textContent).toMatch(/never rewritten/);
@@ -254,8 +254,8 @@ describe("13 Goal Management — /financials/goals", () => {
   test("basis chips unmissable; New goal disabled with policy truth", async () => {
     const { default: FinancialsGoals } = await import("../src/modules/financials/FinancialsGoals.jsx");
     const { container } = mount(<FinancialsGoals />);
-    expect(screen.getByRole("button", { name: "New goal" }).disabled).toBe(true);
-    for (const basis of ["Booked", "Billed", "Collected", "Revenue", "Gross margin"]) {
+    expect(screen.getByRole("button", { name: "New Goal" }).disabled).toBe(true);
+    for (const basis of ["Booked", "Billed", "Collected", "Revenue", "Gross Margin"]) {
       expect(screen.getAllByText(basis).length).toBeGreaterThanOrEqual(1);
     }
     expect(container.textContent).toMatch(/explicit measurement basis/);
@@ -286,7 +286,7 @@ describe("14 Company & Business Unit Performance — /financials/company-perform
     const { container } = mount(<FinancialsCompanyPerformance />);
     expect(container.textContent).toMatch(/UNELIMINATED_SUM/);
     expect(container.textContent).toMatch(/not accounting consolidation/i);
-    for (const col of ["Taylor", "Ventana", "Consolidated", "Fact class"]) {
+    for (const col of ["Taylor", "Ventana", "Consolidated", "Fact Class"]) {
       expect(screen.getAllByText(col).length).toBeGreaterThanOrEqual(1);
     }
     // The attainment row's consolidated cell is the deliberate em dash.
@@ -303,9 +303,9 @@ describe("15 Salesperson & Employee Performance — /financials/employee-perform
     // it never asserts a reach this page did not resolve.
     expect(container.textContent).toMatch(/resolved by the server when this read answers/);
     expect(container.textContent).not.toMatch(/no financial visibility scope granted/i);
-    expect(container.textContent).toMatch(/Outside your scope/);
+    expect(container.textContent).toMatch(/Outside Your Scope/);
     expect(container.textContent).toMatch(/withheld by the server/);
-    for (const label of ["Salesperson credit", "Service responsibility"]) {
+    for (const label of ["Salesperson Credit", "Service Responsibility"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
     }
     expect(container.textContent).toMatch(/FIN-PQ-15a/);
@@ -319,11 +319,11 @@ describe("16 Reconciliation & Exceptions — /financials/reconciliation", () => 
   test("internal (IN_SYNC/DRIFT, dormant) and external (FUTURE, no provider) never conflated", async () => {
     const { default: FinancialsReconciliation } = await import("../src/modules/financials/FinancialsReconciliation.jsx");
     const { container } = mount(<FinancialsReconciliation />);
-    expect(container.textContent).toMatch(/Operational integrity — internal reconciliation/);
+    expect(container.textContent).toMatch(/Operational Integrity — Internal Reconciliation/);
     expect(container.textContent).toMatch(/IN_SYNC/);
     expect(container.textContent).toMatch(/DRIFT/);
     expect(container.textContent).toMatch(/No governed reconciliation results to show/);
-    expect(container.textContent).toMatch(/External accounting reconciliation/);
+    expect(container.textContent).toMatch(/External Accounting Reconciliation/);
     expect(container.textContent).toMatch(/no counts, not zero counts/);
     // The external specimen is dimmed structure with deliberately empty values.
     expect(container.querySelector(".fin-dimmed")).toBeTruthy();
@@ -373,8 +373,8 @@ describe("20 Financial Settings & Governance — /financials/governance", () => 
     const { default: FinancialsGovernance } = await import("../src/modules/financials/FinancialsGovernance.jsx");
     const { container } = mount(<FinancialsGovernance />);
     // The required current-main correction: the period model exists.
-    expect(container.textContent).toMatch(/Financial periods \(FIN-008\)/);
-    expect(screen.getAllByText("Built dormant").length).toBeGreaterThanOrEqual(4);
+    expect(container.textContent).toMatch(/Financial Periods \(FIN-008\)/);
+    expect(screen.getAllByText("Built Dormant").length).toBeGreaterThanOrEqual(4);
     expect(screen.getAllByText("Policy not configured").length).toBeGreaterThanOrEqual(3);
     // No CHIP says it (the state-vocabulary tooltip may name it as a possible state).
     expect(screen.queryByText("Authority not implemented")).toBeNull();
@@ -416,7 +416,7 @@ describe("F8 · page 07 carries every approved slot", () => {
       expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
     }
     expect(container.querySelectorAll(".fin-scorecard--five .fin-scorecard__slot").length).toBe(5);
-    for (const heading of ["Sales vs Service", "Financial history", "Open items", "Context"]) {
+    for (const heading of ["Sales vs Service", "Financial History", "Open Items", "Context"]) {
       expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
     }
     // Slots restored WITHOUT new reads: each states its absence, and no figure is invented.
@@ -430,7 +430,7 @@ describe("F11 · Profitability dimensions are vocabulary, not controls", () => {
   test("no dimension is rendered as an interactive control", async () => {
     const { default: FinancialsProfitability } = await import("../src/modules/financials/FinancialsProfitability.jsx");
     const { container } = mount(<FinancialsProfitability />);
-    for (const label of ["By unit", "By salesperson", "By customer", "By source"]) {
+    for (const label of ["By Unit", "By Salesperson", "By Customer", "By Source"]) {
       expect(screen.getByText(label)).toBeTruthy();
       expect(screen.queryByRole("button", { name: label })).toBeNull();
     }
@@ -453,7 +453,7 @@ describe("F12 · Governance distinguishes its four states", () => {
     // The two that used to look identical must not resolve to the same class.
     const notConfigured = [...container.querySelectorAll(".fin-gov-chip--notconfigured")];
     const future = [...container.querySelectorAll(".fin-gov-chip--future")];
-    expect(notConfigured.some((e) => e.textContent === "Not configured")).toBe(true);
-    expect(future.some((e) => e.textContent === "Future integration")).toBe(true);
+    expect(notConfigured.some((e) => e.textContent === "Not Configured")).toBe(true);
+    expect(future.some((e) => e.textContent === "Future Integration")).toBe(true);
   });
 });

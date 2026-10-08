@@ -48,7 +48,7 @@ export default function FinancialsCostToBudget() {
 
       <FinancialsHonestSection
         id="fin-cost-to-budget"
-        title="Budget lines"
+        title="Budget Lines"
         meta="budget figures drill to their versioned records in Budget Management"
         honest={{
           state: "NOT_ENABLED",

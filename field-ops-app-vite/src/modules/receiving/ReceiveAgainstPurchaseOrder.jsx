@@ -163,19 +163,19 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
   }
 
   // ---- Step: choose a receipt candidate (fail-closed on the governed PO read) ----
-  const chooseStep = { n: 1, total: null, name: "Choose the purchase order" };
+  const chooseStep = { n: 1, total: null, name: "Choose the Purchase Order" };
   if (step === RECEIVE_STEP.SELECT_CANDIDATE) {
     if (view.status === PURCHASE_ORDERS_STATUS.LOADING) return <Frame step={chooseStep}><LoadingState>Loading purchase orders…</LoadingState></Frame>;
     if (view.status === PURCHASE_ORDERS_STATUS.BLOCKED_PERMISSION || view.status === PURCHASE_ORDERS_STATUS.BLOCKED_UNAVAILABLE) {
       const code = view.status === PURCHASE_ORDERS_STATUS.BLOCKED_PERMISSION ? "permission-denied" : "unavailable";
-      return <Frame><FailureState title="Can't load purchase orders" message={loadErrorMessage({ code }, { entity: "purchase orders" })} /></Frame>;
+      return <Frame><FailureState title="Can't Load Purchase Orders" message={loadErrorMessage({ code }, { entity: "purchase orders" })} /></Frame>;
     }
     if (candidates.length === 0) {
       return (
         <Frame>
           <EmptyState
             variant="database"
-            title="Nothing to receive"
+            title="Nothing to Receive"
             message={initialPartId ? "No open purchase order is awaiting receipt for this part." : "No open purchase orders are awaiting receipt."}
           />
         </Frame>
@@ -216,7 +216,7 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
     }
     if (locations.status === "ready" && locations.options.length === 0) {
       // Receiving IS activated but no eligible location came back.
-      return <Frame onBack={restart} candidate={candidate}><FailureState title="No receiving location" message="No eligible receiving location is available." /></Frame>;
+      return <Frame onBack={restart} candidate={candidate}><FailureState title="No Receiving Location" message="No eligible receiving location is available." /></Frame>;
     }
     if (locations.status !== "ready") {
       // "not activated" (readiness false) or a genuine denied/other -> sanitized honest copy.
@@ -237,7 +237,7 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
       <Frame onBack={restart} candidate={candidate} step={destinationStep}>
         <p className="fo-muted">Receiving <strong>{candidate.partId}</strong> (qty {candidate.orderedQuantity}, full order). Where is it going?</p>
         <label className="scan-field">
-          Receiving location
+          Receiving Location
           <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
             <option value="">Select a location</option>
             {locations.options.map((o) => (
@@ -319,17 +319,17 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
           <div><dt>Part</dt><dd>{candidate.partId}</dd></div>
           {/* The governed external PO number or its STATED absence — the opaque reorderRequestId
               is command input, never a displayed fact (RCV-G4: RR numbering is unwired). */}
-          <div><dt>Purchase order</dt><dd>{candidate.externalPoNumber ?? <span className="fo-muted">No PO number recorded</span>}</dd></div>
+          <div><dt>Purchase Order</dt><dd>{candidate.externalPoNumber ?? <span className="fo-muted">No PO number recorded</span>}</dd></div>
           {candidate.supplierName && <div><dt>Supplier</dt><dd>{candidate.supplierName}</dd></div>}
-          <div><dt>Quantity to receive</dt><dd>{candidate.orderedQuantity} (full order)</dd></div>
-          <div><dt>Receiving location</dt><dd>{location?.label ?? locationId}</dd></div>
+          <div><dt>Quantity to Receive</dt><dd>{candidate.orderedQuantity} (full order)</dd></div>
+          <div><dt>Receiving Location</dt><dd>{location?.label ?? locationId}</dd></div>
           {isSerial && (
-            <div><dt>Serial numbers</dt><dd>{serials.map((s) => s.trim()).join(", ")}</dd></div>
+            <div><dt>Serial Numbers</dt><dd>{serials.map((s) => s.trim()).join(", ")}</dd></div>
           )}
         </dl>
         <p className="fo-muted">Receiving records the full ordered quantity. This is a governed transaction.</p>
         <Button type="button" className="scan-confirm" loading={submitting} onClick={submit}>
-          Confirm receipt
+          Confirm Receipt
         </Button>
         <p className="fo-muted fo-receive-stepnote">
           A retry rebuilds the identical request — a double press yields “Already received”, never
@@ -354,7 +354,7 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
       </div>
       <div className="fo-receive-actions">
         {!outcome.terminal && !isReceivingUnavailable(result) && (
-          <Button type="button" variant="secondary" onClick={restart}>Try again</Button>
+          <Button type="button" variant="secondary" onClick={restart}>Try Again</Button>
         )}
         <Button type="button" className="scan-confirm" onClick={() => onDone?.()}>Done</Button>
       </div>
@@ -371,8 +371,8 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
 // presentation over the existing RECEIVE_STEP machine — it labels the stage, it never drives it.
 function Frame({ children, onBack, step = null, candidate = null }) {
   const title = candidate
-    ? candidate.externalPoNumber ?? candidate.supplierName ?? "Reorder purchase order"
-    : "Reorder purchase order";
+    ? candidate.externalPoNumber ?? candidate.supplierName ?? "Reorder Purchase Order"
+    : "Reorder Purchase Order";
   return (
     <section className="fo-receiving-session fo-reorder-journey" aria-label="Receive a reorder purchase order">
       <header className="fo-receiving-session__identity">

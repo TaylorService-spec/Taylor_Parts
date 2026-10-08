@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../shared/ui/primitives";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import {
   createSupplierRelationship, fetchSupplierList, fetchSupplierOrganizationOptions, setSupplierRelationshipStatus,
 } from "../../services/partsOperationsReads.js";
@@ -15,6 +17,14 @@ export function supplierIdIsValid(id) {
   return typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id);
 }
 
+// Governed supplier status in words (item A): ACTIVE / INACTIVE are never shown raw.
+const SUPPLIER_STATUS_LABEL = Object.freeze({ ACTIVE: "Supplier Active", INACTIVE: "Supplier Inactive" });
+const supplierStatusLabel = (status) => SUPPLIER_STATUS_LABEL[status] ?? "Ungoverned";
+const SUPPLIER_SORT_COLUMNS = {
+  name: { value: (s) => s.name },
+  status: { value: (s) => supplierStatusLabel(s.status) },
+};
+
 export default function SupplierAdministration({ onChanged }) {
   const [orgs, setOrgs] = useState({ loading: true, error: null, items: [] });
   const [suppliers, setSuppliers] = useState([]);
@@ -26,6 +36,7 @@ export default function SupplierAdministration({ onChanged }) {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
+  const { sort, toggle, sorted: sortedSuppliers } = useTableSort({ rows: suppliers, columns: SUPPLIER_SORT_COLUMNS });
 
   useEffect(() => {
     let cancelled = false;
@@ -57,7 +68,7 @@ export default function SupplierAdministration({ onChanged }) {
   async function handleCreate(e) {
     e.preventDefault();
     if (!crmAccountId) { setMessage({ tone: "fo-warning", text: "Select the vendor organization." }); return; }
-    if (!supplierIdIsValid(supplierId)) { setMessage({ tone: "fo-warning", text: "Supplier id: 1-64 letters, digits, '-' or '_'." }); return; }
+    if (!supplierIdIsValid(supplierId)) { setMessage({ tone: "fo-warning", text: "Supplier ID must be 1-64 letters, digits, '-' or '_'." }); return; }
     await run(() => createSupplierRelationship({ supplierId, crmAccountId,
       ...(optional(vendorNumber) ?? { vendorNumber: vendorNumber.trim() }), ...(optional(contactName) ?? { contactName: contactName.trim() }),
       ...(optional(email) ?? { email: email.trim() }) }), "Supplier relationship created.");
@@ -65,33 +76,40 @@ export default function SupplierAdministration({ onChanged }) {
 
   return (
     <section className="fo-card" aria-label="Supplier administration">
-      <h3>Supplier administration</h3>
+      <h3>Supplier Administration</h3>
       {message && <p className={message.tone} role="status">{message.text}</p>}
       <form className="fo-form" onSubmit={handleCreate}>
-        <label htmlFor="sup-org">Vendor organization</label>
+        <label htmlFor="sup-org">Vendor Organization</label>
         {orgs.loading ? <p className="fo-muted" role="status">Loading vendor organizations…</p> : (
           <select id="sup-org" value={crmAccountId} onChange={(e) => setCrmAccountId(e.target.value)}>
             <option value="">{orgs.items.length === 0 ? "No vendor organization without a supplier" : "Select…"}</option>
             {orgs.items.map((o) => <option key={o.crmAccountId} value={o.crmAccountId}>{o.name}</option>)}
           </select>
         )}
-        <label htmlFor="sup-id">Supplier id</label>
+        <label htmlFor="sup-id">Supplier ID</label>
         <input id="sup-id" type="text" value={supplierId} onChange={(e) => setSupplierId(e.target.value)} required />
-        <label htmlFor="sup-vendor-number">Vendor number (optional)</label>
+        <label htmlFor="sup-vendor-number">Vendor Number (Optional)</label>
         <input id="sup-vendor-number" type="text" value={vendorNumber} onChange={(e) => setVendorNumber(e.target.value)} />
-        <label htmlFor="sup-contact">Purchasing contact (optional)</label>
+        <label htmlFor="sup-contact">Purchasing Contact (Optional)</label>
         <input id="sup-contact" type="text" value={contactName} onChange={(e) => setContactName(e.target.value)} />
-        <label htmlFor="sup-email">Order email (optional)</label>
+        <label htmlFor="sup-email">Order Email (Optional)</label>
         <input id="sup-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <div className="disp-board-toolbar"><Button type="submit" loading={busy}>Create supplier</Button></div>
+        <div className="disp-board-toolbar"><Button type="submit" loading={busy}>Create Supplier</Button></div>
       </form>
       {suppliers.length > 0 && (
         <table className="fo-table" aria-label="Supplier status">
+          <thead>
+            <tr>
+              <SortableHeader columnKey="name" label="Supplier" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
+              <th scope="col"><span className="fo-sr-only">Actions</span></th>
+            </tr>
+          </thead>
           <tbody>
-            {suppliers.map((s) => (
+            {sortedSuppliers.map((s) => (
               <tr key={s.supplierId ?? s.id}>
                 <td>{s.name}</td>
-                <td>{s.status === "ACTIVE" ? "Supplier active" : s.status === "INACTIVE" ? "Supplier inactive" : "Ungoverned"}</td>
+                <td>{supplierStatusLabel(s.status)}</td>
                 <td>
                   {(s.status === "ACTIVE" || s.status === "INACTIVE") && (
                     <Button variant="tertiary" disabled={busy} onClick={() => run(() => setSupplierRelationshipStatus({

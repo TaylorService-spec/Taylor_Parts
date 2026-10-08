@@ -23,7 +23,62 @@ import { useConditionVocabulary } from "./useConditionVocabulary.js";
 import { Link } from "react-router-dom";
 import { workforceApiClient } from "../../services/workforceApiClient.js";
 import Autocomplete from "../../shared/ui/Autocomplete.jsx";
-import { operatingCompanyLabel } from "../../shared/display/displayLabels.js";
+import { identifierLabel, operatingCompanyLabel, statusLabel, titleCase } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+
+const scopeWords = (h) => {
+  const type = !h.scopeType || h.scopeType === "global" ? "All (Global)" : titleCase(h.scopeType);
+  if (!h.scopeValue) return type;
+  return `${type} · ${h.scopeType === "operatingCompany" ? operatingCompanyLabel(h.scopeValue) : h.scopeValue}`;
+};
+
+const HOLDER_COLUMNS = Object.freeze({
+  holder: { value: (h) => principalLabel(h) },
+  scope: { value: scopeWords },
+  since: { value: (h) => h.grantedAt },
+});
+
+function HoldersTable({ holders, onRemove }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: holders, columns: HOLDER_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table fo-table--stack" aria-label="Holders">
+      <thead><tr>{header("holder", "Holder")}{header("scope", "Scope")}{header("since", "Since")}<th>Administer</th></tr></thead>
+      <tbody>
+        {sorted.map((h) => (
+          <tr key={h.assignmentId} data-holder={h.employeeId ?? h.principalId}>
+            <td data-label="Holder">{h.employeeId ? <Link to={`/administration/users/${h.employeeId}`}>{principalLabel(h)}</Link> : principalLabel(h)}
+              {" "}<span className="fo-muted">ID <code>{h.principalId}</code></span>{h.employeeId ? null : <span className="fo-muted"> · no linked Employee</span>}</td>
+            <td data-label="Scope" className="fo-muted">{scopeWords(h)}</td>
+            <td data-label="Since" className="fo-muted">{h.grantedAt ?? "—"}</td>
+            <td data-label="Administer"><Button size="sm" variant="secondary" onClick={() => onRemove(h)}>Remove</Button></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+const ASSIGNMENT_EVENT_COLUMNS = Object.freeze({
+  when: { value: (ev) => ev.occurredAt },
+  what: { value: (ev) => titleCase(ev.action) },
+  by: { value: (ev) => ev.actorUid },
+  reason: { value: (ev) => ev.reason },
+});
+
+function AssignmentHistoryTable({ events }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: events, columns: ASSIGNMENT_EVENT_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table fo-table--stack" aria-label="Assignment history">
+      <thead><tr>{header("when", "When")}{header("what", "What")}{header("by", "By")}{header("reason", "Reason")}</tr></thead>
+      <tbody>{sorted.map((ev) => (
+        <tr key={ev.id}><td data-label="When">{ev.occurredAt}</td><td data-label="What">{titleCase(ev.action)}</td>
+          <td data-label="By"><code>{ev.actorUid}</code></td><td data-label="Reason">{ev.reason ?? "—"}</td></tr>))}</tbody>
+    </table>
+  );
+}
 
 /**
  * #210: ASSIGN this Security Role to an employee, from the role -- the SAME governed assignRole the employee record uses, with
@@ -46,13 +101,13 @@ function AssignRoleToEmployee({ api, workforce, role, onChanged }) {
   const [result, setResult] = useState(null);
   const scopeOptions = (scopes.data?.scopeTypes ?? [])
     .filter((s) => s.supported && s.scopeType !== "global")
-    .flatMap((s) => (s.values ?? []).map((v) => ({ value: `${s.scopeType}|${v.value}`, label: `${s.label ?? s.scopeType}: ${v.label ?? v.value}` })));
+    .flatMap((s) => (s.values ?? []).map((v) => ({ value: `${s.scopeType}|${v.value}`, label: `${s.label ?? titleCase(s.scopeType)}: ${v.label ?? (s.scopeType === "operatingCompany" ? operatingCompanyLabel(v.value) : v.value)}` })));
   const submit = async (e) => {
     e.preventDefault();
     if (!person) { setResult({ error: "Choose an employee with an application user." }); return; }
     const [scopeType, scopeValue] = scope === "global" ? [null, null] : scope.split("|");
     const res = await api.assignRole({ principalId: person.principalId, roleId: role.roleId ?? role.id, reason, scopeType, scopeValue });
-    setResult(res.ok ? { ok: `Assigned ${role.name ?? role.roleKey} to ${person.displayName}.` } : { error: `${res.code}: ${res.message}` });
+    setResult(res.ok ? { ok: `Assigned ${identifierLabel(role.roleKey, role.name)} to ${person.displayName}.` } : { error: `${res.code}: ${res.message}` });
     if (res.ok) { setReason(""); onChanged(); }
   };
   return (
@@ -110,7 +165,7 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, work
   return (
     <section className="fo-panel" aria-label={`Security Role ${role.name ?? roleKey}`} data-security-role={roleKey}>
       <h3>
-        {role.name ?? roleKey} <span className="fo-muted">· Security Role <code>{roleKey}</code>{role.protected ? " · protected" : ""}</span>
+        {identifierLabel(roleKey, role.name)} <span className="fo-muted">· Security Role <code>{roleKey}</code>{role.protected ? " · Protected" : ""}</span>
       </h3>
       {role.description ? <p className="fo-muted">{role.description}</p> : null}
       {detail.status === "loading" ? <p className="fo-muted" role="status">Re-reading from the server…</p> : null}
@@ -120,44 +175,26 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, work
         <p className="fo-muted">No Principal holds this Security Role.</p>
       ) : (
         <>
-        <label className="fo-form-field"><span>Reason for a removal (recorded)</span>
+        <label className="fo-form-field"><span>Reason for a Removal (Recorded)</span>
           <input className="fo-input" aria-label="Removal reason" value={removeReason} onChange={(e) => setRemoveReason(e.target.value)} /></label>
         {removeResult?.ok && <p className="fo-success" role="status">{removeResult.ok}</p>}
         {removeResult?.error && <p className="fo-warning" role="alert">{removeResult.error}</p>}
-        <table className="fo-table fo-table--stack" aria-label="Holders">
-          <thead><tr><th>Holder</th><th>Scope</th><th>Since</th><th>Administer</th></tr></thead>
-          <tbody>
-            {holders.map((h) => (
-              <tr key={h.assignmentId} data-holder={h.employeeId ?? h.principalId}>
-                <td data-label="Holder">{h.employeeId ? <Link to={`/administration/users/${h.employeeId}`}>{principalLabel(h)}</Link> : principalLabel(h)}
-                  {" "}<span className="fo-muted">ID <code>{h.principalId}</code></span>{h.employeeId ? null : <span className="fo-muted"> · no linked Employee</span>}</td>
-                <td data-label="Scope" className="fo-muted">{h.scopeType}{h.scopeValue ? ` · ${h.scopeValue}` : ""}</td>
-                <td data-label="Since" className="fo-muted">{h.grantedAt ?? "—"}</td>
-                <td data-label="Administer"><Button size="sm" variant="secondary" onClick={() => remove(h)}>Remove</Button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <HoldersTable holders={holders} onRemove={remove} />
         </>
       )}
-      <h4>Assign to an employee</h4>
+      <h4>Assign to an Employee</h4>
       <AssignRoleToEmployee api={api} workforce={workforce} role={{ ...role, roleKey }} onChanged={onChanged} />
-      <h4>Assignment history</h4>
+      <h4>Assignment History</h4>
       {Array.isArray(assignments.data) && assignments.data.length > 0 ? (
-        <table className="fo-table fo-table--stack" aria-label="Assignment history">
-          <thead><tr><th>When</th><th>What</th><th>By</th><th>Reason</th></tr></thead>
-          <tbody>{assignments.data.map((ev) => (
-            <tr key={ev.id}><td data-label="When">{ev.occurredAt}</td><td data-label="What">{ev.action}</td>
-              <td data-label="By"><code>{ev.actorUid}</code></td><td data-label="Reason">{ev.reason ?? "—"}</td></tr>))}</tbody>
-        </table>
+        <AssignmentHistoryTable events={assignments.data} />
       ) : <p className="fo-muted">{assignments.status === "failed" ? "Assignment history is not available to you (audit.event.read)." : "No recorded events for this Role yet."}</p>}
 
-      <h4>Objects &amp; actions</h4>
+      <h4>Objects &amp; Actions</h4>
       <p className="fo-muted">
         Every governed action, grouped by Object. Expand an Object to administer its actions for this Role.
       </p>
       <table className="fo-table" aria-label="Objects and actions">
-        <thead><tr><th>Object / action</th><th>State</th><th>Administer</th></tr></thead>
+        <thead><tr><th>Object / Action</th><th>State</th><th>Administer</th></tr></thead>
         <tbody>
           {groups.map((group) => {
             const open = openObject === group.objectKey;
@@ -188,7 +225,7 @@ function ObjectGroupRows({ group, open, onToggle, api, roleKey, vocabulary, onCh
       <tr>
         <td colSpan={3}>
           <Button type="button" variant="secondary" onClick={onToggle} aria-expanded={open}>
-            {open ? "▾" : "▸"} {group.objectKey}
+            {open ? "▾" : "▸"} {titleCase(group.objectKey)} <code>{group.objectKey}</code>
           </Button>
           <span className="fo-muted">{` ${group.heldCount} of ${group.actions.length} held`}</span>
         </td>
@@ -196,7 +233,7 @@ function ObjectGroupRows({ group, open, onToggle, api, roleKey, vocabulary, onCh
       {open ? group.actions.map((action) => (
         <tr key={action.capabilityKey} className="fo-row-nested" data-role-action={action.capabilityKey}>
           <td>
-            {action.displayLabel ?? "Unlabelled action"}{" "}
+            {action.displayLabel ?? (action.actionKey ? titleCase(action.actionKey) : "Unlabelled action")}{" "}
             <span className="fo-muted"><code>{action.capabilityKey}</code></span>
             {action.forbiddenBy ? <span className="fo-muted">{` · ${action.forbiddenBy}`}</span> : null}
           </td>
@@ -219,25 +256,37 @@ function ObjectGroupRows({ group, open, onToggle, api, roleKey, vocabulary, onCh
   );
 }
 
+const DECISION_COLUMNS = Object.freeze({
+  when: { value: (d) => d.decidedAt },
+  capability: { value: (d) => d.capabilityKey },
+  decision: { value: (d) => statusLabel(d.decision) },
+  reason: { value: (d) => d.reason },
+  actor: { value: (d) => d.actorPrincipalId },
+  current: { value: (d) => (d.supersededAt ? `superseded ${d.supersededAt}` : "current") },
+});
+const NO_ROWS = Object.freeze([]);
+
 function DecisionHistory({ read }) {
-  const rows = Array.isArray(read.data) ? read.data : [];
+  const rows = Array.isArray(read.data) ? read.data : NO_ROWS;
+  const { sort, toggle, sorted } = useTableSort({ rows, columns: DECISION_COLUMNS });
+  const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
   return (
     <div className="fo-cp-section" aria-label="Decision history">
-      <h4>Decision history</h4>
+      <h4>Decision History</h4>
       {!read.data ? <ReadState read={read} what="the decision history" /> : null}
       {read.data && rows.length === 0 ? <p className="fo-muted">No Administration decision has been recorded for this Security Role.</p> : null}
       {rows.length > 0 ? (
         <table className="fo-table" aria-label="Decision history">
-          <thead><tr><th>When</th><th>Capability</th><th>Decision</th><th>Reason</th><th>Actor</th><th>Current</th></tr></thead>
+          <thead><tr>{header("when", "When")}{header("capability", "Capability")}{header("decision", "Decision")}{header("reason", "Reason")}{header("actor", "Actor")}{header("current", "Current")}</tr></thead>
           <tbody>
-            {rows.map((d, i) => (
+            {sorted.map((d, i) => (
               <tr key={d.id ?? `${d.capabilityKey}-${d.decidedAt}-${i}`}>
                 <td className="fo-muted">{d.decidedAt ?? "—"}</td>
                 <td><code>{d.capabilityKey}</code></td>
-                <td>{d.decision}{d.requiresCondition ? " · requires condition" : ""}</td>
+                <td>{statusLabel(d.decision)} <code>{d.decision}</code>{d.requiresCondition ? " · requires condition" : ""}</td>
                 <td>{d.reason}</td>
                 <td className="fo-muted"><code>{d.actorPrincipalId ?? "—"}</code></td>
-                <td className="fo-muted">{d.supersededAt ? `superseded ${d.supersededAt}` : "current"}</td>
+                <td className="fo-muted">{d.supersededAt ? `Superseded ${d.supersededAt}` : "Current"}</td>
               </tr>
             ))}
           </tbody>

@@ -14,6 +14,7 @@ import { captureShadowParity } from "../../domain/partsShadowParityCapture";
 import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView, sanitizedEvidencePayload } from "../../domain/partsShadowParityView";
 import { defaultReaders } from "./partsShadowParityReaders";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
 
 export default function PartsShadowParityDiagnostics({ readers }) {
   const { role } = useAuth();
@@ -65,14 +66,14 @@ export default function PartsShadowParityDiagnostics({ readers }) {
 
   return (
     <div>
-      <h2>Parts shadow-parity (diagnostic — non-authoritative)</h2>
+      <h2>Parts Shadow-Parity (Diagnostic — Non-Authoritative)</h2>
       <p className="fo-parity__hint">
         Read-only comparison of the canonical Part identity model against the current static-backed
         workspace model. Evidence only; changes no product behavior, is not persisted, and clears on refresh.
         Only a PASS result can qualify for Decision #44; FAIL/BLOCKED results are diagnostic evidence only.
       </p>
       <Button variant="primary" onClick={run} disabled={running} loading={running}>
-        Run shadow-parity
+        Run Shadow-Parity
       </Button>
       {v && v.invalid ? <p>Diagnostics unavailable (unrecognized result).</p> : null}
       {v && !v.invalid ? (
@@ -88,26 +89,26 @@ export default function PartsShadowParityDiagnostics({ readers }) {
           </div>
           {/* Sanitized fields rendered for EVERY recognized result (— where absent). */}
           <ul className="fo-parity__list">
-            <li className="fo-parity__cell">status: {v.status}</li>
-            <li className="fo-parity__cell">capturedAtStart: {m.capturedAtStart ?? "—"}</li>
-            <li className="fo-parity__cell">capturedAtEnd: {m.capturedAtEnd ?? "—"}</li>
-            <li className="fo-parity__cell">runId: {m.runId ?? "—"}</li>
-            <li className="fo-parity__cell">buildId: {m.adapterCommit ?? "—"}</li>
-            <li className="fo-parity__cell">staticCatalogHash: {m.staticCatalogHash ?? "—"}</li>
-            <li className="fo-parity__cell">sourceCounts: {m.sourceCounts ? JSON.stringify(m.sourceCounts) : "—"}</li>
-            <li className="fo-parity__cell">canonicalMatch: {c.canonicalMatch ?? "—"}</li>
-            <li className="fo-parity__cell">staticOnlyExcluded: {c.staticOnlyExcluded ?? "—"}</li>
-            <li className="fo-parity__cell">rowMissing: {c.rowMissing ?? "—"}</li>
-            <li className="fo-parity__cell">fieldDivergence: {c.fieldDivergence ?? "—"}</li>
-            <li className="fo-parity__cell">availabilityDivergence: {c.availabilityDivergence ?? "—"}</li>
-            <li className="fo-parity__cell">workflowDivergence: {c.workflowDivergence ?? "—"}</li>
-            <li className="fo-parity__cell">unexpectedUnmatched: {c.unexpectedUnmatched ?? "—"}</li>
-            <li className="fo-parity__cell">structuralIssue: {c.structuralIssue ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="status">Status: {statusLabel(v.status)}</li>
+            <li className="fo-parity__cell" data-evidence-key="capturedAtStart">Captured At Start: {m.capturedAtStart ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="capturedAtEnd">Captured At End: {m.capturedAtEnd ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="runId">Run ID: {m.runId ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="buildId">Build ID: {m.adapterCommit ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="staticCatalogHash">Static Catalog Hash: {m.staticCatalogHash ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="sourceCounts">Source Counts: {m.sourceCounts ? JSON.stringify(m.sourceCounts) : "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="canonicalMatch">Canonical Match: {c.canonicalMatch ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="staticOnlyExcluded">Static-Only Excluded: {c.staticOnlyExcluded ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="rowMissing">Row Missing: {c.rowMissing ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="fieldDivergence">Field Divergence: {c.fieldDivergence ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="availabilityDivergence">Availability Divergence: {c.availabilityDivergence ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="workflowDivergence">Workflow Divergence: {c.workflowDivergence ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="unexpectedUnmatched">Unexpected Unmatched: {c.unexpectedUnmatched ?? "—"}</li>
+            <li className="fo-parity__cell" data-evidence-key="structuralIssue">Structural Issue: {c.structuralIssue ?? "—"}</li>
           </ul>
           <Button variant="secondary" onClick={copyEvidence} className="fo-parity__copy-btn">
-            Copy sanitized evidence
+            Copy Sanitized Evidence
           </Button>
-          {copied ? <span className="fo-parity__copied">copied</span> : null}
+          {copied ? <span className="fo-parity__copied">Copied</span> : null}
         </>
       ) : null}
     </div>

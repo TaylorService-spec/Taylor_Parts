@@ -17,6 +17,7 @@ import FailureState from "../ui/FailureState";
 import { Button } from "../ui/primitives/index.js";
 import SupplierPicker from "../supplier/SupplierPicker.jsx";
 import { isSelectableSupplier } from "../../domain/supplierPicker.js";
+import { statusLabel } from "../display/displayLabels.js";
 import { usePurchaseOrderSupplierOptions } from "../../hooks/usePurchaseOrderSupplierOptions.js";
 
 // Wave 6 -- queue consolidation (Owner directive, Option A). Extracted from
@@ -54,16 +55,16 @@ function RequestSummary({ request, resolveName }) {
           <td>{resolveName(request.partId)}</td>
         </tr>
         <tr>
-          <td>Requested qty</td>
+          <td>Requested Qty</td>
           <td>{getDisplayQty(request)}</td>
         </tr>
         <tr>
           <td>Urgency</td>
           <td>
             {request.urgency ? (
-              <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
+              <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={statusLabel(request.urgency)} />
             ) : (
-              <StatusPill tone="unknown" label="Needs planning" />
+              <StatusPill tone="unknown" label="Needs Planning" />
             )}
           </td>
         </tr>
@@ -177,22 +178,22 @@ function PurchasingInProgressCard({ request, resolveName }) {
         <table className="fo-table">
           <tbody>
             <tr>
-              <td>Purchasing started</td>
+              <td>Purchasing Started</td>
               <td>{formatTimestamp(request.purchasingStartedAt)}</td>
             </tr>
             {request.lastPurchasingUpdateAt && (
               <>
                 <tr>
-                  <td>Last update</td>
+                  <td>Last Update</td>
                   <td>{formatTimestamp(request.lastPurchasingUpdateAt)}</td>
                 </tr>
                 <tr>
-                  <td>Vendor contacted</td>
+                  <td>Vendor Contacted</td>
                   <td>{request.vendorContacted ? "Yes" : "No"}</td>
                 </tr>
                 {request.expectedAvailabilityDate && (
                   <tr>
-                    <td>Expected availability</td>
+                    <td>Expected Availability</td>
                     <td>{request.expectedAvailabilityDate}</td>
                   </tr>
                 )}
@@ -213,9 +214,9 @@ function PurchasingInProgressCard({ request, resolveName }) {
           <textarea id="pa-purchasing-notes" value={purchasingNotes} onChange={(e) => setPurchasingNotes(e.target.value)} />
           <label>
             <input type="checkbox" checked={vendorContacted} onChange={(e) => setVendorContacted(e.target.checked)} /> Vendor
-            contacted
+            Contacted
           </label>
-          <label htmlFor="pa-expected-availability">Expected availability date</label>
+          <label htmlFor="pa-expected-availability">Expected Availability Date</label>
           <input
             id="pa-expected-availability"
             type="date"
@@ -243,10 +244,10 @@ function PurchasingInProgressCard({ request, resolveName }) {
             onSelect={setSelectedSupplier}
           />
 
-          <label htmlFor="pa-po-number">External PO/reference number</label>
+          <label htmlFor="pa-po-number">External PO/Reference Number</label>
           <input id="pa-po-number" type="text" value={externalPoNumber} onChange={(e) => setExternalPoNumber(e.target.value)} required />
 
-          <label htmlFor="pa-po-qty">Ordered quantity</label>
+          <label htmlFor="pa-po-qty">Ordered Quantity</label>
           <input
             id="pa-po-qty"
             type="number"
@@ -257,16 +258,16 @@ function PurchasingInProgressCard({ request, resolveName }) {
             required
           />
 
-          <label htmlFor="pa-po-unit-price">Unit purchase price</label>
+          <label htmlFor="pa-po-unit-price">Unit Purchase Price</label>
           <input id="pa-po-unit-price" type="text" inputMode="decimal" value={unitPriceMajor} onChange={(e) => setUnitPriceMajor(e.target.value)} required />
 
           <label htmlFor="pa-po-currency">Currency</label>
           <input id="pa-po-currency" type="text" maxLength={3} value={currency} onChange={(e) => setCurrency(e.target.value)} required />
 
-          <label htmlFor="pa-po-ordered-date">Ordered date</label>
+          <label htmlFor="pa-po-ordered-date">Ordered Date</label>
           <input id="pa-po-ordered-date" type="date" value={orderedDate} onChange={(e) => setOrderedDate(e.target.value)} required />
 
-          <label htmlFor="pa-po-expected-arrival">Expected arrival date (optional)</label>
+          <label htmlFor="pa-po-expected-arrival">Expected Arrival Date (Optional)</label>
           <input id="pa-po-expected-arrival" type="date" value={expectedArrivalDate} onChange={(e) => setExpectedArrivalDate(e.target.value)} />
 
           {poError && <p className="fo-muted" role="alert">{poError}</p>}
@@ -320,20 +321,20 @@ function OrderedCard({ request, resolveName }) {
               <td>{purchaseOrder.supplierName}</td>
             </tr>
             <tr>
-              <td>PO / reference #</td>
+              <td>PO / Reference #</td>
               <td>{purchaseOrder.externalPoNumber}</td>
             </tr>
             <tr>
-              <td>Ordered quantity</td>
+              <td>Ordered Quantity</td>
               <td>{purchaseOrder.orderedQuantity}</td>
             </tr>
             <tr>
-              <td>Ordered date</td>
+              <td>Ordered Date</td>
               <td>{purchaseOrder.orderedDate}</td>
             </tr>
             {purchaseOrder.expectedArrivalDate && (
               <tr>
-                <td>Expected arrival</td>
+                <td>Expected Arrival</td>
                 <td>{purchaseOrder.expectedArrivalDate}</td>
               </tr>
             )}
@@ -369,7 +370,7 @@ function TerminalCard({ request, resolveName }) {
 
   return (
     <div className="fo-card">
-      <h3>Reorder Request -- {HISTORY_STATUS_LABEL[request.status] ?? request.status}</h3>
+      <h3>Reorder Request -- {statusLabel(request.status, HISTORY_STATUS_LABEL)}</h3>
       <RequestSummary request={request} resolveName={resolveName} />
       {request.status === REORDER_REQUEST_STATUS.CANCELLED && (
         <table className="fo-table">
@@ -497,8 +498,8 @@ export function RequestCards({ requests, resolveName, onSelect }) {
             title={resolveName(request.partId)}
             status={
               request.urgency
-                ? { tone: inventoryUrgencyTone(request.urgency), label: request.urgency }
-                : { tone: "unknown", label: "Needs planning" }
+                ? { tone: inventoryUrgencyTone(request.urgency), label: statusLabel(request.urgency) }
+                : { tone: "unknown", label: "Needs Planning" }
             }
             metadata={[{ key: "qty", label: "Qty", value: getDisplayQty(request) }]}
             actions={

@@ -123,12 +123,12 @@ export default function SavedReports({ hasCapability = () => false, accessVersio
   return (
     <div className="fo-main">
       <div className="fo-panel">
-        <h2>Saved reports</h2>
+        <h2>Saved Reports</h2>
         <p className="fo-muted">Your saved reports are private to you. Only the actions you're authorized for are shown.</p>
 
         {can(CAP.create) && (
           <div className="fo-form">
-            <Button type="button" variant="primary" className="fo-btn-large" onClick={onNew} disabled={busy}>New saved report</Button>
+            <Button type="button" variant="primary" className="fo-btn-large" onClick={onNew} disabled={busy}>New Saved Report</Button>
           </div>
         )}
 
@@ -159,7 +159,7 @@ function ListArea(props) {
   const { status, reports, onRetry } = props;
   if (status === LIST_STATUS.LOADING) return <LoadingState>Loading your saved reports…</LoadingState>;
   if (status === LIST_STATUS.DENIED) {
-    return <FailureState title="Saved reports aren't available" message="You don't have access to saved reports." />;
+    return <FailureState title="Saved Reports Aren't Available" message="You don't have access to saved reports." />;
   }
   if (status === LIST_STATUS.UNAVAILABLE || status === LIST_STATUS.FAILURE) {
     const message = status === LIST_STATUS.UNAVAILABLE
@@ -169,15 +169,15 @@ function ListArea(props) {
       <div className="fo-state fo-tone-warning" role="alert">
         <p className="fo-state-title">Couldn't load saved reports</p>
         <p className="fo-warning fo-state-message">{message}</p>
-        <Button type="button" variant="secondary" onClick={onRetry}>Try again</Button>
+        <Button type="button" variant="secondary" onClick={onRetry}>Try Again</Button>
       </div>
     );
   }
   if (reports.length === 0) {
-    return <EmptyState title="No saved reports" message="Create a saved report to see it listed here." />;
+    return <EmptyState title="No Saved Reports" message="Create a saved report to see it listed here." />;
   }
   return (
-    <ul className="fo-saved-report-list" aria-label="Your saved reports">
+    <ul className="fo-saved-report-list" aria-label="Your Saved Reports">
       {reports.map((report) => <SavedReportRow key={report.id} report={report} {...props} />)}
     </ul>
   );
@@ -215,7 +215,7 @@ function SavedReportRow({
           {can(CAP.duplicate) && <Button type="button" variant="secondary" onClick={() => onDuplicate(report.id)} disabled={busy} aria-label={`Duplicate ${report.name}`}>Duplicate</Button>}
           {can(CAP.delete) && (confirmingDeleteId === report.id ? (
             <>
-              <Button type="button" variant="destructive" onClick={() => onDelete(report.id)} disabled={busy} aria-label={`Confirm delete ${report.name}`}>Confirm delete</Button>
+              <Button type="button" variant="destructive" onClick={() => onDelete(report.id)} disabled={busy} aria-label={`Confirm delete ${report.name}`}>Confirm Delete</Button>
               <Button type="button" variant="secondary" onClick={() => setConfirmingDeleteId(null)}>Cancel</Button>
             </>
           ) : (

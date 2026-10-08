@@ -188,11 +188,11 @@ describe("the Job Role remediation count is its own governed read", () => {
       }),
     );
     await screen.findByText("2 Employees have no Job Role");
-    fireEvent.click(screen.getByRole("button", { name: "Show more Employees without a Job Role" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show More Employees Without a Job Role" }));
     expect(await screen.findByRole("link", { name: "Sol Vega" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Rae Quinn" })).toBeTruthy();
     expect(workforce.call).toHaveBeenCalledWith("listEmployeesWithoutJobRole", { cursor: "jr-cursor" });
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Show more Employees without a Job Role" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Show More Employees Without a Job Role" })).toBeNull());
   });
 
   it("a zero count renders nothing", async () => {

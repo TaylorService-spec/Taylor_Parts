@@ -244,9 +244,9 @@ export default function ContactImportModal({ accountId, accountName, existingCon
               </div>
             ) : (
               <dl className="fo-wizard-review fo-contact-import-summary">
-                <dt>To import</dt>
+                <dt>To Import</dt>
                 <dd>{validation.accepted.length}</dd>
-                <dt>Skipped (duplicates)</dt>
+                <dt>Skipped (Duplicates)</dt>
                 <dd>{dupCount}</dd>
                 <dt>Rejected</dt>
                 <dd>{otherRejected.length}</dd>

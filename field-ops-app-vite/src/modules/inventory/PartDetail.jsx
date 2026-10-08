@@ -58,6 +58,10 @@ import { useManufacturerCatalog } from "../../hooks/useManufacturerCatalog";
 import { MANUFACTURER_CATALOG_VIEW_STATE, manufacturerCatalogViewState, manufacturerNameById } from "../../domain/manufacturerCatalogView";
 import { inventoryUrgencyTone, inventoryUrgencyLabel } from "../../domain/inventoryUrgencyTone.js";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { toMillis } from "../../domain/timestampMillis.js";
 import {
   partRecordIdentity,
   partRecordKicker,
@@ -314,28 +318,28 @@ function ReorderRequestReview({ request, onReviewed }) {
             <td>{formatTimestamp(request.createdAt)}</td>
           </tr>
           <tr>
-            <td>Requested qty</td>
+            <td>Requested Qty</td>
             <td>{getDisplayQty(request)}</td>
           </tr>
           <tr>
-            <td>Recommendation status</td>
-            <td>{request.recommendationStatus ?? "—"}</td>
+            <td>Recommendation Status</td>
+            <td>{request.recommendationStatus ? statusLabel(request.recommendationStatus) : "—"}</td>
           </tr>
           <tr>
-            <td>Quantity source</td>
-            <td>{request.quantitySource ?? "—"}</td>
+            <td>Quantity Source</td>
+            <td>{request.quantitySource ? statusLabel(request.quantitySource) : "—"}</td>
           </tr>
           <tr>
-            <td>Recommended qty (historical snapshot)</td>
+            <td>Recommended Qty (Historical Snapshot)</td>
             <td>{request.recommendedQty ?? "—"}</td>
           </tr>
           <tr>
-            <td>Risk at request time</td>
+            <td>Risk at Request Time</td>
             <td>
               {request.urgency ? (
                 <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={inventoryUrgencyLabel(request.urgency)} />
               ) : (
-                <StatusPill tone="unknown" label="Needs planning" />
+                <StatusPill tone="unknown" label="Needs Planning" />
               )}
             </td>
           </tr>
@@ -359,7 +363,7 @@ function ReorderRequestReview({ request, onReviewed }) {
           consequence="This rejects the reorder request. The record remains visible for audit purposes."
           confirmLabel="Confirm Rejection"
           requireReason
-          reasonLabel="Review notes (required to reject)"
+          reasonLabel="Review Notes (Required to Reject)"
           reasonRequiredMessage="Enter review notes to reject."
           onConfirm={async (notes) => {
             // Exact Reject payload + transition preserved.
@@ -441,7 +445,7 @@ function ReorderRequestAssignment({ request, onAssigned }) {
             <td>{formatTimestamp(request.reviewedAt)}</td>
           </tr>
           <tr>
-            <td>Requested qty</td>
+            <td>Requested Qty</td>
             <td>{getDisplayQty(request)}</td>
           </tr>
           <tr>
@@ -450,7 +454,7 @@ function ReorderRequestAssignment({ request, onAssigned }) {
               {request.urgency ? (
                 <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={inventoryUrgencyLabel(request.urgency)} />
               ) : (
-                <StatusPill tone="unknown" label="Needs planning" />
+                <StatusPill tone="unknown" label="Needs Planning" />
               )}
             </td>
           </tr>
@@ -515,7 +519,7 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
       <table className="fo-table">
         <tbody>
           <tr>
-            <td>Assigned to</td>
+            <td>Assigned To</td>
             <td>{resolveActorDisplayName(request.assignedEmployeeId, employeeDirectory)}</td>
           </tr>
           <tr>
@@ -523,7 +527,7 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
             <td>{formatTimestamp(request.assignedAt)}</td>
           </tr>
           <tr>
-            <td>Requested qty</td>
+            <td>Requested Qty</td>
             <td>{getDisplayQty(request)}</td>
           </tr>
           <tr>
@@ -532,7 +536,7 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
               {request.urgency ? (
                 <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={inventoryUrgencyLabel(request.urgency)} />
               ) : (
-                <StatusPill tone="unknown" label="Needs planning" />
+                <StatusPill tone="unknown" label="Needs Planning" />
               )}
             </td>
           </tr>
@@ -600,30 +604,30 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
       <table className="fo-table">
         <tbody>
           <tr>
-            <td>Assigned to</td>
+            <td>Assigned To</td>
             <td>{resolveActorDisplayName(request.assignedEmployeeId, employeeDirectory)}</td>
           </tr>
           <tr>
-            <td>Purchasing started</td>
+            <td>Purchasing Started</td>
             <td>{formatTimestamp(request.purchasingStartedAt)}</td>
           </tr>
           {request.lastPurchasingUpdateAt && (
             <>
               <tr>
-                <td>Last update</td>
+                <td>Last Update</td>
                 <td>{formatTimestamp(request.lastPurchasingUpdateAt)}</td>
               </tr>
               <tr>
-                <td>Updated by</td>
+                <td>Updated By</td>
                 <td>{resolveActorDisplayName(request.lastPurchasingUpdateBy, employeeDirectory)}</td>
               </tr>
               <tr>
-                <td>Vendor contacted</td>
+                <td>Vendor Contacted</td>
                 <td>{request.vendorContacted ? "Yes" : "No"}</td>
               </tr>
               {request.expectedAvailabilityDate && (
                 <tr>
-                  <td>Expected availability</td>
+                  <td>Expected Availability</td>
                   <td>{request.expectedAvailabilityDate}</td>
                 </tr>
               )}
@@ -654,9 +658,9 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
               checked={vendorContacted}
               onChange={(e) => setVendorContacted(e.target.checked)}
             />
-            {" "}Vendor contacted
+            {" "}Vendor Contacted
           </label>
-          <label htmlFor="expected-availability-date">Expected availability date</label>
+          <label htmlFor="expected-availability-date">Expected Availability Date</label>
           <input
             id="expected-availability-date"
             type="date"
@@ -769,7 +773,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
           onSelect={setSelectedSupplier}
         />
 
-        <label htmlFor="po-external-number">External PO/reference number</label>
+        <label htmlFor="po-external-number">External PO/Reference Number</label>
         <input
           id="po-external-number"
           type="text"
@@ -778,7 +782,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
           required
         />
 
-        <label htmlFor="po-ordered-qty">Ordered quantity</label>
+        <label htmlFor="po-ordered-qty">Ordered Quantity</label>
         <input
           id="po-ordered-qty"
           type="number"
@@ -790,7 +794,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
         {/* THE COMMITTED PRICE. Placed directly after quantity because that is the pair a purchasing
             person reads together -- how many, at what each -- and separating them would invite the
             price to be checked against the wrong line. */}
-        <label htmlFor="po-unit-price">Unit purchase price</label>
+        <label htmlFor="po-unit-price">Unit Purchase Price</label>
         <input
           id="po-unit-price"
           type="text"
@@ -817,7 +821,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
           required
         />
 
-        <label htmlFor="po-ordered-date">Ordered date</label>
+        <label htmlFor="po-ordered-date">Ordered Date</label>
         <input
           id="po-ordered-date"
           type="date"
@@ -826,7 +830,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
           required
         />
 
-        <label htmlFor="po-expected-arrival">Expected arrival date (optional)</label>
+        <label htmlFor="po-expected-arrival">Expected Arrival Date (Optional)</label>
         <input
           id="po-expected-arrival"
           type="date"
@@ -861,7 +865,7 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided, hasCapabi
       <table className="fo-table">
         <tbody>
           <tr>
-            <td>Ordered by</td>
+            <td>Ordered By</td>
             <td>{resolveActorDisplayName(request.orderedBy, employeeDirectory)}</td>
           </tr>
           <tr>
@@ -881,20 +885,20 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided, hasCapabi
               <td>{purchaseOrder.supplierName}</td>
             </tr>
             <tr>
-              <td>PO / reference #</td>
+              <td>PO / Reference #</td>
               <td>{purchaseOrder.externalPoNumber}</td>
             </tr>
             <tr>
-              <td>Ordered quantity</td>
+              <td>Ordered Quantity</td>
               <td>{purchaseOrder.orderedQuantity}</td>
             </tr>
             <tr>
-              <td>Ordered date</td>
+              <td>Ordered Date</td>
               <td>{purchaseOrder.orderedDate}</td>
             </tr>
             {purchaseOrder.expectedArrivalDate && (
               <tr>
-                <td>Expected arrival</td>
+                <td>Expected Arrival</td>
                 <td>{purchaseOrder.expectedArrivalDate}</td>
               </tr>
             )}
@@ -976,7 +980,7 @@ function ReorderRequestReceived({ request, employeeDirectory }) {
       <table className="fo-table">
         <tbody>
           <tr>
-            <td>Received by</td>
+            <td>Received By</td>
             <td>{resolveActorDisplayName(request.receivedBy, employeeDirectory)}</td>
           </tr>
           <tr>
@@ -1000,7 +1004,7 @@ function ReorderRequestCancelled({ request, employeeDirectory }) {
       <table className="fo-table">
         <tbody>
           <tr>
-            <td>Cancelled by</td>
+            <td>Cancelled By</td>
             <td>{resolveActorDisplayName(request.cancelledBy, employeeDirectory)}</td>
           </tr>
           <tr>
@@ -1053,7 +1057,7 @@ function ReorderRequestVoided({ request, employeeDirectory }) {
       <table className="fo-table">
         <tbody>
           <tr>
-            <td>Voided by</td>
+            <td>Voided By</td>
             <td>{resolveActorDisplayName(request.voidedBy, employeeDirectory)}</td>
           </tr>
           <tr>
@@ -1067,7 +1071,7 @@ function ReorderRequestVoided({ request, employeeDirectory }) {
         </tbody>
       </table>
 
-      <h4>Original Purchase Order (unchanged, read-only)</h4>
+      <h4>Original Purchase Order (Unchanged, Read-Only)</h4>
       {purchaseOrderLoading ? (
         <p className="fo-muted">Loading Purchase Order...</p>
       ) : purchaseOrder ? (
@@ -1078,20 +1082,20 @@ function ReorderRequestVoided({ request, employeeDirectory }) {
               <td>{purchaseOrder.supplierName}</td>
             </tr>
             <tr>
-              <td>PO / reference #</td>
+              <td>PO / Reference #</td>
               <td>{purchaseOrder.externalPoNumber}</td>
             </tr>
             <tr>
-              <td>Ordered quantity</td>
+              <td>Ordered Quantity</td>
               <td>{purchaseOrder.orderedQuantity}</td>
             </tr>
             <tr>
-              <td>Ordered date</td>
+              <td>Ordered Date</td>
               <td>{purchaseOrder.orderedDate}</td>
             </tr>
             {purchaseOrder.expectedArrivalDate && (
               <tr>
-                <td>Expected arrival</td>
+                <td>Expected Arrival</td>
                 <td>{purchaseOrder.expectedArrivalDate}</td>
               </tr>
             )}
@@ -1115,7 +1119,7 @@ function ReorderRequestVoided({ request, employeeDirectory }) {
               <td>{voidRecord.reorderPurchaseOrderId}</td>
             </tr>
             <tr>
-              <td>Void record created</td>
+              <td>Void Record Created</td>
               <td>{formatTimestamp(voidRecord.createdAt)}</td>
             </tr>
           </tbody>
@@ -1142,7 +1146,7 @@ function ReorderRequestDecision({ request, employeeDirectory }) {
             <td>
               <StatusPill
                 tone={request.reviewDecision === REORDER_REQUEST_STATUS.APPROVED ? "positive" : "critical"}
-                label={request.reviewDecision}
+                label={statusLabel(request.reviewDecision)}
               />
             </td>
           </tr>
@@ -1152,13 +1156,13 @@ function ReorderRequestDecision({ request, employeeDirectory }) {
           </tr>
           {request.currentOwner && (
             <tr>
-              <td>Current owner</td>
-              <td>{request.currentOwner}</td>
+              <td>Current Owner</td>
+              <td>{statusLabel(request.currentOwner)}</td>
             </tr>
           )}
           {request.assignedEmployeeId && (
             <tr>
-              <td>Assigned to</td>
+              <td>Assigned To</td>
               <td>{resolveActorDisplayName(request.assignedEmployeeId, employeeDirectory)}</td>
             </tr>
           )}
@@ -1170,13 +1174,13 @@ function ReorderRequestDecision({ request, employeeDirectory }) {
           )}
           {request.purchasingStartedBy && (
             <tr>
-              <td>Purchasing started by</td>
+              <td>Purchasing Started By</td>
               <td>{resolveActorDisplayName(request.purchasingStartedBy, employeeDirectory)}</td>
             </tr>
           )}
           {request.purchasingStartedAt && (
             <tr>
-              <td>Purchasing started</td>
+              <td>Purchasing Started</td>
               <td>{formatTimestamp(request.purchasingStartedAt)}</td>
             </tr>
           )}
@@ -1250,10 +1254,20 @@ function InventoryActionsPanel({ partId }) {
   // longer renders as "No inventory actions logged yet."
   const { data: recentActions, loading, error: actionsError } = useInventoryActionsForPart(partId);
   const { byUserId: employeeDirectory } = useEmployeeDirectory();
+  // UI corrections item C: the ten most recent notes (the read's order is the default) sort on the client.
+  const latestActions = useMemo(() => recentActions.slice(0, 10), [recentActions]);
+  const actionSortColumns = useMemo(() => ({
+    type: { value: (action) => INVENTORY_ACTION_LABEL[action.transactionType] ?? statusLabel(action.transactionType) },
+    qty: { value: (action) => (typeof action.quantityDelta === "number" ? action.quantityDelta : null) },
+    reason: { value: (action) => action.reason ?? null },
+    by: { value: (action) => resolveActorDisplayName(action.createdBy, employeeDirectory) },
+    when: { value: (action) => toMillis(action.createdAt) },
+  }), [employeeDirectory]);
+  const { sort, toggle, sorted: sortedActions } = useTableSort({ rows: latestActions, columns: actionSortColumns });
 
   return (
     <RuledSection
-      title="Inventory action history"
+      title="Inventory Action History"
       meta="Historical notes only — never applied to stock, and no longer added to."
     >
       <p className="ns-gap-note">
@@ -1273,17 +1287,17 @@ function InventoryActionsPanel({ partId }) {
         <table className="fo-table">
           <thead>
             <tr>
-              <th>Type</th>
-              <th>Qty (logged, never applied)</th>
-              <th>Reason</th>
-              <th>By</th>
-              <th>When</th>
+              <SortableHeader columnKey="type" label="Type" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="qty" label="Qty (Logged, Never Applied)" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="reason" label="Reason" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="by" label="By" sort={sort} onSort={toggle} />
+              <SortableHeader columnKey="when" label="When" sort={sort} onSort={toggle} />
             </tr>
           </thead>
           <tbody>
-            {recentActions.slice(0, 10).map((action) => (
+            {sortedActions.map((action) => (
               <tr key={action.id}>
-                <td>{INVENTORY_ACTION_LABEL[action.transactionType] ?? action.transactionType}</td>
+                <td>{INVENTORY_ACTION_LABEL[action.transactionType] ?? statusLabel(action.transactionType)}</td>
                 <td>{action.quantityDelta > 0 ? `+${action.quantityDelta}` : action.quantityDelta}</td>
                 <td className="fo-muted">{action.reason ?? "—"}</td>
                 <td className="fo-muted">{resolveActorDisplayName(action.createdBy, employeeDirectory)}</td>
@@ -1596,10 +1610,10 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                   never had; responsive layout may restack these, it may not reverse them. */}
               {/* DQ-034: while the Catalog mutation hold is on, neither change is OFFERED -- both stay, disabled, with why. */}
               <Button type="button" variant="primary" onClick={() => setMasterDataPanel("edit")} disabled={catalogMutationHeld} title={catalogMutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined}>
-                Edit part
+                Edit Part
               </Button>{" "}
               <Button type="button" variant="secondary" onClick={() => setMasterDataPanel("status")} disabled={catalogMutationHeld} title={catalogMutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined}>
-                Change status
+                Change Status
               </Button>
             </>
           )
@@ -1675,11 +1689,11 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                   <table className="fo-table ns-band__facts">
                     <tbody>
                       <tr>
-                        <td>Ledger-derived stock</td>
+                        <td>Ledger-Derived Stock</td>
                         <td>{health.stock.availableStock}</td>
                       </tr>
                       <tr>
-                        <td>Avg daily usage</td>
+                        <td>Avg Daily Usage</td>
                         <td>
                           {hasUsageHistory(health.usage) ? (
                             health.usage.avgDailyUsage.toFixed(2)
@@ -1689,7 +1703,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                         </td>
                       </tr>
                       <tr>
-                        <td>Days remaining</td>
+                        <td>Days Remaining</td>
                         <td>
                           {hasUsageHistory(health.usage) && Number.isFinite(health.recommendation.daysRemaining)
                             ? health.recommendation.daysRemaining.toFixed(1)
@@ -1697,7 +1711,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                         </td>
                       </tr>
                       <tr>
-                        <td>Reorder point</td>
+                        <td>Reorder Point</td>
                         {/* Owner ruling 2026-08-30. This cell rendered a bare 0 beside
                             "Insufficient usage history" on the same card. The reorder point is
                             avgDailyUsage times a constant, so a zero is ALWAYS the consequence of no
@@ -1846,7 +1860,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
 
         {/* ── BAND 2 · DEMAND & PURCHASING ──────────────────────────────────────────────────
             What is asking for this part, and what is being done about getting it. */}
-        <RuledSection id="part-demand-purchasing" title="Demand &amp; purchasing">
+        <RuledSection id="part-demand-purchasing" title="Demand &amp; Purchasing">
           <div className="ns-band__cols">
             <div className="ns-band__col">
               {/* PLANNED DEMAND, NEVER A RESERVATION -- the section's own header says so. Existing
@@ -1892,7 +1906,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
 
         {/* ── BAND 3 · PART INFORMATION ─────────────────────────────────────────────────────
             What this part IS, as distinct from what is happening to it. */}
-        <RuledSection id="part-information" title="Part information">
+        <RuledSection id="part-information" title="Part Information">
           <div className="ns-band__cols">
             <div className="ns-band__col">
               {/* THE STRUCTURED MASTER-DATA SUMMARY — Frame 1b's five rows (Owner ruling, 2026-08-31).
@@ -1934,7 +1948,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                 UsedInEquipmentSection itself is unchanged and still capability-gated + inert; this
                 only supplies the sentence for the case where it hides itself. */}
             <div className="ns-band__col">
-              <h3 className="ns-band__sub">Used on</h3>
+              <h3 className="ns-band__sub">Used On</h3>
               {canViewCompatibility(hasCapability) ? (
                 <UsedInEquipmentSection
                   hasCapability={hasCapability}
@@ -2045,7 +2059,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
             queues. */}
         <section className="ns-band ns-band--reference">
           <details className="ns-parts-rail__item">
-            <summary>Inventory action history</summary>
+            <summary>Inventory Action History</summary>
             <InventoryActionsPanel partId={resolvedPartId} />
           </details>
         </section>

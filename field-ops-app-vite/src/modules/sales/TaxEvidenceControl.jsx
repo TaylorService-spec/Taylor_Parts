@@ -35,8 +35,8 @@ export default function TaxEvidenceControl({ value, onChange, disabled = false }
         {TAX_EVIDENCE_WORDS.determined}
       </label>
       {determined ? (
-        <label>Tax amount
-          <input inputMode="decimal" aria-label="Tax amount" value={value.amount} placeholder="0.00"
+        <label>Tax Amount
+          <input inputMode="decimal" aria-label="Tax Amount" value={value.amount} placeholder="0.00"
             onChange={(e) => set({ amount: e.target.value })} />
           <span className="fo-muted"> Enter 0 if none is due.</span>
         </label>

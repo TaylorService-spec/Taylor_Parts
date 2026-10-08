@@ -73,7 +73,7 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, auth
   }
 
   return (
-    <Modal title="New opportunity" onClose={requestClose}>
+    <Modal title="New Opportunity" onClose={requestClose}>
       <form className="fo-sales-createform" onSubmit={handleSubmit}>
         {writeDisabled && (
           <p id="new-opp-readiness" className="fo-sales-lifecycle-note fo-muted" role="status">
@@ -82,7 +82,7 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, auth
         )}
 
         <div className="fo-sales-editform__field">
-          <label htmlFor="new-opp-account">Customer account</label>
+          <label htmlFor="new-opp-account">Customer Account</label>
           {accountsError ? (
             <p className="fo-sales-createform__error" role="alert">Could not load customer accounts. Try again.</p>
           ) : (
@@ -107,7 +107,7 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, auth
         </div>
 
         <div className="fo-sales-editform__field">
-          <label htmlFor="new-opp-owner">Owner (employee id)</label>
+          <label htmlFor="new-opp-owner">Owner (Employee ID)</label>
           <input
             id="new-opp-owner"
             className="fo-input"
@@ -134,12 +134,12 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, auth
         </div>
 
         <div className="fo-sales-editform__field">
-          <label htmlFor="new-opp-need">Customer need / description (optional)</label>
+          <label htmlFor="new-opp-need">Customer Need / Description (Optional)</label>
           <textarea id="new-opp-need" className="fo-input" rows={3} value={draft.need} onChange={(e) => set("need", e.target.value)} />
         </div>
 
         <div className="fo-sales-editform__field">
-          <label htmlFor="new-opp-value">Estimated value (optional)</label>
+          <label htmlFor="new-opp-value">Estimated Value (Optional)</label>
           <input
             id="new-opp-value"
             className="fo-input"
@@ -154,7 +154,7 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, auth
         </div>
 
         <div className="fo-sales-editform__field">
-          <label htmlFor="new-opp-close">Expected close (optional)</label>
+          <label htmlFor="new-opp-close">Expected Close (Optional)</label>
           <input
             id="new-opp-close"
             className="fo-input"
@@ -181,7 +181,7 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, auth
             // explanation, still programmatically tied to the button that is blocked.
             aria-describedby={writeDisabled ? "new-opp-readiness" : undefined}
           >
-            {pending ? "Creating…" : "Create opportunity"}
+            {pending ? "Creating…" : "Create Opportunity"}
           </Button>
           <Button type="button" variant="tertiary" onClick={requestClose}>Cancel</Button>
         </div>

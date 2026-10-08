@@ -91,7 +91,7 @@ describe("it inherits the honest capability posture", () => {
     await selectWarehouse();
     expect(await screen.findByText("Labels & Export")).toBeTruthy();
     expect(screen.getAllByText("Label").length).toBe(BINS.length);
-    expect(screen.queryByText("Preview these bins")).toBeNull();
+    expect(screen.queryByText("Preview These Bins")).toBeNull();
   });
 });
 
@@ -101,7 +101,7 @@ describe("rename, then reprint", () => {
     await selectWarehouse();
     await screen.findByText("Labels & Export");
     fireEvent.click(screen.getAllByText("Label")[0]);
-    expect(await screen.findByText("Print 1 label")).toBeTruthy();
+    expect(await screen.findByText("Print 1 Label")).toBeTruthy();
     const sheet = document.querySelector(".fo-labelsheet");
     expect(sheet.textContent).toContain("A01-001");
     expect(sheet.textContent).not.toContain("A01-003");
@@ -117,7 +117,7 @@ describe("rename, then reprint", () => {
     await selectWarehouse();
     await screen.findByText("Labels & Export");
     fireEvent.click(screen.getAllByText("Rename")[0]);
-    fireEvent.click(screen.getByText("Save name"));
+    fireEvent.click(screen.getByText("Save Name"));
     await waitFor(() => expect(client.renameBin).toHaveBeenCalled());
     fireEvent.click((await screen.findAllByText("Label"))[0]);
     // The refreshed row yields the corrected code immediately.
@@ -134,7 +134,7 @@ describe("rename, then reprint", () => {
     await selectWarehouse();
     await screen.findByText("Labels & Export");
     fireEvent.click(screen.getAllByText("Rename")[0]);
-    fireEvent.click(screen.getByText("Save name"));
+    fireEvent.click(screen.getByText("Save Name"));
     await waitFor(() => expect(client.renameBin).toHaveBeenCalled());
     expect(print).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
@@ -146,7 +146,7 @@ describe("accessibility", () => {
     mount();
     await selectWarehouse();
     await screen.findByText("Labels & Export");
-    expect(screen.getByText("Select all shown").closest("button")).toBeTruthy();
+    expect(screen.getByText("Select All Shown").closest("button")).toBeTruthy();
     expect(screen.getByText("Export CSV").closest("button")).toBeTruthy();
     expect(screen.getByLabelText("Include bins that are out of use")).toBeTruthy();
   });
@@ -168,7 +168,7 @@ describe("accessibility", () => {
     // No inactive bins in this fixture, so the words are what would carry it; assert the source
     // renders text rather than a bare colour class.
     const surface = read("src/modules/administration/BinLabelsAndExport.jsx");
-    expect(surface).toContain("Out of use");
+    expect(surface).toContain("Out of Use");
     expect(surface).toContain("OUT OF USE");
   });
 });

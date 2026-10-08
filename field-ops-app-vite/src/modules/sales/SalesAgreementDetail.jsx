@@ -97,11 +97,11 @@ const EDITABLE_TERMS = Object.freeze([
   { id: "fulfillmentIntent", label: "Fulfillment", type: "enum", options: [
     { value: "DELIVER", label: "Deliver" },
     { value: "INSTALL", label: "Install" },
-    { value: "BOTH", label: "Deliver and install" },
+    { value: "BOTH", label: "Deliver and Install" },
   ] },
-  { id: "shipVia", label: "Ship via", type: "text" },
-  { id: "shippingInstructions", label: "Shipping instructions", type: "textarea" },
-  { id: "specialInstructions", label: "Special instructions", type: "textarea" },
+  { id: "shipVia", label: "Ship Via", type: "text" },
+  { id: "shippingInstructions", label: "Shipping Instructions", type: "textarea" },
+  { id: "specialInstructions", label: "Special Instructions", type: "textarea" },
 ]);
 
 /** Section-aware editing, in place. The record never becomes one giant form. */
@@ -134,7 +134,7 @@ function TermsEditor({ view, pending, commandError, onSave, onCancel }) {
           ) : field.type === "enum" ? (
             <select value={draft[field.id] ?? ""} disabled={busy}
               onChange={(e) => setDraft((d) => ({ ...d, [field.id]: e.target.value }))}>
-              <option value="">Not recorded</option>
+              <option value="">Not Recorded</option>
               {field.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           ) : field.type === "textarea" ? (
@@ -149,7 +149,7 @@ function TermsEditor({ view, pending, commandError, onSave, onCancel }) {
       {commandError ? <p className="ns-action-reason" data-restriction="command">{commandError}</p> : null}
       <div className="ns-terms-edit__actions">
         <button type="submit" className="fo-button fo-button--primary" disabled={busy}>
-          {busy ? "Saving…" : "Save terms"}
+          {busy ? "Saving…" : "Save Terms"}
         </button>
         <button type="button" className="fo-button" onClick={onCancel} disabled={busy}>Cancel</button>
       </div>
@@ -286,7 +286,7 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
         <HonestState
           state={HONEST_STATE.UNAVAILABLE}
           detail="We couldn't reach this sales agreement just now."
-          action={<button type="button" className="fo-button" onClick={refresh}>Try again</button>}
+          action={<button type="button" className="fo-button" onClick={refresh}>Try Again</button>}
         />
       </div>
     );
@@ -403,10 +403,10 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
       {!ladder.complete ? (
         /* The existing attention markup, not a second one. Blocking severity, because the engine
            will refuse acceptance until it clears — and the reason is the view model's own. */
-        <div className="ns-attention" role="status" aria-label="Blocking acceptance">
+        <div className="ns-attention" role="status" aria-label="Blocking Acceptance">
           <ul className="ns-attention__list">
             <li className="ns-attention__item is-blocking">
-              <span className="ns-attention__severity">Blocking acceptance</span>
+              <span className="ns-attention__severity">Blocking Acceptance</span>
               <span>
                 {actions.accept?.reason
                   ?? `Every line needs a price before this can be accepted. Missing: ${ladder.unpricedRefs.join(", ")}`}
@@ -420,7 +420,7 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
         <div>
           {/* THE AGREED LINES LEAD. This is what the agreement IS. */}
           <RuledSection
-            title="What we committed to sell"
+            title="What We Committed to Sell"
             meta={<span className="ns-section__note">negotiated prices, fixed at acceptance</span>}
             actions={
               // SA-G7: LINE PRICING, ON THE RECORD THAT OWNS IT.
@@ -451,7 +451,7 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
                       : undefined
                   }
                 >
-                  Edit lines
+                  Edit Lines
                 </button>
               ) : null
             }
@@ -483,7 +483,7 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
                       if (outcome?.ok) setEditingLines(null);
                     }}
                   >
-                    {pending === "updateDraft" ? "Saving lines…" : "Save lines"}
+                    {pending === "updateDraft" ? "Saving Lines…" : "Save Lines"}
                   </button>
                   <button
                     type="button"
@@ -541,26 +541,26 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
             {ladder.complete ? (
               <div className="ns-ladder">
                 <dl className="ns-ladder__block" aria-label="Sale composition">
-                  <div><dt>Selling price</dt><dd className="ns-num">{ladder.saleComposition.subtotal.formatted}</dd></div>
+                  <div><dt>Selling Price</dt><dd className="ns-num">{ladder.saleComposition.subtotal.formatted}</dd></div>
                   {/* #203: the customer discount and net selling price, only when a discount applies. */}
-                  {ladder.saleComposition.customerDiscount ? <div><dt>Customer discount</dt><dd className="ns-num">−{ladder.saleComposition.customerDiscount.formatted}</dd></div> : null}
-                  {ladder.saleComposition.netSelling ? <div><dt>Net selling price</dt><dd className="ns-num">{ladder.saleComposition.netSelling.formatted}</dd></div> : null}
+                  {ladder.saleComposition.customerDiscount ? <div><dt>Customer Discount</dt><dd className="ns-num">−{ladder.saleComposition.customerDiscount.formatted}</dd></div> : null}
+                  {ladder.saleComposition.netSelling ? <div><dt>Net Selling Price</dt><dd className="ns-num">{ladder.saleComposition.netSelling.formatted}</dd></div> : null}
                   {ladder.saleComposition.shipping ? <div><dt>Shipping</dt><dd className="ns-num">{ladder.saleComposition.shipping.formatted}</dd></div> : null}
-                  {ladder.saleComposition.installCharge ? <div><dt>Installation charge</dt><dd className="ns-num">{ladder.saleComposition.installCharge.formatted}</dd></div> : null}
+                  {ladder.saleComposition.installCharge ? <div><dt>Installation Charge</dt><dd className="ns-num">{ladder.saleComposition.installCharge.formatted}</dd></div> : null}
                   {/* Tax, from its evidence: an amount only when determined (zero included), otherwise words. */}
                   <div data-tax-evidence={ladder.saleComposition.taxEvidence.kind}>
                     <dt>{ladder.saleComposition.taxEvidence.isDetermined ? "Tax" : ladder.saleComposition.taxEvidence.label}</dt>
                     <dd className="ns-num">{ladder.saleComposition.taxEvidence.amountText ?? <span className="ns-state--na">Not determined</span>}</dd>
                   </div>
-                  <div className="ns-ladder__total"><dt>Total committed</dt><dd className="ns-num">{ladder.saleComposition.total.formatted}</dd></div>
+                  <div className="ns-ladder__total"><dt>Total Committed</dt><dd className="ns-num">{ladder.saleComposition.total.formatted}</dd></div>
                   {ladder.saleComposition.taxEvidence.note ? <p className="ns-section__note">{ladder.saleComposition.taxEvidence.note}</p> : null}
                 </dl>
                 {ladder.credits.balance ? (
                   <dl className="ns-ladder__block ns-ladder__block--credits" aria-label="Credits recorded at commitment">
                     {/* #203: the trade-in is cash-equivalent consideration -- shown apart from cash and from the discount. */}
-                    {ladder.credits.tradeIn ? <div><dt>Trade-in credit</dt><dd className="ns-num">−{ladder.credits.tradeIn.formatted}</dd></div> : null}
-                    {ladder.credits.downPayment ? <div><dt>Cash / down payment</dt><dd className="ns-num">−{ladder.credits.downPayment.formatted}</dd></div> : null}
-                    <div><dt>Remaining balance</dt><dd className="ns-num">{ladder.credits.balance.formatted}</dd></div>
+                    {ladder.credits.tradeIn ? <div><dt>Trade-In Credit</dt><dd className="ns-num">−{ladder.credits.tradeIn.formatted}</dd></div> : null}
+                    {ladder.credits.downPayment ? <div><dt>Cash / Down Payment</dt><dd className="ns-num">−{ladder.credits.downPayment.formatted}</dd></div> : null}
+                    <div><dt>Remaining Balance</dt><dd className="ns-num">{ladder.credits.balance.formatted}</dd></div>
                     <p className="ns-section__note">
                       The agreement&apos;s own arithmetic: total minus down payment and trade-in. Not an
                       accounts-receivable balance — no payment is tracked on this record.
@@ -577,7 +577,7 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
 
           {/* TRADE-INS (Owner ruling #204) — proposals, and an approver's decision. A proposal reduces nothing. */}
           {(view.tradeIns?.length > 0 || (view.state === "DRAFT" && hasCapability("salesAgreement.updateDraft") === true)) ? (
-            <RuledSection title="Trade-ins">
+            <RuledSection title="Trade-Ins">
               <TradeInSection
                 tradeIns={view.tradeIns ?? []}
                 currency={view.currency ?? "USD"}
@@ -619,7 +619,7 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
         </div>
 
         <aside className="ns-rail">
-          <RuledSection title="Commercial terms" panel>
+          <RuledSection title="Commercial Terms" panel>
             {editingTerms ? (
               <TermsEditor
                 view={view}
@@ -646,7 +646,7 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
             )}
           </RuledSection>
 
-          <RuledSection title="Why this agreement exists" panel>
+          <RuledSection title="Why This Agreement Exists" panel>
             {provenance.sourceOpportunityId ? (
               <p>
                 <Link to={`/customers/opportunities/${provenance.sourceOpportunityId}`}>Opportunity</Link>

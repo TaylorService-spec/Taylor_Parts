@@ -24,7 +24,7 @@ export default function InventoryControlSection({ view }) {
   const state = view.inventoryControl ?? "UNKNOWN";
   return (
     <section className="fo-panel" aria-labelledby="equip-inventory-control" data-inventory-control-section>
-      <h2 id="equip-inventory-control">Inventory control</h2>
+      <h2 id="equip-inventory-control">Inventory Control</h2>
       <dl className="fo-detail-list">
         <dt>Status</dt>
         <dd>
@@ -34,17 +34,17 @@ export default function InventoryControlSection({ view }) {
 
         {Array.isArray(view.unmetConditions) && view.unmetConditions.length > 0 ? (
           <>
-            <dt>Remaining to exit</dt>
+            <dt>Remaining to Exit</dt>
             <dd>{view.unmetConditions.map((c) => UNMET_LABEL[c] ?? c).join(" · ")}</dd>
           </>
         ) : null}
 
         {/* Ownership/title is a SEPARATE axis — never inferred from inventory-control state. */}
-        <dt>Ownership / title</dt>
+        <dt>Ownership / Title</dt>
         <dd>{view.ownershipTitle && view.ownershipTitle !== "UNKNOWN" ? view.ownershipTitle : <span className="fo-muted">Unknown (tracked separately from inventory control)</span>}</dd>
 
         {/* Availability is its own axis (INV-2): present ≠ available. */}
-        <dt>Available for assignment</dt>
+        <dt>Available for Assignment</dt>
         <dd>{view.presentableAsAvailable ? "Yes" : <span className="fo-muted">No (committed / installed)</span>}</dd>
       </dl>
 

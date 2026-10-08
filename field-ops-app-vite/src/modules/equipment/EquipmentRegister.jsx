@@ -17,6 +17,8 @@ import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import { equipmentStatusTone } from "../../domain/equipment";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 // Issue #232 unit E5 -- the Equipment register (Spec §7).
 //
@@ -71,6 +73,14 @@ export default function EquipmentRegister() {
     () => searchEquipment(equipment, { term, locationId: locationId || null, status: statusValue }),
     [equipment, term, locationId, statusValue]
   );
+
+  // Client-side sort over the already-bounded result set; no sort keeps searchEquipment's order.
+  const sortColumns = useMemo(() => ({
+    equipment: { value: (e) => equipmentDisplayName(e) },
+    location: { value: (e) => locationName(locations, e.locationId, locationsError) },
+    status: { value: (e) => statusLabel(e.status) },
+  }), [locations, locationsError]);
+  const { sort, toggle, sorted: sortedResults } = useTableSort({ rows: results, columns: sortColumns });
 
   const filtersApplied = term.trim() !== "" || locationId !== "" || statusValue !== null;
   const accountChosen = accountId !== "";
@@ -225,7 +235,7 @@ export default function EquipmentRegister() {
         // claim that the collection was read and found empty -- it wasn't read at all.
         <EmptyState
           variant="database"
-          title="Choose a customer"
+          title="Choose a Customer"
           message="Select a customer to see the equipment installed at their locations."
         />
       ) : loading ? (
@@ -237,7 +247,7 @@ export default function EquipmentRegister() {
       ) : equipment.length === 0 ? (
         <EmptyState
           variant="database"
-          title="No equipment yet"
+          title="No Equipment Yet"
           message="No equipment is recorded for this customer."
         />
       ) : (
@@ -324,9 +334,9 @@ export default function EquipmentRegister() {
             // the remedy differs -- clear the filters vs add a record.
             <EmptyState
               variant="filtered"
-              title="No matching equipment"
+              title="No Matching Equipment"
               message="No equipment matches the current search and filters."
-              action={<button type="button" onClick={resetFilters}>Clear filters</button>}
+              action={<button type="button" onClick={resetFilters}>Clear Filters</button>}
             />
           ) : (
             // Wide content scrolls inside its own container rather than widening the
@@ -336,13 +346,13 @@ export default function EquipmentRegister() {
               <caption className="fo-sr-only">Equipment for the selected customer</caption>
               <thead>
                 <tr>
-                  <th scope="col">Equipment</th>
-                  <th scope="col">Location</th>
-                  <th scope="col">Status</th>
+                  <SortableHeader columnKey="equipment" label="Equipment" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="location" label="Location" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
                 </tr>
               </thead>
               <tbody>
-                {results.map((e) => (
+                {sortedResults.map((e) => (
                   <tr
                     key={e.id}
                     data-equipment-row={e.id}

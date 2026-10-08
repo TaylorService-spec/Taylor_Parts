@@ -64,7 +64,7 @@ export default function GoalTile({ progress, label, actualLabel = "Actual" }) {
     return (
       <div className="fo-goal-tile fo-goal-tile--quiet">
         <span className="fo-goal-tile__label">{label}</span>
-        <StatusIndicator tone="attention" label="Target unavailable" />
+        <StatusIndicator tone="attention" label="Target Unavailable" />
         <p className="fo-muted">{progress.reason}</p>
       </div>
     );
@@ -80,7 +80,7 @@ export default function GoalTile({ progress, label, actualLabel = "Actual" }) {
         <span className="fo-goal-tile__label">{label}</span>
         {/* The TARGET stays. Only the measurement is missing, and the sentence says which. */}
         <span className="fo-goal-tile__target fo-tabular-nums">{direction} {target}</span>
-        <StatusIndicator tone="neutral" label="Not measured yet" />
+        <StatusIndicator tone="neutral" label="Not Measured Yet" />
         <p className="fo-muted">{progress.reason}</p>
       </div>
     );

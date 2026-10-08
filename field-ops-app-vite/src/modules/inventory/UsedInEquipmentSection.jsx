@@ -18,6 +18,8 @@ import {
 import { inertEquipmentCompatibilitySource } from "../../services/equipmentCompatibilitySource";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 const PAGE_SIZE = 10; // OD-D
 
@@ -28,7 +30,7 @@ const PAGE_SIZE = 10; // OD-D
 // plain text; StatusPill gives them their first real colour, a genuine upgrade, not a preserved
 // intent).
 const VERIFICATION_TONE = { VERIFIED: "positive", CONFLICT: "critical", IN_REVIEW: "attention", UNVERIFIED: "unknown", REJECTED: "muted" };
-const VERIFICATION_LABEL = { VERIFIED: "Verified", CONFLICT: "Conflicting", IN_REVIEW: "In review", UNVERIFIED: "Unverified", REJECTED: "Rejected" };
+const VERIFICATION_LABEL = { VERIFIED: "Verified", CONFLICT: "Conflicting", IN_REVIEW: "In Review", UNVERIFIED: "Unverified", REJECTED: "Rejected" };
 const REASON_LABEL = {
   conflict: "Conflicting evidence — not for operational use",
   "in-review": "Under review — not for operational use",
@@ -51,7 +53,7 @@ function RelationshipRow({ item }) {
   const model = item.model;
   return (
     <tr className={item.operational ? "" : "fo-equipment-compat-nonoperational"}>
-      <td data-label="Equipment model">
+      <td data-label="Equipment Model">
         {model ? (
           <>
             <strong>{model.displayName || `${model.manufacturerName} ${model.modelNumber}`.trim()}</strong>
@@ -68,7 +70,7 @@ function RelationshipRow({ item }) {
         {item.assembly ? <div className="fo-muted">{item.assembly}{item.installationPosition ? ` · ${item.installationPosition}` : ""}</div> : null}
         {typeof item.quantityRequired === "number" ? <div className="fo-muted">Qty {item.quantityRequired}</div> : null}
       </td>
-      <td data-label="Applies to">{item.serialApplicabilitySummary}</td>
+      <td data-label="Applies To">{item.serialApplicabilitySummary}</td>
       <td data-label="Status">
         <StatusPill
           tone={VERIFICATION_TONE[item.verificationStatus] ?? "unknown"}
@@ -82,6 +84,42 @@ function RelationshipRow({ item }) {
     </tr>
   );
 }
+
+function modelLabel(model) {
+  if (!model) return null;
+  return model.displayName || `${model.manufacturerName ?? ""} ${model.modelNumber ?? ""}`.trim() || null;
+}
+
+// Client-side sort over the pages already loaded ("Show more" appends further pages; a sort applies to what is loaded).
+const COMPAT_SORT_COLUMNS = Object.freeze({
+  model: { value: (item) => modelLabel(item.model) },
+  fit: { value: (item) => item.compatibilityType || null },
+  appliesTo: { value: (item) => item.serialApplicabilitySummary || null },
+  status: { value: (item) => VERIFICATION_LABEL[item.verificationStatus] || item.verificationStatus || null },
+  evidence: { value: (item) => (item.evidence?.status === "UNAVAILABLE" ? null : item.evidence?.supportsCount ?? null) },
+});
+
+function CompatibilityTable({ items }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: items, columns: COMPAT_SORT_COLUMNS });
+  return (
+    <table className="fo-table fo-equipment-compat-table">
+      <thead>
+        <tr>
+          <SortableHeader columnKey="model" label="Equipment Model" sort={sort} onSort={toggle} />
+          <SortableHeader columnKey="fit" label="Fit" sort={sort} onSort={toggle} />
+          <SortableHeader columnKey="appliesTo" label="Applies To" sort={sort} onSort={toggle} />
+          <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
+          <SortableHeader columnKey="evidence" label="Evidence" sort={sort} onSort={toggle} />
+        </tr>
+      </thead>
+      <tbody>
+        {sorted.map((item, i) => <RelationshipRow key={i} item={item} />)}
+      </tbody>
+    </table>
+  );
+}
+
+const NO_ITEMS = Object.freeze([]);
 
 export default function UsedInEquipmentSection({ hasCapability, partId, accessVersion, source = inertEquipmentCompatibilitySource, pageSize = PAGE_SIZE }) {
   const canView = canViewCompatibility(hasCapability);
@@ -137,7 +175,7 @@ export default function UsedInEquipmentSection({ hasCapability, partId, accessVe
   const reload = () => setReloadTick((t) => t + 1);
 
   const state = current ? current.state : SECTION_STATES.LOADING;
-  const items = current ? current.items : [];
+  const items = current ? current.items : NO_ITEMS;
   const counts = current ? current.counts : null;
   const showList = state === SECTION_STATES.AVAILABLE || state === SECTION_STATES.DEGRADED;
   // A neutral end-of-pagination marker is shown ONLY when the traversal is genuinely clean+complete: no
@@ -178,14 +216,7 @@ export default function UsedInEquipmentSection({ hasCapability, partId, accessVe
             </p>
           )}
           <div className="fo-table-scroll">
-            <table className="fo-table fo-equipment-compat-table">
-              <thead>
-                <tr><th>Equipment model</th><th>Fit</th><th>Applies to</th><th>Status</th><th>Evidence</th></tr>
-              </thead>
-              <tbody>
-                {items.map((item, i) => <RelationshipRow key={i} item={item} />)}
-              </tbody>
-            </table>
+            <CompatibilityTable items={items} />
           </div>
           {counts && counts.excludedRejected > 0 && (
             <p className="fo-muted">{counts.excludedRejected} record(s) excluded from review.</p>
@@ -195,7 +226,7 @@ export default function UsedInEquipmentSection({ hasCapability, partId, accessVe
           )}
           {current && current.hasMore && (
             <Button type="button" variant="secondary" onClick={showMore} disabled={loading} loading={loading}>
-              Show more
+              Show More
             </Button>
           )}
           {cleanComplete && <p className="fo-muted fo-equipment-compat-complete">No more records to load.</p>}

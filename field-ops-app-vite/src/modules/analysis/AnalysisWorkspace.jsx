@@ -8,17 +8,21 @@
 // (/operations/analysis), each measure authorized on its own EXISTING read. A refused measure shows why; an absent one shows why;
 // a missing figure is never shown as zero. An action is offered only when the server says the caller already holds it -- and it
 // runs on its own governed route, never here. No AI.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, SectionHeader, Button, StatusIndicator } from "../../shared/ui/primitives";
 import { Field, FormError } from "../../shared/ui/form";
 import { callAnalysisApi } from "../../services/analysisApiClient";
 import { formatMinorUnits } from "../../domain/money.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { operatingCompanyLabel, statusLabel, titleCase, titleCasePhrase } from "../../shared/display/displayLabels.js";
 
-const COMPANIES = [["consolidated", "Consolidated (reporting view)"], ["taylor", "Taylor"], ["ventana", "Ventana"]];
-const PERIODS = [["MTD", "Month to date"], ["QTD", "Quarter to date"], ["YTD", "Year to date"], ["T12M", "Trailing 12 months"], ["DAY", "Today"]];
-export const BASIS_WORDS = Object.freeze({ ACCOUNTING_ACTUAL: "Accounting actual", EOS_OPERATIONAL_ACTUAL: "EOS operational actual",
-  EOS_OPERATIONAL_ESTIMATE: "EOS operational estimate", FORECAST: "Forecast", TARGET_BUDGET: "Target / budget" });
-const QUALITY_WORDS = Object.freeze({ COMPLETE: "Complete", PARTIAL: "Partial", MISSING_PRICE: "Missing price" });
+// Company names come from the governed table; "consolidated" is the reporting projection, not a company.
+const COMPANIES = [["consolidated", "Consolidated (Reporting View)"], ["taylor", operatingCompanyLabel("taylor")], ["ventana", operatingCompanyLabel("ventana")]];
+const PERIODS = [["MTD", "Month to Date"], ["QTD", "Quarter to Date"], ["YTD", "Year to Date"], ["T12M", "Trailing 12 Months"], ["DAY", "Today"]];
+export const BASIS_WORDS = Object.freeze({ ACCOUNTING_ACTUAL: "Accounting Actual", EOS_OPERATIONAL_ACTUAL: "EOS Operational Actual",
+  EOS_OPERATIONAL_ESTIMATE: "EOS Operational Estimate", FORECAST: "Forecast", TARGET_BUDGET: "Target / Budget" });
+const QUALITY_WORDS = Object.freeze({ COMPLETE: "Complete", PARTIAL: "Partial", MISSING_PRICE: "Missing Price" });
 
 /** A figure in words -- money per currency (never summed across currencies), counts, quantities, ratios. Null stays "—". */
 export function figure(unit, value, aggregate) {
@@ -45,7 +49,7 @@ function variance(m) {
 function MeasureCard({ m, onOpen }) {
   return (
     <article className="fo-panel" aria-label={m.name}>
-      <SectionHeader title={m.name} description={`${BASIS_WORDS[m.basis] ?? m.basis}${m.status === "COMPUTED" ? ` · ${QUALITY_WORDS[m.quality.state] ?? m.quality.state}` : ""}`} />
+      <SectionHeader title={m.name} description={`${statusLabel(m.basis, BASIS_WORDS)}${m.status === "COMPUTED" ? ` · ${statusLabel(m.quality.state, QUALITY_WORDS)}` : ""}`} />
       {m.status === "COMPUTED" ? (
         <>
           <p><strong>{figure(m.unit, m.value.value, m.aggregate)}</strong></p>
@@ -57,6 +61,81 @@ function MeasureCard({ m, onOpen }) {
         <p className="fo-muted">{m.status === "REFUSED" ? `Not available to you — ${m.reason}` : m.reason}</p>
       )}
     </article>
+  );
+}
+
+// ════════ RESULT TABLES — header sorting over rows the server already returned; no sort = the server's order ════════
+
+const actionWords = (x) => (x.action
+  ? (x.action.available ? x.action.label : `${x.action.label} — needs ${titleCase(x.action.capability)} access`)
+  : "No governed action here");
+const EXCEPTION_SORT_COLUMNS = Object.freeze({
+  severity: { value: (x) => statusLabel(x.severity) },
+  what: { value: (x) => x.rule },
+  record: { value: (x) => x.label ?? x.recordId },
+  company: { value: (x) => operatingCompanyLabel(x.operatingCompanyId) },
+  action: { value: actionWords },
+});
+
+function ExceptionTable({ rows }) {
+  const { sort, toggle, sorted } = useTableSort({ rows, columns: EXCEPTION_SORT_COLUMNS });
+  const th = (k, label) => <SortableHeader columnKey={k} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table fo-table--stack">
+      <thead><tr>{th("severity", "Severity")}{th("what", "What")}{th("record", "Record")}{th("company", "Company")}{th("action", "Action")}</tr></thead>
+      <tbody>{sorted.map((x) => (
+        <tr key={`${x.kind}-${x.recordId}`}><td>{statusLabel(x.severity)}</td><td>{x.rule}</td><td>{x.label ?? x.recordId}</td><td>{operatingCompanyLabel(x.operatingCompanyId)}</td>
+          <td>{actionWords(x)}</td></tr>))}</tbody>
+    </table>
+  );
+}
+
+const companyKeyLabel = (k) => operatingCompanyLabel(k);
+const plainKeyLabel = (k) => k;
+const driverValue = (detail, d) => (detail.unit === "COUNT" ? d.count : detail.unit === "RATIO" ? d.ratio : d.quantity);
+// Money sorts only when the row is single-currency; a multi-currency figure is never summed into one number.
+const driverSortValue = (detail, d) => {
+  if (detail.unit === "MONEY") {
+    const amounts = Object.values(d.money ?? {});
+    return amounts.length === 1 ? Number(amounts[0]) : null;
+  }
+  const v = driverValue(detail, d);
+  return v === null || v === undefined ? null : Number(v);
+};
+
+function DriverTable({ detail, rows, keyHeader, keyLabel }) {
+  const columns = useMemo(() => ({
+    key: { value: (d) => keyLabel(d.key) },
+    figure: { value: (d) => driverSortValue(detail, d) },
+    records: { value: (d) => (typeof d.count === "number" ? d.count : null) },
+  }), [detail, keyLabel]);
+  const { sort, toggle, sorted } = useTableSort({ rows, columns });
+  const th = (k, label) => <SortableHeader columnKey={k} label={label} sort={sort} onSort={toggle} />;
+  return (
+    <table className="fo-table fo-table--stack"><thead><tr>{th("key", keyHeader)}{th("figure", "Figure")}{th("records", "Records")}</tr></thead>
+      <tbody>{sorted.map((d) => <tr key={d.key}><td>{keyLabel(d.key)}</td><td>{figure(detail.unit, driverValue(detail, d), d)}</td><td>{d.count}</td></tr>)}</tbody></table>
+  );
+}
+
+const drillWords = (s) => (s.drill ? `${titleCase(s.drill.operation)} (${s.drill.route})` : "—");
+const SOURCE_SORT_COLUMNS = Object.freeze({
+  record: { value: (s) => s.label ?? s.recordId },
+  company: { value: (s) => operatingCompanyLabel(s.operatingCompanyId) },
+  dimension: { value: (s) => (s.dimension ? statusLabel(s.dimension) : null) },
+  amount: { value: (s) => (s.amountMinor !== null && s.amountMinor !== undefined ? Number(s.amountMinor) : (typeof s.quantity === "number" ? s.quantity : null)) },
+  drill: { value: (s) => (s.drill ? drillWords(s) : null) },
+});
+
+function SourceTable({ detail }) {
+  const { sort, toggle, sorted } = useTableSort({ rows: detail.provenance.sources, columns: SOURCE_SORT_COLUMNS });
+  const th = (k, label) => <SortableHeader columnKey={k} label={label} sort={sort} onSort={toggle} />;
+  const dimension = detail.provenance.definition.dimension;
+  return (
+    <table className="fo-table fo-table--stack"><thead><tr>{th("record", "Record")}{th("company", "Company")}{th("dimension", dimension ? titleCasePhrase(dimension) : "Detail")}{th("amount", "Amount / Quantity")}{th("drill", "Open With")}</tr></thead>
+      <tbody>{sorted.map((s) => (
+        <tr key={`${s.recordId}-${s.dimension}`}><td>{s.label ?? s.recordId}</td><td>{operatingCompanyLabel(s.operatingCompanyId)}</td><td>{s.dimension ? statusLabel(s.dimension) : "—"}</td>
+          <td>{s.amountMinor !== null && s.amountMinor !== undefined ? formatMinorUnits(Number(s.amountMinor), s.currency ?? "USD") : (detail.unit === "MONEY" ? "Price missing" : s.quantity)}</td>
+          <td className="fo-muted">{drillWords(s)}</td></tr>))}</tbody></table>
   );
 }
 
@@ -101,7 +180,7 @@ export default function AnalysisWorkspace({ callApi = callAnalysisApi }) {
       <PageHeader title="Analysis" description="Exception-first operational analysis. Every figure states its basis and traces to its records; nothing here grants authority." />
       {refusal && <FormError>{refusal}</FormError>}
       {catalog && (
-        <nav aria-label="Analysis areas">
+        <nav aria-label="Analysis Areas">
           {catalog.areas.filter((a) => a.available).map((a) => (
             <Button key={a.key} size="sm" variant={a.key === area ? "primary" : "secondary"} onClick={() => setArea(a.key)}>{a.label}</Button>
           ))}
@@ -122,16 +201,9 @@ export default function AnalysisWorkspace({ callApi = callAnalysisApi }) {
           {ws.scope.note && <StatusIndicator tone="neutral">{ws.scope.note}</StatusIndicator>}
           <p className="fo-muted">{ws.area.label} · {ws.period.currentFirstDay} – {ws.period.currentLastDay}{ws.period.comparisonFirstDay ? ` · compared with ${ws.period.comparisonFirstDay} – ${ws.period.comparisonLastDay}` : ""}</p>
 
-          <section className="fo-panel" aria-label="Needs attention">
-            <SectionHeader title="Needs attention" description={ws.exceptions.length === 0 ? "No governed exception in this view." : `${ws.exceptions.length} exception(s), most severe first.`} />
-            {ws.exceptions.length > 0 && (
-              <table className="fo-table fo-table--stack">
-                <thead><tr><th>Severity</th><th>What</th><th>Record</th><th>Company</th><th>Action</th></tr></thead>
-                <tbody>{ws.exceptions.map((x) => (
-                  <tr key={`${x.kind}-${x.recordId}`}><td>{x.severity}</td><td>{x.rule}</td><td>{x.label ?? x.recordId}</td><td>{x.operatingCompanyId}</td>
-                    <td>{x.action ? (x.action.available ? x.action.label : `${x.action.label} — needs ${x.action.capability}`) : "No governed action here"}</td></tr>))}</tbody>
-              </table>
-            )}
+          <section className="fo-panel" aria-label="Needs Attention">
+            <SectionHeader title="Needs Attention" description={ws.exceptions.length === 0 ? "No governed exception in this view." : `${ws.exceptions.length} exception(s), most severe first.`} />
+            {ws.exceptions.length > 0 && <ExceptionTable rows={ws.exceptions} />}
           </section>
 
           <section aria-label="Measures">{ws.measures.map((m) => <MeasureCard key={m.id} m={m} onOpen={open} />)}</section>
@@ -146,26 +218,20 @@ export default function AnalysisWorkspace({ callApi = callAnalysisApi }) {
       )}
 
       {detail && (
-        <section className="fo-panel" aria-label="Measure detail">
+        <section className="fo-panel" aria-label="Measure Detail">
           {detail.refused ? <FormError>{detail.refused}</FormError> : (
             <>
-              <SectionHeader title={detail.name} description={`${BASIS_WORDS[detail.basis]} · ${detail.provenance.definition.formula}`} />
+              <SectionHeader title={detail.name} description={`${statusLabel(detail.basis, BASIS_WORDS)} · ${detail.provenance.definition.formula}`} />
               <p className="fo-muted">{detail.provenance.definition.description} Sources: {detail.provenance.definition.sourceFacts.join(", ")}.
                 {detail.provenance.definition.periodEvent ? ` Period by ${detail.provenance.definition.periodEvent}.` : ""}</p>
-              <h3>By company</h3>
-              <table className="fo-table fo-table--stack"><thead><tr><th>Company</th><th>Figure</th><th>Records</th></tr></thead>
-                <tbody>{detail.drivers.byCompany.map((d) => <tr key={d.key}><td>{d.key}</td><td>{figure(detail.unit, detail.unit === "COUNT" ? d.count : detail.unit === "RATIO" ? d.ratio : d.quantity, d)}</td><td>{d.count}</td></tr>)}</tbody></table>
+              <h3>By Company</h3>
+              <DriverTable detail={detail} rows={detail.drivers.byCompany} keyHeader="Company" keyLabel={companyKeyLabel} />
               {detail.drivers.byDimension.length > 0 && (<>
-                <h3>By {detail.provenance.definition.dimension}</h3>
-                <table className="fo-table fo-table--stack"><thead><tr><th>{detail.provenance.definition.dimension}</th><th>Figure</th><th>Records</th></tr></thead>
-                  <tbody>{detail.drivers.byDimension.map((d) => <tr key={d.key}><td>{d.key}</td><td>{figure(detail.unit, detail.unit === "COUNT" ? d.count : detail.unit === "RATIO" ? d.ratio : d.quantity, d)}</td><td>{d.count}</td></tr>)}</tbody></table>
+                <h3>By {titleCasePhrase(detail.provenance.definition.dimension)}</h3>
+                <DriverTable detail={detail} rows={detail.drivers.byDimension} keyHeader={titleCasePhrase(detail.provenance.definition.dimension)} keyLabel={plainKeyLabel} />
               </>)}
-              <h3>Contributing records ({detail.provenance.contributingRecords})</h3>
-              <table className="fo-table fo-table--stack"><thead><tr><th>Record</th><th>Company</th><th>{detail.provenance.definition.dimension ?? "Detail"}</th><th>Amount / quantity</th><th>Open with</th></tr></thead>
-                <tbody>{detail.provenance.sources.map((s) => (
-                  <tr key={`${s.recordId}-${s.dimension}`}><td>{s.label ?? s.recordId}</td><td>{s.operatingCompanyId}</td><td>{s.dimension ?? "—"}</td>
-                    <td>{s.amountMinor !== null && s.amountMinor !== undefined ? formatMinorUnits(Number(s.amountMinor), s.currency ?? "USD") : (detail.unit === "MONEY" ? "price missing" : s.quantity)}</td>
-                    <td className="fo-muted">{s.drill ? `${s.drill.operation} (${s.drill.route})` : "—"}</td></tr>))}</tbody></table>
+              <h3>Contributing Records ({detail.provenance.contributingRecords})</h3>
+              <SourceTable detail={detail} />
             </>
           )}
         </section>

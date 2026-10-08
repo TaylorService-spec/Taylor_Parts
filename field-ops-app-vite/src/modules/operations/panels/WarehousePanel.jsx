@@ -16,7 +16,11 @@
 // The Transfer Orders table below is unaffected: it is a read-only, location-aware view of the
 // CURRENT governed transfer authority, whose rows come from the pure buildTransferOrdersView.
 import { buildTransferOrdersView } from "../transferOrdersViewModel.js";
+import { useMemo } from "react";
 import StatusPill from "../../../shared/ui/StatusPill.jsx";
+import { statusLabel, titleCase } from "../../../shared/display/displayLabels.js";
+import SortableHeader from "../../../shared/ui/sorting/SortableHeader.jsx";
+import { useTableSort } from "../../../shared/ui/sorting/useTableSort.js";
 
 // One transfer endpoint cell: a WAREHOUSE shows its resolved name; every
 // other location type shows a type badge plus the raw locationId (no
@@ -25,13 +29,27 @@ function TransferEndpoint({ endpoint }) {
   if (endpoint.type === "WAREHOUSE") return <>{endpoint.label}</>;
   return (
     <>
-      <StatusPill tone="neutral" label={endpoint.type} /> {endpoint.locationId}
+      <StatusPill tone="neutral" label={titleCase(endpoint.type)} /> {endpoint.locationId}
     </>
   );
 }
 
+// The sortable text of one endpoint: the warehouse name, or the location type + id it renders.
+const endpointSortValue = (endpoint) => (endpoint.type === "WAREHOUSE" ? endpoint.label : `${titleCase(endpoint.type)} ${endpoint.locationId ?? ""}`.trim());
+
 export default function WarehousePanel({ warehouses, transferOrderDocs, resolveName }) {
-  const { rows: transferRows, hiddenInvalidCount } = buildTransferOrdersView(transferOrderDocs, warehouses);
+  const { rows: transferRows, hiddenInvalidCount } = useMemo(
+    () => buildTransferOrdersView(transferOrderDocs, warehouses),
+    [transferOrderDocs, warehouses]
+  );
+  // Client-side sort over the loaded transfer rows (item C); the view-model's order is the default.
+  const sortColumns = useMemo(() => ({
+    part: { value: (t) => resolveName(t.partId) },
+    origin: { value: (t) => endpointSortValue(t.origin) },
+    destination: { value: (t) => endpointSortValue(t.destination) },
+    status: { value: (t) => statusLabel(t.status) },
+  }), [resolveName]);
+  const { sort, toggle, sorted } = useTableSort({ rows: transferRows, columns: sortColumns });
 
   return (
     <div className="fo-card">
@@ -48,19 +66,19 @@ export default function WarehousePanel({ warehouses, transferOrderDocs, resolveN
           <table className="fo-table">
             <thead>
               <tr>
-                <th>Part</th>
-                <th>Origin</th>
-                <th>Destination</th>
-                <th>Status</th>
+                <SortableHeader columnKey="part" label="Part" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="origin" label="Origin" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="destination" label="Destination" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
               </tr>
             </thead>
             <tbody>
-              {transferRows.map((t) => (
+              {sorted.map((t) => (
                 <tr key={t.transferOrderId}>
                   <td>{resolveName(t.partId)}</td>
                   <td><TransferEndpoint endpoint={t.origin} /></td>
                   <td><TransferEndpoint endpoint={t.destination} /></td>
-                  <td>{t.status}</td>
+                  <td>{statusLabel(t.status)}</td>
                 </tr>
               ))}
             </tbody>

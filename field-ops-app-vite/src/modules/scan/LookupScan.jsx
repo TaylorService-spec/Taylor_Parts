@@ -137,7 +137,7 @@ export default function LookupScan({ deps }) {
           enterKeyHint="search"
           autoFocus
         />
-        <Button type="submit" className="fo-scan__find">Look up</Button>
+        <Button type="submit" className="fo-scan__find">Look Up</Button>
       </form>
 
       <p className="fo-lookup__assurance fo-muted">

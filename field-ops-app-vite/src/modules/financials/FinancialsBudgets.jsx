@@ -21,8 +21,8 @@ import FilterBar from "../../shared/ui/FilterBar";
 
 const VIEW_OPTIONS = [
   // "Active budgets", not bare "Active" — ADR-012 §2.2a: name the concept.
-  { key: "active", label: "Active budgets" },
-  { key: "awaiting", label: "Awaiting approval" },
+  { key: "active", label: "Active Budgets" },
+  { key: "awaiting", label: "Awaiting Approval" },
   { key: "superseded", label: "Superseded" },
   { key: "draft", label: "Draft" },
 ];
@@ -40,7 +40,7 @@ export default function FinancialsBudgets() {
       action={
         <span className="fin-action-slot">
           <button type="button" className="fin-primary-action" disabled>
-            New budget
+            New Budget
           </button>
           <span className="fin-inact">
             Budget changes aren&rsquo;t wired to this surface · approval policy not configured
@@ -50,7 +50,7 @@ export default function FinancialsBudgets() {
       }
     >
       <FinancialsFilterRail company={company} onCompanyChange={setCompany} periodLabel="Period — fiscal period" />
-      <FilterBar variant="views" label="Budget views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
+      <FilterBar variant="views" label="Budget Views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
 
       <FinancialsHonestSection
         id="fin-budgets"

@@ -12,12 +12,9 @@
 // over authoritative facts — a bucket total computed here from a page of rows would silently
 // become a claim about the whole book. When the read supplies aged rollups, the slots fill.
 import { useState } from "react";
-import {
-  FinancialsPageFrame,
-  FinancialsFilterRail,
-  FinancialsHonestSection,
-  FinAnnotation,
-} from "./FinancialsPrimitives.jsx";
+import { FinancialsPageFrame, FinancialsFilterRail, FinancialsHonestSection, FinAnnotation, FinSortableHeader } from "./FinancialsPrimitives.jsx";
+import { companyWords, businessUnitWords, labelWords } from "./financialsDisplay.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import { AR_AGING_BUCKETS } from "../../domain/financialsSurface.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
@@ -64,6 +61,32 @@ export default function FinancialsAccountsReceivable() {
   const { byEmployeeId, loading: dirLoading, error: dirError } = useEmployeeDirectory();
   const names = useAccountNames(rows.map((r) => r.accountId).filter(Boolean));
 
+  const salespersonWords = (row) =>
+    row.creditedSalespersonId
+      ? (resolveEmployeeIdentity(row.creditedSalespersonId, { byEmployeeId, loading: dirLoading, error: dirError, noun: "salesperson" }).name ?? "Resolving…")
+      : "Not attributed";
+  const ageWords = (row) =>
+    row.daysOverdue === null ? row.position : row.daysOverdue > 0 ? `${row.daysOverdue} days overdue` : "Current";
+
+  // Column sorting is a display order over the rows already returned — the server's order is the default.
+  // Money sorts by the server's own minor-unit figures (the cells show the same figures formatted).
+  const rawById = new Map((answered ? (result?.invoices ?? []) : []).map((i) => [i.invoiceId, i]));
+  const minor = (r, field) => rawById.get(r.invoiceId)?.[field] ?? null;
+  const columns = {
+    customer: { value: (r) => (r.accountId ? (names.get(r.accountId) ?? null) : null) },
+    invoice: { value: (r) => r.invoiceNumber },
+    companyUnit: { value: (r) => `${companyWords(r.companyId)} · ${businessUnitWords(r.businessUnit)}` },
+    salesperson: { value: (r) => (r.creditedSalespersonId ? salespersonWords(r) : null) },
+    issued: { value: (r) => (typeof r.issuedAtMillis === "number" ? r.issuedAtMillis : null) },
+    due: { value: (r) => (typeof r.dueDate === "number" ? r.dueDate : null) },
+    age: { value: (r) => (typeof r.daysOverdue === "number" ? r.daysOverdue : null) },
+    original: { value: (r) => minor(r, "totalMinor") },
+    applied: { value: (r) => minor(r, "appliedMinor") },
+    outstanding: { value: (r) => minor(r, "outstandingMinor") },
+  };
+  const { sort, toggle, sorted } = useTableSort({ rows, columns });
+  const th = (key, label, extra = {}) => <FinSortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} {...extra} />;
+
   const honest =
     answered && rows.length === 0
       ? {
@@ -91,7 +114,7 @@ export default function FinancialsAccountsReceivable() {
           {AR_AGING_BUCKETS.map((bucket) => (
             <div key={bucket.key} className="fin-scorecard__slot">
               <div className="fin-figure">
-                <div className="fin-figure__label">{bucket.label}</div>
+                <div className="fin-figure__label">{labelWords(bucket.label)}</div>
                 {aging[bucket.key] ? (
                   <div className="fin-figure__value">{aging[bucket.key]}</div>
                 ) : (
@@ -137,7 +160,7 @@ export default function FinancialsAccountsReceivable() {
 
       <FinancialsHonestSection
         id="fin-ar-by-customer"
-        title="Exposure by customer"
+        title="Exposure by Customer"
         meta="largest exposure first · drills to invoice records and Customer Financials"
         honest={honest}
         subject="A/R reads"
@@ -147,21 +170,21 @@ export default function FinancialsAccountsReceivable() {
             <caption className="fo-sr-only">Receivables grouped by customer</caption>
             <thead>
               <tr>
-                <th scope="col">Customer</th>
-                <th scope="col">Invoice</th>
-                <th scope="col">Company · Unit</th>
-                <th scope="col">Salesperson</th>
-                <th scope="col">Issued</th>
-                <th scope="col">Due</th>
-                <th scope="col">Age</th>
-                <th scope="col" className="ns-num">Original</th>
-                <th scope="col" className="ns-num">Applied</th>
-                <th scope="col" className="ns-num">Outstanding</th>
+                {th("customer", "Customer")}
+                {th("invoice", "Invoice")}
+                {th("companyUnit", "Company · Unit")}
+                {th("salesperson", "Salesperson")}
+                {th("issued", "Issued")}
+                {th("due", "Due")}
+                {th("age", "Age")}
+                {th("original", "Original", { className: "ns-num" })}
+                {th("applied", "Applied", { className: "ns-num" })}
+                {th("outstanding", "Outstanding", { className: "ns-num" })}
               </tr>
             </thead>
             {rows.length > 0 ? (
               <tbody>
-                {rows.map((row) => (
+                {sorted.map((row) => (
                   <tr key={row.invoiceId}>
                     <td>
                       {row.accountId ? (
@@ -175,21 +198,11 @@ export default function FinancialsAccountsReceivable() {
                     <td className="fin-nowrap">
                       <Link to={`/financials/invoices/${row.invoiceId}`}>{row.invoiceNumber}</Link>
                     </td>
-                    <td>{(row.companyId ?? "Not attributed") + " · " + row.businessUnit}</td>
-                    <td>
-                      {row.creditedSalespersonId
-                        ? (resolveEmployeeIdentity(row.creditedSalespersonId, { byEmployeeId, loading: dirLoading, error: dirError, noun: "salesperson" }).name ?? "Resolving…")
-                        : "Not attributed"}
-                    </td>
+                    <td>{companyWords(row.companyId) + " · " + businessUnitWords(row.businessUnit)}</td>
+                    <td>{salespersonWords(row)}</td>
                     <td>{dateWords(row.issuedAtMillis)}</td>
                     <td>{dateWords(row.dueDate)}</td>
-                    <td>
-                      {row.daysOverdue === null
-                        ? row.position
-                        : row.daysOverdue > 0
-                          ? `${row.daysOverdue} days overdue`
-                          : "Current"}
-                    </td>
+                    <td>{ageWords(row)}</td>
                     <td className="ns-num">{row.total}</td>
                     <td className="ns-num">{row.applied}</td>
                     <td className="ns-num">{row.outstanding}</td>

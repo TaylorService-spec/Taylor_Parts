@@ -15,6 +15,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { FinancialsPageFrame, FinancialsPeriodControl, FinAnnotation } from "./FinancialsPrimitives.jsx";
+import { businessUnitWords, labelWords } from "./financialsDisplay.js";
+import { operatingCompanyLabel } from "../../shared/display/displayLabels.js";
 import FilterBar from "../../shared/ui/FilterBar";
 import { LIFECYCLE_SCORECARD_SLOTS } from "../../domain/financialsSurface.js";
 import { OPERATING_COMPANY_IDS } from "../../domain/operatingCompanyAuthority.js";
@@ -23,8 +25,8 @@ import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import { FACTS_STATE, FACTS_DETAIL, financialFactsState, formatByCurrency } from "../../domain/financialFactsView.js";
 
 const VIEW_OPTIONS = [
-  { key: "metrics", label: "Metrics table" },
-  { key: "byUnit", label: "By unit" },
+  { key: "metrics", label: "Metrics Table" },
+  { key: "byUnit", label: "By Unit" },
 ];
 
 const METRIC_ROWS = LIFECYCLE_SCORECARD_SLOTS.filter((s) =>
@@ -73,11 +75,8 @@ export default function FinancialsCompanyPerformance() {
   // page will not add the company rows together to fake it. It reads as unavailable with its reason.
   const columns =
     view === "byUnit"
-      ? rollups.map((r) => ({ key: r.key, label: r.key }))
-      : [
-          { key: OPERATING_COMPANY_IDS.TAYLOR, label: "Taylor" },
-          { key: OPERATING_COMPANY_IDS.VENTANA, label: "Ventana" },
-        ];
+      ? rollups.map((r) => ({ key: r.key, label: businessUnitWords(r.key) }))
+      : [OPERATING_COMPANY_IDS.TAYLOR, OPERATING_COMPANY_IDS.VENTANA].map((id) => ({ key: id, label: operatingCompanyLabel(id) }));
 
   return (
     <FinancialsPageFrame
@@ -97,7 +96,7 @@ export default function FinancialsCompanyPerformance() {
 
       <section className="ns-section" aria-label="Metric by company">
         <div className="ns-section__head">
-          <h2 className="ns-section__title">{view === "byUnit" ? "Metric × business unit" : "Metric × company"}</h2>
+          <h2 className="ns-section__title">{view === "byUnit" ? "Metric × Business Unit" : "Metric × Company"}</h2>
           <span className="ns-section__meta">
             · each cell drills to its owning page with the company filter pre-applied
           </span>
@@ -117,13 +116,13 @@ export default function FinancialsCompanyPerformance() {
                   Consolidated
                   <FinAnnotation tip="Arithmetic operational consolidation — UNELIMINATED_SUM. Not GL consolidation and not intercompany elimination. The governed read returns per-company rollups and no consolidated row; this page does not add the columns together to produce one, because a total assembled client-side over a scoped slice would read as a book-wide figure." />
                 </th>
-                <th scope="col">Fact class</th>
+                <th scope="col">Fact Class</th>
               </tr>
             </thead>
             <tbody>
               {METRIC_ROWS.map((row) => (
                 <tr key={row.key}>
-                  <td>{row.label}</td>
+                  <td>{labelWords(row.label)}</td>
                   {columns.map((c) => (
                     <td key={c.key} className="ns-num">
                       {cell(c.key, METRIC_FIELD[row.key])}

@@ -80,7 +80,7 @@ describe("Opportunity → Sales Agreement", () => {
   it("exposes navigation to the first-class Agreement record", () => {
     mountCard({ view: salesAgreementView({ result: agreementProjection(), loading: false, errorStatus: null }) });
     expect(links()).toContain(ROUTE);
-    expect(screen.getByRole("link", { name: "View agreement" }).getAttribute("href")).toBe(ROUTE);
+    expect(screen.getByRole("link", { name: "View Agreement" }).getAttribute("href")).toBe(ROUTE);
   });
 
   it("uses the governed human-readable identity as the link text", () => {

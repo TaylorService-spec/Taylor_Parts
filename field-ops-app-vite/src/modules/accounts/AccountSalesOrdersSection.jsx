@@ -38,7 +38,7 @@ export default function AccountSalesOrdersSection({ accountId }) {
       {view.kind === ACCOUNT_SALES_ORDERS_STATE.LOADING && <p className="fo-muted">Loading sales orders…</p>}
 
       {view.kind === ACCOUNT_SALES_ORDERS_STATE.DENIED && (
-        <FailureState title="Sales Orders unavailable" message="You are not authorized to view Sales Orders for this account." />
+        <FailureState title="Sales Orders Unavailable" message="You are not authorized to view Sales Orders for this account." />
       )}
 
       {view.kind === ACCOUNT_SALES_ORDERS_STATE.UNAVAILABLE && (

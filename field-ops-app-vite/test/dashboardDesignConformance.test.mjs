@@ -121,7 +121,7 @@ test("the situation line is a ContextBand, not a one-sentence status strip", () 
 test("the context band carries what actually governs the screen", () => {
   // Not decoration: the reporting day and the calendar are what the dated figures are computed on,
   // and a reader cannot check a figure without them.
-  assert.match(DASHBOARD, /label:\s*"Reporting day"/);
+  assert.match(DASHBOARD, /label:\s*"Reporting Day"/);
   assert.match(DASHBOARD, /TAYLOR_VENTANA_REPORTING_CALENDAR\.reportingTimeZone/);
 });
 

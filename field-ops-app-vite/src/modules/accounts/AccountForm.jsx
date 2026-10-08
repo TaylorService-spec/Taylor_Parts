@@ -275,7 +275,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
     // control styling/behavior; global `.fo-form` used by other forms is
     // unchanged). See index.css's `.fo-account-form` block.
     <form className="fo-form fo-account-form" onSubmit={handleSubmit}>
-      <Field id="account-name" label="Customer name" required error={nameError}>
+      <Field id="account-name" label="Customer Name" required error={nameError}>
         <input
           id="account-name"
           className="fo-wizard-control"
@@ -351,7 +351,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       <fieldset className="fo-fieldset">
         <legend>Commercial Profile</legend>
 
-        <Field id="cp-currency" label="Default currency (ISO 4217)" error={errors.defaultCurrency}>
+        <Field id="cp-currency" label="Default Currency (ISO 4217)" error={errors.defaultCurrency}>
           <input
             id="cp-currency"
             className="fo-wizard-control"
@@ -378,7 +378,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
           <FormError id="cp-po-required-error">{errors.purchaseOrderRequired}</FormError>
         </div>
 
-        <Field id="cp-invoice-delivery" label="Invoice delivery method" error={errors.invoiceDeliveryMethod}>
+        <Field id="cp-invoice-delivery" label="Invoice Delivery Method" error={errors.invoiceDeliveryMethod}>
           <select
             id="cp-invoice-delivery"
             className="fo-wizard-control"
@@ -400,7 +400,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             not by hiding them here. Shown to any admin/dispatcher who can
             open this form; a non-admin's write that CHANGES either is
             rejected at the Firestore Rules layer. */}
-        <Field id="cp-payment-terms" label="Payment terms" error={errors.paymentTerms}>
+        <Field id="cp-payment-terms" label="Payment Terms" error={errors.paymentTerms}>
           <select
             id="cp-payment-terms"
             className="fo-wizard-control"
@@ -418,7 +418,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
           </select>
         </Field>
 
-        <Field id="cp-tax-status" label="Tax status" error={errors.taxStatus}>
+        <Field id="cp-tax-status" label="Tax Status" error={errors.taxStatus}>
           <select
             id="cp-tax-status"
             className="fo-wizard-control"
@@ -440,7 +440,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             picker is shown once this Account has contacts; the error is shown
             regardless (so a foreign stored id surfaces even with no contacts). */}
         {contacts.length > 0 ? (
-          <Field id="cp-billing-contact" label="Billing contact" error={errors.billingContact}>
+          <Field id="cp-billing-contact" label="Billing Contact" error={errors.billingContact}>
             <select
               id="cp-billing-contact"
               className="fo-wizard-control"
@@ -470,13 +470,13 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             <div className="fo-muted">
               {/* CURRENT owner, re-resolved from userId -- not the stored
                   historical snapshot; loading/error/unknown states preserved. */}
-              <IdentityLine label="Current owner" identity={currentOwnerIdentity} />
-              <Button type="button" variant="tertiary" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear owner</Button>
+              <IdentityLine label="Current Owner" identity={currentOwnerIdentity} />
+              <Button type="button" variant="tertiary" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear Owner</Button>
             </div>
           )}
           <EmployeeAssignmentPicker
             onSelect={handleOwnerSelect}
-            label="Account owner"
+            label="Account Owner"
             placeholder="Search owner by name..."
             disabled={authLoading}
           />
@@ -507,12 +507,12 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       </Field>
 
       <Button type="button" variant="tertiary" onClick={() => setShowExternalIds((v) => !v)} className="fo-link-btn">
-        {showExternalIds ? "Hide" : "Show"} external IDs (future integrations)
+        {showExternalIds ? "Hide" : "Show"} External IDs (Future Integrations)
       </Button>
 
       {showExternalIds && (
         <>
-          <Field id="account-customer-number" label="Customer number">
+          <Field id="account-customer-number" label="Customer Number">
             <input id="account-customer-number" className="fo-wizard-control" placeholder="Customer number (optional)" value={customerNumber} onChange={(e) => setCustomerNumber(e.target.value)} />
           </Field>
           <Field id="account-erp-id" label="ERP ID">

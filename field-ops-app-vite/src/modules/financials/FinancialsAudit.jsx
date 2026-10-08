@@ -19,7 +19,7 @@ import {
 import FilterBar from "../../shared/ui/FilterBar";
 
 const EVENT_CLASS_OPTIONS = [
-  { key: "all", label: "All event classes" },
+  { key: "all", label: "All Event Classes" },
   { key: "invoice", label: "Invoice" },
   { key: "payment", label: "Payment" },
   { key: "correction", label: "Correction" },
@@ -37,11 +37,11 @@ export default function FinancialsAudit() {
       custody="A financials lens over the one append-only audit authority. Never a second audit ledger; read-only always."
       custodyTip="auditEvents is the existing audit authority — this page filters and projects it, creating no storage. Every financial phase feeds events into it; rows appear only for event types whose authorities exist. Restricted financial facts stay restricted inside audit views (FIN-004 follows the number)."
     >
-      <FilterBar variant="chips" label="Event class" options={EVENT_CLASS_OPTIONS} activeKey={eventClass} onChange={setEventClass} />
+      <FilterBar variant="chips" label="Event Class" options={EVENT_CLASS_OPTIONS} activeKey={eventClass} onChange={setEventClass} />
 
       <FinancialsHonestSection
         id="fin-audit-lens"
-        title="Financial events"
+        title="Financial Events"
         meta="newest first · read-only · rows link to their financial records"
         honest={{
           state: "NOT_ENABLED",
@@ -59,7 +59,7 @@ export default function FinancialsAudit() {
                 <th scope="col">Actor</th>
                 <th scope="col">Action</th>
                 <th scope="col">Record</th>
-                <th scope="col">Reason / approval</th>
+                <th scope="col">Reason / Approval</th>
                 <th scope="col">
                   Correlation
                   <FinAnnotation tip="Correlation/request ids may expose sensitive implementation detail — their exposure policy is an open product question (FIN-PQ-CORRELATION-IDS, FIN-010). The column is reserved; nothing renders in it before that decision." />

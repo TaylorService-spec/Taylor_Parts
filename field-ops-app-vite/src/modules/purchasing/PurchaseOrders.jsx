@@ -16,6 +16,8 @@ import FilterBar from "../../shared/ui/FilterBar";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import EmptyState from "../../shared/ui/EmptyState";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 
 // Purchasing > Purchase Orders (item C). The first cross-request view of the
 // active `reorder_purchase_orders` (until now these were only visible one-at-a-
@@ -82,7 +84,7 @@ const FILTERS = [
   { key: "open", label: "Open", viewStatus: PURCHASE_ORDER_VIEW_STATUS.OPEN },
   { key: "received", label: "Received", viewStatus: PURCHASE_ORDER_VIEW_STATUS.RECEIVED },
   { key: "voided", label: "Voided", viewStatus: PURCHASE_ORDER_VIEW_STATUS.VOIDED },
-  { key: "attention", label: "Needs attention", viewStatus: PURCHASE_ORDER_VIEW_STATUS.ORPHAN },
+  { key: "attention", label: "Needs Attention", viewStatus: PURCHASE_ORDER_VIEW_STATUS.ORPHAN },
   { key: "all", label: "All", viewStatus: null },
 ];
 
@@ -90,7 +92,15 @@ const STATUS_LABEL = {
   [PURCHASE_ORDER_VIEW_STATUS.OPEN]: "Open",
   [PURCHASE_ORDER_VIEW_STATUS.RECEIVED]: "Received",
   [PURCHASE_ORDER_VIEW_STATUS.VOIDED]: "Voided",
-  [PURCHASE_ORDER_VIEW_STATUS.ORPHAN]: "Needs attention",
+  [PURCHASE_ORDER_VIEW_STATUS.ORPHAN]: "Needs Attention",
+};
+
+// Display order of the status ladder, so a Status sort groups rows by lifecycle rather than alphabetically.
+const STATUS_ORDER = {
+  [PURCHASE_ORDER_VIEW_STATUS.ORPHAN]: 0,
+  [PURCHASE_ORDER_VIEW_STATUS.OPEN]: 1,
+  [PURCHASE_ORDER_VIEW_STATUS.RECEIVED]: 2,
+  [PURCHASE_ORDER_VIEW_STATUS.VOIDED]: 3,
 };
 
 export default function PurchaseOrders() {
@@ -104,6 +114,24 @@ export default function PurchaseOrders() {
     () => buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead }),
     [requestsRead, purchaseOrdersRead]
   );
+
+  // Client-side sort over the rows already loaded (this read is not paged); the filter is applied first and the
+  // view-model's order stays the default (item C). Hooks run before the load ladder's early returns.
+  const filteredRows = useMemo(() => {
+    const active = FILTERS.find((f) => f.key === filterKey) ?? FILTERS[0];
+    return active.viewStatus ? view.rows.filter((r) => r.viewStatus === active.viewStatus) : view.rows;
+  }, [view.rows, filterKey]);
+  const sortColumns = useMemo(() => ({
+    part: { value: (row) => row.partId },
+    supplier: { value: (row) => row.supplierName },
+    poNumber: { value: (row) => row.externalPoNumber },
+    quantity: { value: (row) => (typeof row.orderedQuantity === "number" ? row.orderedQuantity : null) },
+    ordered: { value: (row) => row.orderedDate },
+    expected: { value: (row) => row.expectedArrivalDate },
+    orderedBy: { value: (row) => (row.orderedByUserId ? resolveActorDisplayName(row.orderedByUserId, byUserId) : null) },
+    status: { value: (row) => STATUS_ORDER[row.viewStatus] ?? 99 },
+  }), [byUserId]);
+  const { sort, toggle, sorted: visibleRows } = useTableSort({ rows: filteredRows, columns: sortColumns });
 
   const intro = (
     <p className="fo-muted">
@@ -134,11 +162,6 @@ export default function PurchaseOrders() {
       </WorkspaceIdentity>
     );
   }
-
-  const activeFilter = FILTERS.find((f) => f.key === filterKey) ?? FILTERS[0];
-  const visibleRows = activeFilter.viewStatus
-    ? view.rows.filter((r) => r.viewStatus === activeFilter.viewStatus)
-    : view.rows;
 
   const filterOptions = FILTERS
     // The "Needs attention" filter appears only when there is at least one ORPHAN.
@@ -195,14 +218,14 @@ export default function PurchaseOrders() {
           <table className="fo-table fo-table--stack ns-table" aria-label="Purchase orders">
             <thead>
               <tr>
-                <th scope="col">Part</th>
-                <th scope="col">Supplier</th>
-                <th scope="col">PO #</th>
-                <th scope="col" className="fo-po-qty">Qty</th>
-                <th scope="col">Ordered</th>
-                <th scope="col">Expected</th>
-                <th scope="col">Ordered by</th>
-                <th scope="col">Status</th>
+                <SortableHeader columnKey="part" label="Part" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="supplier" label="Supplier" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="poNumber" label="PO #" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="quantity" label="Qty" sort={sort} onSort={toggle} className="fo-po-qty" />
+                <SortableHeader columnKey="ordered" label="Ordered" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="expected" label="Expected" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="orderedBy" label="Ordered By" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="status" label="Status" sort={sort} onSort={toggle} />
               </tr>
             </thead>
             <tbody>
@@ -236,13 +259,13 @@ export default function PurchaseOrders() {
                         the exception MEANS for purchasing remains a Product question. */}
                     {row.viewStatus === PURCHASE_ORDER_VIEW_STATUS.ORPHAN && (
                       <p className="fo-po-integrity" role="note">
-                        This request is marked ORDERED, but its purchase order record could not be
+                        This request is marked as ordered, but its purchase order record could not be
                         read. The blank fields are unknown, not empty.
                       </p>
                     )}
                     {row.isReceiptCandidate && row.receiptSource && (
                       <details className="fo-po-receipt">
-                        <summary>Receipt source</summary>
+                        <summary>Receipt Source</summary>
                         <p className="fo-muted fo-po-receipt-note">
                           Eligible for receiving via the receiving service. Receiving is a separate,
                           authorized action.

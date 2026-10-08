@@ -235,8 +235,9 @@ describe("SalesWorkspace (pipeline responsive content priority)", () => {
   it("marks the lower-priority columns (Channel, Expected close) as secondary/deferrable in header and rows", () => {
     const { container } = render(<SalesWorkspace />);
     // both header cells flagged
-    const secHeaders = [...container.querySelectorAll("thead th.fo-sales-col--secondary")].map((th) => th.textContent);
-    expect(secHeaders).toEqual(["Channel", "Expected close"]);
+    // Sortable headers: the visible label is the first span inside the header's sort button.
+    const secHeaders = [...container.querySelectorAll("thead th.fo-sales-col--secondary")].map((th) => th.querySelector("button > span").textContent);
+    expect(secHeaders).toEqual(["Channel", "Expected Close"]);
     // and every row's Channel + Expected close cells flagged (2 per row)
     const firstRow = container.querySelector("tbody tr");
     const secCells = firstRow.querySelectorAll("td.fo-sales-col--secondary");
@@ -249,7 +250,7 @@ describe("SalesWorkspace (pipeline responsive content priority)", () => {
   it("labels every pipeline cell (data-label) so the phone block recomposition stays legible", () => {
     const { container } = render(<SalesWorkspace />);
     const labels = [...container.querySelectorAll("tbody tr:first-child td")].map((td) => td.getAttribute("data-label"));
-    expect(labels).toEqual(["Customer", "Stage", "Channel", "Est. value", "Expected close", "Attention / next"]);
+    expect(labels).toEqual(["Customer", "Stage", "Channel", "Est. Value", "Expected Close", "Attention / Next"]);
   });
 });
 

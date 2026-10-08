@@ -46,7 +46,7 @@ describe("Administration > Users > Functional Roles", () => {
     const workforce = fakeWorkforce();
     render(<MemoryRouter><AdminFunctionalRoles workforce={workforce} /></MemoryRouter>);
     await waitFor(() => expect(document.querySelector("[data-functional-role-rows='2']")).not.toBeNull());
-    expect(document.querySelector("[data-functional-role-row='vendor-returns']").textContent).toContain("INACTIVE");
+    expect(document.querySelector("[data-functional-role-row='vendor-returns']").textContent).toContain("Inactive");
     fireEvent.click(screen.getByRole("button", { name: "Open warranty-desk" }));
     await waitFor(() => expect(document.querySelector("[data-functional-role-holders='1']")).not.toBeNull());
     expect(document.querySelector("[data-functional-role-events='1']").textContent).toContain("functionalRole.catalog.create");
@@ -158,7 +158,7 @@ describe("Workflows: FUNCTIONAL_ROLE bindings", () => {
     render(<EmployeeWorkflowResponsibilities api={api} principalId="p-1" />);
     await waitFor(() => expect(document.querySelector('[data-workflow-responsibilities="READY"]')).not.toBeNull());
     const row = document.querySelector('[data-responsibility="workOrder/go"]');
-    expect(row.querySelector("[data-functional-role-requirement]").textContent).toBe("requires one of warranty-desk; holds warranty-desk");
+    expect(row.querySelector("[data-functional-role-requirement]").textContent).toBe("requires one of Warranty Desk; holds Warranty Desk");
     expect(row.querySelector("[data-responsibility-source]").getAttribute("data-responsibility-source")).toBe("WORKFLOW_BINDING_FUNCTIONAL_ROLE_AND_EFFECTIVE_AUTHORITY");
     const inert = document.querySelector('[data-inert-binding="salesOrder/close"]');
     expect(inert.textContent).toContain("SECURITY_ROLE_BINDING_REQUIRED");

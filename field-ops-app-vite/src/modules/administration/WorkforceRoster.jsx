@@ -26,7 +26,7 @@ import { workforceApiClient } from "../../services/workforceApiClient.js";
 //   * STALE RESPONSES: each table read carries a sequence number; only the latest answer is drawn.
 const PAGE_SIZE = 50;
 
-const STATUS_WORDS = Object.freeze({ ACTIVE: "Active", CONTRACTOR: "Contractor", ON_LEAVE: "On Leave", INACTIVE: "Inactive", TERMINATED: "Terminated", RETIRED: "Retired" });
+const STATUS_WORDS = Object.freeze({ ACTIVE: "Employee Active", CONTRACTOR: "Contractor", ON_LEAVE: "On Leave", INACTIVE: "Employee Inactive", TERMINATED: "Terminated", RETIRED: "Retired" });
 const SCOPE_WORDS = Object.freeze({ WAREHOUSE: "Warehouse", REORDER_QUEUE: "Reorder Queue", MOBILE: "Truck" });
 const channelWords = (v) => (v === "NATIONAL_ACCOUNTS" ? "National Accounts" : v === "RETAIL" ? "Retail" : titleCase(v));
 
@@ -147,7 +147,7 @@ export default function WorkforceRoster({ workforce = workforceApiClient }) {
       {state.roster && (
         <>
           <p className="fo-muted" aria-live="polite" data-roster-sort={state.roster.sort ? `${state.roster.sort.key}:${state.roster.sort.direction}` : "name:asc"}>
-            {state.roster.total} employee{state.roster.total === 1 ? "" : "s"}{state.roster.truncated ? ` (first ${items.length} shown)` : ""}
+            {state.roster.total} employee{state.roster.total === 1 ? "" : "s"}{state.roster.truncated ? ` (first ${state.roster.items.length} shown)` : ""}
             {" · "}{sort ? `Sorted by ${COLUMNS.find((c) => c.key === sort.key)?.label}, ${sort.direction === "asc" ? "ascending" : "descending"}` : "Sorted by last name, then first name"}
           </p>
           {state.roster.securityRolesWithheld && <p className="fo-muted">{state.roster.securityRolesWithheld}.</p>}

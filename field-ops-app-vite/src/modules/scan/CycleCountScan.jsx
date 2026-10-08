@@ -335,7 +335,7 @@ export default function CycleCountScan({ deps }) {
         {/* CC-D9: the first accepted scan above IS the hardware proof -- no separate device check. */}
         <p className="fo-cc-scanner-ready fo-muted" role="status">Scanner ready</p>
         {awaitingSerial && (
-          <button type="button" className="fo-link-btn" onClick={() => setExpecting(null)}>Cancel serial scan</button>
+          <button type="button" className="fo-link-btn" onClick={() => setExpecting(null)}>Cancel Serial Scan</button>
         )}
         {unresolved.length > 0 && (
           <ul className="fo-list" aria-label="Scans that did not match">
@@ -370,9 +370,9 @@ export default function CycleCountScan({ deps }) {
 
       <section className="fo-cc-sticky-bar" aria-label="Submit">
         <Button onClick={submitAll} disabled={busy || outstanding.length === 0}>
-          {outstanding.length === 0 ? "Scan items to count" : `Submit ${outstanding.length} count${outstanding.length === 1 ? "" : "s"}`}
+          {outstanding.length === 0 ? "Scan Items to Count" : `Submit ${outstanding.length} count${outstanding.length === 1 ? "" : "s"}`}
         </Button>
-        {toRetry.length > 0 && <Button variant="secondary" onClick={() => submitLines(toRetry)} disabled={busy}>Try again ({toRetry.length})</Button>}
+        {toRetry.length > 0 && <Button variant="secondary" onClick={() => submitLines(toRetry)} disabled={busy}>Try Again ({toRetry.length})</Button>}
         <Button
           variant="primary"
           disabled={busy || !finish.enabled}
@@ -382,7 +382,7 @@ export default function CycleCountScan({ deps }) {
         </Button>
         {!finish.enabled && <span className="fo-cc-disabled-reason">{finish.reason}</span>}
         <Button variant="tertiary" onClick={reset} disabled={busy || pending > 0}>
-          {pending > 0 ? "Submit or clear your counts before leaving" : "Leave — resume later"}
+          {pending > 0 ? "Submit or clear your counts before leaving" : "Leave — Resume Later"}
         </Button>
         {notice && <p className="fo-inline-error" role="alert">{notice}</p>}
       </section>
@@ -422,15 +422,15 @@ function CountLineRow({ line, result, busy, onRemoveLast, onZero, onRemoveLine }
           <>
             {line.entryIds.length > 0 && (
               <button type="button" className="fo-link-btn" onClick={onRemoveLast} disabled={busy}>
-                {line.trackingMode === "SERIAL" ? "Remove last serial" : "−1"}
+                {line.trackingMode === "SERIAL" ? "Remove Last Serial" : "−1"}
               </button>
             )}
             {line.countedQuantity !== 0 && (
-              <> <button type="button" className="fo-link-btn" onClick={onZero} disabled={busy}>None here</button></>
+              <> <button type="button" className="fo-link-btn" onClick={onZero} disabled={busy}>None Here</button></>
             )}
             {line.state === COUNT_LINE_STATE.NOT_COUNTED && (
-              <> <button type="button" className="fo-link-btn" onClick={onZero} disabled={busy}>Count as zero</button>{" "}
-                <button type="button" className="fo-link-btn" onClick={onRemoveLine} disabled={busy}>Remove line</button></>
+              <> <button type="button" className="fo-link-btn" onClick={onZero} disabled={busy}>Count as Zero</button>{" "}
+                <button type="button" className="fo-link-btn" onClick={onRemoveLine} disabled={busy}>Remove Line</button></>
             )}
           </>
         )}
@@ -475,14 +475,14 @@ function StartOrResume({ client, busy, notice, onScanBin, onStart, onResume, dep
   return (
     <div className="fo-receiving-session">
       <section className="fo-receiving-session__section" aria-label="Start counting">
-        <p className="fo-receiving-session__kicker">Count a bin</p>
+        <p className="fo-receiving-session__kicker">Count a Bin</p>
         <ScanInput onScan={onScanBin} label="Scan the bin label" placeholder="Bin label" deps={deps?.scanInputDeps} />
         {notice && <p className="fo-inline-error" role="alert">{notice}</p>}
       </section>
 
       <section className="fo-receiving-session__section" aria-label="Resume">
-        <p className="fo-receiving-session__kicker">Continue a count</p>
-        <Button variant="secondary" onClick={loadOpen} disabled={busy}>Show open counts</Button>
+        <p className="fo-receiving-session__kicker">Continue a Count</p>
+        <Button variant="secondary" onClick={loadOpen} disabled={busy}>Show Open Counts</Button>
         {listError && <p className="fo-inline-error" role="alert">{listError}</p>}
         {openSheets && openSheets.length === 0 && <p className="fo-muted">There are no open counts.</p>}
         {openSheets && openSheets.length > 0 && (
@@ -499,7 +499,7 @@ function StartOrResume({ client, busy, notice, onScanBin, onStart, onResume, dep
       </section>
 
       <section className="fo-receiving-session__section" aria-label="Count a warehouse">
-        <p className="fo-receiving-session__kicker">Count a whole warehouse</p>
+        <p className="fo-receiving-session__kicker">Count a Whole Warehouse</p>
         <form onSubmit={(e) => { e.preventDefault(); onStart(locationType, locationId, locationId); }}>
           <label>
             Where
@@ -511,7 +511,7 @@ function StartOrResume({ client, busy, notice, onScanBin, onStart, onResume, dep
             Location
             <input className="fo-input" value={locationId} onChange={(e) => setLocationId(e.target.value)} aria-label="Location" />
           </label>
-          <Button type="submit" variant="secondary" disabled={busy || locationId.trim() === ""}>Start counting</Button>
+          <Button type="submit" variant="secondary" disabled={busy || locationId.trim() === ""}>Start Counting</Button>
         </form>
       </section>
     </div>

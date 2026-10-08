@@ -32,8 +32,8 @@ describe("MyWorkspace", () => {
     const callApi = vi.fn(async () => ({ ok: true, result: WORK }));
     const { container } = renderIn(<MyWorkspace callApi={callApi} />);
     await screen.findByText("Riley Retail", { selector: "dd" });
-    expect(container.textContent).toMatch(/My work — Retail Sales/);
-    expect(container.textContent).toMatch(/High priority · an order is waiting/);
+    expect(container.textContent).toMatch(/My Work — Retail Sales/);
+    expect(container.textContent).toMatch(/High Priority · an order is waiting/);
     expect(container.textContent).toMatch(/Owner: Riley Retail · Accountable: Morgan Manager/);
     expect(container.textContent).toMatch(/Assignee: Tech A/);
     expect(container.textContent).toMatch(/Not available to you — requires workOrder.lifecycle.schedule/);

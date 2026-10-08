@@ -1,10 +1,21 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useInventory } from "../../demo/InventoryContext";
 import { LOW_STOCK_THRESHOLD } from "../../demo/inventoryData";
 import { HERO_IDS } from "../../demo/heroConfig";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+
+// Client-side sort columns for a stock table: the part's name / unit, and its quantity in `stock`.
+function stockSortColumns(stock) {
+  return {
+    part: { value: (part) => part.name ?? null },
+    unit: { value: (part) => part.unit ?? null },
+    qty: { value: (part) => stock[part.id] ?? 0 },
+  };
+}
 
 // Sprint 3.6.2: Inventory screen -- Warehouse stock, Truck stock, and a
 // Warehouse -> Truck transfer control. Visual/demo layer only: all state
@@ -45,6 +56,10 @@ export default function Inventory() {
   const { parts, warehouseStock, truckStock, transferPart } = useInventory();
   const [transferPartId, setTransferPartId] = useState(parts[0]?.id ?? "");
   const [transferQty, setTransferQty] = useState(1);
+  const warehouseColumns = useMemo(() => stockSortColumns(warehouseStock), [warehouseStock]);
+  const truckColumns = useMemo(() => stockSortColumns(truckStock), [truckStock]);
+  const warehouseSort = useTableSort({ rows: parts, columns: warehouseColumns });
+  const truckSort = useTableSort({ rows: parts, columns: truckColumns });
 
   function handleTransfer(e) {
     e.preventDefault();
@@ -63,13 +78,13 @@ export default function Inventory() {
         <table className="fo-table">
           <thead>
             <tr>
-              <th>Part</th>
-              <th>Unit</th>
-              <th>On Hand</th>
+              <SortableHeader columnKey="part" label="Part" sort={warehouseSort.sort} onSort={warehouseSort.toggle} />
+              <SortableHeader columnKey="unit" label="Unit" sort={warehouseSort.sort} onSort={warehouseSort.toggle} />
+              <SortableHeader columnKey="qty" label="On Hand" sort={warehouseSort.sort} onSort={warehouseSort.toggle} />
             </tr>
           </thead>
           <tbody>
-            {parts.map((part) => {
+            {warehouseSort.sorted.map((part) => {
               const qty = warehouseStock[part.id] ?? 0;
               const low = qty <= LOW_STOCK_THRESHOLD;
               return (
@@ -95,13 +110,13 @@ export default function Inventory() {
         <table className="fo-table">
           <thead>
             <tr>
-              <th>Part</th>
-              <th>Unit</th>
-              <th>On Truck</th>
+              <SortableHeader columnKey="part" label="Part" sort={truckSort.sort} onSort={truckSort.toggle} />
+              <SortableHeader columnKey="unit" label="Unit" sort={truckSort.sort} onSort={truckSort.toggle} />
+              <SortableHeader columnKey="qty" label="On Truck" sort={truckSort.sort} onSort={truckSort.toggle} />
             </tr>
           </thead>
           <tbody>
-            {parts.map((part) => {
+            {truckSort.sorted.map((part) => {
               const qty = truckStock[part.id] ?? 0;
               return (
                 <tr key={part.id}>

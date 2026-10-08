@@ -131,7 +131,8 @@ describe("Transfers surface -- row rendering and identity display", () => {
     readState.transferOrderDocs = [transferDoc({ docId: "to-1", status: "REQUESTED" })];
     renderSurface();
     const table = screen.getByRole("table", { name: /transfers/i });
-    const headers = within(table).getAllByRole("columnheader").map((h) => h.textContent);
+    // A sortable header's visible label is its button's first span (the indicator and spoken state follow it).
+    const headers = within(table).getAllByRole("columnheader").map((h) => h.querySelector(".fo-sortable-th__button > span")?.textContent ?? h.textContent);
     expect(headers).toEqual(expect.arrayContaining(["Part", "From", "To", "Status", "Actions"]));
     // THIS ASSERTION USED TO REQUIRE THE DOCUMENT ID ON SCREEN, and it is the reason R3 survived
     // this long: `partId` is `type: "REFERENCE" → part`, a routing key, and the fixture value

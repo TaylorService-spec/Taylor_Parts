@@ -3,6 +3,9 @@ import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import { Button } from "../../shared/ui/primitives";
 import { formatMinorUnits } from "../../domain/money.js";
+import { statusLabel } from "../../shared/display/displayLabels.js";
+import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 import { useSalesAgreementIndex } from "../../hooks/useSalesAgreementIndex.js";
 import {
   SALES_AGREEMENT_INDEX_STATE,
@@ -84,6 +87,58 @@ function totalCell(row) {
   return `${row.currency ?? ""} ${formatMinorUnits(minor, row.currency)}`.trim();
 }
 
+// HEADER SORTING over the one page already read; no sort = the projection's order.
+const AGREEMENT_SORT_COLUMNS = Object.freeze({
+  agreement: { value: (row) => row.salesAgreementNumber },
+  customer: { value: (row) => row.accountName },
+  state: { value: (row) => statusLabel(row.state, STATE_LABEL) },
+  total: { value: (row) => (typeof row?.totals?.totalMinor === "number" ? row.totals.totalMinor : null) },
+});
+
+function SalesAgreementsTable({ rows, navigate }) {
+  const { sort, toggle, sorted } = useTableSort({ rows, columns: AGREEMENT_SORT_COLUMNS });
+  return (
+    <div className="ns-table-wrap">
+      <table className="ns-table ns-collection__table">
+        <caption className="sr-only">Sales Agreements</caption>
+        <thead>
+          <tr>
+            <SortableHeader columnKey="agreement" label="Agreement" sort={sort} onSort={toggle} />
+            <SortableHeader columnKey="customer" label="Customer" sort={sort} onSort={toggle} />
+            <SortableHeader columnKey="state" label="State" sort={sort} onSort={toggle} />
+            <SortableHeader columnKey="total" label="Total" sort={sort} onSort={toggle} />
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((row) => (
+            <tr
+              key={row.id}
+              tabIndex={0}
+              role="link"
+              onClick={() => navigate(salesAgreementHref(row.id))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  navigate(salesAgreementHref(row.id));
+                }
+              }}
+            >
+              <td>{row.salesAgreementNumber}</td>
+              {/* THE NAME, OR THE HONEST ABSENCE OF ONE. The projection LEFT JOINs the CRM
+                  account, so `accountName` is null when the customer row is not readable or
+                  not there -- and a document id is a routing key, not content, so it is
+                  never printed in its place. */}
+              <td>{row.accountName ?? <span className="fo-muted">Unresolved customer</span>}</td>
+              <td>{statusLabel(row.state, STATE_LABEL)}</td>
+              <td>{totalCell(row)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // `client` is the transport seam, defaulted inside the hook to the real Commercial client. It is a
 // prop for one reason: so a test can drive the REAL read path against a canned HTTP answer instead
 // of a hand-written view object. Production never passes it (App.jsx renders `<SalesAgreementsList />`).
@@ -114,44 +169,7 @@ export default function SalesAgreementsList({ client = undefined }) {
       default:
         return (
           <>
-            <div className="ns-table-wrap">
-              <table className="ns-table ns-collection__table">
-                <caption className="sr-only">Sales Agreements</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Agreement</th>
-                    <th scope="col">Customer</th>
-                    <th scope="col">State</th>
-                    <th scope="col">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {view.rows.map((row) => (
-                    <tr
-                      key={row.id}
-                      tabIndex={0}
-                      role="link"
-                      onClick={() => navigate(salesAgreementHref(row.id))}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          navigate(salesAgreementHref(row.id));
-                        }
-                      }}
-                    >
-                      <td>{row.salesAgreementNumber}</td>
-                      {/* THE NAME, OR THE HONEST ABSENCE OF ONE. The projection LEFT JOINs the CRM
-                          account, so `accountName` is null when the customer row is not readable or
-                          not there -- and a document id is a routing key, not content, so it is
-                          never printed in its place. */}
-                      <td>{row.accountName ?? <span className="fo-muted">Unresolved customer</span>}</td>
-                      <td>{STATE_LABEL[row.state] ?? row.state}</td>
-                      <td>{totalCell(row)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <SalesAgreementsTable rows={view.rows} navigate={navigate} />
             {/* THE PAGE IS A PAGE, AND SAYS SO. There is no "load more" because this screen issues
                 one read; claiming completeness it does not have would be worse than the sentence. */}
             {view.truncated ? (

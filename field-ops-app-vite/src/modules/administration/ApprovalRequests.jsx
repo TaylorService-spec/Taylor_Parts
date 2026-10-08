@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { privilegedApprovalClient } from "../../services/privilegedApprovalClient.js";
+import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
 
 // ADMINISTRATION > ROLES & PERMISSIONS > APPROVAL REQUESTS
 //
@@ -32,12 +33,12 @@ function formatWhen(ms) {
 /** Business-language Role label. Falls back to the id rather than rendering a blank. */
 function roleLabel(roleId) {
   const LABELS = { owner: "Owner", admin: "Administrator" };
-  return LABELS[roleId] || roleId;
+  return LABELS[roleId] || identifierLabel(roleId);
 }
 
 function scopeLabel(scope) {
   if (!scope || typeof scope !== "object") return "—";
-  return scope.type === "global" ? "Global" : String(scope.type);
+  return scope.type === "global" ? "Global" : titleCase(scope.type);
 }
 
 export default function ApprovalRequests({ onPendingCountChange }) {
@@ -115,7 +116,7 @@ export default function ApprovalRequests({ onPendingCountChange }) {
   if (loadState === "denied") {
     return (
       <div className="fo-card">
-        <StatusPill tone="attention" label="Not available" asText />
+        <StatusPill tone="attention" label="Not Available" asText />
         <p className="fo-muted">
           {errorText} Approving a privileged Role requires security administration authority.
         </p>
@@ -128,7 +129,7 @@ export default function ApprovalRequests({ onPendingCountChange }) {
       {notice && <p className="fo-approval-notice" role="status">{notice}</p>}
 
       <h3>
-        Pending approval{" "}
+        Pending Approval{" "}
         {pending.length > 0 && <StatusPill tone="attention" label={String(pending.length)} asText />}
       </h3>
 
@@ -141,12 +142,12 @@ export default function ApprovalRequests({ onPendingCountChange }) {
               <div className="fo-approval-item__detail">
                 <strong>{r.displayName || "(unnamed principal)"}</strong>
                 <dl className="fo-approval-facts">
-                  <div><dt>Target principal</dt><dd><code>{r.principalUid}</code></dd></div>
+                  <div><dt>Target Principal</dt><dd><code>{r.principalUid}</code></dd></div>
                   <div><dt>Requested Role</dt><dd>{roleLabel(r.roleId)}</dd></div>
                   <div><dt>Scope</dt><dd>{scopeLabel(r.scope)}</dd></div>
                   <div><dt>Requested</dt><dd>{formatWhen(r.requestedAtMs)}</dd></div>
-                  <div><dt>Proposed by</dt><dd><code>{r.requestedBy}</code></dd></div>
-                  <div><dt>Status</dt><dd><StatusPill tone="attention" label="Pending approval" asText /></dd></div>
+                  <div><dt>Proposed By</dt><dd><code>{r.requestedBy}</code></dd></div>
+                  <div><dt>Status</dt><dd><StatusPill tone="attention" label="Pending Approval" asText /></dd></div>
                 </dl>
               </div>
               <div className="fo-approval-item__actions">
@@ -190,7 +191,7 @@ export default function ApprovalRequests({ onPendingCountChange }) {
                         />
                       </dd>
                     </div>
-                    <div><dt>Decided by</dt><dd><code>{r.decidedBy || "—"}</code></dd></div>
+                    <div><dt>Decided By</dt><dd><code>{r.decidedBy || "—"}</code></dd></div>
                     <div><dt>Decided</dt><dd>{formatWhen(r.decidedAtMs)}</dd></div>
                   </dl>
                 </div>

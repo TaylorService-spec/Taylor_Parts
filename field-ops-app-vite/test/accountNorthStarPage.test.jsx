@@ -136,8 +136,8 @@ describe("Account North Star P1 — the rail", () => {
     const titles = Array.from(container.querySelectorAll(".ns-rail .ns-rail__title")).map((n) => n.textContent);
     expect(titles[0]).toMatch(/^Contacts/);
     expect(titles[1]).toMatch(/^Locations/);
-    expect(titles.indexOf("Commercial profile")).toBeGreaterThan(1);
-    expect(titles).toContain("Notes & identifiers");
+    expect(titles.indexOf("Commercial Profile")).toBeGreaterThan(1);
+    expect(titles).toContain("Notes & Identifiers");
   });
 
   it("notes & identifiers stay secondary — collapsed, never promoted into the hierarchy", () => {
@@ -152,7 +152,7 @@ describe("Account North Star P1 — the rail", () => {
     // customer nobody made a tax decision about — and invoices would be built on it.
     const { container } = mount({ taxStatus: undefined, paymentTerms: "NET_30" });
     const profile = container.querySelector(".ns-rail__dl").textContent;
-    expect(profile).toMatch(/Tax status/);
+    expect(profile).toMatch(/Tax Status/);
     expect(profile).toMatch(/UNKNOWN|Unknown/);
     expect(container.textContent).not.toMatch(/Taxable/);
   });
@@ -392,9 +392,9 @@ describe("Account North Star P1 — real responsive compositions", () => {
     const phone = mount({ isPhone: true, contacts: [PRIMARY] });
     const more = phone.container.querySelector(".ns-more");
     expect(more, "the phone composition has a More disclosure").toBeTruthy();
-    expect(more.textContent).toMatch(/Commercial profile/);
-    expect(more.textContent).toMatch(/Accounts receivable/);
-    expect(more.textContent).toMatch(/Notes & identifiers/);
+    expect(more.textContent).toMatch(/Commercial Profile/);
+    expect(more.textContent).toMatch(/Accounts Receivable/);
+    expect(more.textContent).toMatch(/Notes & Identifiers/);
     phone.unmount();
 
     const desktop = mount({ contacts: [PRIMARY] });
@@ -433,10 +433,10 @@ describe("Account North Star P1 — what the page may never do", () => {
   it("keeps the existing write affordances exactly as they were", () => {
     // The reconciliation moved these; it did not add, remove or re-authorize one.
     mount({ contacts: [PRIMARY] });
-    expect(screen.getByRole("button", { name: "Edit customer" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "+ Add contact" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit Customer" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "+ Add Contact" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Import" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "+ Add location" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "+ Add Location" })).toBeTruthy();
     // No status-transition control exists, because no transition command does.
     expect(screen.queryByRole("button", { name: /Activate|Archive|Mark prospect|Advance/i })).toBeNull();
   });
@@ -444,7 +444,7 @@ describe("Account North Star P1 — what the page may never do", () => {
   it("an archived account keeps the same composition and keeps Edit offered (A-D3)", () => {
     const { container } = mount({ status: "ARCHIVED", contacts: [PRIMARY] });
     expect(container.querySelector(".ns-identity").textContent).toMatch(/Archived — closed/);
-    expect(screen.getByRole("button", { name: "Edit customer" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit Customer" })).toBeTruthy();
     // No lock is invented: enforcement would be a behavioral change, not a presentation one.
     expect(container.textContent).not.toMatch(/read-only mode|locked/i);
   });

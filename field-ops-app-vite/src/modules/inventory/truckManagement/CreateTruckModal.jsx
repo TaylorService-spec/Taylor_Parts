@@ -57,7 +57,7 @@ export default function CreateTruckModal({
   const err = (field) => (attempted && errors[field] ? errors[field] : null);
 
   return (
-    <Modal title="Add truck" onClose={onClose} closeLabel="Close">
+    <Modal title="Add Truck" onClose={onClose} closeLabel="Close">
       <form className="fo-create-modal-form" onSubmit={handleSubmit} noValidate>
         {!writeReady && <WriteDisabledNotice />}
 
@@ -66,34 +66,34 @@ export default function CreateTruckModal({
             aria-invalid={err("truckId") ? true : undefined} aria-describedby={err("truckId") ? errorId("tm-truckId") : undefined} />
         </Field>
 
-        <Field id="tm-vehicleNumber" label="Vehicle number" required error={err("vehicleNumber")}>
+        <Field id="tm-vehicleNumber" label="Vehicle Number" required error={err("vehicleNumber")}>
           <input id="tm-vehicleNumber" className="fo-wizard-control" value={form.vehicleNumber} onChange={set("vehicleNumber")}
             aria-invalid={err("vehicleNumber") ? true : undefined} aria-describedby={err("vehicleNumber") ? errorId("tm-vehicleNumber") : undefined} />
         </Field>
 
-        <Field id="tm-displayLabel" label="Display label" required error={err("displayLabel")}>
+        <Field id="tm-displayLabel" label="Display Label" required error={err("displayLabel")}>
           <input id="tm-displayLabel" className="fo-wizard-control" value={form.displayLabel} onChange={set("displayLabel")}
             aria-invalid={err("displayLabel") ? true : undefined} aria-describedby={err("displayLabel") ? errorId("tm-displayLabel") : undefined} />
         </Field>
 
-        <Field id="tm-locationId" label="Mobile location ID" required hint="The MOBILE inventory location and its 1:1 link are created automatically on the server." error={err("locationId")}>
+        <Field id="tm-locationId" label="Mobile Location ID" required hint="The MOBILE inventory location and its 1:1 link are created automatically on the server." error={err("locationId")}>
           <input id="tm-locationId" className="fo-wizard-control" value={form.locationId} onChange={set("locationId")}
             aria-invalid={err("locationId") ? true : undefined} aria-describedby={err("locationId") ? errorId("tm-locationId") : undefined} />
         </Field>
 
-        <Field id="tm-homeWarehouseId" label="Home warehouse" required error={err("homeWarehouseId")}>
+        <Field id="tm-homeWarehouseId" label="Home Warehouse" required error={err("homeWarehouseId")}>
           <BoundedSelect id="tm-homeWarehouseId" value={form.homeWarehouseId} onChange={set("homeWarehouseId")}
             options={warehouses.options} loading={warehouses.loading} error={warehouses.error}
             placeholder="Select a warehouse…" emptyLabel="No warehouses available" disabled={!writeReady}
             describedBy={err("homeWarehouseId") ? errorId("tm-homeWarehouseId") : undefined} />
         </Field>
 
-        <Field id="tm-status" label="Initial status" required error={err("status")}>
+        <Field id="tm-status" label="Initial Status" required error={err("status")}>
           <GovernedStatusSelect id="tm-status" value={form.status} onChange={set("status")} disabled={!writeReady}
             describedBy={err("status") ? errorId("tm-status") : undefined} />
         </Field>
 
-        <Field id="tm-driver" label="Assigned driver (optional)" hint="Driver assignment never changes inventory custody.">
+        <Field id="tm-driver" label="Assigned Driver (Optional)" hint="Driver assignment never changes inventory custody.">
           <BoundedSelect id="tm-driver" value={form.assignedDriverEmployeeId} onChange={set("assignedDriverEmployeeId")}
             options={drivers.options} loading={drivers.loading} error={drivers.error}
             placeholder="Unassigned" emptyLabel="No active employees" disabled={!writeReady} />
@@ -104,7 +104,7 @@ export default function CreateTruckModal({
 
         <FormActions>
           <Button type="submit" variant="primary" disabled={!writeReady} loading={submitting}>
-            Add truck
+            Add Truck
           </Button>
           <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>Cancel</Button>
         </FormActions>
