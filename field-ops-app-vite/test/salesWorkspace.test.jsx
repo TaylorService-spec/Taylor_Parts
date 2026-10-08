@@ -71,7 +71,7 @@ describe("SalesWorkspace (read-first pipeline)", () => {
     });
     render(<SalesWorkspace source={governed} />);
     await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
-    expect(screen.queryByText(/synthetic sample opportunities/i)).toBeNull();
+    expect(screen.queryByText(/Sample Data: showing sample opportunities/i)).toBeNull();
   });
 
   it("still says so when the source really is synthetic", async () => {
@@ -84,11 +84,11 @@ describe("SalesWorkspace (read-first pipeline)", () => {
     });
     render(<SalesWorkspace source={fixture} />);
     await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
-    expect(screen.getByText(/synthetic sample opportunities/i)).toBeTruthy();
+    expect(screen.getByText(/Sample Data: showing sample opportunities/i)).toBeTruthy();
   });
   it("shows an honest synthetic-data banner and an inert (disabled) create control", () => {
     render(<SalesWorkspace />);
-    expect(screen.getByText(/synthetic sample opportunities/i)).toBeTruthy();
+    expect(screen.getByText(/Sample Data: showing sample opportunities/i)).toBeTruthy();
     const btn = screen.getByRole("button", { name: /new opportunity/i });
     expect(btn.disabled).toBe(true);
   });

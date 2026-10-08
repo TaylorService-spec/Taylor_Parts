@@ -5,7 +5,7 @@
 // server stores as the NEXT draft version (a draft is never rewritten in place, so the superseded
 // one stays readable). Nothing is validated in the browser; the server's findings and refusals are
 // shown verbatim. The guard is chosen from the server's closed list, never authored.
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { refusalText } from "../../services/adminControlPlaneClient.js";
 import {
@@ -20,7 +20,7 @@ import ValidationResults from "./WorkflowValidationResults.jsx";
 import { workforceApiClient } from "../../services/workforceApiClient.js";
 import { WORKFORCE_READ_STATE, useWorkforceRead } from "../../hooks/useWorkforceRead.js";
 
-export default function WorkflowDraftEditor({ api, workflow, versionId, view, onSaved, workforce = workforceApiClient }) {
+export default function WorkflowDraftEditor({ api, workflow, versionId, view, onSaved, onDirtyChange, workforce = workforceApiClient }) {
   // The Functional Role keys an action may require, from the governed catalog. A convenience list only:
   // the server resolves every key and refuses one it does not have (UNKNOWN_FUNCTIONAL_ROLE).
   const functionalCatalog = useWorkforceRead("listFunctionalRoles", {}, { client: workforce });
@@ -28,6 +28,13 @@ export default function WorkflowDraftEditor({ api, workflow, versionId, view, on
     ? functionalCatalog.data.items : [];
   const [draft, setDraft] = useState(() => editableDefinition(view));
   const [reason, setReason] = useState("");
+  // UNSAVED CHANGES (UI corrections item F): the draft differs from what the server returned, or a reason was typed.
+  // Reported to the Workflows page so leaving this workflow (switch or deselect) asks first. Presentation only.
+  const pristine = useMemo(() => JSON.stringify(editableDefinition(view)), [view]);
+  const [savedAs, setSavedAs] = useState(null);
+  const dirty = savedAs === null && (JSON.stringify(draft) !== pristine || reason.trim() !== "");
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   const [checked, setChecked] = useState(null);
   const [outcome, setOutcome] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -55,6 +62,7 @@ export default function WorkflowDraftEditor({ api, workflow, versionId, view, on
       result.data?.unknownCapabilityKeys?.length ? `Capabilities the catalog does not have (stored as none): ${result.data.unknownCapabilityKeys.join(", ")}` : null,
     ].filter(Boolean);
     setOutcome({ ok: true, text: [`Saved as draft v${result.data?.version?.version}.`, ...notes].join(" ") });
+    setSavedAs(result.data?.version?.id ?? "saved");
     if (result.data?.version?.id) onSaved?.(result.data.version.id);
   };
 

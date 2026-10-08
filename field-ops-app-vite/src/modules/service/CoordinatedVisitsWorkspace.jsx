@@ -151,7 +151,7 @@ function VisitRow({ visit, ctx, selected, onSelect, synthetic }) {
         {/* Two dispatchers in a row nearly reported a SAMPLE obligation as real. One intro
             paragraph is not enough: a busy person scanning rows never reads it, and the sample
             customer names are close enough to live ones to pass. Mark every row. */}
-        {synthetic && <span className="fo-sample-badge" title="Sample data — not a real customer obligation">SAMPLE</span>}
+        {synthetic && <span className="fo-sample-badge" title="Sample data — not a real customer obligation">Sample Data</span>}
       </td>
       <td className="fo-sales-col--secondary" data-label="Location">{nameOr(ctx.locationNameById, visit.locationId)}</td>
       <td data-label="Progress">{visit.completed}/{visit.total}{visit.blocked > 0 ? ` · ${visit.blocked} blocked` : ""}</td>
@@ -196,7 +196,7 @@ export default function CoordinatedVisitsWorkspace({ source } = {}) {
     >
       {synthetic && (
         <p className="fo-sales-banner fo-muted">
-          Showing a synthetic sample coordinated visit (C713×5). The live coordinated-operations feed connects in
+          Sample Data: showing a sample coordinated visit (C713×5). The live coordinated-operations feed connects in
           a later cycle.
         </p>
       )}

@@ -70,7 +70,7 @@ function ActiveVersionRecords({ api, workflow, versionId, steps, reason, onDone 
   );
 }
 
-export default function WorkflowVersionPanel({ api, workflow, versionId, onVersionCreated, onChanged }) {
+export default function WorkflowVersionPanel({ api, workflow, versionId, onVersionCreated, onChanged, onDirtyChange }) {
   const read = useControlPlaneRead(() => api.readWorkflowVersion(versionId), `version:${versionId}`);
   const validation = useControlPlaneRead(() => api.validateWorkflowVersion(versionId), `validate:${versionId}`);
   const instances = useControlPlaneRead(() => api.listWorkflowInstances(versionId), `instances:${versionId}`);
@@ -192,6 +192,7 @@ export default function WorkflowVersionPanel({ api, workflow, versionId, onVersi
           versionId={versionId}
           view={read.data}
           onSaved={(id) => onVersionCreated?.(id)}
+          onDirtyChange={onDirtyChange}
         />
       ) : null}
 

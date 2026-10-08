@@ -207,6 +207,23 @@ export function roleActionsByObject(detail) {
 //                                condition|null, enforced: true } | null,
 //                 withheldFromFlatSetKernels, surfaces: [...], workflowSource: [{ workflowKey, version, actionKey, roleKey }] | null }] }
 
+/**
+ * HOW a capability reaches the Principal -- the SERVER's `provenance` on each explained action (UI corrections §15; the
+ * vocabulary the retired Permission Preview showed). Words only: an unknown value is shown as itself, and a server that
+ * does not send provenance yields null (nothing is inferred here).
+ */
+export const PROVENANCE_LABEL = Object.freeze({
+  ROLE: "Security Role",
+  DIRECT: "Direct Exception",
+  ROLE_AND_DIRECT: "Security Role and Direct Exception",
+  NONE: "Not Held",
+});
+
+export function describeProvenance(provenance) {
+  if (provenance === null || provenance === undefined) return null;
+  return PROVENANCE_LABEL[provenance] ?? String(provenance);
+}
+
 /** The evaluator's results in words. An unknown result is shown RAW, never mapped to a friendlier one. */
 export const RESULT_LABEL = Object.freeze({
   ALLOWED: "Allowed",
@@ -311,6 +328,8 @@ export function explanationModel(payload) {
         enforced: a.directGrant.enforced === true,
         notEnforced: a.directGrant.notEnforcedOnRoleOnlyRuntimePaths === true,
       } : null,
+      provenance: typeof a.provenance === "string" ? a.provenance : null,
+      provenanceWords: describeProvenance(typeof a.provenance === "string" ? a.provenance : null),
       withheldFromFlatSetKernels: a.withheldFromFlatSetKernels === true,
       surfaces: strings(a.surfaces),
       workflowSource: Array.isArray(a.workflowSource) ? a.workflowSource : null,

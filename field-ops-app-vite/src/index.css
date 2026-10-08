@@ -8941,3 +8941,56 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 /* #210 containers: the roster and the authority matrix are sections of their pages, spaced like any ruled section. */
 .fo-roster { margin-block: 12px; }
 .fo-objmatrix { margin-block: 12px; }
+
+/* ════════ UI corrections package (2026-10-08): shared sortable headers, tabs, autocomplete ════════ */
+.fo-sortable-th { padding: 0 !important; }
+.fo-sortable-th__button {
+  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; width: 100%;
+  padding: 8px 10px; cursor: pointer; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
+}
+.fo-sortable-th__button:hover { color: var(--color-brand-secondary); }
+.fo-sortable-th__button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.fo-sortable-th__indicator { font-size: 0.8em; color: var(--color-text-muted); }
+.fo-sortable-th__indicator--none { opacity: 0.45; }
+.fo-sortable-th__indicator--ascending, .fo-sortable-th__indicator--descending { color: var(--color-brand-secondary); opacity: 1; }
+
+.fo-tabs { margin-top: 12px; }
+.fo-tabs__list {
+  display: flex; gap: 2px; border-bottom: 1px solid var(--color-border); overflow-x: auto; scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.fo-tabs__tab {
+  appearance: none; background: none; border: 0; border-bottom: 3px solid transparent; padding: 10px 14px; margin-bottom: -1px;
+  font: inherit; font-weight: 600; color: var(--color-text-secondary); cursor: pointer; white-space: nowrap; min-height: 44px;
+}
+.fo-tabs__tab:hover { color: var(--color-text-primary); }
+.fo-tabs__tab--active { color: var(--color-brand-secondary); border-bottom-color: var(--color-brand-secondary); }
+.fo-tabs__tab:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.fo-tabs__badge { margin-left: 6px; font-size: 12px; color: var(--color-text-muted); font-weight: 500; }
+.fo-tabs__panel { padding-top: 16px; }
+.fo-tabs__panel:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+.fo-autocomplete { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fo-autocomplete__label { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); }
+.fo-autocomplete__input { width: 100%; box-sizing: border-box; }
+.fo-autocomplete__list {
+  position: absolute; z-index: 40; top: 100%; left: 0; right: 0; margin: 4px 0 0; padding: 4px 0; list-style: none;
+  background: var(--color-surface-elevated); border: 1px solid var(--color-border-strong); border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); max-height: 320px; overflow-y: auto;
+}
+.fo-autocomplete__list[hidden] { display: none; }
+.fo-autocomplete__option { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; cursor: pointer; min-height: 40px; justify-content: center; }
+.fo-autocomplete__option--active { background: var(--color-info-surface); }
+.fo-autocomplete__option--all { border-top: 1px solid var(--color-border); font-weight: 600; color: var(--color-brand-secondary); }
+.fo-autocomplete__primary { color: var(--color-text-primary); }
+.fo-autocomplete__context { font-size: 12px; color: var(--color-text-muted); }
+.fo-autocomplete__note { padding: 8px 12px; font-size: 13px; color: var(--color-text-muted); }
+
+.fo-employee-header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; margin: 4px 0 0; }
+.fo-employee-header__fact { display: flex; flex-direction: column; min-width: 0; }
+.fo-employee-header__k { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); }
+.fo-employee-header__v { font-weight: 600; overflow-wrap: anywhere; }
+.fo-linkbutton { appearance: none; background: none; border: 0; padding: 0; font: inherit; color: var(--color-brand-secondary); text-decoration: underline; cursor: pointer; }
+.fo-linkbutton:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.fo-roster__pager { align-items: center; gap: 12px; margin-top: 12px; }
+.fo-roster__filters .fo-autocomplete { min-width: 220px; }

@@ -13,6 +13,9 @@ import RuledSection from "../../shared/ui/RuledSection.jsx";
 import StructuredFields from "../../shared/ui/StructuredFields.jsx";
 import ChangeHistory from "../../shared/ui/ChangeHistory.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
+import Tabs, { useUrlTab } from "../../shared/ui/Tabs.jsx";
+import { operatingCompanyLabel } from "../../shared/display/displayLabels.js";
+import { describeEmployeeJobRole } from "../../domain/employeeJobRole.js";
 import { normalizeHistoryRows } from "../../domain/changeHistory.js";
 import {
   EMPLOYEE_EVENT_LABELS,
@@ -39,6 +42,9 @@ import {
 } from "./EmployeeWorkAuthorization.jsx";
 import { createAdminControlPlaneClient } from "../../services/adminControlPlaneClient.js";
 import { EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY } from "../../domain/employeeJobRole.js";
+
+// The tab ids (?tab=); the first is the default. Labels are rendered by the page.
+const EMPLOYEE_TAB_DEFS = Object.freeze(["overview", "access", "assignments", "workflows", "activity"].map((id) => ({ id })));
 import {
   RUNTIME_DEPENDENCIES,
   WORKFORCE_READS,
@@ -51,7 +57,6 @@ import {
   recordEmploymentFields,
   recordIdentityFields,
   recordNameIsAbsent,
-  recordSubtitle,
 } from "../../domain/employeeOperatingProfile.js";
 import {
   EmployeeLifecycle,
@@ -164,6 +169,9 @@ export default function UserDetail({
   const editing = canEdit && (editOpen || (editRequested && !editClosed));
 
   const record = useWorkforceRead(WORKFORCE_READS.EMPLOYEE_RECORD.operation, employeeId ? { employeeId } : null, { client: workforce });
+  // The persistent header's Job Role (EMP-RT-08), read once per record; re-read after a Job Role change.
+  const jobRoleRead = useWorkforceRead(WORKFORCE_READS.JOB_ROLE_HISTORY.operation, employeeId ? { employeeId } : null, { client: workforce });
+  const [activeTab, selectTab] = useUrlTab(EMPLOYEE_TAB_DEFS);
   const employee = record.status === WORKFORCE_READ_STATE.READY ? record.data : null;
   const linked = employee?.userAccess === "LINKED";
 
@@ -256,6 +264,149 @@ export default function UserDetail({
   const accountSubject =
     credential.status === CREDENTIAL_STATE.RESOLVED ? { displayName: name, userId: credential.subject } : null;
 
+  const jobRole = jobRoleRead.status === WORKFORCE_READ_STATE.READY ? describeEmployeeJobRole(jobRoleRead.data) : null;
+
+  // ════════════════════ THE TABS (UI corrections package item D, 2026-10-08) ════════════════════
+  // One persistent header (name, Employee ID, Job Role, operating company, status) over five tabs. Every section that
+  // used to be stacked on this page is in exactly ONE tab -- nothing is duplicated and nothing was removed. Only the
+  // active tab is mounted, so a tab's governed reads run when it is opened (and re-run on return).
+  const tabs = [
+    { id: "overview", label: "Overview", render: () => (
+      <div className="ns-record-body ns-record-body--single">
+        <div>
+          <RuledSection title="Identity & Contact">
+            <StructuredFields fields={recordIdentityFields(employee)} label="Identity and contact" />
+          </RuledSection>
+          <RuledSection title="Employment & Business Context">
+            <dl className="fo-detail-list ns-emp-facts">
+              <dt>Employee Status</dt>
+              <dd>
+                <EmployeeLifecycle status={employee.employmentStatus} />
+              </dd>
+            </dl>
+            <StructuredFields fields={recordEmploymentFields(employee)} label="Employment" />
+            <ManagerFact manager={manager} />
+          </RuledSection>
+          {/* JOB ROLE (EMP-RT-08): business function only, its own section and its own governed control --
+              not part of Edit Employee's Save and not part of Roles & Access. */}
+          <JobRoleSection
+            employeeId={employee.employeeId}
+            client={workforce}
+            control={({ jobRole: current, reload }) => (
+              <EmployeeJobRoleControl
+                employeeId={employee.employeeId}
+                workforce={workforce}
+                canAssign={canAssignJobRole}
+                administersEmployees={canEdit}
+                capabilityStatus={workforceCapabilities.status}
+                capabilityError={workforceCapabilities.error}
+                onRetryCapabilities={workforceCapabilities.reload}
+                jobRole={current}
+                onReread={() => {
+                  reload();
+                  jobRoleRead.reload();
+                  rereadGovernedHistory();
+                }}
+              />
+            )}
+          />
+        </div>
+      </div>
+    ) },
+    { id: "access", label: "Roles & Access", render: () => (
+      <div data-employee-tab-body="access">
+        {/* SECURITY ROLES (PostgreSQL assignRole / revokeRole on the linked Principal). Access, not a Job Role. */}
+        <RuledSection id="security-roles" title="Security Roles" meta="Access — governed PostgreSQL assignment">
+          <p className="fo-muted ns-emp-note">
+            Security Roles are access. They are not Job Roles and are never used as one.
+          </p>
+          <PrincipalGate linked={linked} principalLink={principalLink}>
+            <EmployeeSecurityRoles api={controlPlane} principalId={principalId} employeeName={name} />
+          </PrincipalGate>
+        </RuledSection>
+        {/* EFFECTIVE ACCESS: the server evaluator's answer for the linked Principal -- never computed here. It carries
+            capability provenance (Role / Direct / Role and Direct) and the record restrictions the evaluator reports. */}
+        <RuledSection title="Effective Access" meta="The server evaluator's explanation, with provenance">
+          <PrincipalGate linked={linked} principalLink={principalLink}>
+            <EmployeeEffectiveAccess api={controlPlane} principalId={principalId} key={`access-${accessReadKey}`} />
+          </PrincipalGate>
+        </RuledSection>
+        <OperationalScopeSection employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteScope} onChanged={rereadGovernedHistory} />
+        <WorkEligibilitySection employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteEligibility} onChanged={rereadGovernedHistory} />
+        {/* DIRECT EXCEPTIONS (lane DX): governed capability grants to this Principal alone, enforced by every runtime
+            gate like a Role grant; grant / revoke / condition through the server, each with a reason. */}
+        <RuledSection title="Direct Exceptions" meta="Governed grants to this Principal alone">
+          <PrincipalGate linked={linked} principalLink={principalLink}>
+            <EmployeeDirectExceptions api={controlPlane} principalId={principalId} onChanged={() => setAccessReadKey((k) => k + 1)} />
+          </PrincipalGate>
+        </RuledSection>
+        {/* VIEW AS USER (#210): the server-resolved workspace of this employee, read-only, audited, marked PREVIEW. */}
+        <RuledSection title="View As User" meta="Read-only preview of what EOS resolves for this person">
+          <PrincipalGate linked={linked} principalLink={principalLink}>
+            <EmployeeExperiencePreview employeeId={employee.employeeId} />
+          </PrincipalGate>
+        </RuledSection>
+        {/* USER ACCESS, SEPARATE FROM THE EMPLOYEE: linkage (EMP-RT-01), the governed Principal link
+            (EMP-RT-02, server-gated), and the account actions on the credential behind that Principal. */}
+        <RuledSection title="User Access" meta="Sign-in to EOS — separate from the Employee record">
+          <UserAccessRelationship userAccess={employee.userAccess} />
+          {linked ? <PrincipalLinkDetails read={principalLink} /> : null}
+          <AccountActions
+            linked={linked}
+            principalLink={principalLink}
+            credential={credential}
+            accountSubject={accountSubject}
+            actorUid={user?.uid ?? ""}
+            hasCapability={hasCapability}
+            client={client}
+          />
+        </RuledSection>
+      </div>
+    ) },
+    { id: "assignments", label: "Assignments", render: () => (
+      <div data-employee-tab-body="assignments">
+        <ResponsibilitySection perspective="admin" employeeId={employee.employeeId} client={workforce} />
+        <ManagedEmployeesSection employeeId={employee.employeeId} client={workforce} />
+        <div id="functional-roles">
+          <EmployeeFunctionalRoles employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteFunctionalRoles} onChanged={rereadGovernedHistory} />
+        </div>
+      </div>
+    ) },
+    { id: "workflows", label: "Workflows", render: () => (
+      <div data-employee-tab-body="workflows">
+        {/* WORKFLOW RESPONSIBILITIES: bindings on held Security Roles INTERSECTED with effective authority, by the server. */}
+        <RuledSection title="Workflow Responsibilities" meta="Active workflow actions this Employee may perform">
+          <PrincipalGate linked={linked} principalLink={principalLink}>
+            <EmployeeWorkflowResponsibilities principalId={principalId} employeeId={employee.employeeId} />
+          </PrincipalGate>
+        </RuledSection>
+      </div>
+    ) },
+    { id: "activity", label: "Activity", render: () => (
+      <div data-employee-tab-body="activity">
+        <EmployeeChangeHistorySection employeeId={employee.employeeId} workforce={workforce} reloadKey={governedHistoryKey} />
+        <RuledSection title="Access Audit History" meta="Governed policy audit — this Employee's Principal">
+          <PrincipalGate linked={linked} principalLink={principalLink}>
+            <EmployeeAccessAudit api={controlPlane} principalId={principalId} />
+          </PrincipalGate>
+        </RuledSection>
+        <ChangeHistory
+          title="Legacy Change History"
+          meta="Pre-cutover legacy trail — changes recorded before the governed Employee authority"
+          sectionId="legacy-change-history"
+          loadingMessage="Loading the legacy change history…"
+          unavailableTitle="Legacy change history unavailable"
+          rows={historyRows}
+          loading={history.loading}
+          unavailable={history.unavailable}
+          onRetry={() => setHistoryNonce((n) => n + 1)}
+          emptyMessage="No legacy (pre-cutover) changes were recorded for this Employee."
+        />
+        <SourceSection rows={SOURCE_ROWS} />
+      </div>
+    ) },
+  ];
+
   return (
     <div className="ns-page fo-user-detail" data-employee-record="READY" data-workforce-capabilities={workforceCapabilities.status}>
       <div className="ns-page__utility">
@@ -266,15 +417,18 @@ export default function UserDetail({
       </div>
       <div className="ns-rulepair" />
 
+      {/* THE PERSISTENT EMPLOYEE HEADER: name, Employee ID, Job Role, operating company and status, on every tab. */}
       <RecordIdentity
-        kicker="Employee record"
+        kicker="Employee Record"
         reference={recordNameIsAbsent(employee) ? null : name}
         fallbackName={name}
-        subtitle={recordSubtitle(employee)}
+        subtitle={employee.jobTitle ?? null}
         statusWords={lifecycle.words}
         statusTone={lifecycle.tone}
         facts={[
-          { key: "company", label: "Company", value: recordCompanyName(employee) },
+          { key: "employeeId", label: "Employee ID", value: employee.employeeNumber ?? employee.employeeId },
+          { key: "jobRole", label: "Job Role", value: jobRole ? jobRole.words : jobRoleRead.status === WORKFORCE_READ_STATE.FAILED ? "Not available" : "…" },
+          { key: "company", label: "Operating Company", value: recordCompanyName(employee) ?? operatingCompanyLabel(employee.operatingCompanyId, { short: false }) },
           { key: "access", label: "User Access", value: access.words },
         ]}
         actions={
@@ -339,181 +493,56 @@ export default function UserDetail({
         />
       ) : null}
 
-      <div className="ns-record-body">
-        <div>
-          <RuledSection title="Identity & contact">
-            <StructuredFields fields={recordIdentityFields(employee)} label="Identity and contact" />
-          </RuledSection>
-
-          <RuledSection title="Employment & business context">
-            <dl className="fo-detail-list ns-emp-facts">
-              <dt>Employee status</dt>
-              <dd>
-                <EmployeeLifecycle status={employee.employmentStatus} />
-              </dd>
-            </dl>
-            <StructuredFields fields={recordEmploymentFields(employee)} label="Employment" />
-            <ManagerFact manager={manager} />
-          </RuledSection>
-
-          {/* JOB ROLE (EMP-RT-08): business function only, its own section and its own governed control --
-              not part of Edit Employee's Save and not part of User Access / Security Roles below. */}
-          <JobRoleSection
-            employeeId={employee.employeeId}
-            client={workforce}
-            control={({ jobRole, reload }) => (
-              <EmployeeJobRoleControl
-                employeeId={employee.employeeId}
-                workforce={workforce}
-                canAssign={canAssignJobRole}
-                administersEmployees={canEdit}
-                capabilityStatus={workforceCapabilities.status}
-                capabilityError={workforceCapabilities.error}
-                onRetryCapabilities={workforceCapabilities.reload}
-                jobRole={jobRole}
-                onReread={() => {
-                  reload();
-                  rereadGovernedHistory();
-                }}
-              />
-            )}
-          />
-
-          {/* SECURITY ROLES (PostgreSQL assignRole / revokeRole on the linked Principal). Access, not a Job Role. */}
-          <RuledSection id="security-roles" title="Security Roles" meta="Access — governed PostgreSQL assignment">
-            <p className="fo-muted ns-emp-note">
-              Security Roles are access. They are not Job Roles and are never used as one.
-            </p>
-            <PrincipalGate linked={linked} principalLink={principalLink}>
-              <EmployeeSecurityRoles api={controlPlane} principalId={principalId} employeeName={name} />
-            </PrincipalGate>
-          </RuledSection>
-
-          <WorkEligibilitySection employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteEligibility} onChanged={rereadGovernedHistory} />
-          <OperationalScopeSection employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteScope} onChanged={rereadGovernedHistory} />
-          <div id="functional-roles">
-            <EmployeeFunctionalRoles employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteFunctionalRoles} onChanged={rereadGovernedHistory} />
-          </div>
-
-          {/* USER ACCESS, SEPARATE FROM THE EMPLOYEE: linkage (EMP-RT-01), the governed Principal link
-              (EMP-RT-02, server-gated), and the account actions on the credential behind that Principal. */}
-          <RuledSection title="User Access" meta="Access to EOS — separate from the Employee record">
-            <UserAccessRelationship userAccess={employee.userAccess} />
-            {linked ? <PrincipalLinkDetails read={principalLink} /> : null}
-            <AccountActions
-              linked={linked}
-              principalLink={principalLink}
-              credential={credential}
-              accountSubject={accountSubject}
-              actorUid={user?.uid ?? ""}
-              hasCapability={hasCapability}
-              client={client}
-            />
-          </RuledSection>
-
-          {/* DIRECT EXCEPTIONS (lane DX): governed capability grants to this Principal alone, enforced by every runtime
-              gate like a Role grant; grant / revoke / condition through the server, each with a reason. */}
-          <RuledSection title="Direct Exceptions" meta="DIRECT EXCEPTION — governed grants to this Principal alone">
-            <PrincipalGate linked={linked} principalLink={principalLink}>
-              <EmployeeDirectExceptions api={controlPlane} principalId={principalId} onChanged={() => setAccessReadKey((k) => k + 1)} />
-            </PrincipalGate>
-          </RuledSection>
-
-          {/* EFFECTIVE ACCESS: the server evaluator's answer for the linked Principal -- never computed here. */}
-          <RuledSection title="Effective Access" meta="The server evaluator's explanation">
-            <PrincipalGate linked={linked} principalLink={principalLink}>
-              <EmployeeEffectiveAccess api={controlPlane} principalId={principalId} key={`access-${accessReadKey}`} />
-            </PrincipalGate>
-          </RuledSection>
-
-          {/* VIEW AS USER (#210): the server-resolved workspace of this employee, read-only, audited, marked PREVIEW. */}
-          <RuledSection title="View as user" meta="Read-only preview of what EOS resolves for this person">
-            <PrincipalGate linked={linked} principalLink={principalLink}>
-              <EmployeeExperiencePreview employeeId={employee.employeeId} />
-            </PrincipalGate>
-          </RuledSection>
-
-          {/* WORKFLOW RESPONSIBILITIES: bindings on held Security Roles INTERSECTED with effective authority, by the server. */}
-          <RuledSection title="Workflow responsibilities" meta="Active workflow actions this Employee may perform">
-            <PrincipalGate linked={linked} principalLink={principalLink}>
-              <EmployeeWorkflowResponsibilities principalId={principalId} employeeId={employee.employeeId} />
-            </PrincipalGate>
-          </RuledSection>
-        </div>
-
-        <aside className="ns-rail" aria-label="Responsibility and source">
-          <ResponsibilitySection perspective="admin" employeeId={employee.employeeId} client={workforce} />
-          <ManagedEmployeesSection employeeId={employee.employeeId} client={workforce} />
-          <SourceSection
-            rows={[
-              {
-                key: "employee",
-                label: "Employee record",
-                source: `The governed PostgreSQL Employee authority, read through the Workforce service (${WORKFORCE_READS.EMPLOYEE_RECORD.id}).`,
-              },
-              {
-                key: "responsibility",
-                label: "Owned records, accountabilities, assigned work, managed employees",
-                source: `Workforce reads ${WORKFORCE_READS.OWNED_RECORDS.id}, ${WORKFORCE_READS.ACCOUNTABILITIES.id}, ${WORKFORCE_READS.ASSIGNED_WORK.id} and ${WORKFORCE_READS.MANAGED_EMPLOYEES.id}.`,
-              },
-              {
-                key: "edits",
-                label: "Edits",
-                source: `The governed Workforce commands: profile facts through updateEmployeeProfile, the manager through establishReportingRelationship / endReportingRelationship. Employment Status and Operating Company are served by the Workforce service (${RUNTIME_DEPENDENCIES.LIFECYCLE_WRITER.id}) but are not editable on this page yet.`,
-              },
-              {
-                key: "jobRole",
-                label: "Job Role",
-                source: `The governed PostgreSQL Job Role authority (${WORKFORCE_READS.JOB_ROLE_HISTORY.id}), read through listEmployeeJobRoleHistory and changed only through assignEmployeeJobRole under ${EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY}. Business function only: it changes no access.`,
-              },
-              {
-                key: "access",
-                label: "Account status",
-                source: `The legacy trusted account callables, on the credential of the Principal linked through ${WORKFORCE_READS.PRINCIPAL_LINK.id}.`,
-              },
-              {
-                key: "securityRoles",
-                label: "Security Roles & Effective Access",
-                source: "The governed PostgreSQL policy store through the Administration API: assignRole / revokeRole (admin.roleAssignment.write), direct exceptions through grantObjectActionToPrincipal / revokeObjectActionFromPrincipal and their conditions (admin.securityPolicy.write), and the server evaluator's explainEffectiveAccess.",
-              },
-              {
-                key: "eligibility",
-                label: "Work Eligibility & Operational Scope",
-                source: "The governed PostgreSQL Workforce authority: listEmployeeWorkEligibility / listEmployeeOperationalScopes, changed only through their governed assign / end commands.",
-              },
-              {
-                key: "history",
-                label: "Change history",
-                source: `Change History is the governed PostgreSQL Employee audit trail, read through the Workforce service (${WORKFORCE_READS.EMPLOYEE_CHANGE_HISTORY.id}). Legacy Change History is the pre-cutover legacy audit trail, kept for the record.`,
-              },
-            ]}
-          />
-        </aside>
-      </div>
-
-      <EmployeeChangeHistorySection employeeId={employee.employeeId} workforce={workforce} reloadKey={governedHistoryKey} />
-
-      <RuledSection title="Access Audit History" meta="Governed policy audit — this Employee's Principal">
-        <PrincipalGate linked={linked} principalLink={principalLink}>
-          <EmployeeAccessAudit api={controlPlane} principalId={principalId} />
-        </PrincipalGate>
-      </RuledSection>
-
-      <ChangeHistory
-        title="Legacy Change History"
-        meta="Pre-cutover legacy trail — changes recorded before the governed Employee authority"
-        sectionId="legacy-change-history"
-        loadingMessage="Loading the legacy change history…"
-        unavailableTitle="Legacy change history unavailable"
-        rows={historyRows}
-        loading={history.loading}
-        unavailable={history.unavailable}
-        onRetry={() => setHistoryNonce((n) => n + 1)}
-        emptyMessage="No legacy (pre-cutover) changes were recorded for this Employee."
-      />
+      <Tabs tabs={tabs} active={activeTab} onSelect={selectTab} label={`${name} — Employee record sections`} className="fo-employee-tabs" />
     </div>
   );
 }
+
+// Where each fact on this record comes from (Activity tab).
+const SOURCE_ROWS = [
+  {
+    key: "employee",
+    label: "Employee record",
+    source: `The governed PostgreSQL Employee authority, read through the Workforce service (${WORKFORCE_READS.EMPLOYEE_RECORD.id}).`,
+  },
+  {
+    key: "responsibility",
+    label: "Owned records, accountabilities, assigned work, managed employees",
+    source: `Workforce reads ${WORKFORCE_READS.OWNED_RECORDS.id}, ${WORKFORCE_READS.ACCOUNTABILITIES.id}, ${WORKFORCE_READS.ASSIGNED_WORK.id} and ${WORKFORCE_READS.MANAGED_EMPLOYEES.id}.`,
+  },
+  {
+    key: "edits",
+    label: "Edits",
+    source: `The governed Workforce commands: profile facts through updateEmployeeProfile, the manager through establishReportingRelationship / endReportingRelationship. Employment Status and Operating Company are served by the Workforce service (${RUNTIME_DEPENDENCIES.LIFECYCLE_WRITER.id}) but are not editable on this page yet.`,
+  },
+  {
+    key: "jobRole",
+    label: "Job Role",
+    source: `The governed PostgreSQL Job Role authority (${WORKFORCE_READS.JOB_ROLE_HISTORY.id}), read through listEmployeeJobRoleHistory and changed only through assignEmployeeJobRole under ${EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY}. Business function only: it changes no access.`,
+  },
+  {
+    key: "access",
+    label: "Account status",
+    source: `The legacy trusted account callables, on the credential of the Principal linked through ${WORKFORCE_READS.PRINCIPAL_LINK.id}.`,
+  },
+  {
+    key: "securityRoles",
+    label: "Security Roles & Effective Access",
+    source: "The governed PostgreSQL policy store through the Administration API: assignRole / revokeRole (admin.roleAssignment.write), direct exceptions through grantObjectActionToPrincipal / revokeObjectActionFromPrincipal and their conditions (admin.securityPolicy.write), and the server evaluator's explainEffectiveAccess.",
+  },
+  {
+    key: "eligibility",
+    label: "Work Eligibility & Operational Scope",
+    source: "The governed PostgreSQL Workforce authority: listEmployeeWorkEligibility / listEmployeeOperationalScopes, changed only through their governed assign / end commands.",
+  },
+  {
+    key: "history",
+    label: "Change history",
+    source: `Change History is the governed PostgreSQL Employee audit trail, read through the Workforce service (${WORKFORCE_READS.EMPLOYEE_CHANGE_HISTORY.id}). Legacy Change History is the pre-cutover legacy audit trail, kept for the record.`,
+  },
+];
+
+export const EMPLOYEE_TABS = Object.freeze(["overview", "access", "assignments", "workflows", "activity"]);
 
 /**
  * The Principal-keyed sections render only once the link is KNOWN: while EMP-RT-02 is loading they wait,

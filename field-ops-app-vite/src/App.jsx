@@ -72,7 +72,7 @@ const AccountDetail = lazy(() => import("./modules/accounts/AccountDetail"));
 const PartsShadowParityDiagnostics = lazy(() => import("./modules/inventory/PartsShadowParityDiagnostics"));
 const AdministrationOverview = lazy(() => import("./modules/administration/AdministrationOverview"));
 const AdminAuditLogs = lazy(() => import("./modules/administration/AdminAuditLogs.jsx"));
-const AdminPermissionPreview = lazy(() => import("./modules/administration/AdminPermissionPreview.jsx"));
+const PrincipalQaInspection = lazy(() => import("./modules/administration/PrincipalQaInspection.jsx"));
 const AdminUsers = lazy(() => import("./modules/administration/AdminUsers"));
 const AdminRolesPermissions = lazy(() => import("./modules/administration/AdminRolesPermissions"));
 const AdminDuplicateRules = lazy(() => import("./modules/administration/AdminDuplicateRules"));
@@ -745,11 +745,11 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   if (domain.key === "reporting" && item.key === "savedReports") {
     return <SavedReports hasCapability={operationalContext?.hasCapability} accessVersion={operationalContext?.accessVersion} />;
   }
-  // Permission Preview now reads the canonical Principal effective-access projection from the
-  // deployed EOS Administration API. It is read-only and the server re-authorizes the caller;
-  // the client never derives access from Firebase claims or a frontend role map.
+  // UI corrections §15: the retired Permission Preview item is now NONPROD QA tooling (navHidden). It draws the SAME runtime
+  // evaluator as the Employee record (explainEffectiveAccess) and renders "not available" in a production bundle; the
+  // server re-authorizes every read.
   if (domain.key === "administration" && item.key === "permissionPreview") {
-    return <AdminPermissionPreview />;
+    return <PrincipalQaInspection />;
   }
   // Audit Logs: the governed audit is deployed and shown per Employee (Access Audit History) and per
   // Security Role (Decision history); this page has no consolidated list yet and says where to look.
@@ -1122,6 +1122,9 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
             <>
               <Route index element={<Navigate to="/administration/users" replace />} />
               <Route path="employees" element={<Navigate to="/administration/users" replace />} />
+              {/* UI corrections §15: the retired Permission Preview address. Its business function is the Employee
+                  record's Roles & Access tab, so a bookmark lands on Users -- never on the QA tool. */}
+              <Route path="permission-preview" element={<Navigate to="/administration/users" replace />} />
             </>
           )}
           {domain.key === "administration" && isDomainVisible(domain, navRole, navAllowedLegacyKeys, operationalContext) && (

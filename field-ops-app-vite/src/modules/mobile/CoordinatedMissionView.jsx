@@ -119,7 +119,7 @@ export default function CoordinatedMissionView({ source } = {}) {
           {nameOr(ctx.accountNameById, v.customerId)}
           {/* A technician saw a SAMPLE "unit 3 COMPLETED" beside their real "unit 3 Working".
               Same model, same unit number, opposite status. The tab must say which is which. */}
-          {synthetic && <span className="fo-sample-badge">SAMPLE</span>}
+          {synthetic && <span className="fo-sample-badge">Sample Data</span>}
         </Button>
       ))}
     </div>
@@ -129,7 +129,7 @@ export default function CoordinatedMissionView({ source } = {}) {
     <WorkspaceShell title="Coordinated Mission" density="field" context={switcher}>
       {synthetic && (
         <p className="fo-sales-banner fo-muted">
-          Showing a synthetic sample mission (C713×5). The live coordinated-operations feed connects in a later cycle.
+          Sample Data: showing a sample mission (C713×5). The live coordinated-operations feed connects in a later cycle.
         </p>
       )}
       {status === "loading" ? (

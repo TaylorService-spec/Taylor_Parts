@@ -464,7 +464,7 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
       )}
       {isSynthetic && (
         <p className="fo-sales-banner fo-muted">
-          Showing synthetic sample opportunities. The live sales pipeline connects in a later cycle.
+          Sample Data: showing sample opportunities. The live sales pipeline connects in a later cycle.
           {!createEnabled && <>{" "}{writeReadiness.reason}</>}
         </p>
       )}

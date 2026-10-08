@@ -427,7 +427,7 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
       ) : (
         <>
           {synthetic === true ? (
-            <p className="ns-gap-note">Showing synthetic sample opportunities — the live pipeline connects in a later cycle.</p>
+            <p className="ns-gap-note">Sample Data: showing sample opportunities — the live pipeline connects in a later cycle.</p>
           ) : null}
           <p className="ns-collection__result">
             {opportunityResultContext({
