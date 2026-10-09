@@ -27,6 +27,7 @@ import { identifierLabel, operatingCompanyLabel, statusLabel, titleCase } from "
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 import { formatDateOnly, formatTimestamp } from "../../domain/displayTimestamp.js";
+import AdminDisclosure from "./AdminDisclosure.jsx";
 
 const scopeWords = (h) => {
   const type = !h.scopeType || h.scopeType === "global" ? "All (Global)" : titleCase(h.scopeType);
@@ -241,6 +242,7 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, work
                     roleKey={roleKey}
                     vocabulary={vocabulary}
                     onChanged={onChanged}
+                    technical={technical}
                   />
                 );
               })}
@@ -252,22 +254,24 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, work
   );
 }
 
-function ObjectGroupRows({ group, open, onToggle, api, roleKey, vocabulary, onChanged }) {
+// ADMIN-UI-001/002: the Object's business name only (its key and each capability key behind Show Technical
+// Details), on a full-width disclosure row instead of an outlined button.
+function ObjectGroupRows({ group, open, onToggle, api, roleKey, vocabulary, onChanged, technical = false }) {
   return (
     <>
       <tr>
         <td colSpan={3}>
-          <Button type="button" variant="secondary" onClick={onToggle} aria-expanded={open}>
-            {open ? "▾" : "▸"} {titleCase(group.objectKey)} <code>{group.objectKey}</code>
-          </Button>
-          <span className="fo-muted">{` ${group.heldCount} of ${group.actions.length} held`}</span>
+          <AdminDisclosure open={open} onToggle={onToggle} meta={`${group.heldCount} of ${group.actions.length} held`}>
+            {titleCase(group.objectKey)}
+            {technical ? <> <code>{group.objectKey}</code></> : null}
+          </AdminDisclosure>
         </td>
       </tr>
       {open ? group.actions.map((action) => (
         <tr key={action.capabilityKey} className="fo-row-nested" data-role-action={action.capabilityKey}>
           <td>
-            {action.displayLabel ?? (action.actionKey ? titleCase(action.actionKey) : "Unlabelled action")}{" "}
-            <span className="fo-muted"><code>{action.capabilityKey}</code></span>
+            {action.displayLabel ?? (action.actionKey ? titleCase(action.actionKey) : "Unlabelled action")}
+            {technical ? <>{" "}<span className="fo-muted"><code>{action.capabilityKey}</code></span></> : null}
             {action.forbiddenBy ? <span className="fo-muted">{` · ${action.forbiddenBy}`}</span> : null}
           </td>
           <td><GrantCellFacts cell={action} /></td>

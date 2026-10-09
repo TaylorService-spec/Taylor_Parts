@@ -1241,6 +1241,10 @@
     {
       "file": "test/workflowSyntax.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/adminUiScope.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

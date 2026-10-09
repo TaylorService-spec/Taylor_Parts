@@ -41,7 +41,7 @@ function granteeSummary(action) {
  * substitute the identifier, and not to invent a name by humanising the action key, which would be
  * a second label vocabulary competing with the catalog's.
  */
-export function ObjectSecurityActionRow({ action, children = null }) {
+export function ObjectSecurityActionRow({ action, children = null, showKey = true }) {
   const grantees = granteeSummary(action);
   return (
     <li className={`fo-security-action${action.granted === false ? " fo-security-action--ungranted" : ""}`}>
@@ -54,10 +54,12 @@ export function ObjectSecurityActionRow({ action, children = null }) {
       {grantees ? (
         <span className={`fo-security-action__grantees${action.granted ? "" : " fo-warning"}`}>{grantees}</span>
       ) : null}
-      <code className="fo-security-action__key fo-muted" data-testid="action-capability-key">
-        <span className="fo-sr-only">Capability key: </span>
-        {action.capabilityKey ?? "—"}
-      </code>
+      {showKey ? (
+        <code className="fo-security-action__key fo-muted" data-testid="action-capability-key">
+          <span className="fo-sr-only">Capability key: </span>
+          {action.capabilityKey ?? "—"}
+        </code>
+      ) : null}
       {children ? <div className="fo-cp-action-detail">{children}</div> : null}
     </li>
   );
@@ -70,13 +72,15 @@ export function ObjectSecurityActionRow({ action, children = null }) {
  * `actions` that is not an array renders NOTHING rather than an empty list: a refused or unread
  * security read must never reach a surface that looks like "there is nothing here".
  */
-export function ObjectSecurityActionList({ actions, emptyMessage = "This Object governs no actions yet.", renderDetail = null }) {
+// `showKeys` (default true, unchanged for every existing consumer): Administration passes its Show Technical Details
+// state so capability keys stay hidden until asked for (ADMIN-UI-001).
+export function ObjectSecurityActionList({ actions, emptyMessage = "This Object governs no actions yet.", renderDetail = null, showKeys = true }) {
   if (!Array.isArray(actions)) return null;
   if (actions.length === 0) return <p className="fo-muted fo-security-actions__empty">{emptyMessage}</p>;
   return (
     <ul className="fo-security-actions">
       {actions.map((action) => (
-        <ObjectSecurityActionRow key={action.capabilityKey ?? action.actionKey} action={action}>
+        <ObjectSecurityActionRow key={action.capabilityKey ?? action.actionKey} action={action} showKey={showKeys}>
           {renderDetail ? renderDetail(action) : null}
         </ObjectSecurityActionRow>
       ))}

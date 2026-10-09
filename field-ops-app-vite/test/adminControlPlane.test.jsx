@@ -100,7 +100,7 @@ function makeApi(over = {}) {
 const typeReason = (form, text) => fireEvent.change(within(form).getByLabelText("Reason"), { target: { value: text } });
 
 async function renderMatrix(api = makeApi()) {
-  render(<ObjectActionMatrix api={api} objectKey="workOrder" />);
+  render(<ObjectActionMatrix api={api} objectKey="workOrder" technical />);
   await screen.findByText("Dispatch Work Orders");
   return api;
 }
@@ -246,7 +246,7 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
 
   it("a refused matrix read is shown as the refusal, never as an empty Object", async () => {
     const api = makeApi({ getObjectActionGrantMatrix: vi.fn(async () => ({ ok: false, code: "FORBIDDEN", message: "admin.securityPolicy.read is required" })) });
-    render(<ObjectActionMatrix api={api} objectKey="workOrder" />);
+    render(<ObjectActionMatrix api={api} objectKey="workOrder" technical />);
     expect((await screen.findByRole("alert")).textContent).toBe("FORBIDDEN: admin.securityPolicy.read is required");
     expect(screen.queryByText(/No capability governs/)).toBeNull();
   });
@@ -287,13 +287,13 @@ describe("Security Role detail", () => {
     expect(history.textContent).toMatch(/Technicians read assigned work/);
 
     fireEvent.click(screen.getByRole("tab", { name: "Objects & Permissions" }));
-    fireEvent.click(screen.getByRole("button", { name: /workOrder/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Work Order/ }));
     const row = document.querySelector('[data-role-action="workOrder.record.read"]');
     expect(row.textContent).toMatch(/Read Work Orders/);
     expect(row.textContent).toMatch(/System default/);
     expect(row.textContent).toMatch(/Condition: assigned Employee on the workOrder/);
 
-    fireEvent.click(screen.getByRole("button", { name: /reorderRequest/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Reorder Request/ }));
     const invariant = document.querySelector('[data-role-action="reorder.purchaseOrder.create"]');
     expect(invariant.textContent).toMatch(/Not grantable — system invariant/);
     expect(within(invariant).queryAllByRole("button")).toHaveLength(0);
@@ -303,7 +303,7 @@ describe("Security Role detail", () => {
     const api = makeApi();
     render(<SecurityRoleDetail api={api} roleKey="technician" />);
     await screen.findByRole("table", { name: "Objects and actions" });
-    fireEvent.click(screen.getByRole("button", { name: /workOrder/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Work Order/ }));
     fireEvent.click(screen.getByRole("button", { name: "Revoke read from technician" }));
     const form = screen.getByRole("form", { name: "Revoke read for technician" });
     typeReason(form, "Reads move to the dispatcher");
@@ -564,5 +564,31 @@ describe("Set Condition opener", () => {
     const some = { status: "ready", kinds: [{ kind: "RECORD_ASSIGNMENT", label: "Assigned record", supported: true }] };
     render(<GrantCellControls api={{}} objectKey="customer" actionKey="edit" roleKey="salesperson" capabilityKey="customer.record.update" cell={{ held: true, source: "ADMIN_GRANTED" }} vocabulary={some} />);
     expect(screen.getByRole("button", { name: "Set condition on edit for salesperson" }).disabled).toBe(false);
+  });
+});
+
+// ADMIN-UI-001/002 (Owner-approved Administration corrections, 2026-10-09): business names by default, technical keys
+// only behind Show Technical Details, and Objects as full-width disclosure rows rather than outlined buttons.
+describe("Administration presents business names, with keys behind Show Technical Details", () => {
+  it("Security Role detail: an Object row is a disclosure row naming the Object; keys appear only with technical details", async () => {
+    render(<SecurityRoleDetail api={makeApi()} roleKey="technician" />);
+    const row = await screen.findByRole("button", { name: /^Work Order/ });
+    expect(row.className).toBe("fo-admin-disclosure");
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+    expect(row.textContent).not.toMatch(/workOrder/);
+    fireEvent.click(row);
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+    expect(document.querySelector('[data-role-action="workOrder.record.read"]').textContent).not.toMatch(/workOrder\.record\.read/);
+    fireEvent.click(screen.getByLabelText("Show Technical Details"));
+    expect(screen.getByRole("button", { name: /^Work Order/ }).textContent).toMatch(/workOrder/);
+    expect(document.querySelector('[data-role-action="workOrder.record.read"]').textContent).toMatch(/workOrder\.record\.read/);
+  });
+
+  it("Object Security Actions: grantees by Security Role name and no capability keys until asked for", async () => {
+    const api = makeApi({ listRoles: vi.fn(async () => ({ ok: true, data: [{ key: "dispatcher", name: "Service Dispatcher" }] })) });
+    render(<ObjectActionMatrix api={api} objectKey="workOrder" />);
+    await screen.findByText("Dispatch Work Orders");
+    expect(document.querySelector('[data-role-cell="dispatcher"]').firstChild.textContent).toBe("Service Dispatcher");
+    expect(screen.queryByText("workOrder.lifecycle.recordConsumption")).toBeNull();
   });
 });
