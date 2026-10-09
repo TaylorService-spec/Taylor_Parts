@@ -1,0 +1,21 @@
+{
+  "_about": "Expected Administration nav visibility per sandbox persona, keyed by navConfig administration item key. null = not yet reviewed. Pin after Owner review with: node scripts/adminPersonaReview.mjs --accept [--persona <id>]",
+  "personas": {
+    "ownerExecutive": null,
+    "generalManager": null,
+    "officeManager": null,
+    "administrator": null,
+    "serviceManager": null,
+    "dispatcher": null,
+    "serviceTechnician": null,
+    "partsAssociate": null,
+    "partsManager": null,
+    "warehouseAssociate": null,
+    "warehouseManager": null,
+    "retailSales": null,
+    "nationalAccountsSales": null,
+    "financeAccounting": null,
+    "reportingAnalyst": null,
+    "generalEmployee": null
+  }
+}
