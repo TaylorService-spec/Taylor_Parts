@@ -7683,3 +7683,10 @@ PR 1:
 - **003 (this PR's part):** one rhythm for Administration panels, table cells and dividers, and nested rows, scoped under `.fo-admin`. Form-row layout is deliberately left as it is (an independent review found an `align-items` override right-aligned every form field; it was removed before merge).
 
 Left in place, out of scope: the unrendered `LegacyRoleMatrix` / `LegacyRoleGrid` code in AdminPolicySurfaces.jsx.
+
+## #217 — Administration UI corrections PR 2: Roles (ADMIN-UI-005, 006, 007) (2026-10-09)
+
+**Decision:** Part 2 of the Owner-approved corrections (#216), Administration → Roles only, styled under `.fo-admin`.
+- **005:** full-width search with an icon inside the list panel (consistent height, focus ring), a compact segmented All / Protected / Not protected filter (`aria-pressed`), and an unobtrusive "n of N" count. Search and filter behavior and protected-role semantics are unchanged.
+- **006:** the Role list is a compact, scrollable list of full-width rows with dividers, a clear selected state (`aria-pressed`, `aria-current`) and keyboard focus, and a small *Protected* badge -- replacing outlined buttons. Selecting the selected Role again keeps it selected.
+- **007:** the detail is populated by default. Rule, all over the Roles `listRoles` already returned (nothing widens visibility): an explicit choice wins while it still matches the search and filter, otherwise the first matching Role is shown; a `?role=` link selects that Role; **if the link names a Role that is not in the list, the panel says "The linked Security Role isn't available" and substitutes nothing** until the administrator chooses (Owner safeguard); when nothing matches, an explicit empty state is shown.
