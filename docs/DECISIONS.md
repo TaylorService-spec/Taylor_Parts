@@ -7661,3 +7661,13 @@ Within the catalog: object and field keys sit behind **Show Technical Details** 
 - **Kept distinct, not redesigned:** a one-line explainer separates Security Role (what someone may do), Job Role (what their job is; grants nothing) and permission (one enforced action). No authority model changed.
 
 Out of scope and not attempted: resolving "By" actor ids to names in assignment history (needs a read the screen does not have today).
+
+## #215 — Administration IA Phase 4: Permissions reads as access, then business actions (2026-10-08)
+
+**Decision:** UI-only Phase 4 of the Owner-approved Administration redesign (#211), in the shared permission matrix (`ObjectAuthorityMatrix`, rendered on Objects and on Permissions) and the per-cell grant controls.
+
+- **Bands and order (P01):** columns are ordered Create, Read, Edit, Delete, then business actions, then administration actions, under *Object Access* / *Business Actions* / *Administration* band headings. Ordering is stable within a kind; the grid's cell indexes, bulk plans and every mutation are unchanged.
+- **Unavailable verbs are shown, not omitted (P02):** for each of Create / Read / Edit / Delete an Object has no action for, the matrix shows a column marked *Not Available* with the reason "EOS has no Delete action for Work Orders". It is never a control, never part of a bulk plan, and invents no grant.
+- **No dead condition form (P03):** when the server's condition vocabulary has answered and no kind applies to the capability, *Set Condition* is disabled with "No supported conditions for this action." While the vocabulary is loading or unavailable the opener stays and the form explains why, as before; an active condition can still be replaced or retired.
+
+Not changed: state words (Granted / Granted (Conditional) / Not Granted / Not Available), capability keys behind the column legend, server enforcement. G6 (field-level access) remains an open Owner decision and is not represented as configurable.

@@ -548,3 +548,21 @@ describe("control-plane model and seam", () => {
     expect(model).not.toMatch(/isAllowed/);
   });
 });
+
+// Phase 4 (approved IA, finding P03): no form whose every choice is disabled. When the server's condition vocabulary has
+// answered and no kind applies to this capability, the opener is disabled and says why; an active condition can still be
+// replaced or retired.
+describe("Set Condition opener", () => {
+  it("is disabled with a reason when no supported condition applies, and stays available when one does", async () => {
+    const { GrantCellControls } = await import("../src/modules/administration/GrantControls.jsx");
+    const none = { status: "ready", kinds: [{ kind: "TEAM", label: "Team", supported: false }, { kind: "RECORD_ASSIGNMENT", label: "Assigned record", supported: true, capabilities: ["other.cap"] }] };
+    const { unmount } = render(<GrantCellControls api={{}} objectKey="customer" actionKey="edit" roleKey="salesperson" capabilityKey="customer.record.update" cell={{ held: true, source: "ADMIN_GRANTED" }} vocabulary={none} />);
+    const opener = screen.getByRole("button", { name: "Set condition on edit for salesperson" });
+    expect(opener.disabled).toBe(true);
+    expect(screen.getByText("No supported conditions for this action.")).toBeTruthy();
+    unmount();
+    const some = { status: "ready", kinds: [{ kind: "RECORD_ASSIGNMENT", label: "Assigned record", supported: true }] };
+    render(<GrantCellControls api={{}} objectKey="customer" actionKey="edit" roleKey="salesperson" capabilityKey="customer.record.update" cell={{ held: true, source: "ADMIN_GRANTED" }} vocabulary={some} />);
+    expect(screen.getByRole("button", { name: "Set condition on edit for salesperson" }).disabled).toBe(false);
+  });
+});

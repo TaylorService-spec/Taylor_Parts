@@ -9071,3 +9071,7 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-master-detail__list > li + li { border-top: 1px solid var(--color-border); }
 .fo-master-detail__list button { width: 100%; justify-content: space-between; text-align: left; }
 @media (max-width: 900px) { .fo-master-detail { grid-template-columns: minmax(0, 1fr); } .fo-master-detail__list { max-height: 18rem; } }
+
+/* Permissions matrix bands (approved IA, Phase 4): Object Access / Business Actions / Administration, named once. */
+.fo-objmatrix__bands th { font-size: var(--font-size-xs); letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-secondary);
+  text-align: left; border-bottom: 2px solid var(--color-border); }

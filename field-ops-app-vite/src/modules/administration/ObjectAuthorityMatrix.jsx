@@ -34,8 +34,27 @@ const KIND_WORDS = Object.freeze({ CREATE: "Create", READ: "Read", EDIT: "Edit",
 /** The column's SHORT header: the action key in words ("correctOwnership" -> "Correct Ownership"). The full name stays reachable. */
 const shortLabel = (a) => titleCase(a.actionKey);
 
+// Column order (approved Administration IA, Phase 4, finding P01): ordinary object access first, in Create / Read / Edit /
+// Delete order, then business actions, then administration actions. Stable: actions of one kind keep the server's order.
+const KIND_RANK = Object.freeze({ CREATE: 0, READ: 1, EDIT: 2, DELETE: 3, BUSINESS_ACTION: 4, ADMIN_ACTION: 5 });
+const rankOf = (kind) => KIND_RANK[kind] ?? 4;
+const ACCESS_VERBS = ["CREATE", "READ", "EDIT", "DELETE"];
+const bandOf = (kind) => (rankOf(kind) < 4 ? "Object Access" : kind === "ADMIN_ACTION" ? "Administration" : "Business Actions");
+
+/**
+ * The rendered column list: every real action (by its index in grid.actions) plus, for each of Create / Read / Edit / Delete
+ * the Object has NO action for, an explicit "missing" column (finding P02). A missing column is never a control and never
+ * part of a bulk plan -- it states that EOS has no such action for this Object, so there is nothing anyone could be granted.
+ */
+export function authorityColumns(grid) {
+  const present = new Set(grid.actions.map((a) => a.actionKind));
+  const real = grid.actions.map((a, index) => ({ type: "real", index, rank: rankOf(a.actionKind), band: bandOf(a.actionKind) }));
+  const missing = ACCESS_VERBS.filter((v) => !present.has(v)).map((verb) => ({ type: "missing", verb, rank: rankOf(verb), band: "Object Access" }));
+  return [...real, ...missing].sort((x, y) => x.rank - y.rank);
+}
+
 export function objectAuthorityGrid(matrix, roles) {
-  const actions = Array.isArray(matrix?.actions) ? matrix.actions : [];
+  const actions = (Array.isArray(matrix?.actions) ? matrix.actions : []).slice().sort((x, y) => rankOf(x.actionKind) - rankOf(y.actionKind));
   const roleList = (Array.isArray(roles) ? roles : []).map((r) => ({ key: r.key, name: identifierLabel(r.key, r.name), protected: Boolean(r.protected) }));
   const cell = (roleKey, a) => {
     const c = (a.roles ?? []).find((r) => r.roleKey === roleKey);
@@ -160,6 +179,13 @@ export default function ObjectAuthorityMatrix({ api = adminControlPlaneClient, i
   };
 
   const shownRows = grid ? (onlyHolders ? grid.rows.filter((r) => r.cells.some((c) => c.held)) : grid.rows) : [];
+  const columns = grid ? authorityColumns(grid) : [];
+  const bands = columns.reduce((acc, col) => {
+    const last = acc[acc.length - 1];
+    if (last && last.label === col.band) last.span += 1;
+    else acc.push({ key: `${col.band}-${acc.length}`, label: col.band, span: 1 });
+    return acc;
+  }, []);
   return (
     <section className="fo-objmatrix" aria-label="Object authority" data-objmatrix-mode={editing ? "EDIT" : "READ"}>
       <div className="fo-objmatrix__head">
@@ -200,15 +226,33 @@ export default function ObjectAuthorityMatrix({ api = adminControlPlaneClient, i
         <div className="fo-objmatrix__scroll" role="region" aria-label={`${objectLabel} permissions — scroll horizontally for more actions`} tabIndex={0}>
           <table className="fo-objmatrix__table" aria-label={`${objectLabel} authority by Security Role`}>
             <thead>
+              {/* Bands (finding P01): ordinary object access, then business and administration actions, named once. */}
+              <tr className="fo-objmatrix__bands">
+                <td />
+                {bands.map((b) => <th scope="colgroup" key={b.key} colSpan={b.span}>{b.label}</th>)}
+                {editing ? <td /> : null}
+              </tr>
               <tr>
                 <th scope="col" className="fo-objmatrix__rolehead">Security Role</th>
-                {grid.actions.map((a) => (
-                  <th scope="col" key={a.actionKey} title={`${a.label} — ${a.kindWords} (${a.capabilityKey})`} data-action={a.actionKey}>
-                    <span className="fo-objmatrix__colname">{a.short}</span>
-                    {a.kindWords !== a.short ? <span className="fo-objmatrix__kind">{a.kindWords}</span> : null}
-                    <span className="fo-sr-only">{`: ${a.label}`}</span>
-                  </th>
-                ))}
+                {columns.map((col) => {
+                  if (col.type === "missing") {
+                    const words = KIND_WORDS[col.verb];
+                    return (
+                      <th scope="col" key={`missing-${col.verb}`} data-action-missing={col.verb} title={`${words} — not available: EOS has no ${words} action for ${objectLabel}`}>
+                        <span className="fo-objmatrix__colname">{words}</span>
+                        <span className="fo-objmatrix__kind">Not Available</span>
+                      </th>
+                    );
+                  }
+                  const a = grid.actions[col.index];
+                  return (
+                    <th scope="col" key={a.actionKey} title={`${a.label} — ${a.kindWords} (${a.capabilityKey})`} data-action={a.actionKey}>
+                      <span className="fo-objmatrix__colname">{a.short}</span>
+                      {a.kindWords !== a.short ? <span className="fo-objmatrix__kind">{a.kindWords}</span> : null}
+                      <span className="fo-sr-only">{`: ${a.label}`}</span>
+                    </th>
+                  );
+                })}
                 {editing ? <th scope="col" className="fo-objmatrix__actionshead"><span className="fo-sr-only">Role actions</span></th> : null}
               </tr>
             </thead>
@@ -216,7 +260,21 @@ export default function ObjectAuthorityMatrix({ api = adminControlPlaneClient, i
               {shownRows.map((r) => (
                 <tr key={r.key} data-role={r.key}>
                   <th scope="row" className="fo-objmatrix__role">{r.name}{r.protected ? <span className="fo-objmatrix__protected"> · Protected</span> : null}</th>
-                  {r.cells.map((c, i) => {
+                  {columns.map((col) => {
+                    if (col.type === "missing") {
+                      const words = KIND_WORDS[col.verb];
+                      return (
+                        <td key={`missing-${col.verb}`} data-cell={`${r.key}:missing-${col.verb}`} data-state="NO_ACTION">
+                          <span className={`fo-objmatrix__state ${STATE.UNAVAILABLE.className}`} role="img"
+                            aria-label={`${r.name} — ${words}: Not Available, ${objectLabel} has no ${words} action`}
+                            title={`Not available: EOS has no ${words} action for ${objectLabel}, so it cannot be granted to anyone`}>
+                            {STATE.UNAVAILABLE.glyph}
+                          </span>
+                        </td>
+                      );
+                    }
+                    const i = col.index;
+                    const c = r.cells[i];
                     const a = grid.actions[i];
                     const s = stateOf(c);
                     const name = `${r.name} — ${a.label} (${a.capabilityKey})`;
