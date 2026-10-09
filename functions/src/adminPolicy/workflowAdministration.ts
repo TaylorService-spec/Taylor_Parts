@@ -99,19 +99,33 @@ export class WorkflowAdministrationDeniedError extends AdministrationDeniedError
  * Authorization only: decided by administrationAuthority.decideWorkflowAdministration, the one
  * workflow-administration decision function, before anything else is read.
  */
+/**
+ * THE one decision for a workflow mutation, given the caller's effective capabilities. Both the enforcement below and
+ * the read-only self answer (readMyWorkflowAdministration) call this, so what the UI is told can never differ from
+ * what the server will do.
+ */
+export function decideWorkflowMutation(capabilities: ReadonlySet<string>, operation: WorkflowMutation): boolean {
+  return decideWorkflowAdministration({
+    capabilities, action: ACTION_BY_MUTATION[operation], wouldRemoveLastAdministrationPath: false,
+  }).allowed;
+}
+
 export async function requireWorkflowAdministrationCapability(
   reader: PolicyReader,
   actor: CapabilityBearingActor,
   operation: WorkflowMutation,
 ): Promise<void> {
   const capabilities = await actorCapabilities(reader, actor);
-  const decision = decideWorkflowAdministration({
-    capabilities, action: ACTION_BY_MUTATION[operation], wouldRemoveLastAdministrationPath: false,
-  });
-  if (!decision.allowed) throw new WorkflowAdministrationDeniedError(operation, WORKFLOW_MUTATION_CAPABILITY[operation]);
+  if (!decideWorkflowMutation(capabilities, operation)) {
+    throw new WorkflowAdministrationDeniedError(operation, WORKFLOW_MUTATION_CAPABILITY[operation]);
+  }
 }
 
 export type WorkflowRefusalCode =
+  | "WORKFLOW_ACTION_NOT_FOUND"
+  | "ROLE_NOT_FOR_ACTION"
+  | "EMPLOYEE_VISIBILITY_UNAVAILABLE"
+  | "WORKFLOW_ASSIGNMENT_CAPABILITY_REQUIRED"
   | "WORKFLOW_VALIDATION_FAILED"
   | "WORKFLOW_INVALID_LIFECYCLE"
   | "WORKFLOW_VERSION_ACTIVE"

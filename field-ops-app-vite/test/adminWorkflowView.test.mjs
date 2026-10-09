@@ -54,9 +54,11 @@ test("NO client copy of any workflow definition remains", () => {
   for (const seeded of ["PENDING_REVIEW", "READY_TO_DISPATCH", "IN_FULFILLMENT", "CUSTOMER_REVIEW", "roleKeys: ["]) {
     assert.equal(source.includes(seeded), false, `the client still carries seed data (${seeded})`);
   }
-  const screen = readFileSync("src/modules/administration/AdminWorkflows.jsx", "utf8");
-  assert.equal(screen.includes("SEED_WORKFLOW_FAMILIES"), false);
-  assert.match(screen, /api\.listWorkflows\(\)/, "the list is read from the server");
+  for (const file of ["AdminWorkflowBuilder.jsx", "WorkflowAssignments.jsx"]) {
+    const screen = readFileSync(`src/modules/administration/${file}`, "utf8");
+    assert.equal(screen.includes("SEED_WORKFLOW_FAMILIES"), false);
+    assert.match(screen, /api\.listWorkflows\(\)/, "both workflow pages read the list from the server");
+  }
 });
 
 test("summarizeWorkflow reads the active pointer and the lifecycle counts", () => {

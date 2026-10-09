@@ -7698,3 +7698,51 @@ Left in place, out of scope: the unrendered `LegacyRoleMatrix` / `LegacyRoleGrid
 - **004 (Employees & Users → Workforce):** one short description replaces the long introduction, whose content is kept as collapsed contextual help. The Job Role and Security Role inventory paragraphs are no longer printed above the roster; the same governed counts remain in the Job Role and Security Role filters and in a collapsed "Counts by Job Role and Security Role" summary. The missing-Job-Role notice is one compact line with **Show These Employees**, which applies the governed `listWorkforceRoster` read's existing `noJobRole` filter (server-side; no client filtering), with **Show All Employees** to clear it. Roster, search, filters, columns, record links and every Employee / Job Role / Security Role / company / scope / assignment / access distinction are unchanged.
 - **008 (Workflows):** one page heading (the shell's; the repeated list heading is removed), one concise line, and the workflow policy (bindings never grant; Draft → Published → Retired) as collapsed help. Workflows are ONE table with ONE header row -- Workflow / Governs / Active Version / Versions & Status -- and the business areas are kept as row groups with their names and descriptions; sorting reorders within each area. A workflow is chosen through a row control instead of an outlined button, with the same select / deselect / unsaved-changes behavior. Versions, publication, lifecycle, audit and authorization are unchanged.
 - **Review follow-ups (non-blocking, applied):** choosing a Job Role ends the without-a-Job-Role view instead of combining two contradictory filters; the Functional Roles link stays a visible one-line entry rather than moving into the collapsed help.
+
+
+## #219 — OWNER: separate Workflow Assignments from Workflow Builder (2026-10-08)
+
+**Decision:** Rudy approved Workflow Assignments as the main Administration workflow page and Workflow Builder as a separate linked page. Assignment work shows action-to-Security-Role associations and role holders. Definition authoring, validation diagnostics, version lifecycle, activation and migration stay in Builder. The previous recommendation to treat the main page as a builder with tabs is superseded.
+
+**Implementation boundary:** existing authorization and immutable published-version behavior are retained. Role-only edits are validated and saved as a new inactive draft; publication remains a Builder operation. No new capability, grant, server policy, Firebase dependency, migration or live configuration change. Existing route/access gate is shared through distinct page URLs (`?view=builder`); the query selects presentation only.
+
+**Evidence:** `docs/testing/workflow-assignments-ux-correction.md`; user guide `docs/user-guide/administration/workflow-assignments.md`. Local implementation is not live acceptance or deployment authority.
+
+## #220 — OWNER: W01 foundation D2 and D3 — the caller's own workflow decisions; eligible Roles from validation (2026-10-09)
+
+**Decision:** Rudy approved D2 and D3 only. D1, replacing the global router so that in-app Back can be blocked while there are unsaved changes, needs its own Owner decision and is not part of this change.
+- **D2:** a new read-only Administration read, `readMyWorkflowAdministration`. It is gated on `workflowDefinition.read`, the same gate as `listWorkflows`, and takes no input, so a caller can only ask about itself.
+  - It answers each workflow mutation the API serves with `{ allowed, requiredCapability, requiredLabel }`.
+  - The answer comes from `decideWorkflowMutation`, the same function every mutation enforces with, so the two cannot differ.
+  - Workflow Builder and Workflow Assignments offer a mutation only when it is allowed. Otherwise they say why, and they fail closed while the answer is unknown or unreadable.
+  - Server enforcement is unchanged.
+- **D3:** `readWorkflowVersion` additionally returns `actions[].eligibleRoles` and `roleNames`.
+  - The eligible Roles are those that hold the action's capability. They come from `loadWorkflowValidationContext`, the map `BINDING_WITHOUT_CAPABILITY` uses, so an eligible Role is exactly one that validation accepts.
+  - `eligibleRoles` is `null` when the action names no capability or an unknown one.
+  - Workflow Assignments offers only eligible Roles and no longer needs `admin.securityPolicy.read`.
+  - Existing bindings that conflict with eligibility are shown and explained, never removed automatically.
+  - Disclosure is limited to the key and name of the Roles holding the capabilities a readable workflow names.
+
+**Boundary:** no capability, grant, Role, migration, workflow definition or mapping change, and no Firebase dependency. The role-holder lookup for Workflow Assignments is designed separately and is not implemented without its own approval.
+
+## #221 — OWNER: W01 holder lookup `listWorkflowActionRoleHolders` (2026-10-09)
+
+**Decision:** Rudy approved a narrow, read-only lookup that lists the Employees holding one Security Role relevant to one workflow action. Workflow Assignments' "View employees" now uses it instead of the Security Role detail, which needs the whole Security Policy read.
+
+**Who may call it:**
+- The caller needs `workflowDefinition.read`, the surface gate, AND either `workflowDefinition.edit` or `workflowDefinition.version`, the save an assignment makes. Both are decided by `decideWorkflowMutation`.
+- Otherwise it refuses with `WORKFLOW_ASSIGNMENT_CAPABILITY_REQUIRED`.
+
+**What it answers:**
+- **Tenant:** the caller's tenant only. Another tenant's version returns NOT_FOUND.
+- **Roles:** only a Role that is eligible for the action (holds its capability) or already bound to it. Any other Role is refused with `ROLE_NOT_FOR_ACTION`.
+- **Holders:** one entry per person the runtime would let act at all. That means an active principal with an active tenant membership whose linked Employee (if any) is access-eligible, holding the Role through an active, non-stale assignment. Suspended principals, inactive memberships and terminated Employees are not holders. This fix came from independent review.
+- **appliesToAction:** true only when the Role is eligible, its grant carries no active condition, and the assignment is global or has a scope that decides the action's capability. When false, `notApplicableReason` says why: `ROLE_NOT_ELIGIBLE`, `CONDITIONED_GRANT` or `SCOPE_DOES_NOT_DECIDE`.
+- **Counts (OWNER RULING, 2026-10-09):** headcount disclosure across Employee-visibility boundaries is **rejected**. `totalHolders`, `holdersForAction` and `truncated` are computed only over the holders the caller may view as Employees, the same set the names come from. There is no `withheld` count. A caller with no Employee visibility receives zero counts and no names. Counts are per person, not per assignment.
+- **Employee names:** shown only where the existing Employee visibility admits them. This is the Workforce read kernel's `employee.record.read` check, applied per operating company for scoped holders, and injected by the server (`eosAdministration/workflowHolderVisibility.ts`).
+  - Holders outside that visibility, or not linked to an Employee, are neither named nor counted.
+  - If visibility cannot be established, the lookup refuses with `EMPLOYEE_VISIBILITY_UNAVAILABLE`. It never returns an empty list in that case. An unavailable context authority also counts as visibility that cannot be established.
+- **Fields returned:** Role key and name, `roleEligible` and `roleBound`, `totalHolders`, `holdersForAction`, `employeeVisibility` (about the caller only), `truncated`, and up to 200 holders. Each holder has a display name, an Employee id (used only for the record link), its scope, `appliesToAction` and `notApplicableReason`.
+- **Never returned:** principal ids, sign-in identities, other Roles or capabilities.
+
+**Boundary:** read-only; grants nothing. No capability, grant, Role, migration, workflow definition or mapping change, and no Firebase dependency.

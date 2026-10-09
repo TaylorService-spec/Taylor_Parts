@@ -23,7 +23,7 @@ import { adminControlPlaneClient } from "../../services/adminControlPlaneClient.
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import KeyListPicker from "./KeyListPicker.jsx";
 
-export default function WorkflowDraftEditor({ api, workflow, versionId, view, onSaved, onDirtyChange, workforce = workforceApiClient, rolesApi = adminControlPlaneClient }) {
+export default function WorkflowDraftEditor({ api, workflow, versionId, view, onSaved, onDirtyChange, workforce = workforceApiClient, rolesApi = adminControlPlaneClient, permissions }) {
   // The Functional Role keys an action may require, from the governed catalog. A convenience list only:
   // the server resolves every key and refuses one it does not have (UNKNOWN_FUNCTIONAL_ROLE).
   const functionalCatalog = useWorkforceRead("listFunctionalRoles", {}, { client: workforce });
@@ -139,7 +139,9 @@ export default function WorkflowDraftEditor({ api, workflow, versionId, view, on
         <span>Reason</span>
         <input type="text" aria-label="Reason for saving the draft" value={reason} onChange={(e) => setReason(e.target.value)} />
       </label>
-      <Button type="button" variant="primary" disabled={busy} onClick={save}>Save as New Draft</Button>
+      <Button type="button" variant="primary" disabled={busy || !permissions?.allows("updateWorkflowDefinition")}
+        title={permissions?.reason("updateWorkflowDefinition") ?? undefined} onClick={save}>Save as New Draft</Button>
+      {permissions?.reason("updateWorkflowDefinition") ? <p className="fo-muted" data-permission-note="draft">{permissions.reason("updateWorkflowDefinition")}</p> : null}
       {outcome ? (
         <p className={outcome.ok ? "fo-muted" : "fo-warning"} role={outcome.ok ? "status" : "alert"} data-draft-outcome={outcome.ok ? "ok" : "refused"}>
           {outcome.text}

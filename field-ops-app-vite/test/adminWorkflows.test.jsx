@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-import AdminWorkflows from "../src/modules/administration/AdminWorkflows.jsx";
+import AdminWorkflows from "../src/modules/administration/AdminWorkflowBuilder.jsx";
 import EmployeeWorkflowResponsibilities from "../src/modules/administration/EmployeeWorkflowResponsibilities.jsx";
 import { createWorkflowAdminClient } from "../src/services/workflowAdminClient.js";
 
@@ -54,6 +54,10 @@ const STALE_VALIDATION = {
 function fakeApi(overrides = {}) {
   return {
     listWorkflows: vi.fn(() => ok(LIST)),
+    // W01 D2: the caller's own decisions (the panel fails closed without them). Default: an authorized administrator.
+    readMyWorkflowAdministration: vi.fn(() => ok({ operations: Object.fromEntries(["createWorkflowDraft", "createWorkflowVersion",
+      "updateWorkflowDefinition", "setWorkflowRoleBinding", "publishWorkflowVersion", "activateWorkflowVersion", "retireWorkflowVersion",
+      "startWorkflowInstance", "adoptRecordsIntoWorkflowVersion", "migrateWorkflowInstances"].map((op) => [op, { allowed: true, requiredCapability: "x", requiredLabel: "x" }])) })),
     // The tenant's Security Roles for the binding TYPEAHEAD (UI corrections item E).
     listRoles: vi.fn(() => ok([
       { id: "r-admin", key: "admin", name: "Administrator" },
@@ -286,5 +290,31 @@ describe("ADMIN-UI-008: a simpler Workflows list", () => {
     const help = screen.getByText("How workflows, bindings and versions work").closest("details");
     expect(help.open).toBe(false);
     expect(help.textContent).toMatch(/a binding never grants/);
+  });
+});
+
+// W01 D2 (2026-10-09): the Builder offers lifecycle controls only on the server's own answer for THIS caller.
+describe("Workflow Builder -- the caller's own workflow decisions (W01 D2)", () => {
+  const readOnly = () => vi.fn(() => Promise.resolve({ ok: true, data: { operations: Object.fromEntries(["publishWorkflowVersion", "activateWorkflowVersion",
+    "retireWorkflowVersion", "createWorkflowVersion", "updateWorkflowDefinition", "startWorkflowInstance", "migrateWorkflowInstances"].map((op) => [op,
+    { allowed: false, requiredCapability: "workflowDefinition.publish", requiredLabel: "Publish Workflows" }])) } }));
+  it("a read-only holder sees the lifecycle actions disabled, with the reason; nothing is sent", async () => {
+    const api = fakeApi({ readMyWorkflowAdministration: readOnly() });
+    render(<AdminWorkflows api={api} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sales — Order" }));
+    await waitFor(() => expect(document.querySelector('[data-lifecycle-action="publish"]')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-lifecycle-action="publish"]').disabled).toBe(true));
+    expect(document.querySelector('[data-permission-note="lifecycle"]').textContent).toMatch(/Requires the “Publish Workflows” permission/);
+    fireEvent.click(document.querySelector('[data-lifecycle-action="publish"]'));
+    expect(api.publishWorkflowVersion).not.toHaveBeenCalled();
+    expect(api.readMyWorkflowAdministration).toHaveBeenCalledWith();
+  });
+  it("fails closed when the decisions cannot be read", async () => {
+    const api = fakeApi({ readMyWorkflowAdministration: vi.fn(() => Promise.resolve({ ok: false, code: "FORBIDDEN", message: "no" })) });
+    render(<AdminWorkflows api={api} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sales — Order" }));
+    await waitFor(() => expect(document.querySelector('[data-lifecycle-action="publish"]')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-permission-note="lifecycle"]')?.textContent).toMatch(/could not be confirmed/));
+    expect(document.querySelector('[data-lifecycle-action="publish"]').disabled).toBe(true);
   });
 });

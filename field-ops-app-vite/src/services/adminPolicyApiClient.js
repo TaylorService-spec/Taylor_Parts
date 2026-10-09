@@ -56,6 +56,10 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "getPrincipalEffectiveAccess",
   "listWorkflows",
   "readWorkflowVersion",
+  // W01 D2: the caller's own workflow-administration decisions (display only; the server enforces).
+  "readMyWorkflowAdministration",
+  // W01: the Employees holding ONE Role relevant to ONE workflow action -- assigners only, existing Employee visibility.
+  "listWorkflowActionRoleHolders",
   // The workflow control plane (2026-09-26): validation results, pinned instances, one workflow's
   // history (workflowDefinition.read) and an Employee's derived workflow responsibilities.
   "validateWorkflowVersion",

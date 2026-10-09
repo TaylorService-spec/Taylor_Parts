@@ -7,9 +7,12 @@ import { identifierLabel } from "../../shared/display/displayLabels.js";
 
 const split = (value) => String(value ?? "").split(",").map((k) => k.trim()).filter(Boolean);
 
-export default function KeyListPicker({ id, label, value, onChange, options = [], disabled = false }) {
+// `labels` (optional, key -> display name) names chosen keys that are NOT offered as options -- e.g. a Role already bound
+// to a workflow action that is not eligible for it (W01 D3). `unlistedNote` (optional) is said beside such a chip.
+export default function KeyListPicker({ id, label, value, onChange, options = [], disabled = false, labels = null, unlistedNote = null }) {
   const keys = split(value);
   const byKey = new Map(options.map((o) => [o.key, o]));
+  const nameOf = (k) => byKey.get(k)?.label ?? labels?.[k];
   const add = (key) => { if (key && !keys.includes(key)) onChange([...keys, key].join(", ")); };
   const remove = (key) => onChange(keys.filter((k) => k !== key).join(", "));
   const search = async (query) => {
@@ -23,9 +26,10 @@ export default function KeyListPicker({ id, label, value, onChange, options = []
       <ul className="fo-keylist__chips" aria-label={`${label}: chosen`}>
         {keys.map((k) => (
           <li key={k} className="fo-cp-tag" data-key={k}>
-            {identifierLabel(k, byKey.get(k)?.label)}
-            {byKey.has(k) ? null : <span className="fo-muted"> (not in catalog)</span>}
-            <button type="button" className="fo-keylist__remove" aria-label={`Remove ${identifierLabel(k, byKey.get(k)?.label)}`} disabled={disabled} onClick={() => remove(k)}>×</button>
+            {identifierLabel(k, nameOf(k))}
+            {byKey.has(k) ? null : labels?.[k] ? (unlistedNote ? <span className="fo-muted"> ({unlistedNote})</span> : null)
+              : <span className="fo-muted"> (not in catalog)</span>}
+            <button type="button" className="fo-keylist__remove" aria-label={`Remove ${identifierLabel(k, nameOf(k))}`} disabled={disabled} onClick={() => remove(k)}>×</button>
           </li>
         ))}
       </ul>

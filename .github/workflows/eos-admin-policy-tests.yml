@@ -449,6 +449,12 @@ on:
       - "field-ops-app-vite/src/modules/administration/AdminObjects.jsx"
       - "field-ops-app-vite/src/domain/adminWorkflowView.js"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminWorkflowBuilder.jsx"
+      - "field-ops-app-vite/src/modules/administration/WorkflowAssignments.jsx"
+      - "field-ops-app-vite/src/domain/workflowPageLinks.js"
+      - "field-ops-app-vite/src/modules/administration/useMyWorkflowAdministration.js"
+      - "field-ops-app-vite/src/modules/administration/KeyListPicker.jsx"
+      - "field-ops-app-vite/test/workflowAssignments.test.jsx"
       - "field-ops-app-vite/src/access/policyObjectRegistry.js"
       - "field-ops-app-vite/test/adminPolicyView.test.mjs"
       - "field-ops-app-vite/test/adminWorkflowView.test.mjs"
@@ -639,6 +645,8 @@ on:
       - "functions/src/adminPolicy/applyWorkflowSeed.ts"
       - "functions/test/workflowControlPlane.test.mjs"
       - "functions/test/workflowControlPlanePostgres.test.mjs"
+      - "functions/test/workflowRoleHoldersPostgres.test.mjs"
+      - "functions/src/eosAdministration/workflowHolderVisibility.ts"
       # LANE DR (2026-09-26): workflow DOMAIN READINESS -- a synthetic domain consumes the control plane end to end
       # (pin, binding, capability, condition, scope, versioning, MIGRATE, negatives). Suite: test:adminPolicyPostgres.
       - "functions/test/workflowDomainReadinessPostgres.test.mjs"
@@ -675,6 +683,12 @@ on:
       - "functions/scripts/provisionOwnerPersona.js"
       - "functions/scripts/seedSampleCompany.js"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminWorkflowBuilder.jsx"
+      - "field-ops-app-vite/src/modules/administration/WorkflowAssignments.jsx"
+      - "field-ops-app-vite/src/domain/workflowPageLinks.js"
+      - "field-ops-app-vite/src/modules/administration/useMyWorkflowAdministration.js"
+      - "field-ops-app-vite/src/modules/administration/KeyListPicker.jsx"
+      - "field-ops-app-vite/test/workflowAssignments.test.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
       - "field-ops-app-vite/src/services/workflowAdminClient.js"
@@ -1161,6 +1175,8 @@ on:
       - "functions/src/adminPolicy/applyWorkflowSeed.ts"
       - "functions/test/workflowControlPlane.test.mjs"
       - "functions/test/workflowControlPlanePostgres.test.mjs"
+      - "functions/test/workflowRoleHoldersPostgres.test.mjs"
+      - "functions/src/eosAdministration/workflowHolderVisibility.ts"
       # LANE DR (2026-09-26): workflow DOMAIN READINESS -- a synthetic domain consumes the control plane end to end
       # (pin, binding, capability, condition, scope, versioning, MIGRATE, negatives). Suite: test:adminPolicyPostgres.
       - "functions/test/workflowDomainReadinessPostgres.test.mjs"
@@ -1197,6 +1213,12 @@ on:
       - "functions/scripts/provisionOwnerPersona.js"
       - "functions/scripts/seedSampleCompany.js"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminWorkflowBuilder.jsx"
+      - "field-ops-app-vite/src/modules/administration/WorkflowAssignments.jsx"
+      - "field-ops-app-vite/src/domain/workflowPageLinks.js"
+      - "field-ops-app-vite/src/modules/administration/useMyWorkflowAdministration.js"
+      - "field-ops-app-vite/src/modules/administration/KeyListPicker.jsx"
+      - "field-ops-app-vite/test/workflowAssignments.test.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
       - "field-ops-app-vite/src/services/workflowAdminClient.js"
@@ -1520,7 +1542,7 @@ jobs:
       # sends lifecycle / draft mutations with a reason, shows validation codes and refusals verbatim,
       # and the Employee page draws the server-derived workflow responsibilities.
       - name: Administration workflows -- client (vitest + jsdom)
-        run: npx vitest run test/adminWorkflows.test.jsx
+        run: npx vitest run test/adminWorkflows.test.jsx test/workflowAssignments.test.jsx
         working-directory: field-ops-app-vite
 
       # UI CORRECTIONS PACKAGE (2026-10-08): the shared display labels, tri-state column sort, tabs and typeahead, and the

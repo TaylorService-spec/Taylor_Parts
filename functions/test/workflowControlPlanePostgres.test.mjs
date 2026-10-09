@@ -341,11 +341,77 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
       ["retireWorkflowVersion", { versionId: wo, reason: REASON }],
       ["publishWorkflowVersion", { versionId: salesOrderDraft.id, reason: REASON }],
       ["adoptRecordsIntoWorkflowVersion", { versionId: wo, records: [{ recordId: "x", stepKey: "CREATED" }], reason: REASON }],
+      // W01 holder lookup: another tenant's workflow administrator cannot list this tenant's Role holders.
+      ["listWorkflowActionRoleHolders", { versionId: wo, actionKey: "Accept", roleKey: "technician" }],
     ]) {
       const res = await call(operation, input, OTHER_WF_SUBJECT);
       assert.equal(res.code, "NOT_FOUND", `${operation}: ${res.code} ${res.message}`);
     }
     assert.equal(await auditCount(), beforeIsolation, "tenant A untouched");
+  });
+
+  await t.test("W01 D2: readMyWorkflowAdministration answers the caller's OWN decisions, exactly as the mutations enforce", async () => {
+    const ops = ["createWorkflowDraft", "createWorkflowVersion", "updateWorkflowDefinition", "setWorkflowRoleBinding", "publishWorkflowVersion",
+      "activateWorkflowVersion", "retireWorkflowVersion", "startWorkflowInstance", "adoptRecordsIntoWorkflowVersion", "migrateWorkflowInstances"];
+    const before = await auditCount();
+    // A workflow administrator holding every workflowDefinition capability: every operation allowed.
+    const full = await call("readMyWorkflowAdministration", {}, WF_SUBJECT);
+    assert.equal(full.ok, true, full.message);
+    assert.deepEqual(Object.keys(full.data.operations).sort(), [...ops].sort());
+    for (const op of ops) assert.equal(full.data.operations[op].allowed, true, op);
+    assert.equal(full.data.operations.publishWorkflowVersion.requiredCapability, "workflowDefinition.publish");
+    assert.equal(typeof full.data.operations.publishWorkflowVersion.requiredLabel, "string");
+    // The Security administrator holds the workflow READ only: every operation refused -- and the real mutation agrees.
+    const readOnly = await call("readMyWorkflowAdministration", {}, ADMIN_SUBJECT);
+    assert.equal(readOnly.ok, true, readOnly.message);
+    for (const op of ops) assert.equal(readOnly.data.operations[op].allowed, false, op);
+    const draft = (await repo.listWorkflowVersions(TENANT, salesOrderDraft.workflowId)).find((v) => v.status === "DRAFT") ?? salesOrderDraft;
+    for (const [op, input] of [["publishWorkflowVersion", { versionId: draft.id, reason: REASON }],
+      ["updateWorkflowDefinition", { versionId: draft.id, definition: { steps: [], actions: [] }, reason: REASON }]]) {
+      const refused = await call(op, input, ADMIN_SUBJECT);
+      assert.equal(refused.code, "FORBIDDEN", `${op}: ${refused.code} ${refused.message}`);
+      assert.match(refused.message, new RegExp(readOnly.data.operations[op].requiredCapability.replace(".", "\\.")));
+    }
+    // No workflow read at all: refused like every workflow read, before anything is computed.
+    const none = await call("readMyWorkflowAdministration", {}, "uid-wf-dispatcher");
+    assert.equal(none.code, "FORBIDDEN");
+    // Self only: there is no way to ask about anyone else.
+    const probe = await call("readMyWorkflowAdministration", { principalId: dispatcher.principalId }, ADMIN_SUBJECT);
+    assert.equal(probe.code, "INVALID_INPUT");
+    assert.equal(await auditCount(), before, "read-only: nothing audited, nothing changed");
+  });
+
+  await t.test("W01 D3: eligibleRoles are exactly the bindings validation accepts", async () => {
+    const versions = await repo.listWorkflowVersions(TENANT, salesOrderDraft.workflowId);
+    const view = await call("readWorkflowVersion", { versionId: versions[versions.length - 1].id }, ADMIN_SUBJECT);
+    assert.equal(view.ok, true, view.message);
+    assert.equal(typeof view.data.roleNames, "object");
+    const allRoles = (await repo.listRoles(TENANT)).map((r) => r.key);
+    const mapped = view.data.actions.filter((a) => a.capabilityKey);
+    assert.ok(mapped.length > 0, "the seeded Sales Order workflow names capabilities");
+    const asDefinition = (roleKeysFor) => ({
+      steps: view.data.steps,
+      actions: view.data.actions.map((a) => ({ key: a.key, from: a.from, to: a.to, capabilityKey: a.capabilityKey, guardKind: a.guardKind,
+        roleKeys: roleKeysFor(a), functionalRoleKeys: [] })),
+    });
+    const bindingErrors = async (definition) => {
+      const v = await call("validateWorkflowVersion", { objectKey: view.data.workflow.objectKey, definition }, ADMIN_SUBJECT);
+      assert.equal(v.ok, true, v.message);
+      return v.data.errors.filter((e) => e.code === "BINDING_WITHOUT_CAPABILITY");
+    };
+    // Every eligible Role, bound everywhere it is eligible: no binding error.
+    assert.deepEqual(await bindingErrors(asDefinition((a) => (a.eligibleRoles ?? []).map((r) => r.key))), []);
+    for (const a of mapped) {
+      assert.ok(Array.isArray(a.eligibleRoles), a.key);
+      for (const r of a.eligibleRoles) assert.equal(view.data.roleNames[r.key], r.name);
+      // Any Role NOT eligible, bound to this action: exactly the refusal the page warns about.
+      const outsider = allRoles.find((k) => !a.eligibleRoles.some((r) => r.key === k));
+      if (!outsider) continue;
+      const errs = await bindingErrors(asDefinition((x) => (x.key === a.key ? [outsider] : (x.eligibleRoles ?? []).map((r) => r.key))));
+      assert.deepEqual(errs.map((e) => [e.actionKey, e.roleKey]), [[a.key, outsider]]);
+    }
+    // An action that names no capability has no eligibility to state.
+    for (const a of view.data.actions.filter((x) => !x.capabilityKey)) assert.equal(a.eligibleRoles, null, a.key);
   });
 
   await t.test("RESPONSIBILITIES: bindings on held Roles INTERSECTED with the runtime evaluator's answer", async () => {

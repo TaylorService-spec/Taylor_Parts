@@ -100,6 +100,10 @@ const CANONICAL_MAP = Object.freeze({
   // Lane SC: the assignment-scope vocabulary the Employee > Security Roles picker reads -- the SAME principal-access
   // read as listPrincipalRoleAssignments. No new key.
   listSupportedAssignmentScopes: PRINCIPAL_ACCESS_READ,
+  // W01 D2 (2026-10-09): the caller's OWN workflow-administration decisions, under the SAME workflow read. No new key.
+  readMyWorkflowAdministration: WORKFLOW_READ,
+  // W01 holder lookup: the surface read is workflowDefinition.read; the operation ALSO requires edit or version itself.
+  listWorkflowActionRoleHolders: WORKFLOW_READ,
 });
 
 const operationsRequiring = (capability) =>
@@ -119,8 +123,8 @@ const INPUT_FOR = Object.freeze({
 
 // ════════════════════ A. THE MAP IS CLOSED — no database needed ════════════════════
 
-test("A: twenty-three reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
-  assert.equal(ADMIN_READ_OPERATIONS.length, 23, "the read list changed size without this map changing");
+test("A: twenty-five reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
+  assert.equal(ADMIN_READ_OPERATIONS.length, 25, "the read list changed size without this map changing");
   assert.deepEqual([...ADMIN_READ_OPERATIONS].sort(), Object.keys(CANONICAL_MAP).sort(),
     "a read exists that the canonical map does not name, or the other way round");
   for (const operation of ADMIN_READ_OPERATIONS) {
@@ -472,7 +476,7 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
 
   await t.test("E: the workflow reads are refused without workflowDefinition.read", async () => {
     assert.deepEqual(operationsRequiring(WORKFLOW_READ),
-      ["listWorkflowInstances", "listWorkflows", "readWorkflowHistory", "readWorkflowVersion", "validateWorkflowVersion"]);
+      ["listWorkflowActionRoleHolders", "listWorkflowInstances", "listWorkflows", "readMyWorkflowAdministration", "readWorkflowHistory", "readWorkflowVersion", "validateWorkflowVersion"]);
     await assertRefused(bare.subject, "listWorkflows", WORKFLOW_READ);
     await assertRefused(reader.subject, "listWorkflows", WORKFLOW_READ);
     // REFUSED BEFORE THE INPUT IS EVEN PARSED. A bogus versionId still answers FORBIDDEN rather
@@ -616,10 +620,16 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
           : ["readWorkflowVersion", "validateWorkflowVersion", "listWorkflowInstances"].includes(operation)
             ? { versionId: firstVersionId }
             : operation === "readWorkflowHistory" ? { workflowId: firstWorkflow.id }
-              : undefined;
+              : operation === "listWorkflowActionRoleHolders" ? { versionId: firstVersionId, actionKey: "any", roleKey: "admin" }
+                : undefined;
 
       const allowed = await post(ADMIN_SUBJECT, operation, input);
-      if (operation === "explainEffectiveAccess" || operation === "listPrincipalWorkflowResponsibilities") {
+      if (operation === "listWorkflowActionRoleHolders") {
+        // W01 holder lookup: the SURFACE gate (workflowDefinition.read) admits the holder; the operation then applies its
+        // own assigner gate (edit or version), which this read-only holder does not pass -- refused by THAT gate, by name.
+        assert.equal(allowed.status, 403, `${operation} as a read-only holder: ${allowed.body}`);
+        assert.match(JSON.parse(allowed.body).message, /WORKFLOW_ASSIGNMENT_CAPABILITY_REQUIRED/);
+      } else if (operation === "explainEffectiveAccess" || operation === "listPrincipalWorkflowResponsibilities") {
         // The gate admits the holder; the read then needs the server-composed evaluator, which this
         // transport fixture does not compose (proved end to end in effectiveAccessExplanationPostgres).
         assert.notEqual(allowed.status, 403, `${operation} as a holder: ${allowed.body}`);

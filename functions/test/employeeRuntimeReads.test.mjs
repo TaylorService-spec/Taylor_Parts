@@ -338,7 +338,11 @@ test("nothing but the transport imports the read layer; no Functions, Rules or c
   const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) && /eosWorkforce\/reads\/|["']\.\/reads\/(employee|myEmployeeProfile)/.test(readFileSync(f, "utf8")));
   // #210: the Administration workforce roster (eosAdministration/workforceRoster.ts) is the one sanctioned second importer --
   // it reuses the read KERNEL (gate + operating-company reach) and projection; it is served by the Workforce transport.
-  assert.deepEqual(importers.map(rel).sort(), ["functions/src/eosAdministration/workforceRoster.ts", "functions/src/eosWorkforce/workforceHttp.ts"]);
+  // W01 (2026-10-09, DECISIONS #221): eosAdministration/workflowHolderVisibility.ts is the second sanctioned Administration
+  // importer, for the same reason -- it reuses the read KERNEL's employee.record.read gate and operating-company reach so the
+  // workflow holder lookup names exactly the Employees the directory would. It is composed by the server, never a transport.
+  assert.deepEqual(importers.map(rel).sort(), ["functions/src/eosAdministration/workflowHolderVisibility.ts",
+    "functions/src/eosAdministration/workforceRoster.ts", "functions/src/eosWorkforce/workforceHttp.ts"]);
   // The reporting writer's commands module borrows only the error-category TYPE from the read kernel.
   // The retirement ledger NAMES Workforce paths as DATA -- it is a migration-only inventory of legacy consumers and
   // imports nothing at all. This guard is about IMPORTERS, so it is excluded by path rather than listed as one: a
@@ -346,7 +350,8 @@ test("nothing but the transport imports the read layer; no Functions, Rules or c
   const LEDGER = join(SRC, "adminPolicy", "migration", "legacyConsumerLedger.ts");
   const outsideWorkforce = walk(SRC, [".ts"])
     .filter((f) => !f.startsWith(WORKFORCE) && f !== LEDGER && /eosWorkforce/.test(code(f)));
-  assert.deepEqual(outsideWorkforce.map(rel).sort(), ["functions/src/eosAdministration/workforceRoster.ts", "functions/src/eosApi/server.ts"]);
+  assert.deepEqual(outsideWorkforce.map(rel).sort(), ["functions/src/eosAdministration/workflowHolderVisibility.ts",
+    "functions/src/eosAdministration/workforceRoster.ts", "functions/src/eosApi/server.ts"]);
   // The transport is the ONE runtime importer of the internal governed commands (W1B); nothing runtime imports migration.
   const internal = walk(WORKFORCE, [".ts"]).filter((f) => /["'][./]*\/?(commands|migration)\//.test(code(f)) && !f.includes(`${WORKFORCE}/migration/`));
   assert.deepEqual(internal.map(rel), ["functions/src/eosWorkforce/workforceHttp.ts"], "a runtime Workforce module other than the transport imports the internal writer");
