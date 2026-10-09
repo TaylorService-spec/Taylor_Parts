@@ -81,6 +81,8 @@ const AdminFinancialPolicy = lazy(() => import("./modules/administration/AdminFi
 const AdminSystemConfiguration = lazy(() => import("./modules/administration/AdminSystemConfiguration"));
 const AdminSalesConfiguration = lazy(() => import("./modules/administration/AdminSalesConfiguration"));
 const AdminDataImport = lazy(() => import("./modules/administration/AdminDataImport"));
+// The Administration style scope (ADMIN-UI-003) loads with Administration, never in the entry bundle.
+const AdministrationScope = lazy(() => import("./modules/administration/AdministrationScope.jsx"));
 const AdminObjects = lazy(() => import("./modules/administration/AdminObjects.jsx"));
 const AdminPermissions = lazy(() => import("./modules/administration/AdminPermissions.jsx"));
 const AdminWorkflows = lazy(() => import("./modules/administration/AdminWorkflows.jsx"));
@@ -988,7 +990,8 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
       <Route path="/my-profile" element={<MyEmployeeProfile />} />
 
       {NAV_DOMAINS.filter((d) => !d.future).map((domain) => (
-        <Route key={domain.key} path={domain.path}>
+        // Administration pages render inside the `.fo-admin` style scope (ADMIN-UI-003); no other domain gets an element.
+        <Route key={domain.key} path={domain.path} element={domain.key === "administration" ? <AdministrationScope /> : undefined}>
           {domain.subnav
             .filter((item) => isNavItemVisible(item, navRole, navAllowedLegacyKeys, operationalContext))
             .map((item) => (

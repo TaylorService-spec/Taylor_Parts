@@ -7671,3 +7671,15 @@ Out of scope and not attempted: resolving "By" actor ids to names in assignment 
 - **No dead condition form (P03):** when the server's condition vocabulary has answered and no kind applies to the capability, *Set Condition* is disabled with "No supported conditions for this action." While the vocabulary is loading or unavailable the opener stays and the form explains why, as before; an active condition can still be replaced or retired.
 
 Not changed: state words (Granted / Granted (Conditional) / Not Granted / Not Available), capability keys behind the column legend, server enforcement. G6 (field-level access) remains an open Owner decision and is not represented as configurable.
+
+## #216 — OWNER: Administration UI corrections ADMIN-UI-001..008; PR 1 scoped styling + Objects/Permissions (2026-10-09)
+
+**Decision:** The Owner approved eight Administration-only UI corrections from the Owner's own screenshot review of sandbox build `d420aad8` (not a ChatGPT Work retest), delivered as three PRs: PR 1 scoped styling + Objects/Permissions (001, 002, 003 there), PR 2 Roles (005, 006, 007, 003 there), PR 3 Employees & Users + Workflows (004, 008, 003 there). Restricted to Administration; no other workspace, no global visual change, no backend, permission, role-grant, identity, schema or workflow-engine change, no Firebase, no production deploy.
+
+PR 1:
+- **Scope (003, safeguard):** `AdministrationScope.jsx` is the layout element of the `/administration` route only (lazy, so it stays out of the entry bundle) and wraps Administration page content in `.fo-admin`. Every rule in the new index.css Administration block is written under `.fo-admin`; `test/adminUiScope.test.mjs` fails if one escapes or if the wrapper is used anywhere else.
+- **001:** business names by default; object keys, role keys and capability keys appear only with *Show Technical Details* -- Security Role detail's Objects & Permissions rows ("Account account" → "Account") and the Object Security Actions panel (heading, grantees now by Security Role name, direct-exception Principal ids hidden, action capability keys via a new `showKeys` prop on `ObjectSecurityActionList`, default true so other consumers are unchanged). Identifiers remain in data, APIs and audit.
+- **002:** Objects (catalog rows and Security Role detail object groups) are full-width `AdminDisclosure` rows with a chevron and hover / focus / expanded states, replacing outlined buttons; still a real `<button>` with `aria-expanded`.
+- **003 (this PR's part):** one rhythm for Administration panels, table cells and dividers, and nested rows, scoped under `.fo-admin`. Form-row layout is deliberately left as it is (an independent review found an `align-items` override right-aligned every form field; it was removed before merge).
+
+Left in place, out of scope: the unrendered `LegacyRoleMatrix` / `LegacyRoleGrid` code in AdminPolicySurfaces.jsx.

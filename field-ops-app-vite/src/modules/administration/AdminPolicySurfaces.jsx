@@ -59,6 +59,7 @@ import { isPolicyApiConfigured } from "../../services/adminPolicyApiClient.js";
 // keeping it here would have made it reachable only through a rendered grid.
 import { effectiveFieldAnswer, verbAvailable } from "./fieldPermissionState.js";
 import SecurityRoleDetail from "./SecurityRoleDetail.jsx";
+import AdminDisclosure from "./AdminDisclosure.jsx";
 import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
 import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
@@ -529,9 +530,8 @@ function ObjectRows({ object, objects, technical, open, onToggleOpen, onChanged 
     <>
       <tr>
         <td>
-          <Button variant="secondary" onClick={onToggleOpen} aria-expanded={open}>
-            {open ? "▾" : "▸"} {object.label}
-          </Button>
+          {/* ADMIN-UI-002: a full-width disclosure row, not an outlined button. */}
+          <AdminDisclosure open={open} onToggle={onToggleOpen}>{object.label}</AdminDisclosure>
         </td>
         {technical && <td className="fo-muted"><code>{object.key}</code></td>}
         <td className="fo-muted">{titleCase(object.origin)}</td>

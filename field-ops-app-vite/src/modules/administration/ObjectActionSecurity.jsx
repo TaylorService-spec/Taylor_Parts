@@ -28,6 +28,7 @@ import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ConditionFields, GrantCellControls, GrantCellFacts, Outcome, ReasonField } from "./GrantControls.jsx";
 import { buildCondition, matrixActionRows, statedReason } from "./controlPlaneModel.js";
 import { useConditionVocabulary } from "./useConditionVocabulary.js";
+import { titleCase } from "../../shared/display/displayLabels.js";
 
 export function ReadState({ read, what }) {
   if (read.status === "loading") return <p className="fo-muted">{`Reading ${what}…`}</p>;
@@ -40,6 +41,8 @@ export function ReadState({ read, what }) {
 
 export default function ObjectActionSecurityPanel({ api = adminControlPlaneClient, initialObjectKey = null }) {
   const [objectKey, setObjectKey] = useState(initialObjectKey);
+  // ADMIN-UI-001: business names by default; object, role and capability keys behind Show Technical Details.
+  const [technical, setTechnical] = useState(false);
   const inventory = useControlPlaneRead(() => api.listObjectsWithActions(), "inventory");
   const objects = Array.isArray(inventory.data) ? inventory.data : [];
 
@@ -65,13 +68,16 @@ export default function ObjectActionSecurityPanel({ api = adminControlPlaneClien
           </select>
         </label>
       ) : null}
-      {objectKey ? <ObjectActionMatrix api={api} objectKey={objectKey} /> : null}
+      <label className="fo-check">
+        <input type="checkbox" checked={technical} onChange={(e) => setTechnical(e.target.checked)} /> Show Technical Details for Security Actions
+      </label>
+      {objectKey ? <ObjectActionMatrix api={api} objectKey={objectKey} technical={technical} /> : null}
     </section>
   );
 }
 
 /** One Object's action x grantee matrix, with the controls. Exported for a direct component proof. */
-export function ObjectActionMatrix({ api = adminControlPlaneClient, objectKey }) {
+export function ObjectActionMatrix({ api = adminControlPlaneClient, objectKey, technical = false }) {
   const matrix = useControlPlaneRead(() => api.getObjectActionGrantMatrix(objectKey), `matrix:${objectKey}`);
   const roles = useControlPlaneRead(() => api.listRoles(), "roles");
   const rows = useMemo(() => (matrix.data ? matrixActionRows(matrix.data) : null), [matrix.data]);
@@ -84,10 +90,11 @@ export function ObjectActionMatrix({ api = adminControlPlaneClient, objectKey })
 
   return (
     <div className="fo-cp-section" data-object-matrix={objectKey}>
-      <h4>{matrix.data.label ?? objectKey} <span className="fo-muted">· <code>{objectKey}</code></span></h4>
+      <h4>{matrix.data.label ?? objectKey}{technical ? <span className="fo-muted"> · <code>{objectKey}</code></span> : null}</h4>
       {matrix.status === "loading" ? <p className="fo-muted" role="status">Re-reading from the server…</p> : null}
       <ObjectSecurityActionList
         actions={rows}
+        showKeys={technical}
         emptyMessage="No capability governs an action on this Object yet."
         renderDetail={(action) => (
           <ActionGrantees
@@ -97,6 +104,7 @@ export function ObjectActionMatrix({ api = adminControlPlaneClient, objectKey })
             vocabulary={vocabulary}
             roles={Array.isArray(roles.data) ? roles.data : []}
             onChanged={matrix.reload}
+            technical={technical}
           />
         )}
       />
@@ -104,9 +112,10 @@ export function ObjectActionMatrix({ api = adminControlPlaneClient, objectKey })
   );
 }
 
-function ActionGrantees({ api, objectKey, action, vocabulary, roles, onChanged }) {
+function ActionGrantees({ api, objectKey, action, vocabulary, roles, onChanged, technical = false }) {
   const shown = new Set(action.roles.map((r) => r.roleKey));
   const others = roles.filter((r) => !shown.has(r.key));
+  const roleName = (key) => roles.find((r) => r.key === key)?.name ?? titleCase(key);
   return (
     <>
       <table className="fo-table" aria-label={`Grantees of ${action.displayLabel ?? action.actionKey}`}>
@@ -114,7 +123,7 @@ function ActionGrantees({ api, objectKey, action, vocabulary, roles, onChanged }
         <tbody>
           {action.roles.map((cell) => (
             <tr key={cell.roleKey} data-role-cell={cell.roleKey}>
-              <td>Security Role <code>{cell.roleKey}</code></td>
+              <td>{roleName(cell.roleKey)}{technical ? <span className="fo-muted"> · <code>{cell.roleKey}</code></span> : null}</td>
               <td><GrantCellFacts cell={cell} /></td>
               <td>
                 <GrantCellControls
@@ -132,7 +141,7 @@ function ActionGrantees({ api, objectKey, action, vocabulary, roles, onChanged }
           ))}
           {action.principals.map((p) => (
             <tr key={p.principalId} data-direct-exception={p.principalId}>
-              <td>Principal <code>{p.principalId}</code></td>
+              <td>Person (direct exception){technical ? <span className="fo-muted"> · <code>{p.principalId}</code></span> : null}</td>
               <td>
                 <span className="fo-cp-tag fo-cp-tag--direct">DIRECT EXCEPTION</span>{" "}
                 <span className="fo-muted">Honoured only on the Workforce path; the main operational gates resolve from Roles.</span>
