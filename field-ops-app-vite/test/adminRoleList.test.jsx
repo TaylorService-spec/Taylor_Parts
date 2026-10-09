@@ -66,6 +66,21 @@ describe("Security Roles master-detail", () => {
     expect(screen.getByText(/No Security Role matches the search or filter/)).toBeTruthy();
   });
 
+  // Independent review of PR 2 (blocking): the edit form must never carry one Role's values to another. When a search
+  // or filter changes the shown Role, the editor closes; reopening it seeds from the Role now shown.
+  it("closes Edit Role Details when the shown Role changes, so a save can never target a different Role", () => {
+    render(<RolesPermissionsSurface />);
+    const list = screen.getByRole("group", { name: "Select a role" });
+    fireEvent.click(within(list).getByRole("button", { name: /^Service Dispatcher/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Role Details" }));
+    expect(within(screen.getByRole("form", { name: "Edit role details" })).getByLabelText("Name").value).toBe("Service Dispatcher");
+    fireEvent.change(screen.getByLabelText("Search Security Roles"), { target: { value: "customer" } });
+    expect(detail()).toBe("detail:salesperson");
+    expect(screen.queryByRole("form", { name: "Edit role details" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Role Details" }));
+    expect(within(screen.getByRole("form", { name: "Edit role details" })).getByLabelText("Name").value).toBe("Salesperson");
+  });
+
   it("a ?role= link selects that Role", () => {
     setSearch("?role=salesperson");
     render(<RolesPermissionsSurface />);
