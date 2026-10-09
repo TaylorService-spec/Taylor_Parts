@@ -150,3 +150,35 @@ describe("Workflow Assignments and Builder separation", () => {
     });
   });
 });
+
+// W01 rendered acceptance (2026-10-09): defects found in the browser at 2cdf8ab3, pinned here.
+describe("W01 acceptance corrections", () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+  it("F1: page links carry the app base path (a bare /administration link leaves an app served under a base)", async () => {
+    vi.stubEnv("BASE_URL", "/Taylor_Parts/field-ops/");
+    const { workflowBuilderHref: builder, workflowAssignmentsHref, appHref } = await import("../src/domain/workflowPageLinks.js");
+    expect(builder({ key: "workOrder" }, "v2")).toBe("/Taylor_Parts/field-ops/administration/workflows?view=builder&workflow=workOrder&version=v2");
+    expect(workflowAssignmentsHref({ key: "workOrder" })).toBe("/Taylor_Parts/field-ops/administration/workflows?workflow=workOrder");
+    expect(appHref("/administration/users/e1")).toBe("/Taylor_Parts/field-ops/administration/users/e1");
+    const api = fixture(); await open(api);
+    expect(screen.getAllByRole("link", { name: "Open Workflow Builder" })[0].getAttribute("href")).toMatch(/^\/Taylor_Parts\/field-ops\/administration\/workflows\?view=builder/);
+  });
+  it("F2: choosing a workflow is kept in the address without adding a history entry", async () => {
+    const before = window.history.length;
+    const api = fixture(); await open(api);
+    expect(new URLSearchParams(window.location.search).get("workflow")).toBe("workOrder");
+    expect(window.history.length).toBe(before);
+  });
+  it("F4: a refused validation says why, in the server's words", async () => {
+    const api = fixture();
+    api.validateUnsavedDefinition = vi.fn(() => ok({ valid: false, errors: [{ code: "BINDING_WITHOUT_CAPABILITY",
+      message: 'Role "dispatcher" is bound to "accept" but does not hold "workOrder.accept"; a binding never grants' }] }));
+    await open(api);
+    fireEvent.click(screen.getByRole("button", { name: "Remove Technician" }));
+    fireEvent.change(screen.getByLabelText("Reason for assignment changes"), { target: { value: "Dispatch accepts" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Assignment Draft" }));
+    expect(await screen.findByText(/cannot be saved: Role "dispatcher" is bound to "accept" but does not hold/)).toBeTruthy();
+    expect(api.createWorkflowVersion).not.toHaveBeenCalled();
+    expect(api.updateWorkflowDefinition).not.toHaveBeenCalled();
+  });
+});

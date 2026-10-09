@@ -26,3 +26,26 @@ A separate reviewer traced the assignment mutation calls through the server comm
 Three review findings were addressed: retain save confirmation after a no-active-workflow refresh; protect unsaved changes across global anchor navigation and reload; preserve legacy own-assignment guards defensively. Regression tests cover these cases. Browser Back/Forward within the SPA remains outside the scoped anchor/reload guard; a shared router blocker is separate work, not an authorization bypass.
 
 Release gates: independent review of corrections, PR CI, then Owner decision on sandbox merge/deployment. Workflow Assignments must remain a straightforward administrative assignment screen; graph authoring, diagnostics and lifecycle controls belong only in Builder. Remaining Administration findings retain their original identities and status in the Administration review; this PR does not reconcile or complete the overall redesign.
+
+## Rendered acceptance — October 9, 2026
+
+Rendered in headless Edge against the real EOS API and the governed local authority (94 migrations / 128 capabilities / 542 grants) at head `2cdf8ab3`. The save path was exercised on a cloned database with a labelled local fixture, because under actual grants no Role holds a `workflowDefinition` write capability.
+
+Defects found and corrected (W01 scope):
+
+- **F1:** the page links (Open Workflow Builder, Back to Workflow Assignments, Review and activate, role-holder employee links) had no app base path, so they left an app served under `/Taylor_Parts/field-ops/` and landed on a blank page. They now carry the build-time base.
+- **F2:** the chosen workflow was not in the address. After two choices, browser Back left Administration and reload lost the choice. The choice is now kept in `?workflow=` with `replaceState`, which adds no history entry and so no unguarded back step.
+- **F4:** a refused validation said only "cannot be activated yet". It now states the server's reason, for example a Role bound to an action whose capability it does not hold ("a binding never grants").
+
+Confirmed:
+
+- Unsaved-change protection works on selection changes, page links (Keep Editing / Discard) and reload or full-page Back (browser prompt).
+- Unauthorized principals see the honest refusal and make no workflow reads.
+- Every save under actual grants is refused by the server (403), and nothing changes.
+- With the fixture holder, a save on a published version creates a new inactive DRAFT. The published version stays active. Grants, direct grants, access versions, instances and the effective access of a bound Role's holder are all unchanged.
+
+Open for Owner decision:
+
+- No Role holds `workflowDefinition.edit` or `version`, and every action of all five workflows lacks a capability mapping. Assignment changes are therefore impossible in practice until the Owner rules on both.
+- The Assignments page also needs `admin.securityPolicy.read` for its Security Role list.
+- Builder shows lifecycle controls enabled to read-only holders; the server refuses them. This behaviour was carried over unchanged from the prior page.

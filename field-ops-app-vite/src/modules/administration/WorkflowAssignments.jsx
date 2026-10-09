@@ -5,7 +5,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 import { adminControlPlaneClient, refusalText } from "../../services/adminControlPlaneClient.js";
 import { summarizeWorkflow, buildWorkflowVersionView, editableDefinition, definitionForServer } from "../../domain/adminWorkflowView.js";
 import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
-import { workflowBuilderHref } from "../../domain/workflowPageLinks.js";
+import { appHref, rememberSelectedWorkflow, workflowBuilderHref } from "../../domain/workflowPageLinks.js";
 import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
 import { principalLabel } from "./principalDisplay.js";
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
@@ -26,7 +26,7 @@ function CoveredEmployees({ roleKey, api }) {
     {Array.isArray(holders) && <>
       <p className="fo-muted">Role holders are shown with their assignment scope. Actual actions still depend on their permissions, record scope and workflow requirements.</p>
       {holders.length === 0 ? <p>No employee holds this role.</p> : <ul>{holders.map((h) => <li key={h.assignmentId}>
-        {h.employeeId ? <a href={`/administration/users/${encodeURIComponent(h.employeeId)}`}>{principalLabel(h)}</a> : principalLabel(h)}
+        {h.employeeId ? <a href={appHref(`/administration/users/${encodeURIComponent(h.employeeId)}`)}>{principalLabel(h)}</a> : principalLabel(h)}
         {" · "}{h.scopeType === "global" ? "All (Global)" : `${titleCase(h.scopeType)}${h.scopeValue ? `: ${h.scopeValue}` : ""}`}
       </li>)}</ul>}
     </>}
@@ -67,7 +67,11 @@ function AssignmentForm({ api, rolesApi, workflow, view, versionId, onDirtyChang
       const checked = await api.validateUnsavedDefinition({ objectKey: workflow.objectKey, definition });
       if (!checked?.ok) { setResult({ error: refusalText(checked) }); return; }
       if (checked.data?.valid !== true || checked.data?.errors?.length > 0) {
-        setResult({ error: "These assignments cannot be activated yet. Review the workflow requirements in the Builder." }); return;
+        // Say WHY, in the server's words (e.g. a Role bound to an action whose capability it does not hold).
+        const reasons = (checked.data?.errors ?? []).map((e) => e?.message).filter(Boolean);
+        setResult({ error: reasons.length
+          ? `These assignments cannot be saved: ${reasons.join(" ")}`
+          : "These assignments cannot be saved yet. Review the workflow requirements in the Builder." }); return;
       }
       // Published definitions remain immutable. Assignment-only changes create a new draft
       // through the existing governed command; no publishing, grant or activation is implied.
@@ -144,6 +148,7 @@ export default function WorkflowAssignments({ api, rolesApi = adminControlPlaneC
       document.removeEventListener("click", navigation, true);
     };
   }, [dirty]);
+  const choose = (id) => { setSelected(id); setPinnedVersion(null); rememberSelectedWorkflow(workflows.find((w) => w.id === id) ?? null); };
   const linkedVersion = readAdminQueryParam("version");
   const versionId = (pinnedVersion && pinnedVersion.workflowId === workflow?.id ? pinnedVersion.versionId : null)
     ?? workflow?.versions.find((v) => v.id === linkedVersion)?.id
@@ -152,7 +157,7 @@ export default function WorkflowAssignments({ api, rolesApi = adminControlPlaneC
     <p>Choose a workflow to review its role assignments and the employees holding those roles.</p>
     <ReadState read={list} what="workflows" />
     {list.status === "ready" && <label className="fo-form-field"><span>Workflow</span><select aria-label="Workflow" value={workflow?.id ?? ""}
-      onChange={(e) => dirty ? setPending({ selected: e.target.value }) : setSelected(e.target.value)}>
+      onChange={(e) => dirty ? setPending({ selected: e.target.value }) : choose(e.target.value)}>
       <option value="">Choose a workflow…</option>{workflows.map((w) => <option key={w.id} value={w.id}>{w.name} · {w.activeVersionId ? "Active" : "Not active"}</option>)}
     </select></label>}
     {list.status === "ready" && workflows.length === 0 && <p>No workflows are available.</p>}
@@ -165,6 +170,6 @@ export default function WorkflowAssignments({ api, rolesApi = adminControlPlaneC
     {pending !== null && <ConfirmDialog title="Discard Unsaved Assignments?" consequence="Your unsaved assignment changes will be discarded."
       confirmLabel="Discard Changes" cancelLabel="Keep Editing" destructive={false}
       onConfirm={async () => { const change = pending; dirtyRef.current = false; setPending(null); setDirty(false); if (change.href) window.location.assign(change.href);
-        else { setSelected(change.selected); setRevision((n) => n + 1); } }} onClose={() => setPending(null)} />}
+        else { choose(change.selected); setRevision((n) => n + 1); } }} onClose={() => setPending(null)} />}
   </WorkspaceShell></div>;
 }

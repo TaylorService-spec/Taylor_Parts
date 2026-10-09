@@ -8,6 +8,7 @@ import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ReadState } from "./ObjectActionSecurity.jsx";
 import WorkflowVersionPanel from "./WorkflowVersionPanel.jsx";
 import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
+import { workflowAssignmentsHref } from "../../domain/workflowPageLinks.js";
 import { titleCase } from "../../shared/display/displayLabels.js";
 import { sortRows, useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
@@ -127,8 +128,8 @@ export default function AdminWorkflowBuilder({ api = workflowAdminClient }) {
   const choose = (workflow) => request(workflow.id === effectiveSelectedId ? { kind: "deselect" } : { kind: "select", workflow });
 
   return (
-    <WorkspaceShell title="Workflow Builder" actions={<a href="/administration/workflows" onClick={(e) => {
-      if (dirty) { e.preventDefault(); setPending({ kind: "leave", href: "/administration/workflows" }); }
+    <WorkspaceShell title="Workflow Builder" actions={<a href={workflowAssignmentsHref(selected)} onClick={(e) => {
+      if (dirty) { e.preventDefault(); setPending({ kind: "leave", href: workflowAssignmentsHref(selected) }); }
     }}>Back to Workflow Assignments</a>}>
       {/* ADMIN-UI-008: one heading (the shell's), one concise line, and the workflow policy as contextual help. */}
       <section className="fo-panel" aria-label="Workflow list">
