@@ -213,7 +213,10 @@ async function phaseApi() {
     const scopes = [...e.scopes, ...(e.truck ? [{ scopeType: "MOBILE", scopeId: e.truck }] : [])];
     for (const s of scopes) {
       if (!r || !r.operationalScopes.some((x) => x.scopeType === s.scopeType && x.scopeId === s.scopeId)) {
-        await write(`scope ${e.employeeId} ${s.scopeType}:${s.scopeId}`, ADMIN, WF, "assignEmployeeOperationalScope", { employeeId: e.employeeId, scopeType: s.scopeType, scopeId: s.scopeId, reason: why(s.scopeType === "MOBILE" ? "current service truck" : "operational scope") });
+        // An administrator may not scope its OWN Employee (OPERATIONAL_SCOPE_SELF): the Administrator's scopes are issued by
+        // the Owner persona, which holds admin.employeeOperationalScope.write. Everyone else's by the Administrator, as before.
+        const scopeActor = e.employeeId === MANIFEST.actors.workforceAdministration ? OWNER : ADMIN;
+        await write(`scope ${e.employeeId} ${s.scopeType}:${s.scopeId}`, scopeActor, WF, "assignEmployeeOperationalScope", { employeeId: e.employeeId, scopeType: s.scopeType, scopeId: s.scopeId, reason: why(s.scopeType === "MOBILE" ? "current service truck" : "operational scope") });
       }
     }
   }

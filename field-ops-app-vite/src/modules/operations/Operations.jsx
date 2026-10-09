@@ -90,7 +90,10 @@ export default function Operations({ accessVersion } = {}) {
       listTransferOrderDocs({}).then((page) => page.items),
       fetchSuppliers(),
       fetchSupplierCatalog(),
-      fetchProcurementPurchaseOrders(),
+      // SETTLED like the Work Order aggregates below: the governed Reorder queue read refuses a caller without the
+      // REORDER_QUEUE Operational Scope (reorderLifecycleCommands.requireQueueReach). That refusal is said inside the
+      // Procurement panel, never by blanking the inventory / warehouse / transfer panels beside it.
+      fetchProcurementPurchaseOrders().then((rows) => ({ rows, failure: null }), (failure) => ({ rows: [], failure })),
       // The governed Work Order aggregates, SETTLED: a refused or unavailable aggregate is said inside the
       // Execution Insights panel, never by blanking the inventory / warehouse / procurement panels beside it.
       Promise.all([getInventoryConsumptionSnapshot(), getTechnicianVolumeBreakdown()]).then(
@@ -132,7 +135,8 @@ export default function Operations({ accessVersion } = {}) {
             ledgerIntegrity,
             warehouses,
             transferOrderDocs,
-            purchaseOrders,
+            purchaseOrders: purchaseOrders.rows,
+            purchaseOrdersFailure: purchaseOrders.failure,
             suppliers,
             procurementDrafts,
             executionInsights,
@@ -175,6 +179,7 @@ export default function Operations({ accessVersion } = {}) {
     warehouses,
     transferOrderDocs,
     purchaseOrders,
+    purchaseOrdersFailure,
     suppliers,
     procurementDrafts,
     executionInsights,
@@ -204,7 +209,7 @@ export default function Operations({ accessVersion } = {}) {
         transferOrderDocs={transferOrderDocs}
         resolveName={resolveName}
       />
-      <ProcurementPanel purchaseOrders={purchaseOrders} suppliers={suppliers} procurementDrafts={procurementDrafts} resolveName={resolveName} ledgerIntegrity={ledgerIntegrity} />
+      <ProcurementPanel purchaseOrders={purchaseOrders} purchaseOrdersFailure={purchaseOrdersFailure} suppliers={suppliers} procurementDrafts={procurementDrafts} resolveName={resolveName} ledgerIntegrity={ledgerIntegrity} />
       <ExecutionInsightsPanel
         consumptionSnapshot={executionInsights.consumption}
         technicianVolume={executionInsights.volume}
