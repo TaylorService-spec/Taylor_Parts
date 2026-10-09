@@ -9144,4 +9144,27 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 /* ADMIN-UI-004/007: a compact notice -- the linked-role-unavailable state, the missing-Job-Role warning. */
 .fo-admin .fo-admin-notice { padding: var(--space-3); border: 1px solid var(--color-border-strong); border-left-width: 4px; border-radius: var(--radius-md);
   background: var(--color-surface-sunken); color: var(--color-text-primary); }
+/* ADMIN-UI-004/008: contextual help and compact summaries instead of standing explanations. */
+.fo-admin .fo-admin-help, .fo-admin .fo-admin-summary { margin-block: 0 var(--space-3); }
+.fo-admin .fo-admin-help > summary, .fo-admin .fo-admin-summary > summary { cursor: pointer; font-size: var(--font-size-sm); color: var(--color-text-secondary); width: fit-content; }
+.fo-admin .fo-admin-help > summary:focus-visible, .fo-admin .fo-admin-summary > summary:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.fo-admin .fo-admin-help > p, .fo-admin .fo-admin-summary > p { margin: var(--space-2) 0 0; max-width: 72ch; }
+
+/* ADMIN-UI-004: the missing-Job-Role notice is one compact line with its action. */
+.fo-admin .fo-admin-notice { margin-block: 0 var(--space-3); }
+.fo-admin .fo-admin-notice__line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin: 0; }
+.fo-admin .fo-admin-notice .ns-emp-note { margin: var(--space-1) 0 0; }
+
+/* ADMIN-UI-008: one table, one header row, areas as row groups; a workflow is selected by its row. */
+.fo-admin .fo-admin-grouptable { width: 100%; }
+.fo-admin .fo-admin-grouprow > th { background: var(--color-surface-sunken); color: var(--color-text-primary); text-align: left; padding-top: var(--space-3); }
+.fo-admin .fo-admin-grouprow__name { font-weight: 600; margin-right: var(--space-2); }
+.fo-admin .fo-admin-grouprow__note { font-weight: 400; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+.fo-admin .fo-admin-rowselect { margin: 0; padding: 0; border: 0; background: transparent; color: var(--color-brand-primary); font: inherit; font-weight: 600;
+  text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.fo-admin .fo-admin-rowselect:hover { background: transparent; color: var(--color-text-primary); }
+.fo-admin .fo-admin-rowselect:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.fo-admin .fo-admin-row--selected > td { background: var(--color-surface-sunken); color: var(--color-text-primary); }
+.fo-admin .fo-admin-row--selected .fo-admin-rowselect { color: var(--color-text-primary); text-decoration: none; }
+
 /* END ADMINISTRATION SCOPE -- new Administration rules go above this line, under .fo-admin. */

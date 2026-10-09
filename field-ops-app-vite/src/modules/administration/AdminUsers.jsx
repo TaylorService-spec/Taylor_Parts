@@ -84,8 +84,9 @@ export default function AdminUsers({ workforce = workforceApiClient }) {
         <p className="fo-muted">
           A Job Role is the job a person does; it grants nothing. Security Roles are the authority they hold, each with its
           scope. Effective Access on a person&apos;s record shows what EOS resolves for them, and why, and lets you preview
-          their workspace. To see or change a person&apos;s Security Roles, open their Employee record and use its Security Roles
-          section. Whether a person can sign in is User Access, not an Employee fact.{" "}
+          their workspace. To see or change a person&apos;s Security Roles,
+          open their Employee record and use its Security Roles section. Whether a person can sign in is User Access, not an
+          Employee fact.{" "}
           <Link to="/administration/users/functional-roles">Functional Roles</Link> are the catalog of business
           responsibilities an Employee may hold; they grant nothing.
         </p>

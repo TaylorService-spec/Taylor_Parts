@@ -268,3 +268,23 @@ describe("the workflow seam", () => {
     expect(await unreachable.listWorkflows()).toEqual({ ok: false, code: "UNREACHABLE", message: "the Administration API could not be reached" });
   });
 });
+
+// ADMIN-UI-008 (Owner-approved Administration corrections, 2026-10-09): one heading, one concise description with the
+// policy as collapsed help, ONE table with ONE header row and the business areas as row groups, and workflows chosen by
+// a row control rather than outlined buttons. Versions, lifecycle and selection behavior are unchanged.
+describe("ADMIN-UI-008: a simpler Workflows list", () => {
+  it("renders one table and one header row, keeps the areas, and moves the policy into collapsed help", async () => {
+    render(<AdminWorkflows api={fakeApi()} />);
+    const button = await screen.findByRole("button", { name: "Sales — Order" });
+    expect(button.className).toBe("fo-admin-rowselect");
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    const table = screen.getByRole("table", { name: "Workflows" });
+    expect(table.querySelectorAll("thead tr")).toHaveLength(1);
+    expect(table.querySelectorAll("tbody[data-workflow-area]").length).toBeGreaterThanOrEqual(2);
+    expect(table.querySelectorAll("tr.fo-admin-grouprow").length).toBe(table.querySelectorAll("tbody[data-workflow-area]").length);
+    expect(screen.queryAllByRole("heading", { name: "Workflows", level: 3 })).toHaveLength(0);
+    const help = screen.getByText("How workflows, bindings and versions work").closest("details");
+    expect(help.open).toBe(false);
+    expect(help.textContent).toMatch(/a binding never grants/);
+  });
+});
