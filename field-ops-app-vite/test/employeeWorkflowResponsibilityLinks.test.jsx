@@ -112,7 +112,7 @@ describe("Administration > Workflows deep link", () => {
       readWorkflowHistory: vi.fn(() => ok([])),
     };
     render(<AdminWorkflows api={api} />);
-    await screen.findByRole("option", { name: "Work Order · Active" });
+    await screen.findByRole("option", { name: "Work Order · Published" });
     await waitFor(() => expect(api.readWorkflowVersion).toHaveBeenCalledWith("wo-v1"));
     expect(document.querySelector('[data-selected-workflow="workOrder"]')).not.toBeNull();
   });

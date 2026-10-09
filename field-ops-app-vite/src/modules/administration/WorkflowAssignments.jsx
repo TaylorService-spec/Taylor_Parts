@@ -192,7 +192,7 @@ export default function WorkflowAssignments({ api }) {
     <ReadState read={list} what="workflows" />
     {list.status === "ready" && <label className="fo-form-field"><span>Workflow</span><select aria-label="Workflow" value={workflow?.id ?? ""}
       onChange={(e) => dirty ? setPending({ selected: e.target.value }) : choose(e.target.value)}>
-      <option value="">Choose a workflow…</option>{workflows.map((w) => <option key={w.id} value={w.id}>{w.name} · {w.activeVersionId ? "Active" : "Not active"}</option>)}
+      <option value="">Choose a workflow…</option>{workflows.map((w) => <option key={w.id} value={w.id}>{w.name} · {w.activeVersionId ? "Published" : "Not published"}</option>)}
     </select></label>}
     {list.status === "ready" && workflows.length === 0 && <p>No workflows are available.</p>}
     {!workflow && workflows.length > 0 && <p>No workflow selected.</p>}
