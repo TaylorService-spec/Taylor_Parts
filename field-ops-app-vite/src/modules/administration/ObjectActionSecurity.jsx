@@ -69,7 +69,7 @@ export default function ObjectActionSecurityPanel({ api = adminControlPlaneClien
         </label>
       ) : null}
       <label className="fo-check">
-        <input type="checkbox" checked={technical} onChange={(e) => setTechnical(e.target.checked)} /> Show Technical Details
+        <input type="checkbox" checked={technical} onChange={(e) => setTechnical(e.target.checked)} /> Show Technical Details for Security Actions
       </label>
       {objectKey ? <ObjectActionMatrix api={api} objectKey={objectKey} technical={technical} /> : null}
     </section>
@@ -141,7 +141,7 @@ function ActionGrantees({ api, objectKey, action, vocabulary, roles, onChanged, 
           ))}
           {action.principals.map((p) => (
             <tr key={p.principalId} data-direct-exception={p.principalId}>
-              <td>Principal <code>{p.principalId}</code></td>
+              <td>Person (direct exception){technical ? <span className="fo-muted"> · <code>{p.principalId}</code></span> : null}</td>
               <td>
                 <span className="fo-cp-tag fo-cp-tag--direct">DIRECT EXCEPTION</span>{" "}
                 <span className="fo-muted">Honoured only on the Workforce path; the main operational gates resolve from Roles.</span>
