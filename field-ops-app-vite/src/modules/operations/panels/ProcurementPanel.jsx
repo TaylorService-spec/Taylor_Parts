@@ -30,7 +30,7 @@ const PO_STATUS_WORDS = {
 };
 const URGENCY_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
-export default function ProcurementPanel({ purchaseOrders, suppliers, procurementDrafts, resolveName, ledgerIntegrity = null }) {
+export default function ProcurementPanel({ purchaseOrders, purchaseOrdersFailure = null, suppliers, procurementDrafts, resolveName, ledgerIntegrity = null }) {
   // DQ-027: draft proposals are derived from the ledger. Parts whose ledger cannot be read have NO
   // proposal either way -- that is said, so "no proposals" never stands in for "not assessed".
   const incompleteParts = ledgerIntegrity?.unavailablePartIds?.length ?? 0;
@@ -65,7 +65,11 @@ export default function ProcurementPanel({ purchaseOrders, suppliers, procuremen
       <h3>Procurement</h3>
 
       <h4>Purchase Orders</h4>
-      {purchaseOrders.length === 0 ? (
+      {purchaseOrdersFailure ? (
+        <p className="fo-warning" role="alert" data-purchase-orders-unavailable>
+          Purchase orders aren't available: {purchaseOrdersFailure.message ?? "the Reorder queue could not be read"}
+        </p>
+      ) : purchaseOrders.length === 0 ? (
         <p className="fo-muted">No purchase orders yet.</p>
       ) : (
         <table className="fo-table">

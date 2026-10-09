@@ -49,10 +49,16 @@ const queriedCollections = [];
 // the LIVE reorder purchase orders and never the dormant Epic-5 collection. It now also proves the
 // frozen Firestore reorder_purchase_orders snapshot is not read at all.
 const reorderCalls = [];
+// Admin full-access defect (2026-10-09): when set, the governed queue read refuses as it does for a caller without the
+// REORDER_QUEUE Operational Scope.
+let refuseQueue = false;
 vi.mock("../src/services/reorderApiClient.js", () => ({
   reorderApiClient: {
     call: async (operation, input) => {
       reorderCalls.push({ operation, input });
+      if (refuseQueue && operation === "readReorderQueue") {
+        return { ok: false, code: "FORBIDDEN", message: "reading the Reorder queue requires the REORDER_QUEUE Operational Scope" };
+      }
       if (operation === "readReorderPurchaseOrders") return { ok: true, result: { purchaseOrders: [FIXTURE_PO] } };
       return { ok: true, result: [{ ...FIXTURE_REQUEST, id: FIXTURE_REQUEST.id }] };
     },
@@ -76,6 +82,7 @@ vi.mock("firebase/firestore", () => ({
 
 afterEach(() => {
   cleanup();
+  refuseQueue = false;
   queriedCollections.length = 0;
   reorderCalls.length = 0;
 });
@@ -142,6 +149,21 @@ describe("Operations dashboard Procurement panel (site-work r4 item A) -- mounte
     // fetch, not silently stuck on "No purchase orders yet." (the dormant-read bug).
     expect(await screen.findByText("Acme Supply Co")).toBeTruthy();
     expect(screen.getByText("PO-9001")).toBeTruthy();
+    expect(screen.queryByText("No purchase orders yet.")).toBeNull();
+  });
+});
+
+// Admin full-access defect (2026-10-09): one refused read must not blank the whole Inventory & Supply Overview.
+describe("Operations -- a refused Reorder queue read stays inside the Procurement panel", () => {
+  it("renders the other panels and says why purchase orders are unavailable", async () => {
+    refuseQueue = true;
+    const Operations = (await import("../src/modules/operations/Operations.jsx")).default;
+    render(<Operations accessVersion={1} />);
+    const note = await screen.findByText(/Purchase orders aren't available: reading the Reorder queue requires the REORDER_QUEUE Operational Scope/);
+    expect(note.getAttribute("role")).toBe("alert");
+    expect(screen.queryByText(/Failed to load/)).toBeNull();
+    expect(screen.getByRole("heading", { name: "Warehouse" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Procurement" })).toBeTruthy();
     expect(screen.queryByText("No purchase orders yet.")).toBeNull();
   });
 });

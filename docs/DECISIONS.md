@@ -7746,3 +7746,29 @@ Left in place, out of scope: the unrendered `LegacyRoleMatrix` / `LegacyRoleGrid
 - **Never returned:** principal ids, sign-in identities, other Roles or capabilities.
 
 **Boundary:** read-only; grants nothing. No capability, grant, Role, migration, workflow definition or mapping change, and no Firebase dependency.
+
+## #222 — OWNER: the Administrator has full EOS access, including operational reach — Reorder queue (2026-10-09)
+
+(Follows #219–#221, recorded by PR #2035.)
+
+**Defect.** For the Administrator, the Inventory & Supply Overview showed only "Failed to load: reading the Reorder queue requires the REORDER_QUEUE Operational Scope".
+
+**Root cause.** The queue read requires the capability `reorder.request.read` AND a REORDER_QUEUE Operational Scope, which is company-keyed and held by the caller's linked Employee (`reorderLifecycleCommands.requireQueueReach`).
+- The Administrator holds the capability, because `admin` derives the full catalog (Owner ruling 2026-08-19).
+- Operational Scope is a separate, per-Employee dimension (workforce rulings 2026-09-17). The full-access ruling never extended to it.
+- The Administrator's Employee did hold `REORDER_QUEUE:taylor`, seeded by migration 1761696000000. That scope was marked "proposed: withdraw" in the persona-needs fixture.
+- The 2026-10-03 Taylor workforce manifest then rebuilt the Employee with `scopes: []`.
+- Separately, the Overview loaded its panels with an unsettled `Promise.all`. The one refused read replaced the whole page.
+
+**Decision.** The Administrator has full EOS access including operational reach, through the existing model and with no code bypass.
+- The Administrator's Employee holds REORDER_QUEUE for every keyed company. Today that is `taylor` only. Nonprod Ventana is unkeyed (see the Finance closure record), and the governed writer refuses an unkeyed queue (`REORDER_QUEUE_NOT_FOUND`), so `REORDER_QUEUE:ventana` follows once Ventana's company key is bound. Binding it is a separate configuration ruling. Independent review caught this.
+- The scope is issued through the governed Workforce writer (`assignEmployeeOperationalScope`) by a different authorized principal, the Owner persona. Self-scoping stays refused (`OPERATIONAL_SCOPE_SELF`).
+- The Overview now settles the purchase-order read, as it already did for the Work Order aggregates. A refusal is stated inside the Procurement panel and no longer blanks the other panels.
+
+**Not included; needs separate Owner decisions.**
+- **WAREHOUSE scopes** (decision item #2038). These are per-warehouse read reach for on-hand, receipts, warehouses, transfers and warehouse measures. They would also open `warehouse.management` and `warehouse.picking`, which the P02 persona record lists as must-not-reach.
+- **Any Work Eligibility.** `ADMIN_IMPLIES_NO_WORK_ELIGIBILITY` stands. Eligibility would make the Administrator a dispatchable technician or warehouse worker, and would open cycle-count work.
+
+**Boundary.**
+- No capability, grant, Role, migration, policy model or Firebase change.
+- Production is not altered. The Administrator's scopes in any environment are issued through Administration → Employee → Operational Scope by the Owner (or another administrator), or in nonprod by the reviewed workforce seed.

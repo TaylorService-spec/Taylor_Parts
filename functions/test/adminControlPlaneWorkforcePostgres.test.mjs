@@ -39,6 +39,14 @@ test("static: the workforce orchestrator writes no SQL and admits Principals onl
   assert.deepEqual([...new Set(m.employees.map((e) => e.jobRoleId))].sort(), [...vocabulary.CANONICAL_JOB_ROLE_IDS].sort(), "all 16 canonical Job Roles, no others");
   assert.equal(m.employees.filter((e) => e.jobRoleId === "service-technician").length, 10);
   assert.equal(m.trucks.length, 10);
+  // Owner ruling 2026-10-09 (Administrator full access): the Administrator's Employee holds the company-keyed REORDER_QUEUE
+  // scope for every KEYED company (taylor; nonprod Ventana is unkeyed, so the writer would refuse it) -- issued by the Owner
+  // persona, never self-assigned -- and still NO Work Eligibility and NO WAREHOUSE scope (ADMIN_IMPLIES_NO_WORK_ELIGIBILITY;
+  // warehouse reach is decision item #2038).
+  const administrator = m.employees.find((e) => e.employeeId === m.actors.workforceAdministration);
+  assert.deepEqual(administrator.scopes.map((x) => `${x.scopeType}:${x.scopeId}`).sort(), ["REORDER_QUEUE:taylor"]);
+  assert.deepEqual(administrator.workEligibility, []);
+  assert.match(s, /scopeActor = e\.employeeId === MANIFEST\.actors\.workforceAdministration \? OWNER : ADMIN/, "the Administrator's own scopes are issued by the Owner persona");
   assert.equal(m.employees.filter((e) => e.securityRoles.some((r) => r.role === "salesManager")).length, 2);
   assert.ok(m.employees.every((e) => !e.securityRoles.some((r) => r.role === "salesManager")) === false && !vocabulary.CANONICAL_JOB_ROLE_IDS.includes("sales-manager"), "Sales Manager is a Security Role, never a Job Role");
 });
