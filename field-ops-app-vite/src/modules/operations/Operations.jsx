@@ -88,8 +88,11 @@ export default function Operations({ accessVersion } = {}) {
       loadEosInventoryHealth(),
       fetchInventoryWarehouseOptions(),
       listTransferOrderDocs({}).then((page) => page.items),
-      fetchSuppliers(),
-      fetchSupplierCatalog(),
+      // SETTLED: the supplier list and supplier catalog are still Firestore reads (a recorded Firebase-retirement
+      // dependency, #2040). A session without Firebase sign-in is refused them; that refusal is said inside the Procurement
+      // panel, never by blanking the EOS inventory / warehouse / transfer panels beside it.
+      fetchSuppliers().then((rows) => ({ rows, failure: null }), (failure) => ({ rows: [], failure })),
+      fetchSupplierCatalog().then((rows) => ({ rows, failure: null }), (failure) => ({ rows: [], failure })),
       // SETTLED like the Work Order aggregates below: the governed Reorder queue read refuses a caller without the
       // REORDER_QUEUE Operational Scope (reorderLifecycleCommands.requireQueueReach). That refusal is said inside the
       // Procurement panel, never by blanking the inventory / warehouse / transfer panels beside it.
@@ -125,7 +128,9 @@ export default function Operations({ accessVersion } = {}) {
             urgency: entry.recommendation.urgency,
             source: "EPIC3_ANALYTICS",
           }));
-        const procurementDrafts = generateProcurementDrafts(procurementRecommendations, supplierCatalog);
+        // Without the supplier catalog a draft has no supplier or price to propose: no drafts are generated, and the
+        // panel says the catalog is unavailable instead of "No supplier available" on every row.
+        const procurementDrafts = supplierCatalog.failure ? [] : generateProcurementDrafts(procurementRecommendations, supplierCatalog.rows);
 
         setState({
           loading: false,
@@ -137,7 +142,9 @@ export default function Operations({ accessVersion } = {}) {
             transferOrderDocs,
             purchaseOrders: purchaseOrders.rows,
             purchaseOrdersFailure: purchaseOrders.failure,
-            suppliers,
+            suppliers: suppliers.rows,
+            suppliersFailure: suppliers.failure,
+            supplierCatalogFailure: supplierCatalog.failure,
             procurementDrafts,
             executionInsights,
           },
@@ -181,6 +188,8 @@ export default function Operations({ accessVersion } = {}) {
     purchaseOrders,
     purchaseOrdersFailure,
     suppliers,
+    suppliersFailure,
+    supplierCatalogFailure,
     procurementDrafts,
     executionInsights,
   } = state.data;
@@ -209,7 +218,7 @@ export default function Operations({ accessVersion } = {}) {
         transferOrderDocs={transferOrderDocs}
         resolveName={resolveName}
       />
-      <ProcurementPanel purchaseOrders={purchaseOrders} purchaseOrdersFailure={purchaseOrdersFailure} suppliers={suppliers} procurementDrafts={procurementDrafts} resolveName={resolveName} ledgerIntegrity={ledgerIntegrity} />
+      <ProcurementPanel purchaseOrders={purchaseOrders} purchaseOrdersFailure={purchaseOrdersFailure} suppliers={suppliers} suppliersFailure={suppliersFailure} supplierCatalogFailure={supplierCatalogFailure} procurementDrafts={procurementDrafts} resolveName={resolveName} ledgerIntegrity={ledgerIntegrity} />
       <ExecutionInsightsPanel
         consumptionSnapshot={executionInsights.consumption}
         technicianVolume={executionInsights.volume}
