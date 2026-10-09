@@ -9083,14 +9083,13 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
    also states its foreground (test/buttonForegroundContrast.test.mjs, test/hoverPairing.test.mjs). */
 
 /* ADMIN-UI-003: one rhythm for Administration content -- section spacing, table rows, dividers and alignment. */
-.fo-admin .fo-panel { padding: var(--space-4) var(--space-5); margin-block: 0 var(--space-4); }
+.fo-admin .fo-panel { padding: var(--space-4) var(--space-5); }
 .fo-admin .fo-panel > h3 { margin: 0 0 var(--space-2); font-size: var(--font-size-lg); color: var(--color-text-primary); }
 .fo-admin .fo-panel > p.fo-muted { margin: 0 0 var(--space-3); max-width: 72ch; }
 .fo-admin .fo-table th, .fo-admin .fo-table td { padding: var(--space-2) var(--space-3); vertical-align: middle; }
-.fo-admin .fo-table tbody tr + tr td, .fo-admin .fo-table tbody tr + tr th { border-top: 1px solid var(--color-border); }
+.fo-admin .fo-table td, .fo-admin .fo-table th { border-bottom-color: var(--color-border); }
 .fo-admin .fo-table td.fo-admin-num, .fo-admin .fo-table th.fo-admin-num { text-align: right; font-variant-numeric: tabular-nums; }
 .fo-admin .fo-row-nested > td:first-child { padding-left: calc(var(--space-3) + 1.5rem); }
-.fo-admin .fo-form-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-end; margin-block: 0 var(--space-3); }
 
 /* ADMIN-UI-002: an expandable Object is a full-width row with a chevron, not an outlined button. */
 .fo-admin .fo-admin-disclosure {
@@ -9107,3 +9106,5 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-admin .fo-admin-disclosure__label { flex: 1 1 auto; min-width: 0; }
 .fo-admin .fo-admin-disclosure__meta { flex: none; font-weight: 400; font-size: var(--font-size-sm); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .fo-admin .fo-admin-disclosure__chevron { transition: none; } }
+.fo-admin .fo-admin-disclosure[aria-expanded="true"]:hover { background: var(--color-border); color: var(--color-text-primary); }
+/* END ADMINISTRATION SCOPE -- new Administration rules go above this line, under .fo-admin. */
