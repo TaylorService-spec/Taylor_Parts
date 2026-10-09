@@ -41,8 +41,18 @@ async function open(api) {
   render(<AdminWorkflows api={api} />);
   await screen.findByRole("option", { name: /Technician \/ Work Order/ });
   fireEvent.change(screen.getByLabelText("Workflow"), { target: { value: "wf-wo" } });
-  await screen.findByRole("button", { name: "Remove Dispatcher" });
-  await screen.findByRole("button", { name: "Remove Technician" });
+  // The assigned Roles render as chips whether or not they can be changed (removable only when editable).
+  await waitFor(() => expect(document.querySelector('[data-keylist] [data-key="dispatcher"]')).not.toBeNull());
+  expect(document.querySelector('[data-keylist] [data-key="tech"]')).not.toBeNull();
+  // ...and the permission decision has been read before any case asserts on it.
+  await waitFor(() => expect(api.readMyWorkflowAdministration).toHaveBeenCalled());
+}
+// A read-only assignment list: chips only -- no Remove buttons and no "Add…" input that looks usable but accepts nothing.
+function expectReadOnlyRoles() {
+  expect(document.querySelector('[data-keylist]').getAttribute("data-readonly")).toBe("true");
+  expect(screen.queryByRole("button", { name: "Remove Dispatcher" })).toBeNull();
+  expect(screen.queryByPlaceholderText("Add…")).toBeNull();
+  expect(document.querySelector('[data-keylist] [data-key="dispatcher"]').textContent).toContain("Dispatcher");
 }
 describe("Workflow Assignments and Builder separation", () => {
   it("keeps definition diagnostics, lifecycle and state editing off the main page; reveals role holders on demand", async () => {
@@ -83,7 +93,7 @@ describe("Workflow Assignments and Builder separation", () => {
     const incomplete = fixture({ status: "DRAFT", capability: null }); await open(incomplete);
     expect(screen.queryByRole("button", { name: "Save Assignment Draft" })).toBeNull();
     expect(screen.getByText(/not ready for assignment changes/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Remove Dispatcher" }).disabled).toBe(true);
+    expectReadOnlyRoles();
   });
   it("opens Builder as a separate page with the workflow and version deep link", async () => {
     window.history.replaceState({}, "", workflowBuilderHref({ key: "workOrder" }, "v1"));
@@ -223,7 +233,7 @@ describe("Workflow Assignments -- eligible Roles and the caller's own decision (
     await open(api);
     expect(screen.queryByRole("button", { name: "Save Assignment Draft" })).toBeNull();
     expect(document.querySelector('[data-permission-note="assignments"]').textContent).toMatch(/Requires the “Version Workflows” permission\. Assignments are shown read-only/);
-    expect(screen.getByRole("button", { name: "Remove Dispatcher" }).disabled).toBe(true);
+    expectReadOnlyRoles();
   });
   it("D2: fails closed when the decision cannot be read", async () => {
     const api = fixture();
@@ -269,5 +279,56 @@ describe("Workflow Assignments -- role holders for one action (W01 holder lookup
     expect(screen.queryByRole("button", { name: "View Technician employees" })).toBeNull();
     expect(document.querySelector('[data-permission-note="holders"]').textContent).toMatch(/requires permission to change assignments/);
     expect(api.listWorkflowActionRoleHolders).not.toHaveBeenCalled();
+  });
+});
+
+// W01 UX correction 4a (Owner-accepted 2026-10-09): a disabled assignment list says EVERY reason it is disabled, never
+// offers an input that accepts nothing, and never implies the caller can fix a setup in a Builder they cannot edit.
+// Display only: the server's own decisions (readMyWorkflowAdministration) and the workflow read are the sole inputs.
+describe("Workflow Assignments -- every reason a role list is read-only (4a)", () => {
+  const setupNote = () => document.querySelector("[data-setup-note]");
+  const permissionNote = () => document.querySelector('[data-permission-note="assignments"]');
+  it("(i) not ready AND not permitted: both reasons, chips only, Builder said to be read-only", async () => {
+    const api = fixture({ status: "DRAFT", capability: null, allowed: [] }); await open(api);
+    await waitFor(() => expect(permissionNote()).not.toBeNull());
+    expect(setupNote().textContent).toMatch(/not ready for assignment changes: 1 of 1 action has no required permission configured\./);
+    expect(setupNote().textContent).toMatch(/Workflow Builder is read-only for you, so this setup can't be completed there either\./);
+    expect(setupNote().querySelector("a")).toBeNull(); // no "fix it in Builder" link for someone who cannot edit
+    expect(permissionNote().textContent).toBe("Requires the “Edit Workflow Definitions” permission. Assignments are shown read-only.");
+    expectReadOnlyRoles();
+    expect(screen.queryByRole("button", { name: "Save Assignment Draft" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open Workflow Builder", exact: true })).not.toBeNull(); // page header navigation stays
+    expect(screen.getByRole("link", { name: "View in Workflow Builder (read-only for you)" })).toBeTruthy();
+  });
+  it("(ii) ready but not permitted: only the authorization reason", async () => {
+    const api = fixture({ allowed: [] }); await open(api);
+    await waitFor(() => expect(permissionNote()).not.toBeNull());
+    expect(setupNote()).toBeNull();
+    expect(permissionNote().textContent).toBe("Requires the “Version Workflows” permission. Assignments are shown read-only.");
+    expectReadOnlyRoles();
+  });
+  it("(iii) not ready but permitted: the setup deficiency and a Builder link to fix it; no authorization reason", async () => {
+    const api = fixture({ status: "DRAFT", capability: null }); await open(api);
+    await waitFor(() => expect(setupNote()?.querySelector("a")).not.toBeNull());
+    expect(setupNote().textContent).toMatch(/1 of 1 action has no required permission configured\. Each action needs its required permission before roles can be assigned\. Open Workflow Builder to set it up\./);
+    expect(setupNote().querySelector("a").getAttribute("href")).toBe(workflowBuilderHref({ key: "workOrder" }, "v1"));
+    expect(permissionNote()).toBeNull();
+    expectReadOnlyRoles();
+  });
+  it("(iv) ready AND permitted: the editable experience is unchanged -- no reasons, removable chips, the Add input", async () => {
+    const api = fixture(); await open(api);
+    await screen.findByRole("button", { name: "Remove Dispatcher" });
+    expect(setupNote()).toBeNull();
+    expect(permissionNote()).toBeNull();
+    expect(document.querySelector('[data-keylist]').hasAttribute("data-readonly")).toBe(false);
+    expect(screen.getAllByPlaceholderText("Add…")[0].disabled).toBe(false);
+    expect(screen.getByLabelText("Reason for assignment changes")).toBeTruthy();
+    expect(screen.queryByText(/read-only for you/)).toBeNull();
+  });
+  it("(v) the Employees column names the workflow permissions the holder lookup requires", async () => {
+    const api = fixture({ allowed: [] }); await open(api);
+    await waitFor(() => expect(document.querySelector('[data-permission-note="holders"]')?.textContent)
+      .toBe("Viewing role holders requires permission to change assignments: the “Edit Workflow Definitions” or “Version Workflows” permission."));
+    expect(screen.queryByRole("button", { name: "View Technician employees" })).toBeNull();
   });
 });

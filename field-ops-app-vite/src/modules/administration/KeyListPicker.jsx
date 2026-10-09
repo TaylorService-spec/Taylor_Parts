@@ -9,7 +9,9 @@ const split = (value) => String(value ?? "").split(",").map((k) => k.trim()).fil
 
 // `labels` (optional, key -> display name) names chosen keys that are NOT offered as options -- e.g. a Role already bound
 // to a workflow action that is not eligible for it (W01 D3). `unlistedNote` (optional) is said beside such a chip.
-export default function KeyListPicker({ id, label, value, onChange, options = [], disabled = false, labels = null, unlistedNote = null }) {
+// `readOnly` shows the chosen keys only: no remove buttons and no "Add…" input that would look usable but accept nothing.
+// The caller says WHY the list is read-only; `disabled` remains the momentary state (e.g. while a save is in flight).
+export default function KeyListPicker({ id, label, value, onChange, options = [], disabled = false, readOnly = false, labels = null, unlistedNote = null }) {
   const keys = split(value);
   const byKey = new Map(options.map((o) => [o.key, o]));
   const nameOf = (k) => byKey.get(k)?.label ?? labels?.[k];
@@ -22,18 +24,18 @@ export default function KeyListPicker({ id, label, value, onChange, options = []
     return { ok: true, items, total: items.length };
   };
   return (
-    <div className="fo-keylist" data-keylist={id}>
+    <div className="fo-keylist" data-keylist={id} data-readonly={readOnly ? "true" : undefined}>
       <ul className="fo-keylist__chips" aria-label={`${label}: chosen`}>
         {keys.map((k) => (
           <li key={k} className="fo-cp-tag" data-key={k}>
             {identifierLabel(k, nameOf(k))}
             {byKey.has(k) ? null : labels?.[k] ? (unlistedNote ? <span className="fo-muted"> ({unlistedNote})</span> : null)
               : <span className="fo-muted"> (not in catalog)</span>}
-            <button type="button" className="fo-keylist__remove" aria-label={`Remove ${identifierLabel(k, nameOf(k))}`} disabled={disabled} onClick={() => remove(k)}>×</button>
+            {readOnly ? null : <button type="button" className="fo-keylist__remove" aria-label={`Remove ${identifierLabel(k, nameOf(k))}`} disabled={disabled} onClick={() => remove(k)}>×</button>}
           </li>
         ))}
       </ul>
-      <Autocomplete
+      {readOnly ? (keys.length === 0 ? <p className="fo-muted">None assigned</p> : null) : <Autocomplete
         id={id}
         label={label}
         hideLabel
@@ -46,7 +48,7 @@ export default function KeyListPicker({ id, label, value, onChange, options = []
         disabled={disabled}
         minChars={1}
         emptyText="No matching key in the catalog."
-      />
+      />}
     </div>
   );
 }
