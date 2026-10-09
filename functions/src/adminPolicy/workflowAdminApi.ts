@@ -387,8 +387,9 @@ export const WORKFLOW_ROLE_HOLDER_LIMIT = 200;
  *   - the caller's tenant only (findWorkflowVersion: another tenant's version is NOT_FOUND);
  *   - only a Role eligible for (holds the action's capability) or bound to that action -- otherwise ROLE_NOT_FOR_ACTION;
  *   - only ACTIVE, NON-STALE assignments (the runtime's rule: accessVersionAtGrant <= the principal's access version);
- *   - Employee names only where the EXISTING Employee visibility admits them (workflowHolderVisibility); the rest are
- *     counted as withheld, never named; if that visibility cannot be established the lookup REFUSES.
+ *   - Employee names AND COUNTS only where the EXISTING Employee visibility admits them (workflowHolderVisibility);
+ *     anyone else is neither named nor counted (Owner decision #221); if that visibility cannot be established the
+ *     lookup REFUSES.
  * No principal ids, sign-in identities, other Roles or capabilities. Read-only; grants nothing.
  */
 async function listWorkflowActionRoleHolders(deps: WorkflowApiDeps, actor: AdminActor, input: Record<string, unknown>) {
@@ -469,18 +470,20 @@ async function listWorkflowActionRoleHolders(deps: WorkflowApiDeps, actor: Admin
       notApplicableReason: h.reason,
     }))
     .sort((x, y) => String(x.displayName ?? "").localeCompare(String(y.displayName ?? "")) || x.employeeId.localeCompare(y.employeeId));
+  // OWNER DECISION #221: every count is taken over the people this caller may VIEW as Employees -- the same set the names
+  // come from. Nobody outside that visibility is named, counted or implied: no withheld count, and `truncated` is of the
+  // visible list. A caller with no Employee visibility learns nothing about the Role's holders.
   return {
     roleKey: role.key,
     roleName: role.name,
     actionKey,
     roleEligible,
     roleBound,
-    /** Every PERSON who holds the Role and could act at all (see above) -- whether or not this caller may see them. */
-    totalHolders: holders.length,
+    /** The holders this caller may view (people who could act at all -- see above). */
+    totalHolders: shown.length,
     /** Of those, the holders for whom this action actually applies (eligible Role, scope that decides it, no condition). */
-    holdersForAction: holders.filter((h) => h.appliesToAction).length,
-    /** Holders this caller may not see as Employees (or who are not linked to an Employee): counted, never named. */
-    withheld: holders.length - shown.length,
+    holdersForAction: shown.filter((h) => h.appliesToAction).length,
+    /** Whether the caller may view Employees at all -- about the CALLER only; it says nothing about the holders. */
     employeeVisibility: visibility.employeeReadHeld ? "EMPLOYEE_READ" : "NONE",
     truncated: shown.length > WORKFLOW_ROLE_HOLDER_LIMIT,
     holders: shown.slice(0, WORKFLOW_ROLE_HOLDER_LIMIT),

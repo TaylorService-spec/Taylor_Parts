@@ -9,7 +9,8 @@
 //   APPLIES        global, or a scope that DECIDES the action's capability (salesChannel for salesOrder.write); an
 //                  operatingCompany-scoped holder holds the Role but the action does NOT apply to them.
 //   VISIBILITY     the EXISTING Employee visibility (employee.record.read: flat = every Employee, operatingCompany scope =
-//                  that company only, none = nobody). Others are COUNTED as withheld, never named. Unknown -> refused.
+//                  that company only, none = nobody). Others are neither NAMED NOR COUNTED (Owner decision #221): every
+//                  aggregate is over the visible set, so it cannot reveal a hidden population. Unknown -> refused.
 //   SHAPE          display name, Employee id, scope, appliesToAction -- no principal ids, roles or capabilities.
 //   LIMIT          200, with an accurate `truncated`.
 import test from "node:test";
@@ -128,13 +129,13 @@ test("listWorkflowActionRoleHolders: authorization, relevance, holders, scope, v
     const before = await auditCount();
     const r = ok(await lookup(seer, "wfTarget"));
     assert.deepEqual(Object.keys(r).sort(), ["actionKey", "employeeVisibility", "holders", "holdersForAction", "roleBound", "roleEligible",
-      "roleKey", "roleName", "totalHolders", "truncated", "withheld"]);
+      "roleKey", "roleName", "totalHolders", "truncated"]);
     assert.deepEqual([r.roleEligible, r.roleBound], [true, true]);
     // h1 (global + scoped: ONE holder), h2 (global), h3 (salesChannel), h4 (operatingCompany, inert), h7 (no Employee).
     // NOT h5 (stale), h6 (revoked), h8 (suspended principal), h9 (inactive membership) or h10 (terminated Employee).
-    assert.equal(r.totalHolders, 5);
-    assert.equal(r.holdersForAction, 4, "h4's scope cannot decide salesOrder.write");
-    assert.equal(r.withheld, 1, "h7 is not an Employee: counted, never named");
+    // h7 holds the Role but is not an Employee the caller can view: neither named NOR counted (#221).
+    assert.equal(r.totalHolders, 4);
+    assert.equal(r.holdersForAction, 3, "h4's scope cannot decide salesOrder.write");
     assert.equal(r.employeeVisibility, "EMPLOYEE_READ");
     assert.equal(r.truncated, false);
     assert.deepEqual(r.holders, [
@@ -166,11 +167,26 @@ test("listWorkflowActionRoleHolders: authorization, relevance, holders, scope, v
   await t.test("VISIBILITY: the existing Employee visibility, never wider", async () => {
     const scoped = ok(await lookup(scopedSeer, "wfTarget"));
     assert.deepEqual(scoped.holders.map((h) => h.employeeId), ["e-h1", "e-h3", "e-h4"], "Taylor only: the Ventana Employee is not named");
-    assert.deepEqual([scoped.totalHolders, scoped.holdersForAction, scoped.withheld], [5, 4, 2]);
+    assert.deepEqual([scoped.totalHolders, scoped.holdersForAction], [3, 2], "counts are of the Taylor holders only (#221)");
     assert.ok(!JSON.stringify(scoped).includes("Blake Ventana"));
     const none = ok(await lookup(blind, "wfTarget"));
     assert.deepEqual(none.holders, []);
-    assert.deepEqual([none.totalHolders, none.holdersForAction, none.withheld, none.employeeVisibility], [5, 4, 5, "NONE"]);
+    assert.deepEqual([none.totalHolders, none.holdersForAction, none.employeeVisibility, none.truncated], [0, 0, "NONE", false],
+      "no Employee visibility: no names and no headcount (#221)");
+  });
+
+  await t.test("NON-DISCLOSURE (#221): a hidden population changes nothing a caller who cannot see it receives", async () => {
+    const before = { scoped: ok(await lookup(scopedSeer, "wfTarget")), none: ok(await lookup(blind, "wfTarget")), full: ok(await lookup(seer, "wfTarget")) };
+    // Grow the population the scoped and blind callers cannot see: a Ventana Employee and a holder with no Employee.
+    await person("uid-wfh-h12", ["wfTarget"], { id: "e-h12", name: "Lane Ventana", company: "ventana" });
+    await person("uid-wfh-h13", ["wfTarget"]);
+    const after = { scoped: ok(await lookup(scopedSeer, "wfTarget")), none: ok(await lookup(blind, "wfTarget")), full: ok(await lookup(seer, "wfTarget")) };
+    assert.deepEqual(after.scoped, before.scoped, "Taylor-only: every field identical -- the Ventana growth is invisible");
+    assert.deepEqual(after.none, before.none, "no visibility: every field identical");
+    assert.ok(!JSON.stringify(after.scoped).includes("Lane Ventana"));
+    // Full visibility sees exactly the one new Employee (the Employee-less holder is not an Employee it can view).
+    assert.deepEqual([after.full.totalHolders - before.full.totalHolders, after.full.holdersForAction - before.full.holdersForAction], [1, 1]);
+    assert.ok(after.full.holders.some((h) => h.displayName === "Lane Ventana"));
   });
 
   await t.test("FAIL CLOSED: no visibility resolver, or a failing one, refuses -- never an empty list", async () => {
@@ -194,7 +210,7 @@ test("listWorkflowActionRoleHolders: authorization, relevance, holders, scope, v
                VALUES ($1,$2,$3,$4,'active','fixture',0,'fixture','fixture')`, [`ura-${pid}`, T, pid, bulkRole]);
     }
     const r = ok(await lookup(seer, "wfBulk"));
-    assert.deepEqual([r.totalHolders, r.holders.length, r.truncated, r.withheld], [201, 200, true, 0]);
+    assert.deepEqual([r.totalHolders, r.holders.length, r.truncated], [201, 200, true]);
     assert.equal(r.holders[0].displayName, "Bulk 000");
   });
 

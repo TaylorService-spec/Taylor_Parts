@@ -26,7 +26,7 @@ function fixture({ status = "PUBLISHED", capability = "workOrder.accept", valid 
     listRoles: vi.fn(() => ok([{ id: "rt", key: "tech", name: "Technician" }, { id: "rd", key: "dispatcher", name: "Dispatcher" }])),
     getSecurityRoleDetail: vi.fn(() => ok({ holders: [] })), // no longer used by Assignments (W01 holder lookup)
     listWorkflowActionRoleHolders: vi.fn(() => ok({ roleKey: "tech", roleName: "Technician", actionKey: "accept", roleEligible: true, roleBound: true,
-      totalHolders: 3, holdersForAction: 2, withheld: 1, employeeVisibility: "EMPLOYEE_READ", truncated: false,
+      totalHolders: 2, holdersForAction: 1, employeeVisibility: "EMPLOYEE_READ", truncated: false,
       holders: [{ displayName: "Pat Tech", employeeId: "e1", scope: { type: "global", value: null }, appliesToAction: true, notApplicableReason: null },
         { displayName: "Lee Scoped", employeeId: "e2", scope: { type: "operatingCompany", value: "taylor" }, appliesToAction: false, notApplicableReason: "SCOPE_DOES_NOT_DECIDE" }] })),
     validateUnsavedDefinition: vi.fn(() => ok({ valid, errors: valid ? [] : [{ code: "BINDING_WITHOUT_CAPABILITY" }] })),
@@ -235,13 +235,13 @@ describe("Workflow Assignments -- eligible Roles and the caller's own decision (
   });
 });
 
-// W01 holder lookup (2026-10-09): the panel shows what the server answers -- counts, withheld, scope -- and nothing else.
+// W01 holder lookup (2026-10-09): the panel shows what the server answers -- counts of viewable holders only (#221), scope -- and nothing else.
 describe("Workflow Assignments -- role holders for one action (W01 holder lookup)", () => {
-  it("shows total vs. action holders, withheld employees and the scope an action does not apply at", async () => {
+  it("shows the viewable holders and how many the action applies to, and the scope an action does not apply at", async () => {
     const api = fixture(); await open(api);
     fireEvent.click(await screen.findByRole("button", { name: "View Technician employees" }));
     await screen.findByRole("link", { name: "Pat Tech" });
-    expect(document.querySelector("[data-holder-counts]").textContent).toMatch(/3 people hold this role; this action applies to 2\. 1 is not shown because you can't view them as employees\./);
+    expect(document.querySelector("[data-holder-counts]").textContent).toBe("2 people you can view hold this role; this action applies to 1.");
     const scoped = screen.getByRole("link", { name: "Lee Scoped" }).closest("li");
     expect(scoped.textContent).toMatch(/Operating Company: taylor/);
     expect(scoped.querySelector('[data-not-applicable="SCOPE_DOES_NOT_DECIDE"]').textContent).toMatch(/doesn't apply at this assignment scope/);
@@ -254,6 +254,15 @@ describe("Workflow Assignments -- role holders for one action (W01 holder lookup
     fireEvent.click(await screen.findByRole("button", { name: "View Technician employees" }));
     expect(await screen.findByText(/Employee visibility could not be established/)).toBeTruthy();
     expect(screen.queryByText(/No employee you can view holds this role/)).toBeNull();
+  });
+  it("#221: a caller who cannot view employees is told so -- no names and no headcount", async () => {
+    const api = fixture();
+    api.listWorkflowActionRoleHolders = vi.fn(() => ok({ roleKey: "tech", roleName: "Technician", actionKey: "accept", roleEligible: true, roleBound: true,
+      totalHolders: 0, holdersForAction: 0, employeeVisibility: "NONE", truncated: false, holders: [] }));
+    await open(api);
+    fireEvent.click(await screen.findByRole("button", { name: "View Technician employees" }));
+    await waitFor(() => expect(document.querySelector("[data-holder-counts]")?.textContent).toBe("You can't view employees, so the holders of this role aren't shown."));
+    expect(document.querySelector("[data-role-holders]").textContent).not.toMatch(/\d+ (people|person)/);
   });
   it("a read-only caller is not offered the holder lookup, and is told why", async () => {
     const api = fixture({ allowed: [] }); await open(api);

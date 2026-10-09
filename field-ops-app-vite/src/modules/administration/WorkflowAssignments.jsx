@@ -31,11 +31,13 @@ function CoveredEmployees({ api, versionId, actionKey, roleKey }) {
   return <div data-role-holders={`${actionKey}:${roleKey}`}>
     <ReadState read={read} what="employees holding this role" />
     {r && Array.isArray(r.holders) && <>
+      {/* Decision #221: the server counts only the people this caller may view as Employees; nothing here is inferred. */}
       <p className="fo-muted" data-holder-counts>
-        {r.totalHolders} {r.totalHolders === 1 ? "person holds" : "people hold"} this role; this action applies to {r.holdersForAction}.
-        {r.withheld > 0 ? ` ${r.withheld} ${r.withheld === 1 ? "is" : "are"} not shown because you can't view them as employees.` : ""}
+        {r.employeeVisibility === "NONE"
+          ? "You can't view employees, so the holders of this role aren't shown."
+          : `${r.totalHolders} ${r.totalHolders === 1 ? "person you can view holds" : "people you can view hold"} this role; this action applies to ${r.holdersForAction}.`}
       </p>
-      {r.holders.length === 0 ? <p>No employee you can view holds this role.</p> : <ul>{r.holders.map((h) => <li key={h.employeeId}>
+      {r.employeeVisibility === "NONE" ? null : r.holders.length === 0 ? <p>No employee you can view holds this role.</p> : <ul>{r.holders.map((h) => <li key={h.employeeId}>
         <a href={appHref(`/administration/users/${encodeURIComponent(h.employeeId)}`)}>{h.displayName ?? h.employeeId}</a>
         {" · "}{h.scope?.type === "global" ? "All (Global)" : `${titleCase(h.scope?.type ?? "")}${h.scope?.value ? `: ${h.scope.value}` : ""}`}
         {h.appliesToAction ? null : <span className="fo-muted" data-not-applicable={h.notApplicableReason ?? "UNKNOWN"}> · {NOT_APPLICABLE_WORDS[h.notApplicableReason] ?? "This action doesn't apply to them"}</span>}
