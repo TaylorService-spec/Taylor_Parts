@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Workflow Assignments / Workflow Builder separation (Owner approved 2026-10-08)
+- Agent/session:       Codex · Role: builder
+- Branch / worktree:   `fix/admin-workflow-assignments` · `/workspace/scratch/f00b6258444d/Taylor_Parts`
+- Base commit:         `34a7658b`
+- Owned paths:         `src/modules/administration/AdminWorkflows.jsx`, new workflow assignment/builder components and their component tests (under `field-ops-app-vite`); workflow user guide and review finding
+- Shared paths req'd:  workflow CI path filters, `docs/DECISIONS.md` and this registry; no overlap with reserved navigation paths; existing Administration route and access gates retained
+- Dependencies:        existing immutable workflow version commands and policy reads
+- Expected outcome:    Main workflow page focuses on role assignments; authoring/validation/lifecycle are a separate Builder page
+- Protected boundaries:no live assignments, grants, migrations, Firebase work, merge or deployment
+- Lifecycle stage:     OWNER REVIEW — local tests/build passed; rendered acceptance and independent integration review pending; not deployed
+
 - Capability:          Administration IA redesign — Phase 1 navigation regroup (DECISIONS #211) + Permissions destination (#212, branch `feat/admin-permissions-destination`, stacked)
 - Agent/session:       Claude (Claude Code, 2026-10-08) · Role: builder
 - Branch / worktree:   `feat/admin-ia-nav-regroup` · `D:/Taylor_Parts-admin-ia`

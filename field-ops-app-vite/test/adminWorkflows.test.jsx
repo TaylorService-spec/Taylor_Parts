@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-import AdminWorkflows from "../src/modules/administration/AdminWorkflows.jsx";
+import AdminWorkflows from "../src/modules/administration/AdminWorkflowBuilder.jsx";
 import EmployeeWorkflowResponsibilities from "../src/modules/administration/EmployeeWorkflowResponsibilities.jsx";
 import { createWorkflowAdminClient } from "../src/services/workflowAdminClient.js";
 

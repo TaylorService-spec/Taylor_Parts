@@ -1,0 +1,170 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ConfirmDialog from "../../shared/ui/ConfirmDialog.jsx";
+import { Button } from "../../shared/ui/primitives/index.js";
+import { adminControlPlaneClient, refusalText } from "../../services/adminControlPlaneClient.js";
+import { summarizeWorkflow, buildWorkflowVersionView, editableDefinition, definitionForServer } from "../../domain/adminWorkflowView.js";
+import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
+import { workflowBuilderHref } from "../../domain/workflowPageLinks.js";
+import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
+import { principalLabel } from "./principalDisplay.js";
+import { useControlPlaneRead } from "./useControlPlaneRead.js";
+import { ReadState } from "./ObjectActionSecurity.jsx";
+import KeyListPicker from "./KeyListPicker.jsx";
+
+function assignmentDefinition(view) {
+  return editableDefinition({ ...view, actions: view.actions.map((action) => ({
+    ...action, guardKind: action.guardKind ?? (action.requiresOwnAssignment ? "RECORD_ASSIGNMENT" : null),
+  })) });
+}
+
+function CoveredEmployees({ roleKey, api }) {
+  const read = useControlPlaneRead(() => api.getSecurityRoleDetail(roleKey), `workflow-holders:${roleKey}`);
+  const holders = read.data?.holders;
+  return <div>
+    <ReadState read={read} what="employees holding this role" />
+    {Array.isArray(holders) && <>
+      <p className="fo-muted">Role holders are shown with their assignment scope. Actual actions still depend on their permissions, record scope and workflow requirements.</p>
+      {holders.length === 0 ? <p>No employee holds this role.</p> : <ul>{holders.map((h) => <li key={h.assignmentId}>
+        {h.employeeId ? <a href={`/administration/users/${encodeURIComponent(h.employeeId)}`}>{principalLabel(h)}</a> : principalLabel(h)}
+        {" · "}{h.scopeType === "global" ? "All (Global)" : `${titleCase(h.scopeType)}${h.scopeValue ? `: ${h.scopeValue}` : ""}`}
+      </li>)}</ul>}
+    </>}
+  </div>;
+}
+
+function AssignmentEditor({ api, rolesApi, workflow, versionId, onDirtyChange, onSaved }) {
+  const read = useControlPlaneRead(() => api.readWorkflowVersion(versionId), `assignment-version:${versionId}`);
+  const readable = buildWorkflowVersionView(read.data) && read.data?.version;
+  return <section className="fo-panel" aria-label="Workflow assignments" data-selected-workflow={workflow.key}>
+    <ReadState read={read} what="workflow assignments" />
+    {read.status === "ready" && !readable && <p role="alert">This workflow version could not be read. No assignment controls are available.</p>}
+    {read.status === "ready" && readable && <AssignmentForm key={versionId} api={api} rolesApi={rolesApi} workflow={workflow}
+      view={read.data} versionId={versionId} onDirtyChange={onDirtyChange} onSaved={onSaved} />}
+  </section>;
+}
+
+function AssignmentForm({ api, rolesApi, workflow, view, versionId, onDirtyChange, onSaved }) {
+  const catalog = useControlPlaneRead(() => rolesApi.listRoles(), "workflow-assignment-roles");
+  const options = (Array.isArray(catalog.data) ? catalog.data : catalog.data?.items ?? [])
+    .filter((r) => r && typeof r.key === "string").map((r) => ({ key: r.key, label: r.name }));
+  const [draft, setDraft] = useState(() => assignmentDefinition(view));
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [covered, setCovered] = useState(null);
+  const [search, setSearch] = useState("");
+  const assignmentsChanged = JSON.stringify(draft) !== JSON.stringify(assignmentDefinition(view));
+  const dirty = !result?.saved && (assignmentsChanged || reason.trim() !== "");
+  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+  const ready = draft.actions.length > 0 && draft.actions.every((a) => Boolean(a.capabilityKey));
+  const builderHref = workflowBuilderHref(workflow, versionId);
+  const save = async () => {
+    setBusy(true); setResult(null);
+    try {
+      const definition = definitionForServer(draft);
+      const checked = await api.validateUnsavedDefinition({ objectKey: workflow.objectKey, definition });
+      if (!checked?.ok) { setResult({ error: refusalText(checked) }); return; }
+      if (checked.data?.valid !== true || checked.data?.errors?.length > 0) {
+        setResult({ error: "These assignments cannot be activated yet. Review the workflow requirements in the Builder." }); return;
+      }
+      // Published definitions remain immutable. Assignment-only changes create a new draft
+      // through the existing governed command; no publishing, grant or activation is implied.
+      const saved = view.version?.status === "DRAFT"
+        ? await api.updateWorkflowDefinition({ versionId, definition, reason })
+        : await api.createWorkflowVersion({ workflowId: workflow.id, definition, reason });
+      if (!saved?.ok) { setResult({ error: refusalText(saved) }); return; }
+      const id = saved.data?.version?.id;
+      setReason(""); setResult({ saved: id }); onDirtyChange(false);
+      onSaved();
+    } catch {
+      setResult({ error: "The assignment request could not be completed. Check the saved version before retrying." });
+    } finally { setBusy(false); }
+  };
+  return <>
+    <h2>{workflow.name}</h2>
+    <p>{view.active ? "Active assignments" : view.version?.status === "DRAFT" ? "Draft assignments — not active" : "Previous assignments"} · Version {view.version?.version}</p>
+    <p className="fo-muted">Assign Security Roles to workflow actions. Employees participate through their roles; an assignment never grants additional permissions.</p>
+    {!ready && <p role="status">This workflow is not ready for assignment changes. <a href={builderHref}>Open Workflow Builder</a> to review its setup.</p>}
+    <ReadState read={catalog} what="Security Roles" />
+    {ready && <>
+      <label className="fo-form-field"><span>Reason for assignment changes</span><input aria-label="Reason for assignment changes" value={reason}
+        disabled={busy || Boolean(result?.saved)} onChange={(e) => setReason(e.target.value)} /></label>
+      <Button disabled={busy || !assignmentsChanged || !reason.trim() || catalog.status !== "ready" || Boolean(result?.saved)} onClick={save}>Save Assignment Draft</Button>
+      <p className="fo-muted">Changes stay inactive until the new version is reviewed and published in Workflow Builder. Existing records keep their current version.</p>
+    </>}
+    <label className="fo-form-field"><span>Find an action</span><input type="search" aria-label="Find a workflow action" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
+    <div className="fo-table-scroll"><table className="fo-table" aria-label="Action role assignments">
+      <thead><tr><th>Action</th><th>Step</th><th>Assigned Security Roles</th><th>Employees</th></tr></thead>
+      <tbody>{draft.actions.map((a, i) => ({ a, i })).filter(({ a }) => `${a.label} ${a.key} ${a.from} ${a.to}`.toLowerCase().includes(search.toLowerCase())).map(({ a, i }) => <tr key={a.key}>
+        <td>{a.label || titleCase(a.key)}</td>
+        <td>{view.steps.find((s) => s.key === a.from)?.label ?? titleCase(a.from)} → {view.steps.find((s) => s.key === a.to)?.label ?? titleCase(a.to)}</td>
+        <td><KeyListPicker id={`wf-assignment-${i}`} label={`${a.label || a.key} Security Roles`} value={a.roleKeys}
+          options={options} disabled={!ready || busy || catalog.status !== "ready" || Boolean(result?.saved)}
+          onChange={(roleKeys) => setDraft((d) => ({ ...d, actions: d.actions.map((item, n) => n === i ? { ...item, roleKeys } : item) }))} />
+          {a.functionalRoleKeys && <p className="fo-muted">Also requires: {a.functionalRoleKeys.split(",").map((k) => identifierLabel(k.trim())).join(", ")}</p>}
+        </td>
+        <td>{a.roleKeys.split(",").map((k) => k.trim()).filter(Boolean).map((key) => <Button key={key} size="sm" variant="secondary"
+          onClick={() => setCovered(covered === key ? null : key)}>View {identifierLabel(key, options.find((o) => o.key === key)?.label)} employees</Button>)}</td>
+      </tr>)}</tbody>
+    </table></div>
+    {covered && <section aria-label="Covered employees"><h3>{identifierLabel(covered, options.find((o) => o.key === covered)?.label)} employees</h3><CoveredEmployees roleKey={covered} api={rolesApi} /></section>}
+    {result?.error && <p role="alert" className="fo-warning">{result.error}</p>}
+    {result?.saved && <p role="status">Assignment draft saved. <a href={workflowBuilderHref(workflow, result.saved)}>Review and activate in Workflow Builder</a>.</p>}
+    <p><a href={builderHref}>Open Workflow Builder</a></p>
+  </>;
+}
+
+export default function WorkflowAssignments({ api, rolesApi = adminControlPlaneClient }) {
+  const list = useControlPlaneRead(() => api.listWorkflows(), "assignment-workflows");
+  const workflows = useMemo(() => (Array.isArray(list.data) ? list.data.map(summarizeWorkflow).filter(Boolean) : []), [list.data]);
+  const [selected, setSelected] = useState(() => readAdminQueryParam("workflow") ?? "");
+  const workflow = workflows.find((w) => w.id === selected || w.key === selected);
+  const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
+  const onDirtyChange = useCallback((value) => setDirty(value), []);
+  const [pending, setPending] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [pinnedVersion, setPinnedVersion] = useState(null);
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const beforeUnload = (event) => { if (dirtyRef.current) { event.preventDefault(); event.returnValue = ""; } };
+    const navigation = (event) => {
+      const link = event.target.closest?.("a[href]");
+      if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.target === "_blank" || link.hasAttribute("download")) return;
+      event.preventDefault(); event.stopPropagation();
+      setPending({ href: link.getAttribute("href") });
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    document.addEventListener("click", navigation, true);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      document.removeEventListener("click", navigation, true);
+    };
+  }, [dirty]);
+  const linkedVersion = readAdminQueryParam("version");
+  const versionId = (pinnedVersion && pinnedVersion.workflowId === workflow?.id ? pinnedVersion.versionId : null)
+    ?? workflow?.versions.find((v) => v.id === linkedVersion)?.id
+    ?? workflow?.activeVersionId ?? workflow?.versions.at(-1)?.id;
+  return <div><WorkspaceShell title="Workflow Assignments" actions={<a href={workflowBuilderHref(workflow, versionId)}>Open Workflow Builder</a>}>
+    <p>Choose a workflow to review its role assignments and the employees holding those roles.</p>
+    <ReadState read={list} what="workflows" />
+    {list.status === "ready" && <label className="fo-form-field"><span>Workflow</span><select aria-label="Workflow" value={workflow?.id ?? ""}
+      onChange={(e) => dirty ? setPending({ selected: e.target.value }) : setSelected(e.target.value)}>
+      <option value="">Choose a workflow…</option>{workflows.map((w) => <option key={w.id} value={w.id}>{w.name} · {w.activeVersionId ? "Active" : "Not active"}</option>)}
+    </select></label>}
+    {list.status === "ready" && workflows.length === 0 && <p>No workflows are available.</p>}
+    {!workflow && workflows.length > 0 && <p>No workflow selected.</p>}
+    {workflow && versionId && <AssignmentEditor key={`${workflow.id}:${versionId}:${revision}`} api={api} rolesApi={typeof api.getSecurityRoleDetail === "function" ? api : rolesApi}
+      workflow={workflow} versionId={versionId} onDirtyChange={onDirtyChange} onSaved={() => {
+        setPinnedVersion({ workflowId: workflow.id, versionId }); list.reload();
+      }} />}
+    {workflow && !versionId && <p>This workflow has no version. Prepare it in Workflow Builder.</p>}
+    {pending !== null && <ConfirmDialog title="Discard Unsaved Assignments?" consequence="Your unsaved assignment changes will be discarded."
+      confirmLabel="Discard Changes" cancelLabel="Keep Editing" destructive={false}
+      onConfirm={async () => { const change = pending; dirtyRef.current = false; setPending(null); setDirty(false); if (change.href) window.location.assign(change.href);
+        else { setSelected(change.selected); setRevision((n) => n + 1); } }} onClose={() => setPending(null)} />}
+  </WorkspaceShell></div>;
+}
