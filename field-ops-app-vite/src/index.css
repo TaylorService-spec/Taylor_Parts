@@ -9107,4 +9107,41 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-admin .fo-admin-disclosure__meta { flex: none; font-weight: 400; font-size: var(--font-size-sm); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .fo-admin .fo-admin-disclosure__chevron { transition: none; } }
 .fo-admin .fo-admin-disclosure[aria-expanded="true"]:hover { background: var(--color-border); color: var(--color-text-primary); }
+
+/* ADMIN-UI-005: full-width search with an icon, a compact segmented filter, an unobtrusive count. */
+.fo-admin .fo-admin-listpanel { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.fo-admin .fo-admin-search { position: relative; display: block; width: 100%; }
+.fo-admin .fo-admin-search__icon { position: absolute; left: var(--space-3); top: 50%; transform: translateY(-50%); color: var(--color-text-muted); pointer-events: none; }
+.fo-admin .fo-admin-search input { width: 100%; box-sizing: border-box; min-height: 2.5rem; padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 1.5rem);
+  border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); background: var(--color-surface-card); color: var(--color-text-primary); font: inherit; }
+.fo-admin .fo-admin-search input:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; background: var(--color-surface-card); color: var(--color-text-primary); }
+.fo-admin .fo-admin-listpanel__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.fo-admin .fo-admin-segmented { display: inline-flex; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); overflow: hidden; }
+.fo-admin .fo-admin-segmented__option { margin: 0; border: 0; border-radius: 0; padding: var(--space-1) var(--space-3); min-height: 2rem; font: inherit; font-size: var(--font-size-sm);
+  background: var(--color-surface-card); color: var(--color-text-primary); cursor: pointer; }
+.fo-admin .fo-admin-segmented__option + .fo-admin-segmented__option { border-left: 1px solid var(--color-border-strong); }
+.fo-admin .fo-admin-segmented__option:hover { background: var(--color-surface-sunken); color: var(--color-text-primary); }
+.fo-admin .fo-admin-segmented__option[aria-pressed="true"] { background: var(--color-brand-primary); color: var(--color-text-inverse); }
+.fo-admin .fo-admin-segmented__option[aria-pressed="true"]:hover { background: var(--color-brand-primary); color: var(--color-text-inverse); }
+.fo-admin .fo-admin-segmented__option:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.fo-admin .fo-admin-count { font-size: var(--font-size-sm); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+
+/* ADMIN-UI-006: a compact, scrollable selectable list -- rows, not outlined buttons. */
+.fo-admin .fo-admin-selectlist { list-style: none; margin: 0; padding: 0; max-height: 34rem; overflow: auto;
+  border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-card); color: var(--color-text-primary); }
+.fo-admin .fo-admin-selectlist > li + li { border-top: 1px solid var(--color-border); }
+.fo-admin .fo-admin-selectlist__option { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; min-height: 2.5rem;
+  margin: 0; padding: var(--space-2) var(--space-3); border: 0; border-radius: 0; font: inherit; text-align: left; cursor: pointer;
+  background: transparent; color: var(--color-text-primary); }
+.fo-admin .fo-admin-selectlist__option:hover { background: var(--color-surface-sunken); color: var(--color-text-primary); }
+.fo-admin .fo-admin-selectlist__option[aria-pressed="true"] { background: var(--color-surface-sunken); color: var(--color-text-primary); font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--color-brand-primary); }
+.fo-admin .fo-admin-selectlist__option:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.fo-admin .fo-admin-selectlist__name { min-width: 0; overflow-wrap: anywhere; }
+.fo-admin .fo-admin-badge { flex: none; font-size: var(--font-size-xs); font-weight: 600; letter-spacing: .02em; padding: 0.1rem 0.45rem; border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong); background: var(--color-surface-card); color: var(--color-text-secondary); }
+
+/* ADMIN-UI-004/007: a compact notice -- the linked-role-unavailable state, the missing-Job-Role warning. */
+.fo-admin .fo-admin-notice { padding: var(--space-3); border: 1px solid var(--color-border-strong); border-left-width: 4px; border-radius: var(--radius-md);
+  background: var(--color-surface-sunken); color: var(--color-text-primary); }
 /* END ADMINISTRATION SCOPE -- new Administration rules go above this line, under .fo-admin. */
