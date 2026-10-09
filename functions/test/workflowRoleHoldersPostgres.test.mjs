@@ -3,7 +3,9 @@
 // The Employees holding ONE Security Role relevant to ONE workflow action, for the people who can change assignments:
 //   AUTHORIZATION  workflowDefinition.read AND (workflowDefinition.edit OR .version); a reader alone, or nobody, is refused.
 //   RELEVANCE      only a Role ELIGIBLE for (holds the action's capability) or BOUND to that action; anything else refused.
-//   HOLDERS        ACTIVE and NON-STALE assignments only; revoked and stale ones are not holders.
+//   HOLDERS        one entry per PERSON the runtime would let act: an active principal with an active membership whose
+//                  linked Employee is access-eligible, holding the Role through an ACTIVE, NON-STALE assignment. Revoked,
+//                  stale, suspended, non-member and terminated holders are not holders.
 //   APPLIES        global, or a scope that DECIDES the action's capability (salesChannel for salesOrder.write); an
 //                  operatingCompany-scoped holder holds the Role but the action does NOT apply to them.
 //   VISIBILITY     the EXISTING Employee visibility (employee.record.read: flat = every Employee, operatingCompany scope =
@@ -45,6 +47,12 @@ test("listWorkflowActionRoleHolders: authorization, relevance, holders, scope, v
   await role("wfTarget", [["salesOrder", "edit"]]);
   await role("wfBulk", [["salesOrder", "edit"]]);
   await role("companyStaffReader", [["employee", "read"]]);
+  await role("wfConditioned", [["salesOrder", "edit"]]);
+  // Administration refuses a condition on salesOrder.write (no gate that reads it can evaluate one), so this DEFENSIVE
+  // branch is exercised with a condition row written directly as a fixture: a conditioned grant must never read as "able".
+  await q(`INSERT INTO eos_policy.capability_grant_conditions (id,tenant_id,grant_scope,grantor_key,capability_key,condition,status,established_by,established_at,updated_by,updated_at)
+           VALUES ($1,$2,'ROLE','wfConditioned','salesOrder.write',$3,'ACTIVE','fixture',now(),'fixture',now())`,
+    [`gc-${randomUUID()}`, T, JSON.stringify({ paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: "SERVICE_TECHNICIAN" }]] })]);
   const capability = (await repo.listCapabilities()).find((c) => c.objectKey === "salesOrder" && c.actionKey === "edit").key;
   assert.equal(capability, "salesOrder.write");
 
@@ -71,6 +79,16 @@ test("listWorkflowActionRoleHolders: authorization, relevance, holders, scope, v
   const h6a = (await repo.listAssignmentsForPrincipal(T, h6.principalId)).find((a) => a.status === "active");
   ok(await admin("revokeRole", { assignmentId: h6a.id, reason: REASON }));
   const h7 = await person("uid-wfh-h7", ["wfTarget"]); // a Principal with no Employee
+  // h1 ALSO holds the Role through a scoped assignment: still ONE holder (the global assignment is shown).
+  ok(await admin("assignRole", { principalId: h1.principalId, roleId: await roleId("wfTarget"), scopeType: "salesChannel", scopeValue: "RETAIL", reason: REASON }));
+  // People the runtime refuses before reading any Role -- active assignments, but NOT holders:
+  const h8 = await person("uid-wfh-h8", ["wfTarget"], { id: "e-h8", name: "Gale Suspended", company: "taylor" });
+  await q(`UPDATE eos_policy.principals SET status='disabled' WHERE id=$1`, [h8.principalId]);
+  const h9 = await person("uid-wfh-h9", ["wfTarget"], { id: "e-h9", name: "Hale NonMember", company: "taylor" });
+  await q(`UPDATE eos_policy.tenant_memberships SET status='disabled' WHERE tenant_id=$1 AND principal_id=$2`, [T, h9.principalId]);
+  const h10 = await person("uid-wfh-h10", ["wfTarget"], { id: "e-h10", name: "Ira Terminated", company: "taylor", status: "TERMINATED" });
+  // A holder of a Role whose grant is narrowed by an active condition: the action does not apply to them.
+  const h11 = await person("uid-wfh-h11", ["wfConditioned"], { id: "e-h11", name: "Jo Conditioned", company: "taylor" });
 
   // ── The workflow: map the first Sales Order action to salesOrder.write; bind wfTarget (eligible) and dispatcher (not) ──
   const so = (await repo.listWorkflows(T)).find((w) => w.key === "salesOrder");
@@ -112,22 +130,33 @@ test("listWorkflowActionRoleHolders: authorization, relevance, holders, scope, v
     assert.deepEqual(Object.keys(r).sort(), ["actionKey", "employeeVisibility", "holders", "holdersForAction", "roleBound", "roleEligible",
       "roleKey", "roleName", "totalHolders", "truncated", "withheld"]);
     assert.deepEqual([r.roleEligible, r.roleBound], [true, true]);
-    // h1 h2 (global), h3 (salesChannel), h4 (operatingCompany, inert), h7 (no Employee). NOT h5 (stale) or h6 (revoked).
+    // h1 (global + scoped: ONE holder), h2 (global), h3 (salesChannel), h4 (operatingCompany, inert), h7 (no Employee).
+    // NOT h5 (stale), h6 (revoked), h8 (suspended principal), h9 (inactive membership) or h10 (terminated Employee).
     assert.equal(r.totalHolders, 5);
     assert.equal(r.holdersForAction, 4, "h4's scope cannot decide salesOrder.write");
     assert.equal(r.withheld, 1, "h7 is not an Employee: counted, never named");
     assert.equal(r.employeeVisibility, "EMPLOYEE_READ");
     assert.equal(r.truncated, false);
     assert.deepEqual(r.holders, [
-      { displayName: "Avery Taylor", employeeId: "e-h1", scope: { type: "global", value: null }, appliesToAction: true },
-      { displayName: "Blake Ventana", employeeId: "e-h2", scope: { type: "global", value: null }, appliesToAction: true },
-      { displayName: "Casey Retail", employeeId: "e-h3", scope: { type: "salesChannel", value: "RETAIL" }, appliesToAction: true },
-      { displayName: "Drew Company", employeeId: "e-h4", scope: { type: "operatingCompany", value: "taylor" }, appliesToAction: false },
+      { displayName: "Avery Taylor", employeeId: "e-h1", scope: { type: "global", value: null }, appliesToAction: true, notApplicableReason: null },
+      { displayName: "Blake Ventana", employeeId: "e-h2", scope: { type: "global", value: null }, appliesToAction: true, notApplicableReason: null },
+      { displayName: "Casey Retail", employeeId: "e-h3", scope: { type: "salesChannel", value: "RETAIL" }, appliesToAction: true, notApplicableReason: null },
+      { displayName: "Drew Company", employeeId: "e-h4", scope: { type: "operatingCompany", value: "taylor" }, appliesToAction: false, notApplicableReason: "SCOPE_DOES_NOT_DECIDE" },
     ]);
     const text = JSON.stringify(r);
-    for (const p of [h1, h2, h3, h4, h5, h6, h7, seer]) assert.ok(!text.includes(p.principalId), "no principal id in the answer");
-    assert.ok(!/Eden Stale|Finn Revoked|capabilit|uid-wfh/i.test(text.replace(/"holdersForAction"/, "")), "no stale/revoked holder, capability list or sign-in identity");
+    for (const p of [h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, seer]) assert.ok(!text.includes(p.principalId), "no principal id in the answer");
+    assert.ok(!/Eden Stale|Finn Revoked|Gale Suspended|Hale NonMember|Ira Terminated|capabilit|uid-wfh/i.test(text.replace(/"holdersForAction"/, "")),
+      "no stale, revoked, suspended, non-member or terminated holder, capability list or sign-in identity");
     assert.equal(await auditCount(), before, "read-only");
+  });
+
+  await t.test("CONDITIONED GRANT: the Role is eligible, but the action does not apply to its holders", async () => {
+    // Not bound, but it holds the capability (eligible), so it may be looked up.
+    const r = ok(await lookup(seer, "wfConditioned"));
+    assert.deepEqual([r.roleEligible, r.totalHolders, r.holdersForAction], [true, 1, 0]);
+    assert.deepEqual(r.holders.map((h) => [h.employeeId, h.appliesToAction, h.notApplicableReason]), [["e-h11", false, "CONDITIONED_GRANT"]]);
+    const bound = ok(await lookup(seer, "dispatcher"));
+    assert.ok(bound.holders.every((h) => h.notApplicableReason === "ROLE_NOT_ELIGIBLE"));
   });
 
   await t.test("VISIBILITY: the existing Employee visibility, never wider", async () => {

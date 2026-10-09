@@ -7736,12 +7736,13 @@ Left in place, out of scope: the unrendered `LegacyRoleMatrix` / `LegacyRoleGrid
 **What it answers:**
 - **Tenant:** the caller's tenant only. Another tenant's version returns NOT_FOUND.
 - **Roles:** only a Role that is eligible for the action (holds its capability) or already bound to it. Any other Role is refused with `ROLE_NOT_FOR_ACTION`.
-- **Holders:** only active, non-stale assignments, by the runtime's rule.
-- **appliesToAction:** true only when the Role is eligible, its grant carries no active condition, and the assignment is global or has a scope that decides the action's capability.
+- **Holders:** one entry per person the runtime would let act at all. That means an active principal with an active tenant membership whose linked Employee (if any) is access-eligible, holding the Role through an active, non-stale assignment. Suspended principals, inactive memberships and terminated Employees are not holders. This fix came from independent review.
+- **appliesToAction:** true only when the Role is eligible, its grant carries no active condition, and the assignment is global or has a scope that decides the action's capability. When false, `notApplicableReason` says why: `ROLE_NOT_ELIGIBLE`, `CONDITIONED_GRANT` or `SCOPE_DOES_NOT_DECIDE`.
+- **Counts:** `totalHolders`, `holdersForAction` and `withheld` count people, not assignments. They are returned even to a caller who can view no Employee, or only some operating companies, so such a caller learns how many people hold the Role. This is recorded for the Owner to accept or reject.
 - **Employee names:** shown only where the existing Employee visibility admits them. This is the Workforce read kernel's `employee.record.read` check, applied per operating company for scoped holders, and injected by the server (`eosAdministration/workflowHolderVisibility.ts`).
   - Holders outside that visibility, or not linked to an Employee, are counted as `withheld` and never named.
-  - If visibility cannot be established, the lookup refuses with `EMPLOYEE_VISIBILITY_UNAVAILABLE`. It never returns an empty list in that case.
-- **Fields returned:** Role key and name, `roleEligible` and `roleBound`, `totalHolders`, `holdersForAction`, `withheld`, `employeeVisibility`, `truncated`, and up to 200 holders. Each holder has a display name, an Employee id (used only for the record link), its scope and `appliesToAction`.
+  - If visibility cannot be established, the lookup refuses with `EMPLOYEE_VISIBILITY_UNAVAILABLE`. It never returns an empty list in that case. An unavailable context authority also counts as visibility that cannot be established.
+- **Fields returned:** Role key and name, `roleEligible` and `roleBound`, `totalHolders`, `holdersForAction`, `withheld`, `employeeVisibility`, `truncated`, and up to 200 holders. Each holder has a display name, an Employee id (used only for the record link), its scope, `appliesToAction` and `notApplicableReason`.
 - **Never returned:** principal ids, sign-in identities, other Roles or capabilities.
 
 **Boundary:** read-only; grants nothing. No capability, grant, Role, migration, workflow definition or mapping change, and no Firebase dependency.

@@ -32,6 +32,11 @@ export type WorkflowHolderVisibilityResolver =
 
 /** Refusals that mean "this caller may not read Employees" -- an answer (nothing visible), not a failure. */
 const NO_EMPLOYEE_READ = new Set(["CAPABILITY_REQUIRED", "CAPABILITY_CONDITION_UNSATISFIED"]);
+/**
+ * The kernel reports an unavailable context authority under CAPABILITY_CONDITION_UNSATISFIED, naming the outcome in the
+ * message. That is an OUTAGE, not a "may not read": it must refuse the lookup, never read as "nobody visible".
+ */
+const isNoEmployeeRead = (err: EmployeeReadError) => NO_EMPLOYEE_READ.has(err.code) && !/CONTEXT_AUTHORITY_UNAVAILABLE/.test(err.message);
 
 export function createWorkflowHolderVisibility(reader: PolicyReader, pool: Pool): WorkflowHolderVisibilityResolver {
   return async (tenantId, callerPrincipalId, employeeIds) => {
@@ -53,7 +58,7 @@ export function createWorkflowHolderVisibility(reader: PolicyReader, pool: Pool)
           if (!reach.global) {
             // The kernel's own per-record decision: an out-of-reach Employee is refused exactly like a missing one.
             try { await reach.authorizeEmployee(r.operating_company_id); } catch (err) {
-              if (err instanceof EmployeeReadError && (err.code === "EMPLOYEE_NOT_FOUND" || NO_EMPLOYEE_READ.has(err.code))) continue;
+              if (err instanceof EmployeeReadError && (err.code === "EMPLOYEE_NOT_FOUND" || isNoEmployeeRead(err))) continue;
               throw err;
             }
           }
@@ -62,7 +67,7 @@ export function createWorkflowHolderVisibility(reader: PolicyReader, pool: Pool)
         return { employeeReadHeld: true, visible };
       }, { recordScope: "operatingCompany" });
     } catch (err) {
-      if (err instanceof EmployeeReadError && NO_EMPLOYEE_READ.has(err.code)) return { employeeReadHeld: false, visible: new Map() };
+      if (err instanceof EmployeeReadError && isNoEmployeeRead(err)) return { employeeReadHeld: false, visible: new Map() };
       throw err;
     }
   };

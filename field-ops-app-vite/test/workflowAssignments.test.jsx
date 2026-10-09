@@ -27,8 +27,8 @@ function fixture({ status = "PUBLISHED", capability = "workOrder.accept", valid 
     getSecurityRoleDetail: vi.fn(() => ok({ holders: [] })), // no longer used by Assignments (W01 holder lookup)
     listWorkflowActionRoleHolders: vi.fn(() => ok({ roleKey: "tech", roleName: "Technician", actionKey: "accept", roleEligible: true, roleBound: true,
       totalHolders: 3, holdersForAction: 2, withheld: 1, employeeVisibility: "EMPLOYEE_READ", truncated: false,
-      holders: [{ displayName: "Pat Tech", employeeId: "e1", scope: { type: "global", value: null }, appliesToAction: true },
-        { displayName: "Lee Scoped", employeeId: "e2", scope: { type: "operatingCompany", value: "taylor" }, appliesToAction: false }] })),
+      holders: [{ displayName: "Pat Tech", employeeId: "e1", scope: { type: "global", value: null }, appliesToAction: true, notApplicableReason: null },
+        { displayName: "Lee Scoped", employeeId: "e2", scope: { type: "operatingCompany", value: "taylor" }, appliesToAction: false, notApplicableReason: "SCOPE_DOES_NOT_DECIDE" }] })),
     validateUnsavedDefinition: vi.fn(() => ok({ valid, errors: valid ? [] : [{ code: "BINDING_WITHOUT_CAPABILITY" }] })),
     updateWorkflowDefinition: vi.fn(() => ok({ version: { id: "v2", version: 2, status: "DRAFT" } })),
     createWorkflowVersion: vi.fn(() => ok({ version: { id: "v2", version: 2, status: "DRAFT" } })),
@@ -241,10 +241,10 @@ describe("Workflow Assignments -- role holders for one action (W01 holder lookup
     const api = fixture(); await open(api);
     fireEvent.click(await screen.findByRole("button", { name: "View Technician employees" }));
     await screen.findByRole("link", { name: "Pat Tech" });
-    expect(document.querySelector("[data-holder-counts]").textContent).toMatch(/3 employees hold this role; this action applies to 2\. 1 is not shown because you can't view that employee\./);
+    expect(document.querySelector("[data-holder-counts]").textContent).toMatch(/3 people hold this role; this action applies to 2\. 1 is not shown because you can't view them as employees\./);
     const scoped = screen.getByRole("link", { name: "Lee Scoped" }).closest("li");
     expect(scoped.textContent).toMatch(/Operating Company: taylor/);
-    expect(scoped.querySelector("[data-not-applicable]")).not.toBeNull();
+    expect(scoped.querySelector('[data-not-applicable="SCOPE_DOES_NOT_DECIDE"]').textContent).toMatch(/doesn't apply at this assignment scope/);
   });
   it("a refused lookup is shown as a refusal, never as an empty list", async () => {
     const api = fixture();

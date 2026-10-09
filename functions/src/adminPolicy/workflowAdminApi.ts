@@ -21,6 +21,7 @@ import {
 import { decideWorkflowMutation, findWorkflowVersion, WORKFLOW_MUTATION_CAPABILITY, WorkflowRefusal } from "./workflowAdministration";
 import { actorCapabilities } from "./administrationCapabilityGate";
 import { isAssignmentScopeRuntimeType, scopeEvaluableCapabilities } from "./assignmentScopeRuntime";
+import { employeeAccessIneligibility } from "./employmentAccessEligibility";
 import { loadWorkflowVersionDefinition } from "./workflowEngine";
 import {
   activateWorkflowVersion,
@@ -417,22 +418,33 @@ async function listWorkflowActionRoleHolders(deps: WorkflowApiDeps, actor: Admin
   // A grant narrowed by an ACTIVE condition is not the flat authority (fail closed: such a holder is not counted as able).
   const conditioned = capabilityKey !== null && (await repo.listGrantConditions(actor.tenantId, { activeOnly: true }))
     .some((c) => c.grantScope === "ROLE" && c.grantorKey === roleKey && c.capabilityKey === capabilityKey);
-  const holders: { principalId: string; employeeId: string | null; scopeType: string; scopeValue: string | null; appliesToAction: boolean }[] = [];
+  // ONE ENTRY PER PERSON, and only people the runtime would let act at all: an ACTIVE principal with an ACTIVE membership in
+  // this tenant whose linked Employee (if any) is access-eligible -- the qualification principalContext applies before it
+  // reads a single Role (PRINCIPAL_DISABLED / NO_TENANT_MEMBERSHIP / EMPLOYEE_NOT_ACCESS_ELIGIBLE) -- holding the Role
+  // through an ACTIVE, NON-STALE assignment. Several qualifying assignments of the Role are one holder: the action applies
+  // if ANY of them carries it, and the scope shown is that assignment's (global first).
+  type Reason = "ROLE_NOT_ELIGIBLE" | "CONDITIONED_GRANT" | "SCOPE_DOES_NOT_DECIDE";
+  const holders: { employeeId: string | null; scopeType: string; scopeValue: string | null; appliesToAction: boolean; reason: Reason | null }[] = [];
   for (const principalId of await repo.listTenantPrincipalIds(actor.tenantId)) {
-    const [assignments, versionRow] = await Promise.all([
-      repo.listAssignmentsForPrincipal(actor.tenantId, principalId), repo.getAccessVersion(actor.tenantId, principalId)]);
+    const [principal, membership, assignments, versionRow, linked] = await Promise.all([
+      repo.getPrincipal(principalId), repo.getMembership(actor.tenantId, principalId),
+      repo.listAssignmentsForPrincipal(actor.tenantId, principalId), repo.getAccessVersion(actor.tenantId, principalId),
+      repo.getLinkedEmployeeAccessFact(actor.tenantId, principalId)]);
+    if (principal?.status !== "active" || membership?.status !== "active" || employeeAccessIneligibility(linked) !== null) continue;
     const current = typeof versionRow?.accessVersion === "number" ? versionRow.accessVersion : 0;
-    for (const a of assignments) {
-      if (a.roleId !== role.id || a.status !== "active" || typeof a.accessVersionAtGrant !== "number" || a.accessVersionAtGrant > current) continue;
-      const scopeType = typeof a.scopeType === "string" && a.scopeType !== "" ? a.scopeType : "global";
-      const scopeApplies = scopeType === "global"
-        || (isAssignmentScopeRuntimeType(scopeType) && typeof a.scopeValue === "string" && a.scopeValue !== ""
-          && capabilityKey !== null && scopeEvaluableCapabilities(scopeType).has(capabilityKey));
-      const linked = await repo.getLinkedEmployeeAccessFact(actor.tenantId, principalId);
-      holders.push({ principalId, employeeId: linked && !linked.ambiguous ? linked.employeeId : null,
-        scopeType, scopeValue: scopeType === "global" ? null : a.scopeValue ?? null,
-        appliesToAction: roleEligible && !conditioned && scopeApplies });
-    }
+    const qualifying = assignments
+      .filter((a) => a.roleId === role.id && a.status === "active" && typeof a.accessVersionAtGrant === "number" && a.accessVersionAtGrant <= current)
+      .map((a) => {
+        const scopeType = typeof a.scopeType === "string" && a.scopeType !== "" ? a.scopeType : "global";
+        const scopeApplies = scopeType === "global"
+          || (isAssignmentScopeRuntimeType(scopeType) && typeof a.scopeValue === "string" && a.scopeValue !== ""
+            && capabilityKey !== null && scopeEvaluableCapabilities(scopeType).has(capabilityKey));
+        const reason: Reason | null = !roleEligible ? "ROLE_NOT_ELIGIBLE" : conditioned ? "CONDITIONED_GRANT" : scopeApplies ? null : "SCOPE_DOES_NOT_DECIDE";
+        return { scopeType, scopeValue: scopeType === "global" ? null : a.scopeValue ?? null, appliesToAction: reason === null, reason };
+      })
+      .sort((x, y) => Number(y.appliesToAction) - Number(x.appliesToAction) || Number(y.scopeType === "global") - Number(x.scopeType === "global"));
+    if (qualifying.length === 0) continue;
+    holders.push({ employeeId: linked && !linked.ambiguous ? linked.employeeId : null, ...qualifying[0] });
   }
   // EMPLOYEE VISIBILITY -- the existing rule, or nothing. No resolver, or a failing one: refuse.
   if (typeof deps.workflowHolderVisibility !== "function") {
@@ -452,6 +464,8 @@ async function listWorkflowActionRoleHolders(deps: WorkflowApiDeps, actor: Admin
       employeeId: h.employeeId as string,
       scope: { type: h.scopeType, value: h.scopeValue },
       appliesToAction: h.appliesToAction,
+      /** Why the action does not apply to this holder (null when it does): ROLE_NOT_ELIGIBLE, CONDITIONED_GRANT, SCOPE_DOES_NOT_DECIDE. */
+      notApplicableReason: h.reason,
     }))
     .sort((x, y) => String(x.displayName ?? "").localeCompare(String(y.displayName ?? "")) || x.employeeId.localeCompare(y.employeeId));
   return {
@@ -460,7 +474,7 @@ async function listWorkflowActionRoleHolders(deps: WorkflowApiDeps, actor: Admin
     actionKey,
     roleEligible,
     roleBound,
-    /** Every active, non-stale holder of the Role -- whether or not this caller may see them. */
+    /** Every PERSON who holds the Role and could act at all (see above) -- whether or not this caller may see them. */
     totalHolders: holders.length,
     /** Of those, the holders for whom this action actually applies (eligible Role, scope that decides it, no condition). */
     holdersForAction: holders.filter((h) => h.appliesToAction).length,

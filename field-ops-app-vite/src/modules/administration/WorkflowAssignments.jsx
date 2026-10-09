@@ -20,6 +20,11 @@ function assignmentDefinition(view) {
 
 // W01 holder lookup: the Employees holding ONE Role relevant to ONE action -- the server applies the assigner gate and the
 // EXISTING Employee visibility; anyone it does not name is only counted. Nothing here decides who is shown.
+const NOT_APPLICABLE_WORDS = Object.freeze({
+  SCOPE_DOES_NOT_DECIDE: "This action doesn't apply at this assignment scope",
+  CONDITIONED_GRANT: "This role's permission is conditional, so the action isn't assured",
+  ROLE_NOT_ELIGIBLE: "This role doesn't hold the action's permission",
+});
 function CoveredEmployees({ api, versionId, actionKey, roleKey }) {
   const read = useControlPlaneRead(() => api.listWorkflowActionRoleHolders({ versionId, actionKey, roleKey }), `workflow-holders:${versionId}:${actionKey}:${roleKey}`);
   const r = read.data;
@@ -27,13 +32,13 @@ function CoveredEmployees({ api, versionId, actionKey, roleKey }) {
     <ReadState read={read} what="employees holding this role" />
     {r && Array.isArray(r.holders) && <>
       <p className="fo-muted" data-holder-counts>
-        {r.totalHolders} {r.totalHolders === 1 ? "employee holds" : "employees hold"} this role; this action applies to {r.holdersForAction}.
-        {r.withheld > 0 ? ` ${r.withheld} ${r.withheld === 1 ? "is" : "are"} not shown because you can't view ${r.withheld === 1 ? "that employee" : "those employees"}.` : ""}
+        {r.totalHolders} {r.totalHolders === 1 ? "person holds" : "people hold"} this role; this action applies to {r.holdersForAction}.
+        {r.withheld > 0 ? ` ${r.withheld} ${r.withheld === 1 ? "is" : "are"} not shown because you can't view them as employees.` : ""}
       </p>
       {r.holders.length === 0 ? <p>No employee you can view holds this role.</p> : <ul>{r.holders.map((h) => <li key={h.employeeId}>
         <a href={appHref(`/administration/users/${encodeURIComponent(h.employeeId)}`)}>{h.displayName ?? h.employeeId}</a>
         {" · "}{h.scope?.type === "global" ? "All (Global)" : `${titleCase(h.scope?.type ?? "")}${h.scope?.value ? `: ${h.scope.value}` : ""}`}
-        {h.appliesToAction ? null : <span className="fo-muted" data-not-applicable> · This action doesn't apply at this scope</span>}
+        {h.appliesToAction ? null : <span className="fo-muted" data-not-applicable={h.notApplicableReason ?? "UNKNOWN"}> · {NOT_APPLICABLE_WORDS[h.notApplicableReason] ?? "This action doesn't apply to them"}</span>}
       </li>)}</ul>}
       {r.truncated && <p className="fo-muted" data-holders-truncated>Showing the first {r.holders.length} employees.</p>}
       <p className="fo-muted">Actual actions still depend on each employee's permissions, record scope and workflow requirements.</p>
