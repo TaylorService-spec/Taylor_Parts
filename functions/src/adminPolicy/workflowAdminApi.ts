@@ -444,7 +444,8 @@ async function listWorkflowActionRoleHolders(deps: WorkflowApiDeps, actor: Admin
       })
       .sort((x, y) => Number(y.appliesToAction) - Number(x.appliesToAction) || Number(y.scopeType === "global") - Number(x.scopeType === "global"));
     if (qualifying.length === 0) continue;
-    holders.push({ employeeId: linked && !linked.ambiguous ? linked.employeeId : null, ...qualifying[0] });
+    // An ambiguous link was excluded above (employeeAccessIneligibility), so a linked fact here is unambiguous.
+    holders.push({ employeeId: linked ? linked.employeeId : null, ...qualifying[0] });
   }
   // EMPLOYEE VISIBILITY -- the existing rule, or nothing. No resolver, or a failing one: refuse.
   if (typeof deps.workflowHolderVisibility !== "function") {

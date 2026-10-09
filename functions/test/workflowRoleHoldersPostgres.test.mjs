@@ -155,8 +155,12 @@ test("listWorkflowActionRoleHolders: authorization, relevance, holders, scope, v
     const r = ok(await lookup(seer, "wfConditioned"));
     assert.deepEqual([r.roleEligible, r.totalHolders, r.holdersForAction], [true, 1, 0]);
     assert.deepEqual(r.holders.map((h) => [h.employeeId, h.appliesToAction, h.notApplicableReason]), [["e-h11", false, "CONDITIONED_GRANT"]]);
+    // A bound-but-ineligible Role: give it a visible holder so the reason is asserted on a real entry, not vacuously.
+    await person("uid-wfh-disp", ["dispatcher"], { id: "e-disp", name: "Kai Dispatch", company: "taylor" });
     const bound = ok(await lookup(seer, "dispatcher"));
-    assert.ok(bound.holders.every((h) => h.notApplicableReason === "ROLE_NOT_ELIGIBLE"));
+    assert.equal(bound.holdersForAction, 0);
+    const kai = bound.holders.find((h) => h.employeeId === "e-disp");
+    assert.deepEqual([kai.appliesToAction, kai.notApplicableReason], [false, "ROLE_NOT_ELIGIBLE"]);
   });
 
   await t.test("VISIBILITY: the existing Employee visibility, never wider", async () => {
