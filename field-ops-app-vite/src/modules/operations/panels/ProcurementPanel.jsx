@@ -30,14 +30,15 @@ const PO_STATUS_WORDS = {
 };
 const URGENCY_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
-export default function ProcurementPanel({ purchaseOrders, purchaseOrdersFailure = null, suppliers, procurementDrafts, resolveName, ledgerIntegrity = null }) {
+export default function ProcurementPanel({ purchaseOrders, purchaseOrdersFailure = null, suppliers, suppliersFailure = null, supplierCatalogFailure = null, procurementDrafts, resolveName, ledgerIntegrity = null }) {
   // DQ-027: draft proposals are derived from the ledger. Parts whose ledger cannot be read have NO
   // proposal either way -- that is said, so "no proposals" never stands in for "not assessed".
   const incompleteParts = ledgerIntegrity?.unavailablePartIds?.length ?? 0;
   const ledgerUnavailable = ledgerIntegrity?.state === "UNAVAILABLE";
   // Shared resolver -- see domain/actorDisplayName.js. Previously fell back to the raw supplier
   // document id, printing an opaque key where a business name belongs.
-  const supplierName = (id) => resolveSupplierIdentity(id, { suppliers }).name;
+  // A refused supplier list resolves to the shared "Supplier name unavailable" label, never "Unknown supplier".
+  const supplierName = (id) => resolveSupplierIdentity(id, { suppliers, error: suppliersFailure }).name;
 
   // Client-side sort over the rows the dashboard already loaded (item C); the given order is the default.
   const poSortColumns = useMemo(() => ({
@@ -53,16 +54,21 @@ export default function ProcurementPanel({ purchaseOrders, purchaseOrdersFailure
     part: { value: (d) => resolveName(d.partId) },
     recommended: { value: (d) => d.recommendedQuantity },
     urgency: { value: (d) => URGENCY_ORDER[d.urgency] ?? 99 },
-    supplier: { value: (d) => (d.suggestedSupplierId ? resolveSupplierIdentity(d.suggestedSupplierId, { suppliers }).name : null) },
+    supplier: { value: (d) => (d.suggestedSupplierId ? resolveSupplierIdentity(d.suggestedSupplierId, { suppliers, error: suppliersFailure }).name : null) },
     unitPrice: { value: (d) => d.estimatedUnitPrice },
     totalCost: { value: (d) => d.estimatedTotalCost },
-  }), [resolveName, suppliers]);
+  }), [resolveName, suppliers, suppliersFailure]);
   const poSort = useTableSort({ rows: purchaseOrders, columns: poSortColumns });
   const draftSort = useTableSort({ rows: procurementDrafts, columns: draftSortColumns });
 
   return (
     <div className="fo-card">
       <h3>Procurement</h3>
+      {suppliersFailure && (
+        <p className="fo-warning" role="status" data-suppliers-unavailable>
+          Supplier names aren't available: {suppliersFailure.message ?? "the supplier list could not be read"}
+        </p>
+      )}
 
       <h4>Purchase Orders</h4>
       {purchaseOrdersFailure ? (
@@ -104,12 +110,16 @@ export default function ProcurementPanel({ purchaseOrders, purchaseOrdersFailure
       <p className="fo-muted">Generated from Epic 3 reorder recommendations -- proposals only, nothing here is a real order.</p>
       {ledgerUnavailable ? (
         <p className="fo-warning" role="status">Draft proposals are unavailable: a ledger record cannot be read or attributed to a part.</p>
+      ) : supplierCatalogFailure ? (
+        <p className="fo-warning" role="status" data-supplier-catalog-unavailable>
+          Draft proposals aren't available: the supplier catalog could not be read ({supplierCatalogFailure.message ?? "unavailable"}).
+        </p>
       ) : incompleteParts > 0 ? (
         <p className="fo-warning" role="status">
           Incomplete: {incompleteParts} part{incompleteParts === 1 ? " was" : "s were"} not assessed because a ledger record cannot be read.
         </p>
       ) : null}
-      {ledgerUnavailable ? null : procurementDrafts.length === 0 ? (
+      {ledgerUnavailable || supplierCatalogFailure ? null : procurementDrafts.length === 0 ? (
         <p className="fo-muted">{incompleteParts > 0 ? "No draft proposals among the parts that could be assessed." : "No draft proposals -- nothing currently needs reordering."}</p>
       ) : (
         <table className="fo-table">

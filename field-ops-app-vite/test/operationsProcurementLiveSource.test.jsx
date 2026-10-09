@@ -52,6 +52,11 @@ const reorderCalls = [];
 // Admin full-access defect (2026-10-09): when set, the governed queue read refuses as it does for a caller without the
 // REORDER_QUEUE Operational Scope.
 let refuseQueue = false;
+// Supplier read isolation (2026-10-09): the supplier list / supplier catalog are still Firestore reads. A session without
+// Firebase sign-in (an EOS-only persona session) is refused them with Firestore's own message.
+const failCollections = new Set();
+const FIRESTORE_DENIED = "Missing or insufficient permissions.";
+let supplierDocs = [];
 vi.mock("../src/services/reorderApiClient.js", () => ({
   reorderApiClient: {
     call: async (operation, input) => {
@@ -74,6 +79,11 @@ vi.mock("firebase/firestore", () => ({
   limit: () => ({}),
   getDocs: async (q) => {
     queriedCollections.push(q.__collection);
+    if (failCollections.has(q.__collection)) throw Object.assign(new Error(FIRESTORE_DENIED), { code: "permission-denied" });
+    if (q.__collection === "suppliers") {
+      const docs = supplierDocs.map((d) => ({ id: d.id, data: () => ({ name: d.name }) }));
+      return { docs, forEach: (fn) => docs.forEach(fn) };
+    }
     // Every Firestore collection is empty in this fixture: the procurement rows can only come from the
     // governed reads above.
     return { docs: [], forEach: () => {} };
@@ -83,6 +93,9 @@ vi.mock("firebase/firestore", () => ({
 afterEach(() => {
   cleanup();
   refuseQueue = false;
+  failCollections.clear();
+  supplierDocs = [];
+  generateDraftsCalls.length = 0;
   queriedCollections.length = 0;
   reorderCalls.length = 0;
 });
@@ -134,7 +147,14 @@ vi.mock("../src/domain/warehouseReconciliationEngine", () => ({
   detectStockDiscrepancies: () => [],
   generateReconciliationReport: () => ({ totalDiscrepancies: 0 }),
 }));
-vi.mock("../src/domain/procurementDraftEngine", () => ({ generateProcurementDrafts: () => [] }));
+// One draft naming supplier "sup-1", so the Suggested Supplier column's name resolution is visible.
+const generateDraftsCalls = [];
+vi.mock("../src/domain/procurementDraftEngine", () => ({
+  generateProcurementDrafts: (recommendations, catalog) => {
+    generateDraftsCalls.push(catalog);
+    return [{ partId: "PART-88", recommendedQuantity: 4, urgency: "HIGH", suggestedSupplierId: "sup-1", estimatedUnitPrice: 2.5, estimatedTotalCost: 10 }];
+  },
+}));
 vi.mock("../src/analytics/executionAnalyticsService", () => ({
   getInventoryConsumptionSnapshot: async () => ({ parts: [] }),
   getTechnicianVolumeBreakdown: async () => [],
@@ -165,5 +185,71 @@ describe("Operations -- a refused Reorder queue read stays inside the Procuremen
     expect(screen.getByRole("heading", { name: "Warehouse" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Procurement" })).toBeTruthy();
     expect(screen.queryByText("No purchase orders yet.")).toBeNull();
+  });
+});
+
+// Supplier read isolation (2026-10-09, nonprod evidence): an EOS-only Administrator session was refused the Firestore
+// supplier reads and the WHOLE Overview showed "Failed to load: Missing or insufficient permissions." Each supplier read
+// now fails on its own, inside the Procurement panel; every EOS panel and the purchase orders still render.
+describe("Operations -- a refused supplier read stays inside the Procurement panel", () => {
+  const renderOverview = async () => {
+    const Operations = (await import("../src/modules/operations/Operations.jsx")).default;
+    render(<Operations accessVersion={1} />);
+    await screen.findByRole("heading", { name: "Procurement" });
+  };
+  const otherPanelsRender = () => {
+    expect(screen.queryByText(/Failed to load/)).toBeNull();
+    expect(screen.getByRole("heading", { name: "Warehouse" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Execution Insights" })).toBeTruthy();
+    expect(screen.getByText("Acme Supply Co")).toBeTruthy(); // the purchase orders (EOS) still render
+  };
+
+  it("the supplier LIST refused: names say unavailable, drafts still render, nothing else blanks", async () => {
+    failCollections.add("suppliers");
+    await renderOverview();
+    otherPanelsRender();
+    const note = screen.getByText(`Supplier names aren't available: ${FIRESTORE_DENIED}`);
+    expect(note.hasAttribute("data-suppliers-unavailable")).toBe(true);
+    expect(screen.getByText("Supplier name unavailable")).toBeTruthy(); // never "Unknown supplier" or the raw id
+    expect(screen.queryByText("sup-1")).toBeNull();
+    expect(screen.queryByText(/supplier catalog could not be read/)).toBeNull();
+  });
+
+  it("the supplier CATALOG refused: draft proposals are said unavailable, not 'No supplier available' rows", async () => {
+    failCollections.add("supplier_catalog");
+    await renderOverview();
+    otherPanelsRender();
+    const note = screen.getByText(`Draft proposals aren't available: the supplier catalog could not be read (${FIRESTORE_DENIED}).`);
+    expect(note.hasAttribute("data-supplier-catalog-unavailable")).toBe(true);
+    expect(generateDraftsCalls).toEqual([]); // no drafts are generated from an empty stand-in catalog
+    expect(screen.queryByText("PART-88")).toBeNull();
+    expect(screen.queryByText(/No draft proposals/)).toBeNull();
+    expect(screen.queryByText(/Supplier names aren't available/)).toBeNull();
+  });
+
+  it("both supplier reads AND the Reorder queue refused: each is said in place; the EOS panels still render", async () => {
+    failCollections.add("suppliers");
+    failCollections.add("supplier_catalog");
+    refuseQueue = true;
+    const Operations = (await import("../src/modules/operations/Operations.jsx")).default;
+    render(<Operations accessVersion={1} />);
+    await screen.findByRole("heading", { name: "Procurement" });
+    expect(screen.queryByText(/Failed to load/)).toBeNull();
+    expect(screen.getByRole("heading", { name: "Warehouse" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Execution Insights" })).toBeTruthy();
+    expect(screen.getByText(/Purchase orders aren't available/)).toBeTruthy();
+    expect(screen.getByText(/Supplier names aren't available/)).toBeTruthy();
+    expect(screen.getByText(/supplier catalog could not be read/)).toBeTruthy();
+  });
+
+  it("both supplier reads succeed: no unavailable notes, drafts render with the resolved supplier name", async () => {
+    supplierDocs = [{ id: "sup-1", name: "Northwind Parts" }];
+    await renderOverview();
+    otherPanelsRender();
+    expect(screen.getByText("Northwind Parts")).toBeTruthy();
+    expect(screen.getByText("PART-88")).toBeTruthy();
+    expect(generateDraftsCalls).toHaveLength(1);
+    expect(screen.queryByText(/aren't available/)).toBeNull();
+    expect(screen.queryByText("Supplier name unavailable")).toBeNull();
   });
 });
