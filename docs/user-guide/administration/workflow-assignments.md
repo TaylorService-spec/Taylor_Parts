@@ -2,6 +2,10 @@
 
 Administration → Workflows opens **Workflow Assignments**. Choose a workflow to see the Security Roles assigned to each action and inspect the employees holding a role. Role-holder scope is shown; appearing in that list does not guarantee an action on every record. Existing permissions, assignment scope, guards and Functional Role requirements still apply.
 
+The role picker offers only the Security Roles that hold the action's required permission, because a binding never grants. If a Role already assigned to an action does not hold that permission, the page says so beside the action. Saving is refused until you remove that Role; the page never removes it for you.
+
+The page offers saving only when EOS confirms you are allowed to make that change. Otherwise the assignments are shown read-only and the page names the permission you need. Workflow Builder does the same for publishing, activating, retiring, new drafts, starting records and moving records. If EOS cannot confirm your permissions, nothing is offered.
+
 Use the role picker to add or remove roles, enter a recorded reason, and choose **Save Assignment Draft**. EOS validates the proposed assignments before saving. The page changes only Security Role bindings: it preserves the steps, transitions, required permissions, guards and Functional Roles.
 
 Published versions cannot be edited. Saving creates a new draft; it does not publish or activate it, and existing records retain their version. The success message links to the saved draft in **Workflow Builder** for review and activation. The server checks the existing workflow editing/version permissions on every save. No assignment grants new business permissions.

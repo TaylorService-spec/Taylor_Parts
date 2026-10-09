@@ -15,6 +15,7 @@ export function createWorkflowAdminClient(call = callPolicyApi) {
   return Object.freeze({
     // ── reads (gate: workflowDefinition.read; responsibilities: admin.principalAccess.read) ──
     listWorkflows: () => send("listWorkflows", {}),
+    readMyWorkflowAdministration: () => send("readMyWorkflowAdministration", {}),
     readWorkflowVersion: (versionId) => send("readWorkflowVersion", { versionId }),
     validateWorkflowVersion: (versionId) => send("validateWorkflowVersion", { versionId }),
     validateUnsavedDefinition: ({ objectKey, definition }) => send("validateWorkflowVersion", { objectKey, definition }),

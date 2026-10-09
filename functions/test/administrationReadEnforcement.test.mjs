@@ -100,6 +100,8 @@ const CANONICAL_MAP = Object.freeze({
   // Lane SC: the assignment-scope vocabulary the Employee > Security Roles picker reads -- the SAME principal-access
   // read as listPrincipalRoleAssignments. No new key.
   listSupportedAssignmentScopes: PRINCIPAL_ACCESS_READ,
+  // W01 D2 (2026-10-09): the caller's OWN workflow-administration decisions, under the SAME workflow read. No new key.
+  readMyWorkflowAdministration: WORKFLOW_READ,
 });
 
 const operationsRequiring = (capability) =>
@@ -119,8 +121,8 @@ const INPUT_FOR = Object.freeze({
 
 // ════════════════════ A. THE MAP IS CLOSED — no database needed ════════════════════
 
-test("A: twenty-three reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
-  assert.equal(ADMIN_READ_OPERATIONS.length, 23, "the read list changed size without this map changing");
+test("A: twenty-four reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
+  assert.equal(ADMIN_READ_OPERATIONS.length, 24, "the read list changed size without this map changing");
   assert.deepEqual([...ADMIN_READ_OPERATIONS].sort(), Object.keys(CANONICAL_MAP).sort(),
     "a read exists that the canonical map does not name, or the other way round");
   for (const operation of ADMIN_READ_OPERATIONS) {
@@ -472,7 +474,7 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
 
   await t.test("E: the workflow reads are refused without workflowDefinition.read", async () => {
     assert.deepEqual(operationsRequiring(WORKFLOW_READ),
-      ["listWorkflowInstances", "listWorkflows", "readWorkflowHistory", "readWorkflowVersion", "validateWorkflowVersion"]);
+      ["listWorkflowInstances", "listWorkflows", "readMyWorkflowAdministration", "readWorkflowHistory", "readWorkflowVersion", "validateWorkflowVersion"]);
     await assertRefused(bare.subject, "listWorkflows", WORKFLOW_READ);
     await assertRefused(reader.subject, "listWorkflows", WORKFLOW_READ);
     // REFUSED BEFORE THE INPUT IS EVEN PARSED. A bogus versionId still answers FORBIDDEN rather

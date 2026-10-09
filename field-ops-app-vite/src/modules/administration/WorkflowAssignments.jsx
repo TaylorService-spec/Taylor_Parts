@@ -11,6 +11,7 @@ import { principalLabel } from "./principalDisplay.js";
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ReadState } from "./ObjectActionSecurity.jsx";
 import KeyListPicker from "./KeyListPicker.jsx";
+import { useMyWorkflowAdministration } from "./useMyWorkflowAdministration.js";
 
 function assignmentDefinition(view) {
   return editableDefinition({ ...view, actions: view.actions.map((action) => ({
@@ -45,9 +46,16 @@ function AssignmentEditor({ api, rolesApi, workflow, versionId, onDirtyChange, o
 }
 
 function AssignmentForm({ api, rolesApi, workflow, view, versionId, onDirtyChange, onSaved }) {
-  const catalog = useControlPlaneRead(() => rolesApi.listRoles(), "workflow-assignment-roles");
-  const options = (Array.isArray(catalog.data) ? catalog.data : catalog.data?.items ?? [])
-    .filter((r) => r && typeof r.key === "string").map((r) => ({ key: r.key, label: r.name }));
+  // D3: the Roles an action may be assigned to come from the workflow read itself -- the Roles that HOLD the
+  // action's capability, decided by the same authority validation uses. No Security Policy read is needed.
+  const roleNames = view.roleNames && typeof view.roleNames === "object" ? view.roleNames : null;
+  const eligibleByAction = new Map((view.actions ?? []).map((a) => [a.key, Array.isArray(a.eligibleRoles) ? a.eligibleRoles : null]));
+  const roleLabel = (key) => identifierLabel(key, roleNames?.[key]);
+  // D2: the save calls updateWorkflowDefinition on a draft, createWorkflowVersion otherwise -- offered only when the
+  // server says this caller may (fail closed while unknown). The server re-checks either way.
+  const permissions = useMyWorkflowAdministration(api);
+  const saveOperation = view.version?.status === "DRAFT" ? "updateWorkflowDefinition" : "createWorkflowVersion";
+  const mayAssign = permissions.allows(saveOperation);
   const [draft, setDraft] = useState(() => assignmentDefinition(view));
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,7 +66,11 @@ function AssignmentForm({ api, rolesApi, workflow, view, versionId, onDirtyChang
   const dirty = !result?.saved && (assignmentsChanged || reason.trim() !== "");
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
-  const ready = draft.actions.length > 0 && draft.actions.every((a) => Boolean(a.capabilityKey));
+  const eligibilityKnown = roleNames !== null && draft.actions.every((a) => eligibleByAction.get(a.key) !== null && eligibleByAction.has(a.key));
+  const ready = draft.actions.length > 0 && draft.actions.every((a) => Boolean(a.capabilityKey)) && eligibilityKnown;
+  const conflictsOf = (a) => a.roleKeys.split(",").map((k) => k.trim()).filter(Boolean)
+    .filter((k) => !(eligibleByAction.get(a.key) ?? []).some((r) => r.key === k));
+  const editable = ready && mayAssign && !busy && !result?.saved;
   const builderHref = workflowBuilderHref(workflow, versionId);
   const save = async () => {
     setBusy(true); setResult(null);
@@ -91,11 +103,11 @@ function AssignmentForm({ api, rolesApi, workflow, view, versionId, onDirtyChang
     <p>{view.active ? "Active assignments" : view.version?.status === "DRAFT" ? "Draft assignments — not active" : "Previous assignments"} · Version {view.version?.version}</p>
     <p className="fo-muted">Assign Security Roles to workflow actions. Employees participate through their roles; an assignment never grants additional permissions.</p>
     {!ready && <p role="status">This workflow is not ready for assignment changes. <a href={builderHref}>Open Workflow Builder</a> to review its setup.</p>}
-    <ReadState read={catalog} what="Security Roles" />
-    {ready && <>
+    {ready && !mayAssign && <p role="status" data-permission-note="assignments">{permissions.reason(saveOperation)} Assignments are shown read-only.</p>}
+    {ready && mayAssign && <>
       <label className="fo-form-field"><span>Reason for assignment changes</span><input aria-label="Reason for assignment changes" value={reason}
         disabled={busy || Boolean(result?.saved)} onChange={(e) => setReason(e.target.value)} /></label>
-      <Button disabled={busy || !assignmentsChanged || !reason.trim() || catalog.status !== "ready" || Boolean(result?.saved)} onClick={save}>Save Assignment Draft</Button>
+      <Button disabled={busy || !assignmentsChanged || !reason.trim() || Boolean(result?.saved)} onClick={save}>Save Assignment Draft</Button>
       <p className="fo-muted">Changes stay inactive until the new version is reviewed and published in Workflow Builder. Existing records keep their current version.</p>
     </>}
     <label className="fo-form-field"><span>Find an action</span><input type="search" aria-label="Find a workflow action" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
@@ -105,15 +117,20 @@ function AssignmentForm({ api, rolesApi, workflow, view, versionId, onDirtyChang
         <td>{a.label || titleCase(a.key)}</td>
         <td>{view.steps.find((s) => s.key === a.from)?.label ?? titleCase(a.from)} → {view.steps.find((s) => s.key === a.to)?.label ?? titleCase(a.to)}</td>
         <td><KeyListPicker id={`wf-assignment-${i}`} label={`${a.label || a.key} Security Roles`} value={a.roleKeys}
-          options={options} disabled={!ready || busy || catalog.status !== "ready" || Boolean(result?.saved)}
+          options={(eligibleByAction.get(a.key) ?? []).map((r) => ({ key: r.key, label: r.name }))}
+          labels={roleNames} unlistedNote={ready ? "not eligible" : null}
+          disabled={!editable}
           onChange={(roleKeys) => setDraft((d) => ({ ...d, actions: d.actions.map((item, n) => n === i ? { ...item, roleKeys } : item) }))} />
+          {ready && conflictsOf(a).length > 0 && <p className="fo-warning" data-binding-conflict={a.key}>
+            {conflictsOf(a).map(roleLabel).join(", ")} {conflictsOf(a).length === 1 ? "does" : "do"} not hold this action's permission ({a.capabilityKey}). Saving will be refused until {conflictsOf(a).length === 1 ? "it is" : "they are"} removed; nothing is removed automatically.
+          </p>}
           {a.functionalRoleKeys && <p className="fo-muted">Also requires: {a.functionalRoleKeys.split(",").map((k) => identifierLabel(k.trim())).join(", ")}</p>}
         </td>
         <td>{a.roleKeys.split(",").map((k) => k.trim()).filter(Boolean).map((key) => <Button key={key} size="sm" variant="secondary"
-          onClick={() => setCovered(covered === key ? null : key)}>View {identifierLabel(key, options.find((o) => o.key === key)?.label)} employees</Button>)}</td>
+          onClick={() => setCovered(covered === key ? null : key)}>View {roleLabel(key)} employees</Button>)}</td>
       </tr>)}</tbody>
     </table></div>
-    {covered && <section aria-label="Covered employees"><h3>{identifierLabel(covered, options.find((o) => o.key === covered)?.label)} employees</h3><CoveredEmployees roleKey={covered} api={rolesApi} /></section>}
+    {covered && <section aria-label="Covered employees"><h3>{roleLabel(covered)} employees</h3><CoveredEmployees roleKey={covered} api={rolesApi} /></section>}
     {result?.error && <p role="alert" className="fo-warning">{result.error}</p>}
     {result?.saved && <p role="status">Assignment draft saved. <a href={workflowBuilderHref(workflow, result.saved)}>Review and activate in Workflow Builder</a>.</p>}
     <p><a href={builderHref}>Open Workflow Builder</a></p>

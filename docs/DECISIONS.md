@@ -7707,3 +7707,20 @@ Left in place, out of scope: the unrendered `LegacyRoleMatrix` / `LegacyRoleGrid
 **Implementation boundary:** existing authorization and immutable published-version behavior are retained. Role-only edits are validated and saved as a new inactive draft; publication remains a Builder operation. No new capability, grant, server policy, Firebase dependency, migration or live configuration change. Existing route/access gate is shared through distinct page URLs (`?view=builder`); the query selects presentation only.
 
 **Evidence:** `docs/testing/workflow-assignments-ux-correction.md`; user guide `docs/user-guide/administration/workflow-assignments.md`. Local implementation is not live acceptance or deployment authority.
+
+## #220 — OWNER: W01 foundation D2 and D3 — the caller's own workflow decisions; eligible Roles from validation (2026-10-09)
+
+**Decision:** Rudy approved D2 and D3 only. D1, replacing the global router so that in-app Back can be blocked while there are unsaved changes, needs its own Owner decision and is not part of this change.
+- **D2:** a new read-only Administration read, `readMyWorkflowAdministration`. It is gated on `workflowDefinition.read`, the same gate as `listWorkflows`, and takes no input, so a caller can only ask about itself.
+  - It answers each workflow mutation the API serves with `{ allowed, requiredCapability, requiredLabel }`.
+  - The answer comes from `decideWorkflowMutation`, the same function every mutation enforces with, so the two cannot differ.
+  - Workflow Builder and Workflow Assignments offer a mutation only when it is allowed. Otherwise they say why, and they fail closed while the answer is unknown or unreadable.
+  - Server enforcement is unchanged.
+- **D3:** `readWorkflowVersion` additionally returns `actions[].eligibleRoles` and `roleNames`.
+  - The eligible Roles are those that hold the action's capability. They come from `loadWorkflowValidationContext`, the map `BINDING_WITHOUT_CAPABILITY` uses, so an eligible Role is exactly one that validation accepts.
+  - `eligibleRoles` is `null` when the action names no capability or an unknown one.
+  - Workflow Assignments offers only eligible Roles and no longer needs `admin.securityPolicy.read`.
+  - Existing bindings that conflict with eligibility are shown and explained, never removed automatically.
+  - Disclosure is limited to the key and name of the Roles holding the capabilities a readable workflow names.
+
+**Boundary:** no capability, grant, Role, migration, workflow definition or mapping change, and no Firebase dependency. The role-holder lookup for Workflow Assignments is designed separately and is not implemented without its own approval.

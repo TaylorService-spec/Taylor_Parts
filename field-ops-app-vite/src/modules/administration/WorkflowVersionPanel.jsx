@@ -15,6 +15,7 @@ import {
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ReadState } from "./ObjectActionSecurity.jsx";
 import WorkflowDraftEditor from "./WorkflowDraftEditor.jsx";
+import { useMyWorkflowAdministration } from "./useMyWorkflowAdministration.js";
 import ValidationResults from "./WorkflowValidationResults.jsx";
 import { identifierLabel, statusLabel, titleCase } from "../../shared/display/displayLabels.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
@@ -26,13 +27,17 @@ const ACTION_WORDS = Object.freeze({
   retire: "Retire",
   newVersion: "New Draft from This Version",
 });
+// W01 D2: the server operation each lifecycle button calls -- what readMyWorkflowAdministration answers for.
+const LIFECYCLE_OPERATION = Object.freeze({
+  publish: "publishWorkflowVersion", activate: "activateWorkflowVersion", retire: "retireWorkflowVersion", newVersion: "createWorkflowVersion",
+});
 
 /**
  * #210: RUN RECORDS ON THE ACTIVE VERSION. Start a record's workflow (pinned to this ACTIVE version at its initial step), or move
  * the records still pinned to another version onto this one -- same step keys map to themselves; the server refuses any step the
  * target lacks. Both are governed commands (workflowDefinition.publish), audited; the screen re-reads.
  */
-function ActiveVersionRecords({ api, workflow, versionId, steps, reason, onDone }) {
+function ActiveVersionRecords({ api, workflow, versionId, steps, reason, onDone, permissions }) {
   const [recordId, setRecordId] = useState("");
   const [fromVersionId, setFromVersionId] = useState("");
   const [result, setResult] = useState(null);
@@ -54,7 +59,8 @@ function ActiveVersionRecords({ api, workflow, versionId, steps, reason, onDone 
       <div className="fo-roster__filters">
         <label className="fo-form-field"><span>Record ID</span>
           <input type="text" aria-label="Record to start" value={recordId} onChange={(e) => setRecordId(e.target.value)} /></label>
-        <Button variant="secondary" disabled={!recordId.trim() || !reason.trim()} onClick={start}>Start Workflow for Record</Button>
+        <Button variant="secondary" disabled={!recordId.trim() || !reason.trim() || !permissions?.allows("startWorkflowInstance")}
+          title={permissions?.reason("startWorkflowInstance") ?? undefined} onClick={start}>Start Workflow for Record</Button>
       </div>
       {versions.length > 0 ? (
         <div className="fo-roster__filters">
@@ -63,7 +69,8 @@ function ActiveVersionRecords({ api, workflow, versionId, steps, reason, onDone 
               <option value="">Choose a Version…</option>
               {versions.map((v) => <option key={v.id} value={v.id}>v{v.version} · {statusLabel(v.status)}</option>)}
             </select></label>
-          <Button variant="secondary" disabled={!fromVersionId || !reason.trim()} onClick={migrate}>Move In-Flight Records Here</Button>
+          <Button variant="secondary" disabled={!fromVersionId || !reason.trim() || !permissions?.allows("migrateWorkflowInstances")}
+            title={permissions?.reason("migrateWorkflowInstances") ?? undefined} onClick={migrate}>Move In-Flight Records Here</Button>
         </div>
       ) : null}
       <p className="fo-muted">Uses the Reason above. In-flight records stay on the version they started on until moved.</p>
@@ -195,6 +202,7 @@ export default function WorkflowVersionPanel({ api, workflow, versionId, onVersi
   const [reason, setReason] = useState("");
   const [outcome, setOutcome] = useState(null);
   const [busy, setBusy] = useState(false);
+  const permissions = useMyWorkflowAdministration(api);
 
   if (!read.data) return <section className="fo-panel"><ReadState read={read} what="this workflow version" /></section>;
   if (!view) return <p className="fo-warning" role="alert">The server returned a workflow version this screen cannot read, so nothing is shown.</p>;
@@ -242,11 +250,15 @@ export default function WorkflowVersionPanel({ api, workflow, versionId, onVersi
         </label>
         <div className="fo-pill-row">
           {lifecycleActions(version).map((action) => (
-            <Button key={action} type="button" variant="secondary" disabled={busy} onClick={() => run(action)} data-lifecycle-action={action}>
+            <Button key={action} type="button" variant="secondary" disabled={busy || !permissions.allows(LIFECYCLE_OPERATION[action])}
+              title={permissions.reason(LIFECYCLE_OPERATION[action]) ?? undefined} onClick={() => run(action)} data-lifecycle-action={action}>
               {ACTION_WORDS[action]}
             </Button>
           ))}
         </div>
+        {[...new Set(lifecycleActions(version).map((action) => permissions.reason(LIFECYCLE_OPERATION[action])).filter(Boolean))].map((why) => (
+          <p key={why} className="fo-muted" data-permission-note="lifecycle">{why}</p>
+        ))}
         {outcome ? (
           <p className={outcome.ok ? "fo-muted" : "fo-warning"} role={outcome.ok ? "status" : "alert"} data-lifecycle-outcome={outcome.ok ? "ok" : "refused"}>
             {outcome.text}
@@ -278,11 +290,12 @@ export default function WorkflowVersionPanel({ api, workflow, versionId, onVersi
           view={read.data}
           onSaved={(id) => onVersionCreated?.(id)}
           onDirtyChange={onDirtyChange}
+          permissions={permissions}
         />
       ) : null}
 
       {view.active ? (
-        <ActiveVersionRecords api={api} workflow={workflow} versionId={versionId} steps={view.steps} reason={reason} onDone={reloadAll} />
+        <ActiveVersionRecords api={api} workflow={workflow} versionId={versionId} steps={view.steps} reason={reason} onDone={reloadAll} permissions={permissions} />
       ) : null}
 
       <div className="fo-cp-section" aria-label="Pinned instances">

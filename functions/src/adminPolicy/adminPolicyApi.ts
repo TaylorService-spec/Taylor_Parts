@@ -135,6 +135,8 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "listWorkflowInstances",
   "readWorkflowHistory",
   "listPrincipalWorkflowResponsibilities",
+  // W01 D2: the caller's OWN workflow-administration decisions (read-only, no principal input).
+  "readMyWorkflowAdministration",
   "readPolicyAuditHistory",
   // ── the Administration control plane (2026-09-26) ──
   // Security Role detail: holders + every Object action with its grant SOURCE and condition.
@@ -256,6 +258,7 @@ const READ_OPERATION_SURFACE: Readonly<Record<AdminReadOperation, Administration
   getPrincipalEffectiveAccess: "users",
   listWorkflows: "workflows",
   readWorkflowVersion: "workflows",
+  readMyWorkflowAdministration: "workflows",
   validateWorkflowVersion: "workflows",
   listWorkflowInstances: "workflows",
   readWorkflowHistory: "workflows",
@@ -967,6 +970,7 @@ async function dispatch(
     case "listWorkflowInstances":
     case "readWorkflowHistory":
     case "listPrincipalWorkflowResponsibilities":
+    case "readMyWorkflowAdministration":
     case "createWorkflowDraft":
     case "createWorkflowVersion":
     case "updateWorkflowDefinition":

@@ -5,7 +5,13 @@ import { workflowBuilderHref } from "../src/domain/workflowPageLinks.js";
 
 afterEach(() => { cleanup(); window.history.replaceState({}, "", "/"); });
 const ok = (data) => Promise.resolve({ ok: true, data });
-function fixture({ status = "PUBLISHED", capability = "workOrder.accept", valid = true } = {}) {
+const OPERATIONS = ["createWorkflowDraft", "createWorkflowVersion", "updateWorkflowDefinition", "setWorkflowRoleBinding", "publishWorkflowVersion",
+  "activateWorkflowVersion", "retireWorkflowVersion", "startWorkflowInstance", "adoptRecordsIntoWorkflowVersion", "migrateWorkflowInstances"];
+const decisions = (allowed) => ({ operations: Object.fromEntries(OPERATIONS.map((op) => [op, {
+  allowed: allowed.includes(op), requiredCapability: op === "updateWorkflowDefinition" ? "workflowDefinition.edit" : "workflowDefinition.version",
+  requiredLabel: op === "updateWorkflowDefinition" ? "Edit Workflow Definitions" : "Version Workflows" }])) });
+function fixture({ status = "PUBLISHED", capability = "workOrder.accept", valid = true, allowed = OPERATIONS,
+  eligible = [{ key: "dispatcher", name: "Dispatcher" }, { key: "tech", name: "Technician" }] } = {}) {
   const workflow = { id: "wf-wo", key: "workOrder", name: "Technician / Work Order", objectKey: "workOrder", activeVersionId: status === "PUBLISHED" ? "v1" : null };
   const version = { id: "v1", version: 1, status };
   const steps = [{ key: "READY", label: "Ready", initial: true }, { key: "ACCEPTED", label: "Accepted", terminal: true }];
@@ -13,7 +19,10 @@ function fixture({ status = "PUBLISHED", capability = "workOrder.accept", valid 
     guardKind: "RECORD_ASSIGNMENT", roleKeys: ["tech", "dispatcher"], functionalRoleKeys: ["fieldService"] }];
   return {
     listWorkflows: vi.fn(() => ok([{ workflow, versions: [version] }])),
-    readWorkflowVersion: vi.fn(() => ok({ workflow, version, steps, actions, active: status === "PUBLISHED" })),
+    readWorkflowVersion: vi.fn(() => ok({ workflow, version, steps, active: status === "PUBLISHED",
+      actions: actions.map((a) => ({ ...a, eligibleRoles: capability ? eligible : null })),
+      roleNames: { tech: "Technician", dispatcher: "Dispatcher", ...Object.fromEntries(eligible.map((r) => [r.key, r.name])) } })),
+    readMyWorkflowAdministration: vi.fn(() => ok(decisions(allowed))),
     listRoles: vi.fn(() => ok([{ id: "rt", key: "tech", name: "Technician" }, { id: "rd", key: "dispatcher", name: "Dispatcher" }])),
     getSecurityRoleDetail: vi.fn(() => ok({ holders: [{ assignmentId: "a1", employeeId: "e1", displayName: "Pat Tech", scopeType: "global" }] })),
     validateUnsavedDefinition: vi.fn(() => ok({ valid, errors: valid ? [] : [{ code: "BINDING_WITHOUT_CAPABILITY" }] })),
@@ -180,5 +189,43 @@ describe("W01 acceptance corrections", () => {
     expect(await screen.findByText(/cannot be saved: Role "dispatcher" is bound to "accept" but does not hold/)).toBeTruthy();
     expect(api.createWorkflowVersion).not.toHaveBeenCalled();
     expect(api.updateWorkflowDefinition).not.toHaveBeenCalled();
+  });
+});
+
+// W01 D2/D3 (2026-10-09): assignments are offered from the workflow read itself, and only on the caller's own decision.
+describe("Workflow Assignments -- eligible Roles and the caller's own decision (W01 D2/D3)", () => {
+  it("D3: offers only the Roles that hold the action's permission, without asking for the Security Policy", async () => {
+    const api = fixture({ eligible: [{ key: "tech", name: "Technician" }, { key: "dispatcher", name: "Dispatcher" }, { key: "lead", name: "Field Lead" }] });
+    api.listRoles = vi.fn(() => ok([]));
+    await open(api);
+    const input = screen.getByRole("combobox", { name: "Accept Security Roles" });
+    fireEvent.change(input, { target: { value: "l" } });
+    expect(await screen.findByRole("option", { name: /Field Lead/ })).toBeTruthy();
+    expect(api.listRoles).not.toHaveBeenCalled();
+  });
+  it("D3: a bound Role that does not hold the permission is shown and explained, never removed silently", async () => {
+    const api = fixture({ eligible: [{ key: "tech", name: "Technician" }] });
+    await open(api);
+    const note = document.querySelector('[data-binding-conflict="accept"]');
+    expect(note.textContent).toMatch(/Dispatcher does not hold this action's permission \(workOrder\.accept\)/);
+    expect(note.textContent).toMatch(/nothing is removed automatically/);
+    expect(screen.getByRole("button", { name: "Remove Dispatcher" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Reason for assignment changes"), { target: { value: "noop" } });
+    expect(screen.getByRole("button", { name: "Save Assignment Draft" }).disabled).toBe(true);
+  });
+  it("D2: without the server's permission for the save it would make, assignments are read-only and say why", async () => {
+    const api = fixture({ allowed: ["updateWorkflowDefinition"] }); // PUBLISHED needs createWorkflowVersion
+    await open(api);
+    expect(screen.queryByRole("button", { name: "Save Assignment Draft" })).toBeNull();
+    expect(document.querySelector('[data-permission-note="assignments"]').textContent).toMatch(/Requires the “Version Workflows” permission\. Assignments are shown read-only/);
+    expect(screen.getByRole("button", { name: "Remove Dispatcher" }).disabled).toBe(true);
+  });
+  it("D2: fails closed when the decision cannot be read", async () => {
+    const api = fixture();
+    api.readMyWorkflowAdministration = vi.fn(() => Promise.resolve({ ok: false, code: "UNREACHABLE", message: "down" }));
+    await open(api);
+    await waitFor(() => expect(document.querySelector('[data-permission-note="assignments"]')?.textContent).toMatch(/could not be confirmed/));
+    expect(screen.queryByRole("button", { name: "Save Assignment Draft" })).toBeNull();
+    expect(api.createWorkflowVersion).not.toHaveBeenCalled();
   });
 });

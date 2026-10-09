@@ -18,7 +18,8 @@ import {
   actionGuardKind,
   type WorkflowDefinitionInput,
 } from "./workflowCommands";
-import { findWorkflowVersion, WorkflowRefusal } from "./workflowAdministration";
+import { decideWorkflowMutation, findWorkflowVersion, WORKFLOW_MUTATION_CAPABILITY, WorkflowRefusal } from "./workflowAdministration";
+import { actorCapabilities } from "./administrationCapabilityGate";
 import { loadWorkflowVersionDefinition } from "./workflowEngine";
 import {
   activateWorkflowVersion,
@@ -45,6 +46,7 @@ export const WORKFLOW_READ_OPERATIONS = Object.freeze([
   "listWorkflowInstances",
   "readWorkflowHistory",
   "listPrincipalWorkflowResponsibilities",
+  "readMyWorkflowAdministration",
 ] as const);
 
 export const WORKFLOW_MUTATION_OPERATIONS = Object.freeze([
@@ -71,6 +73,8 @@ export interface WorkflowApiDeps {
 }
 
 export interface WorkflowVersionView {
+  /** Display names for every Security Role bound to, or eligible for, an action in this version (key -> name). */
+  readonly roleNames: Readonly<Record<string, string>>;
   readonly workflow: WorkflowRecord;
   readonly version: WorkflowVersionRecord;
   readonly active: boolean;
@@ -82,6 +86,12 @@ export interface WorkflowVersionView {
     to: string;
     requiresOwnAssignment: boolean;
     capabilityKey: string | null;
+    /**
+     * The Security Roles that HOLD this action's capability -- exactly the bindings validation accepts
+     * (BINDING_WITHOUT_CAPABILITY uses the same role_capabilities map). null when the action names no capability, or one
+     * the catalog does not have: there is then nothing a binding could be checked against.
+     */
+    eligibleRoles: readonly { key: string; name: string }[] | null;
     guardKind: string | null;
     roleKeys: readonly string[];
     /** FUNCTIONAL_ROLE bindings, by Functional Role key. They narrow the action; they never grant it. */
@@ -110,6 +120,8 @@ export async function dispatchWorkflowOperation(
     }
     case "readWorkflowVersion":
       return readWorkflowVersionView(repo, actor, requireString(input.versionId, "versionId"));
+    case "readMyWorkflowAdministration":
+      return readMyWorkflowAdministration(repo, actor, input);
     case "validateWorkflowVersion": {
       // A stored version, or an unsaved definition the editor is about to save.
       if (typeof input.versionId === "string" && input.versionId.trim().length > 0) {
@@ -215,10 +227,25 @@ export async function readWorkflowVersionView(
 ): Promise<WorkflowVersionView> {
   const { workflow, version } = await findWorkflowVersion(repo, actor, versionId);
   const definition = await loadWorkflowVersionDefinition(repo, actor.tenantId, versionId);
-  const [roles, functionalRoles] = await Promise.all([repo.listRoles(actor.tenantId), repo.listFunctionalRoles(actor.tenantId)]);
+  const [roles, functionalRoles, validation] = await Promise.all([
+    repo.listRoles(actor.tenantId), repo.listFunctionalRoles(actor.tenantId), loadWorkflowValidationContext(repo, actor.tenantId),
+  ]);
   const keyById = new Map(roles.map((r) => [r.id, r.key]));
+  const nameByKey = new Map(roles.map((r) => [r.key, r.name]));
   const functionalKeyById = new Map(functionalRoles.map((f) => [f.id, f.key]));
+  // W01 D3: eligibility comes from the SAME authority as validation (loadWorkflowValidationContext.roleCapabilities).
+  const eligibleFor = (capabilityKey: string | null) => (capabilityKey && validation.capabilities.has(capabilityKey)
+    ? roles.filter((r) => validation.roleCapabilities.get(r.key)?.has(capabilityKey)).map((r) => ({ key: r.key, name: r.name }))
+      .sort((x, y) => x.name.localeCompare(y.name))
+    : null);
+  const roleNames: Record<string, string> = {};
+  for (const b of definition.bindings) {
+    const k = keyById.get(b.roleId ?? "");
+    if (k) roleNames[k] = nameByKey.get(k) ?? k;
+  }
+  for (const a of definition.actions) for (const r of eligibleFor(a.capabilityKey ?? null) ?? []) roleNames[r.key] = r.name;
   return {
+    roleNames,
     workflow,
     version,
     active: workflow.activeVersionId === version.id,
@@ -237,6 +264,7 @@ export async function readWorkflowVersionView(
         to: a.toStepKey,
         requiresOwnAssignment: a.requiresOwnAssignment,
         capabilityKey: a.capabilityKey ?? null,
+        eligibleRoles: eligibleFor(a.capabilityKey ?? null),
         guardKind: a.guardKind ?? (a.requiresOwnAssignment ? "RECORD_ASSIGNMENT" : null),
         roleKeys: bindings.filter((b) => b.bindingKind === "SECURITY_ROLE").map((b) => b.roleKey as string),
         functionalRoleKeys: bindings.filter((b) => b.bindingKind === "FUNCTIONAL_ROLE").map((b) => b.functionalRoleKey as string),
@@ -312,4 +340,28 @@ function optionalString(value: unknown): string | null {
 function clampLimit(value: unknown): number {
   const n = typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : 100;
   return Math.min(Math.max(n, 1), 500);
+}
+
+/**
+ * W01 D2 -- the CALLER'S OWN workflow-administration decisions, read-only. No principal input: nobody can ask about
+ * anyone else. Each answer is decideWorkflowMutation over the caller's effective capabilities -- the very function the
+ * mutations enforce with -- so a control the UI offers is one the server will accept, and every mutation still re-checks.
+ * Grants nothing.
+ */
+async function readMyWorkflowAdministration(repo: PolicyRepository, actor: AdminActor, input: Record<string, unknown>) {
+  const extra = Object.keys(input ?? {});
+  if (extra.length > 0) throw new PolicyValidationError(`readMyWorkflowAdministration takes no input; not accepted: ${extra.sort().join(", ")}`);
+  const [capabilities, catalog] = await Promise.all([actorCapabilities(repo, actor), repo.listCapabilities()]);
+  const labelByKey = new Map(catalog.map((c) => [c.key, c.displayLabel]));
+  const operations: Record<string, { allowed: boolean; requiredCapability: string; requiredLabel: string }> = {};
+  // Exactly the mutations this API serves (not the internal seed path).
+  for (const operation of WORKFLOW_MUTATION_OPERATIONS) {
+    const requiredCapability = WORKFLOW_MUTATION_CAPABILITY[operation];
+    operations[operation] = {
+      allowed: decideWorkflowMutation(capabilities, operation),
+      requiredCapability,
+      requiredLabel: labelByKey.get(requiredCapability) ?? requiredCapability,
+    };
+  }
+  return { operations };
 }
