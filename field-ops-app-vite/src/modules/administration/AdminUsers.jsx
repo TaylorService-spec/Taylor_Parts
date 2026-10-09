@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import { workforceApiClient } from "../../services/workforceApiClient.js";
@@ -63,6 +64,7 @@ import JobRoleRemediation from "./JobRoleRemediation.jsx";
 // reporting-relationship commands, EMP-RT-W1); for anyone else it says editing is not available to them.
 // The destination is kept so that answer, and the server's own refusal, are given in one place, not two.
 export default function AdminUsers({ workforce = workforceApiClient }) {
+  const [showWithoutJobRole, setShowWithoutJobRole] = useState(0);
   return (
     <WorkspaceIdentity
       crumb="Administration → Users"
@@ -72,21 +74,26 @@ export default function AdminUsers({ workforce = workforceApiClient }) {
       summaryItems={[]}
       // NO CREATE ACTION. A person enters EOS through the governed operator process, not through a screen.
     >
+      {/* ADMIN-UI-004: one short description; the longer explanation is contextual help. Employee, Job Role, Security
+          Role, company, scope, assignment and access stay distinct -- on the record and in the roster columns. */}
       <p className="fo-muted">
-        The workforce from the governed Employee and Security authorities: each person&apos;s Job Role (the job they do),
-        Security Roles (the authority they hold, with its scope), status, operating company and operational scope. Open a
-        person to see their Effective Access — what EOS resolves for them, and why — or to preview their workspace. To see or
-        change a person&apos;s Security Roles, open their Employee record and use its Security Roles section. Whether a person can
-        sign in is User Access, not an Employee fact.
+        Everyone in the workforce. Open a person to see their Job Role, Security Roles and what they can access.
       </p>
+      <details className="fo-admin-help">
+        <summary>How Job Roles, Security Roles and access relate</summary>
+        <p className="fo-muted">
+          A Job Role is the job a person does; it grants nothing. Security Roles are the authority they hold, each with its
+          scope. Effective Access on a person&apos;s record shows what EOS resolves for them, and why, and lets you preview
+          their workspace. To see or change a person&apos;s Security Roles, open their Employee record and use its Security Roles
+          section. Whether a person can sign in is User Access, not an Employee fact.{" "}
+          <Link to="/administration/users/functional-roles">Functional Roles</Link> are the catalog of business
+          responsibilities an Employee may hold; they grant nothing.
+        </p>
+      </details>
       {/* EMPLOYEES WITHOUT A JOB ROLE (EMP-RT-08). Its own governed read and count. Silent when the count is 0. */}
-      <JobRoleRemediation workforce={workforce} />
-      <p className="fo-muted">
-        <Link to="/administration/users/functional-roles">Functional Roles</Link> — the catalog of business
-        responsibilities an Employee may hold. They grant nothing.
-      </p>
+      <JobRoleRemediation workforce={workforce} onShowAffected={() => setShowWithoutJobRole((n) => n + 1)} />
       <div className="fo-users-directory">
-        <WorkforceRoster workforce={workforce} />
+        <WorkforceRoster workforce={workforce} showWithoutJobRole={showWithoutJobRole} />
       </div>
     </WorkspaceIdentity>
   );

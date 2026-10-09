@@ -47,9 +47,12 @@ const COLUMNS = Object.freeze([
   { key: "manager", label: "Manager" },
 ]);
 
-export default function WorkforceRoster({ workforce = workforceApiClient }) {
+// `showWithoutJobRole` (ADMIN-UI-004): a number the page increments when the missing-Job-Role notice is selected. Each
+// new value applies the governed read's own `noJobRole` filter (workforceRoster.ts) -- no client-side filtering.
+export default function WorkforceRoster({ workforce = workforceApiClient, showWithoutJobRole = 0 }) {
   const navigate = useNavigate();
   const [filters, setFilters] = useState({});
+  useEffect(() => { if (showWithoutJobRole > 0) setFilters((prev) => ({ ...prev, noJobRole: true, jobRoleId: "" })); }, [showWithoutJobRole]);
   const { sort, toggle } = useTableSort();
   const [page, setPage] = useState(0);
   const [state, setState] = useState({ status: "LOADING", roster: null, message: null });
@@ -88,11 +91,19 @@ export default function WorkforceRoster({ workforce = workforceApiClient }) {
   return (
     <section className="fo-roster" aria-label="Workforce roster">
       <h2 className="ns-section__title">Workforce</h2>
-      {summary && <p className="fo-muted" data-testid="roster-jobrole-counts">{summary}</p>}
-      {f?.securityRoles && (
-        <p className="fo-muted" data-testid="roster-securityrole-counts">
-          Security Roles: {f.securityRoles.map((r) => `${identifierLabel(r.roleKey, r.name)} ${r.count}`).join(" · ")}
-        </p>
+      {/* ADMIN-UI-004: the Job Role and Security Role inventories are no longer printed as paragraphs above the roster;
+          the same governed counts are in the Job Role and Security Role filters below, and a compact summary is
+          available on request. */}
+      {summary && (
+        <details className="fo-admin-summary">
+          <summary>Counts by Job Role and Security Role</summary>
+          <p className="fo-muted" data-testid="roster-jobrole-counts">Job Roles: {summary}</p>
+          {f?.securityRoles && (
+            <p className="fo-muted" data-testid="roster-securityrole-counts">
+              Security Roles: {f.securityRoles.map((r) => `${identifierLabel(r.roleKey, r.name)} ${r.count}`).join(" · ")}
+            </p>
+          )}
+        </details>
       )}
       <div className="fo-roster__filters">
         <Autocomplete
@@ -135,6 +146,12 @@ export default function WorkforceRoster({ workforce = workforceApiClient }) {
           </select>
         </Field>
       </div>
+      {filters.noJobRole ? (
+        <p className="fo-muted" data-roster-no-job-role="true">
+          {"Showing Employees without a Job Role. "}
+          <button type="button" className="fo-linkbutton" onClick={() => setFilters((prev) => ({ ...prev, noJobRole: false }))}>Show All Employees</button>
+        </p>
+      ) : null}
       {filters.query ? (
         <p className="fo-muted" data-roster-query={filters.query}>
           {`Showing every match for “${filters.query}”. `}

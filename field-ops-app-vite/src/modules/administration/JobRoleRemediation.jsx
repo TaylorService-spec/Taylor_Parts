@@ -14,7 +14,9 @@ import { WorkforceFailure } from "../employees/EmployeeProfileSections.jsx";
 //
 // Silent when the count is 0 or the read is still in flight (the directory beside it owns the page's loading state).
 // A refusal or an outage is stated, never rendered as "everyone has a Job Role". No fallback, no second source.
-export default function JobRoleRemediation({ workforce }) {
+// `onShowAffected` (ADMIN-UI-004): when given, the notice offers "Show These Employees", which asks the roster to apply
+// its governed noJobRole filter. Without it (other callers), the notice is unchanged.
+export default function JobRoleRemediation({ workforce, onShowAffected = null }) {
   const operation = WORKFORCE_READS.EMPLOYEES_WITHOUT_JOB_ROLE.operation;
   const [state, setState] = useState({ status: "loading", count: 0, items: [], nextCursor: null, error: null, moreError: null, loadingMore: false });
   const [nonce, setNonce] = useState(0);
@@ -71,9 +73,12 @@ export default function JobRoleRemediation({ workforce }) {
   if (!remediation) return null;
 
   return (
-    <div className="ns-emp-edit-notice" data-job-role-remediation={remediation.count}>
-      <p className="ns-state">
+    <div className="ns-emp-edit-notice fo-admin-notice" data-job-role-remediation={remediation.count}>
+      <p className="ns-state fo-admin-notice__line">
         <strong>{remediation.words}</strong>
+        {onShowAffected ? (
+          <Button variant="secondary" size="sm" onClick={onShowAffected}>Show These Employees</Button>
+        ) : null}
       </p>
       <p className="fo-muted ns-emp-note">{remediation.note}</p>
       <details className="ns-emp-disclosure">
