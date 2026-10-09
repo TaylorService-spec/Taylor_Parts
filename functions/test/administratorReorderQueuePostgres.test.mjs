@@ -26,7 +26,9 @@ test("Administrator reaches the Reorder queue through the governed REORDER_QUEUE
   const { postgresGrantConditionProvider } = require("../lib/eosOps/entitledActionAuthority.js");
 
   const administrator = await person("uid-admrq-administrator", ["admin"], { id: "e-admrq-admin", name: "Casey Admin" });
-  const owner = await person("uid-admrq-owner", ["admin"], { id: "e-admrq-owner", name: "Morgan Owner" }); // a SECOND authorized principal
+  // A SECOND principal holding admin.employeeOperationalScope.write. (In nonprod the seed issues the Administrator's scope
+  // as the Owner persona, which holds the same capability; the protected owner Role cannot be staffed in this fixture.)
+  const otherAdministrator = await person("uid-admrq-other-admin", ["admin"], { id: "e-admrq-other", name: "Morgan Other" });
   const technician = await person("uid-admrq-tech", ["technician"], { id: "e-admrq-tech", name: "Sofia Tech", technician: true });
   const nobody = await person("uid-admrq-nobody", [], { id: "e-admrq-nobody", name: "Gen Employee" });
   const queue = (who) => call(who, "/operations/inventory", "readReorderQueue", {});
@@ -42,9 +44,6 @@ test("Administrator reaches the Reorder queue through the governed REORDER_QUEUE
   });
 
   // The governed writer, as a different authorized principal -- the same command the nonprod seed issues as the Owner persona.
-  const keys = (await q(`SELECT operating_company_key FROM eos_policy.tenant_operating_company_keys WHERE tenant_id=$1 AND status='ACTIVE' ORDER BY 1`, [T])).rows
-    .map((r) => r.operating_company_key);
-  assert.ok(keys.length >= 2, `both company keys are active in the fixture (got ${keys.join(",")})`);
   const actorOf = async (who) => {
     const ctx = await resolveOperationalContext(serviceRepo(), pool, { identityProvider: "firebase", externalSubject: who.subject, requestedTenantId: null }, postgresGrantConditionProvider(pool));
     return { tenantId: T, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities, conditionallyHeld: ctx.conditionallyHeld, scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements };
@@ -56,20 +55,24 @@ test("Administrator reaches the Reorder queue through the governed REORDER_QUEUE
 
   await t.test("the Administrator may not scope its own Employee (the guard is unchanged)", async () => {
     await assert.rejects(
-      assignEmployeeOperationalScope({ pool }, await actorOf(administrator), { employeeId: "e-admrq-admin", scopeType: "REORDER_QUEUE", scopeId: keys[0], reason: "self" }),
+      assignEmployeeOperationalScope({ pool }, await actorOf(administrator), { employeeId: "e-admrq-admin", scopeType: "REORDER_QUEUE", scopeId: "taylor", reason: "self" }),
       (err) => err.code === "OPERATIONAL_SCOPE_SELF");
   });
 
-  await t.test("the correction: REORDER_QUEUE for every company key, issued by another authorized principal -> the queue reads", async () => {
-    for (const key of keys) {
-      await assignEmployeeOperationalScope({ pool }, await actorOf(owner),
-        { employeeId: "e-admrq-admin", scopeType: "REORDER_QUEUE", scopeId: key, reason: "Owner ruling 2026-10-09: Administrator full access" });
-    }
+  await t.test("an UNKEYED company's queue cannot be issued (why nonprod issues taylor only: Ventana is unkeyed there)", async () => {
+    await assert.rejects(
+      assignEmployeeOperationalScope({ pool }, await actorOf(otherAdministrator), { employeeId: "e-admrq-admin", scopeType: "REORDER_QUEUE", scopeId: "unkeyed-co", reason: "x" }),
+      (err) => err.code === "REORDER_QUEUE_NOT_FOUND");
+  });
+
+  await t.test("the correction: REORDER_QUEUE:taylor, issued by another authorized principal -> the queue reads", async () => {
+    await assignEmployeeOperationalScope({ pool }, await actorOf(otherAdministrator),
+      { employeeId: "e-admrq-admin", scopeType: "REORDER_QUEUE", scopeId: "taylor", reason: "Owner ruling 2026-10-09: Administrator full access" });
     const r = await queue(administrator);
     assert.equal(r.status, 200, JSON.stringify(r.body).slice(0, 300));
     assert.ok(Array.isArray(r.body.result));
     const held = (await q(`SELECT scope_id FROM eos_workforce.employee_operational_scopes WHERE tenant_id=$1 AND employee_id='e-admrq-admin' AND scope_type='REORDER_QUEUE' AND effective_to IS NULL ORDER BY 1`, [T])).rows.map((r) => r.scope_id);
-    assert.deepEqual(held, keys);
+    assert.deepEqual(held, ["taylor"], "one keyed company is enough to read the queue");
     // No Work Eligibility came with it (ADMIN_IMPLIES_NO_WORK_ELIGIBILITY).
     assert.equal(Number((await q(`SELECT count(*)::int n FROM eos_workforce.employee_work_eligibility WHERE tenant_id=$1 AND employee_id='e-admrq-admin'`, [T])).rows[0].n), 0);
   });

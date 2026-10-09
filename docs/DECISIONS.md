@@ -7746,6 +7746,7 @@ Left in place, out of scope: the unrendered `LegacyRoleMatrix` / `LegacyRoleGrid
 - **Never returned:** principal ids, sign-in identities, other Roles or capabilities.
 
 **Boundary:** read-only; grants nothing. No capability, grant, Role, migration, workflow definition or mapping change, and no Firebase dependency.
+
 ## #222 — OWNER: the Administrator has full EOS access, including operational reach — Reorder queue (2026-10-09)
 
 (Follows #219–#221, recorded by PR #2035.)
@@ -7760,12 +7761,12 @@ Left in place, out of scope: the unrendered `LegacyRoleMatrix` / `LegacyRoleGrid
 - Separately, the Overview loaded its panels with an unsettled `Promise.all`. The one refused read replaced the whole page.
 
 **Decision.** The Administrator has full EOS access including operational reach, through the existing model and with no code bypass.
-- The Administrator's Employee holds REORDER_QUEUE for every active company key: `taylor` and `ventana`.
+- The Administrator's Employee holds REORDER_QUEUE for every keyed company. Today that is `taylor` only. Nonprod Ventana is unkeyed (see the Finance closure record), and the governed writer refuses an unkeyed queue (`REORDER_QUEUE_NOT_FOUND`), so `REORDER_QUEUE:ventana` follows once Ventana's company key is bound. Binding it is a separate configuration ruling. Independent review caught this.
 - The scope is issued through the governed Workforce writer (`assignEmployeeOperationalScope`) by a different authorized principal, the Owner persona. Self-scoping stays refused (`OPERATIONAL_SCOPE_SELF`).
 - The Overview now settles the purchase-order read, as it already did for the Work Order aggregates. A refusal is stated inside the Procurement panel and no longer blanks the other panels.
 
 **Not included; needs separate Owner decisions.**
-- **WAREHOUSE scopes.** These are per-warehouse read reach for on-hand, receipts, warehouses, transfers and warehouse measures. They would also open `warehouse.management` and `warehouse.picking`, which the P02 persona record lists as must-not-reach.
+- **WAREHOUSE scopes** (decision item #2038). These are per-warehouse read reach for on-hand, receipts, warehouses, transfers and warehouse measures. They would also open `warehouse.management` and `warehouse.picking`, which the P02 persona record lists as must-not-reach.
 - **Any Work Eligibility.** `ADMIN_IMPLIES_NO_WORK_ELIGIBILITY` stands. Eligibility would make the Administrator a dispatchable technician or warehouse worker, and would open cycle-count work.
 
 **Boundary.**

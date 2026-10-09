@@ -64,10 +64,9 @@
    "operatingCompanyId": "taylor",
    "workEligibility": [],
    "scopes": [
-        { "scopeType": "REORDER_QUEUE", "scopeId": "taylor" },
-        { "scopeType": "REORDER_QUEUE", "scopeId": "ventana" }
+        { "scopeType": "REORDER_QUEUE", "scopeId": "taylor" }
       ],
-      "scopesNote": "Owner ruling 2026-10-09: the Administrator has full EOS access including operational reach. The Reorder queue is company-keyed, so the Administrator's Employee holds REORDER_QUEUE for every active company key. Assigned by the Owner persona (an administrator may not scope its own Employee: OPERATIONAL_SCOPE_SELF). No Work Eligibility (ADMIN_IMPLIES_NO_WORK_ELIGIBILITY) and no WAREHOUSE scope pending a separate Owner decision",
+      "scopesNote": "Owner ruling 2026-10-09: the Administrator has full EOS access including operational reach. The Reorder queue is company-keyed, so the Administrator's Employee holds REORDER_QUEUE for every KEYED company: today only taylor -- nonprod Ventana is unkeyed (recorded in the Finance closure entry of DECISIONS), and the governed writer refuses an unkeyed queue (REORDER_QUEUE_NOT_FOUND); ventana follows when its company key is bound (a separate configuration ruling). Assigned by the Owner persona (an administrator may not scope its own Employee: OPERATIONAL_SCOPE_SELF). No Work Eligibility (ADMIN_IMPLIES_NO_WORK_ELIGIBILITY) and no WAREHOUSE scope pending a separate Owner decision",
    "manager": "synthetic-np-emp-office-manager"
   },
   {
