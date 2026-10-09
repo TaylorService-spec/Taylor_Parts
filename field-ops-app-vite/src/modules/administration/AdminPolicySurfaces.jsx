@@ -52,6 +52,7 @@
 // or not a button was greyed out, and a UI that hid the state would leave an administrator unable to
 // see why their override does nothing.
 import { Fragment, useMemo, useState } from "react";
+import { Search as SearchIcon } from "lucide-react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { usePolicyStore } from "./usePolicyStore.js";
 import { isPolicyApiConfigured } from "../../services/adminPolicyApiClient.js";
@@ -137,8 +138,22 @@ export function RolesPermissionsSurface() {
 
   if (!isPolicyApiConfigured()) return null;
 
-  const selected = (roles.data ?? []).find((r) => r.id === roleId)
-    ?? (roleId === null && linkedRoleKey ? (roles.data ?? []).find((r) => r.key === linkedRoleKey) ?? null : null);
+  // WHICH ROLE IS SHOWN (ADMIN-UI-007, with the Owner's deep-link safeguard). Only Roles the server's listRoles
+  // returned are candidates, so nothing here widens what this administrator may see.
+  //   - An explicit choice wins while it still matches the search and filter.
+  //   - A ?role= link selects that Role; if the link names a Role that is not in the list, the detail says so and
+  //     NOTHING else is substituted for it until the administrator chooses.
+  //   - Otherwise the first matching Role is shown, so the detail panel is never empty while a Role matches.
+  const all = roles.data ?? [];
+  const needle = query.trim().toLowerCase();
+  const shown = all
+    .filter((r) => kind === "all" || (kind === "protected" ? r.protected : !r.protected))
+    .filter((r) => !needle || `${identifierLabel(r.key, r.name)} ${r.description ?? ""}`.toLowerCase().includes(needle));
+  const linked = roleId === null && linkedRoleKey ? all.find((r) => r.key === linkedRoleKey) ?? null : null;
+  const linkUnavailable = roles.status === "ready" && roleId === null && Boolean(linkedRoleKey) && !linked;
+  const preferred = roleId !== null ? all.find((r) => r.id === roleId) ?? null : linked;
+  const selected = linkUnavailable ? null
+    : (preferred && shown.some((r) => r.id === preferred.id) ? preferred : shown[0] ?? null);
 
   return (
     <section className="fo-panel" aria-label="Role permissions">
@@ -147,12 +162,9 @@ export function RolesPermissionsSurface() {
       {roles.status === "failed" && <p className="fo-warning">{roles.error?.description}</p>}
 
       {roles.status === "ready" && (() => {
-        // MASTER-DETAIL (approved IA, Phase 3, finding R01): a searchable list beside the selected Role,
-        // instead of every Role as a wrapping wall of buttons above it. Same listRoles read.
-        const needle = query.trim().toLowerCase();
-        const shown = roles.data
-          .filter((r) => kind === "all" || (kind === "protected" ? r.protected : !r.protected))
-          .filter((r) => !needle || `${identifierLabel(r.key, r.name)} ${r.description ?? ""}`.toLowerCase().includes(needle));
+        // MASTER-DETAIL (approved IA, Phase 3; ADMIN-UI-005/006): a full-width search with an icon, a compact
+        // segmented filter and a compact selectable list beside the selected Role. Same listRoles read.
+        const choose = (role) => { setRoleId(role.id); setEditingRole(false); };
         return (
           <>
             {/* The three ideas this screen keeps apart. Only the Security Role grants anything here. */}
@@ -162,33 +174,36 @@ export function RolesPermissionsSurface() {
               as Dispatch Work Order.
             </p>
             <div className="fo-master-detail">
-              <div>
-                <label className="fo-form-field">
-                  <span>Search Security Roles</span>
-                  <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name or description" />
+              <div className="fo-admin-listpanel">
+                <label className="fo-admin-search">
+                  <span className="fo-sr-only">Search Security Roles</span>
+                  <SearchIcon className="fo-admin-search__icon" aria-hidden="true" size={16} />
+                  <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search roles by name or description" />
                 </label>
-                <div className="fo-chip-row" role="group" aria-label="Role type">
-                  {[["all", "All"], ["protected", "Protected"], ["other", "Not protected"]].map(([id, label]) => (
-                    <Button key={id} size="sm" variant={kind === id ? "primary" : "secondary"} aria-pressed={kind === id} onClick={() => setKind(id)}>
-                      {label}
-                    </Button>
-                  ))}
+                <div className="fo-admin-listpanel__bar">
+                  <div className="fo-admin-segmented" role="group" aria-label="Role type">
+                    {[["all", "All"], ["protected", "Protected"], ["other", "Not protected"]].map(([id, label]) => (
+                      <button key={id} type="button" className="fo-admin-segmented__option" aria-pressed={kind === id} onClick={() => setKind(id)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="fo-admin-count" aria-live="polite">{shown.length} of {all.length}</span>
                 </div>
-                <p className="fo-muted">{shown.length} of {roles.data.length} roles</p>
-                <ul className="fo-master-detail__list" role="group" aria-label="Select a role">
-                  {shown.map((role) => (
-                    <li key={role.id}>
-                      <Button
-                        variant={role.id === selected?.id ? "primary" : "secondary"}
-                        onClick={() => { setRoleId(role.id === selected?.id ? "" : role.id); setEditingRole(false); }}
-                        aria-pressed={role.id === selected?.id}
-                      >
-                        {identifierLabel(role.key, role.name)}{role.protected ? " · Protected" : ""}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-                {shown.length === 0 && <p className="fo-muted">No Security Role matches &ldquo;{query}&rdquo;.</p>}
+                <div role="group" aria-label="Select a role">
+                  <ul className="fo-admin-selectlist">
+                    {shown.map((role) => (
+                      <li key={role.id}>
+                        <button type="button" className="fo-admin-selectlist__option" aria-pressed={role.id === selected?.id}
+                          aria-current={role.id === selected?.id ? "true" : undefined} onClick={() => choose(role)}>
+                          <span className="fo-admin-selectlist__name">{identifierLabel(role.key, role.name)}</span>
+                          {role.protected ? <span className="fo-admin-badge">Protected</span> : null}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                {shown.length === 0 && <p className="fo-muted">No Security Role matches {needle ? <>&ldquo;{query}&rdquo;</> : "this filter"}.</p>}
                 <Button variant="secondary" onClick={() => setCreating((v) => !v)} aria-expanded={creating}>
                   {creating ? "Cancel" : "Create a Role"}
                 </Button>
@@ -209,7 +224,15 @@ export function RolesPermissionsSurface() {
                     {/* #210: the legacy unenforced C/R/E/D matrix no longer renders -- it is not what the server enforces. */}
                   </>
                 )}
-                {!selected && <p className="fo-muted">Choose a Security Role to see its permissions, its employees and its history.</p>}
+                {linkUnavailable && (
+                  <div className="fo-admin-notice" role="status" data-role-link-unavailable={linkedRoleKey}>
+                    <strong>The linked Security Role isn&rsquo;t available.</strong> It may not exist, or it isn&rsquo;t
+                    one you can view. Choose a Security Role from the list.
+                  </div>
+                )}
+                {!selected && !linkUnavailable && (
+                  <p className="fo-muted">No Security Role matches the search or filter, so there is nothing to show.</p>
+                )}
               </div>
             </div>
           </>
