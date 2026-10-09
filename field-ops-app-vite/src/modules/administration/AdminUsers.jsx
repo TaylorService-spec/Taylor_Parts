@@ -86,11 +86,14 @@ export default function AdminUsers({ workforce = workforceApiClient }) {
           scope. Effective Access on a person&apos;s record shows what EOS resolves for them, and why, and lets you preview
           their workspace. To see or change a person&apos;s Security Roles,
           open their Employee record and use its Security Roles section. Whether a person can sign in is User Access, not an
-          Employee fact.{" "}
-          <Link to="/administration/users/functional-roles">Functional Roles</Link> are the catalog of business
-          responsibilities an Employee may hold; they grant nothing.
+          Employee fact. Functional Roles are the catalog of business responsibilities an Employee may hold; they grant
+          nothing.
         </p>
       </details>
+      {/* Kept visible as one line so the Functional Roles catalog stays as discoverable as before. */}
+      <p className="fo-muted">
+        <Link to="/administration/users/functional-roles">Functional Roles</Link> — business responsibilities; they grant nothing.
+      </p>
       {/* EMPLOYEES WITHOUT A JOB ROLE (EMP-RT-08). Its own governed read and count. Silent when the count is 0. */}
       <JobRoleRemediation workforce={workforce} onShowAffected={() => setShowWithoutJobRole((n) => n + 1)} />
       <div className="fo-users-directory">

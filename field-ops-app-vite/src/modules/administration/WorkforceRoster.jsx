@@ -120,7 +120,7 @@ export default function WorkforceRoster({ workforce = workforceApiClient, showWi
           initialQuery={filters.query ?? ""}
         />
         <Field id="roster-jobrole" label="Job Role">
-          <select className="fo-input" value={filters.jobRoleId ?? ""} onChange={set("jobRoleId")}>
+          <select className="fo-input" value={filters.jobRoleId ?? ""} onChange={(e) => setFilters((prev) => ({ ...prev, jobRoleId: e.target.value, noJobRole: false }))}>
             <option value="">All Job Roles</option>
             {(f?.jobRoles ?? []).map((j) => <option key={j.id} value={j.id}>{j.label} ({j.count})</option>)}
           </select>

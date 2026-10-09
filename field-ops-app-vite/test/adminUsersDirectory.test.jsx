@@ -270,8 +270,8 @@ describe("ADMIN-UI-004: a simpler Workforce page", () => {
     const help = screen.getByText("How Job Roles, Security Roles and access relate").closest("details");
     expect(help.open).toBe(false);
     expect(help.textContent).toMatch(/grants nothing/);
-    const counts = document.querySelector('[data-testid="roster-jobrole-counts"]');
-    if (counts) expect(counts.closest("details")?.open).toBe(false);
+    // This fixture returns no facets; the facet-bearing roster test (adminControlPlaneWorkforce) pins the collapsed summary.
+    for (const el of document.querySelectorAll('[data-testid="roster-jobrole-counts"], [data-testid="roster-securityrole-counts"]')) expect(el.closest("details").open).toBe(false);
   });
 
   it("Show These Employees asks the roster read for noJobRole, and Show All Employees clears it", async () => {

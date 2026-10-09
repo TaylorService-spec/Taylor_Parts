@@ -30,6 +30,19 @@ describe("WorkforceRoster", () => {
     fireEvent.change(screen.getByLabelText("Job Role"), { target: { value: "service-technician" } });
     await waitFor(() => expect(call).toHaveBeenLastCalledWith("listWorkforceRoster", { jobRoleId: "service-technician" }));
   });
+  // ADMIN-UI-004: the role inventories are a collapsed summary, not paragraphs above the roster; the without-a-Job-Role
+  // view uses the governed noJobRole filter, and choosing a Job Role ends it rather than combining contradictory filters.
+  it("keeps role counts in a collapsed summary; Show Without Job Role and a Job Role choice never combine", async () => {
+    const call = vi.fn(async () => ({ ok: true, result: ROSTER }));
+    const { rerender } = render(<MemoryRouter><WorkforceRoster workforce={{ call }} /></MemoryRouter>);
+    await screen.findByText("Sofia Alvarez");
+    expect(screen.getByTestId("roster-jobrole-counts").closest("details").open).toBe(false);
+    rerender(<MemoryRouter><WorkforceRoster workforce={{ call }} showWithoutJobRole={1} /></MemoryRouter>);
+    await waitFor(() => expect(call).toHaveBeenLastCalledWith("listWorkforceRoster", { noJobRole: true }));
+    fireEvent.change(screen.getByLabelText("Job Role"), { target: { value: "service-technician" } });
+    await waitFor(() => expect(call).toHaveBeenLastCalledWith("listWorkforceRoster", { jobRoleId: "service-technician" }));
+    expect(document.querySelector('[data-roster-no-job-role="true"]')).toBeNull();
+  });
   it("says the Security Role column is withheld rather than showing it empty", async () => {
     const call = vi.fn(async () => ({ ok: true, result: { ...ROSTER, securityRolesWithheld: "Security Roles are shown only to holders of admin.principalAccess.read",
       facets: { ...ROSTER.facets, securityRoles: null }, items: ROSTER.items.map((i) => ({ ...i, securityRoles: null })) } }));
