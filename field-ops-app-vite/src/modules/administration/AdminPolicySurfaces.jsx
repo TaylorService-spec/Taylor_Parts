@@ -130,7 +130,9 @@ export function RolesPermissionsSurface() {
   const objects = usePolicyStore("listObjects");
   const [roleId, setRoleId] = useState(null);
   const [creating, setCreating] = useState(false);
-  const [editingRole, setEditingRole] = useState(false);
+  // The edit form belongs to ONE Role: it is open only while THAT Role is the one shown, so a search or filter that
+  // changes the shown Role closes it rather than leaving another Role's values in a form that would save to this one.
+  const [editingRoleId, setEditingRoleId] = useState(null);
   // DEEP LINK (?role=<key>, from Employee > Workflow responsibilities): pre-selects a Security Role until one is chosen.
   const [linkedRoleKey] = useState(() => readAdminQueryParam("role"));
   const [query, setQuery] = useState("");
@@ -154,6 +156,7 @@ export function RolesPermissionsSurface() {
   const preferred = roleId !== null ? all.find((r) => r.id === roleId) ?? null : linked;
   const selected = linkUnavailable ? null
     : (preferred && shown.some((r) => r.id === preferred.id) ? preferred : shown[0] ?? null);
+  const editingRole = selected !== null && editingRoleId === selected.id;
 
   return (
     <section className="fo-panel" aria-label="Role permissions">
@@ -164,7 +167,7 @@ export function RolesPermissionsSurface() {
       {roles.status === "ready" && (() => {
         // MASTER-DETAIL (approved IA, Phase 3; ADMIN-UI-005/006): a full-width search with an icon, a compact
         // segmented filter and a compact selectable list beside the selected Role. Same listRoles read.
-        const choose = (role) => { setRoleId(role.id); setEditingRole(false); };
+        const choose = (role) => { setRoleId(role.id); setEditingRoleId(null); };
         return (
           <>
             {/* The three ideas this screen keeps apart. Only the Security Role grants anything here. */}
@@ -213,11 +216,12 @@ export function RolesPermissionsSurface() {
               <div>
                 {selected && (
                   <>
-                    <Button variant="secondary" onClick={() => setEditingRole((v) => !v)} aria-expanded={editingRole}>
+                    <Button variant="secondary" onClick={() => setEditingRoleId(editingRole ? null : selected.id)} aria-expanded={editingRole}>
                       {editingRole ? "Cancel" : "Edit Role Details"}
                     </Button>
                     {editingRole && (
-                      <EditRoleForm role={selected} mutate={roles.mutate} onDone={() => setEditingRole(false)} />
+                      // key: the draft is seeded from THIS Role and can never be carried to another.
+                      <EditRoleForm key={selected.id} role={selected} mutate={roles.mutate} onDone={() => setEditingRoleId(null)} />
                     )}
                     {/* PRIMARY: the enforced Security Role -- the rows the server evaluator reads. */}
                     <SecurityRoleDetail key={selected.key} roleKey={selected.key} />
