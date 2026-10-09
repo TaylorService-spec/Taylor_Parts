@@ -1,7 +1,7 @@
 // Pass 10 Administration UI truthfulness repair (D1-D4): the explanatory text on the deployed
 // Administration screens must describe the deployed model, not the Firebase-era or pre-policy-store one.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { readFileSync, existsSync } from "node:fs";
 import AdminAuditLogs from "../src/modules/administration/AdminAuditLogs.jsx";
@@ -91,6 +91,9 @@ describe("D5 Security Role holders: human-facing label never exposes the interna
   };
   it("an unnamed holder reads 'Unnamed Principal'; a named holder keeps its name; the id is only a labelled diagnostic", async () => {
     render(<SecurityRoleDetail api={api} roleKey="dispatcher" />);
+    // Phase 3: holders are on the Employees tab, and the id diagnostic only shows with technical details on.
+    fireEvent.click(await screen.findByRole("tab", { name: /Employees/ }));
+    fireEvent.click(screen.getByLabelText("Show Technical Details"));
     const table = await screen.findByRole("table", { name: "Holders" });
     const [unnamed, named] = [...table.querySelectorAll("tbody tr")].map((tr) => tr.querySelector("td"));
     // The human-facing label: the cell's own text, before the diagnostic span.

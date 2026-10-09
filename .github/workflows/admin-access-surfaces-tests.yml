@@ -72,6 +72,7 @@ on:
       - "field-ops-app-vite/test/objectAccessModel.test.jsx"
       - "field-ops-app-vite/test/adminObjectCatalog.test.jsx"
       - "field-ops-app-vite/test/approvalRequests.test.jsx"
+      - "field-ops-app-vite/test/adminRoleList.test.jsx"
       # The privileged-approval surface reads its queue through this client, so a change to
       # the client changes what the screen can show and must re-run the render tests.
       - "field-ops-app-vite/src/services/privilegedApprovalClient.js"
@@ -121,6 +122,7 @@ on:
       - "field-ops-app-vite/test/objectAccessModel.test.jsx"
       - "field-ops-app-vite/test/adminObjectCatalog.test.jsx"
       - "field-ops-app-vite/test/approvalRequests.test.jsx"
+      - "field-ops-app-vite/test/adminRoleList.test.jsx"
       # The privileged-approval surface reads its queue through this client, so a change to
       # the client changes what the screen can show and must re-run the render tests.
       - "field-ops-app-vite/src/services/privilegedApprovalClient.js"
@@ -182,4 +184,5 @@ jobs:
           test/objectAccessModel.test.jsx
           test/adminObjectCatalog.test.jsx
           test/approvalRequests.test.jsx
+          test/adminRoleList.test.jsx
         working-directory: field-ops-app-vite

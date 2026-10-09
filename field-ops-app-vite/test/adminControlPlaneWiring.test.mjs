@@ -58,7 +58,8 @@ test("the enforced surfaces are MOUNTED: Object Security Actions on Objects, Sec
   assert.match(view, /import \{ ObjectSecurityActionList \} from "\.\/ObjectSecurityActionList\.jsx";/, "reuses the existing action list");
   assert.match(view, /api\.getObjectActionGrantMatrix\(objectKey\)/);
   const surfaces = code(read("src/modules/administration/AdminPolicySurfaces.jsx"));
-  assert.match(surfaces, /<SecurityRoleDetail roleKey=\{selected\.key\} \/>/);
+  // `key` resets the detail's tab and form state when another Role is chosen (Phase 3); the mount itself is unchanged.
+  assert.match(surfaces, /<SecurityRoleDetail (?:key=\{selected\.key\} )?roleKey=\{selected\.key\} \/>/);
 });
 
 test("NO C/R/E/D mutation is sent from any Administration screen", () => {

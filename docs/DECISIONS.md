@@ -7651,3 +7651,13 @@ Within the catalog: object and field keys sit behind **Show Technical Details** 
 **Why the matrix stays on Objects:** the separate Permissions destination (#212) is governed-source only, so in legacy-source environments Objects is the only door to the matrix.
 
 **No backend change:** same reads (`listObjects`, `readObjectWithFields`) and commands (`updateObjectMetadata`, `createCustomField`, `updateCustomFieldMetadata`); the server validates the field key and requires a reference target to be named (it does not check that the target exists -- the picker only offers objects from the catalog).
+
+## #214 — Administration IA Phase 3: Security Roles as a searchable master-detail (2026-10-08)
+
+**Decision:** UI-only Phase 3 of the Owner-approved Administration redesign (#211).
+- **Roles list (R01):** the wrapping wall of Role buttons becomes a searchable list (name and description) with an All / Protected / Not protected filter and a count, beside the selected Role's detail (`.fo-master-detail`, stacking under 900 px). Same `listRoles` read; the `?role=` deep link still pre-selects.
+- **Role detail (R02):** `SecurityRoleDetail` opens on **Objects & Permissions**; **Employees** (holders, removal with reason, assign) and **History** (assignment history and decision history) are tabs. Every read, mutation, reason requirement and server refusal is unchanged.
+- **Presentation (R03):** holder and Role keys sit behind *Show Technical Details*; "Since" and assignment-history times use the shared `formatDateOnly` / `formatTimestamp` instead of raw UTC strings; scope reads "Applies To".
+- **Kept distinct, not redesigned:** a one-line explainer separates Security Role (what someone may do), Job Role (what their job is; grants nothing) and permission (one enforced action). No authority model changed.
+
+Out of scope and not attempted: resolving "By" actor ids to names in assignment history (needs a read the screen does not have today).

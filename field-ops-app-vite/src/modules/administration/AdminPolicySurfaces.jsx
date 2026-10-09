@@ -131,6 +131,8 @@ export function RolesPermissionsSurface() {
   const [editingRole, setEditingRole] = useState(false);
   // DEEP LINK (?role=<key>, from Employee > Workflow responsibilities): pre-selects a Security Role until one is chosen.
   const [linkedRoleKey] = useState(() => readAdminQueryParam("role"));
+  const [query, setQuery] = useState("");
+  const [kind, setKind] = useState("all");
 
   if (!isPolicyApiConfigured()) return null;
 
@@ -143,42 +145,75 @@ export function RolesPermissionsSurface() {
       {roles.status === "loading" && <p className="fo-muted">Reading roles…</p>}
       {roles.status === "failed" && <p className="fo-warning">{roles.error?.description}</p>}
 
-      {roles.status === "ready" && (
-        <>
-          <div className="fo-pill-row" role="group" aria-label="Select a role">
-            {roles.data.map((role) => (
-              <Button
-                key={role.id}
-                variant={role.id === selected?.id ? "primary" : "secondary"}
-                onClick={() => { setRoleId(role.id === selected?.id ? "" : role.id); setEditingRole(false); }}
-                aria-pressed={role.id === selected?.id}
-              >
-                {identifierLabel(role.key, role.name)}{role.protected ? " · Protected" : ""}
-              </Button>
-            ))}
-          </div>
+      {roles.status === "ready" && (() => {
+        // MASTER-DETAIL (approved IA, Phase 3, finding R01): a searchable list beside the selected Role,
+        // instead of every Role as a wrapping wall of buttons above it. Same listRoles read.
+        const needle = query.trim().toLowerCase();
+        const shown = roles.data
+          .filter((r) => kind === "all" || (kind === "protected" ? r.protected : !r.protected))
+          .filter((r) => !needle || `${identifierLabel(r.key, r.name)} ${r.description ?? ""}`.toLowerCase().includes(needle));
+        return (
+          <>
+            {/* The three ideas this screen keeps apart. Only the Security Role grants anything here. */}
+            <p className="fo-muted">
+              A <strong>Security Role</strong> is what someone may do. A <strong>Job Role</strong> is what their job is;
+              it shapes their pages and grants nothing. A <strong>permission</strong> is one action EOS enforces, such
+              as Dispatch Work Order.
+            </p>
+            <div className="fo-master-detail">
+              <div>
+                <label className="fo-form-field">
+                  <span>Search Security Roles</span>
+                  <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name or description" />
+                </label>
+                <div className="fo-chip-row" role="group" aria-label="Role type">
+                  {[["all", "All"], ["protected", "Protected"], ["other", "Not protected"]].map(([id, label]) => (
+                    <Button key={id} size="sm" variant={kind === id ? "primary" : "secondary"} aria-pressed={kind === id} onClick={() => setKind(id)}>
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="fo-muted">{shown.length} of {roles.data.length} roles</p>
+                <ul className="fo-master-detail__list" role="group" aria-label="Select a role">
+                  {shown.map((role) => (
+                    <li key={role.id}>
+                      <Button
+                        variant={role.id === selected?.id ? "primary" : "secondary"}
+                        onClick={() => { setRoleId(role.id === selected?.id ? "" : role.id); setEditingRole(false); }}
+                        aria-pressed={role.id === selected?.id}
+                      >
+                        {identifierLabel(role.key, role.name)}{role.protected ? " · Protected" : ""}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+                {shown.length === 0 && <p className="fo-muted">No Security Role matches &ldquo;{query}&rdquo;.</p>}
+                <Button variant="secondary" onClick={() => setCreating((v) => !v)} aria-expanded={creating}>
+                  {creating ? "Cancel" : "Create a Role"}
+                </Button>
+                {creating && <CreateRoleForm onDone={() => { setCreating(false); roles.reload(); }} mutate={roles.mutate} />}
+              </div>
 
-          <Button variant="secondary" onClick={() => setCreating((v) => !v)} aria-expanded={creating}>
-            {creating ? "Cancel" : "Create a Role"}
-          </Button>
-          {creating && <CreateRoleForm onDone={() => { setCreating(false); roles.reload(); }} mutate={roles.mutate} />}
-
-          {selected && (
-            <>
-              <Button variant="secondary" onClick={() => setEditingRole((v) => !v)} aria-expanded={editingRole}>
-                {editingRole ? "Cancel" : "Edit Role Details"}
-              </Button>
-              {editingRole && (
-                <EditRoleForm role={selected} mutate={roles.mutate} onDone={() => setEditingRole(false)} />
-              )}
-              {/* PRIMARY: the enforced Security Role -- the rows the server evaluator reads. */}
-              <SecurityRoleDetail roleKey={selected.key} />
-              {/* #210: the legacy unenforced C/R/E/D matrix no longer renders -- it is not what the server enforces. */}
-            </>
-          )}
-          {!selected && <p className="fo-muted">Choose a Security Role to see its holders, its Object actions and its decision history.</p>}
-        </>
-      )}
+              <div>
+                {selected && (
+                  <>
+                    <Button variant="secondary" onClick={() => setEditingRole((v) => !v)} aria-expanded={editingRole}>
+                      {editingRole ? "Cancel" : "Edit Role Details"}
+                    </Button>
+                    {editingRole && (
+                      <EditRoleForm role={selected} mutate={roles.mutate} onDone={() => setEditingRole(false)} />
+                    )}
+                    {/* PRIMARY: the enforced Security Role -- the rows the server evaluator reads. */}
+                    <SecurityRoleDetail key={selected.key} roleKey={selected.key} />
+                    {/* #210: the legacy unenforced C/R/E/D matrix no longer renders -- it is not what the server enforces. */}
+                  </>
+                )}
+                {!selected && <p className="fo-muted">Choose a Security Role to see its permissions, its employees and its history.</p>}
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </section>
   );
 }
