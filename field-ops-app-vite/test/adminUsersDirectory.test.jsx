@@ -258,3 +258,31 @@ describe("no Firestore Employee-directory read remains", () => {
     expect(read("src/metadata/definitions/employee.js")).toMatch(/id: "employee\.index"/);
   });
 });
+
+// ADMIN-UI-004 (Owner-approved Administration corrections, 2026-10-09): Workforce leads with the roster. One short
+// description; the explanation is collapsed help; the Job Role / Security Role inventories are not printed above the
+// roster; the missing-Job-Role notice applies the governed read's own noJobRole filter.
+describe("ADMIN-UI-004: a simpler Workforce page", () => {
+  it("shows a short description, keeps the explanation as collapsed help, and prints no role inventories up front", async () => {
+    renderDirectory();
+    await screen.findByText("John Smith");
+    expect(screen.getByText(/^Everyone in the workforce\./)).toBeTruthy();
+    const help = screen.getByText("How Job Roles, Security Roles and access relate").closest("details");
+    expect(help.open).toBe(false);
+    expect(help.textContent).toMatch(/grants nothing/);
+    // This fixture returns no facets; the facet-bearing roster test (adminControlPlaneWorkforce) pins the collapsed summary.
+    for (const el of document.querySelectorAll('[data-testid="roster-jobrole-counts"], [data-testid="roster-securityrole-counts"]')) expect(el.closest("details").open).toBe(false);
+  });
+
+  it("Show These Employees asks the roster read for noJobRole, and Show All Employees clears it", async () => {
+    const missing = [item({ employeeId: "pg-emp-9", displayName: "Sam Patel" })];
+    const workforce = renderDirectory(makeWorkforce({ withoutJobRole: ok({ count: 1, items: missing, truncated: false, nextCursor: null }) }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show These Employees" }));
+    await waitFor(() => expect(workforce.call).toHaveBeenCalledWith("listWorkforceRoster", expect.objectContaining({ noJobRole: true })));
+    expect(document.querySelector('[data-roster-no-job-role="true"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show All Employees" }));
+    await waitFor(() => expect(document.querySelector('[data-roster-no-job-role="true"]')).toBeNull());
+    const last = workforce.call.mock.calls.filter((c) => c[0] === "listWorkforceRoster").at(-1)[1];
+    expect(last.noJobRole).toBeUndefined();
+  });
+});

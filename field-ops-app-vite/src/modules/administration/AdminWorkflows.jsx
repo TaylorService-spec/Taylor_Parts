@@ -9,7 +9,7 @@ import { ReadState } from "./ObjectActionSecurity.jsx";
 import WorkflowVersionPanel from "./WorkflowVersionPanel.jsx";
 import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
 import { titleCase } from "../../shared/display/displayLabels.js";
-import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
+import { sortRows, useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 // ADMINISTRATION > WORKFLOWS -- the workflow control plane.
@@ -49,32 +49,45 @@ const WORKFLOW_COLUMNS = Object.freeze({
   versions: { value: (w) => (w.counts?.draft ?? 0) + (w.counts?.published ?? 0) + (w.counts?.retired ?? 0) },
 });
 
-/** One area's workflows. Sorting reorders the rows already read; selection is unchanged by it. */
-function WorkflowAreaTable({ group, selectedId, onChoose }) {
-  const { sort, toggle, sorted } = useTableSort({ rows: group.workflows, columns: WORKFLOW_COLUMNS });
+/**
+ * ADMIN-UI-008: ONE table with ONE header row; each business area is a group of rows under its own group heading, so
+ * the grouping keeps its meaning without repeating the column headers. Sorting reorders rows WITHIN each area; selection
+ * is unchanged by it. A workflow is chosen by its name in the row (a selectable row, not an outlined button).
+ */
+function WorkflowTable({ groups, selectedId, onChoose }) {
+  const { sort, toggle } = useTableSort();
   const header = (key, label) => <SortableHeader columnKey={key} label={label} sort={sort} onSort={toggle} />;
   return (
-    <table className="fo-table" aria-label={`${group.name} workflows`}>
-      <thead><tr>{header("name", "Workflow")}{header("governs", "Governs")}{header("active", "Active Version")}{header("versions", "Versions")}</tr></thead>
-      <tbody>
-        {sorted.map((w) => (
-          <tr key={w.id} data-workflow={w.key} aria-selected={w.id === selectedId}>
-            <td>
-              <Button type="button" variant={w.id === selectedId ? "primary" : "secondary"} onClick={() => onChoose(w)}
-                aria-pressed={w.id === selectedId}
-                title={w.id === selectedId ? `Deselect ${w.name}` : `Select ${w.name}`}>
-                {w.name}
-              </Button>
-            </td>
-            <td className="fo-muted">{w.objectKey ? titleCase(w.objectKey) : "—"}</td>
-            <td>{w.activeVersion === null ? <span className="fo-muted">None</span> : `v${w.activeVersion}`}</td>
-            <td className="fo-muted">
-              {w.counts.draft} Draft · {w.counts.published} Published · {w.counts.retired} Retired
-            </td>
-          </tr>
+    <div className="fo-table-scroll">
+      <table className="fo-table fo-admin-grouptable" aria-label="Workflows">
+        <thead><tr>{header("name", "Workflow")}{header("governs", "Governs")}{header("active", "Active Version")}{header("versions", "Versions & Status")}</tr></thead>
+        {groups.map((group) => (
+          <tbody key={group.key} data-workflow-area={group.key}>
+            <tr className="fo-admin-grouprow">
+              <th scope="rowgroup" colSpan={4}>
+                <span className="fo-admin-grouprow__name">{group.name}</span>
+                {group.description ? <span className="fo-admin-grouprow__note">{group.description}</span> : null}
+              </th>
+            </tr>
+            {sortRows(group.workflows, sort, WORKFLOW_COLUMNS).map((w) => (
+              <tr key={w.id} data-workflow={w.key} aria-selected={w.id === selectedId} className={w.id === selectedId ? "fo-admin-row--selected" : undefined}>
+                <td>
+                  <button type="button" className="fo-admin-rowselect" onClick={() => onChoose(w)} aria-pressed={w.id === selectedId}
+                    title={w.id === selectedId ? `Deselect ${w.name}` : `Select ${w.name}`}>
+                    {w.name}
+                  </button>
+                </td>
+                <td className="fo-muted">{w.objectKey ? titleCase(w.objectKey) : "—"}</td>
+                <td>{w.activeVersion === null ? <span className="fo-muted">None</span> : `v${w.activeVersion}`}</td>
+                <td className="fo-muted">
+                  {w.counts.draft} Draft · {w.counts.published} Published · {w.counts.retired} Retired
+                </td>
+              </tr>
+            ))}
+          </tbody>
         ))}
-      </tbody>
-    </table>
+      </table>
+    </div>
   );
 }
 
@@ -114,33 +127,28 @@ export default function AdminWorkflows({ api = workflowAdminClient }) {
 
   return (
     <WorkspaceShell title="Workflows" subtitle="Business processes, their versions, and who may act in them">
-      <section className="fo-panel" aria-label="What a workflow governs">
-        <p className="fo-muted">
-          A workflow governs <strong>business actions</strong> — Approve, Dispatch, Void — not data
-          access. A Security Role bound to an action may perform it <strong>only if</strong> the Role
-          also holds the action&rsquo;s capability: a binding never grants. Publishing is refused while
-          any bound Role lacks the capability.
-        </p>
-        <p className="fo-muted">
-          Lifecycle: <strong>Draft</strong> → <strong>Published</strong> (the active version is where new
-          records start) → <strong>Retired</strong>. A published version never changes; records already
-          running stay on the version they started on.
-        </p>
-      </section>
-
+      {/* ADMIN-UI-008: one heading (the shell's), one concise line, and the workflow policy as contextual help. */}
       <section className="fo-panel" aria-label="Workflow list">
-        <h3>Workflows</h3>
+        <p className="fo-muted">Choose a workflow to see its versions, steps, actions and who may perform them.</p>
+        <details className="fo-admin-help" aria-label="What a workflow governs">
+          <summary>How workflows, bindings and versions work</summary>
+          <p className="fo-muted">
+            A workflow governs <strong>business actions</strong> — Approve, Dispatch, Void — not data
+            access. A Security Role bound to an action may perform it <strong>only if</strong> the Role
+            also holds the action&rsquo;s capability: a binding never grants. Publishing is refused while
+            any bound Role lacks the capability.
+          </p>
+          <p className="fo-muted">
+            Lifecycle: <strong>Draft</strong> → <strong>Published</strong> (the active version is where new
+            records start) → <strong>Retired</strong>. A published version never changes; records already
+            running stay on the version they started on.
+          </p>
+        </details>
         <ReadState read={list} what="the workflow list" />
         {list.status === "ready" && summaries.length === 0 ? (
           <p className="fo-muted">This tenant has no workflows.</p>
         ) : null}
-        {groups.map((group) => (
-          <div key={group.key} className="fo-wf-area" data-workflow-area={group.key}>
-            <h4>{group.name}</h4>
-            <p className="fo-muted">{group.description}</p>
-            <WorkflowAreaTable group={group} selectedId={effectiveSelectedId} onChoose={choose} />
-          </div>
-        ))}
+        {groups.length > 0 ? <WorkflowTable groups={groups} selectedId={effectiveSelectedId} onChoose={choose} /> : null}
       </section>
 
       {!selected && list.status === "ready" && summaries.length > 0 ? (
