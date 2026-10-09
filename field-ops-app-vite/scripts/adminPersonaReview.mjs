@@ -152,11 +152,13 @@ async function reviewPersona(browser, personaId, target) {
       const txt = (el) => el.textContent.replace(/\s+/g, " ").trim();
       const denied = [...main.querySelectorAll("*")].find((el) => el.children.length === 0 && /isn't available to your role|not authorized|access denied/i.test(el.textContent));
       const failure = [...main.querySelectorAll("*")].find((el) => el.children.length === 0 && /could not be loaded|could not load|failed to load|something went wrong/i.test(el.textContent));
+      // AppShell renders a visually-hidden <h1> naming the domain ("Administration") ahead of the page's own title.
+      const h1 = main.querySelector("h1:not(.fo-visually-hidden)");
       return {
         finalPath: window.location.pathname,
         deniedText: denied ? txt(denied).slice(0, 160) : null,
         failureText: failure ? txt(failure).slice(0, 160) : null,
-        h1: main.querySelector("h1") ? txt(main.querySelector("h1")) : null,
+        h1: h1 ? txt(h1) : null,
         headings: [...main.querySelectorAll("h2, h3")].map(txt).filter(Boolean).slice(0, 15),
         tabs: [...main.querySelectorAll('[role="tab"]')].map(txt).filter(Boolean),
       };
