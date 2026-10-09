@@ -341,6 +341,8 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
       ["retireWorkflowVersion", { versionId: wo, reason: REASON }],
       ["publishWorkflowVersion", { versionId: salesOrderDraft.id, reason: REASON }],
       ["adoptRecordsIntoWorkflowVersion", { versionId: wo, records: [{ recordId: "x", stepKey: "CREATED" }], reason: REASON }],
+      // W01 holder lookup: another tenant's workflow administrator cannot list this tenant's Role holders.
+      ["listWorkflowActionRoleHolders", { versionId: wo, actionKey: "Accept", roleKey: "technician" }],
     ]) {
       const res = await call(operation, input, OTHER_WF_SUBJECT);
       assert.equal(res.code, "NOT_FOUND", `${operation}: ${res.code} ${res.message}`);

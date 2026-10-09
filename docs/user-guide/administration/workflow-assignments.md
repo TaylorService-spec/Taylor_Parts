@@ -1,6 +1,6 @@
 # Workflow Assignments and Workflow Builder
 
-Administration → Workflows opens **Workflow Assignments**. Choose a workflow to see the Security Roles assigned to each action and inspect the employees holding a role. Role-holder scope is shown; appearing in that list does not guarantee an action on every record. Existing permissions, assignment scope, guards and Functional Role requirements still apply.
+Administration → Workflows opens **Workflow Assignments**. Choose a workflow to see the Security Roles assigned to each action. If you may change assignments, **View … employees** lists the employees holding that role for that action. It shows how many hold the role and how many the action actually applies to, and marks a holder whose assignment scope doesn't cover the action. Employees you aren't allowed to view are counted but not named. Role-holder scope is shown; appearing in that list does not guarantee an action on every record. Existing permissions, assignment scope, guards and Functional Role requirements still apply.
 
 The role picker offers only the Security Roles that hold the action's required permission, because a binding never grants. If a Role already assigned to an action does not hold that permission, the page says so beside the action. Saving is refused until you remove that Role; the page never removes it for you.
 

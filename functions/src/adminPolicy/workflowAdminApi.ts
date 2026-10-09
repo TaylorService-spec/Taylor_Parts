@@ -20,6 +20,7 @@ import {
 } from "./workflowCommands";
 import { decideWorkflowMutation, findWorkflowVersion, WORKFLOW_MUTATION_CAPABILITY, WorkflowRefusal } from "./workflowAdministration";
 import { actorCapabilities } from "./administrationCapabilityGate";
+import { isAssignmentScopeRuntimeType, scopeEvaluableCapabilities } from "./assignmentScopeRuntime";
 import { loadWorkflowVersionDefinition } from "./workflowEngine";
 import {
   activateWorkflowVersion,
@@ -47,6 +48,7 @@ export const WORKFLOW_READ_OPERATIONS = Object.freeze([
   "readWorkflowHistory",
   "listPrincipalWorkflowResponsibilities",
   "readMyWorkflowAdministration",
+  "listWorkflowActionRoleHolders",
 ] as const);
 
 export const WORKFLOW_MUTATION_OPERATIONS = Object.freeze([
@@ -70,6 +72,12 @@ export interface WorkflowApiDeps {
   readonly repo: PolicyRepository;
   /** The runtime evaluator (eosOps/effectiveAccessExplanation), composed by the server. */
   readonly explainEffectiveAccess?: (tenantId: string, principalId: string) => Promise<unknown>;
+  /**
+   * W01 holder lookup: which of the given Employees this caller may see, by the EXISTING Employee visibility
+   * (eosAdministration/workflowHolderVisibility.ts, composed by the server). Absent or failing, the lookup refuses.
+   */
+  readonly workflowHolderVisibility?: (tenantId: string, callerPrincipalId: string, employeeIds: readonly string[]) =>
+    Promise<{ readonly employeeReadHeld: boolean; readonly visible: ReadonlyMap<string, { readonly displayName: string | null }> }>;
 }
 
 export interface WorkflowVersionView {
@@ -122,6 +130,8 @@ export async function dispatchWorkflowOperation(
       return readWorkflowVersionView(repo, actor, requireString(input.versionId, "versionId"));
     case "readMyWorkflowAdministration":
       return readMyWorkflowAdministration(repo, actor, input);
+    case "listWorkflowActionRoleHolders":
+      return listWorkflowActionRoleHolders(deps, actor, input);
     case "validateWorkflowVersion": {
       // A stored version, or an unsaved definition the editor is about to save.
       if (typeof input.versionId === "string" && input.versionId.trim().length > 0) {
@@ -364,4 +374,100 @@ async function readMyWorkflowAdministration(repo: PolicyRepository, actor: Admin
     };
   }
   return { operations };
+}
+
+export const WORKFLOW_ROLE_HOLDER_LIMIT = 200;
+
+/**
+ * W01 holder lookup -- the Employees holding ONE Security Role that is eligible for, or already bound to, ONE workflow
+ * action. For the people who can change assignments (the gate below), and narrower than the Security Role detail:
+ *   - workflowDefinition.read (the surface gate) AND the save an assignment makes (edit or version, decided by
+ *     decideWorkflowMutation like readMyWorkflowAdministration) -- otherwise FORBIDDEN;
+ *   - the caller's tenant only (findWorkflowVersion: another tenant's version is NOT_FOUND);
+ *   - only a Role eligible for (holds the action's capability) or bound to that action -- otherwise ROLE_NOT_FOR_ACTION;
+ *   - only ACTIVE, NON-STALE assignments (the runtime's rule: accessVersionAtGrant <= the principal's access version);
+ *   - Employee names only where the EXISTING Employee visibility admits them (workflowHolderVisibility); the rest are
+ *     counted as withheld, never named; if that visibility cannot be established the lookup REFUSES.
+ * No principal ids, sign-in identities, other Roles or capabilities. Read-only; grants nothing.
+ */
+async function listWorkflowActionRoleHolders(deps: WorkflowApiDeps, actor: AdminActor, input: Record<string, unknown>) {
+  const { repo } = deps;
+  const extra = Object.keys(input ?? {}).filter((k) => !["versionId", "actionKey", "roleKey"].includes(k));
+  if (extra.length > 0) throw new PolicyValidationError(`listWorkflowActionRoleHolders accepts versionId, actionKey and roleKey only; not accepted: ${extra.sort().join(", ")}`);
+  const versionId = requireString(input.versionId, "versionId");
+  const actionKey = requireString(input.actionKey, "actionKey");
+  const roleKey = requireString(input.roleKey, "roleKey");
+  const capabilities = await actorCapabilities(repo, actor);
+  if (!decideWorkflowMutation(capabilities, "updateWorkflowDefinition") && !decideWorkflowMutation(capabilities, "createWorkflowVersion")) {
+    throw new WorkflowRefusal("WORKFLOW_ASSIGNMENT_CAPABILITY_REQUIRED", "FORBIDDEN",
+      `not authorized: "${WORKFLOW_MUTATION_CAPABILITY.updateWorkflowDefinition}" or "${WORKFLOW_MUTATION_CAPABILITY.createWorkflowVersion}" is required`);
+  }
+  await findWorkflowVersion(repo, actor, versionId); // tenant-scoped; NOT_FOUND otherwise
+  const definition = await loadWorkflowVersionDefinition(repo, actor.tenantId, versionId);
+  const action = definition.actions.find((a) => a.key === actionKey);
+  if (!action) throw new WorkflowRefusal("WORKFLOW_ACTION_NOT_FOUND", "NOT_FOUND", `this workflow version has no action "${actionKey}"`);
+  const [roles, validation] = await Promise.all([repo.listRoles(actor.tenantId), loadWorkflowValidationContext(repo, actor.tenantId)]);
+  const role = roles.find((r) => r.key === roleKey);
+  const capabilityKey = action.capabilityKey ?? null;
+  const roleEligible = Boolean(role && capabilityKey && validation.capabilities.has(capabilityKey) && validation.roleCapabilities.get(roleKey)?.has(capabilityKey));
+  const roleBound = Boolean(role && definition.bindings.some((b) => b.actionKey === actionKey && (b.bindingKind ?? "SECURITY_ROLE") === "SECURITY_ROLE" && b.roleId === role.id));
+  if (!role || (!roleEligible && !roleBound)) {
+    throw new WorkflowRefusal("ROLE_NOT_FOR_ACTION", "INVALID_INPUT", `"${roleKey}" is neither eligible for nor bound to "${actionKey}"`);
+  }
+  // A grant narrowed by an ACTIVE condition is not the flat authority (fail closed: such a holder is not counted as able).
+  const conditioned = capabilityKey !== null && (await repo.listGrantConditions(actor.tenantId, { activeOnly: true }))
+    .some((c) => c.grantScope === "ROLE" && c.grantorKey === roleKey && c.capabilityKey === capabilityKey);
+  const holders: { principalId: string; employeeId: string | null; scopeType: string; scopeValue: string | null; appliesToAction: boolean }[] = [];
+  for (const principalId of await repo.listTenantPrincipalIds(actor.tenantId)) {
+    const [assignments, versionRow] = await Promise.all([
+      repo.listAssignmentsForPrincipal(actor.tenantId, principalId), repo.getAccessVersion(actor.tenantId, principalId)]);
+    const current = typeof versionRow?.accessVersion === "number" ? versionRow.accessVersion : 0;
+    for (const a of assignments) {
+      if (a.roleId !== role.id || a.status !== "active" || typeof a.accessVersionAtGrant !== "number" || a.accessVersionAtGrant > current) continue;
+      const scopeType = typeof a.scopeType === "string" && a.scopeType !== "" ? a.scopeType : "global";
+      const scopeApplies = scopeType === "global"
+        || (isAssignmentScopeRuntimeType(scopeType) && typeof a.scopeValue === "string" && a.scopeValue !== ""
+          && capabilityKey !== null && scopeEvaluableCapabilities(scopeType).has(capabilityKey));
+      const linked = await repo.getLinkedEmployeeAccessFact(actor.tenantId, principalId);
+      holders.push({ principalId, employeeId: linked && !linked.ambiguous ? linked.employeeId : null,
+        scopeType, scopeValue: scopeType === "global" ? null : a.scopeValue ?? null,
+        appliesToAction: roleEligible && !conditioned && scopeApplies });
+    }
+  }
+  // EMPLOYEE VISIBILITY -- the existing rule, or nothing. No resolver, or a failing one: refuse.
+  if (typeof deps.workflowHolderVisibility !== "function") {
+    throw new WorkflowRefusal("EMPLOYEE_VISIBILITY_UNAVAILABLE", "FORBIDDEN", "Employee visibility could not be established; no holder is shown");
+  }
+  let visibility: Awaited<ReturnType<NonNullable<WorkflowApiDeps["workflowHolderVisibility"]>>>;
+  try {
+    visibility = await deps.workflowHolderVisibility(actor.tenantId, actor.uid,
+      holders.map((h) => h.employeeId).filter((id): id is string => typeof id === "string"));
+  } catch {
+    throw new WorkflowRefusal("EMPLOYEE_VISIBILITY_UNAVAILABLE", "FORBIDDEN", "Employee visibility could not be established; no holder is shown");
+  }
+  const shown = holders
+    .filter((h) => h.employeeId !== null && visibility.visible.has(h.employeeId))
+    .map((h) => ({
+      displayName: visibility.visible.get(h.employeeId as string)?.displayName ?? null,
+      employeeId: h.employeeId as string,
+      scope: { type: h.scopeType, value: h.scopeValue },
+      appliesToAction: h.appliesToAction,
+    }))
+    .sort((x, y) => String(x.displayName ?? "").localeCompare(String(y.displayName ?? "")) || x.employeeId.localeCompare(y.employeeId));
+  return {
+    roleKey: role.key,
+    roleName: role.name,
+    actionKey,
+    roleEligible,
+    roleBound,
+    /** Every active, non-stale holder of the Role -- whether or not this caller may see them. */
+    totalHolders: holders.length,
+    /** Of those, the holders for whom this action actually applies (eligible Role, scope that decides it, no condition). */
+    holdersForAction: holders.filter((h) => h.appliesToAction).length,
+    /** Holders this caller may not see as Employees (or who are not linked to an Employee): counted, never named. */
+    withheld: holders.length - shown.length,
+    employeeVisibility: visibility.employeeReadHeld ? "EMPLOYEE_READ" : "NONE",
+    truncated: shown.length > WORKFLOW_ROLE_HOLDER_LIMIT,
+    holders: shown.slice(0, WORKFLOW_ROLE_HOLDER_LIMIT),
+  };
 }

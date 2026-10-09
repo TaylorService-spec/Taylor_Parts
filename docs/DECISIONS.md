@@ -7724,3 +7724,24 @@ Left in place, out of scope: the unrendered `LegacyRoleMatrix` / `LegacyRoleGrid
   - Disclosure is limited to the key and name of the Roles holding the capabilities a readable workflow names.
 
 **Boundary:** no capability, grant, Role, migration, workflow definition or mapping change, and no Firebase dependency. The role-holder lookup for Workflow Assignments is designed separately and is not implemented without its own approval.
+
+## #221 — OWNER: W01 holder lookup `listWorkflowActionRoleHolders` (2026-10-09)
+
+**Decision:** Rudy approved a narrow, read-only lookup that lists the Employees holding one Security Role relevant to one workflow action. Workflow Assignments' "View employees" now uses it instead of the Security Role detail, which needs the whole Security Policy read.
+
+**Who may call it:**
+- The caller needs `workflowDefinition.read`, the surface gate, AND either `workflowDefinition.edit` or `workflowDefinition.version`, the save an assignment makes. Both are decided by `decideWorkflowMutation`.
+- Otherwise it refuses with `WORKFLOW_ASSIGNMENT_CAPABILITY_REQUIRED`.
+
+**What it answers:**
+- **Tenant:** the caller's tenant only. Another tenant's version returns NOT_FOUND.
+- **Roles:** only a Role that is eligible for the action (holds its capability) or already bound to it. Any other Role is refused with `ROLE_NOT_FOR_ACTION`.
+- **Holders:** only active, non-stale assignments, by the runtime's rule.
+- **appliesToAction:** true only when the Role is eligible, its grant carries no active condition, and the assignment is global or has a scope that decides the action's capability.
+- **Employee names:** shown only where the existing Employee visibility admits them. This is the Workforce read kernel's `employee.record.read` check, applied per operating company for scoped holders, and injected by the server (`eosAdministration/workflowHolderVisibility.ts`).
+  - Holders outside that visibility, or not linked to an Employee, are counted as `withheld` and never named.
+  - If visibility cannot be established, the lookup refuses with `EMPLOYEE_VISIBILITY_UNAVAILABLE`. It never returns an empty list in that case.
+- **Fields returned:** Role key and name, `roleEligible` and `roleBound`, `totalHolders`, `holdersForAction`, `withheld`, `employeeVisibility`, `truncated`, and up to 200 holders. Each holder has a display name, an Employee id (used only for the record link), its scope and `appliesToAction`.
+- **Never returned:** principal ids, sign-in identities, other Roles or capabilities.
+
+**Boundary:** read-only; grants nothing. No capability, grant, Role, migration, workflow definition or mapping change, and no Firebase dependency.

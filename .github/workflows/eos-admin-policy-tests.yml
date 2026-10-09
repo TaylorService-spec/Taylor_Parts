@@ -645,6 +645,8 @@ on:
       - "functions/src/adminPolicy/applyWorkflowSeed.ts"
       - "functions/test/workflowControlPlane.test.mjs"
       - "functions/test/workflowControlPlanePostgres.test.mjs"
+      - "functions/test/workflowRoleHoldersPostgres.test.mjs"
+      - "functions/src/eosAdministration/workflowHolderVisibility.ts"
       # LANE DR (2026-09-26): workflow DOMAIN READINESS -- a synthetic domain consumes the control plane end to end
       # (pin, binding, capability, condition, scope, versioning, MIGRATE, negatives). Suite: test:adminPolicyPostgres.
       - "functions/test/workflowDomainReadinessPostgres.test.mjs"
@@ -1173,6 +1175,8 @@ on:
       - "functions/src/adminPolicy/applyWorkflowSeed.ts"
       - "functions/test/workflowControlPlane.test.mjs"
       - "functions/test/workflowControlPlanePostgres.test.mjs"
+      - "functions/test/workflowRoleHoldersPostgres.test.mjs"
+      - "functions/src/eosAdministration/workflowHolderVisibility.ts"
       # LANE DR (2026-09-26): workflow DOMAIN READINESS -- a synthetic domain consumes the control plane end to end
       # (pin, binding, capability, condition, scope, versioning, MIGRATE, negatives). Suite: test:adminPolicyPostgres.
       - "functions/test/workflowDomainReadinessPostgres.test.mjs"

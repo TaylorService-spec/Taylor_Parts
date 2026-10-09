@@ -28,6 +28,8 @@ const READS = [
   "listWorkflows", "readWorkflowVersion", "readPolicyAuditHistory",
   // W01 D2 (2026-10-09): the caller's own workflow-administration decisions.
   "readMyWorkflowAdministration",
+  // W01 holder lookup (assigners only; existing Employee visibility).
+  "listWorkflowActionRoleHolders",
   // The Administration control plane reads (server lane CP-S, 2026-09-26).
   "getSecurityRoleDetail", "getObjectActionGrantMatrix", "listRoleCapabilityDecisionHistory",
   // Effective access explained by the runtime evaluator, and the governed condition vocabulary (server lane CP-S).

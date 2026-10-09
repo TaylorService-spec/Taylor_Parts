@@ -24,7 +24,11 @@ function fixture({ status = "PUBLISHED", capability = "workOrder.accept", valid 
       roleNames: { tech: "Technician", dispatcher: "Dispatcher", ...Object.fromEntries(eligible.map((r) => [r.key, r.name])) } })),
     readMyWorkflowAdministration: vi.fn(() => ok(decisions(allowed))),
     listRoles: vi.fn(() => ok([{ id: "rt", key: "tech", name: "Technician" }, { id: "rd", key: "dispatcher", name: "Dispatcher" }])),
-    getSecurityRoleDetail: vi.fn(() => ok({ holders: [{ assignmentId: "a1", employeeId: "e1", displayName: "Pat Tech", scopeType: "global" }] })),
+    getSecurityRoleDetail: vi.fn(() => ok({ holders: [] })), // no longer used by Assignments (W01 holder lookup)
+    listWorkflowActionRoleHolders: vi.fn(() => ok({ roleKey: "tech", roleName: "Technician", actionKey: "accept", roleEligible: true, roleBound: true,
+      totalHolders: 3, holdersForAction: 2, withheld: 1, employeeVisibility: "EMPLOYEE_READ", truncated: false,
+      holders: [{ displayName: "Pat Tech", employeeId: "e1", scope: { type: "global", value: null }, appliesToAction: true },
+        { displayName: "Lee Scoped", employeeId: "e2", scope: { type: "operatingCompany", value: "taylor" }, appliesToAction: false }] })),
     validateUnsavedDefinition: vi.fn(() => ok({ valid, errors: valid ? [] : [{ code: "BINDING_WITHOUT_CAPABILITY" }] })),
     updateWorkflowDefinition: vi.fn(() => ok({ version: { id: "v2", version: 2, status: "DRAFT" } })),
     createWorkflowVersion: vi.fn(() => ok({ version: { id: "v2", version: 2, status: "DRAFT" } })),
@@ -47,10 +51,11 @@ describe("Workflow Assignments and Builder separation", () => {
     expect(screen.queryByLabelText("Reason for the workflow change")).toBeNull();
     expect(screen.queryByRole("table", { name: "Editable states" })).toBeNull();
     expect(api.validateWorkflowVersion).not.toHaveBeenCalled();
-    expect(api.getSecurityRoleDetail).not.toHaveBeenCalled();
+    expect(api.listWorkflowActionRoleHolders).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("button", { name: "View Technician employees" }));
-    await waitFor(() => expect(api.getSecurityRoleDetail).toHaveBeenCalledWith("tech"));
+    await waitFor(() => expect(api.listWorkflowActionRoleHolders).toHaveBeenCalledWith({ versionId: "v1", actionKey: "accept", roleKey: "tech" }));
     expect(await screen.findByRole("link", { name: "Pat Tech" })).toBeTruthy();
+    expect(api.getSecurityRoleDetail).not.toHaveBeenCalled();
   });
   it("preserves states, capabilities, guards and Functional Roles; saves published assignment changes as an inactive draft", async () => {
     const api = fixture(); await open(api);
@@ -227,5 +232,33 @@ describe("Workflow Assignments -- eligible Roles and the caller's own decision (
     await waitFor(() => expect(document.querySelector('[data-permission-note="assignments"]')?.textContent).toMatch(/could not be confirmed/));
     expect(screen.queryByRole("button", { name: "Save Assignment Draft" })).toBeNull();
     expect(api.createWorkflowVersion).not.toHaveBeenCalled();
+  });
+});
+
+// W01 holder lookup (2026-10-09): the panel shows what the server answers -- counts, withheld, scope -- and nothing else.
+describe("Workflow Assignments -- role holders for one action (W01 holder lookup)", () => {
+  it("shows total vs. action holders, withheld employees and the scope an action does not apply at", async () => {
+    const api = fixture(); await open(api);
+    fireEvent.click(await screen.findByRole("button", { name: "View Technician employees" }));
+    await screen.findByRole("link", { name: "Pat Tech" });
+    expect(document.querySelector("[data-holder-counts]").textContent).toMatch(/3 employees hold this role; this action applies to 2\. 1 is not shown because you can't view that employee\./);
+    const scoped = screen.getByRole("link", { name: "Lee Scoped" }).closest("li");
+    expect(scoped.textContent).toMatch(/Operating Company: taylor/);
+    expect(scoped.querySelector("[data-not-applicable]")).not.toBeNull();
+  });
+  it("a refused lookup is shown as a refusal, never as an empty list", async () => {
+    const api = fixture();
+    api.listWorkflowActionRoleHolders = vi.fn(() => Promise.resolve({ ok: false, code: "FORBIDDEN",
+      message: "EMPLOYEE_VISIBILITY_UNAVAILABLE: Employee visibility could not be established; no holder is shown" }));
+    await open(api);
+    fireEvent.click(await screen.findByRole("button", { name: "View Technician employees" }));
+    expect(await screen.findByText(/Employee visibility could not be established/)).toBeTruthy();
+    expect(screen.queryByText(/No employee you can view holds this role/)).toBeNull();
+  });
+  it("a read-only caller is not offered the holder lookup, and is told why", async () => {
+    const api = fixture({ allowed: [] }); await open(api);
+    expect(screen.queryByRole("button", { name: "View Technician employees" })).toBeNull();
+    expect(document.querySelector('[data-permission-note="holders"]').textContent).toMatch(/requires permission to change assignments/);
+    expect(api.listWorkflowActionRoleHolders).not.toHaveBeenCalled();
   });
 });

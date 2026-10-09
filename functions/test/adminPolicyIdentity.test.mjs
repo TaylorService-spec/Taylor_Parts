@@ -230,6 +230,8 @@ test("every operation is either a read or a mutation, and none is both", () => {
     "listSupportedAssignmentScopes",
     // W01 D2 (2026-10-09): the caller's OWN workflow-administration decisions -- read-only, no principal input.
     "readMyWorkflowAdministration",
+    // W01 holder lookup: the Employees holding ONE Role relevant to ONE workflow action (assigners only).
+    "listWorkflowActionRoleHolders",
   ].sort(), "the Owner's eight, listTenantPrincipals, the four Object-owned projections and the three control-plane reads");
   assert.deepEqual([...mutations].sort(), [
     "assignRole", "createCustomField", "createRole", "createWorkflowDraft", "createWorkflowVersion",

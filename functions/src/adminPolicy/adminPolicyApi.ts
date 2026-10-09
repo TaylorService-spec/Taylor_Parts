@@ -137,6 +137,8 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "listPrincipalWorkflowResponsibilities",
   // W01 D2: the caller's OWN workflow-administration decisions (read-only, no principal input).
   "readMyWorkflowAdministration",
+  // W01 holder lookup: the Employees holding ONE Role relevant to ONE workflow action (assigners only; see workflowAdminApi).
+  "listWorkflowActionRoleHolders",
   "readPolicyAuditHistory",
   // ── the Administration control plane (2026-09-26) ──
   // Security Role detail: holders + every Object action with its grant SOURCE and condition.
@@ -259,6 +261,7 @@ const READ_OPERATION_SURFACE: Readonly<Record<AdminReadOperation, Administration
   listWorkflows: "workflows",
   readWorkflowVersion: "workflows",
   readMyWorkflowAdministration: "workflows",
+  listWorkflowActionRoleHolders: "workflows",
   validateWorkflowVersion: "workflows",
   listWorkflowInstances: "workflows",
   readWorkflowHistory: "workflows",
@@ -381,6 +384,9 @@ export interface AdminApiDeps {
    * second, repository-only evaluator to fall back to.
    */
   readonly explainEffectiveAccess?: (tenantId: string, principalId: string) => Promise<unknown>;
+  /** W01 holder lookup: the existing Employee visibility, composed by the server (eosAdministration/workflowHolderVisibility). */
+  readonly workflowHolderVisibility?: (tenantId: string, callerPrincipalId: string, employeeIds: readonly string[]) =>
+    Promise<{ readonly employeeReadHeld: boolean; readonly visible: ReadonlyMap<string, { readonly displayName: string | null }> }>;
   /**
    * The operational-configuration implementation (truck-location scope bindings), composed by the server over
    * the shared pool. Absent, every configuration operation refuses; there is no repository fallback.
@@ -971,6 +977,7 @@ async function dispatch(
     case "readWorkflowHistory":
     case "listPrincipalWorkflowResponsibilities":
     case "readMyWorkflowAdministration":
+    case "listWorkflowActionRoleHolders":
     case "createWorkflowDraft":
     case "createWorkflowVersion":
     case "updateWorkflowDefinition":

@@ -2,12 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
-import { adminControlPlaneClient, refusalText } from "../../services/adminControlPlaneClient.js";
+import { refusalText } from "../../services/adminControlPlaneClient.js";
 import { summarizeWorkflow, buildWorkflowVersionView, editableDefinition, definitionForServer } from "../../domain/adminWorkflowView.js";
 import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
 import { appHref, rememberSelectedWorkflow, workflowBuilderHref } from "../../domain/workflowPageLinks.js";
 import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
-import { principalLabel } from "./principalDisplay.js";
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ReadState } from "./ObjectActionSecurity.jsx";
 import KeyListPicker from "./KeyListPicker.jsx";
@@ -19,33 +18,41 @@ function assignmentDefinition(view) {
   })) });
 }
 
-function CoveredEmployees({ roleKey, api }) {
-  const read = useControlPlaneRead(() => api.getSecurityRoleDetail(roleKey), `workflow-holders:${roleKey}`);
-  const holders = read.data?.holders;
-  return <div>
+// W01 holder lookup: the Employees holding ONE Role relevant to ONE action -- the server applies the assigner gate and the
+// EXISTING Employee visibility; anyone it does not name is only counted. Nothing here decides who is shown.
+function CoveredEmployees({ api, versionId, actionKey, roleKey }) {
+  const read = useControlPlaneRead(() => api.listWorkflowActionRoleHolders({ versionId, actionKey, roleKey }), `workflow-holders:${versionId}:${actionKey}:${roleKey}`);
+  const r = read.data;
+  return <div data-role-holders={`${actionKey}:${roleKey}`}>
     <ReadState read={read} what="employees holding this role" />
-    {Array.isArray(holders) && <>
-      <p className="fo-muted">Role holders are shown with their assignment scope. Actual actions still depend on their permissions, record scope and workflow requirements.</p>
-      {holders.length === 0 ? <p>No employee holds this role.</p> : <ul>{holders.map((h) => <li key={h.assignmentId}>
-        {h.employeeId ? <a href={appHref(`/administration/users/${encodeURIComponent(h.employeeId)}`)}>{principalLabel(h)}</a> : principalLabel(h)}
-        {" · "}{h.scopeType === "global" ? "All (Global)" : `${titleCase(h.scopeType)}${h.scopeValue ? `: ${h.scopeValue}` : ""}`}
+    {r && Array.isArray(r.holders) && <>
+      <p className="fo-muted" data-holder-counts>
+        {r.totalHolders} {r.totalHolders === 1 ? "employee holds" : "employees hold"} this role; this action applies to {r.holdersForAction}.
+        {r.withheld > 0 ? ` ${r.withheld} ${r.withheld === 1 ? "is" : "are"} not shown because you can't view ${r.withheld === 1 ? "that employee" : "those employees"}.` : ""}
+      </p>
+      {r.holders.length === 0 ? <p>No employee you can view holds this role.</p> : <ul>{r.holders.map((h) => <li key={h.employeeId}>
+        <a href={appHref(`/administration/users/${encodeURIComponent(h.employeeId)}`)}>{h.displayName ?? h.employeeId}</a>
+        {" · "}{h.scope?.type === "global" ? "All (Global)" : `${titleCase(h.scope?.type ?? "")}${h.scope?.value ? `: ${h.scope.value}` : ""}`}
+        {h.appliesToAction ? null : <span className="fo-muted" data-not-applicable> · This action doesn't apply at this scope</span>}
       </li>)}</ul>}
+      {r.truncated && <p className="fo-muted" data-holders-truncated>Showing the first {r.holders.length} employees.</p>}
+      <p className="fo-muted">Actual actions still depend on each employee's permissions, record scope and workflow requirements.</p>
     </>}
   </div>;
 }
 
-function AssignmentEditor({ api, rolesApi, workflow, versionId, onDirtyChange, onSaved }) {
+function AssignmentEditor({ api, workflow, versionId, onDirtyChange, onSaved }) {
   const read = useControlPlaneRead(() => api.readWorkflowVersion(versionId), `assignment-version:${versionId}`);
   const readable = buildWorkflowVersionView(read.data) && read.data?.version;
   return <section className="fo-panel" aria-label="Workflow assignments" data-selected-workflow={workflow.key}>
     <ReadState read={read} what="workflow assignments" />
     {read.status === "ready" && !readable && <p role="alert">This workflow version could not be read. No assignment controls are available.</p>}
-    {read.status === "ready" && readable && <AssignmentForm key={versionId} api={api} rolesApi={rolesApi} workflow={workflow}
+    {read.status === "ready" && readable && <AssignmentForm key={versionId} api={api} workflow={workflow}
       view={read.data} versionId={versionId} onDirtyChange={onDirtyChange} onSaved={onSaved} />}
   </section>;
 }
 
-function AssignmentForm({ api, rolesApi, workflow, view, versionId, onDirtyChange, onSaved }) {
+function AssignmentForm({ api, workflow, view, versionId, onDirtyChange, onSaved }) {
   // D3: the Roles an action may be assigned to come from the workflow read itself -- the Roles that HOLD the
   // action's capability, decided by the same authority validation uses. No Security Policy read is needed.
   const roleNames = view.roleNames && typeof view.roleNames === "object" ? view.roleNames : null;
@@ -60,7 +67,8 @@ function AssignmentForm({ api, rolesApi, workflow, view, versionId, onDirtyChang
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
-  const [covered, setCovered] = useState(null);
+  const [covered, setCovered] = useState(null); // { actionKey, roleKey }
+  const mayViewHolders = permissions.allows("updateWorkflowDefinition") || permissions.allows("createWorkflowVersion");
   const [search, setSearch] = useState("");
   const assignmentsChanged = JSON.stringify(draft) !== JSON.stringify(assignmentDefinition(view));
   const dirty = !result?.saved && (assignmentsChanged || reason.trim() !== "");
@@ -126,18 +134,20 @@ function AssignmentForm({ api, rolesApi, workflow, view, versionId, onDirtyChang
           </p>}
           {a.functionalRoleKeys && <p className="fo-muted">Also requires: {a.functionalRoleKeys.split(",").map((k) => identifierLabel(k.trim())).join(", ")}</p>}
         </td>
-        <td>{a.roleKeys.split(",").map((k) => k.trim()).filter(Boolean).map((key) => <Button key={key} size="sm" variant="secondary"
-          onClick={() => setCovered(covered === key ? null : key)}>View {roleLabel(key)} employees</Button>)}</td>
+        <td>{mayViewHolders ? a.roleKeys.split(",").map((k) => k.trim()).filter(Boolean).map((key) => <Button key={key} size="sm" variant="secondary"
+          onClick={() => setCovered(covered?.actionKey === a.key && covered?.roleKey === key ? null : { actionKey: a.key, roleKey: key })}>View {roleLabel(key)} employees</Button>)
+          : <span className="fo-muted" data-permission-note="holders">{permissions.status === "ready" ? "Viewing role holders requires permission to change assignments." : permissions.reason("createWorkflowVersion")}</span>}</td>
       </tr>)}</tbody>
     </table></div>
-    {covered && <section aria-label="Covered employees"><h3>{roleLabel(covered)} employees</h3><CoveredEmployees roleKey={covered} api={rolesApi} /></section>}
+    {covered && <section aria-label="Covered employees"><h3>{roleLabel(covered.roleKey)} employees · {draft.actions.find((x) => x.key === covered.actionKey)?.label ?? covered.actionKey}</h3>
+      <CoveredEmployees api={api} versionId={versionId} actionKey={covered.actionKey} roleKey={covered.roleKey} /></section>}
     {result?.error && <p role="alert" className="fo-warning">{result.error}</p>}
     {result?.saved && <p role="status">Assignment draft saved. <a href={workflowBuilderHref(workflow, result.saved)}>Review and activate in Workflow Builder</a>.</p>}
     <p><a href={builderHref}>Open Workflow Builder</a></p>
   </>;
 }
 
-export default function WorkflowAssignments({ api, rolesApi = adminControlPlaneClient }) {
+export default function WorkflowAssignments({ api }) {
   const list = useControlPlaneRead(() => api.listWorkflows(), "assignment-workflows");
   const workflows = useMemo(() => (Array.isArray(list.data) ? list.data.map(summarizeWorkflow).filter(Boolean) : []), [list.data]);
   const [selected, setSelected] = useState(() => readAdminQueryParam("workflow") ?? "");
@@ -179,7 +189,7 @@ export default function WorkflowAssignments({ api, rolesApi = adminControlPlaneC
     </select></label>}
     {list.status === "ready" && workflows.length === 0 && <p>No workflows are available.</p>}
     {!workflow && workflows.length > 0 && <p>No workflow selected.</p>}
-    {workflow && versionId && <AssignmentEditor key={`${workflow.id}:${versionId}:${revision}`} api={api} rolesApi={typeof api.getSecurityRoleDetail === "function" ? api : rolesApi}
+    {workflow && versionId && <AssignmentEditor key={`${workflow.id}:${versionId}:${revision}`} api={api}
       workflow={workflow} versionId={versionId} onDirtyChange={onDirtyChange} onSaved={() => {
         setPinnedVersion({ workflowId: workflow.id, versionId }); list.reload();
       }} />}
