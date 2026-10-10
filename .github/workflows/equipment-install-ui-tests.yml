@@ -23,7 +23,6 @@ on:
       - "functions/src/workOrderLabor/**"
       - "functions/src/serializedAsset/**"
       - "functions/src/index.ts"
-      - "functions/test/installCallable.test.mjs"
       - "functions/test/acquireCallable.test.mjs"
       - "functions/test/workOrderInstall.test.mjs"
       - "functions/test/workOrderLabor.test.mjs"
@@ -96,7 +95,6 @@ on:
       - "functions/src/workOrderLabor/**"
       - "functions/src/serializedAsset/**"
       - "functions/src/index.ts"
-      - "functions/test/installCallable.test.mjs"
       - "functions/test/acquireCallable.test.mjs"
       - "functions/test/workOrderInstall.test.mjs"
       - "functions/test/workOrderLabor.test.mjs"
@@ -290,17 +288,11 @@ jobs:
           exit 1
         working-directory: functions
 
-      # Real roleAssignment documents, read through the transaction, exactly as the deployed callable
-      # resolves them. A stubbed authorizer would prove nothing about the separation this depends on.
-      - name: Callable boundary — auth, actor identity, and every refusal code
-        run: node test/installCallable.test.mjs
-        working-directory: functions
-
-      # ND-33. The other end of the same story, on the same emulator and against the same real
-      # roleAssignments: acquiring creates company-owned inventory with NO procurement record, and
-      # the two stations are deliberately different Roles. Each suite asserts the separation from
-      # its own side — installCallable proves the acquirer cannot install, and this proves the
-      # installer cannot acquire. Either alone would leave half the control unmeasured.
+      # ND-33. Acquiring creates company-owned inventory with NO procurement record, against real
+      # roleAssignments on this emulator; this proves the installer cannot acquire. (The standalone
+      # installSerializedAsset callable adapter and its boundary suite were deleted as dead code in
+      # the Firebase exit: unexported since the 2026-10-01 Equipment activation, installation is the
+      # INSTALL Work Order's on the EOS route.)
       - name: Acquire callable boundary — auth, capability separation, idempotency, provenance
         run: node test/acquireCallable.test.mjs
         working-directory: functions

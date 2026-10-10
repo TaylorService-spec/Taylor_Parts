@@ -4173,50 +4173,12 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/cycleCount/cycleCountCallables.ts",
           "functions/src/cycleCount/cycleCountCommand.ts",
           "functions/src/cycleCount/cycleCountSheetCommand.ts",
           "functions/src/eosAnalysis/measures.ts",
           "functions/src/eosOps/capabilityAuthority.ts",
           "functions/src/eosOps/cycleCountOperations.ts",
           "functions/src/eosOps/experienceAuthority.ts",
-          "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts"
-        ],
-        "clientReferences": [
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
-          "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/scanWorkflows.js",
-          "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
-        ],
-        "serverReferenceCount": 9,
-        "clientReferenceCount": 5,
-        "evidence": "SERVER_REFERENCED"
-      },
-      "environmentActivation": {
-        "eligible": true,
-        "environments": [
-          "platform-sandbox",
-          "platform-certification"
-        ]
-      }
-    },
-    {
-      "id": "inventory.cycleCount.submit",
-      "resource": "inventory.cycleCount",
-      "action": "submit",
-      "description": "Record the counted quantity/serials for one OPEN line of a Cycle Count sheet and compute that line's variance evidence (OPEN -> COUNTED). Moves no stock.",
-      "catalogActive": false,
-      "implementation": {
-        "exportedCallables": [],
-        "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/cycleCount/cycleCountCallables.ts",
-          "functions/src/cycleCount/cycleCountCommand.ts",
-          "functions/src/cycleCount/cycleCountSheetCommand.ts",
-          "functions/src/eosAnalysis/measures.ts",
-          "functions/src/eosOps/capabilityAuthority.ts",
-          "functions/src/eosOps/cycleCountOperations.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts"
         ],
         "clientReferences": [
@@ -4239,6 +4201,42 @@
       }
     },
     {
+      "id": "inventory.cycleCount.submit",
+      "resource": "inventory.cycleCount",
+      "action": "submit",
+      "description": "Record the counted quantity/serials for one OPEN line of a Cycle Count sheet and compute that line's variance evidence (OPEN -> COUNTED). Moves no stock.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/cycleCount/cycleCountCommand.ts",
+          "functions/src/cycleCount/cycleCountSheetCommand.ts",
+          "functions/src/eosAnalysis/measures.ts",
+          "functions/src/eosOps/capabilityAuthority.ts",
+          "functions/src/eosOps/cycleCountOperations.ts",
+          "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/access/scanWorkflows.js",
+          "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
+        ],
+        "serverReferenceCount": 7,
+        "clientReferenceCount": 5,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox",
+          "platform-certification"
+        ]
+      }
+    },
+    {
       "id": "inventory.cycleCount.reconcile",
       "resource": "inventory.cycleCount",
       "action": "reconcile",
@@ -4248,7 +4246,6 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/cycleCount/cycleCountCallables.ts",
           "functions/src/cycleCount/cycleCountCommand.ts",
           "functions/src/cycleCount/cycleCountSheetCommand.ts",
           "functions/src/eosAnalysis/analysis.ts",
@@ -4263,7 +4260,7 @@
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 10,
+        "serverReferenceCount": 9,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4285,7 +4282,6 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/cycleCount/cycleCountCallables.ts",
           "functions/src/cycleCount/cycleCountCommand.ts",
           "functions/src/cycleCount/cycleCountSheetCommand.ts",
           "functions/src/eosOps/capabilityAuthority.ts",
@@ -4297,7 +4293,7 @@
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
