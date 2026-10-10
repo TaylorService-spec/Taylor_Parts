@@ -122,7 +122,7 @@ test("rental over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   const install = (wo, serial, idem) => call(techA, WO, "recordWorkOrderEquipmentInstall", { workOrderId: wo, partId: "PRT-RENT", serialNumber: serial, idempotencyKey: idem, equipmentName: `Rental ${serial}` });
   const unitOf = async (serial) => one(`SELECT * FROM eos_rental.fleet_units WHERE tenant_id = $1 AND serial_number = $2`, [TENANT, serial]);
 
-  await t.test("AUTH: six separated capabilities, held by their ruled analog roles; never admin; Sales / Technicians / admin refused", async () => {
+  await t.test("AUTH: six separated capabilities, held by their ruled analog roles; never granted to admin; Sales / Technicians refused; admin never writes an agreement", async () => {
     assert.deepEqual(await holders("rental.agreement.manage"), ["generalManager", "owner", "salesManager"]);
     assert.deepEqual(await holders("rental.unit.assign"), ["dispatcher", "generalManager", "owner", "salesManager"]);
     assert.deepEqual(await holders("rental.unit.return"), ["fieldManager", "generalManager", "owner", "warehouseAssociate", "warehouseManager"]);
@@ -134,7 +134,10 @@ test("rental over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
     }
     refused(await rn(salesP, "createRentalAgreement", { operatingCompanyId: "taylor", accountId: "acct-r", customerLocationId: "loc-r1", startDate: day(-30),
       rateMinor: 70000, billingFrequency: "WEEK", expectedEndDate: day(5), idempotencyKey: key("ra") }), 403, "CAPABILITY_REQUIRED");
-    refused(await rn(sysAdmin, "designateFleetUnit", { partId: "PRT-RENT", serialNumber: "RU-1", displayName: "x", reason: "x" }), 403, "CAPABILITY_REQUIRED");
+    // The protected Administrator manages the fleet by STANDING (O1, DECISIONS #227) -- never by a grant row (above) -- and
+    // still never writes an agreement (rental.agreement.manage is O1 KEEP).
+    refused(await rn(sysAdmin, "createRentalAgreement", { operatingCompanyId: "taylor", accountId: "acct-r", customerLocationId: "loc-r1", startDate: day(-30),
+      rateMinor: 70000, billingFrequency: "WEEK", expectedEndDate: day(5), idempotencyKey: key("ra-adm") }), 403, "CAPABILITY_REQUIRED");
     refused(await rn(techA, "readRentalWorkspace", {}), 403, "CAPABILITY_REQUIRED");
   });
 

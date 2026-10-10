@@ -41,7 +41,7 @@ import { authorizeObjectAction, postgresContextualReader } from "./contextualAut
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import { lockStockLocation } from "./stockLocationLock.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
-import { withActorAuthority } from "./administrationReach.js";
+import { principalHasProtectedAdministratorStanding, withActorAuthority } from "./administrationReach.js";
 
 const SCHEMA = "eos_ops";
 
@@ -192,6 +192,11 @@ async function correctWithin(
   if (!scoped.allowed) {
     refuse(scoped.reason, "FORBIDDEN", scoped.reason === "OUTSIDE_OPERATIONAL_SCOPE" ? "this receipt location is outside your warehouse scope"
       : scoped.reason === "EMPLOYEE_LINK_REQUIRED" ? "only an Employee can correct a receipt" : "not authorized to correct this receipt");
+  }
+  // G2 (Owner 2026-10-09, DECISIONS #227): a protected Administrator performs the receipt REVERSAL only -- whatever other
+  // grants or scopes it also holds, a CORRECTED (re-receive) is a worker act it never performs.
+  if (c.kind === "CORRECTED" && await principalHasProtectedAdministratorStanding(client, actor.tenantId, actor.principalId)) {
+    refuse("ADMINISTRATOR_REVERSAL_ONLY", "FORBIDDEN", "a protected Administrator may void (reverse) a receipt, never re-receive it as CORRECTED");
   }
 
   // ---- 4. THE LINES, and the INVENTORY INVARIANT: the received stock must still be where the receipt put it ----

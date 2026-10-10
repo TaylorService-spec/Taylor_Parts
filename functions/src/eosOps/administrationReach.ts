@@ -76,6 +76,16 @@ export function isAdministrationReachCapability(capabilityKey: string): boolean 
  * ACTIVE, GLOBAL, non-stale assignments, and no linked Employee that is not access-eligible. Fails closed on any gap.
  */
 export async function principalHasProtectedAdministratorStanding(db: Db, tenantId: string, principalId: string): Promise<boolean> {
+  const rows = await qualifyingGlobalRoles(db, tenantId, principalId, [ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY]);
+  return hasProtectedAdministratorStanding(rows, rows.map((r) => r.key));
+}
+
+/**
+ * The principal's QUALIFYING GLOBAL Roles among `roleKeys`: an ENABLED principal with an ACTIVE membership, its ACTIVE,
+ * GLOBAL, non-stale assignments, and no unusable Employee link -- the rule principal resolution applies. Standing and a
+ * reserved capability's holder check (Owner G7) both read it, so the two can never disagree about who holds a Role.
+ */
+export async function qualifyingGlobalRoles(db: Db, tenantId: string, principalId: string, roleKeys: readonly string[]): Promise<readonly { key: string; protected: boolean | null }[]> {
   const { rows } = await db.query<{ key: string; protected: boolean | null }>(
     `SELECT r.key, r.protected
        FROM eos_policy.user_role_assignments a
@@ -94,8 +104,8 @@ export async function principalHasProtectedAdministratorStanding(db: Db, tenantI
                            AND (e.id IS NULL OR NOT (e.employment_status::text = ANY($4::text[]))))
         AND (SELECT count(*) FROM eos_policy.employee_principal_links l2
               WHERE l2.tenant_id = a.tenant_id AND l2.principal_id = a.principal_id AND l2.status = 'active') <= 1`,
-    [tenantId, principalId, [ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY], [...ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES]]);
-  return hasProtectedAdministratorStanding(rows, rows.map((r) => r.key));
+    [tenantId, principalId, [...roleKeys], [...ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES]]);
+  return rows;
 }
 
 /** The company keys this tenant is authorized to operate as: bound ACTIVE to an ACTIVE operating company. */

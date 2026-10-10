@@ -7886,6 +7886,50 @@ A source-scan test fails if any non-exempt direct writer stops using the helper.
 
 **Boundary.** No migration, no capability, no grant. Audit stays append-only. The cost is one indexed read per stamped write.
 
+## #226 — Trade-in approval RESERVED to Owner / General Manager (SYSTEM_INVARIANT) — PR-4a (2026-10-10)
+
+(Implements Owner ruling G7, 2026-10-09. Amends nothing in #204: its grants were already owner / generalManager only.)
+
+`salesAgreement.tradeIn.approve` is a **RESERVED capability**. `roleCapabilityAdministration.RESERVED_CAPABILITY_HOLDERS` is an allow-list naming the only Roles that may hold it: `owner` and `generalManager`.
+
+**Grant side.** `forbiddenPair` treats every other Role as a forbidden OWNER_GOVERNANCE pair, whether built-in or custom, existing or future. The one precedence rule therefore:
+- refuses the grant (`SYSTEM_INVARIANT`);
+- makes every default writer skip it;
+- shows the Administration grant matrix cell as an invariant;
+- reports a stored row as `FORBIDDEN_PRESENT`.
+
+A direct Principal grant of a reserved capability is refused outright. Verification reports such a holding as `FORBIDDEN_PRINCIPAL_HOLDING`.
+
+**Effective side.** The trade-in decision (approve and decline) and the Commercial client offer additionally require the actor to hold a reserved Role through a qualifying global assignment. This is the same qualifying rule that standing uses (`administrationReach.qualifyingGlobalRoles`). A grant that predates the invariant therefore decides nothing (`RESERVED_CAPABILITY`, FORBIDDEN). Protected Administrator standing still never implies the capability (#223).
+
+**Census before change (nonprod, read-only, 2026-10-10).** Holders by grant are `owner` and `generalManager` only, through 3 principals, all synthetic fixtures. There were 0 conflicts. Nothing was revoked, and nothing is revoked automatically.
+
+**Boundary.** No migration, capability or grant change.
+
+## #227 — The nine approved Administrator management actions by standing — PR-4b (2026-10-10)
+
+(Implements the Owner O1 business-action ruling, 2026-10-09, ADMIN class, with G2 and G3. Extends #223's implied set; #224 reach is unchanged.)
+
+`protectedAdministrator.PROTECTED_ADMINISTRATOR_MANAGEMENT_CAPABILITIES` holds exactly nine keys. Standing implies them although they are not ADMIN_ACTION / READ:
+
+| Key | Scope |
+|---|---|
+| `equipment.record.manage` | The Equipment register. |
+| `rental.fleet.manage` | The Rental fleet. |
+| `reorder.request.approve` / `.reject` / `.cancel` / `.assign` | Within the company queues standing reaches (#224). |
+| `reorder.purchaseOrder.void` | G3: ORDERED only, stated reason, single void, the PO's own company queue, audited. These are the command's and repository's existing rules. |
+| `inventory.receipt.correct` | G2: VOID / reversal only. Reach admits it at the correction call site for VOID alone. CORRECTED re-receives through `inventory.stock.receive`, which is never implied. The cost-evidence supply path does not opt into reach. |
+| `ownership.handoff.correct` | Administrative handoff sources, in addition to the record's own edit authority. |
+
+**Never implied:**
+- the O1 WORKER keys, `administrationReach.ADMINISTRATOR_EXECUTION_CAPABILITIES` (pinned disjoint by test);
+- every O1 KEEP key;
+- the reserved `salesAgreement.tradeIn.approve` (G7, #226).
+
+Changing the nine is an Owner decision. Existing grants are retained (O3).
+
+**Boundary.** No migration, no grant, no capability change.
+
 ## #228 — Legacy Administrator scope cleanup — PR-5 (2026-10-10)
 
 (Follows #222, #223 and #224. Cleanup after PR-2, as listed in #223.)
@@ -7903,7 +7947,7 @@ A source-scan test fails if any non-exempt direct writer stops using the helper.
 
 **Superseded.**
 - The #222 decision to issue the Administrator a REORDER_QUEUE scope for every keyed company, and the seed's owner-as-issuer rule.
-- Issue #2038 (WAREHOUSE scopes for the Administrator) is superseded by #224. Close it when PR-2 merges.
+- Issue #2038 (WAREHOUSE scopes for the Administrator) is superseded by #224 (merged) together with this cleanup. Close it when PR-5 merges.
 
 **Boundary.**
 - No migration, no capability, no grant, no Role, no Firebase. No live data touched.

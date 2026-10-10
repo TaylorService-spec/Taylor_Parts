@@ -73,12 +73,14 @@ test("protected Administrator: standing, full system authority, delegation, audi
       assert.equal(publish, true, "Effective Access names the Protected Administrator provenance");
     });
 
-    await t.test("not a worker, not an approver: no business-approval, financial or execution key is implied", async () => {
+    await t.test("not a worker, not an approver: no business key is implied beyond the nine approved management actions (#227)", async () => {
       const ctx = await operational(ADMIN_SUBJECT);
+      const { PROTECTED_ADMINISTRATOR_MANAGEMENT_CAPABILITIES } = require("../lib/adminPolicy/protectedAdministrator.js");
       const implied = (await q(`SELECT key, action_kind AS kind FROM eos_policy.capabilities WHERE key = ANY($1::text[])`, [[...ctx.protectedAdministratorKeys]])).rows;
-      assert.equal(implied.some((r) => r.kind === "BUSINESS_ACTION"), false, "no BUSINESS_ACTION is ever implied");
+      assert.deepEqual(implied.filter((r) => r.kind === "BUSINESS_ACTION" && !PROTECTED_ADMINISTRATOR_MANAGEMENT_CAPABILITIES.has(r.key)), [],
+        "no other BUSINESS_ACTION is ever implied");
       for (const key of ["reorder.request.read.queue", "salesAgreement.tradeIn.approve", "finance.settlement.record", "workOrder.lifecycle.complete",
-        "inventory.stock.receive", "reorder.request.approve"]) {
+        "inventory.stock.receive"]) {
         assert.equal(ctx.protectedAdministratorKeys.has(key), false, `${key} not implied`);
       }
       // Standing creates no Employee assignment of any kind.

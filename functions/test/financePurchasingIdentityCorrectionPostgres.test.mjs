@@ -94,7 +94,7 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
                VALUES ($1,$2,$3,$4,$5,now(),'fixture')`, [`os-${e}-${kind}-${id}`, TENANT, e, kind, id]);
     }
   }
-  const PARTS = ["P-EXT", "P-T2V", "P-V2T", "P-SELF", "P-LEG", "P-VOID", "P-CORR", "P-USED", "P-WCO", "P-UNP", "P-AUTH1", "P-AUTH2", "P-AUTH3", "P-OPT-T", "P-OPT-V", "P-SELF-V", "P-ADM1", "P-ADM2"];
+  const PARTS = ["P-EXT", "P-T2V", "P-V2T", "P-SELF", "P-LEG", "P-VOID", "P-CORR", "P-USED", "P-WCO", "P-UNP", "P-AUTH1", "P-AUTH2", "P-AUTH3", "P-OPT-T", "P-OPT-V", "P-SELF-V", "P-ADM1", "P-ADM2", "P-ADM3"];
   for (const p of PARTS) {
     await q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
                expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
@@ -450,6 +450,28 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
     const started = await inv(adminWho, "postPurchasingUpdate", { reorderRequestId: rr3, note: "x" });
     assert.equal(started.status === 200, false, JSON.stringify(started.body).slice(0, 200));
     assert.equal(await scopesOf(), 0, "and still no Employee scope was created");
+  });
+
+  await t.test("#227 / G2: standing NEVER re-receives -- even an Administrator with its own WAREHOUSE scope and receive grant (security review)", async () => {
+    const adminWho = { subject: "uid-finidc-admin" };
+    const { rows: [p] } = await q(`SELECT id FROM eos_policy.principals WHERE external_subject = $1`, [adminWho.subject]);
+    // Give the Administrator everything a worker would use: a linked ACTIVE Employee with WAREHOUSE scope over wh-t, on top of
+    // the admin Role's inventory.stock.receive grant and the implied inventory.receipt.correct (#227).
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,display_name) VALUES ('e-adm',$1,'ACTIVE','taylor','Avery Admin')`, [TENANT]);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+             VALUES ('lnk-e-adm',$1,$2,'e-adm','taylor','OPERATOR_ASSERTED','active','fixture','fixture')`, [TENANT, p.id]);
+    await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+             VALUES ('os-e-adm-wh-t',$1,'e-adm','WAREHOUSE','wh-t',now(),'fixture')`, [TENANT]);
+    const rr = await ordered({ partId: "P-ADM3", warehouseId: "wh-t", qty: 2, supplier: EXT, price: 100 });
+    const r = ok(await receive(rr, "P-ADM3", WH_T, 2), "receive (by the worker)").receivingId;
+    const auditBefore = await count(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id = $1`, [TENANT]);
+    refused(await correct(adminWho, { receivingId: r, correction: "CORRECTED", reason: "admin re-receive with scope",
+      replacement: { receivingLocation: WH_T, lines: [{ lineId: "L1", partId: "P-ADM3", receivedQuantity: 2 }] }, idempotencyKey: "adm-corr-scoped" }),
+    403, "FORBIDDEN", /never re-receive it as CORRECTED/, "CORRECTED with scope + grants");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id = $1`, [TENANT]), auditBefore, "a refusal writes nothing");
+    // The worker's own CORRECTED is unchanged.
+    assert.equal(ok(await correct(corrector, { receivingId: r, correction: "CORRECTED", reason: "worker re-receive",
+      replacement: { receivingLocation: WH_T, lines: [{ lineId: "L1", partId: "P-ADM3", receivedQuantity: 2 }] }, idempotencyKey: "wkr-corr-scoped" }), "worker CORRECTED").outcome, "applied");
   });
 
   await t.test("25 / 26. no client writes Finance truth; the corrector holds no Finance write capability", async () => {
