@@ -7862,3 +7862,26 @@ Management decisions that reach enables (review, cancel, void, assign) still req
 - Employee scopes and grants are retained, including the Administrator Employee's historical `REORDER_QUEUE:taylor`.
 - No migration, no new capability, no grant, no Firebase.
 - Business-state validation and append-only audit are unchanged.
+
+## #225 — Protected Administrator AUDIT PROVENANCE in every direct audit writer — PR-3 (2026-10-10)
+
+(Follows #223 D7 and #224. Implements the Owner's "Administrator authorization provenance must be recorded consistently".)
+
+PR-1 stamped the Administration repository and the Workforce kernel. PR-3 stamps every OTHER direct writer of `eos_policy.audit_events`:
+- configuration: system, finance, warehouse/bin, truck registry, scope binding, supplier, sales discount;
+- catalog;
+- purchasing, reorder lifecycle and assignment;
+- inventory receive, correction, placement, relocation, transfer, cycle count, acquire;
+- rental and billing;
+- scheduling and self-scheduling;
+- inbound work;
+- the Workforce Job Role and Functional Role catalogs;
+- preview-as-user.
+
+That is 29 writers in 28 files, all through ONE helper, `administrationReach.withActorAuthority`. It applies the same standing rule as reach and stamps `after.authorizedBy` only when the acting principal has standing. It never overwrites an existing `authorizedBy` and leaves non-record payloads unchanged.
+
+Operator migration, cutover and copy tooling and fixtures have no acting principal with standing. They are listed as exempt.
+
+A source-scan test fails if any non-exempt direct writer stops using the helper.
+
+**Boundary.** No migration, no capability, no grant. Audit stays append-only. The cost is one indexed read per stamped write.

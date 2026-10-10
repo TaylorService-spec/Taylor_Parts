@@ -42,6 +42,7 @@ import { CommercialFulfillmentError, recordWorkOrderFulfillmentOn, type WorkOrde
 import { prepareBillingPackageOn, type BillingPackageOutcome } from "../eosFinance/billingPackage";
 import { FinanceFoundationError } from "../eosFinance/financeFoundation";
 import { isQuarantined, notQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
+import { withActorAuthority } from "./administrationReach";
 
 const SCHEMA = "eos_ops";
 
@@ -541,7 +542,7 @@ export async function setWorkOrderEstimatedDuration(
       `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at)
        VALUES ($1,$2,'setWorkOrderEstimatedDuration',$3,'workOrder',$4,$5,$6,$7)`,
       [`aud_${randomUUID()}`, actor.tenantId, actor.principalId, workOrderId,
-       JSON.stringify({ estimatedDurationMinutes: prior }), JSON.stringify({ estimatedDurationMinutes: minutes }), now]);
+       JSON.stringify({ estimatedDurationMinutes: prior }), JSON.stringify(await withActorAuthority(client, actor.tenantId, actor.principalId, { estimatedDurationMinutes: minutes })), now]);
     return Object.freeze({ workOrderId, estimatedDurationMinutes: minutes });
   });
 }

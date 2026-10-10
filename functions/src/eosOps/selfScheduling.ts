@@ -57,6 +57,7 @@ import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from ".
 import { isQuarantined } from "./workOrderQuarantine";
 import { resolveOperationalContextForPrincipal } from "./capabilityAuthority";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
+import { withActorAuthority } from "./administrationReach";
 
 export const SELF_SCHEDULING_ISSUE = "workOrder.selfScheduling.issue";
 export const SELF_SCHEDULING_CONFIGURE = "workOrder.selfScheduling.configure";
@@ -113,7 +114,7 @@ async function audit(c: PoolClient, tenantId: string, actorUid: string, action: 
   const id = `audit_${randomUUID()}`;
   await c.query(`INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
                  VALUES ($1,$2,$3,$4,$5,$6,NULL,$7::jsonb,$8,$9)`,
-    [id, tenantId, action, actorUid, targetKind, targetId, JSON.stringify(after), at, reason]);
+    [id, tenantId, action, actorUid, targetKind, targetId, JSON.stringify(await withActorAuthority(c, tenantId, actorUid, after)), at, reason]);
   return id;
 }
 async function sessionEvent(c: Pick<PoolClient, "query">, tenantId: string, sessionId: string, kind: string, detail: unknown, at: Date): Promise<void> {

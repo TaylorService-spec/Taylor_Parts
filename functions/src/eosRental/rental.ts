@@ -20,6 +20,7 @@ import { resolveOperatingCompanyKeyForCompany } from "../eosOps/operatingCompany
 import { businessDateOn } from "../eosOps/operatingCompanyBusinessTime";
 import { resolveOperatingCompanyFromKey } from "../eosFinance/financeFoundation";
 import { prepareRentalChargePackageOn } from "./rentalBilling";
+import { withActorAuthority } from "../eosOps/administrationReach";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -100,7 +101,7 @@ async function audit(c: Queryable, actor: RentalActor, action: string, targetKin
   await c.query(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1, $2, $3, $4, $5, $6, NULL, $7::jsonb, now(), $8)`,
-    [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, targetKind, targetId, JSON.stringify(after), reason]);
+    [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, targetKind, targetId, JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, after)), reason]);
 }
 
 async function fleetEvent(c: Queryable, actor: RentalActor, unit: Record<string, any>, e: {

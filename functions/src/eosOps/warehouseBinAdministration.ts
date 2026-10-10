@@ -24,6 +24,7 @@ import {
   type BinRecord,
 } from "./warehouseBinRepository";
 import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./syntheticAcceptanceWarehouse";
+import { withActorAuthority } from "./administrationReach";
 
 export const WAREHOUSE_ADMIN_AUDIT_TARGETS = Object.freeze({ WAREHOUSE: "warehouse", BIN: "bin" });
 export const WAREHOUSE_ADMIN_AUDIT_ACTIONS = Object.freeze({
@@ -96,7 +97,7 @@ async function audit(c: PoolClient, actor: ConfigurationActor, action: string, k
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, kind, targetId,
-      before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(after), reason]);
+      before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, after)), reason]);
 }
 
 /** The ACTIVE bound key of a governed, ACTIVE operating company -- the only way a warehouse acquires a company. */
