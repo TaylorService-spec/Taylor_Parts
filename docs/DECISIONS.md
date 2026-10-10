@@ -7825,3 +7825,40 @@ Implied keys are unconditioned and carry the provenance `PROTECTED_ADMINISTRATOR
 **Boundary.**
 - No new capability, no grant written or removed, no migration, no Firebase.
 - Production: a read-only Owner/Administrator dual-membership census is required before activation (O4).
+
+## #224 — OWNER: protected Administrator ADMINISTRATION REACH over Reorder queues and warehouses — PR-2 (2026-10-09)
+
+(Follows #223, PR-1. Implements #223 D3 and G2.)
+
+**Ruling (Owner, 2026-10-09).** A protected Administrator administers company-scoped operational configuration without an Employee Operational Scope or a worker assignment. This is administration REACH, never operational execution.
+
+**Reach** (`functions/src/eosOps/administrationReach.ts`). The only way in is PR-1 standing, re-read from the store by the same rule (`principalHasProtectedAdministratorStanding`): an enabled principal, an active membership, active global non-stale assignments, no ineligible linked Employee, the protected `admin` Role, and no Owner.
+- **REORDER_QUEUE:** every company key bound ACTIVE, in this tenant, to an ACTIVE operating company.
+- **WAREHOUSE:** every ACTIVE warehouse of such a company.
+- **Never reached:** another tenant, an INACTIVE warehouse, an unbound or INACTIVE company key.
+
+**Consumers.**
+- **Read reach:**
+  - `reorderQueueReach.queueReachKeys` is now the ONE queue reach. It replaces the copies in the Reorder lifecycle and assignment modules, and is used by My Work search, analysis and assigned-work reads.
+  - `partsReads.scopedWarehouseIds` covers on-hand, receipts, movements, transfers, truck stock and warehouse analysis.
+  - The receiving-location picker opts OUT: it offers only where the caller can receive.
+- **Predicate reach:** `contextualAuthorization`'s `OPERATIONAL_SCOPE` predicate admits standing only when ALL of these hold:
+  - the call site opts in (`administrationReach`);
+  - the capability is on the allow-list (`warehouse.record.read`, `reorder.request.read`, `inventory.receipt.correct`);
+  - the scope type is REORDER_QUEUE or WAREHOUSE (never MOBILE).
+
+  Call sites that opt in: the experience surfaces (inspection) and the receipt correction for `VOID` only (G2 reversal). A source-scan test pins exactly these.
+
+**Never execution.**
+- The 10 O1 WORKER capabilities and `inventory.stock.receive` are an explicit exclusion set, disjoint from the allow-list.
+- The receipt CORRECTED path re-receives through the receive pipeline, whose `inventory.stock.receive` WAREHOUSE gate no call site opts in, so re-receiving stays the worker's own authority.
+- MOBILE scope is never reached.
+- Purchasing steps are assignee-gated and never consult reach.
+- WORK_ELIGIBILITY and RECORD_ASSIGNMENT predicates are untouched.
+
+Management decisions that reach enables (review, cancel, void, assign) still require their OWN capability, which arrives with PR-4.
+
+**Boundary.**
+- Employee scopes and grants are retained, including the Administrator Employee's historical `REORDER_QUEUE:taylor`.
+- No migration, no new capability, no grant, no Firebase.
+- Business-state validation and append-only audit are unchanged.

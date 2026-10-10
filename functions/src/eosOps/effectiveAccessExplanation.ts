@@ -45,7 +45,7 @@ import {
   snapshotContextualReader,
   type PrincipalDimensionReader,
 } from "./contextualAuthorization";
-import { EXPERIENCE_SURFACES, grantedSurfaceKeys, type PrincipalDimensions } from "./experienceAuthority";
+import { administrationReachDimension, EXPERIENCE_SURFACES, grantedSurfaceKeys, type PrincipalDimensions } from "./experienceAuthority";
 import { listCurrentFunctionalRoles, type CurrentFunctionalRole } from "./functionalRoleFacts";
 
 /**
@@ -176,7 +176,8 @@ export async function explainEffectiveAccess(
   const employeeId = await dimensionReader.linkedEmployeeId(tenantId, principalId);
   const workEligibility = employeeId ? await dimensionReader.listWorkEligibility(tenantId, employeeId) : [];
   const operationalScopes = employeeId ? await dimensionReader.listOperationalScopes(tenantId, employeeId) : [];
-  const dimensions: PrincipalDimensions = { employeeId, workEligibility, operationalScopes };
+  const administrationReach = await administrationReachDimension(pool, tenantId, principalId);
+  const dimensions: PrincipalDimensions = { employeeId, workEligibility, operationalScopes, administrationReach };
   const actorBase = { tenantId, principalId, capabilities: ctx.capabilities };
   const surfaces = await grantedSurfaceKeys(actorBase, dimensions);
   const surfaceSet = new Set(surfaces);

@@ -40,6 +40,7 @@
 // generic landing destination here and none should be added.
 import type { Pool } from "pg";
 import { resolveOperationalContext } from "./capabilityAuthority";
+import { administrationReachAll } from "./administrationReach";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import {
   authorizeObjectAction,
@@ -525,6 +526,15 @@ export interface PrincipalDimensions {
   readonly employeeId: string | null;
   readonly workEligibility: readonly string[];
   readonly operationalScopes: readonly CurrentOperationalScope[];
+  /** PROTECTED ADMINISTRATOR reach targets (DECISIONS #224); absent or empty for every other principal. */
+  readonly administrationReach?: Readonly<Record<string, readonly string[]>>;
+}
+
+/** The reach targets a principal's standing gives, per reachable scope type -- empty for everyone without standing. */
+export async function administrationReachDimension(
+  db: Pick<Pool, "query">, tenantId: string, principalId: string,
+): Promise<Readonly<Record<string, readonly string[]>>> {
+  return administrationReachAll(db, tenantId, principalId);
 }
 
 /**
@@ -556,6 +566,9 @@ export async function grantedSurfaceKeys(
         actor,
         capabilityKey: path.capabilityKey,
         predicates: path.predicates,
+        // A surface is INSPECTION: it accepts administration reach (allow-listed capabilities only -- never put-away,
+        // relocation or any other execution surface).
+        administrationReach: true,
       });
       if (decision.allowed) {
         granted.add(entry.key);
@@ -619,7 +632,8 @@ export async function resolveExperienceContext(
   const employeeId = await dimensionReader.linkedEmployeeId(tenantId, principalId);
   const workEligibility = employeeId ? await dimensionReader.listWorkEligibility(tenantId, employeeId) : [];
   const operationalScopes = employeeId ? await dimensionReader.listOperationalScopes(tenantId, employeeId) : [];
-  const dimensions: PrincipalDimensions = { employeeId, workEligibility, operationalScopes };
+  const administrationReach = await administrationReachDimension(pool, tenantId, principalId);
+  const dimensions: PrincipalDimensions = { employeeId, workEligibility, operationalScopes, administrationReach };
 
   const surfaces = await grantedSurfaceKeys(
     { tenantId, principalId, capabilities: ctx.capabilities },

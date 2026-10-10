@@ -331,9 +331,16 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
     // never to the TARGET's qualification. So REORDER_QUEUE may appear only where the actor's own Employee scopes are read,
     // and the target is still decided by the work-eligibility qualification alone.
     const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    const queueLines = code.split("\n").filter((l) => /REORDER_QUEUE/.test(l));
-    assert.ok(queueLines.length > 0 && queueLines.every((l) => /scopeType === "REORDER_QUEUE"/.test(l)), `the queue scope is read only as the actor's reach: ${queueLines.join(" | ")}`);
-    assert.match(code, /listOperationalScopes\(actor\.tenantId, actorEmployeeId\)/, "the reach is the ACTOR's Employee scope");
+    // DECISIONS #224: the actor's reach is the ONE shared queue reach (reorderQueueReach.queueReachKeys), and it is read
+    // for the ACTOR only. The target's qualification never touches a queue scope.
+    const queueLines = code.split("\n").filter((l) => /REORDER_QUEUE|queueReachKeys/.test(l) && !/^\s*import /.test(l));
+    assert.ok(queueLines.length > 0 && queueLines.every((l) => /queueReachKeys\(client, actor\)/.test(l)),
+      `the queue scope is read only as the actor's reach: ${queueLines.join(" | ")}`);
+    // ...and the shared reach is computed for the ACTOR (its own Employee scopes + protected-Administrator standing), never
+    // for the target Employee.
+    const reachSrc = readFileSync(join(FUNCTIONS_DIR, "src/eosOps/reorderQueueReach.ts"), "utf8");
+    assert.match(reachSrc, /linkedEmployeeId\(actor\.tenantId, actor\.principalId\)/, "the reach is the ACTOR's Employee scope");
+    assert.match(reachSrc, /administrationReachTargets\(db, actor\.tenantId, actor\.principalId, /, "plus the actor's own standing");
     assert.match(code, /qualification_code = \$3 AND effective_to IS NULL`,\s*\[actor\.tenantId, employeeId, REORDER_ASSIGNMENT_QUALIFICATION\]/,
       "the queue scope leaked into the qualification authority");
   });

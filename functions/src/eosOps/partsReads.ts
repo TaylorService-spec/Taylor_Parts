@@ -24,6 +24,7 @@ import { operatingCompanyDisplayName } from "../ownership/operatingCompanyAuthor
 import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./syntheticAcceptanceWarehouse.js";
 import { currentMobileLocationIds } from "./mobileStockAuthority.js";
 import { listTruckViews } from "./truckRegistryAdministration.js";
+import { administrationReachTargets } from "./administrationReach.js";
 
 export const INVENTORY_ON_HAND_READ = "inventory.transaction.read";
 export const RECEIPT_READ = "receivingOrder.record.read";
@@ -61,13 +62,22 @@ async function withReadSnapshot<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>
   }
 }
 
-/** The warehouses the caller's Employee holds the WAREHOUSE Operational Scope over. None without an Employee. */
-export async function scopedWarehouseIds(c: Pick<PoolClient, "query">, actor: ReorderActor): Promise<string[]> {
+/**
+ * The warehouses a caller's READS reach: its Employee's WAREHOUSE Operational Scopes, plus -- for a protected
+ * Administrator (DECISIONS #224) -- every ACTIVE warehouse of a company this tenant is authorized to operate as. None
+ * without either. Reads only: no command takes its authority from this list.
+ */
+export async function scopedWarehouseIds(
+  c: Pick<PoolClient, "query">, actor: ReorderActor, options: { readonly administrationReach?: boolean } = {},
+): Promise<string[]> {
   const reader = postgresPrincipalDimensionReader(c);
   const employeeId = await reader.linkedEmployeeId(actor.tenantId, actor.principalId);
-  if (employeeId === null) return [];
-  return [...new Set((await reader.listOperationalScopes(actor.tenantId, employeeId))
-    .filter((s) => s.scopeType === "WAREHOUSE").map((s) => s.scopeId))].sort();
+  const own = employeeId === null ? [] : (await reader.listOperationalScopes(actor.tenantId, employeeId))
+    .filter((s) => s.scopeType === "WAREHOUSE").map((s) => s.scopeId);
+  // An EXECUTION picker passes administrationReach: false -- it must offer only where the caller can act.
+  const administered = options.administrationReach === false ? []
+    : await administrationReachTargets(c, actor.tenantId, actor.principalId, "WAREHOUSE");
+  return [...new Set([...own, ...administered])].sort();
 }
 
 /** SQL resolving (location_type, location_id) to its governing warehouse; MOBILE only through a CURRENT binding. */
@@ -199,7 +209,8 @@ export async function listReceivingLocationOptions(deps: { readonly pool: Pool }
   if (!ID(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
   return withReadSnapshot(deps.pool, async (c) => {
     const rr = await c.query(`SELECT warehouse_id, status::text AS status FROM eos_ops.reorder_requests WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, i.reorderRequestId]);
-    const scope = await scopedWarehouseIds(c, actor);
+    // The RECEIVING picker offers only where the caller can receive: execution, never administration reach (G2).
+    const scope = await scopedWarehouseIds(c, actor, { administrationReach: false });
     if (rr.rows.length === 0 || !scope.includes(String(rr.rows[0].warehouse_id))) refuse("REORDER_NOT_FOUND", "NOT_FOUND", "no receivable Reorder Request in your warehouse scope");
     const wh = await c.query(`SELECT id, name, site_label, status::text AS status FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, rr.rows[0].warehouse_id]);
     if (wh.rows.length === 0 || wh.rows[0].status !== "ACTIVE") return { reorderRequestId: i.reorderRequestId, receivable: rr.rows[0].status === "ORDERED", options: [] };
@@ -408,6 +419,8 @@ export async function listTransferOrders(deps: { readonly pool: Pool }, actor: R
   if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 500) refuse("LIMIT_INVALID", "INVALID_INPUT", "limit is an integer 1..500");
   return withReadSnapshot(deps.pool, async (c) => {
     const scope = await scopedWarehouseIds(c, actor);
+    // `canReceive` is an EXECUTION hint: only the caller's OWN warehouse scope, never administration reach (#224).
+    const receivable = await scopedWarehouseIds(c, actor, { administrationReach: false });
     // OD-T3: a Technician sees the transfers INTO a truck it holds MOBILE scope over (to receive them), and no others.
     const mine = actor.capabilities.has("inventory.transfer.receive") ? await currentMobileLocationIds(c, actor) : [];
     if (scope.length === 0 && mine.length === 0) return { items: [] };
@@ -426,7 +439,7 @@ export async function listTransferOrders(deps: { readonly pool: Pool }, actor: R
       quantity: Number(r.quantity), serialNumbers: r.serial_numbers ?? [],
       origin: { type: r.ot, locationId: r.oi, warehouseId: r.ow ?? null }, destination: { type: r.dt, locationId: r.di, warehouseId: r.dw ?? null },
       createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at, createdBy: r.created_by,
-      canReceive: r.status === "IN_TRANSIT" && ((r.dw !== null && scope.includes(r.dw)) || (r.dt === "MOBILE" && mine.includes(r.di))),
+      canReceive: r.status === "IN_TRANSIT" && ((r.dw !== null && receivable.includes(r.dw)) || (r.dt === "MOBILE" && mine.includes(r.di))),
     })) };
   });
 }
