@@ -355,7 +355,6 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
   await t.test("W01 D2: readMyWorkflowAdministration answers the caller's OWN decisions, exactly as the mutations enforce", async () => {
     const ops = ["createWorkflowDraft", "createWorkflowVersion", "updateWorkflowDefinition", "setWorkflowRoleBinding", "publishWorkflowVersion",
       "activateWorkflowVersion", "retireWorkflowVersion", "startWorkflowInstance", "adoptRecordsIntoWorkflowVersion", "migrateWorkflowInstances"];
-    const before = await auditCount();
     // A workflow administrator holding every workflowDefinition capability: every operation allowed.
     const full = await call("readMyWorkflowAdministration", {}, WF_SUBJECT);
     assert.equal(full.ok, true, full.message);
@@ -363,14 +362,22 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
     for (const op of ops) assert.equal(full.data.operations[op].allowed, true, op);
     assert.equal(full.data.operations.publishWorkflowVersion.requiredCapability, "workflowDefinition.publish");
     assert.equal(typeof full.data.operations.publishWorkflowVersion.requiredLabel, "string");
-    // The Security administrator holds the workflow READ only: every operation refused -- and the real mutation agrees.
-    const readOnly = await call("readMyWorkflowAdministration", {}, ADMIN_SUBJECT);
+    // The protected Administrator holds every workflow decision by STANDING (DECISIONS #223).
+    const admin = await call("readMyWorkflowAdministration", {}, ADMIN_SUBJECT);
+    for (const op of ops) assert.equal(admin.data.operations[op].allowed, true, `Administrator ${op}`);
+    // A holder of the workflow READ only (a non-Administrator): every operation refused -- and the real mutation agrees.
+    const readerRole = await call("createRole", { key: "wfReadOnly", name: "Workflow reader", reason: REASON }, ADMIN_SUBJECT);
+    assert.equal(readerRole.ok, true, readerRole.message);
+    assert.equal((await call("grantObjectActionToRole", { objectKey: "workflowDefinition", actionKey: "read", roleKey: "wfReadOnly", reason: REASON }, ADMIN_SUBJECT)).ok, true);
+    const reader = await person("uid-wf-reader", ["wfReadOnly"]);
+    const before2 = await auditCount();
+    const readOnly = await call("readMyWorkflowAdministration", {}, reader.subject);
     assert.equal(readOnly.ok, true, readOnly.message);
     for (const op of ops) assert.equal(readOnly.data.operations[op].allowed, false, op);
     const draft = (await repo.listWorkflowVersions(TENANT, salesOrderDraft.workflowId)).find((v) => v.status === "DRAFT") ?? salesOrderDraft;
     for (const [op, input] of [["publishWorkflowVersion", { versionId: draft.id, reason: REASON }],
       ["updateWorkflowDefinition", { versionId: draft.id, definition: { steps: [], actions: [] }, reason: REASON }]]) {
-      const refused = await call(op, input, ADMIN_SUBJECT);
+      const refused = await call(op, input, reader.subject);
       assert.equal(refused.code, "FORBIDDEN", `${op}: ${refused.code} ${refused.message}`);
       assert.match(refused.message, new RegExp(readOnly.data.operations[op].requiredCapability.replace(".", "\\.")));
     }
@@ -380,7 +387,7 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
     // Self only: there is no way to ask about anyone else.
     const probe = await call("readMyWorkflowAdministration", { principalId: dispatcher.principalId }, ADMIN_SUBJECT);
     assert.equal(probe.code, "INVALID_INPUT");
-    assert.equal(await auditCount(), before, "read-only: nothing audited, nothing changed");
+    assert.equal(await auditCount(), before2, "read-only: nothing audited, nothing changed");
   });
 
   await t.test("W01 D3: eligibleRoles are exactly the bindings validation accepts", async () => {
