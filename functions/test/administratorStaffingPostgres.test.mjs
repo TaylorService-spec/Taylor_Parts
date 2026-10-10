@@ -139,13 +139,14 @@ test("Owner ruling R1: Owner staffs the designated Administrator Role for anothe
   const techA = await person(T.a, "tech-a", ["technician"], "admin-a1");
   const adminRoleA = await roleId(T.a, "admin");
 
-  await t.test("premise: Owner holds admin.roleAssignment.write and the R1 capability, and NOT admin.securityPolicy.write", async () => {
+  await t.test("premise: Owner holds admin.roleAssignment.write and the R1 capability, and NOT admin.securityPolicy.write; the Administrator holds R1 by standing", async () => {
     const owner = await explained(ownerA);
     assert.equal(owner.capabilities.includes(R1), true);
     assert.equal(owner.capabilities.includes("admin.roleAssignment.write"), true);
     assert.equal(owner.capabilities.includes(SPW), false);
     const admin = await explained(adminA1);
-    assert.equal(admin.capabilities.includes(R1), false, "admin needs no R1 capability: it holds admin.securityPolicy.write");
+    // DECISIONS #223 amends R1: the protected Administrator also staffs Administrators, by STANDING (no grant row).
+    assert.equal(admin.capabilities.includes(R1), true, "a protected Administrator holds R1 by standing");
   });
 
   await t.test("Owner assigns the Administrator Role to another principal -- allowed, audited exactly once, naming R1", async () => {
@@ -247,7 +248,8 @@ test("Owner ruling R1: Owner staffs the designated Administrator Role for anothe
     await q(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
              SELECT 'rc-fx-ruleA', $1, r.id, c.id, 'fixture','fixture','fixture'
                FROM eos_policy.roles r, eos_policy.capabilities c WHERE r.tenant_id=$1 AND r.key='admin' AND c.key='admin.dataImport.execute'`, [T.a]);
-    refused(await call("owner-a", "assignRole", { principalId: owner2, roleId: adminRoleA, reason: "x" }), "CONFLICT", /SYSTEM_INVARIANT/);
+    // DECISIONS #223: Owner and Administrator are distinct authority types -- refused before ruling A is even reached.
+    refused(await call("owner-a", "assignRole", { principalId: owner2, roleId: adminRoleA, reason: "x" }), "FORBIDDEN", /PROTECTED_ROLE_CONFLICT/);
   });
 
   await t.test("a holder of admin.roleAssignment.write WITHOUT the R1 capability is refused, both directions", async () => {

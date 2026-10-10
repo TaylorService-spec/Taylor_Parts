@@ -138,20 +138,20 @@ const TINY = (roleKeys = ["dispatcher"]) => ({
 
 // ════════════════════ 1. bootstrap ════════════════════
 
-test("bootstrap: the first administrator gets workflow authority through Administration, not a migration or a Role name", async () => {
+test("bootstrap: the protected Administrator holds workflow authority by STANDING; every other Role through Administration", async () => {
   const w = await world();
-  // The bootstrapped admin holds admin.securityPolicy.write but NO workflowDefinition.* -- the Role
-  // name `admin` authorizes nothing here.
+  // DECISIONS #223 (supersedes R2 for the Administrator): the designated, protected Administrator holds the workflow
+  // system authority by standing -- no grant row, no migration.
   const before = await capabilityKeysFor(w.repo, w.tenantId, ["admin"], w.admin.uid);
-  assert.equal([...before].some((k) => k.startsWith("workflowDefinition.")), false);
-  const { version } = await draftOf(w, "salesOrder");
-  const refused = await w.call("publishWorkflowVersion", { versionId: version.id, reason: REASON });
-  assert.equal(refused.ok, false);
-  assert.equal(refused.code, "FORBIDDEN");
-  assert.equal(refused.message, 'not authorized: "workflowDefinition.publish" is required');
-  const readRefused = await w.call("listWorkflows");
-  assert.equal(readRefused.code, "FORBIDDEN");
+  for (const action of ["create", "read", "edit", "version", "publish", "bindRole"]) {
+    assert.equal(before.has(`workflowDefinition.${action}`), true, action);
+  }
+  assert.equal((await w.repo.listRoleCapabilityDecisions(w.tenantId)).some((d) => d.capabilityKey.startsWith("workflowDefinition.")), false,
+    "standing writes no grant");
+  const read = await w.call("listWorkflows");
+  assert.equal(read.ok, true, read.message);
 
+  // Every OTHER Role still reaches workflow authority only through Administration (R2, unchanged for them).
   await grantWorkflowAuthorityThroughAdministration(w);
   const decisions = (await w.repo.listRoleCapabilityDecisions(w.tenantId)).filter((d) => d.capabilityKey.startsWith("workflowDefinition."));
   assert.equal(decisions.length, 6, "one audited ADMIN_GRANTED decision per workflow capability");
@@ -590,7 +590,7 @@ test("ADOPT and MIGRATE: explicit, validated, ONE audit event each, one instance
 
 // ════════════════════ 8. authorization, isolation, audit, API ════════════════════
 
-test("UNAUTHORIZED: every workflow mutation is refused without its capability -- the Role name `admin` is not enough", async () => {
+test("UNAUTHORIZED: every workflow mutation is refused without its capability (the protected Administrator holds it by standing, #223)", async () => {
   const w = await world();
   await grantBaseline(w);
   const tech = await person(w, "sub-tech", ["technician"]);
@@ -608,7 +608,7 @@ test("UNAUTHORIZED: every workflow mutation is refused without its capability --
     migrateWorkflowInstances: { fromVersionId: version.id, toVersionId: version.id, stepMap: {}, reason: REASON },
   };
   const before = await auditCount(w);
-  for (const subject of [w.subject, tech.subject]) {
+  for (const subject of [tech.subject]) {
     for (const [operation, input] of Object.entries(attempts)) {
       const r = await w.call(operation, input, subject);
       assert.equal(r.code, "FORBIDDEN", `${subject} ${operation}: ${r.message}`);

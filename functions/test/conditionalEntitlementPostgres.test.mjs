@@ -1616,7 +1616,7 @@ test("AQ: LAZY conditional entitlement -- the Owner's order, counted", { skip: S
     //    multiply. A request that does ask still costs exactly what it cost before.
     const u = await request(adminUser);
     await composition.authorizeResolvedOperationalAction(pgReader, u.ctx, { capabilityKey: PRINCIPAL_ACCESS_READ });
-    assert.equal(u.m.snap().total, 13, "BEFORE 12 queries, AFTER 12 -- the work moved, it did not grow (+1 DQ-007)");
+    assert.equal(u.m.snap().total, 14, "BEFORE 12 queries, AFTER 12 -- the work moved, it did not grow (+1 DQ-007, +1 #223: the protected-Administrator standing read, an admin holder only)");
     assert.equal(u.m.snap().grantProvenance, 1);
     assert.equal(u.m.snap().conditionCatalog, 0);
 
@@ -1629,7 +1629,7 @@ test("AQ: LAZY conditional entitlement -- the Owner's order, counted", { skip: S
     assert.equal(c.resolved.conditionCatalog, 1, "the withheld-cell guard must still read the relation here");
     // 13 -> 14 (Pass 8 D1): a principal whose Role a condition names pays ONE provenance read at
     // resolution, so a conditioned-only key never reaches the flat set.
-    assert.equal(c.resolved.total, 15, "BEFORE 23 queries, AFTER 14 (+1 DQ-007)");
+    assert.equal(c.resolved.total, 16, "BEFORE 23 queries, AFTER 14 (+1 DQ-007, +1 #223 standing read)");
     c.m.reset();
     const [state, reader] = countingReader(pgReader);
     const d = await composition.authorizeResolvedOperationalAction(reader, c.ctx, { capabilityKey: PRINCIPAL_ACCESS_READ });

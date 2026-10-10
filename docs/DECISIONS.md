@@ -7772,3 +7772,56 @@ Left in place, out of scope: the unrendered `LegacyRoleMatrix` / `LegacyRoleGrid
 **Boundary.**
 - No capability, grant, Role, migration, policy model or Firebase change.
 - Production is not altered. The Administrator's scopes in any environment are issued through Administration → Employee → Operational Scope by the Owner (or another administrator), or in nonprod by the reviewed workforce seed.
+
+## #223 — OWNER: the protected Administrator holds full company system authority by STANDING — PR-1 (2026-10-09)
+
+**Ruling (Owner, final, 2026-10-09).**
+- **Owner:** ultimate company governance. Appoints the initial Administrator, appoints and revokes Administrators, and keeps protected ownership. An Administrator never removes or overrides the Owner.
+- **Administrator:** the company's system controller, through the existing designated protected `admin` Role. There is no new Role and no parallel system.
+  - Full company-scoped system authority, resolved centrally on the server. A new system-administration capability is covered with no grant.
+  - Appoints and revokes OTHER Administrators. There is one tier.
+  - Not a job assignment: no Work Eligibility, no record assignment, no MOBILE scope. Worker-only acts keep their requirements.
+- **Operational employees and managers:** receive capabilities, scopes and assignments by job. They never get Administrator authority by implication.
+
+**Standing** (`functions/src/adminPolicy/protectedAdministrator.ts`). The principal context has already established an authenticated, enabled principal, an active membership and tenant, and employment eligibility. On top of that, standing requires:
+- an active GLOBAL assignment of the Role whose key is `admin` AND whose stored `protected` flag is set;
+- NOT also holding the protected Owner Role. Owner and Administrator stay distinct authority types.
+
+**What standing implies.**
+- **Implied:** every `ADMIN_ACTION` and every `READ` capability, plus every action on a system-administration Object: `rolesPermissions`, `workflowDefinition`, `principal`, `employee`, `auditLog`, `dataImport`, `systemConfiguration`, `financeConfiguration`.
+- **Excluded:** `reorder.request.read.queue` (superseded) and `salesAgreement.tradeIn.approve` (Owner/GM).
+- **Not implied (O1):** `BUSINESS_ACTION`, `CREATE` and `EDIT` on business Objects. Business approval, financial execution and operational execution keep their existing authorization until a capability-by-capability classification is approved.
+- **Existing grants (O3):** retained. Standing adds; it removes nothing.
+
+**Where it is resolved.** The three root resolvers:
+- `capabilityAuthority.resolveOperationalCapabilities`: the flat set, the entitled seam and `capabilitiesWithoutUnevaluatedConditions`;
+- `administrationCapabilityGate.capabilityKeysFor`;
+- `adminPolicyApi.resolvePrincipalEffectiveAccess`.
+
+Implied keys are unconditioned and carry the provenance `PROTECTED_ADMINISTRATOR` in Effective Access.
+
+**Delegation.**
+- The Owner appoints and removes through R1.
+- An Administrator with standing appoints and removes OTHER Administrators: global only, re-verified against the store under the governance lock.
+- Self-appointment and self-removal are refused (`SELF_ADMINISTRATION`).
+- The last Administrator is never removed. The anti-lockout count stays grant-row based, which is stricter.
+- The protected Owner is never appointed or removed through ordinary role administration.
+- The Administrator Role is refused to a principal holding the protected Owner (`PROTECTED_ROLE_CONFLICT`). Historical memberships are not altered.
+
+**Audit.** Every Administration write by an actor with standing records `after.authorizedBy = { standing: "PROTECTED_ADMINISTRATOR", ruling }`. This covers policy, workflow, workflow lifecycle and instances, and Employee administration through the Workforce kernel. An R1 staffing record keeps its own `authorizedBy`. Audit stays append-only.
+
+**Superseded.**
+- The principle "holding `admin` is not a substitute for the capability" (`administrationAuthority.ts`), and its bootstrap note in `workflowAdministration.ts`.
+- R2 ("no self-bootstrap exception") for the Administrator. R2 still describes how every OTHER Role gets workflow authority.
+- R1 as Owner-only staffing: protected Administrators also staff Administrators.
+- DQ-210-A is resolved by the system / approval / execution distinction above.
+
+**Approved but NOT in PR-1.**
+- Company-wide WAREHOUSE and REORDER_QUEUE administration reach without an Employee scope, with worker execution preserved (D3; PR-2).
+- Domain-writer audit consistency (PR-3).
+- The O1 classification (PR-4).
+- Cleanup after acceptance (PR-5).
+
+**Boundary.**
+- No new capability, no grant written or removed, no migration, no Firebase.
+- Production: a read-only Owner/Administrator dual-membership census is required before activation (O4).

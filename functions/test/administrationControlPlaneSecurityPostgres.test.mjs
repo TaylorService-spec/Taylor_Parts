@@ -180,13 +180,18 @@ test("the Administration control plane holds under attack and under concurrency"
   });
 
   // ════════════════════ D4 ════════════════════
-  await t.test("D4: a DISABLED administrator is not a holder -- the last usable admin cannot revoke itself", async () => {
+  await t.test("D4: a DISABLED administrator is not a holder -- the last usable admin cannot be removed", async () => {
     const adminRole = await roleId(T.b, "admin");
     const b2 = await person(T.b, "admin-b2", ["admin"], "admin-b1");
     await q(`UPDATE eos_policy.principals SET status='disabled' WHERE id=$1`, [b2]);
     const b1 = await principalOf("admin-b1");
     const mine = (await repo.listAssignmentsForPrincipal(T.b, b1)).find((a) => a.roleId === adminRole && a.status === "active");
-    const r = await call("admin-b1", "revokeRole", { assignmentId: mine.id, reason: "leave" });
+    // DECISIONS #223: an Administrator never removes ITSELF (refused first) ...
+    const self = await call("admin-b1", "revokeRole", { assignmentId: mine.id, reason: "leave" });
+    assert.match(self.message, /SELF_ADMINISTRATION/);
+    // ... and when the Owner removes the last USABLE Administrator, the disabled one is not counted: anti-lockout refuses.
+    await person(T.b, "owner-b-d4", ["owner"], "admin-b1");
+    const r = await call("owner-b-d4", "revokeRole", { assignmentId: mine.id, reason: "leave" });
     assert.deepEqual([r.ok, r.code], [false, "CONFLICT"], JSON.stringify(r));
     assert.match(r.message, /WOULD_REMOVE_LAST_ADMINISTRATION_PATH/);
     assert.equal((await call("admin-b1", "listRoles", {})).ok, true, "B1 still administers");

@@ -213,10 +213,11 @@ export class AdministrationCapabilityDeniedError extends AdministrationDeniedErr
 //     SAFETY INVARIANT  may this change leave the platform   refuses a mutation regardless of
 //                       unadministrable?                     how well authorized it was
 //
-// THE INVARIANT NEVER GRANTS. Holding `admin` is not a substitute for the capability, which is the
-// whole point of the ruling: if the Role key could still authorize, the capability model would be
-// decorative and the two authorities would drift exactly as objectPermissionMap.js drifted from
-// eos_policy.capabilities.
+// THE INVARIANT NEVER GRANTS -- but STANDING does (Owner ruling 2026-10-09, DECISIONS #223, superseding the earlier
+// "holding admin is not a substitute for the capability"). The designated protected Administrator holds the workflow
+// keys, like every system-administration key, through protectedAdministrator.ts -- resolved centrally into the SAME
+// capability set this gate reads, never by consulting a Role name here. Every other Role still needs the capability
+// through a grant, so the capability model stays the one authority.
 //
 // ORDER IS DELIBERATE: capability first, safety second. An unauthorized caller learns only that it
 // is unauthorized -- telling it "that would remove the last administrator" reports the shape of the

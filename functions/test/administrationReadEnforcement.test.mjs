@@ -626,9 +626,10 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
       const allowed = await post(ADMIN_SUBJECT, operation, input);
       if (operation === "listWorkflowActionRoleHolders") {
         // W01 holder lookup: the SURFACE gate (workflowDefinition.read) admits the holder; the operation then applies its
-        // own assigner gate (edit or version), which this read-only holder does not pass -- refused by THAT gate, by name.
-        assert.equal(allowed.status, 403, `${operation} as a read-only holder: ${allowed.body}`);
-        assert.match(JSON.parse(allowed.body).message, /WORKFLOW_ASSIGNMENT_CAPABILITY_REQUIRED/);
+        // own assigner gate (edit or version). The protected Administrator passes it by STANDING (DECISIONS #223), so the
+        // lookup itself runs and answers for the fixture's nonexistent action -- both gates passed, nothing invented.
+        assert.equal(allowed.status, 404, `${operation} as the protected Administrator: ${allowed.body}`);
+        assert.match(JSON.parse(allowed.body).message, /WORKFLOW_ACTION_NOT_FOUND/);
       } else if (operation === "explainEffectiveAccess" || operation === "listPrincipalWorkflowResponsibilities") {
         // The gate admits the holder; the read then needs the server-composed evaluator, which this
         // transport fixture does not compose (proved end to end in effectiveAccessExplanationPostgres).

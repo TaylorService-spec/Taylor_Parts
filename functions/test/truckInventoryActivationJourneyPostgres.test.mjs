@@ -156,8 +156,11 @@ test("Truck Inventory activation over the governed transports", { skip: SKIP, co
 
   await t.test("OD-T7 REGISTRY: the Operational Configuration Administrator creates and links trucks through Administration", async () => {
     const reason = "Truck activation journey";
-    // Without the registry capability: the Administrator, the Dispatcher, the Technician and the Owner-less general employee.
-    for (const who of [adminWho, dispatcher, techA, general]) {
+    // Without the registry capability: the Dispatcher, the Technician and the Owner-less general employee. The protected
+    // Administrator holds registry configuration by STANDING (DECISIONS #223) -- admitted (a read here, so the journey's
+    // records stay the Operational Configuration Administrator's).
+    adminOk(await adminAs(adminWho, "listTrucks", {}), "the Administrator is admitted by standing");
+    for (const who of [dispatcher, techA, general]) {
       adminRefused(await adminAs(who, "createMobileLocation", { locationId: "mob-nope", displayLabel: "Nope", operatingCompanyId: "taylor", reason }), "FORBIDDEN", who.subject);
     }
     adminRefused(await adminAs(wm, "createMobileLocation", { locationId: "mob-trk-1", displayLabel: "Truck 1", operatingCompanyId: "taylor" }), "INVALID_INPUT", "reason required");
@@ -182,7 +185,9 @@ test("Truck Inventory activation over the governed transports", { skip: SKIP, co
 
   await t.test("OD-T2 BINDING: the same Role binds trucks to their own company's warehouse (DQ-029)", async () => {
     const reason = "Truck scope binding";
-    adminRefused(await adminAs(adminWho, "setMobileLocationScopeBinding", { locationId: "mob-trk-1", warehouseId: WH, reason }), "FORBIDDEN", "Administrator without the Role");
+    // The protected Administrator is admitted by standing (DECISIONS #223); the dedicated Role makes the bindings.
+    adminOk(await adminAs(adminWho, "listMobileLocationScopeBindings", {}), "Administrator admitted by standing");
+    adminRefused(await adminAs(dispatcher, "setMobileLocationScopeBinding", { locationId: "mob-trk-1", warehouseId: WH, reason }), "FORBIDDEN", "a Dispatcher without the Role");
     adminOk(await adminAs(wm, "setMobileLocationScopeBinding", { locationId: "mob-trk-1", warehouseId: WH, reason }));
     adminOk(await adminAs(wm, "setMobileLocationScopeBinding", { locationId: "mob-trk-2", warehouseId: WH, reason }));
     adminRefused(await adminAs(wm, "setMobileLocationScopeBinding", { locationId: "mob-trk-v", warehouseId: WH, reason }), "CONFLICT", "cross-company binding");

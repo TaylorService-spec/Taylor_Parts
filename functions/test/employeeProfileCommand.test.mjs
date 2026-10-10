@@ -126,8 +126,9 @@ test("boundary: no Firebase, no Rules; the Workforce transport (W1B) is the only
     // conditional-entitlement decision, because that is where the capability gate lives.
     const allowed = {
       "commands/employeeProfileCommand.ts": ["pg", "node:crypto", "./employeeCommandKernel", "../employeeProfileVocabulary", "../reads/employeeReadKernel"],
+      // + the protected-Administrator provenance (DECISIONS #223): ONE pure module, no pg, no Firebase, no store.
       "commands/employeeCommandKernel.ts": ["pg", "node:crypto", "./employeeCommandKernel", "../employeeProfileVocabulary", "../reads/employeeReadKernel",
-        "../../eosOps/conditionalEntitlement", "../../eosOps/contextualAuthorization"],
+        "../../eosOps/conditionalEntitlement", "../../eosOps/contextualAuthorization", "../../adminPolicy/protectedAdministrator"],
       "employeeProfileVocabulary.ts": ["pg", "node:crypto", "./employeeCommandKernel", "../employeeProfileVocabulary", "../reads/employeeReadKernel"],
     }[file];
     assert.ok(imports.every((i) => allowed.includes(i)), `${file}: ${imports}`);

@@ -117,12 +117,13 @@ test("PROTECTED OWNER INVARIANT (Controller ruling 2026-09-27), in PostgreSQL", 
   const ownerRoleA = await roleId(T.a, "owner");
   const adminRoleA = await roleId(T.a, "admin");
 
-  await t.test("premise: one active protected Owner holding R1 and not admin.securityPolicy.write; the Administrator does not hold R1", async () => {
+  await t.test("premise: one active protected Owner holding R1 and not admin.securityPolicy.write; the Administrator holds R1 by standing", async () => {
     assert.equal(await activeOwners(T.a), 1);
     const owner = await explained(T.a, ownerA);
     assert.equal(owner.capabilities.includes(R1), true);
     assert.equal(owner.capabilities.includes(SPW), false);
-    assert.equal((await explained(T.a, adminA1)).capabilities.includes(R1), false);
+    // DECISIONS #223 amends R1: protected Administrators staff Administrators too -- never the protected Owner (B, below).
+    assert.equal((await explained(T.a, adminA1)).capabilities.includes(R1), true);
   });
 
   await t.test("A: the Owner cannot revoke their OWN protected Owner assignment -- refused, nothing written", async () => {

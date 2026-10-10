@@ -15,6 +15,7 @@ import type { AdminActor } from "./policyCommands";
 import type { PolicyRepository } from "./policyRepository";
 import type { SeedWorkflow } from "./workflowSeeds";
 import type { WorkflowVersionRecord } from "./types";
+import { actorAuthorityOf } from "./protectedAdministrator";
 
 export interface AppliedSeed {
   readonly workflowId: string;
@@ -110,6 +111,7 @@ export async function applyWorkflowSeed(
     }
 
     await tx.appendAudit({
+      ...actorAuthorityOf(actor),
       action: "applyWorkflowSeed",
       actorUid: actor.uid,
       targetKind: "workflowVersion",

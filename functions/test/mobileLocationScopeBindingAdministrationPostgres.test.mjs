@@ -176,8 +176,10 @@ test("DQ-029: truck scope binding Administration", { skip: SKIP, concurrency: 1 
     assert.ok(operationalRoleKeys.includes("dispatcher") && operationalRoleKeys.includes("technician"), JSON.stringify(operationalRoleKeys));
   });
 
-  await t.test("without the capability every configuration operation is FORBIDDEN -- Administrator and operational Roles alike", async () => {
-    for (const subject of ["admin-a", "ops-a"]) {
+  await t.test("without the capability every configuration operation is FORBIDDEN to operational Roles; the protected Administrator holds it by standing", async () => {
+    // DECISIONS #223: configuration is system administration -- the protected Administrator reads it with no grant.
+    assert.equal((await call("admin-a", "listMobileLocationScopeBindings")).ok, true);
+    for (const subject of ["ops-a"]) {
       refused(await call(subject, "listMobileLocationScopeBindings"), "FORBIDDEN", /inventory\.location\.scopeBinding\.manage/);
       refused(await call(subject, "readMobileLocationScopeBinding", { locationId: "truck-1" }), "FORBIDDEN");
       refused(await call(subject, "setMobileLocationScopeBinding", { locationId: "truck-1", warehouseId: "WH-A1", reason: "x" }), "FORBIDDEN");
@@ -205,11 +207,14 @@ test("DQ-029: truck scope binding Administration", { skip: SKIP, concurrency: 1 
     const ops = ok(await call("admin-a", "explainEffectiveAccess", { principalId: operational }));
     assert.equal(ops.capabilities.includes(CAP), false, "and not for the operational Roles");
     const adm = ok(await call("admin-a", "explainEffectiveAccess", { principalId: adminA }));
-    assert.equal(adm.capabilities.includes(CAP), false, "nor for the Administrator, who did not assign it to itself");
-    assert.deepEqual(await holders(), ["truckScopeAdministrator"]);
+    assert.equal(adm.capabilities.includes(CAP), true, "the Administrator holds it by STANDING (DECISIONS #223), not by a grant");
+    assert.deepEqual(await holders(), ["truckScopeAdministrator"], "standing writes no grant row");
     refused(await call("ops-a", "listMobileLocationScopeBindings"), "FORBIDDEN");
-    refused(await call("admin-a", "listMobileLocationScopeBindings"), "FORBIDDEN");
-    refused(await call("admin-b", "listMobileLocationScopeBindings"), "FORBIDDEN", /inventory\.location\.scopeBinding\.manage/);
+    // Tenant isolation: tenant B's Administrator answers for tenant B only.
+    const otherTenant = await call("admin-b", "listMobileLocationScopeBindings");
+    assert.equal(otherTenant.ok, true, JSON.stringify(otherTenant));
+    assert.equal(otherTenant.tenantId, T.b);
+    assert.equal(JSON.stringify(otherTenant.data).includes("WH-A1"), false, "no tenant-A binding or warehouse reaches tenant B");
     refused(await call("admin-a", "assignRole", { principalId: adminA, roleId: await roleId(T.a, "truckScopeAdministrator"), reason: "self" }),
       "FORBIDDEN", /SELF_ADMINISTRATION/);
   });

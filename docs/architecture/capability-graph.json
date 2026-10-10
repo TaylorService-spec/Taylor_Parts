@@ -1546,6 +1546,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/protectedAdministrator.ts",
           "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/ai/workOrderReadinessContext.ts",
           "functions/src/eosOps/experienceAuthority.ts"
@@ -1558,7 +1559,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/shared/ui/NotificationControl.jsx"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },

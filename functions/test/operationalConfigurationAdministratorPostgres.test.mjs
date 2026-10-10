@@ -132,7 +132,10 @@ test("DQ-033: Operational Configuration Administrator through existing Administr
     const { rows } = await q(`SELECT c.key FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id
                                JOIN eos_policy.roles r ON r.id = rc.role_id WHERE r.tenant_id = $1 AND r.key = $2 ORDER BY c.key`, [T, ROLE_KEY]);
     assert.deepEqual(rows.map((r) => r.key), [HANDOFF, SCOPE].sort(), "exactly the two -- nothing else rides along");
-    assert.equal((await effective(adminId)).includes(SCOPE), false, "granting to a Role gives the grantor nothing");
+    // Granting to a Role gives the grantor nothing: the business act (ownership handoff correction) stays with the Role.
+    // The configuration key the Administrator holds anyway, by protected-Administrator STANDING (DECISIONS #223).
+    assert.equal((await effective(adminId)).includes(HANDOFF), false, "granting to a Role gives the grantor nothing");
+    assert.equal((await effective(adminId)).includes(SCOPE), true, "configuration authority by standing, not by this grant");
   });
 
   await t.test("3: the OWNER assigns it to the separate principal through the governed assignment mechanism", async () => {

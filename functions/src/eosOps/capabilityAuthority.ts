@@ -51,6 +51,8 @@ import {
   type EntitlementSet,
   type GrantConditionCatalog,
 } from "./conditionalEntitlement";
+import { ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY } from "../adminPolicy/administrationAuthority";
+import { protectedAdministratorImpliedKeys } from "../adminPolicy/protectedAdministrator";
 import {
   GRANT_CONDITION_RELATION_NAME,
   GRANT_CONDITION_RELATION_SHAPE,
@@ -98,6 +100,8 @@ interface MutableLookupCounters { requests: number; resolutions: number }
 
 export interface ResolvedOperationalContext {
   readonly principalContext: PrincipalContext;
+  /** PROTECTED ADMINISTRATOR standing (DECISIONS #223): the implied keys; empty for every other principal. */
+  readonly protectedAdministratorKeys: ReadonlySet<string>;
   /**
    * Capability KEYS held via active Role assignments UNCONDITIONALLY, in the resolved tenant only --
    * the set every flat gate reads. A key reachable only through a conditioned grant is NOT here.
@@ -205,6 +209,11 @@ export interface OperationalCapabilityResolution {
   readonly catalog: GrantConditionCatalog;
   readonly entitlements: EntitlementResolver;
   readonly lookups: EntitlementLookupCounters;
+  /**
+   * PROTECTED ADMINISTRATOR standing (DECISIONS #223): the keys standing implies, already in `capabilities` and never
+   * in `conditionallyHeld`. Empty for every other principal.
+   */
+  readonly protectedAdministratorKeys: ReadonlySet<string>;
 }
 
 /**
@@ -231,9 +240,10 @@ export async function resolveOperationalCapabilities(
   if (typeof conditions !== "function") {
     throw new Error("resolveOperationalCapabilities: the condition source must be a GrantConditionProvider");
   }
-  const [granted, catalog] = await Promise.all([
+  const [granted, catalog, implied] = await Promise.all([
     grantedCapabilityKeys(pool, tenantId, heldRoleKeys, principalId),
     Promise.resolve(conditions(tenantId)),
+    protectedAdministratorKeys(pool, tenantId, heldRoleKeys),
   ]);
   const direct: readonly PrincipalCapabilityGrantRow[] = Object.freeze(granted.direct.map((capabilityKey) =>
     Object.freeze({ principalId, capabilityKey })));
@@ -253,9 +263,19 @@ export async function resolveOperationalCapabilities(
     capabilities = new Set([...held].filter((k) => unconditional.has(k)));
     conditionallyHeld = new Set([...held].filter((k) => !unconditional.has(k)));
   }
+  // THE PROTECTED ADMINISTRATOR (DECISIONS #223): standing implies its system authority UNCONDITIONED -- added to the
+  // flat set, removed from conditionallyHeld, and offered to the entitled seam as an unconditioned entitlement of the
+  // protected Role, so a per-record decision agrees with the flat gate. Never a worker predicate: those are decided
+  // where they always were.
+  if (implied.size > 0) {
+    capabilities = new Set([...capabilities, ...implied]);
+    conditionallyHeld = new Set([...conditionallyHeld].filter((k) => !implied.has(k)));
+  }
   const counters: MutableLookupCounters = { requests: 0, resolutions: 0 };
-  const entitlements = requestScopedEntitlementResolver(pool, tenantId, heldRoleKeys, direct, () => catalog, counters);
-  return Object.freeze({ capabilities, conditionallyHeld, directGrants: direct, catalog, entitlements, lookups: counters });
+  const entitlements = withProtectedAdministratorEntitlements(
+    requestScopedEntitlementResolver(pool, tenantId, heldRoleKeys, direct, () => catalog, counters), implied);
+  return Object.freeze({ capabilities, conditionallyHeld, directGrants: direct, catalog, entitlements, lookups: counters,
+    protectedAdministratorKeys: implied });
 }
 
 /**
@@ -332,6 +352,7 @@ async function operationalContextFor(
   }
   return Object.freeze({
     principalContext,
+    protectedAdministratorKeys: resolved.protectedAdministratorKeys,
     capabilities: resolved.capabilities,
     conditionallyHeld: resolved.conditionallyHeld,
     scopedHeld,
@@ -373,7 +394,48 @@ export async function capabilitiesWithoutUnevaluatedConditions(
   ]);
   const unconditional = new Set(entitlementsFrom([...roleGrantsOf(roleRows), ...directGrantsOf(direct)], catalog)
     .filter((e) => e.condition === null).map((e) => e.capabilityKey));
+  // Protected Administrator standing is unconditioned by definition (DECISIONS #223): its implied keys stay.
+  for (const key of await protectedAdministratorKeys(pool, principalContext.tenantId, principalContext.heldRoleKeys)) unconditional.add(key);
   return new Set([...capabilities].filter((key) => unconditional.has(key)));
+}
+
+/**
+ * The keys PROTECTED ADMINISTRATOR standing implies for these qualifying GLOBAL Role keys (protectedAdministrator.ts).
+ * Reads only when `admin` is held: the two protected-Role flags of this tenant and the registered catalog. An
+ * unreadable store throws -- "could not read" is never "has standing".
+ */
+export async function protectedAdministratorKeys(
+  pool: Pool,
+  tenantId: string,
+  heldRoleKeys: readonly string[],
+): Promise<ReadonlySet<string>> {
+  if (!heldRoleKeys.includes(ADMIN_ROLE_KEY)) return new Set();
+  // ONE statement: the two protected-Role flags travel with every catalog row, so standing and the catalog are read
+  // together (one query per request, only for an `admin` holder).
+  const { rows } = await pool.query<{ key: string; object_key: string | null; action_kind: string | null;
+    admin_protected: boolean | null; owner_protected: boolean | null }>(
+    `SELECT c.key, c.object_key, c.action_kind,
+            (SELECT r.protected FROM ${SCHEMA}.roles r WHERE r.tenant_id = $1 AND r.key = $2) AS admin_protected,
+            (SELECT r.protected FROM ${SCHEMA}.roles r WHERE r.tenant_id = $1 AND r.key = $3) AS owner_protected
+       FROM ${SCHEMA}.capabilities c`,
+    [tenantId, ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY]);
+  const first = rows[0];
+  const roles = first ? [{ key: ADMIN_ROLE_KEY, protected: first.admin_protected }, { key: PROTECTED_OWNER_ROLE_KEY, protected: first.owner_protected }] : [];
+  return protectedAdministratorImpliedKeys(roles, heldRoleKeys,
+    rows.map((r) => ({ key: r.key, objectKey: r.object_key, actionKind: r.action_kind })));
+}
+
+/** The entitlement list plus one UNCONDITIONED entitlement of the protected Role per implied key not already present. */
+function withProtectedAdministratorEntitlements(resolver: EntitlementResolver, implied: ReadonlySet<string>): EntitlementResolver {
+  if (implied.size === 0) return resolver;
+  return async () => {
+    const granted = await resolver();
+    const unconditioned = new Set(granted.filter((e) => e.condition === null).map((e) => e.capabilityKey));
+    const added = [...implied].filter((k) => !unconditioned.has(k))
+      .map((capabilityKey) => Object.freeze({ capabilityKey, grantor: Object.freeze({ kind: "ROLE" as const, roleKey: ADMIN_ROLE_KEY }),
+        condition: null, protectedAdministrator: true as const }));
+    return Object.freeze([...granted, ...added]);
+  };
 }
 
 /**

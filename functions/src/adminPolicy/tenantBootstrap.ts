@@ -23,7 +23,7 @@
 // configuration, which is the worst kind of "safe".
 import { AdministrationCapabilityDeniedError, hasSecurityAdministrationCapability } from "./administrationAuthority";
 import { capabilityKeysFor } from "./administrationCapabilityGate";
-import { ADMIN_ROLE_KEY, ADMINISTRATION_BOOTSTRAP_GRANTS, PROTECTED_OWNER_ROLE_KEY, isProtectedOwnerRole } from "./administrationAuthority";
+import { ADMIN_ROLE_KEY, ADMINISTRATION_BOOTSTRAP_GRANTS, PROTECTED_OWNER_ROLE_KEY, isDesignatedAdministratorRole, isProtectedOwnerRole } from "./administrationAuthority";
 import { ownerPrincipalViolations } from "./roleCapabilityAdministration";
 import { seedTenantPolicy, SEED_VERSION } from "./seed/policySeed";
 import type { SeedResult } from "./seed/policySeed";
@@ -192,6 +192,11 @@ export async function bootstrapAdministrator(
     if (held.some((a) => a.roleId === adminRole.id && a.status === "active")) {
       throw new TenantBootstrapError("that principal already administers this tenant");
     }
+    // Owner and Administrator are distinct authority types (DECISIONS #223): never bootstrap an Owner holder as Administrator.
+    const ownerRole = await repo.getRoleByKey(tenantId, PROTECTED_OWNER_ROLE_KEY);
+    if (ownerRole && isProtectedOwnerRole(ownerRole) && held.some((a) => a.roleId === ownerRole.id && a.status === "active")) {
+      throw new TenantBootstrapError("PROTECTED_ROLE_CONFLICT: that principal holds the protected Owner Role and may not also be the Administrator");
+    }
   }
 
   // THE GOVERNING CAPABILITIES COME WITH THE FIRST ADMINISTRATOR. Security administration is
@@ -351,6 +356,11 @@ export async function bootstrapFirstOwner(
     .filter((a) => a.status === "active")
     .map((a) => roles.find((r) => r.id === a.roleId)?.key)
     .filter((k): k is string => typeof k === "string");
+  // Owner and Administrator are distinct authority types (DECISIONS #223): never make an Administrator the Owner.
+  const adminRole = roles.find((r) => isDesignatedAdministratorRole(r));
+  if (adminRole && (await repo.listAssignmentsForPrincipal(tenantId, principalId)).some((a) => a.status === "active" && a.roleId === adminRole.id)) {
+    throw new TenantBootstrapError("PROTECTED_ROLE_CONFLICT: that principal holds the protected Administrator Role and may not also be the Owner");
+  }
   const withOwner = [...new Set([...heldRoleKeys, PROTECTED_OWNER_ROLE_KEY])];
   const violations = ownerPrincipalViolations(withOwner,
     await capabilityKeysFor(repo, tenantId, withOwner, principalId, { includeConditioned: true }));
