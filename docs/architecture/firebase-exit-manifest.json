@@ -77,7 +77,7 @@
     "documentation": "docs/architecture/firebase-exit-ratchet.md"
   },
   "domainMigrationWaveModel": {
-    "description": "Each baseline file belongs to exactly one domain: the first path segment beneath field-ops-app-vite/src or functions/src (for example functions/src/cycleCount/cycleCountCallables.ts belongs to domain 'cycleCount'). A migration wave groups one or more domains that move to the Render EOS API / PostgreSQL together. This manifest defines the model only -- it does not assign domains to waves, order waves, or assert a disposition per domain, because that scheduling decision belongs to the engineers and owners doing the migration work, not to this control document. Once a wave is scheduled, it is recorded here as an entry below with the domain names, its disposition (one of the values in `dispositions`), and its migrationState (one of the values in `migrationStates`).",
+    "description": "Each baseline file belongs to exactly one domain: the first path segment beneath field-ops-app-vite/src or functions/src (for example functions/src/cycleCount/cycleCountSheetCallables.ts belongs to domain 'cycleCount'). A migration wave groups one or more domains that move to the Render EOS API / PostgreSQL together. This manifest defines the model only -- it does not assign domains to waves, order waves, or assert a disposition per domain, because that scheduling decision belongs to the engineers and owners doing the migration work, not to this control document. Once a wave is scheduled, it is recorded here as an entry below with the domain names, its disposition (one of the values in `dispositions`), and its migrationState (one of the values in `migrationStates`).",
     "waves": [
       {
         "wave": "EQUIPMENT",

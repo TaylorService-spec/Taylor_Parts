@@ -1010,7 +1010,8 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // the install capability pre-gate are deleted -- 25 -> 22 (shrink-only).
     // Truck Inventory activation (2026-10-01): the truck registry reads are EOS and the truck command client is retired --
     // 22 -> 20 (shrink-only).
-    "frontend.firestore_client": 20,
+    // Firebase exit F1 dead-code removal (2026-10-09): the unimported useGovernedCapabilities hook is deleted -- 20 -> 19.
+    "frontend.firestore_client": 19,
     // Pass 11 Retail Sales: the 7 Opportunity / Sales Order read + command clients moved to the EOS Commercial API.
     // ... and their callable transports (Part / alias command clients, the Reorder callable client) -- 47 -> 44.
     // L0 Z3: product-reference search (salesAgreementCommandClient.js) left the searchProductReferences callable
@@ -1025,14 +1026,17 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // Equipment activation (2026-10-01): the install (x2), available-equipment and location-display callable clients and the
     // install capability pre-gate are deleted; the reads and the install are EOS -- 29 -> 24 (shrink-only).
     // Truck Inventory activation (2026-10-01): the nine truck callables are no longer called by the client -- 24 -> 23.
-    "frontend.firebase_functions_client": 23,
+    // Firebase exit F1 dead-code removal (2026-10-09): the same unimported useGovernedCapabilities hook -- 23 -> 22.
+    "frontend.firebase_functions_client": 22,
     // Service Experience completion (2026-09-30): the Firebase inbound work / email provider runtime is retired from
     // the codebase -- intake, decisions, reads, connection lifecycle, delivery service and schedule, attachment custody
     // (12 files) -- and the credential vault no longer touches Firestore -- 183 -> 171 (shrink-only).
-    "server.firebase_admin_firestore": 171,
+    // Firebase exit F1 dead-code removal (2026-10-09): three callable adapters already retired from functions/src/index.ts
+    // and imported by nothing (cycle count v1, standalone install, work-order install) are deleted -- 171 -> 168.
+    "server.firebase_admin_firestore": 168,
     // ... and its three firebase-functions modules (the inbound callables, the transport callables, the schedule) --
-    // 72 -> 69.
-    "server.firebase_functions_server": 69,
+    // 72 -> 69. Firebase exit F1 dead-code removal (2026-10-09): the same three unexported adapters -- 69 -> 66.
+    "server.firebase_functions_server": 66,
   };
   let total = 0;
   for (const category of CATEGORIES) {
@@ -1043,5 +1047,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 283); // 286 -> 283: the Truck Inventory activation (2026-10-01), three client entries; 300 -> 294: the Inventory / Warehouse completion (2026-10-01), six client entries; 294 -> 286: the Equipment activation (2026-10-01), eight client entries
+  assert.equal(total, 275); // 283 -> 275: Firebase exit F1 dead-code removal (2026-10-09), eight entries across four files; 286 -> 283: the Truck Inventory activation (2026-10-01), three client entries; 300 -> 294: the Inventory / Warehouse completion (2026-10-01), six client entries; 294 -> 286: the Equipment activation (2026-10-01), eight client entries
 });

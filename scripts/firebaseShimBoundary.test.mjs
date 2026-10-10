@@ -307,7 +307,9 @@ test("all 34 importers of the frontend handle shim's db/functions also import th
   // the install pre-gate left the shim AND the fenced dependency together (34 -> 29).
   // Truck Inventory activation (2026-10-01): the truck registry reads and the retired truck command client left the shim AND
   // the fenced dependency together (29 -> 27).
-  assert.equal(live.observed.alreadyFencedConsumers, 27,
+  // Firebase exit F1 dead-code removal (2026-10-09): the unimported access/useGovernedCapabilities.js hook was DELETED,
+  // leaving the shim AND the fenced dependency together (27 -> 26).
+  assert.equal(live.observed.alreadyFencedConsumers, 26,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });
