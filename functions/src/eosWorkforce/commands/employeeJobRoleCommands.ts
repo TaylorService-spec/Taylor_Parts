@@ -28,6 +28,7 @@ import {
 // The supersession half of the canonical Job Role vocabulary. Pure data, no I/O -- see below for what is read from it
 // and, more importantly, what is NOT.
 import { SUPERSEDED_JOB_ROLE_IDS } from "../jobRoleVocabulary";
+import { withActorAuthority } from "../../eosOps/administrationReach";
 
 /** The Job Role catalog and assignment capability. Separate from admin.employeeProfile.write by Owner ruling. */
 export const EMPLOYEE_JOB_ROLE_WRITE = "admin.employeeJobRole.write";
@@ -93,7 +94,7 @@ async function auditCatalog(db: PoolClient, actor: EmployeeCommandActor, action:
   await db.query(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1, $2, $3, $4, 'jobRole', $5, $6, $7, $8, NULL)`,
-    [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, jobRoleId, before === null ? null : JSON.stringify(before), JSON.stringify(after), at],
+    [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, jobRoleId, before === null ? null : JSON.stringify(before), JSON.stringify(await withActorAuthority(db, actor.tenantId, actor.principalId, after)), at],
   );
 }
 

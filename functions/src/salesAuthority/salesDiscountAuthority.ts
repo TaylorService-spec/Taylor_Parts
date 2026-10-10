@@ -14,6 +14,7 @@
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { ConfigurationRefusal, type AdminConfigurationOperation, type ConfigurationActor } from "../adminPolicy/configurationOperations";
+import { withActorAuthority } from "../eosOps/administrationReach";
 
 export const SALES_DISCOUNT_AUTHORITY_OPERATIONS = Object.freeze(["listSalesDiscountAuthorities", "setSalesDiscountAuthority"] as const);
 export const isSalesDiscountAuthorityOperation = (op: string): boolean => (SALES_DISCOUNT_AUTHORITY_OPERATIONS as readonly string[]).includes(op);
@@ -85,7 +86,7 @@ async function setSalesDiscountAuthority(pool: Pool, actor: ConfigurationActor, 
                    VALUES ($1,$2,'sales.discountAuthority.set',$3,'sales_discount_authority',$4,$5::jsonb,$6::jsonb,now(),$7)`,
       [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, principalId,
         JSON.stringify(previous === null ? { state: "NOT_CONFIGURED" } : { state: "CONFIGURED", maxDiscountBasisPoints: previous }),
-        JSON.stringify({ state: "CONFIGURED", maxDiscountBasisPoints: bp }), (reason as string).trim()]);
+        JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, { state: "CONFIGURED", maxDiscountBasisPoints: bp })), (reason as string).trim()]);
     await c.query("COMMIT");
     return Object.freeze({ principalId, previousMaxDiscountBasisPoints: previous, maxDiscountBasisPoints: bp as number });
   } catch (err) {

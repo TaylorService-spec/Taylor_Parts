@@ -17,6 +17,7 @@
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { ReorderLifecycleError, type ReorderActor } from "./reorderLifecycleCommands.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 export const SUPPLIER_MANAGE_CAPABILITY = "inventory.catalog.manage";
 export const SUPPLIER_STATUS_CAPABILITY = "inventory.catalog.activate";
@@ -81,7 +82,7 @@ async function audit(c: PoolClient, actor: ReorderActor, action: string, supplie
   await c.query(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1,$2,$3,$4,'supplier',$5,$6::jsonb,$7::jsonb,now(),$8)`,
-    [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, supplierId, before === null ? null : JSON.stringify(before), JSON.stringify(after), reason]);
+    [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, supplierId, before === null ? null : JSON.stringify(before), JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, after)), reason]);
 }
 const view = (r: Record<string, unknown>) => Object.freeze({
   supplierId: String(r.supplier_id), name: String(r.name), status: String(r.status), crmAccountId: (r.crm_account_id as string | null) ?? null,

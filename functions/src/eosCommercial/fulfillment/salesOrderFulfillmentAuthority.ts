@@ -28,6 +28,7 @@ import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { applyFulfillmentAcceptance, FulfillmentWriteBackError, type FulfillmentAcceptance } from "../../salesOrder/salesOrderFulfillmentWriteBack";
 import { computeBillingEligibility, type BillingEligibility } from "../../fulfillment/billingEligibility";
+import { withActorAuthority } from "../../eosOps/administrationReach";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -182,7 +183,7 @@ export async function recordWorkOrderFulfillmentOn(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1, $2, 'commercial.salesOrder.fulfillment', $3, 'sales_order', $4, NULL, $5::jsonb, $6, $7)`,
     [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, salesOrderId,
-      JSON.stringify({ workOrderId: input.workOrderId, operatingCompanyId, fulfillments: recorded }), input.completedAt,
+      JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, { workOrderId: input.workOrderId, operatingCompanyId, fulfillments: recorded })), input.completedAt,
       "fulfillment proven by the governed Work Order completion (DQ-015)"]);
   return Object.freeze({ status: "RECORDED" as const, salesOrderId, operatingCompanyId, fulfillments: Object.freeze(recorded) });
 }

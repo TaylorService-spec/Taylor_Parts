@@ -58,6 +58,7 @@ import {
 import { associateInboundMessage, type ExistingIntakeRef } from "../inboundWork/inboundThreading";
 import { isEmailProviderId, normalizeProviderMessage } from "../inboundWork/emailProvider";
 import { summarizeCustody, unsafeAttachmentReason, safeAttachmentFilename } from "../inboundWork/attachmentCustodyRules";
+import { withActorAuthority } from "./administrationReach";
 
 // ════════════════════ capabilities (migration 1764340000000, registered with NO grants) ════════════════════
 export const INBOUND_WORK_READ = "inboundWork.request.read";
@@ -123,7 +124,7 @@ export async function writeAudit(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10)`,
     [id, actor.tenantId, action, actor.principalId, targetKind, targetId,
-      before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(after), at, reason]);
+      before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(await withActorAuthority(db, actor.tenantId, actor.principalId, after)), at, reason]);
   return id;
 }
 

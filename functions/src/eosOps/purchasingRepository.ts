@@ -58,6 +58,7 @@ import {
   type OpsLocationType,
   requireOperatingCompanyKey,
 } from "./operatingCompanyCustody.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 const SCHEMA = "eos_ops";
 const newId = (prefix: string): string => `${prefix}_${randomUUID()}`;
@@ -424,7 +425,7 @@ export async function recordPurchaseOrder(
        VALUES ($1, $2, 'reorder.request.recordPurchaseOrder', $3, 'purchase_order', $4, $5::jsonb, $6::jsonb, now(), $7)`,
       [`audit_${randomUUID()}`, tenantId, actorPrincipalId, reorderRequestId,
         JSON.stringify({ status: PO_RECORDABLE_STATUS }),
-        JSON.stringify({
+        JSON.stringify(await withActorAuthority(client, tenantId, actorPrincipalId, {
           status: "ORDERED", reorderRequestId, purchaseOrderId: reorderRequestId, operatingCompanyKey: companyKey,
           warehouseId: request.warehouse_id ?? null, partId: request.part_id,
           actorEmployeeId: (assignee.rows[0]?.assigned_employee_id as string | undefined) ?? null,
@@ -432,7 +433,7 @@ export async function recordPurchaseOrder(
           supplierKind: supplier?.kind ?? "LEGACY_TEXT", supplierId: supplier?.supplierId ?? null,
           supplierOperatingCompanyId: supplier?.supplierOperatingCompanyId ?? null,
           purchasingOperatingCompanyId: supplier?.purchasingOperatingCompanyId ?? null,
-        }),
+        })),
         "purchase order recorded"],
     );
 
@@ -587,7 +588,7 @@ export async function voidPurchaseOrder(
       `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
        VALUES ($1, $2, 'reorder.purchaseOrder.void', $3, 'purchase_order', $4, $5::jsonb, $6::jsonb, now(), $7)`,
       [`audit_${randomUUID()}`, tenantId, actorPrincipalId, purchaseOrderId,
-        JSON.stringify({ status: PO_VOIDABLE_STATUS }), JSON.stringify({ status: "VOIDED", operatingCompanyKey: companyKey }), reason],
+        JSON.stringify({ status: PO_VOIDABLE_STATUS }), JSON.stringify(await withActorAuthority(client, tenantId, actorPrincipalId, { status: "VOIDED", operatingCompanyKey: companyKey })), reason],
     );
 
     await client.query("COMMIT");
