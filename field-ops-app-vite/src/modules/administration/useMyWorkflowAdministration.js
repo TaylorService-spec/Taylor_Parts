@@ -15,6 +15,8 @@ export function useMyWorkflowAdministration(api) {
   return {
     status,
     allows: (operation) => operations?.[operation]?.allowed === true,
+    /** The server's own name for the permission `operation` requires, or null while unknown. */
+    requiredLabel: (operation) => operations?.[operation]?.requiredLabel ?? null,
     /** Why `operation` is not offered, in words -- null when it is. */
     reason: (operation) => {
       if (status === "loading") return "Checking your workflow permissions…";
