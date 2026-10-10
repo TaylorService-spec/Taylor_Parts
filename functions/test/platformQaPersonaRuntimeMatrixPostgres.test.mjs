@@ -5,7 +5,7 @@
 // Principal with a real membership, real Role assignments, a real Employee, a real Principal link and real Work
 // Eligibility / Operational Scope rows, and every answer is read back through the deployed transports:
 //
-//   A  RUNTIME == ROLE JOIN     /operations/inventory resolveMyCapabilities  ==  capabilitiesForRoleKeys(securityRoles)
+//   A  RUNTIME == ROLE JOIN     /operations/inventory resolveMyCapabilities  ==  capabilitiesForRoleKeys(securityRoles) + protected-Administrator standing (#223)
 //   B  ADMIN PREVIEW == RUNTIME /admin/policy explainEffectiveAccess(principal).capabilities/surfaces == the runtime's
 //   C  DIMENSIONS               /operations/experience returns the manifest's Employee, eligibility and scopes, and
 //                               the surfaces grantedSurfaceKeys derives from them (PG dimensions == manifest dimensions)
@@ -25,7 +25,7 @@ import {
 } from "./platformQaHarness.mjs";
 
 const require = createRequire(import.meta.url);
-const { capabilitiesForRoleKeys } = require("../lib/eosOps/capabilityAuthority.js");
+const { capabilitiesForRoleKeys, protectedAdministratorKeys } = require("../lib/eosOps/capabilityAuthority.js");
 const { grantedSurfaceKeys } = require("../lib/eosOps/experienceAuthority.js");
 const { ADMIN_READ_CAPABILITY } = require("../lib/adminPolicy/adminPolicyApi.js");
 
@@ -115,7 +115,9 @@ test("persona runtime matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
     const diffs = [];
     for (const [key, persona] of Object.entries(PERSONAS)) {
       const actor = actors[key];
-      const expected = [...await capabilitiesForRoleKeys(pool, TENANT, persona.securityRoles ?? [])].sort();
+      // The grant join, PLUS what protected-Administrator standing implies (DECISIONS #223) -- empty for every other persona.
+      const expected = [...new Set([...await capabilitiesForRoleKeys(pool, TENANT, persona.securityRoles ?? []),
+        ...await protectedAdministratorKeys(pool, TENANT, persona.securityRoles ?? [])])].sort();
       const runtime = await runtimeCaps(actor);
       if (JSON.stringify(runtime.capabilities) !== JSON.stringify(expected)) diffs.push(`A ${key}: runtime ${runtime.capabilities.length} vs join ${expected.length}`);
       if (JSON.stringify([...runtime.heldRoleKeys].sort()) !== JSON.stringify([...(persona.securityRoles ?? [])].sort())) {
@@ -148,8 +150,9 @@ test("persona runtime matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
     const has = (k, c) => grid[k].has(c);
     const NEIGHBOUR_RULES = [
       // Persona Foundation: the Owner and the Administrator are separate Principals (the 2026-09-26 split); GM is NOT a
-      // security administrator (Pass 8 ruling); Owner staffs the Administrator role (R1), Administrator does not.
-      ["owner-executive", "admin.administratorRole.assign", true], ["administrator", "admin.administratorRole.assign", false],
+      // security administrator (Pass 8 ruling); Owner staffs the Administrator role (R1), and since DECISIONS #223 the
+      // protected Administrator does too (by standing).
+      ["owner-executive", "admin.administratorRole.assign", true], ["administrator", "admin.administratorRole.assign", true],
       ["administrator", "admin.securityPolicy.write", true], ["general-manager", "admin.securityPolicy.write", false],
       ["general-manager", "admin.roleAssignment.write", false], ["owner-executive", "admin.securityPolicy.write", false],
       // A technician with no Security Role (on leave) holds nothing; the active technician's WO read is a governed grant.
