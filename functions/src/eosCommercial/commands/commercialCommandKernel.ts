@@ -21,6 +21,8 @@ import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { createPostgresEmployeeAuthority } from "../../employeeIdentity/postgresEmployeeAuthority";
 import { admittedScopeValues, type ScopedHolding } from "../../adminPolicy/assignmentScopeRuntime";
+import { RESERVED_CAPABILITY_HOLDERS } from "../../adminPolicy/roleCapabilityAdministration";
+import { qualifyingGlobalRoles } from "../../eosOps/administrationReach";
 
 export type CommercialFamily = "opportunity" | "salesAgreement" | "salesOrder";
 
@@ -349,6 +351,19 @@ export async function runCommercialCommand<R extends object>(
 // ════════════════════ shared governed resolutions ════════════════════
 
 type Queryable = Pick<PoolClient, "query">;
+
+/**
+ * A RESERVED capability's effective-authorization check (Owner G7, DECISIONS #226): refuse unless the actor holds one of
+ * its reserved Roles through a qualifying global assignment. An unreserved capability passes. Read in the command's
+ * transaction, after the capability gate.
+ */
+export async function requireReservedHolder(db: Queryable, tenantId: string, principalId: string, capabilityKey: string): Promise<void> {
+  const reserved = RESERVED_CAPABILITY_HOLDERS.get(capabilityKey);
+  if (!reserved) return;
+  if ((await qualifyingGlobalRoles(db, tenantId, principalId, reserved.roleKeys)).length === 0) {
+    fail("RESERVED_CAPABILITY", "FORBIDDEN", `${capabilityKey} is exercised only through the ${reserved.roleKeys.join(" or ")} Role (${reserved.ruling})`);
+  }
+}
 
 /** The Employee must RESOLVE in this tenant through the governed PostgreSQL Employee authority. */
 export async function requireTenantEmployee(

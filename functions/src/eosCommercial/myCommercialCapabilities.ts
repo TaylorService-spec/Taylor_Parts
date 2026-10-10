@@ -30,6 +30,8 @@
 // read-only snapshot). It describes only the caller, accepts no selector, and confers nothing -- every command re-checks.
 // NO NEW CAPABILITY: the list names existing Commercial ids only.
 import { admittedScopeValues } from "../adminPolicy/assignmentScopeRuntime";
+import { RESERVED_CAPABILITY_HOLDERS } from "../adminPolicy/roleCapabilityAdministration";
+import { qualifyingGlobalRoles } from "../eosOps/administrationReach";
 import { fail } from "./commands/commercialCommandKernel";
 import { runCommercialRead, type CommercialReadActor, type CommercialReadDeps } from "./reads/commercialReadKernel";
 
@@ -76,9 +78,17 @@ export function readMyCommercialCapabilities(deps: CommercialReadDeps, actor: Co
         const scoped = new Set(admittedScopeValues(actor.scopedHeld, id, "salesChannel"));
         return Object.freeze(active.filter((c) => scoped.has(c)));
       };
+      // A RESERVED capability (Owner G7) is offered only to a holder of a reserved Role -- the command refuses everyone else.
+      const reservedOk = new Set<string>();
+      for (const id of COMMERCIAL_OFFER_CAPABILITY_IDS) {
+        const reserved = RESERVED_CAPABILITY_HOLDERS.get(id);
+        if (!reserved || !actor.capabilities.has(id)) continue;
+        if ((await qualifyingGlobalRoles(client, tenantId, actor.principalId, reserved.roleKeys)).length > 0) reservedOk.add(id);
+      }
+      const held = (id: string): boolean => actor.capabilities.has(id) && (!RESERVED_CAPABILITY_HOLDERS.has(id) || reservedOk.has(id));
       return {
-        capabilities: COMMERCIAL_OFFER_CAPABILITY_IDS.filter((id) => actor.capabilities.has(id)),
-        channelScoped: COMMERCIAL_OFFER_CAPABILITY_IDS.filter((id) => !actor.capabilities.has(id) && admittedScopeValues(actor.scopedHeld, id, "salesChannel").length > 0),
+        capabilities: COMMERCIAL_OFFER_CAPABILITY_IDS.filter(held),
+        channelScoped: COMMERCIAL_OFFER_CAPABILITY_IDS.filter((id) => !actor.capabilities.has(id) && !RESERVED_CAPABILITY_HOLDERS.has(id) && admittedScopeValues(actor.scopedHeld, id, "salesChannel").length > 0),
         channelOffers: Object.freeze(Object.fromEntries(CHANNEL_CHOOSING_CAPABILITY_IDS.map((id) => [id, offers(id)]))) as MyCommercialCapabilities["channelOffers"],
       };
     });

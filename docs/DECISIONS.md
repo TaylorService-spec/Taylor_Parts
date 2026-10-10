@@ -7885,3 +7885,23 @@ Operator migration, cutover and copy tooling and fixtures have no acting princip
 A source-scan test fails if any non-exempt direct writer stops using the helper.
 
 **Boundary.** No migration, no capability, no grant. Audit stays append-only. The cost is one indexed read per stamped write.
+
+## #226 — Trade-in approval RESERVED to Owner / General Manager (SYSTEM_INVARIANT) — PR-4a (2026-10-10)
+
+(Implements Owner ruling G7, 2026-10-09. Amends nothing in #204: its grants were already owner / generalManager only.)
+
+`salesAgreement.tradeIn.approve` is a **RESERVED capability**. `roleCapabilityAdministration.RESERVED_CAPABILITY_HOLDERS` is an allow-list naming the only Roles that may hold it: `owner` and `generalManager`.
+
+**Grant side.** `forbiddenPair` treats every other Role as a forbidden OWNER_GOVERNANCE pair, whether built-in or custom, existing or future. The one precedence rule therefore:
+- refuses the grant (`SYSTEM_INVARIANT`);
+- makes every default writer skip it;
+- shows the Administration grant matrix cell as an invariant;
+- reports a stored row as `FORBIDDEN_PRESENT`.
+
+A direct Principal grant of a reserved capability is refused outright. Verification reports such a holding as `FORBIDDEN_PRINCIPAL_HOLDING`.
+
+**Effective side.** The trade-in decision (approve and decline) and the Commercial client offer additionally require the actor to hold a reserved Role through a qualifying global assignment. This is the same qualifying rule that standing uses (`administrationReach.qualifyingGlobalRoles`). A grant that predates the invariant therefore decides nothing (`RESERVED_CAPABILITY`, FORBIDDEN). Protected Administrator standing still never implies the capability (#223).
+
+**Census before change (nonprod, read-only, 2026-10-10).** Holders by grant are `owner` and `generalManager` only, through 3 principals, all synthetic fixtures. There were 0 conflicts. Nothing was revoked, and nothing is revoked automatically.
+
+**Boundary.** No migration, capability or grant change.

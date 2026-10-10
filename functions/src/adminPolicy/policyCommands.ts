@@ -54,6 +54,7 @@ import {
   OWNER_EXCLUDED_CAPABILITIES,
   forbiddenPair,
   ownerPrincipalViolations,
+  RESERVED_CAPABILITY_HOLDERS,
 } from "./roleCapabilityAdministration";
 import { loadPrincipalPolicy } from "./effectiveObjectAccess";
 import { PolicyStoreError } from "./policyRepository";
@@ -490,6 +491,13 @@ export async function createRole(
   // recovery Role's name, and every later "is this the admin Role" question would have two answers.
   if (PROTECTED_ROLE_KEYS.includes(key)) {
     throw new PolicyValidationError(`"${key}" is a protected system role key`);
+  }
+  // Nor a RESERVED capability's holder key (Owner G7, #226): a CUSTOM Role keyed `generalManager` in a tenant without one
+  // would otherwise satisfy the reservation by its key alone (security review, PR-4a).
+  for (const [capabilityKey, reserved] of RESERVED_CAPABILITY_HOLDERS) {
+    if (reserved.roleKeys.includes(key)) {
+      throw new PolicyValidationError(`"${key}" is a reserved holder of ${capabilityKey} and cannot be created as a custom role`);
+    }
   }
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
@@ -1977,6 +1985,9 @@ export async function grantObjectActionToPrincipal(
   }
   const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
   const principalId = nonEmpty(input.principalId, "principalId");
+  // A RESERVED capability (Owner G7) is held only through its reserved Roles -- never as a direct exception.
+  const reserved = RESERVED_CAPABILITY_HOLDERS.get(capability.key);
+  if (reserved) throw new AdministrationRefusal("SYSTEM_INVARIANT", `${capability.key} is never a direct grant (${reserved.ruling})`);
   await requireDirectGrantee(repo, actor, principalId, "grant a capability to");
   const condition = input.condition === undefined || input.condition === null ? null : input.condition;
   if (condition !== null) {
