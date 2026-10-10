@@ -244,8 +244,11 @@ test("administration control plane + workforce over PostgreSQL", { skip: SKIP, c
     assert.deepEqual(own.items.map((i) => i.recordId), [assigned]);
     assert.equal(own.axis, "ASSIGNED_PERSON");
     await assert.rejects(listAssignedWorkForEmployee({ pool }, await actorOf(tech), { employeeId: "e-tech", family: "WORK_ORDER" }), (e) => e.code === "CAPABILITY_REQUIRED");
-    await assert.rejects(listAssignedWorkForEmployee({ pool }, await actorOf(adminP), { employeeId: "e-tech", family: "REORDER_REQUEST" }),
-      (e) => e.code === "OUTSIDE_OPERATIONAL_SCOPE" || e.code === "CAPABILITY_REQUIRED");
+    // DECISIONS #224: the protected Administrator reaches every authorized company's Reorder queue by STANDING -- an
+    // oversight read, no Employee REORDER_QUEUE scope needed (the scope refusal for everyone else is proven in
+    // protectedAdministratorReachPostgres).
+    const reorders = await listAssignedWorkForEmployee({ pool }, await actorOf(adminP), { employeeId: "e-tech", family: "REORDER_REQUEST" });
+    assert.ok(Array.isArray(reorders.items));
     await assert.rejects(listAssignedWorkForEmployee({ pool }, await actorOf(adminP), { employeeId: "e-tech", family: "TRUCK" }), (e) => e.code === "FAMILY_INVALID");
   });
 

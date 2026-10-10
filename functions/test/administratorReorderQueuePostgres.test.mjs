@@ -39,8 +39,12 @@ test("Administrator reaches the Reorder queue through the governed REORDER_QUEUE
     assert.match(r.body.message, /reading the Reorder queue requires the REORDER_QUEUE Operational Scope/);
   };
 
-  await t.test("the reported defect: the Administrator holds reorder.request.read but no scope -> refused", async () => {
-    refusedOutsideScope(await queue(administrator)); // exactly the message on the Inventory & Supply Overview
+  await t.test("the reported defect is closed by STANDING (DECISIONS #224): the Administrator reads the queue with NO scope", async () => {
+    // PR-2: a protected Administrator administers every authorized company's queue without an Employee REORDER_QUEUE scope.
+    const r = await queue(administrator);
+    assert.equal(r.status, 200, JSON.stringify(r.body).slice(0, 300));
+    const held = (await q(`SELECT count(*)::int n FROM eos_workforce.employee_operational_scopes WHERE tenant_id=$1 AND employee_id='e-admrq-admin'`, [T])).rows[0].n;
+    assert.equal(held, 0, "no scope row was needed or created");
   });
 
   // The governed writer, as a different authorized principal -- the same command the nonprod seed issues as the Owner persona.
