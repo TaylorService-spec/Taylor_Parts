@@ -40,7 +40,7 @@
 // generic landing destination here and none should be added.
 import type { Pool } from "pg";
 import { resolveOperationalContext } from "./capabilityAuthority";
-import { administrationReachTargets, ADMINISTRATION_REACH_SCOPE_TYPES } from "./administrationReach";
+import { administrationReachAll } from "./administrationReach";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import {
   authorizeObjectAction,
@@ -534,9 +534,7 @@ export interface PrincipalDimensions {
 export async function administrationReachDimension(
   db: Pick<Pool, "query">, tenantId: string, principalId: string,
 ): Promise<Readonly<Record<string, readonly string[]>>> {
-  const out: Record<string, readonly string[]> = {};
-  for (const scopeType of ADMINISTRATION_REACH_SCOPE_TYPES) out[scopeType] = await administrationReachTargets(db, tenantId, principalId, scopeType);
-  return Object.freeze(out);
+  return administrationReachAll(db, tenantId, principalId);
 }
 
 /**

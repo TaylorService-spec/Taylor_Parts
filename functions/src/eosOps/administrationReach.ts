@@ -124,6 +124,19 @@ export async function administrationReachTargets(db: Db, tenantId: string, princ
   return scopeType === "REORDER_QUEUE" ? authorizedCompanyKeys(db, tenantId) : authorizedWarehouseIds(db, tenantId);
 }
 
+/**
+ * Every reach target of a principal, read ONCE: one standing check, one company-key read, one warehouse read. Empty
+ * (both types) without standing. Used for the experience snapshot and the effective-access explanation.
+ */
+export async function administrationReachAll(db: Db, tenantId: string, principalId: string): Promise<Readonly<Record<string, readonly string[]>>> {
+  if (!(await principalHasProtectedAdministratorStanding(db, tenantId, principalId))) return Object.freeze({ REORDER_QUEUE: [], WAREHOUSE: [] });
+  const keys = await authorizedCompanyKeys(db, tenantId);
+  const warehouses = keys.length === 0 ? [] : (await db.query<{ id: string }>(
+    `SELECT id FROM eos_ops.warehouses WHERE tenant_id = $1 AND status::text = 'ACTIVE' AND operating_company_key = ANY($2::text[]) ORDER BY id`,
+    [tenantId, keys])).rows.map((r) => r.id);
+  return Object.freeze({ REORDER_QUEUE: keys, WAREHOUSE: warehouses });
+}
+
 /** Does standing reach this target (or, with no target, any target of the type)? */
 export async function administrationReaches(db: Db, tenantId: string, principalId: string, scopeType: string, scopeId?: string): Promise<boolean> {
   const targets = await administrationReachTargets(db, tenantId, principalId, scopeType);
