@@ -10,7 +10,7 @@ import {
 import { allocateCommercialNumber } from "../commercialNumbering";
 import { discountAuthorityOf, discountWithinAuthority } from "../../salesAuthority/salesDiscountAuthority";
 import {
-  COMMERCIAL_CAPABILITIES, SALES_AGREEMENT_TRADE_IN_APPROVE_CAPABILITY, fail, requireCatalogReferences, requireAccountLocation, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
+  COMMERCIAL_CAPABILITIES, SALES_AGREEMENT_TRADE_IN_APPROVE_CAPABILITY, fail, requireCatalogReferences, requireAccountLocation, requireReservedHolder, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -394,6 +394,9 @@ function decideTradeIn(deps: CommercialCommandDeps, actor: CommercialActorContex
     [SALES_AGREEMENT_TRADE_IN_APPROVE_CAPABILITY], input?.idempotencyKey, async (db, now, scope) => {
       const allowed = ["idempotencyKey", "salesAgreementId", "itemNumber", "reason", ...(decision === "APPROVED" ? ["approvedCreditMinor"] : [])];
       for (const k of Object.keys(input ?? {})) if (!allowed.includes(k)) fail("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${k}`);
+      // RESERVED (Owner G7, DECISIONS #226): holding the capability is not enough -- it must be held through a reserved
+      // Role (owner / generalManager), so a grant that predates the invariant, or any other path, decides nothing.
+      await requireReservedHolder(db, actor.tenantId, actor.principalId, SALES_AGREEMENT_TRADE_IN_APPROVE_CAPABILITY);
       const current = await requireAgreement(db, actor.tenantId, input.salesAgreementId);
       scope.admitChannel(await sourceOpportunityChannel(db, actor.tenantId, current));
       if (current.state !== "DRAFT") fail("ILLEGAL_TRANSITION", "PRECONDITION_FAILED", "a trade-in value is decided only on a DRAFT Sales Agreement");

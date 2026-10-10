@@ -54,6 +54,7 @@ import {
   OWNER_EXCLUDED_CAPABILITIES,
   forbiddenPair,
   ownerPrincipalViolations,
+  RESERVED_CAPABILITY_HOLDERS,
 } from "./roleCapabilityAdministration";
 import { loadPrincipalPolicy } from "./effectiveObjectAccess";
 import { PolicyStoreError } from "./policyRepository";
@@ -1977,6 +1978,9 @@ export async function grantObjectActionToPrincipal(
   }
   const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
   const principalId = nonEmpty(input.principalId, "principalId");
+  // A RESERVED capability (Owner G7) is held only through its reserved Roles -- never as a direct exception.
+  const reserved = RESERVED_CAPABILITY_HOLDERS.get(capability.key);
+  if (reserved) throw new AdministrationRefusal("SYSTEM_INVARIANT", `${capability.key} is never a direct grant (${reserved.ruling})`);
   await requireDirectGrantee(repo, actor, principalId, "grant a capability to");
   const condition = input.condition === undefined || input.condition === null ? null : input.condition;
   if (condition !== null) {

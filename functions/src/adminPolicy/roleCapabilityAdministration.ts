@@ -92,9 +92,41 @@ export const PLATFORM_SAFETY_INVARIANTS = Object.freeze([
 
 const FORBIDDEN = new Map(FORBIDDEN_ROLE_CAPABILITY_PAIRS.map((p) => [cellKey(p.roleKey, p.capabilityKey), p]));
 
+/**
+ * RESERVED CAPABILITIES (OWNER_GOVERNANCE, an ALLOW-list rather than a pair): a capability only the named Roles may hold.
+ * Every OTHER Role -- built-in or custom, existing or future -- is a forbidden pair, so the one precedence rule refuses the
+ * grant, every default writer skips it, the grant matrix shows it as an invariant and verification reports any stored row
+ * as FORBIDDEN_PRESENT drift. Nothing is revoked automatically (Owner G7: census first, no auto-revoke).
+ *
+ *   salesAgreement.tradeIn.approve   Owner G7 (2026-10-09, DECISIONS #226): the trade-in value decision is a BUSINESS
+ *                                    approval reserved to the Owner and the General Manager -- never implied by
+ *                                    Administrator standing (#223), never held through another Role or a direct grant.
+ */
+export const RESERVED_CAPABILITY_HOLDERS: ReadonlyMap<string, { readonly roleKeys: readonly string[]; readonly ruling: string }> = new Map([
+  ["salesAgreement.tradeIn.approve", Object.freeze({
+    roleKeys: Object.freeze(["owner", "generalManager"]),
+    ruling: "Owner ruling G7 (2026-10-09, DECISIONS #226): trade-in approval is reserved to the Owner and the General Manager",
+  })],
+]);
+
 /** The invariant a (Role, capability) pair violates, or null when it may be held. */
 export function forbiddenPair(roleKey: string, capabilityKey: string): ForbiddenRoleCapabilityPair | null {
-  return FORBIDDEN.get(cellKey(roleKey, capabilityKey)) ?? null;
+  const pair = FORBIDDEN.get(cellKey(roleKey, capabilityKey));
+  if (pair) return pair;
+  const reserved = RESERVED_CAPABILITY_HOLDERS.get(capabilityKey);
+  if (reserved && !reserved.roleKeys.includes(roleKey)) {
+    return Object.freeze({ roleKey, capabilityKey, invariantClass: "OWNER_GOVERNANCE" as const, ruling: reserved.ruling });
+  }
+  return null;
+}
+
+/**
+ * EFFECTIVE-AUTHORIZATION half of a reservation: may a principal whose qualifying (active, global) Role keys are these
+ * exercise this capability? True for any unreserved capability; for a reserved one, only through a reserved Role.
+ */
+export function reservedCapabilityAdmits(capabilityKey: string, qualifyingRoleKeys: readonly string[]): boolean {
+  const reserved = RESERVED_CAPABILITY_HOLDERS.get(capabilityKey);
+  return !reserved || reserved.roleKeys.some((k) => qualifyingRoleKeys.includes(k));
 }
 
 /**
@@ -356,6 +388,9 @@ export function verifyTenantAuthority(input: {
     for (const roleKey of principal.roleKeys) for (const k of liveByRole.get(roleKey) ?? []) effective.add(k);
     for (const capabilityKey of ownerPrincipalViolations(principal.roleKeys, effective)) {
       forbiddenPrincipalHoldings.push({ principalId: principal.principalId, capabilityKey });
+    }
+    for (const capabilityKey of principal.directCapabilityKeys) {
+      if (!reservedCapabilityAdmits(capabilityKey, principal.roleKeys)) forbiddenPrincipalHoldings.push({ principalId: principal.principalId, capabilityKey });
     }
   }
   const drift = [
