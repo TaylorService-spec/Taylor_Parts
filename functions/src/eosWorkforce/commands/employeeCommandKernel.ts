@@ -133,14 +133,16 @@ export async function appendEmployeeAudit(
 ): Promise<string> {
   const id = `audit_${randomUUID()}`;
   // ADMINISTRATION AUDIT PROVENANCE (DECISIONS #223): an Employee administered by a protected Administrator records
-  // that authority, in the same transaction, from the same assignments the resolver reads (global, active, the
-  // designated protected Role; no standing alongside a protected Owner).
+  // that authority, in the same transaction, by the resolver's rule: a qualifying (active, global, non-stale) assignment
+  // of the designated protected Role, and no Owner assignment (at any scope -- stricter, never wider).
   const { rows: standing } = await db.query<{ standing: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM eos_policy.user_role_assignments a JOIN eos_policy.roles r ON r.id = a.role_id AND r.tenant_id = a.tenant_id
+                      LEFT JOIN eos_policy.principal_access_versions v ON v.tenant_id = a.tenant_id AND v.principal_id = a.principal_id
                      WHERE a.tenant_id = $1 AND a.principal_id = $2 AND a.status = 'active' AND a.scope_type = 'global'
+                       AND a.access_version_at_grant <= coalesce(v.access_version, 0)
                        AND r.key = $3 AND r.protected)
         AND NOT EXISTS (SELECT 1 FROM eos_policy.user_role_assignments a JOIN eos_policy.roles r ON r.id = a.role_id AND r.tenant_id = a.tenant_id
-                     WHERE a.tenant_id = $1 AND a.principal_id = $2 AND a.status = 'active' AND r.key = $4 AND r.protected) AS standing`,
+                     WHERE a.tenant_id = $1 AND a.principal_id = $2 AND a.status = 'active' AND r.key = $4) AS standing`,
     [tenantId, principalId, ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY]);
   const stored = afterWithActorAuthority(after, standing[0]?.standing === true ? PROTECTED_ADMINISTRATOR_AUTHORITY : undefined);
   await db.query(

@@ -214,6 +214,7 @@ test("DQ-029: truck scope binding Administration", { skip: SKIP, concurrency: 1 
     const otherTenant = await call("admin-b", "listMobileLocationScopeBindings");
     assert.equal(otherTenant.ok, true, JSON.stringify(otherTenant));
     assert.equal(otherTenant.tenantId, T.b);
+    assert.equal(JSON.stringify(otherTenant.data).includes("WH-A1"), false, "no tenant-A binding or warehouse reaches tenant B");
     refused(await call("admin-a", "assignRole", { principalId: adminA, roleId: await roleId(T.a, "truckScopeAdministrator"), reason: "self" }),
       "FORBIDDEN", /SELF_ADMINISTRATION/);
   });

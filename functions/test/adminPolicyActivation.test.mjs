@@ -936,7 +936,7 @@ test("USERS: the LAST administering assignment cannot be revoked", { skip: SKIP 
   // DECISIONS #223: an Administrator never removes ITS OWN Administrator assignment (self-removal stays governed), so
   // that refusal now comes first; the last-Administrator guard for another actor is proven in
   // protectedAdministratorPostgres.test.mjs.
-  assert.match(refused.message, /SELF_ADMINISTRATION|last active administering assignment/i);
+  assert.match(refused.message, /SELF_ADMINISTRATION/);
 
   const context = await resolvePrincipalContext(r, { externalSubject: ADMIN_SUBJECT });
   assert.ok(context.heldRoleKeys.includes("admin"), "and the administrator still administers");

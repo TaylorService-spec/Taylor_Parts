@@ -217,6 +217,51 @@ test("protected Administrator: standing, full system authority, delegation, audi
       assert.equal(audited[0].after.authorizedBy.standing, PROTECTED_ADMINISTRATOR);
     });
 
+    await t.test("a SCOPED admin assignment confers no standing (only a global one does)", async () => {
+      const scoped = await person("uid-padmin-scoped", []);
+      await repo.transact({ tenantId: T, uid: "fixture" }, async (tx) => {
+        const version = await tx.bumpAccessVersion(scoped.principalId);
+        return tx.createAssignment({ principalId: scoped.principalId, roleId: adminRoleId, scopeType: "operatingCompany", scopeValue: "taylor",
+          status: "active", grantedBy: "fixture", grantedAt: new Date().toISOString(), accessVersionAtGrant: version });
+      });
+      const ctx = await operational("uid-padmin-scoped");
+      assert.equal(ctx.protectedAdministratorKeys.size, 0);
+      assert.equal(ctx.capabilities.has("workflowDefinition.publish"), false);
+      assert.equal((await api("uid-padmin-scoped", "readMyWorkflowAdministration")).ok, false, "no workflow read either");
+    });
+
+    await t.test("no configuration the runtime ignores: a condition on a standing-implied Administrator cell is refused", async () => {
+      // An issuer that holds admin.securityPolicy.write WITHOUT the admin Role (so SELF_ADMINISTRATION cannot be the reason).
+      const okR = (r) => { assert.equal(r.ok, true, JSON.stringify(r)); return r.data; };
+      okR(await api(ADMIN_SUBJECT, "createRole", { key: "padminSecClerk", name: "Security clerk", reason: "fixture" }));
+      okR(await api(ADMIN_SUBJECT, "grantObjectActionToRole", { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", roleKey: "padminSecClerk", reason: "fixture" }));
+      okR(await api(ADMIN_SUBJECT, "assignRole", { principalId: dispatcher.principalId, roleId: (await repo.getRoleByKey(T, "padminSecClerk")).id, reason: "fixture" }));
+      // workOrder.record.read is the conditionable capability, and a READ -- implied by standing.
+      const r = await api(dispatcher.subject, "grantObjectActionToRole", { objectKey: "workOrder", actionKey: "read", roleKey: "admin",
+        condition: { paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "workOrder" }, reason: "x" });
+      assert.equal(r.ok, false, JSON.stringify(r));
+      assert.match(r.message, /protected-Administrator standing/);
+      // The same condition on an ordinary Role's cell is still accepted (nothing else changed).
+      const ordinary = await api(dispatcher.subject, "grantObjectActionToRole", { objectKey: "workOrder", actionKey: "read", roleKey: "technician",
+        condition: { paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "workOrder" }, reason: "x" });
+      assert.doesNotMatch(String(ordinary.message ?? ""), /protected-Administrator standing/);
+    });
+
+    await t.test("bootstrap paths refuse Owner/Administrator dual membership", async () => {
+      const { bootstrapFirstOwner, bootstrapAdministrator } = require("../lib/adminPolicy/tenantBootstrap.js");
+      await assert.rejects(() => bootstrapFirstOwner(repo, { tenantId: T, principalId: first, performedBy: "fixture", reason: "x" }),
+        /PROTECTED_ROLE_CONFLICT|FIRST_OWNER/);
+      await assert.rejects(() => bootstrapAdministrator(repo, { tenantId: T, externalSubject: "uid-padmin-owner", performedBy: "fixture", reason: "x" }));
+    });
+
+    await t.test("Effective Access never shows a disabled Administrator holding the implied authority", async () => {
+      await q(`UPDATE eos_policy.principals SET status = 'disabled' WHERE id = $1`, [third.principalId]);
+      const shown = await api(ADMIN_SUBJECT, "getPrincipalEffectiveAccess", { principalId: third.principalId });
+      assert.equal(shown.ok, true, shown.message);
+      assert.equal(JSON.stringify(shown.data).includes(PROTECTED_ADMINISTRATOR), false);
+      await q(`UPDATE eos_policy.principals SET status = 'active' WHERE id = $1`, [third.principalId]);
+    });
+
     await t.test("restricted personas: capabilities are exactly their grants; no workflow authority; no standing", async () => {
       for (const who of [owner, tech, dispatcher, partsManager]) {
         const subject = who.subject;

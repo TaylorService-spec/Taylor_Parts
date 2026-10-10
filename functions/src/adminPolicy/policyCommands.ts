@@ -24,7 +24,7 @@ import {
   PROTECTED_ROLE_KEYS,
   requireAdministrationAuthority,
 } from "./administrationAuthority";
-import { actorAuthorityOf, hasProtectedAdministratorStanding, PROTECTED_ADMINISTRATOR_AUTHORITY } from "./protectedAdministrator";
+import { actorAuthorityOf, hasProtectedAdministratorStanding, isImpliedForProtectedAdministrator, PROTECTED_ADMINISTRATOR_AUTHORITY } from "./protectedAdministrator";
 import { CRED_VERBS, FIELD_DATA_TYPES, FIELD_SENSITIVITIES } from "./types";
 import type {
   CredOverride,
@@ -935,6 +935,8 @@ export async function assignRole(
     // D5(b) / R1 re-decided under the lock, against the STORE (a concurrent revoke of the actor's staffing
     // capability, or a grant of admin.securityPolicy.write to this Role, has committed or waits for us).
     const staffing = await authorizeSecurityPolicyStaffing(repo, actor, role, principalId, scopeType, "assign", { fresh: true });
+    // Owner and Administrator stay distinct, re-decided under the lock (a concurrent Owner appointment has committed or waits).
+    if (isDesignatedAdministratorRole(role)) await refuseProtectedRoleConflict(repo, actor.tenantId, principalId);
     // Re-check the idempotence under the governance lock: a concurrent identical assignment that
     // committed first is returned, never duplicated.
     const now = (await repo.listAssignmentsForPrincipal(actor.tenantId, principalId))
@@ -1223,6 +1225,12 @@ async function authorizeSecurityPolicyStaffing(
 ): Promise<SecurityPolicyStaffingAuthority> {
   const carried = await capabilityKeysFor(repo, actor.tenantId, [role.key], null, { includeConditioned: true });
   if (!carried.has(SECURITY_POLICY_WRITE)) return "NOT_REQUIRED";
+  // NOBODY APPOINTS OR REMOVES THEMSELF AS ADMINISTRATOR, BY ANY AUTHORITY (DECISIONS #223): self-removal stays governed
+  // -- another Administrator or the Owner acts -- whichever path below would otherwise admit it.
+  if (isDesignatedAdministratorRole(role) && targetPrincipalId === actor.uid) {
+    throw new AdministrationRefusal("SELF_ADMINISTRATION",
+      `a principal may not ${verb === "assign" ? "assign the Administrator Role to" : "remove the Administrator Role from"} itself`);
+  }
   // PROTECTED ADMINISTRATOR DELEGATION (DECISIONS #223): an Administrator with standing appoints and removes OTHER
   // Administrators -- the designated Role, globally, for another principal -- with the same protections as R1:
   // never itself, never at a scope, standing re-verified against the STORE under the governance lock.
@@ -1233,14 +1241,7 @@ async function authorizeSecurityPolicyStaffing(
     const roles = await repo.listRoles(actor.tenantId);
     const standing = hasProtectedAdministratorStanding(roles, Array.isArray(actor.heldRoleKeys) ? actor.heldRoleKeys : [])
       && (options.fresh !== true || hasProtectedAdministratorStanding(roles, await qualifyingRoleKeys(repo, actor.tenantId, actor.uid)));
-    if (standing) {
-      // SELF-REMOVAL / SELF-APPOINTMENT STAY GOVERNED: another Administrator or the Owner acts, never the principal itself.
-      if (targetPrincipalId === actor.uid) {
-        throw new AdministrationRefusal("SELF_ADMINISTRATION",
-          `a principal may not ${verb === "assign" ? "assign the Administrator Role to" : "remove the Administrator Role from"} itself`);
-      }
-      return "PROTECTED_ADMINISTRATOR";
-    }
+    if (standing) return "PROTECTED_ADMINISTRATOR";
   }
   const held = await actorCapabilities(repo, actor);
   if (held.has(SECURITY_POLICY_WRITE)) return "SECURITY_POLICY_WRITE";
@@ -1501,6 +1502,26 @@ function validateRoleCondition(roleKey: string, capabilityKey: string, condition
   validateGrantCondition("ROLE", roleKey, capabilityKey, condition);
 }
 
+/**
+ * NO CONFIGURATION THE RUNTIME IGNORES (DECISIONS #223): a capability protected-Administrator standing implies is held
+ * UNCONDITIONED by the designated Role and by every principal with standing -- so a condition on that cell would be stored
+ * and never applied. Refused, for the Role cell and for a direct exception of a principal that currently has standing.
+ */
+async function refuseConditionOnStanding(
+  repo: PolicyRepository, tenantId: string,
+  grantor: { readonly role?: { readonly key: string; readonly protected?: boolean | null }; readonly principalId?: string },
+  capability: { readonly key: string; readonly objectKey: string; readonly actionKind: string },
+): Promise<void> {
+  if (!isImpliedForProtectedAdministrator(capability)) return;
+  const standing = grantor.role
+    ? isDesignatedAdministratorRole(grantor.role)
+    : hasProtectedAdministratorStanding(await repo.listRoles(tenantId), await qualifyingRoleKeys(repo, tenantId, grantor.principalId as string));
+  if (standing) {
+    throw new AdministrationRefusal("CONDITION_NOT_SUPPORTED",
+      `${capability.key} is held unconditioned by protected-Administrator standing (DECISIONS #223); a condition there would never apply`);
+  }
+}
+
 /** The same validation for either grant scope: a direct exception's condition obeys exactly the Role rules. */
 function validateGrantCondition(grantScope: "ROLE" | "PRINCIPAL", grantorKey: string, capabilityKey: string, condition: unknown): void {
   const allowed = CONDITIONABLE_GRANTS.find((g) => g.capabilityKey === capabilityKey);
@@ -1678,7 +1699,10 @@ export async function grantObjectActionToRole(
     }
   }
   const condition = input.condition === undefined || input.condition === null ? null : input.condition;
-  if (condition !== null) validateRoleCondition(role.key, capability.key, condition);
+  if (condition !== null) {
+    validateRoleCondition(role.key, capability.key, condition);
+    await refuseConditionOnStanding(repo, actor.tenantId, { role }, capability);
+  }
   const requiresCondition = input.requiresCondition === true;
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
@@ -1832,6 +1856,7 @@ export async function setGrantCondition(
     throw new AdministrationRefusal("CONDITION_INVALID", "a condition is required; retire a condition with retireGrantCondition");
   }
   validateRoleCondition(role.key, capability.key, input.condition);
+  await refuseConditionOnStanding(repo, actor.tenantId, { role }, capability);
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     await tx.beginAdministrationCommand();
@@ -1954,7 +1979,10 @@ export async function grantObjectActionToPrincipal(
   const principalId = nonEmpty(input.principalId, "principalId");
   await requireDirectGrantee(repo, actor, principalId, "grant a capability to");
   const condition = input.condition === undefined || input.condition === null ? null : input.condition;
-  if (condition !== null) validateGrantCondition("PRINCIPAL", principalId, capability.key, condition);
+  if (condition !== null) {
+    validateGrantCondition("PRINCIPAL", principalId, capability.key, condition);
+    await refuseConditionOnStanding(repo, actor.tenantId, { principalId }, capability);
+  }
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     await tx.beginAdministrationCommand();
@@ -2029,6 +2057,7 @@ async function setDirectExceptionCondition(
     throw new AdministrationRefusal("CONDITION_INVALID", "a condition is required; retire a condition with retireGrantCondition");
   }
   validateGrantCondition("PRINCIPAL", principalId, capability.key, input.condition);
+  await refuseConditionOnStanding(repo, actor.tenantId, { principalId }, capability);
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     await tx.beginAdministrationCommand();
     await tx.lockGrantCell(principalId, capability.key, "PRINCIPAL");

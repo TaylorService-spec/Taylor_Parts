@@ -544,7 +544,13 @@ async function resolvePrincipalEffectiveAccess(
   const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
   // PROTECTED ADMINISTRATOR standing (DECISIONS #223), from the SAME qualifying global Roles: the implied system
   // authority, reported with its own provenance.
-  const implied = protectedAdministratorImpliedKeys(roles, activeRoleIds.map((id) => roleKeyById.get(id) ?? id), capabilities);
+  // Only an ACTIVE principal with an ACTIVE membership has standing -- the same precondition principal resolution applies,
+  // so Effective Access never shows a disabled Administrator holding the implied authority.
+  const [principalRecord, membershipRecord] = await Promise.all([repo.getPrincipal(principalId), repo.getMembership(tenantId, principalId)]);
+  const usable = principalRecord?.status === "active" && membershipRecord?.status === "active";
+  const implied = usable
+    ? protectedAdministratorImpliedKeys(roles, activeRoleIds.map((id) => roleKeyById.get(id) ?? id), capabilities)
+    : new Set<string>();
   const effective = effectiveCapabilities({
     tenantId, principalId,
     roleDerivedCapabilityIds: roleGrants.map((g) => g.capabilityId),

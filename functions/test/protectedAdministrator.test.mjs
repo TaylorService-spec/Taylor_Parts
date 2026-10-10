@@ -15,6 +15,8 @@ test("standing: the designated, PROTECTED admin Role, held globally, and never a
   assert.equal(pa.hasProtectedAdministratorStanding(ROLES, ["technician"]), false);
   assert.equal(pa.hasProtectedAdministratorStanding(ROLES, ["owner"]), false, "the Owner is a distinct authority type");
   assert.equal(pa.hasProtectedAdministratorStanding(ROLES, ["admin", "owner"]), false, "dual membership confers no standing");
+  assert.equal(pa.hasProtectedAdministratorStanding([{ key: "admin", protected: true }, { key: "owner", protected: false }], ["admin", "owner"]), false,
+    "a damaged Owner row never opens standing (fail closed)");
   assert.equal(pa.hasProtectedAdministratorStanding([{ key: "admin", protected: false }], ["admin"]), false, "an unprotected admin Role confers nothing");
   assert.equal(pa.hasProtectedAdministratorStanding([], ["admin"]), false, "an unknown Role confers nothing (fail closed)");
   assert.equal(pa.hasProtectedAdministratorStanding([{ key: "administrator", protected: true }], ["administrator"]), false, "never by display name or another key");

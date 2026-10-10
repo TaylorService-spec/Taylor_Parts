@@ -92,8 +92,8 @@ export function hasProtectedAdministratorStanding(roles: readonly RoleFlag[], he
   if (!heldRoleKeys.includes(ADMIN_ROLE_KEY)) return false;
   const admin = roles.find((r) => r.key === ADMIN_ROLE_KEY);
   if (!admin || admin.protected !== true) return false;
-  const owner = roles.find((r) => r.key === PROTECTED_OWNER_ROLE_KEY);
-  if (heldRoleKeys.includes(PROTECTED_OWNER_ROLE_KEY) && owner?.protected === true) return false;
+  // Holding the Owner key at all means no standing -- even if that Role row were damaged (fail closed, never open).
+  if (heldRoleKeys.includes(PROTECTED_OWNER_ROLE_KEY)) return false;
   return true;
 }
 
