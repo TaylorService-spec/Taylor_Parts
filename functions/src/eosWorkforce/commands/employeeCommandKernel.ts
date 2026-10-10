@@ -14,6 +14,7 @@ import { authorizeEntitledAction, hasResolvedEntitlements, type EntitlementResol
 import { postgresContextualReader } from "../../eosOps/contextualAuthorization";
 import { randomUUID } from "node:crypto";
 import type { EmployeeReadErrorCategory } from "../reads/employeeReadKernel";
+import { ADMIN_ROLE_KEY, afterWithActorAuthority, PROTECTED_ADMINISTRATOR_AUTHORITY, PROTECTED_OWNER_ROLE_KEY } from "../../adminPolicy/protectedAdministrator";
 
 export const EMPLOYEE_PROFILE_WRITE = "admin.employeeProfile.write";
 
@@ -131,10 +132,21 @@ export async function appendEmployeeAudit(
   before: unknown, after: unknown, reason: string | null, at: Date,
 ): Promise<string> {
   const id = `audit_${randomUUID()}`;
+  // ADMINISTRATION AUDIT PROVENANCE (DECISIONS #223): an Employee administered by a protected Administrator records
+  // that authority, in the same transaction, from the same assignments the resolver reads (global, active, the
+  // designated protected Role; no standing alongside a protected Owner).
+  const { rows: standing } = await db.query<{ standing: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM eos_policy.user_role_assignments a JOIN eos_policy.roles r ON r.id = a.role_id AND r.tenant_id = a.tenant_id
+                     WHERE a.tenant_id = $1 AND a.principal_id = $2 AND a.status = 'active' AND a.scope_type = 'global'
+                       AND r.key = $3 AND r.protected)
+        AND NOT EXISTS (SELECT 1 FROM eos_policy.user_role_assignments a JOIN eos_policy.roles r ON r.id = a.role_id AND r.tenant_id = a.tenant_id
+                     WHERE a.tenant_id = $1 AND a.principal_id = $2 AND a.status = 'active' AND r.key = $4 AND r.protected) AS standing`,
+    [tenantId, principalId, ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY]);
+  const stored = afterWithActorAuthority(after, standing[0]?.standing === true ? PROTECTED_ADMINISTRATOR_AUTHORITY : undefined);
   await db.query(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1, $2, $3, $4, 'employee', $5, $6, $7, $8, $9)`,
-    [id, tenantId, action, principalId, employeeId, before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(after), at, reason],
+    [id, tenantId, action, principalId, employeeId, before === null ? null : JSON.stringify(before), stored === null ? null : JSON.stringify(stored), at, reason],
   );
   return id;
 }

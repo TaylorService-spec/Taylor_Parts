@@ -80,6 +80,7 @@ import type {
   WorkflowStepRecord,
   WorkflowVersionRecord,
 } from "./types";
+import { afterWithActorAuthority } from "./protectedAdministrator";
 
 /** Anything that can run a query -- the pool for reads, one checked-out client inside a transaction. */
 interface Queryable {
@@ -1725,15 +1726,16 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       }
     },
 
-    async appendAudit(input: Omit<PolicyAuditEventRecord, "id" | "tenantId">) {
+    async appendAudit(input: Omit<PolicyAuditEventRecord, "id" | "tenantId"> & { readonly actorAuthority?: unknown }) {
       const id = newId();
+      const after = afterWithActorAuthority(input.after, input.actorAuthority);
       await q.query(
         `INSERT INTO ${SCHEMA}.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id,
            before, after, occurred_at, reason)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [id, tenantId, input.action, input.actorUid, input.targetKind, input.targetId,
           input.before === null || input.before === undefined ? null : JSON.stringify(input.before),
-          input.after === null || input.after === undefined ? null : JSON.stringify(input.after),
+          after === null || after === undefined ? null : JSON.stringify(after),
           input.occurredAt, input.reason],
       );
       return id;

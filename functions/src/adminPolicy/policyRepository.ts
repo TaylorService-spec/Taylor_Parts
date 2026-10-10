@@ -380,7 +380,11 @@ export interface PolicyTransaction {
    * Not optional and not configurable. Every mutation in this subsystem writes one. Returns the
    * stored event id, so a decision row can name the event that records it.
    */
-  appendAudit(input: Omit<PolicyAuditEventRecord, "id" | "tenantId">): Promise<string>;
+  /**
+   * `actorAuthority` (optional): the actor's authority provenance (DECISIONS #223), merged into `after` as
+   * `authorizedBy` when `after` is a record -- never a column, never overwriting a more specific `authorizedBy`.
+   */
+  appendAudit(input: Omit<PolicyAuditEventRecord, "id" | "tenantId"> & { readonly actorAuthority?: unknown }): Promise<string>;
 }
 
 /**

@@ -28,8 +28,10 @@ import {
 import { PolicyValidationError, type AdminActor } from "./policyCommands";
 import type { PolicyReader, PolicyRepository } from "./policyRepository";
 import type { WorkflowRecord, WorkflowVersionRecord } from "./types";
+import { actorAuthorityOf } from "./protectedAdministrator";
 
 const audit = (actor: AdminActor, action: string, targetId: string, reason: string | null) => ({
+  ...actorAuthorityOf(actor),
   action,
   actorUid: actor.uid,
   targetKind: "workflowVersion",

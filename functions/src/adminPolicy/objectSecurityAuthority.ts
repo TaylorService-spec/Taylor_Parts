@@ -103,6 +103,8 @@ export interface EffectiveAccessInput {
   readonly roleDerivedCapabilityIds: readonly string[];
   /** Capability ids granted to this principal directly. */
   readonly directCapabilityIds: readonly string[];
+  /** Capability ids implied by PROTECTED ADMINISTRATOR standing (DECISIONS #223); absent or empty for everyone else. */
+  readonly protectedAdministratorCapabilityIds?: readonly string[];
   readonly capabilities: readonly CapabilityRecord[];
 }
 
@@ -112,8 +114,12 @@ export interface EffectiveCapability {
   readonly actionKey: string;
   readonly actionKind: string;
   readonly displayLabel: string;
-  /** How it was reached. A capability held BOTH ways reports "ROLE_AND_DIRECT", never twice. */
-  readonly source: "ROLE" | "DIRECT" | "ROLE_AND_DIRECT";
+  /**
+   * How it was reached. A capability held BOTH ways reports "ROLE_AND_DIRECT", never twice. PROTECTED_ADMINISTRATOR:
+   * implied by the designated Administrator's standing with no grant row (DECISIONS #223); a key the Administrator ALSO
+   * holds through a grant reports that grant.
+   */
+  readonly source: "ROLE" | "DIRECT" | "ROLE_AND_DIRECT" | "PROTECTED_ADMINISTRATOR";
 }
 
 /**
@@ -132,8 +138,9 @@ export function effectiveCapabilities(input: EffectiveAccessInput): readonly Eff
   const byId = new Map(input.capabilities.map((c) => [c.id, c]));
   const fromRole = new Set(input.roleDerivedCapabilityIds);
   const direct = new Set(input.directCapabilityIds);
+  const implied = new Set(input.protectedAdministratorCapabilityIds ?? []);
   const out: EffectiveCapability[] = [];
-  for (const id of new Set([...fromRole, ...direct])) {
+  for (const id of new Set([...fromRole, ...direct, ...implied])) {
     const cap = byId.get(id);
     // A grant naming a capability the catalog does not define is dropped, never guessed at. The
     // foreign key makes this unreachable through the database; it is reachable through a stale
@@ -145,7 +152,8 @@ export function effectiveCapabilities(input: EffectiveAccessInput): readonly Eff
       actionKey: cap.actionKey,
       actionKind: cap.actionKind,
       displayLabel: cap.displayLabel,
-      source: fromRole.has(id) && direct.has(id) ? "ROLE_AND_DIRECT" : direct.has(id) ? "DIRECT" : "ROLE",
+      source: fromRole.has(id) && direct.has(id) ? "ROLE_AND_DIRECT" : direct.has(id) ? "DIRECT"
+        : fromRole.has(id) ? "ROLE" : "PROTECTED_ADMINISTRATOR",
     }));
   }
   out.sort((a, b) => a.objectKey.localeCompare(b.objectKey) || a.actionKey.localeCompare(b.actionKey));

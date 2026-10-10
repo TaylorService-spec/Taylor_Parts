@@ -530,10 +530,11 @@ test("workflow domain readiness: a synthetic domain consumes the control plane e
     assert.equal(await activeVersionOf(WORKFLOW), v2Id);
   });
 
-  await t.test("10d. negative: an unauthorized administrator cannot publish", async () => {
+  await t.test("10d. negative: an unauthorized principal cannot publish", async () => {
     const draft = ok(await call("createWorkflowVersion", { workflowId: await workflowIdOf(WORKFLOW), copyFromVersionId: v2Id, reason: REASON }));
     const before = await auditCount();
-    for (const subject of [dispatcher.subject, ADMIN_SUBJECT, FR_SUBJECT]) {
+    // The protected Administrator is NOT in this list: it publishes by standing (DECISIONS #223).
+    for (const subject of [dispatcher.subject, FR_SUBJECT]) {
       for (const operation of ["publishWorkflowVersion", "activateWorkflowVersion"]) {
         const r = await call(operation, { versionId: draft.version.id, reason: REASON }, subject);
         assert.deepEqual([r.code, r.message], ["FORBIDDEN", 'not authorized: "workflowDefinition.publish" is required'], `${subject} ${operation}`);

@@ -61,6 +61,7 @@ import type {
   WorkflowStepRecord,
   WorkflowVersionRecord,
 } from "./types";
+import { afterWithActorAuthority } from "./protectedAdministrator";
 
 interface Tables {
   tenants: TenantRecord[];
@@ -742,7 +743,8 @@ export class InMemoryPolicyRepository implements PolicyRepository {
 
       appendAudit: async (input) => {
         const id = this.nextId();
-        t.audit.push({ ...input, id, tenantId });
+        const { actorAuthority, ...event } = input;
+        t.audit.push({ ...event, after: afterWithActorAuthority(event.after, actorAuthority), id, tenantId });
         return id;
       },
     };

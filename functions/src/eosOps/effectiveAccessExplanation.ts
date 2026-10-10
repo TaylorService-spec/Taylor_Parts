@@ -94,7 +94,7 @@ export interface ExplainedAction {
    * both (reported once, never twice), NONE = neither. Derived here from the SAME sourceRoles / scopedSources / directGrant
    * rows above -- a label over the evaluator's sources, never an input to any decision.
    */
-  readonly provenance: "ROLE" | "DIRECT" | "ROLE_AND_DIRECT" | "NONE";
+  readonly provenance: "ROLE" | "DIRECT" | "ROLE_AND_DIRECT" | "PROTECTED_ADMINISTRATOR" | "NONE";
   /** True when every path (Role and direct) is conditioned: flat-set kernels (Commercial, CRM) withhold it. */
   readonly withheldFromFlatSetKernels: boolean;
   /** Experience surfaces this capability earns for this Principal. */
@@ -222,9 +222,13 @@ export async function explainEffectiveAccess(
   for (const capability of [...catalog].sort((a, b) =>
     a.objectKey === b.objectKey ? a.actionKey.localeCompare(b.actionKey) : a.objectKey.localeCompare(b.objectKey))) {
     const reaching = entitlementsFor(entitlements, capability.key);
+    // An entitlement implied by PROTECTED ADMINISTRATOR standing (DECISIONS #223) is listed under the protected Role and
+    // marked as such -- the Role detail and the Object matrix show the same cell, so the three reads stay one authority.
     const sourceRoles = reaching
       .filter((e) => e.grantor.kind === "ROLE")
-      .map((e) => ({ roleKey: (e.grantor as { roleKey: string }).roleKey, condition: e.condition }));
+      .map((e) => ({ roleKey: (e.grantor as { roleKey: string }).roleKey, condition: e.condition,
+        ...(e.protectedAdministrator === true ? { source: "PROTECTED_ADMINISTRATOR" as const } : {}) }));
+    const onlyStanding = sourceRoles.length > 0 && reaching.every((e) => e.grantor.kind !== "ROLE" || e.protectedAdministrator === true);
     const direct = directByKey.get(capability.key);
     const directRecord = directRecordByCapabilityId.get(capabilityIdByKey.get(capability.key) ?? "");
     const directEntitlement = reaching.find((e) => e.grantor.kind === "PRINCIPAL") ?? null;
@@ -255,7 +259,9 @@ export async function explainEffectiveAccess(
         condition: directEntitlement?.condition ?? null,
         enforced: true as const,
       }) : null,
-      provenance: provenanceOf(sourceRoles.length + scopedSources.length > 0, Boolean(direct)),
+      provenance: onlyStanding && scopedSources.length === 0 && !direct
+        ? "PROTECTED_ADMINISTRATOR" as const
+        : provenanceOf(sourceRoles.length + scopedSources.length > 0, Boolean(direct)),
       withheldFromFlatSetKernels: reaching.length > 0 && reaching.every((e) => e.condition !== null),
       surfaces: Object.freeze(EXPERIENCE_SURFACES
         .filter((s) => surfaceSet.has(s.key) && s.grants.some((g) => g.capabilityKey === capability.key))

@@ -104,6 +104,8 @@ import type {
   WorkflowRecord,
   WorkflowVersionRecord,
 } from "./types";
+import { hasProtectedAdministratorStanding, isImpliedForProtectedAdministrator, protectedAdministratorImpliedKeys } from "./protectedAdministrator";
+import { ADMIN_ROLE_KEY, isDesignatedAdministratorRole } from "./administrationAuthority";
 
 // ════════════════════ the closed operation list ════════════════════
 
@@ -433,10 +435,21 @@ export async function executeAdminOperation<T = unknown>(
     return fail(operation, "INTERNAL", "the request could not be completed");
   }
 
+  let protectedAdministrator = false;
+  try {
+    // PROTECTED ADMINISTRATOR standing (DECISIONS #223), for audit provenance. Read only for an `admin` holder.
+    protectedAdministrator = context.heldRoleKeys.includes(ADMIN_ROLE_KEY)
+      && hasProtectedAdministratorStanding(await repo.listRoles(context.tenantId), context.heldRoleKeys);
+  } catch (err) {
+    // eslint-disable-next-line no-console -- same posture as the principal-resolution failure above
+    console.error("[adminPolicyApi] protected Administrator standing could not be read", err);
+    return fail(operation, "INTERNAL", "the request could not be completed");
+  }
   const actor: AdminActor = {
     tenantId: context.tenantId,
     uid: context.uid,
     heldRoleKeys: context.heldRoleKeys,
+    protectedAdministrator,
   };
   const input = (request.input ?? {}) as Record<string, unknown>;
   const reason = withRequestId(input.reason, request.requestId);
@@ -528,13 +541,17 @@ async function resolvePrincipalEffectiveAccess(
   // not flat here either -- the runtime resolution places it in conditionallyHeld, and this gate must agree.
   const conditionedDirect = new Set(conditions.filter((c) => c.grantScope === "PRINCIPAL").map((c) => `${c.grantorKey}|${c.capabilityKey}`));
   const flatDirect = directGrants.filter((g) => !conditionedDirect.has(`${g.principalId}|${capabilityKeyOf.get(g.capabilityId)}`));
+  const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
+  // PROTECTED ADMINISTRATOR standing (DECISIONS #223), from the SAME qualifying global Roles: the implied system
+  // authority, reported with its own provenance.
+  const implied = protectedAdministratorImpliedKeys(roles, activeRoleIds.map((id) => roleKeyById.get(id) ?? id), capabilities);
   const effective = effectiveCapabilities({
     tenantId, principalId,
     roleDerivedCapabilityIds: roleGrants.map((g) => g.capabilityId),
     directCapabilityIds: flatDirect.map((g) => g.capabilityId),
+    protectedAdministratorCapabilityIds: capabilities.filter((c) => implied.has(c.key)).map((c) => c.id),
     capabilities,
   });
-  const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
   return {
     principalId,
     roles: activeRoleIds.map((id) => roleKeyById.get(id) ?? id).sort(),
@@ -1080,9 +1097,15 @@ async function updateRoleMetadata(
 //   ADMIN_REVOKED      absent because an administrator revoked it (current decision)
 //   SYSTEM_DEFAULT     held with no Administration decision: a migration, catalog or activation
 //                      default. `grantedBy` carries the stored provenance stamp.
+//   PROTECTED_ADMINISTRATOR  held by the designated protected Administrator Role's STANDING, with no grant row
+//                      (DECISIONS #223) -- the system authority protectedAdministrator.ts defines.
 //   null               not held and never decided.
 
-export type GrantCellSource = "SYSTEM_INVARIANT" | "ADMIN_GRANTED" | "ADMIN_REVOKED" | "SYSTEM_DEFAULT" | null;
+export type GrantCellSource = "SYSTEM_INVARIANT" | "ADMIN_GRANTED" | "ADMIN_REVOKED" | "SYSTEM_DEFAULT" | "PROTECTED_ADMINISTRATOR" | null;
+
+/** A (Role, capability) cell held by protected Administrator standing: the designated Role and an implied key. */
+const impliedByStanding = (role: { readonly key: string; readonly protected?: boolean | null }, capability: { readonly key: string; readonly objectKey: string; readonly actionKind: string }): boolean =>
+  isDesignatedAdministratorRole(role) && isImpliedForProtectedAdministrator(capability);
 
 function cellSource(held: boolean, decision: string | null, forbidden: boolean): GrantCellSource {
   if (forbidden) return "SYSTEM_INVARIANT";
@@ -1120,10 +1143,11 @@ async function describeSecurityRole(repo: PolicyRepository, tenantId: string, ro
       const decision = decisions.find((d) => d.roleKey === role.key && d.capabilityKey === c.key) ?? null;
       const condition = conditions.find((x) => x.grantScope === "ROLE" && x.grantorKey === role.key && x.capabilityKey === c.key) ?? null;
       const forbidden = forbiddenPair(role.key, c.key);
+      const implied = !grant && impliedByStanding(role, c);
       return {
         objectKey: c.objectKey, actionKey: c.actionKey, actionKind: c.actionKind, displayLabel: c.displayLabel,
-        capabilityKey: c.key, held: Boolean(grant), grantedBy: grant?.grantedBy ?? null,
-        source: cellSource(Boolean(grant), decision?.decision ?? null, Boolean(forbidden)),
+        capabilityKey: c.key, held: Boolean(grant) || implied, grantedBy: grant?.grantedBy ?? null,
+        source: implied ? "PROTECTED_ADMINISTRATOR" as const : cellSource(Boolean(grant), decision?.decision ?? null, Boolean(forbidden)),
         forbiddenBy: forbidden?.ruling ?? null,
         decision: decision ? { decision: decision.decision, reason: decision.reason, actorPrincipalId: decision.actorPrincipalId,
           decidedAt: decision.decidedAt, requiresCondition: decision.requiresCondition, auditEventId: decision.auditEventId } : null,
@@ -1148,9 +1172,10 @@ async function objectActionGrantMatrix(repo: PolicyRepository, tenantId: string,
       const decision = decisions.find((d) => d.roleKey === r.key && d.capabilityKey === c.key) ?? null;
       const condition = conditions.find((x) => x.grantScope === "ROLE" && x.grantorKey === r.key && x.capabilityKey === c.key) ?? null;
       const forbidden = forbiddenPair(r.key, c.key);
+      const implied = !grant && impliedByStanding(r, c);
       return {
-        roleKey: r.key, held: Boolean(grant),
-        source: cellSource(Boolean(grant), decision?.decision ?? null, Boolean(forbidden)),
+        roleKey: r.key, held: Boolean(grant) || implied,
+        source: implied ? "PROTECTED_ADMINISTRATOR" as const : cellSource(Boolean(grant), decision?.decision ?? null, Boolean(forbidden)),
         condition: condition?.condition ?? null,
       };
     }).filter((cell) => cell.held || cell.source !== null || cell.condition !== null)
@@ -1283,7 +1308,8 @@ function classify(err: unknown): AdminApiFailureCode {
   // that would widen, the last administration path -- is a CONFLICT with what is there, not a
   // malformed request. A missing reason or an unloadable condition stays INVALID_INPUT.
   if (err instanceof AdministrationRefusal) {
-    if (err.code === "SELF_ADMINISTRATION" || err.code === "PRIVILEGE_ESCALATION" || err.code === "PROTECTED_OWNER_MEMBERSHIP") return "FORBIDDEN";
+    if (err.code === "SELF_ADMINISTRATION" || err.code === "PRIVILEGE_ESCALATION" || err.code === "PROTECTED_OWNER_MEMBERSHIP"
+      || err.code === "PROTECTED_ROLE_CONFLICT") return "FORBIDDEN";
     return err.code === "REASON_REQUIRED" || err.code === "CONDITION_INVALID" || err.code === "CONDITION_REQUIRED"
       || err.code === "CONDITION_NOT_SUPPORTED" || err.code.startsWith("SCOPE_") || err.code === "SALES_CHANNEL_INVALID"
       || err.code === "DIRECT_GRANT_SCOPE_UNSUPPORTED"

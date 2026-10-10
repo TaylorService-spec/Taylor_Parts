@@ -229,6 +229,8 @@ export interface Entitlement {
   readonly capabilityKey: string;
   readonly grantor: EntitlementGrantor;
   readonly condition: GrantCondition | null;
+  /** Implied by PROTECTED ADMINISTRATOR standing with no grant row (DECISIONS #223); never conditioned. */
+  readonly protectedAdministrator?: true;
 }
 
 export type EntitlementSet = readonly Entitlement[];

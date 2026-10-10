@@ -329,19 +329,22 @@ test("the last path to a governing Administration capability is never removed", 
   await assert.rejects(() => commands.revokeObjectActionFromRole(repo, admin,
     { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", roleKey: "admin", reason: REASON }),
   /WOULD_REMOVE_LAST_ADMINISTRATION_PATH/);
-  // The last admin ASSIGNMENT is refused by the (older) protected-Role guard, which still stands.
-  await assert.rejects(() => commands.revokeRole(repo, admin, { assignmentId: boot.assignmentId }), /last active administering assignment/);
+  // An Administrator never removes ITS OWN Administrator assignment (DECISIONS #223: self-removal stays governed).
+  await assert.rejects(() => commands.revokeRole(repo, admin, { assignmentId: boot.assignmentId }), /SELF_ADMINISTRATION/);
   // With a SECOND holder of the capability (a direct grant), the Role grant may go.
   const second = await ensureTenantPrincipal(repo, { tenantId, externalSubject: "uid-cp-second", actorUid: OPERATOR, actorRoleKeys: ["admin"] });
   const secondId = second.principal?.id ?? second.id ?? second.principalId;
   await commands.grantObjectActionToPrincipal(repo, admin, { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", principalId: secondId, reason: "governed direct exception (fixture)" });
+  await commands.grantObjectActionToPrincipal(repo, admin, { objectKey: "rolesPermissions", actionKey: "assignRole", principalId: secondId, reason: "governed direct exception (fixture)" });
+  const secondActor = { tenantId, uid: secondId, heldRoleKeys: [] };
+  // The last admin ASSIGNMENT is refused by the (older) protected-Role guard, which still stands -- for another actor.
+  await assert.rejects(() => commands.revokeRole(repo, secondActor, { assignmentId: boot.assignmentId }), /last active administering assignment/);
   await commands.revokeObjectActionFromRole(repo, admin,
     { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", roleKey: "admin", reason: REASON });
-  // The admin Role no longer carries it, so the admin principal is now REFUSED -- the Role name
-  // authorizes nothing. The second principal administers through its direct grant...
+  // The protected Administrator still administers by STANDING (DECISIONS #223) -- but the anti-lockout count reads
+  // grant rows only (stricter), so removing the second principal's direct grant, now the last ROW path, is refused.
   await assert.rejects(() => commands.revokeObjectActionFromPrincipal(repo, admin,
-    { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", principalId: secondId, reason: REASON }), /"admin\.securityPolicy\.write" is required/);
-  const secondActor = { tenantId, uid: secondId, heldRoleKeys: [] };
+    { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", principalId: secondId, reason: REASON }), /WOULD_REMOVE_LAST_ADMINISTRATION_PATH/);
   // ...and that direct grant is now the last path, so IT is protected.
   await assert.rejects(() => commands.revokeObjectActionFromPrincipal(repo, secondActor,
     { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", principalId: secondId, reason: REASON }), /WOULD_REMOVE_LAST_ADMINISTRATION_PATH/);
@@ -366,7 +369,9 @@ test("the control-plane reads show source, condition and holders; direct grants 
   const matrix = await call("getObjectActionGrantMatrix", { objectKey: "workOrder" });
   assert.equal(matrix.ok, true, JSON.stringify(matrix));
   const read = matrix.data.actions.find((a) => a.actionKey === "read");
-  assert.deepEqual(read.roles, [{ roleKey: "technician", held: true, source: "ADMIN_GRANTED", condition: ASSIGNED }]);
+  // The protected Administrator holds every READ by STANDING (DECISIONS #223) -- shown under its own source, no grant row.
+  assert.deepEqual(read.roles, [{ roleKey: "admin", held: true, source: "PROTECTED_ADMINISTRATOR", condition: null },
+    { roleKey: "technician", held: true, source: "ADMIN_GRANTED", condition: ASSIGNED }]);
   assert.deepEqual(read.principals.map((p) => [p.principalId, p.source]), [[plainId, "DIRECT_EXCEPTION"]]);
   // Owner appears as SYSTEM_INVARIANT: the five-row lifecycle ruling excludes it, so the UI renders
   // that cell as not grantable rather than as an empty checkbox.

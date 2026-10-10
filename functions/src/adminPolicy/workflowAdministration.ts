@@ -25,6 +25,10 @@
 //
 // ════════════════════ HOW THE FIRST ADMINISTRATOR GETS WORKFLOW AUTHORITY ════════════════════
 //
+// SUPERSEDED FOR THE ADMINISTRATOR (Owner ruling 2026-10-09, DECISIONS #223): the designated protected Administrator
+// holds every workflowDefinition.* key by STANDING (protectedAdministrator.ts), with no grant and no temporary issuer.
+// What follows remains how EVERY OTHER Role gets workflow authority (R2):
+//
 // NOT by a migration. migrationChainSafety holds every workflowDefinition.* grant except the ruled
 // read (admin, owner) at zero in the migration chain, and this lane keeps it so. The path is:
 //

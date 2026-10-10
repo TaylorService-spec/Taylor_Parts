@@ -44,6 +44,7 @@ import {
 import { holdingAdmits, type BusinessContext } from "./assignmentScopeRuntime";
 import type { PolicyReader, PolicyRepository } from "./policyRepository";
 import type { TenantId, WorkflowInstanceRecord, WorkflowRecord } from "./types";
+import { actorAuthorityOf } from "./protectedAdministrator";
 
 /** Records per ADOPT/MIGRATE call -- an administrative batch, not a bulk load. */
 export const WORKFLOW_INSTANCE_BATCH_LIMIT = 500;
@@ -100,6 +101,7 @@ export async function startWorkflowInstance(
       workflowVersionId: version.id, objectKey: workflow.objectKey as string, recordId, currentStepKey: initial.key,
     });
     const auditEventId = await tx.appendAudit({
+      ...actorAuthorityOf(actor),
       action: "startWorkflowInstance",
       actorUid: actor.uid,
       targetKind: "workflowInstance",
@@ -261,6 +263,7 @@ export async function adoptRecordsIntoWorkflowVersion(
     // revoke and assignment command takes -- so a workflow change and an authority change never interleave.
     await tx.beginAdministrationCommand();
     const auditEventId = await tx.appendAudit({
+      ...actorAuthorityOf(actor),
       action: "adoptRecordsIntoWorkflowVersion",
       actorUid: actor.uid,
       targetKind: "workflowVersion",
@@ -366,6 +369,7 @@ export async function migrateWorkflowInstances(
     // revoke and assignment command takes -- so a workflow change and an authority change never interleave.
     await tx.beginAdministrationCommand();
     const auditEventId = await tx.appendAudit({
+      ...actorAuthorityOf(actor),
       action: "migrateWorkflowInstances",
       actorUid: actor.uid,
       targetKind: "workflowVersion",

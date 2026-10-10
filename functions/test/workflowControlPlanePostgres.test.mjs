@@ -176,10 +176,12 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
     assert.ok(guards >= 6, `own-assignment actions carry the RECORD_ASSIGNMENT guard (${guards})`);
   });
 
-  await t.test("bootstrap: workflow authority arrives through Administration, never by Role name or migration", async () => {
-    const draft = (await repo.listWorkflowVersions(TENANT, await workflowId("salesOrder")))[0];
-    const refused = await call("publishWorkflowVersion", { versionId: draft.id, reason: REASON });
-    assert.deepEqual([refused.code, refused.message], ["FORBIDDEN", 'not authorized: "workflowDefinition.publish" is required']);
+  await t.test("bootstrap: the protected Administrator holds workflow authority by STANDING; every other Role through Administration", async () => {
+    // DECISIONS #223 (supersedes R2 for the Administrator): every workflow decision is allowed by standing -- asked, not
+    // exercised, so nothing is published here.
+    const mine = await call("readMyWorkflowAdministration");
+    assert.equal(mine.ok, true, mine.message);
+    for (const [op, d] of Object.entries(mine.data.operations)) assert.equal(d.allowed, true, op);
     // Pass 8: the administrator may not grant workflow authority to a Role it holds.
     const self = await call("grantObjectActionToRole", { objectKey: "workflowDefinition", actionKey: "publish", roleKey: "admin", reason: REASON });
     assert.match(self.message, /SELF_ADMINISTRATION/);

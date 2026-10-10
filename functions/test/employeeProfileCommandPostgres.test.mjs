@@ -328,8 +328,9 @@ test("updateEmployeeProfile over the real Workforce and policy authorities", { s
       // Lane SC: the decision imports the PURE assignment-scope model (and its value-match rules) from adminPolicy.
       // Pass 9 S2: the model's ONE Administration-capability definition reads the (pure) surface authority.
       // Controller DQ-007: the predicate layer's Employee link applies the (pure) employment access-eligibility rule.
+      // DECISIONS #223: the kernel's audit records protected-Administrator provenance from the (pure) standing rule.
       for (const f of ["assignmentScopeRuntime.js", "assignmentScope.js", "administrationSurfaceAuthority.js", "administrationAuthority.js",
-        "employmentAccessEligibility.js"]) {
+        "employmentAccessEligibility.js", "protectedAdministrator.js"]) {
         cpSync(join(FUNCTIONS_DIR, "lib", "adminPolicy", f), join(dir, "adminPolicy", f));
       }
       let mutated = kernelSrc;

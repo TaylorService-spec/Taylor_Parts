@@ -38,6 +38,7 @@ import type {
   WorkflowRoleBindingRecord,
   WorkflowVersionRecord,
 } from "./types";
+import { actorAuthorityOf } from "./protectedAdministrator";
 
 const nonEmpty = (v: unknown, what: string): string => {
   if (typeof v !== "string" || v.trim().length === 0) throw new PolicyValidationError(`${what} is required`);
@@ -52,6 +53,7 @@ const validKey = (v: unknown, what: string): string => {
 };
 
 const auditBase = (actor: AdminActor, action: string, targetId: string, reason: string | null) => ({
+  ...actorAuthorityOf(actor),
   action,
   actorUid: actor.uid,
   targetKind: "workflowVersion",

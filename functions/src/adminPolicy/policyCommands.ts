@@ -24,6 +24,7 @@ import {
   PROTECTED_ROLE_KEYS,
   requireAdministrationAuthority,
 } from "./administrationAuthority";
+import { actorAuthorityOf, hasProtectedAdministratorStanding, PROTECTED_ADMINISTRATOR_AUTHORITY } from "./protectedAdministrator";
 import { CRED_VERBS, FIELD_DATA_TYPES, FIELD_SENSITIVITIES } from "./types";
 import type {
   CredOverride,
@@ -90,6 +91,12 @@ export interface AdminActor {
   readonly uid: string;
   readonly heldRoleKeys: readonly string[];
   /**
+   * PROTECTED ADMINISTRATOR standing (DECISIONS #223), server-derived by the trusted API from the same qualifying Roles.
+   * Provenance only: it is recorded on the actor's audit events and decides nothing (the capability gates resolve
+   * standing themselves).
+   */
+  readonly protectedAdministrator?: boolean;
+  /**
    * The actor's EFFECTIVE capability keys, when the trusted API has already resolved them for this
    * request. Server-derived like the fields above, never from a request body. When absent, the
    * capability-governed commands resolve them from the store (administrationCapabilityGate.ts).
@@ -111,6 +118,8 @@ export class AdministrationRefusal extends PolicyValidationError {
     | "CONDITION_RETIREMENT_WOULD_WIDEN"
     | "SELF_ADMINISTRATION"
     | "PRIVILEGE_ESCALATION"
+    // Owner and Administrator are distinct authority types (DECISIONS #223): never held by one principal.
+    | "PROTECTED_ROLE_CONFLICT"
     | "WOULD_REMOVE_LAST_ADMINISTRATION_PATH"
     // Assignment scope (lane SC): Administration never stores a scope the runtime would ignore.
     | "SCOPE_TYPE_UNSUPPORTED"
@@ -201,6 +210,7 @@ const patchChangesNothing = (current: object, patch: object): boolean =>
   Object.entries(patch).every(([key, value]) => (current as Record<string, unknown>)[key] === value);
 
 const auditBase = (actor: AdminActor, action: string, targetKind: string, targetId: string, reason: string | null) => ({
+  ...actorAuthorityOf(actor),
   action,
   actorUid: actor.uid,
   targetKind,
@@ -900,6 +910,10 @@ export async function assignRole(
   // ruling R1: the designated Administrator Role, for another Principal, globally, by a holder of
   // admin.administratorRole.assign. Decided here and again UNDER THE GOVERNANCE LOCK below.
   await authorizeSecurityPolicyStaffing(repo, actor, role, principalId, scopeType, "assign");
+  // (b2) OWNER AND ADMINISTRATOR ARE DISTINCT AUTHORITY TYPES (DECISIONS #223): the designated Administrator Role is
+  // never given to a principal that holds the protected Owner Role. (The Owner itself is never appointed through
+  // ordinary role administration -- refused above.) Historical memberships are not altered here.
+  if (isDesignatedAdministratorRole(role)) await refuseProtectedRoleConflict(repo, actor.tenantId, principalId);
   // (c) OWNER GOVERNANCE AT THE PRINCIPAL: an owner holder may not reach an excluded capability by
   // any Role (ruling A).
   // Checked for a scoped assignment too (lane SC): stricter, never wider.
@@ -943,7 +957,7 @@ export async function assignRole(
     await tx.appendAudit({
       ...auditBase(actor, "assignRole", "roleAssignment", assignment.id, input.reason ?? null),
       before: null,
-      after: staffing === "ADMINISTRATOR_STAFFING" ? { ...assignment, ...ADMINISTRATOR_STAFFING_AUDIT } : assignment,
+      after: staffingAudit(staffing, assignment),
     });
     return assignment;
   });
@@ -1156,12 +1170,32 @@ export async function setTenantSalesChannelStatus(
 // ════════════════════ D5(b) AND THE R1 ADMINISTRATOR STAFFING EXCEPTION ════════════════════
 
 /** Which authority admitted a change to a Role carrying admin.securityPolicy.write. */
-type SecurityPolicyStaffingAuthority = "NOT_REQUIRED" | "SECURITY_POLICY_WRITE" | "ADMINISTRATOR_STAFFING";
+type SecurityPolicyStaffingAuthority = "NOT_REQUIRED" | "SECURITY_POLICY_WRITE" | "ADMINISTRATOR_STAFFING" | "PROTECTED_ADMINISTRATOR";
 
 /** Recorded on the ONE audit event of a change the R1 staffing capability authorized. */
 const ADMINISTRATOR_STAFFING_AUDIT = Object.freeze({
   authorizedBy: Object.freeze({ capabilityKey: ADMINISTRATOR_STAFFING_CAPABILITY, ownerRuling: "R1 (2026-09-26)" }),
 });
+
+/** The staffing authority recorded on an Administrator appointment / removal: R1 (Owner) or protected Administrator. */
+function staffingAudit<T extends object>(staffing: SecurityPolicyStaffingAuthority, record: T): T | (T & { authorizedBy: unknown }) {
+  if (staffing === "ADMINISTRATOR_STAFFING") return { ...record, ...ADMINISTRATOR_STAFFING_AUDIT };
+  if (staffing === "PROTECTED_ADMINISTRATOR") return { ...record, authorizedBy: PROTECTED_ADMINISTRATOR_AUTHORITY };
+  return record;
+}
+
+/**
+ * Refuse the designated Administrator Role for a principal holding the protected Owner Role (DECISIONS #223), at ANY
+ * scope and in any status the resolver would count (active).
+ */
+async function refuseProtectedRoleConflict(repo: PolicyRepository, tenantId: string, principalId: string): Promise<void> {
+  const roles = await repo.listRoles(tenantId);
+  const ownerIds = new Set(roles.filter((r) => isProtectedOwnerRole(r)).map((r) => r.id));
+  if ((await repo.listAssignmentsForPrincipal(tenantId, principalId)).some((a) => a.status === "active" && ownerIds.has(a.roleId))) {
+    throw new AdministrationRefusal("PROTECTED_ROLE_CONFLICT",
+      "the protected Owner and the protected Administrator are distinct authority types; a principal holding the Owner Role may not be appointed Administrator");
+  }
+}
 
 /**
  * Pass 8 D5(b), both directions, with the Owner ruling R1 exception.
@@ -1189,6 +1223,25 @@ async function authorizeSecurityPolicyStaffing(
 ): Promise<SecurityPolicyStaffingAuthority> {
   const carried = await capabilityKeysFor(repo, actor.tenantId, [role.key], null, { includeConditioned: true });
   if (!carried.has(SECURITY_POLICY_WRITE)) return "NOT_REQUIRED";
+  // PROTECTED ADMINISTRATOR DELEGATION (DECISIONS #223): an Administrator with standing appoints and removes OTHER
+  // Administrators -- the designated Role, globally, for another principal -- with the same protections as R1:
+  // never itself, never at a scope, standing re-verified against the STORE under the governance lock.
+  // Standing is an ADDITIONAL authority, never a new requirement: when it cannot be confirmed (here, or against the
+  // store under the lock) the decision continues exactly as before. A SCOPED Administrator is never standing -- it
+  // falls through to the existing scope refusals.
+  if (isDesignatedAdministratorRole(role) && scopeType === "global") {
+    const roles = await repo.listRoles(actor.tenantId);
+    const standing = hasProtectedAdministratorStanding(roles, Array.isArray(actor.heldRoleKeys) ? actor.heldRoleKeys : [])
+      && (options.fresh !== true || hasProtectedAdministratorStanding(roles, await qualifyingRoleKeys(repo, actor.tenantId, actor.uid)));
+    if (standing) {
+      // SELF-REMOVAL / SELF-APPOINTMENT STAY GOVERNED: another Administrator or the Owner acts, never the principal itself.
+      if (targetPrincipalId === actor.uid) {
+        throw new AdministrationRefusal("SELF_ADMINISTRATION",
+          `a principal may not ${verb === "assign" ? "assign the Administrator Role to" : "remove the Administrator Role from"} itself`);
+      }
+      return "PROTECTED_ADMINISTRATOR";
+    }
+  }
   const held = await actorCapabilities(repo, actor);
   if (held.has(SECURITY_POLICY_WRITE)) return "SECURITY_POLICY_WRITE";
   const act = verb === "assign" ? "assigning" : "removing";
@@ -1281,7 +1334,7 @@ export async function revokeRole(
     await tx.appendAudit({
       ...auditBase(actor, "revokeRole", "roleAssignment", assignmentId, input.reason ?? null),
       before: current,
-      after: staffing === "ADMINISTRATOR_STAFFING" ? { ...updated, ...ADMINISTRATOR_STAFFING_AUDIT } : updated,
+      after: staffingAudit(staffing, updated),
     });
     return updated;
   });

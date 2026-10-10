@@ -7,11 +7,12 @@
 //   actor.heldRoleKeys            the QUALIFYING Role keys resolvePrincipalContext computed (never a
 //     -> role_capabilities        request field) -> the Role grants in this tenant
 //   + principal_capabilities      direct grants to the actor Principal
+//   + PROTECTED ADMINISTRATOR     the system authority standing implies (protectedAdministrator.ts, DECISIONS #223)
 //
-// There is no branch in which a Role NAME authorizes anything: a Role key is only a way to find the
-// grants that Role holds. A tenant whose `admin` Role holds no admin.* grant cannot administer
-// security through it -- which is why tenantBootstrap.ts grants the governing capabilities with the
-// first administrator.
+// A Role key authorizes nothing by its NAME. The one standing that implies authority is THE designated Administrator
+// Role -- its immutable key AND the stored protected flag -- and it implies exactly the system authority
+// protectedAdministrator.ts defines, never a business or worker act. Every other Role reaches every key through a grant;
+// tenantBootstrap.ts still writes the governing grants with the first administrator (the anti-lockout count reads them).
 import {
   AdministrationCapabilityDeniedError,
   hasSecurityAdministrationCapability,
@@ -19,6 +20,7 @@ import {
 } from "./administrationAuthority";
 import type { PolicyReader } from "./policyRepository";
 import type { TenantId } from "./types";
+import { protectedAdministratorImpliedKeys } from "./protectedAdministrator";
 
 export interface CapabilityBearingActor {
   readonly tenantId: TenantId;
@@ -67,6 +69,9 @@ export async function capabilityKeysFor(
     const key = keyById.get(g.capabilityId);
     if (key && !conditionedDirect.has(`${g.principalId}|${key}`)) keys.add(key);
   }
+  // THE PROTECTED ADMINISTRATOR (DECISIONS #223): standing implies the system authority, unconditioned, with no grant
+  // row -- so a newly registered system-administration capability is covered the moment it exists.
+  for (const key of protectedAdministratorImpliedKeys(roles, roleKeys, catalog)) keys.add(key);
   return keys;
 }
 
