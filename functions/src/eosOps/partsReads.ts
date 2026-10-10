@@ -419,6 +419,8 @@ export async function listTransferOrders(deps: { readonly pool: Pool }, actor: R
   if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 500) refuse("LIMIT_INVALID", "INVALID_INPUT", "limit is an integer 1..500");
   return withReadSnapshot(deps.pool, async (c) => {
     const scope = await scopedWarehouseIds(c, actor);
+    // `canReceive` is an EXECUTION hint: only the caller's OWN warehouse scope, never administration reach (#224).
+    const receivable = await scopedWarehouseIds(c, actor, { administrationReach: false });
     // OD-T3: a Technician sees the transfers INTO a truck it holds MOBILE scope over (to receive them), and no others.
     const mine = actor.capabilities.has("inventory.transfer.receive") ? await currentMobileLocationIds(c, actor) : [];
     if (scope.length === 0 && mine.length === 0) return { items: [] };
@@ -437,7 +439,7 @@ export async function listTransferOrders(deps: { readonly pool: Pool }, actor: R
       quantity: Number(r.quantity), serialNumbers: r.serial_numbers ?? [],
       origin: { type: r.ot, locationId: r.oi, warehouseId: r.ow ?? null }, destination: { type: r.dt, locationId: r.di, warehouseId: r.dw ?? null },
       createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at, createdBy: r.created_by,
-      canReceive: r.status === "IN_TRANSIT" && ((r.dw !== null && scope.includes(r.dw)) || (r.dt === "MOBILE" && mine.includes(r.di))),
+      canReceive: r.status === "IN_TRANSIT" && ((r.dw !== null && receivable.includes(r.dw)) || (r.dt === "MOBILE" && mine.includes(r.di))),
     })) };
   });
 }

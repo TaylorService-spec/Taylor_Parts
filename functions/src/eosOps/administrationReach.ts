@@ -84,10 +84,14 @@ export async function principalHasProtectedAdministratorStanding(db: Db, tenantI
       WHERE a.tenant_id = $1 AND a.principal_id = $2 AND a.status = 'active' AND a.scope_type = 'global'
         AND a.access_version_at_grant <= coalesce(v.access_version, 0)
         AND r.key = ANY($3::text[])
+        -- No unusable Employee link (PR-1's employeeAccessIneligibility): a link to a missing or ineligible Employee, or
+        -- more than one active link, means no standing (fail closed).
         AND NOT EXISTS (SELECT 1 FROM eos_policy.employee_principal_links l
-                          JOIN eos_workforce.employees e ON e.tenant_id = l.tenant_id AND e.id = l.employee_id
+                          LEFT JOIN eos_workforce.employees e ON e.tenant_id = l.tenant_id AND e.id = l.employee_id
                          WHERE l.tenant_id = a.tenant_id AND l.principal_id = a.principal_id AND l.status = 'active'
-                           AND NOT (e.employment_status::text = ANY($4::text[])))`,
+                           AND (e.id IS NULL OR NOT (e.employment_status::text = ANY($4::text[]))))
+        AND (SELECT count(*) FROM eos_policy.employee_principal_links l2
+              WHERE l2.tenant_id = a.tenant_id AND l2.principal_id = a.principal_id AND l2.status = 'active') <= 1`,
     [tenantId, principalId, [ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY], [...ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES]]);
   return hasProtectedAdministratorStanding(rows, rows.map((r) => r.key));
 }

@@ -54,6 +54,13 @@ test("only administering call sites opt in to reach: the experience surfaces and
     "eosOps/experienceAuthority.ts true",
     "eosOps/receiptCorrectionCommand.ts c.kind === \"VOID\"",
   ].sort(), JSON.stringify(optIns));
+  // ANY use of the `administrationReach` property outside the known files is a new opt-in surface and must be reviewed
+  // (catches shorthand, multi-line values and computed expressions the line scan above cannot parse).
+  const KNOWN = new Set(["eosOps/contextualAuthorization.ts", "eosOps/experienceAuthority.ts", "eosOps/receiptCorrectionCommand.ts",
+    "eosOps/partsReads.ts", "eosOps/administrationReach.ts", "eosOps/reorderQueueReach.ts", "eosOps/effectiveAccessExplanation.ts"]);
+  const users = files.filter((f) => /\badministrationReach\b(?![A-Za-z])/.test(readFileSync(f, "utf8").replace(/from "[^"]*administrationReach[^"]*"/g, "")))
+    .map((f) => f.slice(SRC.length + 1));
+  assert.deepEqual(users.filter((f) => !KNOWN.has(f)), [], "a new administrationReach opt-in site needs review");
   // The receive pipeline (CORRECTED re-receives through it) never opts in.
   assert.doesNotMatch(readFileSync(join(SRC, "eosOps/receiveReorderStockCommand.ts"), "utf8"), /administrationReach/);
 });
@@ -164,6 +171,18 @@ test("protected Administrator reach over queues and warehouses -- administering,
     await q(`UPDATE eos_policy.principals SET status = 'disabled' WHERE id = $1`, [off.principalId]);
     assert.deepEqual(await reach.administrationReachTargets(pool, T, off.principalId, "REORDER_QUEUE"), []);
     assert.deepEqual(await reach.administrationReachTargets(pool, "t-preach-other", admin.principalId, "WAREHOUSE"), [], "no reach in a tenant it is not a member of");
+    // A STALE assignment (granted at an access version the principal has not reached) confers nothing.
+    const stale = await person("uid-preach-stale", ["admin"]);
+    await q(`UPDATE eos_policy.user_role_assignments SET access_version_at_grant = 999999 WHERE tenant_id = $1 AND principal_id = $2`, [T, stale.principalId]);
+    assert.deepEqual(await reach.administrationReachTargets(pool, T, stale.principalId, "WAREHOUSE"), [], "stale assignment");
+    // An admin linked to an access-INELIGIBLE Employee, or to an Employee that does not exist, has no standing.
+    const inel = await person("uid-preach-inel", ["admin"], { id: "e-preach-inel", name: "Ina Eligible", status: "TERMINATED" });
+    assert.deepEqual(await reach.administrationReachTargets(pool, T, inel.principalId, "WAREHOUSE"), [], "ineligible linked Employee");
+    const dangling = await person("uid-preach-dangling", ["admin"]);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+             VALUES ('lnk-dangling',$1,$2,'e-does-not-exist','taylor','OPERATOR_ASSERTED','active','fixture','fixture')`, [T, dangling.principalId]).catch(() => null);
+    const danglingLinks = Number((await q(`SELECT count(*)::int n FROM eos_policy.employee_principal_links WHERE id = 'lnk-dangling'`)).rows[0].n);
+    if (danglingLinks === 1) assert.deepEqual(await reach.administrationReachTargets(pool, T, dangling.principalId, "WAREHOUSE"), [], "dangling Employee link");
   });
 
   await t.test("restricted personas and existing workers are unchanged; the Owner has no reach", async () => {

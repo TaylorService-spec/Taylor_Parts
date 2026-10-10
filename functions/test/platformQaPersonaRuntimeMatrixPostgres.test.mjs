@@ -26,7 +26,7 @@ import {
 
 const require = createRequire(import.meta.url);
 const { capabilitiesForRoleKeys, protectedAdministratorKeys } = require("../lib/eosOps/capabilityAuthority.js");
-const { grantedSurfaceKeys } = require("../lib/eosOps/experienceAuthority.js");
+const { administrationReachDimension, grantedSurfaceKeys } = require("../lib/eosOps/experienceAuthority.js");
 const { ADMIN_READ_CAPABILITY } = require("../lib/adminPolicy/adminPolicyApi.js");
 
 const MANIFEST = JSON.parse(readFileSync(path.join(FUNCTIONS_DIR, "scripts", "fixtures", "personaAuthorityDimensions.v1.json"), "utf8"));
@@ -129,7 +129,9 @@ test("persona runtime matrix", { skip: SKIP, concurrency: 1 }, async (t) => {
       if (JSON.stringify(exp.workEligibility) !== JSON.stringify(want.workEligibility)) diffs.push(`C ${key}: eligibility ${exp.workEligibility}`);
       if (JSON.stringify(exp.operationalScopes) !== JSON.stringify(want.operationalScopes)) diffs.push(`C ${key}: scopes ${JSON.stringify(exp.operationalScopes)}`);
       const surfaces = [...await grantedSurfaceKeys({ tenantId: TENANT, principalId: actor.principalId, capabilities: new Set(expected) },
-        { employeeId: actor.employeeId, workEligibility: want.workEligibility, operationalScopes: want.operationalScopes })].sort();
+        { employeeId: actor.employeeId, workEligibility: want.workEligibility, operationalScopes: want.operationalScopes,
+          // Protected-Administrator administration reach (#224) -- empty for every other persona.
+          administrationReach: await administrationReachDimension(pool, TENANT, actor.principalId) })].sort();
       if (JSON.stringify([...exp.surfaces].sort()) !== JSON.stringify(surfaces)) diffs.push(`C ${key}: surfaces ${exp.surfaces.length} vs ${surfaces.length}`);
       const explained = await explain(actor.principalId);
       if (JSON.stringify(explained.capabilities) !== JSON.stringify(runtime.capabilities)) diffs.push(`B ${key}: preview capabilities differ from runtime`);

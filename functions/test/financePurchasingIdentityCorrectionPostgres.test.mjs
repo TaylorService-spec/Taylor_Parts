@@ -94,7 +94,7 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
                VALUES ($1,$2,$3,$4,$5,now(),'fixture')`, [`os-${e}-${kind}-${id}`, TENANT, e, kind, id]);
     }
   }
-  const PARTS = ["P-EXT", "P-T2V", "P-V2T", "P-SELF", "P-LEG", "P-VOID", "P-CORR", "P-USED", "P-WCO", "P-UNP", "P-AUTH1", "P-AUTH2", "P-AUTH3", "P-OPT-T", "P-OPT-V", "P-SELF-V"];
+  const PARTS = ["P-EXT", "P-T2V", "P-V2T", "P-SELF", "P-LEG", "P-VOID", "P-CORR", "P-USED", "P-WCO", "P-UNP", "P-AUTH1", "P-AUTH2", "P-AUTH3", "P-OPT-T", "P-OPT-V", "P-SELF-V", "P-ADM1", "P-ADM2"];
   for (const p of PARTS) {
     await q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
                expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
@@ -413,6 +413,43 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
     // A normal purchasing employee needs no Finance authority to buy and receive.
     const paCaps = await capabilitiesForRoleKeys(pool, TENANT, ["partsAssociate", "inventoryReceivingClerk"]);
     assert.equal([...paCaps].some((k) => /^finance\.(invoice\.issue|adjustment|payment\.apply|refund)/.test(k)), false);
+  });
+
+  await t.test("#224 / G2: a protected Administrator with NO Employee scope may VOID a receipt -- never re-receive, receive or purchase", async () => {
+    const adminWho = { subject: "uid-finidc-admin" };
+    // Isolate the SCOPE rule: give the admin Role the correction capability here (it arrives for real with PR-4; this
+    // local tenant only, a fixture row -- an Administrator may not grant its own Role through Administration).
+    await q(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+             SELECT 'rc-fx-adm-correct', $1, r.id, c.id, 'fixture','fixture','fixture' FROM eos_policy.roles r, eos_policy.capabilities c
+              WHERE r.tenant_id = $1 AND r.key = 'admin' AND c.key = 'inventory.receipt.correct'`, [TENANT]);
+    const scopesOf = async () => count(`SELECT count(*)::int n FROM eos_workforce.employee_operational_scopes s
+        JOIN eos_policy.employee_principal_links l ON l.tenant_id = s.tenant_id AND l.employee_id = s.employee_id
+        JOIN eos_policy.principals p ON p.id = l.principal_id WHERE s.tenant_id = $1 AND p.external_subject = $2 AND s.effective_to IS NULL`, [TENANT, adminWho.subject]);
+    assert.equal(await scopesOf(), 0, "the Administrator holds no Employee scope at all");
+    const rr1 = await ordered({ partId: "P-ADM1", warehouseId: "wh-t", qty: 2, supplier: EXT, price: 100 });
+    const r1 = ok(await receive(rr1, "P-ADM1", WH_T, 2), "receive (by the worker)").receivingId;
+    // CORRECTED (re-receive) is warehouse EXECUTION: refused by standing alone, before anything is written.
+    const auditBefore = await count(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id = $1`, [TENANT]);
+    const corrected = await correct(adminWho, { receivingId: r1, correction: "CORRECTED", reason: "admin re-receive",
+      replacement: { receivingLocation: WH_T, lines: [{ lineId: "L1", partId: "P-ADM1", receivedQuantity: 1 }] }, idempotencyKey: "adm-corr" });
+    refused(corrected, 403, "FORBIDDEN", /only an Employee can correct a receipt|outside your warehouse scope/, "CORRECTED by standing");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id = $1`, [TENANT]), auditBefore, "a refusal writes nothing");
+    // VOID (the reversal) is administration: applied, audited, history kept.
+    assert.equal(ok(await correct(adminWho, { receivingId: r1, correction: "VOID", reason: "admin reversal (G2)", idempotencyKey: "adm-void" }), "VOID by standing").outcome, "applied");
+    // RECEIVING is execution: refused by standing alone (the Administrator holds inventory.stock.receive by grant; scope refuses).
+    const rr2 = await ordered({ partId: "P-ADM2", warehouseId: "wh-t", qty: 1, supplier: EXT, price: 100 });
+    const rcv = await receive(rr2, "P-ADM2", WH_T, 1, "adm-rcv").then((r) => r);
+    const asAdmin = await inv(adminWho, "receiveReorderStock", { source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId: rr2, purchaseOrderId: rr2 },
+      receivingLocation: WH_T, lines: [{ lineId: "L1", partId: "P-ADM2", receivedQuantity: 1 }], idempotencyKey: "adm-rcv-2" });
+    void rcv;
+    assert.equal(asAdmin.status === 200, false, `receiving by standing must be refused: ${JSON.stringify(asAdmin.body).slice(0, 200)}`);
+    // The receiving picker offers nothing to standing alone.
+    const rr3 = await ordered({ partId: "P-ADM2", warehouseId: "wh-t", qty: 1, supplier: EXT, price: 100 });
+    refused(await inv(adminWho, "listReceivingLocationOptions", { reorderRequestId: rr3 }), 404, "NOT_FOUND", /warehouse scope/, "picker by standing");
+    // Purchasing steps are the ASSIGNEE's: never reach.
+    const started = await inv(adminWho, "postPurchasingUpdate", { reorderRequestId: rr3, note: "x" });
+    assert.equal(started.status === 200, false, JSON.stringify(started.body).slice(0, 200));
+    assert.equal(await scopesOf(), 0, "and still no Employee scope was created");
   });
 
   await t.test("25 / 26. no client writes Finance truth; the corrector holds no Finance write capability", async () => {
