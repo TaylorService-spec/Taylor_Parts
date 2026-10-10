@@ -330,10 +330,7 @@ export default function UserDetail({
             Security Roles are access. They are not Job Roles and are never used as one.
           </p>
           <PrincipalGate linked={linked} principalLink={principalLink}>
-            <EmployeeSecurityRoles
-              api={controlPlane} principalId={principalId} employeeName={name}
-              viewerIsSelf={viewerIsSelf}
-            />
+            <EmployeeSecurityRoles api={controlPlane} principalId={principalId} employeeName={name} viewerIsSelf={viewerIsSelf} />
           </PrincipalGate>
         </RuledSection>
         {/* EFFECTIVE ACCESS: the server evaluator's answer for the linked Principal -- never computed here. It carries
