@@ -28,6 +28,7 @@
 // else is a deterministic conflict. A retry therefore never double-applies and never needs a key.
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
+import { withActorAuthority } from "../eosOps/administrationReach";
 
 /**
  * The catalog write capability keys -- the ids functions/src/access/permissionCatalog.ts registers and the
@@ -154,7 +155,7 @@ export async function runCatalogCommand<R extends object>(
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [`audit_${randomUUID()}`, actor.tenantId, outcome.audit.action, actor.principalId, outcome.audit.targetKind,
           outcome.audit.targetId, outcome.audit.before === null ? null : JSON.stringify(outcome.audit.before),
-          JSON.stringify(outcome.audit.after), now],
+          JSON.stringify(await withActorAuthority(client, actor.tenantId, actor.principalId, outcome.audit.after)), now],
       );
     }
     await client.query("COMMIT");

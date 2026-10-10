@@ -41,6 +41,7 @@ import { authorizeObjectAction, postgresContextualReader } from "./contextualAut
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import { lockStockLocation } from "./stockLocationLock.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 const SCHEMA = "eos_ops";
 
@@ -298,5 +299,5 @@ async function audit(client: PoolClient, actor: ReceivingPrincipalActor, action:
   await client.query(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10)`,
-    [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, targetKind, targetId, JSON.stringify(before), JSON.stringify(after), at, reason]);
+    [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, targetKind, targetId, JSON.stringify(before), JSON.stringify(await withActorAuthority(client, actor.tenantId, actor.principalId, after)), at, reason]);
 }

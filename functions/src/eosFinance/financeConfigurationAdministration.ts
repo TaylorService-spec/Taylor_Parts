@@ -21,6 +21,7 @@ import {
 } from "./financeFoundation";
 import { refreshAccountingHandoffs } from "./billingPackage";
 import { ConfigurationRefusal, type AdminConfigurationOperation, type ConfigurationActor } from "../adminPolicy/configurationOperations";
+import { withActorAuthority } from "../eosOps/administrationReach";
 
 export const FINANCE_CONFIGURATION_OPERATIONS = Object.freeze([
   "listAccountingDestinations", "configureAccountingDestination", "setAccountingDestinationStatus",
@@ -60,10 +61,10 @@ async function tx<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): Promise<T> 
     c.release();
   }
 }
-const audit = (c: Pick<PoolClient, "query">, actor: ConfigurationActor, action: string, kind: string, id: string, before: unknown, after: unknown, reason: string) =>
+const audit = async (c: Pick<PoolClient, "query">, actor: ConfigurationActor, action: string, kind: string, id: string, before: unknown, after: unknown, reason: string) =>
   c.query(`INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
            VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,now(),$9)`,
-    [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, kind, id, before === null ? null : JSON.stringify(before), JSON.stringify(after), reason]);
+    [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, kind, id, before === null ? null : JSON.stringify(before), JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, after)), reason]);
 
 const destinationView = (r: Record<string, any>) => Object.freeze({
   id: String(r.id), operatingCompanyId: String(r.operating_company_id), displayName: String(r.display_name), providerKey: r.provider_key ?? null,

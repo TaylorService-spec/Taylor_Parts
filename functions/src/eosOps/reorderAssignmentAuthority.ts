@@ -43,6 +43,7 @@ import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { postgresPrincipalDimensionReader } from "./contextualAuthorization.js";
 import { queueReachKeys } from "./reorderQueueReach.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 /** The EXISTING capability for this action (access/permissionCatalog.ts). Not a new one invented for the seam. */
 export const REORDER_REQUEST_ASSIGN = "reorder.request.assign";
@@ -273,7 +274,7 @@ export async function assignReorderRequestToEmployee(
        VALUES ($1, $2, 'reorderRequest.assign', $3, 'reorderRequest', $4, $5, $6, $7, $8)`,
       [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, reorderRequestId,
         current ? JSON.stringify({ assignedEmployeeId: current.assigned_employee_id, assignmentId: current.id }) : null,
-        JSON.stringify({ assignedEmployeeId: employeeId, assignmentId: id }), at, reason],
+        JSON.stringify(await withActorAuthority(client, actor.tenantId, actor.principalId, { assignedEmployeeId: employeeId, assignmentId: id })), at, reason],
     );
     await client.query("COMMIT");
     return Object.freeze({

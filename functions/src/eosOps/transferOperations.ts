@@ -42,6 +42,7 @@ import type { TransferLocationRef } from "../inventoryTransfer/transferOrderType
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { PostgresTransferWriterState } from "../inventoryTransfer/transferWriterState.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -215,8 +216,8 @@ async function audit(db: Queryable, actor: TransferOperationActor, action: strin
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
      VALUES ($1, $2, $3, $4, 'transferOrder', $5, NULL, $6, NULL)`,
     [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, t.id,
-      JSON.stringify({ partId: t.partId, quantity: t.quantity, origin: toRef(t.origin), destination: toRef(t.destination),
-        serialCount: t.serialNumbers.length, transferOrderNumber: t.transferOrderNumber })]);
+      JSON.stringify(await withActorAuthority(db, actor.tenantId, actor.principalId, { partId: t.partId, quantity: t.quantity, origin: toRef(t.origin), destination: toRef(t.destination),
+        serialCount: t.serialNumbers.length, transferOrderNumber: t.transferOrderNumber }))]);
 }
 
 async function lockTransfer(db: Queryable, actor: TransferOperationActor, input: Record<string, unknown>): Promise<TransferOrderRecord> {

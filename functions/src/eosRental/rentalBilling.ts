@@ -10,6 +10,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { ensureExternalCounterparty, FinanceFoundationError, resolveAccountingDestination, resolveOperatingCompanyFromKey, type FinanceActor } from "../eosFinance/financeFoundation";
 import { establishPackageReceivableOn, retirePackageReceivableOn, type ReceivableConsequence } from "../eosFinance/billingPackage";
+import { withActorAuthority } from "../eosOps/administrationReach";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -94,7 +95,7 @@ export async function prepareRentalChargePackageOn(c: Queryable, actor: FinanceA
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1, $2, 'finance.billingPackage.prepare', $3, 'billing_package', $4, $5::jsonb, $6::jsonb, now(), $7)`,
     [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, packageId, current[0] ? JSON.stringify({ supersededPackageId: current[0].id, version: current[0].version }) : null,
-      JSON.stringify({ rentalChargeId: chargeId, rentalAgreementId: ch.agreement_id, version, status, readinessExceptions: exceptions, totalMinor: total?.toString() ?? null }),
+      JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, { rentalChargeId: chargeId, rentalAgreementId: ch.agreement_id, version, status, readinessExceptions: exceptions, totalMinor: total?.toString() ?? null })),
       "rental billing package prepared from a governed rental charge"]);
   const consequence = status === "READY" ? await establishPackageReceivableOn(c, actor, packageId) : null;
   return Object.freeze({ outcome: current[0] ? "superseded" as const : "recorded" as const, packageId, version, status, readinessExceptions: Object.freeze(exceptions),

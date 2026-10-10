@@ -91,6 +91,7 @@ import { insertReceivingOrder, type OpsTrackingMode } from "./purchasingReposito
 import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import type { OpsLocationType } from "./operatingCompanyCustody.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 // Named SCHEMA, matching every other eos_ops repository -- and matching the form the Reorder
 // runtime census recognizes as a SCHEMA-QUALIFIED PostgreSQL name. An unrecognized qualifier
@@ -388,7 +389,7 @@ async function audit(
   await client.query(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1, $2, 'inventory.stock.receive', $3, 'receiving_order', $4, NULL, $5::jsonb, $6, $7)`,
-    [`audit_${randomUUID()}`, tenantId, actorPrincipalId, targetId, JSON.stringify(after), at, reason],
+    [`audit_${randomUUID()}`, tenantId, actorPrincipalId, targetId, JSON.stringify(await withActorAuthority(client, tenantId, actorPrincipalId, after)), at, reason],
   );
 }
 

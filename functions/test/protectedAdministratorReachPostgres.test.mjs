@@ -62,7 +62,9 @@ test("only administering call sites opt in to reach: the experience surfaces and
     .map((f) => f.slice(SRC.length + 1));
   assert.deepEqual(users.filter((f) => !KNOWN.has(f)), [], "a new administrationReach opt-in site needs review");
   // The receive pipeline (CORRECTED re-receives through it) never opts in.
-  assert.doesNotMatch(readFileSync(join(SRC, "eosOps/receiveReorderStockCommand.ts"), "utf8"), /administrationReach/);
+  // (Its import of the audit-provenance helper, withActorAuthority (#225), is not an opt-in -- imports are stripped.)
+  assert.doesNotMatch(readFileSync(join(SRC, "eosOps/receiveReorderStockCommand.ts"), "utf8").replace(/from "[^"]*administrationReach[^"]*"/g, ""),
+    /administrationReach/);
 });
 
 test("protected Administrator reach over queues and warehouses -- administering, never executing", { skip: SKIP, concurrency: false }, async (t) => {

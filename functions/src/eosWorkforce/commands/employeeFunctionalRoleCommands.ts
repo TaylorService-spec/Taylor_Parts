@@ -43,6 +43,7 @@ import {
   MAX_FUNCTIONAL_ROLE_DESCRIPTION, MAX_FUNCTIONAL_ROLE_NAME, MAX_FUNCTIONAL_ROLE_SCHEDULE_DAYS,
   collidingEligibilityCode, normalizeFunctionalRoleKey, type FunctionalRoleStatus,
 } from "../functionalRoleVocabulary";
+import { withActorAuthority } from "../../eosOps/administrationReach";
 
 /** A clock difference between the caller and the database this small is "now", not a backdated assertion. */
 const CLOCK_SKEW_MS = 60_000;
@@ -122,7 +123,7 @@ async function auditCatalog(db: PoolClient, actor: EmployeeCommandActor, action:
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, FUNCTIONAL_ROLE_AUDIT_TARGET_KIND, functionalRoleId,
-      before === null ? null : JSON.stringify(before), JSON.stringify(after), at, reason],
+      before === null ? null : JSON.stringify(before), JSON.stringify(await withActorAuthority(db, actor.tenantId, actor.principalId, after)), at, reason],
   );
 }
 

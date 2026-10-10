@@ -20,7 +20,9 @@
 // unkeyed company has no queue to reach.
 import type { PoolClient } from "pg";
 import { ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES } from "../adminPolicy/employmentAccessEligibility";
-import { ADMIN_ROLE_KEY, hasProtectedAdministratorStanding, PROTECTED_OWNER_ROLE_KEY } from "../adminPolicy/protectedAdministrator";
+import {
+  ADMIN_ROLE_KEY, afterWithActorAuthority, hasProtectedAdministratorStanding, PROTECTED_ADMINISTRATOR_AUTHORITY, PROTECTED_OWNER_ROLE_KEY,
+} from "../adminPolicy/protectedAdministrator";
 
 type Db = Pick<PoolClient, "query">;
 
@@ -141,4 +143,16 @@ export async function administrationReachAll(db: Db, tenantId: string, principal
 export async function administrationReaches(db: Db, tenantId: string, principalId: string, scopeType: string, scopeId?: string): Promise<boolean> {
   const targets = await administrationReachTargets(db, tenantId, principalId, scopeType);
   return scopeId === undefined || scopeId === null ? targets.length > 0 : targets.includes(scopeId);
+}
+
+/**
+ * ADMINISTRATOR AUDIT PROVENANCE for a direct audit writer (DECISIONS #225 / PR-3): the event's `after` record, with
+ * `authorizedBy` = the protected-Administrator marker when the ACTING principal has standing (the same rule as reach).
+ * A non-record `after` is returned unchanged, and an existing `authorizedBy` is never overwritten. Read in the writer's
+ * own transaction; one indexed read, only when there is a record to stamp.
+ */
+export async function withActorAuthority(db: Db, tenantId: string, principalId: string, after: unknown): Promise<unknown> {
+  if (after === null || typeof after !== "object" || Array.isArray(after)) return after;
+  const standing = await principalHasProtectedAdministratorStanding(db, tenantId, principalId);
+  return afterWithActorAuthority(after, standing ? PROTECTED_ADMINISTRATOR_AUTHORITY : undefined);
 }
