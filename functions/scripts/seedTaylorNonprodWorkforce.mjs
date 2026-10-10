@@ -211,12 +211,15 @@ async function phaseApi() {
   for (const e of MANIFEST.employees) {
     const r = roster.get(e.employeeId);
     const scopes = [...e.scopes, ...(e.truck ? [{ scopeType: "MOBILE", scopeId: e.truck }] : [])];
+    // DECISIONS #224/#228: the protected Administrator reaches Reorder queues and warehouses by STANDING, never through an
+    // Employee Operational Scope. The seed issues the Administrator NO scope (and every scope it does issue is written by
+    // the Administrator, which may not scope its own Employee: OPERATIONAL_SCOPE_SELF).
+    if (e.employeeId === MANIFEST.actors.workforceAdministration && scopes.length > 0) {
+      throw new Error(`the manifest declares an Operational Scope for the Administrator (${e.employeeId}); its reach is by standing (#224/#228) -- refused`);
+    }
     for (const s of scopes) {
       if (!r || !r.operationalScopes.some((x) => x.scopeType === s.scopeType && x.scopeId === s.scopeId)) {
-        // An administrator may not scope its OWN Employee (OPERATIONAL_SCOPE_SELF): the Administrator's scopes are issued by
-        // the Owner persona, which holds admin.employeeOperationalScope.write. Everyone else's by the Administrator, as before.
-        const scopeActor = e.employeeId === MANIFEST.actors.workforceAdministration ? OWNER : ADMIN;
-        await write(`scope ${e.employeeId} ${s.scopeType}:${s.scopeId}`, scopeActor, WF, "assignEmployeeOperationalScope", { employeeId: e.employeeId, scopeType: s.scopeType, scopeId: s.scopeId, reason: why(s.scopeType === "MOBILE" ? "current service truck" : "operational scope") });
+        await write(`scope ${e.employeeId} ${s.scopeType}:${s.scopeId}`, ADMIN, WF, "assignEmployeeOperationalScope", { employeeId: e.employeeId, scopeType: s.scopeType, scopeId: s.scopeId, reason: why(s.scopeType === "MOBILE" ? "current service truck" : "operational scope") });
       }
     }
   }
