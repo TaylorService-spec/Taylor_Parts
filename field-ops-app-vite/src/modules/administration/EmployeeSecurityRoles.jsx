@@ -41,17 +41,6 @@ import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 const GLOBAL = "global";
-const ROLE_ASSIGNMENT_WRITE_CAPABILITY = "admin.roleAssignment.write";
-
-/** The trusted feed's positive decision for one id; anything else (absent, throwing, not a function) is false. */
-function holdsFeedCapability(hasCapability, id) {
-  if (typeof hasCapability !== "function") return false;
-  try {
-    return hasCapability(id) === true;
-  } catch {
-    return false;
-  }
-}
 
 /** The server's scope vocabulary, or null. Nothing here is invented when it is absent or unreadable. */
 function scopeVocabularyFrom(data) {
@@ -98,11 +87,8 @@ function HeldAssignmentsTable({ rows, nameOf, scopeLabel, valueLabel, onRemove }
 }
 
 export default function EmployeeSecurityRoles({
-  api = adminControlPlaneClient, principalId, employeeName = "this Employee", viewerIsSelf = null, hasCapability,
+  api = adminControlPlaneClient, principalId, employeeName = "this Employee", viewerIsSelf = null,
 }) {
-  // The page's existing Role-assignment signal (the trusted feed's admin.roleAssignment.write decision), used ONLY to
-  // offer the Administrator checkbox. Offer only: the server re-checks every appointment.
-  const canAssignRoles = holdsFeedCapability(hasCapability, ROLE_ASSIGNMENT_WRITE_CAPABILITY);
   const assignments = useControlPlaneRead(principalId ? () => api.listPrincipalRoleAssignments(principalId) : null, `assignments:${principalId}`);
   const roles = useControlPlaneRead(principalId ? () => api.listRoles() : null, "roles");
   const scopes = useControlPlaneRead(principalId && typeof api.listSupportedAssignmentScopes === "function"
@@ -125,7 +111,7 @@ export default function EmployeeSecurityRoles({
       rolesStatus={Array.isArray(roles.data) ? "ready" : roles.status}
       rowsStatus={assignments.status === "loading" ? "loading" : readRows ? "ready" : "failed"}
       reload={assignments.reload}
-      viewerIsSelf={viewerIsSelf} canAssignRoles={canAssignRoles}
+      viewerIsSelf={viewerIsSelf}
     />
   );
 

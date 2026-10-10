@@ -11,8 +11,10 @@
 // last Administrator (WOULD_REMOVE_LAST_ADMINISTRATION_PATH / "last active administering assignment"), never an Owner
 // holder (PROTECTED_ROLE_CONFLICT), a stated reason, and who may act at all (the Owner through
 // admin.administratorRole.assign, or a protected Administrator). This control only withholds what it already knows the
-// server would refuse -- yourself, no linked Principal, a viewer the page's own feed says lacks
-// admin.roleAssignment.write -- and says why in words. Every refusal is shown with the server's code and message.
+// server would refuse, or cannot act on -- yourself, no linked Principal, reads loading or failed -- and says why in
+// words. WHO MAY ACT is never decided here: there is no client capability gate (and no Firebase feed is consulted --
+// Firebase is retirement-only). Anyone who can see this page sees the box; a FORBIDDEN / PRIVILEGE_ESCALATION refusal
+// is shown with its sentence and the server's code and message, and the box is re-read, not flipped.
 //
 // NEVER OPTIMISTIC. The box is drawn from the server read; after EVERY attempt (accepted or refused) the parent's read
 // is re-run and the box shows what came back.
@@ -28,14 +30,13 @@ import {
 } from "./administratorAppointmentModel.js";
 
 /** Why the checkbox cannot be used, in words, or null when it can. Order: what is most fundamental first. */
-function disabledReason({ principalId, rolesRead, rowsRead, adminRole, viewerIsSelf, canAssignRoles }) {
+function disabledReason({ principalId, rolesRead, rowsRead, adminRole, viewerIsSelf }) {
   if (!principalId) return "No governed Principal is linked to this Employee, so there is no one to appoint.";
   if (rolesRead === "loading" || rowsRead === "loading") return "Reading the Administrator appointment from the server…";
   if (rolesRead !== "ready" || rowsRead !== "ready") return "The Administrator appointment could not be read from the server, so it cannot be changed here.";
   if (!adminRole) return "The server's Role list names no protected Administrator Role (key admin), so there is nothing to appoint.";
   if (viewerIsSelf === null) return "Confirming whose account this is…";
   if (viewerIsSelf === true) return "This is your own account. No one may appoint or remove themself as Administrator.";
-  if (canAssignRoles !== true) return "The trusted access feed did not grant Security Role assignment (admin.roleAssignment.write) for your account.";
   return null;
 }
 
@@ -47,17 +48,16 @@ function disabledReason({ principalId, rolesRead, rowsRead, adminRole, viewerIsS
  * @param props.rowsStatus      same, for the assignments read
  * @param props.reload          re-runs the assignments read (after every attempt)
  * @param props.viewerIsSelf    true / false, or null while it is not yet known
- * @param props.canAssignRoles  the page's existing admin.roleAssignment.write signal (offer only; the server re-checks)
  */
 export default function EmployeeAdministratorAppointment({
-  api, principalId, roles, rows, rolesStatus, rowsStatus, reload, employeeName = "this Employee", viewerIsSelf, canAssignRoles,
+  api, principalId, roles, rows, rolesStatus, rowsStatus, reload, employeeName = "this Employee", viewerIsSelf,
 }) {
   const [pending, setPending] = useState(null); // "appoint" | "remove" | null
   const [result, setResult] = useState(null);
 
   const adminRole = designatedAdministratorRole(roles);
   const held = activeGlobalAdministratorAssignment(rows, adminRole);
-  const blocked = disabledReason({ principalId, rolesRead: rolesStatus, rowsRead: rowsStatus, adminRole, viewerIsSelf, canAssignRoles });
+  const blocked = disabledReason({ principalId, rolesRead: rolesStatus, rowsRead: rowsStatus, adminRole, viewerIsSelf });
   const checked = Boolean(held);
 
   const confirm = async (reason) => {

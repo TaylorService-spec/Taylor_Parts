@@ -3,11 +3,13 @@
 // What is proved: the box reflects an ACTIVE GLOBAL assignment of the Role keyed `admin` AND protected (never a display
 // name); appointing needs a reason and sends assignRole with NO scope; removing sends revokeRole for that exact
 // assignment; a server refusal is shown in words AND verbatim, and the box is re-read after every attempt (never
-// optimistic); the box is disabled with a visible reason for yourself, with no linked Principal, and without the page's
-// admin.roleAssignment.write signal; the generic picker no longer offers the Administrator; the Owner never appears.
+// optimistic); the box is disabled with a visible reason for yourself, with no linked Principal, and while reads load or
+// fail -- but NEVER by a client capability gate (the server's FORBIDDEN is shown instead); the generic picker no longer
+// offers the Administrator; the Owner never appears; nothing here imports Firebase or the report-capability feed.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { readFileSync } from "node:fs";
 
 let session = { user: { uid: "uid-viewer" }, role: "admin", loading: false };
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => session }));
@@ -43,10 +45,9 @@ function makeApi({ held = [GM], ...over } = {}) {
   return api;
 }
 
-const grantsRoleWrite = (id) => id === "admin.roleAssignment.write";
 const box = () => screen.getByRole("checkbox", { name: "Administrator" });
 const renderControl = (api, props = {}) =>
-  render(<EmployeeSecurityRoles api={api} principalId="pr-1" employeeName="Jane" viewerIsSelf={false} hasCapability={grantsRoleWrite} {...props} />);
+  render(<EmployeeSecurityRoles api={api} principalId="pr-1" employeeName="Jane" viewerIsSelf={false} {...props} />);
 const settled = () => waitFor(() => expect(screen.getByRole("table", { name: "Security Roles held" })).toBeTruthy());
 const confirmWithReason = async (reason, label) => {
   const dialog = await screen.findByRole("dialog");
@@ -145,16 +146,68 @@ describe("Administrator checkbox: disabled with a visible reason", () => {
   });
 
   it("no linked Principal", async () => {
-    render(<EmployeeSecurityRoles api={makeApi()} principalId={null} viewerIsSelf={false} hasCapability={grantsRoleWrite} />);
+    render(<EmployeeSecurityRoles api={makeApi()} principalId={null} viewerIsSelf={false} />);
     expect(box().disabled).toBe(true);
     expect(document.querySelector("[data-administrator-appointment-disabled]").textContent).toMatch(/No governed Principal is linked/);
   });
 
-  it("the viewer lacks admin.roleAssignment.write", async () => {
-    renderControl(makeApi(), { hasCapability: (id) => id !== "admin.roleAssignment.write" });
-    await settled();
+  it("reads still loading", async () => {
+    renderControl(makeApi({ listPrincipalRoleAssignments: vi.fn(() => new Promise(() => {})) }));
+    await waitFor(() => expect(document.querySelector("[data-administrator-appointment-disabled]")?.textContent).toMatch(/Reading the Administrator appointment/));
     expect(box().disabled).toBe(true);
-    expect(document.querySelector("[data-administrator-appointment-disabled]").textContent).toMatch(/admin\.roleAssignment\.write/);
+  });
+
+  it("a failed read", async () => {
+    renderControl(makeApi({ listRoles: vi.fn(async () => ({ ok: false, code: "FORBIDDEN", message: "not authorized" })) }));
+    await waitFor(() => expect(document.querySelector("[data-administrator-appointment-disabled]")?.textContent).toMatch(/could not be read/));
+    expect(box().disabled).toBe(true);
+  });
+});
+
+describe("no client authority gate: the server decides who may appoint", () => {
+  it("the box is offered with no capability signal at all", async () => {
+    renderControl(makeApi());
+    await settled();
+    expect(box().disabled).toBe(false);
+    expect(document.querySelector("[data-administrator-appointment-disabled]")).toBeNull();
+  });
+
+  for (const [code, message] of [
+    ["FORBIDDEN", "PRIVILEGE_ESCALATION: assigning admin concerns admin.securityPolicy.write, which the acting principal does not hold"],
+    ["FORBIDDEN", "not authorized"],
+  ]) {
+    it(`a server authority refusal (${message.slice(0, 20)}...) is shown in words, the box does not flip, and it re-reads`, async () => {
+      const api = makeApi({ assignRole: vi.fn(async () => ({ ok: false, code, message })) });
+      renderControl(api);
+      await settled();
+      expect(box().checked).toBe(false);
+      fireEvent.click(box());
+      await confirmWithReason("Needs admin", "Appoint Administrator");
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toMatch(/Your account is not permitted to appoint or remove Administrators\./);
+      expect(alert.querySelector(`[data-control-plane-refusal="${code}"]`).textContent).toBe(`${code}: ${message}`);
+      await waitFor(() => expect(api.listPrincipalRoleAssignments).toHaveBeenCalledTimes(2));
+      expect(box().checked).toBe(false);
+    });
+  }
+
+  it("static: the Administrator control and Security Roles import nothing from Firebase or the report-capability feed", () => {
+    const files = [
+      "src/modules/administration/EmployeeSecurityRoles.jsx",
+      "src/modules/administration/EmployeeAdministratorAppointment.jsx",
+      "src/modules/administration/administratorAppointmentModel.js",
+    ];
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      const imports = [...src.matchAll(/^\s*import\s[^;]*?from\s+["']([^"']+)["']/gm)].map((m) => m[1]);
+      expect(imports.length, file).toBeGreaterThan(0);
+      for (const spec of imports) {
+        expect(spec, `${file} imports ${spec}`).not.toMatch(/firebase/i);
+        expect(spec, `${file} imports ${spec}`).not.toMatch(/useReportCapabilities|reportCapabilit/i);
+      }
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      expect(code, file).not.toMatch(/hasCapability|useReportCapabilities|firebase/i);
+    }
   });
 });
 
@@ -219,9 +272,9 @@ describe("Employee record wiring: self is the signed-in credential", () => {
       </Routes>
     </MemoryRouter>,
   );
-  const roleWrite = (id) => id === "admin.roleAssignment.write";
+  const roleWrite = () => false; // the feed is not consulted: even a feed that grants nothing leaves the box offered
 
-  it("another person's record with admin.roleAssignment.write: the box is offered", async () => {
+  it("another person's record: the box is offered (no client capability gate)", async () => {
     renderRecord(roleWrite);
     fireEvent.click(await screen.findByRole("tab", { name: "Roles & Access" }));
     await waitFor(() => expect(box().disabled).toBe(false));
