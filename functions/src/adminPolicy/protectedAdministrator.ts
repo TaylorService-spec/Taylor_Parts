@@ -11,7 +11,8 @@
 //   IMPLIED      every ADMIN_ACTION and every READ capability, and every action on a system-administration Object
 //                (Security Roles and permissions, Workflow definitions, Principals, Employees, audit, configuration,
 //                data import) -- configure, inspect and govern, company-wide.
-//   NOT IMPLIED  BUSINESS_ACTION / CREATE / EDIT on a business Object: business approval, financial execution and
+//   ALSO         the nine approved management actions (PROTECTED_ADMINISTRATOR_MANAGEMENT_CAPABILITIES, O1 / G2 / G3, #227).
+//   NOT IMPLIED  any other BUSINESS_ACTION / CREATE / EDIT on a business Object: business approval, financial execution and
 //                operational execution keep their existing authorization (Owner ruling O1). The Administrator keeps
 //                whatever it holds through existing grants (O3), and nothing here removes one.
 //   NEVER        Work Eligibility, record assignment, an Operational Scope or an Employee link -- standing is not a job
@@ -65,6 +66,39 @@ export const PROTECTED_ADMINISTRATOR_EXCLUSIONS: ReadonlySet<string> = new Set([
   "salesAgreement.tradeIn.approve",
 ]);
 
+/**
+ * THE APPROVED MANAGEMENT ACTIONS (Owner O1 business-action ruling, 2026-10-09; G2, G3; DECISIONS #227 / PR-4b): business
+ * keys standing implies although they are not ADMIN_ACTION / READ. Exactly these nine -- the O1 "ADMIN" class. Each is a
+ * management exception, never operational execution, and each keeps every other check its command makes:
+ *   equipment.record.manage        the Equipment register
+ *   rental.fleet.manage            the Rental fleet
+ *   reorder.request.approve / .reject / .cancel / .assign
+ *                                  Reorder review and coordination, within the company queues standing reaches (#224)
+ *   reorder.purchaseOrder.void     G3: management void -- ORDERED only, a stated reason, a single void, the PO's own
+ *                                  company queue, audited (the repository's rules, unchanged)
+ *   inventory.receipt.correct      G2: the receipt VOID / reversal only -- reach admits it at the correction call site for
+ *                                  VOID alone; CORRECTED re-receives through inventory.stock.receive, never implied, and
+ *                                  the cost-evidence supply path does not opt into reach
+ *   ownership.handoff.correct      administrative ownership-handoff sources, in addition to the record's edit authority
+ * NEVER here: the O1 WORKER keys (administrationReach.ADMINISTRATOR_EXECUTION_CAPABILITIES -- pinned disjoint by test) and
+ * every O1 KEEP key (business approval and financial execution keep their existing grants).
+ */
+export const PROTECTED_ADMINISTRATOR_MANAGEMENT_CAPABILITIES: ReadonlySet<string> = new Set([
+  "equipment.record.manage",
+  "rental.fleet.manage",
+  "reorder.request.approve",
+  "reorder.request.reject",
+  "reorder.request.cancel",
+  "reorder.request.assign",
+  "reorder.purchaseOrder.void",
+  "inventory.receipt.correct",
+  "ownership.handoff.correct",
+]);
+
+for (const key of PROTECTED_ADMINISTRATOR_MANAGEMENT_CAPABILITIES) {
+  if (PROTECTED_ADMINISTRATOR_EXCLUSIONS.has(key)) throw new Error(`protectedAdministrator: ${key} is both implied and excluded`);
+}
+
 export interface CapabilityMetadata {
   readonly key: string;
   readonly objectKey: string | null;
@@ -74,6 +108,7 @@ export interface CapabilityMetadata {
 /** Is this registered capability system authority that standing implies? */
 export function isImpliedForProtectedAdministrator(capability: CapabilityMetadata): boolean {
   if (PROTECTED_ADMINISTRATOR_EXCLUSIONS.has(capability.key)) return false;
+  if (PROTECTED_ADMINISTRATOR_MANAGEMENT_CAPABILITIES.has(capability.key)) return true;
   if (capability.objectKey !== null && SYSTEM_ADMINISTRATION_OBJECTS.has(capability.objectKey)) return true;
   return capability.actionKind !== null && IMPLIED_ACTION_KINDS.has(capability.actionKind as ActionKind);
 }
