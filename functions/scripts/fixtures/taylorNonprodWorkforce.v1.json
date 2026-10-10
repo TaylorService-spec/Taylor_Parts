@@ -63,10 +63,8 @@
    "employmentStatus": "ACTIVE",
    "operatingCompanyId": "taylor",
    "workEligibility": [],
-   "scopes": [
-        { "scopeType": "REORDER_QUEUE", "scopeId": "taylor" }
-      ],
-      "scopesNote": "Owner ruling 2026-10-09: the Administrator has full EOS access including operational reach. The Reorder queue is company-keyed, so the Administrator's Employee holds REORDER_QUEUE for every KEYED company: today only taylor -- nonprod Ventana is unkeyed (recorded in the Finance closure entry of DECISIONS), and the governed writer refuses an unkeyed queue (REORDER_QUEUE_NOT_FOUND); ventana follows when its company key is bound (a separate configuration ruling). Assigned by the Owner persona (an administrator may not scope its own Employee: OPERATIONAL_SCOPE_SELF). No Work Eligibility (ADMIN_IMPLIES_NO_WORK_ELIGIBILITY) and no WAREHOUSE scope pending a separate Owner decision",
+   "scopes": [],
+      "scopesNote": "DECISIONS #224/#228: the protected Administrator reaches every keyed company's Reorder queue and every ACTIVE warehouse by STANDING (administration reach, functions/src/eosOps/administrationReach.ts), never through an Employee Operational Scope, so this manifest declares NO scope for the Administrator and the seed refuses to issue one (an administrator may not scope its own Employee: OPERATIONAL_SCOPE_SELF). The REORDER_QUEUE:taylor scope issued under #222 is superseded; the existing nonprod assignment is retained and redundant until the Owner ends it through Administration. No Work Eligibility (ADMIN_IMPLIES_NO_WORK_ELIGIBILITY)",
    "manager": "synthetic-np-emp-office-manager"
   },
   {

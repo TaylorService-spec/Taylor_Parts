@@ -7862,3 +7862,26 @@ Management decisions that reach enables (review, cancel, void, assign) still req
 - Employee scopes and grants are retained, including the Administrator Employee's historical `REORDER_QUEUE:taylor`.
 - No migration, no new capability, no grant, no Firebase.
 - Business-state validation and append-only audit are unchanged.
+
+## #228 — Legacy Administrator scope cleanup — PR-5 (2026-10-10)
+
+(Follows #222, #223 and #224. Cleanup after PR-2, as listed in #223.)
+
+**Context.** #222 gave the Administrator's Employee an explicit `REORDER_QUEUE:taylor` Operational Scope in the Taylor nonprod workforce manifest. Because self-scoping is refused (`OPERATIONAL_SCOPE_SELF`), the workforce seed issued the Administrator's scopes as the Owner persona. #224 now gives the protected Administrator company-wide REORDER_QUEUE and WAREHOUSE administration reach by STANDING (`functions/src/eosOps/administrationReach.ts`, `reorderQueueReach.ts`). The explicit scope is redundant.
+
+**Change (code only).**
+- The manifest (`functions/scripts/fixtures/taylorNonprodWorkforce.v1.json`) declares NO Operational Scope for the Administrator. Its note now says the Administrator reaches queues and warehouses by standing (#224).
+- The workforce seed (`functions/scripts/seedTaylorNonprodWorkforce.mjs`) no longer issues the scope. The owner-as-issuer rule existed only for the Administrator and is removed; every scope the seed issues is written by the Administrator for another Employee. The seed refuses a manifest that declares an Administrator scope.
+- A static test pins both: the manifest declares no scope, truck or Work Eligibility for the Administrator, and the seed has no owner-as-issuer rule and refuses an Administrator scope.
+
+**Retained (governed data).**
+- The existing nonprod `REORDER_QUEUE:taylor` assignment on the Administrator's Employee is retained. It is now redundant: reach by standing already covers it.
+- No migration ends it. Ending it is a separate Owner-authorized Administration action: Administration → Employee → Operational Scope, ended by the Owner persona. The writer would also let the Administrator end its own scope, since ending only narrows, but the ruling assigns this action to the Owner.
+
+**Superseded.**
+- The #222 decision to issue the Administrator a REORDER_QUEUE scope for every keyed company, and the seed's owner-as-issuer rule.
+- Issue #2038 (WAREHOUSE scopes for the Administrator) is superseded by #224. Close it when PR-2 merges.
+
+**Boundary.**
+- No migration, no capability, no grant, no Role, no Firebase. No live data touched.
+- No runtime behavior change: authorization code is unchanged. Only the nonprod seed and its manifest change.
