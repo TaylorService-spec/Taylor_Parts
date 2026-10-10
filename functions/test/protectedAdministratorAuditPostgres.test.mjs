@@ -45,7 +45,8 @@ test("every actor-driven direct audit writer records Administrator provenance th
   for (const f of files) {
     const rel = f.slice(SRC.length + 1);
     const src = readFileSync(f, "utf8");
-    const inserts = (src.match(/INSERT INTO eos_policy\.audit_events/g) ?? []).length;
+    // The literal schema or a templated one (`${SCHEMA}.audit_events`) -- both are direct writers.
+    const inserts = (src.match(/INSERT INTO\s+(?:eos_policy|\$\{[^}]+\})\.audit_events/g) ?? []).length;
     if (inserts === 0 || EXEMPT.has(rel)) continue;
     writers += 1;
     const stamped = (src.match(/withActorAuthority\(/g) ?? []).length;
