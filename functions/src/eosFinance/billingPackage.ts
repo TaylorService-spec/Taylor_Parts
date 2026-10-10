@@ -25,6 +25,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ensureExternalCounterparty, FinanceFoundationError, openObligationOn, resolveAccountingDestination, resolveOperatingCompanyFromKey, voidObligationOn, type FinanceActor } from "./financeFoundation";
 import { financedConsequenceOn, type FinancedConsequence } from "./financedSale";
 import { customerDiscountMinorOf, type CustomerDiscount } from "../salesAgreement/salesAgreementCommands";
+import { withActorAuthority } from "../eosOps/administrationReach";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -221,7 +222,7 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
      VALUES ($1, $2, 'finance.billingPackage.prepare', $3, 'billing_package', $4, $5::jsonb, $6::jsonb, now(), $7)`,
     [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, packageId,
       current[0] ? JSON.stringify({ supersededPackageId: current[0].id, version: current[0].version }) : null,
-      JSON.stringify({ salesOrderId: input.salesOrderId, version, status, readinessExceptions: exceptions, totalMinor: str(total), operatingCompanyId: companyId }),
+      JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, { salesOrderId: input.salesOrderId, version, status, readinessExceptions: exceptions, totalMinor: str(total), operatingCompanyId: companyId })),
       "operational billing package prepared from governed Commercial eligibility"]);
   // THE OWNER-RULED CONSEQUENCE (DECISIONS #197): a READY direct-sale package establishes the EOS operational receivable --
   // in THIS transaction, so a READY package can never be observed without it.

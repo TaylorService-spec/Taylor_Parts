@@ -156,7 +156,7 @@ async function audit(
   await client.query(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1, $2, $3, $4, 'reorder_request', $5, NULL, $6::jsonb, $7, $8)`,
-    [`audit_${randomUUID()}`, tenantId, action, actorPrincipalId, targetId, JSON.stringify(after), at, reason],
+    [`audit_${randomUUID()}`, tenantId, action, actorPrincipalId, targetId, JSON.stringify(await withActorAuthority(client, tenantId, actorPrincipalId, after)), at, reason],
   );
 }
 
@@ -195,6 +195,7 @@ async function requireAssignee(
 // Administrator standing. Re-exported for the modules that already import it from here.
 export { queueReachKeys } from "./reorderQueueReach.js";
 import { queueReachKeys } from "./reorderQueueReach.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 async function requireQueueReach(db: Pick<PoolClient, "query">, actor: ReorderActor): Promise<readonly string[]> {
   const keys = await queueReachKeys(db, actor);

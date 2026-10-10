@@ -5,6 +5,7 @@
 // Employee and what was shown (the persona and the section statuses) -- never a token, credential or record content.
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
+import { withActorAuthority } from "./administrationReach";
 
 export async function auditExperiencePreview(pool: Pool, input: {
   readonly tenantId: string; readonly actorPrincipalId: string; readonly subjectPrincipalId: string; readonly subjectEmployeeId: string;
@@ -15,7 +16,7 @@ export async function auditExperiencePreview(pool: Pool, input: {
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1, $2, 'experience.previewAsUser', $3, 'principal', $4, NULL, $5, now(), $6)`,
     [id, input.tenantId, input.actorPrincipalId, input.subjectPrincipalId,
-      JSON.stringify({ subjectEmployeeId: input.subjectEmployeeId, ...input.shown }), input.reason],
+      JSON.stringify(await withActorAuthority(pool, input.tenantId, input.actorPrincipalId, { subjectEmployeeId: input.subjectEmployeeId, ...input.shown })), input.reason],
   );
   return id;
 }

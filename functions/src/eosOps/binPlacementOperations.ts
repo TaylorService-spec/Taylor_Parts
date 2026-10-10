@@ -34,6 +34,7 @@ import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAutho
 import { isSafeIdSegment, normalizeBinCode } from "../inventoryLocation/binRegistry.js";
 import type { PostgresPlacementWriterState } from "../inventoryLocation/placementWriterState.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -355,9 +356,9 @@ export async function recordEosPutAway(deps: PlacementOperationDeps, actor: Plac
       `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
        VALUES ($1, $2, 'binPlacement.record', $3, 'binPlacement', $4, NULL, $5, NULL)`,
       [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, rows[0].id,
-        JSON.stringify({ warehouseId: req.warehouseId, binId: bin.binId, binCode: bin.binCode, partId: req.partId,
+        JSON.stringify(await withActorAuthority(db, actor.tenantId, actor.principalId, { warehouseId: req.warehouseId, binId: bin.binId, binCode: bin.binCode, partId: req.partId,
           quantity: serials.length > 0 ? serials.length : req.quantity, serialCount: serials.length,
-          pickedForWorkOrderId: req.pickedForWorkOrderId ?? null, placementIds: rows.map((r) => r.id) })]);
+          pickedForWorkOrderId: req.pickedForWorkOrderId ?? null, placementIds: rows.map((r) => r.id) }))]);
     return {
       outcome: "recorded" as const, placementIds: rows.map((r) => r.id), warehouseId: req.warehouseId, binCode: bin.binCode,
       partId: req.partId, quantity: serials.length > 0 ? null : (req.quantity ?? 0), serialNumbers: serials,

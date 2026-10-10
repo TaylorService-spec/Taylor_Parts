@@ -48,6 +48,7 @@ import { serializedAssetDocId } from "../serializedAsset/serializedAssetRegistra
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { PostgresAcquireWriterState } from "../serializedAsset/acquireWriterState.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 export const EOS_SERIALIZED_ASSET_ACQUIRE_CAPABILITY = "inventory.serializedAsset.acquire";
 /** Mirrors ACQUISITION_REASONS. */
@@ -271,8 +272,8 @@ export async function acquireEosSerializedAsset(deps: AcquireOperationDeps, acto
       `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
        VALUES ($1, $2, 'serializedAsset.acquire', $3, 'serializedAsset', $4, NULL, $5, $6)`,
       [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, serializedAssetId,
-        JSON.stringify({ partId: req.partId, serialNo: req.serialNo, locationId: req.locationId, reason: req.reason,
-          provenance: "NON_PO_ACQUISITION", acquisitionId, ledgerMovementId: movementId }), req.provenanceNote]);
+        JSON.stringify(await withActorAuthority(db, actor.tenantId, actor.principalId, { partId: req.partId, serialNo: req.serialNo, locationId: req.locationId, reason: req.reason,
+          provenance: "NON_PO_ACQUISITION", acquisitionId, ledgerMovementId: movementId })), req.provenanceNote]);
     return { outcome: "acquired" as const, serializedAssetId, partId: req.partId, serialNo: req.serialNo, locationId: req.locationId, state: "AVAILABLE", reason: req.reason };
   });
 }

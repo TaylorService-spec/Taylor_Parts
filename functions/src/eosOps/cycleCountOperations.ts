@@ -71,6 +71,7 @@ import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresP
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import type { PostgresCycleCountWriterState } from "../cycleCount/cycleCountWriterState.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 // ════════════════════ vocabulary ════════════════════
 
@@ -171,7 +172,7 @@ async function audit(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, targetKind, targetId,
-      before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(after), reason],
+      before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(await withActorAuthority(db, actor.tenantId, actor.principalId, after)), reason],
   );
 }
 

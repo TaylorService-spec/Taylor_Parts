@@ -13,6 +13,7 @@
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { ConfigurationRefusal, type AdminConfigurationOperation, type ConfigurationActor } from "../adminPolicy/configurationOperations";
+import { withActorAuthority } from "./administrationReach";
 
 export const SYSTEM_CONFIGURATION_OPERATIONS = Object.freeze(["listSystemConfiguration", "setSystemConfigurationSetting"] as const);
 export const isSystemConfigurationOperation = (op: string): boolean => (SYSTEM_CONFIGURATION_OPERATIONS as readonly string[]).includes(op);
@@ -115,7 +116,7 @@ async function setSystemConfigurationSetting(pool: Pool, actor: ConfigurationAct
     }
     await c.query(`INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
                    VALUES ($1,$2,'admin.systemConfiguration.set',$3,'operating_company_setting',$4,$5::jsonb,$6::jsonb,now(),$7)`,
-      [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, `${companyId}:${key}`, JSON.stringify({ [key]: previous }), JSON.stringify({ [key]: value }), (reason as string).trim()]);
+      [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, `${companyId}:${key}`, JSON.stringify({ [key]: previous }), JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, { [key]: value })), (reason as string).trim()]);
     return Object.freeze({ operatingCompanyId: companyId, settingKey: key, value, previous,
       appliesTo: def.value_kind === "IANA_TIME_ZONE" ? "FUTURE_BUSINESS_DATES" as const : "FUTURE_SESSIONS" as const });
   });

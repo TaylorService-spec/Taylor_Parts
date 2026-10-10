@@ -29,6 +29,7 @@ import {
   type ConfigurationActor,
 } from "../adminPolicy/configurationOperations";
 import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding";
+import { withActorAuthority } from "./administrationReach";
 
 export const MOBILE_SCOPE_BINDING_AUDIT_TARGET = "mobileLocationScopeBinding";
 
@@ -119,7 +120,7 @@ async function appendAudit(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [id, actor.tenantId, action, actor.principalId, MOBILE_SCOPE_BINDING_AUDIT_TARGET, locationId,
-      before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(after), reason],
+      before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(await withActorAuthority(db, actor.tenantId, actor.principalId, after)), reason],
   );
   return id;
 }

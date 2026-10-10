@@ -25,6 +25,7 @@ import {
   changeTruckStatus, createMobileLocation, createTruck, linkTruck, relinkTruck, unlinkTruck,
   TruckFleetRepositoryError, TRUCK_STATUSES, type OperatingCompanyKey, type TruckStatus,
 } from "./truckFleetRepository";
+import { withActorAuthority } from "./administrationReach";
 
 export const TRUCK_REGISTRY_ADMIN_OPERATIONS = Object.freeze([
   "listTrucks", "readTruck", "listMobileLocations", "createMobileLocation", "createTruck",
@@ -90,7 +91,7 @@ async function audit(c: PoolClient, actor: ConfigurationActor, action: string, k
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, kind, targetId,
-      before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(after), reason]);
+      before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, after)), reason]);
 }
 
 /** The ACTIVE key of a governed, ACTIVE operating company -- the only way a MOBILE location acquires a company. */

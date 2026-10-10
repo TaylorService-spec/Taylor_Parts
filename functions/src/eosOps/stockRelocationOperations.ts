@@ -50,6 +50,7 @@ import type { PostgresRelocationWriterState } from "../inventoryLocation/stockRe
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import { EOS_PLACEMENT_RECORD_CAPABILITY, insertPlacements, planPlacements, readPlacements } from "./binPlacementOperations.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -401,9 +402,9 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
       `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
        VALUES ($1, $2, 'stockRelocation.relocate', $3, 'stockRelocation', $4, NULL, $5, NULL)`,
       [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, relocationId,
-        JSON.stringify({ partId: req.partId, source: req.source, destination: req.destination, warehouseId: source.scopeWarehouseId,
+        JSON.stringify(await withActorAuthority(db, actor.tenantId, actor.principalId, { partId: req.partId, source: req.source, destination: req.destination, warehouseId: source.scopeWarehouseId,
           quantity: isSerial ? serials.length : req.quantity, serialCount: serials.length, placementRecorded: req.recordPlacement,
-          placementIds: req.recordPlacement ? plannedPlacements.map((p) => p.id) : [] })]);
+          placementIds: req.recordPlacement ? plannedPlacements.map((p) => p.id) : [] }))]);
     return {
       outcome: "relocated" as const, relocationId, partId: req.partId, source: req.source, destination: req.destination,
       quantity: isSerial ? null : (req.quantity as number), serialNumbers: serials, movementIds,
