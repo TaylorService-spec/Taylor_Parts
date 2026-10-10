@@ -183,6 +183,10 @@ async function correctWithin(
   const scoped = await authorizeObjectAction(postgresContextualReader(client), {
     actor, capabilityKey: RECEIPT_CORRECT_CAPABILITY,
     predicates: [{ kind: "OPERATIONAL_SCOPE" as const, scopeType: "WAREHOUSE", scopeId: scopeWarehouseId }],
+    // G2 (Owner 2026-10-09): a protected Administrator may perform the audited VOID (reversal) by administration reach.
+    // CORRECTED never opts in -- and its re-receive goes through the receive pipeline's own inventory.stock.receive
+    // WAREHOUSE gate, which no call site opts in, so re-receiving stays the worker's own authority.
+    administrationReach: c.kind === "VOID",
   });
   if (!scoped.allowed) {
     refuse(scoped.reason, "FORBIDDEN", scoped.reason === "OUTSIDE_OPERATIONAL_SCOPE" ? "this receipt location is outside your warehouse scope"

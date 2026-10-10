@@ -42,6 +42,7 @@
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { postgresPrincipalDimensionReader } from "./contextualAuthorization.js";
+import { queueReachKeys } from "./reorderQueueReach.js";
 
 /** The EXISTING capability for this action (access/permissionCatalog.ts). Not a new one invented for the seam. */
 export const REORDER_REQUEST_ASSIGN = "reorder.request.assign";
@@ -225,10 +226,7 @@ export async function assignReorderRequestToEmployee(
     // G8 (Controller 2026-10-01): assignment is a management decision, reachable only inside the caller's REORDER_QUEUE
     // Operational Scope for the request's own operating company -- the same queue scope review, cancel and void use.
     // Outside reach answers exactly as missing (no existence oracle).
-    const reader = postgresPrincipalDimensionReader(client);
-    const actorEmployeeId = await reader.linkedEmployeeId(actor.tenantId, actor.principalId);
-    const reach = actorEmployeeId === null ? [] : (await reader.listOperationalScopes(actor.tenantId, actorEmployeeId))
-      .filter((x) => x.scopeType === "REORDER_QUEUE").map((x) => x.scopeId);
+    const reach = await queueReachKeys(client, actor);
     if (!reach.includes(String(target.rows[0].operating_company_key))) {
       refuse("REORDER_NOT_FOUND", "NOT_FOUND", "the Reorder Request does not exist in this tenant");
     }

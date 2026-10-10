@@ -36,6 +36,7 @@
 // eosOps/capabilityAuthority.ts, the runtime resolver it partners with.
 import type { PoolClient } from "pg";
 import { ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES } from "../adminPolicy/employmentAccessEligibility";
+import { administrationReaches, ADMINISTRATION_REACH_SCOPE_TYPES, isAdministrationReachCapability } from "./administrationReach";
 
 /** The predicate kinds this evaluator can prove. Each is a DIFFERENT authority, not a scope string. */
 export const CONTEXT_PREDICATE_KINDS = Object.freeze([
@@ -109,6 +110,11 @@ export interface ContextualReader {
   /** `scopeId` narrows to one target (a warehouse, an operating company key); omitted means any. */
   hasOperationalScope(tenantId: string, employeeId: string, scopeType: string, scopeId?: string): Promise<boolean>;
   isAssignedEmployee(tenantId: string, recordKind: RecordContext["recordKind"], recordId: string, employeeId: string): Promise<boolean>;
+  /**
+   * PROTECTED ADMINISTRATOR REACH (administrationReach.ts): does this principal's standing reach this target (REORDER_QUEUE
+   * company key / WAREHOUSE id; omitted = any)? Optional: a reader without it reaches nothing (fail closed).
+   */
+  administrationReaches?(tenantId: string, principalId: string, scopeType: string, scopeId?: string): Promise<boolean>;
 }
 
 export interface AuthorizeInput {
@@ -117,6 +123,12 @@ export interface AuthorizeInput {
   /** Exactly the predicates this ACTION requires. Policy about the action, never about a grant. */
   readonly predicates?: readonly ContextPredicate[];
   readonly record?: RecordContext;
+  /**
+   * This call site ADMINISTERS (inspects, configures, or the G2 receipt reversal) and accepts protected-Administrator
+   * reach for its OPERATIONAL_SCOPE predicate. Default false: execution call sites never opt in, and even an opted-in call
+   * gets reach only for an allow-listed capability (administrationReach.ts). Never caller-supplied -- set in code.
+   */
+  readonly administrationReach?: boolean;
 }
 
 /**
@@ -161,6 +173,13 @@ export async function authorizeObjectAction(
         break;
       }
       case "OPERATIONAL_SCOPE": {
+        // ADMINISTRATION REACH (DECISIONS #224): only an opted-in administering call site, an allow-listed capability,
+        // a reachable scope type (never MOBILE) and the principal's own protected-Administrator standing -- no Employee.
+        if (input.administrationReach === true && ADMINISTRATION_REACH_SCOPE_TYPES.has(predicate.scopeType)
+            && isAdministrationReachCapability(input.capabilityKey) && typeof reader.administrationReaches === "function"
+            && await reader.administrationReaches(actor.tenantId, actor.principalId, predicate.scopeType, predicate.scopeId)) {
+          break;
+        }
         const id = await requireEmployee();
         if (!id) return deny("EMPLOYEE_LINK_REQUIRED", "OPERATIONAL_SCOPE");
         if (!(await reader.hasOperationalScope(actor.tenantId, id, predicate.scopeType, predicate.scopeId))) {
@@ -254,6 +273,9 @@ export function ownRecordsPredicate(
 /** The reader, over the governed tables. No Firestore, no uid, no claims. */
 export function postgresContextualReader(db: Pick<PoolClient, "query">): ContextualReader {
   return {
+    administrationReaches(tenantId, principalId, scopeType, scopeId) {
+      return administrationReaches(db, tenantId, principalId, scopeType, scopeId);
+    },
     async linkedEmployeeId(tenantId, principalId) {
       // ONLY AN ACCESS-ELIGIBLE EMPLOYEE (Controller DQ-007): the link must resolve to an Employee of this tenant whose
       // PostgreSQL employment status is ACTIVE or CONTRACTOR. Principal resolution already refuses an ineligible
@@ -359,9 +381,15 @@ export function snapshotContextualReader(snapshot: {
   readonly employeeId: string | null;
   readonly workEligibility: readonly string[];
   readonly operationalScopes: readonly CurrentOperationalScope[];
+  /** PROTECTED ADMINISTRATOR reach targets by scope type (administrationReachTargets); absent = none. */
+  readonly administrationReach?: Readonly<Record<string, readonly string[]>>;
 }): ContextualReader {
   const eligibility = new Set(snapshot.workEligibility);
   return {
+    async administrationReaches(_tenantId, _principalId, scopeType, scopeId) {
+      const targets = snapshot.administrationReach?.[scopeType] ?? [];
+      return scopeId === undefined || scopeId === null ? targets.length > 0 : targets.includes(scopeId);
+    },
     async linkedEmployeeId() { return snapshot.employeeId; },
     async hasWorkEligibility(_tenantId, _employeeId, qualificationCode) { return eligibility.has(qualificationCode); },
     async hasOperationalScope(_tenantId, _employeeId, scopeType, scopeId) {

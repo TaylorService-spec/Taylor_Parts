@@ -191,20 +191,10 @@ async function requireAssignee(
   }
 }
 
-/**
- * The QUEUE reach of reorder.request.read: the operating-company keys whose REORDER_QUEUE Operational Scope the caller's
- * Employee currently holds. The scope is COMPANY-KEYED (migration 1761696000000: "a queue is always some company's
- * queue"), so reach is a set of keys, never a yes/no -- a scope for one company never reaches another's queue. Read
- * through the governed dimension reader (eosOps/contextualAuthorization.ts), the one module that knows the scope table.
- * A caller with no linked Employee reaches no queue.
- */
-export async function queueReachKeys(db: Pick<PoolClient, "query">, actor: ReorderActor): Promise<readonly string[]> {
-  const reader = postgresPrincipalDimensionReader(db);
-  const employeeId = await reader.linkedEmployeeId(actor.tenantId, actor.principalId);
-  if (employeeId === null) return [];
-  return (await reader.listOperationalScopes(actor.tenantId, employeeId))
-    .filter((x) => x.scopeType === REORDER_QUEUE_SCOPE).map((x) => x.scopeId);
-}
+// THE QUEUE REACH lives in reorderQueueReach.ts (DECISIONS #224): the Employee's REORDER_QUEUE scopes plus protected
+// Administrator standing. Re-exported for the modules that already import it from here.
+export { queueReachKeys } from "./reorderQueueReach.js";
+import { queueReachKeys } from "./reorderQueueReach.js";
 
 async function requireQueueReach(db: Pick<PoolClient, "query">, actor: ReorderActor): Promise<readonly string[]> {
   const keys = await queueReachKeys(db, actor);
