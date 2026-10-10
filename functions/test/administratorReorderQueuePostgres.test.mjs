@@ -26,8 +26,9 @@ test("Administrator reaches the Reorder queue through the governed REORDER_QUEUE
   const { postgresGrantConditionProvider } = require("../lib/eosOps/entitledActionAuthority.js");
 
   const administrator = await person("uid-admrq-administrator", ["admin"], { id: "e-admrq-admin", name: "Casey Admin" });
-  // A SECOND principal holding admin.employeeOperationalScope.write. (In nonprod the seed issues the Administrator's scope
-  // as the Owner persona, which holds the same capability; the protected owner Role cannot be staffed in this fixture.)
+  // A SECOND principal holding admin.employeeOperationalScope.write. (Since #224/#228 the nonprod seed issues the
+  // Administrator NO scope -- the protected Administrator reaches queues by standing -- but the governed model proven here,
+  // a scope issued by a different authorized principal and self-scoping refused, is unchanged.)
   const otherAdministrator = await person("uid-admrq-other-admin", ["admin"], { id: "e-admrq-other", name: "Morgan Other" });
   const technician = await person("uid-admrq-tech", ["technician"], { id: "e-admrq-tech", name: "Sofia Tech", technician: true });
   const nobody = await person("uid-admrq-nobody", [], { id: "e-admrq-nobody", name: "Gen Employee" });

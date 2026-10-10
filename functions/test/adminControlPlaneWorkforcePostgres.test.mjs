@@ -39,14 +39,19 @@ test("static: the workforce orchestrator writes no SQL and admits Principals onl
   assert.deepEqual([...new Set(m.employees.map((e) => e.jobRoleId))].sort(), [...vocabulary.CANONICAL_JOB_ROLE_IDS].sort(), "all 16 canonical Job Roles, no others");
   assert.equal(m.employees.filter((e) => e.jobRoleId === "service-technician").length, 10);
   assert.equal(m.trucks.length, 10);
-  // Owner ruling 2026-10-09 (Administrator full access): the Administrator's Employee holds the company-keyed REORDER_QUEUE
-  // scope for every KEYED company (taylor; nonprod Ventana is unkeyed, so the writer would refuse it) -- issued by the Owner
-  // persona, never self-assigned -- and still NO Work Eligibility and NO WAREHOUSE scope (ADMIN_IMPLIES_NO_WORK_ELIGIBILITY;
-  // warehouse reach is decision item #2038).
+  // DECISIONS #224/#228: the protected Administrator reaches Reorder queues and warehouses by STANDING (administration reach),
+  // so the manifest declares NO Operational Scope for the Administrator (the #222 REORDER_QUEUE:taylor entry is retired; #2038
+  // is superseded), no truck (no MOBILE scope), and NO Work Eligibility (ADMIN_IMPLIES_NO_WORK_ELIGIBILITY).
   const administrator = m.employees.find((e) => e.employeeId === m.actors.workforceAdministration);
-  assert.deepEqual(administrator.scopes.map((x) => `${x.scopeType}:${x.scopeId}`).sort(), ["REORDER_QUEUE:taylor"]);
+  assert.ok(administrator, "the workforce administration actor is a manifest Employee");
+  assert.deepEqual(administrator.scopes, [], "the Administrator has no manifest Operational Scope");
+  assert.equal(administrator.truck, undefined, "the Administrator has no truck, hence no MOBILE scope");
   assert.deepEqual(administrator.workEligibility, []);
-  assert.match(s, /scopeActor = e\.employeeId === MANIFEST\.actors\.workforceAdministration \? OWNER : ADMIN/, "the Administrator's own scopes are issued by the Owner persona");
+  assert.match(administrator.scopesNote, /by STANDING/);
+  // ... and the seed never issues one: it refuses a manifest that declares one, and the owner-as-issuer rule is gone.
+  assert.match(s, /e\.employeeId === MANIFEST\.actors\.workforceAdministration && scopes\.length > 0\) \{\s*throw new Error/, "the seed refuses an Administrator Operational Scope");
+  assert.doesNotMatch(s, /scopeActor/, "no owner-as-issuer scope rule remains");
+  assert.match(s, /write\(`scope \$\{e\.employeeId\} \$\{s\.scopeType\}:\$\{s\.scopeId\}`, ADMIN, WF, "assignEmployeeOperationalScope"/, "every seeded scope is issued by the Administrator, never for itself");
   assert.equal(m.employees.filter((e) => e.securityRoles.some((r) => r.role === "salesManager")).length, 2);
   assert.ok(m.employees.every((e) => !e.securityRoles.some((r) => r.role === "salesManager")) === false && !vocabulary.CANONICAL_JOB_ROLE_IDS.includes("sales-manager"), "Sales Manager is a Security Role, never a Job Role");
 });
