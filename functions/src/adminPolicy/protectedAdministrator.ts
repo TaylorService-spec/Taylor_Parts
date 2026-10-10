@@ -80,7 +80,7 @@ export const PROTECTED_ADMINISTRATOR_EXCLUSIONS: ReadonlySet<string> = new Set([
  *                                  VOID alone; CORRECTED re-receives through inventory.stock.receive, never implied, and
  *                                  the cost-evidence supply path does not opt into reach
  *   ownership.handoff.correct      administrative ownership-handoff sources, in addition to the record's edit authority
- * NEVER here: the O1 WORKER keys (administrationReach.ADMINISTRATOR_EXECUTION_CAPABILITIES -- pinned disjoint by test) and
+ * NEVER here: the O1 WORKER keys (eosOps ADMINISTRATOR_EXECUTION_CAPABILITIES -- pinned disjoint by test) and
  * every O1 KEEP key (business approval and financial execution keep their existing grants).
  */
 export const PROTECTED_ADMINISTRATOR_MANAGEMENT_CAPABILITIES: ReadonlySet<string> = new Set([
