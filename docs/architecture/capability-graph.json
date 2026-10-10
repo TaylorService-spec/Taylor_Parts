@@ -1675,6 +1675,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/protectedAdministrator.ts",
           "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosOps/reorderAssignmentAuthority.ts"
@@ -1686,7 +1687,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1848,6 +1849,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/protectedAdministrator.ts",
           "functions/src/adminPolicy/recordedActivationDecisionsDelta.ts",
           "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
@@ -1860,7 +1862,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 8,
+        "serverReferenceCount": 9,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1882,6 +1884,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/protectedAdministrator.ts",
           "functions/src/adminPolicy/recordedActivationDecisionsDelta.ts",
           "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
@@ -1894,7 +1897,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 8,
+        "serverReferenceCount": 9,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1916,6 +1919,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/protectedAdministrator.ts",
           "functions/src/adminPolicy/recordedActivationDecisionsDelta.ts",
           "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
@@ -1928,7 +1932,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 8,
+        "serverReferenceCount": 9,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2017,6 +2021,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/protectedAdministrator.ts",
           "functions/src/adminPolicy/recordedActivationDecisionsDelta.ts",
           "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
@@ -2031,7 +2036,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/access/shellCapabilityGates.js"
         ],
-        "serverReferenceCount": 9,
+        "serverReferenceCount": 10,
         "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },

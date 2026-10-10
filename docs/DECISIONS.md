@@ -7905,3 +7905,27 @@ A direct Principal grant of a reserved capability is refused outright. Verificat
 **Census before change (nonprod, read-only, 2026-10-10).** Holders by grant are `owner` and `generalManager` only, through 3 principals, all synthetic fixtures. There were 0 conflicts. Nothing was revoked, and nothing is revoked automatically.
 
 **Boundary.** No migration, capability or grant change.
+
+## #227 — The nine approved Administrator management actions by standing — PR-4b (2026-10-10)
+
+(Implements the Owner O1 business-action ruling, 2026-10-09, ADMIN class, with G2 and G3. Extends #223's implied set; #224 reach is unchanged.)
+
+`protectedAdministrator.PROTECTED_ADMINISTRATOR_MANAGEMENT_CAPABILITIES` holds exactly nine keys. Standing implies them although they are not ADMIN_ACTION / READ:
+
+| Key | Scope |
+|---|---|
+| `equipment.record.manage` | The Equipment register. |
+| `rental.fleet.manage` | The Rental fleet. |
+| `reorder.request.approve` / `.reject` / `.cancel` / `.assign` | Within the company queues standing reaches (#224). |
+| `reorder.purchaseOrder.void` | G3: ORDERED only, stated reason, single void, the PO's own company queue, audited. These are the command's and repository's existing rules. |
+| `inventory.receipt.correct` | G2: VOID / reversal only. Reach admits it at the correction call site for VOID alone. CORRECTED re-receives through `inventory.stock.receive`, which is never implied. The cost-evidence supply path does not opt into reach. |
+| `ownership.handoff.correct` | Administrative handoff sources, in addition to the record's own edit authority. |
+
+**Never implied:**
+- the O1 WORKER keys, `administrationReach.ADMINISTRATOR_EXECUTION_CAPABILITIES` (pinned disjoint by test);
+- every O1 KEEP key;
+- the reserved `salesAgreement.tradeIn.approve` (G7, #226).
+
+Changing the nine is an Owner decision. Existing grants are retained (O3).
+
+**Boundary.** No migration, no grant, no capability change.
