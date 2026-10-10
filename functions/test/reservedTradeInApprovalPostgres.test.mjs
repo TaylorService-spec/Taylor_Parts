@@ -49,7 +49,7 @@ test("verification reports -- never revokes -- a reserved capability held outsid
   const kinds = v.drift.map((d) => `${d.kind}:${d.roleKey}`).sort();
   assert.ok(kinds.includes("FORBIDDEN_PRESENT:salesManager"), kinds.join(","));
   assert.ok(kinds.includes("FORBIDDEN_PRINCIPAL_HOLDING:principal:p-direct"), kinds.join(","));
-  assert.ok(!kinds.some((k) => k.includes("p-gm")), "a reserved Role holder is not drift");
+  assert.ok(kinds.includes("FORBIDDEN_PRINCIPAL_HOLDING:principal:p-gm"), "a stored DIRECT grant is drift even for a reserved Role holder");
   assert.ok(!kinds.some((k) => k.endsWith(":owner") || k.endsWith(":generalManager")));
 });
 
@@ -93,6 +93,11 @@ test("PostgreSQL: grants refused outside the reservation; the decision and offer
     const { rows } = await q(`SELECT 1 FROM eos_policy.principal_capabilities pc JOIN eos_policy.capabilities c ON c.id = pc.capability_id
       WHERE pc.tenant_id = $1 AND pc.principal_id = $2 AND c.key = $3`, [T, sm.principalId, KEY]);
     assert.equal(rows.length, 0, "nothing was written");
+  });
+
+  await t.test("a custom Role may not take a reserved holder's key", async () => {
+    const r = await admin("createRole", { key: "generalManager", name: "Shadow GM", reason: "try the reservation by key" });
+    assert.equal(r.ok, false);
   });
 
   await t.test("effective authorization: a generalManager passes; a pre-existing rogue grant and Administrator standing do not", async () => {

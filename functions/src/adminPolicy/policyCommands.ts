@@ -492,6 +492,13 @@ export async function createRole(
   if (PROTECTED_ROLE_KEYS.includes(key)) {
     throw new PolicyValidationError(`"${key}" is a protected system role key`);
   }
+  // Nor a RESERVED capability's holder key (Owner G7, #226): a CUSTOM Role keyed `generalManager` in a tenant without one
+  // would otherwise satisfy the reservation by its key alone (security review, PR-4a).
+  for (const [capabilityKey, reserved] of RESERVED_CAPABILITY_HOLDERS) {
+    if (reserved.roleKeys.includes(key)) {
+      throw new PolicyValidationError(`"${key}" is a reserved holder of ${capabilityKey} and cannot be created as a custom role`);
+    }
+  }
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     const role = await tx.createRole({

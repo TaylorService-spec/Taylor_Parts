@@ -389,8 +389,10 @@ export function verifyTenantAuthority(input: {
     for (const capabilityKey of ownerPrincipalViolations(principal.roleKeys, effective)) {
       forbiddenPrincipalHoldings.push({ principalId: principal.principalId, capabilityKey });
     }
+    // A reserved capability is NEVER a direct grant (refused on write), so every stored one is reported -- a reserved
+    // Role holder's included (G7 census first; nothing revoked).
     for (const capabilityKey of principal.directCapabilityKeys) {
-      if (!reservedCapabilityAdmits(capabilityKey, principal.roleKeys)) forbiddenPrincipalHoldings.push({ principalId: principal.principalId, capabilityKey });
+      if (RESERVED_CAPABILITY_HOLDERS.has(capabilityKey)) forbiddenPrincipalHoldings.push({ principalId: principal.principalId, capabilityKey });
     }
   }
   const drift = [
