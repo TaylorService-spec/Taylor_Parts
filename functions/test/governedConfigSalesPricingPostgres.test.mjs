@@ -263,7 +263,9 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
     assert.deepEqual(cfg.supportedLanguages.map((l) => l.languageTag), ["en-US", "es-US"]);
     const audits = await q(`SELECT target_id, before, after, actor_uid FROM eos_policy.audit_events WHERE tenant_id=$1 AND action='admin.systemConfiguration.set' ORDER BY occurred_at`, [TENANT]);
     assert.deepEqual(audits.rows.map((a) => a.target_id), ["taylor:businessTimeZone", "ventana:businessTimeZone", "ventana:defaultLanguage"]);
-    assert.deepEqual([audits.rows[2].before, audits.rows[2].after, audits.rows[2].actor_uid], [{ defaultLanguage: "en-US" }, { defaultLanguage: "es-US" }, sysAdminP.principalId]);
+    // The writer holds protected Administrator standing, so the event names it (DECISIONS #225 / PR-3).
+    assert.deepEqual([audits.rows[2].before, audits.rows[2].after, audits.rows[2].actor_uid], [{ defaultLanguage: "en-US" },
+      { defaultLanguage: "es-US", authorizedBy: { standing: "PROTECTED_ADMINISTRATOR", ruling: "Owner 2026-10-09 (DECISIONS #223)" } }, sysAdminP.principalId]);
   });
 
   await t.test("G / H. accounting destinations through Administration: configure, activate, deactivate, history, company-separated", async () => {
