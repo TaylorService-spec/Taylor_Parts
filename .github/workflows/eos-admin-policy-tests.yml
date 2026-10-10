@@ -634,6 +634,9 @@ on:
       - "functions/src/eosWorkforce/migration/partsAssignabilityExclusionReport.ts"
       - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
       - "field-ops-app-vite/test/employeeSecurityRolesScope.test.jsx"
+      - "field-ops-app-vite/test/employeeAdministratorAppointment.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/EmployeeAdministratorAppointment.jsx"
+      - "field-ops-app-vite/src/modules/administration/administratorAppointmentModel.js"
       - "field-ops-app-vite/test/eosSessionAuthContext.test.jsx"
       - "field-ops-app-vite/src/auth/**"
       # LANE GA (2026-09-26): governed scope values + the SALES_CHANNEL scope -- tenant sales channel activation, the
@@ -1171,6 +1174,9 @@ on:
       - "functions/src/eosWorkforce/migration/partsAssignabilityExclusionReport.ts"
       - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
       - "field-ops-app-vite/test/employeeSecurityRolesScope.test.jsx"
+      - "field-ops-app-vite/test/employeeAdministratorAppointment.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/EmployeeAdministratorAppointment.jsx"
+      - "field-ops-app-vite/src/modules/administration/administratorAppointmentModel.js"
       - "field-ops-app-vite/test/eosSessionAuthContext.test.jsx"
       - "field-ops-app-vite/src/auth/**"
       # LANE GA (2026-09-26): governed scope values + the SALES_CHANNEL scope -- tenant sales channel activation, the
@@ -1537,7 +1543,7 @@ jobs:
       # listSupportedAssignmentScopes says the runtime decides, sends scope only when chosen, degrades to global-only
       # without the vocabulary; Effective Access renders each scope-qualified source.
       - name: Security Role assignment scope -- client (vitest + jsdom)
-        run: npx vitest run test/employeeSecurityRolesScope.test.jsx
+        run: npx vitest run test/employeeSecurityRolesScope.test.jsx test/employeeAdministratorAppointment.test.jsx
         working-directory: field-ops-app-vite
 
       # EOS IDENTITY BOUNDARY (Controller ruling 2026-09-29): the client treats a valid EOS session as signed in and sends

@@ -83,13 +83,22 @@ describe("Employee > Security Roles: assignment scope from the server", () => {
     const api = makeApi();
     render(<EmployeeSecurityRoles api={api} principalId="pr-1" />);
     const roleSelect = await screen.findByRole("combobox", { name: "Security Role to assign" });
-    // Sales Manager is held globally -> not offered again; GM (held scoped) and Administrator are.
-    expect(within(roleSelect).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a Security Role…", "General Manager", "Administrator"]);
-    fireEvent.change(roleSelect, { target: { value: "role-admin" } });
+    // Sales Manager is held globally -> not offered again; GM (held scoped) is. The protected Administrator is never
+    // offered here: it has its own checkbox (DECISIONS #223, PR-6).
+    expect(within(roleSelect).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a Security Role…", "General Manager"]);
+    cleanup();
+    // With Sales Manager not held, it is offered, and its refused scope is shown disabled with the server's code.
+    const notHeld = makeApi({ listPrincipalRoleAssignments: vi.fn(async (principalId) => ({ ok: true,
+      data: { principalId, accessVersion: 5, assignments: HELD.filter((a) => a.id !== "asg-2") } })) });
+    render(<EmployeeSecurityRoles api={notHeld} principalId="pr-1" />);
+    const select = await screen.findByRole("combobox", { name: "Security Role to assign" });
+    await waitFor(() => expect(within(select).getAllByRole("option").map((o) => o.textContent))
+      .toEqual(["Choose a Security Role…", "General Manager", "Sales Manager"]));
+    fireEvent.change(select, { target: { value: "role-sales" } });
     await waitFor(() => expect(document.querySelector('[data-assignment-scope-picker="READY"]')).toBeTruthy());
     const scopeOptions = within(screen.getByRole("combobox", { name: "Assignment scope" })).getAllByRole("option");
     expect(scopeOptions.map((o) => [o.textContent, o.disabled])).toEqual([
-      ["All (Global)", false], ["Company — not available for this Role (SCOPE_AMBIGUOUS_ADMINISTRATION)", true]]);
+      ["All (Global)", false], ["Company — not available for this Role (SCOPE_NOT_EVALUABLE_FOR_ROLE)", true]]);
     // The unconsumed scope types are listed with the SERVER's reason, never offered.
     expect(document.querySelector("[data-unsupported-scopes]").textContent).toMatch(/Business Unit \(no PostgreSQL gate supplies a record's business unit\)/);
     expect(document.querySelector("[data-unsupported-scopes]").textContent).toMatch(/Warehouse/);
