@@ -22,6 +22,11 @@
 // admin.roleAssignment.write check. Which scopes a Role may take, which values a scope may take, and what a
 // scoped assignment would confer are ALL the server's listSupportedAssignmentScopes answer, drawn as returned.
 // When the server does not serve that read, only a global assignment is offered -- never a local scope list.
+//
+// THE ADMINISTRATOR IS NOT IN THIS PICKER (DECISIONS #223, PR-6). The designated protected Administrator Role (key
+// `admin`, protected) is appointed and removed ONLY through its own checkbox (EmployeeAdministratorAppointment), which
+// sends a global assignment and nothing else. Offering it here as well would let the two controls disagree and would
+// offer scopes the server refuses for that Role. Both controls draw from the SAME assignments read below.
 import { useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { adminControlPlaneClient, refusalText } from "../../services/adminControlPlaneClient.js";
@@ -30,10 +35,23 @@ import { ReadState } from "./ObjectActionSecurity.jsx";
 import { Outcome, ReasonField } from "./GrantControls.jsx";
 import { statedReason } from "./controlPlaneModel.js";
 import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
+import EmployeeAdministratorAppointment from "./EmployeeAdministratorAppointment.jsx";
+import { designatedAdministratorRole } from "./administratorAppointmentModel.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
 const GLOBAL = "global";
+const ROLE_ASSIGNMENT_WRITE_CAPABILITY = "admin.roleAssignment.write";
+
+/** The trusted feed's positive decision for one id; anything else (absent, throwing, not a function) is false. */
+function holdsFeedCapability(hasCapability, id) {
+  if (typeof hasCapability !== "function") return false;
+  try {
+    return hasCapability(id) === true;
+  } catch {
+    return false;
+  }
+}
 
 /** The server's scope vocabulary, or null. Nothing here is invented when it is absent or unreadable. */
 function scopeVocabularyFrom(data) {
@@ -79,7 +97,12 @@ function HeldAssignmentsTable({ rows, nameOf, scopeLabel, valueLabel, onRemove }
   );
 }
 
-export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, principalId, employeeName = "this Employee" }) {
+export default function EmployeeSecurityRoles({
+  api = adminControlPlaneClient, principalId, employeeName = "this Employee", viewerIsSelf = null, hasCapability,
+}) {
+  // The page's existing Role-assignment signal (the trusted feed's admin.roleAssignment.write decision), used ONLY to
+  // offer the Administrator checkbox. Offer only: the server re-checks every appointment.
+  const canAssignRoles = holdsFeedCapability(hasCapability, ROLE_ASSIGNMENT_WRITE_CAPABILITY);
   const assignments = useControlPlaneRead(principalId ? () => api.listPrincipalRoleAssignments(principalId) : null, `assignments:${principalId}`);
   const roles = useControlPlaneRead(principalId ? () => api.listRoles() : null, "roles");
   const scopes = useControlPlaneRead(principalId && typeof api.listSupportedAssignmentScopes === "function"
@@ -92,19 +115,35 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const roleList = Array.isArray(roles.data) ? roles.data : [];
+  const readRows = Array.isArray(assignments.data?.assignments) ? assignments.data.assignments : null;
+  const administrator = (
+    <EmployeeAdministratorAppointment
+      api={api} principalId={principalId} employeeName={employeeName}
+      roles={Array.isArray(roles.data) ? roles.data : null}
+      rows={readRows}
+      rolesStatus={Array.isArray(roles.data) ? "ready" : roles.status}
+      rowsStatus={assignments.status === "loading" ? "loading" : readRows ? "ready" : "failed"}
+      reload={assignments.reload}
+      viewerIsSelf={viewerIsSelf} canAssignRoles={canAssignRoles}
+    />
+  );
+
   if (!principalId) {
     return (
-      <p className="fo-muted" data-employee-security-roles="NO_PRINCIPAL">
-        No governed Principal is linked to this Employee, so there is no Security Role to administer.
-      </p>
+      <>
+        {administrator}
+        <p className="fo-muted" data-employee-security-roles="NO_PRINCIPAL">
+          No governed Principal is linked to this Employee, so there is no Security Role to administer.
+        </p>
+      </>
     );
   }
-  if (!assignments.data) return <ReadState read={assignments} what="this Employee's Security Roles" />;
+  if (!assignments.data) return <>{administrator}<ReadState read={assignments} what="this Employee's Security Roles" /></>;
 
-  const rows = Array.isArray(assignments.data?.assignments) ? assignments.data.assignments : null;
-  if (!rows) return <p className="fo-warning" role="alert">The server returned a Role-assignment payload this screen cannot read, so nothing is shown.</p>;
+  const rows = readRows;
+  if (!rows) return <>{administrator}<p className="fo-warning" role="alert">The server returned a Role-assignment payload this screen cannot read, so nothing is shown.</p></>;
 
-  const roleList = Array.isArray(roles.data) ? roles.data : [];
   const vocabulary = scopes.status === "ready" ? scopeVocabularyFrom(scopes.data) : null;
   const scopeTypeEntry = (type) => vocabulary?.scopeTypes.find((s) => s.scopeType === type) ?? null;
   const scopeLabel = (type) => (type === GLOBAL || !type ? "All (Global)" : scopeTypeEntry(type)?.label ?? titleCase(type));
@@ -112,7 +151,9 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
   const nameOf = (a) => identifierLabel(a.roleKey ?? a.roleId, roleList.find((r) => r.id === a.roleId)?.name);
   const active = rows.filter((a) => a.status === "active");
   const heldGlobally = new Set(active.filter((a) => a.scopeType === GLOBAL && !a.scopeValue).map((a) => a.roleId));
-  const assignable = roleList.filter((r) => !heldGlobally.has(r.id));
+  // The designated Administrator is appointed only through its own checkbox above -- never from this picker.
+  const administratorRoleId = designatedAdministratorRole(roleList)?.id ?? null;
+  const assignable = roleList.filter((r) => !heldGlobally.has(r.id) && r.id !== administratorRoleId);
   const reasonText = statedReason(reason);
 
   // The chosen Role's scopes, exactly as the server states them.
@@ -150,6 +191,7 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
 
   return (
     <div data-employee-security-roles={active.length}>
+      {administrator}
       {assignments.status === "loading" ? <p className="fo-muted" role="status">Re-reading from the server…</p> : null}
       {active.length === 0 ? (
         <p className="fo-muted">{`${employeeName} holds no Security Role in the governed policy store.`}</p>

@@ -133,7 +133,9 @@ import {
 // same Workforce read says hold admin.employeeJobRole.write (EmployeeJobRoleControl), and its own re-read after a change.
 //
 // USER ACCESS IS STILL THE FEED. `hasCapability` (the app-wide Firebase feed) is passed ONLY to the account and Role
-// actions (UserAccessActions), whose authorities still live there. It decides nothing about Workforce controls.
+// actions -- UserAccessActions, and the Security Roles section for its admin.roleAssignment.write offer (the
+// Administrator checkbox, DECISIONS #223 PR-6) -- whose authorities still live there. It decides nothing about
+// Workforce controls, and this page never asks it anything itself.
 //
 // NO OPTIMISTIC STATE. After a save that wrote something the form closes, the outcome is stated in words, and
 // record.reload() re-reads EMP-RT-01. A refused Save saved nothing and says so; there is no partial save. The page shows
@@ -189,6 +191,12 @@ export default function UserDetail({
   // Bumped after a direct-exception change so the Effective Access explanation re-reads the server's answer.
   const [accessReadKey, setAccessReadKey] = useState(0);
   const credential = usePrincipalCredential(principalId, { policyCall });
+  // ADMINISTRATOR CHECKBOX (DECISIONS #223, PR-6) -- offer-only signals; the server decides every appointment.
+  // Self: the linked Principal's credential subject against the signed-in uid (the same comparison the account actions
+  // make). Unknown (null) while the credential is still being read; no credential, or an unreadable one, is not "self".
+  const viewerIsSelf = credential.status === CREDENTIAL_STATE.RESOLVED
+    ? credential.subject === (user?.uid ?? null)
+    : credential.status === CREDENTIAL_STATE.LOADING || (credential.status === CREDENTIAL_STATE.IDLE && principalId) ? null : false;
 
   // ── GOVERNED CHANGE HISTORY (EMP-RT-H1): bumped after anything on this page writes the Employee.
   const [governedHistoryKey, setGovernedHistoryKey] = useState(0);
@@ -324,7 +332,10 @@ export default function UserDetail({
             Security Roles are access. They are not Job Roles and are never used as one.
           </p>
           <PrincipalGate linked={linked} principalLink={principalLink}>
-            <EmployeeSecurityRoles api={controlPlane} principalId={principalId} employeeName={name} />
+            <EmployeeSecurityRoles
+              api={controlPlane} principalId={principalId} employeeName={name}
+              viewerIsSelf={viewerIsSelf} hasCapability={hasCapability}
+            />
           </PrincipalGate>
         </RuledSection>
         {/* EFFECTIVE ACCESS: the server evaluator's answer for the linked Principal -- never computed here. It carries

@@ -1290,14 +1290,17 @@ describe("finding #17: Workforce controls are offered from the PostgreSQL capabi
     expect(capabilityReads(workforce)).toHaveLength(2);
   });
 
-  it("static: UserDetail no longer asks the feed about a Workforce id; only UserAccessActions receives hasCapability", async () => {
+  // PR-6 (DECISIONS #223): the Security Roles section also receives the feed, for its admin.roleAssignment.write offer
+  // (the Administrator checkbox). UserDetail itself still asks the feed nothing.
+  it("static: UserDetail no longer asks the feed about a Workforce id; only UserAccessActions and Security Roles receive hasCapability", async () => {
     const { readFileSync } = await import("node:fs");
     const path = await import("node:path");
     const src = readFileSync(path.resolve(process.cwd(), "src/modules/administration/UserDetail.jsx"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
     expect(src).not.toMatch(/hasCapability\(/);
     expect(src).not.toMatch(/holdsCapability/);
-    expect([...src.matchAll(/hasCapability=\{hasCapability\}/g)]).toHaveLength(2);
+    expect([...src.matchAll(/hasCapability=\{hasCapability\}/g)]).toHaveLength(3);
     expect(src).toMatch(/<UserAccessActions [^>]*hasCapability=\{hasCapability\}/);
+    expect(src).toMatch(/<EmployeeSecurityRoles[^>]*hasCapability=\{hasCapability\}/);
     expect(src).toMatch(/useWorkforceCapabilities\(\{ client: workforce, principalKey: user\?\.uid \?\? null \}\)/);
   });
 });
