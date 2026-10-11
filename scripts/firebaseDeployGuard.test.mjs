@@ -39,8 +39,10 @@ test("production is refused without the commit-bound confirmation, for every tar
   }
 });
 
-test("a confirmation for another commit, another project or a bare yes is refused", () => {
-  for (const confirmation of [`taylor-parts@${"f".repeat(40)}`, `eos-platform-sandbox@${SHA}`, "taylor-parts", "yes", "1"]) {
+test("a confirmation for another commit, another project, another target, no target, or a bare yes is refused", () => {
+  for (const confirmation of [`taylor-parts@${"f".repeat(40)}:functions`, `eos-platform-sandbox@${SHA}:functions`,
+    `taylor-parts@${SHA}:hosting`, `taylor-parts@${SHA}`, `taylor-parts@${SHA}:functions,hosting`, `taylor-parts@${SHA}:*`,
+    "taylor-parts", "yes", "1"]) {
     const d = decide({ projectId: "taylor-parts", confirmation });
     assert.equal(d.allowed, false, confirmation);
     assert.equal(d.code, "PRODUCTION_CONFIRMATION_MISMATCH");
@@ -48,13 +50,13 @@ test("a confirmation for another commit, another project or a bare yes is refuse
 });
 
 test("production with the exact confirmation for this commit is the governed path", () => {
-  const d = decide({ projectId: "taylor-parts", confirmation: productionConfirmation("taylor-parts", SHA) });
+  const d = decide({ projectId: "taylor-parts", confirmation: productionConfirmation("taylor-parts", SHA, "functions") });
   assert.deepEqual([d.allowed, d.code], [true, "PRODUCTION_CONFIRMED"]);
 });
 
 test("production refuses when the deployed commit cannot be identified", () => {
   for (const headSha of [null, "", "HEAD", "abc123"]) {
-    const d = decide({ projectId: "taylor-parts", confirmation: `taylor-parts@${headSha}`, headSha });
+    const d = decide({ projectId: "taylor-parts", confirmation: `taylor-parts@${headSha}:functions`, headSha });
     assert.deepEqual([d.allowed, d.code], [false, "PRODUCTION_NO_COMMIT"], String(headSha));
   }
 });
@@ -91,6 +93,13 @@ test("every registry production project is refused, not only the floor", () => {
 
 test("an unguarded target name is refused rather than waved through", () => {
   assert.equal(decide({ projectId: "eos-platform-sandbox", target: "database" }).code, "UNKNOWN_TARGET");
+});
+
+test("ONE confirmation authorizes ONE target: a confirmed functions deploy that forgot --only is refused everywhere else", () => {
+  const confirmation = productionConfirmation("taylor-parts", SHA, "functions");
+  for (const target of DEPLOY_TARGETS) {
+    assert.equal(decide({ projectId: "taylor-parts", target, confirmation }).allowed, target === "functions", target);
+  }
 });
 
 // ---------------------------------------------------------------- 2. wiring
@@ -160,7 +169,7 @@ test("every runbook that deploys names its project explicitly, and production ca
       const window = lines.slice(i, i + 3).join(" ");
       assert.match(window, /--project/, `${relative(REPO, file)}:${i + 1} deploys without --project`);
       if (/taylor-parts|\$PROJECT_ID/.test(window) && /_prodRelease/.test(file)) {
-        assert.match(code, new RegExp(`^${CONFIRMATION_ENV}="\\$PROJECT_ID@\\$\\(git rev-parse HEAD\\)" firebase deploy`),
+        assert.match(code, new RegExp(`^${CONFIRMATION_ENV}="\\$PROJECT_ID@\\$\\(git rev-parse HEAD\\):(\\w+)" firebase deploy --only \\1 `),
           `${relative(REPO, file)}:${i + 1} production deploy without the scoped confirmation`);
       }
     });
@@ -171,9 +180,9 @@ test("every runbook that deploys names its project explicitly, and production ca
 
 // ---------------------------------------------------------------- 3. governed procedures
 test("deployHosting carries the confirmation for production only, and strips an inherited one otherwise", () => {
-  const inherited = { [CONFIRMATION_ENV]: `taylor-parts@${SHA}`, PATH: "/bin" };
+  const inherited = { [CONFIRMATION_ENV]: `taylor-parts@${SHA}:firestore`, PATH: "/bin" };
   const prod = deployEnvironment({ role: "production", projectId: "taylor-parts" }, inherited, SHA);
-  assert.equal(prod[CONFIRMATION_ENV], `taylor-parts@${SHA}`);
+  assert.equal(prod[CONFIRMATION_ENV], `taylor-parts@${SHA}:hosting`, "an inherited firestore confirmation must not survive into a hosting deploy");
   const sandbox = deployEnvironment({ role: "sandbox", projectId: "eos-platform-sandbox" }, inherited, SHA);
   assert.equal(sandbox[CONFIRMATION_ENV], undefined);
   assert.equal(sandbox.PATH, "/bin");
@@ -226,12 +235,28 @@ e2e("the repository default (demo project) is rejected by the real hook runner",
 });
 
 e2e("a leftover confirmation for another commit is rejected by the real hook runner", async () => {
-  await assert.rejects(runHook("firestore", { project: "taylor-parts", only: "firestore:rules", env: { [CONFIRMATION_ENV]: `taylor-parts@${"e".repeat(40)}` } }), /predeploy error/);
+  await assert.rejects(runHook("firestore", { project: "taylor-parts", only: "firestore:rules", env: { [CONFIRMATION_ENV]: `taylor-parts@${"e".repeat(40)}:firestore` } }), /predeploy error/);
+});
+
+e2e("a confirmation LEFT IN THE SHELL for this commit's functions deploy cannot carry Rules, indexes, storage or hosting", async () => {
+  if (!HEAD) return;
+  const env = { [CONFIRMATION_ENV]: `taylor-parts@${HEAD}:functions` };
+  for (const [target, only] of [["firestore", "firestore:rules"], ["firestore", "firestore:indexes"], ["storage", "storage"], ["hosting", "hosting"]]) {
+    await assert.rejects(runHook(target, { project: "taylor-parts", only, env }), /predeploy error/, only);
+  }
+});
+
+e2e("a confirmed production deploy that FORGOT --only is stopped at the first unconfirmed target's hook", async () => {
+  if (!HEAD) return;
+  const env = { [CONFIRMATION_ENV]: `taylor-parts@${HEAD}:functions` };
+  await runHook("functions", { project: "taylor-parts", only: undefined, env });
+  await assert.rejects(runHook("firestore", { project: "taylor-parts", only: undefined, env }), /firestore predeploy error/);
 });
 
 e2e("the governed paths pass the real hook runner: sandbox, and production confirmed for HEAD", async () => {
   await runHook("functions", { project: "eos-platform-sandbox", only: "functions" });
-  if (HEAD) await runHook("hosting", { project: "taylor-parts", only: "hosting", env: { [CONFIRMATION_ENV]: `taylor-parts@${HEAD}` } });
+  await runHook("functions", { project: "eos-platform-certification", only: "functions" });
+  if (HEAD) await runHook("hosting", { project: "taylor-parts", only: "hosting", env: { [CONFIRMATION_ENV]: `taylor-parts@${HEAD}:hosting` } });
 });
 
 test("the guard file exists where firebase.json points", () => {

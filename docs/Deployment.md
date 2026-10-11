@@ -43,11 +43,11 @@ It also weakens a premise the default-autonomy model rests on: that repo-only me
 
 - **refuses** a missing project, a `demo-` project, and any project `config/environments.json` does not declare;
 - **allows** declared non-production projects (`eos-platform-sandbox`, `eos-platform-certification`);
-- **refuses a production project** (registry role `production`, and always `taylor-parts`) unless `EOS_FIREBASE_PRODUCTION_DEPLOY=<projectId>@<full HEAD sha>` is set for that one command.
+- **refuses a production project** (registry role `production`, and always `taylor-parts`) unless `EOS_FIREBASE_PRODUCTION_DEPLOY=<projectId>@<full HEAD sha>:<target>` is set for that one command. The confirmation names ONE target (`functions`, `hosting`, `firestore` or `storage`). A confirmed Functions deploy that forgot `--only` is still refused at the firestore, storage and hosting hooks. `firestore` covers both Rules and indexes, because the CLI hook cannot tell them apart.
 
 This covers a stale `firebase use taylor-parts` on an operator machine, which overrides `.firebaserc`. `npm run deploy` in `functions/` is retired and refuses.
 
-The governed procedures set the confirmation themselves: `scripts/_prodRelease.run.sh`, `scripts/deployHosting.mjs --allow-production`, and the commands below. Never export it in a shell profile. Because it is bound to the commit, a leftover value refuses a different checkout.
+The governed procedures set the confirmation themselves: `scripts/_prodRelease.run.sh`, `scripts/deployHosting.mjs --allow-production`, and the commands below. Never export it in a shell profile. Because it is bound to the commit and the target, a leftover value refuses a different checkout and every other target. The residual is narrow: an EXPORTED value still authorizes the same target at the same commit.
 
 Not covered by the hook: CLI commands that are not `deploy` (`functions:delete`, `firestore:delete`, `hosting:disable`). Those need an explicit `--project` now that the default is a demo project. Agent sessions are additionally denied them in `.claude/settings.json`.
 
@@ -57,7 +57,7 @@ Not covered by the hook: CLI commands that are not `deploy` (`functions:delete`,
 
 ```bash
 cd field-ops-app-vite && npm run build
-cd .. && EOS_FIREBASE_PRODUCTION_DEPLOY="taylor-parts@$(git rev-parse HEAD)" \
+cd .. && EOS_FIREBASE_PRODUCTION_DEPLOY="taylor-parts@$(git rev-parse HEAD):hosting" \
   firebase deploy --only hosting --project taylor-parts     # Owner-authorized, human operator only
 ```
 
@@ -80,7 +80,7 @@ There are **two** rules files that must stay in sync: `firestore.rules` (root, t
 **No workflow in `.github/workflows/` runs `firebase deploy`.** A merged rules change has **no effect on the live project** until a human runs:
 
 ```bash
-EOS_FIREBASE_PRODUCTION_DEPLOY="taylor-parts@$(git rev-parse HEAD)" \
+EOS_FIREBASE_PRODUCTION_DEPLOY="taylor-parts@$(git rev-parse HEAD):firestore" \
   firebase deploy --only firestore:rules --project taylor-parts    # Tier 2, Owner-authorized, human operator only
 ```
 

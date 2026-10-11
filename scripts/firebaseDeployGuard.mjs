@@ -23,7 +23,10 @@
  *     platform-certification): allowed. The governed sandbox refresh is unchanged.
  *   - A PRODUCTION project (config/environments.json role "production", and always `taylor-parts`
  *     even if the registry were misread): REFUSED unless EOS_FIREBASE_PRODUCTION_DEPLOY equals
- *     `<projectId>@<full HEAD sha>` of the checkout being deployed. The governed runbooks
+ *     `<projectId>@<full HEAD sha>:<target>` -- the checkout being deployed AND the ONE target it authorizes.
+ *     Each target's hook checks its own name, so a confirmation for `functions` cannot carry a deploy that
+ *     forgot `--only` into firestore (Rules + indexes, Tier 2), storage or hosting, and a confirmation left in
+ *     a shell authorizes only that same target at that same commit. The governed runbooks
  *     (scripts/_prodRelease.run.sh, scripts/deployHosting.mjs --allow-production, the
  *     verify-rules-deploy checklist) set it explicitly for one command. Binding it to the commit
  *     means a confirmation left in a shell cannot authorize a later, different checkout.
@@ -61,8 +64,8 @@ export function projectClasses(registry) {
 }
 
 /** The exact confirmation a governed production deploy of `headSha` must carry. */
-export function productionConfirmation(projectId, headSha) {
-  return `${projectId}@${headSha}`;
+export function productionConfirmation(projectId, headSha, target) {
+  return `${projectId}@${headSha}:${target}`;
 }
 
 /**
@@ -84,12 +87,12 @@ export function decideFirebaseDeploy({ projectId, target, confirmation, headSha,
     if (typeof headSha !== "string" || !/^[0-9a-f]{40}$/.test(headSha)) {
       return refuse("PRODUCTION_NO_COMMIT", `'${projectId}' is PRODUCTION and the deployed commit could not be identified; refusing`);
     }
-    const expected = productionConfirmation(projectId, headSha);
+    const expected = productionConfirmation(projectId, headSha, target);
     if (confirmation !== expected) {
       return refuse(confirmation ? "PRODUCTION_CONFIRMATION_MISMATCH" : "PRODUCTION_UNCONFIRMED",
         `'${projectId}' is PRODUCTION. A ${target} deploy there is a governed, Owner-authorized act; run it through ` +
         `scripts/_prodRelease.run.sh, scripts/deployHosting.mjs --allow-production or the verify-rules-deploy checklist, ` +
-        `which set ${CONFIRMATION_ENV}=${projectId}@<HEAD sha> for that one command` +
+        `which set ${CONFIRMATION_ENV}=${projectId}@<HEAD sha>:${target} for that one command and that one target` +
         (confirmation ? ` (got '${confirmation}', expected '${expected}')` : ""));
     }
     return { allowed: true, code: "PRODUCTION_CONFIRMED", message: `governed production ${target} deploy of ${headSha} to '${projectId}'` };

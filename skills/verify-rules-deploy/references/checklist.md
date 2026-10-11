@@ -81,7 +81,7 @@ The deploy command (run by an authorized operator, from the correct checkout):
 
 ```bash
 # The F0 deploy guard refuses production without this commit-bound confirmation (docs/Deployment.md §1a).
-EOS_FIREBASE_PRODUCTION_DEPLOY="taylor-parts@$(git rev-parse HEAD)" \
+EOS_FIREBASE_PRODUCTION_DEPLOY="taylor-parts@$(git rev-parse HEAD):firestore" \
   firebase deploy --only firestore:rules --project taylor-parts
 ```
 

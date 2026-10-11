@@ -183,13 +183,13 @@ echo "  Committed firestore.rules sha: $(git rev-parse --short HEAD:firestore.ru
 echo "== [6/7] deploy Functions -> $PROJECT_ID (NO --force) =="
 echo "  If this reports it would DELETE a Function, abort and investigate."
 ( cd functions && npm run build )
-# The confirmation is bound to this commit and scoped to this ONE command: scripts/firebaseDeployGuard.mjs
+# The confirmation is bound to this commit and this ONE target, and scoped to this ONE command: scripts/firebaseDeployGuard.mjs
 # (firebase.json predeploy) refuses a production deploy without it. Never export it.
-EOS_FIREBASE_PRODUCTION_DEPLOY="$PROJECT_ID@$(git rev-parse HEAD)" firebase deploy --only functions --project "$PROJECT_ID"
+EOS_FIREBASE_PRODUCTION_DEPLOY="$PROJECT_ID@$(git rev-parse HEAD):functions" firebase deploy --only functions --project "$PROJECT_ID"
 
 echo "== [6b/7] deploy Hosting -> $PROJECT_ID =="
 node scripts/verifyDeployArtifact.mjs --projectId "$PROJECT_ID" --confirmProduction "$PROJECT_ID"
-EOS_FIREBASE_PRODUCTION_DEPLOY="$PROJECT_ID@$(git rev-parse HEAD)" firebase deploy --only hosting --project "$PROJECT_ID"
+EOS_FIREBASE_PRODUCTION_DEPLOY="$PROJECT_ID@$(git rev-parse HEAD):hosting" firebase deploy --only hosting --project "$PROJECT_ID"
 
 # ---- 7. prove what actually shipped ------------------------------------------
 echo "== [7/7] verify the deployed revision =="

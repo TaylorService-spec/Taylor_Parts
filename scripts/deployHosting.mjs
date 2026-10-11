@@ -117,7 +117,7 @@ export function assertManifestMatchesTarget(manifest, target) {
 export function deployEnvironment(target, env, sha) {
   const out = { ...env };
   delete out[CONFIRMATION_ENV];
-  if (target.role === "production") out[CONFIRMATION_ENV] = productionConfirmation(target.projectId, sha);
+  if (target.role === "production") out[CONFIRMATION_ENV] = productionConfirmation(target.projectId, sha, "hosting");
   return out;
 }
 
