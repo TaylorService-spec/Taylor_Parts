@@ -59,10 +59,7 @@ createWorkOrder,transitionWorkOrder,updateWorkOrderExecutionData,completeAssigne
 createPart,updatePart,changePartStatus,createManufacturer,updateManufacturer,changeManufacturerStatus,getManufacturerCatalog
 ```
 
-**8 — inventory: supplier + serialized**
-```
-createSupplier,updateSupplier,activateSupplier,deactivateSupplier,createPartSupplierItem,updatePartSupplierItem,changePartSupplierItemStatus,setPreferredSupplier,getAvailableEquipment
-```
+**8 — inventory: supplier + serialized** — RETIRED FROM THE REPOSITORY. `getAvailableEquipment` was removed in Equipment activation (2026-10-01). The eight Supplier / Part↔Supplier item callables were removed in Firebase retirement F2 (2026-10-10). Their deployed copies are DEPLOYED_NOT_CALLED until the bounded Firebase removal window. Do not deploy this batch.
 
 **9 — receiving**
 ```

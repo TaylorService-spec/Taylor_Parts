@@ -162,13 +162,15 @@ export const LEGACY_CATALOG_MASTER_COMMANDS = Object.freeze([
  * there is no deployed API boundary to map. Error mapping for those six writers is N/A, not missing --
  * inventing a callable to carry a mapper would be inventing a deployed surface. If one is ever exported
  * it must appear here, and the length assertion in catalogFreezeParity.test.mjs goes red until it does.
+ *
+ * The Supplier and Part<->Supplier item families have no entry since Firebase retirement F2 (2026-10-10): their onCall
+ * adapters (supplierMasterCallables.ts, partSupplierItemCallables.ts) were removed from the repository -- no caller
+ * remained -- so this repository exports no API boundary for them. Their FROZEN commands are still listed above.
  */
 export const LEGACY_CATALOG_CALLABLE_ERROR_MAPPERS = Object.freeze([
   Object.freeze({ family: "part", lib: "../lib/partMaster/partMasterCallables.js", writerId: "part.create" }),
   Object.freeze({ family: "manufacturer", lib: "../lib/partMaster/manufacturerCallables.js", writerId: "manufacturer.create" }),
-  Object.freeze({ family: "supplier", lib: "../lib/supplierMaster/supplierMasterCallables.js", writerId: "supplier.create" }),
   Object.freeze({ family: "partAlias", lib: "../lib/partMaster/partAliasCallables.js", writerId: "partAlias.create" }),
-  Object.freeze({ family: "partSupplierItem", lib: "../lib/partMaster/partSupplierItemCallables.js", writerId: "partSupplierItem.create" }),
 ]);
 
 /**

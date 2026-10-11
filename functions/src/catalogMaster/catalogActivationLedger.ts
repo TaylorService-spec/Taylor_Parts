@@ -470,8 +470,8 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
     owningDomain: "partMaster",
     currentRuntime: "FIREBASE_FUNCTIONS",
     catalogFact: "Part existence, to refuse a supplier item pointing at a Part that is not there",
-    classification: "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
-    deployedReachable: true,
+    classification: "INTERNAL_UNDEPLOYED",
+    deployedReachable: false,
     replacementAuthority: "eos_ops.supplier_catalog_items via eosOps/supplierCatalogRepository.ts, which resolves the Part in PostgreSQL",
     activationBlocking: false,
     retirementBlocking: true,
@@ -479,8 +479,10 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
     reason:
       "A referential-integrity read, not a catalog authority: it asks only whether the Part exists before "
       + "attaching a supplier item to it. The PostgreSQL supplier catalog already resolves that reference "
-      + "on its own side, so no second answer is being built. Deployed under the catalog-manage capability, "
-      + "so it blocks retirement until the legacy surface is deleted.",
+      + "on its own side, so no second answer is being built. RETIRED FROM THE REPOSITORY (Firebase retirement F2, "
+      + "2026-10-10): its only deployed adapter, partSupplierItemCallables.ts, is removed -- no caller remained and the "
+      + "Firestore writer is FROZEN -- so nothing in this repository reaches it. The DEPLOYED copies stay runtime-stale until "
+      + "the bounded Firebase removal window, so it still blocks retirement.",
   }),
 
   // ══════════ NOT REACHABLE FROM A DEPLOYED ENTRYPOINT ══════════
