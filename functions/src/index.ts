@@ -349,22 +349,11 @@ export {
 //   createCycleCountSheet, openCycleCountLine, submitCycleCountLine, reconcileCycleCountLine, cancelCycleCountLine,
 //   cancelCycleCountSheet, closeCycleCountSheet, listCycleCountSheets, getCycleCountSheet, getCycleCountAssignedMobileLocation
 
-// --- Supplier Master (DECISIONS #78): trusted Supplier command callables ---
-// Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
-// production project. NO UI wired to call them, NO App
-// Check requirement (matching every other callable here). Authorization is enforced INSIDE the command
-// against the actor's real governed roles -- inventory.catalog.manage for create/update,
-// inventory.catalog.activate for activate/deactivate. NO capability is granted here; activate/deactivate
-// currently fail closed because no STANDING role carries inventory.catalog.activate (a deferred protected
-// grant -- see docs/releases/supplier-master-rc-1.md). Firebase deploys each callable under its exported
-// index property name, so these MUST be the exact frozen public names (no "Callable" suffix); the
-// suffixed implementation consts are aliased here and are NOT otherwise exposed.
-export {
-  createSupplierCallable as createSupplier,
-  updateSupplierCallable as updateSupplier,
-  activateSupplierCallable as activateSupplier,
-  deactivateSupplierCallable as deactivateSupplier,
-} from "./supplierMaster/supplierMasterCallables";
+// RETIRED FROM THE REPOSITORY (Firebase retirement F2, 2026-10-10): no caller remains (census) and the governed EOS
+// authority replaces it -- the Firestore catalog writer is FROZEN (CATALOG_WRITER_AUTHORITY), so these could only refuse.
+// The deployed copies stay DEPLOYED_NOT_CALLED until the bounded Firebase removal window -- tracked, not deleted by deploy here.
+//   createSupplier, updateSupplier, activateSupplier, deactivateSupplier
+//     (-> /operations/inventory createSupplier / updateSupplier / setSupplierStatus; PG eos_ops suppliers)
 
 // --- Part Master (ADR-009 G2): trusted Part command callables ---
 // Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
@@ -565,22 +554,11 @@ export { getPartBalanceCallable as getPartBalance } from "./inventory/partBalanc
 // reads instead of N. See partBalanceBatchReadService.ts for why the shared inputs dominate.
 export { getPartBalancesCallable as getPartBalances } from "./inventory/partBalanceBatchReadService";
 
-// --- Part↔Supplier procurement terms (part_supplier_items): trusted command callables ---
-// Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
-// production project. NO UI wired yet, NO capability granted, NO App Check.
-// Authorization enforced INSIDE the command against real governed roles -- inventory.catalog.manage for
-// create/update/setPreferred, inventory.catalog.activate for status (the SAME catalog authority the rest of
-// the catalog uses). All four fail closed until a deferred protected grant. Closes the procure-to-stock
-// gap (governed preferred-supplier + terms instead of free-form). The part_supplier_items READ stays served
-// by governed projections gated on R-1's inventory.catalog.read / .cost.read (partSupplierItemProjections.ts
-// is the pure contract; the read service is NOT activated here). Firebase deploys each callable under its
-// exported index property name -> frozen public names (no "Callable" suffix); suffixed impl consts aliased.
-export {
-  createPartSupplierItemCallable as createPartSupplierItem,
-  updatePartSupplierItemCallable as updatePartSupplierItem,
-  changePartSupplierItemStatusCallable as changePartSupplierItemStatus,
-  setPreferredSupplierCallable as setPreferredSupplier,
-} from "./partMaster/partSupplierItemCallables";
+// RETIRED FROM THE REPOSITORY (Firebase retirement F2, 2026-10-10): no caller remains (census) and the governed EOS
+// authority replaces it -- the Firestore catalog writer is FROZEN (CATALOG_WRITER_AUTHORITY), so these could only refuse.
+// The deployed copies stay DEPLOYED_NOT_CALLED until the bounded Firebase removal window -- tracked, not deleted by deploy here.
+//   createPartSupplierItem, updatePartSupplierItem, changePartSupplierItemStatus, setPreferredSupplier
+//     (-> PG eos_ops.supplier_catalog_items, eosOps/supplierCatalogRepository.ts; catalogActivationLedger)
 
 // CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4). EXPORT != DEPLOY, REGISTER != GRANT:
 // exported for build/test only; `crm.activity.create` / `crm.activity.read` are both registered

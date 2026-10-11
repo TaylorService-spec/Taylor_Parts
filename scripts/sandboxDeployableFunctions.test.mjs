@@ -51,7 +51,8 @@ built("the real manifest yields every export but the governed exclusions", async
   const names = deployableFunctionNames(manifest);
   const excluded = Object.keys(SANDBOX_REFRESH_EXCLUDED_FUNCTIONS);
 
-  assert.ok(manifest.length > 100, `manifest looks truncated: ${manifest.length} entries`);
+  // A truncation floor, not a pin: Firebase retirement removes exports (F2, 2026-10-10: 103 -> 95). Lower it with each removal.
+  assert.ok(manifest.length > 90, `manifest looks truncated: ${manifest.length} entries`);
   assert.equal(names.length, manifest.length - excluded.length);
   for (const name of excluded) {
     assert.ok(!names.includes(name), `${name} must not be in the deployable set`);

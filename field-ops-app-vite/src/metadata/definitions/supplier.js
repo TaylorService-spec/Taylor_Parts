@@ -11,9 +11,10 @@ import { SUPPLIER_STATUSES, SUPPLIER_STATUS_META } from "../../domain/suppliersV
 //
 // ONE GOVERNED WRITE PATH, UNLIKE WAREHOUSE. functions/src/supplierMaster/supplierMasterCommands.ts's
 // createSupplier/updateSupplier/activateSupplier/deactivateSupplier is the sole writer of the
-// governed GovernedSupplier shape (supplierMasterTypes.ts), and — unlike warehouseStatusWriter.ts —
-// its onCall adapters (supplierMasterCallables.ts) ARE exported from functions/src/index.ts. The
-// export's own comment is careful about what that does and does not mean: "Export is not
+// governed GovernedSupplier shape (supplierMasterTypes.ts). Its onCall adapters (supplierMasterCallables.ts) were
+// exported from functions/src/index.ts until Firebase retirement F2 (2026-10-10) removed them -- the client writes
+// through EOS /operations/inventory (createSupplier/updateSupplier/setSupplierStatus) and the Firestore writer is
+// FROZEN. Historically, the export's own comment is careful about what that does and does not mean: "Export is not
 // deployment/grant" — NOT deployed to the live project, no UI wired to call it, and (per
 // docs/releases/supplier-master-rc-1.md) activate/deactivate fail closed today because no standing
 // role carries inventory.catalog.activate. This definition describes the CONTRACT the command

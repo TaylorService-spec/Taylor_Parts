@@ -186,7 +186,7 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     module: "functions/src/supplierMaster/supplierMasterCommands.ts",
     entry: "createSupplier",
     reachedFrom: Object.freeze([
-      "callable createSupplier (functions/src/index.ts -> supplierMasterCallables.ts createSupplierCallable)",
+      "deployed callable createSupplier (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F2, 2026-10-10)",
       "functions/scripts/seedSupplierSandbox.mjs (operator seed, via the command)",
     ]),
   }),
@@ -194,21 +194,21 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     module: "functions/src/supplierMaster/supplierMasterCommands.ts",
     entry: "updateSupplier",
     reachedFrom: Object.freeze([
-      "callable updateSupplier (supplierMasterCallables.ts updateSupplierCallable)",
+      "deployed callable updateSupplier (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F2, 2026-10-10)",
     ]),
   }),
   "supplier.activate": Object.freeze({
     module: "functions/src/supplierMaster/supplierMasterCommands.ts",
     entry: "changeSupplierStatus (action activateSupplier)",
     reachedFrom: Object.freeze([
-      "callable activateSupplier (supplierMasterCallables.ts activateSupplierCallable) -> activateSupplier",
+      "deployed callable activateSupplier (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F2, 2026-10-10)",
     ]),
   }),
   "supplier.deactivate": Object.freeze({
     module: "functions/src/supplierMaster/supplierMasterCommands.ts",
     entry: "changeSupplierStatus (action deactivateSupplier)",
     reachedFrom: Object.freeze([
-      "callable deactivateSupplier (supplierMasterCallables.ts deactivateSupplierCallable) -> deactivateSupplier",
+      "deployed callable deactivateSupplier (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F2, 2026-10-10)",
     ]),
   }),
 
@@ -240,28 +240,28 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     module: "functions/src/partMaster/partSupplierItems.ts",
     entry: "createPartSupplierItem",
     reachedFrom: Object.freeze([
-      "callable createPartSupplierItem (functions/src/index.ts -> partSupplierItemCallables.ts createPartSupplierItemCallable)",
+      "deployed callable createPartSupplierItem (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F2, 2026-10-10)",
     ]),
   }),
   "partSupplierItem.update": Object.freeze({
     module: "functions/src/partMaster/partSupplierItems.ts",
     entry: "updatePartSupplierItem",
     reachedFrom: Object.freeze([
-      "callable updatePartSupplierItem (partSupplierItemCallables.ts updatePartSupplierItemCallable)",
+      "deployed callable updatePartSupplierItem (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F2, 2026-10-10)",
     ]),
   }),
   "partSupplierItem.changeStatus": Object.freeze({
     module: "functions/src/partMaster/partSupplierItems.ts",
     entry: "changePartSupplierItemStatus",
     reachedFrom: Object.freeze([
-      "callable changePartSupplierItemStatus (partSupplierItemCallables.ts changePartSupplierItemStatusCallable)",
+      "deployed callable changePartSupplierItemStatus (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F2, 2026-10-10)",
     ]),
   }),
   "partSupplierItem.setPreferred": Object.freeze({
     module: "functions/src/partMaster/partSupplierItems.ts",
     entry: "setPreferredSupplier",
     reachedFrom: Object.freeze([
-      "callable setPreferredSupplier (partSupplierItemCallables.ts setPreferredSupplierCallable)",
+      "deployed callable setPreferredSupplier (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F2, 2026-10-10)",
     ]),
   }),
 
