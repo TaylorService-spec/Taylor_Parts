@@ -37,13 +37,28 @@ It also weakens a premise the default-autonomy model rests on: that repo-only me
 
 **UNKNOWN (external read-only evidence required):** which surface real users actually use — the Pages URL or the Hosting URL — and whether both are in concurrent use. Evidence needed: the Owner's statement of the distributed URL, plus a read-only Hosting release listing (`firebase hosting:releases:list --project taylor-parts`) and a read-only fetch of both URLs' build fingerprints. Until established, **both must be treated as production**.
 
+## 1a. Firebase deploy guard (F0) — no implicit production target
+
+`.firebaserc` defaults to the emulator-only project `demo-eos-no-default-project`, not production. Every deployable target in `firebase.json` (functions, hosting, firestore, storage) runs `scripts/firebaseDeployGuard.mjs` as its first `predeploy` hook. firebase-tools runs those hooks before anything is prepared or uploaded, with the resolved project in `GCLOUD_PROJECT`. The guard:
+
+- **refuses** a missing project, a `demo-` project, and any project `config/environments.json` does not declare;
+- **allows** declared non-production projects (`eos-platform-sandbox`, `eos-platform-certification`);
+- **refuses a production project** (registry role `production`, and always `taylor-parts`) unless `EOS_FIREBASE_PRODUCTION_DEPLOY=<projectId>@<full HEAD sha>:<target>` is set for that one command. The confirmation names ONE target (`functions`, `hosting`, `firestore` or `storage`). A confirmed Functions deploy that forgot `--only` is still refused at the firestore, storage and hosting hooks. `firestore` covers both Rules and indexes, because the CLI hook cannot tell them apart.
+
+This covers a stale `firebase use taylor-parts` on an operator machine, which overrides `.firebaserc`. `npm run deploy` in `functions/` is retired and refuses.
+
+The governed procedures set the confirmation themselves: `scripts/_prodRelease.run.sh`, `scripts/deployHosting.mjs --allow-production`, and the commands below. Never export it in a shell profile. Because it is bound to the commit and the target, a leftover value refuses a different checkout and every other target. The residual is narrow: an EXPORTED value still authorizes the same target at the same commit.
+
+Not covered by the hook: CLI commands that are not `deploy` (`functions:delete`, `firestore:delete`, `hosting:disable`). Those need an explicit `--project` now that the default is a demo project. Agent sessions are additionally denied them in `.claude/settings.json`.
+
 ## 2. Firebase Hosting — manual, gated, and in use
 
-`firebase.json` (repo root, tracked) configures Hosting to serve `field-ops-app-vite/dist` with a SPA catch-all rewrite; `.firebaserc` targets `taylor-parts`. Publishes to `taylor-parts.web.app` / `taylor-parts.firebaseapp.com`.
+`firebase.json` (repo root, tracked) configures Hosting to serve `field-ops-app-vite/dist` with a SPA catch-all rewrite. Production is the `taylor-parts` project, which must be named explicitly (see §1a, F0 deploy guard). Publishes to `taylor-parts.web.app` / `taylor-parts.firebaseapp.com`.
 
 ```bash
 cd field-ops-app-vite && npm run build
-cd .. && firebase deploy --only hosting     # Owner-authorized, human operator only
+cd .. && EOS_FIREBASE_PRODUCTION_DEPLOY="taylor-parts@$(git rev-parse HEAD):hosting" \
+  firebase deploy --only hosting --project taylor-parts     # Owner-authorized, human operator only
 ```
 
 Hosting deploys are governed and evidenced — see [`operations/inv-convergence-e-c1-hosting-deploy-handoff.md`](operations/inv-convergence-e-c1-hosting-deploy-handoff.md), [`operations/inv-convergence-e-c2-hosting-deploy-handoff.md`](operations/inv-convergence-e-c2-hosting-deploy-handoff.md), and the release pins under [`audits/inv-convergence-e-c2-hosting-deploy/`](audits/inv-convergence-e-c2-hosting-deploy/).
@@ -65,7 +80,8 @@ There are **two** rules files that must stay in sync: `firestore.rules` (root, t
 **No workflow in `.github/workflows/` runs `firebase deploy`.** A merged rules change has **no effect on the live project** until a human runs:
 
 ```bash
-firebase deploy --only firestore:rules    # Tier 2, Owner-authorized, human operator only
+EOS_FIREBASE_PRODUCTION_DEPLOY="taylor-parts@$(git rev-parse HEAD):firestore" \
+  firebase deploy --only firestore:rules --project taylor-parts    # Tier 2, Owner-authorized, human operator only
 ```
 
 `.github/workflows/firestore-rules-regression.yml` runs the rules regression suite against the **emulator** — it is a gate, not a deploy. Use the `verify-rules-deploy` skill to confirm a rules change is actually live; merged never means live.

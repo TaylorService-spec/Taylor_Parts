@@ -80,7 +80,9 @@ deploy one copy and leave the other stale.
 The deploy command (run by an authorized operator, from the correct checkout):
 
 ```bash
-firebase deploy --only firestore:rules
+# The F0 deploy guard refuses production without this commit-bound confirmation (docs/Deployment.md §1a).
+EOS_FIREBASE_PRODUCTION_DEPLOY="taylor-parts@$(git rev-parse HEAD):firestore" \
+  firebase deploy --only firestore:rules --project taylor-parts
 ```
 
 This step needs Firebase credentials and is **not scripted**. Do not assume it

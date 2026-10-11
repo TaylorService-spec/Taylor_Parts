@@ -1,0 +1,55 @@
+name: Firebase Deploy Guard
+
+# F0 -- an unqualified or accidental `firebase deploy` cannot silently target the historical
+# production project (taylor-parts). See scripts/firebaseDeployGuard.mjs and docs/Deployment.md §1a.
+#
+# The tests prove the decision, the wiring (firebase.json predeploy on every target, .firebaserc
+# names no real project, no package script / workflow / runbook deploys without --project), the
+# governed procedures (production runbook + deployHosting --allow-production carry the commit-bound
+# confirmation), and -- through firebase-tools' OWN predeploy hook runner, offline -- that every
+# production deploy shape is rejected before anything is prepared. Nothing here contacts Google.
+#
+# NOT path-filtered, deliberately. The guard's subject is spread across firebase.json, .firebaserc,
+# every package.json, every workflow and every runbook; a paths filter that omitted one of them
+# would let that change merge unchecked (taylor-parts CI blind spot #4). The job is small.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  firebase-deploy-guard:
+    name: No Firebase deploy can silently target production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      # firebase-tools (a functions devDependency) supplies the real predeploy hook runner the
+      # end-to-end tests drive. The tests FAIL in CI if it is missing rather than skipping.
+      - name: Install functions dependencies
+        working-directory: functions
+        run: npm ci --ignore-scripts
+
+      - name: Deploy guard contract tests
+        run: node --test scripts/firebaseDeployGuard.test.mjs
+
+      - name: Hosting deploy target tests
+        run: node --test scripts/deployHosting.test.mjs
