@@ -325,11 +325,8 @@ test("the catalog-writer census would actually catch a forbidden importer", () =
   assert.doesNotMatch(readFileSync("lib/eosOps/contextualActionAuthority.js", "utf8"), /catalogMaster/, "and the compiled seam carries no such reference at all");
 });
 
-test("the Part callables map FROZEN and RETIRED to failed-precondition, not internal", () => {
-  const { mapError } = require("../lib/partMaster/partMasterCallables.js");
-  assert.equal(mapError(new writerState.FirestoreCatalogWriterClosedError("part.create", "FROZEN")).code, "failed-precondition");
-  assert.equal(mapError(new writerState.FirestoreCatalogWriterClosedError("part.update", "RETIRED")).code, "failed-precondition");
-});
+// The Part callables' FROZEN/RETIRED error mapping was tested here until Firebase retirement F3a (2026-10-11) removed
+// partMasterCallables.ts from the repository; the remaining deployed catalog callables are covered by catalogFreezeParity.
 
 // ════════════════════ snapshot census ════════════════════
 

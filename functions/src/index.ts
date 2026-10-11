@@ -355,21 +355,12 @@ export {
 //   createSupplier, updateSupplier, activateSupplier, deactivateSupplier
 //     (-> /operations/inventory createSupplier / updateSupplier / setSupplierStatus; PG eos_ops suppliers)
 
-// --- Part Master (ADR-009 G2): trusted Part command callables ---
-// Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
-// production project. NO UI wired to call them yet, NO
-// App Check requirement (matching every other callable here). Authorization is enforced INSIDE the
-// command against the actor's real governed roles -- inventory.catalog.manage for create/update,
-// inventory.catalog.activate for changePartStatus (the accepted catalog authority / future durable
-// inventoryCatalogAdministrator role). NO capability is granted here; catalog capabilities are carried
-// by no standing role, so create/update/status fail closed until a deferred protected grant. Firebase
-// deploys each callable under its exported index property name, so these MUST be the exact frozen
-// public names (no "Callable" suffix); the suffixed impl consts are aliased here and NOT otherwise exposed.
-export {
-  createPartCallable as createPart,
-  updatePartCallable as updatePart,
-  changePartStatusCallable as changePartStatus,
-} from "./partMaster/partMasterCallables";
+// RETIRED FROM THE REPOSITORY (Firebase retirement F3a, 2026-10-11): no caller remains (census) and the governed EOS
+// Catalog route replaces it -- the client writes Parts through POST /operations/catalog (partMasterCommandClient ->
+// catalogApiClient), and the Firestore catalog writer is FROZEN (CATALOG_WRITER_AUTHORITY), so these could only refuse.
+// The deployed copies stay DEPLOYED_NOT_CALLED until the bounded Firebase removal window -- tracked, not deleted by deploy here.
+//   createPart, updatePart, changePartStatus
+//     (-> /operations/catalog createPart / updatePart / changePartStatus; catalogMaster/postgresPartMasterWriter.ts)
 
 // --- Manufacturer (catalog reference object): trusted Manufacturer command callables ---
 // Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the

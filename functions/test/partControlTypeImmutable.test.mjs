@@ -40,7 +40,6 @@ const {
   InvalidInputError,
 } = await import("../lib/partMaster/partMasterCommands.js");
 const { CONTROL_TYPES } = await import("../lib/partMaster/types.js");
-const { mapError } = await import("../lib/partMaster/partMasterCallables.js");
 
 // ── The double. Collection/doc refs carry their own coordinates; a REAL DocumentReference (the
 // one the audit writer builds) is read through `.parent.id` / `.id`, so both work. ─────────────
@@ -293,13 +292,9 @@ test("assertControlTypeImmutable: same value passes, any different value throws"
   assert.throws(() => assertControlTypeImmutable("SERIALIZED", "STANDARD"), ControlTypeImmutableError);
 });
 
-// ── 7. The refusal crosses the callable boundary as a stable, non-leaky code ────────────────────
-test("the callable taxonomy surfaces the refusal as failed-precondition, not internal", () => {
-  const mapped = mapError(new ControlTypeImmutableError('controlType is immutable after part creation (stored "STANDARD", requested "LOT")'));
-  assert.equal(mapped.code, "failed-precondition");
-  assert.match(mapped.message, /control type cannot be changed/);
-  assert.ok(!/STANDARD|LOT/.test(mapped.message), "the generic message must not leak stored state");
-});
+// ── 7. (retired) The Firebase callable boundary for this refusal was removed in Firebase retirement F3a (2026-10-11).
+// The governed boundary is the EOS Catalog API: catalogMaster/postgresPartMasterWriter.ts refuses a real change with
+// CONTROL_TYPE_IMMUTABLE / PRECONDITION_FAILED.
 
 // ── 8. MECHANICAL: the decision is made without any inventory-history query ─────────────────────
 test("partMasterCommands consults NO inventory ledger to decide — the blanket rule needs no history", () => {

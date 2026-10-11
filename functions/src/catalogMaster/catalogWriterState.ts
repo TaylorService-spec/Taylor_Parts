@@ -94,7 +94,7 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     module: "functions/src/partMaster/partMasterCommands.ts",
     entry: "createPart",
     reachedFrom: Object.freeze([
-      "callable createPart (functions/src/index.ts -> partMasterCallables.ts createPartCallable)",
+      "deployed callable createPart (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F3a, 2026-10-11)",
       "callable executeDataImport (dataImport/firestoreDataImportAdapters.ts -> createPart): the catalog import write",
       "functions/scripts/executePartMasterCreate.js, functions/scripts/generatePartMasterMigrationEvidence.js",
       "client field-ops-app-vite/src/services/partMasterCommandClient.js (create), access/dataImportClient.js (executeDataImport)",
@@ -104,7 +104,7 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     module: "functions/src/partMaster/partMasterCommands.ts",
     entry: "updatePart",
     reachedFrom: Object.freeze([
-      "callable updatePart (partMasterCallables.ts updatePartCallable)",
+      "deployed callable updatePart (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F3a, 2026-10-11)",
       "client field-ops-app-vite/src/services/partMasterCommandClient.js (update)",
     ]),
   }),
@@ -112,7 +112,7 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     module: "functions/src/partMaster/partMasterCommands.ts",
     entry: "changePartStatus",
     reachedFrom: Object.freeze([
-      "callable changePartStatus (partMasterCallables.ts changePartStatusCallable)",
+      "deployed callable changePartStatus (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F3a, 2026-10-11)",
       "client field-ops-app-vite/src/services/partMasterCommandClient.js (changeStatus)",
     ]),
   }),

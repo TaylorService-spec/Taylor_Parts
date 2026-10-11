@@ -260,21 +260,28 @@ export const partAdministrationProfile = makeObjectAdministrationProfile({
 
   // ── GOVERNED COMMANDS ──────────────────────────────────────────────────────────────────────
   //
-  // Three, and only three. Each: server-derived actor → capability check (a denial is itself
-  // audited) → domain validation → ONE transaction covering read, version check, idempotency check,
-  // mutation and an atomically staged audit event. Idempotency is the house mechanism: the audit
-  // document id is deterministic, so a replay is detected by its existence and a MATCHING
-  // fingerprint rather than by a second write.
+  // Three, and only three. Each: server-derived actor (the EOS Principal from the bearer token) → capability
+  // check (catalogMasterKernel.runCatalogCommand; a denial is REFUSED as CAPABILITY_REQUIRED and, unlike the retired
+  // Firestore path, is not itself audited) → active tenant membership → domain validation → ONE PostgreSQL
+  // transaction covering read, version check, idempotency check, mutation and its audit event. Idempotency is
+  // content-addressed: an identical resend is detected against the stored record (REPLAYED), never written twice.
+  //
+  // TRANSPORT (Firebase retirement F3a, 2026-10-11): the governed write path is the EOS Catalog API --
+  // POST /operations/catalog (catalogHttp.ts) -> postgresPartMasterWriter.ts -- which enforces the SAME
+  // capabilities, field allowlists, controlType immutability, version checks and in-transaction INTERNAL_PN alias
+  // preservation (parity asserted by test), and records its own audit actions (catalog.part.*). The Firebase
+  // callables (partMasterCallables.ts) fronted a FROZEN writer -- whose freeze guard ran before any capability check
+  // or audit -- and were removed from the repository.
   commands: [
     makeCommandDescriptor({
       id: "createPart",
       label: "Create part",
       phase: "CREATE",
-      transport: "CALLABLE",
-      entryPoint: cite("functions/src/partMaster/partMasterCallables.ts", "createPartCallable"),
-      implementation: cite("functions/src/partMaster/partMasterCommands.ts", "createPart"),
+      transport: "TRUSTED_SERVER",
+      entryPoint: cite("functions/src/catalogMaster/catalogHttp.ts", 'case "createPart"'),
+      implementation: cite("functions/src/catalogMaster/postgresPartMasterWriter.ts", "export async function createPart("),
       capability: "inventory.catalog.manage",
-      auditAction: "createPart",
+      auditAction: "catalog.part.create",
       // No expectedVersion: there is no stored record to conflict with. The duplicate guard is the
       // already-exists check on the derived document id.
       versionChecked: false,
@@ -304,11 +311,11 @@ export const partAdministrationProfile = makeObjectAdministrationProfile({
       id: "updatePart",
       label: "Update part details",
       phase: "UPDATE",
-      transport: "CALLABLE",
-      entryPoint: cite("functions/src/partMaster/partMasterCallables.ts", "updatePartCallable"),
-      implementation: cite("functions/src/partMaster/partMasterCommands.ts", "updatePart"),
+      transport: "TRUSTED_SERVER",
+      entryPoint: cite("functions/src/catalogMaster/catalogHttp.ts", 'case "updatePart"'),
+      implementation: cite("functions/src/catalogMaster/postgresPartMasterWriter.ts", "export async function updatePart("),
       capability: "inventory.catalog.manage",
-      auditAction: "updatePart",
+      auditAction: "catalog.part.update",
       versionChecked: true,
       idempotent: true,
       // NOTE what is absent: `partId` (structurally impossible), `status` (changePartStatus owns it),
@@ -335,13 +342,13 @@ export const partAdministrationProfile = makeObjectAdministrationProfile({
       id: "changePartStatus",
       label: "Change part status",
       phase: "LIFECYCLE",
-      transport: "CALLABLE",
-      entryPoint: cite("functions/src/partMaster/partMasterCallables.ts", "changePartStatusCallable"),
-      implementation: cite("functions/src/partMaster/partMasterCommands.ts", "changePartStatus"),
+      transport: "TRUSTED_SERVER",
+      entryPoint: cite("functions/src/catalogMaster/catalogHttp.ts", 'case "changePartStatus"'),
+      implementation: cite("functions/src/catalogMaster/postgresPartMasterWriter.ts", "export async function changePartStatus("),
       // A DIFFERENT capability from the detail edits, deliberately: activating or discontinuing a
       // catalog line is not the same authority as correcting its description.
       capability: "inventory.catalog.activate",
-      auditAction: "changePartStatus",
+      auditAction: "catalog.part.changeStatus",
       versionChecked: true,
       idempotent: true,
       mutates: ["status"],

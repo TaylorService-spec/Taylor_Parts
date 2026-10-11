@@ -54,9 +54,9 @@ issueInvoice,applyPayment,recordInvoiceAdjustment,recordRefund,listAccountInvoic
 createWorkOrder,transitionWorkOrder,updateWorkOrderExecutionData,completeAssignedJob,getWorkOrderFieldContext,setWorkOrderPartsPlan
 ```
 
-**7 — inventory: part master + catalog**
+**7 — inventory: part master + catalog** — `createPart`, `updatePart` and `changePartStatus` were removed from the repository in Firebase retirement F3a (2026-10-11). They are deployed but not called until the bounded Firebase removal window. The batch now carries the Manufacturer callables only.
 ```
-createPart,updatePart,changePartStatus,createManufacturer,updateManufacturer,changeManufacturerStatus,getManufacturerCatalog
+createManufacturer,updateManufacturer,changeManufacturerStatus,getManufacturerCatalog
 ```
 
 **8 — inventory: supplier + serialized** — RETIRED FROM THE REPOSITORY. `getAvailableEquipment` was removed in Equipment activation (2026-10-01). The eight Supplier / Part↔Supplier item callables were removed in Firebase retirement F2 (2026-10-10). Their deployed copies are DEPLOYED_NOT_CALLED until the bounded Firebase removal window. Do not deploy this batch.

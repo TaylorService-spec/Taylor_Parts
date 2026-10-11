@@ -1040,7 +1040,8 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // Firebase retirement F2 (2026-10-10): the Supplier and Part<->Supplier item onCall adapters, replaced by EOS with no
     // caller and fronting a FROZEN writer, are removed from the repository -- 66 -> 64.
     // Firebase retirement F4 (2026-10-11): the same Work Order Labor adapter -- 64 -> 63.
-    "server.firebase_functions_server": 63,
+    // Firebase retirement F3a (2026-10-11): the Part Master onCall adapter (partMasterCallables.ts) -- 63 -> 62.
+    "server.firebase_functions_server": 62,
   };
   let total = 0;
   for (const category of CATEGORIES) {
@@ -1051,5 +1052,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 271); // 273 -> 271: Firebase retirement F4 (2026-10-11), one file in two server categories; 275 -> 273: Firebase retirement F2 (2026-10-10), two server entries; 283 -> 275: Firebase exit F1 dead-code removal (2026-10-09), eight entries across four files; 286 -> 283: the Truck Inventory activation (2026-10-01), three client entries; 300 -> 294: the Inventory / Warehouse completion (2026-10-01), six client entries; 294 -> 286: the Equipment activation (2026-10-01), eight client entries
+  assert.equal(total, 270); // 271 -> 270: Firebase retirement F3a (2026-10-11), one server entry; 273 -> 271: Firebase retirement F4 (2026-10-11), one file in two server categories; 275 -> 273: Firebase retirement F2 (2026-10-10), two server entries; 283 -> 275: Firebase exit F1 dead-code removal (2026-10-09), eight entries across four files; 286 -> 283: the Truck Inventory activation (2026-10-01), three client entries; 300 -> 294: the Inventory / Warehouse completion (2026-10-01), six client entries; 294 -> 286: the Equipment activation (2026-10-01), eight client entries
 });
