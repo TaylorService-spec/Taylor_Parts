@@ -6,8 +6,13 @@
 // Six scenarios must SUCCEED and six must REFUSE. A refusal scenario that passes by succeeding is a
 // release failure, so every case declares its expectation and is compared against that.
 //
-// Test data is created through the GOVERNED COMMANDS (createBin, createPartAlias), never by writing
-// documents directly. Seeding around the authority being validated would prove nothing about it.
+// Test data is created through the GOVERNED COMMANDS (createBin, and createPartAlias on the EOS Catalog API), never by
+// writing documents directly. Seeding around the authority being validated would prove nothing about it.
+//
+// Scenario 2 (barcode / alias lookup) runs against the AUTHORITATIVE EOS Catalog API (`catalog:` operations, the same
+// persona token) since Firebase retirement F3b (2026-10-11) retired the alias callables. resolveScannedPartIdentifier is
+// SUPERSEDED by lookupScannedPart's alias half -- the same resolver behind the same inventory.catalog.alias.read gate.
+// The one contract difference is asserted, not hidden: a blank scan is refused INVALID_INPUT (it was MALFORMED).
 import { callAs, expectRefused, expectAllowed, record, results } from "./sandboxScannerScenarios.mjs";
 
 const WH = "wh-main";
@@ -56,27 +61,30 @@ record("1 lookup is READ-ONLY", "partsAssociate", "no change", sameBalance(befor
 
 // ═════════ 2. Barcode / alias lookup ═════════
 console.log("\n-- 2. Barcode / alias lookup --");
-const aliasMade = await callAs("partsManager", "createPartAlias", {
-  partId: PART, aliasType: "BARCODE_OTHER", rawValue: BARCODE, idempotencyKey: `alias-${RUN}`,
+const aliasMade = await callAs("partsManager", "catalog:createPartAlias", {
+  partId: PART, aliasType: "BARCODE_OTHER", rawValue: BARCODE,
 });
 console.log(`   createPartAlias (partsManager, catalogAdministrator):`,
   aliasMade.ok ? "created" : `${aliasMade.code} ${String(aliasMade.message ?? "").slice(0, 70)}`);
 if (aliasMade.ok) {
-  await expectAllowed("2 registered alias resolves", "partsAssociate", "resolveScannedPartIdentifier",
+  await expectAllowed("2 registered alias resolves", "partsAssociate", "catalog:lookupScannedPart",
     { rawValue: `  ${BARCODE}  ` },
-    (r) => (r.result === "FOUND" && r.partId === PART ? true : `got ${r.result}/${r.partId}`),
+    (r) => (r.alias?.result === "FOUND" && r.alias?.partId === PART && r.parts?.some((p) => p.id === PART)
+      ? true : `got ${r.alias?.result}/${r.alias?.partId}${r.aliasDenied ? " (aliasDenied)" : ""}`),
     "trimmed wedge input resolved to the correct Part");
 } else {
   record("2 registered alias resolves", "partsAssociate", "FOUND", "alias could not be created", false,
     String(aliasMade.message ?? "").slice(0, 100));
 }
-await expectAllowed("2 unknown alias is truthful", "partsAssociate", "resolveScannedPartIdentifier",
+await expectAllowed("2 unknown alias is truthful", "partsAssociate", "catalog:lookupScannedPart",
   { rawValue: `BC-NOT-REGISTERED-${RUN}` },
-  (r) => (r.result === "NOT_FOUND" && r.partId === undefined ? true : `got ${r.result}, partId=${r.partId}`),
+  (r) => (r.alias?.result === "NOT_FOUND" && r.alias?.partId === undefined && (r.parts ?? []).length === 0
+    ? true : `got ${r.alias?.result}, partId=${r.alias?.partId}, parts=${(r.parts ?? []).length}`),
   "NOT_FOUND with no fallback partId");
-await expectAllowed("2 empty scan is MALFORMED", "partsAssociate", "resolveScannedPartIdentifier",
-  { rawValue: "   " }, (r) => (r.result === "MALFORMED" ? true : `got ${r.result}`),
-  "nothing scanned differs from nothing found");
+const empty2 = await callAs("partsAssociate", "catalog:lookupScannedPart", { rawValue: "   " });
+record("2 empty scan is refused, never NOT_FOUND", "partsAssociate", "invalid_input",
+  empty2.ok ? `answered ${empty2.result?.alias?.result}` : empty2.code, !empty2.ok && empty2.code === "invalid_input",
+  "nothing scanned differs from nothing found (EOS refuses it at the request; the retired resolver said MALFORMED)");
 
 // ═════════ 3. Serialized lookup ═════════
 console.log("\n-- 3. Serialized lookup --");

@@ -163,14 +163,14 @@ export const LEGACY_CATALOG_MASTER_COMMANDS = Object.freeze([
  * inventing a callable to carry a mapper would be inventing a deployed surface. If one is ever exported
  * it must appear here, and the length assertion in catalogFreezeParity.test.mjs goes red until it does.
  *
- * The Part family (Firebase retirement F3a, 2026-10-11) and the Supplier and Part<->Supplier item families (F2, 2026-10-10)
+ * The Part (F3a) and Part Alias (F3b) families (Firebase retirement, 2026-10-11) and the Supplier and Part<->Supplier item
+ * families (F2, 2026-10-10)
  * have no entry: their onCall
- * adapters (partMasterCallables.ts, supplierMasterCallables.ts, partSupplierItemCallables.ts) were removed from the repository -- no caller
+ * adapters (partMasterCallables.ts, partAliasCallables.ts, supplierMasterCallables.ts, partSupplierItemCallables.ts) were removed from the repository -- no caller
  * remained -- so this repository exports no API boundary for them. Their FROZEN commands are still listed above.
  */
 export const LEGACY_CATALOG_CALLABLE_ERROR_MAPPERS = Object.freeze([
   Object.freeze({ family: "manufacturer", lib: "../lib/partMaster/manufacturerCallables.js", writerId: "manufacturer.create" }),
-  Object.freeze({ family: "partAlias", lib: "../lib/partMaster/partAliasCallables.js", writerId: "partAlias.create" }),
 ]);
 
 /**

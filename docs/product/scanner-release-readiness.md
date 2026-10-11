@@ -160,6 +160,9 @@ per target environment. Only the sandbox's receiving flag is currently true.
 `recordReturnIntake`, `dispatchTransferOrder`, `receiveTransferOrder`, `createCycleCount`,
 `submitCycleCount`.
 
+> **Firebase retirement F3b (2026-10-11):** `resolveScannedPartIdentifier` was removed from the repository and from the sandbox refresh's named deploy batch and verify list. It is SUPERSEDED by the EOS Catalog `lookupScannedPart` alias half. Its deployed copy stays DEPLOYED_NOT_CALLED until the bounded Firebase removal window. Scanner scenario 2 runs against the EOS Catalog API.
+
+
 ### 5e. Hosting release — 1
 
 The client bundle. **Part-code lookup needs only this** — no activation, no grant.

@@ -1,6 +1,7 @@
 // The scanner's governed reads -- lookupScannedPart and listStockMovementLocations -- which replace the
 // client-direct `parts` and `warehouses` reads a Parts Associate was refused by firestore.rules.
-// Emulator; drives the real callables (`.run`) with real role assignments and the real activation registry.
+// Emulator; drives the real services and the relocation callable (`.run`) with real role assignments and the real
+// activation registry. The lookupScannedPart callable checks were migrated to EOS (see below).
 //
 // Run: FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node test/scannerGovernedReads.test.mjs
 import "./support/firebaseEmulatorGuard.cjs"; // FIRST: Firebase test-safety guard (emulator mode) -- see test/support/firebaseTestGuard.cjs
@@ -10,7 +11,6 @@ admin.initializeApp({ projectId: "demo-eos-test" });
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 
-const aliasCallables = await import("../lib/partMaster/partAliasCallables.js");
 const relocation = await import("../lib/inventoryLocation/stockRelocationCallables.js");
 const { lookupScannedPart, validateScannerPartLookup, SCANNER_PART_FIELDS } = await import("../lib/partMaster/scannerPartLookup.js");
 const { __resetRuntimeCapabilityOverridesCacheForTest } = await import("../lib/access/environmentCapabilityOverrides.js");
@@ -64,45 +64,13 @@ for (const [id, status] of [[WH_ACTIVE, "ACTIVE"], [WH_INACTIVE, "INACTIVE"]]) {
 }
 
 // ---------------------------------------------------------------- lookupScannedPart
-await check("unauthenticated is refused", async () => {
-  assert.equal(await codeOf(aliasCallables.lookupScannedPartCallable.run(request(undefined, { rawValue: PART }))), "unauthenticated");
-});
-await check("the target PARTS ASSOCIATE resolves a Part by its code -- the gap this closes", async () => {
-  const out = await inSandbox(() => aliasCallables.lookupScannedPartCallable.run(request(partsAssociate, { rawValue: PART, partCode: PART.toLowerCase() })));
-  assert.deepEqual(out.parts.map((p) => p.id), [PART], "case-insensitive on the Part code, like the client's matcher");
-  assert.equal(out.aliasDenied, false);
-  assert.ok(out.alias && typeof out.alias.result === "string", "alias half answered through the canonical resolver");
-});
-await check("the projection is an allow-list: no cost, price or supplier terms", async () => {
-  const out = await inSandbox(() => aliasCallables.lookupScannedPartCallable.run(request(relocator, { rawValue: PART, partCode: PART })));
-  const data = out.parts[0].data;
-  for (const k of Object.keys(data)) assert.ok(SCANNER_PART_FIELDS.includes(k), `unexpected field ${k}`);
-  assert.equal(data.unitCost, undefined); assert.equal(data.listPrice, undefined); assert.equal(data.supplierTerms, undefined);
-  assert.equal(data.controlType, "SERIALIZED");
-});
-await check("the relocation Role alone can resolve Parts (catalog.read + alias.read)", async () => {
-  const out = await inSandbox(() => aliasCallables.lookupScannedPartCallable.run(request(relocator, { rawValue: PART, partCode: PART })));
-  assert.equal(out.parts.length, 1);
-});
-await check("no catalog.read -> refused (technician; put-away-only)", async () => {
-  await inSandbox(async () => {
-    assert.equal(await codeOf(aliasCallables.lookupScannedPartCallable.run(request(technician, { rawValue: PART, partCode: PART }))), "permission-denied");
-    assert.equal(await codeOf(aliasCallables.lookupScannedPartCallable.run(request(putAwayOnly, { rawValue: PART, partCode: PART }))), "permission-denied");
-  });
-});
-await check("outside an environment that activates catalog.read, everyone is refused", async () => {
-  assert.equal(await codeOf(aliasCallables.lookupScannedPartCallable.run(request(partsAssociate, { rawValue: PART, partCode: PART }))), "permission-denied");
-});
-await check("the client cannot shape the query: unknown fields and oversize values are refused", async () => {
-  await inSandbox(async () => {
-    assert.equal(await codeOf(aliasCallables.lookupScannedPartCallable.run(request(relocator, { rawValue: PART, collection: "users" }))), "invalid-argument");
-    assert.equal(await codeOf(aliasCallables.lookupScannedPartCallable.run(request(relocator, { rawValue: "x".repeat(300) }))), "invalid-argument");
-  });
-  assert.equal(validateScannerPartLookup({ rawValue: "a", partCode: "../users/x" }).partCode, null, "an unsafe code is simply not a Part code");
-});
-await check("an unknown code is an honest empty answer, never another Part", async () => {
-  const out = await inSandbox(() => aliasCallables.lookupScannedPartCallable.run(request(relocator, { rawValue: "NOPE-000", partCode: "NOPE-000" })));
-  assert.deepEqual(out.parts, []);
+// The lookupScannedPart CALLABLE checks that stood here (unauthenticated, part-code resolution, field allow-list,
+// capability refusal, request shaping, unknown code) were MIGRATED to the authoritative EOS path when the callable was
+// retired (Firebase retirement F3b, 2026-10-11): functions/test/catalogReadAuthorizationPostgres.test.mjs -- the
+// "SCANNER: lookupScannedPart answers the scanner contract on the EOS path" subtest, plus its UNAUTHENTICATED and
+// "REFUSED: a tenant MEMBER without inventory.catalog.read" subtests, all through the real handleCatalogRequest.
+await check("an unsafe Part code is simply not a Part code (the pure request validator)", async () => {
+  assert.equal(validateScannerPartLookup({ rawValue: "a", partCode: "../users/x" }).partCode, null);
 });
 await check("CORE: an alias that resolves to one Part returns that Part; alias denial reads no alias", async () => {
   const found = await lookupScannedPart({ rawValue: "0123456789012", partCode: null },

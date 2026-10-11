@@ -77,6 +77,10 @@ async function callAs(personaKey, name, data) {
   try { token = await idTokenFor(personaKey); }
   catch (err) { return { ok: false, code: "harness-signin", message: String(err.message) }; }
 
+  // `catalog:<operation>` -- the AUTHORITATIVE EOS Catalog API this environment's client uses (envEntry.eosApi), with
+  // the same persona token. Firebase retirement F3b (2026-10-11) retired the alias callables; their scenarios run here.
+  if (name.startsWith("catalog:")) return callCatalogAs(token, name.slice("catalog:".length), data);
+
   const res = await fetch(`https://${REGION}-${PROJECT_ID}.cloudfunctions.net/${name}`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
@@ -86,6 +90,19 @@ async function callAs(personaKey, name, data) {
   if (res.ok && body.result !== undefined) return { ok: true, result: body.result };
   const code = body?.error?.status ?? body?.error?.code ?? `http-${res.status}`;
   return { ok: false, code: String(code).toLowerCase(), message: body?.error?.message ?? `HTTP ${res.status}` };
+}
+
+async function callCatalogAs(token, operation, input) {
+  const base = envEntry.eosApi?.baseUrl;
+  if (!base) return { ok: false, code: "harness-no-eos-api", message: `${envEntry.id} declares no eosApi` };
+  const res = await fetch(`${base.replace(/\/$/, "")}/operations/catalog`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify({ operation, input: input ?? {} }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.ok && body.ok === true) return { ok: true, result: body.result };
+  return { ok: false, code: String(body?.code ?? `http-${res.status}`).toLowerCase(), message: body?.message ?? `HTTP ${res.status}` };
 }
 
 // ── reporting ────────────────────────────────────────────────────────────────────────────────────

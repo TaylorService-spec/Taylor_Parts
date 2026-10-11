@@ -149,7 +149,7 @@ test("the guard used by the commands is the real, committed one once the injecti
 // ── F4: the API boundary. A governed refusal is never an internal server error ──────────────────────
 
 test("every deployed catalog callable maps a freeze refusal to failed-precondition, never internal", () => {
-  assert.equal(LEGACY_CATALOG_CALLABLE_ERROR_MAPPERS.length, 2); // manufacturer, partAlias (F2 removed supplier, partSupplierItem; F3a removed part)
+  assert.equal(LEGACY_CATALOG_CALLABLE_ERROR_MAPPERS.length, 1); // manufacturer (F2 removed supplier, partSupplierItem; F3a part; F3b partAlias)
   for (const { family, lib, writerId } of LEGACY_CATALOG_CALLABLE_ERROR_MAPPERS) {
     const { mapError } = require(lib);
     for (const state of ["FROZEN", "RETIRED"]) {

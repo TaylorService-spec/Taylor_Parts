@@ -215,12 +215,18 @@ deploy_batch() {
   firebase deploy --only "$1" --project eos-platform-sandbox --force
 }
 
-deploy_batch "scanner: identity + balance reads" \
-  "functions:resolveScannedPartIdentifier,functions:getPartBalance"
+# A NAMED BATCH MAY NAME ONLY FUNCTIONS THE CODEBASE STILL EXPORTS. firebase-tools keeps every DEPLOYED function that
+# matches an --only filter in the plan (lib/deploy/functions/release/planner.js), so a retired name here, combined with
+# --force, DELETES the deployed copy -- a Cloud Function deletion nobody authorized. Pinned by
+# scripts/sandboxDeployableFunctions.test.mjs. resolveScannedPartIdentifier (Firebase retirement F3b) and recordPutAway
+# (retired to EOS 2026-10-01) were removed from these batches for exactly that reason; their deployed copies stay until the
+# bounded Firebase removal window.
+deploy_batch "scanner: balance reads" \
+  "functions:getPartBalance"
 deploy_batch "scanner: bin registry" \
   "functions:createBin,functions:deactivateBin,functions:reactivateBin,functions:resolveBin,functions:listBins"
-deploy_batch "scanner: placement + returns" \
-  "functions:recordPutAway,functions:recordReturnIntake"
+deploy_batch "scanner: returns" \
+  "functions:recordReturnIntake"
 deploy_batch "receiving: canonical multi-line reads" \
   "functions:getPurchaseOrderReceivingProgress,functions:listReceivablePurchaseOrders"
 # Everything else, after the scanner set is known good.
@@ -323,7 +329,7 @@ echo "== [5b/5] verify the scanner callables (read-only) =="
 # The firebase fallback needs no extra tooling (the CLI is already required to deploy) and answers
 # the weaker question -- IS IT DEPLOYED. It says so in those words rather than implying more.
 SCANNER_CALLABLES="receiveInventoryStock getPurchaseOrderReceivingProgress listReceivablePurchaseOrders
-  resolveScannedPartIdentifier getPartBalance getAvailableEquipment getLocationDisplay
+  getPartBalance getAvailableEquipment getLocationDisplay
   createBin deactivateBin reactivateBin resolveBin listBins recordPutAway
   recordReturnIntake dispatchTransferOrder receiveTransferOrder createCycleCount submitCycleCount"
 

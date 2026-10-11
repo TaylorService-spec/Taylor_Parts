@@ -188,3 +188,20 @@ test("the exclusion's stated premise is true: platform-sandbox has private AI OF
       "scripts/sandboxDeployableFunctions.mjs; it may no longer be correct.",
   );
 });
+
+// THE NAMED BATCHES. _sandboxRefresh.run.sh deploys a few hand-named batches with --force BEFORE the derived estate.
+// firebase-tools keeps every DEPLOYED function matching an --only filter in the plan, so a name the codebase no longer
+// exports, under --force, DELETES the deployed copy (lib/deploy/functions/release/planner.js). Every hand-named function
+// must therefore still be exported. Found by Firebase retirement F3b (2026-10-11): resolveScannedPartIdentifier and
+// recordPutAway were named after retirement.
+built("every function in a hand-named sandbox deploy batch is still exported (a retired name under --force deletes it)", async () => {
+  const manifest = await loadFunctionManifest(LIB_INDEX);
+  const exported = new Set(deployableFunctionNames(manifest).concat(Object.keys(SANDBOX_REFRESH_EXCLUDED_FUNCTIONS)));
+  const runbook = readFileSync(join(REPO, "scripts", "_sandboxRefresh.run.sh"), "utf8")
+    .split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
+  const named = [...runbook.matchAll(/"((?:functions:[A-Za-z0-9_]+,?)+)"/g)]
+    .flatMap((m) => m[1].split(",")).map((f) => f.replace(/^functions:/, "")).filter(Boolean);
+  assert.ok(named.length >= 3, `expected the hand-named batches to be found, saw ${named.length}`);
+  const retired = named.filter((n) => !exported.has(n));
+  assert.deepEqual(retired, [], `named in a --force batch but no longer exported (would DELETE the deployed copy): ${retired.join(", ")}`);
+});

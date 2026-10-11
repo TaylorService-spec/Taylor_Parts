@@ -155,7 +155,8 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
     retirementBlocking: true,
     disposition: "LEGACY_RETIREMENT_ONLY",
     reason:
-      "Reached by the deployed alias callables and by partMasterCommands' atomic rename. The PostgreSQL "
+      "Reached by partMasterCommands' atomic rename (its alias callables were removed from the repository in Firebase "
+      + "retirement F3b). The PostgreSQL "
       + "replacement exists and is proved; what remains is retiring the Firebase callables, which is a "
       + "deployment rather than a code change.",
   }),
@@ -163,19 +164,9 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
   // Its row is gone because the ledger records files that exist; the DEPLOYED copies (createPart / updatePart /
   // changePartStatus) stay DEPLOYED_NOT_CALLED and retirement-blocking until the bounded Firebase removal window, recorded
   // in functions/src/index.ts and catalogRuntimeCensus.ts.
-  d({
-    consumer: "functions/src/partMaster/partAliasCallables.ts",
-    owningDomain: "partMaster",
-    currentRuntime: "FIREBASE_FUNCTIONS",
-    catalogFact: "the seven alias operations, including the scanner lookup",
-    classification: "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
-    deployedReachable: true,
-    replacementAuthority: "/operations/catalog createPartAlias | deactivatePartAlias | reactivatePartAlias | listPartAliases | probePartAlias | lookupScannedPart",
-    activationBlocking: false,
-    retirementBlocking: true,
-    disposition: "LEGACY_RETIREMENT_ONLY",
-    reason: "Same posture as the Part callables: no repository caller remains, the exports are still deployed.",
-  }),
+  // functions/src/partMaster/partAliasCallables.ts -- RETIRED FROM THE REPOSITORY (Firebase retirement F3b, 2026-10-11).
+  // Same handling as the Part callables above: the row is gone; the seven DEPLOYED copies stay DEPLOYED_NOT_CALLED and
+  // retirement-blocking until the removal window (the four reads still answer from frozen Firestore there).
 
   // ══════════ OTHER DOMAINS THAT READ A PART ══════════
   //
@@ -443,14 +434,16 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
     owningDomain: "partMaster",
     currentRuntime: "FIREBASE_FUNCTIONS",
     catalogFact: "the Part a new or changed alias resolves to, read before the alias is staged",
-    classification: "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
-    deployedReachable: true,
+    classification: "INTERNAL_UNDEPLOYED",
+    deployedReachable: false,
     replacementAuthority: "/operations/catalog createPartAlias | deactivatePartAlias | reactivatePartAlias (postgresPartAliasWriter.ts)",
     activationBlocking: false,
     retirementBlocking: true,
     disposition: "LEGACY_RETIREMENT_ONLY",
     reason:
-      "Behind the alias callables already listed. The PostgreSQL alias authority exists and is proved, "
+      "RETIRED FROM THE REPOSITORY with its only deployed adapter (partAliasCallables.ts, Firebase retirement F3b, "
+      + "2026-10-11), so nothing in this repository reaches it; the DEPLOYED copies still block retirement. "
+      + "The PostgreSQL alias authority exists and is proved, "
       + "including the atomic Part+alias rename that makes an alias a property of Part identity rather "
       + "than a side table. Retirement, not migration.",
   }),
