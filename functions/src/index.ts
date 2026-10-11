@@ -496,23 +496,13 @@ export { recordReturnIntakeCallable as recordReturnIntake } from "./inventoryRet
 //   getInstallableEquipmentForWorkOrder
 //   recordWorkOrderEquipmentInstall
 
-// --- TECHNICIAN LABOR (Labor Domain V1) ---
-// The canonical record of work performed. NOT workOrder.laborHours -- that field is a single mutable
-// number that answers "how many hours" and destroys every other question: when, by whom, travel or
-// onsite, what a correction changed, whether two entries overlap.
-//
-// Three facts the schema refuses to collapse: WORK PERFORMED, BILLABLE LABOR, LABOR COST. Only the
-// first is recorded here. No rate, no cost, no billable flag -- V1 calculates neither payroll nor
-// invoices, and must not pretend to know values nobody has decided.
-//
-// `work_order_labor_entries` has no Rules match block, so it is deny-all to every client: a
-// technician's hours cannot be written from a browser at all. Both capabilities are registered
-// active:false and carried by no Role yet. EXPORT != DEPLOY.
-export {
-  recordWorkOrderLaborCallable as recordWorkOrderLabor,
-  correctWorkOrderLaborCallable as correctWorkOrderLabor,
-  getWorkOrderLabor,
-} from "./workOrderLabor/laborCallables";
+// RETIRED FROM THE REPOSITORY (Firebase retirement F4, 2026-10-11): no caller remains (census) and the governed EOS
+// route replaces it -- the client records and reads labor through /operations/work-orders (workOrderLaborCallableClient ->
+// callWorkOrderApi). The callables were fenced only by configuration (workOrder.labor.* active:false), so removing them also
+// removes a dormant second, Firestore-side labor writer. The deployed copies stay DEPLOYED_NOT_CALLED until the bounded
+// Firebase removal window -- tracked, not deleted by deploy here.
+//   recordWorkOrderLabor, correctWorkOrderLabor   (-> /operations/work-orders recordWorkOrderLabor; correction = correctsLaborEntryId)
+//   getWorkOrderLabor                             (-> /operations/work-orders readWorkOrderLabor)
 
 // --- Descriptive bin registry (Scanner Phase K; DECISIONS #116) ---
 // A bin describes WHERE stock sits inside a warehouse; the warehouse still owns it. These author no

@@ -30,7 +30,7 @@ Every row below also has a client cutover: the listed client no longer invokes t
 | `setWorkOrderPartsPlan` callable | `workOrderService.ts` (`useWorkOrderPartsPlan`) | `setWorkOrderPartsPlan` | journeys | RETIRED from client |
 | `listWorkOrderConsumptionSources` callable | `workOrderService.ts` (ExecutionCapture) | none. Stock movement is NOT_YET_ACTIVATED; actuals are execution facts. | `workOrderDomainCutoverPostgres` | RETIRED from client (source picker removed) |
 | Firestore `fieldops_wos` reads | `workOrderService.ts`, `useWorkOrder.js`, `useWorkOrderSearch.js`, `usePartWorkOrderDemand.js`, `accountWorkOrders.js`, `types/workOrder.ts`, `useEquipment.js`, `useSchedulingData.js` | readWorkOrder, listWorkOrders (search, customer, equipment, planned-part filters), listMyAssignedWorkOrders | `workOrderApiClient.test`, journeys | RETIRED from client |
-| `getWorkOrderLabor` / `recordWorkOrderLabor` callables | `services/workOrderLaborCallableClient.js` | readWorkOrderLabor, recordWorkOrderLabor | `workOrderLaborPostgres`, `serviceTechnicianJourneyPostgres` | RETIRED from client |
+| `getWorkOrderLabor` / `recordWorkOrderLabor` callables | `services/workOrderLaborCallableClient.js` | readWorkOrderLabor, recordWorkOrderLabor | `workOrderLaborPostgres`, `serviceTechnicianJourneyPostgres` | RETIRED from client; adapter RETIRED FROM THE REPOSITORY (Firebase retirement F4, 2026-10-11) — `recordWorkOrderLabor`, `correctWorkOrderLabor`, `getWorkOrderLabor` no longer exported |
 | `getWorkOrderFieldContext` callable | `hooks/useWorkOrderFieldContext.js` | readWorkOrderFieldContext | `workOrderFieldContextPostgres`, `serviceTechnicianJourneyPostgres` | RETIRED from client |
 | `getWorkOrderReadinessContext` callable | `services/workOrderReadinessContextClient.js` | readWorkOrderReadiness (inventory = NOT_YET_ACTIVATED) | `workOrderFieldContextPostgres`, `serviceTechnicianJourneyPostgres` | RETIRED from client |
 | duration estimate (`setWorkOrderEstimatedDuration` callable) | `services/schedulingCommandClient.js` | setWorkOrderEstimatedDuration (audited) | `technicianAvailabilityClient.test`, `serviceTechnicianJourneyPostgres` | RETIRED from client |
@@ -54,4 +54,5 @@ Every row below also has a client cutover: the listed client no longer invokes t
 
 - The EOS server (Render) calls no Firebase for Work Orders.
 - The Firebase Work Order functions stay in source and are exported. No active client calls them. They retire with the final Firebase retirement.
+  - **Amended (Firebase retirement F4, 2026-10-11):** the three labor callables (`recordWorkOrderLabor`, `correctWorkOrderLabor`, `getWorkOrderLabor`) are removed from source ahead of that window. Their only fence was configuration (`workOrder.labor.*` active:false). The deployed copies stay DEPLOYED_NOT_CALLED until the bounded removal window. `workOrderLaborCommand.ts` stays in source, unexported.
 - Firebase deploy for this package: **NONE**.
