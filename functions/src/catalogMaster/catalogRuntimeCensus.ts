@@ -143,7 +143,7 @@ export const CATALOG_RUNTIME_CENSUS: readonly CatalogCensusEntry[] = Object.free
   // ══════════ SERVER: deployed Firebase callables ══════════
   e({ path: "functions/src/partMaster/partMasterCallables.ts", object: "PART",
     classification: "DEPLOYED_LEGACY_AUTHORITY",
-    consumer: "createPart / updatePart / changePartStatus: exported from index.ts, deployed and externally invokable" }),
+    consumer: "createPart / updatePart / changePartStatus: removed from the repository in Firebase retirement F3a (2026-10-11); the DEPLOYED copies stay externally invokable (DEPLOYED_NOT_CALLED) until the removal window" }),
   e({ path: "functions/src/partMaster/partAliasCallables.ts", object: "PART_ALIAS",
     classification: "DEPLOYED_LEGACY_AUTHORITY",
     consumer: "the seven alias callables including the scanner lookup: exported from index.ts" }),

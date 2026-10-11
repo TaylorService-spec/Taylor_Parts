@@ -159,23 +159,10 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
       + "replacement exists and is proved; what remains is retiring the Firebase callables, which is a "
       + "deployment rather than a code change.",
   }),
-  d({
-    consumer: "functions/src/partMaster/partMasterCallables.ts",
-    owningDomain: "partMaster",
-    currentRuntime: "FIREBASE_FUNCTIONS",
-    catalogFact: "createPart / updatePart / changePartStatus",
-    classification: "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
-    deployedReachable: true,
-    replacementAuthority: "/operations/catalog createPart | updatePart | changePartStatus",
-    activationBlocking: false,
-    retirementBlocking: true,
-    disposition: "LEGACY_RETIREMENT_ONLY",
-    reason:
-      "The client no longer calls these: partMasterCommandClient reaches Render. They remain exported "
-      + "from index.ts and are therefore deployed and externally invokable by anything holding a token, "
-      + "which is a second write authority this repository cannot see the callers of. Not deleted yet, "
-      + "by ruling.",
-  }),
+  // functions/src/partMaster/partMasterCallables.ts -- RETIRED FROM THE REPOSITORY (Firebase retirement F3a, 2026-10-11).
+  // Its row is gone because the ledger records files that exist; the DEPLOYED copies (createPart / updatePart /
+  // changePartStatus) stay DEPLOYED_NOT_CALLED and retirement-blocking until the bounded Firebase removal window, recorded
+  // in functions/src/index.ts and catalogRuntimeCensus.ts.
   d({
     consumer: "functions/src/partMaster/partAliasCallables.ts",
     owningDomain: "partMaster",
@@ -428,7 +415,7 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
 
   // ══════════ PART MASTER'S OWN COMMAND LAYER ══════════
   //
-  // These three sit behind the callables already listed above. They are separated out because the
+  // These three sit behind the callables (listed above, or retired from the repository). They are separated out because the
   // derivation names them individually, and a ledger that silently folded them into "the repository"
   // is how the four Inventory Operations consumers went unlisted in the first place.
   d({
@@ -443,7 +430,9 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
     retirementBlocking: true,
     disposition: "LEGACY_RETIREMENT_ONLY",
     reason:
-      "The Firestore write authority itself. It already calls assertFirestoreCatalogWriterOpen first, so "
+      "The Firestore write authority itself. Its own callable adapter (partMasterCallables.ts) was removed from the "
+      + "repository in Firebase retirement F3a; it stays reachable through Data Import and the manufacturer callables. "
+      + "It already calls assertFirestoreCatalogWriterOpen first, so "
       + "the freeze stops it; the browser reaches Render instead; and its one remaining programmatic "
       + "caller, Data Import, is now refused at the job boundary before it gets here. It also owns the "
       + "equipment-model existence probe, whose PostgreSQL equivalent (requireEquipmentModel) already "

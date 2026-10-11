@@ -46,8 +46,6 @@ on:
       - "functions/test/partReferenceCompatibility.test.mjs"
       # REGISTRATION: four suites whose npm scripts no workflow invoked, now run by this workflow's
       # Part Master emulator job. Without these filters a PR touching only them would trigger nothing.
-      - "functions/test/partMasterCallables.test.mjs"
-      - "functions/test/partMasterCallablesExport.test.mjs"
       - "functions/test/partMasterCreateImporter.test.mjs"
       - "functions/test/partMasterUnits.test.mjs"
       - "functions/src/index.ts"
@@ -81,8 +79,6 @@ on:
       - "functions/test/partReferenceCompatibility.test.mjs"
       # REGISTRATION: four suites whose npm scripts no workflow invoked, now run by this workflow's
       # Part Master emulator job. Without these filters a PR touching only them would trigger nothing.
-      - "functions/test/partMasterCallables.test.mjs"
-      - "functions/test/partMasterCallablesExport.test.mjs"
       - "functions/test/partMasterCreateImporter.test.mjs"
       - "functions/test/partMasterUnits.test.mjs"
       - "field-ops-app-vite/src/shared/partMaster/PartIdentifiersSection.jsx"
@@ -217,10 +213,10 @@ jobs:
 
       # REGISTRATION: these four suites had npm scripts that NO workflow invoked -- the same
       # "named or never run" trap this file's header documents for test:partMasterCommands and
-      # test:partReferenceCompatibility. partMasterCallables and partMasterCreateImporter bind the
-      # emulator, so all four run in this job, which already has one.
-      - name: Part Master callables, create importer and units (build + run)
-        run: npm run test:partMasterCallables && npm run test:partMasterCreateImporter && npm run test:partMasterUnits
+      # test:partReferenceCompatibility. partMasterCreateImporter binds the emulator, so it runs in this
+      # job, which already has one. (test:partMasterCallables retired with partMasterCallables.ts in F3a.)
+      - name: Part Master create importer and units (build + run)
+        run: npm run test:partMasterCreateImporter && npm run test:partMasterUnits
         working-directory: functions
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080

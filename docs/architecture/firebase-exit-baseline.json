@@ -271,7 +271,6 @@
         "functions/src/partMaster/manufacturerCallables.ts",
         "functions/src/partMaster/manufacturerReadService.ts",
         "functions/src/partMaster/partAliasCallables.ts",
-        "functions/src/partMaster/partMasterCallables.ts",
         "functions/src/performance/performanceGoalCallables.ts",
         "functions/src/reorderRequest/reorderCallables.ts",
         "functions/src/reporting/runReportDefinitionCallable.ts",

@@ -475,7 +475,9 @@ test("the three governed commands are the only write path, each with its own aud
   const ids = partAdministrationProfile.commands.map((c) => c.id);
   assert.deepEqual(ids, ["createPart", "updatePart", "changePartStatus"]);
   for (const command of partAdministrationProfile.commands) {
-    assert.equal(command.transport, "CALLABLE");
+    // The EOS Catalog API (catalogHttp.ts -> postgresPartMasterWriter.ts) since Firebase retirement F3a.
+    assert.equal(command.transport, "TRUSTED_SERVER");
+    assert.equal(command.entryPoint.path, "functions/src/catalogMaster/catalogHttp.ts");
     assert.equal(command.idempotent, true, `${command.id} uses the house idempotency mechanism`);
     assert.ok(command.auditAction, `${command.id} records an audit action`);
   }
