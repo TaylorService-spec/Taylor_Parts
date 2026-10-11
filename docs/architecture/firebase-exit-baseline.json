@@ -226,7 +226,6 @@
         "functions/src/workOrderConsumption/consumptionSourceService.ts",
         "functions/src/workOrderConsumption/planPhysicalConsumption.ts",
         "functions/src/workOrderInstall/workOrderInstallCommand.ts",
-        "functions/src/workOrderLabor/laborCallables.ts",
         "functions/src/workOrderLabor/workOrderLaborCommand.ts",
         "functions/src/workOrderPartsPlan/setWorkOrderPartsPlan.ts"
       ],
@@ -293,7 +292,6 @@
         "functions/src/updateWorkOrderExecutionData.ts",
         "functions/src/workOrderConsumption/consumptionSourceCallables.ts",
         "functions/src/workOrderConsumption/planPhysicalConsumption.ts",
-        "functions/src/workOrderLabor/laborCallables.ts",
         "functions/src/workOrderPartsPlan/setWorkOrderPartsPlan.ts"
       ],
       "firebase_auth": [
