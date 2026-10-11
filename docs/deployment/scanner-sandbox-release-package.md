@@ -80,6 +80,9 @@ settled on its own terms rather than swept in with twelve others.
 `recordReturnIntake` · `dispatchTransferOrder` · `receiveTransferOrder` · `createCycleCount` ·
 `submitCycleCount`
 
+> **Firebase retirement F3b (2026-10-11):** `resolveScannedPartIdentifier` was removed from the repository and from the sandbox refresh's named deploy batch and verify list. It is SUPERSEDED by the EOS Catalog `lookupScannedPart` alias half. Its deployed copy stays DEPLOYED_NOT_CALLED until the bounded Firebase removal window. Scanner scenario 2 runs against the EOS Catalog API.
+
+
 Deploy in **small named batches**, not one large `--only functions` call: large batches transiently
 fail a subset of the set for reasons unrelated to IAM or org policy.
 

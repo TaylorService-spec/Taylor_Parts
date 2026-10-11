@@ -197,4 +197,54 @@ test("Catalog reads are capability-gated server-side, in PostgreSQL", { skip: SK
     assert.equal(r.status, 403, JSON.stringify(r.body));
     assert.equal(r.body.result, undefined);
   });
+
+  // ── SCANNER LOOKUP CONTRACT -- migrated from scannerGovernedReads.test.mjs / the sandbox scanner scenario 2 when the
+  // Firebase lookupScannedPart and resolveScannedPartIdentifier callables were retired (Firebase retirement F3b,
+  // 2026-10-11). The same assertions, now against the authoritative path: POST /operations/catalog lookupScannedPart.
+  // resolveScannedPartIdentifier is SUPERSEDED by lookupScannedPart's alias half (same resolver, same alias.read gate);
+  // the one contract difference is stated below, not hidden: a blank or oversize scan is refused at the request
+  // (INVALID_INPUT) where the old resolver answered MALFORMED -- still never NOT_FOUND.
+  await t.test("SCANNER: lookupScannedPart answers the scanner contract on the EOS path (migrated from the retired callables)", async () => {
+    const aliasWriter = require("../lib/catalogMaster/postgresPartAliasWriter.js");
+    const scanner = await makeActor("t1", "fb-scanner", [READ, "inventory.catalog.alias.read"]);
+    const scannerT2 = await makeActor("t2", "fb-scanner-t2", [READ, "inventory.catalog.alias.read"]);
+    const BARCODE = "0123456789012";
+    await aliasWriter.createPartAlias(wdeps, { tenantId: "t1", principalId: writer.principalId, capabilities: W_CAPS },
+      { partId: "CW-P-0001", aliasType: "BARCODE_OTHER", rawValue: BARCODE });
+    const ids = (r) => r.body.result.parts.map((p) => p.id);
+
+    // Part code, case-insensitively (the scanner sends what was typed or scanned).
+    const byCode = await call(scanner, "lookupScannedPart", { rawValue: "CW-P-0001", partCode: "cw-p-0001" });
+    assert.equal(byCode.status, 200, JSON.stringify(byCode.body));
+    assert.deepEqual(ids(byCode), ["CW-P-0001"]);
+
+    // A registered barcode resolves to its Part, wedge whitespace and all; the alias answer is carried.
+    const byBarcode = await call(scanner, "lookupScannedPart", { rawValue: `  ${BARCODE}  ` });
+    assert.equal(byBarcode.status, 200, JSON.stringify(byBarcode.body));
+    assert.deepEqual([byBarcode.body.result.alias?.result, byBarcode.body.result.alias?.partId, byBarcode.body.result.aliasDenied],
+      ["FOUND", "CW-P-0001", false]);
+    assert.deepEqual(ids(byBarcode), ["CW-P-0001"]);
+
+    // Only the scanner's fields leave the server.
+    for (const p of byBarcode.body.result.parts) {
+      for (const k of Object.keys(p.data)) assert.ok(http.SCANNER_PART_FIELDS.includes(k), `scanner saw a non-scanner field: ${k}`);
+    }
+
+    // Unknown is truthful: NOT_FOUND, no fallback partId, no Part.
+    const unknown = await call(scanner, "lookupScannedPart", { rawValue: "BC-NOT-REGISTERED", partCode: "NOPE-000" });
+    assert.equal(unknown.status, 200, JSON.stringify(unknown.body));
+    assert.deepEqual([unknown.body.result.alias?.result, unknown.body.result.alias?.partId, ids(unknown)], ["NOT_FOUND", undefined, []]);
+
+    // The request contract: rawValue and partCode only; non-empty; bounded. A blank scan is refused (was MALFORMED).
+    for (const input of [{ rawValue: BARCODE, collection: "users" }, { rawValue: "x".repeat(300) }, { rawValue: "   " }]) {
+      const r = await call(scanner, "lookupScannedPart", input);
+      assert.deepEqual([r.status, r.body.code], [400, "INVALID_INPUT"], JSON.stringify(input));
+      assert.equal(r.body.result, undefined);
+    }
+
+    // Tenant isolation: another tenant's scanner with the same rights resolves nothing of t1's.
+    const other = await call(scannerT2, "lookupScannedPart", { rawValue: BARCODE, partCode: "CW-P-0001" });
+    assert.equal(other.status, 200, JSON.stringify(other.body));
+    assert.deepEqual([other.body.result.alias?.result, ids(other)], ["NOT_FOUND", []]);
+  });
 });

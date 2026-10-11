@@ -35,7 +35,6 @@ const { partToFirestore } = await import("../lib/partMaster/partMasterRepository
 const { validatePart } = await import("../lib/partMaster/validation.js");
 const { FirestoreCatalogWriterClosedError } = await import("../lib/catalogMaster/catalogWriterState.js");
 const { listPartAliases } = await import("../lib/partMaster/partAliasReadService.js");
-const { mapError } = await import("../lib/partMaster/partAliasCallables.js");
 const {
   InvalidInputError,
   AlreadyExistsError,
@@ -274,35 +273,7 @@ test("a malformed probe value reports MALFORMED, not NOT_FOUND", async () => {
   assert.equal(bad.result, "MALFORMED");
 });
 
-// -------------------------------------------------- the adapter's error taxonomy
-
-test("each service error maps to its own HttpsError code AND carries a domain detail", () => {
-  // There are more distinct outcomes than HttpsError codes, and three of them need different words
-  // in the UI. Without the detail all three arrive as one generic message.
-  const cases = [
-    [new InvalidInputError("x"), "invalid-argument", "INVALID"],
-    [new UnauthorizedActorError("x"), "permission-denied", "DENIED"],
-    [new NotFoundError("x"), "not-found", "NOT_FOUND"],
-    [new AlreadyExistsError("x"), "already-exists", "ALIAS_CONFLICT"],
-    [new VersionConflictError("x"), "aborted", "VERSION_CONFLICT"],
-  ];
-  for (const [err, code, detail] of cases) {
-    const mapped = mapError(err);
-    assert.equal(mapped.code, code, `${err.constructor.name} -> ${code}`);
-    assert.equal(mapped.details, detail);
-  }
-});
-
-test("error messages never carry the internal message through", () => {
-  // partMasterCallables.ts's taxonomy: generic per TYPE, so no id, version, or existence fact
-  // leaks past the boundary.
-  const mapped = mapError(new NotFoundError("alias UPC%2F0123 not found for part PRT-SECRET"));
-  assert.doesNotMatch(mapped.message, /PRT-SECRET/);
-  assert.doesNotMatch(mapped.message, /UPC/);
-});
-
-test("an unrecognized error is internal, never accidentally permissive", () => {
-  const mapped = mapError(new Error("something else entirely"));
-  assert.equal(mapped.code, "internal");
-  assert.doesNotMatch(mapped.message, /something else/);
-});
+// -------------------------------------------------- the adapter's error taxonomy (retired)
+// partAliasCallables.ts -- and with it the HttpsError mapping these three tests pinned -- was removed from the repository
+// in Firebase retirement F3b (2026-10-11). The governed boundary is the EOS Catalog API (catalogHttp.ts), whose refusal
+// codes are asserted by catalogPartAliasPostgres / catalogReadAuthorizationPostgres.

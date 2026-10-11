@@ -216,7 +216,7 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     module: "functions/src/partMaster/partAliasCommands.ts",
     entry: "createPartAlias",
     reachedFrom: Object.freeze([
-      "callable createPartAlias (functions/src/index.ts -> partAliasCallables.ts createPartAliasCallable)",
+      "deployed callable createPartAlias (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F3b, 2026-10-11)",
       "client field-ops-app-vite/src/services/partAliasCallableClient.js",
       "NOT the updatePart INTERNAL_PN alias backfill: that stages its alias write inside updatePart, which the part.update guard already covers",
     ]),
@@ -225,14 +225,14 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     module: "functions/src/partMaster/partAliasCommands.ts",
     entry: "changeAliasStatus (action deactivatePartAlias)",
     reachedFrom: Object.freeze([
-      "callable deactivatePartAlias (partAliasCallables.ts deactivatePartAliasCallable) -> deactivatePartAlias",
+      "deployed callable deactivatePartAlias (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F3b, 2026-10-11)",
     ]),
   }),
   "partAlias.reactivate": Object.freeze({
     module: "functions/src/partMaster/partAliasCommands.ts",
     entry: "changeAliasStatus (action reactivatePartAlias)",
     reachedFrom: Object.freeze([
-      "callable reactivatePartAlias (partAliasCallables.ts reactivatePartAliasCallable) -> reactivatePartAlias",
+      "deployed callable reactivatePartAlias (DEPLOYED_NOT_CALLED; adapter removed from the repository in Firebase retirement F3b, 2026-10-11)",
     ]),
   }),
 
