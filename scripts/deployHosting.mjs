@@ -38,6 +38,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve as resolvePath } from "node:path";
 
 import { resolveEnvironment } from "./resolveEnvironment.mjs";
+import { CONFIRMATION_ENV, productionConfirmation } from "./firebaseDeployGuard.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolvePath(HERE, "..");
@@ -108,6 +109,22 @@ export function assertManifestMatchesTarget(manifest, target) {
   return true;
 }
 
+/**
+ * The environment for the ONE `firebase deploy` child. A production target (already confirmed with
+ * --allow-production above) carries the commit-bound confirmation scripts/firebaseDeployGuard.mjs
+ * requires; every other target carries none, so an inherited confirmation can never reach it.
+ */
+export function deployEnvironment(target, env, sha) {
+  const out = { ...env };
+  delete out[CONFIRMATION_ENV];
+  if (target.role === "production") out[CONFIRMATION_ENV] = productionConfirmation(target.projectId, sha);
+  return out;
+}
+
+function headSha() {
+  return execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" }).trim();
+}
+
 function main() {
   let args;
   try {
@@ -164,7 +181,7 @@ function main() {
   execFileSync(
     "npx",
     ["firebase-tools", "deploy", "--only", "hosting", "--project", target.projectId],
-    { cwd: REPO, stdio: "inherit", shell: process.platform === "win32" },
+    { cwd: REPO, stdio: "inherit", shell: process.platform === "win32", env: deployEnvironment(target, process.env, headSha()) },
   );
   console.log(`\nDeployed ${manifest.commit} to ${target.id}. Verify with:`);
   console.log(`  node scripts/checkDeployedVersions.mjs --env ${target.id} --expected ${manifest.commit}`);

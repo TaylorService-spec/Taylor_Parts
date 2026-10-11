@@ -3,14 +3,17 @@
     "database": "(default)",
     "location": "us-central1",
     "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
+    "indexes": "firestore.indexes.json",
+    "predeploy": ["node scripts/firebaseDeployGuard.mjs firestore"]
   },
   "storage": {
-    "rules": "storage.rules"
+    "rules": "storage.rules",
+    "predeploy": ["node scripts/firebaseDeployGuard.mjs storage"]
   },
   "functions": {
     "source": "functions",
-    "codebase": "default"
+    "codebase": "default",
+    "predeploy": ["node scripts/firebaseDeployGuard.mjs functions"]
   },
   "emulators": {
     "auth": { "port": 9099 },
@@ -19,6 +22,7 @@
   },
   "hosting": {
     "public": "field-ops-app-vite/dist",
+    "predeploy": ["node scripts/firebaseDeployGuard.mjs hosting"],
     "ignore": [
       "firebase.json",
       "**/.*",
