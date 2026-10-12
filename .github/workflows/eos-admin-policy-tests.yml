@@ -76,6 +76,10 @@ on:
       - "functions/test/adminPolicyWorkflow.test.mjs"
       - "functions/test/adminPolicyNoFirebase.test.mjs"
       - "functions/test/adminPolicyPostgres.test.mjs"
+      # One lane, one test database: the pretest refusal (the guard, its test, and package.json where the hook lives).
+      - "functions/scripts/requireIsolatedPolicyTestDatabase.mjs"
+      - "functions/test/requireIsolatedPolicyTestDatabase.test.mjs"
+      - "functions/package.json"
       - "functions/test/adminPolicySeed.test.mjs"
       # The Owner capability contract proof. Registered by NO npm script and NO
       # workflow until now, so it had never executed in CI: it was red on the
@@ -804,6 +808,10 @@ on:
       - "functions/test/adminPolicyWorkflow.test.mjs"
       - "functions/test/adminPolicyNoFirebase.test.mjs"
       - "functions/test/adminPolicyPostgres.test.mjs"
+      # One lane, one test database: the pretest refusal (the guard, its test, and package.json where the hook lives).
+      - "functions/scripts/requireIsolatedPolicyTestDatabase.mjs"
+      - "functions/test/requireIsolatedPolicyTestDatabase.test.mjs"
+      - "functions/package.json"
       - "functions/test/adminPolicySeed.test.mjs"
       # The Owner capability contract proof. Registered by NO npm script and NO
       # workflow until now, so it had never executed in CI: it was red on the
