@@ -510,7 +510,7 @@ test("every REFUSED grant is held by nobody and smuggled into nothing", () => {
 function migrate(count) {
   const args = ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"];
   if (count !== undefined) args.push(String(count));
-  execFileSync(process.execPath, args, { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+  execFileSync(process.execPath, args, { maxBuffer: 256 * 1024 * 1024, env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 }
 
 async function dropEverything() {

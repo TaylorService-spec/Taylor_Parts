@@ -74,7 +74,7 @@ const STEPS_BACK_TO_007 =
 function migrate(args) {
   return execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations",
-  ], { env: { ...process.env, DATABASE_URL: URL }, encoding: "utf8", stdio: "pipe" });
+  ], { maxBuffer: 256 * 1024 * 1024, env: { ...process.env, DATABASE_URL: URL }, encoding: "utf8", stdio: "pipe" });
 }
 
 /**

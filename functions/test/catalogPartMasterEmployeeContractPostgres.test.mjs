@@ -42,7 +42,7 @@ test("the Part Master employee workflows answer the contract the screens read", 
   await admin.query(`CREATE DATABASE ${name}`);
   await admin.end();
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"],
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
+    { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
   const pool = new pg.Pool({ connectionString: url, max: 6 });
   t.after(async () => {
     await pool.end();

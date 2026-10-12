@@ -37,7 +37,7 @@ async function resetDatabase() {
   for (const schema of declaredSchemas()) await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
-  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,
     env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe",
   });
 }

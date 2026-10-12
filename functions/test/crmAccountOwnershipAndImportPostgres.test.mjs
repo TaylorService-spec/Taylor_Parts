@@ -66,7 +66,7 @@ const failingOn = (pool, pattern) => ({
 
 test("CRM Account ownership history and atomic Contact import, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
-  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 8 });
@@ -562,7 +562,7 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
       return;
     }
     const down = spawnSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "1", "--migrations-dir", "migrations"],
-      { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, encoding: "utf8" });
+      { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, encoding: "utf8" });
     assert.notEqual(down.status, 0);
     assert.match(down.stdout + down.stderr, /refuses to drop CRM Account ownership history or Contact import receipts/);
     assert.ok((await q(`SELECT to_regclass('eos_crm.account_ownership_history') AS t`)).rows[0].t);

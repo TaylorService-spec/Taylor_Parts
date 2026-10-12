@@ -63,7 +63,7 @@ async function resetDatabase() {
   await client.end();
   execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations",
-  ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+  ], { maxBuffer: 256 * 1024 * 1024, env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 }
 
 /**

@@ -479,7 +479,7 @@ test("the deploy's migrate:up returns cleanly over the anomalous ledger, applyin
     // --no-check-order -- which is a finding, not a pass.
     assert.throws(
       () => execFileSync(process.execPath, [runner, "up", "--migrations-dir", "migrations"],
-        { cwd: FUNCTIONS_DIR, env, stdio: "pipe" }),
+        { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env, stdio: "pipe" }),
       (error) => {
         const text = `${error.stdout ?? ""}${error.stderr ?? ""}${error.message}`;
         assert.match(text, /Not run migration 1760486400000_tenant-operating-company-key-binding is preceding already run migration 1761004800000_work-order-object-authority/);
@@ -489,7 +489,7 @@ test("the deploy's migrate:up returns cleanly over the anomalous ledger, applyin
 
     // THE FIX, as the deploy will really invoke it.
     const output = execFileSync(process.execPath, [runner, ...migrateUpArgs()],
-      { cwd: FUNCTIONS_DIR, env, stdio: "pipe" }).toString();
+      { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env, stdio: "pipe" }).toString();
     assert.match(output, /No migrations to run!/, "an up-to-date ledger must apply nothing");
     assert.equal(/^> - /m.test(output), false, "no migration may be applied by a no-op deploy");
 
