@@ -257,15 +257,17 @@ test("STRUCTURAL: no runtime module composes the operator tool, and no workflow 
   }
 });
 
-test("REGISTRATION: the suite is in test:adminPolicyPostgres and both workflow path filters", () => {
+// Owner ruling M3 (2026-10-12): the workflow's two `paths:` trigger filters were replaced by ONE
+// relevance list that gates both pull_request and push, so the registration is one exact line there.
+test("REGISTRATION: the suite is in test:adminPolicyPostgres and the workflow's relevance list", () => {
   const pkg = JSON.parse(readFileSync(join(FUNCTIONS_DIR, "package.json"), "utf8"));
   assert.match(pkg.scripts["test:adminPolicyPostgres"], /test\/principalIdentityRebindPostgres\.test\.mjs/);
   const wf = readFileSync(join(REPO_ROOT, ".github", "workflows", "eos-admin-policy-tests.yml"), "utf8");
+  assert.doesNotMatch(wf, /^\s*paths(-ignore)?:/m, "a paths: trigger filter would bypass the relevance list");
+  const list = readFileSync(join(REPO_ROOT, ".github", "ci", "eos-admin-policy-paths.txt"), "utf8")
+    .split(/\r?\n/).map((l) => l.trim());
   for (const named of ["functions/scripts/rebindPrincipalIdentity.js", "functions/test/principalIdentityRebindPostgres.test.mjs"]) {
-    assert.equal(
-      [...wf.matchAll(new RegExp(`- "${named.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`, "g"))].length, 2,
-      `${named} must be named by BOTH the pull_request and the push path filter`,
-    );
+    assert.equal(list.filter((l) => l === named).length, 1, `${named} must be named exactly once by the relevance list`);
   }
 });
 

@@ -10,8 +10,8 @@
 // outside it, which is the structural reason registration-blind suites keep being found here.
 //
 // This is deliberately NOT a general framework. It pins exactly three suites -- the two persona
-// suites and itself -- to an npm script that a workflow actually invokes, and to a path filter in
-// BOTH of that workflow's trigger blocks. A suite registered where it silently skips is worse than
+// suites and itself -- to an npm script that a workflow actually invokes, and to that workflow's
+// relevance list (.github/ci/eos-admin-policy-paths.txt), which gates both of its triggers. A suite registered where it silently skips is worse than
 // unregistered, because it looks green.
 //
 // Pure: reads package.json and the workflow as files. No database, no Firebase, no network.
@@ -38,24 +38,14 @@ const GUARDED = {
   "test/personaSuiteRegistration.test.mjs": "test:adminPolicy", // this file: the guard guards itself
 };
 
-// Parse every `paths:` block in the workflow into its own list, the way the role-governance guard
-// does. A registration on pull_request alone would still let a direct push to main go untriggered.
-const pathsBlocks = () => {
-  const blocks = [];
-  let current = null;
-  for (const line of YML.split("\n")) {
-    if (/^\s*paths:\s*$/.test(line)) {
-      current = [];
-      blocks.push(current);
-      continue;
-    }
-    if (!current) continue;
-    const entry = /^\s*- "(.+)"\s*$/.exec(line);
-    if (entry) current.push(entry[1]);
-    else if (line.trim() && !line.trim().startsWith("#")) current = null;
-  }
-  return blocks;
-};
+// Owner ruling M3 (2026-10-12): the workflow no longer carries `paths:` trigger filters -- its policy
+// check is REQUIRED on main, so it starts on every pull request and every push to main, and its
+// `changes` job decides whether the jobs run from ONE committed list. That list is now the
+// registration this guard pins; it replaced BOTH former trigger blocks (pull_request and push), so a
+// name in it covers both events. Exact entries, not glob coverage, exactly as before.
+const RELEVANCE_LIST = join(REPO_ROOT, ".github/ci/eos-admin-policy-paths.txt");
+const relevanceEntries = () =>
+  readFileSync(RELEVANCE_LIST, "utf8").split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
 
 test("every guarded persona suite exists on disk", () => {
   for (const suite of Object.keys(GUARDED)) {
@@ -80,25 +70,25 @@ test("the npm script that runs them is INVOKED by the workflow -- registration i
   }
 });
 
-test("every guarded persona suite is named by a path filter in EVERY trigger block, not just pull_request", () => {
-  const blocks = pathsBlocks();
-  assert.equal(blocks.length, 2, "expected a pull_request and a push paths block");
-  for (const [i, block] of blocks.entries()) {
-    for (const suite of Object.keys(GUARDED)) {
-      assert.ok(block.includes(`functions/${suite}`),
-        `paths block ${i + 1} does not name functions/${suite}; an edit to that suite alone would trigger no job`);
-    }
-    // The fixtures these suites read are their real inputs: a fixture-only edit is exactly how the
-    // PARTS_OPERATIONS expectation went stale, so the fixtures must trigger the gate too.
-    for (const fixture of [
-      "functions/scripts/fixtures/personaAuthorityDimensions.v1.json",
-      "functions/scripts/fixtures/personaE2EScenarios.v1.json",
-      "functions/scripts/fixtures/sampleCompany.v2.json",
-      "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json",
-    ]) {
-      assert.ok(block.includes(fixture),
-        `paths block ${i + 1} does not name ${fixture}; a fixture-only edit would leave these suites untriggered`);
-    }
+test("every guarded persona suite is named by the lane's relevance list, which gates EVERY trigger", () => {
+  // The list only gates anything if the workflow has no trigger filter of its own and reads it.
+  assert.doesNotMatch(YML, /^\s*paths(-ignore)?:/m, "a paths: trigger filter would bypass the relevance list");
+  assert.ok(YML.includes("node scripts/adminPolicyCiRelevance.mjs"), "the workflow does not consult the relevance list");
+  const entries = relevanceEntries();
+  for (const suite of Object.keys(GUARDED)) {
+    assert.ok(entries.includes(`functions/${suite}`),
+      `the relevance list does not name functions/${suite}; an edit to that suite alone would run no job`);
+  }
+  // The fixtures these suites read are their real inputs: a fixture-only edit is exactly how the
+  // PARTS_OPERATIONS expectation went stale, so the fixtures must trigger the gate too.
+  for (const fixture of [
+    "functions/scripts/fixtures/personaAuthorityDimensions.v1.json",
+    "functions/scripts/fixtures/personaE2EScenarios.v1.json",
+    "functions/scripts/fixtures/sampleCompany.v2.json",
+    "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json",
+  ]) {
+    assert.ok(entries.includes(fixture),
+      `the relevance list does not name ${fixture}; a fixture-only edit would leave these suites untriggered`);
   }
 });
 
