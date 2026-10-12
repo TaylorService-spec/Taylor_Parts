@@ -131,7 +131,13 @@ export function createEosAuthHttpHandler(deps: {
     const path = (req.url ?? "").split("?")[0];
     // The one-time client-address measurement: mounted only while its operator credential hash is configured (nonprod).
     if (diagnostic && path === CLIENT_IP_DIAGNOSTIC_ROUTE) {
-      await diagnostic(req, res);
+      // Contained: a defect in the measurement answers 500 for this request and never rejects into the server loop.
+      try {
+        await diagnostic(req, res);
+      } catch {
+        if (!res.headersSent) res.writeHead(500, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+        if (!res.writableEnded) res.end(JSON.stringify({ ok: false, code: "INTERNAL" }));
+      }
       return;
     }
     if (deps.login && isLoginRoute(path.replace(/\/$/, ""))) {

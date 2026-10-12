@@ -27,10 +27,17 @@ const MAX_BODY_BYTES = 8 * 1024;
  * address, in dotted (::ffff:203.0.113.9) or hex (::ffff:cb00:7109) form, is the same client as its IPv4 form.
  */
 export function normalizeAddress(a: string | null): string | null {
-  const raw = (a ?? "").trim();
+  // A zone id (fe80::1%eth0) is local to the machine that wrote it and never names an internet client; dropping it
+  // keeps the canonicalisation below total -- WHATWG URL throws on it (re-review F1).
+  const raw = (a ?? "").trim().replace(/%.*$/, "");
   if (isIP(raw) === 4) return raw;
   if (isIP(raw) !== 6) return raw.toLowerCase() || null;
-  const canon = new URL(`http://[${raw}]`).hostname.slice(1, -1);
+  let canon: string;
+  try {
+    canon = new URL(`http://[${raw}]`).hostname.slice(1, -1);
+  } catch {
+    return raw.toLowerCase();
+  }
   const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(canon);
   if (!mapped) return canon;
   const [hi, lo] = [parseInt(mapped[1], 16), parseInt(mapped[2], 16)];
@@ -105,7 +112,7 @@ export function createClientIpDiagnosticHandler(credentialSha256: string) {
     }
     let claimed: unknown;
     try { claimed = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")?.expected; } catch { claimed = undefined; }
-    if (typeof claimed !== "string" || isIP(claimed.trim()) === 0) {
+    if (typeof claimed !== "string" || claimed.includes("%") || isIP(claimed.trim()) === 0) {
       return send(400, { ok: false, code: "EXPECTED_ADDRESS_REQUIRED", message: 'send {"expected":"<your public IP address>"}' });
     }
     send(200, { ok: true, ...clientAddressVerdicts(req.headers as Record<string, string | string[] | undefined>, req.socket?.remoteAddress ?? null, claimed) });

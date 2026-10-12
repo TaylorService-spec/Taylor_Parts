@@ -158,6 +158,16 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
   await enrol(abe, A, "technician", "ACTIVE");
   const bea = await principal("fb-bea", "bea");
   const beaEmp = await enrol(bea, A, "technician", "ACTIVE");
+  // X7 needs a target whose id sorts BELOW its issuer's (fb-admin-a): only then did the per-person lock order cycle with
+  // a writer locking both access versions in id order. Ids are random, so draw until one does.
+  const adminAId = (await q(`SELECT id FROM eos_policy.principals WHERE external_subject = 'fb-admin-a'`)).rows[0].id;
+  let cal = null;
+  for (let i = 0; i < 64 && !cal; i += 1) {
+    const id = await principal(`fb-cal-${i}`, `cal ${i}`);
+    if ([id, adminAId].sort()[0] === id) cal = id;
+  }
+  assert.ok(cal, "a principal id sorting below the issuer's was drawn");
+  await enrol(cal, A, "technician", "ACTIVE");
 
   const authorityDigest = async (tenantId) => (await q(`SELECT
       (SELECT md5(string_agg(id || principal_id || role_id || status::text, ',' ORDER BY id)) FROM eos_policy.user_role_assignments
@@ -750,6 +760,42 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
       }
       assert.ok(blocked, "the code's transaction reached the Employee row the link command holds (the race was exercised)");
       await admin.query(`SELECT id FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND employee_id = $2 AND status = 'active' FOR UPDATE`, [A, beaEmp]);
+      await admin.query("COMMIT");
+      const r = await using;
+      assert.equal(r.status, 200, `nothing changed, so the code completes -- not a 500 (got ${r.status})`);
+    } finally {
+      admin.release();
+    }
+  });
+
+  await t.test("X7 (re-review F2) using a code while a multi-holder writer locks BOTH people's access versions in principal-id order: no deadlock", async () => {
+    await provisionEnrolled(cal, "cal@tenancy.test", "a gull over the pier");
+    const reset = await asFb("fb-admin-a", "issueLoginReset", { principalId: cal, reason: "reset" });
+    assert.equal(reset.status, 200);
+    secrets.push(reset.body.data.resetTicket, "a kite above the dunes");
+    const issuer = (await q(`SELECT issued_by FROM eos_policy.login_tickets WHERE consumed_at IS NULL AND revoked_at IS NULL
+                               AND account_id = (SELECT id FROM eos_policy.login_accounts WHERE principal_id = $1 AND status = 'active')`, [cal])).rows[0].issued_by;
+    const order = [issuer, cal].sort();
+    assert.equal(order[0], cal, "the target sorts first: the order in which the per-person re-read used to cycle");
+    const versions = (await q(`SELECT principal_id FROM eos_policy.principal_access_versions WHERE tenant_id = $1 AND principal_id = ANY($2::text[])`, [A, order])).rows;
+    assert.equal(versions.length, 2, "both people have an access version in A");
+    // DETERMINISTIC: setObjectPermission's shape -- every holder's access version, FOR UPDATE, in sorted order -- with the
+    // first held while the code is used and the second taken once the code's transaction waits on the first.
+    const admin = await pool.connect();
+    try {
+      await admin.query("BEGIN");
+      await admin.query(`SELECT 1 FROM eos_policy.principal_access_versions WHERE tenant_id = $1 AND principal_id = $2 FOR UPDATE`, [A, order[0]]);
+      const using = post("/auth/password/reset/complete", { ticket: reset.body.data.resetTicket, password: "a kite above the dunes" });
+      const adminPid = (await admin.query("SELECT pg_backend_pid() p")).rows[0].p;
+      let blocked = false;
+      for (let i = 0; i < 400 && !blocked; i += 1) {
+        const { rows } = await q(`SELECT count(*)::int n FROM pg_stat_activity
+                                   WHERE datname = current_database() AND wait_event_type = 'Lock' AND $1 = ANY(pg_blocking_pids(pid))`, [adminPid]);
+        blocked = rows[0].n > 0;
+        if (!blocked) await new Promise((r) => setTimeout(r, 25));
+      }
+      assert.ok(blocked, "the code's transaction reached the writer's first access-version lock (the race was exercised)");
+      await admin.query(`SELECT 1 FROM eos_policy.principal_access_versions WHERE tenant_id = $1 AND principal_id = $2 FOR UPDATE`, [A, order[1]]);
       await admin.query("COMMIT");
       const r = await using;
       assert.equal(r.status, 200, `nothing changed, so the code completes -- not a 500 (got ${r.status})`);

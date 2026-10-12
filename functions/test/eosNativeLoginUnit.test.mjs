@@ -363,6 +363,7 @@ test("U14 the client-address measurement: unmounted by default, credential-gated
   assert.equal(v.resolvesToExpected["EOS_AUTH_TRUSTED_PROXY_HOPS=3"], false, "the forgeable left entry is not the client");
   assert.equal(D.clientAddressVerdicts({}, "::ffff:198.51.100.7", "198.51.100.7").delivered.socketIsExpected, true, "IPv4-mapped socket address");
   assert.equal(D.normalizeAddress("::ffff:cb00:7109"), "203.0.113.9", "hex IPv4-mapped form");
+  for (const zoned of ["fe80::1%eth0", "fe80::1%25eth0", "::1%1"]) assert.doesNotThrow(() => D.clientAddressVerdicts({ "true-client-ip": zoned, "x-forwarded-for": zoned }, zoned, "203.0.113.9"), zoned);
   assert.equal(D.normalizeAddress("2001:DB8:0:0:0:0:0:1"), D.normalizeAddress("2001:db8::1"), "expanded and compressed IPv6 are one address");
   assert.equal(D.clientAddressVerdicts({ "true-client-ip": "2001:db8:0::1" }, null, "2001:DB8::1").resolvesToExpected["EOS_AUTH_CLIENT_IP_HEADER=true-client-ip"], true);
   for (const leak of ["203.0.113.9", "6.6.6.6", "10.1.1.1", "10.9.9.9", "secret"]) assert.ok(!JSON.stringify(v).includes(leak), `verdicts carry no ${leak}`);
@@ -382,6 +383,9 @@ test("U14 the client-address measurement: unmounted by default, credential-gated
   assert.equal((await fetch(on.url, { method: "POST", headers: { [D.CLIENT_IP_DIAGNOSTIC_HEADER]: "x".repeat(43) } })).status, 401);
   assert.equal((await fetch(on.url, { method: "POST", headers: auth })).status, 400, "the expected address is required");
   assert.equal((await fetch(on.url, { method: "POST", headers: auth, body: JSON.stringify({ expected: "not-an-ip" }) })).status, 400);
+  assert.equal((await fetch(on.url, { method: "POST", headers: auth, body: JSON.stringify({ expected: "fe80::1%eth0" }) })).status, 400, "a zone id is not an internet address");
+  const zonedHeaders = await fetch(on.url, { method: "POST", headers: { ...auth, "true-client-ip": "fe80::1%eth0", "x-forwarded-for": "::1%1" }, body: JSON.stringify({ expected: "198.51.100.1" }) });
+  assert.equal(zonedHeaders.status, 200, "forged zone-id headers are answered, not a crash");
   assert.equal((await fetch(on.url, { method: "POST", headers: auth, body: "x".repeat(9 * 1024) })).status, 413, "the body is capped");
   const r = await fetch(on.url, { method: "POST", headers: { ...auth, "x-forwarded-for": "192.0.2.1, 198.51.100.1", cookie: "__Host-eos_refresh=eosrt_x" }, body: JSON.stringify({ expected: "198.51.100.1" }) });
   assert.equal(r.status, 200);

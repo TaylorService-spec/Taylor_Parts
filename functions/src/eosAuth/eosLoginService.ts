@@ -821,10 +821,7 @@ export class EosLoginService {
     {
       const capability = purpose === "enrollment" ? "admin.roleAssignment.write" : "admin.credentialReset.initiate";
       // BOTH people: the issuer's authority is what the code is worth, the target's decides whether that is enough.
-      authoritySnapshot = {
-        issuer: await this.authorityFingerprint(this.deps.pool, [peek[0].issued_by]),
-        target: await this.authorityFingerprint(this.deps.pool, [peek[0].principal_id]),
-      };
+      authoritySnapshot = await this.authorityFingerprints(this.deps.pool, peek[0].issued_by, peek[0].principal_id);
       const lapsed = await this.targetAdministrable(peek[0].issued_by, peek[0].tenant_id, peek[0].principal_id, capability);
       if (lapsed) {
         await this.tx(async (c) => {
@@ -856,8 +853,9 @@ export class EosLoginService {
       // the code stays open, a retry re-checks. A change that commits AFTER this read waits on the locks for existing rows; a brand-new row cannot be
       // locked in advance, and that sub-millisecond window is the recorded residual.
       if (a) {
-        const changed = (await this.authorityFingerprint(c, [t.issued_by], true)) !== authoritySnapshot.issuer ? "ISSUER_AUTHORITY_CHANGED"
-          : (await this.authorityFingerprint(c, [a.principal_id], true)) !== authoritySnapshot.target ? "TARGET_AUTHORITY_CHANGED" : null;
+        const now2 = await this.authorityFingerprints(c, t.issued_by, a.principal_id, true);
+        const changed = now2.issuer !== authoritySnapshot.issuer ? "ISSUER_AUTHORITY_CHANGED"
+          : now2.target !== authoritySnapshot.target ? "TARGET_AUTHORITY_CHANGED" : null;
         if (changed) {
           await this.event(c, { event: eventName, outcome: "refused", reason: changed, accountId: t.account_id, client: facts });
           return null;
@@ -1325,37 +1323,60 @@ export class EosLoginService {
   }
 
   /**
-   * The authority state of these people as one digest -- the facts principal resolution and the capability check read:
-   * the Principal (status), every membership (tenant, status) and its tenant (status), every Role assignment (tenant,
-   * Role, status, scope), the capabilities granted to those Roles, every Employee link with its Employee's employment
-   * status, and every access version. `lock` takes FOR SHARE on the existing rows, inside a transaction, so a change to
-   * any of them waits for the caller to commit.
+   * The authority state of the issuer and of the target, one digest each -- the facts principal resolution and the
+   * capability check read: the Principal (status), every membership (tenant, status) and its tenant (status), every Role
+   * assignment (tenant, Role, status, scope), the capabilities granted to those Roles, every Employee with its employment
+   * status and every Employee link, and every access version.
+   *
+   * `lock` takes FOR SHARE on the existing rows, inside a transaction, so a change to any of them waits for the caller to
+   * commit. ONE PASS OVER BOTH PEOPLE, table by table, each in key order (re-review F2/F3): reading the issuer's rows and
+   * then the target's interleaved two people's locks, a cycle with writers that touch both -- the multi-holder access
+   * version bumps (sorted by principal id) and an Employee relink (Employee, then the new principal's links). The tables
+   * are taken in one fixed order, Employees before links (the link commands' order). Principal ids are ordered
+   * COLLATE "C" -- byte order, the order JavaScript's sort() gives the multi-holder writers -- whatever the database's
+   * default collation.
    */
-  private async authorityFingerprint(q: Pick<PoolClient, "query"> | Pool, principalIds: readonly string[], lock = false): Promise<string> {
+  private async authorityFingerprints(q: Pick<PoolClient, "query"> | Pool, issuerId: string, targetId: string, lock = false):
+    Promise<{ issuer: string; target: string }> {
     const share = lock ? " FOR SHARE" : "";
-    const ids = [...principalIds];
-    const read = async (sql: string) => (await q.query(sql, [ids])).rows;
-    const facts = [
-      await read(`SELECT id, status::text FROM ${SCHEMA}.principals WHERE id = ANY($1::text[]) ORDER BY id${share}`),
-      await read(`SELECT principal_id, tenant_id, status::text FROM ${SCHEMA}.tenant_memberships WHERE principal_id = ANY($1::text[]) ORDER BY principal_id, tenant_id${share}`),
-      await read(`SELECT t.id, t.status::text FROM ${SCHEMA}.tenants t
-                   WHERE t.id IN (SELECT tenant_id FROM ${SCHEMA}.tenant_memberships WHERE principal_id = ANY($1::text[])) ORDER BY t.id${share}`),
-      await read(`SELECT id, principal_id, tenant_id, role_id, status::text, scope_type, scope_value FROM ${SCHEMA}.user_role_assignments
-                   WHERE principal_id = ANY($1::text[]) ORDER BY id${share}`),
-      await read(`SELECT rc.id, rc.tenant_id, rc.role_id, rc.capability_id FROM ${SCHEMA}.role_capabilities rc
-                   WHERE (rc.tenant_id, rc.role_id) IN (SELECT tenant_id, role_id FROM ${SCHEMA}.user_role_assignments WHERE principal_id = ANY($1::text[]))
-                   ORDER BY rc.id${share}`),
-      // EMPLOYEE BEFORE LINK (re-review finding 1): the link commands lock employees -> links (lockEmployee, then the
-      // link FOR UPDATE). A single `FOR SHARE OF l, e` locks in range-table order, links first -- a cycle with them.
-      await read(`SELECT e.tenant_id, e.id, e.employment_status::text AS employment_status FROM eos_workforce.employees e
-                   WHERE (e.tenant_id, e.id) IN (SELECT tenant_id, employee_id FROM ${SCHEMA}.employee_principal_links WHERE principal_id = ANY($1::text[]))
-                   ORDER BY e.tenant_id, e.id${share}`),
-      await read(`SELECT id, principal_id, tenant_id, employee_id, status::text FROM ${SCHEMA}.employee_principal_links
-                   WHERE principal_id = ANY($1::text[]) ORDER BY id${share}`),
-      await read(`SELECT principal_id, tenant_id, access_version FROM ${SCHEMA}.principal_access_versions WHERE principal_id = ANY($1::text[])
-                   ORDER BY principal_id, tenant_id${share}`),
-    ];
-    return createHash("sha256").update(JSON.stringify(facts)).digest("hex");
+    const ids = [issuerId, targetId];
+    const read = async (sql: string) => (await q.query(sql, [ids])).rows as Record<string, unknown>[];
+    const principals = await read(`SELECT id, status::text FROM ${SCHEMA}.principals WHERE id = ANY($1::text[]) ORDER BY id COLLATE "C"${share}`);
+    const memberships = await read(`SELECT principal_id, tenant_id, status::text FROM ${SCHEMA}.tenant_memberships
+                                     WHERE principal_id = ANY($1::text[]) ORDER BY principal_id COLLATE "C", tenant_id COLLATE "C"${share}`);
+    const tenants = await read(`SELECT t.id, t.status::text FROM ${SCHEMA}.tenants t
+                                 WHERE t.id IN (SELECT tenant_id FROM ${SCHEMA}.tenant_memberships WHERE principal_id = ANY($1::text[])) ORDER BY t.id${share}`);
+    const assignments = await read(`SELECT id, principal_id, tenant_id, role_id, status::text, scope_type, scope_value FROM ${SCHEMA}.user_role_assignments
+                                     WHERE principal_id = ANY($1::text[]) ORDER BY id${share}`);
+    const grants = await read(`SELECT rc.id, rc.tenant_id, rc.role_id, rc.capability_id FROM ${SCHEMA}.role_capabilities rc
+                                WHERE (rc.tenant_id, rc.role_id) IN (SELECT tenant_id, role_id FROM ${SCHEMA}.user_role_assignments WHERE principal_id = ANY($1::text[]))
+                                ORDER BY rc.id${share}`);
+    const employees = await read(`SELECT e.tenant_id, e.id, e.employment_status::text AS employment_status FROM eos_workforce.employees e
+                                   WHERE (e.tenant_id, e.id) IN (SELECT tenant_id, employee_id FROM ${SCHEMA}.employee_principal_links WHERE principal_id = ANY($1::text[]))
+                                   ORDER BY e.tenant_id, e.id${share}`);
+    const links = await read(`SELECT id, principal_id, tenant_id, employee_id, status::text FROM ${SCHEMA}.employee_principal_links
+                               WHERE principal_id = ANY($1::text[]) ORDER BY id${share}`);
+    const versions = await read(`SELECT principal_id, tenant_id, access_version FROM ${SCHEMA}.principal_access_versions
+                                  WHERE principal_id = ANY($1::text[]) ORDER BY principal_id COLLATE "C", tenant_id COLLATE "C"${share}`);
+    const digest = (who: string) => {
+      const mine = <T extends Record<string, unknown>>(rows: T[]) => rows.filter((r) => r.principal_id === who);
+      const myTenants = new Set(mine(memberships).map((m) => m.tenant_id));
+      const myRoles = new Set(mine(assignments).map((r) => `${r.tenant_id}\u0000${r.role_id}`));
+      const myLinks = mine(links);
+      const myEmployees = new Set(myLinks.map((l) => `${l.tenant_id}\u0000${l.employee_id}`));
+      const facts = [
+        principals.filter((p) => p.id === who),
+        mine(memberships),
+        tenants.filter((t) => myTenants.has(t.id)),
+        mine(assignments),
+        grants.filter((g) => myRoles.has(`${g.tenant_id}\u0000${g.role_id}`)),
+        employees.filter((e) => myEmployees.has(`${e.tenant_id}\u0000${e.id}`)),
+        myLinks,
+        mine(versions),
+      ];
+      return createHash("sha256").update(JSON.stringify(facts)).digest("hex");
+    };
+    return { issuer: digest(issuerId), target: digest(targetId) };
   }
 
   /**
