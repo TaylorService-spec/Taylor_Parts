@@ -18,7 +18,7 @@
 // caller's OWN assigned job, and that capability is granted only through Administration -- so until it is,
 // this surface denies, and says so: a disabled control with an explanation, never a form that accepts
 // input and then throws it away. `canRecord` is the server's answer, never a client guess.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   LABOR_TYPE_OPTIONS, LABOR_SUBMIT,
   buildLaborRequest, interpretLaborResult, validateLaborEntry, formatMinutes,
@@ -31,15 +31,17 @@ import { submitOrQueue, SUBMIT_RESULT } from "../../offline/submitOrQueue.js";
 import { captureLabor } from "../../offline/technicianIntentCapture.js";
 
 /**
- * ONE IDENTITY PER PRESS (WOL-2, docs/audits/firebase-retirement-equivalence-2026-10-11).
+ * ONE IDENTITY PER ENTRY (WOL-2, docs/audits/firebase-retirement-equivalence-2026-10-11).
  *
- * A press of "Add time" is one act. Its token is minted when the technician presses, and that ONE identity
- * is carried by the online send AND by the queued fallback, so:
- *   - a send that committed but whose answer was lost, queued and synced later, REPLAYS on the server
- *     instead of recording the hours a second time (the queued intent used to derive its own key);
- *   - two genuine entries of the same length, type and day are two presses, so two entries -- online, and
- *     offline in the queue (the capture key used to be the entry's shape, which collapsed them into one).
- * Repeated taps of one press are still one act: the button is busy until the press resolves.
+ * An entry is one act from the first press until the platform has it (SAVED) or the phone holds it (QUEUED).
+ * Its token is minted on the first press and REUSED by every retry of that same entry -- a re-press after a
+ * lost answer, after "could not save offline" (the entry stays in the boxes), or on the online-only path --
+ * so the server REPLAYS rather than recording the hours twice. The same identity is carried by the online send
+ * AND the queued fallback, so a send that committed but lost its answer, queued and synced later, also replays.
+ * Only SAVED or QUEUED retire the token: the next entry, even of the same length, type and day, is a NEW act
+ * with a new key (online and in the queue -- the capture key used to be the entry's shape, which collapsed
+ * two genuine entries into one). An entry the technician EDITS before retrying derives a different key anyway:
+ * the key includes the duration, type and day.
  */
 function mintPressToken() {
   const uuid = typeof crypto !== "undefined" && crypto.randomUUID
@@ -63,6 +65,7 @@ export default function JobLabor({ workOrderId, offline = null, deps = {} }) {
   const [laborType, setLaborType] = useState("ONSITE");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
+  const entryToken = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,14 +90,14 @@ export default function JobLabor({ workOrderId, offline = null, deps = {} }) {
     if (busy || !canRecord || !validation.valid) return;
     setBusy(true);
     const request = buildLaborRequest({
-      workOrderId, workDate: today(), laborType, hours, minutes, attemptToken: mintPressToken(),
+      workOrderId, workDate: today(), laborType, hours, minutes, attemptToken: (entryToken.current ??= mintPressToken()),
     });
     if (!request) { setBusy(false); return; }
     // NO RUNTIME -> the original online-only path, byte-for-byte. The offline runtime is additive.
     if (!offline?.enqueue) {
       const r = interpretLaborResult(await recordLabor(request));
       setResult(r);
-      if (r.status === LABOR_SUBMIT.SAVED) { setHours(""); setMinutes(""); }
+      if (r.status === LABOR_SUBMIT.SAVED) { entryToken.current = null; setHours(""); setMinutes(""); }
       setBusy(false);
       return;
     }
@@ -123,11 +126,11 @@ export default function JobLabor({ workOrderId, offline = null, deps = {} }) {
 
     if (outcome.result === SUBMIT_RESULT.SENT) {
       setResult({ status: LABOR_SUBMIT.SAVED, message: "Time added." });
-      setHours(""); setMinutes("");
+      entryToken.current = null; setHours(""); setMinutes("");
     } else if (outcome.result === SUBMIT_RESULT.QUEUED) {
       // NOT "recorded". The platform has not seen these hours and the copy does not pretend it has.
       setResult({ status: LABOR_SUBMIT.PENDING_SYNC, message: "Time held on this phone — waiting to sync." });
-      setHours(""); setMinutes("");
+      entryToken.current = null; setHours(""); setMinutes("");
     } else if (outcome.result === SUBMIT_RESULT.QUEUED_NOT_DURABLE) {
       // The entry STAYS in the boxes: the device would not promise to keep it, so the only copy that
       // exists is the one on screen.

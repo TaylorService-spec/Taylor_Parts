@@ -16,16 +16,24 @@ const READY = {
   laborTypes: ["ONSITE", "TRAVEL"], entryKinds: ["INTERVAL", "DURATION"], maxMinutes: 960,
 };
 
-// The stand-in server: entries keyed by idempotency key. `loseNextAnswer` commits and then fails the response,
-// which is what a dropped connection after the write looks like to the phone.
+// The stand-in server keeps the real idempotency rule of functions/src/eosOps/workOrderLabor.ts: the same key with
+// the same FINGERPRINT replays; the same key with a different fingerprint is refused (CONFLICT); a new key records.
+// The fingerprint fields are laborFingerprint's own list (notes and deviceReportedAtMillis are deliberately outside
+// it -- Firebase parity). `loseNextAnswer` commits and then fails the response: a dropped connection after the write.
+const FINGERPRINT_FIELDS = ["workOrderId", "employeeId", "laborType", "entryKind", "durationMinutes", "workDate",
+  "startedAtMillis", "endedAtMillis", "correctsLaborEntryId"];
+const fingerprint = (r) => JSON.stringify(FINGERPRINT_FIELDS.map((k) => r[k] ?? null));
 function server() {
   const entries = new Map();
   let loseNextAnswer = false;
   const record = async (request) => {
-    const replay = entries.has(request.idempotencyKey);
-    if (!replay) entries.set(request.idempotencyKey, request);
+    const prior = entries.get(request.idempotencyKey);
+    if (prior && fingerprint(prior) !== fingerprint(request)) {
+      return { outcome: null, error: { code: "failed-precondition", details: "IDEMPOTENCY_CONFLICT", message: "conflict" } };
+    }
+    if (!prior) entries.set(request.idempotencyKey, request);
     if (loseNextAnswer) { loseNextAnswer = false; return { outcome: null, error: { code: "unavailable", details: null, message: "network" } }; }
-    return { outcome: { outcome: replay ? "replayed" : "recorded", laborEntryId: `lab_${entries.size}` }, error: null };
+    return { outcome: { outcome: prior ? "replayed" : "recorded", laborEntryId: `lab_${entries.size}` }, error: null };
   };
   return { entries, record, loseAnswer: () => { loseNextAnswer = true; } };
 }
@@ -110,5 +118,43 @@ describe("WOL-2: one press records the hours once", () => {
     await waitFor(() => expect(recordLabor).toHaveBeenCalledTimes(1));
     expect(recordLabor).toHaveBeenCalledTimes(1);
     release({ outcome: { outcome: "recorded", laborEntryId: "lab_1" }, error: null });
+  });
+
+  // Adversarial review of #2061: a token minted per PRESS re-recorded the hours when the technician pressed again
+  // after a lost answer on the paths that KEEP the entry in the boxes. The token is per ENTRY now.
+  it("online-only (no offline runtime): pressing again after a lost answer REPLAYS -- one entry", async () => {
+    render(<JobLabor workOrderId="wo1"
+      deps={{ fetchLabor: vi.fn().mockResolvedValue({ outcome: READY, error: null }), recordLabor: vi.fn(srv.record) }} />);
+    srv.loseAnswer();
+    await press("2", "0");
+    await waitFor(() => expect(srv.entries.size).toBe(1));
+    await screen.findByRole("button", { name: /Add time/i });
+    fireEvent.click(screen.getByRole("button", { name: /Add time/i }));
+    await screen.findByText(/already recorded|time added|saved/i);
+    expect(srv.entries.size).toBe(1);
+  });
+
+  it("'could not save offline' keeps the entry; pressing again REPLAYS -- one entry", async () => {
+    const notDurable = vi.fn(async (built) => ({ durable: false, intentId: built.value.intentId }));
+    render(<JobLabor workOrderId="wo1" offline={{ enqueue: notDurable, principalUid: "tech-a" }}
+      deps={{ fetchLabor: vi.fn().mockResolvedValue({ outcome: READY, error: null }), recordLabor: vi.fn(srv.record) }} />);
+    srv.loseAnswer();
+    await press("2", "0");
+    await screen.findByText(/could not save your time offline/i);
+    expect(srv.entries.size).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: /Add time/i }));
+    await waitFor(() => expect(screen.queryByText(/could not save your time offline/i)).toBeNull());
+    expect(srv.entries.size).toBe(1);
+  });
+
+  it("an entry EDITED before the retry is a different request, recorded on its own (never a conflict)", async () => {
+    mount();
+    srv.loseAnswer();
+    await press("2", "0");
+    await screen.findByText(/held on this phone/i);
+    // The queued 2h entry is retired with the press; a corrected 3h entry is a new act.
+    await press("3", "0");
+    await waitFor(() => expect(srv.entries.size).toBe(2));
+    expect([...srv.entries.values()].map((r) => r.durationMinutes).sort()).toEqual([120, 180]);
   });
 });
