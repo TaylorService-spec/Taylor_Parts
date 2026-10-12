@@ -1,0 +1,2366 @@
+{
+  "schema": "eos.firebaseCapabilityEquivalence/v1",
+  "description": "Business-capability equivalence records for every Firebase operation retired from functions/src/index.ts. Enforced by scripts/firebaseCapabilityEquivalenceGuard.mjs; specified in docs/architecture/firebase-capability-equivalence-gate.md. HISTORICAL records are the retrospective audit of the 22 retirements before the gate (findings, not approvals); GATED records must be retirement-complete.",
+  "historicalBaselineSha": "acc65f2efe4e68cca563f43fe81a3ef4f43f2722",
+  "exportBaseline": {
+    "sha": "acc65f2efe4e68cca563f43fe81a3ef4f43f2722",
+    "entries": {
+      "allocateSalesOrder": "./fulfillment/allocateSalesOrder#allocateSalesOrder",
+      "applyPayment": "./finance/paymentCallables#applyPayment",
+      "approveAccessRequest": "./access/accessCommandCallables#approveAccessRequest",
+      "approvePerformanceGoal": "./performance/performanceGoalCallables#approvePerformanceGoalCallable",
+      "assignApprovedRole": "./access/accessCommandCallables#assignApprovedRole",
+      "changeManufacturerStatus": "./partMaster/manufacturerCallables#changeManufacturerStatusCallable",
+      "completeAssignedJob": "./completeAssignedJob#completeAssignedJob",
+      "createBin": "./inventoryLocation/binCallables#createBinCallable",
+      "createCoverageAssignment": "./coverage/coverageCallables#createCoverageAssignment",
+      "createCrmActivity": "./crmActivity/crmActivityCallables#createCrmActivity",
+      "createManufacturer": "./partMaster/manufacturerCallables#createManufacturerCallable",
+      "createPerformanceGoalDraft": "./performance/performanceGoalCallables#createPerformanceGoalDraftCallable",
+      "createSalesTerritory": "./coverage/coverageCallables#createSalesTerritory",
+      "createSavedDefinitionCallable": "./reporting/savedDefinitionCallables#createSavedDefinitionCallable",
+      "createServiceForSalesOrder": "./salesOrder/createServiceForSalesOrder#createServiceForSalesOrder",
+      "createTechnicianBlockedTimeCallable": "./scheduling/schedulingCallables#createTechnicianBlockedTimeCallable",
+      "createWorkOrder": "./createWorkOrder#createWorkOrder",
+      "deactivateBin": "./inventoryLocation/binCallables#deactivateBinCallable",
+      "decidePrivilegedRoleRequest": "./access/accessCommandCallables#decidePrivilegedRoleRequest",
+      "deleteSavedDefinitionCallable": "./reporting/savedDefinitionCallables#deleteSavedDefinitionCallable",
+      "deleteTechnicianBlockedTimeCallable": "./scheduling/schedulingCallables#deleteTechnicianBlockedTimeCallable",
+      "detectInventoryEffects": "./inventoryEffectCallables#detectInventoryEffects",
+      "duplicateSavedDefinitionCallable": "./reporting/savedDefinitionCallables#duplicateSavedDefinitionCallable",
+      "executeDataImport": "./dataImport/dataImportCallables#executeDataImportCallable",
+      "getAccountPortfolioSummary": "./account/accountPortfolioSummary#getAccountPortfolioSummary",
+      "getCrmActivities": "./crmActivity/crmActivityReadService#getCrmActivities",
+      "getInventoryAnalytics": "./inventoryAnalyticsCallables#getInventoryAnalytics",
+      "getManufacturerCatalog": "./partMaster/manufacturerReadService#getManufacturerCatalog",
+      "getPartBalance": "./inventory/partBalanceReadService#getPartBalanceCallable",
+      "getPartBalances": "./inventory/partBalanceBatchReadService#getPartBalancesCallable",
+      "getPurchaseOrderReceivingProgress": "./inventoryReceiving/receivingCallables#getPurchaseOrderReceivingProgressCallable",
+      "getSavedDefinitionCallable": "./reporting/savedDefinitionCallables#getSavedDefinitionCallable",
+      "getWorkOrderFieldContext": "./getWorkOrderFieldContext#getWorkOrderFieldContext",
+      "getWorkOrderReadinessContext": "./ai/workOrderReadinessContext#getWorkOrderReadinessContext",
+      "grantRole": "./access/accessCommandCallables#grantRole",
+      "initiateAdminPasswordReset": "./access/adminCredentialCallables#initiateAdminPasswordReset",
+      "interpretWorkOrderReadinessContext": "./ai/workOrderReadinessContext#interpretWorkOrderReadinessContext",
+      "issueInvoice": "./finance/invoiceCallables#issueInvoice",
+      "listAccountInvoiceAr": "./finance/financeReadCallables#listAccountInvoiceAr",
+      "listBins": "./inventoryLocation/binCallables#listBinsCallable",
+      "listCoordinatedOperations": "./fulfillment/coordinatedVisitReadService#listCoordinatedOperations",
+      "listCurrentPerformanceGoals": "./performance/performanceGoalCallables#listCurrentPerformanceGoalsCallable",
+      "listDataImportJobs": "./dataImport/dataImportCallables#listDataImportJobsCallable",
+      "listFinancialFacts": "./finance/financialReportingRead#listFinancialFacts",
+      "listGoalSubjects": "./performance/performanceGoalCallables#listGoalSubjectsCallable",
+      "listImportedServiceHistory": "./dataImport/dataImportCallables#listImportedServiceHistoryCallable",
+      "listPerformanceGoalVersions": "./performance/performanceGoalCallables#listPerformanceGoalVersionsCallable",
+      "listPrivilegedRoleRequests": "./access/accessCommandCallables#listPrivilegedRoleRequests",
+      "listReceivablePurchaseOrders": "./inventoryReceiving/receivingCallables#listReceivablePurchaseOrdersCallable",
+      "listReceivingLocationOptions": "./inventoryReceiving/receivingCallables#listReceivingLocationOptionsCallable",
+      "listRecordChangeHistory": "./access/administrationUsersCallables#listRecordChangeHistory",
+      "listResetEligibleUsers": "./access/adminCredentialCallables#listResetEligibleUsers",
+      "listSavedDefinitionsCallable": "./reporting/savedDefinitionCallables#listSavedDefinitionsCallable",
+      "previewBinCreates": "./inventoryLocation/binCallables#previewBinCreatesCallable",
+      "reactivateBin": "./inventoryLocation/binCallables#reactivateBinCallable",
+      "readPrincipalAccessState": "./access/accessCommandCallables#readPrincipalAccessState",
+      "readTechnicianAvailabilityCallable": "./scheduling/schedulingCallables#readTechnicianAvailabilityCallable",
+      "reassignScheduledWorkOrderCallable": "./scheduling/schedulingCallables#reassignScheduledWorkOrderCallable",
+      "receiveInventoryStock": "./inventoryReceiving/receivingCallables#receiveInventoryStockCallable",
+      "recordInvoiceAdjustment": "./finance/adjustmentCallables#recordInvoiceAdjustment",
+      "recordRefund": "./finance/refundCallables#recordRefund",
+      "recordReturnIntake": "./inventoryReturns/returnCallables#recordReturnIntakeCallable",
+      "rejectAccessRequest": "./access/accessCommandCallables#rejectAccessRequest",
+      "renameBin": "./inventoryLocation/binCallables#renameBinCallable",
+      "renameSavedDefinitionCallable": "./reporting/savedDefinitionCallables#renameSavedDefinitionCallable",
+      "requestPrivilegedRole": "./access/accessCommandCallables#requestPrivilegedRole",
+      "rescheduleWorkOrderCallable": "./scheduling/schedulingCallables#rescheduleWorkOrderCallable",
+      "resolveBin": "./inventoryLocation/binCallables#resolveBinCallable",
+      "resolveBinToken": "./inventoryLocation/binCallables#resolveBinTokenCallable",
+      "resolveCoverageForContext": "./coverage/coverageReadCallables#resolveCoverageForContext",
+      "resolveEffectiveAccessCallable": "./access/effectiveAccessFeedCallable#resolveEffectiveAccessCallable",
+      "retirePerformanceGoal": "./performance/performanceGoalCallables#retirePerformanceGoalCallable",
+      "revokeRole": "./access/accessCommandCallables#revokeRole",
+      "runReportDefinitionCallable": "./reporting/runReportDefinitionCallable#runReportDefinitionCallable",
+      "searchProductReferences": "./salesAgreement/productReferenceSearchService#searchProductReferences",
+      "setTechnicianWorkingAvailabilityCallable": "./scheduling/schedulingCallables#setTechnicianWorkingAvailabilityCallable",
+      "setUserStatus": "./access/accessCommandCallables#setUserStatus",
+      "setWorkOrderEstimatedDurationCallable": "./scheduling/schedulingCallables#setWorkOrderEstimatedDurationCallable",
+      "setWorkOrderPartsPlan": "./workOrderPartsPlan/setWorkOrderPartsPlan#setWorkOrderPartsPlan",
+      "stageDataImport": "./dataImport/dataImportCallables#stageDataImportCallable",
+      "transitionWorkOrder": "./transitionWorkOrder#transitionWorkOrder",
+      "updateManufacturer": "./partMaster/manufacturerCallables#updateManufacturerCallable"
+    }
+  },
+  "fieldNotes": {
+    "candidateDisposition": "Informational: what the record would be once its open gates close. Never makes a record complete."
+  },
+  "auditedOn": "2026-10-11",
+  "records": [
+    {
+      "legacyOperation": "recordPutAway",
+      "capabilityId": "inventory.placement.record",
+      "domain": "inventory-warehouse",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": null,
+        "commit": "5d6a84ac"
+      },
+      "disposition": "UNVERIFIED",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "POST /operations/placement recordPutAway; the stock-moving stow is POST /operations/relocation relocateStock with recordPlacement",
+      "entryPoint": "Scan workspace: Put Away (PutAwayScan) and Pick and stage (PickScan)",
+      "postgresImplementation": "functions/src/eosOps/binPlacementOperations.ts recordEosPutAway -> eos_ops.bin_placements",
+      "personas": [
+        "warehouseAssociate (inventoryPutAwayOperator)",
+        "admin"
+      ],
+      "requiredCapabilities": [
+        "inventory.placement.record",
+        "inventory.location.bin.read"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/eosOps/binPlacementOperations.ts",
+              "contains": "recordPutAway: recordEosPutAway"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/eosBinPlacementPostgres.test.mjs",
+              "contains": "a quantity stow: ONE placement row, nothing else written; one audit; replay and conflict by key",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/eosBinPlacementPostgres.test.mjs",
+              "contains": "the bin: by id (wrong warehouse, inactive refused) or by code (a superseded code still reaches its bin)",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/modules/scan/PutAwayScan.jsx",
+              "contains": "await client.putAwayStock(payload)"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/inventoryEosTransports.test.jsx",
+              "contains": "relocation and put-away",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only. The Firebase-era harness persona (partsAssociate) is now refused: whether Parts Associates should put away is an open Owner question (the persona matrix says COMPOSE_BY_DEFAULT; no ruling applies it)."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/eosBinPlacementPostgres.test.mjs",
+              "contains": "authority: capability, eligibility, the stated warehouse's scope; the warehouse must be governed",
+              "polarity": "negative"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/inventoryWarehouseJourneyPostgres.test.mjs",
+              "contains": "NEGATIVE PERSONAS: no inventory-changing act from title, Owner status, scope alone, sales, technician, dispatcher, configuration",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/eosBinPlacementPostgres.test.mjs",
+              "contains": "history is structural: a mismatched warehouse/bin row is refused by the table; placements are append-only",
+              "polarity": "negative"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/inventoryWarehouseJourneyPostgres.test.mjs",
+              "contains": "B. PUT-AWAY: received stock WAREHOUSE -> governed bin (relocation that records the placement); placement-only stow; negatives",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "E": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/eosBinPlacementPostgres.test.mjs",
+              "contains": "a quantity stow: ONE placement row, nothing else written; one audit; replay and conflict by key",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/eosBinPlacementPostgres.test.mjs",
+              "contains": "serialized: one row per serial; a serial must be a unit of THIS part; a partial key reuse is a conflict",
+              "polarity": "negative"
+            }
+          ]
+        }
+      },
+      "audit": {
+        "status": "VERIFIED",
+        "evidence": [
+          {
+            "kind": "test",
+            "path": "functions/test/eosBinPlacementPostgres.test.mjs",
+            "contains": "a quantity stow: ONE placement row, nothing else written; one audit; replay and conflict by key",
+            "polarity": "positive"
+          }
+        ]
+      },
+      "gaps": [
+        "Gate B: no live persona run in the repository (the 2026-10-01 nonprod proof is not recorded as a UAT artifact).",
+        "Parts Associate put-away authority undecided (Owner).",
+        "scripts/runSandboxScannerScenarios.mjs scenarios 6/7 (and 12) still call the retired Firebase callable -- see the retrospective.",
+        "Dead recordPutAwayCallable remains in functions/src/inventoryLocation/binCallables.ts (unexported)."
+      ],
+      "candidateDisposition": "REPLACED"
+    },
+    {
+      "legacyOperation": "createSupplier",
+      "capabilityId": "supplier.create",
+      "domain": "purchasing",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2052,
+        "commit": "322db5b5"
+      },
+      "disposition": "UNVERIFIED",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": true,
+      "eosReplacement": "POST /operations/inventory createSupplier",
+      "entryPoint": "Purchasing > Suppliers > Supplier administration",
+      "postgresImplementation": "functions/src/eosOps/supplierAdministration.ts createSupplier -> eos_ops.suppliers",
+      "personas": [
+        "admin",
+        "partsManager / purchasingManager"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.manage",
+        "supplier.record.read"
+      ],
+      "ownerDecision": "DECISIONS #196",
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/eosOps/supplierAdministration.ts",
+              "contains": "export async function createSupplier("
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "1 / 2 / 11 / 12. UAT-SUP-001: the administrator creates sup-arcticparts and sup-coldchain from CRM organizations, by the organization's name",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/modules/purchasing/SupplierAdministration.jsx",
+              "contains": "createSupplierRelationship"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/supplierAdministrationPanel.test.jsx",
+              "contains": "creates a supplier from an organization chosen by name -- no name is typed, no organization id is shown",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only. The create form exposes vendorNumber/contactName/email only; phone, address, paymentTermsRef and notes cannot be entered from any screen."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "9 / 10. UAT-SUP-005: an ordinary employee cannot manage suppliers; holders change through Administration alone",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "UAT-SUP-003: a new PO names the governed supplier; operational fields update with optimistic concurrency",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "E": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "1 / 2 / 11 / 12. UAT-SUP-001: the administrator creates sup-arcticparts and sup-coldchain from CRM organizations, by the organization's name",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "3 / 4. UAT-SUP-002: duplicate relationships and invalid organizations are refused",
+              "polarity": "negative"
+            }
+          ]
+        }
+      },
+      "audit": {
+        "status": "PARTIAL",
+        "evidence": [
+          {
+            "kind": "test",
+            "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+            "contains": "1 / 2 / 11 / 12. UAT-SUP-001: the administrator creates sup-arcticparts and sup-coldchain from CRM organizations, by the organization's name",
+            "polarity": "positive"
+          }
+        ],
+        "limitation": "Success is audited in the same transaction. Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
+      },
+      "gaps": [
+        "Behaviour changed (CRM VENDOR organization required, name authored from CRM, one supplier per organization) -- accepted by DECISIONS #196.",
+        "Gate B static only; partial field coverage on the create form."
+      ],
+      "candidateDisposition": "SUPERSEDED"
+    },
+    {
+      "legacyOperation": "updateSupplier",
+      "capabilityId": "supplier.update",
+      "domain": "purchasing",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2052,
+        "commit": "322db5b5"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": true,
+      "eosReplacement": "POST /operations/inventory updateSupplier (server only)",
+      "entryPoint": "none -- no screen calls updateSupplierFields",
+      "postgresImplementation": "functions/src/eosOps/supplierAdministration.ts updateSupplier",
+      "personas": [
+        "admin",
+        "partsManager / purchasingManager"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.manage"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/eosOps/supplierAdministration.ts",
+              "contains": "export async function updateSupplier("
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "UAT-SUP-003: a new PO names the governed supplier; operational fields update with optimistic concurrency",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "No employee screen: updateSupplierFields is defined in partsOperationsReads.js and imported by nothing. Supplier rename is not possible at all (name authored from CRM, no re-sync)."
+        },
+        "C": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/eosOps/supplierAdministration.ts",
+              "contains": "SUPPLIER_MANAGE_CAPABILITY"
+            }
+          ],
+          "limitation": "No unauthorized-update negative test."
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "UAT-SUP-003: a new PO names the governed supplier; operational fields update with optimistic concurrency",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "E": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "UAT-SUP-003: a new PO names the governed supplier; operational fields update with optimistic concurrency",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "Positive and stale-version cases only; no authorization negative, no audit assertion."
+        }
+      },
+      "audit": {
+        "status": "PARTIAL",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/eosOps/supplierAdministration.ts",
+            "contains": "export async function updateSupplier("
+          }
+        ],
+        "limitation": "Update audit not asserted by any test. Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
+      },
+      "gaps": [
+        "Employees cannot maintain supplier operational fields (no UI).",
+        "Supplier name no longer editable and not re-synced from CRM -- not explicitly ruled."
+      ]
+    },
+    {
+      "legacyOperation": "activateSupplier",
+      "capabilityId": "supplier.reactivate",
+      "domain": "purchasing",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2052,
+        "commit": "322db5b5"
+      },
+      "disposition": "UNVERIFIED",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": true,
+      "eosReplacement": "POST /operations/inventory setSupplierStatus (one operation, reason required)",
+      "entryPoint": "Purchasing > Suppliers > Deactivate / Reactivate",
+      "postgresImplementation": "functions/src/eosOps/supplierAdministration.ts setSupplierStatus",
+      "personas": [
+        "admin (only holder of inventory.catalog.activate)"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.activate"
+      ],
+      "ownerDecision": "DECISIONS #196",
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/eosOps/supplierAdministration.ts",
+              "contains": "export async function setSupplierStatus("
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "5 / 6 / 7 / 8. UAT-SUP-004: deactivation takes the supplier off new POs; history stays readable; reactivation restores it",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/modules/purchasing/SupplierAdministration.jsx",
+              "contains": "deactivated in Supplier administration"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/supplierAdministrationPanel.test.jsx",
+              "contains": "deactivates (never deletes) with the version it read",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only. Only the admin persona holds inventory.catalog.activate; the status reason is a hard-coded string, not the employee's."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "9 / 10. UAT-SUP-005: an ordinary employee cannot manage suppliers; holders change through Administration alone",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "5 / 6 / 7 / 8. UAT-SUP-004: deactivation takes the supplier off new POs; history stays readable; reactivation restores it",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "E": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "5 / 6 / 7 / 8. UAT-SUP-004: deactivation takes the supplier off new POs; history stays readable; reactivation restores it",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "9 / 10. UAT-SUP-005: an ordinary employee cannot manage suppliers; holders change through Administration alone",
+              "polarity": "negative"
+            }
+          ]
+        }
+      },
+      "audit": {
+        "status": "PARTIAL",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/eosOps/supplierAdministration.ts",
+            "contains": "export async function setSupplierStatus("
+          }
+        ],
+        "limitation": "Status-change audit not asserted by any test. Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
+      },
+      "gaps": [
+        "Two callables merged into setSupplierStatus with a mandatory reason (DECISIONS #196); the UI sends a fixed reason.",
+        "Admin-only in practice; inventory.catalog.activate is shared with Part lifecycle."
+      ],
+      "candidateDisposition": "SUPERSEDED"
+    },
+    {
+      "legacyOperation": "deactivateSupplier",
+      "capabilityId": "supplier.deactivate",
+      "domain": "purchasing",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2052,
+        "commit": "322db5b5"
+      },
+      "disposition": "UNVERIFIED",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": true,
+      "eosReplacement": "POST /operations/inventory setSupplierStatus (one operation, reason required)",
+      "entryPoint": "Purchasing > Suppliers > Deactivate / Reactivate",
+      "postgresImplementation": "functions/src/eosOps/supplierAdministration.ts setSupplierStatus",
+      "personas": [
+        "admin (only holder of inventory.catalog.activate)"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.activate"
+      ],
+      "ownerDecision": "DECISIONS #196",
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/eosOps/supplierAdministration.ts",
+              "contains": "export async function setSupplierStatus("
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "5 / 6 / 7 / 8. UAT-SUP-004: deactivation takes the supplier off new POs; history stays readable; reactivation restores it",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/modules/purchasing/SupplierAdministration.jsx",
+              "contains": "deactivated in Supplier administration"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/supplierAdministrationPanel.test.jsx",
+              "contains": "deactivates (never deletes) with the version it read",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only. Only the admin persona holds inventory.catalog.activate; the status reason is a hard-coded string, not the employee's."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "9 / 10. UAT-SUP-005: an ordinary employee cannot manage suppliers; holders change through Administration alone",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "5 / 6 / 7 / 8. UAT-SUP-004: deactivation takes the supplier off new POs; history stays readable; reactivation restores it",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "E": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "5 / 6 / 7 / 8. UAT-SUP-004: deactivation takes the supplier off new POs; history stays readable; reactivation restores it",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/supplierAdministrationPostgres.test.mjs",
+              "contains": "9 / 10. UAT-SUP-005: an ordinary employee cannot manage suppliers; holders change through Administration alone",
+              "polarity": "negative"
+            }
+          ]
+        }
+      },
+      "audit": {
+        "status": "PARTIAL",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/eosOps/supplierAdministration.ts",
+            "contains": "export async function setSupplierStatus("
+          }
+        ],
+        "limitation": "Status-change audit not asserted by any test. Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
+      },
+      "gaps": [
+        "Two callables merged into setSupplierStatus with a mandatory reason (DECISIONS #196); the UI sends a fixed reason.",
+        "Admin-only in practice; inventory.catalog.activate is shared with Part lifecycle."
+      ],
+      "candidateDisposition": "SUPERSEDED"
+    },
+    {
+      "legacyOperation": "createPartSupplierItem",
+      "capabilityId": "partSupplierItem.create",
+      "domain": "purchasing",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2052,
+        "commit": "322db5b5"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "none -- repository function only (no governed operation)",
+      "entryPoint": "none",
+      "postgresImplementation": "functions/src/eosOps/supplierCatalogRepository.ts (seed and migration callers only)",
+      "personas": [],
+      "requiredCapabilities": [
+        "inventory.catalog.manage"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierCatalogPostgres.test.mjs",
+              "contains": "a catalog item round-trips, and its itemId is DERIVED from the pair",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "Data-layer function only: no governed command, route or employee path."
+        },
+        "B": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "No screen and no client function; part-supplier terms have never had a UI."
+        },
+        "C": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "The repository has no capability check (header: NO AUTHORIZATION) and no HTTP operation."
+        },
+        "D": {
+          "status": "PARTIAL",
+          "evidence": [],
+          "limitation": "No consumer: reorder, POs and receiving do not read eos_ops.supplier_catalog_items; no audit."
+        },
+        "E": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/supplierCatalogPostgres.test.mjs",
+              "contains": "a catalog item round-trips, and its itemId is DERIVED from the pair",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/supplierCatalogPostgres.test.mjs",
+              "contains": "a catalog item for a supplier that does not exist is REFUSED by the database",
+              "polarity": "negative"
+            }
+          ],
+          "limitation": "Repository tests only; no authorization or audit test is possible."
+        }
+      },
+      "audit": {
+        "status": "GAP",
+        "evidence": [],
+        "limitation": "The PostgreSQL item writers write no audit row at all."
+      },
+      "gaps": [
+        "Lost business capability since the catalog FREEZE (2026-09-28): employees cannot maintain part-supplier terms in EOS.",
+        "Needs a governed /operations command (manage/activate, audit) and a screen, or an Owner ruling deferring the capability."
+      ]
+    },
+    {
+      "legacyOperation": "updatePartSupplierItem",
+      "capabilityId": "partSupplierItem.update",
+      "domain": "purchasing",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2052,
+        "commit": "322db5b5"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "none",
+      "entryPoint": "none",
+      "postgresImplementation": "none",
+      "personas": [],
+      "requiredCapabilities": [
+        "inventory.catalog.manage"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "No PostgreSQL equivalent exists: the repository exports no item-terms update."
+        },
+        "B": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "No screen and no client function; part-supplier terms have never had a UI."
+        },
+        "C": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "The repository has no capability check (header: NO AUTHORIZATION) and no HTTP operation."
+        },
+        "D": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "No consumer: reorder, POs and receiving do not read eos_ops.supplier_catalog_items; no audit."
+        },
+        "E": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "No test of any EOS equivalent."
+        }
+      },
+      "audit": {
+        "status": "GAP",
+        "evidence": [],
+        "limitation": "The PostgreSQL item writers write no audit row at all."
+      },
+      "gaps": [
+        "Lost business capability since the catalog FREEZE (2026-09-28): employees cannot maintain part-supplier terms in EOS.",
+        "Needs a governed /operations command (manage/activate, audit) and a screen, or an Owner ruling deferring the capability."
+      ]
+    },
+    {
+      "legacyOperation": "changePartSupplierItemStatus",
+      "capabilityId": "partSupplierItem.changeStatus",
+      "domain": "purchasing",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2052,
+        "commit": "322db5b5"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "none -- repository function only (no governed operation)",
+      "entryPoint": "none",
+      "postgresImplementation": "functions/src/eosOps/supplierCatalogRepository.ts (seed and migration callers only)",
+      "personas": [],
+      "requiredCapabilities": [
+        "inventory.catalog.activate"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/eosOps/supplierCatalogRepository.ts",
+              "contains": "setSupplierCatalogItemStatus"
+            }
+          ],
+          "limitation": "Data-layer function only: no governed command, route or employee path."
+        },
+        "B": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "No screen and no client function; part-supplier terms have never had a UI."
+        },
+        "C": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "The repository has no capability check (header: NO AUTHORIZATION) and no HTTP operation."
+        },
+        "D": {
+          "status": "PARTIAL",
+          "evidence": [],
+          "limitation": "No consumer: reorder, POs and receiving do not read eos_ops.supplier_catalog_items; no audit."
+        },
+        "E": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "No test of any EOS equivalent."
+        }
+      },
+      "audit": {
+        "status": "GAP",
+        "evidence": [],
+        "limitation": "The PostgreSQL item writers write no audit row at all."
+      },
+      "gaps": [
+        "Lost business capability since the catalog FREEZE (2026-09-28): employees cannot maintain part-supplier terms in EOS.",
+        "Needs a governed /operations command (manage/activate, audit) and a screen, or an Owner ruling deferring the capability."
+      ]
+    },
+    {
+      "legacyOperation": "setPreferredSupplier",
+      "capabilityId": "partSupplierItem.setPreferred",
+      "domain": "purchasing",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2052,
+        "commit": "322db5b5"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "none -- repository function only (no governed operation)",
+      "entryPoint": "none",
+      "postgresImplementation": "functions/src/eosOps/supplierCatalogRepository.ts (seed and migration callers only)",
+      "personas": [],
+      "requiredCapabilities": [
+        "inventory.catalog.manage"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/eosOps/supplierCatalogRepository.ts",
+              "contains": "setPreferredSupplier"
+            }
+          ],
+          "limitation": "Data-layer function only: no governed command, route or employee path."
+        },
+        "B": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "No screen and no client function; part-supplier terms have never had a UI."
+        },
+        "C": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "The repository has no capability check (header: NO AUTHORIZATION) and no HTTP operation."
+        },
+        "D": {
+          "status": "PARTIAL",
+          "evidence": [],
+          "limitation": "No consumer: reorder, POs and receiving do not read eos_ops.supplier_catalog_items; no audit."
+        },
+        "E": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "No test of any EOS equivalent."
+        }
+      },
+      "audit": {
+        "status": "GAP",
+        "evidence": [],
+        "limitation": "The PostgreSQL item writers write no audit row at all."
+      },
+      "gaps": [
+        "Lost business capability since the catalog FREEZE (2026-09-28): employees cannot maintain part-supplier terms in EOS.",
+        "Needs a governed /operations command (manage/activate, audit) and a screen, or an Owner ruling deferring the capability."
+      ]
+    },
+    {
+      "legacyOperation": "recordWorkOrderLabor",
+      "capabilityId": "workOrder.labor.record",
+      "domain": "service",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2053,
+        "commit": "a21c6472"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": true,
+      "eosReplacement": "POST /operations/work-orders recordWorkOrderLabor",
+      "entryPoint": "Field Mode > job > Labor (JobLabor) -- Add time",
+      "postgresImplementation": "functions/src/eosOps/workOrderLabor.ts recordOwnLabor -> eos_ops.work_order_labor_entries",
+      "personas": [
+        "service-technician-a",
+        "service-technician-b",
+        "contract-technician"
+      ],
+      "requiredCapabilities": [
+        "workOrder.execution.record (OWN_ASSIGNMENT)"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/eosOps/workOrderLabor.ts",
+              "contains": "export const recordWorkOrderLabor"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "RECORD: the assigned technician records their OWN time; the Employee is the subject, the Principal the recorder",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/jobLabor.test.jsx",
+              "contains": "sends a DURATION entry, naming no technician",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only. The execution.record grant exists only in the activation delta; no in-repo record that it is applied in nonprod. UI offers DURATION for today only (no backdating, no INTERVAL)."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "RECORD is refused without workOrder.execution.record, and to a technician not assigned",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "APPEND-ONLY at the database: no UPDATE, no DELETE",
+              "polarity": "negative"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/serviceTechnicianJourneyPostgres.test.mjs",
+              "contains": "TECHNICIAN: own list -> field context -> accept/travel/arrive/start -> labor -> actuals + notes -> complete",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "Offline sync: the online send and the queued fallback use different idempotency keys (possible double entry after a lost response), and the offline intent id collapses two identical entries on one day."
+        },
+        "E": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "RECORD: the assigned technician records their OWN time; the Employee is the subject, the Principal the recorder",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "IDEMPOTENT: the same key and request replays; a different request under the key refuses",
+              "polarity": "negative"
+            }
+          ]
+        }
+      },
+      "audit": {
+        "status": "GAP",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/eosOps/workOrderLabor.ts",
+            "contains": "export const recordWorkOrderLabor"
+          }
+        ],
+        "limitation": "Firebase staged an audit event per record; the PostgreSQL writer writes no eos_policy.audit_events row (only the append-only ledger row)."
+      },
+      "gaps": [
+        "No audit event (material change, not ruled).",
+        "Identity moved from technicianId to Employee; authority moved to workOrder.execution.record (not ruled).",
+        "Offline idempotency-key mismatch and intent collapse.",
+        "No live technician proof recorded."
+      ]
+    },
+    {
+      "legacyOperation": "correctWorkOrderLabor",
+      "capabilityId": "workOrder.labor.correct",
+      "domain": "service",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2053,
+        "commit": "a21c6472"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "POST /operations/work-orders recordWorkOrderLabor with correctsLaborEntryId (server only)",
+      "entryPoint": "none -- no screen or client function",
+      "postgresImplementation": "functions/src/eosOps/workOrderLabor.ts correctLabor",
+      "personas": [
+        "fieldManager (ruling D, activation delta)"
+      ],
+      "requiredCapabilities": [
+        "workOrder.labor.correctEntry"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "CORRECT: a separate authority; a replacement is appended and the original is REVERSED, never edited",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "GAP",
+          "evidence": [],
+          "limitation": "No UI and no client function: an employee cannot correct labor (docs/architecture/technician-offline-runtime.md lists the correction UI as not built). Never had a UI."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "CORRECT: a separate authority; a replacement is appended and the original is REVERSED, never edited",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "APPEND-ONLY at the database: no UPDATE, no DELETE",
+              "polarity": "negative"
+            }
+          ],
+          "limitation": "No audit event; nothing downstream consumes corrections."
+        },
+        "E": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "CORRECT: a separate authority; a replacement is appended and the original is REVERSED, never edited",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "APPEND-ONLY at the database: no UPDATE, no DELETE",
+              "polarity": "negative"
+            }
+          ]
+        }
+      },
+      "audit": {
+        "status": "GAP",
+        "evidence": [],
+        "limitation": "Firebase audited corrections; the PostgreSQL writer writes no audit row."
+      },
+      "gaps": [
+        "Employees cannot correct labor: no screen (pre-dates F4).",
+        "No audit event."
+      ]
+    },
+    {
+      "legacyOperation": "getWorkOrderLabor",
+      "capabilityId": "workOrder.labor.read",
+      "domain": "service",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2053,
+        "commit": "a21c6472"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": true,
+      "eosReplacement": "POST /operations/work-orders readWorkOrderLabor",
+      "entryPoint": "Field Mode > job > Labor (totals only)",
+      "postgresImplementation": "functions/src/eosOps/workOrderLabor.ts readWorkOrderLabor",
+      "personas": [
+        "technicians (own job)",
+        "workOrder.record.read holders"
+      ],
+      "requiredCapabilities": [
+        "workOrder.record.read (RECORD_ASSIGNMENT for technicians)"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/eosOps/workOrderOperations.ts",
+              "contains": "readWorkOrderLabor: labor.readWorkOrderLabor"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "READ: entries with derived status and totals, behind the entitled Work Order read",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/jobLabor.test.jsx",
+              "contains": "corrected entries are counted separately, not erased",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only. Technicians see totals only; no screen lists entries; no office or manager screen reads labor."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "READ: the assigned technician reads their own job's time; another technician is refused",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "NOT_APPLICABLE",
+          "evidence": [],
+          "reason": "Read-only projection; nothing downstream consumes it."
+        },
+        "E": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "READ: entries with derived status and totals, behind the entitled Work Order read",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/workOrderLaborPostgres.test.mjs",
+              "contains": "READ: the assigned technician reads their own job's time; another technician is refused",
+              "polarity": "negative"
+            }
+          ]
+        }
+      },
+      "audit": {
+        "status": "VERIFIED",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/eosOps/workOrderLabor.ts",
+            "contains": "export const readWorkOrderLabor"
+          }
+        ]
+      },
+      "gaps": [
+        "Read authority widened from record/correct holders to every workOrder.record.read holder -- no Owner ruling found.",
+        "No entry-level or office labor view."
+      ]
+    },
+    {
+      "legacyOperation": "createPart",
+      "capabilityId": "catalog.part.create",
+      "domain": "catalog",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2055,
+        "commit": "0de3c06b"
+      },
+      "disposition": "UNVERIFIED",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "POST /operations/catalog createPart",
+      "entryPoint": "Inventory > Catalog Admin (/inventory/part-master), Parts list 'New Part', Part Detail 'Edit part' / 'Change status'",
+      "postgresImplementation": "functions/src/catalogMaster/postgresPartMasterWriter.ts createPart (runCatalogCommand)",
+      "personas": [
+        "owner",
+        "admin",
+        "generalManager",
+        "fieldManager",
+        "partsManager",
+        "warehouseManager"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.manage"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
+              "contains": "export function outcomeFromResult"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the screen maps every answer to what the employee must be told",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "a created part is reported SAVED and the list is refreshed",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "a created part is reported SAVED and the list is refreshed",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "Screen-level proof against the REAL server bytes now exists (CAT-1, #2059: the contract fixture is proven against PostgreSQL and the screen renders it). No live persona run of this WRITE is recorded: a nonprod write needs separate mutation authorization; the read-only persona UAT proves authority only through refusal probes."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogCutoverPostgres.test.mjs",
+              "contains": "authority: missing capability, non-member, disabled principal, allowlist -- all refused, nothing written",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogCutoverPostgres.test.mjs",
+              "contains": "part writer: create, FK to the tenant's model, replay, conflict",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "E": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the server answers each employee action as the contract says",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "a created part is reported SAVED and the list is refreshed",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "an employee without inventory.catalog.manage is told they are not authorized",
+              "polarity": "negative"
+            }
+          ]
+        }
+      },
+      "audit": {
+        "status": "PARTIAL",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/catalogMaster/catalogMasterKernel.ts",
+            "contains": "runCatalogCommand"
+          }
+        ],
+        "limitation": "Success audited (catalog.part.*) in the same transaction. Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
+      },
+      "gaps": [
+        "CAT-1 fixed in #2059 (screen reads the real EOS answer); proven by the PG contract + screen workflow tests."
+      ],
+      "candidateDisposition": "REPLACED"
+    },
+    {
+      "legacyOperation": "updatePart",
+      "capabilityId": "catalog.part.update",
+      "domain": "catalog",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2055,
+        "commit": "0de3c06b"
+      },
+      "disposition": "UNVERIFIED",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "POST /operations/catalog updatePart",
+      "entryPoint": "Inventory > Catalog Admin (/inventory/part-master), Parts list 'New Part', Part Detail 'Edit part' / 'Change status'",
+      "postgresImplementation": "functions/src/catalogMaster/postgresPartMasterWriter.ts updatePart (runCatalogCommand)",
+      "personas": [
+        "owner",
+        "admin",
+        "generalManager",
+        "fieldManager",
+        "partsManager",
+        "warehouseManager"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.manage"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
+              "contains": "export function outcomeFromResult"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the screen maps every answer to what the employee must be told",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "an edit is reported SAVED with the new version",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "an edit is reported SAVED with the new version",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "Screen-level proof against the REAL server bytes now exists (CAT-1, #2059: the contract fixture is proven against PostgreSQL and the screen renders it). No live persona run of this WRITE is recorded: a nonprod write needs separate mutation authorization; the read-only persona UAT proves authority only through refusal probes."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogCutoverPostgres.test.mjs",
+              "contains": "authority: missing capability, non-member, disabled principal, allowlist -- all refused, nothing written",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogCutoverPostgres.test.mjs",
+              "contains": "part writer: update rules -- control type immutable, internal part number fails closed WITHOUT the alias authority, replay, conflict",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "E": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the server answers each employee action as the contract says",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "an edit is reported SAVED with the new version",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "a stale edit tells the employee the part changed since they loaded it",
+              "polarity": "negative"
+            }
+          ]
+        }
+      },
+      "audit": {
+        "status": "PARTIAL",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/catalogMaster/catalogMasterKernel.ts",
+            "contains": "runCatalogCommand"
+          }
+        ],
+        "limitation": "Success audited (catalog.part.*) in the same transaction. Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
+      },
+      "gaps": [
+        "CAT-1 fixed in #2059 (screen reads the real EOS answer); proven by the PG contract + screen workflow tests."
+      ],
+      "candidateDisposition": "REPLACED"
+    },
+    {
+      "legacyOperation": "changePartStatus",
+      "capabilityId": "catalog.part.changeStatus",
+      "domain": "catalog",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2055,
+        "commit": "0de3c06b"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "POST /operations/catalog changePartStatus",
+      "entryPoint": "Inventory > Catalog Admin (/inventory/part-master), Parts list 'New Part', Part Detail 'Edit part' / 'Change status'",
+      "postgresImplementation": "functions/src/catalogMaster/postgresPartMasterWriter.ts changePartStatus (runCatalogCommand)",
+      "personas": [
+        "admin"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.activate"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
+              "contains": "export function outcomeFromResult"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the screen maps every answer to what the employee must be told",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "activating a DRAFT part is reported SAVED",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "GAP",
+          "evidence": [
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "activating a DRAFT part is reported SAVED",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "Screen-level proof against the REAL server bytes now exists (CAT-1, #2059: the contract fixture is proven against PostgreSQL and the screen renders it). No live persona run of this WRITE is recorded: a nonprod write needs separate mutation authorization; the read-only persona UAT proves authority only through refusal probes. No business persona holds inventory.catalog.activate (CAT-3, Owner/Administration decision)."
+        },
+        "C": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogCutoverPostgres.test.mjs",
+              "contains": "part writer: status transitions under inventory.catalog.activate, replay, terminal states",
+              "polarity": "negative"
+            }
+          ],
+          "limitation": "The designed holder (inventoryCatalogAdministrator) has no PostgreSQL grant; only admin holds the key."
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogCutoverPostgres.test.mjs",
+              "contains": "part writer: status transitions under inventory.catalog.activate, replay, terminal states",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "E": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the server answers each employee action as the contract says",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "activating a DRAFT part is reported SAVED",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "a holder of manage but not activate is told they are not authorized",
+              "polarity": "negative"
+            }
+          ]
+        }
+      },
+      "audit": {
+        "status": "PARTIAL",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/catalogMaster/catalogMasterKernel.ts",
+            "contains": "runCatalogCommand"
+          }
+        ],
+        "limitation": "Success audited (catalog.part.*) in the same transaction. Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
+      },
+      "gaps": [
+        "CAT-1 fixed in #2059 (screen reads the real EOS answer); proven by the PG contract + screen workflow tests.",
+        "inventory.catalog.activate has no business holder (Administration grant needed)."
+      ]
+    },
+    {
+      "legacyOperation": "createPartAlias",
+      "capabilityId": "catalog.partAlias.create",
+      "domain": "catalog",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2056,
+        "commit": "acc65f2e"
+      },
+      "disposition": "UNVERIFIED",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "POST /operations/catalog createPartAlias",
+      "entryPoint": "Part Detail > Barcodes & Identifiers (PartIdentifiersSection)",
+      "postgresImplementation": "functions/src/catalogMaster/postgresPartAliasWriter.ts",
+      "personas": [
+        "holders of inventory.catalog.manage + inventory.catalog.read"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.manage"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/catalogMaster/catalogHttp.ts",
+              "contains": "case \"createPartAlias\""
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "alias identity is DERIVED by the existing authority, never generated",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "The write works; PostgreSQL CONFLICT / PRECONDITION_FAILED and the replayed flag are not mapped (partIdentifiers.js outcome tables, usePartIdentifiers.js:112), so taken-identifier, version-conflict and already-inactive outcomes render generically and a replay reads as Saved."
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partIdentifiersSection.test.jsx",
+              "contains": "sends the typed value and an idempotency key",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "authorization is required, and refusal writes nothing",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "one identity cannot resolve to two Parts",
+              "polarity": "negative"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "renaming a Part preserves the OLD internal part number, atomically",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "E": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "alias identity is DERIVED by the existing authority, never generated",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "a dangling alias is impossible",
+              "polarity": "negative"
+            }
+          ],
+          "limitation": "Direct-writer tests only; no successful create through handleCatalogRequest; sandbox scenario 2 never executed."
+        }
+      },
+      "audit": {
+        "status": "PARTIAL",
+        "evidence": [
+          {
+            "kind": "test",
+            "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+            "contains": "the audit carries a FINGERPRINT, never the raw identifier",
+            "polarity": "positive"
+          }
+        ],
+        "limitation": "Success audited (catalog.partAlias.create). Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
+      },
+      "gaps": [
+        "Error/replay mapping regressed in the client.",
+        "No executed end-to-end run."
+      ],
+      "candidateDisposition": "REPLACED"
+    },
+    {
+      "legacyOperation": "deactivatePartAlias",
+      "capabilityId": "catalog.partAlias.deactivate",
+      "domain": "catalog",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2056,
+        "commit": "acc65f2e"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "POST /operations/catalog deactivatePartAlias",
+      "entryPoint": "Part Detail > Barcodes & Identifiers (PartIdentifiersSection)",
+      "postgresImplementation": "functions/src/catalogMaster/postgresPartAliasWriter.ts",
+      "personas": [
+        "holders of inventory.catalog.manage + inventory.catalog.read"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.manage"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "GAP",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/catalogMaster/catalogHttp.ts",
+              "contains": "case \"deactivatePartAlias\""
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "deactivate and reactivate are governed facts; DELETE is refused",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "The server works, but no employee path reaches it: CLIENT CONTRACT DEFECT (since 6228d9bb): usePartIdentifiers reads result.aliases and the table reads alias.value; PostgreSQL listPartAliases returns a bare array with originalValue. Every Part shows no identifiers, so Deactivate and Reactivate are unreachable. The UI test mocks the retired callable shape."
+        },
+        "B": {
+          "status": "GAP",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/hooks/usePartIdentifiers.js",
+              "contains": "result?.aliases"
+            }
+          ],
+          "limitation": "CLIENT CONTRACT DEFECT (since 6228d9bb): usePartIdentifiers reads result.aliases and the table reads alias.value; PostgreSQL listPartAliases returns a bare array with originalValue. Every Part shows no identifiers, so Deactivate and Reactivate are unreachable. The UI test mocks the retired callable shape."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "authorization is required, and refusal writes nothing",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "version conflict and replay behave as the rest of the catalog does",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "E": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "deactivate and reactivate are governed facts; DELETE is refused",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "version conflict and replay behave as the rest of the catalog does",
+              "polarity": "negative"
+            }
+          ],
+          "limitation": "Direct-writer tests only; no test of the client against the real list result."
+        }
+      },
+      "audit": {
+        "status": "PARTIAL",
+        "evidence": [
+          {
+            "kind": "test",
+            "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+            "contains": "the audit carries a FINGERPRINT, never the raw identifier",
+            "polarity": "positive"
+          }
+        ],
+        "limitation": "Success audited (catalog.partAlias.deactivate). Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
+      },
+      "gaps": [
+        "Unreachable from the UI because the identifier list renders empty (client contract defect)."
+      ]
+    },
+    {
+      "legacyOperation": "reactivatePartAlias",
+      "capabilityId": "catalog.partAlias.reactivate",
+      "domain": "catalog",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2056,
+        "commit": "acc65f2e"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "POST /operations/catalog reactivatePartAlias",
+      "entryPoint": "Part Detail > Barcodes & Identifiers (PartIdentifiersSection)",
+      "postgresImplementation": "functions/src/catalogMaster/postgresPartAliasWriter.ts",
+      "personas": [
+        "holders of inventory.catalog.manage + inventory.catalog.read"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.manage"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "GAP",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/catalogMaster/catalogHttp.ts",
+              "contains": "case \"reactivatePartAlias\""
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "deactivate and reactivate are governed facts; DELETE is refused",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "The server works, but no employee path reaches it: CLIENT CONTRACT DEFECT (since 6228d9bb): usePartIdentifiers reads result.aliases and the table reads alias.value; PostgreSQL listPartAliases returns a bare array with originalValue. Every Part shows no identifiers, so Deactivate and Reactivate are unreachable. The UI test mocks the retired callable shape."
+        },
+        "B": {
+          "status": "GAP",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/hooks/usePartIdentifiers.js",
+              "contains": "result?.aliases"
+            }
+          ],
+          "limitation": "CLIENT CONTRACT DEFECT (since 6228d9bb): usePartIdentifiers reads result.aliases and the table reads alias.value; PostgreSQL listPartAliases returns a bare array with originalValue. Every Part shows no identifiers, so Deactivate and Reactivate are unreachable. The UI test mocks the retired callable shape."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "authorization is required, and refusal writes nothing",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "version conflict and replay behave as the rest of the catalog does",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "E": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "deactivate and reactivate are governed facts; DELETE is refused",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "version conflict and replay behave as the rest of the catalog does",
+              "polarity": "negative"
+            }
+          ],
+          "limitation": "Direct-writer tests only; no test of the client against the real list result."
+        }
+      },
+      "audit": {
+        "status": "PARTIAL",
+        "evidence": [
+          {
+            "kind": "test",
+            "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+            "contains": "the audit carries a FINGERPRINT, never the raw identifier",
+            "polarity": "positive"
+          }
+        ],
+        "limitation": "Success audited (catalog.partAlias.reactivate). Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
+      },
+      "gaps": [
+        "Unreachable from the UI because the identifier list renders empty (client contract defect)."
+      ]
+    },
+    {
+      "legacyOperation": "listPartAliases",
+      "capabilityId": "catalog.partAlias.list",
+      "domain": "catalog",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2056,
+        "commit": "acc65f2e"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": true,
+      "eosReplacement": "POST /operations/catalog listPartAliases",
+      "entryPoint": "Part Detail > Barcodes & Identifiers (PartIdentifiersSection)",
+      "postgresImplementation": "functions/src/catalogMaster/postgresPartAliasWriter.ts",
+      "personas": [
+        "holders of inventory.catalog.manage + inventory.catalog.read"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.manage",
+        "inventory.catalog.read"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "GAP",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/catalogMaster/catalogHttp.ts",
+              "contains": "case \"listPartAliases\""
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "alias administration lists a Part's identifiers with their ORIGINAL values",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "The server answers; the screen renders nothing: CLIENT CONTRACT DEFECT (since 6228d9bb): usePartIdentifiers reads result.aliases and the table reads alias.value; PostgreSQL listPartAliases returns a bare array with originalValue. Every Part shows no identifiers, so Deactivate and Reactivate are unreachable. The UI test mocks the retired callable shape."
+        },
+        "B": {
+          "status": "GAP",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/hooks/usePartIdentifiers.js",
+              "contains": "result?.aliases"
+            }
+          ],
+          "limitation": "CLIENT CONTRACT DEFECT (since 6228d9bb): usePartIdentifiers reads result.aliases and the table reads alias.value; PostgreSQL listPartAliases returns a bare array with originalValue. Every Part shows no identifiers, so Deactivate and Reactivate are unreachable. The UI test mocks the retired callable shape."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogReadAuthorizationPostgres.test.mjs",
+              "contains": "the alias reads keep their legacy predicate on top of inventory.catalog.read",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "NOT_APPLICABLE",
+          "evidence": [],
+          "reason": "Read-only; no downstream consumer."
+        },
+        "E": {
+          "status": "GAP",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "alias administration lists a Part's identifiers with their ORIGINAL values",
+              "polarity": "positive"
+            }
+          ],
+          "limitation": "No test of the PostgreSQL result against the hook/table; the UI test mocks the retired shape. (A single positive writer test does not meet E.)"
+        }
+      },
+      "audit": {
+        "status": "VERIFIED",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/catalogMaster/catalogHttp.ts",
+            "contains": "SCANNER_PART_FIELDS"
+          }
+        ]
+      },
+      "gaps": [
+        "Client contract defect: identifier list always empty.",
+        "Gate narrowed: now catalog.read AND manage (was manage only); no row cap (was 100 + truncated)."
+      ]
+    },
+    {
+      "legacyOperation": "probePartAlias",
+      "capabilityId": "catalog.partAlias.probe",
+      "domain": "catalog",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2056,
+        "commit": "acc65f2e"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": true,
+      "eosReplacement": "POST /operations/catalog probePartAlias",
+      "entryPoint": "Part Detail > Barcodes & Identifiers (PartIdentifiersSection)",
+      "postgresImplementation": "functions/src/catalogMaster/postgresPartAliasWriter.ts",
+      "personas": [
+        "holders of inventory.catalog.manage + inventory.catalog.read"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.manage",
+        "inventory.catalog.read"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/catalogMaster/catalogHttp.ts",
+              "contains": "case \"probePartAlias\""
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "the scanner resolves through the SHARED fan-out: FOUND, INACTIVE, NOT_FOUND, MALFORMED",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/shared/partMaster/PartIdentifiersSection.jsx",
+              "contains": "Test This Scan"
+            }
+          ],
+          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogReadAuthorizationPostgres.test.mjs",
+              "contains": "the alias reads keep their legacy predicate on top of inventory.catalog.read",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "NOT_APPLICABLE",
+          "evidence": [],
+          "reason": "Read-only probe; no downstream consumer."
+        },
+        "E": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "the scanner resolves through the SHARED fan-out: FOUND, INACTIVE, NOT_FOUND, MALFORMED",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "resolution is TENANT SCOPED: another tenant's identifier is not found",
+              "polarity": "negative"
+            }
+          ],
+          "limitation": "Writer-level; the HTTP test asserts status only."
+        }
+      },
+      "audit": {
+        "status": "VERIFIED",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/catalogMaster/catalogHttp.ts",
+            "contains": "SCANNER_PART_FIELDS"
+          }
+        ]
+      },
+      "gaps": [
+        "Gate narrowed to catalog.read AND manage (was manage only)."
+      ]
+    },
+    {
+      "legacyOperation": "lookupScannedPart",
+      "capabilityId": "catalog.scan.lookup",
+      "domain": "catalog",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2056,
+        "commit": "acc65f2e"
+      },
+      "disposition": "UNVERIFIED",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": false,
+      "eosReplacement": "POST /operations/catalog lookupScannedPart",
+      "entryPoint": "Scan workspace: Look Up, Move stock, Cycle Count",
+      "postgresImplementation": "functions/src/catalogMaster/postgresPartAliasWriter.ts",
+      "personas": [
+        "partsAssociate",
+        "partsManager",
+        "warehouseAssociate",
+        "warehouseManager",
+        "serviceTechnician (inventoryLookupReader)"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.read",
+        "inventory.catalog.alias.read"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "functions/src/catalogMaster/catalogHttp.ts",
+              "contains": "case \"lookupScannedPart\""
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogReadAuthorizationPostgres.test.mjs",
+              "contains": "SCANNER: lookupScannedPart answers the scanner contract on the EOS path (migrated from the retired callables)",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/modules/scan/LookupScan.jsx",
+              "contains": "lookupScannedPart"
+            }
+          ],
+          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only. UI tests inject lookupPart; sandbox scenario 2 never executed. Part Identifier transport is ready in platform-sandbox only."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogReadAuthorizationPostgres.test.mjs",
+              "contains": "REFUSED: a tenant MEMBER without inventory.catalog.read is refused by EVERY read",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogReadAuthorizationPostgres.test.mjs",
+              "contains": "SCANNER: lookupScannedPart answers the scanner contract on the EOS path (migrated from the retired callables)",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "resolution is TENANT SCOPED: another tenant's identifier is not found",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "E": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogReadAuthorizationPostgres.test.mjs",
+              "contains": "SCANNER: lookupScannedPart answers the scanner contract on the EOS path (migrated from the retired callables)",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogReadAuthorizationPostgres.test.mjs",
+              "contains": "REFUSED: a tenant MEMBER without inventory.catalog.read is refused by EVERY read",
+              "polarity": "negative"
+            }
+          ]
+        }
+      },
+      "audit": {
+        "status": "VERIFIED",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/catalogMaster/catalogHttp.ts",
+            "contains": "SCANNER_PART_FIELDS"
+          }
+        ]
+      },
+      "gaps": [
+        "Only gate B (live employee proof) is open."
+      ],
+      "candidateDisposition": "REPLACED"
+    },
+    {
+      "legacyOperation": "resolveScannedPartIdentifier",
+      "capabilityId": "catalog.scan.resolveIdentifier",
+      "domain": "catalog",
+      "era": "HISTORICAL",
+      "retiredIn": {
+        "pr": 2056,
+        "commit": "acc65f2e"
+      },
+      "disposition": "GAP",
+      "verificationStatus": "UNVERIFIED",
+      "materialBehaviorChange": true,
+      "eosReplacement": "POST /operations/catalog lookupScannedPart (alias half)",
+      "entryPoint": "Scan workspace: Look Up, Move stock, Cycle Count",
+      "postgresImplementation": "functions/src/catalogMaster/postgresPartAliasWriter.ts",
+      "personas": [
+        "partsAssociate",
+        "partsManager",
+        "warehouseAssociate",
+        "warehouseManager",
+        "serviceTechnician (inventoryLookupReader)"
+      ],
+      "requiredCapabilities": [
+        "inventory.catalog.read",
+        "inventory.catalog.alias.read"
+      ],
+      "ownerDecision": null,
+      "gates": {
+        "A": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "the scanner resolves through the SHARED fan-out: FOUND, INACTIVE, NOT_FOUND, MALFORMED",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogReadAuthorizationPostgres.test.mjs",
+              "contains": "SCANNER: lookupScannedPart answers the scanner contract on the EOS path (migrated from the retired callables)",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "B": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "source",
+              "path": "field-ops-app-vite/src/modules/scan/LookupScan.jsx",
+              "contains": "lookupScannedPart"
+            }
+          ],
+          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only."
+        },
+        "C": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogReadAuthorizationPostgres.test.mjs",
+              "contains": "the alias reads keep their legacy predicate on top of inventory.catalog.read",
+              "polarity": "negative"
+            }
+          ]
+        },
+        "D": {
+          "status": "VERIFIED",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogReadAuthorizationPostgres.test.mjs",
+              "contains": "SCANNER: lookupScannedPart answers the scanner contract on the EOS path (migrated from the retired callables)",
+              "polarity": "positive"
+            }
+          ]
+        },
+        "E": {
+          "status": "PARTIAL",
+          "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogReadAuthorizationPostgres.test.mjs",
+              "contains": "SCANNER: lookupScannedPart answers the scanner contract on the EOS path (migrated from the retired callables)",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "resolution is TENANT SCOPED: another tenant's identifier is not found",
+              "polarity": "negative"
+            }
+          ],
+          "limitation": "No executed end-to-end run of the superseding path."
+        }
+      },
+      "audit": {
+        "status": "VERIFIED",
+        "evidence": [
+          {
+            "kind": "source",
+            "path": "functions/src/catalogMaster/catalogHttp.ts",
+            "contains": "SCANNER_PART_FIELDS"
+          }
+        ]
+      },
+      "gaps": [
+        "SUPERSEDED by lookupScannedPart's alias half with material changes NOT recorded in DECISIONS: blank/oversize scan is INVALID_INPUT (was MALFORMED); the manufacturerId / MANUFACTURER_PN scan path is gone; the gate is now catalog.read AND alias.read (was alias.read); the response is wrapped. Needs Owner acceptance.",
+        "Dead client seam partAliasCallableClient.resolveScannedIdentifier still names the retired callable."
+      ],
+      "candidateDisposition": "SUPERSEDED"
+    }
+  ]
+}
