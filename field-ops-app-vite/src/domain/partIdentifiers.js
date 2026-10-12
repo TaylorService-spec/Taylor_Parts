@@ -132,6 +132,10 @@ export const IDENTIFIER_OUTCOMES = Object.freeze({
     kind: "error",
     message: "That request was already used for something different. Reload and try again.",
   },
+  ALREADY_IN_STATE: {
+    kind: "conflict",
+    message: "That identifier is already in that state — someone else may have changed it. Reload the list.",
+  },
   DENIED: { kind: "denied", message: "You are not authorized to manage part identifiers." },
   NOT_FOUND: { kind: "notFound", message: "That identifier no longer exists. Reload the list." },
   INVALID: { kind: "invalid", message: "That request was rejected — check the value and try again." },

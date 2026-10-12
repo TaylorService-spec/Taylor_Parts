@@ -1,0 +1,402 @@
+{
+  "route": "/operations/catalog",
+  "scenarios": {
+    "listEmpty": {
+      "request": {
+        "operation": "listPartAliases",
+        "input": {
+          "partId": "PRT-ALIAS-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "listPartAliases",
+        "result": []
+      }
+    },
+    "createApplied": {
+      "request": {
+        "operation": "createPartAlias",
+        "input": {
+          "partId": "PRT-ALIAS-1",
+          "aliasType": "UPC",
+          "rawValue": "012345678905",
+          "idempotencyKey": "pa-key-upc-1",
+          "source": "manual"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "createPartAlias",
+        "result": {
+          "aliasId": "UPC__012345678905",
+          "partId": "PRT-ALIAS-1",
+          "version": 1,
+          "status": "ACTIVE",
+          "replayed": false
+        }
+      }
+    },
+    "createReplayed": {
+      "request": {
+        "operation": "createPartAlias",
+        "input": {
+          "partId": "PRT-ALIAS-1",
+          "aliasType": "UPC",
+          "rawValue": "012345678905",
+          "idempotencyKey": "pa-key-upc-2",
+          "source": "manual"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "createPartAlias",
+        "result": {
+          "aliasId": "UPC__012345678905",
+          "partId": "PRT-ALIAS-1",
+          "version": 1,
+          "status": "ACTIVE",
+          "replayed": true
+        }
+      }
+    },
+    "createTaken": {
+      "request": {
+        "operation": "createPartAlias",
+        "input": {
+          "partId": "PRT-ALIAS-2",
+          "aliasType": "UPC",
+          "rawValue": "012345678905",
+          "idempotencyKey": "pa-key-upc-3",
+          "source": "manual"
+        }
+      },
+      "status": 409,
+      "body": {
+        "ok": false,
+        "operation": "createPartAlias",
+        "code": "CONFLICT",
+        "message": "this identifier is already an alias of a different part"
+      }
+    },
+    "createDenied": {
+      "request": {
+        "operation": "createPartAlias",
+        "input": {
+          "partId": "PRT-ALIAS-1",
+          "aliasType": "SUPPLIER_SKU",
+          "rawValue": "SKU-DENIED-1",
+          "idempotencyKey": "pa-key-sku-0",
+          "source": "manual"
+        }
+      },
+      "status": 403,
+      "body": {
+        "ok": false,
+        "operation": "createPartAlias",
+        "code": "FORBIDDEN",
+        "message": "this command requires inventory.catalog.manage"
+      }
+    },
+    "createMalformed": {
+      "request": {
+        "operation": "createPartAlias",
+        "input": {
+          "partId": "PRT-ALIAS-1",
+          "aliasType": "UPC",
+          "rawValue": "12345",
+          "idempotencyKey": "pa-key-upc-4",
+          "source": "manual"
+        }
+      },
+      "status": 400,
+      "body": {
+        "ok": false,
+        "operation": "createPartAlias",
+        "code": "INVALID_INPUT",
+        "message": "the value is not a well-formed UPC identifier"
+      }
+    },
+    "listBothActive": {
+      "request": {
+        "operation": "listPartAliases",
+        "input": {
+          "partId": "PRT-ALIAS-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "listPartAliases",
+        "result": [
+          {
+            "aliasId": "SUPPLIER_SKU__SKU-CONTRACT-1",
+            "partId": "PRT-ALIAS-1",
+            "aliasType": "SUPPLIER_SKU",
+            "originalValue": "SKU-CONTRACT-1",
+            "normalizedValue": "SKU-CONTRACT-1",
+            "status": "ACTIVE",
+            "source": "manual",
+            "manufacturerId": null,
+            "effectiveFrom": null,
+            "effectiveTo": null,
+            "version": 1,
+            "provenance": "NATIVE",
+            "createdAt": "2026-10-11T12:00:00.000Z",
+            "createdBy": "<principal>",
+            "updatedAt": "2026-10-11T12:00:00.000Z",
+            "updatedBy": "<principal>",
+            "deactivatedAt": null,
+            "deactivatedBy": null
+          },
+          {
+            "aliasId": "UPC__012345678905",
+            "partId": "PRT-ALIAS-1",
+            "aliasType": "UPC",
+            "originalValue": "012345678905",
+            "normalizedValue": "012345678905",
+            "status": "ACTIVE",
+            "source": "manual",
+            "manufacturerId": null,
+            "effectiveFrom": null,
+            "effectiveTo": null,
+            "version": 1,
+            "provenance": "NATIVE",
+            "createdAt": "2026-10-11T12:00:00.000Z",
+            "createdBy": "<principal>",
+            "updatedAt": "2026-10-11T12:00:00.000Z",
+            "updatedBy": "<principal>",
+            "deactivatedAt": null,
+            "deactivatedBy": null
+          }
+        ]
+      }
+    },
+    "deactivateApplied": {
+      "request": {
+        "operation": "deactivatePartAlias",
+        "input": {
+          "aliasId": "SUPPLIER_SKU__SKU-CONTRACT-1",
+          "expectedVersion": 1,
+          "idempotencyKey": "pa-key-d-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "deactivatePartAlias",
+        "result": {
+          "aliasId": "SUPPLIER_SKU__SKU-CONTRACT-1",
+          "partId": "PRT-ALIAS-1",
+          "version": 2,
+          "status": "INACTIVE",
+          "replayed": false
+        }
+      }
+    },
+    "listAfterDeactivate": {
+      "request": {
+        "operation": "listPartAliases",
+        "input": {
+          "partId": "PRT-ALIAS-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "listPartAliases",
+        "result": [
+          {
+            "aliasId": "SUPPLIER_SKU__SKU-CONTRACT-1",
+            "partId": "PRT-ALIAS-1",
+            "aliasType": "SUPPLIER_SKU",
+            "originalValue": "SKU-CONTRACT-1",
+            "normalizedValue": "SKU-CONTRACT-1",
+            "status": "INACTIVE",
+            "source": "manual",
+            "manufacturerId": null,
+            "effectiveFrom": null,
+            "effectiveTo": null,
+            "version": 2,
+            "provenance": "NATIVE",
+            "createdAt": "2026-10-11T12:00:00.000Z",
+            "createdBy": "<principal>",
+            "updatedAt": "2026-10-11T12:00:00.000Z",
+            "updatedBy": "<principal>",
+            "deactivatedAt": "2026-10-11T12:00:00.000Z",
+            "deactivatedBy": "<principal>"
+          },
+          {
+            "aliasId": "UPC__012345678905",
+            "partId": "PRT-ALIAS-1",
+            "aliasType": "UPC",
+            "originalValue": "012345678905",
+            "normalizedValue": "012345678905",
+            "status": "ACTIVE",
+            "source": "manual",
+            "manufacturerId": null,
+            "effectiveFrom": null,
+            "effectiveTo": null,
+            "version": 1,
+            "provenance": "NATIVE",
+            "createdAt": "2026-10-11T12:00:00.000Z",
+            "createdBy": "<principal>",
+            "updatedAt": "2026-10-11T12:00:00.000Z",
+            "updatedBy": "<principal>",
+            "deactivatedAt": null,
+            "deactivatedBy": null
+          }
+        ]
+      }
+    },
+    "deactivateAlready": {
+      "request": {
+        "operation": "deactivatePartAlias",
+        "input": {
+          "aliasId": "SUPPLIER_SKU__SKU-CONTRACT-1",
+          "expectedVersion": 2,
+          "idempotencyKey": "pa-key-d-2"
+        }
+      },
+      "status": 412,
+      "body": {
+        "ok": false,
+        "operation": "deactivatePartAlias",
+        "code": "PRECONDITION_FAILED",
+        "message": "the alias is already INACTIVE"
+      }
+    },
+    "deactivateStale": {
+      "request": {
+        "operation": "deactivatePartAlias",
+        "input": {
+          "aliasId": "UPC__012345678905",
+          "expectedVersion": 7,
+          "idempotencyKey": "pa-key-d-3"
+        }
+      },
+      "status": 409,
+      "body": {
+        "ok": false,
+        "operation": "deactivatePartAlias",
+        "code": "CONFLICT",
+        "message": "the record changed since it was loaded; reload and retry"
+      }
+    },
+    "reactivateApplied": {
+      "request": {
+        "operation": "reactivatePartAlias",
+        "input": {
+          "aliasId": "SUPPLIER_SKU__SKU-CONTRACT-1",
+          "expectedVersion": 2,
+          "idempotencyKey": "pa-key-r-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "reactivatePartAlias",
+        "result": {
+          "aliasId": "SUPPLIER_SKU__SKU-CONTRACT-1",
+          "partId": "PRT-ALIAS-1",
+          "version": 3,
+          "status": "ACTIVE",
+          "replayed": false
+        }
+      }
+    },
+    "listAfterReactivate": {
+      "request": {
+        "operation": "listPartAliases",
+        "input": {
+          "partId": "PRT-ALIAS-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "listPartAliases",
+        "result": [
+          {
+            "aliasId": "SUPPLIER_SKU__SKU-CONTRACT-1",
+            "partId": "PRT-ALIAS-1",
+            "aliasType": "SUPPLIER_SKU",
+            "originalValue": "SKU-CONTRACT-1",
+            "normalizedValue": "SKU-CONTRACT-1",
+            "status": "ACTIVE",
+            "source": "manual",
+            "manufacturerId": null,
+            "effectiveFrom": null,
+            "effectiveTo": null,
+            "version": 3,
+            "provenance": "NATIVE",
+            "createdAt": "2026-10-11T12:00:00.000Z",
+            "createdBy": "<principal>",
+            "updatedAt": "2026-10-11T12:00:00.000Z",
+            "updatedBy": "<principal>",
+            "deactivatedAt": null,
+            "deactivatedBy": null
+          },
+          {
+            "aliasId": "UPC__012345678905",
+            "partId": "PRT-ALIAS-1",
+            "aliasType": "UPC",
+            "originalValue": "012345678905",
+            "normalizedValue": "012345678905",
+            "status": "ACTIVE",
+            "source": "manual",
+            "manufacturerId": null,
+            "effectiveFrom": null,
+            "effectiveTo": null,
+            "version": 1,
+            "provenance": "NATIVE",
+            "createdAt": "2026-10-11T12:00:00.000Z",
+            "createdBy": "<principal>",
+            "updatedAt": "2026-10-11T12:00:00.000Z",
+            "updatedBy": "<principal>",
+            "deactivatedAt": null,
+            "deactivatedBy": null
+          }
+        ]
+      }
+    },
+    "listDenied": {
+      "request": {
+        "operation": "listPartAliases",
+        "input": {
+          "partId": "PRT-ALIAS-1"
+        }
+      },
+      "status": 403,
+      "body": {
+        "ok": false,
+        "operation": "listPartAliases",
+        "code": "FORBIDDEN",
+        "message": "reading the Catalog requires inventory.catalog.manage"
+      }
+    },
+    "probeFound": {
+      "request": {
+        "operation": "probePartAlias",
+        "input": {
+          "aliasType": "UPC",
+          "rawValue": "012345678905"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "probePartAlias",
+        "result": {
+          "result": "FOUND",
+          "partId": "PRT-ALIAS-1",
+          "aliasType": "UPC",
+          "aliasId": "UPC__012345678905"
+        }
+      }
+    }
+  }
+}
