@@ -218,3 +218,22 @@ describe("Preferred supplier and status", () => {
     expect(within(rowOf("ColdChain Components")).getByText("Terms Active")).toBeTruthy();
   });
 });
+
+// Security review of #2064, N3: an employee who may change cost & contract terms but cannot SEE them must never wipe a
+// stored contract date by leaving one end blank.
+describe("restricted contract window: both dates or neither", () => {
+  it("one date alone is refused by the form and nothing is sent; both dates are sent; neither keeps the stored window", async () => {
+    const { blindWindowIncomplete, buildTermsChanges } = await import("../src/domain/partSupplierTerms.js");
+    const item = { itemId: "P__S", supplierSku: "SKU-1", withheld: [{ group: "COMMERCIAL", fields: ["cost", "currency", "contractStart", "contractEnd"], requires: ["inventory.catalog.cost.read"] }] };
+    const access = { COMMERCIAL: { read: false, create: true, edit: true } };
+    expect(blindWindowIncomplete({ contractStart: "", contractEnd: "2034-01-01" }, item)).toBe(true);
+    const oneEnd = buildTermsChanges({ contractStart: "", contractEnd: "2034-01-01" }, item, access);
+    expect("contractStart" in oneEnd).toBe(false);
+    expect("contractEnd" in oneEnd).toBe(false);
+    expect(buildTermsChanges({ contractStart: "2033-01-01", contractEnd: "2034-01-01" }, item, access))
+      .toMatchObject({ contractStart: "2033-01-01", contractEnd: "2034-01-01" });
+    const neither = buildTermsChanges({ supplierSku: "SKU-2" }, item, access);
+    expect(neither).toEqual({ supplierSku: "SKU-2" });
+    expect(blindWindowIncomplete({ contractStart: "", contractEnd: "" }, item)).toBe(false);
+  });
+});

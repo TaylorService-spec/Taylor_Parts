@@ -6,7 +6,7 @@ import {
 } from "../../services/partsOperationsReads.js";
 import {
   AVAILABILITY_LABEL, AVAILABILITY_STATES, COMMERCIAL_GROUP, EMPTY_TERMS_FORM, PURCHASE_UNITS, RESTRICTED_LABEL, buildCreateTermsInput,
-  buildTermsChanges, formatContract, formatCost, formatPurchaseUnit, groupAccess, isWithheld, outcomeFromError, outcomeFromResult,
+  blindWindowIncomplete, buildTermsChanges, formatContract, formatCost, formatPurchaseUnit, groupAccess, isWithheld, outcomeFromError, outcomeFromResult,
   termsFormFromItem,
 } from "../../domain/partSupplierTerms.js";
 
@@ -63,9 +63,12 @@ function TermsForm({ mode, item, supplierOptions, stockingUnit, fieldAccess, bus
   const commercialWritable = mode === "edit" ? commercial.edit : commercial.create;
   const commercialHidden = mode === "edit" && isWithheld(item, COMMERCIAL_GROUP);
   const commercialProps = commercialWritable ? {} : { disabled: true, "aria-describedby": "pst-commercial-note" };
-  const set = (k) => (e) => setValues((v) => ({ ...v, [k]: e.target.value }));
+  const [windowError, setWindowError] = useState(false);
+  const set = (k) => (e) => { setWindowError(false); setValues((v) => ({ ...v, [k]: e.target.value })); };
   const submit = (e) => {
     e.preventDefault();
+    // The stored contract window is restricted for this employee: both dates, or neither -- never one (N3).
+    if (mode === "edit" && blindWindowIncomplete(values, item)) { setWindowError(true); return; }
     onSubmit(values);
   };
   const input = (id, k, extra = {}) => (
@@ -90,7 +93,7 @@ function TermsForm({ mode, item, supplierOptions, stockingUnit, fieldAccess, bus
         <p id="pst-commercial-note" className="fo-muted">
           {!commercialWritable
             ? "Cost & contract terms can't be changed here: changing them needs the cost permission, governed in Administration."
-            : "The current cost & contract terms are restricted for you. Values you enter replace them; leave them blank to keep them."}
+            : "The current cost & contract terms are restricted for you. Values you enter replace them; leave them blank to keep them. To change the contract window, enter BOTH dates."}
         </p>
       )}
       <Field id="pst-cost" label="Unit cost">{input("pst-cost", "cost", { inputMode: "decimal", ...commercialProps })}</Field>
@@ -116,6 +119,11 @@ function TermsForm({ mode, item, supplierOptions, stockingUnit, fieldAccess, bus
       )}
       <Field id="pst-contract-start" label="Contract start">{input("pst-contract-start", "contractStart", { type: "date", ...commercialProps })}</Field>
       <Field id="pst-contract-end" label="Contract end">{input("pst-contract-end", "contractEnd", { type: "date", ...commercialProps })}</Field>
+      {windowError && (
+        <p className="fo-inline-error" role="alert">
+          Enter both contract dates to change the contract window. One date alone is not sent, because the current window is restricted for you.
+        </p>
+      )}
       <Field id="pst-availability" label="Availability">
         <select id="pst-availability" className="fo-input" value={values.availability} onChange={set("availability")}>
           {AVAILABILITY_STATES.map((a) => <option key={a} value={a}>{AVAILABILITY_LABEL[a]}</option>)}

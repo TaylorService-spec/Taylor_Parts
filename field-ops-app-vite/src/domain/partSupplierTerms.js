@@ -80,6 +80,13 @@ export function buildCreateTermsInput(partId, form) {
  * optional term is sent as null (clear it); a blanked required term is sent blank so the server refuses it by name.
  * `fieldAccess` (the list answer's) decides whether COMMERCIAL terms are sent at all.
  */
+/** True when an employee who cannot see the stored contract window has entered exactly ONE of its two dates. */
+export function blindWindowIncomplete(form, item) {
+  if (!isWithheld(item, COMMERCIAL_GROUP)) return false;
+  const stated = ["contractStart", "contractEnd"].filter((k) => trimmed(form?.[k]) !== "").length;
+  return stated === 1;
+}
+
 export function buildTermsChanges(form, item, fieldAccess) {
   const loaded = termsFormFromItem(item);
   const f = { ...loaded, ...form };
@@ -97,8 +104,10 @@ export function buildTermsChanges(form, item, fieldAccess) {
     const window = ["contractStart", "contractEnd"];
     if (blind) {
       // The server needs BOTH ends from an employee who cannot see the stored window (it never checks a stated end
-      // against a stored date they cannot see).
-      if (window.some(changed)) for (const k of window) changes[k] = trimmed(f[k]) === "" ? null : trimmed(f[k]);
+      // against a stored date they cannot see). BOTH OR NEITHER: a blank here is "keep what is stored", never "clear
+      // it" -- sending null for the blank end silently wiped a date the employee could not see (security review of
+      // #2064, N3). One end alone is refused by the form (blindWindowIncomplete) before anything is sent.
+      if (window.every((k) => trimmed(f[k]) !== "")) for (const k of window) changes[k] = trimmed(f[k]);
     } else {
       for (const k of window) if (changed(k)) changes[k] = trimmed(f[k]) === "" ? null : trimmed(f[k]);
     }

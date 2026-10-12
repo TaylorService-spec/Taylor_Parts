@@ -579,7 +579,11 @@ export async function setPartSupplierItemStatus(deps: { readonly pool: Pool }, a
     if (!record) refuse("ITEM_NOT_FOUND", "NOT_FOUND", "no supplier terms with that id");
     const supplier = await supplierFacts(c, actor.tenantId, record!.supplierId, status === "ACTIVE");
     const before = view(record!, supplier);
-    if (before.status === status) return { outcome: "unchanged" as const, item: project(actor, before) };
+    // A caller who may change status but not maintain terms (inventory.catalog.activate without manage) learns the
+    // status change, never the terms: the echo is the minimal record (security review of #2064, N1).
+    const echo = (item: ReturnType<typeof view>) => (actor.capabilities.has(PART_SUPPLIER_TERMS_MANAGE_CAPABILITY)
+      ? project(actor, item) : { itemId: item.itemId, status: item.status, version: item.version });
+    if (before.status === status) return { outcome: "unchanged" as const, item: echo(before) };
     if (before.version !== expectedVersion) refuse("STALE_VERSION", "CONFLICT", "the supplier terms changed since they were read");
     if (status === "ACTIVE" && supplier?.status !== "ACTIVE") refuse("SUPPLIER_NOT_ACTIVE", "PRECONDITION_FAILED", "the supplier is not ACTIVE");
     const updated = await repository(() => setSupplierCatalogItemStatus(c, actor.tenantId, actor.principalId, record!.partId, record!.supplierId,
@@ -588,7 +592,7 @@ export async function setPartSupplierItemStatus(deps: { readonly pool: Pool }, a
     const action = status === "ACTIVE" ? "partSupplierItem.activate" : "partSupplierItem.deactivate";
     await audit(c, actor, action, itemId, auditView(before), auditView(item),
       typeof i.reason === "string" ? i.reason.trim() : status === "ACTIVE" ? "part-supplier terms reactivated" : "part-supplier terms deactivated");
-    return { outcome: status === "ACTIVE" ? "activated" as const : "deactivated" as const, item: project(actor, item) };
+    return { outcome: status === "ACTIVE" ? "activated" as const : "deactivated" as const, item: echo(item) };
   });
 }
 

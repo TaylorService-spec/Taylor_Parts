@@ -294,8 +294,11 @@ test("part-supplier terms over the governed path", { skip: SKIP, concurrency: 1 
     refused(await call(administrator, "setPartSupplierItemStatus", { itemId: "P-100__sup-delta", expectedVersion: 3, status: "GONE" }), 400, "INVALID_INPUT");
     // A holder of activate ALONE may change status (the Firebase predicate), but may not read or edit terms.
     const r = ok(await call(activatorOnly, "setPartSupplierItemStatus", { itemId: "P-100__sup-delta", expectedVersion: 3, status: "ACTIVE" }), "reactivate");
-    assert.deepEqual([r.outcome, r.item.status, r.item.preferred], ["activated", "ACTIVE", false]);
-    assertNoCommercialKeys(r.item, "activator-only echo");
+    // Security review N1: the activate-only echo is the MINIMAL record -- the status change, never the terms.
+    assert.deepEqual([r.outcome, r.item.status], ["activated", "ACTIVE"]);
+    assert.deepEqual(Object.keys(r.item).sort(), ["itemId", "status", "version"], "no SKU, lead time or ordering terms");
+    const u = ok(await call(activatorOnly, "setPartSupplierItemStatus", { itemId: "P-100__sup-delta", expectedVersion: 999, status: "ACTIVE" }), "unchanged");
+    assert.deepEqual([u.outcome, Object.keys(u.item).sort()], ["unchanged", ["itemId", "status", "version"]]);
     refused(await call(activatorOnly, "listPartSupplierItems", { partId: "P-100" }), 403, "FORBIDDEN", /inventory\.catalog\.manage/);
     const rows = await audits("P-100__sup-delta");
     assert.deepEqual(rows.filter((a) => /activate$/.test(a.action)).map((a) => [a.action, a.reason]),
