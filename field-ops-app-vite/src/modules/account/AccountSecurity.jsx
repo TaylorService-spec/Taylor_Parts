@@ -42,6 +42,7 @@ export default function AccountSecurity() {
   const [enrollCode, setEnrollCode] = useState("");
   const [codes, setCodes] = useState(null);
   const [stepUp, setStepUp] = useState({ password: "", code: "" });
+  const [setupPassword, setSetupPassword] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -114,7 +115,11 @@ export default function AccountSecurity() {
         />
         {!account.mfaConfigured ? <p>Two-step verification is not available on this system yet.</p> : null}
         {account.mfaConfigured && !totp && !enroll ? (
-          <Button onClick={() => act(async () => { setEnroll(await eosLoginClient.beginTotp()); })} loading={busy}>Set up an authenticator app</Button>
+          <form onSubmit={(e) => { e.preventDefault(); act(async () => { setEnroll(await eosLoginClient.beginTotp(setupPassword)); setSetupPassword(""); }); }}
+            style={{ display: "grid", gap: 10 }}>
+            <Field label="Your current password"><input className="fo-input" type="password" autoComplete="current-password" value={setupPassword} onChange={(e) => setSetupPassword(e.target.value)} required /></Field>
+            <div><Button type="submit" loading={busy}>Set up an authenticator app</Button></div>
+          </form>
         ) : null}
         {enroll ? (
           <form

@@ -297,7 +297,7 @@ The code is built so that each of these can be decided without rework. **D-1, D-
 | **D-1** | **Production.** The EOS API refuses `EOS_ENVIRONMENT=production`, and the login service signs with `nonprod-` keys only. Human login in production needs a production signing key, issuer and audience, and lifting the service-level refusal. That is irreversible security design. | Nonprod only. Production is a separate authorization. |
 | **D-2** | **Identity provider.** EOS is its own IdP (passwords + TOTP in PostgreSQL). The alternative is a managed IdP or SSO (Entra ID / Google Workspace / Okta / Auth0 / WorkOS), mapped through `principal_identities`. | EOS-native, as directed. SSO stays addable later as another binding kind. **Confirm** before nonprod enablement. |
 | **D-3** | **Token storage — CORRECTED per Owner.** The refresh token is now an HttpOnly `__Host-` cookie, and the access token stays in memory. **Remaining deployment fact:** nonprod today puts the app (`*.vercel.app`) and the API (`*.onrender.com`) on different sites, so the cookie is third-party and needs `SameSite=None; Partitioned`. Browsers that block third-party cookies outright, or don't support CHIPS, will not send it: sign-in still works, but every reload asks for sign-in again. | **Blocker to a good nonprod experience:** put the app and API under one registrable domain (e.g. `app.` + `api.`) and use `SameSite=Strict`. |
-| **D-4** | **Lifetimes and lockout:** access 5 min, idle 12 h, absolute 7 d; lock at 5 failures for 15 min, doubling to 24 h; enrollment code 72 h, reset code 24 h. | As built. Tune for field technicians (e.g. a longer idle window on managed devices). |
+| **D-4** | **Lifetimes and lockout:** access 5 min, idle 12 h, absolute 7 d. Lock after 5 failures for 15 min; the count **restarts** when the lock expires (no escalation; review finding 4). Enrollment code 72 h, reset code 24 h. | As built. Residual: anyone who knows an identifier can hold that account locked with 5 guesses per 15 minutes. Tune for field technicians. |
 | **D-5** | **Self-service recovery and invitations by email.** EOS has no outbound email. #54 defers any external provider, and #56's Firebase-native send conflicts with Firebase retirement. | **Admin-assisted codes only.** A new email decision is needed for "forgot password" self-service. |
 | **D-6** | **Breached-password screening** (e.g. the Have I Been Pwned k-anonymity range API: an outbound call, with no password leaving EOS). | Off. Only an embedded common-password list. |
 | **D-7** | **MFA policy.** Who *must* have two-step verification is per-account today, set in Administration. A role-based mandate (e.g. Owner, Administrator, Finance) is an authority-adjacent rule. **Passkeys/WebAuthn** are the next factor, either hand-rolled COSE/CBOR verification or a dependency such as `@simplewebauthn/server`. | Per-account flag. Recommend a mandate for Owner/Administrator/Finance, and passkeys as the next increment. |
@@ -388,6 +388,31 @@ The code is built so that each of these can be decided without rework. **D-1, D-
 2. Recompute the SHA-256 and compare it with the manifest. A mismatch means the archive is not trusted, and the incident is reported.
 3. Load the rows into a **separate** read-only restoration schema (never back into the active table, whose history must not be rewritten), or query the NDJSON directly.
 4. Record the retrieval as an `audit_events` row in the tenant, with who, which manifest and why.
+
+## 8b. Second independent security review (final implementation, 2026-10-12)
+
+A fresh reviewer with no authoring context reviewed the D-12/D-13 head. **No CRITICAL or HIGH finding.**
+- **HIGH-1** (cross-tenant escalation): **closed** in both modes.
+- **HIGH-2** (lockout): **closed**.
+- **HIGH-3** (takeover through codes): closed at issue time; a use-time gap (finding 2) is **now closed**.
+
+| # | Sev | Finding | Disposition (proof) |
+|---|---|---|---|
+| 1 | MED | Refresh held row locks while resolving eligibility on other pool connections, so a burst on one cookie could pin the pool | **Fixed.** Eligibility is resolved before the locking transaction; the same pattern was also removed from `issueLoginReset` (R5) |
+| 2 | MED | An open setup or reset code outlived the issuer's authority (target promoted, or joined another tenant) | **Fixed.** `consumeTicket` re-runs the issue-time check against `issued_by`; a lapsed code is revoked and recorded `TICKET_ISSUER_AUTHORITY_LAPSED` (R1) |
+| 3 | MED | Cross-tenant authority looped over *active* memberships only | **Fixed.** Every membership in any status, plus every tenant with a protected Role (R2) |
+| 4 | MED | The actor's authority in other tenants bypassed principal resolution (DQ-007, stale assignments) | **Fixed.** Resolved through `resolvePrincipalContextById` per tenant (R3) |
+| 5 | MED/LOW | The Employee requirement was enforced only in the home tenant | **Fixed.** A human session requires an Employee link **in its own tenant**: at login, refresh, switch and self-service (R4) |
+| 6 | LOW/MED | A stolen access token could enroll the thief's authenticator | **Fixed.** `totp/begin` requires the current password (L11, R6) |
+| 7 | LOW | Self-service skipped principal resolution | **Fixed.** `self` mode resolves fully (R7) |
+| 8 | LOW | Refusals after tenant selection were recorded in the home tenant | **Fixed.** Recorded in the selected tenant (R4) |
+| 9 | LOW | Forged-header refusals could flood the append-only log | **Fixed.** Coalesced to one record per session per minute; every request is still refused (M2) |
+| 10 | LOW | Revocations failed when the event store failed | **Fixed.** Revocation events are best-effort in a savepoint; grants still fail closed (R10, M11). Governed `audit_events` stay strict |
+| 11 | LOW | Refusal details disclosed other tenants' facts | **Fixed.** Anything learned from another tenant is the generic `TARGET_NOT_ADMINISTRABLE` (R2) |
+| 12 | LOW | `EOS_AUTH_CLIENT_IP_HEADER` is spoofable if the origin is reachable directly | **Documented** (§9). Render services are reachable only through Render's edge; confirm by the §9 measurement |
+| 13 | INFO | Doc mismatches; missing TRUNCATE guards; last-administrator guard in multi-tenant mode | **Fixed.** D-4 row, route header, TRUNCATE triggers on both governance tables, and the guard counts logins homed in any tenant |
+
+**Operational consequence of finding 3 (intended).** If a person holds a membership in another tenant, even a suspended one, then only an actor holding the authority in *every* such tenant can administer that person's login. The other tenant must remove the membership, or a dual-tenant Owner must act.
 
 ## 9. Nonproduction infrastructure assessment (no live change made)
 

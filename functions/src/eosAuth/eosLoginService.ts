@@ -21,7 +21,7 @@ import type { Pool, PoolClient } from "pg";
 import { makeTransaction, type PostgresPolicyRepository } from "../adminPolicy/postgresPolicyRepository";
 import { runWithRequestScope } from "./requestTenantBinding";
 import { capabilityKeysFor } from "../adminPolicy/administrationCapabilityGate";
-import { EOS_IDENTITY_PROVIDER, PrincipalContextError, resolvePrincipalContext } from "../adminPolicy/principalContext";
+import { EOS_IDENTITY_PROVIDER, PrincipalContextError, resolvePrincipalContext, resolvePrincipalContextById } from "../adminPolicy/principalContext";
 import { actorCapabilities, requireSecurityAdministrationCapability } from "../adminPolicy/administrationCapabilityGate";
 import { ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY } from "../adminPolicy/administrationAuthority";
 import type { AdminActor } from "../adminPolicy/policyCommands";
@@ -279,6 +279,24 @@ export class EosLoginService {
     );
   }
 
+  /**
+   * The security event for a REVOCATION (logout, session revocation, reuse detection, an administrative act), written
+   * best-effort inside a savepoint (second review finding 10): if the event store fails, the revocation still commits.
+   * The asymmetry is deliberate -- a GRANT (login, refresh, a code issued) without its record never happens, because those
+   * write their event in the same transaction and fail with it; a REMOVAL of access must not be blocked by the log.
+   */
+  private async eventBestEffort(c: PoolClient, input: Parameters<EosLoginService["event"]>[1]): Promise<void> {
+    await c.query("SAVEPOINT eos_event");
+    try {
+      await this.event(c, input);
+      await c.query("RELEASE SAVEPOINT eos_event");
+    } catch {
+      await c.query("ROLLBACK TO SAVEPOINT eos_event");
+      // eslint-disable-next-line no-console -- the class only; never an identifier or token
+      console.error("[eosLogin] security event could not be recorded; the revocation stands");
+    }
+  }
+
   /** A governed change, in the account's tenant's audit_events, through the policy transaction port. */
   private async audit(client: PoolClient, tenantId: string, actorUid: string, action: string, accountId: string,
     before: unknown, after: unknown, reason: string): Promise<void> {
@@ -322,6 +340,13 @@ export class EosLoginService {
     await runWithRequestScope(() => resolvePrincipalContext(this.deps.repo, {
       identityProvider: EOS_IDENTITY_PROVIDER, externalSubject: account.subject, requestedTenantId: tenantId,
     }));
+    // A HUMAN login is for a PERSON in THIS tenant (second review finding 5). DQ-007 reads "no Employee link" as "not an
+    // Employee, unaffected" -- right for service Principals, wrong for a human session -- so a human session additionally
+    // requires exactly one active Employee link in the tenant it acts in (whose status resolvePrincipalContext checked).
+    const fact = await this.deps.repo.getLinkedEmployeeAccessFact(tenantId, account.principal_id);
+    if (!fact || ("ambiguous" in fact && fact.ambiguous)) {
+      throw new PrincipalContextError("EMPLOYEE_NOT_ACCESS_ELIGIBLE", "a human session requires an Employee link in its tenant");
+    }
   }
 
   /**
@@ -440,8 +465,9 @@ export class EosLoginService {
       throw new LoginRefusal("LOGIN_REFUSED");
     }
     const account = await this.accountByIdentifier(this.deps.pool, identifier);
-    const refuse = async (reason: string, a: AccountRow | null) => {
-      await this.event(this.deps.pool, { event: "login", outcome: "refused", reason, accountId: a?.id, principalId: a?.principal_id, client: facts });
+    const refuse = async (reason: string, a: AccountRow | null, tenantId: string | null = null) => {
+      // In the SELECTED tenant once one is chosen (second review finding 8), else the account's home tenant.
+      await this.event(this.deps.pool, { event: "login", outcome: "refused", reason, accountId: a?.id, principalId: a?.principal_id, client: facts, tenantId });
       throw new LoginRefusal("LOGIN_REFUSED");
     };
     if (!account) {
@@ -467,7 +493,7 @@ export class EosLoginService {
     try {
       await this.requireEligible(account, tenantId);
     } catch (err) {
-      if (err instanceof PrincipalContextError) return refuse(`PRINCIPAL_${err.refusal}`, account);
+      if (err instanceof PrincipalContextError) return refuse(`PRINCIPAL_${err.refusal}`, account, tenantId);
       throw err;
     }
     const rehash = check.needsRehash ? await hashPassword(password, this.hashParameters) : null;
@@ -477,7 +503,7 @@ export class EosLoginService {
       // Re-read under the lock: a concurrent disable, binding revocation or credential change between the read and here
       // wins. (The lock our OWN reservation may have set is cleared below: this attempt was within the allowance.)
       if (!a || a.status !== "active" || a.binding_status !== "active" || a.credential_version !== account.credential_version) {
-        await this.event(c, { event: "login", outcome: "refused", reason: "ACCOUNT_CHANGED", accountId: account.id, client: facts });
+        await this.event(c, { event: "login", outcome: "refused", reason: "ACCOUNT_CHANGED", accountId: account.id, client: facts, tenantId });
         return null;
       }
       if (rehash) {
@@ -521,18 +547,18 @@ export class EosLoginService {
       // A password reset or change since the password step voids the challenge (finding 8).
       if (!a || a.status !== "active" || a.binding_status !== "active" || this.isLocked(a) || a.credential_version !== ch.credential_version) {
         await c.query(`UPDATE ${SCHEMA}.login_mfa_challenges SET consumed_at = $2 WHERE id = $1`, [ch.id, this.now()]);
-        await this.event(c, { event: "loginMfa", outcome: "refused", reason: "ACCOUNT_NOT_USABLE", accountId: ch.account_id, client: facts });
+        await this.event(c, { event: "loginMfa", outcome: "refused", reason: "ACCOUNT_NOT_USABLE", accountId: ch.account_id, client: facts, tenantId: ch.tenant_id });
         return { refusal: "MFA_CHALLENGE_INVALID" as const };
       }
       const method = await this.secondFactorOrKeyRefusal(c, keyring, a, input);
       if (method === "KEY_UNAVAILABLE") {
-        await this.event(c, { event: "loginMfa", outcome: "refused", reason: "MFA_KEY_UNAVAILABLE", accountId: a.id, principalId: a.principal_id, client: facts });
+        await this.event(c, { event: "loginMfa", outcome: "refused", reason: "MFA_KEY_UNAVAILABLE", accountId: a.id, principalId: a.principal_id, client: facts, tenantId: ch.tenant_id });
         return { refusal: "MFA_KEY_UNAVAILABLE" as const };
       }
       if (!method) {
         await c.query(`UPDATE ${SCHEMA}.login_mfa_challenges SET attempts = attempts + 1 WHERE id = $1`, [ch.id]);
         await this.recordFailure(c, a);
-        await this.event(c, { event: "loginMfa", outcome: "refused", reason: "CODE_REFUSED", accountId: a.id, principalId: a.principal_id, client: facts });
+        await this.event(c, { event: "loginMfa", outcome: "refused", reason: "CODE_REFUSED", accountId: a.id, principalId: a.principal_id, client: facts, tenantId: ch.tenant_id });
         return { refusal: "MFA_CODE_REFUSED" as const };
       }
       await c.query(`UPDATE ${SCHEMA}.login_mfa_challenges SET consumed_at = $2 WHERE id = $1`, [ch.id, this.now()]);
@@ -544,7 +570,7 @@ export class EosLoginService {
       await this.requireEligible(outcome.account, outcome.tenantId);
     } catch (err) {
       if (err instanceof PrincipalContextError) {
-        await this.event(this.deps.pool, { event: "loginMfa", outcome: "refused", reason: `PRINCIPAL_${err.refusal}`, accountId: outcome.account.id, client: facts });
+        await this.event(this.deps.pool, { event: "loginMfa", outcome: "refused", reason: `PRINCIPAL_${err.refusal}`, accountId: outcome.account.id, client: facts, tenantId: outcome.tenantId });
         throw new LoginRefusal("LOGIN_REFUSED");
       }
       throw err;
@@ -552,7 +578,7 @@ export class EosLoginService {
     const issued = await this.tx(async (c): Promise<LoginResult | null> => {
       const a = await this.accountById(c, outcome.account.id, true);
       if (!a || a.status !== "active" || a.binding_status !== "active" || a.credential_version !== outcome.account.credential_version) {
-        await this.event(c, { event: "loginMfa", outcome: "refused", reason: "ACCOUNT_CHANGED", accountId: outcome.account.id, client: facts });
+        await this.event(c, { event: "loginMfa", outcome: "refused", reason: "ACCOUNT_CHANGED", accountId: outcome.account.id, client: facts, tenantId: outcome.tenantId });
         return null;
       }
       await c.query(`UPDATE ${SCHEMA}.login_accounts SET failed_attempts = 0, locked_until = NULL, last_login_at = $2, updated_at = $2 WHERE id = $1`, [a.id, this.now()]);
@@ -635,6 +661,27 @@ export class EosLoginService {
   async refresh(input: { refreshToken: unknown }, facts: ClientFacts | null): Promise<IssuedLoginSession> {
     if (!isOpaqueTokenOf("refresh", input.refreshToken)) throw new LoginRefusal("REFRESH_REFUSED");
     const digest = opaqueTokenDigest(input.refreshToken);
+    // ELIGIBILITY FIRST, OUTSIDE THE LOCKING TRANSACTION (second review finding 1). It reads through the policy repository
+    // on other pool connections; doing that while holding this token's row locks let a burst of refreshes of one cookie
+    // pin every pool connection (lock holder waiting for a connection, the rest waiting for the lock). The result is a
+    // refusal reason or null; the transaction below re-validates everything else under the locks.
+    let eligibilityRefusal: string | null = null;
+    {
+      const { rows: pre } = await this.deps.pool.query(
+        `SELECT s.account_id, s.tenant_id FROM ${SCHEMA}.login_refresh_tokens t JOIN ${SCHEMA}.login_sessions s ON s.id = t.session_id
+          WHERE t.token_sha256 = $1 AND t.consumed_at IS NULL AND s.revoked_at IS NULL`, [digest]);
+      if (pre[0]) {
+        const acct = await this.accountById(this.deps.pool, pre[0].account_id);
+        if (acct) {
+          try {
+            await this.requireEligible(acct, pre[0].tenant_id);
+          } catch (err) {
+            if (!(err instanceof PrincipalContextError)) throw err;
+            eligibilityRefusal = `PRINCIPAL_${err.refusal}`;
+          }
+        }
+      }
+    }
     const result = await this.tx(async (c): Promise<IssuedLoginSession | LoginRefusalCode> => {
       const now = this.now();
       const { rows } = await c.query(
@@ -646,7 +693,7 @@ export class EosLoginService {
         if (revoke && t && !t.revoked_at) {
           await c.query(`UPDATE ${SCHEMA}.login_sessions SET revoked_at = $2, revoke_reason = $3 WHERE id = $1`, [t.session_id, now, revoke]);
         }
-        await this.event(c, { event: "refresh", outcome: "refused", reason, accountId: t?.account_id, sessionId: t?.session_id, client: facts });
+        await this.eventBestEffort(c, { event: "refresh", outcome: "refused", reason, accountId: t?.account_id, sessionId: t?.session_id, client: facts });
         return code;
       };
       if (!t) return refuse("UNKNOWN_TOKEN", null);
@@ -667,13 +714,8 @@ export class EosLoginService {
       if (!a || a.status !== "active" || a.binding_status !== "active" || a.credential_version !== t.session_cv) {
         return refuse("ACCOUNT_CHANGED", "ACCOUNT_CHANGED");
       }
-      // The SAME resolution every request runs, re-checked at every rotation.
-      try {
-        await this.requireEligible(a, t.session_tenant_id);
-      } catch (err) {
-        if (err instanceof PrincipalContextError) return refuse(`PRINCIPAL_${err.refusal}`, `PRINCIPAL_${err.refusal}`);
-        throw err;
-      }
+      // The SAME resolution every request runs, re-checked at every rotation (computed above, outside the locks).
+      if (eligibilityRefusal) return refuse(eligibilityRefusal, eligibilityRefusal);
       await c.query(`UPDATE ${SCHEMA}.login_refresh_tokens SET consumed_at = $2, consumed_client_digest = $3 WHERE token_sha256 = $1`,
         [digest, now, this.clientDigest(facts)]);
       const idle = new Date(Math.min(now.getTime() + this.policy.idleSeconds * 1000, t.absolute_expires_at.getTime()));
@@ -707,7 +749,7 @@ export class EosLoginService {
           WHERE s.id = $1 AND pi.external_subject = $2 AND s.revoked_at IS NULL FOR UPDATE OF s`, [sessionId, subject]);
       if (!rows[0]) return;
       await c.query(`UPDATE ${SCHEMA}.login_sessions SET revoked_at = $2, revoke_reason = 'LOGOUT' WHERE id = $1`, [rows[0].id, this.now()]);
-      await this.event(c, { event: "logout", outcome: "success", accountId: rows[0].account_id, sessionId: rows[0].id, client: facts });
+      await this.eventBestEffort(c, { event: "logout", outcome: "success", accountId: rows[0].account_id, sessionId: rows[0].id, client: facts });
     });
   }
 
@@ -721,7 +763,7 @@ export class EosLoginService {
           WHERE t.token_sha256 = $1 AND s.revoked_at IS NULL FOR UPDATE OF s`, [opaqueTokenDigest(token)]);
       if (!rows[0]) return;
       await c.query(`UPDATE ${SCHEMA}.login_sessions SET revoked_at = $2, revoke_reason = 'LOGOUT' WHERE id = $1`, [rows[0].id, this.now()]);
-      await this.event(c, { event: "logout", outcome: "success", accountId: rows[0].account_id, sessionId: rows[0].id, client: facts });
+      await this.eventBestEffort(c, { event: "logout", outcome: "success", accountId: rows[0].account_id, sessionId: rows[0].id, client: facts });
     });
   }
 
@@ -741,11 +783,29 @@ export class EosLoginService {
     const digest = opaqueTokenDigest(input.ticket);
     // Look the ticket up FIRST, so the password policy can consider the identifier -- but hash outside the transaction.
     const { rows: peek } = await this.deps.pool.query(
-      `SELECT a.login_identifier FROM ${SCHEMA}.login_tickets t JOIN ${SCHEMA}.login_accounts a ON a.id = t.account_id
+      `SELECT a.login_identifier, a.id AS account_id, a.tenant_id, a.principal_id, t.id AS ticket_id, t.issued_by,
+              t.consumed_at, t.revoked_at
+         FROM ${SCHEMA}.login_tickets t JOIN ${SCHEMA}.login_accounts a ON a.id = t.account_id
         WHERE t.token_sha256 = $1 AND t.purpose = $2`, [digest, purpose]);
     if (!peek[0]) {
       await this.event(this.deps.pool, { event: purpose === "enrollment" ? "enrollmentComplete" : "resetComplete", outcome: "refused", reason: "UNKNOWN_TICKET", client: facts });
       throw new LoginRefusal("TICKET_INVALID");
+    }
+    // A CODE IS WORTH ITS ISSUER'S AUTHORITY *NOW* (second review finding 2). Between issue and use the person may have
+    // gained the Owner or Administrator Role or a membership in another tenant, or the issuer may have lost authority.
+    // Re-run exactly the issue-time check against the issuer; if it no longer holds, the code dies unused. Done BEFORE the
+    // transaction: it reads through the policy repository, and must not hold a pool connection while doing so.
+    if (!peek[0].consumed_at && !peek[0].revoked_at) {
+      const capability = purpose === "enrollment" ? "admin.roleAssignment.write" : "admin.credentialReset.initiate";
+      const lapsed = await this.targetAdministrable(peek[0].issued_by, peek[0].tenant_id, peek[0].principal_id, capability);
+      if (lapsed) {
+        await this.tx(async (c) => {
+          await c.query(`UPDATE ${SCHEMA}.login_tickets SET revoked_at = $2 WHERE id = $1 AND consumed_at IS NULL AND revoked_at IS NULL`, [peek[0].ticket_id, this.now()]);
+          await this.event(c, { event: purpose === "enrollment" ? "enrollmentComplete" : "resetComplete", outcome: "refused",
+            reason: "TICKET_ISSUER_AUTHORITY_LAPSED", accountId: peek[0].account_id, principalId: peek[0].principal_id, client: facts });
+        });
+        throw new LoginRefusal("TICKET_INVALID");
+      }
     }
     const policy = passwordPolicyRefusal(input.password, peek[0].login_identifier);
     if (policy) throw new LoginRefusal("PASSWORD_POLICY", policy);
@@ -817,13 +877,35 @@ export class EosLoginService {
     if (mode === "api" && r.mfa_required && !r.mfa_verified) {
       throw new LoginRefusal("MFA_ENROLLMENT_REQUIRED");
     }
+    // SELF-SERVICE runs the full resolution too (second review finding 7): a disabled Principal, an ineligible Employee or
+    // a suspended tenant cannot use /auth/* (change a password, open a session) within the access token's life. API
+    // requests get the same answer from their own resolveOperationalContext downstream.
+    if (mode === "self") {
+      try {
+        await this.requireEligible(r, r.session_tenant_id);
+      } catch (err) {
+        if (err instanceof PrincipalContextError) throw new LoginRefusal("SESSION_INVALID");
+        throw err;
+      }
+    }
     return r;
   }
 
   // ════════════════════ tenant: refusals and the explicit switch (Owner ruling D-12) ════════════════════
 
-  /** Record a request that stated a tenant other than its session's (requestTenantBinding refused it). */
+  /** Last tenantRefused record per session (ms). Bounds the append-only log under a stream of forged headers (finding 9). */
+  private readonly tenantRefusalSeen = new Map<string, number>();
+
+  /**
+   * Record a request that stated a tenant other than its session's (requestTenantBinding refused it). At most one row per
+   * session per minute: every refusal is still REFUSED; only the record of a repeat is coalesced.
+   */
   async recordTenantRefusal(session: SessionRow): Promise<void> {
+    const t = this.now().getTime();
+    const last = this.tenantRefusalSeen.get(session.session_id);
+    if (last !== undefined && t - last < 60_000) return;
+    if (this.tenantRefusalSeen.size > 10_000) this.tenantRefusalSeen.clear();
+    this.tenantRefusalSeen.set(session.session_id, t);
     await this.event(this.deps.pool, { event: "tenantRefused", outcome: "refused", reason: "TENANT_NOT_SESSION_TENANT",
       accountId: session.id, principalId: session.principal_id, sessionId: session.session_id, tenantId: session.session_tenant_id });
   }
@@ -930,10 +1012,13 @@ export class EosLoginService {
     });
   }
 
-  async beginTotpEnrollment(subject: string, sessionId: string | null) {
+  async beginTotpEnrollment(subject: string, sessionId: string | null, input: { password?: unknown } = {}, facts: ClientFacts | null = null) {
     const a = await this.checkSession(subject, sessionId, "self");
     const keyring = this.deps.factorKeyring;
     if (!keyring) throw new LoginRefusal("MFA_NOT_CONFIGURED");
+    // The CURRENT PASSWORD, as for every factor change (second review finding 6): a stolen five-minute access token must not
+    // be able to bind the thief's authenticator (and sign everyone else out).
+    if (!(await this.currentPasswordMatches(a, input.password, "mfaEnroll", sessionId, facts))) throw new LoginRefusal("CURRENT_PASSWORD_REFUSED");
     return this.tx(async (c) => {
       const { rows } = await c.query(`SELECT * FROM ${SCHEMA}.login_mfa_factors WHERE account_id = $1 AND status <> 'removed' FOR UPDATE`, [a.id]);
       if (rows.some((f) => f.status === "active")) throw new LoginRefusal("MFA_ALREADY_ENROLLED");
@@ -1087,7 +1172,7 @@ export class EosLoginService {
         `UPDATE ${SCHEMA}.login_sessions SET revoked_at = $3, revoke_reason = 'REVOKED_BY_HOLDER' WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL`,
         [input.sessionId, a.id, this.now()]);
       if (rowCount !== 1) throw new LoginRefusal("NOT_FOUND", "no such live session");
-      await this.event(c, { event: "sessionRevoke", outcome: "success", accountId: a.id, principalId: a.principal_id, sessionId: input.sessionId as string, client: facts });
+      await this.eventBestEffort(c, { event: "sessionRevoke", outcome: "success", accountId: a.id, principalId: a.principal_id, sessionId: input.sessionId as string, client: facts });
       return Object.freeze({ revoked: 1 });
     });
   }
@@ -1096,7 +1181,7 @@ export class EosLoginService {
     const a = await this.checkSession(subject, sessionId, "self");
     return this.tx(async (c) => {
       const revoked = await this.revokeSessions(c, a.id, "REVOKED_BY_HOLDER", a.session_id);
-      await this.event(c, { event: "sessionRevokeOthers", outcome: "success", accountId: a.id, principalId: a.principal_id, sessionId, client: facts });
+      await this.eventBestEffort(c, { event: "sessionRevokeOthers", outcome: "success", accountId: a.id, principalId: a.principal_id, sessionId, client: facts });
       return Object.freeze({ revoked });
     });
   }
@@ -1180,37 +1265,57 @@ export class EosLoginService {
     if (id === actor.uid) throw new LoginRefusal("SELF_ADMINISTRATION", "use your own account security settings; an administrator may not administer their own login");
     const membership = await this.deps.repo.getMembership(actor.tenantId, id);
     if (!membership) throw new LoginRefusal("NOT_FOUND", "that principal is not a member of this tenant");
-    // Security review finding 3: whoever is handed a setup or reset code can become the target. So the login of anyone who
-    // holds a protected administering Role (Owner or Administrator, in any tenant) is administered only by an Owner.
-    if (await this.holdsProtectedAdministeringRole(this.deps.pool, id) && !actor.heldRoleKeys.includes(PROTECTED_OWNER_ROLE_KEY)) {
-      throw new LoginRefusal("PROTECTED_TARGET", "only an Owner may administer the login of an Owner or Administrator");
-    }
-    // EVERY TENANT THE TARGET CAN ENTER (D-12). A credential reaches all of the person's tenants, so the authority to
-    // administer it must too: in each OTHER tenant where the target is an active member, the actor must be an active
-    // member holding this operation's capability, and an Owner there wherever the target holds a protected Role there.
-    // Otherwise one tenant's administrator could mint a login that acts in a tenant where they hold nothing.
-    const { rows: others } = await this.deps.pool.query(
-      `SELECT tenant_id FROM ${SCHEMA}.tenant_memberships WHERE principal_id = $1 AND status = 'active' AND tenant_id <> $2`, [id, actor.tenantId]);
-    for (const { tenant_id: tenantId } of others) {
-      const actorMember = await this.deps.repo.getMembership(tenantId, actor.uid);
-      const actorKeys = actorMember?.status === "active" ? await this.globalRoleKeysIn(actor.uid, tenantId) : [];
-      const held = actorMember?.status === "active" ? await capabilityKeysFor(this.deps.repo, tenantId, actorKeys, actor.uid) : new Set<string>();
-      if (!held.has(capability)) {
-        throw new LoginRefusal("FORBIDDEN", "CROSS_TENANT_AUTHORITY: this person can also enter a tenant where you do not hold this authority");
-      }
-      if (await this.holdsProtectedAdministeringRoleIn(id, tenantId) && !actorKeys.includes(PROTECTED_OWNER_ROLE_KEY)) {
-        throw new LoginRefusal("PROTECTED_TARGET", "only an Owner of every tenant where this person administers may administer their login");
-      }
-    }
+    const refusal = await this.targetAdministrable(actor.uid, actor.tenantId, id, capability);
+    if (refusal === "PROTECTED_TARGET") throw new LoginRefusal("PROTECTED_TARGET", "only an Owner may administer the login of an Owner or Administrator");
+    if (refusal) throw new LoginRefusal("FORBIDDEN", "TARGET_NOT_ADMINISTRABLE: you are not authorized to administer this person's login");
     return { principalId: id, reason: r };
   }
 
-  /** The QUALIFYING-shape global Role keys a Principal holds in one tenant (active, global scope). */
-  private async globalRoleKeysIn(principalId: string, tenantId: string): Promise<string[]> {
+  /**
+   * The issuer's EFFECTIVE authority in one tenant -- through principal resolution, so membership status, tenant status,
+   * the DQ-007 Employee gate and stale-assignment exclusion all apply (second review finding 4). null = no authority.
+   */
+  private async authorityIn(principalId: string, tenantId: string): Promise<{ keys: ReadonlySet<string>; roleKeys: readonly string[] } | null> {
+    try {
+      const ctx = await runWithRequestScope(() => resolvePrincipalContextById(this.deps.repo, principalId, tenantId));
+      return { keys: await capabilityKeysFor(this.deps.repo, tenantId, ctx.heldRoleKeys, principalId), roleKeys: ctx.heldRoleKeys };
+    } catch (err) {
+      if (err instanceof PrincipalContextError) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * May `issuerUid` (acting in `homeTenantId`) administer `targetId`'s login for `capability`? Asked when a credential act is
+   * requested AND again when a setup or reset code is USED (second review finding 2): a code is worth exactly the authority
+   * of whoever issued it, now.
+   *
+   *   EVERY TENANT the target belongs to -- any membership status, so a suspended membership cannot be reactivated into
+   *   a login someone else controls (finding 3) -- and every tenant where the target holds a protected Role: the issuer
+   *   must hold `capability` there, and be an Owner there wherever the target holds the Owner or Administrator Role
+   *   (first review finding 3).
+   *
+   * Returns null, PROTECTED_TARGET (the home tenant's own Owner rule, visible to its administrators anyway) or
+   * TARGET_NOT_ADMINISTRABLE (anything learned from ANOTHER tenant -- never named, finding 11).
+   */
+  private async targetAdministrable(issuerUid: string, homeTenantId: string, targetId: string,
+    capability: string): Promise<null | "PROTECTED_TARGET" | "TARGET_NOT_ADMINISTRABLE"> {
     const { rows } = await this.deps.pool.query(
-      `SELECT DISTINCT r.key FROM ${SCHEMA}.user_role_assignments a JOIN ${SCHEMA}.roles r ON r.id = a.role_id
-        WHERE a.tenant_id = $1 AND a.principal_id = $2 AND a.status = 'active' AND a.scope_type = 'global'`, [tenantId, principalId]);
-    return rows.map((x) => x.key as string);
+      `SELECT tenant_id FROM ${SCHEMA}.tenant_memberships WHERE principal_id = $1
+       UNION
+       SELECT a.tenant_id FROM ${SCHEMA}.user_role_assignments a JOIN ${SCHEMA}.roles r ON r.id = a.role_id
+        WHERE a.principal_id = $1 AND a.status = 'active' AND r.protected AND r.key IN ($2, $3)`,
+      [targetId, PROTECTED_OWNER_ROLE_KEY, ADMIN_ROLE_KEY]);
+    const tenants = [homeTenantId, ...rows.map((x) => x.tenant_id as string).filter((t) => t !== homeTenantId)];
+    for (const tenantId of tenants) {
+      const home = tenantId === homeTenantId;
+      const auth = await this.authorityIn(issuerUid, tenantId);
+      if (!auth || !auth.keys.has(capability)) return "TARGET_NOT_ADMINISTRABLE";
+      if (await this.holdsProtectedAdministeringRoleIn(targetId, tenantId) && !auth.roleKeys.includes(PROTECTED_OWNER_ROLE_KEY)) {
+        return home ? "PROTECTED_TARGET" : "TARGET_NOT_ADMINISTRABLE";
+      }
+    }
+    return null;
   }
 
   private async holdsProtectedAdministeringRoleIn(principalId: string, tenantId: string): Promise<boolean> {
@@ -1255,7 +1360,9 @@ export class EosLoginService {
     const { rows: target } = await c.query(administering.replace("%P", "$2"), [tenantId, a.principal_id]);
     if (target.length === 0) return;
     const { rows: others } = await c.query(
-      `SELECT 1 FROM ${SCHEMA}.login_accounts la WHERE la.tenant_id = $1 AND la.status = 'active' AND la.id <> $2
+      // ANY enabled login -- whichever tenant it is homed in -- whose holder administers THIS tenant (second review
+      // finding 13: in multi-tenant mode a login homed elsewhere can be this tenant's administrating login).
+      `SELECT 1 FROM ${SCHEMA}.login_accounts la WHERE la.status = 'active' AND la.id <> $2
           AND EXISTS (${administering.replace("%P", "la.principal_id")}) LIMIT 1`, [tenantId, a.id]);
     if (others.length === 0) {
       throw new LoginRefusal("CONFLICT", "LAST_ADMINISTRATOR_LOGIN: this is the last enabled EOS sign-in held by an Owner or Administrator");
@@ -1371,17 +1478,23 @@ export class EosLoginService {
 
   /** Common shape for the per-account administration acts below. */
   private async administer<T>(actor: AdminActor, input: Record<string, unknown>, action: LoginAdministrationOperation,
-    fn: (c: PoolClient, a: AccountRow, reason: string) => Promise<{ before: unknown; after: unknown; result: T }>): Promise<T> {
+    preCheckOrFn: ((principalId: string) => Promise<void>) | ((c: PoolClient, a: AccountRow, reason: string) => Promise<{ before: unknown; after: unknown; result: T }>),
+    maybeFn?: (c: PoolClient, a: AccountRow, reason: string) => Promise<{ before: unknown; after: unknown; result: T }>): Promise<T> {
+    const preCheck = maybeFn ? (preCheckOrFn as (principalId: string) => Promise<void>) : null;
+    const fn = (maybeFn ?? preCheckOrFn) as (c: PoolClient, a: AccountRow, reason: string) => Promise<{ before: unknown; after: unknown; result: T }>;
     const { principalId, reason } = await this.requireCredentialAdministration(actor, input.principalId, input.reason,
       LOGIN_ADMINISTRATION_OPERATIONS[action].capability as LoginAdministrationCapability);
+    // Repository reads happen here, never inside the locking transaction below.
+    if (preCheck) await preCheck(principalId);
     return this.tx(async (c) => {
       const a = await this.liveAccountForPrincipal(c, principalId, true);
       // TENANT ISOLATION: a login is administered only from the tenant it was provisioned in. A Principal that is ALSO a
       // member of another tenant does not make its credential that tenant's to reset, disable or remove.
       if (!a || a.tenant_id !== actor.tenantId) throw new LoginRefusal("NOT_FOUND", "that principal has no login account in this tenant");
       const { before, after, result } = await fn(c, a, reason);
+      // The governed audit row is STRICT (no administrative change without it); the security event is best-effort.
       await this.audit(c, actor.tenantId, actor.uid, action, a.id, before, after, reason);
-      await this.event(c, { event: action, outcome: "success", accountId: a.id, principalId: a.principal_id });
+      await this.eventBestEffort(c, { event: action, outcome: "success", accountId: a.id, principalId: a.principal_id });
       return result;
     });
   }
@@ -1397,9 +1510,10 @@ export class EosLoginService {
 
   /** Admin-assisted recovery: a one-time reset ticket, handed over out of band. Using it ends every session. */
   async issueLoginReset(actor: AdminActor, input: Record<string, unknown>) {
-    return this.administer(actor, input, "issueLoginReset", async (c, a, reason) => {
+    // The Employee-link check runs AFTER authorization (an unauthorized caller learns nothing about the link) and BEFORE
+    // the locking transaction (it reads through the repository; second review finding 1).
+    return this.administer(actor, input, "issueLoginReset", (principalId: string) => this.requireEmployeeLink(actor.tenantId, principalId), async (c, a, reason) => {
       if (a.status !== "active") throw new LoginRefusal("CONFLICT", a.status === "pending_enrollment" ? "the account has not enrolled; reissue the enrollment instead" : "the account is disabled; enable it first");
-      await this.requireEmployeeLink(actor.tenantId, a.principal_id);
       // DECISIONS #56 D-ROUTINE-REVOKE: issuing a reset revokes NOTHING. Ending sessions on suspected compromise is the
       // separate revokeLoginSessions act, with its own confirmation and audit event. (When the HOLDER uses the code
       // and sets a new password, their sessions end -- as a password change always does.)

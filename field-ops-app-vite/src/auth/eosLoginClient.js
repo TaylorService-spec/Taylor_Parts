@@ -227,7 +227,8 @@ export function createEosLoginClient(deps = {}) {
       adopt(r.session);
       return true;
     },
-    beginTotp: () => authed("/auth/mfa/totp/begin", {}),
+    // Setting up an authenticator requires the current password (a stolen access token cannot bind the thief's app).
+    beginTotp: (password) => authed("/auth/mfa/totp/begin", { password }),
     confirmTotp: async (factorId, code) => (await authed("/auth/mfa/totp/confirm", { factorId, code })).recoveryCodes,
     removeTotp: (password, code) => authed("/auth/mfa/totp/remove", { password, code }),
     regenerateRecoveryCodes: async (password, code) => (await authed("/auth/mfa/recovery-codes/regenerate", { password, code })).recoveryCodes,

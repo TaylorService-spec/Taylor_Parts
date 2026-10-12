@@ -120,10 +120,33 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
   await enrol(ownerAB, A, "owner", null);
   await enrol(ownerAB, B, "owner", null);
 
+  // Second-review fixtures (R1-R10).
+  const ownerA = await principal("fb-owner-a", "owner of A only");
+  await enrol(ownerA, A, "owner", null);
+  const uma = await principal("fb-uma", "uma");                // A only; promoted to Administrator after her code is issued
+  await enrol(uma, A, "technician", "ACTIVE");
+  const uma2 = await principal("fb-uma2", "uma2");             // A only; joins B after her reset code is issued
+  await enrol(uma2, A, "technician", "ACTIVE");
+  const vic = await principal("fb-vic", "vic");                // A, and B's Administrator through a SUSPENDED B membership
+  await enrol(vic, A, "technician", "ACTIVE");
+  await enrol(vic, B, "admin", "ACTIVE");
+  await q(`UPDATE eos_policy.tenant_memberships SET status = 'disabled' WHERE principal_id = $1 AND tenant_id = $2`, [vic, B]);
+  const admAB = await principal("fb-adm-ab", "administrator of both, terminated in B");
+  await enrol(admAB, A, "admin", "ACTIVE");
+  await enrol(admAB, B, "admin", "TERMINATED");
+  const wes = await principal("fb-wes", "wes");                // A and B
+  await enrol(wes, A, "technician", "ACTIVE");
+  await enrol(wes, B, "technician", "ACTIVE");
+  const xia = await principal("fb-xia", "xia");                // an Employee in A; a member of B with NO Employee there
+  await enrol(xia, A, "technician", "ACTIVE");
+  await enrol(xia, B, "technician", null);
+
+  // R1 deliberately PROMOTES uma and ENROLS uma2 in B (the scenarios it proves); every other Role assignment must not move.
   const authorityDigest = async (tenantId) => (await q(`SELECT
-      (SELECT md5(string_agg(id || principal_id || role_id || status::text, ',' ORDER BY id)) FROM eos_policy.user_role_assignments WHERE tenant_id = $1) ura,
+      (SELECT md5(string_agg(id || principal_id || role_id || status::text, ',' ORDER BY id)) FROM eos_policy.user_role_assignments
+        WHERE tenant_id = $1 AND principal_id NOT IN ($2, $3)) ura,
       (SELECT md5(coalesce(string_agg(role_id || capability_id, ',' ORDER BY role_id, capability_id), '')) FROM eos_policy.role_capabilities WHERE tenant_id = $1) rc,
-      (SELECT count(*)::int FROM eos_policy.principal_capabilities WHERE tenant_id = $1) pc`, [tenantId])).rows[0];
+      (SELECT count(*)::int FROM eos_policy.principal_capabilities WHERE tenant_id = $1) pc`, [tenantId, uma, uma2])).rows[0];
   const authorityBefore = { A: await authorityDigest(A), B: await authorityDigest(B) };
 
   // ════════════════════ the service: multi-tenant sessions ENABLED ════════════════════
@@ -193,10 +216,10 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
 
   // ════════════════════ M1: who may create a two-tenant person's login ════════════════════
   let patAccount;
-  await t.test("M1 a login for a person who can enter two tenants needs authority in BOTH (CROSS_TENANT_AUTHORITY)", async () => {
+  await t.test("M1 a login for a person who can enter two tenants needs authority in BOTH (TARGET_NOT_ADMINISTRABLE)", async () => {
     const byAdminA = await asFb("fb-admin-a", "provisionLoginAccount", { principalId: pat, loginIdentifier: "pat@tenancy.test", reason: "pat login" });
     assert.equal(byAdminA.status, 403);
-    assert.match(byAdminA.body.message, /CROSS_TENANT_AUTHORITY/);
+    assert.match(byAdminA.body.message, /TARGET_NOT_ADMINISTRABLE/);
     const r = await asFb("fb-owner-ab", "provisionLoginAccount", { principalId: pat, loginIdentifier: "pat@tenancy.test", reason: "pat login" }, { "x-eos-tenant": A });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     secrets.push(r.body.data.enrollmentTicket);
@@ -229,7 +252,9 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
     // Every transport resolves through the same binding: Administration too.
     assert.equal((await post("/admin/policy", { operation: "listRoles", input: {} }, bearer(sessA.accessToken, { "x-eos-tenant": B }))).status, 403);
     const refused = await events("event = 'tenantRefused' AND session_id = $1", [sessA.sessionId]);
-    assert.ok(refused.length >= 4, `recorded ${refused.length}`);
+    // Every forged statement was REFUSED (above); the record of repeats is coalesced to one per session per minute, so a
+    // stream of forged headers cannot flood the append-only log (second review finding 9).
+    assert.equal(refused.length, 1, `recorded ${refused.length}`);
     assert.ok(refused.every((e) => e.tenant_id === A && e.outcome === "refused" && e.reason_code === "TENANT_NOT_SESSION_TENANT"));
     // Authorization in A is EXACTLY Firebase's in A.
     const fb = await post("/operations/experience", { operation: "resolveMyExperienceContext" }, { authorization: "Bearer fb-token.fb-pat", "x-eos-tenant": A });
@@ -322,7 +347,7 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
     const owed = (await login("quinn@tenancy.test", "a silver kite over the bay", A)).body.session;
     assert.equal(owed.mfaEnrollmentRequired, true);
     assert.equal((await post("/auth/session/switch-tenant", { tenantId: B }, bearer(owed.accessToken))).status, 403, "MFA_ENROLLMENT_REQUIRED");
-    const b = await post("/auth/mfa/totp/begin", {}, bearer(owed.accessToken));
+    const b = await post("/auth/mfa/totp/begin", { password: "a silver kite over the bay" }, bearer(owed.accessToken));
     const A32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; let bits = 0; let value = 0; const out = [];
     for (const ch of b.body.secret) { value = (value << 5) | A32.indexOf(ch); bits += 5; if (bits >= 8) { out.push((value >>> (bits - 8)) & 255); bits -= 8; } }
     const secret = Buffer.from(out);
@@ -470,6 +495,100 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
     // After a recorded archive the next plan starts where it ended.
     const next = await asFb("fb-admin-a", "planAuthenticationEventArchive", {});
     assert.equal(next.body.data.eligible.rowCount, 0);
+  });
+
+  // ════════════════════ R1-R10: the second independent review's findings, each proven closed ════════════════════
+  const provisionEnrolled = async (pid, ident, password, actorUid = "fb-owner-ab") => {
+    const p = await asFb(actorUid, "provisionLoginAccount", { principalId: pid, loginIdentifier: ident, reason: "fixture" }, actorUid === "fb-owner-ab" ? { "x-eos-tenant": A } : {});
+    assert.equal(p.status, 200, JSON.stringify(p.body));
+    secrets.push(p.body.data.enrollmentTicket, password);
+    assert.equal((await post("/auth/enrollment/complete", { ticket: p.body.data.enrollmentTicket, password })).status, 200);
+  };
+
+  await t.test("R1 (finding 2) a code is worth its issuer's authority WHEN USED: promoted to Administrator / joined another tenant -> the code dies", async () => {
+    const p = await asFb("fb-admin-a", "provisionLoginAccount", { principalId: uma, loginIdentifier: "uma@tenancy.test", reason: "uma" });
+    assert.equal(p.status, 200, JSON.stringify(p.body));
+    secrets.push(p.body.data.enrollmentTicket);
+    // An Owner makes uma an Administrator AFTER the Administrator issued her setup code.
+    const adminRole = await repo.getRoleByKey(A, "admin");
+    await repo.transact({ tenantId: A, uid: "tenancy-fixture" }, async (tx) => {
+      const v = await tx.bumpAccessVersion(uma);
+      await tx.createAssignment({ principalId: uma, roleId: adminRole.id, scopeType: "global", scopeValue: null, status: "active",
+        grantedBy: "tenancy-fixture", grantedAt: new Date(Date.now() - 1000).toISOString(), accessVersionAtGrant: v });
+    });
+    const used = await post("/auth/enrollment/complete", { ticket: p.body.data.enrollmentTicket, password: "a lighthouse in the fog" });
+    assert.equal(used.status, 410);
+    assert.ok((await events("principal_id = $1 AND reason_code = 'TICKET_ISSUER_AUTHORITY_LAPSED'", [uma])).length === 1);
+    // Scenario B: a reset code issued while uma2 belonged to A only; she then joins B, where the issuer holds nothing.
+    await provisionEnrolled(uma2, "uma2@tenancy.test", "a heron on the river", "fb-admin-a");
+    const r = await asFb("fb-admin-a", "issueLoginReset", { principalId: uma2, reason: "reset" });
+    assert.equal(r.status, 200);
+    secrets.push(r.body.data.resetTicket);
+    await enrol(uma2, B, "technician", "ACTIVE");
+    assert.equal((await post("/auth/password/reset/complete", { ticket: r.body.data.resetTicket, password: "a different heron entirely" })).status, 410);
+  });
+
+  await t.test("R2 (finding 3) a SUSPENDED membership still counts: A's Owner cannot administer the login of B's (suspended) Administrator", async () => {
+    const r = await asFb("fb-owner-a", "provisionLoginAccount", { principalId: vic, loginIdentifier: "vic@tenancy.test", reason: "vic" });
+    assert.equal(r.status, 403);
+    assert.match(r.body.message, /TARGET_NOT_ADMINISTRABLE/);
+    assert.doesNotMatch(r.body.message, /tenant/i, "nothing about another tenant is disclosed");
+  });
+
+  await t.test("R3 (finding 4) the issuer's authority in another tenant is RESOLVED: an Administrator terminated in B holds nothing there", async () => {
+    const r = await asFb("fb-adm-ab", "provisionLoginAccount", { principalId: wes, loginIdentifier: "wes@tenancy.test", reason: "wes" }, { "x-eos-tenant": A });
+    assert.equal(r.status, 403);
+    assert.match(r.body.message, /TARGET_NOT_ADMINISTRABLE/);
+  });
+
+  let xiaSession;
+  await t.test("R4 (findings 5, 8) a human session needs an Employee link IN ITS TENANT; the refusal is recorded in that tenant", async () => {
+    await provisionEnrolled(xia, "xia@tenancy.test", "a lantern by the gate");
+    const intoB = await login("xia@tenancy.test", "a lantern by the gate", B);
+    assert.equal(intoB.status, 401);
+    const ev = await events("principal_id = $1 AND reason_code = 'PRINCIPAL_EMPLOYEE_NOT_ACCESS_ELIGIBLE'", [xia]);
+    assert.ok(ev.length >= 1 && ev.every((e) => e.tenant_id === B), "recorded in B, the tenant asked for");
+    xiaSession = (await login("xia@tenancy.test", "a lantern by the gate", A)).body.session;
+    assert.ok(xiaSession?.accessToken);
+    assert.equal((await post("/auth/session/switch-tenant", { tenantId: B }, bearer(xiaSession.accessToken))).status, 403);
+  });
+
+  await t.test("R5 (finding 1) a burst of refreshes of one cookie cannot starve the pool: other requests are served meanwhile", async () => {
+    const s0 = (await login("xia@tenancy.test", "a lantern by the gate", A)).body.session;
+    const started = Date.now();
+    const burst = Promise.all(Array.from({ length: 24 }, () => post("/auth/refresh", { refreshToken: s0.refreshToken })));
+    const other = await experience(xiaSession.accessToken);
+    const results = await burst;
+    assert.equal(other.status, 200, "an unrelated request is served during the burst");
+    assert.equal(results.filter((r) => r.status === 200).length, 1);
+    assert.ok(results.every((r) => r.status === 200 || r.status === 409), JSON.stringify(results.map((r) => r.status)));
+    assert.ok(Date.now() - started < 8000, `the burst resolved in ${Date.now() - started} ms (a pool deadlock waits 10 s per round)`);
+  });
+
+  await t.test("R6/R7 (findings 6, 7) no factor enrollment without the password; self-service refuses a disabled Principal", async () => {
+    assert.equal((await post("/auth/mfa/totp/begin", {}, bearer(xiaSession.accessToken))).status, 401);
+    await q(`UPDATE eos_policy.principals SET status = 'disabled' WHERE id = $1`, [xia]);
+    try {
+      assert.equal((await post("/auth/account", {}, bearer(xiaSession.accessToken))).status, 401);
+      assert.equal((await post("/auth/password/change", { currentPassword: "a lantern by the gate", newPassword: "another lantern entirely" }, bearer(xiaSession.accessToken))).status, 401);
+    } finally {
+      await q(`UPDATE eos_policy.principals SET status = 'active' WHERE id = $1`, [xia]);
+    }
+  });
+
+  await t.test("R10 (finding 10) when the security log cannot be written, a LOGOUT still revokes; a LOGIN still cannot happen", async () => {
+    const s = (await login("xia@tenancy.test", "a lantern by the gate", A)).body.session;
+    await q(`CREATE FUNCTION eos_policy.tenancy_proof_fail2() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'simulated event store failure'; END $$`);
+    await q(`CREATE TRIGGER tenancy_proof_fail2 BEFORE INSERT ON eos_policy.authentication_events FOR EACH ROW EXECUTE FUNCTION eos_policy.tenancy_proof_fail2()`);
+    try {
+      assert.equal((await post("/auth/logout", { refreshToken: s.refreshToken })).status, 200);
+      assert.equal((await q(`SELECT revoke_reason FROM eos_policy.login_sessions WHERE id = $1`, [s.sessionId])).rows[0].revoke_reason, "LOGOUT");
+      assert.notEqual((await login("xia@tenancy.test", "a lantern by the gate", A)).status, 200);
+    } finally {
+      await q(`DROP TRIGGER tenancy_proof_fail2 ON eos_policy.authentication_events`);
+      await q(`DROP FUNCTION eos_policy.tenancy_proof_fail2()`);
+    }
+    assert.equal((await experience(s.accessToken)).status, 401);
   });
 
   await t.test("M15 nothing secret at rest or in logs; authority in BOTH tenants unchanged", async () => {

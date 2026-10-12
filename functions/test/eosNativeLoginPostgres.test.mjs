@@ -412,7 +412,9 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
   await t.test("L11 TOTP enrollment: begin -> confirm with a real code -> 10 recovery codes; other sessions end", async () => {
     aliceSession = (await login("alice@taylor.test", PASSWORDS.alice)).body.session;
     const other = (await login("alice@taylor.test", PASSWORDS.alice)).body.session;
-    const begin = await post("/auth/mfa/totp/begin", {}, bearer(aliceSession.accessToken));
+    // A stolen access token alone cannot start enrollment (second review finding 6): the current password is required.
+    assert.equal((await post("/auth/mfa/totp/begin", {}, bearer(aliceSession.accessToken))).status, 401);
+    const begin = await post("/auth/mfa/totp/begin", { password: PASSWORDS.alice }, bearer(aliceSession.accessToken));
     assert.equal(begin.status, 200, JSON.stringify(begin.body));
     assert.match(begin.body.otpauthUri, /^otpauth:\/\/totp\/Verenward%20EOS%3Aalice%40taylor\.test\?secret=/);
     totpSecret = base32Decode(begin.body.secret);
@@ -464,7 +466,7 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     assert.equal(s.mfaEnrollmentRequired, true);
     assert.equal((await experience(s.accessToken)).status, 401, "the API refuses a session that owes a factor");
     assert.equal((await post("/auth/account", {}, bearer(s.accessToken))).status, 200);
-    const b = await post("/auth/mfa/totp/begin", {}, bearer(s.accessToken));
+    const b = await post("/auth/mfa/totp/begin", { password: PASSWORDS.bob }, bearer(s.accessToken));
     const secret = base32Decode(b.body.secret);
     const c = await post("/auth/mfa/totp/confirm", { factorId: b.body.factorId, code: totpCodeAt(secret, totpStepAt(Math.floor(Date.now() / 1000))) }, bearer(s.accessToken));
     assert.equal(c.status, 200);
@@ -726,7 +728,7 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     assert.deepEqual(read.body.data.eosIdentity, { kind: "other" }, "no foreign subject is disclosed");
     for (const op of ["issueLoginReset", "setLoginAccountStatus", "revokeLoginSessions", "resetLoginMfa", "retireLoginAccount", "unlockLoginAccount"]) {
       const r = await asAdmin2(op, { principalId: alice, reason: "cross-tenant attempt", status: "disabled" });
-      // Refused either as CROSS_TENANT_AUTHORITY (alice can enter tenant 1, where admin2 holds nothing) or as NOT_FOUND
+      // Refused either as TARGET_NOT_ADMINISTRABLE (alice can enter tenant 1, where admin2 holds nothing) or as NOT_FOUND
       // (the login is tenant 1's) -- never performed.
       assert.ok(r.status === 403 || r.status === 404, `${op}: ${r.status}`);
     }
@@ -737,9 +739,9 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     await repo.transact({ tenantId: t2.id, uid: "login-fixture" }, (tx) => tx.createTenantMembership(dana));
     const multi = await asAdmin("provisionLoginAccount", { principalId: dana, loginIdentifier: "dana@taylor.test", reason: "r" });
     // Refused: single-tenant mode (MULTI_TENANT_PRINCIPAL), and in any mode tenant 1's administrator holds nothing in
-    // tenant 2 (CROSS_TENANT_AUTHORITY).
+    // tenant 2 (TARGET_NOT_ADMINISTRABLE).
     assert.ok(multi.status === 403 || multi.status === 409, `${multi.status}`);
-    assert.match(multi.body.message, /MULTI_TENANT_PRINCIPAL|CROSS_TENANT_AUTHORITY/);
+    assert.match(multi.body.message, /MULTI_TENANT_PRINCIPAL|TARGET_NOT_ADMINISTRABLE/);
     // Ending the second membership restores the login; resolution is then IDENTICAL to Firebase's across tenant statements.
     await q(`UPDATE eos_policy.tenant_memberships SET status = 'disabled' WHERE principal_id = $1 AND tenant_id = $2`, [alice, t2.id]);
     const s2 = (await login("alice@taylor.test", PASSWORDS.alice)).body.session;
@@ -750,6 +752,9 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
       assert.equal(eos.status, fb.status, JSON.stringify(headers));
       assert.deepEqual(eos.body, fb.body, JSON.stringify(headers));
     }
+    // Fixture cleanup: a SUSPENDED membership elsewhere still counts against administering this login (second review
+    // finding 3), so the proof's second-tenant membership is removed rather than left suspended.
+    await q(`DELETE FROM eos_policy.tenant_memberships WHERE principal_id = $1 AND tenant_id = $2`, [alice, t2.id]);
   });
 
   await t.test("S6 Owner protection on EVERY credential mutation; the Administrator is refused on the Owner's login", async () => {

@@ -1,15 +1,15 @@
 // THE HUMAN FRONT DOOR'S TRANSPORT: /auth/* routes over EosLoginService. docs/architecture/eos-native-identity.md, 3(c).
 //
-//   unauthenticated (the body is the credential)          authenticated (Bearer EOS human access token)
-//   POST /auth/login             {identifier, password}   POST /auth/account                   {}
-//   POST /auth/login/mfa         {challenge, code|recoveryCode}
-//   POST /auth/refresh           {refreshToken}           POST /auth/password/change           {currentPassword, newPassword}
-//   POST /auth/logout            {refreshToken}           POST /auth/mfa/totp/begin            {}
-//   POST /auth/enrollment/complete {ticket, password}     POST /auth/mfa/totp/confirm          {factorId, code}
-//   POST /auth/password/reset/complete {ticket, password} POST /auth/mfa/totp/remove           {password, code|recoveryCode}
-//                                                         POST /auth/mfa/recovery-codes/regenerate {password, code}
-//                                                         POST /auth/sessions/revoke           {sessionId}
-//                                                         POST /auth/sessions/revoke-others    {}
+//   unauthenticated (the credential is the body or the cookie)         authenticated (Bearer EOS human access token)
+//   POST /auth/login     {identifier, password[, tenantId]}            POST /auth/account                       {}
+//   POST /auth/login/mfa {challenge, code|recoveryCode}                POST /auth/password/change               {currentPassword, newPassword}
+//   POST /auth/refresh   {}  + __Host-eos_refresh cookie               POST /auth/mfa/totp/begin                {password}
+//   POST /auth/logout    {}  + cookie (and/or Bearer: its sid)         POST /auth/mfa/totp/confirm              {factorId, code}
+//   POST /auth/enrollment/complete      {ticket, password}             POST /auth/mfa/totp/remove               {password, code|recoveryCode}
+//   POST /auth/password/reset/complete  {ticket, password}             POST /auth/mfa/recovery-codes/regenerate {password, code}
+//                                                                      POST /auth/sessions/revoke               {sessionId}
+//                                                                      POST /auth/sessions/revoke-others        {}
+//                                                                      POST /auth/session/switch-tenant         {tenantId}  (D-12)
 //
 // NOT MOUNTED unless EOS_HUMAN_LOGIN=enabled: every path is then the same 404 as any unknown route.
 //
@@ -340,7 +340,7 @@ export async function handleLoginRequest(options: LoginHttpOptions, request: Log
       case LOGIN_ROUTES.passwordChange:
         return issued(await s.changePassword(sub, sid, { currentPassword: body.currentPassword, newPassword: body.newPassword }, facts));
       case LOGIN_ROUTES.totpBegin:
-        return json(200, { ok: true, ...(await s.beginTotpEnrollment(sub, sid)) }, origin);
+        return json(200, { ok: true, ...(await s.beginTotpEnrollment(sub, sid, { password: body.password }, facts)) }, origin);
       case LOGIN_ROUTES.totpConfirm:
         return json(200, { ok: true, ...(await s.confirmTotpEnrollment(sub, sid, { factorId: body.factorId, code: body.code }, facts)) }, origin);
       case LOGIN_ROUTES.totpRemove:

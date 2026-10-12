@@ -306,6 +306,10 @@ CREATE TRIGGER authentication_event_retention_append_only BEFORE UPDATE OR DELET
     FOR EACH ROW EXECUTE FUNCTION authentication_event_governance_append_only();
 CREATE TRIGGER authentication_event_archive_append_only BEFORE UPDATE OR DELETE ON authentication_event_archive_manifests
     FOR EACH ROW EXECUTE FUNCTION authentication_event_governance_append_only();
+CREATE TRIGGER authentication_event_retention_no_truncate BEFORE TRUNCATE ON authentication_event_retention_policies
+    FOR EACH STATEMENT EXECUTE FUNCTION authentication_event_governance_append_only();
+CREATE TRIGGER authentication_event_archive_no_truncate BEFORE TRUNCATE ON authentication_event_archive_manifests
+    FOR EACH STATEMENT EXECUTE FUNCTION authentication_event_governance_append_only();
 
 -- Down Migration
 SET search_path = eos_policy, public;
