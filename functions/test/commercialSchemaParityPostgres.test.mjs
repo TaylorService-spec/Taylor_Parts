@@ -28,7 +28,7 @@ const dbUrl = () => {
   return u.toString();
 };
 const migrate = (...args) =>
-  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", ...args, "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024, 
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", ...args, "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
   });
 async function withClient(url, fn) {
@@ -280,7 +280,7 @@ test("commercial schema parity, numbering and receipts, in PostgreSQL", { skip: 
 test("the down migration of 022 refuses on any single C1 business fact, and not on edit_version alone", { skip: SKIP, concurrency: 1 }, async (t) => {
   const name = `c1_down_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   const url = (() => { const u = new URL(URL_BASE); u.pathname = `/${name}`; return u.toString(); })();
-  const run = (...args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024, 
+  const run = (...args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
   });
   const downRefuses = () => {

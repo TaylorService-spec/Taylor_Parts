@@ -41,7 +41,7 @@ async function withClient(url, fn) {
     await client.end();
   }
 }
-const migrator = (url) => (...args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024, 
+const migrator = (url) => (...args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,
   cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
 });
 /** A disposable database. `beforeDrop` (e.g. ending a pool) runs in the SAME teardown hook, before the drop. */

@@ -55,7 +55,7 @@ export async function freshMigratedDatabase(t, prefix) {
     await pool?.end();
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
-  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"], { maxBuffer: 256 * 1024 * 1024, 
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"], { maxBuffer: 256 * 1024 * 1024,
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
   });
   pool = new pg.Pool({ connectionString: url, max: 8 });

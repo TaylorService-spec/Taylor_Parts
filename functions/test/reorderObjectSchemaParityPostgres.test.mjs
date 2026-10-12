@@ -36,7 +36,7 @@ test("the Reorder object schema provides every place the parity matrix sends a f
   const name = `rr_parity_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(() => withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)));
-  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024, 
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe",
   });
 
