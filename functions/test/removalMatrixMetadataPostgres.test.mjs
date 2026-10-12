@@ -1,12 +1,13 @@
 // THE REMOVAL-MATRIX GATE, PROVED AGAINST POSTGRESQL (field permissions PR 1 -- tests only).
 //
-// removalMatrixGate.test.mjs is offline: Role grants from roleCapabilityAuthorityBaseline.json and protected
-// Administrator standing from CAPABILITY_METADATA (support/removalMatrix.mjs). This suite closes the two premises that
-// file cannot check by itself, on a disposable database built the way the authority baseline is rebuilt
+// removalMatrixGate.test.mjs is offline: Role grants from roleCapabilityAuthorityBaseline.json and the recorded delta
+// modules, and protected Administrator standing from CAPABILITY_METADATA (support/removalMatrix.mjs). This suite closes
+// the two premises that file cannot check by itself, on a disposable database built the way the authority baseline is rebuilt
 // (phases A-E: migrate to the seed boundary, seed, migrate the rest, CANONICAL_CATALOG, NONPROD_ACTIVATION):
-//   1. every EXISTING spec key is registered with exactly the pinned object_key / action_kind, and every PROPOSED key
-//      is still unregistered (registering one is a deliberate re-pin);
-//   2. the Roles holding each spec key in eos_policy.role_capabilities are exactly the pin's global + activation Roles.
+//   1. every EXISTING spec key is registered with exactly the pinned object_key / action_key / action_kind (the
+//      action_key is how a delta operation names it), and every PROPOSED key is still unregistered (a deliberate re-pin);
+//   2. the Roles holding each spec key in eos_policy.role_capabilities are exactly the pin's baseline + baseline
+//      activation Roles (the delta modules are applied through the Administration API, which this rebuild does not do).
 // Set POLICY_TEST_DATABASE_URL (a base URL; the suite creates and drops its own database); without it the suite SKIPS.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -66,11 +67,11 @@ test("the removal-matrix pin agrees with a rebuilt PostgreSQL authority", { skip
   }
 
   const { existing, proposed } = specKeys();
-  const registered = (await q(`SELECT key, object_key, action_kind FROM eos_policy.capabilities WHERE key = ANY($1::text[]) ORDER BY key`,
+  const registered = (await q(`SELECT key, object_key, action_key, action_kind FROM eos_policy.capabilities WHERE key = ANY($1::text[]) ORDER BY key`,
     [[...existing, ...proposed]])).rows;
   assert.deepEqual(
-    registered.map((r) => [r.key, { objectKey: r.object_key, actionKind: r.action_kind }]),
-    existing.map((k) => [k, { objectKey: CAPABILITY_METADATA[k].objectKey, actionKind: CAPABILITY_METADATA[k].actionKind }]),
+    registered.map((r) => [r.key, { objectKey: r.object_key, actionKey: r.action_key, actionKind: r.action_kind }]),
+    existing.map((k) => [k, { ...CAPABILITY_METADATA[k] }]),
     "every existing spec key is registered exactly as pinned, and no proposed key is registered yet");
 
   const pin = JSON.parse(readFileSync(PIN_PATH, "utf8"));
@@ -78,7 +79,7 @@ test("the removal-matrix pin agrees with a rebuilt PostgreSQL authority", { skip
                            JOIN eos_policy.roles r ON r.id = rc.role_id JOIN eos_policy.capabilities c ON c.id = rc.capability_id
                           WHERE rc.tenant_id = $1 AND c.key = ANY($2::text[]) ORDER BY c.key, r.key`, [TENANT, existing])).rows;
   for (const key of existing) {
-    const expected = [...new Set([...pin.keys[key].globalRoles, ...pin.keys[key].nonprodActivationRoles])].sort();
+    const expected = [...new Set([...pin.keys[key].baselineRoles, ...pin.keys[key].baselineNonprodActivationRoles])].sort();
     assert.deepEqual(held.filter((h) => h.key === key).map((h) => h.role_key), expected, `${key}: Role holders in PostgreSQL == the pin`);
   }
 });
