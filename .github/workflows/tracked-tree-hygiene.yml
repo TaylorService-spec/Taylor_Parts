@@ -1,0 +1,38 @@
+name: Tracked Tree Hygiene
+
+# Refuses committed dependencies (anything under node_modules) and symlinks that point outside the repository.
+# functions/node_modules was committed as a symlink to another worktree's dependencies (f32bc0a1); see
+# scripts/trackedTreeHygiene.mjs. No `paths:` filter: the subject is the whole tracked tree.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel a superseded PR validation; never cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  tracked-tree:
+    name: No committed dependencies or escaping symlinks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Guard contract tests (includes a scan of the tracked tree)
+        run: node --test scripts/trackedTreeHygiene.test.mjs
+
+      - name: Scan the tracked repository
+        run: node scripts/trackedTreeHygiene.mjs
