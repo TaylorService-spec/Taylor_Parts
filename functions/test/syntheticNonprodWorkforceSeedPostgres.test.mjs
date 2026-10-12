@@ -91,7 +91,7 @@ async function rowCounts() {
 test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
   t.after(() => withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`)));
-  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024, 
     cwd: FUNCTIONS_DIR,
     env: { ...process.env, DATABASE_URL: dbUrl() },
     stdio: "pipe",

@@ -59,7 +59,7 @@ test("Financed sales over PostgreSQL (Owner ruling #200)", { skip: SKIP, concurr
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],
-    { env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
+    { maxBuffer: 256 * 1024 * 1024, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: url, max: 6 });
   const q = (sql, v = []) => pool.query(sql, v);
   const one = async (sql, v = []) => (await q(sql, v)).rows[0];

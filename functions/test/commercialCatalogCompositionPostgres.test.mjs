@@ -41,7 +41,7 @@ const code = (c) => (e) => { assert.equal(e.code, c, `expected ${c}, got ${e.cod
 
 test("Commercial resolves Catalog references through the REAL PostgreSQL authority", { skip: SKIP, concurrency: 1 }, async (t) => {
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
-  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024, 
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 8 });

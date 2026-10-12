@@ -49,7 +49,7 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",
-    "--migrations-dir", "migrations", "--no-check-order"], {
+    "--migrations-dir", "migrations", "--no-check-order"], { maxBuffer: 256 * 1024 * 1024, 
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe",
   });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 6 });

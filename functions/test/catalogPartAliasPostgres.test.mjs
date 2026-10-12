@@ -37,7 +37,7 @@ const CLOCK = () => new Date("2026-09-20T12:00:00.000Z");
 
 test("the PostgreSQL Part Alias authority", { skip: SKIP, concurrency: 1 }, async (t) => {
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
-  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024, 
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 8 });

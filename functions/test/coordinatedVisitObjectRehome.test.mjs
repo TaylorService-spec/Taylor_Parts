@@ -43,7 +43,7 @@ async function withClient(url, fn) {
 }
 const migrate = (dbUrl, args) => execFileSync(process.execPath,
   ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations", "--no-check-order"],
-  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, stdio: "pipe" });
+  { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, stdio: "pipe" });
 
 /**
  * How many steps reach back to THIS migration -- itself plus everything that sorts after it.

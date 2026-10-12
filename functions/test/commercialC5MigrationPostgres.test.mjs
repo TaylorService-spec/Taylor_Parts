@@ -46,7 +46,7 @@ async function withClient(url, fn) {
   await c.connect();
   try { return await fn(c); } finally { await c.end(); }
 }
-const runner = (args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], {
+const runner = (args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024, 
   cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe", encoding: "utf8",
 });
 const code = (c) => (e) => { assert.equal(e.code, c, `expected ${c}, got ${e.code}: ${e.message} ${JSON.stringify(e.details ?? null)}`); return true; };
@@ -391,7 +391,7 @@ test("commercial C5, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) =
     const qtext = snapshotBytes(quiet);
     writeFileSync(qfile, qtext);
     writeFileSync(`${qfile}.sha256`, `${SHA(qtext)}  quiet.json\n`);
-    const refused = spawnSync(process.execPath, ["scripts/commercialC5.js", "--mode", "copy", "--environment", "platform-sandbox", "--databaseUrlEnv", "C5_TEST_DB", "--tenantKey", "tcli", "--snapshot", qfile, "--principalId", "pcli", "--confirmMigrationRequired", SHA(qtext)], { cwd: FUNCTIONS_DIR, env, encoding: "utf8" });
+    const refused = spawnSync(process.execPath, ["scripts/commercialC5.js", "--mode", "copy", "--environment", "platform-sandbox", "--databaseUrlEnv", "C5_TEST_DB", "--tenantKey", "tcli", "--snapshot", qfile, "--principalId", "pcli", "--confirmMigrationRequired", SHA(qtext)], { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env, encoding: "utf8" });
     noLeak(refused);
     assert.equal(refused.status, 2);
     assert.match(refused.stdout, /DISPOSITION_DISPOSABLE_FIXTURE_ONLY/);

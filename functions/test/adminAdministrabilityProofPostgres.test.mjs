@@ -109,7 +109,7 @@ async function withClient(url, fn) {
 const migrate = (url, count) => execFileSync(process.execPath, [
   "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order",
   ...(count === undefined ? [] : [String(count)]),
-], { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
+], { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
 
 test("administrability: workflow responsibility is changed by Administration alone, and the three reads are one authority", { skip: SKIP, concurrency: 1 }, async (t) => {
   const name = `wradm_${randomUUID().replace(/-/g, "").slice(0, 12)}`;

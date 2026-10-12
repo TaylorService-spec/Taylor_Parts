@@ -93,7 +93,7 @@ test("capability Object keys resolve through the real Administration repository"
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",
     "--migrations-dir", "migrations", "--no-check-order"],
-  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
+  { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 4 });
 
   const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");

@@ -53,7 +53,7 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
   // Migrated THROUGH 025 only (timestamp mode, the C4 pin technique): test (18) proves 025's own rollback guard, which
   // `down 1` can reach only while 025 is the last-run migration. Later migrations are not what this suite proves.
-  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "1759708800000", "--timestamp", "--migrations-dir", "migrations"], {
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "1759708800000", "--timestamp", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024, 
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 6 });
@@ -538,7 +538,7 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
     assert.ok(names.includes("1759708800000_crm-account-business-facts-and-receipts"));
     assert.equal(names[0], "1759708800000_crm-account-business-facts-and-receipts", "this database must be migrated only through 025");
     const down = spawnSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "1", "--migrations-dir", "migrations"],
-      { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, encoding: "utf8" });
+      { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, encoding: "utf8" });
     assert.notEqual(down.status, 0);
     assert.match(down.stdout + down.stderr, /migration 025 refuses to drop CRM Account business facts/);
     assert.ok((await q(`SELECT to_regclass('eos_crm.command_receipts') AS t`)).rows[0].t, "the receipts table was dropped");
