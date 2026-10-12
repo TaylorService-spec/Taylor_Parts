@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives";
 import { callWorkOrderApi } from "../../services/workOrderApiClient.js";
 import { routerBasenameFrom } from "../../routerBasename";
@@ -19,13 +19,24 @@ export default function CustomerSchedulingLinkPanel({ workOrder, call = callWork
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const workOrderId = workOrder?.id ?? workOrder?.workOrderId ?? null;
+  // The CURRENT load. A response is applied only if it answers the load still current: not after unmount (no state
+  // update on a torn-down tree), and never a late answer for a PREVIOUS Work Order over the one now shown.
+  const currentLoad = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
 
   const load = useCallback(async () => {
     if (!workOrderId) return;
+    const mine = ++currentLoad.current;
     const res = await call("readSelfSchedulingSessions", { workOrderId });
+    if (!mounted.current || mine !== currentLoad.current) return;
     setSessions(res.ok ? { status: "ready", items: res.result.sessions ?? [] } : { status: res.code === "FORBIDDEN" ? "denied" : "unavailable", items: [] });
   }, [call, workOrderId]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    // Leaving this Work Order (or unmounting) retires the in-flight load.
+    return () => { currentLoad.current += 1; };
+  }, [load]);
 
   if (!workOrderId || sessions.status === "denied") return null;
   const schedulable = workOrder.status === "READY_TO_DISPATCH";
@@ -35,6 +46,7 @@ export default function CustomerSchedulingLinkPanel({ workOrder, call = callWork
     setBusy(true);
     setError(null);
     const res = await call("issueSelfSchedulingLink", { workOrderId });
+    if (!mounted.current) return;
     setBusy(false);
     if (!res.ok) { setError(res.message); return; }
     const base = routerBasenameFrom(import.meta.env.BASE_URL).replace(/\/+$/, "");
@@ -46,6 +58,7 @@ export default function CustomerSchedulingLinkPanel({ workOrder, call = callWork
     if (!reason) return;
     setBusy(true);
     const res = await call("revokeSelfSchedulingLink", { workOrderId, reason });
+    if (!mounted.current) return;
     setBusy(false);
     if (!res.ok) setError(res.message);
     setIssued(null);
