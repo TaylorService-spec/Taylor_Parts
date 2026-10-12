@@ -301,6 +301,31 @@ export interface BootstrapFirstOwnerResult {
 }
 
 /**
+ * The target-principal checks of the first-Owner bootstrap: Owner and Administrator stay distinct (DECISIONS #223), and
+ * Owner ruling A at the principal -- holding owner may never bring an owner-excluded capability with it, by ANY path
+ * (Role grants, conditioned or not, and direct grants). Run before the transaction (fast refusal) and under the
+ * governance lock (authoritative).
+ */
+async function refuseFirstOwnerTarget(repo: PolicyRepository, tenantId: string, principalId: string): Promise<void> {
+  const roles = await repo.listRoles(tenantId);
+  const active = (await repo.listAssignmentsForPrincipal(tenantId, principalId)).filter((a) => a.status === "active");
+  const heldRoleKeys = active
+    .map((a) => roles.find((r) => r.id === a.roleId)?.key)
+    .filter((k): k is string => typeof k === "string");
+  // Owner and Administrator are distinct authority types (DECISIONS #223): never make an Administrator the Owner.
+  const adminRole = roles.find((r) => isDesignatedAdministratorRole(r));
+  if (adminRole && active.some((a) => a.roleId === adminRole.id)) {
+    throw new TenantBootstrapError("PROTECTED_ROLE_CONFLICT: that principal holds the protected Administrator Role and may not also be the Owner");
+  }
+  const withOwner = [...new Set([...heldRoleKeys, PROTECTED_OWNER_ROLE_KEY])];
+  const violations = ownerPrincipalViolations(withOwner,
+    await capabilityKeysFor(repo, tenantId, withOwner, principalId, { includeConditioned: true }));
+  if (violations.length > 0) {
+    throw new TenantBootstrapError(`FIRST_OWNER_RULING_A: a principal holding the owner Role may never hold ${violations.join(", ")}`);
+  }
+}
+
+/**
  * Establish a tenant's FIRST protected Owner -- once, and only while the tenant has NO active protected Owner.
  *
  * ════════════════════ WHAT THIS IS, AND IS NOT ════════════════════
@@ -318,7 +343,8 @@ export interface BootstrapFirstOwnerResult {
  *                          are operator-run scripts, which pass the operator as `performedBy`.
  *   TENANT/PRINCIPAL-BOUND one tenant and one EXISTING principal with an ACTIVE membership of that tenant; the
  *                          canonical `owner` Role must exist AND carry the stored protected flag.
- *   OWNER RULING A         the target may not thereby reach an owner-excluded capability.
+ *   OWNER RULING A         the target may not thereby reach an owner-excluded capability -- decided again UNDER THE
+ *                          governance lock, so a concurrent grant or assignment cannot slip in between.
  *   RACE-FREE              the zero-Owner count and the insert run inside ONE transaction under the tenant
  *                          governance lock every Administration command takes, so two concurrent bootstraps
  *                          serialize and the second sees the first's Owner and refuses.
@@ -350,23 +376,8 @@ export async function bootstrapFirstOwner(
     throw new TenantBootstrapError("FIRST_OWNER_NOT_A_MEMBER: that principal is not an active member of this tenant");
   }
 
-  // Owner ruling A at the principal: holding owner may never bring an owner-excluded capability with it.
-  const roles = await repo.listRoles(tenantId);
-  const heldRoleKeys = (await repo.listAssignmentsForPrincipal(tenantId, principalId))
-    .filter((a) => a.status === "active")
-    .map((a) => roles.find((r) => r.id === a.roleId)?.key)
-    .filter((k): k is string => typeof k === "string");
-  // Owner and Administrator are distinct authority types (DECISIONS #223): never make an Administrator the Owner.
-  const adminRole = roles.find((r) => isDesignatedAdministratorRole(r));
-  if (adminRole && (await repo.listAssignmentsForPrincipal(tenantId, principalId)).some((a) => a.status === "active" && a.roleId === adminRole.id)) {
-    throw new TenantBootstrapError("PROTECTED_ROLE_CONFLICT: that principal holds the protected Administrator Role and may not also be the Owner");
-  }
-  const withOwner = [...new Set([...heldRoleKeys, PROTECTED_OWNER_ROLE_KEY])];
-  const violations = ownerPrincipalViolations(withOwner,
-    await capabilityKeysFor(repo, tenantId, withOwner, principalId, { includeConditioned: true }));
-  if (violations.length > 0) {
-    throw new TenantBootstrapError(`FIRST_OWNER_RULING_A: a principal holding the owner Role may never hold ${violations.join(", ")}`);
-  }
+  // Decided here as a fast refusal, and again -- authoritatively -- UNDER THE GOVERNANCE LOCK below.
+  await refuseFirstOwnerTarget(repo, tenantId, principalId);
 
   return repo.transact({ tenantId, uid: performedBy }, async (tx) => {
     // THE ZERO-OWNER PRECONDITION, decided under the tenant governance lock (serializes concurrent bootstraps).
@@ -377,6 +388,10 @@ export async function bootstrapFirstOwner(
         "FIRST_OWNER_ALREADY_ESTABLISHED: this tenant already has an active protected Owner; the first-Owner bootstrap "
         + "never adds, replaces or transfers an Owner (Owner succession is a separate lifecycle)");
     }
+    // OWNER RULING A (and Owner/Administrator distinctness) re-decided under the lock, against the STORE: a concurrent
+    // direct grant, Role grant or Role assignment that would bring an excluded capability (every one of them takes this
+    // same lock) has committed or waits for us -- so the Owner never arrives already holding one.
+    await refuseFirstOwnerTarget(repo, tenantId, principalId);
     const accessVersion = await tx.bumpAccessVersion(principalId);
     const grantedAt = new Date().toISOString();
     const assignment = await tx.createAssignment({

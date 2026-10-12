@@ -76,6 +76,10 @@ on:
       - "functions/test/adminPolicyWorkflow.test.mjs"
       - "functions/test/adminPolicyNoFirebase.test.mjs"
       - "functions/test/adminPolicyPostgres.test.mjs"
+      # One lane, one test database: the pretest refusal (the guard, its test, and package.json where the hook lives).
+      - "functions/scripts/requireIsolatedPolicyTestDatabase.mjs"
+      - "functions/test/requireIsolatedPolicyTestDatabase.test.mjs"
+      - "functions/package.json"
       - "functions/test/adminPolicySeed.test.mjs"
       # The Owner capability contract proof. Registered by NO npm script and NO
       # workflow until now, so it had never executed in CI: it was red on the
@@ -312,6 +316,17 @@ on:
       - "functions/test/support/valueImportClosure.mjs"
       # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
       - "functions/test/governedFieldGroups.test.mjs"
+      # Field permissions PR 1 (tests only). The Supplier Terms field-group GOLDEN (256 capability sets, digest-pinned;
+      # test:adminPolicy) and the REMOVAL-MATRIX gate: who holds each key a proposed removal names, from the repository's
+      # authority baseline, recorded *Delta.ts modules + protected Administrator standing (offline, test:adminPolicy), with its metadata and Role
+      # holders proved on a rebuilt database (test:adminPolicyPostgres). The guards AND their generators/pins.
+      - "functions/test/supplierTermsFieldGroupsGolden.test.mjs"
+      - "functions/test/support/supplierTermsFieldGroupsGolden.mjs"
+      - "functions/test/fixtures/supplierTermsFieldGroups.golden.json"
+      - "functions/test/removalMatrixGate.test.mjs"
+      - "functions/test/removalMatrixMetadataPostgres.test.mjs"
+      - "functions/test/support/removalMatrix.mjs"
+      - "functions/test/fixtures/removalMatrix.pinned.json"
       - "field-ops-app-vite/test/fixtures/partSupplierTermsContract.json"
       - "field-ops-app-vite/src/domain/partSupplierTerms.js"
       - "functions/src/eosFinance/**"
@@ -716,6 +731,8 @@ on:
       # protected Owner; per-role last-Owner invariant; R1 in anti-lockout (test:adminPolicyPostgres).
       - "functions/test/protectedOwnerInvariantPostgres.test.mjs"
       - "functions/test/support/protectedOwnerFixture.mjs"
+      # OWNER RULING A UNDER THE GOVERNANCE LOCK (finding F-1): the assignRole/grantObjectActionToRole race (test:adminPolicyPostgres).
+      - "functions/test/ownerExclusionLockPostgres.test.mjs"
       # FIRST-OWNER BOOTSTRAP (ruling 2026-09-27, option A): the bootstrap-only establishment of a tenant's first Owner,
       # and the Owner-establishing scripts that now call it (test:adminPolicyPostgres).
       - "functions/test/firstOwnerBootstrapPostgres.test.mjs"
@@ -812,6 +829,10 @@ on:
       - "functions/test/adminPolicyWorkflow.test.mjs"
       - "functions/test/adminPolicyNoFirebase.test.mjs"
       - "functions/test/adminPolicyPostgres.test.mjs"
+      # One lane, one test database: the pretest refusal (the guard, its test, and package.json where the hook lives).
+      - "functions/scripts/requireIsolatedPolicyTestDatabase.mjs"
+      - "functions/test/requireIsolatedPolicyTestDatabase.test.mjs"
+      - "functions/package.json"
       - "functions/test/adminPolicySeed.test.mjs"
       # The Owner capability contract proof. Registered by NO npm script and NO
       # workflow until now, so it had never executed in CI: it was red on the
@@ -1038,6 +1059,17 @@ on:
       - "functions/test/support/valueImportClosure.mjs"
       # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
       - "functions/test/governedFieldGroups.test.mjs"
+      # Field permissions PR 1 (tests only). The Supplier Terms field-group GOLDEN (256 capability sets, digest-pinned;
+      # test:adminPolicy) and the REMOVAL-MATRIX gate: who holds each key a proposed removal names, from the repository's
+      # authority baseline, recorded *Delta.ts modules + protected Administrator standing (offline, test:adminPolicy), with its metadata and Role
+      # holders proved on a rebuilt database (test:adminPolicyPostgres). The guards AND their generators/pins.
+      - "functions/test/supplierTermsFieldGroupsGolden.test.mjs"
+      - "functions/test/support/supplierTermsFieldGroupsGolden.mjs"
+      - "functions/test/fixtures/supplierTermsFieldGroups.golden.json"
+      - "functions/test/removalMatrixGate.test.mjs"
+      - "functions/test/removalMatrixMetadataPostgres.test.mjs"
+      - "functions/test/support/removalMatrix.mjs"
+      - "functions/test/fixtures/removalMatrix.pinned.json"
       - "field-ops-app-vite/test/fixtures/partSupplierTermsContract.json"
       - "field-ops-app-vite/src/domain/partSupplierTerms.js"
       - "functions/src/eosFinance/**"
@@ -1285,6 +1317,8 @@ on:
       # protected Owner; per-role last-Owner invariant; R1 in anti-lockout (test:adminPolicyPostgres).
       - "functions/test/protectedOwnerInvariantPostgres.test.mjs"
       - "functions/test/support/protectedOwnerFixture.mjs"
+      # OWNER RULING A UNDER THE GOVERNANCE LOCK (finding F-1): the assignRole/grantObjectActionToRole race (test:adminPolicyPostgres).
+      - "functions/test/ownerExclusionLockPostgres.test.mjs"
       # FIRST-OWNER BOOTSTRAP (ruling 2026-09-27, option A): the bootstrap-only establishment of a tenant's first Owner,
       # and the Owner-establishing scripts that now call it (test:adminPolicyPostgres).
       - "functions/test/firstOwnerBootstrapPostgres.test.mjs"
