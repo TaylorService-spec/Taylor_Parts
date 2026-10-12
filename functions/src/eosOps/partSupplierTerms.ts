@@ -652,14 +652,18 @@ export async function setPreferredPartSupplierItem(deps: { readonly pool: Pool }
     const current = records.find((r) => r.itemId === itemId)!;
     const supplier = await supplierFacts(c, actor.tenantId, current.supplierId, true);
     const before = view(current, supplier);
-    // A caller who cannot read terms gets the version check FIRST: otherwise "unchanged" vs STALE_VERSION on a wrong version
-    // would tell them which item is preferred without writing anything (review N2 follow-up).
+    const preconditions = () => {
+      if (before.version !== expectedVersion) refuse("STALE_VERSION", "CONFLICT", "the supplier terms changed since they were read");
+      if (before.status !== "ACTIVE") refuse("ITEM_NOT_ACTIVE", "PRECONDITION_FAILED", "only ACTIVE supplier terms can be preferred");
+      if (supplier?.status !== "ACTIVE") refuse("SUPPLIER_NOT_ACTIVE", "PRECONDITION_FAILED", "the supplier is not ACTIVE");
+    };
+    // A caller who cannot read terms gets EVERY precondition before the "unchanged" short-circuit: otherwise a refusal on
+    // one item and "unchanged" on another (wrong version, or an INACTIVE supplier) would tell them which item is preferred
+    // without writing anything (review N2 follow-ups). A reader's order is unchanged.
     const canRead = actor.capabilities.has(SUPPLIER_TERMS_READ_CAPABILITY);
-    if (!canRead && before.version !== expectedVersion) refuse("STALE_VERSION", "CONFLICT", "the supplier terms changed since they were read");
+    if (!canRead) preconditions();
     if (before.preferred) return { outcome: "unchanged" as const, item: project(actor, before), clearedItemId: null };
-    if (before.version !== expectedVersion) refuse("STALE_VERSION", "CONFLICT", "the supplier terms changed since they were read");
-    if (before.status !== "ACTIVE") refuse("ITEM_NOT_ACTIVE", "PRECONDITION_FAILED", "only ACTIVE supplier terms can be preferred");
-    if (supplier?.status !== "ACTIVE") refuse("SUPPLIER_NOT_ACTIVE", "PRECONDITION_FAILED", "the supplier is not ACTIVE");
+    preconditions();
     const incumbentRecord = records.find((r) => r.preferred) ?? null;
     const incumbentSupplier = incumbentRecord ? await supplierFacts(c, actor.tenantId, incumbentRecord.supplierId) : null;
     const incumbentBefore = incumbentRecord ? view(incumbentRecord, incumbentSupplier) : null;

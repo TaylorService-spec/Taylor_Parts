@@ -492,6 +492,19 @@ test("part-supplier terms over the governed path", { skip: SKIP, concurrency: 1 
     assert.deepEqual([r.outcome, r.clearedItemId], ["preferred", null], "the incumbent exists but is not disclosed");
     const back = ok(await call(buyer, "setPreferredPartSupplierItem", { partId: "P-200", itemId: "P-200__sup-arctic", expectedVersion: await versionOf("P-200__sup-arctic") }), "reader prefers back");
     assert.equal(back.clearedItemId, "P-200__sup-delta", "a reader is told");
+    // Nor at the RIGHT version: with both suppliers INACTIVE, the preferred item and another refuse alike (review N2 follow-up).
+    await q(`UPDATE eos_ops.suppliers SET status = 'INACTIVE' WHERE tenant_id = 't1' AND supplier_id IN ('sup-arctic', 'sup-delta')`);
+    try {
+      const auditsAtRightVersion = await auditCount();
+      const atPreferred = await call(editorOnly, "setPreferredPartSupplierItem", { partId: "P-200", itemId: "P-200__sup-arctic", expectedVersion: await versionOf("P-200__sup-arctic") });
+      const atOther = await call(editorOnly, "setPreferredPartSupplierItem", { partId: "P-200", itemId: "P-200__sup-delta", expectedVersion: await versionOf("P-200__sup-delta") });
+      refused(atPreferred, 412, "PRECONDITION_FAILED", /supplier is not ACTIVE/, "right version, PREFERRED item, INACTIVE supplier");
+      refused(atOther, 412, "PRECONDITION_FAILED", /supplier is not ACTIVE/, "right version, another item, INACTIVE supplier");
+      assert.deepEqual(atPreferred.body, atOther.body, "the same answer whichever item is preferred");
+      assert.equal(await auditCount(), auditsAtRightVersion, "the probes wrote nothing");
+    } finally {
+      await q(`UPDATE eos_ops.suppliers SET status = 'ACTIVE' WHERE tenant_id = 't1' AND supplier_id IN ('sup-arctic', 'sup-delta')`);
+    }
   });
 
   await t.test("(a) supplierTerms.read ONLY: lists RELATIONSHIP + OPERATIONAL, COMMERCIAL withheld, every write refused", async () => {
