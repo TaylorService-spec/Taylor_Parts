@@ -28,6 +28,7 @@ import { containsNulCharacter, NUL_CHARACTER_REFUSAL } from "../adminPolicy/requ
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
 import { CatalogMasterError, type CatalogActorContext } from "./catalogMasterKernel.js";
+import { recordAuthorizationDenial, type DenialAuditOptions } from "../eosAudit/authorizationDenialAudit.js";
 import {
   CATALOG_WRITER_AUTHORITY, PostgresCatalogWriterInactiveError, assertPostgresCatalogActive, type CatalogWriterAuthority,
   CatalogMutationHeldError, assertCatalogMutationNotHeld,
@@ -131,7 +132,13 @@ export interface CatalogApiDeps {
   readonly pool: Pool;
   /** The committed CATALOG_WRITER_AUTHORITY unless a test states the state it exercises. */
   readonly writerAuthority?: CatalogWriterAuthority;
+  /** DECISIONS #229. The committed AUTHORIZATION_DENIAL_AUDIT mode unless a test states the one it exercises. */
+  readonly denialAudit?: DenialAuditOptions;
 }
+
+// The refusals DECISIONS #229 records: a resolved Principal was refused an operation by an authorization rule.
+// Validation, conflicts, not-found and preconditions are business answers, not authorization denials.
+const AUDITED_COMMAND_REFUSALS = new Set(["CAPABILITY_REQUIRED", "ACTOR_NOT_TENANT_MEMBER"]);
 
 export type CatalogApiResult =
   | { readonly ok: true; readonly operation: CatalogOperation; readonly result: unknown }
@@ -169,9 +176,19 @@ export async function executeCatalogOperation(
     readonly caller: { readonly externalSubject: string; readonly identityProvider: string; readonly requestedTenantId: string | null };
     readonly operation: CatalogOperation;
     readonly input?: Record<string, unknown>;
+    /** The request's correlation id header, recorded on a denial when well-formed (DECISIONS #229). */
+    readonly correlationId?: string | null;
   },
 ): Promise<CatalogApiResult> {
   const input = request.input ?? {};
+  // DECISIONS #229: the actor is known only once resolved; a refusal before that has no Principal to attribute.
+  let resolvedActor: CatalogActorContext | null = null;
+  const auditDenial = (refusalCode: string, requiredCapability: string | null) => (resolvedActor === null
+    ? Promise.resolve()
+    : recordAuthorizationDenial(deps.pool, {
+      tenantId: resolvedActor.tenantId, principalId: resolvedActor.principalId, domain: "catalog",
+      operation: request.operation, requiredCapability, refusalCode, correlationId: request.correlationId ?? null,
+    }, deps.denialAudit).then(() => undefined));
   try {
     // FIRST ACT: the PostgreSQL Catalog authority must be ACTIVE (the activation window's step 18). Before that, the
     // transport answers nothing -- not a read of a not-yet-copied catalogue, and certainly not a write.
@@ -191,12 +208,14 @@ export async function executeCatalogOperation(
       principalId: ctx.principalContext.uid,
       capabilities: new Set(ctx.capabilities),
     };
+    resolvedActor = actor;
     // DQ-031: a READ is refused unless the resolved Principal holds every capability it requires. Writes are
     // checked by their command (runCatalogCommand), so a write is not double-decided here.
     if (READS.has(request.operation)) {
       const required = CATALOG_READ_REQUIREMENTS[request.operation as CatalogReadOperation];
       const missing = required.filter((k) => !actor.capabilities.has(k));
       if (missing.length > 0) {
+        await auditDenial("CAPABILITY_REQUIRED", missing.join(" "));
         return {
           ok: false, operation: request.operation, code: "FORBIDDEN",
           message: `reading the Catalog requires ${missing.join(" and ")}`,
@@ -307,6 +326,8 @@ export async function executeCatalogOperation(
     // A governed refusal is the ANSWER, not a failure: the caller is told which rule refused them,
     // with the command's own category preserved rather than flattened to 500.
     if (err instanceof CatalogMasterError) {
+      // Recorded AFTER the command rolled back, and never able to change the answer below (the helper never throws).
+      if (AUDITED_COMMAND_REFUSALS.has(err.code)) await auditDenial(err.code, err.requiredCapability);
       const code: CatalogApiFailureCode = err.category === "FAILED" ? "INTERNAL" : err.category;
       return { ok: false, operation: request.operation, code, message: err.message };
     }
@@ -486,6 +507,7 @@ export async function handleCatalogRequest(
     input: payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)
       ? payload.input as Record<string, unknown>
       : {},
+    correlationId: singleHeader(header(request, "x-request-id")) ?? singleHeader(header(request, "x-correlation-id")),
   });
 
   if (result.ok) return json(200, result, origin);

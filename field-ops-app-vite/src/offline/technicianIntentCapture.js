@@ -58,14 +58,13 @@ export function captureNote({ workOrderId, principalUid, text, captureKey, at = 
 }
 
 /**
- * Labor. The idempotency key IS the intent id, set by the queue rather than by the form.
- *
- * That matters more here than anywhere else in this runtime: the form's own attempt token is scoped
- * to a component mount, so a phone that reloads between capture and sync would have produced a second
- * key and a second set of hours. A derived intent id survives the reload.
+ * Labor. When the capture is the queued fallback of an online send (JobLabor, WOL-2), the idempotency key is
+ * THAT SEND's key, passed in: a send that committed but lost its answer must replay when the queue syncs it.
+ * Otherwise the key is the intent id. Either way it lives in the persisted payload, so it survives a reload
+ * between capture and sync.
  */
 export function captureLabor({
-  workOrderId, principalUid, laborType, durationMinutes, workDate, captureKey, at = 0, offline = false,
+  workOrderId, principalUid, laborType, durationMinutes, workDate, captureKey, idempotencyKey = null, at = 0, offline = false,
 }) {
   const intent = makeIntent({
     type: INTENT_TYPE.LABOR_RECORD,
@@ -88,7 +87,9 @@ export function captureLabor({
       ...intent.value,
       payload: Object.freeze({
         ...intent.value.payload,
-        idempotencyKey: intent.value.intentId,
+        // The online send's key when this capture is the fallback for one (WOL-2): a send that committed but
+        // lost its answer must REPLAY when the queue syncs it, never record again under a second key.
+        idempotencyKey: idempotencyKey ?? intent.value.intentId,
         // Present only when the capture was genuinely offline — see deviceClaim.
         ...(intent.value.deviceReportedAtMillis
           ? { deviceReportedAtMillis: intent.value.deviceReportedAtMillis } : {}),

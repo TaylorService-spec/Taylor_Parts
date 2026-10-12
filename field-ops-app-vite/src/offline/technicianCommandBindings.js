@@ -75,7 +75,7 @@ export function createTechnicianBindings(deps = {}) {
       } catch (err) { return failureFrom(err); }
     },
 
-    /** Time. The idempotency key is the intent id, so a replay lands on the same entry. */
+    /** Time. The key is the payload's (the online send's, WOL-2) or else the intent id, so a replay lands on the same entry. */
     async [INTENT_TYPE.LABOR_RECORD](intent) {
       const { outcome, error } = await labor(intent.payload);
       if (error) return { ok: false, code: error.code, details: error.details };
