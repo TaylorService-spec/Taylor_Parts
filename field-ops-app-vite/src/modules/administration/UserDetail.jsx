@@ -189,6 +189,12 @@ export default function UserDetail({
   // Bumped after a direct-exception change so the Effective Access explanation re-reads the server's answer.
   const [accessReadKey, setAccessReadKey] = useState(0);
   const credential = usePrincipalCredential(principalId, { policyCall });
+  // ADMINISTRATOR CHECKBOX (DECISIONS #223, PR-6) -- the one offer-only signal; the server decides every appointment.
+  // Self: the linked Principal's credential subject against the signed-in uid (the same comparison the account actions
+  // make). Unknown (null) while the credential is still being read; no credential, or an unreadable one, is not "self".
+  const viewerIsSelf = credential.status === CREDENTIAL_STATE.RESOLVED
+    ? credential.subject === (user?.uid ?? null)
+    : credential.status === CREDENTIAL_STATE.LOADING || (credential.status === CREDENTIAL_STATE.IDLE && principalId) ? null : false;
 
   // ── GOVERNED CHANGE HISTORY (EMP-RT-H1): bumped after anything on this page writes the Employee.
   const [governedHistoryKey, setGovernedHistoryKey] = useState(0);
@@ -324,7 +330,7 @@ export default function UserDetail({
             Security Roles are access. They are not Job Roles and are never used as one.
           </p>
           <PrincipalGate linked={linked} principalLink={principalLink}>
-            <EmployeeSecurityRoles api={controlPlane} principalId={principalId} employeeName={name} />
+            <EmployeeSecurityRoles api={controlPlane} principalId={principalId} employeeName={name} viewerIsSelf={viewerIsSelf} />
           </PrincipalGate>
         </RuledSection>
         {/* EFFECTIVE ACCESS: the server evaluator's answer for the linked Principal -- never computed here. It carries
