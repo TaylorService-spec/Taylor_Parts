@@ -8,7 +8,7 @@
 //             between the in-lock preview and the write, a replay, another actor, an altered input -> STALE_PREVIEW.
 //   OWNER     every protected Owner / Administrator refusal is still returned through the mandatory path (same code,
 //             same message), and no Owner's effective authority moves on any refused or stale attempt.
-//   FLAG OFF  no digest -> the engine never runs (today's path); a supplied digest IS verified.
+//   FLAG OFF  the engine never runs (today's path); a supplied digest (any value, null and "" too) is IGNORED.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -301,7 +301,8 @@ test("MANDATORY PREVIEW: required, verified, stale-proof, audited, Owner-safe", 
     assert.equal(report.outcome, "WOULD_APPLY");
     await refusedCommit("budget", () => commit(ADMIN, "grantObjectActionToRole", input, report.digests.previewDigest, { ...ON, commitAuthorityChange: slow }),
       { category: "CONFLICT", code: "COMMIT_BUSY" });
-    const held = await q(`SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND granted`);
+    const held = await q(`SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND granted
+      AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`);
     assert.equal(held.rows.length, 0, "the governance lock was not released");
   });
 
@@ -314,12 +315,23 @@ test("MANDATORY PREVIEW: required, verified, stale-proof, audited, Owner-safe", 
     assert.equal(engineCalls, calls, "flag OFF without a digest must not use the engine");
     for (const row of await newAudit(ids)) assert.equal(row.after?.authorityChange, undefined);
   });
-  await t.test("FLAG OFF: a supplied digest IS verified (stale refused, fresh committed and marked)", async () => {
+  await t.test("FLAG OFF: any supplied previewDigest (stale, malformed, null, \"\") is IGNORED -- today's path, unmarked", async () => {
     const input = R({ objectKey: "purchaseOrder", actionKey: "read", roleKey: "technician" });
+    const offReport = (await call(OFF, ADMIN, "previewAuthorityChange", { change: { operation: "revokeObjectActionFromRole", input } })).data;
+    assert.equal(offReport.previewMandatory, false, "an OFF server tells the client the digest is not required");
     const report = await preview(ADMIN, "revokeObjectActionFromRole", input);
+    assert.equal(report.previewMandatory, true, "an ON server says it is required");
     await world.assign(A, P.a.pp, "technician");
-    await refusedCommit("off stale", () => commit(ADMIN, "revokeObjectActionFromRole", input, report.digests.previewDigest, OFF), { category: "CONFLICT", code: "STALE_PREVIEW" });
-    await refusedCommit("off invalid", () => commit(ADMIN, "revokeObjectActionFromRole", input, "zz", OFF), { category: "INVALID_INPUT", code: "PREVIEW_INVALID" });
-    await previewedCommit("off fresh", ADMIN, "revokeObjectActionFromRole", input, OFF);
+    const calls = engineCalls;
+    for (const [operation, digest] of [["revokeObjectActionFromRole", report.digests.previewDigest], ["grantObjectActionToRole", "zz"],
+      ["revokeObjectActionFromRole", null], ["grantObjectActionToRole", ""], ["revokeObjectActionFromRole", "f".repeat(64)]]) {
+      const ids = await auditIds();
+      const r = await call(OFF, ADMIN, operation, { ...input, previewDigest: digest });
+      assert.equal(r.ok, true, `${operation} ${JSON.stringify(digest)}: ${JSON.stringify(r)}`);
+      const rows = await newAudit(ids);
+      assert.ok(rows.length > 0, `${operation}: the today's-path commit wrote nothing`);
+      for (const row of rows) assert.equal(row.after?.authorityChange, undefined, "an OFF commit is never marked");
+    }
+    assert.equal(engineCalls, calls, "flag OFF never runs the engine, whatever the client sends");
   });
 });
