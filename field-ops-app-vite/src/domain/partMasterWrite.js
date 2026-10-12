@@ -96,32 +96,74 @@ export function buildUpdateChanges(form, original) {
 }
 
 // ---- Governed outcome mapping ----
-// Map a callable HttpsError `code` (or a success) to a stable UI outcome + a human message. The client
-// never invents a success: a resolved callable is "applied"/"replayed" per the command's own outcome.
-const CODE_OUTCOMES = Object.freeze({
-  "permission-denied": { kind: "denied", message: "You are not authorized to make this change." },
-  unauthenticated: { kind: "denied", message: "You must be signed in." },
-  "invalid-argument": { kind: "invalid", message: "Some fields are missing or invalid. Check the form and try again." },
-  "not-found": { kind: "notFound", message: "That part no longer exists. Reload the list." },
-  "already-exists": { kind: "conflict", message: "A part already exists with that identifier." },
-  aborted: { kind: "conflict", message: "This part changed since you loaded it. Reload and retry." },
-  "failed-precondition": { kind: "invalid", message: "That change isn't allowed for this part's current state." },
-  internal: { kind: "error", message: "The request could not be completed. Try again." },
+// The Part commands answer through the governed Catalog API (POST /operations/catalog). Its contract, which
+// test/fixtures/catalogPartMasterContract.json pins from the REAL server (functions/test/
+// catalogPartMasterEmployeeContractPostgres.test.mjs proves the fixture against PostgreSQL):
+//
+//   success  { partId, version, replayed }            -- replayed:true is an identical resend, nothing written
+//   refusal  an Error whose `code` is the Catalog category (catalogApiClient.catalogFailureCategory):
+//            FORBIDDEN | NOT_SIGNED_IN | INVALID_INPUT | NOT_FOUND | CONFLICT | PRECONDITION_FAILED | UNAVAILABLE |
+//            UNREACHABLE | NOT_CONFIGURED | INTERNAL, with the server's message.
+//
+// The retired Firebase callables answered {outcome:"applied"|"replayed"} and HttpsError codes. This module used to
+// read only that shape, so every successful EOS write was shown as "could not be completed" (finding CAT-1,
+// docs/audits/firebase-retirement-equivalence-2026-10-11). The client still never invents a success: anything that
+// is not the governed success shape is an error.
+//
+// The server sends the refusal CATEGORY, not the rule (VERSION_CONFLICT vs PART_ALREADY_EXISTS both arrive as
+// CONFLICT). Within one operation each category has one meaning, so the message is chosen per operation:
+//   createPart       CONFLICT = PART_ALREADY_EXISTS; NOT_FOUND = EQUIPMENT_MODEL_NOT_FOUND
+//   updatePart       CONFLICT = VERSION_CONFLICT; NOT_FOUND = PART_NOT_FOUND | EQUIPMENT_MODEL_NOT_FOUND;
+//                    PRECONDITION_FAILED = CONTROL_TYPE_IMMUTABLE | NO_CHANGES
+//   changePartStatus CONFLICT = VERSION_CONFLICT; NOT_FOUND = PART_NOT_FOUND; PRECONDITION_FAILED = ILLEGAL_TRANSITION
+export const PART_WRITE_OPERATIONS = Object.freeze({ create: "create", update: "update", changeStatus: "changeStatus" });
+
+const DENIED = Object.freeze({ kind: "denied", message: "You are not authorized to make this change." });
+const UNAVAILABLE = Object.freeze({ kind: "unavailable", message: "The catalog service can't be reached right now. Try again shortly." });
+const GENERIC_ERROR = Object.freeze({ kind: "error", message: "The request could not be completed. Try again." });
+
+const CATEGORY_OUTCOMES = Object.freeze({
+  FORBIDDEN: DENIED,
+  NOT_SIGNED_IN: Object.freeze({ kind: "denied", message: "You must be signed in." }),
+  INVALID_INPUT: Object.freeze({ kind: "invalid", message: "Some fields are missing or invalid. Check the form and try again." }),
+  UNAVAILABLE,
+  UNREACHABLE: UNAVAILABLE,
+  NOT_CONFIGURED: UNAVAILABLE,
 });
 
-// The workspace/hook uses this: `result` is the callable's resolved data ({outcome, version}) OR the
-// thrown error is passed as `error`.
+const OPERATION_OUTCOMES = Object.freeze({
+  create: Object.freeze({
+    CONFLICT: Object.freeze({ kind: "conflict", message: "A part already exists with that Part ID." }),
+    NOT_FOUND: Object.freeze({ kind: "notFound", message: "The equipment model this part names doesn't exist. Choose another model." }),
+    PRECONDITION_FAILED: Object.freeze({ kind: "invalid", message: "This part can't be created in its current form." }),
+  }),
+  update: Object.freeze({
+    CONFLICT: Object.freeze({ kind: "conflict", message: "This part changed since you loaded it. Reload and retry." }),
+    NOT_FOUND: Object.freeze({ kind: "notFound", message: "That part, or the equipment model it names, no longer exists. Reload the list." }),
+    PRECONDITION_FAILED: Object.freeze({ kind: "invalid", message: "That change isn't allowed for this part (the control type can't change)." }),
+  }),
+  changeStatus: Object.freeze({
+    CONFLICT: Object.freeze({ kind: "conflict", message: "This part changed since you loaded it. Reload and retry." }),
+    NOT_FOUND: Object.freeze({ kind: "notFound", message: "That part no longer exists. Reload the list." }),
+    PRECONDITION_FAILED: Object.freeze({ kind: "invalid", message: "That status change isn't allowed from the part's current status." }),
+  }),
+});
+
+/** A governed command's answer -> the outcome the screen renders. Only the governed success shape is a success. */
 export function outcomeFromResult(result) {
-  const outcome = result?.outcome;
-  if (outcome === "applied" || outcome === "replayed") {
-    return { kind: outcome === "replayed" ? "replayed" : "applied", message: outcome === "replayed" ? "Already recorded (no change)." : "Saved.", version: result?.version };
-  }
-  return { kind: "error", message: "The request could not be completed. Try again." };
+  const governed = result && typeof result === "object" && typeof result.partId === "string"
+    && Number.isInteger(result.version) && typeof result.replayed === "boolean";
+  if (!governed) return GENERIC_ERROR;
+  return result.replayed
+    ? { kind: "replayed", message: "Already recorded (no change).", version: result.version, partId: result.partId }
+    : { kind: "applied", message: "Saved.", version: result.version, partId: result.partId };
 }
 
-export function outcomeFromError(error) {
+/** A governed refusal -> the outcome the screen renders, worded for the operation that was refused. */
+export function outcomeFromError(error, operation = null) {
   const code = error?.code;
-  return CODE_OUTCOMES[code] ?? { kind: "error", message: "The request could not be completed. Try again." };
+  const byOperation = operation ? OPERATION_OUTCOMES[operation]?.[code] : undefined;
+  return byOperation ?? CATEGORY_OUTCOMES[code] ?? GENERIC_ERROR;
 }
 
 // The write-disabled outcome (readiness false): never a callable attempt, always this honest state.

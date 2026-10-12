@@ -9,11 +9,13 @@ import {
   buildUpdateChanges,
   outcomeFromResult,
   outcomeFromError,
+  PART_WRITE_OPERATIONS,
   WRITE_DISABLED_OUTCOME,
   NO_CHANGES_OUTCOME,
 } from "../domain/partMasterWrite";
 
-const refused = (error) => (isCatalogMutationHeldRefusal(error) ? CATALOG_MUTATION_HELD_OUTCOME : outcomeFromError(error));
+const refused = (error, operation) =>
+  (isCatalogMutationHeldRefusal(error) ? CATALOG_MUTATION_HELD_OUTCOME : outcomeFromError(error, operation));
 
 // Part Master write hook. The ONLY place the trusted Part callables are invoked from the workspace.
 // FAIL-CLOSED: when write-readiness is false (the production posture -- callables undeployed/ungranted),
@@ -45,7 +47,7 @@ export function usePartMasterWrite(deps) {
       const data = await client.createPart({ idempotencyKey: newKey(), part: buildCreatePartInput(form) });
       return outcomeFromResult(data);
     } catch (error) {
-      return refused(error);
+      return refused(error, PART_WRITE_OPERATIONS.create);
     }
   }, [mutationHeld, writeReady, client, newKey]);
 
@@ -58,7 +60,7 @@ export function usePartMasterWrite(deps) {
       const data = await client.updatePart({ idempotencyKey: newKey(), partId, expectedVersion, changes });
       return outcomeFromResult(data);
     } catch (error) {
-      return refused(error);
+      return refused(error, PART_WRITE_OPERATIONS.update);
     }
   }, [mutationHeld, writeReady, client, newKey]);
 
@@ -69,7 +71,7 @@ export function usePartMasterWrite(deps) {
       const data = await client.changePartStatus({ idempotencyKey: newKey(), partId, expectedVersion, newStatus });
       return outcomeFromResult(data);
     } catch (error) {
-      return refused(error);
+      return refused(error, PART_WRITE_OPERATIONS.changeStatus);
     }
   }, [mutationHeld, writeReady, client, newKey]);
 

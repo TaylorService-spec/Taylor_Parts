@@ -1,0 +1,257 @@
+{
+  "route": "/operations/catalog",
+  "scenarios": {
+    "createApplied": {
+      "request": {
+        "operation": "createPart",
+        "input": {
+          "part": {
+            "partId": "PRT-CONTRACT-1",
+            "internalPartNumber": "PRT-CONTRACT-1",
+            "name": "Contract valve",
+            "status": "DRAFT",
+            "stockingUnit": "EACH",
+            "controlType": "STANDARD",
+            "stockingClass": "STOCKED",
+            "category": "Valves"
+          }
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "createPart",
+        "result": {
+          "partId": "PRT-CONTRACT-1",
+          "version": 1,
+          "replayed": false
+        }
+      }
+    },
+    "createReplayed": {
+      "request": {
+        "operation": "createPart",
+        "input": {
+          "part": {
+            "partId": "PRT-CONTRACT-1",
+            "internalPartNumber": "PRT-CONTRACT-1",
+            "name": "Contract valve",
+            "status": "DRAFT",
+            "stockingUnit": "EACH",
+            "controlType": "STANDARD",
+            "stockingClass": "STOCKED",
+            "category": "Valves"
+          }
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "createPart",
+        "result": {
+          "partId": "PRT-CONTRACT-1",
+          "version": 1,
+          "replayed": true
+        }
+      }
+    },
+    "createExisting": {
+      "request": {
+        "operation": "createPart",
+        "input": {
+          "part": {
+            "partId": "PRT-CONTRACT-1",
+            "internalPartNumber": "PRT-CONTRACT-1",
+            "name": "A different valve",
+            "status": "DRAFT",
+            "stockingUnit": "EACH",
+            "controlType": "STANDARD",
+            "stockingClass": "STOCKED",
+            "category": "Valves"
+          }
+        }
+      },
+      "status": 409,
+      "body": {
+        "ok": false,
+        "operation": "createPart",
+        "code": "CONFLICT",
+        "message": "part PRT-CONTRACT-1 already exists"
+      }
+    },
+    "createDenied": {
+      "request": {
+        "operation": "createPart",
+        "input": {
+          "part": {
+            "partId": "PRT-CONTRACT-2",
+            "internalPartNumber": "PRT-CONTRACT-2",
+            "name": "Contract valve",
+            "status": "DRAFT",
+            "stockingUnit": "EACH",
+            "controlType": "STANDARD",
+            "stockingClass": "STOCKED",
+            "category": "Valves"
+          }
+        }
+      },
+      "status": 403,
+      "body": {
+        "ok": false,
+        "operation": "createPart",
+        "code": "FORBIDDEN",
+        "message": "this command requires inventory.catalog.manage"
+      }
+    },
+    "updateApplied": {
+      "request": {
+        "operation": "updatePart",
+        "input": {
+          "partId": "PRT-CONTRACT-1",
+          "expectedVersion": 1,
+          "changes": {
+            "name": "Contract valve, brass"
+          }
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "updatePart",
+        "result": {
+          "partId": "PRT-CONTRACT-1",
+          "version": 2,
+          "replayed": false
+        }
+      }
+    },
+    "updateStale": {
+      "request": {
+        "operation": "updatePart",
+        "input": {
+          "partId": "PRT-CONTRACT-1",
+          "expectedVersion": 1,
+          "changes": {
+            "category": "Brass"
+          }
+        }
+      },
+      "status": 409,
+      "body": {
+        "ok": false,
+        "operation": "updatePart",
+        "code": "CONFLICT",
+        "message": "the record changed since it was loaded; reload and retry"
+      }
+    },
+    "updateUnknownPart": {
+      "request": {
+        "operation": "updatePart",
+        "input": {
+          "partId": "PRT-NEVER-EXISTED",
+          "expectedVersion": 1,
+          "changes": {
+            "name": "x"
+          }
+        }
+      },
+      "status": 404,
+      "body": {
+        "ok": false,
+        "operation": "updatePart",
+        "code": "NOT_FOUND",
+        "message": "no part PRT-NEVER-EXISTED in this tenant"
+      }
+    },
+    "updateControlType": {
+      "request": {
+        "operation": "updatePart",
+        "input": {
+          "partId": "PRT-CONTRACT-1",
+          "expectedVersion": 2,
+          "changes": {
+            "controlType": "SERIALIZED"
+          }
+        }
+      },
+      "status": 412,
+      "body": {
+        "ok": false,
+        "operation": "updatePart",
+        "code": "PRECONDITION_FAILED",
+        "message": "a part's control type cannot be changed after it is created"
+      }
+    },
+    "statusDenied": {
+      "request": {
+        "operation": "changePartStatus",
+        "input": {
+          "partId": "PRT-CONTRACT-1",
+          "expectedVersion": 2,
+          "newStatus": "ACTIVE"
+        }
+      },
+      "status": 403,
+      "body": {
+        "ok": false,
+        "operation": "changePartStatus",
+        "code": "FORBIDDEN",
+        "message": "this command requires inventory.catalog.activate"
+      }
+    },
+    "statusApplied": {
+      "request": {
+        "operation": "changePartStatus",
+        "input": {
+          "partId": "PRT-CONTRACT-1",
+          "expectedVersion": 2,
+          "newStatus": "ACTIVE"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "changePartStatus",
+        "result": {
+          "partId": "PRT-CONTRACT-1",
+          "version": 3,
+          "replayed": false
+        }
+      }
+    },
+    "statusStale": {
+      "request": {
+        "operation": "changePartStatus",
+        "input": {
+          "partId": "PRT-CONTRACT-1",
+          "expectedVersion": 2,
+          "newStatus": "INACTIVE"
+        }
+      },
+      "status": 409,
+      "body": {
+        "ok": false,
+        "operation": "changePartStatus",
+        "code": "CONFLICT",
+        "message": "the record changed since it was loaded; reload and retry"
+      }
+    },
+    "statusIllegal": {
+      "request": {
+        "operation": "changePartStatus",
+        "input": {
+          "partId": "PRT-CONTRACT-1",
+          "expectedVersion": 4,
+          "newStatus": "ACTIVE"
+        }
+      },
+      "status": 412,
+      "body": {
+        "ok": false,
+        "operation": "changePartStatus",
+        "code": "PRECONDITION_FAILED",
+        "message": "transition DISCONTINUED -> ACTIVE is not allowed"
+      }
+    }
+  }
+}
