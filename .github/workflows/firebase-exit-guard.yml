@@ -20,43 +20,22 @@ name: Firebase Exit Guard
 # See docs/architecture/firebase-exit-manifest.json for the IDENTITY_ONLY vs BUSINESS_RUNTIME
 # classification and docs/architecture/firebase-exit-ratchet.md for why this is a ratchet.
 #
-# Path-filtered: only runs when a change could plausibly move the fenced dependency sets --
-# the two scanned source trees, the baseline/manifest documents, the guard itself, or its tests.
-# A documentation-only ledger change elsewhere in docs/ does not trigger this workflow.
+# UNFILTERED ON PURPOSE (2026-10-11). This check is a REQUIRED status check on main (repository ruleset), and a required
+# check must report on every pull request: a paths filter would leave a docs-only PR waiting forever for a check that
+# never runs. The job is a few seconds of Node with no dependencies. It used to be path-filtered to the scanned trees,
+# the baseline, the manifest and the guard itself.
 
 on:
   pull_request:
-    paths:
-      - "field-ops-app-vite/src/**"
-      - "functions/src/**"
-      - "integrations/**"
-      - "docs/architecture/firebase-exit-baseline.json"
-      - "docs/architecture/firebase-exit-manifest.json"
-      - "scripts/firebaseExitGuard.mjs"
-      - "scripts/firebaseExitGuard.test.mjs"
-      - "scripts/firebaseShimBoundary.mjs"
-      - "scripts/firebaseShimBoundary.test.mjs"
-      - "docs/architecture/firebase-shim-consumer-census.json"
-      - ".github/workflows/firebase-exit-guard.yml"
   push:
     branches: [main]
-    paths:
-      - "field-ops-app-vite/src/**"
-      - "functions/src/**"
-      - "integrations/**"
-      - "docs/architecture/firebase-exit-baseline.json"
-      - "docs/architecture/firebase-exit-manifest.json"
-      - "scripts/firebaseExitGuard.mjs"
-      - "scripts/firebaseExitGuard.test.mjs"
-      - "scripts/firebaseShimBoundary.mjs"
-      - "scripts/firebaseShimBoundary.test.mjs"
-      - "docs/architecture/firebase-shim-consumer-census.json"
-      - ".github/workflows/firebase-exit-guard.yml"
   workflow_dispatch:
 
-# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+# Cancel a superseded PR validation. A push to main gets its OWN group (keyed by sha): GitHub keeps only one PENDING run
+# per group, so a shared main group lets a newer push silently replace an older queued run even with cancel-in-progress
+# false (same fix as firebase-capability-equivalence.yml).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
