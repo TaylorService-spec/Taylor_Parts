@@ -336,7 +336,7 @@ test("U13 review findings 5, 6, 13: IPv6 /64 buckets, explicit proxy hops, LRU e
   assert.equal(JSON.parse(busy.body).code, "TRY_LATER");
 });
 
-test("U14 the client-address measurement: unmounted by default, credential-gated, nonprod only, answers verdicts and never an address", async () => {
+test("U14 the client-address measurement: unmounted by default, credential-gated, nonprod only, answers verdicts and never an address", async (t) => {
   const { createServer } = await import("node:http");
   const { createHash } = await import("node:crypto");
   const D = require("../lib/eosAuth/clientIpDiagnostic.js");
@@ -372,6 +372,8 @@ test("U14 the client-address measurement: unmounted by default, credential-gated
     const handler = H.createEosAuthHttpHandler({ repo: {}, auth, environment: "nonprod" });
     const srv = createServer((req, res) => { handler(req, res); });
     await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+    // Closed even when an assertion below fails -- an open server keeps `node --test` running forever.
+    t.after(() => new Promise((r) => { srv.closeAllConnections?.(); srv.close(() => r()); }));
     return { srv, url: `http://127.0.0.1:${srv.address().port}${D.CLIENT_IP_DIAGNOSTIC_ROUTE}` };
   };
   const off = await serve({ verify: null, issuer: null, audience: null, personaIssuer: null, humanLogin: null });
