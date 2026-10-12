@@ -197,7 +197,7 @@ export async function startEosApi(
     /** Replaces only the Firebase half of the composite verifier (tests: a fake Firebase, no network). */
     readonly firebaseVerifyToken?: TokenVerifier;
     /** TEST ONLY: login-service overrides (a clock, cheaper scrypt, shorter lifetimes). */
-    readonly loginServiceOverrides?: Partial<Pick<LoginServiceDeps, "now" | "policy" | "passwordHashParameters">>;
+    readonly loginServiceOverrides?: Partial<Pick<LoginServiceDeps, "now" | "policy" | "passwordHashParameters" | "testHooks">>;
     /** TEST ONLY: the per-address login budget (every test request comes from one loopback address). */
     readonly loginRateLimit?: { readonly credentialPerMinute: number; readonly routinePerMinute: number };
   } = {},

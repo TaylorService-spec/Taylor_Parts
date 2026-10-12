@@ -551,7 +551,10 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     const s = (await login("carol@taylor.test", "the gardener sings at dawn")).body.session;
     assert.equal((await experience(s.accessToken)).status, 200);
     await q(`UPDATE eos_workforce.employees SET employment_status = 'TERMINATED' WHERE id = 'emp-carol'`);
-    assert.equal((await experience(s.accessToken)).status, 403, "resolution refuses, as for every transport");
+    // The SESSION GATE refuses first (residual R-A, Owner 2026-10-12): an ineligible Employee's EOS session stops being a
+    // session on the very next request (401). The Firebase path still answers 403 from resolution, as before.
+    assert.equal((await experience(s.accessToken)).status, 401, "the session gate refuses an ineligible Employee at once");
+    assert.equal((await post("/operations/experience", { operation: "resolveMyExperienceContext" }, bearer("fb-token.fb-carol"))).status, 403);
     assert.equal((await login("carol@taylor.test", "the gardener sings at dawn")).status, 401);
     assert.equal((await post("/auth/refresh", { refreshToken: s.refreshToken })).status, 401);
     const ev = await loginEvents((await accountOf(carol)).id);

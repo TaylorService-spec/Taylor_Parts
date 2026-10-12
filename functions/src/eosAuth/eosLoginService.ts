@@ -24,6 +24,7 @@ import { capabilityKeysFor } from "../adminPolicy/administrationCapabilityGate";
 import { EOS_IDENTITY_PROVIDER, PrincipalContextError, resolvePrincipalContext, resolvePrincipalContextById } from "../adminPolicy/principalContext";
 import { actorCapabilities, requireSecurityAdministrationCapability } from "../adminPolicy/administrationCapabilityGate";
 import { ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY } from "../adminPolicy/administrationAuthority";
+import { ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES } from "../adminPolicy/employmentAccessEligibility";
 import type { AdminActor } from "../adminPolicy/policyCommands";
 import { newTokenId, signEosAccessToken, EOS_TOKEN_MAX_LIFETIME_SECONDS, type EosSigner } from "./eosAccessToken";
 import {
@@ -156,6 +157,8 @@ export interface LoginServiceDeps {
   readonly passwordHashParameters?: ScryptParameters;
   /** Owner ruling D-12 (EOS_AUTH_MULTI_TENANT_SESSIONS). Off: a human login is single-tenant. */
   readonly multiTenantSessions?: boolean;
+  /** TEST ONLY: deterministic interleavings for the concurrency proofs. Never set by the server. */
+  readonly testHooks?: { readonly beforeTicketTransaction?: () => Promise<void> };
 }
 
 export interface IssuedLoginSession {
@@ -801,8 +804,10 @@ export class EosLoginService {
     // gained the Owner or Administrator Role or a membership in another tenant, or the issuer may have lost authority.
     // Re-run exactly the issue-time check against the issuer; if it no longer holds, the code dies unused. Done BEFORE the
     // transaction: it reads through the policy repository, and must not hold a pool connection while doing so.
+    let authoritySnapshot: string | null = null;
     if (!peek[0].consumed_at && !peek[0].revoked_at) {
       const capability = purpose === "enrollment" ? "admin.roleAssignment.write" : "admin.credentialReset.initiate";
+      authoritySnapshot = await this.authorityFingerprint(this.deps.pool, peek[0].principal_id);
       const lapsed = await this.targetAdministrable(peek[0].issued_by, peek[0].tenant_id, peek[0].principal_id, capability);
       if (lapsed) {
         await this.tx(async (c) => {
@@ -812,6 +817,8 @@ export class EosLoginService {
         });
         throw new LoginRefusal("TICKET_INVALID");
       }
+      // TEST ONLY: the window between the issuer re-check and the consuming transaction (residual R-B proof).
+      if (this.deps.testHooks?.beforeTicketTransaction) await this.deps.testHooks.beforeTicketTransaction();
     }
     const policy = passwordPolicyRefusal(input.password, peek[0].login_identifier);
     if (policy) throw new LoginRefusal("PASSWORD_POLICY", policy);
@@ -827,6 +834,15 @@ export class EosLoginService {
         return null;
       }
       const a = await this.accountById(c, t.account_id, true);
+      // RESIDUAL R-B (Owner 2026-10-12): the issuer re-check above ran OUTSIDE this transaction. Re-read the person's
+      // authority state here, on this connection, holding share locks on it: if a promotion, a membership or a Role
+      // change committed since, the decision above answered a different person -- refuse; the code stays open, a retry
+      // re-checks. A change that commits AFTER this read waits on the locks for existing rows; a brand-new row cannot be
+      // locked in advance, and that sub-millisecond window is the recorded residual.
+      if (a && authoritySnapshot !== null && (await this.authorityFingerprint(c, a.principal_id, true)) !== authoritySnapshot) {
+        await this.event(c, { event: eventName, outcome: "refused", reason: "TARGET_AUTHORITY_CHANGED", accountId: t.account_id, client: facts });
+        return null;
+      }
       const expected = purpose === "enrollment" ? "pending_enrollment" : "active";
       if (!a || a.status !== expected || a.binding_status !== "active") {
         await this.event(c, { event: eventName, outcome: "refused", reason: "ACCOUNT_NOT_ELIGIBLE", accountId: t.account_id, client: facts });
@@ -861,6 +877,12 @@ export class EosLoginService {
               s.tenant_id AS session_tenant_id,
               EXISTS (SELECT 1 FROM ${SCHEMA}.tenant_memberships m
                        WHERE m.principal_id = a.principal_id AND m.tenant_id = s.tenant_id AND m.status = 'active') AS session_tenant_member,
+              -- RESIDUAL R-A (Owner 2026-10-12): an ACTIVE Employee link IN THE SESSION'S TENANT to an access-eligible
+              -- Employee, on EVERY request -- unlinking or an ineligible status ends API reach at once, not at token expiry.
+              (SELECT count(*) FROM ${SCHEMA}.employee_principal_links l
+                 JOIN eos_workforce.employees e ON e.tenant_id = l.tenant_id AND e.id = l.employee_id
+                WHERE l.tenant_id = s.tenant_id AND l.principal_id = a.principal_id AND l.status = 'active'
+                  AND e.employment_status::text = ANY($2::text[])) AS eligible_employee_links,
               s.revoked_at AS session_revoked_at, s.idle_expires_at, s.absolute_expires_at, s.credential_version AS session_cv,
               EXISTS (SELECT 1 FROM ${SCHEMA}.login_mfa_factors f WHERE f.account_id = a.id AND f.status = 'active') AS has_factor,
               EXISTS (SELECT 1 FROM ${SCHEMA}.tenant_memberships m
@@ -868,13 +890,14 @@ export class EosLoginService {
          FROM ${SCHEMA}.login_sessions s
          JOIN ${SCHEMA}.login_accounts a ON a.id = s.account_id
          JOIN ${SCHEMA}.principal_identities pi ON pi.id = a.binding_id
-        WHERE s.id = $1`, [sessionId]);
+        WHERE s.id = $1`, [sessionId, ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES]);
     const r = rows[0];
     const now = this.now().getTime();
     if (!r || r.subject !== subject || r.session_revoked_at || r.status !== "active" || r.binding_status !== "active"
       || r.idle_expires_at.getTime() <= now || r.absolute_expires_at.getTime() <= now || r.credential_version !== r.session_cv
       // D-12: the session's OWN tenant membership, on every request -- revoking it ends the session's reach at once.
       || !r.session_tenant_member
+      || Number(r.eligible_employee_links) !== 1
       // Single-tenant mode (finding 1): a membership in another tenant appearing mid-session ends it too.
       || (!this.multiTenant && r.foreign_membership)) {
       throw new LoginRefusal("SESSION_INVALID");
@@ -939,12 +962,14 @@ export class EosLoginService {
       throw err;
     }
     const out = await this.tx(async (c): Promise<IssuedLoginSession | null> => {
+      // LOCK ORDER account -> session, the order every other writer uses (password change, disable, reset, retire take
+      // the account row and then update its sessions). The reverse order deadlocked against them (RESIDUAL R-C).
+      const fresh = await this.accountById(c, a.id, true);
+      if (!fresh || fresh.status !== "active" || fresh.credential_version !== a.credential_version) return null;
       const { rows } = await c.query(`SELECT revoked_at, tenant_id FROM ${SCHEMA}.login_sessions WHERE id = $1 FOR UPDATE`, [a.session_id]);
       if (!rows[0] || rows[0].revoked_at || rows[0].tenant_id !== a.session_tenant_id) return null;
       const now = this.now();
       await c.query(`UPDATE ${SCHEMA}.login_sessions SET revoked_at = $2, revoke_reason = 'TENANT_SWITCH' WHERE id = $1`, [a.session_id, now]);
-      const fresh = await this.accountById(c, a.id, true);
-      if (!fresh || fresh.status !== "active" || fresh.credential_version !== a.credential_version) return null;
       const session = await this.openSession(c, fresh, a.mfa_verified, facts, target);
       const detail = { fromTenantId: a.session_tenant_id, toTenantId: target, fromSessionId: a.session_id, toSessionId: session.sessionId };
       // Audited in BOTH tenants: the one left and the one entered.
@@ -1275,6 +1300,18 @@ export class EosLoginService {
     if (refusal === "PROTECTED_TARGET") throw new LoginRefusal("PROTECTED_TARGET", "only an Owner may administer the login of an Owner or Administrator");
     if (refusal) throw new LoginRefusal("FORBIDDEN", "TARGET_NOT_ADMINISTRABLE: you are not authorized to administer this person's login");
     return { principalId: id, reason: r };
+  }
+
+  /**
+   * The person's authority state as one digest: every membership (tenant, status), every Role assignment (tenant, Role,
+   * status, scope) and every access version. `lock` takes FOR SHARE on the existing rows, inside a transaction.
+   */
+  private async authorityFingerprint(q: Pick<PoolClient, "query"> | Pool, principalId: string, lock = false): Promise<string> {
+    const share = lock ? " FOR SHARE" : "";
+    const { rows: m } = await q.query(`SELECT tenant_id, status::text FROM ${SCHEMA}.tenant_memberships WHERE principal_id = $1 ORDER BY tenant_id${share}`, [principalId]);
+    const { rows: r } = await q.query(`SELECT id, tenant_id, role_id, status::text, scope_type, scope_value FROM ${SCHEMA}.user_role_assignments WHERE principal_id = $1 ORDER BY id${share}`, [principalId]);
+    const { rows: v } = await q.query(`SELECT tenant_id, access_version FROM ${SCHEMA}.principal_access_versions WHERE principal_id = $1 ORDER BY tenant_id${share}`, [principalId]);
+    return createHash("sha256").update(JSON.stringify([m, r, v])).digest("hex");
   }
 
   /**

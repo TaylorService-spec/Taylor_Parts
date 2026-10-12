@@ -142,11 +142,20 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
   await enrol(xia, B, "technician", null);
 
   // R1 deliberately PROMOTES uma and ENROLS uma2 in B (the scenarios it proves); every other Role assignment must not move.
+  // Residual-risk fixtures (Owner 2026-10-12): yan (unlink proof), zed (promotion-race proof), ula (lock-order proof).
+  const yan = await principal("fb-yan", "yan");
+  const yanEmp = await enrol(yan, A, "technician", "ACTIVE");
+  const zed = await principal("fb-zed", "zed");
+  await enrol(zed, A, "technician", "ACTIVE");
+  const ula = await principal("fb-ula", "ula");
+  await enrol(ula, A, "technician", "ACTIVE");
+  await enrol(ula, B, "technician", "ACTIVE");
+
   const authorityDigest = async (tenantId) => (await q(`SELECT
       (SELECT md5(string_agg(id || principal_id || role_id || status::text, ',' ORDER BY id)) FROM eos_policy.user_role_assignments
-        WHERE tenant_id = $1 AND principal_id NOT IN ($2, $3)) ura,
+        WHERE tenant_id = $1 AND principal_id NOT IN ($2, $3, $4)) ura,
       (SELECT md5(coalesce(string_agg(role_id || capability_id, ',' ORDER BY role_id, capability_id), '')) FROM eos_policy.role_capabilities WHERE tenant_id = $1) rc,
-      (SELECT count(*)::int FROM eos_policy.principal_capabilities WHERE tenant_id = $1) pc`, [tenantId, uma, uma2])).rows[0];
+      (SELECT count(*)::int FROM eos_policy.principal_capabilities WHERE tenant_id = $1) pc`, [tenantId, uma, uma2, zed])).rows[0];
   const authorityBefore = { A: await authorityDigest(A), B: await authorityDigest(B) };
 
   // ════════════════════ the service: multi-tenant sessions ENABLED ════════════════════
@@ -173,11 +182,11 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
   const orig = { log: console.log, error: console.error, warn: console.warn };
   for (const k of ["log", "error", "warn"]) console[k] = (...a) => { captured.push(a.map(String).join(" ")); };
   t.after(() => Object.assign(console, orig));
-  const start = async (env) => {
+  const start = async (env, overrides = {}) => {
     const svc = await startEosApi({
       config: { port: 0, environment: "nonprod", allowedOrigins: [ORIGIN], identityProvider: "firebase", eosAuth: readEosAuthConfig(env, "nonprod") },
       firebaseVerifyToken: fakeFirebase,
-      loginServiceOverrides: { passwordHashParameters: { N: 2 ** 14, r: 8, p: 1 } },
+      loginServiceOverrides: { passwordHashParameters: { N: 2 ** 14, r: 8, p: 1 }, ...overrides },
       loginRateLimit: { credentialPerMinute: 10_000, routinePerMinute: 10_000 },
     });
     return svc;
@@ -594,6 +603,66 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
       await q(`DROP FUNCTION eos_policy.tenancy_proof_fail2()`);
     }
     assert.equal((await experience(s.accessToken)).status, 401);
+  });
+
+  // ════════════════════ X1-X3: the residual risks (Owner 2026-10-12), each closed ════════════════════
+
+  await t.test("X1 (residual R-A) unlinking the Employee ends API reach on the NEXT request, not at token expiry", async () => {
+    await provisionEnrolled(yan, "yan@tenancy.test", "a meadow at first light");
+    const s = (await login("yan@tenancy.test", "a meadow at first light", A)).body.session;
+    assert.equal((await experience(s.accessToken)).status, 200);
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE principal_id = $1 AND tenant_id = $2`, [yan, A]);
+    assert.equal((await experience(s.accessToken)).status, 401, "the very next request, with an unexpired token");
+    assert.equal((await post("/auth/account", {}, bearer(s.accessToken))).status, 401);
+    // And an ineligible status (link intact) is refused the same way, at the gate.
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'active' WHERE principal_id = $1 AND tenant_id = $2`, [yan, A]);
+    const s2 = (await login("yan@tenancy.test", "a meadow at first light", A)).body.session;
+    await q(`UPDATE eos_workforce.employees SET employment_status = 'TERMINATED' WHERE id = $1`, [yanEmp]);
+    assert.equal((await experience(s2.accessToken)).status, 401);
+  });
+
+  await t.test("X2 (residual R-B) a promotion committed between the issuer re-check and the consuming transaction refuses the code", async () => {
+    const adminRole = await repo.getRoleByKey(A, "admin");
+    let promoteOnce = null;
+    // DETERMINISTIC: the hook runs exactly in the window -- after the issuer re-check passed (zed was a technician),
+    // before the consuming transaction -- and an Owner promotes zed to Administrator there.
+    const hooked = await start(authEnv, { testHooks: { beforeTicketTransaction: async () => { const f = promoteOnce; promoteOnce = null; if (f) await f(); } } });
+    extra.push(hooked);
+    const at = `http://127.0.0.1:${hooked.port}`;
+    const p = await asFb("fb-admin-a", "provisionLoginAccount", { principalId: zed, loginIdentifier: "zed@tenancy.test", reason: "zed" });
+    assert.equal(p.status, 200, JSON.stringify(p.body));
+    secrets.push(p.body.data.enrollmentTicket, "a quiet harbour at dusk");
+    promoteOnce = () => repo.transact({ tenantId: A, uid: "tenancy-fixture" }, async (tx) => {
+      const v = await tx.bumpAccessVersion(zed);
+      await tx.createAssignment({ principalId: zed, roleId: adminRole.id, scopeType: "global", scopeValue: null, status: "active",
+        grantedBy: "tenancy-fixture", grantedAt: new Date(Date.now() - 1000).toISOString(), accessVersionAtGrant: v });
+    });
+    const r = await post("/auth/enrollment/complete", { ticket: p.body.data.enrollmentTicket, password: "a quiet harbour at dusk" }, {}, at);
+    assert.equal(r.status, 410, "the Administrator's code does not complete for a person who is now an Administrator");
+    assert.equal(promoteOnce, null, "the promotion really ran in the window");
+    const acct = (await q(`SELECT id, status FROM eos_policy.login_accounts WHERE principal_id = $1 AND status <> 'retired'`, [zed])).rows[0];
+    assert.equal(acct.status, "pending_enrollment");
+    assert.ok((await events("account_id = $1 AND reason_code = 'TARGET_AUTHORITY_CHANGED'", [acct.id])).length === 1);
+    // A retry is re-checked from scratch, and now the issuer (an Administrator) is refused outright.
+    const retry = await post("/auth/enrollment/complete", { ticket: p.body.data.enrollmentTicket, password: "a quiet harbour at dusk" }, {}, at);
+    assert.equal(retry.status, 410);
+    assert.ok((await events("account_id = $1 AND reason_code = 'TICKET_ISSUER_AUTHORITY_LAPSED'", [acct.id])).length === 1);
+  });
+
+  await t.test("X3 (residual R-C) concurrent tenant switches and administrative disables never deadlock (no 500s)", async () => {
+    await provisionEnrolled(ula, "ula@tenancy.test", "an orchard in the rain");
+    for (let i = 0; i < 6; i += 1) {
+      const s = (await login("ula@tenancy.test", "an orchard in the rain", A)).body.session;
+      const [sw, dis] = await Promise.all([
+        post("/auth/session/switch-tenant", { tenantId: B }, bearer(s.accessToken)),
+        asFb("fb-owner-ab", "setLoginAccountStatus", { principalId: ula, status: "disabled", reason: `race ${i}` }, { "x-eos-tenant": A }),
+      ]);
+      assert.ok(sw.status !== 500 && dis.status !== 500, `round ${i}: switch ${sw.status}, disable ${dis.status}`);
+      assert.equal(dis.status, 200);
+      // Whatever the order, after the disable commits NO session of ula reaches the API.
+      if (sw.status === 200) assert.equal((await experience(sw.body.session.accessToken)).status, 401);
+      assert.equal((await asFb("fb-owner-ab", "setLoginAccountStatus", { principalId: ula, status: "active", reason: `restore ${i}` }, { "x-eos-tenant": A })).status, 200);
+    }
   });
 
   await t.test("M15 nothing secret at rest or in logs; authority in BOTH tenants unchanged", async () => {

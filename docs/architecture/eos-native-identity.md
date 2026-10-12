@@ -419,12 +419,15 @@ A fresh reviewer with no authoring context reviewed the D-12/D-13 head. **No CRI
 - **N1 (LOW, multi-tenant mode only).** A refusal for a tenant the person isn't a member of was recorded in that tenant, and a non-existent id answered 500. Now it is recorded in the home tenant and answers 401 (M3).
 - **N2 (INFO).** `totp/begin` now uses the credential rate-limit budget.
 
-Accepted residuals:
-- **Promotion race (~100 ms).** A code's issuer re-check runs before the password hash, so a promotion that commits in that window still passes.
-- **Employee link removed mid-session.** After a link is removed, API access continues until the access token expires (≤ 300 s). The next refresh refuses it, and status changes are enforced per request by DQ-007.
-- **Provisioning refusal messages.** These say *whether* a login or membership exists elsewhere, but never where.
+**Residual risks: Owner disposition 2026-10-12** (each closed or bounded, with its proof):
 
-**Operational consequence of finding 3 (intended).** If a person holds a membership in another tenant, even a suspended one, then only an actor holding the authority in *every* such tenant can administer that person's login. The other tenant must remove the membership, or a dual-tenant Owner must act.
+| Residual | Disposition |
+|---|---|
+| **R-A, Employee unlink → revocation delay** (was up to 5 min) | **Closed.** The per-request session gate requires exactly one *active* Employee link, in the **session's tenant**, to an access-eligible Employee. Unlinking or an ineligible status ends API reach on the **next request** (X1; L18 now answers 401 at the gate). |
+| **R-B, setup/reset code use during privilege promotion** (was ~100 ms) | **Closed** for any change to existing rows, and bounded for new rows. The person's authority state (memberships, Role assignments, access versions) is fingerprinted at the issuer re-check and re-read **inside** the consuming transaction under `FOR SHARE`. A promotion, membership or Role change committed in between refuses the code (`TARGET_AUTHORITY_CHANGED`); a retry re-checks from scratch (X2, deterministic hook). Changes to existing rows block on the share locks until the transaction ends. Residual: a brand-new row inserted in the microseconds after the in-transaction read. |
+| **Cross-tenant administrative authority** | **Closed** (R1–R3). Checked in every tenant the person can enter, from the actor's *resolved* authority, at issue **and** at use. |
+| **Suspended tenant memberships** | **Counted** (R2). A suspended membership elsewhere blocks home-tenant administration of that login until the other tenant removes it, or an actor authorised in both acts. Proposed follow-up for a later ruling: an explicit "release this person's login to their home tenant" act in the other tenant's Administration. |
+| **R-C, concurrent session and tenant-switch operations** | **Closed.** The switch took session → account locks, the reverse of password change, disable, reset and retire (account → sessions), which could deadlock and answer 500. It now takes account → session. Six concurrent switch + disable rounds give no 500, and no session survives a disable (X3). Already serialised: refresh vs refresh (S3), switch vs switch (M5), refresh vs switch (the session row lock). |
 
 ## 9. Nonproduction infrastructure assessment (no live change made)
 
