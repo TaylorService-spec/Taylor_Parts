@@ -522,11 +522,18 @@ export async function executeAdminOperation<T = unknown>(
       return { ok: true, operation, tenantId: context.tenantId, data: data as T };
     }
     // ════════════════════ THE MANDATORY PREVIEW (PR 4) ════════════════════
-    // One of the nine authority changes WITH a previewDigest, or ANY of them while the flag is ON, commits through the
-    // engine. Flag OFF and no digest: this branch is skipped and dispatch runs the command exactly as before.
-    if (isAuthorityChangeOperation(operation) && (deps.previewMandatory === true || input.previewDigest !== undefined)) {
-      const data = await commitPreviewedAuthorityChange(deps, actor, operation, input, reason);
-      return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+    // Flag ON: every one of the nine commits through the engine. Flag OFF: a supplied previewDigest is IGNORED and
+    // stripped, and dispatch runs the command exactly as before (authorityChangeCommitPort.ts, THE FLAG).
+    if (isAuthorityChangeOperation(operation)) {
+      if (deps.previewMandatory === true) {
+        const data = await commitPreviewedAuthorityChange(deps, actor, operation, input, reason);
+        return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+      }
+      if ("previewDigest" in input) {
+        const { previewDigest: _ignored, ...today } = input;
+        const data = await dispatch(repo, actor, operation, today, reason);
+        return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+      }
     }
     if (!isMutation(operation)) await requireAdminReadAuthority(repo, actor, operation as AdminReadOperation | AdminMutationOperation);
     const data = operation === "explainEffectiveAccess"
@@ -710,7 +717,8 @@ async function previewAuthorityChange(
       message: messageFor(result.error),
     }
     : null;
-  return { outcome: result.outcome, refusal, busy: result.busy, ...result.report };
+  // previewMandatory (PR 4): whether a commit of this change must present digests.previewDigest on THIS server.
+  return { outcome: result.outcome, refusal, busy: result.busy, previewMandatory: deps.previewMandatory === true, ...result.report };
 }
 
 /**

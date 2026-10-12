@@ -7,10 +7,15 @@
 //   ADMIN_PREVIEW_MANDATORY   exactly "true" turns it ON; anything else (absent, "false", "1", "yes") is OFF. OFF in every
 //                             environment by default; the Owner turns it on.
 //
-//   OFF, no previewDigest     the nine commands commit EXACTLY as before (dispatch -> the command; nothing here runs).
-//   OFF, previewDigest given  the digest IS verified (the commit runs through the engine; STALE_PREVIEW on mismatch).
-//                             A client that previewed is asking for THE previewed change; silently committing a different
-//                             one would make the preview a lie. Opt-in, so it changes nothing for a client that sends none.
+//   OFF                       the nine commands commit EXACTLY as before: a previewDigest the client sends (any value,
+//                             null and "" included) is IGNORED and stripped, the engine never runs, nothing is marked.
+//                             OFF is the real rollback lever: no two-pass commit, no lock budget, no STALE_PREVIEW.
+//                             (Review follow-up 1: an earlier draft verified a supplied digest even when OFF; with the
+//                             Admin UI always previewing, that meant OFF never turned the engine off.)
+//   CLIENT                    previewAuthorityChange answers `previewMandatory` (this flag), so the Admin UI sends the
+//                             digest only when it is required. When the preview itself is unavailable the UI lets the
+//                             change through WITHOUT a digest: an OFF server commits as today, an ON server refuses
+//                             PREVIEW_REQUIRED -- the refusal is the signal, so no further read operation is needed.
 //   ON                        every one of the nine requires previewDigest: absent -> PREVIEW_REQUIRED, malformed ->
 //                             PREVIEW_INVALID, moved -> STALE_PREVIEW. Nothing is written and nothing is audited on any of
 //                             them.
@@ -33,8 +38,12 @@
 // In-process runners that call the commands DIRECTLY (never through the Administration transport) are not reachable by
 // the flag: they are code-reviewed manifests, run by an operator. Each one wraps its repository in
 // `machineAppliedRepository(repo, manifest)`, so every audit row it writes says MACHINE_APPLIED with the manifest's
-// digest. The exact set of such callers is pinned (test/authorityPreviewMandatoryCarveOut.test.mjs): a new direct
-// caller fails CI until it is reviewed into the list. Previewing them is a follow-up.
+// digest. The set of such callers is pinned (test/authorityPreviewMandatoryCarveOut.test.mjs) as a TRIPWIRE -- a source
+// scan, not a proof -- so a new direct caller fails CI until it is reviewed into the list.
+//
+// DEVIATION FROM DESIGN §3.3 (tracked follow-up for the Owner): these runners are AUDITED (MACHINE_APPLIED + manifest
+// digest) but NOT PREVIEWED. Converting them to "preview each change, then commit with the self-computed digest" is
+// listed as a follow-up and is not done in this PR.
 import { createHash } from "node:crypto";
 import type { AdminActor } from "./policyCommands";
 import type { PolicyRepository } from "./policyRepository";

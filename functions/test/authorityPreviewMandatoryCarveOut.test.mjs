@@ -3,7 +3,8 @@
 // The nine authority-changing commands may be VALUE-imported only by the Administration API (which routes them through
 // the mandatory preview) and by the code-reviewed machine runners listed here, each of which must hand the command a
 // machineAppliedRepository (audit MACHINE_APPLIED + manifest digest). A new direct caller fails this test until it is
-// reviewed into the list -- and previewing these runners is a listed follow-up.
+// reviewed into the list. This is a TRIPWIRE over source text, not an allow-list proof (see commandImports).
+// DEVIATION FROM DESIGN §3.3, tracked for the Owner: the runners are AUDITED, not PREVIEWED (follow-up).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -41,25 +42,47 @@ function* sources(dir) {
   }
 }
 
-/** Names VALUE-imported from policyCommands (ES import, not `import type`, or a destructuring require). */
+const MODULE = String.raw`["'][^"']*policyCommands(?:\.js)?["']`;
+const WHOLE = "*";
+
+/**
+ * What a file takes from policyCommands: the named VALUE imports, or WHOLE ("*") when it takes the module itself -- a
+ * namespace import, a default import, a whole-module require, a re-export, a dynamic import -- which reaches all nine.
+ * `import type` is ignored. A TRIPWIRE over source text (no type checker): it catches the shapes this repository uses
+ * and every shape listed in the scanner test; it is not a proof that no other route exists.
+ */
 function commandImports(text) {
   const names = new Set();
-  for (const m of text.matchAll(/import\s+(type\s+)?\{([^}]*)\}\s+from\s+["'][^"']*policyCommands(?:\.js)?["']/g)) {
-    if (m[1]) continue;
-    for (const part of m[2].split(",")) {
+  const take = (list) => {
+    for (const part of list.split(",")) {
       const p = part.trim();
       if (!p || p.startsWith("type ")) continue;
-      names.add(p.split(/\s+as\s+/)[0].trim());
+      names.add(p.split(/\s+as\s+|\s*:\s*/)[0].trim());
     }
+  };
+  for (const m of text.matchAll(new RegExp(String.raw`import\s+(type\s+)?([^;]*?)\s+from\s+${MODULE}`, "g"))) {
+    if (m[1]) continue;
+    const clause = m[2];
+    const braces = clause.match(/\{([^}]*)\}/);
+    if (braces) take(braces[1]);
+    if (/\*\s+as\s+\w+/.test(clause) || /^\s*\w+\s*(,|$)/.test(clause)) names.add(WHOLE);
   }
-  for (const m of text.matchAll(/\{([^}]*)\}\s*=\s*require\(\s*["'][^"']*policyCommands(?:\.js)?["']\s*\)/g)) {
-    for (const part of m[1].split(",")) names.add(part.split(":")[0].trim());
+  for (const m of text.matchAll(new RegExp(String.raw`export\s+(type\s+)?(\*|\{[^}]*\})\s*(?:as\s+\w+\s*)?from\s+${MODULE}`, "g"))) {
+    if (m[1]) continue;
+    if (m[2] === "*") names.add(WHOLE); else take(m[2].slice(1, -1));
   }
-  for (const m of text.matchAll(/require\(\s*["'][^"']*policyCommands(?:\.js)?["']\s*\)\s*\.\s*(\w+)/g)) names.add(m[1]);
-  return [...names].filter((n) => NINE.includes(n));
+  for (const m of text.matchAll(new RegExp(String.raw`(\{[^}]*\}\s*=\s*)?(?:await\s+)?\b(require|import)\(\s*${MODULE}\s*\)(\s*\.\s*(\w+))?`, "g"))) {
+    if (m[1]) take(m[1].replace(/=\s*$/, "").trim().slice(1, -1));
+    else if (m[4]) names.add(m[4]);
+    else names.add(WHOLE);
+  }
+  return [...names].filter((n) => n === WHOLE || NINE.includes(n));
 }
 
-test("CARVE-OUT PIN: only the Administration API and the reviewed machine runners call the nine commands directly", () => {
+/** The receivers a carved-out runner may hand a command: the MACHINE_APPLIED repository, nothing else. */
+const MACHINE_RECEIVER = /^(machineRepo|machineAppliedRepository\([\s\S]*)$/;
+
+test("CARVE-OUT TRIPWIRE: only the Administration API and the reviewed machine runners take the nine commands", () => {
   const found = {};
   for (const root of [join(FUNCTIONS, "src"), join(FUNCTIONS, "scripts"), join(REPO, "scripts")]) {
     let ok = true;
@@ -74,13 +97,37 @@ test("CARVE-OUT PIN: only the Administration API and the reviewed machine runner
     `direct callers of the nine authority commands changed: ${JSON.stringify(found)}`);
   for (const file of Object.keys(DIRECT_CALLERS)) {
     if (file.endsWith("adminPolicyApi.ts")) continue;
+    assert.equal(found[file].includes(WHOLE), false, `${file} must import the commands by name, never the whole module`);
     const text = readFileSync(join(REPO, file), "utf8");
     assert.match(text, /machineAppliedRepository\(/, `${file} must run the commands through machineAppliedRepository`);
     for (const name of found[file]) {
-      const bare = new RegExp(`\\b${name}\\(\\s*repo\\s*,`);
-      assert.doesNotMatch(text, bare, `${file} calls ${name}(repo, ...) without the MACHINE_APPLIED repository`);
+      let calls = 0;
+      for (const m of text.matchAll(new RegExp(String.raw`\b${name}\(\s*([^,]+?)\s*,`, "g"))) {
+        calls += 1;
+        assert.match(m[1], MACHINE_RECEIVER, `${file} calls ${name}(${m[1]}, ...) -- only the MACHINE_APPLIED repository may receive it`);
+      }
+      assert.ok(calls > 0, `${file} imports ${name} but no call was recognised (the tripwire cannot see it)`);
     }
   }
+});
+
+test("CARVE-OUT TRIPWIRE: the scanner recognises every way of taking the module", () => {
+  const cases = {
+    'import { assignRole } from "./policyCommands";': ["assignRole"],
+    'import { assignRole as a, type AdminActor } from "../adminPolicy/policyCommands";': ["assignRole"],
+    'import type { AdminActor } from "./policyCommands";': [],
+    'import * as commands from "./policyCommands";': [WHOLE],
+    'import commands from "./policyCommands.js";': [WHOLE],
+    'const { revokeRole } = require("../lib/adminPolicy/policyCommands.js");': ["revokeRole"],
+    'const { revokeRole: r } = require("../lib/adminPolicy/policyCommands.js");': ["revokeRole"],
+    'const c = require("../lib/adminPolicy/policyCommands.js");': [WHOLE],
+    'const g = require("./policyCommands").grantObjectActionToRole;': ["grantObjectActionToRole"],
+    'export * from "./policyCommands";': [WHOLE],
+    'export { setGrantCondition } from "./policyCommands";': ["setGrantCondition"],
+    'const m = await import("./policyCommands.js");': [WHOLE],
+    'import { createRole } from "./policyCommands";': [],
+  };
+  for (const [text, expected] of Object.entries(cases)) assert.deepEqual(commandImports(text).sort(), expected, text);
 });
 
 test("FLAG: ADMIN_PREVIEW_MANDATORY is ON only for the exact value \"true\"; absent is OFF", () => {
