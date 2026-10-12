@@ -336,7 +336,7 @@ test("U13 review findings 5, 6, 13: IPv6 /64 buckets, explicit proxy hops, LRU e
   assert.equal(JSON.parse(busy.body).code, "TRY_LATER");
 });
 
-test("U14 the client-address measurement: unmounted by default, credential-gated, nonprod only, echoes address facts only", async () => {
+test("U14 the client-address measurement: unmounted by default, credential-gated, nonprod only, answers verdicts and never an address", async () => {
   const { createServer } = await import("node:http");
   const { createHash } = await import("node:crypto");
   const D = require("../lib/eosAuth/clientIpDiagnostic.js");
@@ -349,12 +349,20 @@ test("U14 the client-address measurement: unmounted by default, credential-gated
   assert.throws(() => readEosAuthConfig({ ...base, EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256: sha }, "production"), /EOS_ENVIRONMENT=nonprod|nonprod only/);
   assert.equal(readEosAuthConfig({ ...base, EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256: sha }, "nonprod").clientIpDiagnosticSha256, sha);
   // Pure candidates: the Nth-from-right hop, the edge headers, the socket fallback.
-  const c = D.clientAddressCandidates({ "x-forwarded-for": "6.6.6.6, 203.0.113.9, 10.1.1.1", "true-client-ip": "203.0.113.9", cookie: "secret" }, "10.9.9.9");
+  const h = { "x-forwarded-for": "6.6.6.6, 203.0.113.9, 10.1.1.1", "true-client-ip": "203.0.113.9", cookie: "secret" };
+  const c = D.clientAddressCandidates(h, "10.9.9.9");
   assert.equal(c.delivered.xForwardedForEntries, 3);
   assert.equal(c.wouldResolve["EOS_AUTH_TRUSTED_PROXY_HOPS=2"], "203.0.113.9");
   assert.equal(c.wouldResolve["EOS_AUTH_CLIENT_IP_HEADER=true-client-ip"], "203.0.113.9");
   assert.equal(c.wouldResolve["EOS_AUTH_CLIENT_IP_HEADER=cf-connecting-ip"], "10.9.9.9");
-  assert.ok(!JSON.stringify(c).includes("secret"), "no other header is echoed");
+  // Verdicts: booleans, counts and positions -- no address, no header value.
+  const v = D.clientAddressVerdicts(h, "::ffff:10.9.9.9", "203.0.113.9");
+  assert.deepEqual(v.delivered, { xForwardedForEntries: 3, xForwardedForPositionsFromRightHoldingExpected: [2], trueClientIpPresent: true, cfConnectingIpPresent: false, socketIsExpected: false });
+  assert.equal(v.resolvesToExpected["EOS_AUTH_CLIENT_IP_HEADER=true-client-ip"], true);
+  assert.equal(v.resolvesToExpected["EOS_AUTH_TRUSTED_PROXY_HOPS=2"], true);
+  assert.equal(v.resolvesToExpected["EOS_AUTH_TRUSTED_PROXY_HOPS=3"], false, "the forgeable left entry is not the client");
+  assert.equal(D.clientAddressVerdicts({}, "::ffff:198.51.100.7", "198.51.100.7").delivered.socketIsExpected, true, "IPv4-mapped socket address");
+  for (const leak of ["203.0.113.9", "6.6.6.6", "10.1.1.1", "10.9.9.9", "secret"]) assert.ok(!JSON.stringify(v).includes(leak), `verdicts carry no ${leak}`);
   // Mounted through the real /auth/* handler only when configured.
   const serve = async (auth) => {
     const handler = H.createEosAuthHttpHandler({ repo: {}, auth, environment: "nonprod" });
@@ -366,13 +374,19 @@ test("U14 the client-address measurement: unmounted by default, credential-gated
   assert.equal((await fetch(off.url, { method: "POST" })).status, 404);
   off.srv.close();
   const on = await serve({ verify: null, issuer: null, audience: null, personaIssuer: null, humanLogin: null, clientIpDiagnosticSha256: sha });
+  const auth = { [D.CLIENT_IP_DIAGNOSTIC_HEADER]: credential };
   assert.equal((await fetch(on.url, { method: "POST" })).status, 401);
   assert.equal((await fetch(on.url, { method: "POST", headers: { [D.CLIENT_IP_DIAGNOSTIC_HEADER]: "x".repeat(43) } })).status, 401);
-  const r = await fetch(on.url, { method: "POST", headers: { [D.CLIENT_IP_DIAGNOSTIC_HEADER]: credential, "x-forwarded-for": "198.51.100.1", cookie: "__Host-eos_refresh=eosrt_x" } });
+  assert.equal((await fetch(on.url, { method: "POST", headers: auth })).status, 400, "the expected address is required");
+  assert.equal((await fetch(on.url, { method: "POST", headers: auth, body: JSON.stringify({ expected: "not-an-ip" }) })).status, 400);
+  assert.equal((await fetch(on.url, { method: "POST", headers: auth, body: "x".repeat(9 * 1024) })).status, 413, "the body is capped");
+  const r = await fetch(on.url, { method: "POST", headers: { ...auth, "x-forwarded-for": "192.0.2.1, 198.51.100.1", cookie: "__Host-eos_refresh=eosrt_x" }, body: JSON.stringify({ expected: "198.51.100.1" }) });
   assert.equal(r.status, 200);
-  const body = await r.json();
-  assert.equal(body.delivered.xForwardedFor, "198.51.100.1");
-  assert.ok(!JSON.stringify(body).includes("eosrt_"), "the cookie is never echoed");
+  const text = await r.text();
+  const body = JSON.parse(text);
+  assert.equal(body.resolvesToExpected["EOS_AUTH_TRUSTED_PROXY_HOPS=1"], true);
+  assert.equal(body.resolvesToExpected["EOS_AUTH_CLIENT_IP_HEADER=true-client-ip"], false, "absent header -> socket, which is not the expected address");
+  for (const leak of ["198.51.100.1", "192.0.2.1", "127.0.0.1", "eosrt_", credential]) assert.ok(!text.includes(leak), `the response carries no ${leak}`);
   assert.equal(r.headers.get("cache-control"), "no-store");
   on.srv.close();
 });

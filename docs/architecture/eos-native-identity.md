@@ -424,10 +424,10 @@ A fresh reviewer with no authoring context reviewed the D-12/D-13 head. **No CRI
 | Residual | Disposition |
 |---|---|
 | **R-A, Employee unlink → revocation delay** (was up to 5 min) | **Closed.** The per-request session gate requires exactly one *active* Employee link, in the **session's tenant**, to an access-eligible Employee. Unlinking or an ineligible status ends API reach on the **next request** (X1; L18 now answers 401 at the gate). |
-| **R-B, setup/reset code use during privilege promotion** (was ~100 ms) | **Closed** for any change to existing rows, and bounded for new rows. The person's authority state (memberships, Role assignments, access versions) is fingerprinted at the issuer re-check and re-read **inside** the consuming transaction under `FOR SHARE`. A promotion, membership or Role change committed in between refuses the code (`TARGET_AUTHORITY_CHANGED`); a retry re-checks from scratch (X2, deterministic hook). Changes to existing rows block on the share locks until the transaction ends. Residual: a brand-new row inserted in the microseconds after the in-transaction read. |
+| **R-B, setup/reset code use during privilege promotion** (was ~100 ms) | **Closed** for any change to existing rows, and bounded for new rows. The password is hashed **before** the issuer re-check, so no scrypt sits in the window (review F2). The authority state of **both** the issuer and the target (Principal status, memberships and their tenants, Role assignments, the capabilities granted to those Roles, Employee links with employment status, access versions) is fingerprinted at the re-check and re-read **inside** the consuming transaction under `FOR SHARE`. A change committed in between refuses the code (`ISSUER_AUTHORITY_CHANGED` / `TARGET_AUTHORITY_CHANGED`); the code stays open and a retry re-checks from scratch (X2 target promotion, X4 issuer terminated; deterministic hook). Changes to existing rows block on the share locks until the transaction ends. Residual: a brand-new row inserted in the microseconds after the in-transaction read. |
 | **Cross-tenant administrative authority** | **Closed** (R1–R3). Checked in every tenant the person can enter, from the actor's *resolved* authority, at issue **and** at use. |
 | **Suspended tenant memberships** | **Counted** (R2). A suspended membership elsewhere blocks home-tenant administration of that login until the other tenant removes it, or an actor authorised in both acts. Proposed follow-up for a later ruling: an explicit "release this person's login to their home tenant" act in the other tenant's Administration. |
-| **R-C, concurrent session and tenant-switch operations** | **Closed.** The switch took session → account locks, the reverse of password change, disable, reset and retire (account → sessions), which could deadlock and answer 500. It now takes account → session. Six concurrent switch + disable rounds give no 500, and no session survives a disable (X3). Already serialised: refresh vs refresh (S3), switch vs switch (M5), refresh vs switch (the session row lock). |
+| **R-C, concurrent session, tenant-switch and code operations** | **Closed.** Every transaction that locks both an account and its sessions or codes takes the **account first**. The switch took session → account (fixed: X3, six switch + disable rounds, no 500). Using a setup/reset code took ticket → account against disable, retire and reissue (account → tickets): a real deadlock answering 500, found by the independent review of the final head (F1) and fixed (X5, deterministic: fails with 500 on the old order). refresh, logout and session revocation lock only the session and never the account afterwards, so they form no cycle. Already serialised: refresh vs refresh (S3), switch vs switch (M5). |
 
 ## 9. Nonproduction infrastructure assessment (no live change made)
 
@@ -439,7 +439,7 @@ A fresh reviewer with no authoring context reviewed the D-12/D-13 head. **No CRI
 
 | Host | Serves | DNS | Platform step |
 |---|---|---|---|
-| `app.<eos-domain>` | the Vite app | `CNAME → cname.vercel-dns.com` | add the domain to the Vercel project |
+| `app.<eos-domain>` | the Vite app | `CNAME →` the project-specific Vercel target | add the domain to the Vercel project |
 | `api.<eos-domain>` | the EOS API | `CNAME → eos-api-nonprod.onrender.com` | add a custom domain to the Render service (Render issues the certificate) |
 
 Then:
@@ -460,48 +460,68 @@ The cookie stays `__Host-` (host-only, on `api.`). The browser treats the two ho
 - **Conclusion:** a fixed `EOS_AUTH_TRUSTED_PROXY_HOPS` value cannot be justified from documentation. This branch adds `EOS_AUTH_CLIENT_IP_HEADER` (`true-client-ip` | `cf-connecting-ip`), which takes precedence when the edge sets it (U13).
 - **Recommended:** `EOS_AUTH_CLIENT_IP_HEADER=true-client-ip`. Keep `EOS_AUTH_TRUSTED_PROXY_HOPS` only as a fallback, set **after** one authorised measurement on nonprod: log the raw `X-Forwarded-For`, `True-Client-IP` and `CF-Connecting-IP` for a request from a known address. **That measurement is a blocker.**
 
-### 9a. Same-site domain plan (concrete; to be executed only under authorization)
+### 9a. Same-site domain plan: `verenward.com` (Owner 2026-10-12; to be executed only under a deployment authorization)
 
-**Preconditions:**
-- The Owner chooses a registrable domain the company controls, written `<eos-domain>` below.
-- DNS access, the Vercel project `verenwardeos`, and the Render service `eos-api-nonprod`.
+**Names adopted:** `app-nonprod.verenward.com` (the Vite app, Vercel project `verenwardeos`) and `api-nonprod.verenward.com` (the EOS API, Render service `eos-api-nonprod`).
 
-| Step | Where | Action | Verify |
+**Verified 2026-10-12 (read-only: public DNS over HTTPS, RDAP, the Public Suffix List, vendor documentation; no account was accessed):**
+
+| Fact | Evidence | Consequence |
+|---|---|---|
+| Registered to 2027-08-20 at Squarespace Domains II LLC, `clientTransferProhibited` + `clientDeleteProhibited` | RDAP (Verisign) | Renewal is an operational dependency: the login domain lapsing ends sign-in. |
+| Authoritative DNS is **Cloudflare** (`bayan`/`imani.ns.cloudflare.com`) | NS, SOA | The records below are made in that Cloudflare zone. **Who holds that Cloudflare account is not verifiable from outside; the Owner confirms it** (blocker D-1 below). |
+| `app-nonprod`, `api-nonprod` (and `app`, `api`) do not exist | NXDOMAIN | No conflict. |
+| Apex and `www` are served by **Firebase Hosting** (`199.36.158.100`, `www → verenward-prototype.web.app`, TXT `hosting-site=verenward-prototype`); mail is Google Workspace (MX, SPF) | A, CNAME, TXT, MX | Nothing here touches them. They are **same-site** with the two new hosts (see cookies). Recorded for the Firebase exit ledger. |
+| No CAA record | CAA | Let's Encrypt (Vercel) and Let's Encrypt / Google Trust Services (Render) may issue. If CAA is ever added it must allow `letsencrypt.org` and `pki.goog`. |
+| `verenward.com` is **not** a public suffix; `vercel.app` and `onrender.com` **are** | publicsuffix.org list | Today the app and API are cross-site (the cookie is third-party). Under `verenward.com` they are same-site. |
+| Vercel: a subdomain is a **CNAME to a project-specific target** (e.g. `…vercel-dns-0NN.com`) shown in Project → Settings → Domains; HTTP-01 certificate from Let's Encrypt; Vercel recommends **against** a proxy in front of it (Cloudflare: DNS only) | vercel.com/docs/domains/working-with-domains/add-a-domain, /docs/domains/troubleshooting, kb cloudflare-with-vercel | Copy the target from the dashboard; never `cname.vercel-dns.com` from memory. Proxy status **DNS only**. |
+| Render: custom domains on web services; certificates issued and renewed automatically; with Cloudflare DNS the record must be **DNS only** for verification and issuance; workspace includes 2 (Hobby) / 15 (Pro) custom domains, then $0.25/month each; the `onrender.com` host keeps working unless `renderSubdomainPolicy` disables it | render.com/docs/custom-domains, /docs/configure-cloudflare-dns | Proxy status **DNS only**, and it **stays** DNS only (below). Keep the `onrender.com` host enabled during transition. |
+
+**Why both records stay DNS only (grey cloud), permanently:** Render already fronts every service with Cloudflare. Proxying `api-nonprod` through the `verenward.com` zone too puts a second Cloudflare edge in front of Render's, and the client-address facts measured in §9b would describe the zone's edge rather than Render's -- the measurement has to be made in the final topology, and that topology is DNS only. For the app, Vercel recommends against a proxy.
+
+| Step | Where | Exact change | Verify |
 |---|---|---|---|
-| 1 | DNS | `app-nonprod.<eos-domain>  CNAME  cname.vercel-dns.com.` | `dig +short CNAME app-nonprod.<eos-domain>` |
-| 2 | Vercel → Project → Domains | add `app-nonprod.<eos-domain>`; wait for the certificate | `curl -sI https://app-nonprod.<eos-domain>` returns 200 with a valid certificate |
-| 3 | DNS | `api-nonprod.<eos-domain>  CNAME  eos-api-nonprod.onrender.com.` | `dig +short CNAME api-nonprod.<eos-domain>` |
-| 4 | Render → eos-api-nonprod → Settings → Custom Domains | add `api-nonprod.<eos-domain>`; Render issues the certificate | `curl -s https://api-nonprod.<eos-domain>/health` returns `ok:true` |
-| 5 | Render env | `EOS_ALLOWED_ORIGINS=https://app-nonprod.<eos-domain>` (keep the old origin during transition if needed) | preflight from the new origin echoes it; from any other origin it does not |
-| 6 | Vercel env (nonprod) | `VITE_EOS_API_BASE_URL=https://api-nonprod.<eos-domain>`, then redeploy | the app calls the new API host (browser network tab) |
-| 7 | (later, with activation) | `EOS_AUTH_COOKIE_SAMESITE=Strict` | the `Set-Cookie` on login shows `SameSite=Strict`; a reload restores the session with third-party cookies blocked |
+| 0 | Owner | Confirm control of the Cloudflare zone and of the Vercel and Render workspaces; confirm the Render workspace's custom-domain allowance | -- |
+| 1 | Vercel → `verenwardeos` → Settings → Domains | Add `app-nonprod.verenward.com`. Copy the CNAME target Vercel shows | the domain card shows the target |
+| 2 | Cloudflare → verenward.com → DNS | `CNAME  app-nonprod  <target from step 1>`, Proxy status **DNS only**, TTL Auto | `https://dns.google/resolve?name=app-nonprod.verenward.com&type=CNAME` returns the target |
+| 3 | Vercel | Wait for "Valid Configuration" and the certificate | `curl -sI https://app-nonprod.verenward.com` → 200, certificate for that name |
+| 4 | Render → `eos-api-nonprod` → Settings → Custom Domains | Add `api-nonprod.verenward.com` | Render lists it as pending |
+| 5 | Cloudflare | `CNAME  api-nonprod  eos-api-nonprod.onrender.com`, Proxy status **DNS only**, TTL Auto. No AAAA | DNS answer is the onrender host |
+| 6 | Render | Verify; wait for the certificate | `curl -s https://api-nonprod.verenward.com/health` → `ok:true` |
+| 7 | repository (one PR, merged under the deployment authorization: merging it IS the change, because render.yaml is the blueprint) | `render.yaml` `EOS_ALLOWED_ORIGINS=https://app-nonprod.verenward.com`; `config/environments.json` platform-sandbox `surfaces[eos-app].url=https://app-nonprod.verenward.com` and `eosApi.baseUrl=https://api-nonprod.verenward.com`; the literal in `scripts/eosApiEnvironmentContract.test.mjs` | the contract pins the origin and the surface byte-equal; CI green |
+| 8 | Vercel env (the environment serving `verenwardeos`) | `VITE_EOS_API_BASE_URL=https://api-nonprod.verenward.com`, then redeploy | browser network tab: calls go to `api-nonprod` |
+| 9 | (only with activation) Render env | `EOS_AUTH_COOKIE_SAMESITE=Strict` | see cookie checks below |
 
-**Not done here:** no DNS, Vercel or Render change has been made.
+**The cutover is a single switch, not a transition.** The contract allows exactly ONE browser origin. From the moment step 7 deploys, `verenwardeos.vercel.app` is refused by CORS; steps 7 and 8 are done back to back. Rollback is the reverse PR plus the previous `VITE_EOS_API_BASE_URL`; the DNS records and custom domains can stay.
 
-**Rollback:** remove the custom domains and revert the two environment variables; the `*.vercel.app` and `*.onrender.com` hosts keep working throughout.
-
-**Why `app-nonprod`/`api-nonprod`:** production can later use `app.`/`api.` under the same domain without sharing a cookie. The `__Host-` cookie is host-only on the API host.
+**Cookie behaviour under this plan** (server side proven by L-series and U-series tests; browser side follows from the PSL facts above):
+- `__Host-eos_refresh` is set by `api-nonprod` only: `Secure; HttpOnly; Path=/`, **no Domain**. A sibling host (`app-nonprod`, the Firebase-hosted apex or `www`, anything else under `verenward.com`) cannot set, overwrite or shadow it -- the `__Host-` prefix forbids a Domain attribute.
+- `app-nonprod` → `api-nonprod` is **same-site** (same registrable domain, both https), so `SameSite=Strict` sends it on the app's `fetch(..., {credentials:"include"})` and it survives third-party-cookie blocking. `Partitioned` is not set (only with `None`).
+- It is **cross-origin**, so CORS stays: exactly one allowed origin, credentials allowed, never `*`.
+- **SameSite is not the CSRF boundary here.** Every host under `verenward.com` is same-site, including the Firebase-hosted apex and `www`. The boundary is the exact-origin allowlist plus the required `X-EOS-CSRF: 1` header plus JSON-only bodies on every human `/auth/*` route -- a same-site page that is not `https://app-nonprod.verenward.com` is refused by origin.
+- Browser checks at activation: log in → `Set-Cookie` shows `SameSite=Strict` and no `Domain`; reload with third-party cookies blocked → session restored; `document.cookie` on the app shows no `eos_refresh`.
 
 ### 9b. Client-address measurement (prepared; to be run once, only under authorization)
 
 The measurement uses the `/auth/diagnostics/client-ip` route (`functions/src/eosAuth/clientIpDiagnostic.ts`):
-- It is **unmounted** unless `EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256` is set, and is nonprod only.
-- It is gated by a one-time operator credential, compared as SHA-256 in constant time.
-- It answers with the caller's own `X-Forwarded-For`, `True-Client-IP`, `CF-Connecting-IP` and socket address, plus what each candidate setting would resolve to.
-- It echoes nothing else and persists nothing (U14). It is independent of `EOS_HUMAN_LOGIN`.
+- It is **unmounted** unless `EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256` is set, and is nonprod only (config refusal plus a handler re-check).
+- It is gated by a one-time operator credential, compared as SHA-256 in constant time; POST only; body capped at 8 KB.
+- **It answers verdicts, not addresses.** The operator sends `{"expected":"<the public IP they are calling from>"}`; the answer is, for each candidate setting, only whether it resolves to that address, plus the X-Forwarded-For entry count, the positions (from the right) holding the expected address, and which edge headers were present. No address, header value, token or cookie is ever returned, logged or persisted (U14). Nothing identifying therefore reaches the activation record.
+- It is independent of `EOS_HUMAN_LOGIN` and grants nothing.
 
-**Runbook:**
-1. Generate a credential offline (32 random bytes, base64url). Keep it in operator custody.
+**Runbook (run against `api-nonprod.verenward.com` after §9a step 6, so the measured path is the final one):**
+1. Generate a credential offline (32 random bytes, base64url) in operator custody; never paste it into a ticket, chat or log.
 2. Set its SHA-256 as `EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256` on `eos-api-nonprod`, then deploy.
-3. From a machine whose public IP is known (`curl -s https://api.ipify.org`), run:
-   1. `curl -s -X POST -H "x-eos-diagnostic-credential: $CRED" https://<api-host>/auth/diagnostics/client-ip`
-   2. Repeat with spoofed headers: `-H "X-Forwarded-For: 192.0.2.1" -H "True-Client-IP: 192.0.2.2"`. Per published measurements, a spoofed `CF-Connecting-IP` is rejected at the edge (403).
-   3. Repeat from a second network, e.g. a phone hotspot.
-4. **Decide from the evidence.** Choose the setting whose `wouldResolve` value equals the known public IP in **every** run, including the spoofed ones.
-   - Expected: `EOS_AUTH_CLIENT_IP_HEADER=true-client-ip`.
-   - A `TRUSTED_PROXY_HOPS` value is acceptable **only** if it resolves correctly with the spoofed `X-Forwarded-For` too.
-5. **Unset** `EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256` and redeploy. Confirm the route is 404 again.
-6. Record the three responses (only the address fields) in the activation record.
+3. On a machine whose public IP is known, keep the address in a shell variable only (`IP=$(curl -s https://api.ipify.org)`), the credential in `CRED` (read with `read -s`), and run:
+   1. `curl -s -X POST -H "x-eos-diagnostic-credential: $CRED" -H 'content-type: application/json' -d "{\"expected\":\"$IP\"}" https://api-nonprod.verenward.com/auth/diagnostics/client-ip`
+   2. The same with forged headers: `-H "X-Forwarded-For: 192.0.2.1" -H "True-Client-IP: 192.0.2.2"`. (A forged `CF-Connecting-IP` is reportedly rejected at Render's edge with 403; try it once and record the status.)
+   3. The same from a second network (a phone hotspot), with that network's own `IP`.
+4. **Decide from the verdicts.** The setting is the one whose `resolvesToExpected` is `true` in **every** run, including the forged ones.
+   - Expected: `EOS_AUTH_CLIENT_IP_HEADER=true-client-ip` (`trueClientIpPresent: true`, and `true` in every run).
+   - A `EOS_AUTH_TRUSTED_PROXY_HOPS=N` value is acceptable **only** if it is `true` in the forged run too (the forged entry then sits at a higher position).
+   - If no setting is `true` in every run: STOP. Leave the limiter keyed on the socket (`TRUSTED_PROXY_HOPS=0`) and report.
+5. **Unset** `EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256` and redeploy. Confirm the route answers 404.
+6. Record in the activation record **only** the JSON verdicts (they contain no address) and the chosen settings.
 
 ## 10. Remaining Firebase Authentication dependencies (measured at this head)
 

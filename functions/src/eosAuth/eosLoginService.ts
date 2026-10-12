@@ -804,10 +804,20 @@ export class EosLoginService {
     // gained the Owner or Administrator Role or a membership in another tenant, or the issuer may have lost authority.
     // Re-run exactly the issue-time check against the issuer; if it no longer holds, the code dies unused. Done BEFORE the
     // transaction: it reads through the policy repository, and must not hold a pool connection while doing so.
-    let authoritySnapshot: string | null = null;
+    //
+    // The password is checked and hashed FIRST (independent review F2): scrypt can queue behind the hashing semaphore for
+    // seconds, and that must not sit between the authority check and the transaction that relies on it.
+    const policy = passwordPolicyRefusal(input.password, peek[0].login_identifier);
+    if (policy) throw new LoginRefusal("PASSWORD_POLICY", policy);
+    const hash = await hashPassword(input.password as string, this.hashParameters);
+    let authoritySnapshot: { issuer: string; target: string } | null = null;
     if (!peek[0].consumed_at && !peek[0].revoked_at) {
       const capability = purpose === "enrollment" ? "admin.roleAssignment.write" : "admin.credentialReset.initiate";
-      authoritySnapshot = await this.authorityFingerprint(this.deps.pool, peek[0].principal_id);
+      // BOTH people: the issuer's authority is what the code is worth, the target's decides whether that is enough.
+      authoritySnapshot = {
+        issuer: await this.authorityFingerprint(this.deps.pool, [peek[0].issued_by]),
+        target: await this.authorityFingerprint(this.deps.pool, [peek[0].principal_id]),
+      };
       const lapsed = await this.targetAdministrable(peek[0].issued_by, peek[0].tenant_id, peek[0].principal_id, capability);
       if (lapsed) {
         await this.tx(async (c) => {
@@ -820,28 +830,31 @@ export class EosLoginService {
       // TEST ONLY: the window between the issuer re-check and the consuming transaction (residual R-B proof).
       if (this.deps.testHooks?.beforeTicketTransaction) await this.deps.testHooks.beforeTicketTransaction();
     }
-    const policy = passwordPolicyRefusal(input.password, peek[0].login_identifier);
-    if (policy) throw new LoginRefusal("PASSWORD_POLICY", policy);
-    const hash = await hashPassword(input.password as string, this.hashParameters);
     const eventName = purpose === "enrollment" ? "enrollmentComplete" : "resetComplete";
 
     const outcome = await this.tx(async (c) => {
+      // LOCK ORDER account -> ticket (independent review F1): the administrative writers (disable, retire, reissue) lock
+      // the account and then its open tickets. Taking the ticket first here deadlocked against them.
+      const a = await this.accountById(c, peek[0].account_id, true);
       const { rows } = await c.query(`SELECT * FROM ${SCHEMA}.login_tickets WHERE token_sha256 = $1 AND purpose = $2 FOR UPDATE`, [digest, purpose]);
       const t = rows[0];
       const now = this.now();
-      if (!t || t.consumed_at || t.revoked_at || t.expires_at.getTime() <= now.getTime()) {
+      if (!t || t.account_id !== peek[0].account_id || t.consumed_at || t.revoked_at || t.expires_at.getTime() <= now.getTime()) {
         await this.event(c, { event: eventName, outcome: "refused", reason: "TICKET_NOT_OPEN", accountId: t?.account_id, client: facts });
         return null;
       }
-      const a = await this.accountById(c, t.account_id, true);
-      // RESIDUAL R-B (Owner 2026-10-12): the issuer re-check above ran OUTSIDE this transaction. Re-read the person's
-      // authority state here, on this connection, holding share locks on it: if a promotion, a membership or a Role
-      // change committed since, the decision above answered a different person -- refuse; the code stays open, a retry
-      // re-checks. A change that commits AFTER this read waits on the locks for existing rows; a brand-new row cannot be
+      // RESIDUAL R-B (Owner 2026-10-12): the issuer re-check above ran OUTSIDE this transaction. Re-read BOTH people's
+      // authority state here, on this connection, holding share locks on it: if a promotion, a lost Role or grant, a
+      // membership, Employee or Principal change committed since, the decision above answered different facts -- refuse;
+      // the code stays open, a retry re-checks. A change that commits AFTER this read waits on the locks for existing rows; a brand-new row cannot be
       // locked in advance, and that sub-millisecond window is the recorded residual.
-      if (a && authoritySnapshot !== null && (await this.authorityFingerprint(c, a.principal_id, true)) !== authoritySnapshot) {
-        await this.event(c, { event: eventName, outcome: "refused", reason: "TARGET_AUTHORITY_CHANGED", accountId: t.account_id, client: facts });
-        return null;
+      if (a && authoritySnapshot !== null) {
+        const changed = (await this.authorityFingerprint(c, [t.issued_by], true)) !== authoritySnapshot.issuer ? "ISSUER_AUTHORITY_CHANGED"
+          : (await this.authorityFingerprint(c, [a.principal_id], true)) !== authoritySnapshot.target ? "TARGET_AUTHORITY_CHANGED" : null;
+        if (changed) {
+          await this.event(c, { event: eventName, outcome: "refused", reason: changed, accountId: t.account_id, client: facts });
+          return null;
+        }
       }
       const expected = purpose === "enrollment" ? "pending_enrollment" : "active";
       if (!a || a.status !== expected || a.binding_status !== "active") {
@@ -962,8 +975,10 @@ export class EosLoginService {
       throw err;
     }
     const out = await this.tx(async (c): Promise<IssuedLoginSession | null> => {
-      // LOCK ORDER account -> session, the order every other writer uses (password change, disable, reset, retire take
-      // the account row and then update its sessions). The reverse order deadlocked against them (RESIDUAL R-C).
+      // LOCK ORDER account -> session, the order of every writer that takes BOTH (password change, disable, reset, retire
+      // take the account row and then update its sessions; using a code takes account -> ticket). The reverse order
+      // deadlocked against them (RESIDUAL R-C). refresh, logout and session revocation lock a session WITHOUT the account;
+      // that is safe only while they never go on to lock the account -- adding an account lock there must take it FIRST.
       const fresh = await this.accountById(c, a.id, true);
       if (!fresh || fresh.status !== "active" || fresh.credential_version !== a.credential_version) return null;
       const { rows } = await c.query(`SELECT revoked_at, tenant_id FROM ${SCHEMA}.login_sessions WHERE id = $1 FOR UPDATE`, [a.session_id]);
@@ -1303,15 +1318,34 @@ export class EosLoginService {
   }
 
   /**
-   * The person's authority state as one digest: every membership (tenant, status), every Role assignment (tenant, Role,
-   * status, scope) and every access version. `lock` takes FOR SHARE on the existing rows, inside a transaction.
+   * The authority state of these people as one digest -- the facts principal resolution and the capability check read:
+   * the Principal (status), every membership (tenant, status) and its tenant (status), every Role assignment (tenant,
+   * Role, status, scope), the capabilities granted to those Roles, every Employee link with its Employee's employment
+   * status, and every access version. `lock` takes FOR SHARE on the existing rows, inside a transaction, so a change to
+   * any of them waits for the caller to commit.
    */
-  private async authorityFingerprint(q: Pick<PoolClient, "query"> | Pool, principalId: string, lock = false): Promise<string> {
+  private async authorityFingerprint(q: Pick<PoolClient, "query"> | Pool, principalIds: readonly string[], lock = false): Promise<string> {
     const share = lock ? " FOR SHARE" : "";
-    const { rows: m } = await q.query(`SELECT tenant_id, status::text FROM ${SCHEMA}.tenant_memberships WHERE principal_id = $1 ORDER BY tenant_id${share}`, [principalId]);
-    const { rows: r } = await q.query(`SELECT id, tenant_id, role_id, status::text, scope_type, scope_value FROM ${SCHEMA}.user_role_assignments WHERE principal_id = $1 ORDER BY id${share}`, [principalId]);
-    const { rows: v } = await q.query(`SELECT tenant_id, access_version FROM ${SCHEMA}.principal_access_versions WHERE principal_id = $1 ORDER BY tenant_id${share}`, [principalId]);
-    return createHash("sha256").update(JSON.stringify([m, r, v])).digest("hex");
+    const ids = [...principalIds];
+    const read = async (sql: string) => (await q.query(sql, [ids])).rows;
+    const facts = [
+      await read(`SELECT id, status::text FROM ${SCHEMA}.principals WHERE id = ANY($1::text[]) ORDER BY id${share}`),
+      await read(`SELECT principal_id, tenant_id, status::text FROM ${SCHEMA}.tenant_memberships WHERE principal_id = ANY($1::text[]) ORDER BY principal_id, tenant_id${share}`),
+      await read(`SELECT t.id, t.status::text FROM ${SCHEMA}.tenants t
+                   WHERE t.id IN (SELECT tenant_id FROM ${SCHEMA}.tenant_memberships WHERE principal_id = ANY($1::text[])) ORDER BY t.id${share}`),
+      await read(`SELECT id, principal_id, tenant_id, role_id, status::text, scope_type, scope_value FROM ${SCHEMA}.user_role_assignments
+                   WHERE principal_id = ANY($1::text[]) ORDER BY id${share}`),
+      await read(`SELECT rc.id, rc.tenant_id, rc.role_id, rc.capability_id FROM ${SCHEMA}.role_capabilities rc
+                   WHERE (rc.tenant_id, rc.role_id) IN (SELECT tenant_id, role_id FROM ${SCHEMA}.user_role_assignments WHERE principal_id = ANY($1::text[]))
+                   ORDER BY rc.id${share}`),
+      await read(`SELECT l.id, l.principal_id, l.tenant_id, l.employee_id, l.status::text, e.employment_status::text AS employment_status
+                    FROM ${SCHEMA}.employee_principal_links l
+                    JOIN eos_workforce.employees e ON e.tenant_id = l.tenant_id AND e.id = l.employee_id
+                   WHERE l.principal_id = ANY($1::text[]) ORDER BY l.id${lock ? " FOR SHARE OF l, e" : ""}`),
+      await read(`SELECT principal_id, tenant_id, access_version FROM ${SCHEMA}.principal_access_versions WHERE principal_id = ANY($1::text[])
+                   ORDER BY principal_id, tenant_id${share}`),
+    ];
+    return createHash("sha256").update(JSON.stringify(facts)).digest("hex");
   }
 
   /**

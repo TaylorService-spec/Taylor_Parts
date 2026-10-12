@@ -150,6 +150,14 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
   const ula = await principal("fb-ula", "ula");
   await enrol(ula, A, "technician", "ACTIVE");
   await enrol(ula, B, "technician", "ACTIVE");
+  // Independent review of the final head: ivy (an Administrator who loses authority while her code is used), abe (her
+  // target), bea (the ticket/account lock-order proof).
+  const ivy = await principal("fb-ivy", "ivy");
+  const ivyEmp = await enrol(ivy, A, "admin", "ACTIVE");
+  const abe = await principal("fb-abe", "abe");
+  await enrol(abe, A, "technician", "ACTIVE");
+  const bea = await principal("fb-bea", "bea");
+  await enrol(bea, A, "technician", "ACTIVE");
 
   const authorityDigest = async (tenantId) => (await q(`SELECT
       (SELECT md5(string_agg(id || principal_id || role_id || status::text, ',' ORDER BY id)) FROM eos_policy.user_role_assignments
@@ -663,6 +671,58 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
       if (sw.status === 200) assert.equal((await experience(sw.body.session.accessToken)).status, 401);
       assert.equal((await asFb("fb-owner-ab", "setLoginAccountStatus", { principalId: ula, status: "active", reason: `restore ${i}` }, { "x-eos-tenant": A })).status, 200);
     }
+  });
+
+  await t.test("X4 (review F2) an ISSUER who loses authority between the re-check and the consuming transaction: the code is refused", async () => {
+    let lapseOnce = null;
+    // DETERMINISTIC: the hook runs after the password is hashed and the issuer re-check passed, before the transaction.
+    const hooked = await start(authEnv, { testHooks: { beforeTicketTransaction: async () => { const f = lapseOnce; lapseOnce = null; if (f) await f(); } } });
+    extra.push(hooked);
+    const at = `http://127.0.0.1:${hooked.port}`;
+    const p = await asFb("fb-ivy", "provisionLoginAccount", { principalId: abe, loginIdentifier: "abe@tenancy.test", reason: "abe" });
+    assert.equal(p.status, 200, JSON.stringify(p.body));
+    secrets.push(p.body.data.enrollmentTicket, "a kettle on the stove");
+    // ivy's Employee is terminated in the window: under DQ-007 she holds no authority at all.
+    lapseOnce = () => q(`UPDATE eos_workforce.employees SET employment_status = 'TERMINATED' WHERE id = $1`, [ivyEmp]);
+    const r = await post("/auth/enrollment/complete", { ticket: p.body.data.enrollmentTicket, password: "a kettle on the stove" }, {}, at);
+    assert.equal(r.status, 410, "a code is not used on the authority of an issuer who no longer has any");
+    assert.equal(lapseOnce, null, "the lapse really ran in the window");
+    const acct = (await q(`SELECT id, status FROM eos_policy.login_accounts WHERE principal_id = $1 AND status <> 'retired'`, [abe])).rows[0];
+    assert.equal(acct.status, "pending_enrollment");
+    assert.ok((await events("account_id = $1 AND reason_code = 'ISSUER_AUTHORITY_CHANGED'", [acct.id])).length === 1);
+    // The code stayed open and is re-checked from scratch: with ivy restored, the same code completes.
+    await q(`UPDATE eos_workforce.employees SET employment_status = 'ACTIVE' WHERE id = $1`, [ivyEmp]);
+    assert.equal((await post("/auth/enrollment/complete", { ticket: p.body.data.enrollmentTicket, password: "a kettle on the stove" }, {}, at)).status, 200);
+  });
+
+  await t.test("X5 (review F1) using a reset code while an administrator holds the account and revokes its codes: no deadlock, no 500", async () => {
+    await provisionEnrolled(bea, "bea@tenancy.test", "a lamp in the window");
+    const reset = await asFb("fb-admin-a", "issueLoginReset", { principalId: bea, reason: "reset" });
+    assert.equal(reset.status, 200);
+    secrets.push(reset.body.data.resetTicket);
+    const acct = (await q(`SELECT id FROM eos_policy.login_accounts WHERE principal_id = $1 AND status = 'active'`, [bea])).rows[0];
+    // DETERMINISTIC: an administrative writer's shape -- account row FIRST, then its open codes -- held open while the code
+    // is used. Taking the code first (the old order) is a lock cycle Postgres must abort.
+    const admin = await pool.connect();
+    try {
+      await admin.query("BEGIN");
+      await admin.query(`SELECT id FROM eos_policy.login_accounts WHERE id = $1 FOR UPDATE`, [acct.id]);
+      const using = post("/auth/password/reset/complete", { ticket: reset.body.data.resetTicket, password: "a lamp on the stair" });
+      // Wait until the code's transaction is blocked on a lock (it is, on the account row, in the fixed order).
+      for (let i = 0; i < 200; i += 1) {
+        const { rows } = await q(`SELECT count(*)::int n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> $1`,
+          [(await admin.query("SELECT pg_backend_pid() p")).rows[0].p]);
+        if (rows[0].n > 0) break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      await admin.query(`UPDATE eos_policy.login_tickets SET revoked_at = now() WHERE account_id = $1 AND consumed_at IS NULL AND revoked_at IS NULL`, [acct.id]);
+      await admin.query("COMMIT");
+      const r = await using;
+      assert.equal(r.status, 410, `the code was revoked first, so it is refused -- not a 500 (got ${r.status})`);
+    } finally {
+      admin.release();
+    }
+    assert.ok((await events("account_id = $1 AND reason_code = 'TICKET_NOT_OPEN'", [acct.id])).length >= 1);
   });
 
   await t.test("M15 nothing secret at rest or in logs; authority in BOTH tenants unchanged", async () => {
