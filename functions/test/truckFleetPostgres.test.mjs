@@ -58,7 +58,7 @@ async function query(text, values = []) {
 function migrateUp() {
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
     env: { ...process.env, DATABASE_URL: URL },
-    stdio: "pipe",
+    maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
 }
 
@@ -66,7 +66,7 @@ function migrateDownOne() {
   return execFileSync(
     process.execPath,
     ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "--migrations-dir", "migrations"],
-    { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" },
+    { env: { ...process.env, DATABASE_URL: URL }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" },
   );
 }
 

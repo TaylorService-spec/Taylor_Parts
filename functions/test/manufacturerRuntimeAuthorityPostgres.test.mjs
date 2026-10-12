@@ -279,7 +279,7 @@ test("Manufacturer runtime authority, in PostgreSQL", { skip: SKIP, concurrency:
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",
     "--migrations-dir", "migrations", "--no-check-order"],
-  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(dbName) }, stdio: "pipe" });
+  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(dbName) }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: dbUrlFor(dbName), max: 4 });
   const q = (sql, v = []) => pool.query(sql, v);
 

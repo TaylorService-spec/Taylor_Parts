@@ -44,7 +44,7 @@ async function withClient(url, fn) {
 }
 
 const runner = (args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], {
-  cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe", encoding: "utf8",
+  cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe", encoding: "utf8",
 });
 
 const EQ_CAPS = new Set(["equipment.model.manage"]);

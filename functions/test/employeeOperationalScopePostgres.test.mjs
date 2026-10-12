@@ -63,7 +63,7 @@ test("Employee Operational Scope authority: one scope type, real warehouse, no a
     process.execPath,
     ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", direction, ...(steps ? [String(steps)] : []),
       "--migrations-dir", "migrations"],
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" },
+    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" },
   );
   migrate("up");
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 4 });

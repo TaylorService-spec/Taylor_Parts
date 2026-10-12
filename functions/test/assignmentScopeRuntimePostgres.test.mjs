@@ -53,7 +53,7 @@ test("Security Role assignment scope: governed runtime, fail closed, never globa
   });
   const url = dbUrlFor(name);
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
+    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: url, max: 16 });
   const q = (s, v = []) => pool.query(s, v);
   const repo = new PostgresPolicyRepository(pool);

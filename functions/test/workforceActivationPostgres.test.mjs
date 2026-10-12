@@ -132,7 +132,7 @@ test("workforce activation measurement, in PostgreSQL", { skip: SKIP, concurrenc
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
     cwd: FUNCTIONS_DIR,
     env: { ...process.env, DATABASE_URL: dbUrl() },
-    stdio: "pipe",
+    maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
 
   await t.test("an EMPTY migrated database: every section MEASURED and every count a printed 0", async () => {

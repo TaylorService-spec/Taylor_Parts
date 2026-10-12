@@ -75,7 +75,7 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
     .filter((f) => Number(f.split("_")[0]) >= IDENTITY_MIGRATION_ID).length;
   const migrate = (dir) => spawnSync(process.execPath,
     ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", dir, ...(dir === "down" ? [String(downSteps)] : []), "--migrations-dir", "migrations", "--no-check-order"],
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, encoding: "utf8" });
+    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   const up = migrate("up");
   assert.equal(up.status, 0, up.stderr);
 

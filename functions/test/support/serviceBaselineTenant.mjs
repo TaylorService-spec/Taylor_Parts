@@ -37,7 +37,7 @@ export async function serviceBaselineTenant(t, { urlBase, tenant, prefix }) {
   const migrate = (url, count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order",
     ...(count === undefined ? [] : [String(count)]),
-  ], { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
+  ], { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
   const name = `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   let pool;
   await withClient(urlBase, (c) => c.query(`CREATE DATABASE ${name}`));

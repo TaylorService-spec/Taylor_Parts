@@ -46,7 +46,7 @@ test("SAMPLE_DATA_SEED: census -> copy once -> verify -> replay", { skip: SKIP, 
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
+    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 4 });
   const q = (s, v = []) => pool.query(s, v);
   const T = "t-seed";

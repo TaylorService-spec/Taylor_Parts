@@ -33,7 +33,7 @@ async function withClient(url, fn) {
   try { return await fn(client); } finally { await client.end(); }
 }
 const migrator = (url) => (...args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], {
-  cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
+  cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
 });
 async function freshWorld(t, prefix, upThroughTimestamp = null) {
   let pool;

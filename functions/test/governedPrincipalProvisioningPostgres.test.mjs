@@ -223,7 +223,7 @@ test("the governed Principal provisioning operator, in PostgreSQL", { skip: SKIP
   });
   execFileSync(process.execPath,
     ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe" });
+    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
 
   const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
   const { ensureTenantPrincipal, bootstrapTenant, bootstrapAdministrator } =

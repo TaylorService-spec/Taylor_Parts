@@ -63,7 +63,7 @@ test("Functional Role authority: schema, governed commands, reads, effective acc
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 8 });
   const q = (text, values = []) => pool.query(text, values);
@@ -541,7 +541,7 @@ test("the Functional Role migration's DOWN refuses while any Functional Role fac
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(() => withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)));
   const run = (...args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"],
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
+    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
   run("up");
   await withClient(dbUrlFor(name), async (c) => {
     await c.query(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1')`);

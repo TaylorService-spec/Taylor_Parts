@@ -26,7 +26,7 @@ test("world", { skip: SKIP }, async () => {
   await c.query("DROP TABLE IF EXISTS pgmigrations");
   await c.end();
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"],
-    { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+    { env: { ...process.env, DATABASE_URL: URL }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
   await q("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1)", [T]);
   for (const [co, key] of [["co-a", "key-a"], ["co-b", "key-b"]]) {
     await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by)
@@ -113,7 +113,7 @@ test.after(async () => {
     await c.end();
   }
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"],
-    { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+    { env: { ...process.env, DATABASE_URL: URL }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
 });
 
 test("teardown", { skip: SKIP }, async () => { await pool?.end(); });

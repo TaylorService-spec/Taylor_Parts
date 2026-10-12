@@ -56,7 +56,7 @@ export async function freshMigratedDatabase(t, prefix) {
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
   pool = new pg.Pool({ connectionString: url, max: 8 });
   return { url, pool };
@@ -252,7 +252,7 @@ export async function rebuiltAuthorityDatabase(t, prefix, tenantId, tenantKey) {
   const migrate = (count) => execFileSync(process.execPath,
     ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order",
       ...(count === undefined ? [] : [String(count)])],
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
+    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
   const files = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).sort();
   migrate(files.filter((f) => f < baseline.SEED_BOUNDARY_MIGRATION).length);
   pool = new pg.Pool({ connectionString: url, max: 8 });

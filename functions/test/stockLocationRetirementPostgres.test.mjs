@@ -34,7 +34,7 @@ async function withClient(url, fn) {
 }
 const migrate = (dbUrl, args) => execFileSync(process.execPath,
   ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations", "--no-check-order"],
-  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, stdio: "pipe" });
+  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
 
 test("the retirement targets exactly one Object and nothing else", () => {
   // Comments STRIPPED: the migration's own header explains why it is not a set rule, quoting the

@@ -58,7 +58,7 @@ const STAGES = ["IDENTIFIED", "QUALIFYING", "SOLUTION", "QUOTING", "CUSTOMER_REV
 test("governed PostgreSQL Commercial read projections, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 8 });
   t.after(async () => {

@@ -29,7 +29,7 @@ const dbUrl = () => {
 };
 const migrate = (...args) =>
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", ...args, "--migrations-dir", "migrations"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
 async function withClient(url, fn) {
   const client = new pg.Client({ connectionString: url });
@@ -266,7 +266,7 @@ test("commercial schema parity, numbering and receipts, in PostgreSQL", { skip: 
 
   await t.test("the down migration refuses while C1 facts are recorded", async () => {
     await assert.rejects(
-      Promise.resolve().then(() => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "--migrations-dir", "migrations"], { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe" })),
+      Promise.resolve().then(() => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "--migrations-dir", "migrations"], { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" })),
       (e) => /refuses to drop Commercial schema parity/.test(String(e.stderr ?? e.message)),
     );
   });
@@ -281,7 +281,7 @@ test("the down migration of 022 refuses on any single C1 business fact, and not 
   const name = `c1_down_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   const url = (() => { const u = new URL(URL_BASE); u.pathname = `/${name}`; return u.toString(); })();
   const run = (...args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
   const downRefuses = () => {
     try {

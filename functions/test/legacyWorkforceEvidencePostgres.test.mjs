@@ -47,7 +47,7 @@ test("the legacy evidence census over the real governed authorities: true resolu
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 8 });
   const q = (text, values = []) => pool.query(text, values);

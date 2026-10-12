@@ -477,7 +477,7 @@ test("the deploy's migrate:up returns cleanly over the anomalous ledger, applyin
     // --no-check-order -- which is a finding, not a pass.
     assert.throws(
       () => execFileSync(process.execPath, [runner, "up", "--migrations-dir", "migrations"],
-        { cwd: FUNCTIONS_DIR, env, stdio: "pipe" }),
+        { cwd: FUNCTIONS_DIR, env, stdio: "pipe", maxBuffer: 64 * 1024 * 1024 }),
       (error) => {
         const text = `${error.stdout ?? ""}${error.stderr ?? ""}${error.message}`;
         assert.match(text, /Not run migration 1760486400000_tenant-operating-company-key-binding is preceding already run migration 1761004800000_work-order-object-authority/);

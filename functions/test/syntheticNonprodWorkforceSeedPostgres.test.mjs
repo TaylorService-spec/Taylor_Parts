@@ -94,7 +94,7 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
     cwd: FUNCTIONS_DIR,
     env: { ...process.env, DATABASE_URL: dbUrl() },
-    stdio: "pipe",
+    maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
 
   // The world the nonprod operator already has: a bootstrapped tenant with its seeded Roles and ONE real

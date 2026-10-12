@@ -126,7 +126,7 @@ test("reorder cutover CLI, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
   const q = (text, values = []) => pool.query(text, values);
   const n = async (sql, values = ["tenant-rr"]) => Number((await q(sql, values)).rows[0].n);
@@ -584,7 +584,7 @@ test("Option B: pinned Sample Company purchasing fixtures are KNOWN_NON_MIGRATED
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
   const q = (text, values = []) => pool.query(text, values);
   const KT = fixtures.REORDER_FIXTURE_TENANT_ID;

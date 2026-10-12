@@ -54,7 +54,7 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
   // Migrated THROUGH 025 only (timestamp mode, the C4 pin technique): test (18) proves 025's own rollback guard, which
   // `down 1` can reach only while 025 is the last-run migration. Later migrations are not what this suite proves.
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "1759708800000", "--timestamp", "--migrations-dir", "migrations"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 6 });
   t.after(async () => {

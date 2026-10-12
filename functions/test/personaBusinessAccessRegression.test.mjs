@@ -234,7 +234,7 @@ async function withClient(url, fn) {
 const migrate = (dbUrl, count) => execFileSync(process.execPath,
   ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations",
     "--no-check-order", ...(count === undefined ? [] : [String(count)])],
-  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, stdio: "pipe" });
+  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
 
 test("persona business access, resolved by the product", { skip: SKIP, concurrency: 1 }, async (t) => {
   // A DATABASE OF THIS FILE'S OWN. The group runs with one shared POLICY_TEST_DATABASE_URL, and a

@@ -64,7 +64,7 @@ function runMigrate(url, direction, count) {
   const args = [RUNNER, direction, "--migrations-dir", "migrations", "--no-check-order"];
   if (count !== undefined) args.push(String(count));
   return execFileSync(process.execPath, args,
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" }).toString();
+    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe", maxBuffer: 64 * 1024 * 1024 }).toString();
 }
 
 const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };

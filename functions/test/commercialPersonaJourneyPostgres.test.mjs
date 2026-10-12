@@ -143,7 +143,7 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   const url = dbUrlFor(name);
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
   const pool = new pg.Pool({ connectionString: url, max: 8 });
   t.after(async () => {

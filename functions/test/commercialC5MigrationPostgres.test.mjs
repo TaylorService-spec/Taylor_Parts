@@ -47,7 +47,7 @@ async function withClient(url, fn) {
   try { return await fn(c); } finally { await c.end(); }
 }
 const runner = (args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], {
-  cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe", encoding: "utf8",
+  cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe", encoding: "utf8",
 });
 const code = (c) => (e) => { assert.equal(e.code, c, `expected ${c}, got ${e.code}: ${e.message} ${JSON.stringify(e.details ?? null)}`); return true; };
 const SHA = (s) => hash("sha256", s);

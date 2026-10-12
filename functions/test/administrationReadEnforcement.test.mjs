@@ -307,7 +307,7 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
   const dbUrl = dbUrlFor(name);
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",
     "--migrations-dir", "migrations", "--no-check-order"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
   pool = new pg.Pool({ connectionString: dbUrl, max: 6 });
   const repo = new PostgresPolicyRepository(pool);

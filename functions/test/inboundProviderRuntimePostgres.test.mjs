@@ -177,7 +177,7 @@ test("real mailbox ingestion on PostgreSQL through /operations/inbound-work", { 
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
+    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 8 });
   const q = (sql, v = []) => pool.query(sql, v);
   const one = async (sql, v = []) => (await q(sql, v)).rows[0];

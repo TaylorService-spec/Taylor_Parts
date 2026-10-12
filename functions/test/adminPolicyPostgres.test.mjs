@@ -62,7 +62,7 @@ function stepsBackTo(prefix) {
 function migrateFromClean() {
   execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations",
-  ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+  ], { env: { ...process.env, DATABASE_URL: URL }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
 }
 
 async function reset() {
@@ -224,7 +224,7 @@ test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }
   execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(migrationFileCount()),
     "--migrations-dir", "migrations",
-  ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+  ], { env: { ...process.env, DATABASE_URL: URL }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
   assert.equal(gone.rows[0].n, 0, "down leaves nothing behind");
@@ -242,7 +242,7 @@ test("a migration reverses alone, leaving its predecessors intact", { skip: SKIP
   await reset();
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
-  ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+  ], { env: { ...process.env, DATABASE_URL: URL }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
 
   // ════════════ ONE UNWIND, BY NAME, NOT TWO ════════════
   //

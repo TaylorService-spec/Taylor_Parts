@@ -41,7 +41,7 @@ const refusedWith = (code) => (e) => {
 test("the governed Part search contract", { skip: SKIP, concurrency: 1 }, async (t) => {
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
-    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe",
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 4 });
   t.after(async () => {

@@ -42,7 +42,7 @@ function repo() {
 function migrateFromClean() {
   execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations",
-  ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+  ], { env: { ...process.env, DATABASE_URL: URL }, maxBuffer: 64 * 1024 * 1024, stdio: "pipe" });
 }
 
 async function reset() {
