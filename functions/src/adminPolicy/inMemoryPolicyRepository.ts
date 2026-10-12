@@ -909,8 +909,9 @@ export class InMemoryPolicyRepository implements PolicyRepository {
     return this.mine(this.tables.audit, tenantId).slice(-limit);
   }
   async queryAuditEvents(tenantId: TenantId, filter: AuditEventFilter) {
-    const field = (e: PolicyAuditEventRecord, key: string, value: string) =>
-      [e.after, e.before].some((p) => p !== null && typeof p === "object" && (p as Record<string, unknown>)[key] === value);
+    const excluded = new Set(filter.contentFilterExcludedKinds ?? []);
+    const field = (e: PolicyAuditEventRecord, key: string, value: string) => !excluded.has(e.targetKind)
+      && [e.after, e.before].some((p) => p !== null && typeof p === "object" && (p as Record<string, unknown>)[key] === value);
     const rows = this.mine(this.tables.audit, tenantId).filter((e) => {
       const f = filter;
       if (f.principalId && !(e.actorUid === f.principalId || e.targetId === f.principalId

@@ -111,6 +111,12 @@ export interface AuditEventFilter {
   readonly from?: string | null;
   readonly to?: string | null;
   readonly limit: number;
+  /**
+   * Kinds whose `before`/`after` CONTENT the payload filters above never match (column predicates -- actor, target,
+   * time -- still apply). A content match on a row whose values the projection may withhold is a value oracle
+   * (auditReadProjection.CONTENT_FILTER_EXCLUDED_KINDS). Absent/empty = every kind's content is matched, as before.
+   */
+  readonly contentFilterExcludedKinds?: readonly string[];
 }
 
 /** A new tenant. The store assigns the id; the caller owns the key. */
