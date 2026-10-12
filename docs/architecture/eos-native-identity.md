@@ -460,6 +460,49 @@ The cookie stays `__Host-` (host-only, on `api.`). The browser treats the two ho
 - **Conclusion:** a fixed `EOS_AUTH_TRUSTED_PROXY_HOPS` value cannot be justified from documentation. This branch adds `EOS_AUTH_CLIENT_IP_HEADER` (`true-client-ip` | `cf-connecting-ip`), which takes precedence when the edge sets it (U13).
 - **Recommended:** `EOS_AUTH_CLIENT_IP_HEADER=true-client-ip`. Keep `EOS_AUTH_TRUSTED_PROXY_HOPS` only as a fallback, set **after** one authorised measurement on nonprod: log the raw `X-Forwarded-For`, `True-Client-IP` and `CF-Connecting-IP` for a request from a known address. **That measurement is a blocker.**
 
+### 9a. Same-site domain plan (concrete; to be executed only under authorization)
+
+**Preconditions:**
+- The Owner chooses a registrable domain the company controls, written `<eos-domain>` below.
+- DNS access, the Vercel project `verenwardeos`, and the Render service `eos-api-nonprod`.
+
+| Step | Where | Action | Verify |
+|---|---|---|---|
+| 1 | DNS | `app-nonprod.<eos-domain>  CNAME  cname.vercel-dns.com.` | `dig +short CNAME app-nonprod.<eos-domain>` |
+| 2 | Vercel → Project → Domains | add `app-nonprod.<eos-domain>`; wait for the certificate | `curl -sI https://app-nonprod.<eos-domain>` returns 200 with a valid certificate |
+| 3 | DNS | `api-nonprod.<eos-domain>  CNAME  eos-api-nonprod.onrender.com.` | `dig +short CNAME api-nonprod.<eos-domain>` |
+| 4 | Render → eos-api-nonprod → Settings → Custom Domains | add `api-nonprod.<eos-domain>`; Render issues the certificate | `curl -s https://api-nonprod.<eos-domain>/health` returns `ok:true` |
+| 5 | Render env | `EOS_ALLOWED_ORIGINS=https://app-nonprod.<eos-domain>` (keep the old origin during transition if needed) | preflight from the new origin echoes it; from any other origin it does not |
+| 6 | Vercel env (nonprod) | `VITE_EOS_API_BASE_URL=https://api-nonprod.<eos-domain>`, then redeploy | the app calls the new API host (browser network tab) |
+| 7 | (later, with activation) | `EOS_AUTH_COOKIE_SAMESITE=Strict` | the `Set-Cookie` on login shows `SameSite=Strict`; a reload restores the session with third-party cookies blocked |
+
+**Not done here:** no DNS, Vercel or Render change has been made.
+
+**Rollback:** remove the custom domains and revert the two environment variables; the `*.vercel.app` and `*.onrender.com` hosts keep working throughout.
+
+**Why `app-nonprod`/`api-nonprod`:** production can later use `app.`/`api.` under the same domain without sharing a cookie. The `__Host-` cookie is host-only on the API host.
+
+### 9b. Client-address measurement (prepared; to be run once, only under authorization)
+
+The measurement uses the `/auth/diagnostics/client-ip` route (`functions/src/eosAuth/clientIpDiagnostic.ts`):
+- It is **unmounted** unless `EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256` is set, and is nonprod only.
+- It is gated by a one-time operator credential, compared as SHA-256 in constant time.
+- It answers with the caller's own `X-Forwarded-For`, `True-Client-IP`, `CF-Connecting-IP` and socket address, plus what each candidate setting would resolve to.
+- It echoes nothing else and persists nothing (U14). It is independent of `EOS_HUMAN_LOGIN`.
+
+**Runbook:**
+1. Generate a credential offline (32 random bytes, base64url). Keep it in operator custody.
+2. Set its SHA-256 as `EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256` on `eos-api-nonprod`, then deploy.
+3. From a machine whose public IP is known (`curl -s https://api.ipify.org`), run:
+   1. `curl -s -X POST -H "x-eos-diagnostic-credential: $CRED" https://<api-host>/auth/diagnostics/client-ip`
+   2. Repeat with spoofed headers: `-H "X-Forwarded-For: 192.0.2.1" -H "True-Client-IP: 192.0.2.2"`. Per published measurements, a spoofed `CF-Connecting-IP` is rejected at the edge (403).
+   3. Repeat from a second network, e.g. a phone hotspot.
+4. **Decide from the evidence.** Choose the setting whose `wouldResolve` value equals the known public IP in **every** run, including the spoofed ones.
+   - Expected: `EOS_AUTH_CLIENT_IP_HEADER=true-client-ip`.
+   - A `TRUSTED_PROXY_HOPS` value is acceptable **only** if it resolves correctly with the spoofed `X-Forwarded-For` too.
+5. **Unset** `EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256` and redeploy. Confirm the route is 404 again.
+6. Record the three responses (only the address fields) in the activation record.
+
 ## 10. Remaining Firebase Authentication dependencies (measured at this head)
 
 | Dependency | Where | Count | Retires when |

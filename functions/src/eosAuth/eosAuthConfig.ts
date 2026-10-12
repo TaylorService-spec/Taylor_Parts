@@ -28,6 +28,8 @@
 //                                         preference to X-Forwarded-For hop counting. Render fronts services with
 //                                         Cloudflare and APPENDS to a client-supplied X-Forwarded-For (§9); confirm by
 //                                         measurement before relying on either.
+//   EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256  optional, 64 hex, nonprod only: mounts the one-time client-address measurement
+//                                         (clientIpDiagnostic.ts). Independent of EOS_HUMAN_LOGIN; unset after use.
 //   EOS_AUTH_MULTI_TENANT_SESSIONS        optional, "enabled" | "disabled" (default disabled). Disabled: a human login is
 //                                         single-tenant (a Principal with a membership elsewhere is refused). Enabled:
 //                                         Owner ruling D-12 -- a Principal may belong to several tenants and each session
@@ -61,6 +63,8 @@ export interface EosAuthRuntime {
    * null unless EOS_HUMAN_LOGIN=enabled with a signing key. `factorKeyring` null = password-only (MFA enrollment
    * refuses; an account can then never acquire a factor, so none ever needs one to sign in).
    */
+  /** The client-address measurement (clientIpDiagnostic.ts): the SHA-256 of its operator credential, or null (unmounted). */
+  readonly clientIpDiagnosticSha256?: string | null;
   readonly humanLogin: {
     readonly signer: EosSigner;
     readonly factorKeyring: FactorKeyring | null;
@@ -88,6 +92,15 @@ const samePublicKey = (a: KeyObject, b: KeyObject) =>
  * configuration -- half a verifier is worse than none, because it looks configured.
  */
 export function readEosAuthConfig(env: NodeJS.ProcessEnv, serviceEnvironment: string): EosAuthRuntime {
+  const base = readEosAuthConfigCore(env, serviceEnvironment);
+  const diag = (env.EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256 ?? "").trim().toLowerCase();
+  if (!diag) return base;
+  if (!/^[0-9a-f]{64}$/.test(diag)) throw new EosAuthConfigError("EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256 must be 64 hex characters");
+  if (serviceEnvironment !== "nonprod") throw new EosAuthConfigError("the client-address measurement is nonprod only");
+  return Object.freeze({ ...base, clientIpDiagnosticSha256: diag });
+}
+
+function readEosAuthConfigCore(env: NodeJS.ProcessEnv, serviceEnvironment: string): EosAuthRuntime {
   const keysRaw = env.EOS_AUTH_VERIFY_KEYS;
   const signingRaw = env.EOS_AUTH_SIGNING_KEY_NONPROD;
   const kid = env.EOS_AUTH_SIGNING_KID;

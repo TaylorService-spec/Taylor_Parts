@@ -335,3 +335,44 @@ test("U13 review findings 5, 6, 13: IPv6 /64 buckets, explicit proxy hops, LRU e
   assert.equal(busy.status, 503);
   assert.equal(JSON.parse(busy.body).code, "TRY_LATER");
 });
+
+test("U14 the client-address measurement: unmounted by default, credential-gated, nonprod only, echoes address facts only", async () => {
+  const { createServer } = await import("node:http");
+  const { createHash } = await import("node:crypto");
+  const D = require("../lib/eosAuth/clientIpDiagnostic.js");
+  const kp = generateKeyPairSync("ed25519");
+  const base = { EOS_AUTH_VERIFY_KEYS: JSON.stringify({ "nonprod-d": kp.publicKey.export({ format: "jwk" }) }), EOS_AUTH_ISSUER: ISS, EOS_AUTH_AUDIENCE: AUD };
+  const credential = randomBytes(32).toString("base64url");
+  const sha = createHash("sha256").update(credential).digest("hex");
+  assert.equal(readEosAuthConfig(base, "nonprod").clientIpDiagnosticSha256, undefined, "off by default");
+  assert.throws(() => readEosAuthConfig({ ...base, EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256: "abc" }, "nonprod"), /64 hex/);
+  assert.throws(() => readEosAuthConfig({ ...base, EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256: sha }, "production"), /EOS_ENVIRONMENT=nonprod|nonprod only/);
+  assert.equal(readEosAuthConfig({ ...base, EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256: sha }, "nonprod").clientIpDiagnosticSha256, sha);
+  // Pure candidates: the Nth-from-right hop, the edge headers, the socket fallback.
+  const c = D.clientAddressCandidates({ "x-forwarded-for": "6.6.6.6, 203.0.113.9, 10.1.1.1", "true-client-ip": "203.0.113.9", cookie: "secret" }, "10.9.9.9");
+  assert.equal(c.delivered.xForwardedForEntries, 3);
+  assert.equal(c.wouldResolve["EOS_AUTH_TRUSTED_PROXY_HOPS=2"], "203.0.113.9");
+  assert.equal(c.wouldResolve["EOS_AUTH_CLIENT_IP_HEADER=true-client-ip"], "203.0.113.9");
+  assert.equal(c.wouldResolve["EOS_AUTH_CLIENT_IP_HEADER=cf-connecting-ip"], "10.9.9.9");
+  assert.ok(!JSON.stringify(c).includes("secret"), "no other header is echoed");
+  // Mounted through the real /auth/* handler only when configured.
+  const serve = async (auth) => {
+    const handler = H.createEosAuthHttpHandler({ repo: {}, auth, environment: "nonprod" });
+    const srv = createServer((req, res) => { handler(req, res); });
+    await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+    return { srv, url: `http://127.0.0.1:${srv.address().port}${D.CLIENT_IP_DIAGNOSTIC_ROUTE}` };
+  };
+  const off = await serve({ verify: null, issuer: null, audience: null, personaIssuer: null, humanLogin: null });
+  assert.equal((await fetch(off.url, { method: "POST" })).status, 404);
+  off.srv.close();
+  const on = await serve({ verify: null, issuer: null, audience: null, personaIssuer: null, humanLogin: null, clientIpDiagnosticSha256: sha });
+  assert.equal((await fetch(on.url, { method: "POST" })).status, 401);
+  assert.equal((await fetch(on.url, { method: "POST", headers: { [D.CLIENT_IP_DIAGNOSTIC_HEADER]: "x".repeat(43) } })).status, 401);
+  const r = await fetch(on.url, { method: "POST", headers: { [D.CLIENT_IP_DIAGNOSTIC_HEADER]: credential, "x-forwarded-for": "198.51.100.1", cookie: "__Host-eos_refresh=eosrt_x" } });
+  assert.equal(r.status, 200);
+  const body = await r.json();
+  assert.equal(body.delivered.xForwardedFor, "198.51.100.1");
+  assert.ok(!JSON.stringify(body).includes("eosrt_"), "the cookie is never echoed");
+  assert.equal(r.headers.get("cache-control"), "no-store");
+  on.srv.close();
+});

@@ -25,6 +25,7 @@ import type { EosAuthRuntime } from "./eosAuthConfig";
 import { issueNonprodPersonaSession, PersonaIssuanceError } from "./eosSessionIssuer";
 import { isHumanSubject } from "./eosLoginService";
 import { bindSessionTenant } from "./requestTenantBinding";
+import { CLIENT_IP_DIAGNOSTIC_ROUTE, createClientIpDiagnosticHandler } from "./clientIpDiagnostic";
 import { isLoginRoute } from "./eosLoginHttp";
 import type { PolicyRepository } from "../adminPolicy/policyRepository";
 
@@ -124,8 +125,15 @@ export function createEosAuthHttpHandler(deps: {
   /** The human front door (eosLoginHttp.ts). Absent unless EOS_HUMAN_LOGIN=enabled: its paths are then 404. */
   readonly login?: ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | null;
 }) {
+  const diagnostic = deps.auth.clientIpDiagnosticSha256 && deps.environment === "nonprod"
+    ? createClientIpDiagnosticHandler(deps.auth.clientIpDiagnosticSha256) : null;
   return async function handleEosAuth(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const path = (req.url ?? "").split("?")[0];
+    // The one-time client-address measurement: mounted only while its operator credential hash is configured (nonprod).
+    if (diagnostic && path === CLIENT_IP_DIAGNOSTIC_ROUTE) {
+      await diagnostic(req, res);
+      return;
+    }
     if (deps.login && isLoginRoute(path.replace(/\/$/, ""))) {
       await deps.login(req, res);
       return;
