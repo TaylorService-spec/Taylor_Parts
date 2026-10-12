@@ -23,7 +23,7 @@ applicable.
 | 7 | `updatePartSupplierItem` | F2 | Change part-supplier terms | none | G | G | G | G | G | G | **GAP** | SUP-1: no PostgreSQL equivalent |
 | 8 | `changePartSupplierItemStatus` | F2 | Retire part-supplier terms | repository only | P | G | G | P | G | G | **GAP** | SUP-1 |
 | 9 | `setPreferredSupplier` | F2 | Choose preferred supplier | repository only | P | G | G | P | G | G | **GAP** | SUP-1 |
-| 10 | `recordWorkOrderLabor` | F4 | Technician records time | `/operations/work-orders recordWorkOrderLabor` | V | P | V | P | V | G | **GAP** (unruled material change) | WOL-2 offline; WOL-3; AUD-2 |
+| 10 | `recordWorkOrderLabor` | F4 | Technician records time | `/operations/work-orders recordWorkOrderLabor` | V | P | V | V | V | G | **GAP** (unruled material change) | WOL-3; AUD-2 (WOL-2 offline fixed in #2061) |
 | 11 | `correctWorkOrderLabor` | F4 | Manager corrects time | same op + `correctsLaborEntryId` (server only) | V | G | V | P | V | G | **GAP** | WOL-1: no UI; AUD-2 |
 | 12 | `getWorkOrderLabor` | F4 | Read a job's time | `/operations/work-orders readWorkOrderLabor` | V | P | V | – | V | V | **GAP** (unruled material change) | WOL-4 read widened; totals-only UI |
 | 13 | `createPart` | F3a | Create Part | `/operations/catalog createPart` | V | P | V | V | V | P | **UNVERIFIED** (REPLACED) | CAT-1 fixed (#2059); live write proof pending |

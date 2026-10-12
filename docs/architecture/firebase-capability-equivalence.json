@@ -992,7 +992,7 @@
           ]
         },
         "D": {
-          "status": "PARTIAL",
+          "status": "VERIFIED",
           "evidence": [
             {
               "kind": "test",
@@ -1005,9 +1005,26 @@
               "path": "functions/test/serviceTechnicianJourneyPostgres.test.mjs",
               "contains": "TECHNICIAN: own list -> field context -> accept/travel/arrive/start -> labor -> actuals + notes -> complete",
               "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/jobLaborOfflineIdempotency.test.jsx",
+              "contains": "a send that committed but lost its answer is queued under the SAME key, so syncing it REPLAYS -- one entry",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/jobLaborOfflineIdempotency.test.jsx",
+              "contains": "two genuine entries captured OFFLINE are two queued intents, not one collapsed by the queue",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/jobLaborOfflineIdempotency.test.jsx",
+              "contains": "'could not save offline' keeps the entry; pressing again REPLAYS -- one entry",
+              "polarity": "negative"
             }
-          ],
-          "limitation": "Offline sync: the online send and the queued fallback use different idempotency keys (possible double entry after a lost response), and the offline intent id collapses two identical entries on one day."
+          ]
         },
         "E": {
           "status": "VERIFIED",
@@ -1039,9 +1056,9 @@
         "limitation": "Firebase staged an audit event per record; the PostgreSQL writer writes no eos_policy.audit_events row (only the append-only ledger row)."
       },
       "gaps": [
+        "WOL-2 fixed in #2061: one idempotency key per entry, shared by the online send and the queued intent (no double entry after a lost answer, no collapse of identical entries).",
         "No audit event (material change, not ruled).",
         "Identity moved from technicianId to Employee; authority moved to workOrder.execution.record (not ruled).",
-        "Offline idempotency-key mismatch and intent collapse.",
         "No live technician proof recorded."
       ]
     },
