@@ -9,6 +9,8 @@
 //   T2 grantObjectActionToRole(R, excluded key)        pre-check: no Owner holds R           -> passes
 //   both commit, serially, under the lock              -> the Owner holds the excluded key.
 //
+// The same holds for bootstrapFirstOwner (independent review): it now re-decides ruling A under the lock too.
+//
 // This suite makes that interleaving deterministic: a separate session holds the tenant governance lock
 // while both commands run their pre-lock checks and queue on it, in a chosen order; then it releases.
 // The authoritative check is now re-decided INSIDE the lock, so exactly one command commits and the
@@ -29,7 +31,7 @@ const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no datab
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
-const { bootstrapTenant, bootstrapAdministrator, ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
+const { bootstrapTenant, bootstrapAdministrator, bootstrapFirstOwner, ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
 const commands = require("../lib/adminPolicy/policyCommands.js");
 const { OWNER_EXCLUDED_CAPABILITIES } = require("../lib/adminPolicy/roleCapabilityAdministration.js");
 
@@ -102,6 +104,24 @@ test("OWNER RULING A is decided under the governance lock (F-1), in PostgreSQL",
     return { tenantId: tenant.id, actor, ownerId, role };
   };
 
+  // Hold the tenant governance lock from a separate session, so both commands finish their pre-lock checks
+  // against the SAME state and queue on the lock in a known order; then release it.
+  const queueUnderLock = async (tenantId, [a, b]) => {
+    const holder = await pool.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [tenantId]);
+      const pa = a().then((v) => ({ ok: true, v }), (e) => ({ ok: false, e }));
+      await untilWaiters(1);
+      const pb = b().then((v) => ({ ok: true, v }), (e) => ({ ok: false, e }));
+      await untilWaiters(2);
+      await holder.query("COMMIT");
+      return { first: await pa, second: await pb };
+    } finally {
+      holder.release();
+    }
+  };
+
   const race = async (first) => {
     const { tenantId, actor, ownerId, role } = await setup(first);
     assert.equal(await ownerHolds(tenantId, ownerId, EXCLUDED), false, "premise: the Owner does not hold the excluded key");
@@ -109,23 +129,7 @@ test("OWNER RULING A is decided under the governance lock (F-1), in PostgreSQL",
     const grant = () => commands.grantObjectActionToRole(repo, actor,
       { objectKey: capability.objectKey, actionKey: capability.actionKey, roleKey: role.key, reason: "race: widen the Role" });
 
-    // Hold the tenant governance lock from a separate session, so both commands finish their pre-lock checks
-    // against the SAME state and queue on the lock in a known order.
-    const holder = await pool.connect();
-    let settled;
-    try {
-      await holder.query("BEGIN");
-      await holder.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [tenantId]);
-      const [a, b] = first === "assign" ? [assign, grant] : [grant, assign];
-      const pa = a().then((v) => ({ ok: true, v }), (e) => ({ ok: false, e }));
-      await untilWaiters(1);
-      const pb = b().then((v) => ({ ok: true, v }), (e) => ({ ok: false, e }));
-      await untilWaiters(2);
-      await holder.query("COMMIT");
-      settled = { first: await pa, second: await pb };
-    } finally {
-      holder.release();
-    }
+    const settled = await queueUnderLock(tenantId, first === "assign" ? [assign, grant] : [grant, assign]);
     return { tenantId, ownerId, settled };
   };
 
@@ -138,5 +142,47 @@ test("OWNER RULING A is decided under the governance lock (F-1), in PostgreSQL",
       assert.match(settled.second.e.message, OWNER_A);
       assert.equal(settled.second.e.code, "SYSTEM_INVARIANT");
     });
+  }
+
+  // THE FIRST-OWNER BOOTSTRAP (independent review of F-1): bootstrapFirstOwner decided ruling A only before the lock, so a
+  // grant that brings P an excluded capability, queued on the lock with it, let P become Owner already holding one.
+  const isOwner = async (tenantId, principalId) => Number((await q(
+    `SELECT count(*)::int n FROM eos_policy.user_role_assignments a JOIN eos_policy.roles r ON r.id = a.role_id
+      WHERE a.tenant_id = $1 AND a.principal_id = $2 AND r.key = 'owner' AND a.status = 'active'`, [tenantId, principalId])).rows[0].n) > 0;
+  const setupNoOwner = async (key) => {
+    const { tenant } = await bootstrapTenant(repo, { key: `oxl-${key}`, name: key, actorUid: OP });
+    await bootstrapAdministrator(repo, { tenantId: tenant.id, externalSubject: `admin-${key}`, performedBy: OP, reason: "boot" });
+    const adminId = (await repo.getPrincipalBySubject("firebase", `admin-${key}`)).id;
+    const made = await ensureTenantPrincipal(repo, { tenantId: tenant.id, externalSubject: `p-${key}`, actorUid: OP, actorRoleKeys: ["admin"] });
+    const principalId = made.principal?.id ?? made.id ?? made.principalId;
+    const actor = { tenantId: tenant.id, uid: adminId, heldRoleKeys: ["admin"] };
+    // P already holds an empty custom Role (the Role-grant path widens it).
+    const role = await commands.createRole(repo, actor, { key: "fieldCrew", name: "Field crew", reason: "fixture" });
+    await commands.assignRole(repo, actor, { principalId, roleId: role.id, reason: "fixture: P holds the Role" });
+    assert.equal(await isOwner(tenant.id, principalId), false, "premise: the tenant has no Owner yet");
+    return { tenantId: tenant.id, actor, principalId, role };
+  };
+  const BOOTSTRAP_RULING_A = /FIRST_OWNER_RULING_A: a principal holding the owner Role may never hold equipment\.install/;
+  for (const path of ["direct", "role"]) {
+    for (const first of ["grant", "bootstrap"]) {
+      await t.test(`bootstrapFirstOwner vs a ${path} grant of an excluded key, ${first} first: exactly one commits`, async () => {
+        const { tenantId, actor, principalId, role } = await setupNoOwner(`bs-${path}-${first}`);
+        const target = { objectKey: capability.objectKey, actionKey: capability.actionKey };
+        const grant = path === "direct"
+          ? () => commands.grantObjectActionToPrincipal(repo, actor, { ...target, principalId, reason: "race: direct exception" })
+          : () => commands.grantObjectActionToRole(repo, actor, { ...target, roleKey: role.key, reason: "race: widen P's Role" });
+        const bootstrap = () => bootstrapFirstOwner(repo, { tenantId, principalId, performedBy: OP, reason: "race: first Owner" });
+        const settled = await queueUnderLock(tenantId, first === "grant" ? [grant, bootstrap] : [bootstrap, grant]);
+        assert.equal(settled.first.ok, true, `the first command commits: ${settled.first.e?.message ?? ""}`);
+        assert.equal((await isOwner(tenantId, principalId)) && (await ownerHolds(tenantId, principalId, EXCLUDED)), false,
+          "the Owner never holds an excluded capability");
+        assert.equal(settled.second.ok, false, "the second command must be refused under the lock");
+        if (first === "grant") assert.match(settled.second.e.message, BOOTSTRAP_RULING_A);
+        else {
+          assert.match(settled.second.e.message, OWNER_A);
+          assert.equal(settled.second.e.code, "SYSTEM_INVARIANT");
+        }
+      });
+    }
   }
 });
