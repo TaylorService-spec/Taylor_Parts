@@ -22,8 +22,9 @@
 import { callPolicyApi } from "./adminPolicyApiClient.js";
 
 // readPolicyAuditHistory ROW CONTRACT (server: functions/src/adminPolicy/auditReadProjection.ts, PR 5a).
-// Today every row is a visible row. A FUTURE withheld row (PR 5b, not emitted for any current reader) has NO
-// `before`/`after` keys at all -- absent, never null, because null already means "no prior/next state" -- and
+// Every current audit reader sees every row's values (proven byte-identical). A withheld row is emitted only for
+// binPlacement / stockRelocation to a reader lacking inventory.transaction.read (no such reader exists today);
+// PR 5b (HELD) extends gating to other kinds. A withheld row has NO `before`/`after` keys at all -- absent, never null, because null already means "no prior/next state" -- and
 // carries `valuesWithheld`. A screen must test `"valuesWithheld" in row`, never treat a missing `after` as
 // "no change". `valuesWithheld` is absent (not null) on a visible row.
 /**
