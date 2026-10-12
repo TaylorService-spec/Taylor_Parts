@@ -1,12 +1,9 @@
 // SupplierCatalogItem + PartAlias entity definitions — A-ENTITY-CATALOG-DEFINITIONS (continues
 // A-ENTITY-MASS-DEFINITION).
 //
-// Pins the intended behavior for two collections that turned out to be honest opposites of each
-// other: `supplier_catalog` is READ-live (Operations.jsx's ProcurementPanel genuinely queries it,
-// CLIENT_DIRECT) but WRITE-dormant (no governed writer anywhere, only a one-off local admin seed
-// script); `part_aliases` has NO read path of any kind (readVia UNKNOWN, deny-all in Rules with
-// no callable) and is additionally still unpopulated end to end. Neither collection is idealized
-// as though it were fully live.
+// SupplierCatalogItem is Part Supplier Terms in PostgreSQL (realigned by SUP-1: the governed field groups it carries
+// protect that table's fields); `part_aliases` has NO read path of any kind (readVia UNKNOWN, deny-all in Rules with
+// no callable) and is additionally still unpopulated end to end.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,77 +17,67 @@ import { manufacturerEntity } from "../src/metadata/definitions/manufacturer.js"
 import { equipmentModelEntity } from "../src/metadata/definitions/equipmentModel.js";
 
 // ---------------------------------------------------------------------------
-// SupplierCatalogItem
+// SupplierCatalogItem -- realigned (SUP-1 governed field groups) to Part Supplier Terms in PostgreSQL
+// (eos_ops.supplier_catalog_items), the record the inventory.catalog.cost.* capabilities on this Object protect.
 // ---------------------------------------------------------------------------
 
 test("the SupplierCatalogItem entity is valid against the contract", () => {
   assert.deepEqual(validateEntityDefinition(supplierCatalogItemEntity), []);
 });
 
-test("the SupplierCatalogItem entity resolves against the registry (supplier is a real target)", () => {
-  assert.deepEqual(validateEntityRegistry([supplierCatalogItemEntity, supplierEntity]), []);
+test("the SupplierCatalogItem entity resolves against the registry (supplier and part are real targets)", () => {
+  assert.deepEqual(validateEntityRegistry([supplierCatalogItemEntity, supplierEntity, partEntity, manufacturerEntity, equipmentModelEntity]), []);
 });
 
-test("entity id is \"supplierCatalogItem\", collection is the real `supplier_catalog` collection", () => {
+test("entity id is \"supplierCatalogItem\", the record is the PostgreSQL supplier_catalog_items table, read through the EOS API", () => {
   assert.equal(supplierCatalogItemEntity.id, "supplierCatalogItem");
-  assert.equal(supplierCatalogItemEntity.collection, "supplier_catalog");
+  assert.equal(supplierCatalogItemEntity.collection, "supplier_catalog_items");
+  assert.equal(supplierCatalogItemEntity.readVia, "EOS_API");
+  assert.equal(supplierCatalogItemEntity.readCapability, "inventory.supplierTerms.read");
 });
 
-test("read is CLIENT_DIRECT with no capability -- Rules gate by role (admin/dispatcher), not by capability", () => {
-  assert.equal(supplierCatalogItemEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(supplierCatalogItemEntity.readCapability, null);
+test("the field list is exactly the table's governed columns", () => {
+  assert.deepEqual(supplierCatalogItemEntity.fields.map((f) => f.id), [
+    "supplierId", "partId", "supplierSku", "cost", "currency", "leadTimeDays", "minOrderQty", "orderMultiple", "purchaseUnit",
+    "conversionToStockingUnit", "contractStart", "contractEnd", "availability", "preferred", "status", "lastVerifiedAt",
+  ]);
+  assert.equal(findField(supplierCatalogItemEntity, "unitPrice"), null, "the retired Firestore listing field is gone");
+  assert.equal(findField(supplierCatalogItemEntity, "available"), null);
 });
 
-test("identity is SYSTEM_ONLY, explicitly declared -- neither foreign key is a name or a reference", () => {
-  assert.equal(supplierCatalogItemEntity.identity.mode, "SYSTEM_ONLY");
-  assert.equal(supplierCatalogItemEntity.identity.nameField, null);
-  assert.equal(supplierCatalogItemEntity.identity.referenceField, null);
-  assert.equal(resolveIdentityMode(supplierCatalogItemEntity.identity), "SYSTEM_ONLY");
+test("the COMMERCIAL field group (cost, currency, contract window) is CONFIDENTIAL; nothing else is classified", () => {
+  const classified = supplierCatalogItemEntity.fields.filter((f) => f.sensitivity !== null).map((f) => [f.id, f.sensitivity]);
+  assert.deepEqual(classified, [["cost", "CONFIDENTIAL"], ["currency", "CONFIDENTIAL"], ["contractStart", "CONFIDENTIAL"], ["contractEnd", "CONFIDENTIAL"]]);
 });
 
-test("catalogItemId is declared as its own ID field, not promoted into identity", () => {
-  const catalogItemId = findField(supplierCatalogItemEntity, "catalogItemId");
-  assert.equal(catalogItemId.type, "ID");
-  assert.notEqual(supplierCatalogItemEntity.identity.nameField, "catalogItemId");
-  assert.notEqual(supplierCatalogItemEntity.identity.referenceField, "catalogItemId");
-});
-
-test("supplierId is a real REFERENCE to the registered supplier entity", () => {
-  const supplierId = findField(supplierCatalogItemEntity, "supplierId");
-  assert.equal(supplierId.type, "REFERENCE");
-  assert.equal(supplierId.referenceTo, "supplier");
-  assert.equal(supplierId.filterable, true);
-});
-
-test("partId stays a plain STRING -- not verified against Part Master's canonical identity space", () => {
-  const partId = findField(supplierCatalogItemEntity, "partId");
-  assert.equal(partId.type, "STRING");
-  assert.notEqual(partId.type, "REFERENCE");
-});
-
-test("unitPrice is a plain NUMBER, not CURRENCY_MINOR -- no currency field or minor-unit encoding exists", () => {
-  const unitPrice = findField(supplierCatalogItemEntity, "unitPrice");
-  assert.equal(unitPrice.type, "NUMBER");
-  assert.notEqual(unitPrice.type, "CURRENCY_MINOR");
-});
-
-test("available is a filterable BOOLEAN -- the one real predicate findBestSupplierForPart actually runs", () => {
-  const available = findField(supplierCatalogItemEntity, "available");
-  assert.equal(available.type, "BOOLEAN");
-  assert.equal(available.filterable, true);
-});
-
-test("no provenance fields are declared -- the stored type carries none", () => {
-  for (const id of ["version", "createdAt", "createdBy", "updatedAt", "updatedBy"]) {
-    assert.equal(findField(supplierCatalogItemEntity, id), null, `unexpected provenance field "${id}"`);
+test("every CONFIDENTIAL field of SupplierCatalogItem is non-reportable and non-exportable (DECISIONS #230)", () => {
+  const confidential = supplierCatalogItemEntity.fields.filter((f) => f.sensitivity === "CONFIDENTIAL");
+  assert.equal(confidential.length, 4);
+  for (const f of confidential) {
+    assert.equal(f.reportable, false, `${f.id} is not reportable`);
+    assert.equal(f.exportable, false, `${f.id} is not exportable`);
   }
+  // Everything else stays reportable: only the restricted values are kept out of reporting.
+  for (const f of supplierCatalogItemEntity.fields.filter((x) => x.sensitivity !== "CONFIDENTIAL")) assert.equal(f.reportable, true, f.id);
 });
 
-test("no relationships[] entries -- the supplierId edge is already the REFERENCE field above", () => {
+test("identity is SYSTEM_ONLY -- (part, supplier) is a composed key, never a name", () => {
+  assert.equal(supplierCatalogItemEntity.identity.mode, "SYSTEM_ONLY");
+  assert.equal(resolveIdentityMode(supplierCatalogItemEntity.identity), "SYSTEM_ONLY");
+  assert.equal(findField(supplierCatalogItemEntity, "supplierId").referenceTo, "supplier");
+  assert.equal(findField(supplierCatalogItemEntity, "partId").referenceTo, "part");
+});
+
+test("an unknown sensitivity is refused by the contract", () => {
+  const bad = { ...supplierCatalogItemEntity, fields: [{ ...supplierCatalogItemEntity.fields[3], sensitivity: "SECRET" }] };
+  assert.ok(validateEntityDefinition(bad).some((p) => /not a known FIELD_SENSITIVITY/.test(p)));
+});
+
+test("no relationships[] entries -- the two edges are the REFERENCE fields above", () => {
   assert.deepEqual([...supplierCatalogItemEntity.relationships], []);
 });
 
-test("SupplierCatalogItem has no exported index list -- no filter set this collection actually serves is asserted", async () => {
+test("SupplierCatalogItem has no exported index list -- the only read is one Part's terms", async () => {
   const mod = await import("../src/metadata/definitions/supplierCatalogItem.js");
   assert.equal(mod.supplierCatalogItemIndexList, undefined);
 });

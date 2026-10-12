@@ -295,6 +295,17 @@ on:
       - "functions/src/eosFinance/accountingDelivery.ts"
       - "functions/migrations/1764470000000_accounting-delivery-control-plane.sql"
       - "functions/test/supplierAdministrationPostgres.test.mjs"
+      # SUP-1: governed part-supplier terms. The PG suite proves the command layer; the employee-contract suite drives the
+      # real transport with the SECTION's request builders and pins the browser fixture, so a change to either side re-proves the pair.
+      - "functions/test/partSupplierTermsPostgres.test.mjs"
+      - "functions/test/partSupplierTermsEmployeeContractPostgres.test.mjs"
+      - "functions/test/support/partSupplierTermsFixture.mjs"
+      # DECISIONS #230: the Administration Objects matrix for supplierCatalogItem (seven actions, standing, zero grants).
+      - "functions/test/supplierTermsObjectMatrixPostgres.test.mjs"
+      # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
+      - "functions/test/governedFieldGroups.test.mjs"
+      - "field-ops-app-vite/test/fixtures/partSupplierTermsContract.json"
+      - "field-ops-app-vite/src/domain/partSupplierTerms.js"
       - "functions/src/eosFinance/**"
       - "functions/src/eosRental/**"
       - "functions/src/eosAnalysis/**"
@@ -1002,6 +1013,17 @@ on:
       - "functions/src/eosFinance/accountingDelivery.ts"
       - "functions/migrations/1764470000000_accounting-delivery-control-plane.sql"
       - "functions/test/supplierAdministrationPostgres.test.mjs"
+      # SUP-1: governed part-supplier terms. The PG suite proves the command layer; the employee-contract suite drives the
+      # real transport with the SECTION's request builders and pins the browser fixture, so a change to either side re-proves the pair.
+      - "functions/test/partSupplierTermsPostgres.test.mjs"
+      - "functions/test/partSupplierTermsEmployeeContractPostgres.test.mjs"
+      - "functions/test/support/partSupplierTermsFixture.mjs"
+      # DECISIONS #230: the Administration Objects matrix for supplierCatalogItem (seven actions, standing, zero grants).
+      - "functions/test/supplierTermsObjectMatrixPostgres.test.mjs"
+      # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
+      - "functions/test/governedFieldGroups.test.mjs"
+      - "field-ops-app-vite/test/fixtures/partSupplierTermsContract.json"
+      - "field-ops-app-vite/src/domain/partSupplierTerms.js"
       - "functions/src/eosFinance/**"
       - "functions/src/eosRental/**"
       - "functions/src/eosAnalysis/**"

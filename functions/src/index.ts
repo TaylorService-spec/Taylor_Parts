@@ -520,6 +520,8 @@ export { getPartBalancesCallable as getPartBalances } from "./inventory/partBala
 // The deployed copies stay DEPLOYED_NOT_CALLED until the bounded Firebase removal window -- tracked, not deleted by deploy here.
 //   createPartSupplierItem, updatePartSupplierItem, changePartSupplierItemStatus, setPreferredSupplier
 //     (-> PG eos_ops.supplier_catalog_items, eosOps/supplierCatalogRepository.ts; catalogActivationLedger)
+//     SUP-1: the governed EOS replacement is eosOps/partSupplierTerms.ts on /operations/inventory (listPartSupplierItems,
+//     createPartSupplierItem, updatePartSupplierItem, setPartSupplierItemStatus, setPreferredPartSupplierItem).
 
 // CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4). EXPORT != DEPLOY, REGISTER != GRANT:
 // exported for build/test only; `crm.activity.create` / `crm.activity.read` are both registered

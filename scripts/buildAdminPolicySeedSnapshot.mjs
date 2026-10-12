@@ -89,10 +89,10 @@ const objects = [...GOVERNABLE_OBJECTS, ...CAPABILITY_GOVERNED_OBJECTS].map((obj
     searchable: Boolean(f.filterable),
     sortable: Boolean(f.sortable),
     reportable: f.reportable !== false,
-    // The metadata model has no sensitivity vocabulary; `readCapability` is the adjacent fact it
-    // does carry. A field gated by its own capability is at least INTERNAL -- promoting it to
-    // CONFIDENTIAL would be inventing a classification nobody recorded.
-    sensitivity: f.readCapability ? "INTERNAL" : "NORMAL",
+    // A RECORDED classification wins (makeFieldDefinition `sensitivity`, e.g. the CONFIDENTIAL COMMERCIAL field group of
+    // Part Supplier Terms). Otherwise `readCapability` is the adjacent fact the model carries: a field gated by its own
+    // capability is at least INTERNAL -- promoting it to CONFIDENTIAL would be inventing a classification nobody recorded.
+    sensitivity: f.sensitivity ?? (f.readCapability ? "INTERNAL" : "NORMAL"),
     referenceTo: f.referenceTo ?? null,
   })),
 }));

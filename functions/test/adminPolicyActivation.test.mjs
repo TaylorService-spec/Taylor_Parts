@@ -247,7 +247,10 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   // longer creates that object or its field-policy rows. This is what the retirement looks like
   // where it matters most -- in a real database, a tenant is no longer given six policy rows
   // governing a collection that has no Rules match block, no query and no writer.
-  assert.equal(first.seed.created.fields, 389, "389 canonical fields");
+  // 389 -> 400: SUP-1 GOVERNED FIELD GROUPS (2026-10-11). supplierCatalogItem was realigned from the retired Firestore
+  // `supplier_catalog` listing (5 fields) to eos_ops.supplier_catalog_items, the table its inventory.catalog.cost.*
+  // capabilities govern (16 fields). Net +11, no entity added or removed.
+  assert.equal(first.seed.created.fields, 400, "400 canonical fields");
   assert.ok(first.seed.created.roles >= 43, "the governed business roles, and the compatibility ones");
   assert.equal(first.seed.created.workflows, 5, "5 versioned state machines");
   assert.equal(first.seed.created.workflowVersions, 5);
