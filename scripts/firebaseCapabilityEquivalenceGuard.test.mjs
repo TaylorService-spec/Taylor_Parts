@@ -1,10 +1,10 @@
 // Contract tests for the Firebase retirement business-capability equivalence gate.
 // See scripts/firebaseCapabilityEquivalenceGuard.mjs and docs/architecture/firebase-capability-equivalence-gate.md.
 
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,8 +26,13 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Fixtures
 // ---------------------------------------------------------------------------------------------------
 
+// ONE fixture repository for every scenario (nothing writes to it), removed when the file finishes.
+let FIXTURE_ROOT = null;
+after(() => { if (FIXTURE_ROOT) rmSync(FIXTURE_ROOT, { recursive: true, force: true }); });
 function fixtureRepo() {
+  if (FIXTURE_ROOT) return FIXTURE_ROOT;
   const root = mkdtempSync(join(tmpdir(), "fceg-"));
+  FIXTURE_ROOT = root;
   const files = {
     "functions/test/thing.test.mjs": 'test("creates a thing", ...)\ntest("refuses a thing without the capability", ...)\n',
     "functions/src/thingHttp.ts": 'case "createThing":\n',
@@ -77,13 +82,19 @@ function verifiedRecord(overrides = {}) {
   };
 }
 
-function evaluate({ records, current = ["keepMe"], previous = ["keepMe", "createThing"], previousRecords, decisions = [], historical = [] }) {
+// `decisions`: numbers whose section RULES ON createThing, or [number, sectionText] pairs.
+function evaluate({
+  records, current = ["keepMe"], previous = ["keepMe", "createThing"], previousRecords, decisions = [], historical = [],
+  baseline, previousBaseline,
+}) {
+  const exportBaseline = { sha: "base", exports: baseline ?? [...new Set([...(previous ?? []), ...current])] };
   return evaluateEquivalence({
-    manifest: { records },
+    manifest: { records, exportBaseline },
     currentExports: current,
     previousExports: previous,
-    previousManifest: previousRecords ? { records: previousRecords } : null,
-    decisions: new Set(decisions),
+    previousManifest: previousRecords || previousBaseline
+      ? { records: previousRecords ?? [], exportBaseline: previousBaseline ?? exportBaseline } : null,
+    decisions: new Map(decisions.map((d) => (Array.isArray(d) ? d : [d, `## #${d} -- OWNER: createThing is accepted`]))),
     repoRoot: fixtureRepo(),
     historicalRetirements: historical,
   });
@@ -98,19 +109,19 @@ function assertBlocked(result, pattern) {
 // Export enumeration
 // ---------------------------------------------------------------------------------------------------
 
-test("parses single-line, multi-line, aliased and declared exports", () => {
+test("parses the index grammar: comments, the firebase-admin initialization, single- and multi-line export blocks", () => {
   const source = `
+    import { initializeApp } from "firebase-admin/app";
+    initializeApp();
     export { a } from "./a";
     export {
       b,
       c as cee, // trailing comment
     } from "./bc";
-    export const d = 1;
-    export async function e() {}
-    export type { NotDeployed } from "./types";
-    export { type AlsoNot, f } from "./f";
+    /* block comment with \`backticks\` and /slashes/ */
+    export { default as d } from "./d";
   `;
-  assert.deepEqual(parseIndexExports(source), ["a", "b", "cee", "d", "e", "f"]);
+  assert.deepEqual(parseIndexExports(source), ["a", "b", "cee", "d"]);
 });
 
 test("an export inside a comment or a brace inside a string is not misread", () => {
@@ -122,9 +133,37 @@ test("an export inside a comment or a brace inside a string is not misread", () 
   assert.deepEqual(parseIndexExports(source), ["real"]);
 });
 
-test("export * and export default are refused, not skipped (an under-count would hide a retirement)", () => {
-  assert.throws(() => parseIndexExports('export * from "./all";'), /unsupported export form/);
-  assert.throws(() => parseIndexExports("export default thing;"), /unsupported export form/);
+test("B1 regression: a regex or template literal cannot desynchronize the scan and fake a commented-out export", () => {
+  // The adversarial review's exact repro (#2057): a removed export made to look present. Refused, not misread.
+  const regex = 'const retiredMarker = /\'/; void retiredMarker; // \' ; export { listRecordChangeHistory } from "./access/administrationUsersCallables";';
+  assert.throws(() => parseIndexExports(regex), /:1: a `\/` outside a comment/);
+  const template = 'const t = `${"`"}`; void t; // " ; export { x } from "./x";';
+  assert.throws(() => parseIndexExports(template), /:1: a template literal/);
+});
+
+test("every form the guard cannot prove is refused, with its line -- never skipped or guessed", () => {
+  for (const [source, why] of [
+    ['export * from "./all";', /unsupported statement/],
+    ['export * as ns from "./all";', /unsupported statement/],
+    ["export default thing;", /unsupported statement/],
+    ["export const d = 1;", /unsupported statement/],
+    ["export const a = x, b = y;", /unsupported statement/],
+    ["export const { a, b } = o;", /unsupported statement/],
+    ["export async function e() {}", /unsupported statement/],
+    ["export = o;", /unsupported statement/],
+    ["exports.a = 1;", /unsupported statement/],
+    ["module.exports.b = 2;", /unsupported statement/],
+    ["export namespace N { }", /unsupported statement/],
+    ['export type { T } from "./t";', /unsupported statement/],
+    ['export { type T } from "./t";', /cannot parse export specifier/],
+    ['export { a } from "./a";\nexport { a } from "./b";', /"a" is exported twice/],
+    ['export { a } from "./a\n";', /string that crosses a line/],
+    ["/* never closed", /unterminated block comment/],
+    ["const half = 1 / 2;", /outside a comment/],
+  ]) {
+    assert.throws(() => parseIndexExports(source), why, source);
+  }
+  assert.throws(() => parseIndexExports('\n\nexport const late = 1;'), /index\.ts:3:/);
 });
 
 test("the live index enumerates every export (agrees with the compiled manifest when it is built)", () => {
@@ -221,7 +260,7 @@ test("evidence may not point outside the repository", () => {
   assertBlocked(evaluate({ records: [record] }), /does not exist in this tree/);
 });
 
-test("a GAP retires only with an Owner decision that exists in DECISIONS.md", () => {
+test("a GAP retires only with an Owner decision that exists in DECISIONS.md and rules on this capability", () => {
   const gap = verifiedRecord({ disposition: "GAP", verificationStatus: "UNVERIFIED" });
   gap.gates.B = { status: "GAP", evidence: [], limitation: "no screen exists" };
   assertBlocked(evaluate({ records: [gap] }), /it is a GAP the Owner has not accepted/);
@@ -231,6 +270,9 @@ test("a GAP retires only with an Owner decision that exists in DECISIONS.md", ()
   assertBlocked(evaluate({ records: [malformed] }), /must look like "DECISIONS #NNN"/);
   const accepted = { ...gap, ownerDecision: "DECISIONS #229" };
   assert.deepEqual(evaluate({ records: [accepted], decisions: ["229"] }).errors, []);
+  // An existing but UNRELATED decision accepts nothing (adversarial review N1).
+  assertBlocked(evaluate({ records: [accepted], decisions: [["229", "## #229 -- Phantom Sales Order links"]] }),
+    /does not name this capability/);
 });
 
 test("SUPERSEDED with a material behaviour change needs the Owner; without one it does not", () => {
@@ -289,8 +331,67 @@ test("malformed and duplicate records are rejected", () => {
   assertBlocked(evaluate({ records: [{ legacyOperation: "createThing" }] }), /"capabilityId" is required/);
   assertBlocked(evaluate({ records: [verifiedRecord(), verifiedRecord()] }), /duplicate record/);
   assertBlocked(evaluate({ records: [verifiedRecord({ disposition: "MOVED" })] }), /disposition "MOVED" is not one of/);
-  assert.deepEqual(evaluateEquivalence({ manifest: {}, currentExports: [], previousExports: null, previousManifest: null,
-    decisions: new Set(), repoRoot: REPO_ROOT }).errors.length, 1);
+  const nameless = evaluate({ records: [{ disposition: "GAP" }, { disposition: "REPLACED" }] });
+  assertBlocked(nameless, /records\[0\]: "legacyOperation" is required/);
+  assertBlocked(nameless, /records\[1\]: "legacyOperation" is required/);
+  assertBlocked(evaluate({ records: [verifiedRecord({ candidateDisposition: "DONE" })] }), /candidateDisposition must be one of/);
+  assert.ok(evaluateEquivalence({ manifest: {}, currentExports: [], previousExports: null, previousManifest: null,
+    decisions: new Map(), repoRoot: REPO_ROOT }).errors.length >= 1);
+});
+
+test("evidence may not cite the gate itself, a non-test file as a test, a trivial fragment, or a path outside the repo", () => {
+  const self = verifiedRecord();
+  self.gates.A.evidence = [{ kind: "source", path: "docs/architecture/firebase-capability-equivalence.json", contains: "createThing proven" }];
+  assertBlocked(evaluate({ records: [self] }), /gate's own machinery or the decision register/);
+  const decisions = verifiedRecord();
+  decisions.gates.A.evidence = [{ kind: "doc", path: "docs/DECISIONS.md", contains: "createThing proven" }];
+  assertBlocked(evaluate({ records: [decisions] }), /gate's own machinery or the decision register/);
+  const notATest = verifiedRecord();
+  notATest.gates.E.evidence = [pos, { kind: "test", path: "functions/src/thingHttp.ts", contains: 'case "createThing"', polarity: "negative" }];
+  assertBlocked(evaluate({ records: [notATest] }), /must point at a test file/);
+  const fragment = verifiedRecord();
+  fragment.gates.A.evidence = [{ kind: "source", path: "functions/src/thingHttp.ts", contains: "e" }];
+  assertBlocked(evaluate({ records: [fragment] }), /must quote at least 12 characters/);
+  const sibling = verifiedRecord();
+  const root = fixtureRepo();
+  sibling.gates.A.evidence = [{ kind: "source", path: `../${root.split("/").pop()}-evil/x.ts` }];
+  assertBlocked(evaluate({ records: [sibling] }), /does not exist in this tree/);
+});
+
+test("a material behaviour change without an Owner decision is a GAP, in either era", () => {
+  const unruled = verifiedRecord({ era: "HISTORICAL", disposition: "UNVERIFIED", verificationStatus: "UNVERIFIED", materialBehaviorChange: true });
+  unruled.gates.B = { status: "PARTIAL", evidence: [src], limitation: "static only" };
+  assertBlocked(evaluate({ records: [unruled], current: ["keepMe"], previous: ["keepMe"], historical: ["createThing"] }),
+    /a material business-behaviour change without an Owner decision is a GAP/);
+  assert.deepEqual(evaluate({ records: [{ ...unruled, disposition: "GAP" }], current: ["keepMe"], previous: ["keepMe"], historical: ["createThing"] }).errors, []);
+});
+
+test("a GATED retirement must STAY complete: a later change cannot weaken it (adversarial review N2)", () => {
+  // No diff against the previous commit -- the retirement merged earlier -- but the record is weakened now.
+  const weakened = verifiedRecord({ disposition: "GAP", verificationStatus: "UNVERIFIED" });
+  weakened.gates.B = { status: "GAP", evidence: [], limitation: "removed later" };
+  assertBlocked(evaluate({ records: [weakened], current: ["keepMe"], previous: ["keepMe"] }),
+    /RETIREMENT BLOCKED: createThing is not retirement-complete/);
+});
+
+test("a GATED record's operation may not stay or come back exported, and nothing new may be exported", () => {
+  assertBlocked(evaluate({ records: [verifiedRecord()], current: ["keepMe", "createThing"], previous: ["keepMe", "createThing"] }),
+    /a GATED record describes a retirement, but createThing is still exported/);
+  assertBlocked(evaluate({ records: [], current: ["keepMe", "brandNew"], previous: ["keepMe"], baseline: ["keepMe"] }),
+    /brandNew is exported from .* but is not in the export baseline/);
+  assertBlocked(evaluate({ records: [], current: ["keepMe", "brandNew"], previous: ["keepMe"], baseline: ["keepMe", "brandNew"] }),
+    /brandNew is newly exported/);
+});
+
+test("the export baseline makes the gate independent of the comparison commit (adversarial review N3)", () => {
+  // A cancelled main run, a direct push or a dispatch: the previous commit already lacks the export. Still caught.
+  const result = evaluate({ records: [], current: ["keepMe"], previous: ["keepMe"], baseline: ["keepMe", "createThing"] });
+  assertBlocked(result, /RETIREMENT BLOCKED: createThing \(export baseline base\) is no longer exported and has no capability-equivalence record/);
+  assertBlocked(evaluate({ records: [], current: ["keepMe"], previous: ["keepMe"], baseline: ["keepMe"],
+    previousBaseline: { sha: "base", exports: ["keepMe", "createThing"] } }), /exportBaseline changed/);
+  const missing = evaluateEquivalence({ manifest: { records: [] }, currentExports: ["keepMe"], previousExports: null,
+    previousManifest: null, decisions: new Map(), repoRoot: fixtureRepo(), historicalRetirements: [] });
+  assertBlocked(missing, /"exportBaseline" \{ sha, exports\[\] \} is required/);
 });
 
 test("bootstrap (no previous commit) checks records but finds no newly retired export", () => {
@@ -314,9 +415,11 @@ test("the historical baseline is exactly the 22 retirements audited at main acc6
   ]);
 });
 
-test("decision headings are read from DECISIONS.md", () => {
-  const numbers = decisionNumbers("## #12 — a\ntext\n## #227 — b\n### #999 not a heading\n");
-  assert.deepEqual([...numbers].sort(), ["12", "227"]);
+test("decision headings are read from DECISIONS.md, each with its own section text", () => {
+  const sections = decisionNumbers("## #12 — a\ntext about createThing\n## #227 — b\n### #999 not a heading\n");
+  assert.deepEqual([...sections.keys()].sort(), ["12", "227"]);
+  assert.match(sections.get("12"), /createThing/);
+  assert.doesNotMatch(sections.get("227"), /createThing/);
 });
 
 test("the committed manifest passes the gate on the current tree", () => {
@@ -330,4 +433,25 @@ test("the committed manifest passes the gate on the current tree", () => {
 test("CLI: a supplied previous file that is missing fails closed", () => {
   assert.throws(() => run(["--previous-index", "/nonexistent/index.ts"], REPO_ROOT), /ENOENT/);
   assert.throws(() => run(["--previous-manifest", "/nonexistent/manifest.json"], REPO_ROOT), /unreadable or malformed JSON/);
+});
+
+test("the export baseline is the 82 exports of main acc65f2e, frozen", () => {
+  const manifest = JSON.parse(readFileSync(join(REPO_ROOT, MANIFEST_RELATIVE_PATH), "utf8"));
+  assert.equal(manifest.exportBaseline.sha, HISTORICAL_BASELINE_SHA);
+  assert.equal(manifest.exportBaseline.exports.length, 82);
+  assert.equal(new Set(manifest.exportBaseline.exports).size, 82);
+  for (const name of HISTORICAL_RETIREMENTS) assert.ok(!manifest.exportBaseline.exports.includes(name), `${name} predates the baseline`);
+});
+
+test("CLI end to end: an export removed since the previous commit, with no record, blocks the run", () => {
+  const dir = mkdtempSync(join(tmpdir(), "fceg-cli-"));
+  try {
+    const previous = join(dir, "previous-index.ts");
+    writeFileSync(previous, `${readFileSync(join(REPO_ROOT, INDEX_RELATIVE_PATH), "utf8")}\nexport { ghostExport } from "./ghost";\n`);
+    const { errors, newlyRetired } = run(["--previous-index", previous], REPO_ROOT);
+    assert.deepEqual(newlyRetired, ["ghostExport"]);
+    assert.ok(errors.some((e) => /RETIREMENT BLOCKED: ghostExport was removed .* with no capability-equivalence record/.test(e)), errors.join("\n"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

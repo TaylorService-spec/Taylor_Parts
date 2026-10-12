@@ -30,11 +30,21 @@
 //      never infers one; it only checks the one a human cited.
 
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 export const MANIFEST_RELATIVE_PATH = "docs/architecture/firebase-capability-equivalence.json";
 export const INDEX_RELATIVE_PATH = "functions/src/index.ts";
 export const DECISIONS_RELATIVE_PATH = "docs/DECISIONS.md";
+export const WORKFLOW_RELATIVE_PATH = ".github/workflows/firebase-capability-equivalence.yml";
+export const GUARD_RELATIVE_PATH = "scripts/firebaseCapabilityEquivalenceGuard.mjs";
+export const GUARD_TEST_RELATIVE_PATH = "scripts/firebaseCapabilityEquivalenceGuard.test.mjs";
+// Evidence may never cite the gate's own machinery or the decision register: those files always contain whatever a
+// record quotes from them, so a citation of them proves nothing about the capability.
+const SELF_EVIDENCE = new Set([MANIFEST_RELATIVE_PATH, DECISIONS_RELATIVE_PATH, WORKFLOW_RELATIVE_PATH,
+  GUARD_RELATIVE_PATH, GUARD_TEST_RELATIVE_PATH, "docs/architecture/firebase-capability-equivalence-gate.md"]);
+const TEST_FILE_PATTERN = /\.test\.(?:mjs|cjs|js|jsx|ts|tsx)$/;
+const MIN_CONTAINS = 12;
+export const CANDIDATE_DISPOSITIONS = Object.freeze(["REPLACED", "SUPERSEDED"]);
 
 // The retirements completed before this gate existed (main acc65f2e). Exact names, frozen. Adding a
 // name here is a change to the gate itself and is pinned by its test.
@@ -71,36 +81,57 @@ const NOT_APPLICABLE_ALLOWED = new Set(["B", "D"]);
 const OWNER_DECISION_PATTERN = /^DECISIONS #(\d+)$/;
 
 // ---------------------------------------------------------------------------------------------------
-// Export enumeration.
+// Export enumeration -- a WHITELIST, not a best-effort scan.
 //
-// The index is parsed after blanking comments and string contents, so an export inside a comment is
-// never counted and a `}` inside a string never ends a block. Multi-line `export { ... }` blocks are
-// the common form in index.ts -- a single-line matcher finds a fraction of them (see the WHY comment in
-// scripts/sandboxDeployableFunctions.mjs). Anything the parser does not understand (`export *`,
-// `export default`) is REFUSED rather than skipped: an enumerator that under-counts would let a
-// retirement through unseen.
+// functions/src/index.ts is the Cloud Functions entry point, and the only thing it contains (outside
+// comments) is the firebase-admin initialization and `export { name, other as alias } from "./module";`
+// blocks. The parser accepts EXACTLY that grammar and refuses everything else, because a best-effort scan
+// can be desynchronized: an earlier version blanked comments and strings with a lexer that did not know
+// regex literals or template literals, so `const m = /'/; // ' ; export { x } from "./x";` made a REMOVED
+// export look present -- the guard passed, tsc passed, and the deploy silently dropped the function
+// (adversarial review of #2057, finding B1). Refused, with the line number:
+//   - any `/` that does not open a comment (regex literals, division),
+//   - any template literal, and any string that crosses a line,
+//   - any top-level statement other than the firebase-admin import, `initializeApp();` and
+//     `export { ... } from "...";` -- so `export const`, `export *`, `export default`, `export =`,
+//     destructuring, namespaces, function-group objects and `module.exports` can never hide an export.
+// A refusal is not a policy decision about index.ts style: it says the guard cannot PROVE the export set,
+// and a gate that cannot prove it must not pass.
 // ---------------------------------------------------------------------------------------------------
+
+function lineAt(source, offset) {
+  return source.slice(0, offset).split("\n").length;
+}
 
 function blankCommentsAndStrings(source) {
   let out = "";
   let i = 0;
+  const refuse = (what, at) => {
+    throw new Error(`${INDEX_RELATIVE_PATH}:${lineAt(source, at)}: ${what} -- the equivalence guard accepts only ` +
+      "comments, the firebase-admin initialization and `export { ... } from \"...\";` blocks, and refuses to guess.");
+  };
   while (i < source.length) {
     const c = source[i];
     const next = source[i + 1];
     if (c === "/" && next === "/") {
       while (i < source.length && source[i] !== "\n") { out += " "; i++; }
     } else if (c === "/" && next === "*") {
-      out += "  "; i += 2;
-      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
-        out += source[i] === "\n" ? "\n" : " "; i++;
-      }
-      out += "  "; i += 2;
-    } else if (c === '"' || c === "'" || c === "`") {
+      const close = source.indexOf("*/", i + 2);
+      if (close < 0) refuse("an unterminated block comment", i);
+      for (; i < close + 2; i++) out += source[i] === "\n" ? "\n" : " ";
+    } else if (c === "/") {
+      refuse("a `/` outside a comment (regex literal or division)", i);
+    } else if (c === "`") {
+      refuse("a template literal", i);
+    } else if (c === '"' || c === "'") {
+      const at = i;
       out += c; i++;
       while (i < source.length && source[i] !== c) {
+        if (source[i] === "\n") refuse("a string that crosses a line", at);
         if (source[i] === "\\") { out += "  "; i += 2; continue; }
-        out += source[i] === "\n" ? "\n" : " "; i++;
+        out += " "; i++;
       }
+      if (i >= source.length) refuse("an unterminated string", at);
       out += c; i++;
     } else {
       out += c; i++;
@@ -109,30 +140,40 @@ function blankCommentsAndStrings(source) {
   return out;
 }
 
+const IDENT = "[A-Za-z_$][A-Za-z0-9_$]*";
+const ALLOWED_STATEMENTS = [
+  { kind: "init-import", re: /^import\s*\{\s*initializeApp\s*\}\s*from\s*"\s*"$/ },
+  { kind: "init-call", re: /^initializeApp\s*\(\s*\)$/ },
+  { kind: "export", re: /^export\s*\{([^{}]*)\}\s*from\s*"\s*"$/ },
+];
+
 export function parseIndexExports(source) {
   const code = blankCommentsAndStrings(source);
   const names = new Set();
-  const unsupported = [];
-  for (const m of code.matchAll(/\bexport\s*\*/g)) unsupported.push(`export * at offset ${m.index}`);
-  for (const m of code.matchAll(/\bexport\s+default\b/g)) unsupported.push(`export default at offset ${m.index}`);
-  if (unsupported.length) {
-    throw new Error(`${INDEX_RELATIVE_PATH}: unsupported export form(s) -- the equivalence guard cannot ` +
-      `enumerate them and refuses to guess: ${unsupported.join("; ")}`);
-  }
-  for (const m of code.matchAll(/\bexport\s+(type\s+)?\{([^}]*)\}/g)) {
-    if (m[1]) continue; // `export type { ... }` deploys nothing
-    for (const raw of m[2].split(",")) {
-      const part = raw.trim();
-      if (!part || /^type\s/.test(part)) continue;
-      const as = part.match(/^[A-Za-z_$][\w$]*\s+as\s+([A-Za-z_$][\w$]*)$/);
-      const plain = part.match(/^([A-Za-z_$][\w$]*)$/);
-      if (as) names.add(as[1]);
-      else if (plain) names.add(plain[1]);
-      else throw new Error(`${INDEX_RELATIVE_PATH}: cannot parse export specifier "${part}"`);
+  let offset = 0;
+  for (const raw of code.split(";")) {
+    const statement = raw.trim().replace(/\s+/g, " ");
+    const at = offset + (raw.length - raw.trimStart().length);
+    offset += raw.length + 1;
+    if (!statement) continue;
+    const match = ALLOWED_STATEMENTS.map((a) => ({ a, m: statement.match(a.re) })).find((x) => x.m);
+    if (!match) {
+      throw new Error(`${INDEX_RELATIVE_PATH}:${lineAt(source, at)}: unsupported statement "${statement.slice(0, 80)}" -- the ` +
+        "equivalence guard accepts only the firebase-admin initialization and `export { ... } from \"...\";` blocks, " +
+        "and refuses to guess an export set it cannot prove.");
     }
-  }
-  for (const m of code.matchAll(/\bexport\s+(?:declare\s+)?(?:const|let|var|function\*?|async\s+function\*?|class)\s+([A-Za-z_$][\w$]*)/g)) {
-    names.add(m[1]);
+    if (match.a.kind !== "export") continue;
+    for (const part of match.m[1].split(",")) {
+      const spec = part.trim();
+      if (!spec) continue;
+      const m = spec.match(new RegExp(`^(${IDENT})(?:\\s+as\\s+(${IDENT}))?$`));
+      if (!m || m[1] === "type") {
+        throw new Error(`${INDEX_RELATIVE_PATH}:${lineAt(source, at)}: cannot parse export specifier "${spec}"`);
+      }
+      const name = m[2] ?? m[1];
+      if (names.has(name)) throw new Error(`${INDEX_RELATIVE_PATH}:${lineAt(source, at)}: "${name}" is exported twice`);
+      names.add(name);
+    }
   }
   return [...names].sort();
 }
@@ -146,16 +187,28 @@ function isNonEmptyString(v) { return typeof v === "string" && v.trim().length >
 function readRepoFile(repoRoot, path, cache) {
   if (!cache.has(path)) {
     const full = resolve(repoRoot, path);
-    if (!full.startsWith(resolve(repoRoot))) { cache.set(path, null); return null; }
+    const rel = relative(resolve(repoRoot), full);
+    if (!rel || rel.startsWith("..") || isAbsolute(rel)) { cache.set(path, null); return null; }
     cache.set(path, existsSync(full) ? readFileSync(full, "utf8") : null);
   }
   return cache.get(path);
 }
 
+/** DECISIONS.md headings -> the text of each decision section (heading to the next `## #`). */
 export function decisionNumbers(decisionsText) {
-  const numbers = new Set();
-  for (const m of (decisionsText ?? "").matchAll(/^## #(\d+)\b/gm)) numbers.add(m[1]);
-  return numbers;
+  const sections = new Map();
+  const text = decisionsText ?? "";
+  const heads = [...text.matchAll(/^## #(\d+)\b/gm)];
+  heads.forEach((m, i) => sections.set(m[1], text.slice(m.index, i + 1 < heads.length ? heads[i + 1].index : text.length)));
+  return sections;
+}
+
+// The identifiers a decision must name to be relevant to a record: the retired operation, its capability id, or an
+// EOS operation named in the replacement. A decision number that exists but is about something else accepts nothing.
+function recordIdentifiers(record) {
+  const ids = new Set([record.legacyOperation, record.capabilityId].filter(isNonEmptyString));
+  for (const m of String(record.eosReplacement ?? "").matchAll(/\b[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*\b/g)) ids.add(m[0]);
+  return [...ids];
 }
 
 function checkEvidenceList(problems, where, list, { repoRoot, fileCache }) {
@@ -168,6 +221,21 @@ function checkEvidenceList(problems, where, list, { repoRoot, fileCache }) {
       problems.push(`${at}: kind "${ev.kind}" is not one of ${EVIDENCE_KINDS.join(", ")}`); return;
     }
     if (!isNonEmptyString(ev.path)) { problems.push(`${at}: path is required`); return; }
+    const normalized = relative(resolve(repoRoot), resolve(repoRoot, ev.path)).split("\\").join("/");
+    if (SELF_EVIDENCE.has(normalized)) {
+      problems.push(`${at}: ${ev.path} is the gate's own machinery or the decision register -- it proves nothing about ` +
+        "the capability. Cite the test, source, screen or UAT record that does.");
+      return;
+    }
+    if ((ev.kind === "test" || ev.kind === "ui-test") && !TEST_FILE_PATTERN.test(ev.path)) {
+      problems.push(`${at}: a ${ev.kind} citation must point at a test file (*.test.*), not ${ev.path}`);
+      return;
+    }
+    if (ev.contains !== undefined && (typeof ev.contains !== "string" || ev.contains.trim().length < MIN_CONTAINS)) {
+      problems.push(`${at}: "contains" must quote at least ${MIN_CONTAINS} characters -- a fragment that matches ` +
+        "anything proves nothing");
+      return;
+    }
     const text = readRepoFile(repoRoot, ev.path, fileCache);
     if (text === null) {
       problems.push(`${at}: STALE -- ${ev.path} does not exist in this tree. Re-point the evidence at what ` +
@@ -273,7 +341,22 @@ export function validateRecord(record, ctx) {
     else if (!ctx.decisions.has(m[1])) {
       problems.push(`${where}: ownerDecision ${record.ownerDecision} has no "## #${m[1]}" heading in ` +
         `${DECISIONS_RELATIVE_PATH}. Record the Owner's decision there first; never cite one that does not exist.`);
-    } else ownerDecisionValid = true;
+    } else {
+      const section = String(ctx.decisions.get(m[1]) ?? "");
+      const ids = recordIdentifiers(record);
+      if (!ids.some((id) => section.includes(id))) {
+        problems.push(`${where}: ${record.ownerDecision} does not name this capability (${ids.join(", ")}). An unrelated ` +
+          "decision accepts nothing; cite the decision that rules on this operation.");
+      } else ownerDecisionValid = true;
+    }
+  }
+  if (record.candidateDisposition !== undefined && !CANDIDATE_DISPOSITIONS.includes(record.candidateDisposition)) {
+    problems.push(`${where}: candidateDisposition must be one of ${CANDIDATE_DISPOSITIONS.join(", ")} (it names what the ` +
+      "record would be once its open gates close; it is informational and never makes a record complete)");
+  }
+  if (record.materialBehaviorChange === true && !ownerDecisionValid && !["GAP", "SUPERSEDED"].includes(record.disposition)) {
+    problems.push(`${where}: a material business-behaviour change without an Owner decision is a GAP (or a SUPERSEDED ` +
+      `claim awaiting the Owner), never ${record.disposition}`);
   }
 
   const statuses = {};
@@ -341,14 +424,52 @@ export function evaluateEquivalence({
   }
 
   const byName = new Map();
-  for (const record of manifest.records) {
+  manifest.records.forEach((record, i) => {
     const key = record?.legacyOperation;
-    if (byName.has(key)) { errors.push(`record ${key}: duplicate record`); continue; }
+    if (!isNonEmptyString(key)) { errors.push(`records[${i}]: "legacyOperation" is required`); return; }
+    if (byName.has(key)) { errors.push(`record ${key}: duplicate record`); return; }
     byName.set(key, record);
-  }
+  });
 
   const current = new Set(currentExports);
   const historical = new Set(historicalRetirements);
+  const why = (record, result) => (record.disposition === "GAP"
+    ? "it is a GAP the Owner has not accepted (ownerDecision)"
+    : record.disposition === "SUPERSEDED" && record.materialBehaviorChange && result.blockers.length === 0
+      ? "the material behaviour change has no Owner decision"
+      : result.blockers.join("; ") || `disposition ${record.disposition}`);
+
+  // THE EXPORT BASELINE: the export set at the gate's introduction, frozen. It makes the gate independent of which
+  // commit a run compares against -- a cancelled or superseded main run, a direct push, or a workflow_dispatch can
+  // no longer let a removal through unseen, because EVERY baseline export that is gone must be accounted for on
+  // EVERY run, and nothing outside the baseline may be exported (Firebase retirement only).
+  const baseline = manifest.exportBaseline;
+  if (!baseline || !Array.isArray(baseline.exports) || !isNonEmptyString(baseline.sha)) {
+    errors.push(`${MANIFEST_RELATIVE_PATH}: "exportBaseline" { sha, exports[] } is required`);
+  } else {
+    const baselineSet = new Set(baseline.exports);
+    for (const name of current) {
+      if (!baselineSet.has(name)) {
+        errors.push(`${name} is exported from ${INDEX_RELATIVE_PATH} but is not in the export baseline -- a new Firebase ` +
+          "Function is not permitted (Firebase retirement only), and a retired one may not return.");
+      }
+    }
+    for (const name of baseline.exports) {
+      if (current.has(name)) continue;
+      const record = byName.get(name);
+      if (!record) {
+        errors.push(`RETIREMENT BLOCKED: ${name} (export baseline ${baseline.sha.slice(0, 8)}) is no longer exported and ` +
+          `has no capability-equivalence record. Add a GATED record to ${MANIFEST_RELATIVE_PATH} proving gates A-E (see ` +
+          "docs/architecture/firebase-capability-equivalence-gate.md), or keep the export.");
+      } else if (record.era !== "GATED") {
+        errors.push(`RETIREMENT BLOCKED: ${name} is a retirement after the gate and must be recorded as era GATED`);
+      }
+    }
+    const old = previousManifest?.exportBaseline;
+    if (old && JSON.stringify([...old.exports].sort()) + old.sha !== JSON.stringify([...baseline.exports].sort()) + baseline.sha) {
+      errors.push(`${MANIFEST_RELATIVE_PATH}: exportBaseline changed -- it is frozen at the gate's introduction`);
+    }
+  }
 
   // Every historical retirement is recorded, as HISTORICAL, and none has quietly come back.
   for (const name of historicalRetirements) {
@@ -371,6 +492,15 @@ export function evaluateEquivalence({
     if (current.has(name) && historical.has(name)) {
       errors.push(`record ${name}: the operation is exported again from ${INDEX_RELATIVE_PATH}. A retired ` +
         "Firebase operation may not return (Firebase retirement only).");
+    }
+    if (record?.era === "GATED" && current.has(name)) {
+      errors.push(`record ${name}: a GATED record describes a retirement, but ${name} is still exported. Record it in ` +
+        "the change that removes the export -- and a retired operation may not return.");
+    }
+    // A GATED retirement must STAY complete: a later change may improve its record, never weaken it.
+    if (record?.era === "GATED" && !current.has(name) && !complete) {
+      errors.push(`RETIREMENT BLOCKED: ${name} is not retirement-complete -- ${why(record, { blockers: blockers ?? [] })}. ` +
+        "A business capability may not disappear with its Firebase implementation.");
     }
     report.push({ name, era: record?.era, disposition: record?.disposition, complete, blockers: blockers ?? [] });
   }
@@ -396,15 +526,13 @@ export function evaluateEquivalence({
       errors.push(`RETIREMENT BLOCKED: ${name} is a new retirement and must be recorded as era GATED`);
       continue;
     }
-    const { complete, blockers } = validateRecord(record, ctx);
-    if (!complete) {
-      const why = record.disposition === "GAP"
-        ? "it is a GAP the Owner has not accepted (ownerDecision)"
-        : record.disposition === "SUPERSEDED" && record.materialBehaviorChange && blockers.length === 0
-          ? "the material behaviour change has no Owner decision"
-          : blockers.join("; ") || `disposition ${record.disposition}`;
-      errors.push(`RETIREMENT BLOCKED: ${name} is not retirement-complete -- ${why}. A business capability ` +
-        "may not disappear with its Firebase implementation.");
+    // Completeness of a GATED record is enforced for every unexported operation above, on every run.
+  }
+  // Nothing may be ADDED relative to the previously accepted commit either (also covered by the baseline).
+  for (const name of current) {
+    if (previousExports && !previousExports.includes(name)) {
+      errors.push(`${name} is newly exported from ${INDEX_RELATIVE_PATH} -- a new or returning Firebase Function is not ` +
+        "permitted (Firebase retirement only).");
     }
   }
 
@@ -459,8 +587,9 @@ if (process.argv[1]?.endsWith("firebaseCapabilityEquivalenceGuard.mjs")) {
       "functionality migration: see docs/architecture/firebase-capability-equivalence-gate.md.");
     process.exit(1);
   }
-  const open = report.filter((r) => !r.complete).length;
+  const historicalOpen = report.filter((r) => r.era === "HISTORICAL" && !r.complete).length;
+  const gated = report.filter((r) => r.era === "GATED").length;
   console.log(`${currentExports.length} exports; ${report.length} equivalence records ` +
-    `(${report.length - open} retirement-complete, ${open} open historical findings); ` +
-    `${newlyRetired.length} newly retired operation(s), all retirement-complete`);
+    `(${gated} GATED, all retirement-complete; ${historicalOpen} open historical findings); ` +
+    `${newlyRetired.length} operation(s) removed since the previous commit`);
 }

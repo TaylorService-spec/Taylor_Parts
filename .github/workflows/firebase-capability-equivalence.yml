@@ -18,9 +18,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+# Cancel a superseded PR validation. A push to main gets its OWN group (keyed by sha): GitHub keeps only one
+# PENDING run per group, so a shared main group would let a newer push silently replace an older queued run even
+# with cancel-in-progress false. (The frozen export baseline in the manifest also makes every run check every
+# retirement, whichever commit it compares against.)
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

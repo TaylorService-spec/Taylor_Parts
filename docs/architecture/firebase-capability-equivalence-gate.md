@@ -74,35 +74,67 @@ Evidence entries: `{ "kind": "test" | "ui-test" | "uat" | "source" | "doc", "pat
 
 ## 4. What the guard enforces
 
-1. **It detects newly retired exports.** These are the exports of `functions/src/index.ts` at the
-   previously accepted commit (PR base, or the pre-push commit on `main`) minus the exports now. The
-   index is parsed with comments and strings blanked, so multi-line export blocks count. `export *`
-   and `export default` are refused, because the guard cannot enumerate them, and an undercount
-   would hide a retirement.
-2. **It requires a record.** A newly retired export with no record fails with `RETIREMENT BLOCKED`.
-3. **It rejects missing or malformed records.** Required fields, enums, arrays, duplicates and gate
-   shapes are all checked.
-4. **It rejects an unresolved GAP as retirement-complete.** A new retirement (`era: GATED`) must be
-   one of:
+1. **It enumerates exports by whitelist, not by best effort.** Outside comments, `functions/src/index.ts`
+   may contain only:
+   - the firebase-admin initialization;
+   - `export { name, other as alias } from "...";` blocks.
+
+   Everything else is refused with its line number:
+   - any `/` that does not open a comment (regex literals, division);
+   - template literals;
+   - strings that cross a line;
+   - `export const` / `function` / `*` / `default` / `=` / `type`, destructuring, namespaces and
+     `module.exports`.
+
+   A best-effort scan could be desynchronized: a regex literal `/'/` made a removed export look present
+   behind a fake comment. That was adversarial review finding B1 on #2057; it is now a regression test.
+2. **It checks against a frozen export baseline,** the 82 exports of main `acc65f2e` recorded in the
+   manifest (`exportBaseline`).
+   - On **every** run, every baseline export that is no longer exported must have a GATED record that is
+     retirement-complete.
+   - Nothing outside the baseline may be exported. No new Firebase Function is allowed, and a retired
+     one may not return.
+   - This makes the gate independent of which commit a run compares against. A cancelled or superseded
+     main run, a direct push or a `workflow_dispatch` cannot let a removal through unseen.
+   - The baseline itself is frozen against the previous manifest.
+3. **It also detects removals since the previously accepted commit** (PR base, or the pre-push commit on
+   `main`), and refuses any export added since then.
+4. **It rejects missing or malformed records.** Required fields, enums, arrays, duplicates, nameless
+   records and gate shapes are all checked.
+5. **A GATED record must be retirement-complete, and stay so.** That means one of:
    - `REPLACED`, fully verified;
    - `SUPERSEDED`, fully verified, plus the Owner when behaviour materially changes;
-   - a `GAP` with an Owner decision.
+   - a `GAP` the Owner accepted.
 
-   `UNVERIFIED` is refused for a new retirement.
-5. **It rejects unsupported `REPLACED` claims**, in both eras. A `VERIFIED` verification status with an
-   open gate is also rejected.
-6. **It requires an Owner decision reference** for a materially superseded behaviour, and for an
-   accepted gap. The reference must be `DECISIONS #NNN` with a real `## #NNN` heading in
-   `docs/DECISIONS.md`. The guard never infers or invents one.
-7. **It detects stale test references.** Every cited path must exist (inside the repository), and every
-   `contains` must still be found. A renamed or deleted test fails as `STALE`.
-8. **It explains the failure.** Every error names the record, the gate and what evidence is missing.
+   `UNVERIFIED` is refused for a GATED record. Completeness is enforced on every run, not only in the
+   change that removes the export, so a later change cannot weaken the record. A GATED record's
+   operation may not be (or become) exported.
+6. **It rejects unsupported claims in both eras:**
+   - `REPLACED` with an open gate;
+   - `VERIFIED` with an open gate;
+   - a material business-behaviour change without an Owner decision on anything but a `GAP`.
+7. **It requires a relevant Owner decision.** The reference must be `DECISIONS #NNN` with a real
+   `## #NNN` heading, **and that section must name the retired operation, its capability id or the EOS
+   replacement operation.** An existing but unrelated decision accepts nothing. The guard never infers
+   or invents a reference.
+8. **It refuses evidence that proves nothing:**
+   - the gate's own files (manifest, guard, guard test, workflow, this spec) or `docs/DECISIONS.md`,
+     which always contain what a record quotes from them;
+   - a `test`/`ui-test` citation that is not a `*.test.*` file;
+   - a `contains` shorter than 12 characters;
+   - a path outside the repository.
+9. **It detects stale references.** Every cited path must exist and every `contains` must still be
+   found. A renamed or deleted test fails as `STALE`.
+10. **It explains the failure.** Every error names the record, the gate and what evidence is missing.
 
 It also:
 
-- keeps records append-only against the previous manifest;
-- refuses to let a historical retirement be exported again (Firebase retirement only);
+- keeps records append-only;
+- refuses to let a historical retirement be exported again;
 - refuses to file a new retirement as `HISTORICAL`.
+
+`candidateDisposition` is informational: what a historical record would be once its open gates close
+(`REPLACED` or `SUPERSEDED`). It never makes a record complete.
 
 ## 5. Historical baseline vs future enforcement
 
@@ -112,7 +144,7 @@ These two are deliberately separate.
   `recordPutAway`, F2 Supplier (8), F4 Work Order Labor (3), F3a Part Master (3) and F3b Part Alias (7).
   - The names are pinned in the guard (`HISTORICAL_RETIREMENTS`) and in its test.
   - These records may remain `UNVERIFIED` or `GAP`. They are reported as open findings, not CI
-    failures, so accepted main stays testable.
+    failures, so accepted main stays testable. At introduction: **6 UNVERIFIED, 16 GAP, 0 complete.**
   - They may not over-claim: a `REPLACED` claim is held to the full proof.
   - Their citations are re-checked on every run.
 - **GATED**: every retirement from this gate onward. It must be retirement-complete to merge.
@@ -123,12 +155,17 @@ and the guard are the future enforcement.
 
 ### Known pre-gate retirements outside the audited baseline
 
-Commit `5d6a84ac` (2026-10-01, Inventory / Warehouse completion) retired `recordPutAway` together with
-18 other inventory callables: cycle count, transfer orders, relocation and stock-movement reads.
-Earlier waves took the estate from 187 exports to 138. Those retirements are outside the Owner's
-2026-10-11 audit scope. They are not in `HISTORICAL_RETIREMENTS`, so this gate makes no claim about
-them. They are listed as audit backlog in the
+The following retirements are outside the Owner's 2026-10-11 audit scope. They are not in
+`HISTORICAL_RETIREMENTS`, so this gate makes no claim about them. They are listed as audit backlog in the
 [roadmap](firebase-retirement-roadmap.md).
+
+| Commit (2026-10-01) | Retired alongside | Callables |
+|---|---|---|
+| `5d6a84ac`, Inventory / Warehouse completion | `recordPutAway` | 18 inventory callables: cycle count, transfer orders, relocation, stock-movement reads |
+| `dd0ccf4a` | | 11 truck callables, plus `listWorkOrderConsumptionSources` and `updateWorkOrderExecutionData` |
+| `5a8fcef7` | | 5 equipment callables |
+
+Earlier waves took the estate from 187 exports to 138.
 
 ## 6. What the gate does not prove
 
@@ -138,3 +175,12 @@ them. They are listed as audit backlog in the
   only forces the claim to be made explicitly and keeps it from going stale.
 - **A `DECISIONS` heading added in the same PR passes the existence check.** The Owner's approval
   of that PR is the control.
+- **It checks export names, not deployed functions.** Changing a module so that the exported value is
+  no longer a Cloud Function, or gutting its handler, keeps the name and passes. Review, the module's
+  own tests and the exit ratchet are the controls for that.
+- **It runs the PR's own copy of the guard.** A PR that edits the guard, `HISTORICAL_RETIREMENTS`, the
+  pinned test or the workflow together with a retirement can weaken the gate in the same change.
+  - Recommended: a CODEOWNERS entry for the five gate files.
+  - Recommended: branch protection that makes this check **required**. As of 2026-10-11 `main` has no
+    branch protection and no rulesets, so every CI check, this one included, is advisory until the
+    repository's settings require it.
