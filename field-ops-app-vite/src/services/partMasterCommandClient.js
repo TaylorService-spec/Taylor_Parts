@@ -2,10 +2,14 @@
 //
 //   browser -> services/catalogApiClient.js -> POST /operations/catalog -> PostgreSQL
 //
-// This used to invoke the three Firebase callables (createPart / updatePart / changePartStatus).
-// Those remain EXPORTED and deployed -- they are legacy authority pending retirement, and removing
-// an export is a deployment, not a code change -- but nothing in this application calls them any
-// more. There is no fallback: a refused or failed command is returned as a value the screen renders.
+// This used to invoke the three Firebase callables (createPart / updatePart / changePartStatus), which
+// were removed from the repository in Firebase retirement F3a (#2055). There is no fallback: a refused
+// or failed command is returned as a value the screen renders.
+//
+// THE ANSWER IS THE CATALOG API'S, NOT THE CALLABLES': success is { partId, version, replayed } and a
+// refusal carries the Catalog category as `code`. domain/partMasterWrite.js maps both; the pair of
+// contract tests (functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs and
+// test/partMasterEmployeeWorkflow.test.jsx) pins that shape against the real server (CAT-1).
 //
 // Server-derived identity, unchanged in principle and stronger in practice: the actor was
 // `request.auth.uid` inside the callable and is now the EOS Principal the Catalog API resolves from

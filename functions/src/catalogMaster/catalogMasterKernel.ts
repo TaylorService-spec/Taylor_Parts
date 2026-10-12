@@ -63,7 +63,11 @@ export interface CatalogActorContext {
 export type CatalogErrorCategory = "INVALID_INPUT" | "NOT_FOUND" | "PRECONDITION_FAILED" | "CONFLICT" | "FORBIDDEN" | "UNAVAILABLE" | "FAILED";
 
 export class CatalogMasterError extends Error {
-  constructor(readonly code: string, readonly category: CatalogErrorCategory, message: string) {
+  /**
+   * @param requiredCapability set on a capability refusal, so the transport can audit WHICH capability was missing
+   *   (DECISIONS #229) without parsing a message.
+   */
+  constructor(readonly code: string, readonly category: CatalogErrorCategory, message: string, readonly requiredCapability: string | null = null) {
     super(message);
     this.name = "CatalogMasterError";
   }
@@ -135,7 +139,7 @@ export async function runCatalogCommand<R extends object>(
     throw new CatalogMasterError("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved capability set is required");
   }
   if (!actor.capabilities.has(requiredCapability)) {
-    throw new CatalogMasterError("CAPABILITY_REQUIRED", "FORBIDDEN", `this command requires ${requiredCapability}`);
+    throw new CatalogMasterError("CAPABILITY_REQUIRED", "FORBIDDEN", `this command requires ${requiredCapability}`, requiredCapability);
   }
   const now = (deps.now ?? (() => new Date()))();
   let client: PoolClient | undefined;

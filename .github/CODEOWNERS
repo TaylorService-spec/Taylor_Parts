@@ -1,0 +1,30 @@
+# CODE OWNERS for the repository's security gates and their configuration.
+#
+# Only ONE account has write access to this repository today (TaylorService-spec). GitHub never lets an author approve
+# their own pull request, so the ruleset on main does NOT enable "Require review from Code Owners": with a single
+# maintainer it would make every change to these paths unmergeable. Until a second maintainer with write access exists,
+# these lines record ownership and request review; enforcement comes from the REQUIRED STATUS CHECKS on main (which a
+# deleted or renamed workflow cannot satisfy) and from the ruleset's no-bypass setting.
+# Add the second maintainer here, then enable code-owner review in the ruleset.
+
+# CI workflows, including the required security checks.
+/.github/                                              @TaylorService-spec
+
+# Firebase retirement fences and the deploy guard.
+/scripts/firebaseCapabilityEquivalenceGuard*.mjs        @TaylorService-spec
+/scripts/firebaseExitGuard*.mjs                         @TaylorService-spec
+/scripts/firebaseShimBoundary*.mjs                      @TaylorService-spec
+/scripts/firebaseDeployGuard*.mjs                       @TaylorService-spec
+/docs/architecture/firebase-capability-equivalence*     @TaylorService-spec
+/docs/architecture/firebase-exit-*                      @TaylorService-spec
+/docs/architecture/firebase-shim-consumer-census.json   @TaylorService-spec
+
+# What the gates pin: the deploy entry point and its build.
+/firebase.json                                          @TaylorService-spec
+/.firebaserc                                            @TaylorService-spec
+/functions/src/index.ts                                 @TaylorService-spec
+/functions/package.json                                 @TaylorService-spec
+/functions/tsconfig.json                                @TaylorService-spec
+
+# The governed decision register the gates cite.
+/docs/DECISIONS.md                                      @TaylorService-spec

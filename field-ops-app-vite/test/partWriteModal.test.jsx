@@ -30,14 +30,14 @@ afterEach(() => {
 
 const PART = { partId: "PRT-1", internalPartNumber: "PRT-1", name: "Valve", version: 3, status: "ACTIVE", category: "Valves", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" };
 
-// The client's resolved shape is the RAW callable response ({outcome, version}) --
-// domain/partMasterWrite.js's outcomeFromResult() derives the {kind, message} the
-// modal renders FROM this, it is not the outcome object itself.
+// The client's resolved shape is the governed Catalog API result ({partId, version, replayed}) --
+// domain/partMasterWrite.js's outcomeFromResult() derives the {kind, message} the modal renders FROM
+// this. The end-to-end proof against the REAL server bytes is test/partMasterEmployeeWorkflow.test.jsx.
 function mockClient() {
   return {
-    createPart: vi.fn().mockResolvedValue({ outcome: "applied", version: 1 }),
-    updatePart: vi.fn().mockResolvedValue({ outcome: "applied", version: 4 }),
-    changePartStatus: vi.fn().mockResolvedValue({ outcome: "applied", version: 4 }),
+    createPart: vi.fn().mockResolvedValue({ partId: "PRT-9", version: 1, replayed: false }),
+    updatePart: vi.fn().mockResolvedValue({ partId: "PRT-1", version: 4, replayed: false }),
+    changePartStatus: vi.fn().mockResolvedValue({ partId: "PRT-1", version: 4, replayed: false }),
   };
 }
 
@@ -114,8 +114,8 @@ describe("PartWriteModal -- readinessOverride:true exercises the real governed f
   });
 
   it("a denied/failed outcome does NOT call onSaved -- the modal stays open on the reported outcome", async () => {
-    const deniedError = new Error("permission-denied");
-    deniedError.code = "permission-denied";
+    const deniedError = new Error("the Catalog command was refused");
+    deniedError.code = "FORBIDDEN";
     const client = { createPart: vi.fn().mockRejectedValue(deniedError) };
     const onSaved = vi.fn();
     render(
