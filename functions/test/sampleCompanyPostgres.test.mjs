@@ -271,8 +271,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 91 -> 92: Governed configuration + sales pricing (2026-10-02, DECISIONS #203): 1764500000000 -- operating-company business time zone + resolver, finance.configuration.manage (granted to NO Role), customer discount, trade-in items, package composition; untouched handoffs follow the active destination.
 // 92 -> 93: 1764510000000 -- Finance Closure (#206): settlements / applications / reconciliation, obligation handoffs, intercompany relief, service-provider authorization, late cost evidence; four settlement capabilities granted to the five Finance-execution Roles.
 // 93 -> 94: 1764520000000 -- Rental (#207): the eos_rental domain, rental Work Orders, the RENTAL billing package source; six rental capabilities.
-const PINNED_LAST_MIGRATION = "1764520000000_rental";
-const PINNED_MIGRATION_COUNT = 94;
+// 94 -> 95: 1764530000000 -- SUP-1 governed field groups: inventory.catalog.cost.read / .create / .edit on supplierCatalogItem (the COMMERCIAL field group of Part Supplier Terms), granted to NO Role; Protected Administrator standing excludes all three (Owner decision pending).
+const PINNED_LAST_MIGRATION = "1764530000000_supplier-catalog-commercial-field-group";
+const PINNED_MIGRATION_COUNT = 95;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

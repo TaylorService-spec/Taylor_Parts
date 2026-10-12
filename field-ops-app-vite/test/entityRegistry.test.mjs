@@ -74,6 +74,9 @@ test("the declared field count is what the census measured", () => {
   // has no Rules match block in either governed copy, no query in functions/src or
   // field-ops-app-vite/src, and no writer, so an Administration Objects row and six seeded policy
   // rows governed access to something nothing can read.
+  // 389 -> 400: SUP-1 GOVERNED FIELD GROUPS (2026-10-11). supplierCatalogItem was realigned from the retired Firestore
+  // `supplier_catalog` listing (5 fields) to eos_ops.supplier_catalog_items, the table its inventory.catalog.cost.*
+  // capabilities govern (16 fields). Net +11, no entity added or removed.
   assert.equal(ENTITY_REGISTRY.length, 28);
-  assert.equal(totalDeclaredFields(), 389);
+  assert.equal(totalDeclaredFields(), 400);
 });

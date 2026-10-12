@@ -2,8 +2,8 @@
 //
 // It drives the REAL Operations transport (handleOperationsRequest -> resolveOperationalContext -> partSupplierTerms.ts ->
 // PostgreSQL) with requests built by the SCREEN's own builders (field-ops-app-vite/src/domain/partSupplierTerms.js), in
-// the order an employee works -- add terms, edit them, lose a race, set a preferred supplier, deactivate -- and pins the
-// exact HTTP answers in field-ops-app-vite/test/fixtures/partSupplierTermsContract.json.
+// the order an employee works -- add terms, edit them, lose a race, set a preferred supplier, deactivate, and (governed
+// field groups) maintain ordering terms without cost visibility -- and pins the exact HTTP answers in field-ops-app-vite/test/fixtures/partSupplierTermsContract.json.
 //
 // The browser half (field-ops-app-vite/test/partSupplierTermsWorkflow.test.jsx) renders the real section through the
 // real partsOperationsReads -> reorderApiClient stack, fed THOSE bytes, and asserts it SENT exactly these requests.
@@ -36,12 +36,18 @@ test("the Suppliers & Terms employee workflows answer the contract the section r
   const screen = await import(pathToFileURL(resolve(REPO_ROOT, "field-ops-app-vite/src/domain/partSupplierTerms.js")).href);
   const { makeActor, part, supplier, call } = await partSupplierTermsDatabase(t, { urlBase: URL_BASE, prefix: "sup1_contract", tenants: ["t1"] });
 
-  // The holders the business has: the catalog manager (manage), the catalog administrator (manage + activate), and a
-  // reader of the catalog who holds neither.
+  // The holders the business has -- each a real Role holding registered capabilities (the COMMERCIAL keys are governed
+  // field groups, granted through Administration like every other capability):
+  //   buyer          catalog.read + manage + cost.read / .create / .edit   (procurement: sees and sets cost)
+  //   manager        catalog.read + manage                                  (maintains terms; cost withheld)
+  //   administrator  catalog.read + manage + activate                       (lifecycle; cost withheld)
+  //   reader         catalog.read                                           (no terms at all)
+  const COST = ["inventory.catalog.cost.read", "inventory.catalog.cost.create", "inventory.catalog.cost.edit"];
+  const buyer = await makeActor("t1", "fb-buyer", ["inventory.catalog.read", "inventory.catalog.manage", ...COST]);
   const manager = await makeActor("t1", "fb-parts-manager", ["inventory.catalog.read", "inventory.catalog.manage"]);
   const administrator = await makeActor("t1", "fb-catalog-admin", ["inventory.catalog.read", "inventory.catalog.manage", "inventory.catalog.activate"]);
   const reader = await makeActor("t1", "fb-reader", ["inventory.catalog.read"]);
-  const principals = [[manager.principalId, "manager"], [administrator.principalId, "administrator"], [reader.principalId, "reader"]];
+  const principals = [[buyer.principalId, "buyer"], [manager.principalId, "manager"], [administrator.principalId, "administrator"], [reader.principalId, "reader"]];
 
   const PART = "PRT-SUP-1";
   await part("t1", PART, "EACH");
@@ -57,28 +63,42 @@ test("the Suppliers & Terms employee workflows answer the contract the section r
 
   const s = {};
   const list = (who) => call(who, "listPartSupplierItems", { partId: PART });
-  s.listEmpty = await list(manager);
-  s.createApplied = await call(manager, "createPartSupplierItem", screen.buildCreateTermsInput(PART, ARCTIC_FORM));
-  s.createReplayed = await call(manager, "createPartSupplierItem", screen.buildCreateTermsInput(PART, ARCTIC_FORM));
-  s.createConflict = await call(manager, "createPartSupplierItem", screen.buildCreateTermsInput(PART, { ...ARCTIC_FORM, supplierSku: "ARC-OTHER" }));
-  s.listAfterCreate = await list(manager);
+  s.listEmpty = await list(buyer);
+  s.createApplied = await call(buyer, "createPartSupplierItem", screen.buildCreateTermsInput(PART, ARCTIC_FORM));
+  s.createReplayed = await call(buyer, "createPartSupplierItem", screen.buildCreateTermsInput(PART, ARCTIC_FORM));
+  s.createConflict = await call(buyer, "createPartSupplierItem", screen.buildCreateTermsInput(PART, { ...ARCTIC_FORM, supplierSku: "ARC-OTHER" }));
+  s.listAfterCreate = await list(buyer);
+  const buyerAccess = s.listAfterCreate.body.result.fieldAccess;
   const arcticV1 = s.listAfterCreate.body.result.items[0];
-  s.updateApplied = await call(manager, "updatePartSupplierItem", { itemId: arcticV1.itemId, expectedVersion: arcticV1.version,
-    changes: screen.buildTermsChanges({ ...screen.termsFormFromItem(arcticV1), cost: "11.75", leadTimeDays: "10" }, arcticV1) });
-  s.updateStale = await call(manager, "updatePartSupplierItem", { itemId: arcticV1.itemId, expectedVersion: arcticV1.version,
-    changes: screen.buildTermsChanges({ ...screen.termsFormFromItem(arcticV1), supplierSku: "ARC-100B" }, arcticV1) });
-  s.listAfterUpdate = await list(manager);
-  s.createInvalid = await call(manager, "createPartSupplierItem", screen.buildCreateTermsInput(PART, { ...COLD_FORM, leadTimeDays: "4000" }));
-  s.createCold = await call(manager, "createPartSupplierItem", screen.buildCreateTermsInput(PART, COLD_FORM));
-  s.listBeforePreferred = await list(manager);
+  s.updateApplied = await call(buyer, "updatePartSupplierItem", { itemId: arcticV1.itemId, expectedVersion: arcticV1.version,
+    changes: screen.buildTermsChanges({ ...screen.termsFormFromItem(arcticV1), cost: "11.75", leadTimeDays: "10" }, arcticV1, buyerAccess) });
+  s.updateStale = await call(buyer, "updatePartSupplierItem", { itemId: arcticV1.itemId, expectedVersion: arcticV1.version,
+    changes: screen.buildTermsChanges({ ...screen.termsFormFromItem(arcticV1), supplierSku: "ARC-100B" }, arcticV1, buyerAccess) });
+  s.listAfterUpdate = await list(buyer);
+  s.createInvalid = await call(buyer, "createPartSupplierItem", screen.buildCreateTermsInput(PART, { ...COLD_FORM, leadTimeDays: "4000" }));
+  s.createCold = await call(buyer, "createPartSupplierItem", screen.buildCreateTermsInput(PART, COLD_FORM));
+  s.listBeforePreferred = await list(buyer);
   const coldV1 = s.listBeforePreferred.body.result.items.find((i) => i.supplierId === "sup-cold");
-  s.setPreferredApplied = await call(manager, "setPreferredPartSupplierItem", { partId: PART, itemId: coldV1.itemId, expectedVersion: coldV1.version });
-  s.listAfterPreferred = await list(manager);
+  s.setPreferredApplied = await call(buyer, "setPreferredPartSupplierItem", { partId: PART, itemId: coldV1.itemId, expectedVersion: coldV1.version });
+  s.listAfterPreferred = await list(buyer);
   const coldV2 = s.listAfterPreferred.body.result.items.find((i) => i.supplierId === "sup-cold");
   const statusInput = { itemId: coldV2.itemId, expectedVersion: coldV2.version, status: "INACTIVE" };
-  s.statusDenied = await call(manager, "setPartSupplierItemStatus", statusInput);
+  s.statusDenied = await call(buyer, "setPartSupplierItemStatus", statusInput);
+  s.listAfterPreferredAdministrator = await list(administrator);
   s.statusApplied = await call(administrator, "setPartSupplierItemStatus", statusInput);
-  s.listMixed = await list(administrator);
+  s.listMixedAdministrator = await list(administrator);
+  s.listMixed = await list(buyer);
+  // The manager: maintains the ordering terms, never sees or sends cost & contract terms.
+  s.listWithheld = await list(manager);
+  const managerAccess = s.listWithheld.body.result.fieldAccess;
+  const arcticWithheld = s.listWithheld.body.result.items.find((i) => i.supplierId === "sup-arctic");
+  s.updateOperational = await call(manager, "updatePartSupplierItem", { itemId: arcticWithheld.itemId, expectedVersion: arcticWithheld.version,
+    changes: screen.buildTermsChanges({ ...screen.termsFormFromItem(arcticWithheld), leadTimeDays: "14", cost: "0.01" }, arcticWithheld, managerAccess) });
+  s.listAfterOperational = await list(manager);
+  // The server refuses what the screen never sends (a crafted request): naming the group and the key, echoing nothing.
+  s.updateCommercialDenied = await call(manager, "updatePartSupplierItem", { itemId: arcticWithheld.itemId, expectedVersion: arcticWithheld.version + 1,
+    changes: { cost: "0.01" } });
+  s.createCommercialDenied = await call(manager, "createPartSupplierItem", screen.buildCreateTermsInput(PART, { ...COLD_FORM, supplierId: "sup-arctic" }));
   s.listDenied = await list(reader);
   s.createDenied = await call(reader, "createPartSupplierItem", screen.buildCreateTermsInput(PART, COLD_FORM));
   const scenarios = normalize(s, principals);
@@ -100,6 +120,24 @@ test("the Suppliers & Terms employee workflows answer the contract the section r
     assert.deepEqual([scenarios.statusApplied.body.result.outcome, scenarios.statusApplied.body.result.item.preferred], ["deactivated", false]);
     assert.deepEqual(scenarios.listMixed.body.result.items.map((i) => [i.supplierName, i.status]),
       [["Arctic Parts Supply", "ACTIVE"], ["ColdChain Components", "INACTIVE"]], "INACTIVE terms are listed, not hidden");
+    // GOVERNED FIELD GROUPS: the cost-visible buyer sees COMMERCIAL; the manager and the administrator never do.
+    assert.deepEqual(scenarios.listMixed.body.result.items.map((i) => [i.cost, i.withheld]), [["11.75", []], ["3", []]]);
+    for (const name of ["listWithheld", "listMixedAdministrator", "listAfterPreferredAdministrator", "listAfterOperational"]) {
+      for (const item of scenarios[name].body.result.items) {
+        for (const k of ["cost", "currency", "contractStart", "contractEnd"]) assert.equal(k in item, false, `${name}: ${k} absent`);
+        assert.deepEqual(item.withheld.map((w) => w.group), ["COMMERCIAL"], name);
+      }
+      assert.equal(scenarios[name].body.result.supplierOptions, null, `${name}: no supplier directory without cost.create`);
+    }
+    assert.deepEqual(scenarios.listWithheld.body.result.fieldAccess.COMMERCIAL, { read: false, create: false, edit: false });
+    assert.deepEqual(scenarios.updateOperational.request.input.changes, { leadTimeDays: 14 }, "the screen never sends a COMMERCIAL key it cannot write");
+    assert.equal(scenarios.updateOperational.body.result.outcome, "updated");
+    assert.equal("cost" in scenarios.updateOperational.body.result.item, false, "the write echo withholds too");
+    assert.deepEqual(scenarios.statusApplied.body.result.item.withheld.map((w) => w.group), ["COMMERCIAL"]);
+    for (const name of ["updateCommercialDenied", "createCommercialDenied"]) {
+      assert.deepEqual([...code(scenarios[name]), scenarios[name].body.details.refusal, scenarios[name].body.details.group], [403, "FORBIDDEN", "FIELD_GROUP_FORBIDDEN", "COMMERCIAL"], name);
+      assert.equal(/11\.75|12\.5|2026-/.test(JSON.stringify(scenarios[name].body)), false, `${name} echoes no stored value`);
+    }
     assert.deepEqual(code(scenarios.listDenied), [403, "FORBIDDEN"]);
     assert.deepEqual(code(scenarios.createDenied), [403, "FORBIDDEN"]);
   });
@@ -118,6 +156,11 @@ test("the Suppliers & Terms employee workflows answer the contract the section r
     assert.equal(shown(scenarios.setPreferredApplied, "preferred"), "applied");
     assert.equal(shown(scenarios.statusDenied, "status"), "denied");
     assert.equal(shown(scenarios.statusApplied, "status"), "applied");
+    assert.equal(shown(scenarios.updateOperational, "update"), "applied");
+    assert.equal(shown(scenarios.updateCommercialDenied, "update"), "denied");
+    const denied = screen.outcomeFromError({ code: scenarios.updateCommercialDenied.body.code, message: scenarios.updateCommercialDenied.body.message,
+      details: scenarios.updateCommercialDenied.body.details }, "update");
+    assert.match(denied.message, /cost & contract terms/);
   });
 
   await t.test("the committed browser fixture is exactly what the server answers", () => {

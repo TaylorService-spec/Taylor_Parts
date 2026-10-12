@@ -55,7 +55,7 @@ test("every source FIELD is SEEDED or EXCLUDED with a reason", () => {
   assert.equal(counted, ledger.source.fields, "the ledger covers every field");
 });
 
-test("the reconciliation adds up: 28 entities and 389 fields, all seeded", () => {
+test("the reconciliation adds up: 28 entities and 400 fields, all seeded", () => {
   // The numbers the Owner asked to see reconciled, pinned so a change to either side is a
   // deliberate edit here rather than a drift nobody notices.
   //
@@ -70,11 +70,15 @@ test("the reconciliation adds up: 28 entities and 389 fields, all seeded", () =>
   // REMOVAL rather than a declaration, and it is the reason the seeded object count drops too: six
   // field-policy rows governing a collection with no Rules match block, no query and no writer are
   // not coverage, they are an administrator being invited to configure access to nothing.
+  //
+  // 389 -> 400: SUP-1 GOVERNED FIELD GROUPS (2026-10-11). supplierCatalogItem was realigned from the retired Firestore
+  // `supplier_catalog` listing (5 fields) to the PostgreSQL table its capabilities govern, eos_ops.supplier_catalog_items
+  // (16 fields, the COMMERCIAL four CONFIDENTIAL). Net +11; no entity added or removed.
   assert.equal(ledger.source.entities, 28);
-  assert.equal(ledger.source.fields, 389);
+  assert.equal(ledger.source.fields, 400);
 
   assert.equal(ledger.seeded.entities, 28, "every entity became an object");
-  assert.equal(ledger.seeded.fields, 389, "every field was seeded");
+  assert.equal(ledger.seeded.fields, 400, "every field was seeded");
   assert.equal(ledger.excluded.entities, 0);
   assert.equal(ledger.excluded.fields, 0);
 

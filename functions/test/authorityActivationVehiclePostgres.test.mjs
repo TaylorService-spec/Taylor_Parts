@@ -441,6 +441,9 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // #205 amends it: sixteen ruled grants.
     // #206 Finance Closure: -4 capabilities and -20 grants when peeled.
     // #207 Rental: -6 capabilities and -30 grants when peeled.
+    // SUP-1 COMMERCIAL field group (1764530000000): -3 capabilities, no grant (it registers and grants nothing).
+    assert.deepEqual(await counts(), { caps: 131, grants: 481, mine: 26 });
+    runMigrate(url, "down", 1); // SUP-1 COMMERCIAL field group (-3 capabilities, 0 grants)
     assert.deepEqual(await counts(), { caps: 128, grants: 481, mine: 26 });
     runMigrate(url, "down", 1); // Rental (-6 capabilities, -30 grants)
     assert.deepEqual(await counts(), { caps: 122, grants: 451, mine: 26 });

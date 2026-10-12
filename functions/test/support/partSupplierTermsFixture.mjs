@@ -26,7 +26,7 @@ export async function partSupplierTermsDatabase(t, { urlBase, prefix, tenants = 
   await admin.query(`CREATE DATABASE ${name}`);
   await admin.end();
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"],
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
+    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe", maxBuffer: 64 * 1024 * 1024 });
   const pool = new pg.Pool({ connectionString: url, max: 6 });
   t.after(async () => {
     await pool.end();

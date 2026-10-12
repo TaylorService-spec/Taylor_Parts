@@ -60,10 +60,22 @@ export const SYSTEM_ADMINISTRATION_OBJECTS: ReadonlySet<string> = new Set([
  *   reorder.request.read.queue   SUPERSEDED migration evidence; may never be granted again (migration 1761696000000).
  *   salesAgreement.tradeIn.approve  Owner / General Manager business approval, kept pending explicit review (D4). It is
  *                                a BUSINESS_ACTION and so not implied anyway; listed so the rule cannot drift.
+ *   inventory.catalog.cost.read / .cost.create / .cost.edit
+ *                                the COMMERCIAL field group of Part Supplier Terms (migration 1764530000000). The r1
+ *                                ruling (Owner 2026-08-07, docs/assessments/r1-catalog-read-authority-requirement.md:58):
+ *                                cost authority for "Owner / Admin -- do NOT infer from seniority/legacy-admin", and the
+ *                                Owner field-permission directive (2026-10-11): "Do not infer sensitive access from Owner,
+ *                                Administrator, or General Manager titles". .read is a READ and would otherwise be implied;
+ *                                .create / .edit are not implied anyway and are listed so the rule cannot drift.
+ *                                OWNER DECISION PENDING APPROVAL (SUP-1 governed field groups; the PR stays unmerged until
+ *                                the Owner rules on this addition).
  */
 export const PROTECTED_ADMINISTRATOR_EXCLUSIONS: ReadonlySet<string> = new Set([
   "reorder.request.read.queue",
   "salesAgreement.tradeIn.approve",
+  "inventory.catalog.cost.read",
+  "inventory.catalog.cost.create",
+  "inventory.catalog.cost.edit",
 ]);
 
 /**

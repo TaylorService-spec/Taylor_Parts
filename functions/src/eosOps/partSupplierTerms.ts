@@ -13,15 +13,38 @@
 // AUTHORITY -- REUSED, NOT INVENTED. Exactly the Firebase predicates: create / update / set-preferred need
 // inventory.catalog.manage; activate / deactivate need inventory.catalog.activate. The terms READ is gated on
 // inventory.catalog.manage too: unit cost is commercially sensitive, and manage is the authority the Firebase writers
-// already required of the people who see and maintain it -- so the read widens nothing. Both keys are registered and
+// already required of the people who see and maintain it -- so the read widens nothing. The COMMERCIAL values within it
+// are a further, separately granted field group (below). Both keys are registered and
 // granted through Administration; changing who holds them needs no source edit. No operating-company scope: the table
 // carries none (migration 1758499200000's header), and this module adds none. No Firebase.
 //
 // AUDIT. Every successful write is ONE eos_policy.audit_events row (target_kind 'part_supplier_item', before/after) in
 // the write's own transaction. A refusal writes nothing and is NOT audited here -- denial auditing is a separate,
 // Owner-approved workstream. A replayed or unchanged answer changed nothing and is not audited either.
+//
+// GOVERNED FIELD GROUPS (Owner field-permission directive 2026-10-11; DECISIONS #210 "real capabilities plus governed
+// field groups"; r1 Owner ruling 2026-08-07). The record gates above are unchanged; on top of them the item's fields are
+// three groups evaluated by the GENERIC eosOps/governedFieldGroups.ts against the caller's resolved capability Set:
+//   RELATIONSHIP  identity, supplier, SKU, status, preference      -- the record gate
+//   OPERATIONAL   lead time, availability, ordering constraints     -- the record gate
+//   COMMERCIAL    cost, currency, contractStart, contractEnd        -- SENSITIVE:
+//                   read   inventory.catalog.read AND inventory.catalog.cost.read  (r1: both)
+//                   create inventory.catalog.cost.create   (cost/currency are NOT NULL: creating terms requires it)
+//                   edit   inventory.catalog.cost.edit
+// What that means on every surface:
+//   * every response (list, every write echo, replay, unchanged) is projectForCaller: an unreadable group's fields are
+//     ABSENT and `withheld` names the group and the keys it needs -- never a value;
+//   * a write naming a COMMERCIAL field without the create / edit key is refused FIELD_GROUP_FORBIDDEN before any read;
+//   * no answer is decided by COMMERCIAL equality for a caller who cannot read COMMERCIAL: create replay becomes
+//     ITEM_ALREADY_EXISTS, and an update's stated COMMERCIAL values are applied unconditionally (a version bump, never
+//     NO_CHANGES / replay), and a blind contract-window change must state BOTH ends so no refusal depends on a stored date;
+//   * audit rows hold COMMERCIAL values as { withheld: true } and name the changed COMMERCIAL fields only;
+//   * supplierOptions (who terms can be created for) only for a caller who may create them.
+// No Role, persona or title is read anywhere: a Protected Administrator sees COMMERCIAL only if granted it (the three keys
+// are PROTECTED_ADMINISTRATOR_EXCLUSIONS). Operating-company isolation is NOT SUPPORTED for this Object: the table carries
+// no company column (migration 1758499200000); TENANT isolation is the boundary.
 import type { Pool, PoolClient } from "pg";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { ReorderLifecycleError, type ReorderActor } from "./reorderLifecycleCommands.js";
 import { withActorAuthority } from "./administrationReach.js";
 import { isCanonicalPartId } from "./migration/partIdContract.js";
@@ -40,10 +63,40 @@ import {
   type SupplierCatalogItemTermsPatch,
 } from "./supplierCatalogRepository.js";
 import { areUnitsCompatible, isUnitCode } from "../partMaster/units.js";
+import {
+  GovernedFieldGroupError,
+  assertWritable,
+  auditSafe,
+  defineFieldGroups,
+  fieldAccessFor,
+  projectForCaller,
+  sensitiveFieldsChanged,
+} from "./governedFieldGroups.js";
 import type { UnitCode } from "../partMaster/types.js";
 
 export const PART_SUPPLIER_TERMS_MANAGE_CAPABILITY = "inventory.catalog.manage";
 export const PART_SUPPLIER_TERMS_STATUS_CAPABILITY = "inventory.catalog.activate";
+/** r1 (Owner 2026-08-07): basic governed catalog visibility -- half of the COMMERCIAL read. */
+export const CATALOG_READ_CAPABILITY = "inventory.catalog.read";
+/** The COMMERCIAL field group's three keys (migration 1764530000000; registered, granted to NO Role). */
+export const COMMERCIAL_READ_CAPABILITY = "inventory.catalog.cost.read";
+export const COMMERCIAL_CREATE_CAPABILITY = "inventory.catalog.cost.create";
+export const COMMERCIAL_EDIT_CAPABILITY = "inventory.catalog.cost.edit";
+
+/** The supplierCatalogItem Object's governed field groups. `null` = governed by the command's record gate. */
+export const PART_SUPPLIER_TERMS_FIELD_GROUPS = defineFieldGroups({
+  objectKey: "supplierCatalogItem",
+  groups: [
+    { key: "RELATIONSHIP", label: "Supplier relationship", sensitive: false, read: null, create: null, edit: null,
+      fields: ["itemId", "partId", "supplierId", "supplierName", "supplierStatus", "supplierSku", "status", "preferred", "version"] },
+    { key: "OPERATIONAL", label: "Ordering terms", sensitive: false, read: null, create: null, edit: null,
+      fields: ["leadTimeDays", "availability", "minOrderQty", "orderMultiple", "purchaseUnit", "conversionToStockingUnit", "lastVerifiedAt"] },
+    { key: "COMMERCIAL", label: "Cost & contract terms", sensitive: true,
+      read: [CATALOG_READ_CAPABILITY, COMMERCIAL_READ_CAPABILITY], create: COMMERCIAL_CREATE_CAPABILITY, edit: COMMERCIAL_EDIT_CAPABILITY,
+      fields: ["cost", "currency", "contractStart", "contractEnd"] },
+  ],
+});
+const COMMERCIAL_FIELDS: readonly string[] = PART_SUPPLIER_TERMS_FIELD_GROUPS.groups.find((g) => g.key === "COMMERCIAL")!.fields;
 
 /** supplierMasterTypes.ts SUPPLIER_ID_PATTERN (restated in supplierAdministration.ts and the repository the same way). */
 const SUPPLIER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
@@ -212,6 +265,28 @@ export function validatePartSupplierTerms(raw: Record<string, unknown>, mode: "c
 function requireCapability(actor: ReorderActor, key: string): void {
   if (!actor || !(actor.capabilities instanceof Set) || !actor.capabilities.has(key)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `part-supplier terms require ${key}`);
 }
+/** Can this caller READ the COMMERCIAL group? (The same decision projectForCaller makes.) */
+function canReadCommercial(actor: ReorderActor): boolean {
+  return fieldAccessFor(PART_SUPPLIER_TERMS_FIELD_GROUPS, actor.capabilities).COMMERCIAL.read;
+}
+/** The governed field-group refusal, in this transport's shape: the reason code + names and keys only, never a value. */
+function requireWritable(actor: ReorderActor, mode: "create" | "edit", fieldKeys: readonly string[]): void {
+  try {
+    assertWritable(PART_SUPPLIER_TERMS_FIELD_GROUPS, actor.capabilities, mode, fieldKeys);
+  } catch (err) {
+    if (!(err instanceof GovernedFieldGroupError)) throw err;
+    throw new ReorderLifecycleError(err.code, err.category, err.message, { refusal: err.code, ...err.details });
+  }
+}
+/** One item as THIS caller may see it. */
+function project(actor: ReorderActor, item: ItemView) {
+  return projectForCaller(PART_SUPPLIER_TERMS_FIELD_GROUPS, actor.capabilities, item);
+}
+/** One item as an audit row may hold it: COMMERCIAL values replaced by { withheld: true }. */
+function auditView(item: ItemView | null) {
+  return auditSafe(PART_SUPPLIER_TERMS_FIELD_GROUPS, item);
+}
+
 function acceptOnly(input: Record<string, unknown> | undefined, allowed: readonly string[]): Record<string, unknown> {
   const i = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const extra = Object.keys(i).filter((k) => !allowed.includes(k));
@@ -351,7 +426,9 @@ const TERMS: readonly (keyof PartSupplierTerms)[] = ["supplierSku", "cost", "cur
 /**
  * READ: every supplier's terms for one Part, INACTIVE included (an employee must see why re-adding a supplier conflicts),
  * preferred first, each with its supplier's name -- plus the ACTIVE suppliers that have no terms for this Part yet, the
- * only ones "Add supplier terms" can name. inventory.catalog.manage.
+ * only ones "Add supplier terms" can name. inventory.catalog.manage. Every item is projected for the caller (COMMERCIAL
+ * withheld without inventory.catalog.read + .cost.read), `fieldAccess` states the caller's per-group decision, and
+ * supplierOptions is null without inventory.catalog.cost.create.
  */
 export async function listPartSupplierItems(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
   requireCapability(actor, PART_SUPPLIER_TERMS_MANAGE_CAPABILITY);
@@ -366,13 +443,21 @@ export async function listPartSupplierItems(deps: { readonly pool: Pool }, actor
       [actor.tenantId, records.map((r) => r.supplierId)]);
     const byId = new Map(suppliers.map((s) => [String(s.supplier_id), { name: String(s.name), status: String(s.status) }]));
     const items = records.map((r) => view(r, byId.get(r.supplierId) ?? null))
-      .sort((a, b) => Number(b.preferred) - Number(a.preferred) || a.supplierName.localeCompare(b.supplierName) || a.supplierId.localeCompare(b.supplierId));
+      .sort((a, b) => Number(b.preferred) - Number(a.preferred) || a.supplierName.localeCompare(b.supplierName) || a.supplierId.localeCompare(b.supplierId))
+      .map((item) => project(actor, item));
+    const fieldAccess = fieldAccessFor(PART_SUPPLIER_TERMS_FIELD_GROUPS, actor.capabilities);
+    // The ACTIVE supplier directory is what "Add supplier terms" picks from -- offered only to a caller who may create
+    // terms at all (cost / currency are mandatory, so creating requires the COMMERCIAL create key).
+    if (!fieldAccess.COMMERCIAL.create) {
+      return { partId, stockingUnit, fieldAccess, items, supplierOptions: null,
+        supplierOptionsWithheld: { reason: "creating supplier terms sets cost & contract terms", requires: [COMMERCIAL_CREATE_CAPABILITY] } };
+    }
     const { rows: options } = await c.query(
       `SELECT s.supplier_id, s.name FROM eos_ops.suppliers s
         WHERE s.tenant_id = $1 AND s.status = 'ACTIVE'
           AND NOT EXISTS (SELECT 1 FROM eos_ops.supplier_catalog_items i WHERE i.tenant_id = s.tenant_id AND i.supplier_id = s.supplier_id AND i.part_id = $2)
         ORDER BY s.name, s.supplier_id LIMIT 500`, [actor.tenantId, partId]);
-    return { partId, stockingUnit, items, supplierOptions: options.map((o) => ({ supplierId: String(o.supplier_id), name: String(o.name) })) };
+    return { partId, stockingUnit, fieldAccess, items, supplierOptions: options.map((o) => ({ supplierId: String(o.supplier_id), name: String(o.name) })) };
   });
 }
 
@@ -380,28 +465,31 @@ export async function listPartSupplierItems(deps: { readonly pool: Pool }, actor
  * CREATE one supplier's terms for one Part. The Part must exist; the supplier must exist and be ACTIVE; one item per
  * (part, supplier). Never preferred on create (preference is granted only by setPreferredPartSupplierItem). The same
  * request again is REPLAYED (content-addressed: the stored terms equal the requested ones); different terms for an
- * existing pair are a CONFLICT, never an overwrite.
+ * existing pair are a CONFLICT, never an overwrite. COMMERCIAL: cost and currency are mandatory, so creating terms needs
+ * inventory.catalog.cost.create (refused before anything is read). A caller who cannot READ COMMERCIAL is never answered
+ * by the content-addressed replay -- that would confirm the stored cost -- so an existing pair is ITEM_ALREADY_EXISTS.
  */
 export async function createPartSupplierItem(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
   requireCapability(actor, PART_SUPPLIER_TERMS_MANAGE_CAPABILITY);
   const i = acceptOnly(input, ["partId", "supplierId", ...PART_SUPPLIER_TERM_KEYS]);
+  requireWritable(actor, "create", [...new Set([...Object.keys(i), "cost", "currency"])]);
   const partId = requirePartId(i.partId);
   if (typeof i.supplierId !== "string" || !SUPPLIER_ID_PATTERN.test(i.supplierId)) refuse("SUPPLIER_ID_INVALID", "INVALID_INPUT", "supplierId is 1-64 letters, digits, '-' or '_'");
   const supplierId = i.supplierId as string;
   const terms = validatePartSupplierTerms(i, "create");
   const full: PartSupplierTerms = { minOrderQty: null, orderMultiple: null, conversion: null, contractStart: null, contractEnd: null,
     availability: "UNKNOWN", lastVerifiedAt: null, ...terms };
-  const fingerprint = createHash("sha256").update(JSON.stringify(TERMS.map((k) => [k, requestedTerm(full, k)]))).digest("hex");
   return inTransaction(deps.pool, async (c) => {
     const stockingUnit = await partStockingUnit(c, actor.tenantId, partId, true);
     if (stockingUnit === null) refuse("PART_NOT_FOUND", "NOT_FOUND", "no part with that id");
     const existing = await readSupplierCatalogItem(c, actor.tenantId, partId, supplierId);
     if (existing) {
+      if (!canReadCommercial(actor)) refuse("ITEM_ALREADY_EXISTS", "CONFLICT", "this supplier already has terms for this part; edit them instead");
       const stored = view(existing, await supplierFacts(c, actor.tenantId, supplierId));
       if (!TERMS.every((k) => storedTerm(stored, k) === requestedTerm(full, k))) {
         refuse("ITEM_ALREADY_EXISTS", "CONFLICT", "this supplier already has different terms for this part; edit them instead");
       }
-      return { outcome: "replayed" as const, item: stored };
+      return { outcome: "replayed" as const, item: project(actor, stored) };
     }
     const supplier = await supplierFacts(c, actor.tenantId, supplierId, true);
     if (!supplier) refuse("SUPPLIER_NOT_FOUND", "NOT_FOUND", "no supplier with that id");
@@ -413,8 +501,9 @@ export async function createPartSupplierItem(deps: { readonly pool: Pool }, acto
       contractEnd: full.contractEnd, lastVerifiedAt: full.lastVerifiedAt, availability: full.availability,
     }));
     const item = view(record, supplier);
-    await audit(c, actor, "partSupplierItem.create", item.itemId, null, { ...item, fingerprint }, "part-supplier terms created");
-    return { outcome: "created" as const, item };
+    await audit(c, actor, "partSupplierItem.create", item.itemId, null, auditView(item),
+      `part-supplier terms created; cost & contract terms set: ${sensitiveFieldsChanged(PART_SUPPLIER_TERMS_FIELD_GROUPS, null, item).join(", ")}`);
+    return { outcome: "created" as const, item: project(actor, item) };
   });
 }
 
@@ -422,7 +511,11 @@ export async function createPartSupplierItem(deps: { readonly pool: Pool }, acto
  * UPDATE the procurement terms of one item at the version the caller read. Only term fields: never the part, the
  * supplier, the status or the preference. A resend of an update that already applied (stored version = expected + 1 and
  * nothing left to change) is REPLAYED, as the PostgreSQL Part Master writer answers it; a stale version is a CONFLICT;
- * a request that changes nothing is NO_CHANGES.
+ * a request that changes nothing is NO_CHANGES. COMMERCIAL: changing cost / currency / contract dates needs
+ * inventory.catalog.cost.edit (refused before anything is read). For a caller who cannot READ COMMERCIAL, "changed" is
+ * decided over the fields they can read only: their stated COMMERCIAL values are applied UNCONDITIONALLY (always part of
+ * the patch -- a version bump, never NO_CHANGES or a replay that would confirm the stored value), and a contract-window
+ * change must state BOTH ends, so the window check never depends on a stored date they cannot see.
  */
 export async function updatePartSupplierItem(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
   requireCapability(actor, PART_SUPPLIER_TERMS_MANAGE_CAPABILITY);
@@ -432,14 +525,22 @@ export async function updatePartSupplierItem(deps: { readonly pool: Pool }, acto
   if (!i.changes || typeof i.changes !== "object" || Array.isArray(i.changes)) refuse("CHANGES_REQUIRED", "INVALID_INPUT", "changes is an object of term fields");
   const changesIn = acceptOnly(i.changes as Record<string, unknown>, PART_SUPPLIER_TERM_KEYS);
   if (Object.keys(changesIn).length === 0) refuse("NO_CHANGES", "PRECONDITION_FAILED", "state at least one term to change");
+  requireWritable(actor, "edit", Object.keys(changesIn));
   const changes = validatePartSupplierTerms(changesIn, "update");
+  const blind = !canReadCommercial(actor);
+  const statedCommercial = Object.keys(changesIn).filter((k) => COMMERCIAL_FIELDS.includes(k));
+  if (blind && (Object.hasOwn(changesIn, "contractStart") || Object.hasOwn(changesIn, "contractEnd"))
+    && !(Object.hasOwn(changesIn, "contractStart") && Object.hasOwn(changesIn, "contractEnd"))) {
+    refuse("CONTRACT_WINDOW_INCOMPLETE", "INVALID_INPUT", "state both contractStart and contractEnd to change the contract window");
+  }
   return inTransaction(deps.pool, async (c) => {
     const record = await lockItem(c, actor.tenantId, itemId);
     if (!record) refuse("ITEM_NOT_FOUND", "NOT_FOUND", "no supplier terms with that id");
     const supplier = await supplierFacts(c, actor.tenantId, record!.supplierId);
     const before = view(record!, supplier);
-    const effective = (Object.keys(changes) as (keyof PartSupplierTerms)[]).filter((k) => storedTerm(before, k) !== requestedTerm(changes, k));
-    if (before.version === expectedVersion + 1 && effective.length === 0) return { outcome: "replayed" as const, item: before };
+    const effective = (Object.keys(changes) as (keyof PartSupplierTerms)[])
+      .filter((k) => (blind && statedCommercial.includes(k)) || storedTerm(before, k) !== requestedTerm(changes, k));
+    if (before.version === expectedVersion + 1 && effective.length === 0) return { outcome: "replayed" as const, item: project(actor, before) };
     if (before.version !== expectedVersion) refuse("STALE_VERSION", "CONFLICT", "the supplier terms changed since they were read");
     if (effective.length === 0) refuse("NO_CHANGES", "PRECONDITION_FAILED", "the requested terms are already the stored ones");
     const start = changes.contractStart !== undefined ? changes.contractStart : before.contractStart;
@@ -453,8 +554,8 @@ export async function updatePartSupplierItem(deps: { readonly pool: Pool }, acto
     const updated = await repository(() => updateSupplierCatalogItem(c, actor.tenantId, actor.principalId, record!.partId, record!.supplierId,
       expectedVersion, patch as SupplierCatalogItemTermsPatch));
     const item = view(updated, supplier);
-    await audit(c, actor, "partSupplierItem.update", itemId, before, item, `part-supplier terms updated: ${[...effective].sort().join(", ")}`);
-    return { outcome: "updated" as const, item };
+    await audit(c, actor, "partSupplierItem.update", itemId, auditView(before), auditView(item), `part-supplier terms updated: ${[...effective].sort().join(", ")}`);
+    return { outcome: "updated" as const, item: project(actor, item) };
   });
 }
 
@@ -478,16 +579,16 @@ export async function setPartSupplierItemStatus(deps: { readonly pool: Pool }, a
     if (!record) refuse("ITEM_NOT_FOUND", "NOT_FOUND", "no supplier terms with that id");
     const supplier = await supplierFacts(c, actor.tenantId, record!.supplierId, status === "ACTIVE");
     const before = view(record!, supplier);
-    if (before.status === status) return { outcome: "unchanged" as const, item: before };
+    if (before.status === status) return { outcome: "unchanged" as const, item: project(actor, before) };
     if (before.version !== expectedVersion) refuse("STALE_VERSION", "CONFLICT", "the supplier terms changed since they were read");
     if (status === "ACTIVE" && supplier?.status !== "ACTIVE") refuse("SUPPLIER_NOT_ACTIVE", "PRECONDITION_FAILED", "the supplier is not ACTIVE");
     const updated = await repository(() => setSupplierCatalogItemStatus(c, actor.tenantId, actor.principalId, record!.partId, record!.supplierId,
       expectedVersion, status));
     const item = view(updated, supplier);
     const action = status === "ACTIVE" ? "partSupplierItem.activate" : "partSupplierItem.deactivate";
-    await audit(c, actor, action, itemId, before, item,
+    await audit(c, actor, action, itemId, auditView(before), auditView(item),
       typeof i.reason === "string" ? i.reason.trim() : status === "ACTIVE" ? "part-supplier terms reactivated" : "part-supplier terms deactivated");
-    return { outcome: status === "ACTIVE" ? "activated" as const : "deactivated" as const, item };
+    return { outcome: status === "ACTIVE" ? "activated" as const : "deactivated" as const, item: project(actor, item) };
   });
 }
 
@@ -514,7 +615,7 @@ export async function setPreferredPartSupplierItem(deps: { readonly pool: Pool }
     const current = records.find((r) => r.itemId === itemId)!;
     const supplier = await supplierFacts(c, actor.tenantId, current.supplierId, true);
     const before = view(current, supplier);
-    if (before.preferred) return { outcome: "unchanged" as const, item: before, clearedItemId: null };
+    if (before.preferred) return { outcome: "unchanged" as const, item: project(actor, before), clearedItemId: null };
     if (before.version !== expectedVersion) refuse("STALE_VERSION", "CONFLICT", "the supplier terms changed since they were read");
     if (before.status !== "ACTIVE") refuse("ITEM_NOT_ACTIVE", "PRECONDITION_FAILED", "only ACTIVE supplier terms can be preferred");
     if (supplier?.status !== "ACTIVE") refuse("SUPPLIER_NOT_ACTIVE", "PRECONDITION_FAILED", "the supplier is not ACTIVE");
@@ -525,8 +626,9 @@ export async function setPreferredPartSupplierItem(deps: { readonly pool: Pool }
     const item = view(updated, supplier);
     const incumbentAfterRecord = incumbentRecord ? await readSupplierCatalogItem(c, actor.tenantId, partId, incumbentRecord.supplierId) : null;
     const incumbentAfter = incumbentAfterRecord ? view(incumbentAfterRecord, incumbentSupplier) : null;
-    await audit(c, actor, "partSupplierItem.setPreferred", itemId, { item: before, clearedItem: incumbentBefore }, { item, clearedItem: incumbentAfter },
+    await audit(c, actor, "partSupplierItem.setPreferred", itemId, { item: auditView(before), clearedItem: auditView(incumbentBefore) },
+      { item: auditView(item), clearedItem: auditView(incumbentAfter) },
       incumbentBefore ? `preferred supplier changed from ${incumbentBefore.supplierId} to ${item.supplierId}` : `preferred supplier set to ${item.supplierId}`);
-    return { outcome: "preferred" as const, item, clearedItemId: incumbentBefore?.itemId ?? null };
+    return { outcome: "preferred" as const, item: project(actor, item), clearedItemId: incumbentBefore?.itemId ?? null };
   });
 }

@@ -5,6 +5,25 @@
 // These shape what the employee typed into the request the governed command takes (functions/src/eosOps/
 // partSupplierTerms.ts) and turn the answer into words. They are NOT a second authority: the server validates every
 // term, decides every capability and refuses what it refuses. Nothing here decides who may do what.
+//
+// GOVERNED FIELD GROUPS. The list answer carries `fieldAccess` -- the SERVER's per-group read / create / edit decision for
+// the signed-in employee, from their effective Security Roles -- and each item a `withheld` list naming the groups whose
+// fields were left out (never their values). The section renders from those two facts only: it never infers access from
+// a Role, persona or title, and these builders never send a COMMERCIAL key the server said the employee cannot write.
+
+/** The sensitive group (cost, currency, contract window) -- named by the server; mirrored here only to build requests. */
+export const COMMERCIAL_GROUP = "COMMERCIAL";
+export const COMMERCIAL_FIELDS = Object.freeze(["cost", "currency", "contractStart", "contractEnd"]);
+/** What a withheld cell says. No value is ever on the wire to show instead. */
+export const RESTRICTED_LABEL = "Restricted — requires cost visibility";
+
+/** The server's decision for one group, fail closed: an absent answer is "no". */
+export function groupAccess(fieldAccess, group) {
+  const g = fieldAccess && typeof fieldAccess === "object" ? fieldAccess[group] : null;
+  return { read: g?.read === true, create: g?.create === true, edit: g?.edit === true };
+}
+/** Did the server withhold this group from this item? */
+export const isWithheld = (item, group) => Array.isArray(item?.withheld) && item.withheld.some((w) => w?.group === group);
 
 export const AVAILABILITY_STATES = Object.freeze(["AVAILABLE", "UNAVAILABLE", "UNKNOWN"]);
 export const AVAILABILITY_LABEL = Object.freeze({ AVAILABLE: "Available", UNAVAILABLE: "Unavailable", UNKNOWN: "Unknown" });
@@ -59,17 +78,33 @@ export function buildCreateTermsInput(partId, form) {
 /**
  * updatePartSupplierItem's `changes`: ONLY the terms the employee changed against the item they loaded. A blanked
  * optional term is sent as null (clear it); a blanked required term is sent blank so the server refuses it by name.
+ * `fieldAccess` (the list answer's) decides whether COMMERCIAL terms are sent at all.
  */
-export function buildTermsChanges(form, item) {
+export function buildTermsChanges(form, item, fieldAccess) {
   const loaded = termsFormFromItem(item);
   const f = { ...loaded, ...form };
   const changes = {};
+  // `fieldAccess` is the list answer's: a COMMERCIAL key the server says this employee cannot edit is never sent (and
+  // an absent answer is "cannot" -- fail closed).
+  const commercial = groupAccess(fieldAccess, COMMERCIAL_GROUP);
+  const blind = isWithheld(item, COMMERCIAL_GROUP);
   const changed = (k) => trimmed(f[k]) !== trimmed(loaded[k]);
   if (changed("supplierSku")) changes.supplierSku = trimmed(f.supplierSku);
-  if (changed("cost")) changes.cost = trimmed(f.cost);
-  if (changed("currency")) changes.currency = trimmed(f.currency).toUpperCase();
+  if (commercial.edit) {
+    // A withheld group loaded blank: blank stays "not stated", never "clear it".
+    if (changed("cost")) changes.cost = trimmed(f.cost);
+    if (changed("currency")) changes.currency = trimmed(f.currency).toUpperCase();
+    const window = ["contractStart", "contractEnd"];
+    if (blind) {
+      // The server needs BOTH ends from an employee who cannot see the stored window (it never checks a stated end
+      // against a stored date they cannot see).
+      if (window.some(changed)) for (const k of window) changes[k] = trimmed(f[k]) === "" ? null : trimmed(f[k]);
+    } else {
+      for (const k of window) if (changed(k)) changes[k] = trimmed(f[k]) === "" ? null : trimmed(f[k]);
+    }
+  }
   if (changed("leadTimeDays")) changes.leadTimeDays = intOrRaw(f.leadTimeDays);
-  for (const k of ["minOrderQty", "orderMultiple", "contractStart", "contractEnd"]) {
+  for (const k of ["minOrderQty", "orderMultiple"]) {
     if (changed(k)) changes[k] = trimmed(f[k]) === "" ? null : trimmed(f[k]);
   }
   if (changed("purchaseUnit") || changed("conversionNumerator") || changed("conversionDenominator")) {
@@ -85,8 +120,14 @@ export function buildTermsChanges(form, item) {
   return changes;
 }
 
-/** "12.5 USD" -- the cost exactly as the server states it, with its currency. */
-export const formatCost = (item) => (item ? `${item.cost} ${item.currency}` : "");
+/** "12.5 USD" -- the cost exactly as the server states it, with its currency; the restriction when it was withheld. */
+export const formatCost = (item) => (!item ? "" : isWithheld(item, COMMERCIAL_GROUP) ? RESTRICTED_LABEL : `${item.cost} ${item.currency}`);
+/** The contract window, the restriction when withheld, or a dash when there is none. */
+export function formatContract(item) {
+  if (!item) return "";
+  if (isWithheld(item, COMMERCIAL_GROUP)) return RESTRICTED_LABEL;
+  return item.contractStart || item.contractEnd ? `${item.contractStart ?? "…"} – ${item.contractEnd ?? "…"}` : "—";
+}
 /** "BOX = 12 EACH" style: one purchase unit converts to numerator/denominator stocking units. */
 export function formatPurchaseUnit(item, stockingUnit) {
   if (!item?.purchaseUnit || !item.conversionToStockingUnit) return "—";
@@ -120,6 +161,9 @@ export function outcomeFromError(err, action) {
   const reason = typeof err?.message === "string" && err.message ? err.message : null;
   switch (code) {
     case "FORBIDDEN":
+      if (err?.details?.refusal === "FIELD_GROUP_FORBIDDEN") {
+        return { kind: "denied", message: "You're not authorized to set or change cost & contract terms. That permission is governed in Administration." };
+      }
       return { kind: "denied", message: "You're not authorized to make this change. Supplier terms are governed in Administration." };
     case "CONFLICT":
       return action === "create"

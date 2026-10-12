@@ -6,6 +6,10 @@
 // server produced for the same requests (test/fixtures/partSupplierTermsContract.json, which
 // functions/test/partSupplierTermsEmployeeContractPostgres.test.mjs proves against PostgreSQL). Every scenario also
 // asserts the section SENT exactly the requests the server was proven against, so the contract holds both ways.
+//
+// GOVERNED FIELD GROUPS: the cost & contract terms (COMMERCIAL) are rendered from the server's `fieldAccess` + `withheld`
+// ONLY. The buyer's answers carry them; the manager's and the administrator's withhold them, and the screen shows the
+// restriction, hides "Add Supplier Terms", disables the COMMERCIAL inputs and never sends a COMMERCIAL key.
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import CONTRACT from "./fixtures/partSupplierTermsContract.json";
@@ -43,7 +47,7 @@ const table = () => screen.getByRole("table", { name: `Supplier terms for ${PART
 const rowOf = (name) => within(table()).getByText(name).closest("tr");
 
 describe("reading a Part's supplier terms", () => {
-  it("lists every supplier's terms -- INACTIVE included, never hidden -- with what each offers", async () => {
+  it("lists every supplier's terms -- INACTIVE included, never hidden -- with what each offers (a cost-visible role)", async () => {
     const { sent, deps } = wire("listMixed");
     render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
     await screen.findByRole("table", { name: `Supplier terms for ${PART}` });
@@ -60,6 +64,23 @@ describe("reading a Part's supplier terms", () => {
     expect(within(cold).getByText("Terms Inactive")).toBeTruthy();
     expect(within(cold).getByRole("button", { name: /reactivate terms from coldchain/i })).toBeTruthy();
     expect(within(cold).queryByRole("button", { name: /preferred/i })).toBeNull();
+    expect(screen.queryByText(/restricted — requires cost visibility/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /add supplier terms/i })).toBeTruthy();
+  });
+
+  it("without cost visibility, cost & contract cells say RESTRICTED (no value is on the wire) and Add is not offered", async () => {
+    const { sent, deps } = wire("listWithheld");
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    await screen.findByRole("table", { name: `Supplier terms for ${PART}` });
+    await expectSent(sent, "listWithheld");
+    for (const item of CONTRACT.scenarios.listWithheld.body.result.items) expect("cost" in item).toBe(false);
+    const arctic = rowOf("Arctic Parts Supply");
+    expect(within(arctic).getAllByText("Restricted — requires cost visibility")).toHaveLength(2);
+    expect(within(arctic).getByText("ARC-100")).toBeTruthy();
+    expect(within(arctic).getByText("10 days")).toBeTruthy();
+    expect(within(arctic).queryByText(/USD/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /add supplier terms/i })).toBeNull();
+    expect(screen.getByText(/adding supplier terms sets cost & contract terms/i)).toBeTruthy();
   });
 
   it("a reader without catalog management authority is shown a DENIAL, not an empty list, and no controls", async () => {
@@ -74,7 +95,7 @@ describe("reading a Part's supplier terms", () => {
 });
 
 describe("Add supplier terms", () => {
-  it("the catalog manager adds a supplier's terms; the list is re-read from the server", async () => {
+  it("the buyer (cost create) adds a supplier's terms; the list is re-read from the server", async () => {
     const { sent, deps } = wire("listEmpty", "createApplied", "listAfterCreate");
     const input = CONTRACT.scenarios.createApplied.request.input;
     render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
@@ -133,6 +154,25 @@ describe("Edit terms", () => {
     expect(within(rowOf("Arctic Parts Supply")).getByText("11.75 USD")).toBeTruthy();
   });
 
+  it("without cost edit, the COMMERCIAL inputs are disabled with the reason, and only ordering terms are sent", async () => {
+    const { sent, deps } = wire("listWithheld", "updateOperational", "listAfterOperational");
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    fireEvent.click(await screen.findByRole("button", { name: /edit terms from arctic parts supply/i }));
+    for (const label of ["Unit cost", "Currency", "Contract start", "Contract end"]) {
+      expect(screen.getByLabelText(label).disabled).toBe(true);
+      expect(screen.getByLabelText(label).value).toBe("");
+    }
+    expect(screen.getByText(/cost & contract terms can't be changed here/i)).toBeTruthy();
+    expect(screen.getByLabelText("Lead time (days)").disabled).toBe(false);
+    type("Lead time (days)", "14");
+    type("Unit cost", "0.01"); // a disabled input the employee cannot really edit -- and even forced, it is never sent
+    fireEvent.click(screen.getByRole("button", { name: /save terms/i }));
+    await screen.findByText("Supplier terms saved.");
+    await expectSent(sent, "listWithheld", "updateOperational", "listAfterOperational");
+    expect(sent[1].body.input.changes).toEqual({ leadTimeDays: 14 });
+    expect(within(rowOf("Arctic Parts Supply")).getByText("14 days")).toBeTruthy();
+  });
+
   it("a stale edit tells the employee the terms changed since they loaded them; the form stays", async () => {
     const { sent, deps } = wire("listAfterCreate", "updateStale");
     render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
@@ -157,15 +197,17 @@ describe("Preferred supplier and status", () => {
   });
 
   it("the catalog administrator deactivates terms; they stay listed as inactive", async () => {
-    const { sent, deps } = wire("listAfterPreferred", "statusApplied", "listMixed");
+    const { sent, deps } = wire("listAfterPreferredAdministrator", "statusApplied", "listMixedAdministrator");
     render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
     fireEvent.click(await screen.findByRole("button", { name: /deactivate terms from coldchain components/i }));
     await screen.findByText("Supplier terms deactivated.");
-    await expectSent(sent, "listAfterPreferred", "statusApplied", "listMixed");
+    await expectSent(sent, "listAfterPreferredAdministrator", "statusApplied", "listMixedAdministrator");
     expect(within(rowOf("ColdChain Components")).getByText("Terms Inactive")).toBeTruthy();
+    // The administrator holds no cost key: standing or title never shows cost.
+    expect(within(rowOf("ColdChain Components")).getAllByText("Restricted — requires cost visibility")).toHaveLength(2);
   });
 
-  it("a manager without the activate authority is told they are not authorized, and status controls go away", async () => {
+  it("a buyer without the activate authority is told they are not authorized, and status controls go away", async () => {
     const { sent, deps } = wire("listAfterPreferred", "statusDenied");
     render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
     fireEvent.click(await screen.findByRole("button", { name: /deactivate terms from coldchain components/i }));

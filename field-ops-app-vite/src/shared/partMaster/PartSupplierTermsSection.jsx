@@ -5,8 +5,9 @@ import {
   createPartSupplierTerms, fetchPartSupplierItems, setPartSupplierTermsStatus, setPreferredPartSupplierTerms, updatePartSupplierTerms,
 } from "../../services/partsOperationsReads.js";
 import {
-  AVAILABILITY_LABEL, AVAILABILITY_STATES, EMPTY_TERMS_FORM, PURCHASE_UNITS, buildCreateTermsInput, buildTermsChanges,
-  formatCost, formatPurchaseUnit, outcomeFromError, outcomeFromResult, termsFormFromItem,
+  AVAILABILITY_LABEL, AVAILABILITY_STATES, COMMERCIAL_GROUP, EMPTY_TERMS_FORM, PURCHASE_UNITS, RESTRICTED_LABEL, buildCreateTermsInput,
+  buildTermsChanges, formatContract, formatCost, formatPurchaseUnit, groupAccess, isWithheld, outcomeFromError, outcomeFromResult,
+  termsFormFromItem,
 } from "../../domain/partSupplierTerms.js";
 
 // PART MASTER > SUPPLIERS & TERMS (remediation SUP-1).
@@ -21,6 +22,13 @@ import {
 // deactivating / reactivating needs inventory.catalog.activate. This section invents no capability: it asks, and renders
 // the answer. A FORBIDDEN list hides every control and says why; a FORBIDDEN status change hides the status controls
 // after the server has said no -- never before.
+//
+// GOVERNED FIELD GROUPS. Cost, currency and the contract window are the COMMERCIAL group, governed by their own
+// capabilities (inventory.catalog.cost.read / .create / .edit) granted to Security Roles in Administration. The list answer
+// says, for the signed-in employee, which groups they may read / create / edit (`fieldAccess`) and which groups each item
+// withheld (`withheld`). This section renders from those facts ONLY: a withheld cell reads "Restricted — requires cost
+// visibility" (no value is ever on the wire), "Add Supplier Terms" appears only with COMMERCIAL create, and the COMMERCIAL
+// inputs of Edit are disabled with the reason unless COMMERCIAL edit. No Role, persona or title is consulted.
 //
 // FOUR LOAD STATES, never collapsed (PartIdentifiersSection's grammar):
 //   loading      -- the read is in flight;
@@ -49,8 +57,12 @@ function Field({ id, label, children }) {
   );
 }
 
-function TermsForm({ mode, item, supplierOptions, stockingUnit, busy, onSubmit, onCancel }) {
+function TermsForm({ mode, item, supplierOptions, stockingUnit, fieldAccess, busy, onSubmit, onCancel }) {
   const [values, setValues] = useState(() => (mode === "edit" ? termsFormFromItem(item) : { ...EMPTY_TERMS_FORM }));
+  const commercial = groupAccess(fieldAccess, COMMERCIAL_GROUP);
+  const commercialWritable = mode === "edit" ? commercial.edit : commercial.create;
+  const commercialHidden = mode === "edit" && isWithheld(item, COMMERCIAL_GROUP);
+  const commercialProps = commercialWritable ? {} : { disabled: true, "aria-describedby": "pst-commercial-note" };
   const set = (k) => (e) => setValues((v) => ({ ...v, [k]: e.target.value }));
   const submit = (e) => {
     e.preventDefault();
@@ -64,8 +76,8 @@ function TermsForm({ mode, item, supplierOptions, stockingUnit, busy, onSubmit, 
       {mode === "create" ? (
         <Field id="pst-supplier" label="Supplier">
           <select id="pst-supplier" className="fo-input" value={values.supplierId} onChange={set("supplierId")}>
-            <option value="">{supplierOptions.length === 0 ? "No active supplier without terms" : "Select…"}</option>
-            {supplierOptions.map((s) => (
+            <option value="">{(supplierOptions ?? []).length === 0 ? "No active supplier without terms" : "Select…"}</option>
+            {(supplierOptions ?? []).map((s) => (
               <option key={s.supplierId} value={s.supplierId}>{s.name}</option>
             ))}
           </select>
@@ -74,8 +86,15 @@ function TermsForm({ mode, item, supplierOptions, stockingUnit, busy, onSubmit, 
         <p className="fo-muted"><strong>{item.supplierName}</strong> · version {item.version}</p>
       )}
       <Field id="pst-sku" label="Supplier SKU">{input("pst-sku", "supplierSku")}</Field>
-      <Field id="pst-cost" label="Unit cost">{input("pst-cost", "cost", { inputMode: "decimal" })}</Field>
-      <Field id="pst-currency" label="Currency">{input("pst-currency", "currency", { maxLength: 3 })}</Field>
+      {(!commercialWritable || commercialHidden) && (
+        <p id="pst-commercial-note" className="fo-muted">
+          {!commercialWritable
+            ? "Cost & contract terms can't be changed here: changing them needs the cost permission, governed in Administration."
+            : "The current cost & contract terms are restricted for you. Values you enter replace them; leave them blank to keep them."}
+        </p>
+      )}
+      <Field id="pst-cost" label="Unit cost">{input("pst-cost", "cost", { inputMode: "decimal", ...commercialProps })}</Field>
+      <Field id="pst-currency" label="Currency">{input("pst-currency", "currency", { maxLength: 3, ...commercialProps })}</Field>
       <Field id="pst-lead" label="Lead time (days)">{input("pst-lead", "leadTimeDays", { inputMode: "numeric" })}</Field>
       <Field id="pst-moq" label="Minimum order quantity">{input("pst-moq", "minOrderQty", { inputMode: "decimal" })}</Field>
       <Field id="pst-multiple" label="Order multiple">{input("pst-multiple", "orderMultiple", { inputMode: "decimal" })}</Field>
@@ -95,8 +114,8 @@ function TermsForm({ mode, item, supplierOptions, stockingUnit, busy, onSubmit, 
           </Field>
         </>
       )}
-      <Field id="pst-contract-start" label="Contract start">{input("pst-contract-start", "contractStart", { type: "date" })}</Field>
-      <Field id="pst-contract-end" label="Contract end">{input("pst-contract-end", "contractEnd", { type: "date" })}</Field>
+      <Field id="pst-contract-start" label="Contract start">{input("pst-contract-start", "contractStart", { type: "date", ...commercialProps })}</Field>
+      <Field id="pst-contract-end" label="Contract end">{input("pst-contract-end", "contractEnd", { type: "date", ...commercialProps })}</Field>
       <Field id="pst-availability" label="Availability">
         <select id="pst-availability" className="fo-input" value={values.availability} onChange={set("availability")}>
           {AVAILABILITY_STATES.map((a) => <option key={a} value={a}>{AVAILABILITY_LABEL[a]}</option>)}
@@ -140,12 +159,12 @@ function TermsTable({ items, label, stockingUnit, busy, statusControls, onEdit, 
                   {item.supplierStatus === "INACTIVE" && <span className="fo-muted"> · supplier inactive</span>}
                 </td>
                 <td><code>{item.supplierSku}</code></td>
-                <td>{formatCost(item)}</td>
+                <td>{isWithheld(item, COMMERCIAL_GROUP) ? <span className="fo-muted">{RESTRICTED_LABEL}</span> : formatCost(item)}</td>
                 <td>{item.leadTimeDays} days</td>
                 <td>{item.minOrderQty ?? "—"}</td>
                 <td>{item.orderMultiple ?? "—"}</td>
                 <td>{formatPurchaseUnit(item, stockingUnit)}</td>
-                <td>{item.contractStart || item.contractEnd ? `${item.contractStart ?? "…"} – ${item.contractEnd ?? "…"}` : "—"}</td>
+                <td>{isWithheld(item, COMMERCIAL_GROUP) ? <span className="fo-muted">{RESTRICTED_LABEL}</span> : formatContract(item)}</td>
                 <td>{AVAILABILITY_LABEL[item.availability] ?? item.availability}</td>
                 {/* Named, not bare (ADR-012 §2.2a): beside Part status, a bare ACTIVE would read as the Part's. */}
                 <td>{active ? "Terms Active" : <span className="fo-muted">Terms Inactive</span>}</td>
@@ -181,7 +200,7 @@ function TermsTable({ items, label, stockingUnit, busy, statusControls, onEdit, 
 export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
   // TEST SEAM ONLY: the transport options the real client passes to callReorderApi (baseUrl, getIdToken, fetchImpl).
   const callOptions = deps?.callOptions;
-  const [state, setState] = useState({ status: "loading", items: [], supplierOptions: [], stockingUnit: null, message: null });
+  const [state, setState] = useState({ status: "loading", items: [], supplierOptions: null, fieldAccess: null, stockingUnit: null, message: null });
   const [outcome, setOutcome] = useState(null);
   const [busy, setBusy] = useState(null);
   const [form, setForm] = useState(null); // null | { mode: "create" } | { mode: "edit", item }
@@ -190,19 +209,19 @@ export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
 
   const load = useCallback(async () => {
     if (!partId) {
-      setState({ status: "ready", items: [], supplierOptions: [], stockingUnit: null, message: null });
+      setState({ status: "ready", items: [], supplierOptions: null, fieldAccess: null, stockingUnit: null, message: null });
       return;
     }
     try {
       const result = await fetchPartSupplierItems(partId, callOptions);
       setState({
         status: "ready", items: Array.isArray(result?.items) ? result.items : [],
-        supplierOptions: Array.isArray(result?.supplierOptions) ? result.supplierOptions : [],
-        stockingUnit: result?.stockingUnit ?? null, message: null,
+        supplierOptions: Array.isArray(result?.supplierOptions) ? result.supplierOptions : null,
+        fieldAccess: result?.fieldAccess ?? null, stockingUnit: result?.stockingUnit ?? null, message: null,
       });
     } catch (err) {
       // A denial is NOT an empty list, and never rendered as one.
-      setState({ status: err?.code === "FORBIDDEN" ? "denied" : "failed", items: [], supplierOptions: [], stockingUnit: null,
+      setState({ status: err?.code === "FORBIDDEN" ? "denied" : "failed", items: [], supplierOptions: null, fieldAccess: null, stockingUnit: null,
         message: err?.code === "FORBIDDEN" ? null : outcomeFromError(err, "read").message });
     }
   }, [partId, callOptions]);
@@ -234,7 +253,7 @@ export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
 
   const submitForm = (values) => {
     if (form?.mode === "edit") {
-      const changes = buildTermsChanges(values, form.item);
+      const changes = buildTermsChanges(values, form.item, state.fieldAccess);
       return run("form", "update", () => updatePartSupplierTerms({ itemId: form.item.itemId, expectedVersion: form.item.version, changes }, callOptions));
     }
     return run("form", "create", () => createPartSupplierTerms(buildCreateTermsInput(partId, values), callOptions));
@@ -294,16 +313,21 @@ export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
               item={form.item}
               supplierOptions={state.supplierOptions}
               stockingUnit={state.stockingUnit}
+              fieldAccess={state.fieldAccess}
               busy={busy === "form"}
               onSubmit={submitForm}
               onCancel={() => setForm(null)}
             />
-          ) : (
+          ) : groupAccess(state.fieldAccess, COMMERCIAL_GROUP).create ? (
             <div className="fo-chip-row">
               <Button type="button" variant="secondary" disabled={!!busy} onClick={() => { setOutcome(null); setForm({ mode: "create" }); }}>
                 Add Supplier Terms
               </Button>
             </div>
+          ) : (
+            <p className="fo-muted">
+              Adding supplier terms sets cost & contract terms, which needs the cost permission governed in Administration.
+            </p>
           )}
         </>
       )}

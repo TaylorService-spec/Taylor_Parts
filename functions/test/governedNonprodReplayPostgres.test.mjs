@@ -16,7 +16,7 @@ const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no datab
 const T = "taylor-nonprod";
 const d = (m) => require(`../lib/adminPolicy/${m}.js`);
 
-test("the recorded decisions replay the governed nonprod authority exactly: 94 / 128 / 542", { skip: SKIP, concurrency: false }, async (t) => {
+test("the recorded decisions replay the governed nonprod authority exactly: 94 / 128 / 542 (+ SUP-1: 95 / 131, no grant)", { skip: SKIP, concurrency: false }, async (t) => {
   const { q, admin } = await serviceBaselineTenant(t, { urlBase: URL_BASE, tenant: T, prefix: "govreplay" });
   const count = async () => (await q(`SELECT count(*)::int n FROM eos_policy.role_capabilities WHERE tenant_id=$1`, [T])).rows[0].n;
   const apply = async (ops) => { for (const { operation, input } of ops) { const r = await admin(operation, input); assert.equal(r.ok, true, `${operation} ${JSON.stringify(input)} -> ${r.code} ${r.message}`); } return count(); };
@@ -39,8 +39,8 @@ test("the recorded decisions replay the governed nonprod authority exactly: 94 /
 
   const migrations = readdirSync(new URL("../migrations", import.meta.url)).filter((f) => f.endsWith(".sql")).length;
   assert.equal((await q(`SELECT count(*)::int n FROM public.pgmigrations`)).rows[0].n, migrations);
-  assert.equal(migrations, 94);
-  assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.capabilities`)).rows[0].n, 128);
+  assert.equal(migrations, 95); // 94 -> 95: 1764530000000 (SUP-1 COMMERCIAL field group keys, granted to NO Role)
+  assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.capabilities`)).rows[0].n, 131); // 128 -> 131: the three inventory.catalog.cost.* keys
   // Replaying again adds nothing (idempotent), and the delta files introduce no Role beyond the two they record.
   assert.equal(await apply(d("truckInventoryActivationDelta").truckInventoryActivationOperations()), 542);
   for (const key of ["commercialSharedContext", "operationalConfigurationAdministrator"]) {
