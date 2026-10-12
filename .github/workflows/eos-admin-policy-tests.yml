@@ -393,6 +393,11 @@ on:
       - "functions/test/catalogCutoverPostgres.test.mjs"
       - "functions/test/catalogPartSearchPostgres.test.mjs"
       - "functions/test/catalogReadAuthorizationPostgres.test.mjs"
+      # CAT-1: the Part Master employee-workflow contract. The PG suite drives the real transport with the SCREEN's
+      # payload builders and pins the browser fixture, so a change to either side re-proves the pair.
+      - "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs"
+      - "field-ops-app-vite/test/fixtures/catalogPartMasterContract.json"
+      - "field-ops-app-vite/src/domain/partMasterWrite.js"
       # CAT-2: the Part identifier employee-workflow contract. The PG suite pins the browser fixture the identifier
       # screen is tested against, so a change to either side re-proves the pair.
       - "functions/test/catalogPartIdentifierEmployeeContractPostgres.test.mjs"
@@ -1091,6 +1096,11 @@ on:
       - "functions/test/catalogCutoverPostgres.test.mjs"
       - "functions/test/catalogPartSearchPostgres.test.mjs"
       - "functions/test/catalogReadAuthorizationPostgres.test.mjs"
+      # CAT-1: the Part Master employee-workflow contract. The PG suite drives the real transport with the SCREEN's
+      # payload builders and pins the browser fixture, so a change to either side re-proves the pair.
+      - "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs"
+      - "field-ops-app-vite/test/fixtures/catalogPartMasterContract.json"
+      - "field-ops-app-vite/src/domain/partMasterWrite.js"
       # CAT-2: the Part identifier employee-workflow contract. The PG suite pins the browser fixture the identifier
       # screen is tested against, so a change to either side re-proves the pair.
       - "functions/test/catalogPartIdentifierEmployeeContractPostgres.test.mjs"

@@ -1245,7 +1245,7 @@
         "pr": 2055,
         "commit": "0de3c06b"
       },
-      "disposition": "GAP",
+      "disposition": "UNVERIFIED",
       "verificationStatus": "UNVERIFIED",
       "materialBehaviorChange": false,
       "eosReplacement": "POST /operations/catalog createPart",
@@ -1265,12 +1265,24 @@
       "ownerDecision": null,
       "gates": {
         "A": {
-          "status": "PARTIAL",
+          "status": "VERIFIED",
           "evidence": [
             {
               "kind": "source",
-              "path": "functions/src/catalogMaster/catalogHttp.ts",
-              "contains": "case \"createPart\""
+              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
+              "contains": "export function outcomeFromResult"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the screen maps every answer to what the employee must be told",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "a created part is reported SAVED and the list is refreshed",
+              "polarity": "positive"
             },
             {
               "kind": "test",
@@ -1279,23 +1291,24 @@
               "polarity": "positive"
             },
             {
-              "kind": "source",
-              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
-              "contains": "outcome === \"applied\""
+              "kind": "test",
+              "path": "functions/test/catalogCutoverPostgres.test.mjs",
+              "contains": "authority: missing capability, non-member, disabled principal, allowlist -- all refused, nothing written",
+              "polarity": "negative"
             }
-          ],
-          "limitation": "The server is correct; the employee screen misreports the outcome. CLIENT CONTRACT DEFECT (since 6228d9bb): outcomeFromResult requires result.outcome 'applied'|'replayed'; the EOS writer returns {partId, version}, so every successful write is shown as 'The request could not be completed' and the reload is skipped. outcomeFromError is keyed on Firebase codes, so FORBIDDEN/CONFLICT/PRECONDITION_FAILED/INVALID_INPUT all render as a generic error."
+          ]
         },
         "B": {
           "status": "PARTIAL",
           "evidence": [
             {
-              "kind": "source",
-              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
-              "contains": "export function outcomeFromResult"
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "a created part is reported SAVED and the list is refreshed",
+              "polarity": "positive"
             }
           ],
-          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only. CLIENT CONTRACT DEFECT (since 6228d9bb): outcomeFromResult requires result.outcome 'applied'|'replayed'; the EOS writer returns {partId, version}, so every successful write is shown as 'The request could not be completed' and the reload is skipped. outcomeFromError is keyed on Firebase codes, so FORBIDDEN/CONFLICT/PRECONDITION_FAILED/INVALID_INPUT all render as a generic error."
+          "limitation": "Screen-level proof against the REAL server bytes now exists (CAT-1, #2059: the contract fixture is proven against PostgreSQL and the screen renders it). No live persona run of this WRITE is recorded: a nonprod write needs separate mutation authorization; the read-only persona UAT proves authority only through refusal probes."
         },
         "C": {
           "status": "VERIFIED",
@@ -1320,8 +1333,26 @@
           ]
         },
         "E": {
-          "status": "PARTIAL",
+          "status": "VERIFIED",
           "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the server answers each employee action as the contract says",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "a created part is reported SAVED and the list is refreshed",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "an employee without inventory.catalog.manage is told they are not authorized",
+              "polarity": "negative"
+            },
             {
               "kind": "test",
               "path": "functions/test/catalogCutoverPostgres.test.mjs",
@@ -1334,8 +1365,7 @@
               "contains": "authority: missing capability, non-member, disabled principal, allowlist -- all refused, nothing written",
               "polarity": "negative"
             }
-          ],
-          "limitation": "Writer-level only; no test drives client -> /operations/catalog -> PostgreSQL with the real result shape (the UI tests mock the retired callable shape)."
+          ]
         }
       },
       "audit": {
@@ -1350,8 +1380,9 @@
         "limitation": "Success audited (catalog.part.*) in the same transaction. Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
       },
       "gaps": [
-        "Client contract defect: successful writes display as errors (fix the client mapper; add a contract test)."
-      ]
+        "CAT-1 fixed in #2059 (screen reads the real EOS answer); proven by the PG contract + screen workflow tests."
+      ],
+      "candidateDisposition": "REPLACED"
     },
     {
       "legacyOperation": "updatePart",
@@ -1362,7 +1393,7 @@
         "pr": 2055,
         "commit": "0de3c06b"
       },
-      "disposition": "GAP",
+      "disposition": "UNVERIFIED",
       "verificationStatus": "UNVERIFIED",
       "materialBehaviorChange": false,
       "eosReplacement": "POST /operations/catalog updatePart",
@@ -1382,12 +1413,24 @@
       "ownerDecision": null,
       "gates": {
         "A": {
-          "status": "PARTIAL",
+          "status": "VERIFIED",
           "evidence": [
             {
               "kind": "source",
-              "path": "functions/src/catalogMaster/catalogHttp.ts",
-              "contains": "case \"updatePart\""
+              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
+              "contains": "export function outcomeFromResult"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the screen maps every answer to what the employee must be told",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "an edit is reported SAVED with the new version",
+              "polarity": "positive"
             },
             {
               "kind": "test",
@@ -1396,23 +1439,24 @@
               "polarity": "positive"
             },
             {
-              "kind": "source",
-              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
-              "contains": "outcome === \"applied\""
+              "kind": "test",
+              "path": "functions/test/catalogCutoverPostgres.test.mjs",
+              "contains": "authority: missing capability, non-member, disabled principal, allowlist -- all refused, nothing written",
+              "polarity": "negative"
             }
-          ],
-          "limitation": "The server is correct; the employee screen misreports the outcome. CLIENT CONTRACT DEFECT (since 6228d9bb): outcomeFromResult requires result.outcome 'applied'|'replayed'; the EOS writer returns {partId, version}, so every successful write is shown as 'The request could not be completed' and the reload is skipped. outcomeFromError is keyed on Firebase codes, so FORBIDDEN/CONFLICT/PRECONDITION_FAILED/INVALID_INPUT all render as a generic error."
+          ]
         },
         "B": {
           "status": "PARTIAL",
           "evidence": [
             {
-              "kind": "source",
-              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
-              "contains": "export function outcomeFromResult"
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "an edit is reported SAVED with the new version",
+              "polarity": "positive"
             }
           ],
-          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only. CLIENT CONTRACT DEFECT (since 6228d9bb): outcomeFromResult requires result.outcome 'applied'|'replayed'; the EOS writer returns {partId, version}, so every successful write is shown as 'The request could not be completed' and the reload is skipped. outcomeFromError is keyed on Firebase codes, so FORBIDDEN/CONFLICT/PRECONDITION_FAILED/INVALID_INPUT all render as a generic error."
+          "limitation": "Screen-level proof against the REAL server bytes now exists (CAT-1, #2059: the contract fixture is proven against PostgreSQL and the screen renders it). No live persona run of this WRITE is recorded: a nonprod write needs separate mutation authorization; the read-only persona UAT proves authority only through refusal probes."
         },
         "C": {
           "status": "VERIFIED",
@@ -1437,8 +1481,26 @@
           ]
         },
         "E": {
-          "status": "PARTIAL",
+          "status": "VERIFIED",
           "evidence": [
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the server answers each employee action as the contract says",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "an edit is reported SAVED with the new version",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "a stale edit tells the employee the part changed since they loaded it",
+              "polarity": "negative"
+            },
             {
               "kind": "test",
               "path": "functions/test/catalogCutoverPostgres.test.mjs",
@@ -1451,8 +1513,7 @@
               "contains": "authority: missing capability, non-member, disabled principal, allowlist -- all refused, nothing written",
               "polarity": "negative"
             }
-          ],
-          "limitation": "Writer-level only; no test drives client -> /operations/catalog -> PostgreSQL with the real result shape (the UI tests mock the retired callable shape)."
+          ]
         }
       },
       "audit": {
@@ -1467,8 +1528,9 @@
         "limitation": "Success audited (catalog.part.*) in the same transaction. Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
       },
       "gaps": [
-        "Client contract defect: successful writes display as errors (fix the client mapper; add a contract test)."
-      ]
+        "CAT-1 fixed in #2059 (screen reads the real EOS answer); proven by the PG contract + screen workflow tests."
+      ],
+      "candidateDisposition": "REPLACED"
     },
     {
       "legacyOperation": "changePartStatus",
@@ -1494,37 +1556,44 @@
       "ownerDecision": null,
       "gates": {
         "A": {
-          "status": "PARTIAL",
+          "status": "VERIFIED",
           "evidence": [
             {
               "kind": "source",
-              "path": "functions/src/catalogMaster/catalogHttp.ts",
-              "contains": "case \"changePartStatus\""
+              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
+              "contains": "export function outcomeFromResult"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the screen maps every answer to what the employee must be told",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "activating a DRAFT part is reported SAVED",
+              "polarity": "positive"
             },
             {
               "kind": "test",
               "path": "functions/test/catalogCutoverPostgres.test.mjs",
               "contains": "part writer: status transitions under inventory.catalog.activate, replay, terminal states",
               "polarity": "positive"
-            },
-            {
-              "kind": "source",
-              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
-              "contains": "outcome === \"applied\""
             }
-          ],
-          "limitation": "The server is correct; the employee screen misreports the outcome. CLIENT CONTRACT DEFECT (since 6228d9bb): outcomeFromResult requires result.outcome 'applied'|'replayed'; the EOS writer returns {partId, version}, so every successful write is shown as 'The request could not be completed' and the reload is skipped. outcomeFromError is keyed on Firebase codes, so FORBIDDEN/CONFLICT/PRECONDITION_FAILED/INVALID_INPUT all render as a generic error."
+          ]
         },
         "B": {
           "status": "GAP",
           "evidence": [
             {
-              "kind": "source",
-              "path": "field-ops-app-vite/src/domain/partMasterWrite.js",
-              "contains": "export function outcomeFromResult"
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "activating a DRAFT part is reported SAVED",
+              "polarity": "positive"
             }
           ],
-          "limitation": "No live run by this persona against a deployed environment, and no screen test against the real EOS result shape. Reachability is a static route + capability + grant reading only. CLIENT CONTRACT DEFECT (since 6228d9bb): outcomeFromResult requires result.outcome 'applied'|'replayed'; the EOS writer returns {partId, version}, so every successful write is shown as 'The request could not be completed' and the reload is skipped. outcomeFromError is keyed on Firebase codes, so FORBIDDEN/CONFLICT/PRECONDITION_FAILED/INVALID_INPUT all render as a generic error. No business persona holds inventory.catalog.activate (admin only, via the sample-company seed); parts created by Parts/Service/Warehouse Managers stay DRAFT and cannot be reordered, placed or counted."
+          "limitation": "Screen-level proof against the REAL server bytes now exists (CAT-1, #2059: the contract fixture is proven against PostgreSQL and the screen renders it). No live persona run of this WRITE is recorded: a nonprod write needs separate mutation authorization; the read-only persona UAT proves authority only through refusal probes. No business persona holds inventory.catalog.activate (CAT-3, Owner/Administration decision)."
         },
         "C": {
           "status": "PARTIAL",
@@ -1550,22 +1619,33 @@
           ]
         },
         "E": {
-          "status": "PARTIAL",
+          "status": "VERIFIED",
           "evidence": [
             {
               "kind": "test",
-              "path": "functions/test/catalogCutoverPostgres.test.mjs",
-              "contains": "part writer: status transitions under inventory.catalog.activate, replay, terminal states",
+              "path": "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs",
+              "contains": "the server answers each employee action as the contract says",
               "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "activating a DRAFT part is reported SAVED",
+              "polarity": "positive"
+            },
+            {
+              "kind": "ui-test",
+              "path": "field-ops-app-vite/test/partMasterEmployeeWorkflow.test.jsx",
+              "contains": "a holder of manage but not activate is told they are not authorized",
+              "polarity": "negative"
             },
             {
               "kind": "test",
               "path": "functions/test/catalogCutoverPostgres.test.mjs",
               "contains": "part writer: status transitions under inventory.catalog.activate, replay, terminal states",
-              "polarity": "negative"
+              "polarity": "positive"
             }
-          ],
-          "limitation": "Writer-level only; no test drives client -> /operations/catalog -> PostgreSQL with the real result shape (the UI tests mock the retired callable shape)."
+          ]
         }
       },
       "audit": {
@@ -1580,7 +1660,7 @@
         "limitation": "Success audited (catalog.part.*) in the same transaction. Refusals (capability, non-member) write no audit row; the Firestore command audited them as outcome \"denied\". Pending Owner decision on EOS-wide denial auditing (see the retrospective, finding AUD-1)."
       },
       "gaps": [
-        "Client contract defect: successful writes display as errors (fix the client mapper; add a contract test).",
+        "CAT-1 fixed in #2059 (screen reads the real EOS answer); proven by the PG contract + screen workflow tests.",
         "inventory.catalog.activate has no business holder (Administration grant needed)."
       ]
     },
@@ -1626,6 +1706,18 @@
               "path": "field-ops-app-vite/test/partIdentifierEmployeeWorkflow.test.jsx",
               "contains": "adding a barcode succeeds and the list is re-read from the server, now showing it",
               "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "alias identity is DERIVED by the existing authority, never generated",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "authorization is required, and refusal writes nothing",
+              "polarity": "negative"
             }
           ]
         },
@@ -1688,6 +1780,18 @@
               "kind": "ui-test",
               "path": "field-ops-app-vite/test/partIdentifierEmployeeWorkflow.test.jsx",
               "contains": "an employee without inventory.catalog.manage is told so",
+              "polarity": "negative"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "alias identity is DERIVED by the existing authority, never generated",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "authorization is required, and refusal writes nothing",
               "polarity": "negative"
             }
           ]
@@ -1753,6 +1857,18 @@
               "path": "field-ops-app-vite/test/partIdentifierEmployeeWorkflow.test.jsx",
               "contains": "deactivating an identifier succeeds and the row now offers Reactivate (unreachable before)",
               "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "deactivate and reactivate are governed facts; DELETE is refused",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "version conflict and replay behave as the rest of the catalog does",
+              "polarity": "negative"
             }
           ]
         },
@@ -1809,6 +1925,18 @@
               "kind": "ui-test",
               "path": "field-ops-app-vite/test/partIdentifierEmployeeWorkflow.test.jsx",
               "contains": "a stale deactivate says someone else changed the identifier",
+              "polarity": "negative"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "deactivate and reactivate are governed facts; DELETE is refused",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "version conflict and replay behave as the rest of the catalog does",
               "polarity": "negative"
             }
           ]
@@ -1873,6 +2001,18 @@
               "path": "field-ops-app-vite/test/partIdentifierEmployeeWorkflow.test.jsx",
               "contains": "reactivating succeeds and the list is re-read",
               "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "deactivate and reactivate are governed facts; DELETE is refused",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "version conflict and replay behave as the rest of the catalog does",
+              "polarity": "negative"
             }
           ]
         },
@@ -1929,6 +2069,18 @@
               "kind": "ui-test",
               "path": "field-ops-app-vite/test/partIdentifierEmployeeWorkflow.test.jsx",
               "contains": "a stale deactivate says someone else changed the identifier",
+              "polarity": "negative"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "deactivate and reactivate are governed facts; DELETE is refused",
+              "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "version conflict and replay behave as the rest of the catalog does",
               "polarity": "negative"
             }
           ]
@@ -1994,6 +2146,12 @@
               "path": "field-ops-app-vite/test/partIdentifierEmployeeWorkflow.test.jsx",
               "contains": "the identifiers the server holds are LISTED (they used to render as 'no identifiers')",
               "polarity": "positive"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "alias administration lists a Part's identifiers with their ORIGINAL values",
+              "polarity": "positive"
             }
           ]
         },
@@ -2045,6 +2203,12 @@
               "path": "field-ops-app-vite/test/partIdentifierEmployeeWorkflow.test.jsx",
               "contains": "an employee without the read+manage pair is told it is a denial, not 'no identifiers'",
               "polarity": "negative"
+            },
+            {
+              "kind": "test",
+              "path": "functions/test/catalogPartAliasPostgres.test.mjs",
+              "contains": "alias administration lists a Part's identifiers with their ORIGINAL values",
+              "polarity": "positive"
             }
           ]
         }

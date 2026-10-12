@@ -72,6 +72,11 @@ Each export was then scored on gates A–E and audit.
 | UNVERIFIED (a replacement exists; evidence incomplete) | **6** |
 | GAP | **16** |
 
+_Update (CAT-1, #2059): `createPart` and `updatePart` moved GAP → UNVERIFIED once the client defect was fixed and
+proven against the real server (now 8 UNVERIFIED / 14 GAP). The manifest is authoritative._
+_Update (CAT-2, #2060): `deactivatePartAlias` and `reactivatePartAlias` moved GAP → UNVERIFIED (now 10 UNVERIFIED / 12 GAP);
+`listPartAliases` stays GAP (ALS-2, unruled read-gate change)._
+
 Four operations with an unruled material behaviour change (`recordWorkOrderLabor`, `getWorkOrderLabor`,
 `probePartAlias`, `resolveScannedPartIdentifier`) are classified **GAP**, not UNVERIFIED. Under the
 gate, a material change without an Owner decision is a gap until the Owner rules (adversarial review of
