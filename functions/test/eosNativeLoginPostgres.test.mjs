@@ -726,15 +726,20 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     assert.deepEqual(read.body.data.eosIdentity, { kind: "other" }, "no foreign subject is disclosed");
     for (const op of ["issueLoginReset", "setLoginAccountStatus", "revokeLoginSessions", "resetLoginMfa", "retireLoginAccount", "unlockLoginAccount"]) {
       const r = await asAdmin2(op, { principalId: alice, reason: "cross-tenant attempt", status: "disabled" });
-      assert.equal(r.status, 404, op);
+      // Refused either as CROSS_TENANT_AUTHORITY (alice can enter tenant 1, where admin2 holds nothing) or as NOT_FOUND
+      // (the login is tenant 1's) -- never performed.
+      assert.ok(r.status === 403 || r.status === 404, `${op}: ${r.status}`);
     }
-    assert.equal((await asAdmin2("provisionLoginAccount", { principalId: alice, loginIdentifier: "alice2@x.test", reason: "r" })).status, 409);
+    const p2 = await asAdmin2("provisionLoginAccount", { principalId: alice, loginIdentifier: "alice2@x.test", reason: "r" });
+    assert.ok(p2.status === 403 || p2.status === 409, `${p2.status}`);
     assert.equal((await accountOf(alice)).status, "active");
     // Provisioning a Principal that already belongs to two tenants is refused outright.
     await repo.transact({ tenantId: t2.id, uid: "login-fixture" }, (tx) => tx.createTenantMembership(dana));
     const multi = await asAdmin("provisionLoginAccount", { principalId: dana, loginIdentifier: "dana@taylor.test", reason: "r" });
-    assert.equal(multi.status, 409);
-    assert.match(multi.body.message, /MULTI_TENANT_PRINCIPAL/);
+    // Refused: single-tenant mode (MULTI_TENANT_PRINCIPAL), and in any mode tenant 1's administrator holds nothing in
+    // tenant 2 (CROSS_TENANT_AUTHORITY).
+    assert.ok(multi.status === 403 || multi.status === 409, `${multi.status}`);
+    assert.match(multi.body.message, /MULTI_TENANT_PRINCIPAL|CROSS_TENANT_AUTHORITY/);
     // Ending the second membership restores the login; resolution is then IDENTICAL to Firebase's across tenant statements.
     await q(`UPDATE eos_policy.tenant_memberships SET status = 'disabled' WHERE principal_id = $1 AND tenant_id = $2`, [alice, t2.id]);
     const s2 = (await login("alice@taylor.test", PASSWORDS.alice)).body.session;

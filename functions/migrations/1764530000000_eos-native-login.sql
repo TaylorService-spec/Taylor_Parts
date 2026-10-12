@@ -108,6 +108,8 @@ CREATE TABLE login_sessions (
     id                   TEXT PRIMARY KEY,
     account_id           TEXT NOT NULL REFERENCES login_accounts(id),
     principal_id         TEXT NOT NULL REFERENCES principals(id),
+    -- THE ONE TENANT this session acts in (Owner ruling D-12). Chosen and validated at login or switch; never changed.
+    tenant_id            TEXT NOT NULL REFERENCES tenants(id),
     credential_version   INTEGER NOT NULL,
     mfa_verified         BOOLEAN NOT NULL,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -144,7 +146,7 @@ BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'LOGIN_SESSION_APPEND_ONLY: a session is history and is never deleted';
     END IF;
-    IF NEW.account_id <> OLD.account_id OR NEW.principal_id <> OLD.principal_id OR NEW.created_at <> OLD.created_at
+    IF NEW.account_id <> OLD.account_id OR NEW.principal_id <> OLD.principal_id OR NEW.tenant_id <> OLD.tenant_id OR NEW.created_at <> OLD.created_at
        OR NEW.absolute_expires_at > OLD.absolute_expires_at OR NEW.credential_version <> OLD.credential_version THEN
         RAISE EXCEPTION 'LOGIN_SESSION_IMMUTABLE: a session''s owner, origin and absolute lifetime never change';
     END IF;
@@ -202,6 +204,8 @@ CREATE TABLE login_mfa_challenges (
     token_sha256  TEXT NOT NULL,
     -- The account's credential version when the password step passed: a reset or change in between voids the challenge.
     credential_version INTEGER NOT NULL,
+    -- The tenant selected at the password step; the session the challenge completes into is bound to it.
+    tenant_id     TEXT NOT NULL REFERENCES tenants(id),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at    TIMESTAMPTZ NOT NULL,
     consumed_at   TIMESTAMPTZ,
@@ -219,6 +223,9 @@ CREATE TABLE login_mfa_challenges (
 CREATE TABLE authentication_events (
     id             TEXT PRIMARY KEY,
     occurred_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- The tenant the event belongs to (the session's, else the account's home tenant). NULL only for an attempt that
+    -- names no account: operator-visible, never shown to a tenant (Owner ruling D-13: tenant isolation).
+    tenant_id      TEXT REFERENCES tenants(id),
     event          TEXT NOT NULL,
     outcome        TEXT NOT NULL,
     reason_code    TEXT,
@@ -233,6 +240,7 @@ CREATE TABLE authentication_events (
 );
 CREATE INDEX authentication_events_by_account ON authentication_events (account_id, occurred_at DESC);
 CREATE INDEX authentication_events_by_time ON authentication_events (occurred_at DESC);
+CREATE INDEX authentication_events_by_tenant ON authentication_events (tenant_id, occurred_at DESC);
 
 CREATE FUNCTION authentication_events_append_only() RETURNS trigger
 LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
@@ -245,18 +253,77 @@ CREATE TRIGGER authentication_events_append_only BEFORE UPDATE OR DELETE ON auth
 CREATE TRIGGER authentication_events_no_truncate BEFORE TRUNCATE ON authentication_events
     FOR EACH STATEMENT EXECUTE FUNCTION authentication_events_append_only();
 
+-- ════════════════════ security-event retention (Owner ruling D-13) -- DESIGN ONLY, NOTHING SCHEDULED ════════════════════
+--
+-- The ACTIVE history (authentication_events) is append-only and is never deleted or altered by any code in this
+-- repository. Retention is governed configuration plus an append-only MANIFEST of archival operations; no job exists
+-- that archives or deletes, and the manifest table has no "purged" state. docs/architecture/eos-native-identity.md §8.
+
+-- How long events stay in the ACTIVE history before they become ELIGIBLE for archival, per tenant. NULL tenant = the
+-- operator policy for events that name no account. Every change is a new row (history), never an update.
+CREATE TABLE authentication_event_retention_policies (
+    id                 TEXT PRIMARY KEY,
+    tenant_id          TEXT REFERENCES tenants(id),
+    -- Floor 365 days: shorter cannot be configured; ceiling 10 years.
+    active_retention_days INTEGER NOT NULL,
+    -- Archives are kept at least this long once made.
+    archive_retention_days INTEGER NOT NULL,
+    effective_from     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    set_by             TEXT NOT NULL,
+    reason             TEXT NOT NULL,
+    CONSTRAINT authentication_event_retention_bounds CHECK (
+        active_retention_days BETWEEN 365 AND 3650 AND archive_retention_days BETWEEN 365 AND 3650),
+    CONSTRAINT authentication_event_retention_reason CHECK (btrim(set_by) <> '' AND btrim(reason) <> '')
+);
+CREATE INDEX authentication_event_retention_current ON authentication_event_retention_policies (tenant_id, effective_from DESC);
+
+-- One row per archival operation an operator performs under authorization: WHAT window was exported, HOW MANY rows,
+-- and the SHA-256 of the canonical export, so a restored archive can be proven identical. Append-only.
+CREATE TABLE authentication_event_archive_manifests (
+    id               TEXT PRIMARY KEY,
+    tenant_id        TEXT REFERENCES tenants(id),
+    window_start     TIMESTAMPTZ NOT NULL,
+    window_end       TIMESTAMPTZ NOT NULL,
+    row_count        INTEGER NOT NULL,
+    export_sha256    TEXT NOT NULL,
+    storage_location TEXT NOT NULL,
+    recorded_by      TEXT NOT NULL,
+    recorded_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    reason           TEXT NOT NULL,
+    CONSTRAINT authentication_event_archive_window CHECK (window_end > window_start),
+    CONSTRAINT authentication_event_archive_digest CHECK (export_sha256 ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT authentication_event_archive_count CHECK (row_count >= 0),
+    CONSTRAINT authentication_event_archive_reason CHECK (btrim(recorded_by) <> '' AND btrim(reason) <> '')
+);
+
+CREATE FUNCTION authentication_event_governance_append_only() RETURNS trigger
+LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
+BEGIN
+    RAISE EXCEPTION '% is append-only: % would rewrite the security-event governance record', TG_TABLE_NAME, TG_OP;
+END
+$fn$;
+CREATE TRIGGER authentication_event_retention_append_only BEFORE UPDATE OR DELETE ON authentication_event_retention_policies
+    FOR EACH ROW EXECUTE FUNCTION authentication_event_governance_append_only();
+CREATE TRIGGER authentication_event_archive_append_only BEFORE UPDATE OR DELETE ON authentication_event_archive_manifests
+    FOR EACH ROW EXECUTE FUNCTION authentication_event_governance_append_only();
+
 -- Down Migration
 SET search_path = eos_policy, public;
 
 -- Credentials and their security record are not dropped while any exist; an empty schema reverses cleanly.
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM eos_policy.login_accounts) OR EXISTS (SELECT 1 FROM eos_policy.authentication_events) THEN
+    IF EXISTS (SELECT 1 FROM eos_policy.login_accounts) OR EXISTS (SELECT 1 FROM eos_policy.authentication_events)
+       OR EXISTS (SELECT 1 FROM eos_policy.authentication_event_retention_policies)
+       OR EXISTS (SELECT 1 FROM eos_policy.authentication_event_archive_manifests) THEN
         RAISE EXCEPTION 'refusing to drop EOS native login: login accounts or authentication events exist';
     END IF;
 END
 $$;
 
+DROP TABLE authentication_event_archive_manifests;
+DROP TABLE authentication_event_retention_policies;
+DROP FUNCTION authentication_event_governance_append_only();
 DROP TABLE authentication_events;
 DROP FUNCTION authentication_events_append_only();
 DROP TABLE login_mfa_challenges;

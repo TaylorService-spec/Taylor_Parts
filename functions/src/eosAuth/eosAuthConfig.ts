@@ -23,6 +23,16 @@
 //                                         in front of the service (Render: 1). 0 = use the socket address. The client
 //                                         address keys the rate limiter, so a wrong value makes it per-proxy, not
 //                                         per-client.
+//   EOS_AUTH_CLIENT_IP_HEADER             optional, "true-client-ip" | "cf-connecting-ip": read the client address from
+//                                         that header, which an edge proxy SETS (overwriting any client value), in
+//                                         preference to X-Forwarded-For hop counting. Render fronts services with
+//                                         Cloudflare and APPENDS to a client-supplied X-Forwarded-For (§9); confirm by
+//                                         measurement before relying on either.
+//   EOS_AUTH_MULTI_TENANT_SESSIONS        optional, "enabled" | "disabled" (default disabled). Disabled: a human login is
+//                                         single-tenant (a Principal with a membership elsewhere is refused). Enabled:
+//                                         Owner ruling D-12 -- a Principal may belong to several tenants and each session
+//                                         is bound to ONE, chosen and validated at login, changed only by an explicit
+//                                         switch that issues a new session.
 //
 // There is deliberately NO production signing variable. The only issuer in this foundation is the nonprod
 // persona issuer, and it cannot be configured anywhere EOS_ENVIRONMENT is not exactly "nonprod".
@@ -56,6 +66,8 @@ export interface EosAuthRuntime {
     readonly factorKeyring: FactorKeyring | null;
     readonly cookieSameSite: EosCookieSameSite;
     readonly trustedProxyHops: number;
+    readonly multiTenantSessions: boolean;
+    readonly clientIpHeader: "true-client-ip" | "cf-connecting-ip" | null;
   } | null;
 }
 
@@ -151,7 +163,15 @@ export function readEosAuthConfig(env: NodeJS.ProcessEnv, serviceEnvironment: st
     }
     const hopsRaw = (env.EOS_AUTH_TRUSTED_PROXY_HOPS ?? "").trim();
     if (!/^[0-3]$/.test(hopsRaw)) throw new EosAuthConfigError("EOS_HUMAN_LOGIN=enabled requires EOS_AUTH_TRUSTED_PROXY_HOPS = 0..3");
-    humanLogin = Object.freeze({ signer: signerForLogin, factorKeyring, cookieSameSite: sameSite as EosCookieSameSite, trustedProxyHops: Number(hopsRaw) });
+    const multi = (env.EOS_AUTH_MULTI_TENANT_SESSIONS ?? "disabled").trim();
+    if (multi !== "enabled" && multi !== "disabled") throw new EosAuthConfigError("EOS_AUTH_MULTI_TENANT_SESSIONS must be 'enabled' or 'disabled'");
+    const ipHeader = (env.EOS_AUTH_CLIENT_IP_HEADER ?? "").trim().toLowerCase();
+    if (ipHeader && ipHeader !== "true-client-ip" && ipHeader !== "cf-connecting-ip") {
+      throw new EosAuthConfigError("EOS_AUTH_CLIENT_IP_HEADER must be 'true-client-ip' or 'cf-connecting-ip'");
+    }
+    humanLogin = Object.freeze({ signer: signerForLogin, factorKeyring, cookieSameSite: sameSite as EosCookieSameSite,
+      trustedProxyHops: Number(hopsRaw), multiTenantSessions: multi === "enabled",
+      clientIpHeader: (ipHeader || null) as "true-client-ip" | "cf-connecting-ip" | null });
   } else if (present(factorKeysRaw)) {
     throw new EosAuthConfigError("EOS_AUTH_FACTOR_KEYS is set but EOS_HUMAN_LOGIN is not enabled");
   } else if (present(env.EOS_AUTH_COOKIE_SAMESITE) || present(env.EOS_AUTH_TRUSTED_PROXY_HOPS)) {

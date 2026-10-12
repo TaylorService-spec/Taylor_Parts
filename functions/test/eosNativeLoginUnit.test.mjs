@@ -125,21 +125,35 @@ test("U6 the sid claim: optional, shaped, returned; nothing else joins the claim
   assert.ok(!T.AUTHORITY_BEARING_CLAIMS.includes("sid"));
 });
 
-test("U7 the composite verifier: human tokens need a sid AND a passing session gate; persona tokens carry none", async () => {
+test("U7 the composite verifier: human tokens need a sid, a passing gate AND a request scope to bind; persona tokens carry none", async () => {
+  const B = require("../lib/eosAuth/requestTenantBinding.js");
   const eos = { verify, issuer: ISS, audience: AUD, personaIssuer: null, humanLogin: null };
   const firebase = async () => ({ externalSubject: "fb", identityProvider: "firebase" });
   const gateCalls = [];
-  const gate = async (subject, sid) => { gateCalls.push([subject, sid]); if (sid === "r".repeat(32)) throw new S.LoginRefusal("SESSION_INVALID"); };
+  const gate = async (subject, sid) => {
+    gateCalls.push([subject, sid]);
+    if (sid === "r".repeat(32)) throw new S.LoginRefusal("SESSION_INVALID");
+    return { tenantId: "tenant-A" };
+  };
   const withGate = H.createCompositeTokenVerifier({ eos, firebase, humanSessionGate: gate });
   const without = H.createCompositeTokenVerifier({ eos, firebase });
-  assert.deepEqual(await withGate(mint({ sub: HUMAN, sid: "s".repeat(32) })), { externalSubject: HUMAN, identityProvider: "eos" });
-  assert.deepEqual(gateCalls, [[HUMAN, "s".repeat(32)]]);
-  await assert.rejects(withGate(mint({ sub: HUMAN, sid: "r".repeat(32) })), /SESSION_INVALID/);
-  await assert.rejects(withGate(mint({ sub: HUMAN })), /CLAIM_REFUSED/);
-  await assert.rejects(without(mint({ sub: HUMAN, sid: "s".repeat(32) })), /CLAIM_REFUSED/, "front door off: human tokens refused");
+  const inScope = (fn) => B.runWithRequestScope(fn);
+  // Inside a request scope: verified AND bound to the session's tenant.
+  await inScope(async () => {
+    assert.deepEqual(await withGate(mint({ sub: HUMAN, sid: "s".repeat(32) })), { externalSubject: HUMAN, identityProvider: "eos" });
+    assert.equal(B.sessionTenantBindingFor("eos", HUMAN).tenantId, "tenant-A");
+    assert.equal(B.sessionTenantBindingFor("eos", "user.other"), null, "the binding is for that identity only");
+  });
+  // FAIL CLOSED: outside any request scope a human token cannot be bound, so it is refused.
+  await assert.rejects(withGate(mint({ sub: HUMAN, sid: "s".repeat(32) })), /CLAIM_REFUSED/);
+  // Scopes never leak into each other.
+  await inScope(async () => assert.equal(B.sessionTenantBindingFor("eos", HUMAN), null));
+  await inScope(() => assert.rejects(withGate(mint({ sub: HUMAN, sid: "r".repeat(32) })), /SESSION_INVALID/));
+  await inScope(() => assert.rejects(withGate(mint({ sub: HUMAN })), /CLAIM_REFUSED/));
+  await inScope(() => assert.rejects(without(mint({ sub: HUMAN, sid: "s".repeat(32) })), /CLAIM_REFUSED/, "front door off: human tokens refused"));
   assert.equal((await without(mint({ sub: "nonprod-persona.dispatcher" }))).externalSubject, "nonprod-persona.dispatcher");
-  await assert.rejects(withGate(mint({ sub: "nonprod-persona.dispatcher", sid: "s".repeat(32) })), /CLAIM_REFUSED/);
-  assert.equal(gateCalls.length, 2, "the gate never runs for persona tokens");
+  await inScope(() => assert.rejects(withGate(mint({ sub: "nonprod-persona.dispatcher", sid: "s".repeat(32) })), /CLAIM_REFUSED/));
+  assert.equal(gateCalls.filter(([sub]) => sub !== HUMAN).length, 0, "the gate never runs for persona tokens");
 });
 
 test("U8 human subjects and login identifiers", () => {
@@ -204,9 +218,14 @@ test("U11 configuration: the front door needs a verifier and signing key; factor
   assert.throws(() => readEosAuthConfig({ ...base, ...signing, EOS_HUMAN_LOGIN: "enabled" }, "nonprod"), /EOS_AUTH_COOKIE_SAMESITE/);
   assert.throws(() => readEosAuthConfig({ ...base, ...signing, EOS_HUMAN_LOGIN: "enabled", EOS_AUTH_COOKIE_SAMESITE: "Strict" }, "nonprod"), /EOS_AUTH_TRUSTED_PROXY_HOPS/);
   const cookie = { EOS_AUTH_COOKIE_SAMESITE: "Strict", EOS_AUTH_TRUSTED_PROXY_HOPS: "1" };
+  assert.throws(() => readEosAuthConfig({ ...base, ...signing, ...cookie, EOS_HUMAN_LOGIN: "enabled", EOS_AUTH_MULTI_TENANT_SESSIONS: "yes" }, "nonprod"), /EOS_AUTH_MULTI_TENANT_SESSIONS/);
+  assert.equal(readEosAuthConfig({ ...base, ...signing, ...cookie, EOS_HUMAN_LOGIN: "enabled", EOS_AUTH_MULTI_TENANT_SESSIONS: "enabled" }, "nonprod").humanLogin.multiTenantSessions, true);
   const on = readEosAuthConfig({ ...base, ...signing, ...cookie, EOS_HUMAN_LOGIN: "enabled" }, "nonprod");
   assert.equal(on.humanLogin.cookieSameSite, "Strict");
   assert.equal(on.humanLogin.trustedProxyHops, 1);
+  assert.equal(on.humanLogin.multiTenantSessions, false, "multi-tenant sessions are OFF unless enabled");
+  assert.equal(on.humanLogin.clientIpHeader, null);
+  assert.throws(() => readEosAuthConfig({ ...base, ...signing, ...cookie, EOS_HUMAN_LOGIN: "enabled", EOS_AUTH_CLIENT_IP_HEADER: "x-real-ip" }, "nonprod"), /EOS_AUTH_CLIENT_IP_HEADER/);
   assert.equal(on.humanLogin.factorKeyring, null, "password-only is a valid configuration");
   assert.ok(readEosAuthConfig({ ...base, ...signing, ...factor, ...cookie, EOS_HUMAN_LOGIN: "enabled" }, "nonprod").humanLogin.factorKeyring);
   assert.throws(() => readEosAuthConfig({ ...base, ...signing, ...cookie }, "nonprod"), /EOS_HUMAN_LOGIN is not enabled/);
@@ -291,6 +310,14 @@ test("U13 review findings 5, 6, 13: IPv6 /64 buckets, explicit proxy hops, LRU e
   await at(2, "6.6.6.6, 203.0.113.1, 198.51.100.7");
   await at(2, "203.0.113.1");
   assert.deepEqual(facts, ["10.9.9.9", "203.0.113.1", "203.0.113.1", "10.9.9.9"]);
+  // An edge-SET header (EOS_AUTH_CLIENT_IP_HEADER) wins over hop counting; a non-address value is ignored, never trusted.
+  const viaHeader = (value) => L.handleLoginRequest({ service, verify, allowedOrigins: ["https://app.test"], cookieSameSite: "Strict",
+    trustedProxyHops: 1, clientIpHeader: "true-client-ip" }, { method: "POST", url: "/auth/login", body: "{}", remoteAddress: "10.9.9.9",
+    headers: { ...browser, "x-forwarded-for": "6.6.6.6, 198.51.100.7", ...(value === undefined ? {} : { "true-client-ip": value }) } });
+  await viaHeader("203.0.113.44");
+  await viaHeader("<script>");
+  await viaHeader(undefined);
+  assert.deepEqual(facts.slice(4), ["203.0.113.44", "198.51.100.7", "198.51.100.7"]);
 
   // Stored parameters above N=2^18 / r=8 are refused (never evaluated).
   const big = "scrypt$N=524288,r=8,p=1$AAAAAAAAAAAAAAAAAAAAAA$" + "A".repeat(43);

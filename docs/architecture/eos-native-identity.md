@@ -194,6 +194,49 @@ Setup and reset codes are returned **once** to the administrator, to hand over i
 - **`modules/account/AccountSecurity.jsx`** (`/account/security`) covers password, authenticator enrollment with an `otpauth://` link plus a manual key, recovery codes, and sessions.
 - **`modules/administration/EmployeeLoginAccount.jsx`** adds the "EOS Sign-in" section in User detail > Roles & Access. It covers create, setup/reset code, unlock, sign out everywhere (confirmed), reset two-step, require two-step, enable/disable, and remove (confirmed), plus recent activity.
 
+### (f) Multi-tenant identity — Owner ruling D-12 (2026-10-12)
+
+> *"One Principal may belong to multiple tenants, but each authenticated session belongs to exactly one tenant."*
+
+**Membership authority.** The existing `eos_policy.tenant_memberships` is the only membership record. No new or duplicate membership record is introduced, and no capability or grant.
+
+**Session tenant.**
+- `login_sessions.tenant_id` (NOT NULL, immutable by trigger) is the one tenant a session acts in.
+- `login_mfa_challenges.tenant_id` carries the choice across the second-factor step.
+- The tenant is **not a token claim**: `tenantId` stays an authority-bearing claim the verifier refuses. It is bound server-side through `sid`.
+
+**Selection, server-validated.**
+- Login accepts an optional `tenantId`. Without one, the account's home tenant is used.
+- The tenant is chosen only **after** the password proves the person, so the set of a person's tenants is never disclosed to a guesser.
+- It is validated by the **same `resolvePrincipalContext`** every request uses, in that tenant: active membership, active tenant, and **that tenant's** DQ-007 Employee gate. Selection can therefore never override Employee eligibility. Operating-company scope and Work Eligibility are resolved per tenant downstream, exactly as for any request (proof M3).
+
+**Binding on every request** (`eosAuth/requestTenantBinding.ts`).
+- The EOS API runs each request in its own AsyncLocalStorage scope.
+- The human session gate binds the request to the session's tenant. `resolvePrincipalContext`, which every transport resolves its caller through (Administration, Operations, Commercial, CRM, Workforce, Catalog), enforces the binding:
+  - no `x-eos-tenant` → the session tenant;
+  - the same tenant → allowed;
+  - **any other tenant**, even a real membership → refused (`TENANT_NOT_A_MEMBERSHIP` / `TENANT_NOT_SESSION_TENANT`) and recorded as a `tenantRefused` security event (M2).
+- **Fail closed:** a human token verified outside a request scope cannot be bound and is refused (U7).
+- Persona and Firebase identities are never bound and resolve exactly as before.
+
+**Revocation is immediate.** The session gate re-checks the session tenant's membership on every request. Disabling it refuses the next request, refresh and login into that tenant, while sessions in the person's other tenants are unaffected (M6).
+
+**Switching** (`POST /auth/session/switch-tenant {tenantId}`).
+- Requires an `api`-mode session, so a session that owes a second factor cannot switch (M8). Verification status carries over.
+- Validated like a login into the target tenant.
+- In **one transaction under the session row lock**: the current session is revoked (`TENANT_SWITCH`), a **new session and cookie** are issued for the target, and the switch is audited in **both** tenants' `audit_events`. Two concurrent switches of one session: exactly one succeeds (M5).
+
+**Administering a multi-tenant person's login.** In every *other* tenant where the person is an active member, the acting administrator must:
+- be an active member there;
+- hold that operation's capability there;
+- be an **Owner** there wherever the person holds a protected Role there.
+
+Otherwise the act is refused (`CROSS_TENANT_AUTHORITY`). One tenant's administrator can never mint a credential that acts in a tenant where they hold nothing (M1).
+
+**Preserved single-tenant behaviour.**
+- `EOS_AUTH_MULTI_TENANT_SESSIONS` defaults to **disabled**. Then a human login is single-tenant exactly as after review finding 1: a Principal with a membership elsewhere cannot be provisioned or sign in, and switching answers `409 TENANT_SWITCHING_DISABLED` (M7, and the full `eosNativeLoginPostgres` suite).
+- Multi-tenant operation is enabled only by that explicit setting, after it is proven in nonprod.
+
 ## 4. Cryptography (`credentialCrypto.ts`, `node:crypto` only)
 
 | What | How |
@@ -261,8 +304,8 @@ The code is built so that each of these can be decided without rework. **D-1, D-
 | **D-8** | **Credential-administration authority.** §3(d) maps the operations onto existing keys, already held by admin and owner in PostgreSQL. #56 recorded `admin.credentialReset.initiate` as "inactive, no grants" on the **Firebase** side, and the PostgreSQL migration `1761609600000` grants it to admin and owner. Using it here relies on that existing PostgreSQL grant for an EOS-native reset. #56 also asks for a dedicated permission for session revocation, which is mapped to `admin.userStatus.write` today. | **Confirm the mapping**, or rule a dedicated `admin.loginSession.revoke` (a new capability means grant fan-out and an authority change). |
 | **D-9** | **Moving people off Firebase Auth.** Firebase password hashes are **not** imported: that needs the project's hash key, which is a real credential. Each person gets a setup code and chooses a new password. Firebase and EOS sign-in run side by side until `FX-AUTH-001` retirement is separately authorized. | Re-enrollment. No credential migration. |
 | **D-10** | **New nonprod secret** `EOS_AUTH_FACTOR_KEYS` / `EOS_AUTH_FACTOR_KEY_ID` (32 random bytes; seals TOTP secrets and peppers recovery codes). Without it, login is password-only and MFA refuses `MFA_NOT_CONFIGURED`. Also needed: `EOS_HUMAN_LOGIN=enabled` and the client build flag `VITE_EOS_HUMAN_LOGIN=enabled`. | Not generated, not set. Operator custody, as the signing key. |
-| **D-12** | **People in more than one tenant.** A human EOS login is single-tenant (finding 1). A Principal who is a member of two tenants cannot have one, and an existing login stops working the moment a second membership appears. | Fail-closed now. Options: one login per tenant (a per-tenant subject), or tenant-bound sessions where `sid` carries the tenant and the gate refuses any other. Count multi-membership Principals in nonprod before enabling. |
-| **D-13** | **Event retention.** `authentication_events` is append-only (no DELETE or TRUNCATE) and records every attempt, including anonymous ones. | A retention/archival design (e.g. partition by month and detach) is needed before any sustained traffic. |
+| **D-12** | **RULED 2026-10-12.** One Principal may belong to many tenants; each session belongs to exactly one tenant. | **Implemented** (§3(f)). Behind `EOS_AUTH_MULTI_TENANT_SESSIONS`, default disabled (single-tenant preserved). |
+| **D-13** | **RULED 2026-10-12.** A governed retention/archival policy for authentication events. | **Designed and built** (§8). Append-only, tenant-isolated, restricted reads, bounded audited policy, read-only plan, append-only manifest. **No job, no deletion.** |
 | **D-11** | **Persona Principals and password logins.** A Principal holds one active EOS identity, so the 16 persona Principals cannot also have a password login. | Keep. The persona model is frozen, and human logins are for human Employees. |
 
 ## 6. Proofs
@@ -313,7 +356,85 @@ The code is built so that each of these can be decided without rework. **D-1, D-
 5. Rollout: setup codes per person; Firebase sign-in stays available.
 6. Later, separately: production (D-1, D-3), then Firebase Auth retirement (`FX-AUTH-001`).
 
-## 8. A pre-existing harness defect fixed here
+## 8. Security-event retention — Owner ruling D-13 (DESIGN; nothing scheduled)
+
+**Active history.**
+- `authentication_events` is append-only: no UPDATE, DELETE or TRUNCATE, enforced by trigger. No code in this repository deletes, alters, moves or exports a row.
+- Every row carries `tenant_id`: the session's tenant, else the account's home tenant. It is **NULL only for attempts that name no account**; those are operator-visible and never shown to a tenant (M12).
+
+**Restricted access.** `readAuthenticationEvents` and `planAuthenticationEventArchive` require `admin.principalAccess.read` (admin and owner), and always read **the caller's tenant only**. `audit.event.read` was deliberately *not* used: twelve Roles hold it.
+
+**Configurable retention.**
+- `authentication_event_retention_policies` holds one row per tenant per change. It is **history-only** (append-only trigger), so the policy in force is the newest row.
+- The bounds are 365–3650 days, for both active and archive retention, enforced by CHECK and by the API.
+- A change (`setAuthenticationEventRetention`) requires `admin.securityPolicy.write` and a reason, and writes one `audit_events` row in the tenant (M13).
+- **With no policy, nothing is ever eligible.**
+
+**Auditable archival.**
+- `planAuthenticationEventArchive` is **read-only**. It reports the eligible window for the caller's tenant (from the end of the last recorded archive to *now − active retention*), its row count, and the **SHA-256 of the canonical export**: NDJSON, one `canonicalEventLine` per row, ordered by `occurred_at, id` (M14).
+- `authentication_event_archive_manifests` (append-only) records each archival an operator performs under authorization: window, row count, export digest, storage location, who and why. **It has no "purged" state.**
+
+**No silent deletion.** Nothing archives automatically, no job exists, and no deletion path exists in code. If the Owner later authorises reclaiming space, the intended mechanism is a reviewed migration that converts `authentication_events` to monthly range partitions and **detaches** (never drops) a partition only after its manifest is recorded and the archive verified. That is a separate decision.
+
+**Archival procedure** (operator, separately authorised, per tenant):
+1. Call `planAuthenticationEventArchive` and record the window, count and digest.
+2. Export exactly those rows with the canonical serializer, read-only and from a replica if available.
+3. Verify the export's SHA-256 equals the plan's digest.
+4. Store the export in write-once storage (object lock / retention).
+5. Insert the manifest row (window, count, digest, location, reason). The next plan starts at that window's end.
+
+**Retrieval and restoration:**
+1. Fetch the archive by its manifest location.
+2. Recompute the SHA-256 and compare it with the manifest. A mismatch means the archive is not trusted, and the incident is reported.
+3. Load the rows into a **separate** read-only restoration schema (never back into the active table, whose history must not be rewritten), or query the NDJSON directly.
+4. Record the retrieval as an `audit_events` row in the tenant, with who, which manifest and why.
+
+## 9. Nonproduction infrastructure assessment (no live change made)
+
+**The problem.**
+- The app is served from `verenwardeos.vercel.app` (Vercel); the API from `eos-api-nonprod.onrender.com` (Render).
+- Those are different registrable domains, so the `__Host-eos_refresh` cookie is **third-party**. It needs `SameSite=None; Partitioned`, and browsers that block third-party cookies will not send it: sign-in still works, but a reload asks again.
+
+**Recommendation: one registrable domain, two hosts.**
+
+| Host | Serves | DNS | Platform step |
+|---|---|---|---|
+| `app.<eos-domain>` | the Vite app | `CNAME → cname.vercel-dns.com` | add the domain to the Vercel project |
+| `api.<eos-domain>` | the EOS API | `CNAME → eos-api-nonprod.onrender.com` | add a custom domain to the Render service (Render issues the certificate) |
+
+Then:
+- `EOS_ALLOWED_ORIGINS=https://app.<eos-domain>`
+- `VITE_EOS_API_BASE_URL=https://api.<eos-domain>`
+- `EOS_AUTH_COOKIE_SAMESITE=Strict`
+
+The cookie stays `__Host-` (host-only, on `api.`). The browser treats the two hosts as **same-site**, so the cookie is first-party and works with third-party-cookie blocking. CORS is still required (they are different *origins*), and the existing exact-origin allowlist already handles it.
+
+*Rejected alternative:* proxying `/api/*` through a Vercel rewrite to Render, to make it same-origin. Vercel documents that it overwrites `X-Forwarded-For` and does not forward external IPs, so the API would see Vercel's addresses as the client and the per-client rate limiter would collapse. Upstream `Set-Cookie`, timeout and body-size behaviour for external rewrites is also not documented.
+
+**Trusted-proxy findings.** No live system was probed; this is from documentation and published measurements.
+- Render's own article *How Render handles DDoS attacks* states that all inbound traffic passes through **Cloudflare** and then Render's load balancers. It says to read the client IP from `x-forwarded-for`, but **does not say which entry**.
+- Published measurements on Render (e.g. `johnbeynon/header-test`) report:
+  - a **client-supplied `X-Forwarded-For` is kept, with the real client address *and* proxy addresses appended**. So the left side is forgeable and the number of appended hops is not documented;
+  - `True-Client-IP` is **overwritten by the edge** with the real client address;
+  - a spoofed `CF-Connecting-IP` is rejected at the edge.
+- **Conclusion:** a fixed `EOS_AUTH_TRUSTED_PROXY_HOPS` value cannot be justified from documentation. This branch adds `EOS_AUTH_CLIENT_IP_HEADER` (`true-client-ip` | `cf-connecting-ip`), which takes precedence when the edge sets it (U13).
+- **Recommended:** `EOS_AUTH_CLIENT_IP_HEADER=true-client-ip`. Keep `EOS_AUTH_TRUSTED_PROXY_HOPS` only as a fallback, set **after** one authorised measurement on nonprod: log the raw `X-Forwarded-For`, `True-Client-IP` and `CF-Connecting-IP` for a request from a known address. **That measurement is a blocker.**
+
+## 10. Remaining Firebase Authentication dependencies (measured at this head)
+
+| Dependency | Where | Count | Retires when |
+|---|---|---|---|
+| Human sign-in | `field-ops-app-vite/src` importing `firebase/auth` (`AuthContext.jsx`, `firebase/firebase.js`) | 2 files | EOS login enabled and every person re-enrolled (D-9) |
+| Firestore client data access | files importing `firebase/firestore` | 22 | each domain moves to the EOS API (the Firebase exit ledger) |
+| Functions callables | files importing `firebase/functions` | 23 | each callable is replaced (F-series) |
+| Firestore Rules | `firestore.rules` `request.auth` references | 32 | the last Firestore read retires |
+| Firebase Admin Auth on the server | `access/claimsWriter.ts`, `access/trustedWriterCommands.ts`, `access/adminCredentialCallables.ts` | 3 files | Users/status/reset move to EOS login administration |
+| EOS API Firebase verifier | `eosApi/server.ts` `createFirebaseTokenVerifier` | 1 | no Firebase-token callers remain |
+| Harnesses | scripts reading `SANDBOX_CREDENTIALS_FILE` | 5 | harnesses move to EOS persona or login sessions |
+
+**Why an EOS-only session cannot use those surfaces.** Every Firestore read and every callable authorises with `request.auth` / the Firebase ID token. An EOS-only session therefore reaches the EOS-API surfaces only. Replacing Firebase Authentication requires those surfaces to move first, or to run side by side (D-9).
+
+## 11. A pre-existing harness defect fixed here
 
 The migrator's verbose log of every migration's SQL had reached **1,044,000 bytes**. That is within 4 KB of Node's default 1 MiB `execFileSync`/`spawnSync` buffer, and **141 PostgreSQL test files** spawn the migrator with that default. Any next migration, from any lane, would fail all of them with `ENOBUFS`. This branch's migration crossed the line first.
 

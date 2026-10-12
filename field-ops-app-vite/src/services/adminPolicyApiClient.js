@@ -180,6 +180,10 @@ export const ADMIN_LOGIN_OPERATIONS = Object.freeze([
   "resetLoginMfa",
   "setLoginMfaRequirement",
   "retireLoginAccount",
+  // D-13: security-event governance.
+  "readAuthenticationEvents",
+  "planAuthenticationEventArchive",
+  "setAuthenticationEventRetention",
 ]);
 
 const ALL_OPERATIONS = new Set([...ADMIN_READ_OPERATIONS, ...ADMIN_MUTATION_OPERATIONS, ...ADMIN_CONFIGURATION_OPERATIONS]);

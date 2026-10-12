@@ -24,6 +24,7 @@ import { peekUnverifiedJws, sha256Hex, EosTokenError } from "./eosAccessToken";
 import type { EosAuthRuntime } from "./eosAuthConfig";
 import { issueNonprodPersonaSession, PersonaIssuanceError } from "./eosSessionIssuer";
 import { isHumanSubject } from "./eosLoginService";
+import { bindSessionTenant } from "./requestTenantBinding";
 import { isLoginRoute } from "./eosLoginHttp";
 import type { PolicyRepository } from "../adminPolicy/policyRepository";
 
@@ -52,7 +53,12 @@ export function isEosShapedBearer(token: string, eosIssuer: string | null): bool
  * session is live, its account active and its second-factor obligation met -- checked on every request, so a revoked
  * session or a disabled account stops working immediately, not at `exp`.
  */
-export type HumanSessionGate = (subject: string, sessionId: string | null) => Promise<void>;
+export type HumanSessionGate = (subject: string, sessionId: string | null) => Promise<{
+  /** The session's ONE tenant (D-12): the request is bound to it (requestTenantBinding.ts). */
+  readonly tenantId: string;
+  /** Records a refused statement of another tenant. */
+  readonly onTenantRefusal?: (requestedTenantId: string) => Promise<void>;
+}>;
 
 export function createCompositeTokenVerifier(input: {
   readonly eos: EosAuthRuntime;
@@ -68,7 +74,11 @@ export function createCompositeTokenVerifier(input: {
       const v = eos.verify(bearerToken);
       if (isHumanSubject(v.externalSubject)) {
         if (!gate || !v.sessionId) throw new EosTokenError("CLAIM_REFUSED");
-        await gate(v.externalSubject, v.sessionId);
+        const live = await gate(v.externalSubject, v.sessionId);
+        // BIND this request to the session's tenant, or refuse: an unbindable human token could state any tenant.
+        const bound = bindSessionTenant({ identityProvider: v.identityProvider, externalSubject: v.externalSubject,
+          tenantId: live.tenantId, onRefusal: live.onTenantRefusal });
+        if (!bound) throw new EosTokenError("CLAIM_REFUSED");
       } else if (v.sessionId !== null) {
         // Only a login session carries `sid`. A persona token naming one is not a token any issuer here mints.
         throw new EosTokenError("CLAIM_REFUSED");

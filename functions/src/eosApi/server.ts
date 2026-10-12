@@ -51,8 +51,9 @@ import { createPostgresCatalogReferenceAuthority } from "../catalogAuthority/pos
 import { EOS_AUTH_DISABLED, readEosAuthConfig, type EosAuthRuntime } from "../eosAuth/eosAuthConfig";
 import { EosAuthConfigError } from "../eosAuth/eosAccessToken";
 import { createCompositeTokenVerifier, createEosAuthHttpHandler } from "../eosAuth/eosAuthHttp";
-import { EosLoginService, createLoginAdministration, type LoginServiceDeps } from "../eosAuth/eosLoginService";
+import { EosLoginService, EosSecurityEventGovernance, createLoginAdministration, type LoginServiceDeps } from "../eosAuth/eosLoginService";
 import { createLoginHttpHandler, createRateLimiter } from "../eosAuth/eosLoginHttp";
+import { runWithRequestScope } from "../eosAuth/requestTenantBinding";
 import { createSelfSchedulingHttpHandler } from "../eosOps/selfSchedulingHttp";
 import { SELF_SCHEDULING_ROUTE } from "../eosOps/selfScheduling";
 import { startInboundPollingIfEnabled } from "../eosOps/inboundProviderRuntime";
@@ -215,13 +216,17 @@ export async function startEosApi(
   const loginService = eosAuth.humanLogin && eosAuth.verify && eosAuth.issuer && eosAuth.audience
     ? new EosLoginService({
       pool, repo, signer: eosAuth.humanLogin.signer, issuer: eosAuth.issuer, audience: eosAuth.audience,
-      environment: config.environment, factorKeyring: eosAuth.humanLogin.factorKeyring, ...(options.loginServiceOverrides ?? {}),
+      environment: config.environment, factorKeyring: eosAuth.humanLogin.factorKeyring,
+      multiTenantSessions: eosAuth.humanLogin.multiTenantSessions, ...(options.loginServiceOverrides ?? {}),
     })
     : null;
   const verifyToken = options.verifyToken ?? createCompositeTokenVerifier({
     eos: eosAuth,
     firebase: options.firebaseVerifyToken ?? createFirebaseTokenVerifier(config.identityProvider),
-    humanSessionGate: loginService ? async (subject, sessionId) => { await loginService.checkSession(subject, sessionId, "api"); } : null,
+    humanSessionGate: loginService ? async (subject, sessionId) => {
+      const session = await loginService.checkSession(subject, sessionId, "api");
+      return { tenantId: session.session_tenant_id, onTenantRefusal: () => loginService.recordTenantRefusal(session) };
+    } : null,
   });
   // The EOS session routes: the nonprod persona route (404 unless configured) and the human front door (404 unless enabled).
   const authHandler = createEosAuthHttpHandler({
@@ -229,6 +234,7 @@ export async function startEosApi(
     login: loginService && eosAuth.verify && eosAuth.humanLogin ? createLoginHttpHandler({
       service: loginService, verify: eosAuth.verify, allowedOrigins: config.allowedOrigins, rateLimit: createRateLimiter(options.loginRateLimit),
       trustedProxyHops: eosAuth.humanLogin.trustedProxyHops,
+      clientIpHeader: eosAuth.humanLogin.clientIpHeader,
       cookieSameSite: eosAuth.humanLogin.cookieSameSite,
     }) : null,
   });
@@ -257,7 +263,7 @@ export async function startEosApi(
           : isSystemConfigurationOperation(operation) ? system : isSalesDiscountAuthorityOperation(operation) ? discounts : bindings)(operation, actor, input, reason);
     })(),
     // Administration > Users: login-account security administration (EOS native identity), when the front door is composed.
-    loginAdministration: loginService ? createLoginAdministration(loginService) : undefined,
+    loginAdministration: loginService ? createLoginAdministration(loginService, new EosSecurityEventGovernance(pool, repo)) : undefined,
     verifyToken,
     allowedOrigins: config.allowedOrigins,
     health: async () => {
@@ -345,7 +351,9 @@ export async function startEosApi(
   // Render job scripts/pollInboundMailboxes.mjs.
   const poller = startInboundPollingIfEnabled(pool);
 
-  const server = createServer((req, res) => {
+  // EVERY request runs in its own scope, so a human session's tenant binding (requestTenantBinding.ts, D-12) belongs to
+  // exactly one request and can never leak to another.
+  const server = createServer((req, res) => runWithRequestScope(() => {
     const domain = eosApiDomainFor(req.url);
     if (domain === "selfScheduling") {
       void selfSchedulingHandler(req as never, res as never);
@@ -376,7 +384,7 @@ export async function startEosApi(
       return;
     }
     void handler(req as never, res as never);
-  });
+  }));
 
   await new Promise<void>((resolve) => server.listen(config.port, resolve));
   const address = server.address();

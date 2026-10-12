@@ -53,6 +53,8 @@ export const LOGIN_ROUTES = Object.freeze({
   recoveryCodesRegenerate: "/auth/mfa/recovery-codes/regenerate",
   sessionRevoke: "/auth/sessions/revoke",
   sessionsRevokeOthers: "/auth/sessions/revoke-others",
+  /** D-12: move this person to another of their tenants -- a NEW session bound to it; the current one ends. */
+  switchTenant: "/auth/session/switch-tenant",
 } as const);
 const ROUTE_SET = new Set<string>(Object.values(LOGIN_ROUTES));
 export const isLoginRoute = (path: string): boolean => ROUTE_SET.has(path);
@@ -128,6 +130,8 @@ export interface LoginHttpOptions {
    * is the entry that many places from the RIGHT; everything left of it is whatever the client claimed. 0 = the socket.
    */
   readonly trustedProxyHops: number;
+  /** An edge-SET client-address header (EOS_AUTH_CLIENT_IP_HEADER); takes precedence over hop counting when present. */
+  readonly clientIpHeader?: "true-client-ip" | "cf-connecting-ip" | null;
   /** The refresh cookie's SameSite (EOS_AUTH_COOKIE_SAMESITE). None also sets Partitioned. */
   readonly cookieSameSite: EosCookieSameSite;
   readonly now?: () => Date;
@@ -196,7 +200,15 @@ function originOf(allowed: readonly string[] | undefined, value: string | undefi
   return allowed.includes(value) ? value : null;
 }
 
+const IP_LITERAL = /^[0-9A-Fa-f:.]{2,45}$/;
+
 function clientFacts(options: LoginHttpOptions, request: LoginHttpRequest): ClientFacts {
+  const ua0 = single(request.headers?.["user-agent"]);
+  if (options.clientIpHeader) {
+    const v = single(request.headers?.[options.clientIpHeader])?.trim();
+    // The edge sets it; a value that is not an address literal is ignored, never trusted.
+    if (v && IP_LITERAL.test(v)) return { address: v, label: typeof ua0 === "string" ? ua0.slice(0, 200) : null };
+  }
   const hops = options.trustedProxyHops;
   const chain = hops > 0 ? (single(request.headers?.["x-forwarded-for"]) ?? "").split(",").map((x) => x.trim()).filter(Boolean) : [];
   // With N trusted appending proxies, the client is the N-th entry from the right. Fewer entries than that: the request
@@ -268,7 +280,7 @@ export async function handleLoginRequest(options: LoginHttpOptions, request: Log
       case LOGIN_ROUTES.login:
       case LOGIN_ROUTES.loginMfa: {
         const r = path === LOGIN_ROUTES.login
-          ? await s.login({ identifier: body.identifier, password: body.password }, facts)
+          ? await s.login({ identifier: body.identifier, password: body.password, tenantId: body.tenantId }, facts)
           : await s.completeMfaLogin({ challenge: body.challenge, code: body.code, recoveryCode: body.recoveryCode }, facts);
         if (r.status === "AUTHENTICATED") return issued(r.session, { status: r.status });
         return json(200, { ok: true, ...r }, origin);
@@ -339,6 +351,8 @@ export async function handleLoginRequest(options: LoginHttpOptions, request: Log
         return json(200, { ok: true, ...(await s.revokeOwnSession(sub, sid, { sessionId: body.sessionId }, facts)) }, origin);
       case LOGIN_ROUTES.sessionsRevokeOthers:
         return json(200, { ok: true, ...(await s.revokeOtherSessions(sub, sid, facts)) }, origin);
+      case LOGIN_ROUTES.switchTenant:
+        return issued(await s.switchTenant(sub, sid, { tenantId: body.tenantId }, facts));
       default:
         return json(404, { ok: false, code: "NOT_FOUND", message: "no such route" }, origin);
     }

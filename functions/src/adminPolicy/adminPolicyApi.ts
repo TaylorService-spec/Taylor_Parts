@@ -1079,6 +1079,9 @@ async function dispatch(
     case "resetLoginMfa":
     case "setLoginMfaRequirement":
     case "retireLoginAccount":
+    case "readAuthenticationEvents":
+    case "planAuthenticationEventArchive":
+    case "setAuthenticationEventRetention":
       throw new Error(`${operation} is a login administration operation`);
 
     default: {
