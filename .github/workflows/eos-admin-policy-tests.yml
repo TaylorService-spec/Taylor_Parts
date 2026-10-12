@@ -306,6 +306,7 @@ on:
       # import-closure purity guard (with its closure helper and the shared fixture).
       - "functions/test/authorityPreviewEquivalencePostgres.test.mjs"
       - "functions/test/authorityPreviewSafetyPostgres.test.mjs"
+      - "functions/test/authorityPreviewProtectedPostgres.test.mjs"
       - "functions/test/authorityPreviewPurity.test.mjs"
       - "functions/test/support/authorityPreviewFixture.mjs"
       - "functions/test/support/valueImportClosure.mjs"
@@ -1031,6 +1032,7 @@ on:
       # import-closure purity guard (with its closure helper and the shared fixture).
       - "functions/test/authorityPreviewEquivalencePostgres.test.mjs"
       - "functions/test/authorityPreviewSafetyPostgres.test.mjs"
+      - "functions/test/authorityPreviewProtectedPostgres.test.mjs"
       - "functions/test/authorityPreviewPurity.test.mjs"
       - "functions/test/support/authorityPreviewFixture.mjs"
       - "functions/test/support/valueImportClosure.mjs"

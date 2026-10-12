@@ -163,7 +163,7 @@ export interface ExplainOptions {
 
 export async function explainEffectiveAccess(
   reader: PolicyReader,
-  pool: Pool,
+  pool: Pick<Pool, "query">, // type-only (grant-impact preview): only `query` is used
   input: { readonly tenantId: string; readonly principalId: string },
   options: ExplainOptions = {},
 ): Promise<EffectiveAccessExplanation> {

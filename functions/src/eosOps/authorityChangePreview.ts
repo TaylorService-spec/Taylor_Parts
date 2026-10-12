@@ -57,7 +57,13 @@ import type {
   AuthorityChangeSimulator,
   AuthorityChangeSubject,
 } from "../adminPolicy/authorityChangePreviewPort";
-import { resolveOperationalContextForPrincipal, type PolicyQueryable } from "./capabilityAuthority";
+import { resolveOperationalContextForPrincipal, type GrantConditionProvider, type PolicyQueryable } from "./capabilityAuthority";
+import { explainEffectiveAccess } from "./effectiveAccessExplanation";
+import {
+  deriveWorkflowResponsibilities,
+  loadActiveWorkflowDefinitions,
+  type ActiveWorkflowDefinition,
+} from "../adminPolicy/workflowResponsibilities";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { postgresPrincipalDimensionReader } from "./contextualAuthorization";
 import { administrationReachDimension, grantedSurfaceKeys } from "./experienceAuthority";
@@ -97,7 +103,7 @@ const NON_TRANSACTIONAL = [
 /** The ONE transaction-local setting a command may make (beginAdministrationCommand). */
 const ALLOWED_SET_CONFIG = /^\s*SELECT\s+set_config\(\s*'eos_policy\.administration_command'\s*,\s*'on'\s*,\s*true\s*\)\s*$/i;
 
-const BUSY_SQLSTATES: Readonly<Record<string, "LOCK_TIMEOUT" | "STATEMENT_TIMEOUT">> = Object.freeze({
+export const BUSY_SQLSTATES: Readonly<Record<string, "LOCK_TIMEOUT" | "STATEMENT_TIMEOUT">> = Object.freeze({
   "55P03": "LOCK_TIMEOUT",
   "57014": "STATEMENT_TIMEOUT",
 });
@@ -108,6 +114,38 @@ const quoteIdent = (name: string): string => `"${name.replace(/"/g, "\"\"")}"`;
 
 interface SimulationFrame { readonly name: string; readonly owner: object; writes: number }
 
+/** A deferrable constraint and its ORIGINAL deferral (pg_constraint.condeferred), restored after each commit point. */
+export interface DeferrableConstraint { readonly name: string; readonly initiallyDeferred: boolean }
+
+/** The preview's TOTAL time budget was spent: the simulation stops, rolls back and answers PREVIEW_BUSY{BUDGET}. */
+export class PreviewBudgetExceeded extends Error {
+  constructor() {
+    super("PREVIEW_BUDGET_EXCEEDED: the preview's total time budget is spent");
+    this.name = "PreviewBudgetExceeded";
+  }
+}
+
+/**
+ * The time budget of ONE preview (all attempts together). PostgreSQL 16 has no transaction_timeout, so the engine
+ * enforces it: before every statement it reads the clock (no timer), refuses once the deadline has passed, and inside
+ * the last statementTimeoutMs it lowers statement_timeout to what remains -- so no statement, and therefore no hold of
+ * the governance lock, outlives the deadline by more than the server's cancel latency.
+ */
+export interface PreviewBudget { readonly deadline: number; readonly statementTimeoutMs: number; readonly now: () => number }
+
+/** The default TOTAL budget of one preview (all attempts), and of the statement cap inside it. Shared with PR 4. */
+export const DEFAULT_PREVIEW_BUDGET_MS = 8_000;
+export const DEFAULT_PREVIEW_STATEMENT_TIMEOUT_MS = 5_000;
+
+/**
+ * Build the budget a PreviewSimulation enforces, starting NOW: `new PreviewSimulation(client, previewBudget(...))`. The
+ * commit path (PR 4) applies the same mechanism with its own total.
+ */
+export function previewBudget(budgetMs: number = DEFAULT_PREVIEW_BUDGET_MS,
+  statementTimeoutMs: number = DEFAULT_PREVIEW_STATEMENT_TIMEOUT_MS, now: () => number = () => Date.now()): PreviewBudget {
+  return Object.freeze({ deadline: now() + budgetMs, statementTimeoutMs, now });
+}
+
 /**
  * The single-connection simulation. `pool` is what the repository and the resolver receive: `query` runs on the one
  * client (guarded and logged); `connect` hands out a pseudo-client whose BEGIN / COMMIT / ROLLBACK become savepoints.
@@ -116,23 +154,26 @@ export class PreviewSimulation {
   readonly log: PreviewStatement[] = [];
   /** Rows written inside a savepoint that was RELEASED (a simulated commit) or outside any savepoint. */
   committedWrites = 0;
-  busy: "LOCK_TIMEOUT" | "STATEMENT_TIMEOUT" | null = null;
+  busy: "LOCK_TIMEOUT" | "STATEMENT_TIMEOUT" | "BUDGET" | null = null;
   violation: PreviewSafetyViolation | null = null;
   private readonly frames: SimulationFrame[] = [];
   private sequence = 0;
   private closed = false;
 
-  private deferrable: readonly string[] = Object.freeze([]);
+  private deferrable: readonly DeferrableConstraint[] = Object.freeze([]);
 
-  constructor(private readonly client: Pick<PoolClient, "query">) {}
+  constructor(private readonly client: Pick<PoolClient, "query">, private readonly budget: PreviewBudget | null = null) {}
 
   /** The deferrable constraints a simulated COMMIT checks (read from the catalog once the transaction is open). */
-  armCommitPoint(names: readonly string[]): void { this.deferrable = Object.freeze([...names]); }
+  armCommitPoint(constraints: readonly DeferrableConstraint[]): void { this.deferrable = Object.freeze([...constraints]); }
 
-  /** The engine's own statements: BEGIN, SET LOCAL, the lock, savepoints, digests, ROLLBACK. */
-  async engine(text: string, values: readonly unknown[] = []): Promise<{ rows: Record<string, unknown>[] }> {
+  /**
+   * The engine's own statements: BEGIN, SET LOCAL, the lock, savepoints, digests, ROLLBACK. `exempt` statements (the
+   * final ROLLBACK and a command's own ROLLBACK TO SAVEPOINT) always run: undoing is never refused for lack of time.
+   */
+  async engine(text: string, values: readonly unknown[] = [], exempt = false): Promise<{ rows: Record<string, unknown>[] }> {
     this.log.push(Object.freeze({ origin: "engine", text }));
-    return this.send(text, values);
+    return this.send(text, values, exempt);
   }
 
   close(): void { this.closed = true; }
@@ -149,14 +190,31 @@ export class PreviewSimulation {
    */
   private queue: Promise<unknown> = Promise.resolve();
 
-  private send(text: string, values: readonly unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }> {
+  private send(text: string, values: readonly unknown[], exempt = false): Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }> {
     const run = async () => {
+      const budget = this.budget;
+      if (budget && !exempt) {
+        const remaining = budget.deadline - budget.now();
+        if (remaining <= 0) {
+          this.busy = "BUDGET";
+          throw new PreviewBudgetExceeded();
+        }
+        // Inside the last window, no statement may run past the deadline (SET LOCAL is re-applied every time: a
+        // ROLLBACK TO SAVEPOINT would otherwise revert it).
+        if (remaining < budget.statementTimeoutMs) {
+          const ms = Math.max(1, Math.floor(remaining));
+          this.log.push(Object.freeze({ origin: "engine", text: `SET LOCAL statement_timeout = '${ms}ms'` }));
+          await this.client.query(`SET LOCAL statement_timeout = '${ms}ms'`);
+        }
+      }
       try {
         const result = await this.client.query(text, values as unknown[]);
         return result as unknown as { rows: Record<string, unknown>[]; rowCount: number | null };
       } catch (err) {
         const code = (err as { code?: unknown })?.code;
-        if (typeof code === "string" && BUSY_SQLSTATES[code]) this.busy ??= BUSY_SQLSTATES[code];
+        if (typeof code === "string" && BUSY_SQLSTATES[code]) {
+          this.busy ??= budget && budget.now() >= budget.deadline ? "BUDGET" : BUSY_SQLSTATES[code];
+        }
         throw err;
       }
     };
@@ -184,9 +242,10 @@ export class PreviewSimulation {
     const sql = this.guard(text);
     this.log.push(Object.freeze({ origin: "command", text: sql }));
     const result = await this.send(sql, values ?? []);
-    if (isWrite(sql)) {
+    // ROWS AFFECTED, not statements: a write that touches nothing (a 0-row UPDATE) changes nothing.
+    if (isWrite(sql) && typeof result.rowCount === "number" && result.rowCount > 0) {
       const top = this.frames[this.frames.length - 1];
-      if (top) top.writes += 1; else this.committedWrites += 1;
+      if (top) top.writes += result.rowCount; else this.committedWrites += result.rowCount;
     }
     return result;
   }
@@ -213,9 +272,11 @@ export class PreviewSimulation {
           // THE SIMULATED COMMIT POINT: every DEFERRED constraint a real COMMIT would check is checked NOW -- by name,
           // never ALL (ALL would arm the never-commit fence). A violation throws here, inside the savepoint, and the
           // command's own catch sends ROLLBACK, exactly as a failed real COMMIT leaves nothing behind.
+          // Afterwards each constraint returns to its ORIGINAL deferral (an INITIALLY IMMEDIATE one stays immediate).
           if (this.deferrable.length > 0) {
-            await this.engine(`SET CONSTRAINTS ${this.deferrable.join(", ")} IMMEDIATE`);
-            await this.engine(`SET CONSTRAINTS ${this.deferrable.join(", ")} DEFERRED`);
+            await this.engine(`SET CONSTRAINTS ${this.deferrable.map((c) => c.name).join(", ")} IMMEDIATE`);
+            const deferred = this.deferrable.filter((c) => c.initiallyDeferred).map((c) => c.name);
+            if (deferred.length > 0) await this.engine(`SET CONSTRAINTS ${deferred.join(", ")} DEFERRED`);
           }
           await this.engine(`RELEASE SAVEPOINT ${frame.name}`);
           this.frames.pop();
@@ -230,8 +291,8 @@ export class PreviewSimulation {
             const top = this.frames.pop() as SimulationFrame;
             if (top === frame) break;
           }
-          await this.engine(`ROLLBACK TO SAVEPOINT ${frame.name}`);
-          await this.engine(`RELEASE SAVEPOINT ${frame.name}`);
+          await this.engine(`ROLLBACK TO SAVEPOINT ${frame.name}`, [], true);
+          await this.engine(`RELEASE SAVEPOINT ${frame.name}`, [], true);
           return { rows: [], rowCount: null };
         }
         return this.command(text, values);
@@ -269,6 +330,8 @@ export interface PrincipalAuthoritySnapshot {
   /** The Administration gates: `surface:<s>`, `command:<action>`, `staffing:administratorRole`. */
   readonly administration: readonly string[];
   /** A refused principal's POLICY-level keys (what its qualifying Roles and direct grants would give). Latent only. */
+  /** `workflow.action:AUTHORITY via roles` -- the SECURITY_ROLE workflow responsibilities (workflowResponsibilities.ts). */
+  readonly workflowResponsibilities: readonly string[];
   readonly latent: readonly string[];
 }
 
@@ -276,13 +339,62 @@ const sorted = (values: Iterable<string>): string[] => [...new Set(values)].sort
 
 const conditionTag = (condition: unknown): string => (condition === null || condition === undefined ? "" : ` [conditioned ${canonicalJson(condition)}]`);
 
-export async function principalAuthority(
-  q: PolicyQueryable,
-  repo: PolicyRepository,
-  tenantId: string,
-  principalId: string,
-  fieldGroups: readonly ObjectFieldGroups[],
-): Promise<PrincipalAuthoritySnapshot> {
+/**
+ * What one snapshot (one side, before OR after) shares across members: tenant-wide reads are made ONCE per side through
+ * a memoizing reader (roles, catalog, objects, Role grants, conditions, workflows) instead of once per member. Nothing is
+ * cached across sides -- the change happens between them -- and nothing outlives the snapshot.
+ */
+interface SnapshotContext {
+  readonly q: PolicyQueryable;
+  readonly repo: PolicyRepository;
+  readonly tenantId: string;
+  readonly fieldGroups: readonly ObjectFieldGroups[];
+  readonly conditions: GrantConditionProvider;
+  readonly workflows: readonly ActiveWorkflowDefinition[];
+  /** Role keys a SECURITY_ROLE binding of an ACTIVE workflow names: only their holders can carry a responsibility. */
+  readonly boundRoleKeys: ReadonlySet<string>;
+}
+
+const MEMOIZED_READS = new Set(["listRoles", "listCapabilities", "listObjects", "listRoleCapabilities", "listGrantConditions",
+  "listFunctionalRoles", "listWorkflows", "listWorkflowVersions", "listWorkflowRoleBindings", "getTenant", "listTenantPrincipalIds"]);
+
+/** A reader that answers each tenant-wide read once (keyed by its arguments) for the life of ONE snapshot. */
+function memoizedReader(repo: PolicyRepository): PolicyRepository {
+  const cache = new Map<string, unknown>();
+  return new Proxy(repo, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function") return value;
+      if (!MEMOIZED_READS.has(String(prop))) return value.bind(target);
+      return (...args: unknown[]) => {
+        const key = `${String(prop)}|${JSON.stringify(args)}`;
+        if (!cache.has(key)) cache.set(key, value.apply(target, args));
+        return cache.get(key);
+      };
+    },
+  });
+}
+
+async function snapshotContext(q: PolicyQueryable, repo: PolicyRepository, tenantId: string,
+  fieldGroups: readonly ObjectFieldGroups[]): Promise<SnapshotContext> {
+  const reader = memoizedReader(repo);
+  const provider = postgresGrantConditionProvider(q);
+  let catalog: ReturnType<GrantConditionProvider> | undefined;
+  const conditions: GrantConditionProvider = (t) => (t === tenantId ? (catalog ??= provider(t)) : provider(t));
+  const workflows = await loadActiveWorkflowDefinitions(reader, tenantId);
+  const boundRoleKeys = new Set<string>();
+  for (const w of workflows) {
+    for (const binding of w.definition.bindings) {
+      if ((binding.bindingKind ?? "SECURITY_ROLE") !== "SECURITY_ROLE" || !binding.roleId) continue;
+      const key = w.roleKeyById.get(binding.roleId);
+      if (key) boundRoleKeys.add(key);
+    }
+  }
+  return { q, repo: reader, tenantId, fieldGroups, conditions, workflows, boundRoleKeys };
+}
+
+async function principalAuthority(sc: SnapshotContext, principalId: string): Promise<PrincipalAuthoritySnapshot> {
+  const { q, repo, tenantId, fieldGroups } = sc;
   const roles = await repo.listRoles(tenantId);
   const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
   const roleByKey = new Map(roles.map((r) => [r.key, r]));
@@ -295,7 +407,7 @@ export async function principalAuthority(
   };
   let ctx;
   try {
-    ctx = await resolveOperationalContextForPrincipal(repo, q, principalId, tenantId, postgresGrantConditionProvider(q));
+    ctx = await resolveOperationalContextForPrincipal(repo, q, principalId, tenantId, sc.conditions);
   } catch (err) {
     if (!(err instanceof PrincipalContextError)) throw err;
     // REFUSED by principal resolution (DQ-007 ineligible employee, disabled, no membership...): it holds NOTHING at
@@ -309,7 +421,7 @@ export async function principalAuthority(
         .map((a) => `${roleKeyById.get(a.roleId) ?? a.roleId}@${a.scopeType}=${a.scopeValue ?? ""}`)),
       accessVersion, hadStaleAssignment: policy.hadStaleAssignment,
       flat: [], conditionallyHeld: [], scopedHeld: [], inertScoped: [], protectedAdministratorKeys: [], directGrants: [],
-      surfaces: [], fieldGroups: [], administration: [], latent: sorted(latent),
+      surfaces: [], fieldGroups: [], administration: [], workflowResponsibilities: [], latent: sorted(latent),
     });
   }
   const pc = ctx.principalContext;
@@ -334,6 +446,17 @@ export async function principalAuthority(
     ...(["editSecurityPolicy", "assignRole"] as const).filter((a) => hasSecurityAdministrationCapability(adminKeys, a)).map((a) => `command:${a}`),
     ...(adminKeys.has(ADMINISTRATOR_STAFFING_CAPABILITY) ? ["staffing:administratorRole"] : []),
   ];
+  // SECURITY_ROLE WORKFLOW RESPONSIBILITIES: the SAME derivation listPrincipalWorkflowResponsibilities serves (the runtime
+  // explanation intersected with the ACTIVE workflow bindings). Only a holder of a bound Role can carry one, so only they
+  // pay for the explanation.
+  const holds = [...pc.heldRoleKeys, ...(pc.scopedAssignments ?? []).map((a) => a.roleKey)];
+  let workflowResponsibilities: string[] = [];
+  if (holds.some((k) => sc.boundRoleKeys.has(k))) {
+    const explained = await explainEffectiveAccess(repo, q, { tenantId, principalId }, { conditions: sc.conditions });
+    workflowResponsibilities = deriveWorkflowResponsibilities(principalId, sc.workflows, explained).responsibilities
+      .filter((r) => r.viaRoles.length > 0)
+      .map((r) => `${r.workflowKey}.${r.actionKey}:${r.authority} via ${r.viaRoles.join("+")}`);
+  }
   return Object.freeze({
     principalId,
     status: "RESOLVED",
@@ -352,6 +475,7 @@ export async function principalAuthority(
     surfaces: sorted(surfaces),
     fieldGroups: sorted(fields),
     administration: sorted(administration),
+    workflowResponsibilities: sorted(workflowResponsibilities),
     latent: [],
   });
 }
@@ -363,16 +487,17 @@ export async function snapshotTenantAuthority(
   tenantId: string,
   fieldGroups: readonly ObjectFieldGroups[],
 ): Promise<ReadonlyMap<string, PrincipalAuthoritySnapshot>> {
-  const ids = sorted(await repo.listTenantPrincipalIds(tenantId));
+  const sc = await snapshotContext(q, repo, tenantId, fieldGroups);
+  const ids = sorted(await sc.repo.listTenantPrincipalIds(tenantId));
   const out = new Map<string, PrincipalAuthoritySnapshot>();
-  for (const id of ids) out.set(id, await principalAuthority(q, repo, tenantId, id, fieldGroups));
+  for (const id of ids) out.set(id, await principalAuthority(sc, id));
   return out;
 }
 
 // ════════════════════ the diff ════════════════════
 
 const LIST_FIELDS = ["heldRoleKeys", "scopedAssignments", "flat", "conditionallyHeld", "scopedHeld", "inertScoped",
-  "protectedAdministratorKeys", "directGrants", "surfaces", "fieldGroups", "administration", "latent"] as const;
+  "protectedAdministratorKeys", "directGrants", "surfaces", "fieldGroups", "administration", "workflowResponsibilities", "latent"] as const;
 
 export interface PrincipalAuthorityDelta {
   readonly principalId: string;
@@ -387,7 +512,7 @@ export interface PrincipalAuthorityDelta {
 const EMPTY_SNAPSHOT = (principalId: string): PrincipalAuthoritySnapshot => Object.freeze({
   principalId, status: "NOT_A_MEMBER", protectedStanding: null, heldRoleKeys: [], scopedAssignments: [], accessVersion: 0,
   hadStaleAssignment: false, flat: [], conditionallyHeld: [], scopedHeld: [], inertScoped: [], protectedAdministratorKeys: [],
-  directGrants: [], surfaces: [], fieldGroups: [], administration: [], latent: [],
+  directGrants: [], surfaces: [], fieldGroups: [], administration: [], workflowResponsibilities: [], latent: [],
 });
 
 /** One principal's delta, or null when nothing about its effective authority (or its access version) moved. */
@@ -406,7 +531,7 @@ export function diffPrincipalAuthority(before: PrincipalAuthoritySnapshot, after
     : { before: before.hadStaleAssignment, after: after.hadStaleAssignment };
   if (Object.keys(changes).length === 0 && !status && !accessVersion && !hadStaleAssignment) return null;
   const notes: string[] = [];
-  const effective = ["flat", "conditionallyHeld", "scopedHeld", "protectedAdministratorKeys", "surfaces", "fieldGroups", "administration"]
+  const effective = ["flat", "conditionallyHeld", "scopedHeld", "protectedAdministratorKeys", "surfaces", "fieldGroups", "administration", "workflowResponsibilities"]
     .some((f) => f in changes);
   if (before.status !== "RESOLVED" && after.status !== "RESOLVED") {
     notes.push(`INELIGIBLE: resolution refuses this principal (${after.status}); the change is LATENT policy only and confers nothing at runtime`);
@@ -422,6 +547,7 @@ export function diffPrincipalAuthority(before: PrincipalAuthoritySnapshot, after
   if (protectedStanding === "OWNER" && (changes.flat?.removed.length ?? 0) > 0) notes.push("PROTECTED_OWNER_REDUCED: a protected Owner loses authority");
   if (protectedStanding === "ADMINISTRATOR" && (changes.flat?.removed.length ?? 0) > 0) notes.push("PROTECTED_ADMINISTRATOR_REDUCED: a protected Administrator loses authority");
   if (changes.administration) notes.push("ADMINISTRATION_GATES_CHANGED: what this principal may administer changes");
+  if (changes.workflowResponsibilities) notes.push("WORKFLOW_RESPONSIBILITIES_CHANGED: workflow actions this principal is responsible for change");
   return Object.freeze({ principalId: after.principalId, protectedStanding, status, accessVersion, hadStaleAssignment,
     changes: Object.freeze(changes), notes: Object.freeze(notes) });
 }
@@ -453,6 +579,90 @@ export function canonicalJson(value: unknown): string {
 }
 
 export const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
+
+/** The change as stated (operation + input incl. reason), never the request id or a generated value. */
+export const inputDigestOf = (operation: string, input: unknown): string => sha256(canonicalJson({ operation, input }));
+
+/** Everything the change does to everybody, free of generated ids and clock values (review finding 9). */
+export const impactDigestOf = (impact: {
+  readonly operation: string;
+  readonly outcome: string;
+  readonly refusalCode: string | null;
+  readonly perAction: readonly ActionOutcome[] | null;
+  readonly affected: readonly PrincipalAuthorityDelta[];
+}): string => sha256(canonicalJson({ operation: impact.operation, outcome: impact.outcome, refusalCode: impact.refusalCode,
+  perAction: impact.perAction, affected: impact.affected }));
+
+/**
+ * THE PREVIEW DIGEST: the ONE value a commit presents (PR 4). Binds tenant, actor, the stated change, the policy state,
+ * every member's before-state and the impact. NOT a token and not a secret (review C3): the commit recomputes every part
+ * under the governance lock and compares.
+ */
+export const previewDigestOf = (parts: {
+  readonly tenantId: string;
+  readonly actorPrincipalId: string;
+  readonly inputDigest: string;
+  readonly policyStateDigest: string;
+  readonly beforeDigest: string;
+  readonly impactDigest: string;
+}): string => sha256(canonicalJson({ v: 1, tenantId: parts.tenantId, actorPrincipalId: parts.actorPrincipalId,
+  inputDigest: parts.inputDigest, policyStateDigest: parts.policyStateDigest, beforeDigest: parts.beforeDigest,
+  impactDigest: parts.impactDigest }));
+
+/** Every member's before-state, canonical. */
+export const beforeDigestOf = (before: ReadonlyMap<string, PrincipalAuthoritySnapshot>): string => sha256(canonicalJson([...before.values()]));
+
+/** One run of the unchanged command inside a simulation: what it threw or returned, and the ROWS its commits wrote. */
+export interface SimulatedRun {
+  readonly threw: boolean;
+  readonly error: unknown;
+  readonly result: unknown;
+  /** Rows affected inside RELEASED (simulated-committed) savepoints, from PreviewSimulation.committedWrites. */
+  readonly writes: number;
+}
+
+export interface AuthorityChangeEvaluation {
+  readonly outcome: "WOULD_APPLY" | "NO_OP" | "WOULD_REFUSE";
+  readonly refusalCode: string | null;
+  readonly perAction: readonly ActionOutcome[] | null;
+  readonly affected: readonly PrincipalAuthorityDelta[];
+  readonly digests: {
+    readonly inputDigest: string;
+    readonly policyStateDigest: string;
+    readonly beforeDigest: string;
+    readonly impactDigest: string;
+    readonly previewDigest: string;
+  };
+}
+
+/**
+ * THE ONE RULE for outcome, impact and every digest -- the preview and the commit (PR 4) both call this, so the two can
+ * never disagree about WOULD_APPLY vs NO_OP (rows affected) or about what the impact digest covers.
+ */
+export function evaluateAuthorityChange(input: {
+  readonly tenantId: string;
+  readonly actorPrincipalId: string;
+  readonly operation: string;
+  readonly input: unknown;
+  readonly policyStateDigest: string;
+  readonly before: ReadonlyMap<string, PrincipalAuthoritySnapshot>;
+  /** The after snapshot (ignored for a refusal: a refused change affects nobody). */
+  readonly after: ReadonlyMap<string, PrincipalAuthoritySnapshot>;
+  readonly run: SimulatedRun;
+}): AuthorityChangeEvaluation {
+  const { run } = input;
+  const outcome = run.threw ? "WOULD_REFUSE" : run.writes > 0 ? "WOULD_APPLY" : "NO_OP";
+  const affected = run.threw ? Object.freeze([]) : diffTenantAuthority(input.before, input.after);
+  const perAction = run.threw ? null : perActionOf(run.result);
+  const refusalCode = run.threw ? refusalCodeOf(run.error) : null;
+  const inputDigest = inputDigestOf(input.operation, input.input);
+  const beforeDigest = beforeDigestOf(input.before);
+  const impactDigest = impactDigestOf({ operation: input.operation, outcome, refusalCode, perAction, affected });
+  const previewDigest = previewDigestOf({ tenantId: input.tenantId, actorPrincipalId: input.actorPrincipalId, inputDigest,
+    policyStateDigest: input.policyStateDigest, beforeDigest, impactDigest });
+  return Object.freeze({ outcome, refusalCode, perAction, affected,
+    digests: Object.freeze({ inputDigest, policyStateDigest: input.policyStateDigest, beforeDigest, impactDigest, previewDigest }) });
+}
 
 /**
  * The POLICY STATE every resolver input depends on, tenant-scoped, as one digest. SEMANTIC columns only: no row id a
@@ -505,6 +715,13 @@ export interface AuthorityChangePreviewOptions {
   readonly lockTimeoutMs?: number;
   readonly statementTimeoutMs?: number;
   readonly idleInTransactionTimeoutMs?: number;
+  /**
+   * The TOTAL time one preview may take, all attempts included (default 8000ms). On breach the preview rolls back and
+   * answers PREVIEW_BUSY{BUDGET}, so it never holds the tenant governance lock (and delays a real commit) longer.
+   */
+  readonly budgetMs?: number;
+  /** Test seam: the clock the budget reads. A clock READ, never a timer. */
+  readonly now?: () => number;
   /** Concurrent previews per process (default 2): previews never starve operational traffic of pool slots. */
   readonly maxConcurrent?: number;
   /** Test seam: observe each attempt's statement log (the never-commit proof). */
@@ -514,7 +731,7 @@ export interface AuthorityChangePreviewOptions {
 const positiveInt = (value: number | undefined, fallback: number): number =>
   typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
 
-interface ActionOutcome { readonly actionKey: string; readonly capabilityKey: string; readonly outcome: string; readonly refusalCode: string | null }
+export interface ActionOutcome { readonly actionKey: string; readonly capabilityKey: string; readonly outcome: string; readonly refusalCode: string | null }
 
 /** A stable code for a command's refusal: the governed code when there is one, else the error class / SQLSTATE. */
 export function refusalCodeOf(err: unknown): string {
@@ -528,7 +745,7 @@ export function refusalCodeOf(err: unknown): string {
   return "INTERNAL";
 }
 
-function perActionOf(result: unknown): readonly ActionOutcome[] | null {
+export function perActionOf(result: unknown): readonly ActionOutcome[] | null {
   const actions = (result as { actions?: unknown } | null)?.actions;
   if (!Array.isArray(actions)) return null;
   return Object.freeze(actions.map((a: { actionKey: string; capabilityKey: string; outcome: string; refusal: string | null }) => Object.freeze({
@@ -537,15 +754,16 @@ function perActionOf(result: unknown): readonly ActionOutcome[] | null {
   })));
 }
 
-async function readDeferrableConstraints(engine: (text: string, values?: readonly unknown[]) => Promise<{ rows: Record<string, unknown>[] }>): Promise<string[]> {
+export async function readDeferrableConstraints(engine: (text: string, values?: readonly unknown[]) => Promise<{ rows: Record<string, unknown>[] }>): Promise<DeferrableConstraint[]> {
   // Every DEFERRABLE constraint a real COMMIT would check on the governed schema -- read from the catalog, not pinned,
   // so a newly added one is honoured by the simulation the moment it exists -- EXCEPT the never-commit fence.
   const { rows } = await engine(
-    `SELECT DISTINCT n.nspname AS schema_name, c.conname AS constraint_name
+    `SELECT n.nspname AS schema_name, c.conname AS constraint_name, bool_or(c.condeferred) AS initially_deferred
        FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
       WHERE c.condeferrable AND n.nspname IN ('eos_policy', 'eos_workforce') AND c.conname <> 'preview_never_commits'
-      ORDER BY 1, 2`);
-  return rows.map((r) => `${quoteIdent(String(r.schema_name))}.${quoteIdent(String(r.constraint_name))}`);
+      GROUP BY 1, 2 ORDER BY 1, 2`);
+  return rows.map((r) => Object.freeze({ name: `${quoteIdent(String(r.schema_name))}.${quoteIdent(String(r.constraint_name))}`,
+    initiallyDeferred: r.initially_deferred === true }));
 }
 
 async function subjectHolders(q: PolicyQueryable, tenantId: string, subject: AuthorityChangeSubject | null): Promise<readonly string[]> {
@@ -579,7 +797,9 @@ type AttemptResult =
 export function createAuthorityChangePreview(options: AuthorityChangePreviewOptions): AuthorityChangeSimulator {
   const fieldGroups = Object.freeze([...(options.fieldGroups ?? [])]);
   const lockTimeoutMs = positiveInt(options.lockTimeoutMs, 3_000);
-  const statementTimeoutMs = positiveInt(options.statementTimeoutMs, 10_000);
+  const statementTimeoutMs = positiveInt(options.statementTimeoutMs, DEFAULT_PREVIEW_STATEMENT_TIMEOUT_MS);
+  const budgetMs = positiveInt(options.budgetMs, DEFAULT_PREVIEW_BUDGET_MS);
+  const now = options.now ?? (() => Date.now());
   const idleTimeoutMs = positiveInt(options.idleInTransactionTimeoutMs, 30_000);
   const maxConcurrent = positiveInt(options.maxConcurrent, 2);
   let active = 0;
@@ -587,12 +807,13 @@ export function createAuthorityChangePreview(options: AuthorityChangePreviewOpti
   const busy = (reason: NonNullable<AuthorityChangeSimulationResult["busy"]>["reason"]): AuthorityChangeSimulationResult =>
     Object.freeze({ outcome: "PREVIEW_BUSY", error: null, busy: Object.freeze({ reason }), report: Object.freeze({ retryable: true }) });
 
-  async function attempt(client: PoolClient, request: AuthorityChangeSimulationRequest): Promise<AttemptResult> {
+  async function attempt(client: PoolClient, request: AuthorityChangeSimulationRequest, deadline: number): Promise<AttemptResult> {
     const tenantId = request.actor.tenantId;
-    const simulation = new PreviewSimulation(client);
+    const simulation = new PreviewSimulation(client, { deadline, statementTimeoutMs, now });
     try {
       await simulation.engine("BEGIN ISOLATION LEVEL READ COMMITTED");
-      await simulation.engine(`SET LOCAL lock_timeout = '${lockTimeoutMs}ms'`);
+      const lockWait = Math.max(1, Math.min(lockTimeoutMs, Math.floor(deadline - now())));
+      await simulation.engine(`SET LOCAL lock_timeout = '${lockWait}ms'`);
       await simulation.engine(`SET LOCAL statement_timeout = '${statementTimeoutMs}ms'`);
       await simulation.engine(`SET LOCAL idle_in_transaction_session_timeout = '${idleTimeoutMs}ms'`);
       await simulation.engine(`SELECT set_config('eos_policy.preview', 'on', true)`);
@@ -634,15 +855,12 @@ export function createAuthorityChangePreview(options: AuthorityChangePreviewOpti
       const stateAfter = await policyStateDigest(q, tenantId);
       if (stateAfter !== stateBefore) return { kind: "UNSTABLE" };
 
-      const outcome = threw ? "WOULD_REFUSE" : writes > 0 ? "WOULD_APPLY" : "NO_OP";
-      const affected = threw ? [] : diffTenantAuthority(before, after);
-      const perAction = threw ? null : perActionOf(result);
-      const refusalCode = threw ? refusalCodeOf(error) : null;
+      const evaluation = evaluateAuthorityChange({ tenantId, actorPrincipalId: request.actor.uid, operation: request.operation,
+        input: request.input, policyStateDigest: stateBefore, before, after, run: { threw, error, result, writes } });
+      const { outcome, perAction, affected } = evaluation;
       const affectedIds = new Set(affected.map((d) => d.principalId));
       const unaffectedHolders = holders.filter((id) => !affectedIds.has(id)).length;
-      const beforeDigest = sha256(canonicalJson([...before.values()]));
-      const impactDigest = sha256(canonicalJson({ operation: request.operation, outcome, refusalCode, perAction, affected }));
-      const inputDigest = sha256(canonicalJson({ operation: request.operation, input: request.input }));
+      const { inputDigest, beforeDigest, impactDigest, previewDigest } = evaluation.digests;
       const protectedAffected = {
         owners: affected.filter((d) => d.protectedStanding === "OWNER").length,
         administrators: affected.filter((d) => d.protectedStanding === "ADMINISTRATOR").length,
@@ -654,7 +872,13 @@ export function createAuthorityChangePreview(options: AuthorityChangePreviewOpti
         unaffectedHolders,
         protectedAffected,
         detail: request.detail ? "FULL" : "COUNTS_ONLY",
-        digests: { inputDigest, policyStateDigest: stateBefore, beforeDigest, impactDigest },
+        // A counts-only caller receives only the digests a commit binding needs from it (input + impact, PR 4); the
+        // state and before digests summarize every member's authority and are withheld (review finding 5).
+        // previewDigest (the ONE value a commit presents) goes to every caller allowed to preview; the commit recomputes
+        // every part under the lock.
+        digests: request.detail
+          ? { inputDigest, policyStateDigest: stateBefore, beforeDigest, impactDigest, previewDigest }
+          : { inputDigest, impactDigest, previewDigest },
       };
       if (request.detail) {
         // DETAIL (admin.principalAccess.read): before/after full effective authority + the delta + notes -- except a
@@ -672,7 +896,7 @@ export function createAuthorityChangePreview(options: AuthorityChangePreviewOpti
     } finally {
       simulation.close();
       try {
-        await simulation.engine("ROLLBACK");
+        await simulation.engine("ROLLBACK", [], true);
       } finally {
         options.onStatements?.(Object.freeze([...simulation.log]));
       }
@@ -681,6 +905,7 @@ export function createAuthorityChangePreview(options: AuthorityChangePreviewOpti
 
   return async function previewAuthorityChange(request: AuthorityChangeSimulationRequest): Promise<AuthorityChangeSimulationResult> {
     if (active >= maxConcurrent) return busy("CONCURRENCY");
+    const deadline = now() + budgetMs;
     active += 1;
     let client: PoolClient;
     try {
@@ -698,10 +923,11 @@ export function createAuthorityChangePreview(options: AuthorityChangePreviewOpti
       for (let i = 0; i < 2; i += 1) {
         let outcome: AttemptResult;
         try {
-          outcome = await attempt(client, request);
+          outcome = await attempt(client, request, deadline);
         } catch (err) {
+          if (err instanceof PreviewBudgetExceeded) return busy("BUDGET");
           const code = (err as { code?: unknown })?.code;
-          if (typeof code === "string" && BUSY_SQLSTATES[code]) return busy(BUSY_SQLSTATES[code]);
+          if (typeof code === "string" && BUSY_SQLSTATES[code]) return busy(now() >= deadline ? "BUDGET" : BUSY_SQLSTATES[code]);
           throw err;
         }
         if (outcome.kind === "DONE") return outcome.result;

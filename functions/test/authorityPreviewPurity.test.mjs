@@ -39,6 +39,10 @@ const PINNED_CLOSURE = [
   "src/eosOps/conditionalEntitlement.ts", "src/eosOps/contextualAuthorization.ts", "src/eosOps/entitledActionAuthority.ts",
   "src/eosOps/experienceAuthority.ts", "src/eosOps/governedFieldGroups.ts", "src/eosOps/grantConditionPolicy.ts",
   "src/opportunity/opportunityLifecycle.ts",
+  // PR 3 follow-up: the SECURITY_ROLE workflow-responsibility dimension -- the SAME derivation the
+  // listPrincipalWorkflowResponsibilities transport serves (the runtime explanation x the active workflow definitions).
+  "src/adminPolicy/workflowEngine.ts", "src/adminPolicy/workflowResponsibilities.ts", "src/eosOps/effectiveAccessExplanation.ts",
+  "src/eosOps/functionalRoleFacts.ts",
 ];
 
 /** The ONE file allowed each otherwise-forbidden construct, and why. Nothing else may be added without a reason. */
@@ -60,6 +64,8 @@ const CONSTANT_COLLECTIONS = Object.freeze({
     "CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT"],
   "src/eosOps/administrationReach.ts": ["ADMINISTRATION_REACH_SCOPE_TYPES", "ADMINISTRATION_REACH_CAPABILITIES", "ADMINISTRATOR_EXECUTION_CAPABILITIES"],
   "src/eosOps/contextualAuthorization.ts": ["GOVERNED_QUALIFICATION_CODES"],
+  // The method names the per-snapshot memoizing reader answers once; the CACHE itself lives in the snapshot, not here.
+  "src/eosOps/authorityChangePreview.ts": ["MEMOIZED_READS"],
 });
 
 const code = (file) => readFileSync(resolve(ROOT, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "")
@@ -119,7 +125,8 @@ test("3. nothing in the closure reaches outside the transaction (named exception
 test("4. the engine: ROLLBACK is its only terminal statement; it never reaches for the process pool", () => {
   const engine = code(ENGINE);
   assert.equal(/\b(?:query|engine)\(\s*["'`]\s*(?:COMMIT|END|PREPARE)\b/i.test(engine), false, "the engine issues a COMMIT");
-  assert.match(engine, /simulation\.engine\("ROLLBACK"\)/);
+  // The final ROLLBACK is budget-EXEMPT: undoing is never refused for lack of time.
+  assert.match(engine, /simulation\.engine\("ROLLBACK", \[\], true\)/);
   assert.equal(/getPolicyDatabasePool|operationalCapabilityPool/.test(engine), false, "the engine must be handed its pool, never fetch one");
   assert.equal(/SET CONSTRAINTS ALL/i.test(engine), false, "SET CONSTRAINTS ALL would arm the never-commit fence");
   // The simulated commit point names only the catalog's NON-fence deferrable constraints.

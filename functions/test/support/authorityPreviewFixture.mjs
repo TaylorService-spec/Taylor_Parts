@@ -159,6 +159,16 @@ export async function buildPreviewWorld(url, previewOptions = {}) {
   // stale: an assignment from the future (excluded as STALE until the access version passes it).
   P.a.stale = await member(A, "gip-stale-a");
   P.a.staleAssignment = (await assign(A, P.a.stale, "dispatcher", { future: true })).id;
+  // An ACTIVE workflow with a SECURITY_ROLE binding (dispatcher -> Dispatch), created and published through
+  // Administration, so Security Role changes move workflow responsibilities.
+  const draft = await call("gip-admin-a", "createWorkflowDraft", { key: "gipDispatch", name: "Preview dispatch", objectKey: "workOrder",
+    reason: "preview fixture", definition: {
+      steps: [{ key: "OPEN", label: "Open", initial: true }, { key: "DISPATCHED", label: "Dispatched", terminal: true }],
+      actions: [{ key: "Dispatch", label: "Dispatch", from: "OPEN", to: "DISPATCHED", capabilityKey: "workOrder.lifecycle.dispatch", roleKeys: ["dispatcher"] }],
+    } });
+  if (!draft.ok) throw new Error(`fixture workflow draft: ${JSON.stringify(draft)}`);
+  const published = await call("gip-admin-a", "publishWorkflowVersion", { versionId: draft.data.version.id, reason: "preview fixture" });
+  if (!published.ok) throw new Error(`fixture workflow publish: ${JSON.stringify(published)}`);
   P.a.plain = await member(A, "gip-plain-a");
   P.a.plain2 = await member(A, "gip-plain2-a");
   return { pool, q, repo, deps, call, simulator, statements, T, P, grant, assign, roleId, member };

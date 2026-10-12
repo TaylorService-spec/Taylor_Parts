@@ -679,14 +679,13 @@ async function previewAuthorityChange(
     actor, operation, input: changeInput, subject: authorityChangeSubject(operation, changeInput), detail,
     run: (simulated) => authorityCommand(simulated, actor, operation, changeInput, reason),
   });
+  // EXACTLY what the commit would return (classify + messageFor): a raw database error is the commit's opaque INTERNAL,
+  // with no SQLSTATE, constraint name or other detail beyond it.
   const refusal = result.outcome === "WOULD_REFUSE"
     ? {
       code: result.error instanceof AdministrationRefusal ? result.error.code : classify(result.error),
       category: classify(result.error),
       message: messageFor(result.error),
-      ...(typeof (result.error as { severity?: unknown })?.severity === "string"
-        && typeof (result.error as { code?: unknown })?.code === "string"
-        ? { sqlState: (result.error as { code: string }).code } : {}),
     }
     : null;
   return { outcome: result.outcome, refusal, busy: result.busy, ...result.report };

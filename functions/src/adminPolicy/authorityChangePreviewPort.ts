@@ -71,7 +71,7 @@ export interface AuthorityChangeSimulationResult {
   readonly outcome: AuthorityChangeOutcome | "PREVIEW_BUSY";
   /** The error the command threw (WOULD_REFUSE only). The API turns it into the same code/message a commit returns. */
   readonly error: unknown;
-  readonly busy: { readonly reason: "LOCK_TIMEOUT" | "STATEMENT_TIMEOUT" | "CONCURRENCY" | "POOL" | "UNSTABLE" } | null;
+  readonly busy: { readonly reason: "LOCK_TIMEOUT" | "STATEMENT_TIMEOUT" | "BUDGET" | "CONCURRENCY" | "POOL" | "UNSTABLE" } | null;
   readonly report: Readonly<Record<string, unknown>>;
 }
 

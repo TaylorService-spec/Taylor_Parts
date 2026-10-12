@@ -688,9 +688,9 @@ export async function describeGrantConditionRelation(
        JOIN pg_class rel ON rel.oid = con.conrelid
        JOIN pg_namespace ns ON ns.oid = rel.relnamespace
       WHERE ns.nspname = $1 AND rel.relname = $2
-        -- A CONSTRAINT TRIGGER (contype 't', e.g. the grant-impact preview's never-commit fence, migration
-        -- 1764540000000) is a trigger, not part of the relation's shape; triggers are not compared here.
-        AND con.contype <> 't'`, [schema, table]);
+        -- The grant-impact preview's never-commit FENCE (migration 1764540000000) is a constraint trigger, not part of
+        -- the relation's shape. Excluded by name AND kind; any OTHER constraint trigger is still reported as drift.
+        AND NOT (con.contype = 't' AND con.conname = 'preview_never_commits')`, [schema, table]);
   const indexes = await pool.query<{ indexname: string; indexdef: string }>(
     `SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = $1 AND tablename = $2 ORDER BY indexname`,
     [schema, table]);

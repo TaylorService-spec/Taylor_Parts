@@ -66,6 +66,17 @@ test("GRANT-IMPACT PREVIEW: never commits, leaves no trace, calls nothing extern
     assert.ok(log.some((s) => /^SET CONSTRAINTS .*role_capability_decisions.* IMMEDIATE$/.test(s.text)), "deferred constraints forced at the simulated commit point");
     assert.equal(log.some((s) => /SET CONSTRAINTS ALL/i.test(s.text) || /SET CONSTRAINTS .*preview_never_commits/.test(s.text)), false,
       "the fence must never be armed by the simulation");
+    // Each constraint is restored to its ORIGINAL deferral, read from the catalog (condeferred), not a blanket DEFERRED.
+    const initiallyDeferred = (await q(`SELECT format('%I.%I', n.nspname, c.conname) AS name FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
+       WHERE c.condeferrable AND c.condeferred AND n.nspname IN ('eos_policy', 'eos_workforce') AND c.conname <> 'preview_never_commits' ORDER BY 1`)).rows
+      .map((r) => r.name.split(".").map((x) => `"${x.replace(/^"|"$/g, "")}"`).join("."));
+    const restores = log.filter((s) => / DEFERRED$/.test(s.text) && /^SET CONSTRAINTS /.test(s.text));
+    assert.ok(restores.length > 0);
+    for (const s of restores) assert.equal(s.text, `SET CONSTRAINTS ${initiallyDeferred.join(", ")} DEFERRED`);
+    // COST: tenant-wide reads are made once per snapshot side (memoized), not once per member.
+    const members = (await repo.listTenantPrincipalIds(A)).length;
+    const perMemberSide = log.length / (members * 2);
+    assert.ok(perMemberSide < 40, `${log.length} statements for ${members} members x 2 sides = ${perMemberSide.toFixed(1)} per member-side`);
     const { rows } = await q(`SELECT count(*)::int n FROM pg_locks WHERE locktype = 'advisory'`);
     assert.equal(rows[0].n, 0, "an advisory lock outlived the preview");
   });
@@ -196,6 +207,54 @@ test("GRANT-IMPACT PREVIEW: never commits, leaves no trace, calls nothing extern
     }));
     assert.deepEqual([settles.outcome, once], ["NO_OP", 2], "retried once on a fresh state, then reported");
     assert.equal((await q(`SELECT count(*)::int n FROM pg_locks WHERE locktype = 'advisory'`)).rows[0].n, 0);
+  });
+
+  await t.test("6b. TIME BUDGET: a slow preview cannot hold the governance lock beyond its budget, and a real commit waits at most that long", async () => {
+    const BUDGET = 1500;
+    const budgeted = createAuthorityChangePreview({ pool, budgetMs: BUDGET, statementTimeoutMs: 5_000 });
+    let inside;
+    const entered = new Promise((resolve) => { inside = resolve; });
+    const started = Date.now();
+    const slow = budgeted(request(async (simRepo) => {
+      inside();
+      for (let i = 0; i < 100; i += 1) await simRepo.pool.query("SELECT pg_sleep(0.05)");
+    }));
+    await entered; // the preview now holds the tenant governance lock
+    const commitStarted = Date.now();
+    const real = await call(ADMIN, "grantObjectActionToRole", { objectKey: "workOrder", actionKey: "read", roleKey: "shopManager", reason: "budget proof" });
+    const commitWaited = Date.now() - commitStarted;
+    const result = await slow;
+    const held = Date.now() - started;
+    assert.deepEqual([result.outcome, result.busy.reason], ["PREVIEW_BUSY", "BUDGET"]);
+    assert.equal(real.ok, true, JSON.stringify(real));
+    assert.ok(held < BUDGET + 1_000, `the preview ran ${held}ms on a ${BUDGET}ms budget`);
+    assert.ok(commitWaited < BUDGET + 1_000, `a real commit waited ${commitWaited}ms behind a ${BUDGET}ms preview`);
+    // The lock is free the moment the preview answered.
+    const c = await sidePool.connect();
+    try {
+      await c.query("BEGIN");
+      await c.query("SET LOCAL lock_timeout = '100ms'");
+      await c.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [A]);
+      await c.query("ROLLBACK");
+    } finally { c.release(); }
+    // A single long statement is cut at the deadline too (statement_timeout lowered inside the last window).
+    const t0 = Date.now();
+    const oneLong = await budgeted(request(async (simRepo) => simRepo.pool.query("SELECT pg_sleep(30)")));
+    assert.deepEqual([oneLong.outcome, oneLong.busy.reason], ["PREVIEW_BUSY", "BUDGET"]);
+    assert.ok(Date.now() - t0 < BUDGET + 1_000, `one statement held the preview ${Date.now() - t0}ms`);
+  });
+
+  await t.test("6c. ROWS, not statements: a 0-row UPDATE is NO_OP; a real write is WOULD_APPLY", async () => {
+    const none = await world.simulator(request(async (simRepo) => {
+      const c = await simRepo.pool.connect();
+      await c.query("BEGIN");
+      await c.query("UPDATE eos_policy.user_role_assignments SET status = 'disabled' WHERE tenant_id = $1 AND id = 'no-such-assignment'", [A]);
+      await c.query("COMMIT");
+      c.release();
+    }));
+    assert.equal(none.outcome, "NO_OP");
+    const some = await world.simulator(request(async (simRepo) => commands.grantObjectActionToRole(simRepo, adminActor, grantInput)));
+    assert.equal(some.outcome, "WOULD_APPLY");
   });
 
   await t.test("7. NO EXTERNAL CALL: no fetch, no timer, no console, nothing NOTIFYed during a preview", async () => {

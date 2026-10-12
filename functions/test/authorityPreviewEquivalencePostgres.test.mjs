@@ -21,6 +21,7 @@ const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no datab
 const require = createRequire(import.meta.url);
 const { snapshotTenantAuthority, diffTenantAuthority } = require("../lib/eosOps/authorityChangePreview.js");
 const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
+const { explainEffectiveAccess } = require("../lib/eosOps/effectiveAccessExplanation.js");
 
 const ADMIN = "gip-admin-a";
 const GM = "gip-gm-a";
@@ -37,6 +38,59 @@ test("GRANT-IMPACT PREVIEW: preview == post-commit tenant-wide resolver diff, fo
   const roleId = (key) => world.roleId(A, key);
   const outcomes = new Map();
 
+  // ════════ THE INDEPENDENT ORACLE (review follow-up 2) ════════
+  // The post-commit side is ALSO measured through code paths the preview does not use to diff: the Administration
+  // read getPrincipalEffectiveAccess (the repository resolver behind the read gate), the runtime per-action evaluator
+  // (explainEffectiveAccess: ALLOWED per capability), and the workflow-responsibility TRANSPORT
+  // (listPrincipalWorkflowResponsibilities). Each oracle delta must equal the preview's delta of the matching dimension.
+  const oracleDeps = { ...world.deps, explainEffectiveAccess: (tenantId, principalId) => explainEffectiveAccess(repo, pool, { tenantId, principalId }) };
+  const oracleCall = (operation, input) => executeAdminOperation(oracleDeps,
+    { caller: { externalSubject: ADMIN, identityProvider: "firebase" }, operation, input, requestId: "gip-oracle" });
+  const responsibilityKey = (r) => `${r.workflowKey}.${r.actionKey}:${r.authority} via ${r.viaRoles.join("+")}`;
+  async function oracle() {
+    const out = new Map();
+    for (const id of [...await repo.listTenantPrincipalIds(A)].sort()) {
+      const effective = await oracleCall("getPrincipalEffectiveAccess", { principalId: id });
+      assert.equal(effective.ok, true, JSON.stringify(effective));
+      let allowed = [];
+      let resolved = true;
+      try {
+        const explained = await explainEffectiveAccess(repo, pool, { tenantId: A, principalId: id });
+        allowed = explained.actions.filter((a) => a.result === "ALLOWED").map((a) => a.capabilityKey);
+      } catch (err) {
+        if (!err.refusal) throw err;
+        resolved = false;
+      }
+      const wr = await oracleCall("listPrincipalWorkflowResponsibilities", { principalId: id });
+      const responsibilities = wr.ok ? wr.data.responsibilities.filter((r) => r.viaRoles.length > 0).map(responsibilityKey) : [];
+      out.set(id, { resolved, effective: effective.data.effective.map((c) => c.capabilityKey), allowed, responsibilities });
+    }
+    return out;
+  }
+  const delta = (before, after) => {
+    const b = new Set(before); const a = new Set(after);
+    return { added: [...a].filter((k) => !b.has(k)).sort(), removed: [...b].filter((k) => !a.has(k)).sort() };
+  };
+  const previewDelta = (d, field) => d?.changes?.[field] ?? { added: [], removed: [] };
+  let oracleResponsibilitiesSeen = 0;
+  function assertOracle(label, report, before, after) {
+    const byId = new Map((report.affected ?? []).map((d) => [d.principalId, d]));
+    for (const [id, o1] of after) {
+      const o0 = before.get(id);
+      const d = byId.get(id);
+      const flatOrLatent = o1.resolved ? "flat" : "latent";
+      // 1. the Administration read's effective keys move exactly as the preview's flat set (latent when resolution refuses).
+      const eff = delta(o0.effective, o1.effective);
+      if (o0.resolved === o1.resolved) assert.deepEqual(eff, previewDelta(d, flatOrLatent), `${label}: getPrincipalEffectiveAccess delta of ${id}`);
+      // 2. the runtime evaluator's ALLOWED actions move exactly as the preview's flat set.
+      assert.deepEqual(delta(o0.allowed, o1.allowed), previewDelta(d, "flat"), `${label}: explainEffectiveAccess ALLOWED delta of ${id}`);
+      // 3. the responsibilities TRANSPORT moves exactly as the preview's workflow-responsibility dimension.
+      assert.deepEqual(delta(o0.responsibilities, o1.responsibilities), previewDelta(d, "workflowResponsibilities"),
+        `${label}: listPrincipalWorkflowResponsibilities delta of ${id}`);
+      oracleResponsibilitiesSeen += o1.responsibilities.length;
+    }
+  }
+
   /** One previewed-then-committed step. Returns the preview report. */
   async function step(label, subject, operation, input, expect) {
     const hashes = await tableHashes(q);
@@ -47,8 +101,10 @@ test("GRANT-IMPACT PREVIEW: preview == post-commit tenant-wide resolver diff, fo
     assert.deepEqual(await tableHashes(q), hashes, `${label}: the preview left a trace in the database`);
     assert.equal(report.outcome, expect.outcome, `${label}: ${JSON.stringify(report.refusal)}`);
     const audit = await auditCount(A);
+    const oracleBefore = report.detail === "FULL" ? await oracle() : null;
     const real = await call(subject, operation, input);
     const snapAfter = await snapshotTenantAuthority(pool, repo, A, FIELD_GROUPS);
+    if (oracleBefore) assertOracle(label, report, oracleBefore, await oracle());
     const diff = json(diffTenantAuthority(snapBefore, snapAfter));
     if (expect.outcome === "WOULD_REFUSE") {
       assert.equal(real.ok, false, `${label}: the commit was expected to refuse`);
@@ -89,7 +145,12 @@ test("GRANT-IMPACT PREVIEW: preview == post-commit tenant-wide resolver diff, fo
         real.data.actions.map((a) => [a.capabilityKey, a.outcome, a.refusal === null ? null : a.refusal.split(":")[0]]),
         `${label}: perAction != ObjectWideResult`);
     }
-    for (const k of ["inputDigest", "policyStateDigest", "beforeDigest", "impactDigest"]) assert.match(report.digests[k], /^[0-9a-f]{64}$/);
+    if (report.detail === "FULL") {
+      for (const k of ["inputDigest", "policyStateDigest", "beforeDigest", "impactDigest", "previewDigest"]) assert.match(report.digests[k], /^[0-9a-f]{64}$/);
+    } else {
+      // Counts-only callers get the binding digests PR 4 needs, never the state / before summaries (review follow-up 5).
+      assert.deepEqual(Object.keys(report.digests).sort(), ["impactDigest", "inputDigest", "previewDigest"]);
+    }
     outcomes.set(label, { operation, outcome: report.outcome, code: report.refusal?.code ?? null });
     return { report, diff, real };
   }
@@ -160,6 +221,17 @@ test("GRANT-IMPACT PREVIEW: preview == post-commit tenant-wide resolver diff, fo
       R({ objectKey: "dataImport", roleKey: "owner", mode: "GRANT" }), { outcome: "NO_OP" });
     assert.ok(report.perAction.length > 0 && report.perAction.every((a) => a.outcome === "REFUSED" && a.refusalCode === "SYSTEM_INVARIANT"));
   });
+  await t.test("C3 object-wide PARTIAL refusal: some actions GRANTED, one REFUSED, in one call", async () => {
+    // The Owner holds dispatcher, so reorder.request.assign (Owner ruling A) is refused at the principal; the other
+    // reorderRequest actions are granted, each in its own savepoint -- exactly the per-action atomicity of the commit.
+    const { report } = await step("C3 partial", ADMIN, "applyObjectWideRoleAuthority",
+      R({ objectKey: "reorderRequest", roleKey: "dispatcher", mode: "GRANT" }), { outcome: "WOULD_APPLY" });
+    const refused = report.perAction.filter((a) => a.outcome === "REFUSED");
+    assert.deepEqual(refused.map((a) => [a.capabilityKey, a.refusalCode]), [["reorder.request.assign", "SYSTEM_INVARIANT"]]);
+    assert.ok(report.perAction.filter((a) => a.outcome === "GRANTED").length >= 2, JSON.stringify(report.perAction));
+    const disp = report.affected.find((d) => d.principalId === P.a.disp);
+    assert.equal(disp.changes.flat.added.includes("reorder.request.assign"), false);
+  });
   await t.test("C3 object-wide REVOKE", () => step("C3 revoke", ADMIN, "applyObjectWideRoleAuthority",
     R({ objectKey: "supplierCatalogItem", roleKey: "purchasingManager", mode: "REVOKE" }), { outcome: "WOULD_APPLY" }));
 
@@ -218,7 +290,9 @@ test("GRANT-IMPACT PREVIEW: preview == post-commit tenant-wide resolver diff, fo
 
   // ════════ C8 assignRole ════════
   await t.test("C8 global assignment: WOULD_APPLY, then NO_OP (idempotent, no transaction)", async () => {
-    await step("C8 apply", ADMIN, "assignRole", R({ principalId: P.a.plain, roleId: await roleId("dispatcher") }), { outcome: "WOULD_APPLY" });
+    const { report } = await step("C8 apply", ADMIN, "assignRole", R({ principalId: P.a.plain, roleId: await roleId("dispatcher") }), { outcome: "WOULD_APPLY" });
+    const gained = report.affected.find((d) => d.principalId === P.a.plain).changes.workflowResponsibilities?.added ?? [];
+    assert.ok(gained.some((r) => /\.Dispatch:ALLOWED via dispatcher$/.test(r)), `SECURITY_ROLE workflow responsibilities gained: ${JSON.stringify(gained)}`);
     await step("C8 no-op", ADMIN, "assignRole", R({ principalId: P.a.plain, roleId: await roleId("dispatcher") }), { outcome: "NO_OP" });
   });
   await t.test("C8 SCOPED assignment: digests are deterministic (no generated assignment id, no clock)", async () => {
@@ -267,7 +341,9 @@ test("GRANT-IMPACT PREVIEW: preview == post-commit tenant-wide resolver diff, fo
       WHERE a.tenant_id=$1 AND a.principal_id=$2 AND r.key=$3 ORDER BY a.status, a.created_at LIMIT 1`, [A, principalId, key])).rows[0].id;
   await t.test("C9 revoke: WOULD_APPLY; revoking it again re-disables and bumps (WOULD_APPLY, access version only)", async () => {
     const id = await assignmentOf(P.a.plain, "dispatcher");
-    await step("C9 apply", ADMIN, "revokeRole", R({ assignmentId: id }), { outcome: "WOULD_APPLY" });
+    const { report: revoked } = await step("C9 apply", ADMIN, "revokeRole", R({ assignmentId: id }), { outcome: "WOULD_APPLY" });
+    assert.ok((revoked.affected.find((d) => d.principalId === P.a.plain).changes.workflowResponsibilities?.removed ?? []).length > 0,
+      "the revoke loses the dispatcher workflow responsibilities");
     const { report } = await step("C9 again", ADMIN, "revokeRole", R({ assignmentId: id }), { outcome: "WOULD_APPLY" });
     assert.ok(report.affected[0].notes.some((n) => n.startsWith("ACCESS_VERSION_ONLY")));
   });
@@ -288,6 +364,7 @@ test("GRANT-IMPACT PREVIEW: preview == post-commit tenant-wide resolver diff, fo
 
   // ════════ coverage ════════
   await t.test("coverage: all nine commands previewed, every outcome reached", () => {
+    assert.ok(oracleResponsibilitiesSeen > 0, "the responsibility oracle never saw a responsibility -- it proved nothing");
     const ops = new Set([...outcomes.values()].map((o) => o.operation));
     assert.equal(ops.size, 9, [...ops].join(","));
     for (const o of ["WOULD_APPLY", "NO_OP", "WOULD_REFUSE"]) assert.ok([...outcomes.values()].some((x) => x.outcome === o), o);
