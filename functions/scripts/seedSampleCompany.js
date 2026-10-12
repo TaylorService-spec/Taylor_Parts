@@ -808,6 +808,7 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
   const { ensureTenantPrincipal, bootstrapFirstOwner } = require("../lib/adminPolicy/tenantBootstrap.js");
   const { isProtectedOwnerRole } = require("../lib/adminPolicy/administrationAuthority.js");
   const { assignRole } = require("../lib/adminPolicy/policyCommands.js");
+  const { machineAppliedRepository } = require("../lib/adminPolicy/authorityChangeCommitPort.js");
   const { hasAdministrationAuthority } = require("../lib/adminPolicy/administrationAuthority.js");
   const { establishLink } = require("../lib/employeeIdentity/employeePrincipalLinkRepository.js");
   const { createPostgresEmployeeAuthority } = require("../lib/employeeIdentity/postgresEmployeeAuthority.js");
@@ -828,6 +829,9 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
 
   const ledger = newLedger();
   const repo = new PostgresPolicyRepository(pool);
+  // MANDATORY-PREVIEW CARVE-OUT (PR 4, adminPolicy/authorityChangeCommitPort.ts): this runner calls assignRole directly;
+  // every audit row it writes is marked MACHINE_APPLIED with this manifest's digest (pinned: authorityPreviewMandatoryCarveOut).
+  const machineRepo = machineAppliedRepository(repo, { manifestId: "seedSampleCompany", ruling: ROLE_REASON, changes: manifest });
   const actorUid = options.performedBy;
   const companyKey = manifest.company.operatingCompanyKey;
   const employeeId = (key) => employees.get(key).id;
@@ -1029,7 +1033,7 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
         if (isProtectedOwnerRole(role)) {
           await bootstrapFirstOwner(repo, { tenantId, principalId: principal.id, performedBy: actorUid, reason: ROLE_REASON });
         } else {
-          await assignRole(repo, actor, { principalId: principal.id, roleId: role.id, reason: ROLE_REASON });
+          await assignRole(machineRepo, actor, { principalId: principal.id, roleId: role.id, reason: ROLE_REASON });
         }
       }
     }

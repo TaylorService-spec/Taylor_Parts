@@ -67,6 +67,7 @@ const STATUS_BY_CODE: Readonly<Record<AdminApiFailureCode, number>> = Object.fre
   INVALID_INPUT: 400,
   NOT_FOUND: 404,
   CONFLICT: 409,
+  PRECONDITION_REQUIRED: 428,
   INTERNAL: 500,
 });
 
