@@ -11,6 +11,11 @@ import { fileURLToPath } from "node:url";
 
 import {
   HISTORICAL_BASELINE_SHA,
+  EXPORT_BASELINE_DIGEST,
+  baselineDigest,
+  checkDeployEntry,
+  entrySource,
+  parseIndexEntries,
   HISTORICAL_RETIREMENTS,
   INDEX_RELATIVE_PATH,
   MANIFEST_RELATIVE_PATH,
@@ -87,16 +92,20 @@ function evaluate({
   records, current = ["keepMe"], previous = ["keepMe", "createThing"], previousRecords, decisions = [], historical = [],
   baseline, previousBaseline,
 }) {
-  const exportBaseline = { sha: "base", exports: baseline ?? [...new Set([...(previous ?? []), ...current])] };
+  const names = baseline ?? [...new Set([...(previous ?? []), ...current])];
+  const asEntries = (list) => Object.fromEntries(list.map((n) => [n, `./${n}#${n}`]));
+  const exportBaseline = { sha: "base", entries: asEntries(names) };
   return evaluateEquivalence({
     manifest: { records, exportBaseline },
     currentExports: current,
+    currentEntries: current.map((n) => ({ name: n, module: `./${n}`, original: n })),
     previousExports: previous,
     previousManifest: previousRecords || previousBaseline
-      ? { records: previousRecords ?? [], exportBaseline: previousBaseline ?? exportBaseline } : null,
+      ? { records: previousRecords ?? [], exportBaseline: previousBaseline ? { sha: previousBaseline.sha, entries: asEntries(previousBaseline.exports) } : exportBaseline } : null,
     decisions: new Map(decisions.map((d) => (Array.isArray(d) ? d : [d, `## #${d} -- OWNER: createThing is accepted`]))),
     repoRoot: fixtureRepo(),
     historicalRetirements: historical,
+    pinnedBaselineDigest: null,
   });
 }
 
@@ -391,7 +400,7 @@ test("the export baseline makes the gate independent of the comparison commit (a
     previousBaseline: { sha: "base", exports: ["keepMe", "createThing"] } }), /exportBaseline changed/);
   const missing = evaluateEquivalence({ manifest: { records: [] }, currentExports: ["keepMe"], previousExports: null,
     previousManifest: null, decisions: new Map(), repoRoot: fixtureRepo(), historicalRetirements: [] });
-  assertBlocked(missing, /"exportBaseline" \{ sha, exports\[\] \} is required/);
+  assertBlocked(missing, /"exportBaseline" \{ sha, entries/);
 });
 
 test("bootstrap (no previous commit) checks records but finds no newly retired export", () => {
@@ -438,9 +447,16 @@ test("CLI: a supplied previous file that is missing fails closed", () => {
 test("the export baseline is the 82 exports of main acc65f2e, frozen", () => {
   const manifest = JSON.parse(readFileSync(join(REPO_ROOT, MANIFEST_RELATIVE_PATH), "utf8"));
   assert.equal(manifest.exportBaseline.sha, HISTORICAL_BASELINE_SHA);
-  assert.equal(manifest.exportBaseline.exports.length, 82);
-  assert.equal(new Set(manifest.exportBaseline.exports).size, 82);
-  for (const name of HISTORICAL_RETIREMENTS) assert.ok(!manifest.exportBaseline.exports.includes(name), `${name} predates the baseline`);
+  const names = Object.keys(manifest.exportBaseline.entries);
+  assert.equal(names.length, 82);
+  for (const name of HISTORICAL_RETIREMENTS) assert.ok(!names.includes(name), `${name} predates the baseline`);
+  // The pinned digest IS this baseline, and it is exactly what acc65f2e exported, module by module.
+  assert.equal(baselineDigest(manifest.exportBaseline), EXPORT_BASELINE_DIGEST);
+  let atBaseline = null;
+  try { atBaseline = execFileSync("git", ["show", `${HISTORICAL_BASELINE_SHA}:${INDEX_RELATIVE_PATH}`], { cwd: REPO_ROOT }).toString(); } catch { /* shallow clone */ }
+  if (atBaseline !== null) {
+    assert.deepEqual(manifest.exportBaseline.entries, Object.fromEntries(parseIndexEntries(atBaseline).map((e) => [e.name, entrySource(e)])));
+  }
 });
 
 test("CLI end to end: an export removed since the previous commit, with no record, blocks the run", () => {
@@ -455,3 +471,67 @@ test("CLI end to end: an export removed since the previous commit, with no recor
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------------------------------
+// Second adversarial review of #2057 (head 82620da3): B3, N1-N4, N6.
+// ---------------------------------------------------------------------------------------------------
+
+test("B3: the deploy entry point is pinned -- the guard must be reading the file the deploy loads", () => {
+  const good = { packageJson: { main: "lib/index.js" }, firebaseJson: { functions: { source: "functions", codebase: "default" } }, tsconfigText: '{ "compilerOptions": { "rootDir": "src" } }' };
+  assert.deepEqual(checkDeployEntry(good), []);
+  assert.match(checkDeployEntry({ ...good, packageJson: { main: "lib/retired.js" } }).join(), /"main" is "lib\/retired.js"/);
+  assert.match(checkDeployEntry({ ...good, firebaseJson: { functions: { source: "functions-v2" } } }).join(), /exactly one functions codebase/);
+  assert.match(checkDeployEntry({ ...good, firebaseJson: { functions: [{ source: "functions" }, { source: "other" }] } }).join(), /exactly one functions codebase/);
+  assert.match(checkDeployEntry({ ...good, tsconfigText: '{ "compilerOptions": { "rootDir": "." } }' }).join(), /"rootDir" must be "src"/);
+  // And the live repository passes it (run() applies it on every run).
+  const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "functions/package.json"), "utf8"));
+  const fb = JSON.parse(readFileSync(join(REPO_ROOT, "firebase.json"), "utf8"));
+  assert.deepEqual(checkDeployEntry({ packageJson: pkg, firebaseJson: fb, tsconfigText: readFileSync(join(REPO_ROOT, "functions/tsconfig.json"), "utf8") }), []);
+});
+
+test("N1: a line terminator TypeScript honours but the blanker would not (lone CR, U+2028, U+2029) is refused", () => {
+  for (const t of ["\r", "\u2028", "\u2029"]) {
+    assert.throws(() => parseIndexExports(`// note${t}export { brandNewFn } from "./brandNewFn";`), /line terminator other than/, JSON.stringify(t));
+  }
+  assert.deepEqual(parseIndexExports('export { a } from "./a";\r\nexport { b } from "./b";\r\n'), ["a", "b"], "CRLF is fine");
+});
+
+test("N3: an export re-pointed at another module or function is caught, even though the name survives", () => {
+  const base = (over = {}) => evaluateEquivalence({
+    manifest: { records: [], exportBaseline: { sha: "base", entries: { keepMe: "./keepMe#keepMe" } } },
+    currentExports: ["keepMe"], currentEntries: [{ name: "keepMe", module: "./keepMe", original: "keepMe", ...over }],
+    previousExports: ["keepMe"], previousManifest: null, decisions: new Map(), repoRoot: fixtureRepo(),
+    historicalRetirements: [], pinnedBaselineDigest: null,
+  });
+  assert.deepEqual(base().errors, []);
+  assertBlocked(base({ module: "./stubDoesNothing" }), /keepMe now comes from \.\/stubDoesNothing#keepMe, not \.\/keepMe#keepMe/);
+  assertBlocked(base({ original: "somethingElse" }), /keepMe now comes from \.\/keepMe#somethingElse/);
+  const entries = parseIndexEntries('export { transitionWorkOrder as createWorkOrder } from "./transitionWorkOrder";');
+  assert.deepEqual(entries, [{ name: "createWorkOrder", module: "./transitionWorkOrder", original: "transitionWorkOrder" }]);
+});
+
+test("N2: the baseline is frozen by the digest pinned in the guard, even with no previous manifest", () => {
+  const manifest = JSON.parse(readFileSync(join(REPO_ROOT, MANIFEST_RELATIVE_PATH), "utf8"));
+  const edited = { ...manifest.exportBaseline, entries: { ...manifest.exportBaseline.entries } };
+  delete edited.entries.createWorkOrder;
+  const result = evaluateEquivalence({ manifest: { ...manifest, exportBaseline: edited }, currentExports: [], currentEntries: [],
+    previousExports: null, previousManifest: null, decisions: new Map(), repoRoot: REPO_ROOT });
+  assertBlocked(result, /does not match the frozen baseline pinned in the guard/);
+});
+
+test("N4: a decision accepting a GAP or a material change must name the retired operation itself", () => {
+  const gap = verifiedRecord({ disposition: "GAP", verificationStatus: "UNVERIFIED", ownerDecision: "DECISIONS #158",
+    eosReplacement: "see securityRole" });
+  gap.gates.B = { status: "GAP", evidence: [], limitation: "no screen" };
+  // The section mentions a word of the record's own replacement text but not the operation.
+  const borrowed = evaluate({ records: [gap], decisions: [["158", "## #158 -- securityRole ruling"]] });
+  assertBlocked(borrowed, /must name createThing itself to accept its gap/);
+  assertBlocked(borrowed, /RETIREMENT BLOCKED: createThing is not retirement-complete/);
+  assert.deepEqual(evaluate({ records: [gap], decisions: [["158", "## #158 -- OWNER: the createThing gap is accepted"]] }).errors, []);
+});
+
+test("N6: initializeApp may be imported only from firebase-admin/app", () => {
+  assert.deepEqual(parseIndexExports('import { initializeApp } from "firebase-admin/app";\ninitializeApp();'), []);
+  assert.throws(() => parseIndexExports('import { initializeApp } from "./evil";'), /may be imported only from "firebase-admin\/app"/);
+});
+

@@ -29,6 +29,7 @@
 //   5. An Owner decision reference must name a real `## #NNN` heading in docs/DECISIONS.md. The guard
 //      never infers one; it only checks the one a human cited.
 
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
@@ -49,6 +50,9 @@ export const CANDIDATE_DISPOSITIONS = Object.freeze(["REPLACED", "SUPERSEDED"]);
 // The retirements completed before this gate existed (main acc65f2e). Exact names, frozen. Adding a
 // name here is a change to the gate itself and is pinned by its test.
 export const HISTORICAL_BASELINE_SHA = "acc65f2efe4e68cca563f43fe81a3ef4f43f2722";
+// The frozen export baseline's digest (baselineDigest of the manifest's exportBaseline: the 82 exports of acc65f2e with
+// their modules and original names). Pinned HERE so an edited baseline fails even when no previous manifest exists.
+export const EXPORT_BASELINE_DIGEST = "255b838cec82a114bf90dc09bb77f5b88c0e4f8c24ce605027ed2c048b344ef7";
 export const HISTORICAL_RETIREMENTS = Object.freeze([
   // recordPutAway -- retired to EOS put-away in 5d6a84ac (2026-10-01). That commit retired 18 other
   // inventory callables; they predate this gate's audit scope and are listed as backlog in the gate spec.
@@ -147,13 +151,29 @@ const ALLOWED_STATEMENTS = [
   { kind: "export", re: /^export\s*\{([^{}]*)\}\s*from\s*"\s*"$/ },
 ];
 
-export function parseIndexExports(source) {
+// Line terminators TypeScript honours that end a `//` comment. The blanker ends a comment only at "\n"; a lone "\r"
+// or U+2028/U+2029 would let TypeScript see an export the guard reads as comment (adversarial review N1). Refused.
+const FOREIGN_LINE_TERMINATORS = /\r(?!\n)|\u2028|\u2029/;
+export const INIT_IMPORT_SPECIFIER = "firebase-admin/app";
+
+/**
+ * Every export of the index with WHERE it comes from: { name, module, original }. The module specifier and original
+ * name are part of the frozen baseline, so pointing an export at another module (a stub, or a different function under
+ * the old name) is a change the gate sees (review N3). The firebase-admin import may come only from firebase-admin/app.
+ */
+export function parseIndexEntries(source) {
+  if (FOREIGN_LINE_TERMINATORS.test(source)) {
+    const at = source.search(FOREIGN_LINE_TERMINATORS);
+    throw new Error(`${INDEX_RELATIVE_PATH}:${lineAt(source, at)}: a line terminator other than \\n (lone \\r, U+2028 or ` +
+      "U+2029) -- TypeScript ends a comment there and the guard would not; refused.");
+  }
   const code = blankCommentsAndStrings(source);
-  const names = new Set();
+  const entries = new Map();
   let offset = 0;
   for (const raw of code.split(";")) {
     const statement = raw.trim().replace(/\s+/g, " ");
     const at = offset + (raw.length - raw.trimStart().length);
+    const original = source.slice(offset, offset + raw.length);
     offset += raw.length + 1;
     if (!statement) continue;
     const match = ALLOWED_STATEMENTS.map((a) => ({ a, m: statement.match(a.re) })).find((x) => x.m);
@@ -162,20 +182,59 @@ export function parseIndexExports(source) {
         "equivalence guard accepts only the firebase-admin initialization and `export { ... } from \"...\";` blocks, " +
         "and refuses to guess an export set it cannot prove.");
     }
-    if (match.a.kind !== "export") continue;
+    if (match.a.kind === "init-call") continue;
+    // The specifier, read from the ORIGINAL text at the position the blanked statement proved is the one string.
+    const spec = original.match(/from\s*"([^"\\]*)"\s*$/);
+    if (!spec) throw new Error(`${INDEX_RELATIVE_PATH}:${lineAt(source, at)}: cannot read the module specifier`);
+    if (match.a.kind === "init-import") {
+      if (spec[1] !== INIT_IMPORT_SPECIFIER) {
+        throw new Error(`${INDEX_RELATIVE_PATH}:${lineAt(source, at)}: initializeApp may be imported only from "${INIT_IMPORT_SPECIFIER}"`);
+      }
+      continue;
+    }
     for (const part of match.m[1].split(",")) {
-      const spec = part.trim();
-      if (!spec) continue;
-      const m = spec.match(new RegExp(`^(${IDENT})(?:\\s+as\\s+(${IDENT}))?$`));
+      const item = part.trim();
+      if (!item) continue;
+      const m = item.match(new RegExp(`^(${IDENT})(?:\\s+as\\s+(${IDENT}))?$`));
       if (!m || m[1] === "type") {
-        throw new Error(`${INDEX_RELATIVE_PATH}:${lineAt(source, at)}: cannot parse export specifier "${spec}"`);
+        throw new Error(`${INDEX_RELATIVE_PATH}:${lineAt(source, at)}: cannot parse export specifier "${item}"`);
       }
       const name = m[2] ?? m[1];
-      if (names.has(name)) throw new Error(`${INDEX_RELATIVE_PATH}:${lineAt(source, at)}: "${name}" is exported twice`);
-      names.add(name);
+      if (entries.has(name)) throw new Error(`${INDEX_RELATIVE_PATH}:${lineAt(source, at)}: "${name}" is exported twice`);
+      entries.set(name, { name, module: spec[1], original: m[1] });
     }
   }
-  return [...names].sort();
+  return [...entries.values()].sort((x, y) => x.name.localeCompare(y.name));
+}
+
+/** The export names of the index (see parseIndexEntries). */
+export function parseIndexExports(source) {
+  return parseIndexEntries(source).map((e) => e.name);
+}
+
+export const entrySource = (e) => `${e.module}#${e.original}`;
+
+// ---------------------------------------------------------------------------------------------------
+// The deploy entry point. The guard reads functions/src/index.ts; the deploy loads firebase.json's functions source
+// and its package.json `main`, built from tsconfig's rootDir. If any of those moved, the guard would be reading a file
+// the deploy no longer uses and every removal would be invisible (review B3). They are pinned here.
+// ---------------------------------------------------------------------------------------------------
+export function checkDeployEntry({ packageJson, firebaseJson, tsconfigText }) {
+  const errors = [];
+  if (packageJson?.main !== "lib/index.js") {
+    errors.push(`functions/package.json "main" is ${JSON.stringify(packageJson?.main)}, not "lib/index.js" -- the deploy would ` +
+      `not load ${INDEX_RELATIVE_PATH}, and the equivalence gate would be reading a file nothing deploys.`);
+  }
+  const codebases = Array.isArray(firebaseJson?.functions) ? firebaseJson.functions : [firebaseJson?.functions];
+  if (codebases.length !== 1 || codebases[0]?.source !== "functions") {
+    errors.push('firebase.json must declare exactly one functions codebase with source "functions" -- another codebase or ' +
+      "source would deploy functions the equivalence gate never reads.");
+  }
+  const rootDir = String(tsconfigText ?? "").match(/"rootDir"\s*:\s*"([^"]*)"/);
+  if (!rootDir || rootDir[1] !== "src") {
+    errors.push(`functions/tsconfig.json "rootDir" must be "src" so lib/index.js is built from ${INDEX_RELATIVE_PATH}.`);
+  }
+  return errors;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -335,6 +394,9 @@ export function validateRecord(record, ctx) {
 
   // Owner decision: never inferred, only checked.
   let ownerDecisionValid = false;
+  // An Owner decision that ACCEPTS a gap or a material behaviour change must name the retired operation itself --
+  // matching only a word of the record's own replacement text would let any ruling be borrowed (review N4).
+  let decisionNamesOperation = false;
   if (record.ownerDecision !== null && record.ownerDecision !== undefined) {
     const m = typeof record.ownerDecision === "string" && record.ownerDecision.match(OWNER_DECISION_PATTERN);
     if (!m) problems.push(`${where}: ownerDecision must look like "DECISIONS #NNN" or be null`);
@@ -343,6 +405,7 @@ export function validateRecord(record, ctx) {
         `${DECISIONS_RELATIVE_PATH}. Record the Owner's decision there first; never cite one that does not exist.`);
     } else {
       const section = String(ctx.decisions.get(m[1]) ?? "");
+      decisionNamesOperation = new RegExp(`\\b${record.legacyOperation.replace(/[$]/g, "\\$&")}\\b`).test(section);
       const ids = recordIdentifiers(record);
       if (!ids.some((id) => section.includes(id))) {
         problems.push(`${where}: ${record.ownerDecision} does not name this capability (${ids.join(", ")}). An unrelated ` +
@@ -393,10 +456,17 @@ export function validateRecord(record, ctx) {
         problems.push(`${where}: SUPERSEDED with a material business-behaviour change needs the Owner's ` +
           "acceptance (ownerDecision \"DECISIONS #NNN\")");
       }
-      complete = satisfied && (!record.materialBehaviorChange || ownerDecisionValid);
+      if (record.materialBehaviorChange && ownerDecisionValid && !decisionNamesOperation) {
+        problems.push(`${where}: ${record.ownerDecision} must name ${record.legacyOperation} itself to accept its material ` +
+          "behaviour change");
+      }
+      complete = satisfied && (!record.materialBehaviorChange || (ownerDecisionValid && decisionNamesOperation));
       break;
     case "GAP":
-      complete = ownerDecisionValid; // only an Owner-accepted gap may retire
+      if (ownerDecisionValid && !decisionNamesOperation) {
+        problems.push(`${where}: ${record.ownerDecision} must name ${record.legacyOperation} itself to accept its gap`);
+      }
+      complete = ownerDecisionValid && decisionNamesOperation; // only a gap the Owner accepted BY NAME may retire
       break;
     case "UNVERIFIED":
       complete = false;
@@ -411,9 +481,17 @@ export function validateRecord(record, ctx) {
 // The guard.
 // ---------------------------------------------------------------------------------------------------
 
+/** The digest of a frozen baseline: its sha plus every export's name, module and original name, sorted. */
+export function baselineDigest(baseline) {
+  const entries = Object.entries(baseline?.entries ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  return createHash("sha256").update(JSON.stringify([baseline?.sha ?? null, entries])).digest("hex");
+}
+
 export function evaluateEquivalence({
   manifest, currentExports, previousExports, previousManifest, decisions, repoRoot,
   historicalRetirements = HISTORICAL_RETIREMENTS,
+  currentEntries = null,
+  pinnedBaselineDigest = EXPORT_BASELINE_DIGEST,
 }) {
   const errors = [];
   const report = [];
@@ -444,17 +522,32 @@ export function evaluateEquivalence({
   // no longer let a removal through unseen, because EVERY baseline export that is gone must be accounted for on
   // EVERY run, and nothing outside the baseline may be exported (Firebase retirement only).
   const baseline = manifest.exportBaseline;
-  if (!baseline || !Array.isArray(baseline.exports) || !isNonEmptyString(baseline.sha)) {
-    errors.push(`${MANIFEST_RELATIVE_PATH}: "exportBaseline" { sha, exports[] } is required`);
+  const baselineEntries = baseline?.entries;
+  if (!baseline || !isNonEmptyString(baseline.sha) || !baselineEntries || typeof baselineEntries !== "object" || Array.isArray(baselineEntries)) {
+    errors.push(`${MANIFEST_RELATIVE_PATH}: "exportBaseline" { sha, entries { name: "module#original" } } is required`);
   } else {
-    const baselineSet = new Set(baseline.exports);
+    // FROZEN, independently of any previous commit or manifest: the digest is pinned in this file (review N2).
+    if (pinnedBaselineDigest !== null && baselineDigest(baseline) !== pinnedBaselineDigest) {
+      errors.push(`${MANIFEST_RELATIVE_PATH}: exportBaseline does not match the frozen baseline pinned in the guard -- it is ` +
+        "frozen at the gate's introduction and may not be edited");
+    }
+    const baselineNames = Object.keys(baselineEntries);
+    const baselineSet = new Set(baselineNames);
     for (const name of current) {
       if (!baselineSet.has(name)) {
         errors.push(`${name} is exported from ${INDEX_RELATIVE_PATH} but is not in the export baseline -- a new Firebase ` +
           "Function is not permitted (Firebase retirement only), and a retired one may not return.");
       }
     }
-    for (const name of baseline.exports) {
+    // An export that stays must stay THE SAME export: the same module and the same original name (review N3).
+    for (const entry of currentEntries ?? []) {
+      const frozen = baselineEntries[entry.name];
+      if (frozen !== undefined && frozen !== entrySource(entry)) {
+        errors.push(`${entry.name} now comes from ${entrySource(entry)}, not ${frozen} -- re-pointing an export at another ` +
+          "module or function is a retirement of the original; record it as one or keep the export.");
+      }
+    }
+    for (const name of baselineNames) {
       if (current.has(name)) continue;
       const record = byName.get(name);
       if (!record) {
@@ -466,7 +559,7 @@ export function evaluateEquivalence({
       }
     }
     const old = previousManifest?.exportBaseline;
-    if (old && JSON.stringify([...old.exports].sort()) + old.sha !== JSON.stringify([...baseline.exports].sort()) + baseline.sha) {
+    if (old && baselineDigest(old) !== baselineDigest(baseline)) {
       errors.push(`${MANIFEST_RELATIVE_PATH}: exportBaseline changed -- it is frozen at the gate's introduction`);
     }
   }
@@ -554,7 +647,13 @@ export function loadJson(path, label) {
 
 export function run(argv, repoRoot = process.cwd()) {
   const manifest = loadJson(join(repoRoot, MANIFEST_RELATIVE_PATH), "manifest");
-  const currentExports = parseIndexExports(readFileSync(join(repoRoot, INDEX_RELATIVE_PATH), "utf8"));
+  const currentEntries = parseIndexEntries(readFileSync(join(repoRoot, INDEX_RELATIVE_PATH), "utf8"));
+  const currentExports = currentEntries.map((e) => e.name);
+  const deployErrors = checkDeployEntry({
+    packageJson: loadJson(join(repoRoot, "functions/package.json"), "functions/package.json"),
+    firebaseJson: loadJson(join(repoRoot, "firebase.json"), "firebase.json"),
+    tsconfigText: readFileSync(join(repoRoot, "functions/tsconfig.json"), "utf8"),
+  });
   // A SUPPLIED previous file that is missing or malformed fails closed. Only an absent flag (no previous
   // commit expected, or the previous commit predates the manifest) is bootstrap.
   const previousIndexPath = argValue(argv, "--previous-index");
@@ -562,7 +661,8 @@ export function run(argv, repoRoot = process.cwd()) {
   const previousExports = previousIndexPath ? parseIndexExports(readFileSync(previousIndexPath, "utf8")) : null;
   const previousManifest = previousManifestPath ? loadJson(previousManifestPath, "previous manifest") : null;
   const decisions = decisionNumbers(readFileSync(join(repoRoot, DECISIONS_RELATIVE_PATH), "utf8"));
-  return { ...evaluateEquivalence({ manifest, currentExports, previousExports, previousManifest, decisions, repoRoot }), currentExports };
+  const result = evaluateEquivalence({ manifest, currentExports, currentEntries, previousExports, previousManifest, decisions, repoRoot });
+  return { ...result, errors: [...deployErrors, ...result.errors], currentExports };
 }
 
 if (process.argv[1]?.endsWith("firebaseCapabilityEquivalenceGuard.mjs")) {

@@ -89,7 +89,20 @@ Evidence entries: `{ "kind": "test" | "ui-test" | "uat" | "source" | "doc", "pat
    A best-effort scan could be desynchronized: a regex literal `/'/` made a removed export look present
    behind a fake comment. That was adversarial review finding B1 on #2057; it is now a regression test.
 2. **It checks against a frozen export baseline,** the 82 exports of main `acc65f2e` recorded in the
-   manifest (`exportBaseline`).
+   manifest (`exportBaseline.entries`). Each export is recorded with **its module and original name**
+   (`createWorkOrder` → `./createWorkOrder#createWorkOrder`). Re-pointing an export at a stub module,
+   or at another function under the old name, is caught as a change to that export.
+   - The baseline's digest is **pinned in the guard** (`EXPORT_BASELINE_DIGEST`). An edited baseline
+     fails even when no previous manifest exists.
+   - **The deploy entry point is pinned too:**
+     - `functions/package.json` `main` is `lib/index.js`;
+     - `firebase.json` has one functions codebase with source `functions`;
+     - tsconfig `rootDir` is `src`.
+
+     Otherwise the guard would be reading a file nothing deploys.
+   - The firebase-admin import may come only from `firebase-admin/app`.
+   - Line terminators that TypeScript honours but the comment blanker does not are refused: a lone CR,
+     U+2028 and U+2029.
    - On **every** run, every baseline export that is no longer exported must have a GATED record that is
      retirement-complete.
    - Nothing outside the baseline may be exported. No new Firebase Function is allowed, and a retired
@@ -113,7 +126,8 @@ Evidence entries: `{ "kind": "test" | "ui-test" | "uat" | "source" | "doc", "pat
    - `REPLACED` with an open gate;
    - `VERIFIED` with an open gate;
    - a material business-behaviour change without an Owner decision on anything but a `GAP`.
-7. **It requires a relevant Owner decision.** The reference must be `DECISIONS #NNN` with a real
+7. **It requires a relevant Owner decision.** A decision that *accepts* a GAP or a material behaviour
+   change must name the retired operation itself. The reference must be `DECISIONS #NNN` with a real
    `## #NNN` heading, **and that section must name the retired operation, its capability id or the EOS
    replacement operation.** An existing but unrelated decision accepts nothing. The guard never infers
    or invents a reference.
