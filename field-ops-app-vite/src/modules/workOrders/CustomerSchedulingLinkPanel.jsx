@@ -22,14 +22,23 @@ export default function CustomerSchedulingLinkPanel({ workOrder, call = callWork
   // The CURRENT load. A response is applied only if it answers the load still current: not after unmount (no state
   // update on a torn-down tree), and never a late answer for a PREVIOUS Work Order over the one now shown.
   const currentLoad = useRef(0);
-  const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  // The Work Order this panel is showing, or null once unmounted. Set by an effect (not at first render) so StrictMode's
+  // mount -> unmount -> remount leaves it correct. An issue/revoke answer is applied only while its Work Order is shown,
+  // and moving to another Work Order clears the previous one's link, error and busy state.
+  const shownWorkOrder = useRef(null);
+  useEffect(() => {
+    shownWorkOrder.current = workOrderId;
+    setIssued(null);
+    setError(null);
+    setBusy(false);
+    return () => { shownWorkOrder.current = null; };
+  }, [workOrderId]);
 
   const load = useCallback(async () => {
     if (!workOrderId) return;
     const mine = ++currentLoad.current;
     const res = await call("readSelfSchedulingSessions", { workOrderId });
-    if (!mounted.current || mine !== currentLoad.current) return;
+    if (mine !== currentLoad.current) return;
     setSessions(res.ok ? { status: "ready", items: res.result.sessions ?? [] } : { status: res.code === "FORBIDDEN" ? "denied" : "unavailable", items: [] });
   }, [call, workOrderId]);
   useEffect(() => {
@@ -46,7 +55,7 @@ export default function CustomerSchedulingLinkPanel({ workOrder, call = callWork
     setBusy(true);
     setError(null);
     const res = await call("issueSelfSchedulingLink", { workOrderId });
-    if (!mounted.current) return;
+    if (shownWorkOrder.current !== workOrderId) return;
     setBusy(false);
     if (!res.ok) { setError(res.message); return; }
     const base = routerBasenameFrom(import.meta.env.BASE_URL).replace(/\/+$/, "");
@@ -58,7 +67,7 @@ export default function CustomerSchedulingLinkPanel({ workOrder, call = callWork
     if (!reason) return;
     setBusy(true);
     const res = await call("revokeSelfSchedulingLink", { workOrderId, reason });
-    if (!mounted.current) return;
+    if (shownWorkOrder.current !== workOrderId) return;
     setBusy(false);
     if (!res.ok) setError(res.message);
     setIssued(null);

@@ -4,8 +4,9 @@
 // the panel set state when a read resolved AFTER it had unmounted (in a test, after jsdom was torn down). The same defect
 // let a late answer for a PREVIOUS Work Order overwrite the one being shown. Both are proven closed here with deferred
 // reads -- nothing is mocked away, and no rejection is suppressed.
+import { StrictMode } from "react";
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup, act } from "@testing-library/react";
+import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import CustomerSchedulingLinkPanel from "../src/modules/workOrders/CustomerSchedulingLinkPanel.jsx";
 
 function deferred() {
@@ -51,5 +52,29 @@ describe("CustomerSchedulingLinkPanel -- only the current load is applied", () =
     const call = async () => session("s-1", "ACTIVE");
     render(<CustomerSchedulingLinkPanel workOrder={{ id: "wo-1", status: "READY_TO_DISPATCH" }} call={call} />);
     expect(await screen.findByText(/Waiting for the customer/)).toBeTruthy();
+  });
+
+  it("under StrictMode (as the app runs) the sessions read, the issued link and the busy state all still apply", async () => {
+    // StrictMode mounts, unmounts and remounts every effect; a guard set only at first render would stay "unmounted".
+    const call = async (op) => (op === "issueSelfSchedulingLink"
+      ? { ok: true, result: { linkPath: "/schedule/abc", expiresAt: "2026-12-31T00:00:00Z" } }
+      : session("s-1", "ACTIVE"));
+    render(<StrictMode><CustomerSchedulingLinkPanel workOrder={{ id: "wo-1", status: "READY_TO_DISPATCH" }} call={call} /></StrictMode>);
+    expect(await screen.findByText(/Waiting for the customer/)).toBeTruthy();
+    const replace = screen.getByRole("button", { name: "Replace the Link" });
+    await act(async () => { fireEvent.click(replace); });
+    expect((await screen.findByLabelText("Scheduling Link")).value).toMatch(/\/schedule\/abc$/);
+    expect(screen.getByRole("button", { name: "Replace the Link" }).disabled).toBe(false);
+  });
+
+  it("a link issued for the PREVIOUS Work Order is never shown on the current one", async () => {
+    const issued = deferred();
+    const call = (op) => (op === "issueSelfSchedulingLink" ? issued.promise : Promise.resolve({ ok: true, result: { sessions: [] } }));
+    const { rerender } = render(<CustomerSchedulingLinkPanel workOrder={{ id: "wo-1", status: "READY_TO_DISPATCH" }} call={call} />);
+    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: "Create Scheduling Link" })); });
+    rerender(<CustomerSchedulingLinkPanel workOrder={{ id: "wo-2", status: "READY_TO_DISPATCH" }} call={call} />);
+    await act(async () => { issued.resolve({ ok: true, result: { linkPath: "/schedule/wo-1-link", expiresAt: "2026-12-31T00:00:00Z" } }); await issued.promise; });
+    expect(screen.queryByLabelText("Scheduling Link")).toBeNull();
+    expect(screen.getByRole("button", { name: "Create Scheduling Link" }).disabled).toBe(false);
   });
 });
