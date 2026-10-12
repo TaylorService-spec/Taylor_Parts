@@ -12,7 +12,9 @@
 //   actor_uid   the RESOLVED EOS Principal            (never a Firebase uid, never a caller-stated id)
 //   target_kind 'authorization'   target_id  the operation name
 //   before      NULL
-//   after       { operation, requiredCapability, refusalCode, correlationId }   -- nothing from the request body
+//   after       { operation, requiredCapability, refusalCode, correlationId }   -- nothing from the request body --
+//               stamped with the actor's Administrator provenance through the one helper every direct audit writer
+//               uses (DECISIONS #225), so a refused protected Administrator is distinguishable like any other act
 //   reason      the refusal code
 //
 // ════════════════════ RATE BOUND ════════════════════
@@ -38,6 +40,7 @@
 // reviewed before activation; turning this on in an environment is therefore a reviewed code change, not a toggle.
 import { createHash } from "node:crypto";
 import type { Pool } from "pg";
+import { withActorAuthority } from "../eosOps/administrationReach.js";
 
 export type DenialAuditMode = "OFF" | "RECORD";
 
@@ -116,7 +119,8 @@ export async function recordAuthorizationDenial(
       `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
        VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, $9)
        ON CONFLICT (id) DO NOTHING`,
-      [id, denial.tenantId, action, denial.principalId, DENIAL_AUDIT_TARGET_KIND, denial.operation, JSON.stringify(after), at, denial.refusalCode],
+      [id, denial.tenantId, action, denial.principalId, DENIAL_AUDIT_TARGET_KIND, denial.operation,
+        JSON.stringify(await withActorAuthority(pool as Pool, denial.tenantId, denial.principalId, after)), at, denial.refusalCode],
     );
     return (res.rowCount ?? 0) > 0 ? "RECORDED" : "DEDUPLICATED";
   } catch {

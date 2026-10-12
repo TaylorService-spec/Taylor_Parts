@@ -13,13 +13,15 @@ const DENIAL = Object.freeze({
 });
 const AT = new Date("2026-10-11T12:00:30.000Z");
 
+// Answers the Administrator-standing lookup withActorAuthority makes (no standing), and records the audit INSERT.
 function fakePool({ fail = false, rowCount = 1 } = {}) {
   const calls = [];
   return {
     calls,
     query: async (text, values) => {
-      calls.push({ text, values });
       if (fail) throw new Error("connection refused -- contains nothing about the request");
+      if (!/INSERT INTO eos_policy\.audit_events/.test(text)) return { rows: [], rowCount: 0 };
+      calls.push({ text, values });
       return { rowCount };
     },
   };
