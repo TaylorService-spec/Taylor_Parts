@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { auth } from "../firebase/firebase";
 import {
   onAuthStateChanged,
@@ -13,6 +13,8 @@ import { resolveEmployeeSession } from "./employeeSession";
 import { clearEosSession, readEosSession } from "./eosSession";
 import { eosSessionUser, resolveEosSessionIdentity } from "./eosSessionIdentity";
 import { operationsApiClient } from "../services/operationsApiClient.js";
+// EOS NATIVE LOGIN (docs/architecture/eos-native-identity.md, 3(e)): the human front door. Off unless the build enables it.
+import { eosHumanLoginEnabled, eosLoginClient } from "./eosLoginClient.js";
 
 const AuthContext = createContext();
 
@@ -37,6 +39,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [identityError, setIdentityError] = useState(null);
   const [retryGeneration, setRetryGeneration] = useState(0);
+  // One silent session restore per page load: a tab reopened after the access token lapsed but within the refresh
+  // window resumes without a sign-in. Attempted once, so a failed exchange can never loop.
+  const restoreAttempted = useRef(false);
 
   useEffect(() => {
     // Race-condition guard: onAuthStateChanged's callback is async
@@ -57,6 +62,17 @@ export function AuthProvider({ children }) {
 
     // ── EOS SESSION ── checked once per mount/retry. While it is present, Firebase auth state is not
     // subscribed: one session, one identity source, never two identities paired in one context.
+    if (eosHumanLoginEnabled() && !restoreAttempted.current && !readEosSession() && eosLoginClient.hasRefreshToken()) {
+      restoreAttempted.current = true;
+      setLoading(true);
+      eosLoginClient.refresh().finally(() => {
+        if (isMounted) setRetryGeneration((n) => n + 1);
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
+
     const eosSession = readEosSession();
     if (eosSession) {
       setUser(eosSessionUser(eosSession));
@@ -169,9 +185,14 @@ export function AuthProvider({ children }) {
   const login = (email, password) =>
     signInWithEmailAndPassword(auth, email, password);
 
-  const logout = () => {
-    // Ending an EOS session clears its token; the Firebase sign-out is unchanged.
-    const hadEosSession = readEosSession() !== null;
+  // After an EOS login stored its session: resolve identity from the EOS API, exactly as for any EOS session.
+  const eosSignedIn = useCallback(() => setRetryGeneration((n) => n + 1), []);
+
+  const logout = async () => {
+    // Ending an EOS session clears its token (and, with the front door enabled, revokes it on the server); the
+    // Firebase sign-out is unchanged.
+    const hadEosSession = readEosSession() !== null || (eosHumanLoginEnabled() && eosLoginClient.hasRefreshToken());
+    if (eosHumanLoginEnabled()) await eosLoginClient.logout();
     clearEosSession();
     if (hadEosSession) {
       setUser(null);
@@ -195,7 +216,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, role, employeeId, displayName, operationalRoles, employmentStatus, login, logout, resetPassword, loading, identityError, retryIdentityResolution: () => setRetryGeneration((n) => n + 1) }}
+      value={{ user, role, employeeId, displayName, operationalRoles, employmentStatus, login, logout, resetPassword, eosSignedIn, loading, identityError, retryIdentityResolution: () => setRetryGeneration((n) => n + 1) }}
     >
       {children}
     </AuthContext.Provider>

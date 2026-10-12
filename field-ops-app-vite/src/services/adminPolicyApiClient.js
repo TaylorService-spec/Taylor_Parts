@@ -35,6 +35,7 @@
 // state it instead of a comment going stale again. It is still absent for a local or production
 // build, so NOT CONFIGURED remains a state this client must report honestly -- which is the part of
 // the original paragraph that was always the point.
+import { eosHumanLoginEnabled, eosLoginClient } from "../auth/eosLoginClient.js";
 import { auth } from "../firebase/firebase.js";
 import { currentEosSessionToken } from "../auth/eosSession.js";
 
@@ -164,7 +165,26 @@ export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze([
   "setSalesDiscountAuthority",
 ]);
 
+/**
+ * LOGIN-ACCOUNT ADMINISTRATION (EOS native identity), mirrored from the server's LOGIN_ADMINISTRATION_OPERATIONS
+ * (functions/src/eosAuth/eosLoginService.ts). Gated on the server (admin.roleAssignment.write; the read on
+ * admin.principalAccess.read); this list decides nothing, it only lets the names leave the browser.
+ */
+export const ADMIN_LOGIN_OPERATIONS = Object.freeze([
+  "readLoginAccount",
+  "provisionLoginAccount",
+  "reissueLoginEnrollment",
+  "issueLoginReset",
+  "setLoginAccountStatus",
+  "unlockLoginAccount",
+  "revokeLoginSessions",
+  "resetLoginMfa",
+  "setLoginMfaRequirement",
+  "retireLoginAccount",
+]);
+
 const ALL_OPERATIONS = new Set([...ADMIN_READ_OPERATIONS, ...ADMIN_MUTATION_OPERATIONS, ...ADMIN_CONFIGURATION_OPERATIONS]);
+for (const name of ADMIN_LOGIN_OPERATIONS) ALL_OPERATIONS.add(name);
 
 /** Is this a name the server would recognise? */
 export const isAdminOperation = (name) => typeof name === "string" && ALL_OPERATIONS.has(name);
@@ -286,6 +306,12 @@ export async function callPolicyApi(operation, input = {}, options = {}) {
 export async function currentIdToken() {
   // ADDITIVE EOS SESSION (docs/architecture/eos-identity-session-foundation.md): an EOS access token, when
   // present and unexpired, is the bearer; otherwise the Firebase ID token, exactly as before.
+  // EOS NATIVE LOGIN (docs/architecture/eos-native-identity.md): when the human front door is enabled, the access
+  // token is refreshed shortly before it lapses; otherwise the stored token is read as before.
+  if (eosHumanLoginEnabled()) {
+    const fresh = await eosLoginClient.freshAccessToken();
+    if (fresh) return fresh;
+  }
   const eosToken = currentEosSessionToken();
   if (eosToken) return eosToken;
   const user = auth?.currentUser ?? null;

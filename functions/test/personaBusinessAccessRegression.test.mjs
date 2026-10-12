@@ -301,7 +301,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 91 -> 92: Governed configuration + sales pricing (2026-10-02, DECISIONS #203): 1764500000000 -- operating-company business time zone + resolver, finance.configuration.manage (granted to NO Role), customer discount, trade-in items, package composition; untouched handoffs follow the active destination.
   // 92 -> 93: 1764510000000 -- Finance Closure (#206): settlements / applications / reconciliation, obligation handoffs, intercompany relief, service-provider authorization, late cost evidence; four settlement capabilities granted to the five Finance-execution Roles.
   // 93 -> 94: 1764520000000 -- Rental (#207): the eos_rental domain, rental Work Orders, the RENTAL billing package source; six rental capabilities.
-  assert.equal(files.length, 94, "the migration chain moved; re-measure before trusting anything below");
+  // 94 -> 95: 1764530000000 -- EOS native login: credential, session and MFA tables; no capability, no grant.
+  assert.equal(files.length, 95, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

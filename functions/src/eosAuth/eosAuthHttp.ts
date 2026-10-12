@@ -23,6 +23,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { peekUnverifiedJws, sha256Hex, EosTokenError } from "./eosAccessToken";
 import type { EosAuthRuntime } from "./eosAuthConfig";
 import { issueNonprodPersonaSession, PersonaIssuanceError } from "./eosSessionIssuer";
+import { isHumanSubject } from "./eosLoginService";
+import { isLoginRoute } from "./eosLoginHttp";
 import type { PolicyRepository } from "../adminPolicy/policyRepository";
 
 export interface VerifiedIdentity {
@@ -45,15 +47,32 @@ export function isEosShapedBearer(token: string, eosIssuer: string | null): bool
   return eosIssuer !== null && peek.payload.iss === eosIssuer;
 }
 
+/**
+ * The human-session gate (eosLoginService.checkSession in "api" mode): a HUMAN EOS token is good only while its login
+ * session is live, its account active and its second-factor obligation met -- checked on every request, so a revoked
+ * session or a disabled account stops working immediately, not at `exp`.
+ */
+export type HumanSessionGate = (subject: string, sessionId: string | null) => Promise<void>;
+
 export function createCompositeTokenVerifier(input: {
   readonly eos: EosAuthRuntime;
   readonly firebase: TokenVerifier;
+  /** Absent: human login is not mounted, and a human-subject token is refused outright. */
+  readonly humanSessionGate?: HumanSessionGate | null;
 }): TokenVerifier {
   const { eos, firebase } = input;
+  const gate = input.humanSessionGate ?? null;
   return async function verifyBearer(bearerToken: string): Promise<VerifiedIdentity> {
     if (isEosShapedBearer(bearerToken, eos.issuer)) {
       if (!eos.verify) throw new EosTokenError("ALGORITHM_REFUSED");
       const v = eos.verify(bearerToken);
+      if (isHumanSubject(v.externalSubject)) {
+        if (!gate || !v.sessionId) throw new EosTokenError("CLAIM_REFUSED");
+        await gate(v.externalSubject, v.sessionId);
+      } else if (v.sessionId !== null) {
+        // Only a login session carries `sid`. A persona token naming one is not a token any issuer here mints.
+        throw new EosTokenError("CLAIM_REFUSED");
+      }
       return { externalSubject: v.externalSubject, identityProvider: v.identityProvider };
     }
     return firebase(bearerToken);
@@ -92,9 +111,15 @@ export function createEosAuthHttpHandler(deps: {
   readonly repo: PolicyRepository;
   readonly auth: EosAuthRuntime;
   readonly environment: string;
+  /** The human front door (eosLoginHttp.ts). Absent unless EOS_HUMAN_LOGIN=enabled: its paths are then 404. */
+  readonly login?: ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | null;
 }) {
   return async function handleEosAuth(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const path = (req.url ?? "").split("?")[0];
+    if (deps.login && isLoginRoute(path.replace(/\/$/, ""))) {
+      await deps.login(req, res);
+      return;
+    }
     const issuer = deps.auth.personaIssuer;
     // NOT MOUNTED unless nonprod and fully configured: indistinguishable from any unknown path.
     if (path !== PERSONA_SESSION_ROUTE || !issuer || deps.environment !== "nonprod"

@@ -842,7 +842,7 @@ export class PostgresPolicyRepository implements PolicyRepository {
 
 // ════════════════════ the transaction ════════════════════
 
-function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransaction {
+export function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransaction {
   const tenantId = actor.tenantId;
   const q = client as unknown as Queryable;
 

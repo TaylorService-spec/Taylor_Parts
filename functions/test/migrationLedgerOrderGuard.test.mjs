@@ -203,8 +203,10 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 91 -> 92: Governed configuration + sales pricing (2026-10-02, DECISIONS #203): 1764500000000 -- operating-company business time zone + resolver, finance.configuration.manage (granted to NO Role), customer discount, trade-in items, package composition; untouched handoffs follow the active destination.
 // 92 -> 93: 1764510000000 -- Finance Closure (#206): settlements / applications / reconciliation, obligation handoffs, intercompany relief, service-provider authorization, late cost evidence; four settlement capabilities granted to the five Finance-execution Roles.
 // 93 -> 94: 1764520000000 -- Rental (#207): the eos_rental domain, rental Work Orders, the RENTAL billing package source; six rental capabilities granted to their analog Roles.
-const RUNNABLE_MIGRATION_COUNT = 94;
-const TRACKED_MIGRATION_COUNT = 95; // the 94 runnable + the one deferred file
+// 94 -> 95: 1764530000000 -- EOS native login (docs/architecture/eos-native-identity.md): login accounts, sessions, TOTP
+// factors, recovery codes, tickets, authentication_events; no capability, no grant. APPENDED, an EXPLAINED pending migration.
+const RUNNABLE_MIGRATION_COUNT = 95;
+const TRACKED_MIGRATION_COUNT = 96; // the 95 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -250,6 +252,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764500000000_governed-config-and-sales-pricing",
   "1764510000000_finance-closure",
   "1764520000000_rental",
+  "1764530000000_eos-native-login",
 ]);
 
 const repoMigrations = () =>
