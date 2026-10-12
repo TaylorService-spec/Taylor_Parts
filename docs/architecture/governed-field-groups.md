@@ -160,9 +160,9 @@ Per the Owner direction of 2026-10-12, this is **recorded as accepted**. The met
 | Role | Proposed keys | Already held (baseline) | Effect |
 |---|---|---|---|
 | **Purchasing Manager** (`purchasingManager`) | `inventory.supplierTerms.read`, `.create`, `.edit`, `.changeStatus`; `inventory.catalog.cost.read`, `.create`, `.edit` (7) | `inventory.catalog.read` | Reads, adds, edits and activates supplier terms, sets the preferred supplier, and sees and sets cost, currency and contract window. It gains no `inventory.catalog.manage`. |
-| **Inventory Catalog Administrator** (`inventoryCatalogAdministrator`) | `inventory.supplierTerms.read`, `.edit`, `.changeStatus` (3) | `inventory.catalog.read`, `.manage`, `.activate` | Maintains relationship and ordering terms and their lifecycle. It sees no cost and cannot add terms, because adding sets cost. Cost authority is not inferred from catalog administration. |
+| **Inventory Catalog Administrator** (`inventoryCatalogAdministrator`) | `inventory.supplierTerms.read`, `.edit`, `.changeStatus`, and `inventory.catalog.cost.read` (4) | `inventory.catalog.read`, `.manage`, `.activate` | Maintains relationship and ordering terms and their lifecycle, and **reads** cost and contract terms. The Owner ruling of 2026-08-07 (`docs/assessments/r1-catalog-read-authority-requirement.md`) names the catalog administrator as a cost-read holder. Cost **create** and **edit** stay with Purchasing, so this Role cannot add terms (adding sets cost) or change cost. The cost read is proposed as its own explicit grant, never inferred from catalog administration. |
 
-The PG suite proves the Purchasing bundle (case c) with a fixture Role that holds exactly those keys. It also proves the read, edit and changeStatus combination that the Inventory Catalog Administrator proposal describes, as `administrator`, but on a fixture Role, never the real one.
+The PG suite proves the Purchasing bundle (case c) with a fixture Role that holds exactly those keys. It also proves the read, edit and changeStatus combination, and the cost-read combination, that the Inventory Catalog Administrator proposal describes. This runs on a fixture Role, never the real one.
 
 ### 6.2 Where it is proven
 
