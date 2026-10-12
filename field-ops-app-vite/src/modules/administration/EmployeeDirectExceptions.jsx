@@ -21,7 +21,7 @@ import { adminControlPlaneClient, refusalText } from "../../services/adminContro
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { useConditionVocabulary } from "./useConditionVocabulary.js";
 import { ConditionFields, Outcome, ReasonField } from "./GrantControls.jsx";
-import { AuthorityImpactPreview, useAuthorityImpactPreview } from "./AuthorityImpactPreview.jsx";
+import { AuthorityImpactPreview, useAuthorityImpactPreview, withPreviewDigest } from "./AuthorityImpactPreview.jsx";
 import { buildCondition, directExceptionRows, explanationModel, statedReason } from "./controlPlaneModel.js";
 import { titleCase, titleCasePhrase } from "../../shared/display/displayLabels.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
@@ -70,7 +70,7 @@ function DirectExceptionRowControls({ api, principalId, row, vocabulary, onChang
     event.preventDefault();
     if (!ready || busy || !preview.canConfirm) return;
     setBusy(true);
-    const committed = { ...change, previewDigest: preview.previewDigest };
+    const committed = withPreviewDigest(change, preview);
     let outcome;
     if (mode === "revoke") outcome = await api.revokeObjectActionFromPrincipal(committed);
     else if (mode === "setCondition") outcome = await api.setGrantCondition(committed);
@@ -142,7 +142,7 @@ function GrantDirectExceptionForm({ api, principalId, vocabulary, onChanged }) {
     event.preventDefault();
     if (!ready || busy || !preview.canConfirm) return;
     setBusy(true);
-    const outcome = preview.settle(await api.grantObjectActionToPrincipal({ ...change, previewDigest: preview.previewDigest }));
+    const outcome = preview.settle(await api.grantObjectActionToPrincipal(withPreviewDigest(change, preview)));
     setBusy(false);
     setResult(outcome);
     if (outcome?.ok) {

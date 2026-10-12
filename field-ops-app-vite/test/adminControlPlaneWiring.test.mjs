@@ -22,8 +22,8 @@ test("the Employee page's Security Role control is PostgreSQL assignRole / revok
   // PR 4: the change is composed ONCE, previewed by the server, and committed with the preview's digest.
   assert.match(roles, /\{ principalId, roleId, reason: statedReason\(reason\) \}/);
   assert.match(roles, /\{ assignmentId: removing\.id, reason: statedReason\(reason\) \}/);
-  assert.match(roles, /api\.assignRole\(\{ \.\.\.pendingChange, previewDigest: preview\.previewDigest \}\)/);
-  assert.match(roles, /api\.revokeRole\(\{ \.\.\.pendingChange, previewDigest: preview\.previewDigest \}\)/);
+  assert.match(roles, /api\.assignRole\(withPreviewDigest\(pendingChange, preview\)\)/);
+  assert.match(roles, /api\.revokeRole\(withPreviewDigest\(pendingChange, preview\)\)/);
   assert.equal(/firebase|assignApprovedRole|administrationUsersClient/.test(roles), false);
 
   const detail = code(read("src/modules/administration/UserDetail.jsx"));

@@ -28,7 +28,7 @@ import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 import { formatDateOnly, formatTimestamp } from "../../domain/displayTimestamp.js";
 import AdminDisclosure from "./AdminDisclosure.jsx";
-import { AuthorityChangeDialog, AuthorityImpactPreview, useAuthorityImpactPreview } from "./AuthorityImpactPreview.jsx";
+import { AuthorityChangeDialog, AuthorityImpactPreview, useAuthorityImpactPreview, withPreviewDigest } from "./AuthorityImpactPreview.jsx";
 
 const scopeWords = (h) => {
   const type = !h.scopeType || h.scopeType === "global" ? "All (Global)" : titleCase(h.scopeType);
@@ -114,7 +114,7 @@ function AssignRoleToEmployee({ api, workforce, role, onChanged }) {
     e.preventDefault();
     if (!person) { setResult({ error: "Choose an employee with an application user." }); return; }
     if (!preview.canConfirm) { setResult({ error: "Preview the impact of this assignment first." }); return; }
-    const res = preview.settle(await api.assignRole({ ...change, previewDigest: preview.previewDigest }));
+    const res = preview.settle(await api.assignRole(withPreviewDigest(change, preview)));
     setResult(res.ok ? { ok: `Assigned ${identifierLabel(role.roleKey, role.name)} to ${person.displayName}.` } : { error: `${res.code}: ${res.message}` });
     if (res.ok) { setReason(""); onChanged(); }
   };

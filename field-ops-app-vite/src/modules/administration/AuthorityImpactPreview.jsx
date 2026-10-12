@@ -7,12 +7,18 @@
 // affect. Confirm then sends the preview's `previewDigest`; the server recomputes it under the governance lock and
 // refuses STALE_PREVIEW when anything moved in between.
 //
-// WHAT THE BROWSER DECIDES: NOTHING. It never computes an impact, never predicts a refusal, never relaxes the rule:
+// WHAT THE BROWSER DECIDES: NOTHING. It never computes an impact, never predicts a refusal, never relaxes the rule.
+// WHETHER THE PREVIEW IS MANDATORY is the SERVER's answer (`previewMandatory` on every preview; ADMIN_PREVIEW_MANDATORY):
 //   - Confirm is DISABLED until a FRESH preview of EXACTLY the inputs on screen answered WOULD_APPLY. Any change to
 //     the inputs (reason included) discards the preview -- the key is the very input object Confirm would send.
 //   - NO_OP offers nothing to confirm; WOULD_REFUSE shows the server's refusal verbatim and offers nothing to confirm.
-//   - A preview that could not be taken (UNKNOWN_OPERATION, FORBIDDEN, UNREACHABLE...) is shown as itself and Confirm
-//     stays disabled: fail closed, never "confirm without a preview".
+//   - MANDATORY (previewMandatory: true): Confirm sends the preview's digest. A preview that could not be taken is shown
+//     as itself and Confirm stays disabled: fail closed.
+//   - NOT MANDATORY (false, the default): the preview is shown exactly the same, but Confirm sends NO digest -- the
+//     server's unchanged commit path. A preview that could not be taken (UNKNOWN_OPERATION, UNREACHABLE, BUSY...) shows
+//     "impact preview unavailable" and Confirm stays available: the server decides. If that server turns out to require
+//     the preview it answers PREVIEW_REQUIRED, which this hook remembers -- from then on it fails closed.
+//   - FORBIDDEN on the preview is the change's own gate: nothing to confirm either way.
 //   - STALE_PREVIEW on commit discards the preview, says so, and requires a new preview and a new Confirm.
 import { useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
@@ -23,6 +29,13 @@ import { AUTHORITY_CHANGE_INPUT, isAuthorityChangeOperation, refusalText } from 
 /** The commit refusal that means "the authority moved since the preview": the code rides in the message. */
 export const isStalePreview = (result) => Boolean(result && result.ok === false && typeof result.message === "string"
   && /^STALE_PREVIEW\b/.test(result.message));
+
+/** The commit refusal of a server that requires a preview the client did not send (ADMIN_PREVIEW_MANDATORY on). */
+export const isPreviewRequired = (result) => Boolean(result && result.ok === false && (result.code === "PRECONDITION_REQUIRED"
+  || (typeof result.message === "string" && /^PREVIEW_REQUIRED\b/.test(result.message))));
+
+/** The commit's arguments: the change, plus `previewDigest` ONLY when the server requires it (never a null key). */
+export const withPreviewDigest = (args, preview) => (preview?.previewDigest ? { ...args, previewDigest: preview.previewDigest } : { ...args });
 
 const IDLE = Object.freeze({ key: null, status: "idle", result: null, error: null });
 
@@ -40,6 +53,9 @@ export function useAuthorityImpactPreview(api, operation, args) {
     : null;
   const [state, setState] = useState(IDLE);
   const [stale, setStale] = useState(false);
+  // Learned from the server: a PREVIEW_REQUIRED commit refusal. Sticky for this hook (the server's flag does not flip
+  // per request).
+  const [requiredByServer, setRequiredByServer] = useState(false);
   const sequence = useRef(0);
   const current = key !== null && state.key === key ? state : { ...IDLE, key };
 
@@ -68,12 +84,22 @@ export function useAuthorityImpactPreview(api, operation, args) {
     }
   };
 
-  const digest = current.status === "ready" && current.result.outcome === "WOULD_APPLY"
-    && typeof current.result.digests?.previewDigest === "string" && current.result.digests.previewDigest.length > 0
+  const mandatory = requiredByServer || (current.status === "ready" && current.result.previewMandatory === true);
+  const wouldApply = current.status === "ready" && current.result.outcome === "WOULD_APPLY";
+  const digest = wouldApply && typeof current.result.digests?.previewDigest === "string" && current.result.digests.previewDigest.length > 0
     ? current.result.digests.previewDigest : null;
+  // The preview could not be taken (never FORBIDDEN: that is the change's own gate, the commit would refuse the same).
+  const unavailable = (current.status === "failed" && current.error?.code !== "FORBIDDEN")
+    || (current.status === "ready" && current.result.outcome === "PREVIEW_BUSY");
+  const canConfirm = mandatory ? digest !== null : (wouldApply || unavailable);
 
   const settle = (outcome) => {
-    if (isStalePreview(outcome)) {
+    if (isPreviewRequired(outcome)) {
+      sequence.current += 1;
+      setRequiredByServer(true);
+      setState(IDLE);
+      setStale(false);
+    } else if (isStalePreview(outcome)) {
       sequence.current += 1;
       setState(IDLE);
       setStale(true);
@@ -85,7 +111,9 @@ export function useAuthorityImpactPreview(api, operation, args) {
     return outcome;
   };
 
-  return { ...current, stale, run, previewDigest: digest, canConfirm: digest !== null, settle };
+  // previewDigest is SENT only when the server requires it: not mandatory means the unchanged commit path, no digest.
+  return { ...current, stale, mandatory, requiredByServer, unavailable, run,
+    previewDigest: mandatory ? digest : null, canConfirm, settle };
 }
 
 const CHANGE_LABELS = Object.freeze({
@@ -196,14 +224,25 @@ export function AuthorityImpactPreview({ preview, disabled = false }) {
           {status === "ready" || status === "failed" ? "Preview impact again" : "Preview impact"}
         </Button>
       </div>
+      {preview.requiredByServer ? (
+        <p className="fo-warning" role="alert" data-preview-required>
+          PREVIEW_REQUIRED: this server requires an impact preview before the change is saved, and nothing was saved. Preview the impact, then confirm.
+        </p>
+      ) : null}
       {status === "idle" ? (
         <p className="fo-muted">Preview the impact first: Confirm is enabled only after the server shows what this change does.</p>
       ) : null}
       {status === "loading" ? <p className="fo-muted" role="status">Previewing the impact…</p> : null}
       {status === "failed" ? (
-        <p className="fo-warning" role="alert" data-preview-failure={preview.error?.code ?? "INTERNAL"}>
-          {`The impact preview is unavailable, so this change cannot be confirmed here. (${refusalText(preview.error) ?? "INTERNAL"})`}
+        <p className="fo-warning" role="alert" data-preview-failure={preview.error?.code ?? "INTERNAL"}
+          data-preview-unavailable={preview.canConfirm ? "confirmable" : "blocked"}>
+          {preview.canConfirm
+            ? `Impact preview unavailable: the impact of this change cannot be shown. You can still confirm; the server decides. (${refusalText(preview.error) ?? "INTERNAL"})`
+            : `The impact preview is unavailable, so this change cannot be confirmed here. (${refusalText(preview.error) ?? "INTERNAL"})`}
         </p>
+      ) : null}
+      {status === "ready" && preview.result.outcome === "PREVIEW_BUSY" && preview.canConfirm ? (
+        <p className="fo-muted" data-preview-unavailable="confirmable">Impact preview unavailable right now. You can still confirm; the server decides.</p>
       ) : null}
       {status === "ready" ? <ImpactReport report={preview.result} /> : null}
     </section>
@@ -237,12 +276,12 @@ export function AuthorityChangeDialog({
     setSubmitting(true);
     let res;
     try {
-      res = preview.settle(await api[operation]({ ...args, previewDigest: preview.previewDigest }));
+      res = preview.settle(await api[operation](withPreviewDigest(args, preview)));
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
     }
-    if (!isStalePreview(res)) onResult?.(res);
+    if (!isStalePreview(res) && !isPreviewRequired(res)) onResult?.(res);
   };
 
   return (

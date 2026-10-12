@@ -17,6 +17,8 @@ export function previewReport(over = {}) {
     unaffectedHolders: 0,
     protectedAffected: { owners: 0, administrators: 0 },
     detail: "COUNTS_ONLY",
+    // The existing component tests exercise the MANDATORY behaviour (the digest is sent, preview failures fail closed).
+    previewMandatory: true,
     digests: { inputDigest: "i".repeat(64), policyStateDigest: "p".repeat(64), beforeDigest: "b".repeat(64), impactDigest: "m".repeat(64), previewDigest: PREVIEW_DIGEST },
     ...over,
   };

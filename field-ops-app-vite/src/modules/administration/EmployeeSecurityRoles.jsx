@@ -28,7 +28,7 @@ import { adminControlPlaneClient, refusalText } from "../../services/adminContro
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ReadState } from "./ObjectActionSecurity.jsx";
 import { Outcome, ReasonField } from "./GrantControls.jsx";
-import { AuthorityImpactPreview, useAuthorityImpactPreview } from "./AuthorityImpactPreview.jsx";
+import { AuthorityImpactPreview, useAuthorityImpactPreview, withPreviewDigest } from "./AuthorityImpactPreview.jsx";
 import { statedReason } from "./controlPlaneModel.js";
 import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
@@ -140,7 +140,7 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
     event.preventDefault();
     if (!roleId || !reasonText || busy || !scopeReady || !preview.canConfirm) return;
     setBusy(true);
-    const outcome = preview.settle(await api.assignRole({ ...pendingChange, previewDigest: preview.previewDigest }));
+    const outcome = preview.settle(await api.assignRole(withPreviewDigest(pendingChange, preview)));
     setBusy(false);
     setResult(outcome);
     if (outcome?.ok) { chooseRole(""); setReason(""); assignments.reload(); }
@@ -150,7 +150,7 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
     event.preventDefault();
     if (!removing || !reasonText || busy || !preview.canConfirm) return;
     setBusy(true);
-    const outcome = preview.settle(await api.revokeRole({ ...pendingChange, previewDigest: preview.previewDigest }));
+    const outcome = preview.settle(await api.revokeRole(withPreviewDigest(pendingChange, preview)));
     setBusy(false);
     setResult(outcome);
     if (outcome?.ok) { setRemoving(null); setReason(""); assignments.reload(); }
