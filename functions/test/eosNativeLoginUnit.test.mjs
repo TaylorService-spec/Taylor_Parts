@@ -362,6 +362,9 @@ test("U14 the client-address measurement: unmounted by default, credential-gated
   assert.equal(v.resolvesToExpected["EOS_AUTH_TRUSTED_PROXY_HOPS=2"], true);
   assert.equal(v.resolvesToExpected["EOS_AUTH_TRUSTED_PROXY_HOPS=3"], false, "the forgeable left entry is not the client");
   assert.equal(D.clientAddressVerdicts({}, "::ffff:198.51.100.7", "198.51.100.7").delivered.socketIsExpected, true, "IPv4-mapped socket address");
+  assert.equal(D.normalizeAddress("::ffff:cb00:7109"), "203.0.113.9", "hex IPv4-mapped form");
+  assert.equal(D.normalizeAddress("2001:DB8:0:0:0:0:0:1"), D.normalizeAddress("2001:db8::1"), "expanded and compressed IPv6 are one address");
+  assert.equal(D.clientAddressVerdicts({ "true-client-ip": "2001:db8:0::1" }, null, "2001:DB8::1").resolvesToExpected["EOS_AUTH_CLIENT_IP_HEADER=true-client-ip"], true);
   for (const leak of ["203.0.113.9", "6.6.6.6", "10.1.1.1", "10.9.9.9", "secret"]) assert.ok(!JSON.stringify(v).includes(leak), `verdicts carry no ${leak}`);
   // Mounted through the real /auth/* handler only when configured.
   const serve = async (auth) => {

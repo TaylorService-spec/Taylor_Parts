@@ -793,11 +793,18 @@ export class EosLoginService {
     // Look the ticket up FIRST, so the password policy can consider the identifier -- but hash outside the transaction.
     const { rows: peek } = await this.deps.pool.query(
       `SELECT a.login_identifier, a.id AS account_id, a.tenant_id, a.principal_id, t.id AS ticket_id, t.issued_by,
-              t.consumed_at, t.revoked_at
+              t.consumed_at, t.revoked_at, t.expires_at
          FROM ${SCHEMA}.login_tickets t JOIN ${SCHEMA}.login_accounts a ON a.id = t.account_id
         WHERE t.token_sha256 = $1 AND t.purpose = $2`, [digest, purpose]);
     if (!peek[0]) {
       await this.event(this.deps.pool, { event: purpose === "enrollment" ? "enrollmentComplete" : "resetComplete", outcome: "refused", reason: "UNKNOWN_TICKET", client: facts });
+      throw new LoginRefusal("TICKET_INVALID");
+    }
+    // A used, withdrawn or expired code is refused BEFORE any password work (re-review finding 2): the same 410 as every
+    // other refusal, but no scrypt for a code that can no longer do anything.
+    if (peek[0].consumed_at || peek[0].revoked_at || peek[0].expires_at.getTime() <= this.now().getTime()) {
+      await this.event(this.deps.pool, { event: purpose === "enrollment" ? "enrollmentComplete" : "resetComplete", outcome: "refused",
+        reason: "TICKET_NOT_OPEN", accountId: peek[0].account_id, client: facts });
       throw new LoginRefusal("TICKET_INVALID");
     }
     // A CODE IS WORTH ITS ISSUER'S AUTHORITY *NOW* (second review finding 2). Between issue and use the person may have
@@ -810,8 +817,8 @@ export class EosLoginService {
     const policy = passwordPolicyRefusal(input.password, peek[0].login_identifier);
     if (policy) throw new LoginRefusal("PASSWORD_POLICY", policy);
     const hash = await hashPassword(input.password as string, this.hashParameters);
-    let authoritySnapshot: { issuer: string; target: string } | null = null;
-    if (!peek[0].consumed_at && !peek[0].revoked_at) {
+    let authoritySnapshot: { issuer: string; target: string };
+    {
       const capability = purpose === "enrollment" ? "admin.roleAssignment.write" : "admin.credentialReset.initiate";
       // BOTH people: the issuer's authority is what the code is worth, the target's decides whether that is enough.
       authoritySnapshot = {
@@ -848,7 +855,7 @@ export class EosLoginService {
       // membership, Employee or Principal change committed since, the decision above answered different facts -- refuse;
       // the code stays open, a retry re-checks. A change that commits AFTER this read waits on the locks for existing rows; a brand-new row cannot be
       // locked in advance, and that sub-millisecond window is the recorded residual.
-      if (a && authoritySnapshot !== null) {
+      if (a) {
         const changed = (await this.authorityFingerprint(c, [t.issued_by], true)) !== authoritySnapshot.issuer ? "ISSUER_AUTHORITY_CHANGED"
           : (await this.authorityFingerprint(c, [a.principal_id], true)) !== authoritySnapshot.target ? "TARGET_AUTHORITY_CHANGED" : null;
         if (changed) {
@@ -1338,10 +1345,13 @@ export class EosLoginService {
       await read(`SELECT rc.id, rc.tenant_id, rc.role_id, rc.capability_id FROM ${SCHEMA}.role_capabilities rc
                    WHERE (rc.tenant_id, rc.role_id) IN (SELECT tenant_id, role_id FROM ${SCHEMA}.user_role_assignments WHERE principal_id = ANY($1::text[]))
                    ORDER BY rc.id${share}`),
-      await read(`SELECT l.id, l.principal_id, l.tenant_id, l.employee_id, l.status::text, e.employment_status::text AS employment_status
-                    FROM ${SCHEMA}.employee_principal_links l
-                    JOIN eos_workforce.employees e ON e.tenant_id = l.tenant_id AND e.id = l.employee_id
-                   WHERE l.principal_id = ANY($1::text[]) ORDER BY l.id${lock ? " FOR SHARE OF l, e" : ""}`),
+      // EMPLOYEE BEFORE LINK (re-review finding 1): the link commands lock employees -> links (lockEmployee, then the
+      // link FOR UPDATE). A single `FOR SHARE OF l, e` locks in range-table order, links first -- a cycle with them.
+      await read(`SELECT e.tenant_id, e.id, e.employment_status::text AS employment_status FROM eos_workforce.employees e
+                   WHERE (e.tenant_id, e.id) IN (SELECT tenant_id, employee_id FROM ${SCHEMA}.employee_principal_links WHERE principal_id = ANY($1::text[]))
+                   ORDER BY e.tenant_id, e.id${share}`),
+      await read(`SELECT id, principal_id, tenant_id, employee_id, status::text FROM ${SCHEMA}.employee_principal_links
+                   WHERE principal_id = ANY($1::text[]) ORDER BY id${share}`),
       await read(`SELECT principal_id, tenant_id, access_version FROM ${SCHEMA}.principal_access_versions WHERE principal_id = ANY($1::text[])
                    ORDER BY principal_id, tenant_id${share}`),
     ];

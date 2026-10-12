@@ -157,7 +157,7 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
   const abe = await principal("fb-abe", "abe");
   await enrol(abe, A, "technician", "ACTIVE");
   const bea = await principal("fb-bea", "bea");
-  await enrol(bea, A, "technician", "ACTIVE");
+  const beaEmp = await enrol(bea, A, "technician", "ACTIVE");
 
   const authorityDigest = async (tenantId) => (await q(`SELECT
       (SELECT md5(string_agg(id || principal_id || role_id || status::text, ',' ORDER BY id)) FROM eos_policy.user_role_assignments
@@ -708,13 +708,17 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
       await admin.query("BEGIN");
       await admin.query(`SELECT id FROM eos_policy.login_accounts WHERE id = $1 FOR UPDATE`, [acct.id]);
       const using = post("/auth/password/reset/complete", { ticket: reset.body.data.resetTicket, password: "a lamp on the stair" });
-      // Wait until the code's transaction is blocked on a lock (it is, on the account row, in the fixed order).
-      for (let i = 0; i < 200; i += 1) {
-        const { rows } = await q(`SELECT count(*)::int n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> $1`,
-          [(await admin.query("SELECT pg_backend_pid() p")).rows[0].p]);
-        if (rows[0].n > 0) break;
-        await new Promise((r) => setTimeout(r, 25));
+      // Wait until THIS code's transaction is blocked on the account row the administrator holds -- and require that it
+      // was observed, so the test cannot pass without exercising the race (re-review finding 3).
+      const adminPid = (await admin.query("SELECT pg_backend_pid() p")).rows[0].p;
+      let blocked = false;
+      for (let i = 0; i < 400 && !blocked; i += 1) {
+        const { rows } = await q(`SELECT count(*)::int n FROM pg_stat_activity
+                                   WHERE datname = current_database() AND wait_event_type = 'Lock' AND $1 = ANY(pg_blocking_pids(pid))`, [adminPid]);
+        blocked = rows[0].n > 0;
+        if (!blocked) await new Promise((r) => setTimeout(r, 25));
       }
+      assert.ok(blocked, "the code's transaction reached the administrator's account lock (the race was exercised)");
       await admin.query(`UPDATE eos_policy.login_tickets SET revoked_at = now() WHERE account_id = $1 AND consumed_at IS NULL AND revoked_at IS NULL`, [acct.id]);
       await admin.query("COMMIT");
       const r = await using;
@@ -723,6 +727,35 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
       admin.release();
     }
     assert.ok((await events("account_id = $1 AND reason_code = 'TICKET_NOT_OPEN'", [acct.id])).length >= 1);
+  });
+
+  await t.test("X6 (re-review finding 1) using a code while an Employee link command holds the Employee and then its link: no deadlock", async () => {
+    const reset = await asFb("fb-admin-a", "issueLoginReset", { principalId: bea, reason: "second reset" });
+    assert.equal(reset.status, 200);
+    secrets.push(reset.body.data.resetTicket, "a candle on the sill");
+    // DETERMINISTIC: the link commands' shape -- lockEmployee (employee FOR UPDATE), THEN the active link FOR UPDATE --
+    // held open while the code is used. The fingerprint reading links before employees was a cycle with it.
+    const admin = await pool.connect();
+    try {
+      await admin.query("BEGIN");
+      await admin.query(`SELECT id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [A, beaEmp]);
+      const using = post("/auth/password/reset/complete", { ticket: reset.body.data.resetTicket, password: "a candle on the sill" });
+      const adminPid = (await admin.query("SELECT pg_backend_pid() p")).rows[0].p;
+      let blocked = false;
+      for (let i = 0; i < 400 && !blocked; i += 1) {
+        const { rows } = await q(`SELECT count(*)::int n FROM pg_stat_activity
+                                   WHERE datname = current_database() AND wait_event_type = 'Lock' AND $1 = ANY(pg_blocking_pids(pid))`, [adminPid]);
+        blocked = rows[0].n > 0;
+        if (!blocked) await new Promise((r) => setTimeout(r, 25));
+      }
+      assert.ok(blocked, "the code's transaction reached the Employee row the link command holds (the race was exercised)");
+      await admin.query(`SELECT id FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND employee_id = $2 AND status = 'active' FOR UPDATE`, [A, beaEmp]);
+      await admin.query("COMMIT");
+      const r = await using;
+      assert.equal(r.status, 200, `nothing changed, so the code completes -- not a 500 (got ${r.status})`);
+    } finally {
+      admin.release();
+    }
   });
 
   await t.test("M15 nothing secret at rest or in logs; authority in BOTH tenants unchanged", async () => {

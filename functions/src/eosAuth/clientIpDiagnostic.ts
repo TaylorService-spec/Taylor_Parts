@@ -22,8 +22,20 @@ export const CLIENT_IP_DIAGNOSTIC_HEADER = "x-eos-diagnostic-credential";
 
 const single = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? null;
 const MAX_BODY_BYTES = 8 * 1024;
-/** An IPv4-mapped IPv6 socket address (::ffff:203.0.113.9) is the same client as its IPv4 form. */
-const normalizeAddress = (a: string | null) => (a ?? "").trim().toLowerCase().replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, "") || null;
+/**
+ * One spelling per address (re-review finding 4): IPv6 is canonicalised (compressed, lower case), and an IPv4-mapped IPv6
+ * address, in dotted (::ffff:203.0.113.9) or hex (::ffff:cb00:7109) form, is the same client as its IPv4 form.
+ */
+export function normalizeAddress(a: string | null): string | null {
+  const raw = (a ?? "").trim();
+  if (isIP(raw) === 4) return raw;
+  if (isIP(raw) !== 6) return raw.toLowerCase() || null;
+  const canon = new URL(`http://[${raw}]`).hostname.slice(1, -1);
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(canon);
+  if (!mapped) return canon;
+  const [hi, lo] = [parseInt(mapped[1], 16), parseInt(mapped[2], 16)];
+  return [hi >> 8, hi & 255, lo >> 8, lo & 255].join(".");
+}
 
 /** What a candidate configuration would take as the client address for this request. Pure. */
 export function clientAddressCandidates(headers: Record<string, string | string[] | undefined>, socketAddress: string | null) {
