@@ -84,6 +84,9 @@ vi.mock("../src/auth/AuthContext", () => ({
   useAuth: () => ({ user: { uid: "u1" }, role: "admin", operationalRoles: [] }),
 }));
 vi.mock("../src/modules/inventory/UsedInEquipmentSection", () => ({ default: () => null }));
+// Part-supplier terms is a real async EOS read too; left unmocked it fails in jsdom and adds its own role="alert". It has
+// its own workflow suite (partSupplierTermsWorkflow.test.jsx), so it is stubbed here like the other heavy children.
+vi.mock("../src/shared/partMaster/PartSupplierTermsSection.jsx", () => ({ default: () => null }));
 vi.mock("../src/shared/ui/ConfirmDialog", () => ({ default: () => null }));
 vi.mock("../src/shared/ui/form", () => ({ FormError: () => null }));
 vi.mock("../src/shared/assignment/EmployeeAssignmentPicker", () => ({

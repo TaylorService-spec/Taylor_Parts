@@ -239,6 +239,10 @@ export function makeFieldDefinition(input = {}) {
     // both: an export is the back door a blocked column otherwise ships through.
     reportable: input.reportable ?? true,
     exportable: input.exportable ?? true,
+    // The governed DATA CLASSIFICATION of the field (FIELD_SENSITIVITY), when one has been recorded -- e.g. the COMMERCIAL
+    // field group of Part Supplier Terms is CONFIDENTIAL. Classification, not a gate: who may read the value is a
+    // capability decision the server makes. Absent means "not recorded" (the seed derives NORMAL / INTERNAL as before).
+    sensitivity: input.sensitivity ?? null,
   });
 }
 
@@ -393,9 +397,15 @@ export function validateEntityDefinition(entity) {
   return problems;
 }
 
+/** Mirror of functions/src/adminPolicy/types.ts FIELD_SENSITIVITIES -- the Administration field classification. */
+export const FIELD_SENSITIVITY = Object.freeze(["NORMAL", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"]);
+
 export function validateFieldDefinition(field, entity = null) {
   const problems = [];
   const at = field?.id ? `field ${field.id}` : "field (no id)";
+  if (field?.sensitivity != null && !FIELD_SENSITIVITY.includes(field.sensitivity)) {
+    problems.push(`${at}: sensitivity "${field.sensitivity}" is not a known FIELD_SENSITIVITY`);
+  }
 
   if (!field?.id || typeof field.id !== "string") problems.push(`${at}: id is required and must be a string`);
   if (!field?.label || typeof field.label !== "string") problems.push(`${at}: label is required`);

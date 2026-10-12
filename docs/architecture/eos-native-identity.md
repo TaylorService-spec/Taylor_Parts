@@ -54,7 +54,7 @@ Three properties hold throughout:
 
 ## 3. Design
 
-### (a) Schema — migration `1764530000000_eos-native-login.sql`
+### (a) Schema — migration `1764540000000_eos-native-login.sql`
 
 The schema is ten `eos_policy` tables: the eight below plus the two D-13 governance tables (§8). They are empty on deploy, with no seed, no backfill and no Firebase import.
 

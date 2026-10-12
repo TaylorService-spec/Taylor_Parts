@@ -43,6 +43,7 @@ import { listInventoryLocations, listInventoryWarehouses, listPurchaseOrderSuppl
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
 import { correctReorderReceipt } from "./receiptCorrectionCommand.js";
 import { createSupplier, listSupplierOrganizationOptions, setSupplierStatus, updateSupplier } from "./supplierAdministration.js";
+import { createPartSupplierItem, listPartSupplierItems, setPartSupplierItemStatus, setPreferredPartSupplierItem, updatePartSupplierItem } from "./partSupplierTerms.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import { EOS_WORK_ORDER_OPERATIONS, isWorkOrderOperation, type EosWorkOrderOperation } from "./workOrderOperations";
 import { EOS_INBOUND_WORK_OPERATIONS, INBOUND_WORK_ROUTE, isInboundWorkOperation } from "./inboundWorkOperations";
@@ -106,6 +107,8 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "listPurchaseOrderSupplierOptions",
   // DECISIONS #196: the CRM vendor organizations a new supplier relationship may be created for, by name.
   "listSupplierOrganizationOptions",
+  // SUP-1: one Part's supplier terms (INACTIVE included) + the ACTIVE suppliers that have none yet -- inventory.supplierTerms.read.
+  "listPartSupplierItems",
   "listInventoryWarehouses",
   "listInventoryLocations",
   "listTransferOrders",
@@ -148,6 +151,13 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   "createSupplier",
   "updateSupplier",
   "setSupplierStatus",
+  // SUP-1: GOVERNED PART-SUPPLIER TERMS (partSupplierTerms.ts) -- the governed writer over eos_ops.supplier_catalog_items that
+  // Firebase retirement F2 left missing. inventory.supplierTerms.create / .edit (update, preferred) / .changeStatus -- narrow
+  // record keys, never inventory.catalog.manage / .activate (DECISIONS #230). Never a delete.
+  "createPartSupplierItem",
+  "updatePartSupplierItem",
+  "setPartSupplierItemStatus",
+  "setPreferredPartSupplierItem",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
 
@@ -195,6 +205,11 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   createSupplier: "/operations/inventory",
   updateSupplier: "/operations/inventory",
   setSupplierStatus: "/operations/inventory",
+  listPartSupplierItems: "/operations/inventory",
+  createPartSupplierItem: "/operations/inventory",
+  updatePartSupplierItem: "/operations/inventory",
+  setPartSupplierItemStatus: "/operations/inventory",
+  setPreferredPartSupplierItem: "/operations/inventory",
 });
 
 // ════════════════════ the Cycle Count command route (Controller rulings DQ-017 / DQ-018) ════════════════════
@@ -299,6 +314,8 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "readInventoryOnHand", "readInventoryMovements", "listReceipts", "readReceipt", "listReceivingLocationOptions",
   "listSuppliers", "listPurchaseOrderSupplierOptions", "listReorderAssignmentTargets", "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
   "listTruckRoster", "readTruckStock",
+  // SUP-1: governed part-supplier terms sit behind the same boundary as the supplier administration they extend.
+  "listPartSupplierItems", "createPartSupplierItem", "updatePartSupplierItem", "setPartSupplierItemStatus", "setPreferredPartSupplierItem",
 ]);
 
 export type OperationsApiFailureCode =
@@ -358,6 +375,19 @@ export async function executeOperation(
           capabilities: new Set(ctx.capabilities),
         },
       };
+    };
+    // SUPPLIER TERMS (governed field groups, DECISIONS #230): field-group decisions use only capabilities that are
+    // UNCONDITIONALLY held -- a key granted under a grant condition is withheld until that condition is evaluated, the
+    // same rule the Cycle Count routes apply. The shared Reorder actor above is deliberately left unchanged.
+    const supplierTermsActor = async (): Promise<{ actor: ReorderActor; pool: Pool }> => {
+      const conditions = postgresGrantConditionProvider(deps.pool);
+      const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
+        identityProvider: request.caller.identityProvider,
+        externalSubject: request.caller.externalSubject,
+        requestedTenantId: request.caller.requestedTenantId,
+      }, conditions);
+      const capabilities = await capabilitiesWithoutUnevaluatedConditions(deps.pool, ctx.principalContext, ctx.capabilities, conditions);
+      return { pool: deps.pool, actor: { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: new Set(capabilities) } };
     };
     const ok = (result: unknown): OperationsApiResult =>
       ({ ok: true, operation: request.operation, result });
@@ -527,6 +557,26 @@ export async function executeOperation(
       case "setSupplierStatus": {
         const { actor, pool } = await reorderActor();
         return ok(await setSupplierStatus({ pool }, actor, request.input ?? {}));
+      }
+      case "listPartSupplierItems": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listPartSupplierItems({ pool }, actor, request.input ?? {}));
+      }
+      case "createPartSupplierItem": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await createPartSupplierItem({ pool }, actor, request.input ?? {}));
+      }
+      case "updatePartSupplierItem": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await updatePartSupplierItem({ pool }, actor, request.input ?? {}));
+      }
+      case "setPartSupplierItemStatus": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await setPartSupplierItemStatus({ pool }, actor, request.input ?? {}));
+      }
+      case "setPreferredPartSupplierItem": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await setPreferredPartSupplierItem({ pool }, actor, request.input ?? {}));
       }
       case "correctReorderReceipt": {
         const { actor, pool } = await reorderActor();

@@ -3689,6 +3689,7 @@
           "functions/src/catalogMaster/catalogHttp.ts",
           "functions/src/eosExperience/myWork.ts",
           "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/partSupplierTerms.ts",
           "functions/src/partMaster/manufacturerReadService.ts",
           "functions/src/salesAgreement/productReferenceSearchService.ts"
         ],
@@ -3698,7 +3699,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
         ],
-        "serverReferenceCount": 9,
+        "serverReferenceCount": 10,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },

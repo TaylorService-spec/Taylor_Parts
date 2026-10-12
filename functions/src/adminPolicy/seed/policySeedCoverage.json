@@ -14,14 +14,14 @@
   ],
   "source": {
     "entities": 28,
-    "fields": 389
+    "fields": 400
   },
   "seeded": {
     "objects": 48,
     "objectsWithoutAnEntity": 6,
     "objectsFromCapabilityAuthority": 14,
     "entities": 28,
-    "fields": 389
+    "fields": 400
   },
   "excluded": {
     "entities": 0,
@@ -2690,19 +2690,12 @@
     {
       "entityId": "supplierCatalogItem",
       "label": "Supplier Catalog Item",
-      "declaredFields": 5,
+      "declaredFields": 16,
       "status": "SEEDED",
       "exclusionReason": null,
       "objectKey": "supplierCatalogItem",
       "objectSource": "REGISTRY_ONLY",
       "fields": [
-        {
-          "key": "catalogItemId",
-          "label": "Catalog Item ID",
-          "dataType": "ID",
-          "status": "SEEDED",
-          "exclusionReason": null
-        },
         {
           "key": "supplierId",
           "label": "Supplier",
@@ -2713,21 +2706,105 @@
         {
           "key": "partId",
           "label": "Part",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "supplierSku",
+          "label": "Supplier SKU",
           "dataType": "STRING",
           "status": "SEEDED",
           "exclusionReason": null
         },
         {
-          "key": "unitPrice",
-          "label": "Unit Price",
+          "key": "cost",
+          "label": "Unit Cost",
           "dataType": "NUMBER",
           "status": "SEEDED",
           "exclusionReason": null
         },
         {
-          "key": "available",
-          "label": "Available",
+          "key": "currency",
+          "label": "Currency",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "leadTimeDays",
+          "label": "Lead Time (days)",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "minOrderQty",
+          "label": "Minimum Order Quantity",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "orderMultiple",
+          "label": "Order Multiple",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "purchaseUnit",
+          "label": "Purchase Unit",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "conversionToStockingUnit",
+          "label": "Conversion to Stocking Unit",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "contractStart",
+          "label": "Contract Start",
+          "dataType": "DATE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "contractEnd",
+          "label": "Contract End",
+          "dataType": "DATE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "availability",
+          "label": "Availability",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "preferred",
+          "label": "Preferred",
           "dataType": "BOOLEAN",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Terms Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "lastVerifiedAt",
+          "label": "Last Verified",
+          "dataType": "TIMESTAMP",
           "status": "SEEDED",
           "exclusionReason": null
         }

@@ -271,9 +271,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 91 -> 92: Governed configuration + sales pricing (2026-10-02, DECISIONS #203): 1764500000000 -- operating-company business time zone + resolver, finance.configuration.manage (granted to NO Role), customer discount, trade-in items, package composition; untouched handoffs follow the active destination.
 // 92 -> 93: 1764510000000 -- Finance Closure (#206): settlements / applications / reconciliation, obligation handoffs, intercompany relief, service-provider authorization, late cost evidence; four settlement capabilities granted to the five Finance-execution Roles.
 // 93 -> 94: 1764520000000 -- Rental (#207): the eos_rental domain, rental Work Orders, the RENTAL billing package source; six rental capabilities.
-const PINNED_LAST_MIGRATION = "1764530000000_eos-native-login";
-// 94 -> 95: 1764530000000 -- EOS native login: credential, session and MFA tables; no capability, no grant, no Sample Company data.
-const PINNED_MIGRATION_COUNT = 95;
+// 94 -> 95: 1764530000000 -- SUP-1 Part Supplier Terms (DECISIONS #230): inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (the COMMERCIAL field group) on supplierCatalogItem, granted to NO Role; Protected Administrator standing excludes the three cost keys (Owner ruled 2026-10-12).
+// 95 -> 96: 1764540000000 -- EOS native login: credential, session and MFA tables; no capability, no grant, no Sample Company data.
+const PINNED_LAST_MIGRATION = "1764540000000_eos-native-login";
+const PINNED_MIGRATION_COUNT = 96;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
