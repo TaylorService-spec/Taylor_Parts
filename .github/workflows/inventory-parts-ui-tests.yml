@@ -93,6 +93,14 @@ on:
       - "field-ops-app-vite/src/hooks/usePartMasterWrite.js"
       - "field-ops-app-vite/src/domain/partMasterWrite.js"
       - "field-ops-app-vite/test/partWriteModal.test.jsx"
+      # SUP-1: Part Detail "Suppliers & Terms" -- the section, its pure builders, its client calls, and the employee-workflow
+      # suite that renders it against the server-proven contract fixture.
+      - "field-ops-app-vite/src/shared/partMaster/PartSupplierTermsSection.jsx"
+      - "field-ops-app-vite/src/domain/partSupplierTerms.js"
+      - "field-ops-app-vite/src/services/partsOperationsReads.js"
+      - "field-ops-app-vite/src/services/reorderApiClient.js"
+      - "field-ops-app-vite/test/partSupplierTermsWorkflow.test.jsx"
+      - "field-ops-app-vite/test/fixtures/partSupplierTermsContract.json"
       - "field-ops-app-vite/test/partsMasterDataEntryPoints.test.jsx"
       # DQ-034 Catalog mutation hold: the client mirror + every editing surface that honours it.
       - "field-ops-app-vite/src/config/catalogMutationHold.js"
@@ -217,6 +225,14 @@ on:
       - "field-ops-app-vite/src/hooks/usePartMasterWrite.js"
       - "field-ops-app-vite/src/domain/partMasterWrite.js"
       - "field-ops-app-vite/test/partWriteModal.test.jsx"
+      # SUP-1: Part Detail "Suppliers & Terms" -- the section, its pure builders, its client calls, and the employee-workflow
+      # suite that renders it against the server-proven contract fixture.
+      - "field-ops-app-vite/src/shared/partMaster/PartSupplierTermsSection.jsx"
+      - "field-ops-app-vite/src/domain/partSupplierTerms.js"
+      - "field-ops-app-vite/src/services/partsOperationsReads.js"
+      - "field-ops-app-vite/src/services/reorderApiClient.js"
+      - "field-ops-app-vite/test/partSupplierTermsWorkflow.test.jsx"
+      - "field-ops-app-vite/test/fixtures/partSupplierTermsContract.json"
       - "field-ops-app-vite/test/partsMasterDataEntryPoints.test.jsx"
       # DQ-034 Catalog mutation hold: the client mirror + every editing surface that honours it.
       - "field-ops-app-vite/src/config/catalogMutationHold.js"

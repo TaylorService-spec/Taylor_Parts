@@ -1,0 +1,178 @@
+// SUP-1: the employee's Part Detail "Suppliers & Terms" workflows against the REAL Operations API contract -- not a
+// mocked service response.
+//
+// The section (PartSupplierTermsSection) runs through the real domain builders, the real partsOperationsReads calls and
+// the real reorderApiClient.callReorderApi. Only the network is replaced, and it answers with the exact bytes the real
+// server produced for the same requests (test/fixtures/partSupplierTermsContract.json, which
+// functions/test/partSupplierTermsEmployeeContractPostgres.test.mjs proves against PostgreSQL). Every scenario also
+// asserts the section SENT exactly the requests the server was proven against, so the contract holds both ways.
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import CONTRACT from "./fixtures/partSupplierTermsContract.json";
+import PartSupplierTermsSection from "../src/shared/partMaster/PartSupplierTermsSection.jsx";
+
+afterEach(() => { cleanup(); });
+
+const PART = CONTRACT.partId;
+
+// The network, answering the recorded scenarios IN ORDER. Everything above it is production code.
+function wire(...names) {
+  const sent = [];
+  let next = 0;
+  const fetchImpl = vi.fn(async (url, init) => {
+    sent.push({ url, body: JSON.parse(init.body), authorization: init.headers.authorization });
+    const scenario = CONTRACT.scenarios[names[next++]];
+    if (!scenario) throw new Error(`unexpected request #${next}: ${init.body}`);
+    return { ok: scenario.status >= 200 && scenario.status < 300, status: scenario.status, json: async () => scenario.body };
+  });
+  const deps = { callOptions: { baseUrl: "https://eos.test", getIdToken: async () => "employee-token", fetchImpl } };
+  return { sent, deps };
+}
+
+async function expectSent(sent, ...names) {
+  await waitFor(() => expect(sent).toHaveLength(names.length));
+  sent.forEach((s, n) => {
+    expect(s.url).toBe(`https://eos.test${CONTRACT.route}`);
+    expect(s.authorization).toBe("Bearer employee-token");
+    expect(s.body).toEqual(CONTRACT.scenarios[names[n]].request);
+  });
+}
+
+const type = (label, value) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+const table = () => screen.getByRole("table", { name: `Supplier terms for ${PART}` });
+const rowOf = (name) => within(table()).getByText(name).closest("tr");
+
+describe("reading a Part's supplier terms", () => {
+  it("lists every supplier's terms -- INACTIVE included, never hidden -- with what each offers", async () => {
+    const { sent, deps } = wire("listMixed");
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    await screen.findByRole("table", { name: `Supplier terms for ${PART}` });
+    await expectSent(sent, "listMixed");
+    const arctic = rowOf("Arctic Parts Supply");
+    expect(within(arctic).getByText("ARC-100")).toBeTruthy();
+    expect(within(arctic).getByText("11.75 USD")).toBeTruthy();
+    expect(within(arctic).getByText("10 days")).toBeTruthy();
+    expect(within(arctic).getByText("1 BOX = 12 EACH")).toBeTruthy();
+    expect(within(arctic).getByText("2026-01-01 – 2026-12-31")).toBeTruthy();
+    expect(within(arctic).getByText("Available")).toBeTruthy();
+    expect(within(arctic).getByText("Terms Active")).toBeTruthy();
+    const cold = rowOf("ColdChain Components");
+    expect(within(cold).getByText("Terms Inactive")).toBeTruthy();
+    expect(within(cold).getByRole("button", { name: /reactivate terms from coldchain/i })).toBeTruthy();
+    expect(within(cold).queryByRole("button", { name: /preferred/i })).toBeNull();
+  });
+
+  it("a reader without catalog management authority is shown a DENIAL, not an empty list, and no controls", async () => {
+    const { sent, deps } = wire("listDenied");
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    await screen.findByText(/this is a denial, not an empty list/i);
+    await expectSent(sent, "listDenied");
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByText(/no supplier terms are recorded/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /add supplier terms/i })).toBeNull();
+  });
+});
+
+describe("Add supplier terms", () => {
+  it("the catalog manager adds a supplier's terms; the list is re-read from the server", async () => {
+    const { sent, deps } = wire("listEmpty", "createApplied", "listAfterCreate");
+    const input = CONTRACT.scenarios.createApplied.request.input;
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    await screen.findByText(/no supplier terms are recorded/i);
+    fireEvent.click(screen.getByRole("button", { name: /add supplier terms/i }));
+    // Only the ACTIVE suppliers without terms are offered -- the server's list, by name.
+    const options = within(screen.getByLabelText("Supplier")).getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual(["Select…", "Arctic Parts Supply", "ColdChain Components"]);
+    type("Supplier", input.supplierId);
+    type("Supplier SKU", input.supplierSku);
+    type("Unit cost", input.cost);
+    type("Currency", "usd");
+    type("Lead time (days)", String(input.leadTimeDays));
+    type("Minimum order quantity", input.minOrderQty);
+    type("Order multiple", input.orderMultiple);
+    type("Purchase unit", input.purchaseUnit);
+    type(/^stocking units/i, String(input.conversionToStockingUnit.numerator));
+    type("Purchase units per conversion", String(input.conversionToStockingUnit.denominator));
+    type("Contract start", input.contractStart);
+    type("Contract end", input.contractEnd);
+    type("Availability", input.availability);
+    fireEvent.click(screen.getByRole("button", { name: /add supplier terms/i }));
+    await screen.findByText("Supplier terms added.");
+    await expectSent(sent, "listEmpty", "createApplied", "listAfterCreate");
+    expect(within(rowOf("Arctic Parts Supply")).getByText("12.5 USD")).toBeTruthy();
+  });
+
+  it("a term the server refuses is shown with the server's reason; nothing is reported saved", async () => {
+    const { sent, deps } = wire("listAfterUpdate", "createInvalid");
+    const input = CONTRACT.scenarios.createInvalid.request.input;
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    fireEvent.click(await screen.findByRole("button", { name: /add supplier terms/i }));
+    type("Supplier", input.supplierId);
+    type("Supplier SKU", input.supplierSku);
+    type("Unit cost", input.cost);
+    type("Currency", input.currency);
+    type("Lead time (days)", String(input.leadTimeDays));
+    fireEvent.click(screen.getByRole("button", { name: /add supplier terms/i }));
+    await screen.findByText(/refused: leadTimeDays must be an integer 0\.\.3650/i);
+    await expectSent(sent, "listAfterUpdate", "createInvalid");
+    expect(screen.queryByText("Supplier terms added.")).toBeNull();
+    expect(screen.getByRole("form", { name: /add supplier terms/i })).toBeTruthy();
+  });
+});
+
+describe("Edit terms", () => {
+  it("an edit sends ONLY what changed, at the version loaded, and is reported saved", async () => {
+    const { sent, deps } = wire("listAfterCreate", "updateApplied", "listAfterUpdate");
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    fireEvent.click(await screen.findByRole("button", { name: /edit terms from arctic parts supply/i }));
+    type("Unit cost", "11.75");
+    type("Lead time (days)", "10");
+    fireEvent.click(screen.getByRole("button", { name: /save terms/i }));
+    await screen.findByText("Supplier terms saved.");
+    await expectSent(sent, "listAfterCreate", "updateApplied", "listAfterUpdate");
+    expect(within(rowOf("Arctic Parts Supply")).getByText("11.75 USD")).toBeTruthy();
+  });
+
+  it("a stale edit tells the employee the terms changed since they loaded them; the form stays", async () => {
+    const { sent, deps } = wire("listAfterCreate", "updateStale");
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    fireEvent.click(await screen.findByRole("button", { name: /edit terms from arctic parts supply/i }));
+    type("Supplier SKU", CONTRACT.scenarios.updateStale.request.input.changes.supplierSku);
+    fireEvent.click(screen.getByRole("button", { name: /save terms/i }));
+    await screen.findByText(/changed since you loaded them/i);
+    await expectSent(sent, "listAfterCreate", "updateStale");
+    expect(screen.getByRole("form", { name: /edit supplier terms/i })).toBeTruthy();
+  });
+});
+
+describe("Preferred supplier and status", () => {
+  it("Set Preferred makes that supplier THE preferred one", async () => {
+    const { sent, deps } = wire("listBeforePreferred", "setPreferredApplied", "listAfterPreferred");
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    fireEvent.click(await screen.findByRole("button", { name: /make coldchain components preferred/i }));
+    await screen.findByText("Preferred supplier set.");
+    await expectSent(sent, "listBeforePreferred", "setPreferredApplied", "listAfterPreferred");
+    expect(within(rowOf("ColdChain Components")).getByText(/preferred/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /make coldchain components preferred/i })).toBeNull();
+  });
+
+  it("the catalog administrator deactivates terms; they stay listed as inactive", async () => {
+    const { sent, deps } = wire("listAfterPreferred", "statusApplied", "listMixed");
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    fireEvent.click(await screen.findByRole("button", { name: /deactivate terms from coldchain components/i }));
+    await screen.findByText("Supplier terms deactivated.");
+    await expectSent(sent, "listAfterPreferred", "statusApplied", "listMixed");
+    expect(within(rowOf("ColdChain Components")).getByText("Terms Inactive")).toBeTruthy();
+  });
+
+  it("a manager without the activate authority is told they are not authorized, and status controls go away", async () => {
+    const { sent, deps } = wire("listAfterPreferred", "statusDenied");
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    fireEvent.click(await screen.findByRole("button", { name: /deactivate terms from coldchain components/i }));
+    await screen.findByText(/not authorized to make this change/i);
+    await expectSent(sent, "listAfterPreferred", "statusDenied");
+    expect(screen.queryByRole("button", { name: /deactivate terms from/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /edit terms from coldchain components/i })).toBeTruthy();
+    expect(within(rowOf("ColdChain Components")).getByText("Terms Active")).toBeTruthy();
+  });
+});

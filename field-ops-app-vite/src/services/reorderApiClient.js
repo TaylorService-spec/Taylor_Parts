@@ -47,6 +47,8 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   // DECISIONS #196: the CRM vendor organizations a new supplier relationship may be created for.
   "listSupplierOrganizationOptions",
   "listReorderAssignmentTargets",
+  // SUP-1: one Part's governed supplier terms.
+  "listPartSupplierItems",
 ]);
 
 /** Mirrors the server's OPERATIONS_MUTATION_OPERATIONS. */
@@ -68,6 +70,11 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   "createSupplier",
   "updateSupplier",
   "setSupplierStatus",
+  // SUP-1: governed part-supplier terms (the writer of eos_ops.supplier_catalog_items).
+  "createPartSupplierItem",
+  "updatePartSupplierItem",
+  "setPartSupplierItemStatus",
+  "setPreferredPartSupplierItem",
 ]);
 
 /** Reads that take no input. */
@@ -82,6 +89,8 @@ export const REORDER_OPTIONAL_INPUT_OPERATIONS = Object.freeze([
   "listSuppliers",
   "listSupplierOrganizationOptions",
   "listReorderAssignmentTargets",
+  // SUP-1: one Part's governed supplier terms.
+  "listPartSupplierItems",
 ]);
 
 const OPERATIONS = new Set([...REORDER_READ_OPERATIONS, ...REORDER_COMMAND_OPERATIONS]);

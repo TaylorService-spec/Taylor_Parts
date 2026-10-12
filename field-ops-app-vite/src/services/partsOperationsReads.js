@@ -48,6 +48,16 @@ export const createSupplierRelationship = (input, options) => call("createSuppli
 export const updateSupplierFields = (input, options) => call("updateSupplier", input, options);
 export const setSupplierRelationshipStatus = (input, options) => call("setSupplierStatus", input, options);
 
+// ── GOVERNED PART-SUPPLIER TERMS (remediation SUP-1) -- one Part's supplier terms, read and maintained through the governed
+// command layer (functions/src/eosOps/partSupplierTerms.ts). The server decides authority (inventory.catalog.manage to read,
+// add, edit and set preferred; inventory.catalog.activate to deactivate / reactivate); a refusal throws with its code.
+//   fetchPartSupplierItems(partId)      listPartSupplierItems         { partId, stockingUnit, items (INACTIVE included), supplierOptions }
+export const fetchPartSupplierItems = (partId, options) => call("listPartSupplierItems", { partId }, options);
+export const createPartSupplierTerms = (input, options) => call("createPartSupplierItem", input, options);
+export const updatePartSupplierTerms = (input, options) => call("updatePartSupplierItem", input, options);
+export const setPartSupplierTermsStatus = (input, options) => call("setPartSupplierItemStatus", input, options);
+export const setPreferredPartSupplierTerms = (input, options) => call("setPreferredPartSupplierItem", input, options);
+
 export const fetchInventoryPosition = ({ partIds = null, warehouseId = null } = {}, options) =>
   call("readInventoryOnHand", { ...(partIds ? { partIds } : {}), ...(warehouseId ? { warehouseId } : {}) }, options);
 

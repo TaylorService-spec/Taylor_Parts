@@ -8,6 +8,7 @@ import UsedInEquipmentSection from "./UsedInEquipmentSection";
 import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
 import { canViewCompatibility } from "../../domain/equipmentCompatibilitySection.js";
 import PartIdentifiersSection from "../../shared/partMaster/PartIdentifiersSection.jsx";
+import PartSupplierTermsSection from "../../shared/partMaster/PartSupplierTermsSection.jsx";
 import PartWorkOrderDemandSection from "./PartWorkOrderDemandSection";
 import {
   buildPartDetailView,
@@ -1989,6 +1990,14 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
             section silently labelled itself with the document id. */}
         <section className="ns-band ns-band--reference">
           <PartIdentifiersSection partId={resolvedPartId} partNumber={part.internalPartNumber} />
+        </section>
+
+        {/* ── SUPPLIERS & TERMS · reference tier (remediation SUP-1) ─────────────────────────────
+            The procurement terms each supplier offers for this part, and the preferred supplier -- read and maintained
+            through the governed PostgreSQL command layer. The section asks the server and renders its answer: a reader
+            without catalog management authority sees a denial, never an empty list. */}
+        <section className="ns-band ns-band--reference">
+          <PartSupplierTermsSection partId={resolvedPartId} partNumber={part.internalPartNumber} />
         </section>
 
         {/* ── ACTIVITY ──────────────────────────────────────────────────────────────────────

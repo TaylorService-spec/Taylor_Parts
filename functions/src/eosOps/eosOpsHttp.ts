@@ -43,6 +43,7 @@ import { listInventoryLocations, listInventoryWarehouses, listPurchaseOrderSuppl
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
 import { correctReorderReceipt } from "./receiptCorrectionCommand.js";
 import { createSupplier, listSupplierOrganizationOptions, setSupplierStatus, updateSupplier } from "./supplierAdministration.js";
+import { createPartSupplierItem, listPartSupplierItems, setPartSupplierItemStatus, setPreferredPartSupplierItem, updatePartSupplierItem } from "./partSupplierTerms.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import { EOS_WORK_ORDER_OPERATIONS, isWorkOrderOperation, type EosWorkOrderOperation } from "./workOrderOperations";
 import { EOS_INBOUND_WORK_OPERATIONS, INBOUND_WORK_ROUTE, isInboundWorkOperation } from "./inboundWorkOperations";
@@ -106,6 +107,8 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "listPurchaseOrderSupplierOptions",
   // DECISIONS #196: the CRM vendor organizations a new supplier relationship may be created for, by name.
   "listSupplierOrganizationOptions",
+  // SUP-1: one Part's supplier terms (INACTIVE included) + the ACTIVE suppliers that have none yet -- inventory.catalog.manage.
+  "listPartSupplierItems",
   "listInventoryWarehouses",
   "listInventoryLocations",
   "listTransferOrders",
@@ -148,6 +151,13 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   "createSupplier",
   "updateSupplier",
   "setSupplierStatus",
+  // SUP-1: GOVERNED PART-SUPPLIER TERMS (partSupplierTerms.ts) -- the governed writer over eos_ops.supplier_catalog_items that
+  // Firebase retirement F2 left missing. inventory.catalog.manage for create / update / preferred, inventory.catalog.activate
+  // for activate / deactivate: the retired callables' own predicates. Never a delete.
+  "createPartSupplierItem",
+  "updatePartSupplierItem",
+  "setPartSupplierItemStatus",
+  "setPreferredPartSupplierItem",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
 
@@ -195,6 +205,11 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   createSupplier: "/operations/inventory",
   updateSupplier: "/operations/inventory",
   setSupplierStatus: "/operations/inventory",
+  listPartSupplierItems: "/operations/inventory",
+  createPartSupplierItem: "/operations/inventory",
+  updatePartSupplierItem: "/operations/inventory",
+  setPartSupplierItemStatus: "/operations/inventory",
+  setPreferredPartSupplierItem: "/operations/inventory",
 });
 
 // ════════════════════ the Cycle Count command route (Controller rulings DQ-017 / DQ-018) ════════════════════
@@ -299,6 +314,8 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "readInventoryOnHand", "readInventoryMovements", "listReceipts", "readReceipt", "listReceivingLocationOptions",
   "listSuppliers", "listPurchaseOrderSupplierOptions", "listReorderAssignmentTargets", "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
   "listTruckRoster", "readTruckStock",
+  // SUP-1: governed part-supplier terms sit behind the same boundary as the supplier administration they extend.
+  "listPartSupplierItems", "createPartSupplierItem", "updatePartSupplierItem", "setPartSupplierItemStatus", "setPreferredPartSupplierItem",
 ]);
 
 export type OperationsApiFailureCode =
@@ -527,6 +544,26 @@ export async function executeOperation(
       case "setSupplierStatus": {
         const { actor, pool } = await reorderActor();
         return ok(await setSupplierStatus({ pool }, actor, request.input ?? {}));
+      }
+      case "listPartSupplierItems": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listPartSupplierItems({ pool }, actor, request.input ?? {}));
+      }
+      case "createPartSupplierItem": {
+        const { actor, pool } = await reorderActor();
+        return ok(await createPartSupplierItem({ pool }, actor, request.input ?? {}));
+      }
+      case "updatePartSupplierItem": {
+        const { actor, pool } = await reorderActor();
+        return ok(await updatePartSupplierItem({ pool }, actor, request.input ?? {}));
+      }
+      case "setPartSupplierItemStatus": {
+        const { actor, pool } = await reorderActor();
+        return ok(await setPartSupplierItemStatus({ pool }, actor, request.input ?? {}));
+      }
+      case "setPreferredPartSupplierItem": {
+        const { actor, pool } = await reorderActor();
+        return ok(await setPreferredPartSupplierItem({ pool }, actor, request.input ?? {}));
       }
       case "correctReorderReceipt": {
         const { actor, pool } = await reorderActor();

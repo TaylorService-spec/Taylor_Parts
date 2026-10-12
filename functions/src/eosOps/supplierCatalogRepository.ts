@@ -39,6 +39,14 @@ import { requireCanonicalPartId } from "./migration/partIdContract.js";
 
 const SCHEMA = "eos_ops";
 
+/**
+ * What the supplier-catalog-item functions run their statements on: the shared Pool, or a PoolClient the CALLER holds
+ * inside its own transaction. The governed command layer (partSupplierTerms.ts) passes its client so the item write and
+ * its audit row commit or roll back together; this module still never opens a connection of its own except where it
+ * says so (setPreferredSupplier).
+ */
+export type Queryable = Pick<Pool, "query">;
+
 /** supplierMasterTypes.ts SUPPLIER_ID_PATTERN — the governed id space this table shares. */
 const SUPPLIER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -460,7 +468,7 @@ export async function findActiveSuppliersByNormalizedKey(
 // ---------------------------------------------------------------------------
 
 export async function createSupplierCatalogItem(
-  pool: Pool,
+  pool: Queryable,
   tenantId: string,
   actorId: string,
   input: CreateSupplierCatalogItemInput,
@@ -496,7 +504,7 @@ export async function createSupplierCatalogItem(
 }
 
 export async function readSupplierCatalogItem(
-  pool: Pool,
+  pool: Queryable,
   tenantId: string,
   partId: string,
   supplierId: string,
@@ -515,7 +523,7 @@ export async function readSupplierCatalogItem(
 
 /** Every supplier item for one part, preferred first — the procurement read this table exists for. */
 export async function listSupplierCatalogItemsForPart(
-  pool: Pool,
+  pool: Queryable,
   tenantId: string,
   partId: string,
 ): Promise<SupplierCatalogItemRecord[]> {
@@ -529,7 +537,7 @@ export async function listSupplierCatalogItemsForPart(
 }
 
 export async function setSupplierCatalogItemStatus(
-  pool: Pool,
+  pool: Queryable,
   tenantId: string,
   actorId: string,
   partId: string,
@@ -583,18 +591,44 @@ export async function setPreferredSupplier(
   supplierId: string,
   expectedVersion: number,
 ): Promise<SupplierCatalogItemRecord> {
-  const canonicalPartId = requireCanonicalPartId(partId, "supplier_catalog_items.part_id");
-  requireSupplierId(supplierId, "supplierId");
-
   const client: PoolClient = await pool.connect();
   try {
     await client.query("BEGIN");
+    const record = await setPreferredSupplierWithin(client, tenantId, actorId, partId, supplierId, expectedVersion);
+    await client.query("COMMIT");
+    return record;
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch { /* the original failure is the one that matters */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * The same two statements, on a client the CALLER already holds inside its own transaction (the governed command, which
+ * must commit the preference change and its audit row together). It opens, commits and rolls back nothing: a refusal is
+ * thrown, and the caller's ROLLBACK undoes the incumbent's clear with it. `clearedItemIds` names the item(s) whose
+ * preference was released, so the caller can state the whole change in one audit row.
+ */
+export async function setPreferredSupplierWithin(
+  client: Queryable,
+  tenantId: string,
+  actorId: string,
+  partId: string,
+  supplierId: string,
+  expectedVersion: number,
+): Promise<SupplierCatalogItemRecord & { readonly clearedItemIds: readonly string[] }> {
+  const canonicalPartId = requireCanonicalPartId(partId, "supplier_catalog_items.part_id");
+  requireSupplierId(supplierId, "supplierId");
+  try {
     // Clear the incumbent first: the unique index is immediate, so setting before clearing would
     // conflict with a row this same transaction is about to release.
-    await client.query(
+    const { rows: cleared } = await client.query(
       `UPDATE ${SCHEMA}.supplier_catalog_items
           SET preferred = FALSE, version = version + 1, updated_at = now(), updated_by = $4
-        WHERE tenant_id = $1 AND part_id = $2 AND preferred AND supplier_id <> $3`,
+        WHERE tenant_id = $1 AND part_id = $2 AND preferred AND supplier_id <> $3
+        RETURNING item_id`,
       [tenantId, canonicalPartId, supplierId, actorId],
     );
     const { rows } = await client.query(
@@ -605,23 +639,94 @@ export async function setPreferredSupplier(
         RETURNING ${ITEM_COLUMNS}`,
       [tenantId, canonicalPartId, supplierId, expectedVersion, actorId],
     );
-    if (rows.length !== 1) {
-      await client.query("ROLLBACK");
-      return itemConflict(pool, tenantId, canonicalPartId, supplierId, expectedVersion);
-    }
-    await client.query("COMMIT");
-    return itemFromRow(rows[0]);
+    if (rows.length !== 1) return await itemConflict(client, tenantId, canonicalPartId, supplierId, expectedVersion);
+    return { ...itemFromRow(rows[0]), clearedItemIds: cleared.map((r) => String(r.item_id)) };
   } catch (err) {
-    try { await client.query("ROLLBACK"); } catch { /* the original failure is the one that matters */ }
+    if (err instanceof SupplierCatalogRepositoryError) throw err;
     return translate(err);
-  } finally {
-    client.release();
   }
+}
+
+/** The procurement TERMS of an item -- everything a governed update may change. Identity, status and preference are not here. */
+export interface SupplierCatalogItemTermsPatch {
+  readonly supplierSku?: string;
+  readonly cost?: string;
+  readonly currency?: string;
+  readonly leadTimeDays?: number;
+  readonly minOrderQty?: string | null;
+  readonly orderMultiple?: string | null;
+  /** All three conversion columns move together (the all-or-none CHECK); null clears the conversion. */
+  readonly conversion?: PurchaseConversion | null;
+  readonly contractStart?: string | null;
+  readonly contractEnd?: string | null;
+  readonly lastVerifiedAt?: string | null;
+  readonly availability?: AvailabilityState;
+}
+
+/**
+ * Change an item's procurement TERMS at the version the caller read. `patch` carries only the fields being changed; an
+ * optional term set to null is CLEARED. Part, supplier, status and preference are not updatable here -- identity is the
+ * key, and status / preference have their own writers. The version check is `AND version = $n` in the UPDATE, so a lost
+ * update is a zero-row result disambiguated by a read, never a silent overwrite.
+ */
+export async function updateSupplierCatalogItem(
+  pool: Queryable,
+  tenantId: string,
+  actorId: string,
+  partId: string,
+  supplierId: string,
+  expectedVersion: number,
+  patch: SupplierCatalogItemTermsPatch,
+): Promise<SupplierCatalogItemRecord> {
+  const canonicalPartId = requireCanonicalPartId(partId, "supplier_catalog_items.part_id");
+  requireSupplierId(supplierId, "supplierId");
+
+  const sets: string[] = [];
+  const values: unknown[] = [tenantId, canonicalPartId, supplierId, expectedVersion, actorId];
+  const push = (column: string, value: unknown) => {
+    values.push(value);
+    sets.push(`${column} = $${values.length}`);
+  };
+  const has = (k: keyof SupplierCatalogItemTermsPatch) => Object.prototype.hasOwnProperty.call(patch, k);
+  if (has("supplierSku")) push("supplier_sku", requireNonBlank(patch.supplierSku, "SUPPLIER_SKU_INVALID", "supplierSku"));
+  if (has("cost")) push("cost", patch.cost);
+  if (has("currency")) push("currency", patch.currency);
+  if (has("leadTimeDays")) push("lead_time_days", patch.leadTimeDays);
+  if (has("minOrderQty")) push("min_order_qty", patch.minOrderQty ?? null);
+  if (has("orderMultiple")) push("order_multiple", patch.orderMultiple ?? null);
+  if (has("conversion")) {
+    const conversion = requireConversion(patch.conversion);
+    push("purchase_unit", conversion?.purchaseUnit ?? null);
+    push("conversion_numerator", conversion?.numerator ?? null);
+    push("conversion_denominator", conversion?.denominator ?? null);
+  }
+  if (has("contractStart")) push("contract_start", patch.contractStart ?? null);
+  if (has("contractEnd")) push("contract_end", patch.contractEnd ?? null);
+  if (has("lastVerifiedAt")) push("last_verified_at", patch.lastVerifiedAt ?? null);
+  if (has("availability")) push("availability", patch.availability);
+  if (sets.length === 0) {
+    throw new SupplierCatalogRepositoryError("NO_CHANGE", "an update must change at least one term");
+  }
+
+  let rows: Record<string, unknown>[];
+  try {
+    ({ rows } = await pool.query(
+      `UPDATE ${SCHEMA}.supplier_catalog_items
+          SET ${sets.join(", ")}, version = version + 1, updated_at = now(), updated_by = $5
+        WHERE tenant_id = $1 AND part_id = $2 AND supplier_id = $3 AND version = $4
+        RETURNING ${ITEM_COLUMNS}`,
+      values,
+    ));
+  } catch (err) {
+    return translate(err);
+  }
+  if (rows.length === 1) return itemFromRow(rows[0]);
+  return itemConflict(pool, tenantId, canonicalPartId, supplierId, expectedVersion);
 }
 
 /** Disambiguate a zero-row versioned write: absent, wrong version, or not ACTIVE. Never guessed. */
 async function itemConflict(
-  pool: Pool,
+  pool: Queryable,
   tenantId: string,
   partId: string,
   supplierId: string,

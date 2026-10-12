@@ -1,0 +1,741 @@
+{
+  "route": "/operations/inventory",
+  "partId": "PRT-SUP-1",
+  "scenarios": {
+    "listEmpty": {
+      "request": {
+        "operation": "listPartSupplierItems",
+        "input": {
+          "partId": "PRT-SUP-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "listPartSupplierItems",
+        "result": {
+          "partId": "PRT-SUP-1",
+          "stockingUnit": "EACH",
+          "items": [],
+          "supplierOptions": [
+            {
+              "supplierId": "sup-arctic",
+              "name": "Arctic Parts Supply"
+            },
+            {
+              "supplierId": "sup-cold",
+              "name": "ColdChain Components"
+            }
+          ]
+        }
+      }
+    },
+    "createApplied": {
+      "request": {
+        "operation": "createPartSupplierItem",
+        "input": {
+          "partId": "PRT-SUP-1",
+          "supplierId": "sup-arctic",
+          "supplierSku": "ARC-100",
+          "cost": "12.50",
+          "currency": "USD",
+          "leadTimeDays": 7,
+          "minOrderQty": "10",
+          "orderMultiple": "5",
+          "purchaseUnit": "BOX",
+          "conversionToStockingUnit": {
+            "numerator": 12,
+            "denominator": 1
+          },
+          "contractStart": "2026-01-01",
+          "contractEnd": "2026-12-31",
+          "availability": "AVAILABLE"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "createPartSupplierItem",
+        "result": {
+          "outcome": "created",
+          "item": {
+            "itemId": "PRT-SUP-1__sup-arctic",
+            "partId": "PRT-SUP-1",
+            "supplierId": "sup-arctic",
+            "supplierName": "Arctic Parts Supply",
+            "supplierStatus": "ACTIVE",
+            "supplierSku": "ARC-100",
+            "cost": "12.5",
+            "currency": "USD",
+            "leadTimeDays": 7,
+            "minOrderQty": "10",
+            "orderMultiple": "5",
+            "purchaseUnit": "BOX",
+            "conversionToStockingUnit": {
+              "numerator": 12,
+              "denominator": 1
+            },
+            "contractStart": "2026-01-01",
+            "contractEnd": "2026-12-31",
+            "availability": "AVAILABLE",
+            "lastVerifiedAt": null,
+            "preferred": false,
+            "status": "ACTIVE",
+            "version": 1
+          }
+        }
+      }
+    },
+    "createReplayed": {
+      "request": {
+        "operation": "createPartSupplierItem",
+        "input": {
+          "partId": "PRT-SUP-1",
+          "supplierId": "sup-arctic",
+          "supplierSku": "ARC-100",
+          "cost": "12.50",
+          "currency": "USD",
+          "leadTimeDays": 7,
+          "minOrderQty": "10",
+          "orderMultiple": "5",
+          "purchaseUnit": "BOX",
+          "conversionToStockingUnit": {
+            "numerator": 12,
+            "denominator": 1
+          },
+          "contractStart": "2026-01-01",
+          "contractEnd": "2026-12-31",
+          "availability": "AVAILABLE"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "createPartSupplierItem",
+        "result": {
+          "outcome": "replayed",
+          "item": {
+            "itemId": "PRT-SUP-1__sup-arctic",
+            "partId": "PRT-SUP-1",
+            "supplierId": "sup-arctic",
+            "supplierName": "Arctic Parts Supply",
+            "supplierStatus": "ACTIVE",
+            "supplierSku": "ARC-100",
+            "cost": "12.5",
+            "currency": "USD",
+            "leadTimeDays": 7,
+            "minOrderQty": "10",
+            "orderMultiple": "5",
+            "purchaseUnit": "BOX",
+            "conversionToStockingUnit": {
+              "numerator": 12,
+              "denominator": 1
+            },
+            "contractStart": "2026-01-01",
+            "contractEnd": "2026-12-31",
+            "availability": "AVAILABLE",
+            "lastVerifiedAt": null,
+            "preferred": false,
+            "status": "ACTIVE",
+            "version": 1
+          }
+        }
+      }
+    },
+    "createConflict": {
+      "request": {
+        "operation": "createPartSupplierItem",
+        "input": {
+          "partId": "PRT-SUP-1",
+          "supplierId": "sup-arctic",
+          "supplierSku": "ARC-OTHER",
+          "cost": "12.50",
+          "currency": "USD",
+          "leadTimeDays": 7,
+          "minOrderQty": "10",
+          "orderMultiple": "5",
+          "purchaseUnit": "BOX",
+          "conversionToStockingUnit": {
+            "numerator": 12,
+            "denominator": 1
+          },
+          "contractStart": "2026-01-01",
+          "contractEnd": "2026-12-31",
+          "availability": "AVAILABLE"
+        }
+      },
+      "status": 409,
+      "body": {
+        "ok": false,
+        "operation": "createPartSupplierItem",
+        "code": "CONFLICT",
+        "message": "this supplier already has different terms for this part; edit them instead"
+      }
+    },
+    "listAfterCreate": {
+      "request": {
+        "operation": "listPartSupplierItems",
+        "input": {
+          "partId": "PRT-SUP-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "listPartSupplierItems",
+        "result": {
+          "partId": "PRT-SUP-1",
+          "stockingUnit": "EACH",
+          "items": [
+            {
+              "itemId": "PRT-SUP-1__sup-arctic",
+              "partId": "PRT-SUP-1",
+              "supplierId": "sup-arctic",
+              "supplierName": "Arctic Parts Supply",
+              "supplierStatus": "ACTIVE",
+              "supplierSku": "ARC-100",
+              "cost": "12.5",
+              "currency": "USD",
+              "leadTimeDays": 7,
+              "minOrderQty": "10",
+              "orderMultiple": "5",
+              "purchaseUnit": "BOX",
+              "conversionToStockingUnit": {
+                "numerator": 12,
+                "denominator": 1
+              },
+              "contractStart": "2026-01-01",
+              "contractEnd": "2026-12-31",
+              "availability": "AVAILABLE",
+              "lastVerifiedAt": null,
+              "preferred": false,
+              "status": "ACTIVE",
+              "version": 1
+            }
+          ],
+          "supplierOptions": [
+            {
+              "supplierId": "sup-cold",
+              "name": "ColdChain Components"
+            }
+          ]
+        }
+      }
+    },
+    "updateApplied": {
+      "request": {
+        "operation": "updatePartSupplierItem",
+        "input": {
+          "itemId": "PRT-SUP-1__sup-arctic",
+          "expectedVersion": 1,
+          "changes": {
+            "cost": "11.75",
+            "leadTimeDays": 10
+          }
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "updatePartSupplierItem",
+        "result": {
+          "outcome": "updated",
+          "item": {
+            "itemId": "PRT-SUP-1__sup-arctic",
+            "partId": "PRT-SUP-1",
+            "supplierId": "sup-arctic",
+            "supplierName": "Arctic Parts Supply",
+            "supplierStatus": "ACTIVE",
+            "supplierSku": "ARC-100",
+            "cost": "11.75",
+            "currency": "USD",
+            "leadTimeDays": 10,
+            "minOrderQty": "10",
+            "orderMultiple": "5",
+            "purchaseUnit": "BOX",
+            "conversionToStockingUnit": {
+              "numerator": 12,
+              "denominator": 1
+            },
+            "contractStart": "2026-01-01",
+            "contractEnd": "2026-12-31",
+            "availability": "AVAILABLE",
+            "lastVerifiedAt": null,
+            "preferred": false,
+            "status": "ACTIVE",
+            "version": 2
+          }
+        }
+      }
+    },
+    "updateStale": {
+      "request": {
+        "operation": "updatePartSupplierItem",
+        "input": {
+          "itemId": "PRT-SUP-1__sup-arctic",
+          "expectedVersion": 1,
+          "changes": {
+            "supplierSku": "ARC-100B"
+          }
+        }
+      },
+      "status": 409,
+      "body": {
+        "ok": false,
+        "operation": "updatePartSupplierItem",
+        "code": "CONFLICT",
+        "message": "the supplier terms changed since they were read"
+      }
+    },
+    "listAfterUpdate": {
+      "request": {
+        "operation": "listPartSupplierItems",
+        "input": {
+          "partId": "PRT-SUP-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "listPartSupplierItems",
+        "result": {
+          "partId": "PRT-SUP-1",
+          "stockingUnit": "EACH",
+          "items": [
+            {
+              "itemId": "PRT-SUP-1__sup-arctic",
+              "partId": "PRT-SUP-1",
+              "supplierId": "sup-arctic",
+              "supplierName": "Arctic Parts Supply",
+              "supplierStatus": "ACTIVE",
+              "supplierSku": "ARC-100",
+              "cost": "11.75",
+              "currency": "USD",
+              "leadTimeDays": 10,
+              "minOrderQty": "10",
+              "orderMultiple": "5",
+              "purchaseUnit": "BOX",
+              "conversionToStockingUnit": {
+                "numerator": 12,
+                "denominator": 1
+              },
+              "contractStart": "2026-01-01",
+              "contractEnd": "2026-12-31",
+              "availability": "AVAILABLE",
+              "lastVerifiedAt": null,
+              "preferred": false,
+              "status": "ACTIVE",
+              "version": 2
+            }
+          ],
+          "supplierOptions": [
+            {
+              "supplierId": "sup-cold",
+              "name": "ColdChain Components"
+            }
+          ]
+        }
+      }
+    },
+    "createInvalid": {
+      "request": {
+        "operation": "createPartSupplierItem",
+        "input": {
+          "partId": "PRT-SUP-1",
+          "supplierId": "sup-cold",
+          "supplierSku": "CC-9",
+          "cost": "3",
+          "currency": "USD",
+          "leadTimeDays": 4000,
+          "availability": "UNKNOWN"
+        }
+      },
+      "status": 400,
+      "body": {
+        "ok": false,
+        "operation": "createPartSupplierItem",
+        "code": "INVALID_INPUT",
+        "message": "leadTimeDays must be an integer 0..3650"
+      }
+    },
+    "createCold": {
+      "request": {
+        "operation": "createPartSupplierItem",
+        "input": {
+          "partId": "PRT-SUP-1",
+          "supplierId": "sup-cold",
+          "supplierSku": "CC-9",
+          "cost": "3",
+          "currency": "USD",
+          "leadTimeDays": 2,
+          "availability": "UNKNOWN"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "createPartSupplierItem",
+        "result": {
+          "outcome": "created",
+          "item": {
+            "itemId": "PRT-SUP-1__sup-cold",
+            "partId": "PRT-SUP-1",
+            "supplierId": "sup-cold",
+            "supplierName": "ColdChain Components",
+            "supplierStatus": "ACTIVE",
+            "supplierSku": "CC-9",
+            "cost": "3",
+            "currency": "USD",
+            "leadTimeDays": 2,
+            "minOrderQty": null,
+            "orderMultiple": null,
+            "purchaseUnit": null,
+            "conversionToStockingUnit": null,
+            "contractStart": null,
+            "contractEnd": null,
+            "availability": "UNKNOWN",
+            "lastVerifiedAt": null,
+            "preferred": false,
+            "status": "ACTIVE",
+            "version": 1
+          }
+        }
+      }
+    },
+    "listBeforePreferred": {
+      "request": {
+        "operation": "listPartSupplierItems",
+        "input": {
+          "partId": "PRT-SUP-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "listPartSupplierItems",
+        "result": {
+          "partId": "PRT-SUP-1",
+          "stockingUnit": "EACH",
+          "items": [
+            {
+              "itemId": "PRT-SUP-1__sup-arctic",
+              "partId": "PRT-SUP-1",
+              "supplierId": "sup-arctic",
+              "supplierName": "Arctic Parts Supply",
+              "supplierStatus": "ACTIVE",
+              "supplierSku": "ARC-100",
+              "cost": "11.75",
+              "currency": "USD",
+              "leadTimeDays": 10,
+              "minOrderQty": "10",
+              "orderMultiple": "5",
+              "purchaseUnit": "BOX",
+              "conversionToStockingUnit": {
+                "numerator": 12,
+                "denominator": 1
+              },
+              "contractStart": "2026-01-01",
+              "contractEnd": "2026-12-31",
+              "availability": "AVAILABLE",
+              "lastVerifiedAt": null,
+              "preferred": false,
+              "status": "ACTIVE",
+              "version": 2
+            },
+            {
+              "itemId": "PRT-SUP-1__sup-cold",
+              "partId": "PRT-SUP-1",
+              "supplierId": "sup-cold",
+              "supplierName": "ColdChain Components",
+              "supplierStatus": "ACTIVE",
+              "supplierSku": "CC-9",
+              "cost": "3",
+              "currency": "USD",
+              "leadTimeDays": 2,
+              "minOrderQty": null,
+              "orderMultiple": null,
+              "purchaseUnit": null,
+              "conversionToStockingUnit": null,
+              "contractStart": null,
+              "contractEnd": null,
+              "availability": "UNKNOWN",
+              "lastVerifiedAt": null,
+              "preferred": false,
+              "status": "ACTIVE",
+              "version": 1
+            }
+          ],
+          "supplierOptions": []
+        }
+      }
+    },
+    "setPreferredApplied": {
+      "request": {
+        "operation": "setPreferredPartSupplierItem",
+        "input": {
+          "partId": "PRT-SUP-1",
+          "itemId": "PRT-SUP-1__sup-cold",
+          "expectedVersion": 1
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "setPreferredPartSupplierItem",
+        "result": {
+          "outcome": "preferred",
+          "item": {
+            "itemId": "PRT-SUP-1__sup-cold",
+            "partId": "PRT-SUP-1",
+            "supplierId": "sup-cold",
+            "supplierName": "ColdChain Components",
+            "supplierStatus": "ACTIVE",
+            "supplierSku": "CC-9",
+            "cost": "3",
+            "currency": "USD",
+            "leadTimeDays": 2,
+            "minOrderQty": null,
+            "orderMultiple": null,
+            "purchaseUnit": null,
+            "conversionToStockingUnit": null,
+            "contractStart": null,
+            "contractEnd": null,
+            "availability": "UNKNOWN",
+            "lastVerifiedAt": null,
+            "preferred": true,
+            "status": "ACTIVE",
+            "version": 2
+          },
+          "clearedItemId": null
+        }
+      }
+    },
+    "listAfterPreferred": {
+      "request": {
+        "operation": "listPartSupplierItems",
+        "input": {
+          "partId": "PRT-SUP-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "listPartSupplierItems",
+        "result": {
+          "partId": "PRT-SUP-1",
+          "stockingUnit": "EACH",
+          "items": [
+            {
+              "itemId": "PRT-SUP-1__sup-cold",
+              "partId": "PRT-SUP-1",
+              "supplierId": "sup-cold",
+              "supplierName": "ColdChain Components",
+              "supplierStatus": "ACTIVE",
+              "supplierSku": "CC-9",
+              "cost": "3",
+              "currency": "USD",
+              "leadTimeDays": 2,
+              "minOrderQty": null,
+              "orderMultiple": null,
+              "purchaseUnit": null,
+              "conversionToStockingUnit": null,
+              "contractStart": null,
+              "contractEnd": null,
+              "availability": "UNKNOWN",
+              "lastVerifiedAt": null,
+              "preferred": true,
+              "status": "ACTIVE",
+              "version": 2
+            },
+            {
+              "itemId": "PRT-SUP-1__sup-arctic",
+              "partId": "PRT-SUP-1",
+              "supplierId": "sup-arctic",
+              "supplierName": "Arctic Parts Supply",
+              "supplierStatus": "ACTIVE",
+              "supplierSku": "ARC-100",
+              "cost": "11.75",
+              "currency": "USD",
+              "leadTimeDays": 10,
+              "minOrderQty": "10",
+              "orderMultiple": "5",
+              "purchaseUnit": "BOX",
+              "conversionToStockingUnit": {
+                "numerator": 12,
+                "denominator": 1
+              },
+              "contractStart": "2026-01-01",
+              "contractEnd": "2026-12-31",
+              "availability": "AVAILABLE",
+              "lastVerifiedAt": null,
+              "preferred": false,
+              "status": "ACTIVE",
+              "version": 2
+            }
+          ],
+          "supplierOptions": []
+        }
+      }
+    },
+    "statusDenied": {
+      "request": {
+        "operation": "setPartSupplierItemStatus",
+        "input": {
+          "itemId": "PRT-SUP-1__sup-cold",
+          "expectedVersion": 2,
+          "status": "INACTIVE"
+        }
+      },
+      "status": 403,
+      "body": {
+        "ok": false,
+        "operation": "setPartSupplierItemStatus",
+        "code": "FORBIDDEN",
+        "message": "part-supplier terms require inventory.catalog.activate"
+      }
+    },
+    "statusApplied": {
+      "request": {
+        "operation": "setPartSupplierItemStatus",
+        "input": {
+          "itemId": "PRT-SUP-1__sup-cold",
+          "expectedVersion": 2,
+          "status": "INACTIVE"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "setPartSupplierItemStatus",
+        "result": {
+          "outcome": "deactivated",
+          "item": {
+            "itemId": "PRT-SUP-1__sup-cold",
+            "partId": "PRT-SUP-1",
+            "supplierId": "sup-cold",
+            "supplierName": "ColdChain Components",
+            "supplierStatus": "ACTIVE",
+            "supplierSku": "CC-9",
+            "cost": "3",
+            "currency": "USD",
+            "leadTimeDays": 2,
+            "minOrderQty": null,
+            "orderMultiple": null,
+            "purchaseUnit": null,
+            "conversionToStockingUnit": null,
+            "contractStart": null,
+            "contractEnd": null,
+            "availability": "UNKNOWN",
+            "lastVerifiedAt": null,
+            "preferred": false,
+            "status": "INACTIVE",
+            "version": 3
+          }
+        }
+      }
+    },
+    "listMixed": {
+      "request": {
+        "operation": "listPartSupplierItems",
+        "input": {
+          "partId": "PRT-SUP-1"
+        }
+      },
+      "status": 200,
+      "body": {
+        "ok": true,
+        "operation": "listPartSupplierItems",
+        "result": {
+          "partId": "PRT-SUP-1",
+          "stockingUnit": "EACH",
+          "items": [
+            {
+              "itemId": "PRT-SUP-1__sup-arctic",
+              "partId": "PRT-SUP-1",
+              "supplierId": "sup-arctic",
+              "supplierName": "Arctic Parts Supply",
+              "supplierStatus": "ACTIVE",
+              "supplierSku": "ARC-100",
+              "cost": "11.75",
+              "currency": "USD",
+              "leadTimeDays": 10,
+              "minOrderQty": "10",
+              "orderMultiple": "5",
+              "purchaseUnit": "BOX",
+              "conversionToStockingUnit": {
+                "numerator": 12,
+                "denominator": 1
+              },
+              "contractStart": "2026-01-01",
+              "contractEnd": "2026-12-31",
+              "availability": "AVAILABLE",
+              "lastVerifiedAt": null,
+              "preferred": false,
+              "status": "ACTIVE",
+              "version": 2
+            },
+            {
+              "itemId": "PRT-SUP-1__sup-cold",
+              "partId": "PRT-SUP-1",
+              "supplierId": "sup-cold",
+              "supplierName": "ColdChain Components",
+              "supplierStatus": "ACTIVE",
+              "supplierSku": "CC-9",
+              "cost": "3",
+              "currency": "USD",
+              "leadTimeDays": 2,
+              "minOrderQty": null,
+              "orderMultiple": null,
+              "purchaseUnit": null,
+              "conversionToStockingUnit": null,
+              "contractStart": null,
+              "contractEnd": null,
+              "availability": "UNKNOWN",
+              "lastVerifiedAt": null,
+              "preferred": false,
+              "status": "INACTIVE",
+              "version": 3
+            }
+          ],
+          "supplierOptions": []
+        }
+      }
+    },
+    "listDenied": {
+      "request": {
+        "operation": "listPartSupplierItems",
+        "input": {
+          "partId": "PRT-SUP-1"
+        }
+      },
+      "status": 403,
+      "body": {
+        "ok": false,
+        "operation": "listPartSupplierItems",
+        "code": "FORBIDDEN",
+        "message": "part-supplier terms require inventory.catalog.manage"
+      }
+    },
+    "createDenied": {
+      "request": {
+        "operation": "createPartSupplierItem",
+        "input": {
+          "partId": "PRT-SUP-1",
+          "supplierId": "sup-cold",
+          "supplierSku": "CC-9",
+          "cost": "3",
+          "currency": "USD",
+          "leadTimeDays": 2,
+          "availability": "UNKNOWN"
+        }
+      },
+      "status": 403,
+      "body": {
+        "ok": false,
+        "operation": "createPartSupplierItem",
+        "code": "FORBIDDEN",
+        "message": "part-supplier terms require inventory.catalog.manage"
+      }
+    }
+  }
+}
