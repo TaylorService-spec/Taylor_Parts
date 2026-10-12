@@ -142,7 +142,7 @@ test("Manufacturer authority, in PostgreSQL", { skip: SKIP, concurrency: 1 }, as
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",
     "--migrations-dir", "migrations", "--no-check-order"],
-  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
+  { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 4 });
   const q = (sql, v = []) => pool.query(sql, v);
   await q(`INSERT INTO eos_policy.tenants (id,key,name) VALUES ($1,$1,$1)`, [T]);

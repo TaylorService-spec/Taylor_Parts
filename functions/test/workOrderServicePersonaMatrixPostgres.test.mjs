@@ -92,7 +92,7 @@ test("the service persona matrix over the governed Work Order authority", { skip
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",
     "--migrations-dir", "migrations", "--no-check-order"],
-  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
+  { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 6 });
   const q = (sql, v = []) => pool.query(sql, v);
 

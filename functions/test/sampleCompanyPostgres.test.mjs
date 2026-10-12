@@ -353,7 +353,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     "the last migration is not the one this suite was written against");
   execFileSync(process.execPath,
     ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", String(PINNED_MIGRATION_COUNT), "--migrations-dir", "migrations"],
-    { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe" });
+    { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe" });
 
   // The world the nonprod operator already has: a bootstrapped tenant with its seeded Roles and ONE real
   // administrator Principal. Stood up by the real bootstrap, never by hand.
