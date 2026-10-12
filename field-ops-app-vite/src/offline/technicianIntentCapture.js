@@ -65,7 +65,7 @@ export function captureNote({ workOrderId, principalUid, text, captureKey, at = 
  * key and a second set of hours. A derived intent id survives the reload.
  */
 export function captureLabor({
-  workOrderId, principalUid, laborType, durationMinutes, workDate, captureKey, at = 0, offline = false,
+  workOrderId, principalUid, laborType, durationMinutes, workDate, captureKey, idempotencyKey = null, at = 0, offline = false,
 }) {
   const intent = makeIntent({
     type: INTENT_TYPE.LABOR_RECORD,
@@ -88,7 +88,9 @@ export function captureLabor({
       ...intent.value,
       payload: Object.freeze({
         ...intent.value.payload,
-        idempotencyKey: intent.value.intentId,
+        // The online send's key when this capture is the fallback for one (WOL-2): a send that committed but
+        // lost its answer must REPLAY when the queue syncs it, never record again under a second key.
+        idempotencyKey: idempotencyKey ?? intent.value.intentId,
         // Present only when the capture was genuinely offline — see deviceClaim.
         ...(intent.value.deviceReportedAtMillis
           ? { deviceReportedAtMillis: intent.value.deviceReportedAtMillis } : {}),

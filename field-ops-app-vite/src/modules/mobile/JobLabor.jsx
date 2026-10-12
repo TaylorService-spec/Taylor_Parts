@@ -18,7 +18,7 @@
 // caller's OWN assigned job, and that capability is granted only through Administration -- so until it is,
 // this surface denies, and says so: a disabled control with an explanation, never a form that accepts
 // input and then throws it away. `canRecord` is the server's answer, never a client guess.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LABOR_TYPE_OPTIONS, LABOR_SUBMIT,
   buildLaborRequest, interpretLaborResult, validateLaborEntry, formatMinutes,
@@ -30,9 +30,21 @@ import { Button } from "../../shared/ui/primitives";
 import { submitOrQueue, SUBMIT_RESULT } from "../../offline/submitOrQueue.js";
 import { captureLabor } from "../../offline/technicianIntentCapture.js";
 
-/** One token per mount, so a retry of the same entry replays instead of recording twice. */
-function useAttemptToken(workOrderId) {
-  return useMemo(() => `${workOrderId}-${Date.now().toString(36)}`, [workOrderId]);
+/**
+ * ONE IDENTITY PER PRESS (WOL-2, docs/audits/firebase-retirement-equivalence-2026-10-11).
+ *
+ * A press of "Add time" is one act. Its token is minted when the technician presses, and that ONE identity
+ * is carried by the online send AND by the queued fallback, so:
+ *   - a send that committed but whose answer was lost, queued and synced later, REPLAYS on the server
+ *     instead of recording the hours a second time (the queued intent used to derive its own key);
+ *   - two genuine entries of the same length, type and day are two presses, so two entries -- online, and
+ *     offline in the queue (the capture key used to be the entry's shape, which collapsed them into one).
+ * Repeated taps of one press are still one act: the button is busy until the press resolves.
+ */
+function mintPressToken() {
+  const uuid = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  return uuid;
 }
 
 /** Today, as the work date. Local, because a technician means the day they are having. */
@@ -51,7 +63,6 @@ export default function JobLabor({ workOrderId, offline = null, deps = {} }) {
   const [laborType, setLaborType] = useState("ONSITE");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
-  const attemptToken = useAttemptToken(workOrderId);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,7 +87,7 @@ export default function JobLabor({ workOrderId, offline = null, deps = {} }) {
     if (busy || !canRecord || !validation.valid) return;
     setBusy(true);
     const request = buildLaborRequest({
-      workOrderId, workDate: today(), laborType, hours, minutes, attemptToken,
+      workOrderId, workDate: today(), laborType, hours, minutes, attemptToken: mintPressToken(),
     });
     if (!request) { setBusy(false); return; }
     // NO RUNTIME -> the original online-only path, byte-for-byte. The offline runtime is additive.
@@ -96,13 +107,14 @@ export default function JobLabor({ workOrderId, offline = null, deps = {} }) {
           ? { ok: true }
           : { ok: false, error: raw?.error ?? null, interpreted };
       },
-      // The capture key is the entry itself: the same hours, of the same type, on the same day, on
-      // the same job IS one act however many times the button is pressed. A different amount is a
-      // different entry, which is what a technician correcting a typo before saving actually means.
+      // The queued intent IS this press: the same idempotency key the online send used (so a lost answer
+      // replays rather than records twice), and a capture key unique to the press (so two genuine,
+      // identical entries are not collapsed into one by the queue).
       buildIntent: (wasOffline) => captureLabor({
         workOrderId, principalUid: offline.principalUid ?? "self",
         laborType, durationMinutes: request.durationMinutes, workDate: request.workDate,
-        captureKey: `labor:${request.workDate}:${laborType}:${request.durationMinutes}`,
+        captureKey: `labor:${request.idempotencyKey}`,
+        idempotencyKey: request.idempotencyKey,
         at: Date.now(), offline: wasOffline,
       }),
       enqueue: offline.enqueue,
