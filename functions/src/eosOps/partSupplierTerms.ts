@@ -587,10 +587,10 @@ export async function updatePartSupplierItem(deps: { readonly pool: Pool }, acto
     const item = view(updated, supplier);
     // A field the caller cannot read is applied as STATED, not compared (no equality oracle), so the reason says what was
     // stated by a blind writer -- it does not assert that the stored value changed (review N3).
-    const blind = effective.filter((k) => !canReadTerm(actor, k));
+    const stated = effective.filter((k) => !canReadTerm(actor, k));
     const compared = effective.filter((k) => canReadTerm(actor, k));
     const reason = [compared.length ? `updated: ${[...compared].sort().join(", ")}` : null,
-      blind.length ? `stated without read access: ${[...blind].sort().join(", ")}` : null].filter(Boolean).join("; ");
+      stated.length ? `stated without read access: ${[...stated].sort().join(", ")}` : null].filter(Boolean).join("; ");
     await audit(c, actor, "partSupplierItem.update", itemId, auditView(before), auditView(item), `part-supplier terms ${reason}`);
     return { outcome: "updated" as const, item: project(actor, item) };
   });
@@ -652,6 +652,10 @@ export async function setPreferredPartSupplierItem(deps: { readonly pool: Pool }
     const current = records.find((r) => r.itemId === itemId)!;
     const supplier = await supplierFacts(c, actor.tenantId, current.supplierId, true);
     const before = view(current, supplier);
+    // A caller who cannot read terms gets the version check FIRST: otherwise "unchanged" vs STALE_VERSION on a wrong version
+    // would tell them which item is preferred without writing anything (review N2 follow-up).
+    const canRead = actor.capabilities.has(SUPPLIER_TERMS_READ_CAPABILITY);
+    if (!canRead && before.version !== expectedVersion) refuse("STALE_VERSION", "CONFLICT", "the supplier terms changed since they were read");
     if (before.preferred) return { outcome: "unchanged" as const, item: project(actor, before), clearedItemId: null };
     if (before.version !== expectedVersion) refuse("STALE_VERSION", "CONFLICT", "the supplier terms changed since they were read");
     if (before.status !== "ACTIVE") refuse("ITEM_NOT_ACTIVE", "PRECONDITION_FAILED", "only ACTIVE supplier terms can be preferred");
@@ -667,7 +671,6 @@ export async function setPreferredPartSupplierItem(deps: { readonly pool: Pool }
       { item: auditView(item), clearedItem: auditView(incumbentAfter) },
       incumbentBefore ? `preferred supplier changed from ${incumbentBefore.supplierId} to ${item.supplierId}` : `preferred supplier set to ${item.supplierId}`);
     // Which item WAS preferred is a RELATIONSHIP fact: a caller who cannot read terms does not learn it (review N2).
-    const canRead = actor.capabilities.has(SUPPLIER_TERMS_READ_CAPABILITY);
     return { outcome: "preferred" as const, item: project(actor, item), clearedItemId: canRead ? incumbentBefore?.itemId ?? null : null };
   });
 }

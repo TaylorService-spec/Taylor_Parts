@@ -480,6 +480,14 @@ test("part-supplier terms over the governed path", { skip: SKIP, concurrency: 1 
 
   await t.test("review N2: an editor WITHOUT supplierTerms.read is not told which item was preferred before", async () => {
     ok(await call(buyer, "createPartSupplierItem", { partId: "P-200", supplierId: "sup-delta", supplierSku: "N2-1", cost: "2", currency: "USD", leadTimeDays: 1 }), "second item");
+    // No write-free probe: with a wrong version the preferred item and a non-preferred one answer alike.
+    const auditsBefore = await auditCount();
+    const probePreferred = await call(editorOnly, "setPreferredPartSupplierItem", { partId: "P-200", itemId: "P-200__sup-arctic", expectedVersion: 999 });
+    const probeOther = await call(editorOnly, "setPreferredPartSupplierItem", { partId: "P-200", itemId: "P-200__sup-delta", expectedVersion: 999 });
+    refused(probePreferred, 409, "CONFLICT", /changed since/, "wrong version on the PREFERRED item");
+    refused(probeOther, 409, "CONFLICT", /changed since/, "wrong version on another item");
+    assert.deepEqual(probePreferred.body, probeOther.body, "the same answer whichever item is preferred");
+    assert.equal(await auditCount(), auditsBefore, "the probes wrote nothing");
     const r = ok(await call(editorOnly, "setPreferredPartSupplierItem", { partId: "P-200", itemId: "P-200__sup-delta", expectedVersion: 1 }), "editor prefers");
     assert.deepEqual([r.outcome, r.clearedItemId], ["preferred", null], "the incumbent exists but is not disclosed");
     const back = ok(await call(buyer, "setPreferredPartSupplierItem", { partId: "P-200", itemId: "P-200__sup-arctic", expectedVersion: await versionOf("P-200__sup-arctic") }), "reader prefers back");
