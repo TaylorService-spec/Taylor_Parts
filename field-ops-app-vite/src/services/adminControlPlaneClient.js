@@ -21,6 +21,56 @@
 // back to a client-side interpretation.
 import { callPolicyApi } from "./adminPolicyApiClient.js";
 
+// ════════════════════ THE NINE AUTHORITY CHANGES ════════════════════
+//
+// ONE input builder per authority-changing operation. The mutation wrapper and the grant-impact preview both use it, so
+// the change an administrator previewed and the change Confirm commits can never be two different objects (the server
+// binds the commit to the preview by digest and refuses STALE_PREVIEW when they differ).
+export const AUTHORITY_CHANGE_INPUT = Object.freeze({
+  grantObjectActionToRole: ({ objectKey, actionKey, roleKey, reason, condition, requiresCondition }) => ({
+    objectKey, actionKey, roleKey, reason,
+    ...(condition ? { condition } : {}),
+    ...(requiresCondition ? { requiresCondition: true } : {}),
+  }),
+  revokeObjectActionFromRole: ({ objectKey, actionKey, roleKey, reason }) => ({ objectKey, actionKey, roleKey, reason }),
+  // WHOLE-OBJECT AUTHORITY (#210): the server expands it into exactly the Object's registered actions (optionally some
+  // action kinds), each granted/revoked through the same governed command, and reports each action's outcome.
+  applyObjectWideRoleAuthority: ({ objectKey, roleKey, mode, actionKinds, reason }) =>
+    ({ objectKey, roleKey, mode, reason, ...(actionKinds?.length ? { actionKinds } : {}) }),
+  // A condition cell is a Role grant (roleKey) OR a direct exception (principalId) -- exactly one is sent.
+  setGrantCondition: ({ objectKey, actionKey, roleKey, principalId, condition, reason }) =>
+    ({ objectKey, actionKey, ...(principalId ? { principalId } : { roleKey }), condition, reason }),
+  retireGrantCondition: ({ objectKey, actionKey, roleKey, principalId, reason }) =>
+    ({ objectKey, actionKey, ...(principalId ? { principalId } : { roleKey }), reason }),
+  // DIRECT EXCEPTIONS (lane DX): a governed capability grant to ONE Principal, enforced by every runtime gate
+  // exactly as a Role grant is. The reason is required by the server; expiry and condition are optional and sent
+  // only when chosen. There is no scope field: the server refuses a scoped direct grant.
+  grantObjectActionToPrincipal: ({ objectKey, actionKey, principalId, reason, expiresAt, condition }) => ({
+    objectKey, actionKey, principalId, reason,
+    ...(expiresAt ? { expiresAt } : {}),
+    ...(condition ? { condition } : {}),
+  }),
+  revokeObjectActionFromPrincipal: ({ objectKey, actionKey, principalId, reason }) => ({ objectKey, actionKey, principalId, reason }),
+  // A scope is sent only when one was chosen; a global assignment sends exactly what it always did.
+  assignRole: ({ principalId, roleId, reason, scopeType, scopeValue }) => ({
+    principalId, roleId, reason,
+    ...(scopeType && scopeType !== "global" ? { scopeType, scopeValue } : {}),
+  }),
+  revokeRole: ({ assignmentId, reason }) => ({ assignmentId, reason }),
+});
+
+export const AUTHORITY_CHANGE_OPERATIONS = Object.freeze(Object.keys(AUTHORITY_CHANGE_INPUT));
+
+export const isAuthorityChangeOperation = (name) => typeof name === "string" && AUTHORITY_CHANGE_OPERATIONS.includes(name);
+
+/** The commit wrapper: the operation's builder, plus `previewDigest` exactly when a preview was taken. */
+function commitOf(send, operation) {
+  return (args = {}) => {
+    const input = AUTHORITY_CHANGE_INPUT[operation](args);
+    return send(operation, typeof args.previewDigest === "string" && args.previewDigest ? { ...input, previewDigest: args.previewDigest } : input);
+  };
+}
+
 /** Build the seam over any `call(operation, input)` with callPolicyApi's envelope -- injectable for tests. */
 export function createAdminControlPlaneClient(call = callPolicyApi) {
   const send = (operation, input) => Promise.resolve(call(operation, input ?? {}))
@@ -51,40 +101,24 @@ export function createAdminControlPlaneClient(call = callPolicyApi) {
     listSupportedAssignmentScopes: (roleKey) => send("listSupportedAssignmentScopes", roleKey ? { roleKey } : {}),
 
     // ── mutations (gate: admin.securityPolicy.write; assignRole/revokeRole: admin.roleAssignment.write)
-    grantObjectActionToRole: ({ objectKey, actionKey, roleKey, reason, condition, requiresCondition }) =>
-      send("grantObjectActionToRole", {
-        objectKey, actionKey, roleKey, reason,
-        ...(condition ? { condition } : {}),
-        ...(requiresCondition ? { requiresCondition: true } : {}),
-      }),
-    revokeObjectActionFromRole: ({ objectKey, actionKey, roleKey, reason }) =>
-      send("revokeObjectActionFromRole", { objectKey, actionKey, roleKey, reason }),
-    // WHOLE-OBJECT AUTHORITY (#210): the server expands it into exactly the Object's registered actions (optionally some
-    // action kinds), each granted/revoked through the same governed command, and reports each action's outcome.
-    applyObjectWideRoleAuthority: ({ objectKey, roleKey, mode, actionKinds, reason }) =>
-      send("applyObjectWideRoleAuthority", { objectKey, roleKey, mode, reason, ...(actionKinds?.length ? { actionKinds } : {}) }),
-    // A condition cell is a Role grant (roleKey) OR a direct exception (principalId) -- exactly one is sent.
-    setGrantCondition: ({ objectKey, actionKey, roleKey, principalId, condition, reason }) =>
-      send("setGrantCondition", { objectKey, actionKey, ...(principalId ? { principalId } : { roleKey }), condition, reason }),
-    retireGrantCondition: ({ objectKey, actionKey, roleKey, principalId, reason }) =>
-      send("retireGrantCondition", { objectKey, actionKey, ...(principalId ? { principalId } : { roleKey }), reason }),
-    // DIRECT EXCEPTIONS (lane DX): a governed capability grant to ONE Principal, enforced by every runtime gate
-    // exactly as a Role grant is. The reason is required by the server; expiry and condition are optional and sent
-    // only when chosen. There is no scope field: the server refuses a scoped direct grant.
-    grantObjectActionToPrincipal: ({ objectKey, actionKey, principalId, reason, expiresAt, condition }) =>
-      send("grantObjectActionToPrincipal", {
-        objectKey, actionKey, principalId, reason,
-        ...(expiresAt ? { expiresAt } : {}),
-        ...(condition ? { condition } : {}),
-      }),
-    revokeObjectActionFromPrincipal: ({ objectKey, actionKey, principalId, reason }) =>
-      send("revokeObjectActionFromPrincipal", { objectKey, actionKey, principalId, reason }),
-    // A scope is sent only when one was chosen; a global assignment sends exactly what it always did.
-    assignRole: ({ principalId, roleId, reason, scopeType, scopeValue }) => send("assignRole", {
-      principalId, roleId, reason,
-      ...(scopeType && scopeType !== "global" ? { scopeType, scopeValue } : {}),
-    }),
-    revokeRole: ({ assignmentId, reason }) => send("revokeRole", { assignmentId, reason }),
+    // The nine AUTHORITY CHANGES build their input through AUTHORITY_CHANGE_INPUT -- the SAME builder the grant-impact
+    // preview uses -- and carry `previewDigest` only when a preview was taken (the server verifies it; with its
+    // mandatory-preview control on it requires it).
+    grantObjectActionToRole: commitOf(send, "grantObjectActionToRole"),
+    revokeObjectActionFromRole: commitOf(send, "revokeObjectActionFromRole"),
+    applyObjectWideRoleAuthority: commitOf(send, "applyObjectWideRoleAuthority"),
+    setGrantCondition: commitOf(send, "setGrantCondition"),
+    retireGrantCondition: commitOf(send, "retireGrantCondition"),
+    grantObjectActionToPrincipal: commitOf(send, "grantObjectActionToPrincipal"),
+    revokeObjectActionFromPrincipal: commitOf(send, "revokeObjectActionFromPrincipal"),
+    assignRole: commitOf(send, "assignRole"),
+    revokeRole: commitOf(send, "revokeRole"),
+
+    // ── the GRANT-IMPACT PREVIEW (read-only; gate: the previewed command's own capability, on the server).
+    // `input` is built by the commit's own builder, so what is previewed is exactly what Confirm sends.
+    previewAuthorityChange: (operation, args) => (isAuthorityChangeOperation(operation)
+      ? send("previewAuthorityChange", { change: { operation, input: AUTHORITY_CHANGE_INPUT[operation](args ?? {}) } })
+      : Promise.resolve({ ok: false, code: "UNKNOWN_OPERATION", message: `"${String(operation)}" is not a previewable authority change` })),
   });
 }
 

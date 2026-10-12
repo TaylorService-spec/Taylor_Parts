@@ -21,6 +21,7 @@ import { adminControlPlaneClient, refusalText } from "../../services/adminContro
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { useConditionVocabulary } from "./useConditionVocabulary.js";
 import { ConditionFields, Outcome, ReasonField } from "./GrantControls.jsx";
+import { AuthorityImpactPreview, useAuthorityImpactPreview } from "./AuthorityImpactPreview.jsx";
 import { buildCondition, directExceptionRows, explanationModel, statedReason } from "./controlPlaneModel.js";
 import { titleCase, titleCasePhrase } from "../../shared/display/displayLabels.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
@@ -59,16 +60,22 @@ function DirectExceptionRowControls({ api, principalId, row, vocabulary, onChang
   const reasonText = statedReason(reason);
   const ready = Boolean(reasonText) && (mode === "setCondition" ? Boolean(built) : true);
   const verb = { revoke: "Revoke", setCondition: row.conditionRaw ? "Replace condition" : "Attach condition", retireCondition: "Retire condition" }[mode];
+  // The change exactly as Confirm would send it: previewed first, committed with the preview's digest.
+  const base = { objectKey: row.objectKey, actionKey: row.actionKey, principalId, reason: reasonText };
+  const operation = { revoke: "revokeObjectActionFromPrincipal", setCondition: "setGrantCondition", retireCondition: "retireGrantCondition" }[mode] ?? null;
+  const change = mode === "setCondition" ? { ...base, condition: built } : base;
+  const preview = useAuthorityImpactPreview(api, operation, change);
 
   const submit = async (event) => {
     event.preventDefault();
-    if (!ready || busy) return;
+    if (!ready || busy || !preview.canConfirm) return;
     setBusy(true);
-    const base = { objectKey: row.objectKey, actionKey: row.actionKey, principalId, reason: reasonText };
+    const committed = { ...change, previewDigest: preview.previewDigest };
     let outcome;
-    if (mode === "revoke") outcome = await api.revokeObjectActionFromPrincipal(base);
-    else if (mode === "setCondition") outcome = await api.setGrantCondition({ ...base, condition: built });
-    else outcome = await api.retireGrantCondition(base);
+    if (mode === "revoke") outcome = await api.revokeObjectActionFromPrincipal(committed);
+    else if (mode === "setCondition") outcome = await api.setGrantCondition(committed);
+    else outcome = await api.retireGrantCondition(committed);
+    preview.settle(outcome);
     setBusy(false);
     setResult(outcome);
     if (outcome?.ok) { setMode(null); onChanged?.(); }
@@ -94,8 +101,9 @@ function DirectExceptionRowControls({ api, principalId, row, vocabulary, onChang
             <p className="fo-muted">Retiring the condition while the direct exception is held would WIDEN it, so the server refuses that. Revoke it first.</p>
           ) : null}
           <ReasonField value={reason} onChange={setReason} />
+          <AuthorityImpactPreview preview={preview} disabled={!ready || busy} />
           <div className="fo-btn-row">
-            <Button type="submit" variant="primary" disabled={!ready || busy}>{`Confirm ${titleCasePhrase(verb ?? "")}`}</Button>
+            <Button type="submit" variant="primary" disabled={!ready || busy || !preview.canConfirm}>{`Confirm ${titleCasePhrase(verb ?? "")}`}</Button>
             <Button type="button" variant="secondary" onClick={() => setMode(null)}>Cancel</Button>
           </div>
         </form>
@@ -123,16 +131,18 @@ function GrantDirectExceptionForm({ api, principalId, vocabulary, onChanged }) {
   const reasonText = statedReason(reason);
   const expiresAt = isoFromLocal(expires);
   const ready = Boolean(object && action && reasonText) && (!condition.kind || Boolean(built)) && (expires.trim() === "" || Boolean(expiresAt));
+  const change = {
+    objectKey, actionKey, principalId, reason: reasonText,
+    ...(expiresAt ? { expiresAt } : {}),
+    ...(built ? { condition: built } : {}),
+  };
+  const preview = useAuthorityImpactPreview(api, "grantObjectActionToPrincipal", change);
 
   const submit = async (event) => {
     event.preventDefault();
-    if (!ready || busy) return;
+    if (!ready || busy || !preview.canConfirm) return;
     setBusy(true);
-    const outcome = await api.grantObjectActionToPrincipal({
-      objectKey, actionKey, principalId, reason: reasonText,
-      ...(expiresAt ? { expiresAt } : {}),
-      ...(built ? { condition: built } : {}),
-    });
+    const outcome = preview.settle(await api.grantObjectActionToPrincipal({ ...change, previewDigest: preview.previewDigest }));
     setBusy(false);
     setResult(outcome);
     if (outcome?.ok) {
@@ -174,8 +184,9 @@ function GrantDirectExceptionForm({ api, principalId, vocabulary, onChanged }) {
         <input type="datetime-local" aria-label="Expires" value={expires} onChange={(e) => setExpires(e.target.value)} />
       </label>
       <ReasonField value={reason} onChange={setReason} />
+      <AuthorityImpactPreview preview={preview} disabled={!ready || busy} />
       <div className="fo-btn-row">
-        <Button type="submit" variant="primary" disabled={!ready || busy}>Grant Direct Exception</Button>
+        <Button type="submit" variant="primary" disabled={!ready || busy || !preview.canConfirm}>Grant Direct Exception</Button>
       </div>
       <Outcome result={result} success="Granted by the server; re-reading." />
     </form>
