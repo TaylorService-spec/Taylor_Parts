@@ -2,8 +2,9 @@
 //
 // What is proved: Confirm is disabled until a FRESH server preview of EXACTLY the inputs on screen answered WOULD_APPLY;
 // any input change discards it; NO_OP and WOULD_REFUSE never commit; the commit carries the preview's digest; a
-// STALE_PREVIEW commit refusal discards the preview and requires a new one; counts-only previews name nobody; a preview
-// that could not be taken keeps Confirm disabled (fail closed); the matrix's single-click toggle no longer commits on one
+// STALE_PREVIEW commit refusal discards the preview and requires a new one; counts-only previews name nobody; the
+// server's previewMandatory decides the rest -- false: the commit sends no digest and an unavailable preview still lets
+// the administrator confirm; true (or learned from PREVIEW_REQUIRED): fail closed; the matrix's single-click toggle no longer commits on one
 // click; and the client seam builds the preview input and the commit input with ONE builder.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -100,21 +101,78 @@ describe("the preview step gates Confirm", () => {
     expect(revoke).toHaveBeenCalledTimes(2);
   });
 
-  it("a preview that cannot be taken keeps Confirm disabled (fail closed), whatever the reason", async () => {
+  it("previewMandatory=false: the preview is shown the same, and the commit sends NO digest (the server's unchanged path)", async () => {
+    const api = { previewAuthorityChange: wouldApplyPreview({ previewMandatory: false }), revokeObjectActionFromRole: vi.fn(async () => ({ ok: true, data: {} })) };
+    const form = renderCell(api);
+    typeReason(form, "dispatch moves");
+    expect(confirmOf(form).disabled).toBe(true);
+    await previewImpact(form);
+    expect(form.querySelector("[data-preview-counts]")).toBeTruthy();
+    expect(confirmOf(form).disabled).toBe(false);
+    await act(async () => { fireEvent.click(confirmOf(form)); });
+    expect(api.revokeObjectActionFromRole).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "dispatch moves" });
+  });
+
+  it("previewMandatory=false: NO_OP and WOULD_REFUSE still offer no commit", async () => {
+    for (const over of [{ outcome: "NO_OP", affectedCount: 0 }, { outcome: "WOULD_REFUSE", refusal: { code: "SELF_ADMINISTRATION", category: "FORBIDDEN", message: "SELF_ADMINISTRATION: x" } }]) {
+      cleanup();
+      const api = { previewAuthorityChange: wouldApplyPreview({ previewMandatory: false, ...over }), revokeObjectActionFromRole: vi.fn() };
+      const form = renderCell(api);
+      typeReason(form, "x");
+      await previewImpact(form, over.outcome);
+      expect(confirmOf(form).disabled).toBe(true);
+    }
+  });
+
+  it("preview UNAVAILABLE and not known to be mandatory: 'impact preview unavailable', Confirm still available, no digest", async () => {
     for (const answer of [
       { ok: false, code: "UNKNOWN_OPERATION", message: '"previewAuthorityChange" is not an Administration operation' },
-      { ok: false, code: "FORBIDDEN", message: "admin.securityPolicy.write is required" },
       { ok: false, code: "UNREACHABLE", message: "the Administration API could not be reached" },
+      { ok: false, code: "INTERNAL", message: "the request could not be completed" },
     ]) {
       cleanup();
-      const api = { previewAuthorityChange: vi.fn(async () => answer), revokeObjectActionFromRole: vi.fn() };
+      const api = { previewAuthorityChange: vi.fn(async () => answer), revokeObjectActionFromRole: vi.fn(async () => ({ ok: true, data: {} })) };
       const form = renderCell(api);
       typeReason(form, "x");
       fireEvent.click(within(form).getByRole("button", { name: "Preview impact" }));
       await waitFor(() => expect(form.querySelector(`[data-preview-failure="${answer.code}"]`)).toBeTruthy());
-      expect(confirmOf(form).disabled).toBe(true);
-      expect(api.revokeObjectActionFromRole).not.toHaveBeenCalled();
+      expect(form.querySelector('[data-preview-unavailable="confirmable"]').textContent).toMatch(/Impact preview unavailable/);
+      expect(confirmOf(form).disabled).toBe(false);
+      await act(async () => { fireEvent.click(confirmOf(form)); });
+      expect(api.revokeObjectActionFromRole).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "x" });
     }
+  });
+
+  it("a FORBIDDEN preview is the change's own gate: Confirm stays disabled", async () => {
+    const api = { previewAuthorityChange: vi.fn(async () => ({ ok: false, code: "FORBIDDEN", message: "admin.securityPolicy.write is required" })), revokeObjectActionFromRole: vi.fn() };
+    const form = renderCell(api);
+    typeReason(form, "x");
+    fireEvent.click(within(form).getByRole("button", { name: "Preview impact" }));
+    await waitFor(() => expect(form.querySelector('[data-preview-failure="FORBIDDEN"]')).toBeTruthy());
+    expect(confirmOf(form).disabled).toBe(true);
+  });
+
+  it("previewMandatory=true: fails closed -- a preview without a digest, or an unavailable preview after PREVIEW_REQUIRED, never commits", async () => {
+    const noDigest = { previewAuthorityChange: wouldApplyPreview({ previewMandatory: true, digests: {} }), revokeObjectActionFromRole: vi.fn() };
+    let form = renderCell(noDigest);
+    typeReason(form, "x");
+    await previewImpact(form);
+    expect(confirmOf(form).disabled).toBe(true);
+    cleanup();
+    // The preview is unavailable; Confirm is tried without a digest; the server answers PREVIEW_REQUIRED -> learned.
+    const required = { ok: false, code: "PRECONDITION_REQUIRED", message: "PREVIEW_REQUIRED: revokeObjectActionFromRole changes authority and requires a fresh previewAuthorityChange" };
+    const api = { previewAuthorityChange: vi.fn(async () => ({ ok: false, code: "UNREACHABLE", message: "unreachable" })), revokeObjectActionFromRole: vi.fn(async () => required) };
+    form = renderCell(api);
+    typeReason(form, "x");
+    fireEvent.click(within(form).getByRole("button", { name: "Preview impact" }));
+    await waitFor(() => expect(form.querySelector('[data-preview-failure="UNREACHABLE"]')).toBeTruthy());
+    await act(async () => { fireEvent.click(confirmOf(form)); });
+    expect(api.revokeObjectActionFromRole).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(form.querySelector("[data-preview-required]")).toBeTruthy());
+    fireEvent.click(within(form).getByRole("button", { name: /^Preview impact/ }));
+    await waitFor(() => expect(form.querySelector('[data-preview-unavailable="blocked"]')).toBeTruthy());
+    expect(confirmOf(form).disabled).toBe(true);
+    expect(api.revokeObjectActionFromRole).toHaveBeenCalledTimes(1);
   });
 
   it("PREVIEW_BUSY asks for a retry and offers no commit", async () => {

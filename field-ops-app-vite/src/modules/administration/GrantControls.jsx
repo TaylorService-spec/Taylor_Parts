@@ -14,7 +14,7 @@ import { titleCasePhrase } from "../../shared/display/displayLabels.js";
 import { useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { refusalText } from "../../services/adminControlPlaneClient.js";
-import { AuthorityImpactPreview, useAuthorityImpactPreview } from "./AuthorityImpactPreview.jsx";
+import { AuthorityImpactPreview, useAuthorityImpactPreview, withPreviewDigest } from "./AuthorityImpactPreview.jsx";
 import {
   buildCondition,
   describeCondition,
@@ -153,7 +153,7 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, capabili
     event.preventDefault();
     if (!ready || busy || !preview.canConfirm) return;
     setBusy(true);
-    const outcome = preview.settle(await api[operation]({ ...change, previewDigest: preview.previewDigest }));
+    const outcome = preview.settle(await api[operation](withPreviewDigest(change, preview)));
     setBusy(false);
     setResult(outcome);
     if (outcome?.ok) { setMode(null); onChanged?.(); }

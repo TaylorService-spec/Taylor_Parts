@@ -28,7 +28,7 @@ import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ConditionFields, GrantCellControls, GrantCellFacts, Outcome, ReasonField } from "./GrantControls.jsx";
 import { buildCondition, matrixActionRows, statedReason } from "./controlPlaneModel.js";
 import { useConditionVocabulary } from "./useConditionVocabulary.js";
-import { AuthorityImpactPreview, useAuthorityImpactPreview } from "./AuthorityImpactPreview.jsx";
+import { AuthorityImpactPreview, useAuthorityImpactPreview, withPreviewDigest } from "./AuthorityImpactPreview.jsx";
 import { titleCase } from "../../shared/display/displayLabels.js";
 
 export function ReadState({ read, what }) {
@@ -178,7 +178,7 @@ export function GrantToRoleForm({ api, objectKey, actionKey, capabilityKey, role
     event.preventDefault();
     if (!ready || busy || !preview.canConfirm) return;
     setBusy(true);
-    const outcome = preview.settle(await api.grantObjectActionToRole({ ...change, previewDigest: preview.previewDigest }));
+    const outcome = preview.settle(await api.grantObjectActionToRole(withPreviewDigest(change, preview)));
     setBusy(false);
     setResult(outcome);
     if (outcome?.ok) { setOpen(false); setRoleKey(""); setReason(""); setCondition({ kind: "" }); onChanged?.(); }
