@@ -69,10 +69,15 @@ Each export was then scored on gates A–E and audit.
 | Retired operations audited | **22** |
 | REPLACED (verified) | **0** |
 | SUPERSEDED (verified) | **0** |
-| UNVERIFIED (a replacement exists; evidence incomplete) | **10** |
-| GAP | **12** |
+| UNVERIFIED (a replacement exists; evidence incomplete) | **6** |
+| GAP | **16** |
 
-Of the 10 UNVERIFIED, four are a single gate away from their candidate disposition:
+Four operations with an unruled material behaviour change (`recordWorkOrderLabor`, `getWorkOrderLabor`,
+`probePartAlias`, `resolveScannedPartIdentifier`) are classified **GAP**, not UNVERIFIED. Under the
+gate, a material change without an Owner decision is a gap until the Owner rules (adversarial review of
+#2057, finding N8).
+
+Of the 6 UNVERIFIED, these are a single gate away from their candidate disposition:
 
 - `recordPutAway` is `REPLACED` except for gate B (live proof).
 - `lookupScannedPart` is `REPLACED` except for gate B.

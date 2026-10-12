@@ -157,6 +157,9 @@ it, and the gate makes no equivalence claim about them:
     listMyReceivableTransfers;
   - listStockMovementLocations;
   - relocateStock.
+- **`dd0ccf4a` (2026-10-01)** retired 11 truck callables plus `listWorkOrderConsumptionSources` and
+  `updateWorkOrderExecutionData`.
+- **`5a8fcef7` (2026-10-01)** retired 5 equipment callables.
 - **Earlier waves** took the estate from 187 exports to 138.
 
 Several of these names are still used by the sandbox scanner harness (§3 item 4). Auditing them under
