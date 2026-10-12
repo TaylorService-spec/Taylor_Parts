@@ -65,6 +65,8 @@ const ROUTE_BUDGET: Readonly<Record<string, "credential" | "routine">> = Object.
   [LOGIN_ROUTES.enrollmentComplete]: "credential", [LOGIN_ROUTES.resetComplete]: "credential",
   [LOGIN_ROUTES.passwordChange]: "credential", [LOGIN_ROUTES.totpConfirm]: "credential",
   [LOGIN_ROUTES.totpRemove]: "credential", [LOGIN_ROUTES.recoveryCodesRegenerate]: "credential",
+  // N2 (third review): it now verifies the current password.
+  [LOGIN_ROUTES.totpBegin]: "credential",
 });
 
 // ════════════════════ rate limiting ════════════════════

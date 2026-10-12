@@ -493,7 +493,13 @@ export class EosLoginService {
     try {
       await this.requireEligible(account, tenantId);
     } catch (err) {
-      if (err instanceof PrincipalContextError) return refuse(`PRINCIPAL_${err.refusal}`, account, tenantId);
+      // N1 (third review): record in the selected tenant ONLY if the person has a membership row there -- otherwise a
+      // stated id would inject a foreign Principal into an unrelated tenant's security log, or (a non-existent id) fail
+      // the FK and answer 500, an oracle for tenant ids. Then the home tenant records it.
+      if (err instanceof PrincipalContextError) {
+        const member = await this.deps.repo.getMembership(tenantId, account.principal_id);
+        return refuse(`PRINCIPAL_${err.refusal}`, account, member ? tenantId : null);
+      }
       throw err;
     }
     const rehash = check.needsRehash ? await hashPassword(password, this.hashParameters) : null;

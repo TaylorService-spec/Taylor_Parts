@@ -267,8 +267,13 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
     assert.equal(r.body.code, "LOGIN_REFUSED");
     assert.ok((await events("account_id = $1 AND reason_code = 'PRINCIPAL_EMPLOYEE_NOT_ACCESS_ELIGIBLE'", [patAccount])).length >= 1);
     // A tenant pat is not a member of is refused the same way.
+    // A tenant pat is not a member of, or one that does not exist, is refused the SAME way (401, never a 500 oracle), and
+    // the refusal is recorded in pat's HOME tenant -- never injected into the unrelated tenant's log (third review N1).
+    const beforeC = (await q(`SELECT count(*)::int n FROM eos_policy.authentication_events WHERE tenant_id = $1`, [C])).rows[0].n;
     assert.equal((await login("pat@tenancy.test", PAT_PW, C)).status, 401);
+    assert.equal((await login("pat@tenancy.test", PAT_PW, "tenant-that-does-not-exist")).status, 401);
     assert.equal((await login("pat@tenancy.test", PAT_PW, "not a tenant!")).status, 401);
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.authentication_events WHERE tenant_id = $1`, [C])).rows[0].n, beforeC);
     // The switch is refused for the same reason.
     const sw = await post("/auth/session/switch-tenant", { tenantId: B }, bearer(sessA.accessToken));
     assert.equal(sw.status, 403);

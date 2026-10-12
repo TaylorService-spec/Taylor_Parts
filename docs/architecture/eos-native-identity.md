@@ -226,12 +226,11 @@ Setup and reset codes are returned **once** to the administrator, to hand over i
 - Validated like a login into the target tenant.
 - In **one transaction under the session row lock**: the current session is revoked (`TENANT_SWITCH`), a **new session and cookie** are issued for the target, and the switch is audited in **both** tenants' `audit_events`. Two concurrent switches of one session: exactly one succeeds (M5).
 
-**Administering a multi-tenant person's login.** In every *other* tenant where the person is an active member, the acting administrator must:
-- be an active member there;
-- hold that operation's capability there;
-- be an **Owner** there wherever the person holds a protected Role there.
+**Administering a multi-tenant person's login** (both reviews). The check runs when a credential act is requested, and **again when a setup or reset code is used**. It covers every tenant the person belongs to, **in any membership status**, and every tenant where they hold a protected Role. In each of those tenants the acting administrator must:
+- hold that operation's capability there, **resolved** through `resolvePrincipalContextById`, so membership and tenant status, the DQ-007 Employee gate and stale-assignment exclusion all apply;
+- be an **Owner** there wherever the person holds the Owner or Administrator Role.
 
-Otherwise the act is refused (`CROSS_TENANT_AUTHORITY`). One tenant's administrator can never mint a credential that acts in a tenant where they hold nothing (M1).
+Refusals are `PROTECTED_TARGET` (the home tenant's own Owner rule) or the generic `TARGET_NOT_ADMINISTRABLE` (anything learned from another tenant, never named). One tenant's administrator can never mint a credential that acts in a tenant where they hold nothing (M1, R1–R3).
 
 **Preserved single-tenant behaviour.**
 - `EOS_AUTH_MULTI_TENANT_SESSIONS` defaults to **disabled**. Then a human login is single-tenant exactly as after review finding 1: a Principal with a membership elsewhere cannot be provisioned or sign in, and switching answers `409 TENANT_SWITCHING_DISABLED` (M7, and the full `eosNativeLoginPostgres` suite).
@@ -360,7 +359,11 @@ The code is built so that each of these can be decided without rework. **D-1, D-
 
 **Active history.**
 - `authentication_events` is append-only: no UPDATE, DELETE or TRUNCATE, enforced by trigger. No code in this repository deletes, alters, moves or exports a row.
-- Every row carries `tenant_id`: the session's tenant, else the account's home tenant. It is **NULL only for attempts that name no account**; those are operator-visible and never shown to a tenant (M12).
+- Every row carries `tenant_id`, chosen in this order:
+  1. the tenant the event is about: a selected tenant, but only where the person has a membership row (third review N1);
+  2. else the session's tenant;
+  3. else the account's home tenant.
+- It is **NULL only for attempts that name no account**; those are operator-visible and never shown to a tenant (M12).
 
 **Restricted access.** `readAuthenticationEvents` and `planAuthenticationEventArchive` require `admin.principalAccess.read` (admin and owner), and always read **the caller's tenant only**. `audit.event.read` was deliberately *not* used: twelve Roles hold it.
 
@@ -411,6 +414,15 @@ A fresh reviewer with no authoring context reviewed the D-12/D-13 head. **No CRI
 | 11 | LOW | Refusal details disclosed other tenants' facts | **Fixed.** Anything learned from another tenant is the generic `TARGET_NOT_ADMINISTRABLE` (R2) |
 | 12 | LOW | `EOS_AUTH_CLIENT_IP_HEADER` is spoofable if the origin is reachable directly | **Documented** (§9). Render services are reachable only through Render's edge; confirm by the §9 measurement |
 | 13 | INFO | Doc mismatches; missing TRUNCATE guards; last-administrator guard in multi-tenant mode | **Fixed.** D-4 row, route header, TRUNCATE triggers on both governance tables, and the guard counts logins homed in any tenant |
+
+**Third independent verification (head after these fixes).** Findings 1–11 and 13 verified **CLOSED**; HIGH-1, HIGH-2 and HIGH-3 confirmed **CLOSED**; no CRITICAL or HIGH open. Two new items, now fixed:
+- **N1 (LOW, multi-tenant mode only).** A refusal for a tenant the person isn't a member of was recorded in that tenant, and a non-existent id answered 500. Now it is recorded in the home tenant and answers 401 (M3).
+- **N2 (INFO).** `totp/begin` now uses the credential rate-limit budget.
+
+Accepted residuals:
+- **Promotion race (~100 ms).** A code's issuer re-check runs before the password hash, so a promotion that commits in that window still passes.
+- **Employee link removed mid-session.** After a link is removed, API access continues until the access token expires (≤ 300 s). The next refresh refuses it, and status changes are enforced per request by DQ-007.
+- **Provisioning refusal messages.** These say *whether* a login or membership exists elsewhere, but never where.
 
 **Operational consequence of finding 3 (intended).** If a person holds a membership in another tenant, even a suspended one, then only an actor holding the authority in *every* such tenant can administer that person's login. The other tenant must remove the membership, or a dual-tenant Owner must act.
 
