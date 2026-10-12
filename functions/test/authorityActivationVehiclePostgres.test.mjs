@@ -214,7 +214,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // Rental (#207): the eos_rental domain, rental Work Orders, the RENTAL billing package; 6 capabilities, 30 grants.
     "1764520000000_rental.sql",
     // SUP-1 supplier terms: inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit on supplierCatalogItem; 7 capabilities, 0 grants.
-    "1764530000000_supplier-terms-capabilities.sql"],
+    "1764530000000_supplier-terms-capabilities.sql",
+    // Grant-impact preview (PR 3): the never-commit fence -- seven deferred constraint triggers; no capability, no grant.
+    "1764540000000_authority-preview-never-commits.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -445,6 +447,8 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // #207 Rental: -6 capabilities and -30 grants when peeled.
     // SUP-1 supplier terms (1764530000000): -7 capabilities (4 record + 3 COMMERCIAL), no grant (it registers and grants nothing).
     assert.deepEqual(await counts(), { caps: 135, grants: 481, mine: 26 });
+    runMigrate(url, "down", 1); // the grant-impact preview never-commit fence (1764540000000): triggers only, nothing moves
+    assert.deepEqual(await counts(), { caps: 135, grants: 481, mine: 26 });
     runMigrate(url, "down", 1); // SUP-1 supplier terms (-7 capabilities, 0 grants)
     assert.deepEqual(await counts(), { caps: 128, grants: 481, mine: 26 });
     runMigrate(url, "down", 1); // Rental (-6 capabilities, -30 grants)
@@ -562,7 +566,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the SUP-1 supplier terms keys (1764530000000) first
+    runMigrate(url, "down", 1); // peel the grant-impact preview fence (1764540000000) first -- triggers only
+    runMigrate(url, "down", 1); // then the SUP-1 supplier terms keys (1764530000000)
     runMigrate(url, "down", 1); // then Rental (1764520000000)
     runMigrate(url, "down", 1); // then Finance Closure (1764510000000)
     runMigrate(url, "down", 1); // then the governed configuration + sales pricing (1764500000000)

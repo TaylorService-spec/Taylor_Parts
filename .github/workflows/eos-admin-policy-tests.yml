@@ -302,6 +302,13 @@ on:
       - "functions/test/support/partSupplierTermsFixture.mjs"
       # DECISIONS #230: the Administration Objects matrix for supplierCatalogItem (seven actions, standing, zero grants).
       - "functions/test/supplierTermsObjectMatrixPostgres.test.mjs"
+      # Grant-impact preview (PR 3, advisory): equivalence + refusals, never-commit safety + catalog purity, and the static
+      # import-closure purity guard (with its closure helper and the shared fixture).
+      - "functions/test/authorityPreviewEquivalencePostgres.test.mjs"
+      - "functions/test/authorityPreviewSafetyPostgres.test.mjs"
+      - "functions/test/authorityPreviewPurity.test.mjs"
+      - "functions/test/support/authorityPreviewFixture.mjs"
+      - "functions/test/support/valueImportClosure.mjs"
       # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
       - "functions/test/governedFieldGroups.test.mjs"
       - "field-ops-app-vite/test/fixtures/partSupplierTermsContract.json"
@@ -1020,6 +1027,13 @@ on:
       - "functions/test/support/partSupplierTermsFixture.mjs"
       # DECISIONS #230: the Administration Objects matrix for supplierCatalogItem (seven actions, standing, zero grants).
       - "functions/test/supplierTermsObjectMatrixPostgres.test.mjs"
+      # Grant-impact preview (PR 3, advisory): equivalence + refusals, never-commit safety + catalog purity, and the static
+      # import-closure purity guard (with its closure helper and the shared fixture).
+      - "functions/test/authorityPreviewEquivalencePostgres.test.mjs"
+      - "functions/test/authorityPreviewSafetyPostgres.test.mjs"
+      - "functions/test/authorityPreviewPurity.test.mjs"
+      - "functions/test/support/authorityPreviewFixture.mjs"
+      - "functions/test/support/valueImportClosure.mjs"
       # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
       - "functions/test/governedFieldGroups.test.mjs"
       - "field-ops-app-vite/test/fixtures/partSupplierTermsContract.json"

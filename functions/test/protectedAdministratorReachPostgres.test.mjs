@@ -57,7 +57,11 @@ test("only administering call sites opt in to reach: the experience surfaces and
   // ANY use of the `administrationReach` property outside the known files is a new opt-in surface and must be reviewed
   // (catches shorthand, multi-line values and computed expressions the line scan above cannot parse).
   const KNOWN = new Set(["eosOps/contextualAuthorization.ts", "eosOps/experienceAuthority.ts", "eosOps/receiptCorrectionCommand.ts",
-    "eosOps/partsReads.ts", "eosOps/administrationReach.ts", "eosOps/reorderQueueReach.ts", "eosOps/effectiveAccessExplanation.ts"]);
+    "eosOps/partsReads.ts", "eosOps/administrationReach.ts", "eosOps/reorderQueueReach.ts", "eosOps/effectiveAccessExplanation.ts",
+    // Grant-impact preview (PR 3): READS the reach DIMENSION (administrationReachDimension) to reproduce the experience
+    // surface projection in its before/after snapshots, exactly as resolveExperienceContext does. Not an opt-in: it
+    // authorizes nothing and no `administrationReach: true` appears in it (the line scan above still holds).
+    "eosOps/authorityChangePreview.ts"]);
   const users = files.filter((f) => /\badministrationReach\b(?![A-Za-z])/.test(readFileSync(f, "utf8").replace(/from "[^"]*administrationReach[^"]*"/g, "")))
     .map((f) => f.slice(SRC.length + 1));
   assert.deepEqual(users.filter((f) => !KNOWN.has(f)), [], "a new administrationReach opt-in site needs review");

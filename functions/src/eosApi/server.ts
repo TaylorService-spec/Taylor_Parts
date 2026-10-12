@@ -34,6 +34,8 @@ import { createAdminPolicyHttpHandler } from "../adminPolicy/adminPolicyHttp";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
 import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
 import { explainEffectiveAccess } from "../eosOps/effectiveAccessExplanation";
+import { createAuthorityChangePreview } from "../eosOps/authorityChangePreview";
+import { PART_SUPPLIER_TERMS_FIELD_GROUPS } from "../eosOps/partSupplierTerms";
 import { createWorkflowHolderVisibility } from "../eosAdministration/workflowHolderVisibility";
 import { createMobileLocationScopeBindingAdministration } from "../eosOps/mobileLocationScopeBindingAdministration";
 import { createWarehouseBinAdministration, isWarehouseAdminOperation } from "../eosOps/warehouseBinAdministration";
@@ -213,6 +215,9 @@ export async function startEosApi(
     repo,
     // The runtime evaluator, over the one shared pool, for the explainEffectiveAccess read.
     explainEffectiveAccess: (tenantId, principalId) => explainEffectiveAccess(repo, pool, { tenantId, principalId }),
+    // The grant-impact preview (PR 3, advisory): the unchanged authority commands simulated on ONE pooled connection
+    // inside BEGIN..ROLLBACK, with the registered governed field-group definitions in the before/after snapshots.
+    previewAuthorityChange: createAuthorityChangePreview({ pool, fieldGroups: [PART_SUPPLIER_TERMS_FIELD_GROUPS] }),
     // W01 holder lookup: Employee names only where the EXISTING Employee visibility (employee.record.read) admits them.
     workflowHolderVisibility: createWorkflowHolderVisibility(repo, pool),
     // DQ-029: the Administration configuration operations (truck location -> warehouse scope), over the same pool.
