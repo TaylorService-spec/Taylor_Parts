@@ -1,30 +1,25 @@
 // THE EOS LOGIN CLIENT -- the browser half of the human front door. docs/architecture/eos-native-identity.md, 3(e).
 //
-// Imports NOTHING from Firebase. Talks only to the EOS API's /auth/* routes, and keeps two values in sessionStorage:
+// Imports NOTHING from Firebase. Talks only to the EOS API's /auth/* routes.
 //
-//   eos.session.v1   the short-lived access token -- the SAME key eosSession.js reads, so every API client's
-//                    currentIdToken() sends it with no change of its own
-//   eos.refresh.v1   the rotating refresh token
+// ════════════════════ WHERE THE CREDENTIALS LIVE (Owner correction 1, 2026-10-11) ════════════════════
 //
-// sessionStorage, not localStorage: a session ends with its tab. Not a cookie: the API and the app are on different
-// sites, and a cross-site cookie is exactly what browsers are retiring (Owner decision D-3 records the trade-off and
-// the same-site alternative).
+//   refresh token   NOWHERE in this code. The API sets it as an HttpOnly, Secure, __Host- cookie; the browser sends it on
+//                   /auth/refresh and /auth/logout (credentials: "include") and no script can read it.
+//   access token    in MEMORY only (this module), five minutes. Never sessionStorage, never localStorage. A reload
+//                   restores it with one cookie-backed refresh.
 //
-// OFF unless the build says VITE_EOS_HUMAN_LOGIN=enabled AND the bundle is not a production build. Off, the app is the
-// Firebase app it was.
-import { EOS_SESSION_STORAGE_KEY, readEosSession, clearEosSession } from "./eosSession.js";
+// Every /auth/* request carries `X-EOS-CSRF: 1` and JSON; the server also checks Origin (correction 2).
+//
+// CONCURRENCY. Two tabs share one cookie. A refresh is serialised across tabs with the Web Locks API where the browser
+// has it, and a REFRESH_SUPERSEDED answer (a sibling tab rotated first) is retried once with the cookie it left behind.
+//
+// OFF unless the build says VITE_EOS_HUMAN_LOGIN=enabled AND the bundle is not a production build (Owner D-1).
 
-export const EOS_REFRESH_STORAGE_KEY = "eos.refresh.v1";
+export const CSRF_HEADER = "x-eos-csrf";
 /** Refresh this long before the access token expires, so a request never carries one about to lapse. */
 export const REFRESH_LEAD_MS = 60_000;
-
-function defaultStorage() {
-  try {
-    return typeof window !== "undefined" && window.sessionStorage ? window.sessionStorage : null;
-  } catch {
-    return null;
-  }
-}
+const SUBJECT = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 
 function readEnv(name) {
   try {
@@ -53,6 +48,24 @@ function apiBase(explicit) {
   return value.length === 0 ? null : value.replace(/\/$/, "");
 }
 
+function decodeSegment(segment) {
+  const b64 = segment.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+  const text = typeof atob === "function" ? atob(padded) : Buffer.from(padded, "base64").toString("binary");
+  return JSON.parse(text);
+}
+
+/** `{ token, subject, expiresAtMs }` from an access token, for scheduling only -- the server is the verifier. */
+function describeAccessToken(token) {
+  try {
+    const p = decodeSegment(token.split(".")[1]);
+    if (typeof p.exp !== "number" || typeof p.sub !== "string" || !SUBJECT.test(p.sub)) return null;
+    return Object.freeze({ token, subject: p.sub, expiresAtMs: p.exp * 1000 });
+  } catch {
+    return null;
+  }
+}
+
 /** A failure the UI can act on. `code` is the server's (LOGIN_REFUSED, PASSWORD_POLICY, ...) or a client one. */
 export class EosLoginError extends Error {
   constructor(code, detail = null, status = 0) {
@@ -64,15 +77,26 @@ export class EosLoginError extends Error {
   }
 }
 
+function defaultLocks() {
+  try {
+    return typeof navigator !== "undefined" && navigator.locks && typeof navigator.locks.request === "function" ? navigator.locks : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The client. Every dependency is injectable so the module is testable under plain node.
- * @param {{ fetchImpl?: typeof fetch, storage?: Storage|null, baseUrl?: string, now?: () => number }} [deps]
+ * @param {{ fetchImpl?: typeof fetch, baseUrl?: string, now?: () => number, locks?: { request: Function } | null }} [deps]
  */
 export function createEosLoginClient(deps = {}) {
   const fetchImpl = deps.fetchImpl ?? (typeof fetch === "function" ? fetch.bind(globalThis) : null);
-  const storage = deps.storage === undefined ? defaultStorage() : deps.storage;
   const now = deps.now ?? (() => Date.now());
+  const locks = deps.locks === undefined ? defaultLocks() : deps.locks;
+  let access = null; // { token, subject, expiresAtMs } -- memory only
   let inflightRefresh = null;
+  const listeners = new Set();
+  const notify = () => { for (const l of listeners) { try { l(access); } catch { /* a listener's fault is its own */ } } };
 
   async function post(path, body, accessToken = null) {
     const base = apiBase(deps.baseUrl);
@@ -81,9 +105,10 @@ export function createEosLoginClient(deps = {}) {
     try {
       res = await fetchImpl(`${base}${path}`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) },
+        headers: { "content-type": "application/json", [CSRF_HEADER]: "1", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) },
         body: JSON.stringify(body ?? {}),
-        credentials: "omit",
+        // The refresh cookie rides on every /auth/* call; it is HttpOnly, so this code never sees it.
+        credentials: "include",
         cache: "no-store",
       });
     } catch {
@@ -101,84 +126,77 @@ export function createEosLoginClient(deps = {}) {
     return json;
   }
 
-  function store(session) {
-    if (!storage) throw new EosLoginError("NO_STORAGE");
-    storage.setItem(EOS_SESSION_STORAGE_KEY, session.accessToken);
-    storage.setItem(EOS_REFRESH_STORAGE_KEY, session.refreshToken);
+  function adopt(session) {
+    const d = describeAccessToken(session?.accessToken ?? "");
+    if (!d) throw new EosLoginError("UNAVAILABLE");
+    access = d;
+    notify();
+    return d;
   }
 
-  function readRefresh() {
-    try {
-      const v = storage?.getItem(EOS_REFRESH_STORAGE_KEY);
-      return typeof v === "string" && v.startsWith("eosrt_") ? v : null;
-    } catch {
-      return null;
-    }
-  }
-
-  function clear() {
-    clearEosSession({ storage });
-    try {
-      storage?.removeItem(EOS_REFRESH_STORAGE_KEY);
-    } catch {
-      // nothing to do
-    }
+  function forget() {
+    access = null;
+    notify();
   }
 
   /** @returns {Promise<{status:"AUTHENTICATED", mfaEnrollmentRequired:boolean}|{status:"MFA_REQUIRED", challenge:string}>} */
   async function login(identifier, password) {
     const r = await post("/auth/login", { identifier, password });
     if (r.status === "AUTHENTICATED") {
-      store(r.session);
+      adopt(r.session);
       return { status: "AUTHENTICATED", mfaEnrollmentRequired: r.session.mfaEnrollmentRequired === true };
     }
-    // The challenge lives in memory only (the caller's component state): it is worth five minutes and one factor.
+    // The challenge lives in the caller's component state only: it is worth five minutes and one factor.
     return { status: "MFA_REQUIRED", challenge: r.challenge, methods: r.methods ?? [] };
   }
 
   async function completeMfa(challenge, { code = undefined, recoveryCode = undefined } = {}) {
     const r = await post("/auth/login/mfa", { challenge, ...(code ? { code } : {}), ...(recoveryCode ? { recoveryCode } : {}) });
-    store(r.session);
+    adopt(r.session);
     return { status: "AUTHENTICATED", mfaEnrollmentRequired: r.session.mfaEnrollmentRequired === true };
   }
 
-  /** Exchange the refresh token. Single-flight: concurrent callers share one exchange (a second would be REUSE). */
+  async function exchangeOnce() {
+    const r = await post("/auth/refresh", {});
+    return adopt(r.session).token;
+  }
+
+  /** Exchange the cookie for a fresh access token, or null. Single-flight in this tab, serialised across tabs. */
   function refresh() {
     if (inflightRefresh) return inflightRefresh;
-    const token = readRefresh();
-    if (!token) return Promise.resolve(null);
-    inflightRefresh = post("/auth/refresh", { refreshToken: token })
-      .then((r) => {
-        store(r.session);
-        return r.session.accessToken;
-      }, (err) => {
-        // A refused refresh ends the session here too. A network failure keeps it for the next attempt.
-        if (err instanceof EosLoginError && err.code !== "NETWORK") clear();
+    const run = async () => {
+      // Another tab may have refreshed while this one waited for the lock: its cookie is already the successor.
+      try {
+        return await exchangeOnce();
+      } catch (err) {
+        if (err instanceof EosLoginError && err.code === "REFRESH_SUPERSEDED") {
+          try { return await exchangeOnce(); } catch (again) { if (again?.code !== "NETWORK") forget(); return null; }
+        }
+        // A refused refresh means no session (the server already cleared the cookie). A network failure keeps the
+        // in-memory token for whatever life it has left.
+        if (!(err instanceof EosLoginError) || err.code !== "NETWORK") forget();
         return null;
-      })
-      .finally(() => {
-        inflightRefresh = null;
-      });
+      }
+    };
+    inflightRefresh = (locks ? locks.request("eos-login-refresh", run) : run()).finally(() => {
+      inflightRefresh = null;
+    });
     return inflightRefresh;
   }
 
-  /** The access token to send: refreshed first when it is about to lapse, or null. */
+  /** The access token to send: refreshed first when absent or about to lapse, or null. */
   async function freshAccessToken() {
-    const s = readEosSession({ storage, nowMs: now() });
-    if (s && s.expiresAtMs - now() > REFRESH_LEAD_MS) return s.token;
-    if (readRefresh()) return (await refresh()) ?? null;
-    return s ? s.token : null;
+    if (access && access.expiresAtMs - now() > REFRESH_LEAD_MS) return access.token;
+    return (await refresh()) ?? null;
   }
 
   async function logout() {
-    const token = readRefresh();
-    clear();
-    if (token) {
-      try {
-        await post("/auth/logout", { refreshToken: token });
-      } catch {
-        // The local session is gone either way; the server session idles out.
-      }
+    forget();
+    try {
+      // Server-side revocation: the session row is revoked and the cookie cleared by the response.
+      await post("/auth/logout", {});
+    } catch {
+      // The local session is gone either way; an unreachable server leaves only an idle-expiring session.
     }
   }
 
@@ -194,14 +212,17 @@ export function createEosLoginClient(deps = {}) {
     refresh,
     freshAccessToken,
     logout,
-    hasRefreshToken: () => readRefresh() !== null,
+    /** The in-memory session `{ token, subject, expiresAtMs }`, or null. Never persisted. */
+    currentSession: () => access,
+    /** Called with the session (or null) whenever it changes. Returns an unsubscribe. */
+    subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
     completeEnrollment: (ticket, password) => post("/auth/enrollment/complete", { ticket, password }),
     completeReset: (ticket, password) => post("/auth/password/reset/complete", { ticket, password }),
     // ── self-service account security ──
     describeAccount: async () => (await authed("/auth/account", {})).account,
     changePassword: async (currentPassword, newPassword) => {
       const r = await authed("/auth/password/change", { currentPassword, newPassword });
-      store(r.session);
+      adopt(r.session);
       return true;
     },
     beginTotp: () => authed("/auth/mfa/totp/begin", {}),
@@ -222,6 +243,7 @@ export function eosLoginMessage(code, detail) {
     case "LOGIN_REFUSED": return "Sign-in failed. Check your sign-in name and password, or ask your administrator.";
     case "MFA_CODE_REFUSED": return "That code was not accepted. Enter the current code from your authenticator app.";
     case "MFA_CHALLENGE_INVALID": return "This sign-in step expired. Start again.";
+    case "MFA_KEY_UNAVAILABLE": return "Two-step verification is temporarily unavailable. Contact your administrator.";
     case "RATE_LIMITED": return "Too many attempts. Wait a minute and try again.";
     case "TICKET_INVALID": return "That setup or reset code is not valid any more. Ask your administrator for a new one.";
     case "CURRENT_PASSWORD_REFUSED": return "Your current password was not accepted.";
@@ -236,6 +258,8 @@ export function eosLoginMessage(code, detail) {
       }[detail] ?? "That password does not meet the requirements.";
     case "MFA_NOT_CONFIGURED": return "Two-step verification is not available on this system yet.";
     case "MFA_REQUIRED_BY_POLICY": return "Your administrator requires two-step verification on this account.";
+    case "ORIGIN_REFUSED":
+    case "CSRF_REFUSED":
     case "NOT_CONFIGURED": return "Sign-in is not configured for this environment.";
     case "NETWORK": return "The sign-in service could not be reached. Check your connection.";
     default: return "Something went wrong. Try again.";

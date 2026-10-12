@@ -308,7 +308,7 @@ export async function currentIdToken() {
   // present and unexpired, is the bearer; otherwise the Firebase ID token, exactly as before.
   // EOS NATIVE LOGIN (docs/architecture/eos-native-identity.md): when the human front door is enabled, the access
   // token is refreshed shortly before it lapses; otherwise the stored token is read as before.
-  if (eosHumanLoginEnabled()) {
+  if (eosHumanLoginEnabled() && eosLoginClient.currentSession()) {
     const fresh = await eosLoginClient.freshAccessToken();
     if (fresh) return fresh;
   }

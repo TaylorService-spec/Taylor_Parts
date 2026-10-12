@@ -226,9 +226,10 @@ export async function startEosApi(
   // The EOS session routes: the nonprod persona route (404 unless configured) and the human front door (404 unless enabled).
   const authHandler = createEosAuthHttpHandler({
     repo, auth: eosAuth, environment: config.environment,
-    login: loginService && eosAuth.verify ? createLoginHttpHandler({
+    login: loginService && eosAuth.verify && eosAuth.humanLogin ? createLoginHttpHandler({
       service: loginService, verify: eosAuth.verify, allowedOrigins: config.allowedOrigins, rateLimit: createRateLimiter(options.loginRateLimit),
-      trustForwardedFor: config.environment !== "local",
+      trustedProxyHops: eosAuth.humanLogin.trustedProxyHops,
+      cookieSameSite: eosAuth.humanLogin.cookieSameSite,
     }) : null,
   });
   const handler = createAdminPolicyHttpHandler({

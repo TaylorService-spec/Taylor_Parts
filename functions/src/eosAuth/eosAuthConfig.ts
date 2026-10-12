@@ -16,6 +16,13 @@
 //   EOS_AUTH_FACTOR_KEYS                  JSON { "<id>": "<base64url 32 bytes>" }: seals TOTP secrets and peppers
 //                                         recovery codes (SECRET). Unset: MFA enrollment refuses MFA_NOT_CONFIGURED.
 //   EOS_AUTH_FACTOR_KEY_ID                the id new secrets are sealed under; must be in EOS_AUTH_FACTOR_KEYS
+//   EOS_AUTH_COOKIE_SAMESITE              REQUIRED with EOS_HUMAN_LOGIN: "Strict" | "Lax" (app and API on one site) or
+//                                         "None" (cross-site; the cookie is then also Partitioned). No default: the
+//                                         right value is a deployment fact, and a wrong guess silently breaks refresh.
+//   EOS_AUTH_TRUSTED_PROXY_HOPS           REQUIRED with EOS_HUMAN_LOGIN: 0..3, how many proxies append X-Forwarded-For
+//                                         in front of the service (Render: 1). 0 = use the socket address. The client
+//                                         address keys the rate limiter, so a wrong value makes it per-proxy, not
+//                                         per-client.
 //
 // There is deliberately NO production signing variable. The only issuer in this foundation is the nonprod
 // persona issuer, and it cannot be configured anywhere EOS_ENVIRONMENT is not exactly "nonprod".
@@ -47,8 +54,13 @@ export interface EosAuthRuntime {
   readonly humanLogin: {
     readonly signer: EosSigner;
     readonly factorKeyring: FactorKeyring | null;
+    readonly cookieSameSite: EosCookieSameSite;
+    readonly trustedProxyHops: number;
   } | null;
 }
+
+export const EOS_COOKIE_SAMESITE_VALUES = Object.freeze(["Strict", "Lax", "None"] as const);
+export type EosCookieSameSite = (typeof EOS_COOKIE_SAMESITE_VALUES)[number];
 
 export const EOS_AUTH_DISABLED: EosAuthRuntime = Object.freeze({
   verify: null, issuer: null, audience: null, personaIssuer: null, humanLogin: null,
@@ -133,9 +145,17 @@ export function readEosAuthConfig(env: NodeJS.ProcessEnv, serviceEnvironment: st
         throw new EosAuthConfigError((err as Error).message);
       }
     }
-    humanLogin = Object.freeze({ signer: signerForLogin, factorKeyring });
+    const sameSite = (env.EOS_AUTH_COOKIE_SAMESITE ?? "").trim();
+    if (!(EOS_COOKIE_SAMESITE_VALUES as readonly string[]).includes(sameSite)) {
+      throw new EosAuthConfigError("EOS_HUMAN_LOGIN=enabled requires EOS_AUTH_COOKIE_SAMESITE = Strict | Lax | None");
+    }
+    const hopsRaw = (env.EOS_AUTH_TRUSTED_PROXY_HOPS ?? "").trim();
+    if (!/^[0-3]$/.test(hopsRaw)) throw new EosAuthConfigError("EOS_HUMAN_LOGIN=enabled requires EOS_AUTH_TRUSTED_PROXY_HOPS = 0..3");
+    humanLogin = Object.freeze({ signer: signerForLogin, factorKeyring, cookieSameSite: sameSite as EosCookieSameSite, trustedProxyHops: Number(hopsRaw) });
   } else if (present(factorKeysRaw)) {
     throw new EosAuthConfigError("EOS_AUTH_FACTOR_KEYS is set but EOS_HUMAN_LOGIN is not enabled");
+  } else if (present(env.EOS_AUTH_COOKIE_SAMESITE) || present(env.EOS_AUTH_TRUSTED_PROXY_HOPS)) {
+    throw new EosAuthConfigError("EOS_AUTH_COOKIE_SAMESITE / EOS_AUTH_TRUSTED_PROXY_HOPS are set but EOS_HUMAN_LOGIN is not enabled");
   }
   return Object.freeze({ verify, issuer, audience, personaIssuer, humanLogin });
 }

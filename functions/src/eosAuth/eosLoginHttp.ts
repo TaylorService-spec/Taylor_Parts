@@ -13,12 +13,30 @@
 //
 // NOT MOUNTED unless EOS_HUMAN_LOGIN=enabled: every path is then the same 404 as any unknown route.
 //
-// Browser-facing, so CORS is served for EOS_ALLOWED_ORIGINS exactly as the domain transports serve it (no wildcard, no
-// credentials mode: tokens travel in the body and the Authorization header, never a cookie -- see D-3). Every response
-// is `no-store`. A per-client-address limiter answers 429 before any password work is spent.
+// ════════════════════ THE REFRESH COOKIE (Owner correction 1, 2026-10-11) ════════════════════
+//
+// The refresh token travels ONLY in `__Host-eos_refresh`: HttpOnly (no script can read it), Secure, Path=/, no Domain
+// (the __Host- prefix makes a browser refuse it otherwise, so a sibling subdomain cannot plant or shadow it), SameSite
+// from EOS_AUTH_COOKIE_SAMESITE, and Partitioned when SameSite=None. It never appears in a response body and is never
+// accepted from a request body. The ACCESS token (5 minutes) is returned in the body and held in memory by the client.
+//
+// ════════════════════ ORIGIN AND CSRF (Owner correction 2) ════════════════════
+//
+// Every human /auth/* request -- not only the cookie-bearing ones, so login CSRF is closed too -- must carry:
+//   Origin        exactly one of EOS_ALLOWED_ORIGINS (absent, "null" or anything else: 403 ORIGIN_REFUSED)
+//   X-EOS-CSRF: 1 a custom header no HTML form can send and no cross-origin script can send without passing a CORS
+//                 preflight this handler answers only for an allowed origin (absent: 403 CSRF_REFUSED)
+//   Content-Type  application/json (else 415)
+// CORS is served for allowed origins only, with Access-Control-Allow-Credentials so the cookie is sent. No wildcard.
+// Every response is `no-store`. A per-client-address limiter answers 429 before any password work is spent.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { VerifiedEosToken } from "./eosAccessToken";
-import { EosLoginService, LoginRefusal, isHumanSubject, type ClientFacts } from "./eosLoginService";
+import { EosLoginService, LoginRefusal, isHumanSubject, type ClientFacts, type IssuedLoginSession } from "./eosLoginService";
+import { PasswordWorkSaturated } from "./credentialCrypto";
+import type { EosCookieSameSite } from "./eosAuthConfig";
+
+export const REFRESH_COOKIE_NAME = "__Host-eos_refresh";
+export const CSRF_HEADER = "x-eos-csrf";
 
 export const LOGIN_ROUTES = Object.freeze({
   login: "/auth/login",
@@ -56,15 +74,36 @@ export const DEFAULT_RATE_LIMIT: RateLimitPolicy = Object.freeze({ credentialPer
  * A fixed one-minute window per (client address, budget). In-process: with several instances each enforces its own,
  * which still bounds a single attacker per instance; the per-ACCOUNT lockout in PostgreSQL is the cross-instance bound.
  */
+/**
+ * The bucket an address belongs to: an IPv4 address as is; an IPv6 address by its /64 (one subscriber's allocation is
+ * a /64 or larger, so per-address buckets would give one attacker 2^64 of them -- security review finding 5).
+ */
+export function rateLimitBucket(address: string): string {
+  const a = address.trim().toLowerCase().replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, "");
+  if (!a.includes(":")) return a;
+  const [head, tail = ""] = a.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = a.includes("::") ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right] : left;
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+
+export const RATE_LIMIT_MAX_KEYS = 50_000;
+
 export function createRateLimiter(policy: RateLimitPolicy = DEFAULT_RATE_LIMIT, now: () => number = Date.now) {
   const windows = new Map<string, { start: number; count: number }>();
   return function allow(address: string, budget: "credential" | "routine"): { ok: boolean; retryAfterSeconds: number } {
     const t = now();
-    if (windows.size > 50_000) {
+    if (windows.size >= RATE_LIMIT_MAX_KEYS) {
+      // Evict EXPIRED windows, then the OLDEST -- never everyone's at once (finding 6: clearing all would let an attacker
+      // with many addresses reset every other client's budget).
       for (const [k, w] of windows) if (t - w.start >= 60_000) windows.delete(k);
-      if (windows.size > 50_000) windows.clear();
+      for (const k of windows.keys()) {
+        if (windows.size < RATE_LIMIT_MAX_KEYS) break;
+        windows.delete(k);
+      }
     }
-    const key = `${budget}|${address}`;
+    const key = `${budget}|${rateLimitBucket(address)}`;
     const w = windows.get(key);
     if (!w || t - w.start >= 60_000) {
       windows.set(key, { start: t, count: 1 });
@@ -84,8 +123,14 @@ export interface LoginHttpOptions {
   readonly verify: (token: string) => VerifiedEosToken;
   readonly allowedOrigins?: readonly string[];
   readonly rateLimit?: ReturnType<typeof createRateLimiter>;
-  /** Take the client address from X-Forwarded-For (rightmost hop) -- only behind a proxy that appends it (Render). */
-  readonly trustForwardedFor?: boolean;
+  /**
+   * How many proxies append X-Forwarded-For in front of this service (EOS_AUTH_TRUSTED_PROXY_HOPS). The client address
+   * is the entry that many places from the RIGHT; everything left of it is whatever the client claimed. 0 = the socket.
+   */
+  readonly trustedProxyHops: number;
+  /** The refresh cookie's SameSite (EOS_AUTH_COOKIE_SAMESITE). None also sets Partitioned. */
+  readonly cookieSameSite: EosCookieSameSite;
+  readonly now?: () => Date;
 }
 
 export interface LoginHttpRequest {
@@ -104,11 +149,45 @@ function headers(origin: string | null): Record<string, string> {
     pragma: "no-cache",
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
-    ...(origin ? { "access-control-allow-origin": origin, vary: "Origin" } : {}),
+    vary: "Origin",
+    ...(origin ? { "access-control-allow-origin": origin, "access-control-allow-credentials": "true" } : {}),
   };
 }
+/** Response headers may carry ONE Set-Cookie here; node's writeHead takes a string. */
 const json = (status: number, body: unknown, origin: string | null, extra: Record<string, string> = {}): LoginHttpResponse =>
   ({ status, headers: { ...headers(origin), ...extra }, body: JSON.stringify(body) });
+
+function refreshCookie(options: LoginHttpOptions, token: string, expiresAtIso: string): string {
+  const now = (options.now ?? (() => new Date()))().getTime();
+  const maxAge = Math.max(0, Math.floor((Date.parse(expiresAtIso) - now) / 1000));
+  return [`${REFRESH_COOKIE_NAME}=${token}`, "Path=/", "Secure", "HttpOnly", `SameSite=${options.cookieSameSite}`,
+    `Max-Age=${maxAge}`, ...(options.cookieSameSite === "None" ? ["Partitioned"] : [])].join("; ");
+}
+function clearedCookie(options: LoginHttpOptions): string {
+  return [`${REFRESH_COOKIE_NAME}=`, "Path=/", "Secure", "HttpOnly", `SameSite=${options.cookieSameSite}`, "Max-Age=0",
+    ...(options.cookieSameSite === "None" ? ["Partitioned"] : [])].join("; ");
+}
+
+/** The refresh token from the Cookie header, or null. First occurrence only; never a body field. */
+export function readRefreshCookie(cookieHeader: string | string[] | undefined): string | null {
+  const raw = Array.isArray(cookieHeader) ? cookieHeader.join("; ") : cookieHeader;
+  if (typeof raw !== "string") return null;
+  for (const part of raw.split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    if (part.slice(0, i).trim() === REFRESH_COOKIE_NAME) {
+      const v = part.slice(i + 1).trim();
+      return v.length > 0 ? v : null;
+    }
+  }
+  return null;
+}
+
+/** The session as the body carries it: everything but the refresh token, which went into the cookie. */
+function publicSession(session: IssuedLoginSession) {
+  const { refreshToken: _omitted, ...rest } = session;
+  return rest;
+}
 
 const single = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 
@@ -118,8 +197,11 @@ function originOf(allowed: readonly string[] | undefined, value: string | undefi
 }
 
 function clientFacts(options: LoginHttpOptions, request: LoginHttpRequest): ClientFacts {
-  // The RIGHTMOST hop is the one the trusted proxy appended; everything left of it is whatever the client claimed.
-  const forwarded = options.trustForwardedFor ? single(request.headers?.["x-forwarded-for"])?.split(",").pop()?.trim() : undefined;
+  const hops = options.trustedProxyHops;
+  const chain = hops > 0 ? (single(request.headers?.["x-forwarded-for"]) ?? "").split(",").map((x) => x.trim()).filter(Boolean) : [];
+  // With N trusted appending proxies, the client is the N-th entry from the right. Fewer entries than that: the request
+  // did not come through the proxies we were told about, so the socket address is used.
+  const forwarded = hops > 0 && chain.length >= hops ? chain[chain.length - hops] : undefined;
   const ua = single(request.headers?.["user-agent"]);
   return { address: forwarded || request.remoteAddress || null, label: typeof ua === "string" ? ua.slice(0, 200) : null };
 }
@@ -144,10 +226,18 @@ export async function handleLoginRequest(options: LoginHttpOptions, request: Log
   const origin = originOf(options.allowedOrigins, single(request.headers?.origin));
   if (!isLoginRoute(path)) return json(404, { ok: false, code: "NOT_FOUND", message: "no such route" }, origin);
   if (method === "OPTIONS") {
-    return { status: 204, headers: { ...headers(origin), "access-control-allow-methods": "POST, OPTIONS",
-      "access-control-allow-headers": "authorization, content-type", "access-control-max-age": "600" }, body: "" };
+    return { status: 204, headers: { ...headers(origin), ...(origin ? { "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-headers": `authorization, content-type, ${CSRF_HEADER}`, "access-control-max-age": "600" } : {}) }, body: "" };
   }
   if (method !== "POST") return json(405, { ok: false, code: "METHOD_NOT_ALLOWED", message: "POST only" }, origin);
+  // ORIGIN + CSRF, before anything else is read or spent.
+  if (!origin) return json(403, { ok: false, code: "ORIGIN_REFUSED", message: "this origin may not call the sign-in service" }, null);
+  if (single(request.headers?.[CSRF_HEADER]) !== "1") {
+    return json(403, { ok: false, code: "CSRF_REFUSED", message: `the ${CSRF_HEADER} header is required` }, origin);
+  }
+  if (!/^application\/json\b/i.test(single(request.headers?.["content-type"]) ?? "")) {
+    return json(415, { ok: false, code: "UNSUPPORTED_MEDIA_TYPE", message: "send application/json" }, origin);
+  }
 
   const facts = clientFacts(options, request);
   if (options.rateLimit) {
@@ -168,17 +258,47 @@ export async function handleLoginRequest(options: LoginHttpOptions, request: Log
   }
 
   const s = options.service;
+  // A session goes out as: access token in the body, refresh token in the cookie -- never both in one place.
+  const issued = (session: IssuedLoginSession, extra: Record<string, unknown> = {}) =>
+    json(200, { ok: true, ...extra, session: publicSession(session) }, origin,
+      { "set-cookie": refreshCookie(options, session.refreshToken, session.refreshTokenExpiresAt) });
+  const cookieToken = readRefreshCookie(request.headers?.cookie);
   try {
     switch (path) {
       case LOGIN_ROUTES.login:
-        return json(200, { ok: true, ...(await s.login({ identifier: body.identifier, password: body.password }, facts)) }, origin);
-      case LOGIN_ROUTES.loginMfa:
-        return json(200, { ok: true, ...(await s.completeMfaLogin({ challenge: body.challenge, code: body.code, recoveryCode: body.recoveryCode }, facts)) }, origin);
+      case LOGIN_ROUTES.loginMfa: {
+        const r = path === LOGIN_ROUTES.login
+          ? await s.login({ identifier: body.identifier, password: body.password }, facts)
+          : await s.completeMfaLogin({ challenge: body.challenge, code: body.code, recoveryCode: body.recoveryCode }, facts);
+        if (r.status === "AUTHENTICATED") return issued(r.session, { status: r.status });
+        return json(200, { ok: true, ...r }, origin);
+      }
       case LOGIN_ROUTES.refresh:
-        return json(200, { ok: true, session: await s.refresh({ refreshToken: body.refreshToken }, facts) }, origin);
-      case LOGIN_ROUTES.logout:
-        await s.logout({ refreshToken: body.refreshToken }, facts);
-        return json(200, { ok: true }, origin);
+        try {
+          return issued(await s.refresh({ refreshToken: cookieToken }, facts));
+        } catch (err) {
+          // A sibling tab already rotated: the browser holds the successor; keep the cookie and let the client retry.
+          if (err instanceof LoginRefusal && err.code === "REFRESH_SUPERSEDED") throw err;
+          if (err instanceof LoginRefusal) {
+            return json(err.status, refusalBody(err), origin, { "set-cookie": clearedCookie(options) });
+          }
+          throw err;
+        }
+      case LOGIN_ROUTES.logout: {
+        // Server-side first: the session row is revoked, so the refresh token is dead wherever a copy may be. By the
+        // cookie when it is sent; ALSO by the access token's session when one is presented (finding 11).
+        await s.logout({ refreshToken: cookieToken }, facts);
+        const t = bearer(request);
+        if (t) {
+          try {
+            const v = options.verify(t);
+            if (isHumanSubject(v.externalSubject) && v.sessionId) await s.logoutSession(v.externalSubject, v.sessionId, facts);
+          } catch {
+            // An unverifiable bearer revokes nothing and reveals nothing.
+          }
+        }
+        return json(200, { ok: true }, origin, { "set-cookie": clearedCookie(options) });
+      }
       case LOGIN_ROUTES.enrollmentComplete:
         return json(200, { ok: true, ...(await s.completeEnrollment({ ticket: body.ticket, password: body.password }, facts)) }, origin);
       case LOGIN_ROUTES.resetComplete:
@@ -206,7 +326,7 @@ export async function handleLoginRequest(options: LoginHttpOptions, request: Log
       case LOGIN_ROUTES.account:
         return json(200, { ok: true, account: await s.describeSelf(sub, sid) }, origin);
       case LOGIN_ROUTES.passwordChange:
-        return json(200, { ok: true, session: await s.changePassword(sub, sid, { currentPassword: body.currentPassword, newPassword: body.newPassword }, facts) }, origin);
+        return issued(await s.changePassword(sub, sid, { currentPassword: body.currentPassword, newPassword: body.newPassword }, facts));
       case LOGIN_ROUTES.totpBegin:
         return json(200, { ok: true, ...(await s.beginTotpEnrollment(sub, sid)) }, origin);
       case LOGIN_ROUTES.totpConfirm:
@@ -224,6 +344,9 @@ export async function handleLoginRequest(options: LoginHttpOptions, request: Log
     }
   } catch (err) {
     if (err instanceof LoginRefusal) return json(err.status, refusalBody(err), origin);
+    if (err instanceof PasswordWorkSaturated) {
+      return json(503, { ok: false, code: "TRY_LATER", message: "the sign-in service is busy; try again shortly" }, origin, { "retry-after": "5" });
+    }
     // eslint-disable-next-line no-console -- the class only: never a body, a token or an identifier
     console.error("[eosLogin] unhandled", (err as Error)?.name ?? "error");
     return json(500, { ok: false, code: "INTERNAL", message: "the request could not be completed" }, origin);

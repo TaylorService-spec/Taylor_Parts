@@ -21,15 +21,17 @@ import type { Pool, PoolClient } from "pg";
 import { makeTransaction, type PostgresPolicyRepository } from "../adminPolicy/postgresPolicyRepository";
 import { EOS_IDENTITY_PROVIDER, PrincipalContextError, resolvePrincipalContext } from "../adminPolicy/principalContext";
 import { actorCapabilities, requireSecurityAdministrationCapability } from "../adminPolicy/administrationCapabilityGate";
-import { PROTECTED_OWNER_ROLE_KEY } from "../adminPolicy/administrationAuthority";
+import { ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY } from "../adminPolicy/administrationAuthority";
 import type { AdminActor } from "../adminPolicy/policyCommands";
 import { newTokenId, signEosAccessToken, EOS_TOKEN_MAX_LIFETIME_SECONDS, type EosSigner } from "./eosAccessToken";
 import {
-  burnPasswordWork, decryptFactorSecret, encryptFactorSecret, hashPassword, isOpaqueTokenOf, matchTotpStep,
+  burnPasswordWork, decryptFactorSecret, encryptFactorSecret, factorSubkey, hashPassword, isOpaqueTokenOf, matchTotpStep,
+  FactorKeyError, sealedFactorKid,
   newOpaqueToken, newRecoveryCodes, newTotpSecret, normalizeRecoveryCode, opaqueTokenDigest, passwordPolicyRefusal,
   recoveryCodeDigest, totpProvisioningUri, base32Encode, verifyPassword, type FactorKeyring, type ScryptParameters,
   PASSWORD_HASH_PARAMETERS, PASSWORD_MAX_LENGTH,
 } from "./credentialCrypto";
+import { timingSafeEqual } from "node:crypto";
 
 const SCHEMA = "eos_policy";
 
@@ -77,6 +79,9 @@ export const DEFAULT_LOGIN_SESSION_POLICY: LoginSessionPolicy = Object.freeze({
   lockMaxSeconds: 24 * 3600,
 });
 
+/** A spent refresh token re-presented this soon after its exchange is a sibling tab, not a thief (see refresh()). */
+export const REFRESH_REUSE_GRACE_SECONDS = 10;
+
 // ════════════════════ refusals ════════════════════
 
 export type LoginRefusalCode =
@@ -88,6 +93,8 @@ export type LoginRefusalCode =
   | "SESSION_INVALID"
   | "MFA_ENROLLMENT_REQUIRED"
   | "MFA_NOT_CONFIGURED"
+  | "MFA_KEY_UNAVAILABLE"
+  | "REFRESH_SUPERSEDED"
   | "MFA_ALREADY_ENROLLED"
   | "MFA_NOT_ENROLLED"
   | "MFA_REQUIRED_BY_POLICY"
@@ -104,7 +111,7 @@ export type LoginRefusalCode =
 
 const STATUS_BY_REFUSAL: Readonly<Record<LoginRefusalCode, number>> = Object.freeze({
   LOGIN_REFUSED: 401, MFA_CHALLENGE_INVALID: 401, MFA_CODE_REFUSED: 401, REFRESH_REFUSED: 401, TICKET_INVALID: 410,
-  SESSION_INVALID: 401, MFA_ENROLLMENT_REQUIRED: 403, MFA_NOT_CONFIGURED: 503, MFA_ALREADY_ENROLLED: 409,
+  SESSION_INVALID: 401, MFA_ENROLLMENT_REQUIRED: 403, MFA_NOT_CONFIGURED: 503, MFA_KEY_UNAVAILABLE: 503, REFRESH_SUPERSEDED: 409, MFA_ALREADY_ENROLLED: 409,
   MFA_NOT_ENROLLED: 409, MFA_REQUIRED_BY_POLICY: 409, PASSWORD_REFUSED: 400, CURRENT_PASSWORD_REFUSED: 401,
   PASSWORD_POLICY: 400, INVALID_INPUT: 400, NOT_FOUND: 404, CONFLICT: 409, FORBIDDEN: 403, SELF_ADMINISTRATION: 403,
   PROTECTED_TARGET: 403, REASON_REQUIRED: 400,
@@ -207,8 +214,9 @@ export class EosLoginService {
     }
     this.now = deps.now ?? (() => new Date());
     this.hashParameters = deps.passwordHashParameters ?? PASSWORD_HASH_PARAMETERS;
+    // Its own HKDF subkey of the factor root key (credentialCrypto: key separation); never the seal or recovery key.
     this.clientDigestKey = deps.factorKeyring
-      ? createHmac("sha256", deps.factorKeyring.keys.get(deps.factorKeyring.currentKid) as Buffer).update("eos-client-digest").digest()
+      ? factorSubkey(deps.factorKeyring, deps.factorKeyring.currentKid, "client")
       : randomBytes(32);
   }
 
@@ -284,24 +292,53 @@ export class EosLoginService {
 
   /** The SAME resolution every request runs. Throws PrincipalContextError when the subject could not make a request. */
   private async requireEligible(account: AccountRow): Promise<void> {
+    if (await this.hasForeignMembership(this.deps.pool, account.principal_id, account.tenant_id)) {
+      throw new PrincipalContextError("TENANT_NOT_A_MEMBERSHIP", "MULTI_TENANT_PRINCIPAL");
+    }
     await resolvePrincipalContext(this.deps.repo, {
       identityProvider: EOS_IDENTITY_PROVIDER, externalSubject: account.subject, requestedTenantId: account.tenant_id,
     });
   }
 
-  private lockUntilFor(failedAttempts: number): Date | null {
-    const p = this.policy;
-    if (failedAttempts < p.lockThreshold) return null;
-    const seconds = Math.min(p.lockBaseSeconds * 2 ** Math.min(failedAttempts - p.lockThreshold, 20), p.lockMaxSeconds);
-    return new Date(this.now().getTime() + seconds * 1000);
+  /**
+   * THE LOCKOUT, ATOMIC (security review findings 2, 4).
+   *
+   * A password or second-factor attempt is RESERVED -- counted as a failure -- in ONE statement before any work is
+   * spent, and only while the account is not locked. A burst of concurrent guesses therefore cannot all pass a stale
+   * "not locked" read and queue behind the hashing semaphore: the reservation that reaches the threshold sets the lock,
+   * and every later reservation is refused without a hash. A success then clears the counter.
+   *
+   * No escalation: a lock is lockBaseSeconds, and the count restarts when it expires. An attacker can still hold an
+   * account locked with lockThreshold guesses per window -- the residual risk recorded as D-4 -- but cannot extend it
+   * to a day with one request.
+   */
+  private static readonly RESERVE_SQL = (schema: string, extraWhere: string) => `
+    UPDATE ${schema}.login_accounts SET
+      failed_attempts = CASE WHEN locked_until IS NOT NULL AND locked_until <= $2 THEN 1 ELSE failed_attempts + 1 END,
+      locked_until = CASE WHEN (CASE WHEN locked_until IS NOT NULL AND locked_until <= $2 THEN 1 ELSE failed_attempts + 1 END) >= $3
+                          THEN $4::timestamptz ELSE NULL END,
+      updated_at = $2
+    WHERE id = $1 ${extraWhere}
+    RETURNING failed_attempts`;
+
+  /** Reserve one attempt. false = the account is locked (or not active): spend no work, refuse. */
+  private async reserveAttempt(q: Pick<PoolClient, "query"> | Pool, accountId: string): Promise<boolean> {
+    const now = this.now();
+    const lockUntil = new Date(now.getTime() + this.policy.lockBaseSeconds * 1000);
+    const { rows } = await q.query(EosLoginService.RESERVE_SQL(SCHEMA, "AND status = 'active' AND (locked_until IS NULL OR locked_until <= $2)"),
+      [accountId, now, this.policy.lockThreshold, lockUntil]);
+    return rows.length === 1;
   }
 
+  /** Count one failure on an account already checked unlocked under its row lock (second-factor attempts). */
   private async recordFailure(client: PoolClient, account: AccountRow): Promise<void> {
-    const failed = account.failed_attempts + 1;
-    await client.query(
-      `UPDATE ${SCHEMA}.login_accounts SET failed_attempts = $2, locked_until = COALESCE($3, locked_until), updated_at = $4 WHERE id = $1`,
-      [account.id, failed, this.lockUntilFor(failed), this.now()],
-    );
+    const now = this.now();
+    await client.query(EosLoginService.RESERVE_SQL(SCHEMA, ""),
+      [account.id, now, this.policy.lockThreshold, new Date(now.getTime() + this.policy.lockBaseSeconds * 1000)]);
+  }
+
+  private async clearFailures(q: Pick<PoolClient, "query"> | Pool, accountId: string): Promise<void> {
+    await q.query(`UPDATE ${SCHEMA}.login_accounts SET failed_attempts = 0, locked_until = NULL, updated_at = $2 WHERE id = $1`, [accountId, this.now()]);
   }
 
   private isLocked(account: AccountRow): boolean {
@@ -380,14 +417,13 @@ export class EosLoginService {
       return refuse(this.isLocked(account) ? "ACCOUNT_LOCKED" : account.binding_status !== "active" ? "BINDING_REVOKED"
         : `ACCOUNT_${account.status.toUpperCase()}`, account);
     }
-    const check = await verifyPassword(password, account.password_hash);
-    if (!check.matches) {
-      await this.tx(async (c) => {
-        const locked = await this.accountById(c, account.id, true);
-        if (locked) await this.recordFailure(c, locked);
-      });
-      return refuse("BAD_PASSWORD", account);
+    // RESERVE before hashing: a locked account is refused here with no evaluation (finding 2).
+    if (!(await this.reserveAttempt(this.deps.pool, account.id))) {
+      await burnPasswordWork(password);
+      return refuse("ACCOUNT_LOCKED", account);
     }
+    const check = await verifyPassword(password, account.password_hash);
+    if (!check.matches) return refuse("BAD_PASSWORD", account);
     try {
       await this.requireEligible(account);
     } catch (err) {
@@ -396,23 +432,25 @@ export class EosLoginService {
     }
     const rehash = check.needsRehash ? await hashPassword(password, this.hashParameters) : null;
 
-    return this.tx(async (c) => {
+    const result = await this.tx(async (c): Promise<LoginResult | null> => {
       const a = await this.accountById(c, account.id, true);
-      // Re-read under the lock: a concurrent admin disable between the read and here wins.
-      if (!a || a.status !== "active" || a.credential_version !== account.credential_version) {
+      // Re-read under the lock: a concurrent disable, binding revocation or credential change between the read and here
+      // wins. (The lock our OWN reservation may have set is cleared below: this attempt was within the allowance.)
+      if (!a || a.status !== "active" || a.binding_status !== "active" || a.credential_version !== account.credential_version) {
         await this.event(c, { event: "login", outcome: "refused", reason: "ACCOUNT_CHANGED", accountId: account.id, client: facts });
-        throw new LoginRefusal("LOGIN_REFUSED");
+        return null;
       }
       if (rehash) {
         await c.query(`UPDATE ${SCHEMA}.login_accounts SET password_hash = $2, updated_at = $3 WHERE id = $1`, [a.id, rehash, this.now()]);
       }
       if (await this.hasActiveFactor(c, a.id)) {
+        // The password step passed; the counter stays reserved until the SECOND factor also passes.
         const challenge = newOpaqueToken("mfaChallenge");
         const now = this.now();
         const expires = new Date(now.getTime() + this.policy.mfaChallengeSeconds * 1000);
         await c.query(
-          `INSERT INTO ${SCHEMA}.login_mfa_challenges (id, account_id, token_sha256, created_at, expires_at) VALUES ($1,$2,$3,$4,$5)`,
-          [randomUUID(), a.id, opaqueTokenDigest(challenge), now, expires],
+          `INSERT INTO ${SCHEMA}.login_mfa_challenges (id, account_id, token_sha256, credential_version, created_at, expires_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+          [randomUUID(), a.id, opaqueTokenDigest(challenge), a.credential_version, now, expires],
         );
         await this.event(c, { event: "loginPassword", outcome: "success", reason: "MFA_REQUIRED", accountId: a.id, principalId: a.principal_id, client: facts });
         return { status: "MFA_REQUIRED" as const, challenge, challengeExpiresAt: expires.toISOString(), methods: Object.freeze(["totp", "recoveryCode"]) };
@@ -422,6 +460,9 @@ export class EosLoginService {
       await this.event(c, { event: "login", outcome: "success", accountId: a.id, principalId: a.principal_id, sessionId: session.sessionId, client: facts });
       return { status: "AUTHENTICATED" as const, session };
     });
+    // A refusal's event COMMITTED above; the refusal is thrown after (finding 10).
+    if (!result) throw new LoginRefusal("LOGIN_REFUSED");
+    return result;
   }
 
   async completeMfaLogin(input: { challenge: unknown; code?: unknown; recoveryCode?: unknown }, facts: ClientFacts | null): Promise<LoginResult> {
@@ -437,12 +478,17 @@ export class EosLoginService {
         return { refusal: "MFA_CHALLENGE_INVALID" as const };
       }
       const a = await this.accountById(c, ch.account_id, true);
-      if (!a || a.status !== "active" || a.binding_status !== "active" || this.isLocked(a)) {
+      // A password reset or change since the password step voids the challenge (finding 8).
+      if (!a || a.status !== "active" || a.binding_status !== "active" || this.isLocked(a) || a.credential_version !== ch.credential_version) {
         await c.query(`UPDATE ${SCHEMA}.login_mfa_challenges SET consumed_at = $2 WHERE id = $1`, [ch.id, this.now()]);
         await this.event(c, { event: "loginMfa", outcome: "refused", reason: "ACCOUNT_NOT_USABLE", accountId: ch.account_id, client: facts });
         return { refusal: "MFA_CHALLENGE_INVALID" as const };
       }
-      const method = await this.verifySecondFactor(c, keyring, a, input);
+      const method = await this.secondFactorOrKeyRefusal(c, keyring, a, input);
+      if (method === "KEY_UNAVAILABLE") {
+        await this.event(c, { event: "loginMfa", outcome: "refused", reason: "MFA_KEY_UNAVAILABLE", accountId: a.id, principalId: a.principal_id, client: facts });
+        return { refusal: "MFA_KEY_UNAVAILABLE" as const };
+      }
       if (!method) {
         await c.query(`UPDATE ${SCHEMA}.login_mfa_challenges SET attempts = attempts + 1 WHERE id = $1`, [ch.id]);
         await this.recordFailure(c, a);
@@ -463,18 +509,29 @@ export class EosLoginService {
       }
       throw err;
     }
-    return this.tx(async (c) => {
+    const issued = await this.tx(async (c): Promise<LoginResult | null> => {
       const a = await this.accountById(c, outcome.account.id, true);
-      if (!a || a.status !== "active" || a.credential_version !== outcome.account.credential_version) throw new LoginRefusal("LOGIN_REFUSED");
+      if (!a || a.status !== "active" || a.binding_status !== "active" || a.credential_version !== outcome.account.credential_version) {
+        await this.event(c, { event: "loginMfa", outcome: "refused", reason: "ACCOUNT_CHANGED", accountId: outcome.account.id, client: facts });
+        return null;
+      }
       await c.query(`UPDATE ${SCHEMA}.login_accounts SET failed_attempts = 0, locked_until = NULL, last_login_at = $2, updated_at = $2 WHERE id = $1`, [a.id, this.now()]);
       const session = await this.openSession(c, a, true, facts);
       await this.event(c, { event: "login", outcome: "success", reason: outcome.method === "recoveryCode" ? "RECOVERY_CODE" : "TOTP",
         accountId: a.id, principalId: a.principal_id, sessionId: session.sessionId, client: facts });
       return { status: "AUTHENTICATED" as const, session };
     });
+    if (!issued) throw new LoginRefusal("LOGIN_REFUSED");
+    return issued;
   }
 
-  /** TOTP (replay-proof: the step must exceed the last accepted one) or a single-use recovery code. */
+  /**
+   * TOTP (replay-proof: the step must exceed the last accepted one) or a single-use recovery code.
+   *
+   * KEYS FAIL CLOSED. A factor sealed -- or a code peppered -- under a key this service no longer holds is NOT bypassed:
+   * the attempt throws FactorKeyError and the caller refuses MFA_KEY_UNAVAILABLE. A TOTP factor that verifies under an
+   * older kid is re-sealed under the current one in the same transaction (lazy rotation).
+   */
   private async verifySecondFactor(c: PoolClient, keyring: FactorKeyring, a: AccountRow,
     input: { code?: unknown; recoveryCode?: unknown }): Promise<"totp" | "recoveryCode" | null> {
     if (input.code !== undefined && input.code !== null) {
@@ -485,88 +542,132 @@ export class EosLoginService {
       const secret = decryptFactorSecret(keyring, f.secret_sealed, f.id);
       const step = matchTotpStep(secret, input.code, Math.floor(this.now().getTime() / 1000));
       if (step === null || (f.last_used_step !== null && step <= Number(f.last_used_step))) return null;
-      await c.query(`UPDATE ${SCHEMA}.login_mfa_factors SET last_used_step = $2 WHERE id = $1`, [f.id, step]);
+      const reseal = sealedFactorKid(f.secret_sealed) !== keyring.currentKid ? encryptFactorSecret(keyring, secret, f.id) : null;
+      await c.query(`UPDATE ${SCHEMA}.login_mfa_factors SET last_used_step = $2, secret_sealed = COALESCE($3, secret_sealed) WHERE id = $1`,
+        [f.id, step, reseal]);
       return "totp";
     }
     const normalized = normalizeRecoveryCode(input.recoveryCode);
     if (!normalized) return null;
-    const { rowCount } = await c.query(
-      `UPDATE ${SCHEMA}.login_recovery_codes SET used_at = $3
-        WHERE account_id = $1 AND code_digest = $2 AND used_at IS NULL AND superseded_at IS NULL`,
-      [a.id, recoveryCodeDigest(keyring, a.id, normalized), this.now()],
-    );
-    return rowCount === 1 ? "recoveryCode" : null;
+    const { rows } = await c.query(
+      `SELECT id, key_id, code_digest FROM ${SCHEMA}.login_recovery_codes
+        WHERE account_id = $1 AND used_at IS NULL AND superseded_at IS NULL FOR UPDATE`, [a.id]);
+    // Digest once per HELD key the live codes were written under, compare in constant time.
+    const digestByKid = new Map<string, Buffer>();
+    const unheld = new Set<string>();
+    for (const kid of new Set(rows.map((r) => r.key_id as string))) {
+      if (keyring.keys.has(kid)) digestByKid.set(kid, Buffer.from(recoveryCodeDigest(keyring, kid, a.id, normalized), "hex"));
+      else unheld.add(kid);
+    }
+    let matchId: string | null = null;
+    for (const r of rows) {
+      const want = digestByKid.get(r.key_id);
+      if (want && timingSafeEqual(want, Buffer.from(r.code_digest, "hex")) && matchId === null) matchId = r.id;
+    }
+    // No held key matched, and some live codes are under a key this service lacks: the answer is unknowable, not "wrong".
+    if (!matchId && unheld.size > 0) throw new FactorKeyError("live recovery codes are under a factor key this service does not hold", [...unheld][0]);
+    if (!matchId) return null;
+    await c.query(`UPDATE ${SCHEMA}.login_recovery_codes SET used_at = $2 WHERE id = $1`, [matchId, this.now()]);
+    return "recoveryCode";
   }
 
-  /** Exchange a refresh token for a new pair. A token presented twice revokes its whole session (theft signal). */
+  /** Run a second-factor check; a missing key is recorded and refused, never treated as a wrong code or a pass. */
+  private async secondFactorOrKeyRefusal(c: PoolClient, keyring: FactorKeyring, a: AccountRow,
+    input: { code?: unknown; recoveryCode?: unknown }): Promise<"totp" | "recoveryCode" | null | "KEY_UNAVAILABLE"> {
+    try {
+      return await this.verifySecondFactor(c, keyring, a, input);
+    } catch (err) {
+      if (err instanceof FactorKeyError) return "KEY_UNAVAILABLE";
+      throw err;
+    }
+  }
+
+  /**
+   * Exchange a refresh token for a new pair -- ONE transaction, holding the token and session row locks from lookup to
+   * rotation, so two concurrent exchanges of one token serialise and exactly one rotates.
+   *
+   * REPLAY. A token presented after it was exchanged is either a sibling request from the same browser (two tabs, one
+   * cookie jar, a race of milliseconds) or a stolen copy. Within REFRESH_REUSE_GRACE_SECONDS of the exchange it is
+   * answered REFRESH_SUPERSEDED and nothing is revoked -- the browser's cookie already holds the successor, and the
+   * client retries once. Outside the window it is theft: the whole session is revoked (REFRESH_TOKEN_REUSE). Either
+   * way the presenter receives no token.
+   */
   async refresh(input: { refreshToken: unknown }, facts: ClientFacts | null): Promise<IssuedLoginSession> {
     if (!isOpaqueTokenOf("refresh", input.refreshToken)) throw new LoginRefusal("REFRESH_REFUSED");
     const digest = opaqueTokenDigest(input.refreshToken);
-    const result = await this.tx(async (c) => {
+    const result = await this.tx(async (c): Promise<IssuedLoginSession | LoginRefusalCode> => {
+      const now = this.now();
       const { rows } = await c.query(
         `SELECT t.*, s.account_id, s.revoked_at, s.idle_expires_at, s.absolute_expires_at, s.credential_version AS session_cv, s.mfa_verified
            FROM ${SCHEMA}.login_refresh_tokens t JOIN ${SCHEMA}.login_sessions s ON s.id = t.session_id
           WHERE t.token_sha256 = $1 FOR UPDATE OF t, s`, [digest]);
       const t = rows[0];
-      const now = this.now();
-      if (!t) {
-        await this.event(c, { event: "refresh", outcome: "refused", reason: "UNKNOWN_TOKEN", client: facts });
-        return null;
-      }
-      if (t.revoked_at) {
-        await this.event(c, { event: "refresh", outcome: "refused", reason: "SESSION_REVOKED", accountId: t.account_id, sessionId: t.session_id, client: facts });
-        return null;
-      }
+      const refuse = async (reason: string, revoke: string | null, code: LoginRefusalCode = "REFRESH_REFUSED") => {
+        if (revoke && t && !t.revoked_at) {
+          await c.query(`UPDATE ${SCHEMA}.login_sessions SET revoked_at = $2, revoke_reason = $3 WHERE id = $1`, [t.session_id, now, revoke]);
+        }
+        await this.event(c, { event: "refresh", outcome: "refused", reason, accountId: t?.account_id, sessionId: t?.session_id, client: facts });
+        return code;
+      };
+      if (!t) return refuse("UNKNOWN_TOKEN", null);
+      if (t.revoked_at) return refuse("SESSION_REVOKED", null);
       if (t.consumed_at) {
-        await c.query(`UPDATE ${SCHEMA}.login_sessions SET revoked_at = $2, revoke_reason = 'REFRESH_TOKEN_REUSE' WHERE id = $1`, [t.session_id, now]);
-        await this.event(c, { event: "refresh", outcome: "refused", reason: "REFRESH_TOKEN_REUSE", accountId: t.account_id, sessionId: t.session_id, client: facts });
-        return null;
+        const age = (now.getTime() - t.consumed_at.getTime()) / 1000;
+        const presenter = this.clientDigest(facts);
+        // A sibling tab is the SAME client. A re-presentation from a DIFFERENT client is theft even inside the window
+        // (finding 12); with no digest on either side, the window alone decides.
+        const sameClient = !presenter || !t.consumed_client_digest || presenter === t.consumed_client_digest;
+        if (age <= REFRESH_REUSE_GRACE_SECONDS && sameClient) return refuse("REFRESH_SUPERSEDED", null, "REFRESH_SUPERSEDED");
+        return refuse("REFRESH_TOKEN_REUSE", "REFRESH_TOKEN_REUSE");
       }
       if (t.idle_expires_at.getTime() <= now.getTime() || t.absolute_expires_at.getTime() <= now.getTime()) {
-        await this.event(c, { event: "refresh", outcome: "refused", reason: "SESSION_EXPIRED", accountId: t.account_id, sessionId: t.session_id, client: facts });
-        return null;
+        return refuse("SESSION_EXPIRED", null);
       }
       const a = await this.accountById(c, t.account_id);
       if (!a || a.status !== "active" || a.binding_status !== "active" || a.credential_version !== t.session_cv) {
-        await c.query(`UPDATE ${SCHEMA}.login_sessions SET revoked_at = $2, revoke_reason = 'ACCOUNT_CHANGED' WHERE id = $1`, [t.session_id, now]);
-        await this.event(c, { event: "refresh", outcome: "refused", reason: "ACCOUNT_CHANGED", accountId: t.account_id, sessionId: t.session_id, client: facts });
-        return null;
+        return refuse("ACCOUNT_CHANGED", "ACCOUNT_CHANGED");
       }
-      return { t, a };
-    });
-    if (!result) throw new LoginRefusal("REFRESH_REFUSED");
-    try {
-      await this.requireEligible(result.a);
-    } catch (err) {
-      if (!(err instanceof PrincipalContextError)) throw err;
-      await this.tx(async (c) => {
-        await c.query(`UPDATE ${SCHEMA}.login_sessions SET revoked_at = $2, revoke_reason = $3 WHERE id = $1 AND revoked_at IS NULL`,
-          [result.t.session_id, this.now(), `PRINCIPAL_${err.refusal}`]);
-        await this.event(c, { event: "refresh", outcome: "refused", reason: `PRINCIPAL_${err.refusal}`, accountId: result.a.id, sessionId: result.t.session_id, client: facts });
-      });
-      throw new LoginRefusal("REFRESH_REFUSED");
-    }
-    return this.tx(async (c) => {
-      const now = this.now();
-      // Consume under the row lock: of two concurrent exchanges of one token exactly one succeeds.
-      const { rowCount } = await c.query(
-        `UPDATE ${SCHEMA}.login_refresh_tokens SET consumed_at = $2 WHERE token_sha256 = $1 AND consumed_at IS NULL`, [digest, now]);
-      if (rowCount !== 1) throw new LoginRefusal("REFRESH_REFUSED");
-      const { rows } = await c.query(`SELECT * FROM ${SCHEMA}.login_sessions WHERE id = $1 FOR UPDATE`, [result.t.session_id]);
-      const s = rows[0];
-      if (!s || s.revoked_at) throw new LoginRefusal("REFRESH_REFUSED");
-      const idle = new Date(Math.min(now.getTime() + this.policy.idleSeconds * 1000, s.absolute_expires_at.getTime()));
-      await c.query(`UPDATE ${SCHEMA}.login_sessions SET last_refreshed_at = $2, idle_expires_at = $3 WHERE id = $1`, [s.id, now, idle]);
+      // The SAME resolution every request runs, re-checked at every rotation.
+      try {
+        await this.requireEligible(a);
+      } catch (err) {
+        if (err instanceof PrincipalContextError) return refuse(`PRINCIPAL_${err.refusal}`, `PRINCIPAL_${err.refusal}`);
+        throw err;
+      }
+      await c.query(`UPDATE ${SCHEMA}.login_refresh_tokens SET consumed_at = $2, consumed_client_digest = $3 WHERE token_sha256 = $1`,
+        [digest, now, this.clientDigest(facts)]);
+      const idle = new Date(Math.min(now.getTime() + this.policy.idleSeconds * 1000, t.absolute_expires_at.getTime()));
+      await c.query(`UPDATE ${SCHEMA}.login_sessions SET last_refreshed_at = $2, idle_expires_at = $3 WHERE id = $1`, [t.session_id, now, idle]);
       const refreshToken = newOpaqueToken("refresh");
       await c.query(`INSERT INTO ${SCHEMA}.login_refresh_tokens (token_sha256, session_id, issued_at) VALUES ($1,$2,$3)`,
-        [opaqueTokenDigest(refreshToken), s.id, now]);
-      const access = this.mint(result.a.subject, s.id);
-      await this.event(c, { event: "refresh", outcome: "success", accountId: result.a.id, principalId: result.a.principal_id, sessionId: s.id, client: facts });
+        [opaqueTokenDigest(refreshToken), t.session_id, now]);
+      const access = this.mint(a.subject, t.session_id);
+      await this.event(c, { event: "refresh", outcome: "success", accountId: a.id, principalId: a.principal_id, sessionId: t.session_id, client: facts });
       return Object.freeze({
         tokenType: "Bearer" as const, accessToken: access.token, accessTokenExpiresAt: access.expiresAt, refreshToken,
-        refreshTokenExpiresAt: idle.toISOString(), sessionId: s.id,
-        mfaEnrollmentRequired: result.a.mfa_required && !s.mfa_verified && !(await this.hasActiveFactor(c, result.a.id)),
+        refreshTokenExpiresAt: idle.toISOString(), sessionId: t.session_id,
+        mfaEnrollmentRequired: a.mfa_required && !t.mfa_verified && !(await this.hasActiveFactor(c, a.id)),
       });
+    });
+    // Refusals COMMIT (a reuse revocation must persist), then surface.
+    if (typeof result === "string") throw new LoginRefusal(result);
+    return result;
+  }
+
+  /**
+   * Logout by the access token's session (finding 11): when the refresh cookie is not sent (third-party cookie blocking,
+   * a SameSite mismatch), the Bearer's `sid` still ends the session server-side.
+   */
+  async logoutSession(subject: string, sessionId: string | null, facts: ClientFacts | null): Promise<void> {
+    if (!sessionId) return;
+    await this.tx(async (c) => {
+      const { rows } = await c.query(
+        `SELECT s.id, s.account_id FROM ${SCHEMA}.login_sessions s JOIN ${SCHEMA}.login_accounts a ON a.id = s.account_id
+           JOIN ${SCHEMA}.principal_identities pi ON pi.id = a.binding_id
+          WHERE s.id = $1 AND pi.external_subject = $2 AND s.revoked_at IS NULL FOR UPDATE OF s`, [sessionId, subject]);
+      if (!rows[0]) return;
+      await c.query(`UPDATE ${SCHEMA}.login_sessions SET revoked_at = $2, revoke_reason = 'LOGOUT' WHERE id = $1`, [rows[0].id, this.now()]);
+      await this.event(c, { event: "logout", outcome: "success", accountId: rows[0].account_id, sessionId: rows[0].id, client: facts });
     });
   }
 
@@ -652,7 +753,9 @@ export class EosLoginService {
     const { rows } = await this.deps.pool.query(
       `SELECT a.*, pi.external_subject AS subject, pi.status AS binding_status, s.id AS session_id, s.mfa_verified,
               s.revoked_at AS session_revoked_at, s.idle_expires_at, s.absolute_expires_at, s.credential_version AS session_cv,
-              EXISTS (SELECT 1 FROM ${SCHEMA}.login_mfa_factors f WHERE f.account_id = a.id AND f.status = 'active') AS has_factor
+              EXISTS (SELECT 1 FROM ${SCHEMA}.login_mfa_factors f WHERE f.account_id = a.id AND f.status = 'active') AS has_factor,
+              EXISTS (SELECT 1 FROM ${SCHEMA}.tenant_memberships m
+                       WHERE m.principal_id = a.principal_id AND m.tenant_id <> a.tenant_id AND m.status = 'active') AS foreign_membership
          FROM ${SCHEMA}.login_sessions s
          JOIN ${SCHEMA}.login_accounts a ON a.id = s.account_id
          JOIN ${SCHEMA}.principal_identities pi ON pi.id = a.binding_id
@@ -660,7 +763,9 @@ export class EosLoginService {
     const r = rows[0];
     const now = this.now().getTime();
     if (!r || r.subject !== subject || r.session_revoked_at || r.status !== "active" || r.binding_status !== "active"
-      || r.idle_expires_at.getTime() <= now || r.absolute_expires_at.getTime() <= now || r.credential_version !== r.session_cv) {
+      || r.idle_expires_at.getTime() <= now || r.absolute_expires_at.getTime() <= now || r.credential_version !== r.session_cv
+      // Single-tenant (finding 1): a membership in another tenant appearing mid-session ends the session's reach at once.
+      || r.foreign_membership) {
       throw new LoginRefusal("SESSION_INVALID");
     }
     // A session that owes a second factor reaches /auth/* (to enroll one) and nothing else.
@@ -701,13 +806,8 @@ export class EosLoginService {
   async changePassword(subject: string, sessionId: string | null, input: { currentPassword: unknown; newPassword: unknown }, facts: ClientFacts | null): Promise<IssuedLoginSession> {
     const a = await this.checkSession(subject, sessionId, "self");
     if (typeof input.currentPassword !== "string" || input.currentPassword.length > PASSWORD_MAX_LENGTH * 4) throw new LoginRefusal("CURRENT_PASSWORD_REFUSED");
-    const check = await verifyPassword(input.currentPassword, a.password_hash);
-    if (!check.matches) {
-      await this.tx(async (c) => {
-        const locked = await this.accountById(c, a.id, true);
-        if (locked) await this.recordFailure(c, locked);
-        await this.event(c, { event: "passwordChange", outcome: "refused", reason: "CURRENT_PASSWORD", accountId: a.id, sessionId, client: facts });
-      });
+    // The same atomic reservation as login: a stolen session cannot guess the current password past the lockout (finding 7).
+    if (!(await this.currentPasswordMatches(a, input.currentPassword, "passwordChange", sessionId, facts))) {
       throw new LoginRefusal("CURRENT_PASSWORD_REFUSED");
     }
     const policy = passwordPolicyRefusal(input.newPassword, a.login_identifier);
@@ -792,20 +892,41 @@ export class EosLoginService {
     await c.query(`UPDATE ${SCHEMA}.login_recovery_codes SET superseded_at = $2 WHERE account_id = $1 AND used_at IS NULL AND superseded_at IS NULL`, [accountId, now]);
     const codes = newRecoveryCodes();
     for (const code of codes) {
-      await c.query(`INSERT INTO ${SCHEMA}.login_recovery_codes (id, account_id, code_digest, created_at) VALUES ($1,$2,$3,$4)`,
-        [randomUUID(), accountId, recoveryCodeDigest(keyring, accountId, normalizeRecoveryCode(code) as string), now]);
+      await c.query(`INSERT INTO ${SCHEMA}.login_recovery_codes (id, account_id, key_id, code_digest, created_at) VALUES ($1,$2,$3,$4,$5)`,
+        [randomUUID(), accountId, keyring.currentKid, recoveryCodeDigest(keyring, keyring.currentKid, accountId, normalizeRecoveryCode(code) as string), now]);
     }
     return codes;
   }
 
-  /** Step-up for a sensitive self-service act: the password AND a current second factor. */
-  private async requirePasswordAndFactor(c: PoolClient, keyring: FactorKeyring, a: AccountRow, input: { password: unknown; code?: unknown; recoveryCode?: unknown }) {
-    if (typeof input.password !== "string" || !(await verifyPassword(input.password, a.password_hash)).matches) {
-      const locked = await this.accountById(c, a.id, true);
-      if (locked) await this.recordFailure(c, locked);
-      return "CURRENT_PASSWORD_REFUSED" as const;
+  /**
+   * The holder's current password, checked like a login: an attempt is reserved atomically first (a locked account is
+   * refused with no evaluation), the hash runs OUTSIDE any transaction (no pool connection waits on the semaphore), and a
+   * success clears the counter. A refusal is recorded.
+   */
+  private async currentPasswordMatches(a: AccountRow, password: unknown, event: string, sessionId: string | null, facts: ClientFacts | null): Promise<boolean> {
+    const pw = typeof password === "string" && password.length <= PASSWORD_MAX_LENGTH * 4 ? password : "";
+    if (!(await this.reserveAttempt(this.deps.pool, a.id))) {
+      await this.event(this.deps.pool, { event, outcome: "refused", reason: "ACCOUNT_LOCKED", accountId: a.id, sessionId, client: facts });
+      return false;
     }
-    if (!(await this.verifySecondFactor(c, keyring, a, input))) return "MFA_CODE_REFUSED" as const;
+    if (!pw || !(await verifyPassword(pw, a.password_hash)).matches) {
+      await this.event(this.deps.pool, { event, outcome: "refused", reason: "CURRENT_PASSWORD", accountId: a.id, sessionId, client: facts });
+      return false;
+    }
+    await this.clearFailures(this.deps.pool, a.id);
+    return true;
+  }
+
+  /** Step-up for a sensitive self-service act: the second factor, AFTER currentPasswordMatches passed outside the tx. */
+  private async requireFactor(c: PoolClient, keyring: FactorKeyring, a: AccountRow, input: { code?: unknown; recoveryCode?: unknown }) {
+    const locked = await this.accountById(c, a.id, true);
+    if (!locked || this.isLocked(locked)) return "CURRENT_PASSWORD_REFUSED" as const;
+    const method = await this.secondFactorOrKeyRefusal(c, keyring, a, input);
+    if (method === "KEY_UNAVAILABLE") return "MFA_KEY_UNAVAILABLE" as const;
+    if (!method) {
+      await this.recordFailure(c, locked);
+      return "MFA_CODE_REFUSED" as const;
+    }
     return null;
   }
 
@@ -814,9 +935,11 @@ export class EosLoginService {
     const keyring = this.deps.factorKeyring;
     if (!keyring) throw new LoginRefusal("MFA_NOT_CONFIGURED");
     if (a.mfa_required) throw new LoginRefusal("MFA_REQUIRED_BY_POLICY");
+    if (!(await this.hasActiveFactor(this.deps.pool, a.id))) throw new LoginRefusal("MFA_NOT_ENROLLED");
+    if (!(await this.currentPasswordMatches(a, input.password, "mfaRemove", sessionId, facts))) throw new LoginRefusal("CURRENT_PASSWORD_REFUSED");
     const refusal = await this.tx(async (c) => {
       if (!(await this.hasActiveFactor(c, a.id))) return "MFA_NOT_ENROLLED" as const;
-      const r = await this.requirePasswordAndFactor(c, keyring, a, input);
+      const r = await this.requireFactor(c, keyring, a, input);
       if (r) {
         await this.event(c, { event: "mfaRemove", outcome: "refused", reason: r, accountId: a.id, sessionId, client: facts });
         return r;
@@ -836,10 +959,12 @@ export class EosLoginService {
     const a = await this.checkSession(subject, sessionId, "self");
     const keyring = this.deps.factorKeyring;
     if (!keyring) throw new LoginRefusal("MFA_NOT_CONFIGURED");
+    if (!(await this.hasActiveFactor(this.deps.pool, a.id))) throw new LoginRefusal("MFA_NOT_ENROLLED");
+    if (!(await this.currentPasswordMatches(a, input.password, "recoveryCodesRegenerate", sessionId, facts))) throw new LoginRefusal("CURRENT_PASSWORD_REFUSED");
     const out = await this.tx(async (c) => {
       if (!(await this.hasActiveFactor(c, a.id))) return { refusal: "MFA_NOT_ENROLLED" as const };
       // A TOTP code specifically: a recovery code may not mint more recovery codes.
-      const r = await this.requirePasswordAndFactor(c, keyring, a, { password: input.password, code: input.code ?? "" });
+      const r = await this.requireFactor(c, keyring, a, { code: input.code ?? "" });
       if (r) {
         await this.event(c, { event: "recoveryCodesRegenerate", outcome: "refused", reason: r, accountId: a.id, sessionId, client: facts });
         return { refusal: r };
@@ -875,14 +1000,55 @@ export class EosLoginService {
     });
   }
 
+  // ════════════════════ key rotation census ════════════════════
+
+  /**
+   * Which factor key ids still protect live material: TOTP factors (pending or active) by the kid in their sealed
+   * secret, live recovery codes by their key_id. A kid may be dropped from EOS_AUTH_FACTOR_KEYS only when it counts
+   * ZERO here (docs/architecture/eos-native-identity.md, section 4: rotation). Counts only -- no secret, no account.
+   */
+  async factorKeyCensus(): Promise<{ factors: Record<string, number>; recoveryCodes: Record<string, number>; currentKid: string | null; unheld: string[] }> {
+    const { rows: f } = await this.deps.pool.query(
+      `SELECT split_part(secret_sealed, '.', 2) AS kid, count(*)::int AS n FROM ${SCHEMA}.login_mfa_factors
+        WHERE status <> 'removed' GROUP BY 1 ORDER BY 1`);
+    const { rows: r } = await this.deps.pool.query(
+      `SELECT key_id AS kid, count(*)::int AS n FROM ${SCHEMA}.login_recovery_codes
+        WHERE used_at IS NULL AND superseded_at IS NULL GROUP BY 1 ORDER BY 1`);
+    const held = this.deps.factorKeyring ? new Set(this.deps.factorKeyring.keys.keys()) : new Set<string>();
+    const kids = new Set([...f.map((x) => x.kid as string), ...r.map((x) => x.kid as string)]);
+    return {
+      factors: Object.fromEntries(f.map((x) => [x.kid, x.n])),
+      recoveryCodes: Object.fromEntries(r.map((x) => [x.kid, x.n])),
+      currentKid: this.deps.factorKeyring?.currentKid ?? null,
+      unheld: [...kids].filter((k) => !held.has(k)).sort(),
+    };
+  }
+
   // ════════════════════ security administration (Administration > Users) ════════════════════
 
   /** Does `principalId` hold the protected Owner Role in this tenant? */
-  private async holdsProtectedOwner(q: Pick<PoolClient, "query"> | Pool, tenantId: string, principalId: string): Promise<boolean> {
+  /**
+   * Does `principalId` hold a PROTECTED administering Role -- the Owner or the designated Administrator -- in ANY tenant?
+   * Any tenant, not just the actor's: a credential is one login wherever its Principal is a member.
+   */
+  private async holdsProtectedAdministeringRole(q: Pick<PoolClient, "query"> | Pool, principalId: string): Promise<boolean> {
     const { rows } = await q.query(
       `SELECT 1 FROM ${SCHEMA}.user_role_assignments a JOIN ${SCHEMA}.roles r ON r.id = a.role_id
-        WHERE a.tenant_id = $1 AND a.principal_id = $2 AND a.status = 'active' AND r.key = $3 AND r.protected`,
-      [tenantId, principalId, PROTECTED_OWNER_ROLE_KEY]);
+        WHERE a.principal_id = $1 AND a.status = 'active' AND r.protected AND r.key IN ($2, $3) LIMIT 1`,
+      [principalId, PROTECTED_OWNER_ROLE_KEY, ADMIN_ROLE_KEY]);
+    return rows.length > 0;
+  }
+
+  /**
+   * A HUMAN EOS LOGIN IS SINGLE-TENANT (security review finding 1). A Principal with an active membership in any tenant
+   * other than the account's could otherwise sign in through tenant A's login and state `x-eos-tenant: B` -- acting in a
+   * tenant whose administrators can neither see nor revoke that login. So such a Principal is refused at provisioning,
+   * at login, at every refresh and on every request (the session gate). Multi-tenant people await a ruling (D-12).
+   */
+  private async hasForeignMembership(q: Pick<PoolClient, "query"> | Pool, principalId: string, tenantId: string): Promise<boolean> {
+    const { rows } = await q.query(
+      `SELECT 1 FROM ${SCHEMA}.tenant_memberships WHERE principal_id = $1 AND tenant_id <> $2 AND status = 'active' LIMIT 1`,
+      [principalId, tenantId]);
     return rows.length > 0;
   }
 
@@ -913,8 +1079,10 @@ export class EosLoginService {
     if (id === actor.uid) throw new LoginRefusal("SELF_ADMINISTRATION", "use your own account security settings; an administrator may not administer their own login");
     const membership = await this.deps.repo.getMembership(actor.tenantId, id);
     if (!membership) throw new LoginRefusal("NOT_FOUND", "that principal is not a member of this tenant");
-    if (await this.holdsProtectedOwner(this.deps.pool, actor.tenantId, id) && !actor.heldRoleKeys.includes(PROTECTED_OWNER_ROLE_KEY)) {
-      throw new LoginRefusal("PROTECTED_TARGET", "only an Owner may administer an Owner's login");
+    // Security review finding 3: whoever is handed a setup or reset code can become the target. So the login of anyone who
+    // holds a protected administering Role (Owner or Administrator, in any tenant) is administered only by an Owner.
+    if (await this.holdsProtectedAdministeringRole(this.deps.pool, id) && !actor.heldRoleKeys.includes(PROTECTED_OWNER_ROLE_KEY)) {
+      throw new LoginRefusal("PROTECTED_TARGET", "only an Owner may administer the login of an Owner or Administrator");
     }
     return { principalId: id, reason: r };
   }
@@ -945,6 +1113,9 @@ export class EosLoginService {
    */
   private async requireNotLastAdministratorLogin(c: PoolClient, tenantId: string, a: AccountRow): Promise<void> {
     if (a.status !== "active") return;
+    // Serialise every disable/retire in the tenant (finding 9): two administrators removing each other's logins at once
+    // would each see the other still enabled and both commit, leaving zero.
+    await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`eos-login-last-administrator:${tenantId}`]);
     const administering = `SELECT 1 FROM ${SCHEMA}.user_role_assignments ra JOIN ${SCHEMA}.roles r ON r.id = ra.role_id
       WHERE ra.tenant_id = $1 AND ra.principal_id = %P AND ra.status = 'active' AND ra.scope_type = 'global' AND r.key IN ('owner', 'admin') AND r.protected`;
     const { rows: target } = await c.query(administering.replace("%P", "$2"), [tenantId, a.principal_id]);
@@ -976,13 +1147,16 @@ export class EosLoginService {
     const principalId = typeof input.principalId === "string" ? input.principalId.trim() : "";
     if (!principalId) throw new LoginRefusal("INVALID_INPUT", "principalId is required");
     if (!(await this.deps.repo.getMembership(actor.tenantId, principalId))) throw new LoginRefusal("NOT_FOUND", "that principal is not a member of this tenant");
-    const a = await this.liveAccountForPrincipal(this.deps.pool, principalId);
+    const found = await this.liveAccountForPrincipal(this.deps.pool, principalId);
+    // Another tenant's account is not this tenant's to see (tenant isolation); it reads as "has an EOS identity".
+    const a = found && found.tenant_id === actor.tenantId ? found : null;
     const binding = await this.deps.repo.getActiveIdentityBinding(principalId, EOS_IDENTITY_PROVIDER);
     if (!a) {
       return Object.freeze({
         account: null,
         // Why provisioning would refuse, said up front: a persona or other EOS identity already holds the one slot.
-        eosIdentity: binding ? { subject: binding.externalSubject, kind: binding.externalSubject.startsWith("nonprod-persona.") ? "persona" : "other" } : null,
+        // The KIND only: the subject of an identity this tenant does not administer is not this tenant's to read.
+        eosIdentity: binding ? { kind: binding.externalSubject.startsWith("nonprod-persona.") ? "persona" : "other" } : null,
         recentEvents: [],
       });
     }
@@ -1017,6 +1191,9 @@ export class EosLoginService {
     // A login is for a PERSON: the Principal must be linked to an Employee (DECISIONS #56: missing Employee linkage is
     // denied). A service or fixture Principal with no Employee gets no password.
     await this.requireEmployeeLink(actor.tenantId, principalId);
+    if (await this.hasForeignMembership(this.deps.pool, principalId, actor.tenantId)) {
+      throw new LoginRefusal("CONFLICT", "MULTI_TENANT_PRINCIPAL: an EOS login is single-tenant; this principal is a member of another tenant");
+    }
     if (await this.liveAccountForPrincipal(this.deps.pool, principalId)) throw new LoginRefusal("CONFLICT", "that principal already has a login account");
     if (await this.deps.repo.getActiveIdentityBinding(principalId, EOS_IDENTITY_PROVIDER)) {
       // A persona Principal already holds its one EOS identity (the persona model is frozen); so does any Principal
@@ -1065,7 +1242,9 @@ export class EosLoginService {
       LOGIN_ADMINISTRATION_OPERATIONS[action].capability as LoginAdministrationCapability);
     return this.tx(async (c) => {
       const a = await this.liveAccountForPrincipal(c, principalId, true);
-      if (!a) throw new LoginRefusal("NOT_FOUND", "that principal has no login account");
+      // TENANT ISOLATION: a login is administered only from the tenant it was provisioned in. A Principal that is ALSO a
+      // member of another tenant does not make its credential that tenant's to reset, disable or remove.
+      if (!a || a.tenant_id !== actor.tenantId) throw new LoginRefusal("NOT_FOUND", "that principal has no login account in this tenant");
       const { before, after, result } = await fn(c, a, reason);
       await this.audit(c, actor.tenantId, actor.uid, action, a.id, before, after, reason);
       await this.event(c, { event: action, outcome: "success", accountId: a.id, principalId: a.principal_id });

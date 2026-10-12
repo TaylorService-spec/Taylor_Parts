@@ -10,11 +10,12 @@
 //   opaque tokens     refresh, enrollment, reset and MFA-challenge tokens: 32 random bytes, stored as SHA-256 only
 //   TOTP secret       must be recoverable to verify a code, so it is ENCRYPTED (AES-256-GCM) under a factor key
 //                     from the environment, bound to its factor id by the GCM additional data
-//   recovery codes    HMAC-SHA-256 under the same factor key (a pepper): a stolen table alone cannot brute-force them
+//   recovery codes    HMAC-SHA-256 under a purpose-separated HKDF subkey of the factor key (a pepper): a stolen table
+//                     alone cannot brute-force them
 //
 // Nothing here logs, and no error message carries a password, a token, a secret or a key.
 import {
-  createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, scrypt as scryptCb, timingSafeEqual,
+  createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, randomInt, scrypt as scryptCb, timingSafeEqual,
 } from "node:crypto";
 
 // ════════════════════ passwords ════════════════════
@@ -33,16 +34,36 @@ const HASH_PREFIX = "scrypt";
  * unbounded burst of logins is a memory exhaustion attack. Excess callers queue.
  */
 const MAX_CONCURRENT_HASHES = 2;
+/**
+ * At most this many callers WAIT. Beyond it the work is refused at once (PasswordWorkSaturated -> 503), so a flood of
+ * guesses cannot hold sockets and pool connections in an unbounded queue (security review finding 5).
+ */
+export const MAX_QUEUED_HASHES = 16;
 let running = 0;
 const waiting: Array<() => void> = [];
+
+export class PasswordWorkSaturated extends Error {
+  constructor() {
+    super("password work is saturated");
+    this.name = "PasswordWorkSaturated";
+  }
+}
+
 async function withHashSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (running >= MAX_CONCURRENT_HASHES) await new Promise<void>((resolve) => waiting.push(resolve));
-  running += 1;
+  if (running >= MAX_CONCURRENT_HASHES) {
+    if (waiting.length >= MAX_QUEUED_HASHES) throw new PasswordWorkSaturated();
+    // The releasing caller hands its slot over directly (running is NOT decremented then re-incremented), so a third
+    // caller can never slip in between.
+    await new Promise<void>((resolve) => waiting.push(resolve));
+  } else {
+    running += 1;
+  }
   try {
     return await fn();
   } finally {
-    running -= 1;
-    waiting.shift()?.();
+    const next = waiting.shift();
+    if (next) next(); // slot transferred; `running` unchanged
+    else running -= 1;
   }
 }
 
@@ -68,8 +89,9 @@ function parsePasswordHash(stored: string): ParsedHash | null {
   if (!m) return null;
   const params = { N: Number(m[1]), r: Number(m[2]), p: Number(m[3]) };
   // A stored hash is data; refuse parameters that would let one row exhaust memory or that are not a power of two.
-  if (!(params.N >= MINIMUM_ACCEPTED_N && params.N <= 2 ** 20 && (params.N & (params.N - 1)) === 0)) return null;
-  if (!(params.r >= 1 && params.r <= 16 && params.p >= 1 && params.p <= 4)) return null;
+  // At most 2^18 x r=8 (256 MiB): a stored row may not ask for more memory than the hash we write ever needs twice over.
+  if (!(params.N >= MINIMUM_ACCEPTED_N && params.N <= 2 ** 18 && (params.N & (params.N - 1)) === 0)) return null;
+  if (!(params.r >= 1 && params.r <= 8 && params.p >= 1 && params.p <= 2)) return null;
   const salt = Buffer.from(m[4], "base64url");
   const key = Buffer.from(m[5], "base64url");
   if (salt.length < 16 || key.length !== KEY_LENGTH) return null;
@@ -179,22 +201,39 @@ export function isOpaqueTokenOf(kind: OpaqueTokenKind, value: unknown): value is
 // ════════════════════ factor-secret encryption ════════════════════
 
 /**
- * The factor key: 32 bytes, from EOS_AUTH_FACTOR_KEYS (JSON { "<kid>": "<base64url 32 bytes>" }) with
- * EOS_AUTH_FACTOR_KEY_ID naming the one new secrets are written under. Older kids stay readable for rotation.
+ * The factor ROOT keys: 32 bytes each, from EOS_AUTH_FACTOR_KEYS (JSON { "<kid>": "<base64url 32 bytes>" }), with
+ * EOS_AUTH_FACTOR_KEY_ID naming the one NEW material is written under. Older kids stay readable for rotation.
+ *
+ * KEY SEPARATION. A root key is never used directly. Each purpose gets its own HKDF-SHA-256 subkey (RFC 5869), so the
+ * key that seals TOTP secrets is not the key that peppers recovery codes, nor the one that digests client addresses:
+ *
+ *   seal      AES-256-GCM over TOTP secrets           info "eos-login/totp-seal/v1"
+ *   recovery  HMAC-SHA-256 over recovery codes        info "eos-login/recovery-code/v1"
+ *   client    HMAC-SHA-256 over client addresses      info "eos-login/client-digest/v1"
+ *
+ * The root keys are a different secret from the token signing key (Ed25519, EOS_AUTH_SIGNING_KEY_NONPROD) by type and
+ * by variable; config refuses two kids that hold the same material.
  */
 export interface FactorKeyring {
   readonly currentKid: string;
   readonly keys: ReadonlyMap<string, Buffer>;
 }
+export type FactorKeyPurpose = "seal" | "recovery" | "client";
+const PURPOSE_INFO: Readonly<Record<FactorKeyPurpose, string>> = Object.freeze({
+  seal: "eos-login/totp-seal/v1",
+  recovery: "eos-login/recovery-code/v1",
+  client: "eos-login/client-digest/v1",
+});
 
 export class FactorKeyError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly kid: string | null = null) {
     super(message);
     this.name = "FactorKeyError";
   }
 }
 
 const FACTOR_KID = /^[A-Za-z0-9-]{1,32}$/;
+export const isFactorKid = (v: unknown): v is string => typeof v === "string" && FACTOR_KID.test(v);
 
 export function parseFactorKeyring(rawKeys: string | Record<string, string>, currentKid: string): FactorKeyring {
   let obj: Record<string, unknown>;
@@ -205,10 +244,16 @@ export function parseFactorKeyring(rawKeys: string | Record<string, string>, cur
   }
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) throw new FactorKeyError("EOS_AUTH_FACTOR_KEYS must be a JSON object");
   const keys = new Map<string, Buffer>();
+  const seen = new Set<string>();
   for (const [kid, value] of Object.entries(obj)) {
     if (!FACTOR_KID.test(kid)) throw new FactorKeyError("a factor key id must be 1-32 of [A-Za-z0-9-]");
     const key = typeof value === "string" ? Buffer.from(value, "base64url") : Buffer.alloc(0);
     if (key.length !== 32) throw new FactorKeyError("every factor key must be 32 bytes, base64url");
+    // A rotation that re-labels old material is not a rotation.
+    const fingerprint = key.toString("hex");
+    if (seen.has(fingerprint)) throw new FactorKeyError("two factor key ids hold the same key material");
+    seen.add(fingerprint);
+    if (key.equals(Buffer.alloc(32))) throw new FactorKeyError("a factor key must not be all zero bytes");
     keys.set(kid, key);
   }
   if (keys.size === 0 || keys.size > 4) throw new FactorKeyError("EOS_AUTH_FACTOR_KEYS must hold between 1 and 4 keys");
@@ -216,9 +261,16 @@ export function parseFactorKeyring(rawKeys: string | Record<string, string>, cur
   return Object.freeze({ currentKid, keys });
 }
 
-/** v1.<kid>.<iv>.<ciphertext>.<tag>, AES-256-GCM, with `binding` (the factor id) as additional data. */
+/** The purpose subkey for `kid`. Throws FactorKeyError naming the kid when this service does not hold it. */
+export function factorSubkey(keyring: FactorKeyring, kid: string, purpose: FactorKeyPurpose): Buffer {
+  const root = keyring.keys.get(kid);
+  if (!root) throw new FactorKeyError("a credential names a factor key this service does not hold", kid);
+  return Buffer.from(hkdfSync("sha256", root, Buffer.alloc(0), PURPOSE_INFO[purpose], 32));
+}
+
+/** v1.<kid>.<iv>.<ciphertext>.<tag>, AES-256-GCM under the SEAL subkey, with `binding` (the factor id) as additional data. */
 export function encryptFactorSecret(keyring: FactorKeyring, secret: Buffer, binding: string): string {
-  const key = keyring.keys.get(keyring.currentKid) as Buffer;
+  const key = factorSubkey(keyring, keyring.currentKid, "seal");
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   cipher.setAAD(Buffer.from(binding, "utf8"));
@@ -227,18 +279,23 @@ export function encryptFactorSecret(keyring: FactorKeyring, secret: Buffer, bind
   return ["v1", keyring.currentKid, iv.toString("base64url"), ct.toString("base64url"), tag.toString("base64url")].join(".");
 }
 
+/** The kid a sealed secret was written under, or null when malformed. */
+export function sealedFactorKid(sealed: string): string | null {
+  const parts = sealed.split(".");
+  return parts.length === 5 && parts[0] === "v1" && FACTOR_KID.test(parts[1]) ? parts[1] : null;
+}
+
 export function decryptFactorSecret(keyring: FactorKeyring, sealed: string, binding: string): Buffer {
   const parts = sealed.split(".");
   if (parts.length !== 5 || parts[0] !== "v1") throw new FactorKeyError("a sealed factor secret is malformed");
-  const key = keyring.keys.get(parts[1]);
-  if (!key) throw new FactorKeyError("a sealed factor secret names a factor key this service does not hold");
+  const key = factorSubkey(keyring, parts[1], "seal");
   try {
     const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(parts[2], "base64url"));
     decipher.setAAD(Buffer.from(binding, "utf8"));
     decipher.setAuthTag(Buffer.from(parts[4], "base64url"));
     return Buffer.concat([decipher.update(Buffer.from(parts[3], "base64url")), decipher.final()]);
   } catch {
-    throw new FactorKeyError("a sealed factor secret did not authenticate");
+    throw new FactorKeyError("a sealed factor secret did not authenticate", parts[1]);
   }
 }
 
@@ -325,7 +382,7 @@ export function normalizeRecoveryCode(code: unknown): string | null {
   return /^[0-9A-HJKMNP-TV-Z]{12}$/.test(s) ? s : null;
 }
 
-export function recoveryCodeDigest(keyring: FactorKeyring, accountId: string, normalized: string): string {
-  const key = keyring.keys.get(keyring.currentKid) as Buffer;
-  return createHmac("sha256", key).update(`eos-recovery-code\u0000${accountId}\u0000${normalized}`, "utf8").digest("hex");
+/** HMAC under the RECOVERY subkey of `kid` (stored beside the digest, so a rotated key still verifies old codes). */
+export function recoveryCodeDigest(keyring: FactorKeyring, kid: string, accountId: string, normalized: string): string {
+  return createHmac("sha256", factorSubkey(keyring, kid, "recovery")).update(`eos-recovery-code\u0000${accountId}\u0000${normalized}`, "utf8").digest("hex");
 }

@@ -75,6 +75,18 @@ test("U4 factor secrets: AES-256-GCM, bound to the factor id, rotatable keyring"
   assert.deepEqual(C.decryptFactorSecret(ring2, sealed, "factor-A"), secret, "an old key stays readable after rotation");
   assert.match(C.encryptFactorSecret(ring2, secret, "factor-A"), /^v1\.k2\./);
   assert.throws(() => C.parseFactorKeyring({ k1: "short" }, "k1"), /32 bytes/);
+  assert.throws(() => C.parseFactorKeyring({ k1, k3: k1 }, "k1"), /same key material/, "a re-labelled key is not a rotation");
+  assert.throws(() => C.parseFactorKeyring({ z: Buffer.alloc(32).toString("base64url") }, "z"), /all zero/);
+  // KEY SEPARATION: the root key is never used directly; each purpose has its own HKDF subkey.
+  const seal = C.factorSubkey(ring1, "k1", "seal");
+  const rec = C.factorSubkey(ring1, "k1", "recovery");
+  const cli = C.factorSubkey(ring1, "k1", "client");
+  const root = Buffer.from(k1, "base64url");
+  assert.equal(new Set([seal, rec, cli, root].map((b) => b.toString("hex"))).size, 4);
+  assert.equal(C.sealedFactorKid(sealed), "k1");
+  // MISSING KEY: a ring without k1 cannot open k1 material, and says which kid it lacks.
+  const ring3 = C.parseFactorKeyring({ k2 }, "k2");
+  assert.throws(() => C.decryptFactorSecret(ring3, sealed, "factor-A"), (e) => e instanceof C.FactorKeyError && e.kid === "k1");
   assert.throws(() => C.parseFactorKeyring({ k1 }, "k9"), /not in EOS_AUTH_FACTOR_KEYS/);
 });
 
@@ -87,7 +99,8 @@ test("U5 recovery codes and opaque tokens: shape, normalisation, keyed digests",
   assert.equal(C.normalizeRecoveryCode("IIII-LLLL-OOOO"), null);
   const ring = C.parseFactorKeyring({ k: randomBytes(32).toString("base64url") }, "k");
   const n = C.normalizeRecoveryCode(codes[0]);
-  assert.notEqual(C.recoveryCodeDigest(ring, "acct-1", n), C.recoveryCodeDigest(ring, "acct-2", n), "per-account");
+  assert.notEqual(C.recoveryCodeDigest(ring, "k", "acct-1", n), C.recoveryCodeDigest(ring, "k", "acct-2", n), "per-account");
+  assert.throws(() => C.recoveryCodeDigest(ring, "gone", "acct-1", n), (e) => e instanceof C.FactorKeyError && e.kid === "gone");
   const tok = C.newOpaqueToken("refresh");
   assert.ok(C.isOpaqueTokenOf("refresh", tok));
   assert.ok(!C.isOpaqueTokenOf("reset", tok), "kinds do not cross");
@@ -156,22 +169,23 @@ test("U10 the pure handler: 404 off-route, POST only, 429 before any work, X-For
   const service = { login: async (input, facts) => { calls.push(facts); return { status: "AUTHENTICATED", session: {} }; } };
   const limiterSeen = [];
   const rateLimit = (address) => { limiterSeen.push(address); return limiterSeen.length > 1 ? { ok: false, retryAfterSeconds: 7 } : { ok: true, retryAfterSeconds: 0 }; };
-  const opts = { service, verify, allowedOrigins: ["https://app.test"], rateLimit, trustForwardedFor: true };
+  const opts = { service, verify, allowedOrigins: ["https://app.test"], rateLimit, trustedProxyHops: 1, cookieSameSite: "None" };
+  const browser = { origin: "https://app.test", "x-eos-csrf": "1", "content-type": "application/json" };
   assert.equal((await L.handleLoginRequest(opts, { method: "POST", url: "/auth/nope" })).status, 404);
   assert.equal((await L.handleLoginRequest(opts, { method: "GET", url: "/auth/login" })).status, 405);
   const ok = await L.handleLoginRequest(opts, { method: "POST", url: "/auth/login", body: "{}", remoteAddress: "10.0.0.1",
-    headers: { "x-forwarded-for": "6.6.6.6, 203.0.113.9", origin: "https://app.test", "user-agent": "UA" } });
+    headers: { ...browser, "x-forwarded-for": "6.6.6.6, 203.0.113.9", "user-agent": "UA" } });
   assert.equal(ok.status, 200);
   assert.equal(ok.headers["cache-control"], "no-store");
   assert.equal(ok.headers["access-control-allow-origin"], "https://app.test");
   assert.deepEqual(calls[0], { address: "203.0.113.9", label: "UA" }, "the proxy-appended hop, never the client's claim");
-  const limited = await L.handleLoginRequest(opts, { method: "POST", url: "/auth/login", body: "{}", remoteAddress: "10.0.0.1" });
+  const limited = await L.handleLoginRequest(opts, { method: "POST", url: "/auth/login", body: "{}", remoteAddress: "10.0.0.1", headers: browser });
   assert.equal(limited.status, 429);
   assert.equal(limited.headers["retry-after"], "7");
   assert.equal(calls.length, 1, "a limited request spends no password work");
   // Self-service needs a human login session.
   const persona = await L.handleLoginRequest({ ...opts, rateLimit: undefined }, { method: "POST", url: "/auth/account", body: "{}",
-    headers: { authorization: `Bearer ${mint({ sub: "nonprod-persona.dispatcher" })}` } });
+    headers: { ...browser, authorization: `Bearer ${mint({ sub: "nonprod-persona.dispatcher" })}` } });
   assert.equal(persona.status, 403);
 });
 
@@ -187,9 +201,110 @@ test("U11 configuration: the front door needs a verifier and signing key; factor
   assert.throws(() => readEosAuthConfig({ ...base, EOS_HUMAN_LOGIN: "enabled" }, "nonprod"), /requires EOS_AUTH_SIGNING_KEY_NONPROD/);
   assert.throws(() => readEosAuthConfig({ ...base, ...signing, ...factor }, "nonprod"), /EOS_HUMAN_LOGIN is not enabled/);
   assert.throws(() => readEosAuthConfig({ ...base, ...signing, EOS_HUMAN_LOGIN: "enabled", EOS_AUTH_FACTOR_KEYS: factor.EOS_AUTH_FACTOR_KEYS }, "nonprod"), /must be set together/);
-  const on = readEosAuthConfig({ ...base, ...signing, EOS_HUMAN_LOGIN: "enabled" }, "nonprod");
+  assert.throws(() => readEosAuthConfig({ ...base, ...signing, EOS_HUMAN_LOGIN: "enabled" }, "nonprod"), /EOS_AUTH_COOKIE_SAMESITE/);
+  assert.throws(() => readEosAuthConfig({ ...base, ...signing, EOS_HUMAN_LOGIN: "enabled", EOS_AUTH_COOKIE_SAMESITE: "Strict" }, "nonprod"), /EOS_AUTH_TRUSTED_PROXY_HOPS/);
+  const cookie = { EOS_AUTH_COOKIE_SAMESITE: "Strict", EOS_AUTH_TRUSTED_PROXY_HOPS: "1" };
+  const on = readEosAuthConfig({ ...base, ...signing, ...cookie, EOS_HUMAN_LOGIN: "enabled" }, "nonprod");
+  assert.equal(on.humanLogin.cookieSameSite, "Strict");
+  assert.equal(on.humanLogin.trustedProxyHops, 1);
   assert.equal(on.humanLogin.factorKeyring, null, "password-only is a valid configuration");
-  assert.ok(readEosAuthConfig({ ...base, ...signing, ...factor, EOS_HUMAN_LOGIN: "enabled" }, "nonprod").humanLogin.factorKeyring);
+  assert.ok(readEosAuthConfig({ ...base, ...signing, ...factor, ...cookie, EOS_HUMAN_LOGIN: "enabled" }, "nonprod").humanLogin.factorKeyring);
+  assert.throws(() => readEosAuthConfig({ ...base, ...signing, ...cookie }, "nonprod"), /EOS_HUMAN_LOGIN is not enabled/);
+  assert.throws(() => readEosAuthConfig({ ...base, ...signing, ...cookie, EOS_HUMAN_LOGIN: "enabled",
+    EOS_AUTH_FACTOR_KEYS: JSON.stringify({ f: "short" }), EOS_AUTH_FACTOR_KEY_ID: "f" }, "nonprod"), /32 bytes/, "a malformed factor key refuses startup");
   // Production stays refused at the service level, front door or not.
-  assert.throws(() => readEosAuthConfig({ ...base, ...signing, EOS_HUMAN_LOGIN: "enabled" }, "production"), /EOS_ENVIRONMENT=nonprod/);
+  assert.throws(() => readEosAuthConfig({ ...base, ...signing, ...cookie, EOS_HUMAN_LOGIN: "enabled" }, "production"), /EOS_ENVIRONMENT=nonprod/);
+});
+
+test("U12 the refresh cookie and the CSRF gate, at the pure handler", async () => {
+  const issued = { tokenType: "Bearer", accessToken: "a.b.c", accessTokenExpiresAt: new Date(Date.now() + 300_000).toISOString(),
+    refreshToken: `eosrt_${"R".repeat(43)}`, refreshTokenExpiresAt: new Date(Date.now() + 3600_000).toISOString(), sessionId: "s".repeat(32), mfaEnrollmentRequired: false };
+  const seen = [];
+  const service = {
+    login: async () => ({ status: "AUTHENTICATED", session: issued }),
+    refresh: async ({ refreshToken }) => { seen.push(refreshToken); if (refreshToken !== issued.refreshToken) throw new S.LoginRefusal("REFRESH_REFUSED"); return issued; },
+    logout: async ({ refreshToken }) => { seen.push(`logout:${refreshToken}`); },
+  };
+  const browser = { origin: "https://app.test", "x-eos-csrf": "1", "content-type": "application/json" };
+  for (const sameSite of ["Strict", "Lax", "None"]) {
+    const opts = { service, verify, allowedOrigins: ["https://app.test"], cookieSameSite: sameSite, trustedProxyHops: 0 };
+    const r = await L.handleLoginRequest(opts, { method: "POST", url: "/auth/login", body: "{}", headers: browser });
+    const body = JSON.parse(r.body);
+    assert.equal(body.session.refreshToken, undefined, "never in the body");
+    assert.equal(body.session.accessToken, "a.b.c");
+    const c = r.headers["set-cookie"];
+    assert.match(c, new RegExp(`^__Host-eos_refresh=eosrt_R{43}; Path=/; Secure; HttpOnly; SameSite=${sameSite}; Max-Age=(359[0-9]|3600)`));
+    assert.equal(c.includes("Partitioned"), sameSite === "None", "Partitioned exactly when SameSite=None");
+  }
+  const opts = { service, verify, allowedOrigins: ["https://app.test"], cookieSameSite: "Strict", trustedProxyHops: 0 };
+  // The cookie is the ONLY refresh credential: a body token is ignored.
+  seen.length = 0;
+  await L.handleLoginRequest(opts, { method: "POST", url: "/auth/refresh", body: JSON.stringify({ refreshToken: issued.refreshToken }), headers: browser });
+  assert.deepEqual(seen, [null]);
+  const good = await L.handleLoginRequest(opts, { method: "POST", url: "/auth/refresh", body: "{}", headers: { ...browser, cookie: `a=1; __Host-eos_refresh=${issued.refreshToken}; b=2` } });
+  assert.equal(good.status, 200);
+  const bad = await L.handleLoginRequest(opts, { method: "POST", url: "/auth/refresh", body: "{}", headers: { ...browser, cookie: "__Host-eos_refresh=eosrt_x" } });
+  assert.equal(bad.status, 401);
+  assert.match(bad.headers["set-cookie"], /Max-Age=0/);
+  const out = await L.handleLoginRequest(opts, { method: "POST", url: "/auth/logout", body: "{}", headers: { ...browser, cookie: `__Host-eos_refresh=${issued.refreshToken}` } });
+  assert.match(out.headers["set-cookie"], /^__Host-eos_refresh=; .*Max-Age=0/);
+  // The gate, route by route: every human route refuses without Origin, with a foreign Origin, without the header, non-JSON.
+  for (const route of Object.values(L.LOGIN_ROUTES)) {
+    const at = (headers) => L.handleLoginRequest(opts, { method: "POST", url: route, body: "{}", headers });
+    assert.equal((await at({ ...browser, origin: undefined })).status, 403, route);
+    assert.equal((await at({ ...browser, origin: "https://evil.test" })).status, 403, route);
+    assert.equal((await at({ ...browser, "x-eos-csrf": undefined })).status, 403, route);
+    assert.equal((await at({ ...browser, "content-type": "text/plain" })).status, 415, route);
+  }
+  assert.equal(L.readRefreshCookie(undefined), null);
+  assert.equal(L.readRefreshCookie("__Host-eos_refresh="), null);
+  assert.equal(L.readRefreshCookie(["x=1", "__Host-eos_refresh=eosrt_a"]), "eosrt_a");
+});
+
+test("U13 review findings 5, 6, 13: IPv6 /64 buckets, explicit proxy hops, LRU eviction, bounded hash queue, capped stored parameters", async () => {
+  assert.equal(L.rateLimitBucket("203.0.113.9"), "203.0.113.9");
+  assert.equal(L.rateLimitBucket("::ffff:203.0.113.9"), "203.0.113.9");
+  assert.equal(L.rateLimitBucket("2001:db8:1:2:aaaa:bbbb:cccc:dddd"), "2001:db8:1:2::/64");
+  assert.equal(L.rateLimitBucket("2001:db8:1:2::1"), "2001:db8:1:2::/64");
+  assert.equal(L.rateLimitBucket("2001:db8::1"), "2001:db8:0:0::/64");
+  // One attacker rotating through a /64 shares one budget.
+  let t = 0;
+  const allow = L.createRateLimiter({ credentialPerMinute: 2, routinePerMinute: 2 }, () => t);
+  assert.ok(allow("2001:db8:1:2::1", "credential").ok);
+  assert.ok(allow("2001:db8:1:2::2", "credential").ok);
+  assert.equal(allow("2001:db8:1:2::3", "credential").ok, false);
+  // Eviction is oldest-first, never "everyone": an early, still-limited client keeps its count while new ones arrive.
+  const many = L.createRateLimiter({ credentialPerMinute: 1, routinePerMinute: 1 }, () => t);
+  assert.ok(many("10.0.0.1", "credential").ok);
+  assert.equal(many("10.0.0.1", "credential").ok, false);
+  for (let i = 0; i < 100; i += 1) many(`10.1.${i >> 8}.${i & 255}`, "credential");
+  assert.equal(many("10.0.0.1", "credential").ok, false, "a flood of new addresses does not reset an existing budget");
+
+  // Proxy hops: the client is the hops-th entry from the right; too few entries -> the socket address.
+  const facts = [];
+  const service = { login: async (_i, f) => { facts.push(f.address); return { status: "MFA_REQUIRED", challenge: "eosmc_x", methods: [] }; } };
+  const browser = { origin: "https://app.test", "x-eos-csrf": "1", "content-type": "application/json" };
+  const at = (hops, xff) => L.handleLoginRequest({ service, verify, allowedOrigins: ["https://app.test"], cookieSameSite: "Strict", trustedProxyHops: hops },
+    { method: "POST", url: "/auth/login", body: "{}", remoteAddress: "10.9.9.9", headers: { ...browser, ...(xff ? { "x-forwarded-for": xff } : {}) } });
+  await at(0, "6.6.6.6, 203.0.113.1");
+  await at(1, "6.6.6.6, 203.0.113.1");
+  await at(2, "6.6.6.6, 203.0.113.1, 198.51.100.7");
+  await at(2, "203.0.113.1");
+  assert.deepEqual(facts, ["10.9.9.9", "203.0.113.1", "203.0.113.1", "10.9.9.9"]);
+
+  // Stored parameters above N=2^18 / r=8 are refused (never evaluated).
+  const big = "scrypt$N=524288,r=8,p=1$AAAAAAAAAAAAAAAAAAAAAA$" + "A".repeat(43);
+  assert.equal((await C.verifyPassword("x", big)).matches, false);
+  const wide = "scrypt$N=131072,r=16,p=1$AAAAAAAAAAAAAAAAAAAAAA$" + "A".repeat(43);
+  assert.equal((await C.verifyPassword("x", wide)).matches, false);
+
+  // The hash queue is bounded: past MAX_QUEUED_HASHES waiters, work is refused at once -- and the handler says 503.
+  const burst = await Promise.allSettled(Array.from({ length: C.MAX_QUEUED_HASHES + 8 }, () => C.burnPasswordWork("x")));
+  const refused = burst.filter((r) => r.status === "rejected");
+  assert.ok(refused.length >= 1 && refused.every((r) => r.reason instanceof C.PasswordWorkSaturated), `refused ${refused.length}`);
+  assert.ok(burst.filter((r) => r.status === "fulfilled").length >= C.MAX_QUEUED_HASHES);
+  const busy = await L.handleLoginRequest({ service: { login: async () => { throw new C.PasswordWorkSaturated(); } }, verify,
+    allowedOrigins: ["https://app.test"], cookieSameSite: "Strict", trustedProxyHops: 0 }, { method: "POST", url: "/auth/login", body: "{}", headers: browser });
+  assert.equal(busy.status, 503);
+  assert.equal(JSON.parse(busy.body).code, "TRY_LATER");
 });

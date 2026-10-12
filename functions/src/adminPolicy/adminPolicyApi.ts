@@ -217,7 +217,8 @@ const MUTATIONS = new Set<string>(ADMIN_MUTATION_OPERATIONS);
 // A THIRD, closed table (configurationOperations.ts): operational configuration gated by its own
 // capability. Its entries are on neither list above, so every pin of those lists is unchanged.
 // A FOURTH, closed table (eosAuth/eosLoginService.ts): login-account security administration -- EOS native identity.
-// Gated inside the service (admin.roleAssignment.write for every mutation, admin.principalAccess.read for the read),
+// Gated inside the service on each operation's own existing key (LOGIN_ADMINISTRATION_OPERATIONS: roleAssignment.write /
+// credentialReset.initiate / userStatus.write; admin.principalAccess.read for the read),
 // and on neither list above, so every pin of those lists is unchanged.
 export const isAdminOperation = (name: unknown): name is AdminOperation =>
   typeof name === "string" && (READS.has(name) || MUTATIONS.has(name) || isAdminConfigurationOperation(name)
@@ -480,8 +481,8 @@ export async function executeAdminOperation<T = unknown>(
     // Gated on the operation's OWN capability, resolved by the same effective-access resolver as every
     // other gate -- never a Role name, never the security-administration invariant, never a surface read.
     // ════════════════════ LOGIN-ACCOUNT ADMINISTRATION ════════════════════
-    // The service gates each operation itself (the credential authority is assignment-shaped: admin.roleAssignment.write;
-    // never self; an Owner's login only by an Owner). Not composed -> refused, never a repository fallback.
+    // The service gates each operation itself (its own existing key; never self; an Owner's or Administrator's login only
+    // by an Owner; the account's own tenant only). Not composed -> refused, never a repository fallback.
     if (isLoginAdministrationOperation(operation)) {
       if (typeof deps.loginAdministration !== "function") {
         return fail(operation, "NOT_FOUND", "EOS login administration is not enabled on this service");

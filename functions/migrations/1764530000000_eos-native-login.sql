@@ -130,6 +130,9 @@ CREATE TABLE login_refresh_tokens (
     issued_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- Set when the token is exchanged. Presenting a consumed token again is REUSE: the whole session is revoked.
     consumed_at   TIMESTAMPTZ,
+    -- The client digest of the presenter that exchanged it: a re-presentation from a DIFFERENT client is theft even
+    -- inside the sibling-tab grace window.
+    consumed_client_digest TEXT,
     CONSTRAINT login_refresh_tokens_digest_shape CHECK (token_sha256 ~ '^[0-9a-f]{64}$')
 );
 CREATE UNIQUE INDEX login_refresh_tokens_one_current ON login_refresh_tokens (session_id) WHERE consumed_at IS NULL;
@@ -168,7 +171,7 @@ CREATE TABLE login_mfa_factors (
     removed_by      TEXT,
     CONSTRAINT login_mfa_factors_kind_known CHECK (kind IN ('totp')),
     CONSTRAINT login_mfa_factors_status_known CHECK (status IN ('pending', 'active', 'removed')),
-    CONSTRAINT login_mfa_factors_sealed_shape CHECK (secret_sealed LIKE 'v1.%'),
+    CONSTRAINT login_mfa_factors_sealed_shape CHECK (secret_sealed ~ '^v1\.[A-Za-z0-9-]{1,32}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+$'),
     CONSTRAINT login_mfa_factors_lifecycle CHECK (
         (status = 'pending' AND confirmed_at IS NULL AND removed_at IS NULL)
         OR (status = 'active' AND confirmed_at IS NOT NULL AND removed_at IS NULL)
@@ -179,12 +182,15 @@ CREATE UNIQUE INDEX login_mfa_factors_one_live ON login_mfa_factors (account_id,
 CREATE TABLE login_recovery_codes (
     id            TEXT PRIMARY KEY,
     account_id    TEXT NOT NULL REFERENCES login_accounts(id),
+    -- The factor key the digest was made under (HMAC subkey of that kid): rotation keeps old codes verifiable.
+    key_id        TEXT NOT NULL,
     code_digest   TEXT NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     used_at       TIMESTAMPTZ,
     superseded_at TIMESTAMPTZ,
     CONSTRAINT login_recovery_codes_digest_unique UNIQUE (code_digest),
     CONSTRAINT login_recovery_codes_digest_shape CHECK (code_digest ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT login_recovery_codes_key_id_shape CHECK (key_id ~ '^[A-Za-z0-9-]{1,32}$'),
     CONSTRAINT login_recovery_codes_single_end CHECK (used_at IS NULL OR superseded_at IS NULL)
 );
 CREATE INDEX login_recovery_codes_live ON login_recovery_codes (account_id) WHERE used_at IS NULL AND superseded_at IS NULL;
@@ -194,6 +200,8 @@ CREATE TABLE login_mfa_challenges (
     id            TEXT PRIMARY KEY,
     account_id    TEXT NOT NULL REFERENCES login_accounts(id),
     token_sha256  TEXT NOT NULL,
+    -- The account's credential version when the password step passed: a reset or change in between voids the challenge.
+    credential_version INTEGER NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at    TIMESTAMPTZ NOT NULL,
     consumed_at   TIMESTAMPTZ,

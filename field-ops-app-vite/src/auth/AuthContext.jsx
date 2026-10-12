@@ -62,7 +62,9 @@ export function AuthProvider({ children }) {
 
     // ── EOS SESSION ── checked once per mount/retry. While it is present, Firebase auth state is not
     // subscribed: one session, one identity source, never two identities paired in one context.
-    if (eosHumanLoginEnabled() && !restoreAttempted.current && !readEosSession() && eosLoginClient.hasRefreshToken()) {
+    // EOS NATIVE LOGIN: the refresh credential is an HttpOnly cookie this code cannot see, so a reload ASKS once whether
+    // it still holds a session. One request per page load; a refusal falls through to the Firebase path below.
+    if (eosHumanLoginEnabled() && !restoreAttempted.current && !eosLoginClient.currentSession()) {
       restoreAttempted.current = true;
       setLoading(true);
       eosLoginClient.refresh().finally(() => {
@@ -73,9 +75,14 @@ export function AuthProvider({ children }) {
       };
     }
 
-    const eosSession = readEosSession();
+    // A human login's session lives in memory (eosLoginClient); the nonprod persona harness's in sessionStorage.
+    const humanSession = eosHumanLoginEnabled() ? eosLoginClient.currentSession() : null;
+    const eosSession = humanSession ?? readEosSession();
     if (eosSession) {
-      setUser(eosSessionUser(eosSession));
+      setUser(humanSession
+        // The bearer is fetched fresh on every call: the access token lasts five minutes and is refreshed by cookie.
+        ? Object.freeze({ uid: humanSession.subject, identitySource: "eos", getIdToken: () => eosLoginClient.freshAccessToken() })
+        : eosSessionUser(eosSession));
       setLoading(true);
       setIdentityError(null);
       setRole(null);
@@ -100,8 +107,14 @@ export function AuthProvider({ children }) {
         setIdentityError("Your account details could not be loaded. Please retry.");
         setLoading(false);
       });
+      // The session can END server-side (revoked, disabled, expired): the client then holds no token, and this context
+      // re-runs and signs the person out rather than leaving a signed-in shell that every request refuses.
+      const unsubscribe = humanSession ? eosLoginClient.subscribe((next) => {
+        if (!next && isMounted) setRetryGeneration((n) => n + 1);
+      }) : null;
       return () => {
         isMounted = false;
+        if (unsubscribe) unsubscribe();
       };
     }
 
@@ -191,7 +204,7 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     // Ending an EOS session clears its token (and, with the front door enabled, revokes it on the server); the
     // Firebase sign-out is unchanged.
-    const hadEosSession = readEosSession() !== null || (eosHumanLoginEnabled() && eosLoginClient.hasRefreshToken());
+    const hadEosSession = readEosSession() !== null || (eosHumanLoginEnabled() && eosLoginClient.currentSession() !== null);
     if (eosHumanLoginEnabled()) await eosLoginClient.logout();
     clearEosSession();
     if (hadEosSession) {
