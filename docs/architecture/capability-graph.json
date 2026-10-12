@@ -3621,6 +3621,7 @@
           "functions/src/catalogMaster/catalogHttp.ts",
           "functions/src/catalogMaster/catalogMasterKernel.ts",
           "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/partSupplierTerms.ts",
           "functions/src/eosOps/supplierAdministration.ts",
           "functions/src/partMaster/partMasterCommands.ts"
         ],
@@ -3631,7 +3632,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/metadata/administration/profiles/part.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3652,6 +3653,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/catalogMaster/catalogMasterKernel.ts",
           "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/partSupplierTerms.ts",
           "functions/src/eosOps/supplierAdministration.ts",
           "functions/src/partMaster/partMasterCommands.ts"
         ],
@@ -3661,7 +3663,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/metadata/administration/profiles/part.js"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
