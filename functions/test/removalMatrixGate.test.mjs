@@ -58,7 +58,7 @@ test("the repository's authority reproduces the pin byte-for-byte", () => {
 });
 
 test("every recorded delta module is read: the compiled modules are exactly src/adminPolicy/*Delta.ts", () => {
-  const src = readdirSync("src/adminPolicy").filter((f) => /Delta\.ts$/.test(f)).map((f) => f.replace(/\.ts$/, "")).sort();
+  const src = readdirSync(new URL("../src/adminPolicy/", import.meta.url)).filter((f) => /Delta\.ts$/.test(f)).map((f) => f.replace(/\.ts$/, "")).sort();
   const read = [...new Set(real.deltas.map((d) => d.source.split(".")[0]))].sort();
   assert.deepEqual(read, src, "a delta module with no exported *Operations(), or a stale lib/ file");
   assert.ok(real.deltas.every((d) => d.operations.length > 0), "every *Operations() returns operations");
