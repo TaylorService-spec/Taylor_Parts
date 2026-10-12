@@ -83,6 +83,20 @@ test("the client's operation list matches the server's, exactly", () => {
   assert.deepEqual(listOf(SOURCE, "ADMIN_MUTATION_OPERATIONS"), [...MUTATIONS].sort());
 });
 
+test("the grant-impact preview operation mirrors the server's closed preview table, and is reachable", () => {
+  const server = readFileSync("../functions/src/adminPolicy/adminPolicyApi.ts", "utf8");
+  const listOf = (source, marker) => {
+    const start = source.indexOf(marker);
+    assert.ok(start >= 0, `${marker} is present`);
+    const end = source.indexOf("]", start);
+    return [...source.slice(start, end).matchAll(/"([a-zA-Z]+)"/g)].map((m) => m[1]).sort();
+  };
+  assert.deepEqual(listOf(SOURCE, "export const ADMIN_PREVIEW_OPERATIONS"), listOf(server, "export const ADMIN_PREVIEW_OPERATIONS"));
+  assert.deepEqual(listOf(SOURCE, "export const ADMIN_PREVIEW_OPERATIONS"), ["previewAuthorityChange"]);
+  assert.match(SOURCE, /for \(const name of ADMIN_PREVIEW_OPERATIONS\) ALL_OPERATIONS\.add\(name\);/);
+  assert.match(SOURCE, /"PRECONDITION_REQUIRED"/, "PREVIEW_REQUIRED (428) reaches a screen as itself, not INTERNAL");
+});
+
 test("DQ-029: the configuration operations mirror the server's closed table, and the client decides nothing", () => {
   const server = readFileSync("../functions/src/adminPolicy/configurationOperations.ts", "utf8");
   const start = server.indexOf("export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze({");

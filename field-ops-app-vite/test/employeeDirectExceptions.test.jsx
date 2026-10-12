@@ -11,6 +11,7 @@ import EmployeeDirectExceptions from "../src/modules/administration/EmployeeDire
 import EmployeeEffectiveAccess from "../src/modules/administration/EmployeeEffectiveAccess.jsx";
 import { directExceptionRows, explanationModel } from "../src/modules/administration/controlPlaneModel.js";
 import { createAdminControlPlaneClient } from "../src/services/adminControlPlaneClient.js";
+import { PREVIEW_DIGEST, previewImpact, wouldApplyPreview } from "./support/authorityPreviewKit.js";
 
 afterEach(cleanup);
 
@@ -58,6 +59,8 @@ function makeApi(over = {}) {
     revokeObjectActionFromPrincipal: vi.fn(async () => ({ ok: true, data: { id: "pc-1" } })),
     setGrantCondition: vi.fn(async () => ({ ok: true, data: { id: "gc-1" } })),
     retireGrantCondition: vi.fn(async () => ({ ok: true, data: null })),
+    // PR 4: every authority change is previewed by the server before Confirm is enabled.
+    previewAuthorityChange: wouldApplyPreview(),
     ...over,
   };
 }
@@ -98,8 +101,10 @@ describe("Direct Exceptions: the mutable Employee section", () => {
     const form = screen.getByRole("form", { name: "Revoke workOrder.lifecycle.dispatch" });
     expect(within(form).getByRole("button", { name: "Confirm Revoke" }).disabled).toBe(true);
     typeReason(form, "cover ended");
+    expect(within(form).getByRole("button", { name: "Confirm Revoke" }).disabled).toBe(true);
+    await previewImpact(form);
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Revoke" })); });
-    expect(api.revokeObjectActionFromPrincipal).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "dispatch", principalId: "pr-9", reason: "cover ended" });
+    expect(api.revokeObjectActionFromPrincipal).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "dispatch", principalId: "pr-9", reason: "cover ended", previewDigest: PREVIEW_DIGEST });
     await waitFor(() => expect(api.explainEffectiveAccess.mock.calls.length).toBeGreaterThan(1));
     expect(onChanged).toHaveBeenCalled();
   });
@@ -116,14 +121,16 @@ describe("Direct Exceptions: the mutable Employee section", () => {
     fireEvent.change(within(form).getByLabelText("Condition kind"), { target: { value: "RECORD_ASSIGNMENT" } });
     fireEvent.change(within(form).getByLabelText("Record kind"), { target: { value: "workOrder" } });
     typeReason(form, "own records only");
+    await previewImpact(form);
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Replace Condition" })); });
-    expect(api.setGrantCondition).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", principalId: "pr-9", reason: "own records only", condition: RA_WO });
+    expect(api.setGrantCondition).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", principalId: "pr-9", reason: "own records only", condition: RA_WO, previewDigest: PREVIEW_DIGEST });
 
     fireEvent.click(await screen.findByRole("button", { name: "Retire condition on direct exception workOrder.record.read" }));
     const retire = screen.getByRole("form", { name: "Retire condition workOrder.record.read" });
     typeReason(retire, "lift it");
+    await previewImpact(retire);
     await act(async () => { fireEvent.click(within(retire).getByRole("button", { name: "Confirm Retire Condition" })); });
-    expect(api.retireGrantCondition).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", principalId: "pr-9", reason: "lift it" });
+    expect(api.retireGrantCondition).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", principalId: "pr-9", reason: "lift it", previewDigest: PREVIEW_DIGEST });
     const refusal = await screen.findByRole("alert");
     expect(refusal.getAttribute("data-control-plane-refusal")).toBe("CONFLICT");
     expect(refusal.textContent).toBe("CONFLICT: CONDITION_RETIREMENT_WOULD_WIDEN: pr-9 still holds the direct exception");
@@ -142,10 +149,13 @@ describe("Direct Exceptions: the mutable Employee section", () => {
     expect(submit.disabled).toBe(true);
     fireEvent.change(within(form).getByLabelText("Expires"), { target: { value: "2026-12-31T17:00" } });
     typeReason(form, "holiday cover");
+    // Complete, but not yet previewed: the server's preview of exactly this change comes first.
+    expect(submit.disabled).toBe(true);
+    await previewImpact(form);
     expect(submit.disabled).toBe(false);
     await act(async () => { fireEvent.click(submit); });
     const [input] = api.grantObjectActionToPrincipal.mock.calls[0];
-    expect(input).toMatchObject({ objectKey: "workOrder", actionKey: "cancel", principalId: "pr-9", reason: "holiday cover" });
+    expect(input).toMatchObject({ objectKey: "workOrder", actionKey: "cancel", principalId: "pr-9", reason: "holiday cover", previewDigest: PREVIEW_DIGEST });
     expect(Date.parse(input.expiresAt)).toBe(Date.parse("2026-12-31T17:00"));
     expect("condition" in input).toBe(false);
     expect("scopeType" in input).toBe(false);
@@ -164,6 +174,7 @@ describe("Direct Exceptions: the mutable Employee section", () => {
     fireEvent.change(within(form).getByLabelText("Object"), { target: { value: "workOrder" } });
     fireEvent.change(within(form).getByLabelText("Action"), { target: { value: "cancel" } });
     typeReason(form, "why");
+    await previewImpact(form);
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Grant Direct Exception" })); });
     expect((await screen.findByRole("alert")).textContent).toBe("FORBIDDEN: SELF_ADMINISTRATION: a principal may not grant a capability to itself");
     expect(api.explainEffectiveAccess).toHaveBeenCalledTimes(1);

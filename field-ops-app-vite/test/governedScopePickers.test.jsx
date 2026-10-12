@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 
 import { OperationalScopeSection } from "../src/modules/administration/EmployeeWorkAuthorization.jsx";
 import EmployeeSecurityRoles from "../src/modules/administration/EmployeeSecurityRoles.jsx";
+import { PREVIEW_DIGEST, previewImpact, wouldApplyPreview } from "./support/authorityPreviewKit.js";
 
 afterEach(cleanup);
 
@@ -123,6 +124,7 @@ function makeApi(channelValues) {
     listSupportedAssignmentScopes: vi.fn(async () => ({ ok: true, data: scopes(channelValues) })),
     assignRole: vi.fn(async (input) => ({ ok: true, data: { id: "asg-new", ...input, status: "active" } })),
     revokeRole: vi.fn(),
+    previewAuthorityChange: wouldApplyPreview({ operation: "assignRole" }),
   };
 }
 
@@ -143,8 +145,9 @@ describe("Employee > Security Roles: Sales Channel scope values come from the se
     expect(within(value).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a Sales Channel…", "National Accounts", "Retail"]);
     fireEvent.change(within(screen.getByRole("form", { name: "Assign a Security Role" })).getByLabelText("Reason"), { target: { value: "also runs National" } });
     fireEvent.change(value, { target: { value: "NATIONAL_ACCOUNTS" } });
+    await previewImpact(screen.getByRole("form", { name: "Assign a Security Role" }));
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Assign Security Role" })); });
-    expect(api.assignRole).toHaveBeenCalledWith({ principalId: "pr-1", roleId: "role-lead", reason: "also runs National", scopeType: "salesChannel", scopeValue: "NATIONAL_ACCOUNTS" });
+    expect(api.assignRole).toHaveBeenCalledWith({ principalId: "pr-1", roleId: "role-lead", reason: "also runs National", scopeType: "salesChannel", scopeValue: "NATIONAL_ACCOUNTS", previewDigest: PREVIEW_DIGEST });
   });
 
   it("a decided scope type with NO governed value in this tenant is shown unavailable, never offered", async () => {

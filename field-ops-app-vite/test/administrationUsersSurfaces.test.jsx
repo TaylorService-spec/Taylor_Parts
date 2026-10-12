@@ -23,6 +23,7 @@ import UserDetail from "../src/modules/administration/UserDetail.jsx";
 import { NEVER_SENT_EMPLOYEE_KEYS } from "../src/domain/employeeProfile.js";
 import { REPORT_CAPABILITY_REQUEST } from "../src/access/reportCapabilityAccess.js";
 import { ADMINISTRATION_USERS_SURFACE_CAPABILITIES } from "../src/access/governedSurfaceCapabilities.js";
+import { PREVIEW_DIGEST, previewImpact, previewReport } from "./support/authorityPreviewKit.js";
 
 // ── The governed Workforce projections (EMP-RT-01) the RECORD page reads. Test fixtures only.
 const nameOf = (displayName) => ({ displayName, firstName: null, middleName: null, lastName: null, preferredName: null });
@@ -167,6 +168,9 @@ const policyCall = vi.fn(async (operation, input) => {
       return { ok: true, data: { id: input.assignmentId, status: "disabled" } };
     case "readPolicyAuditHistory":
       return { ok: true, data: [] };
+    // PR 4: the grant-impact preview every authority change takes before Confirm (adminPolicyApi.ts).
+    case "previewAuthorityChange":
+      return { ok: true, data: previewReport({ operation: input.change.operation }) };
     default:
       return { ok: false, code: "UNKNOWN_OPERATION", message: `"${operation}" is not an Administration operation` };
   }
@@ -425,8 +429,10 @@ describe("EOS access and security stay independent, and fail closed", () => {
     const form = screen.getByRole("form", { name: "Assign a Security Role" });
     fireEvent.change(within(form).getByLabelText("Reason"), { target: { value: "Joins retail sales" } });
     const before = policyCalls("listPrincipalRoleAssignments").length;
+    await previewImpact(form);
+    expect(policyCalls("previewAuthorityChange")[0][1]).toEqual({ change: { operation: "assignRole", input: { principalId: "pr-emp-1", roleId: "role-salesperson", reason: "Joins retail sales" } } });
     await act(async () => { fireEvent.click(submit); });
-    expect(policyCalls("assignRole")[0][1]).toEqual({ principalId: "pr-emp-1", roleId: "role-salesperson", reason: "Joins retail sales" });
+    expect(policyCalls("assignRole")[0][1]).toEqual({ principalId: "pr-emp-1", roleId: "role-salesperson", reason: "Joins retail sales", previewDigest: PREVIEW_DIGEST });
     await waitFor(() => expect(policyCalls("listPrincipalRoleAssignments").length).toBeGreaterThan(before));
     expect(client.assignApprovedRole).not.toHaveBeenCalled();
   });
@@ -439,8 +445,9 @@ describe("EOS access and security stay independent, and fail closed", () => {
     const form = screen.getByRole("form", { name: "Remove a Security Role" });
     expect(within(form).getByText(/John Smith/)).toBeTruthy();
     fireEvent.change(within(form).getByLabelText("Reason"), { target: { value: "Left dispatch" } });
+    await previewImpact(form);
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Removal" })); });
-    expect(policyCalls("revokeRole")[0][1]).toEqual({ assignmentId: "asg-7", reason: "Left dispatch" });
+    expect(policyCalls("revokeRole")[0][1]).toEqual({ assignmentId: "asg-7", reason: "Left dispatch", previewDigest: PREVIEW_DIGEST });
     expect(client.revokeRole).not.toHaveBeenCalled();
     expect(policyCalls("listPrincipalRoleAssignments").length).toBeGreaterThan(1);
   });
@@ -452,6 +459,7 @@ describe("EOS access and security stay independent, and fail closed", () => {
     fireEvent.change(select, { target: { value: "role-dispatcher" } });
     const form = screen.getByRole("form", { name: "Assign a Security Role" });
     fireEvent.change(within(form).getByLabelText("Reason"), { target: { value: "cover" } });
+    await previewImpact(form);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Assign Security Role" })); });
     await waitFor(() => expect(document.querySelector('[data-control-plane-refusal="FORBIDDEN"]')).toBeTruthy());
     expect(document.querySelector('[data-control-plane-refusal="FORBIDDEN"]').textContent).toBe("FORBIDDEN: admin.roleAssignment.write is required");

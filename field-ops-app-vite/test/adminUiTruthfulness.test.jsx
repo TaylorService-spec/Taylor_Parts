@@ -165,8 +165,11 @@ describe("Object Security, protected Owner and R1 are unchanged by F1-F3", () =>
   });
   it("the Administration client still sends assignRole / revokeRole with the reason, unchanged", () => {
     const client = read("src/services/adminControlPlaneClient.js");
-    expect(client).toMatch(/assignRole: \(\{ principalId, roleId, reason, scopeType, scopeValue \}\) => send\("assignRole", \{\s*principalId, roleId, reason,/);
-    expect(client).toMatch(/revokeRole: \(\{ assignmentId, reason \}\) => send\("revokeRole", \{ assignmentId, reason \}\)/);
+    // PR 4: the input is built by ONE per-operation builder shared with the grant-impact preview; unchanged in shape.
+    expect(client).toMatch(/assignRole: \(\{ principalId, roleId, reason, scopeType, scopeValue \}\) => \(\{\s*principalId, roleId, reason,/);
+    expect(client).toMatch(/revokeRole: \(\{ assignmentId, reason \}\) => \(\{ assignmentId, reason \}\)/);
+    expect(client).toMatch(/assignRole: commitOf\(send, "assignRole"\)/);
+    expect(client).toMatch(/revokeRole: commitOf\(send, "revokeRole"\)/);
   });
 });
 

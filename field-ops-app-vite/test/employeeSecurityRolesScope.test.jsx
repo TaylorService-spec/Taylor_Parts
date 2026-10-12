@@ -13,6 +13,7 @@ import EmployeeSecurityRoles from "../src/modules/administration/EmployeeSecurit
 import EmployeeEffectiveAccess from "../src/modules/administration/EmployeeEffectiveAccess.jsx";
 import { explanationModel } from "../src/modules/administration/controlPlaneModel.js";
 import { createAdminControlPlaneClient } from "../src/services/adminControlPlaneClient.js";
+import { PREVIEW_DIGEST, previewImpact, wouldApplyPreview } from "./support/authorityPreviewKit.js";
 
 afterEach(cleanup);
 
@@ -57,6 +58,8 @@ function makeApi(over = {}) {
     listSupportedAssignmentScopes: vi.fn(async () => ({ ok: true, data: SCOPES })),
     assignRole: vi.fn(async (input) => ({ ok: true, data: { id: "asg-new", ...input, status: "active" } })),
     revokeRole: vi.fn(async (input) => ({ ok: true, data: { id: input.assignmentId, status: "disabled" } })),
+    // PR 4: every authority change is previewed by the server before Confirm is enabled.
+    previewAuthorityChange: wouldApplyPreview({ operation: "assignRole" }),
     ...over,
   };
 }
@@ -110,9 +113,12 @@ describe("Employee > Security Roles: assignment scope from the server", () => {
     const submit = screen.getByRole("button", { name: "Assign Security Role" });
     expect(submit.disabled).toBe(true); // no value chosen yet
     fireEvent.change(valueSelect, { target: { value: "taylor" } });
+    expect(submit.disabled).toBe(true); // complete, but not yet previewed
+    await previewImpact(assignForm());
+    expect(api.previewAuthorityChange).toHaveBeenCalledWith("assignRole", { principalId: "pr-1", roleId: "role-gm", reason: "GM for Taylor", scopeType: "operatingCompany", scopeValue: "taylor" });
     expect(submit.disabled).toBe(false);
     await act(async () => { fireEvent.click(submit); });
-    expect(api.assignRole).toHaveBeenCalledWith({ principalId: "pr-1", roleId: "role-gm", reason: "GM for Taylor", scopeType: "operatingCompany", scopeValue: "taylor" });
+    expect(api.assignRole).toHaveBeenCalledWith({ principalId: "pr-1", roleId: "role-gm", reason: "GM for Taylor", scopeType: "operatingCompany", scopeValue: "taylor", previewDigest: PREVIEW_DIGEST });
     await waitFor(() => expect(api.listPrincipalRoleAssignments).toHaveBeenCalledTimes(2));
   });
 
@@ -121,8 +127,9 @@ describe("Employee > Security Roles: assignment scope from the server", () => {
     render(<EmployeeSecurityRoles api={api} principalId="pr-1" />);
     fireEvent.change(await screen.findByRole("combobox", { name: "Security Role to assign" }), { target: { value: "role-gm" } });
     fireEvent.change(within(assignForm()).getByLabelText("Reason"), { target: { value: "GM everywhere" } });
+    await previewImpact(assignForm());
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Assign Security Role" })); });
-    expect(api.assignRole).toHaveBeenCalledWith({ principalId: "pr-1", roleId: "role-gm", reason: "GM everywhere" });
+    expect(api.assignRole).toHaveBeenCalledWith({ principalId: "pr-1", roleId: "role-gm", reason: "GM everywhere", previewDigest: PREVIEW_DIGEST });
   });
 
   it("the server's scope refusal is shown verbatim", async () => {
@@ -134,6 +141,7 @@ describe("Employee > Security Roles: assignment scope from the server", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Assignment scope" }), { target: { value: "operatingCompany" } });
     fireEvent.change(screen.getByRole("combobox", { name: "Scope value" }), { target: { value: "ventana" } });
     fireEvent.change(within(assignForm()).getByLabelText("Reason"), { target: { value: "x" } });
+    await previewImpact(assignForm());
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Assign Security Role" })); });
     await waitFor(() => expect(document.querySelector('[data-control-plane-refusal="INVALID_INPUT"]')).toBeTruthy());
     expect(document.querySelector('[data-control-plane-refusal="INVALID_INPUT"]').textContent)
