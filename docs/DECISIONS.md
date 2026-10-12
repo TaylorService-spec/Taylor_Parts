@@ -7952,3 +7952,27 @@ Changing the nine is an Owner decision. Existing grants are retained (O3).
 **Boundary.**
 - No migration, no capability, no grant, no Role, no Firebase. No live data touched.
 - No runtime behavior change: authorization code is unchanged. Only the nonprod seed and its manifest change.
+
+## #229 — OWNER: security-relevant authorization denials are audited, rate-bounded and privacy-preserving (2026-10-11)
+
+(Adopted by the Owner in the Firebase Equivalence Remediation package, Phase 3. Resolves finding AUD-1 of the Firebase retirement equivalence audit, `docs/audits/firebase-retirement-equivalence-2026-10-11/README.md`.)
+
+**Context.**
+- The Firestore-era enterprise-access specification (§5.8 outcome `applied | denied`, §14) required denied attempts to be audited. The Firebase commands did so (`requireCapabilityOrAudit`, `trustedWriterCommands.ts:549`).
+- No PostgreSQL-era decision required or waived it. Every EOS domain refused without an audit row: catalog, supplier, workforce, Administration policy, operations and CRM.
+- An auditor could not reconstruct attempted unauthorized actions, including attempted role-grant and employee-change actions.
+
+**Decision (EOS-wide policy).**
+1. **Security-relevant authorization denials are recorded** in the governed audit trail (`eos_policy.audit_events`). A denial is an operation refused to a **resolved** EOS Principal by an authorization rule: a missing capability, a non-member or inactive Principal, or a scope or eligibility refusal. Validation, not-found, conflict and precondition answers are business answers, not denials.
+2. **What a row records:** the Principal, the tenant, the operation, the required capability, the refusal code, the timestamp, and a correlation identifier when the request carried a well-formed one.
+3. **What a row never records:** a request payload, a credential or token, or a caller-stated identifier that was not resolved. An unresolved identity is not recorded under a caller-stated tenant, because that would let any caller write into any tenant's log.
+4. **Rate-bounded:** at most one row per (tenant, Principal, operation, refusal code, minute). The trail is append-only, so it must not be growable without bound.
+5. **Fail-safe:** a failure to write the audit row never changes the outcome. The operation stays denied, and the failure is logged without payload.
+6. **Review before activation:** any change to the database schema or to the audit-event contract is reviewed before it is activated in an environment.
+
+**Implementation (separate draft PR, not active).**
+- Shared server support is `functions/src/eosAudit/authorizationDenialAudit.ts`. It needs no schema change. Each row is one `audit_events` row with action `<domain>.<operation>.denied`, target kind `authorization` and a deterministic per-minute id with `ON CONFLICT DO NOTHING`.
+- The first adopter is the Catalog transport (write and read refusals).
+- The helper ships with mode **OFF**. Activating it, and adopting it in the other domains, are reviewed changes.
+
+**Boundary.** No grant, capability, Role or authority change. Authorization outcomes are unchanged. No Firebase.
