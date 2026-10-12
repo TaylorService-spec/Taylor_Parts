@@ -111,9 +111,12 @@ export function buildUpdateChanges(form, original) {
 // is not the governed success shape is an error.
 //
 // The server sends the refusal CATEGORY, not the rule (VERSION_CONFLICT vs PART_ALREADY_EXISTS both arrive as
-// CONFLICT). Within one operation each category has one meaning, so the message is chosen per operation:
+// CONFLICT). The message is chosen per operation, and where one category covers more than one rule the words cover
+// every one of them -- a message that names the wrong rule sends the employee into a retry that can never work:
 //   createPart       CONFLICT = PART_ALREADY_EXISTS; NOT_FOUND = EQUIPMENT_MODEL_NOT_FOUND
-//   updatePart       CONFLICT = VERSION_CONFLICT; NOT_FOUND = PART_NOT_FOUND | EQUIPMENT_MODEL_NOT_FOUND;
+//   updatePart       CONFLICT = VERSION_CONFLICT | ALIAS_IDENTITY_OWNED_BY_ANOTHER_PART | ALIAS_INACTIVE_FOR_THIS_PART
+//                    (a new internal part number must keep the OLD one as an identifier: postgresPartAliasWriter
+//                    preserveInternalPartNumberAlias); NOT_FOUND = PART_NOT_FOUND | EQUIPMENT_MODEL_NOT_FOUND;
 //                    PRECONDITION_FAILED = CONTROL_TYPE_IMMUTABLE | NO_CHANGES
 //   changePartStatus CONFLICT = VERSION_CONFLICT; NOT_FOUND = PART_NOT_FOUND; PRECONDITION_FAILED = ILLEGAL_TRANSITION
 export const PART_WRITE_OPERATIONS = Object.freeze({ create: "create", update: "update", changeStatus: "changeStatus" });
@@ -135,12 +138,12 @@ const OPERATION_OUTCOMES = Object.freeze({
   create: Object.freeze({
     CONFLICT: Object.freeze({ kind: "conflict", message: "A part already exists with that Part ID." }),
     NOT_FOUND: Object.freeze({ kind: "notFound", message: "The equipment model this part names doesn't exist. Choose another model." }),
-    PRECONDITION_FAILED: Object.freeze({ kind: "invalid", message: "This part can't be created in its current form." }),
+    PRECONDITION_FAILED: Object.freeze({ kind: "unavailable", message: "Part creation isn't available right now (the catalog service is not accepting changes)." }),
   }),
   update: Object.freeze({
-    CONFLICT: Object.freeze({ kind: "conflict", message: "This part changed since you loaded it. Reload and retry." }),
+    CONFLICT: Object.freeze({ kind: "conflict", message: "This part changed since you loaded it, or its internal part number is already an identifier of another part (or an inactive identifier of this one). Reload to check; if it persists, choose a different internal part number." }),
     NOT_FOUND: Object.freeze({ kind: "notFound", message: "That part, or the equipment model it names, no longer exists. Reload the list." }),
-    PRECONDITION_FAILED: Object.freeze({ kind: "invalid", message: "That change isn't allowed for this part (the control type can't change)." }),
+    PRECONDITION_FAILED: Object.freeze({ kind: "invalid", message: "That change isn't allowed for this part: the control type can't change, or nothing would change." }),
   }),
   changeStatus: Object.freeze({
     CONFLICT: Object.freeze({ kind: "conflict", message: "This part changed since you loaded it. Reload and retry." }),

@@ -116,6 +116,16 @@ test("the Part Master employee workflows answer the contract the screens read", 
     { partId: "PRT-NEVER-EXISTED", expectedVersion: 1, changes: screen.buildUpdateChanges({ ...loaded, name: "x" }, loaded) });
   scenarios.updateControlType = await call(manager, "updatePart",
     { partId: FORM.partId, expectedVersion: 2, changes: screen.buildUpdateChanges({ ...loaded, controlType: "SERIALIZED" }, loaded) });
+  // A rename INTO an identifier another part owns (review of #2059): part B is renamed, so its OLD number stays as
+  // B's INTERNAL_PN identifier; renaming part A to that number is refused CONFLICT -- not a stale copy, and reloading
+  // will never fix it.
+  const FORM_B = { ...FORM, partId: "PRT-CONTRACT-B", internalPartNumber: "PRT-CONTRACT-B-OLD", name: "Contract valve B" };
+  assert.equal((await call(manager, "createPart", { part: screen.buildCreatePartInput(FORM_B) })).status, 200);
+  const loadedB = { ...FORM_B, version: 1, status: "DRAFT" };
+  assert.equal((await call(manager, "updatePart", { partId: "PRT-CONTRACT-B", expectedVersion: 1,
+    changes: screen.buildUpdateChanges({ ...loadedB, internalPartNumber: "PRT-CONTRACT-B" }, loadedB) })).status, 200);
+  scenarios.updateRenameTaken = await call(manager, "updatePart",
+    { partId: FORM.partId, expectedVersion: 2, changes: screen.buildUpdateChanges({ ...loaded, internalPartNumber: "PRT-CONTRACT-B-OLD" }, loaded) });
   scenarios.statusDenied = await call(manager, "changePartStatus", { partId: FORM.partId, expectedVersion: 2, newStatus: "ACTIVE" });
   scenarios.statusApplied = await call(activator, "changePartStatus", { partId: FORM.partId, expectedVersion: 2, newStatus: "ACTIVE" });
   scenarios.statusStale = await call(activator, "changePartStatus", { partId: FORM.partId, expectedVersion: 2, newStatus: "INACTIVE" });
@@ -131,6 +141,7 @@ test("the Part Master employee workflows answer the contract the screens read", 
     assert.deepEqual([scenarios.updateStale.status, scenarios.updateStale.body.code], [409, "CONFLICT"]);
     assert.deepEqual([scenarios.updateUnknownPart.status, scenarios.updateUnknownPart.body.code], [404, "NOT_FOUND"]);
     assert.deepEqual([scenarios.updateControlType.status, scenarios.updateControlType.body.code], [412, "PRECONDITION_FAILED"]);
+    assert.deepEqual([scenarios.updateRenameTaken.status, scenarios.updateRenameTaken.body.code], [409, "CONFLICT"]);
     assert.deepEqual([scenarios.statusDenied.status, scenarios.statusDenied.body.code], [403, "FORBIDDEN"]);
     assert.deepEqual(scenarios.statusApplied.body.result, { partId: FORM.partId, version: 3, replayed: false });
     assert.deepEqual([scenarios.statusStale.status, scenarios.statusStale.body.code], [409, "CONFLICT"]);
@@ -149,6 +160,7 @@ test("the Part Master employee workflows answer the contract the screens read", 
     assert.equal(shown(scenarios.updateStale, "update"), "conflict");
     assert.equal(shown(scenarios.updateUnknownPart, "update"), "notFound");
     assert.equal(shown(scenarios.updateControlType, "update"), "invalid");
+    assert.equal(shown(scenarios.updateRenameTaken, "update"), "conflict");
     assert.equal(shown(scenarios.statusDenied, "changeStatus"), "denied");
     assert.equal(shown(scenarios.statusApplied, "changeStatus"), "applied");
     assert.equal(shown(scenarios.statusStale, "changeStatus"), "conflict");

@@ -182,6 +182,25 @@
         "message": "a part's control type cannot be changed after it is created"
       }
     },
+    "updateRenameTaken": {
+      "request": {
+        "operation": "updatePart",
+        "input": {
+          "partId": "PRT-CONTRACT-1",
+          "expectedVersion": 2,
+          "changes": {
+            "internalPartNumber": "PRT-CONTRACT-B-OLD"
+          }
+        }
+      },
+      "status": 409,
+      "body": {
+        "ok": false,
+        "operation": "updatePart",
+        "code": "CONFLICT",
+        "message": "the new internal part number is already an identifier for a different part"
+      }
+    },
     "statusDenied": {
       "request": {
         "operation": "changePartStatus",

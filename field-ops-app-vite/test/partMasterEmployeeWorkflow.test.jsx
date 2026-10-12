@@ -136,6 +136,18 @@ describe("Edit part -- the Parts Manager corrects a part", () => {
     await screen.findByText(/no longer exists/i);
   });
 
+  // Review of #2059: an updatePart CONFLICT is also a rename INTO an identifier another part owns. Internal Part Number
+  // is create-only on both Part screens today (PartWriteModal / PartMasterList), so no screen can send this request;
+  // it is proven through the real client chain the screens use, so the wording is right the day a rename UI exists.
+  it("a rename into another part's identifier is worded as that, not only as 'reload and retry'", async () => {
+    const { outcomeFromError, PART_WRITE_OPERATIONS } = await import("../src/domain/partMasterWrite.js");
+    const { scenario, sent, writeDeps } = wire("updateRenameTaken");
+    const error = await writeDeps.client.updatePart(scenario.request.input).then(() => null, (e) => e);
+    await expectSent(sent, scenario);
+    expect(error.code).toBe("CONFLICT");
+    expect(outcomeFromError(error, PART_WRITE_OPERATIONS.update).message).toMatch(/already an identifier of another part/);
+  });
+
   it("changing the control type is refused with the reason", async () => {
     const { scenario, sent, writeDeps } = wire("updateControlType");
     render(<PartWriteModal mode="edit" part={{ ...LOADED_V1, version: 2 }} onClose={() => {}} onSaved={() => {}} writeDeps={writeDeps} />);
