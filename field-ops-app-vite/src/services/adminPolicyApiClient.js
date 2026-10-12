@@ -35,9 +35,8 @@
 // state it instead of a comment going stale again. It is still absent for a local or production
 // build, so NOT CONFIGURED remains a state this client must report honestly -- which is the part of
 // the original paragraph that was always the point.
-import { eosHumanLoginEnabled, eosLoginClient } from "../auth/eosLoginClient.js";
 import { auth } from "../firebase/firebase.js";
-import { currentEosSessionToken } from "../auth/eosSession.js";
+import { currentEosSessionToken, humanEosTokenSource } from "../auth/eosSession.js";
 
 /** The operations the server accepts. Mirrored so a typo fails here rather than as a 404. */
 export const ADMIN_READ_OPERATIONS = Object.freeze([
@@ -308,8 +307,9 @@ export async function currentIdToken() {
   // present and unexpired, is the bearer; otherwise the Firebase ID token, exactly as before.
   // EOS NATIVE LOGIN (docs/architecture/eos-native-identity.md): when the human front door is enabled, the access
   // token is refreshed shortly before it lapses; otherwise the stored token is read as before.
-  if (eosHumanLoginEnabled() && eosLoginClient.currentSession()) {
-    const fresh = await eosLoginClient.freshAccessToken();
+  const human = humanEosTokenSource();
+  if (human) {
+    const fresh = await human();
     if (fresh) return fresh;
   }
   const eosToken = currentEosSessionToken();

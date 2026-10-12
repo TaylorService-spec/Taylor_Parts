@@ -16,6 +16,8 @@
 //
 // OFF unless the build says VITE_EOS_HUMAN_LOGIN=enabled AND the bundle is not a production build (Owner D-1).
 
+import { setHumanEosTokenSource } from "./eosSession.js";
+
 export const CSRF_HEADER = "x-eos-csrf";
 /** Refresh this long before the access token expires, so a request never carries one about to lapse. */
 export const REFRESH_LEAD_MS = 60_000;
@@ -236,6 +238,10 @@ export function createEosLoginClient(deps = {}) {
 
 /** The app's one client. */
 export const eosLoginClient = createEosLoginClient();
+
+// The API clients' bearer: this client's fresh access token, only while the front door is on AND a human session exists
+// (a Firebase-signed-in user's calls never trigger an EOS refresh).
+setHumanEosTokenSource(() => (eosHumanLoginEnabled() && eosLoginClient.currentSession() ? eosLoginClient.freshAccessToken() : null));
 
 /** Words for the codes a person can act on. Never echoes a value back. */
 export function eosLoginMessage(code, detail) {

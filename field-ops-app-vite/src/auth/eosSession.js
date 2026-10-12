@@ -92,3 +92,20 @@ export function clearEosSession({ storage = defaultStorage() } = {}) {
     // nothing to do
   }
 }
+
+// ════════════════════ the human-login token source (EOS native identity) ════════════════════
+//
+// A human EOS login keeps its access token in MEMORY (eosLoginClient.js), refreshed by an HttpOnly cookie. The API
+// clients reach it through this one registration point rather than importing the login client: adminPolicyApiClient
+// is loaded lazily by other clients, and every module added to its import graph lengthens that load for all of them.
+let humanTokenSource = null;
+
+/** Called once by eosLoginClient.js. `fn()` returns a fresh access token, or null when there is no human session. */
+export function setHumanEosTokenSource(fn) {
+  humanTokenSource = typeof fn === "function" ? fn : null;
+}
+
+/** The registered source, or null (front door off, or the login client was never loaded). */
+export function humanEosTokenSource() {
+  return humanTokenSource;
+}
