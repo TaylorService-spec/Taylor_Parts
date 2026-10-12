@@ -118,11 +118,15 @@ test("the Part identifier employee workflows answer the contract the screens rea
   scenarios.deactivateApplied = await call(manager, "deactivatePartAlias", { aliasId: sku.aliasId, expectedVersion: 1, idempotencyKey: "pa-key-d-1" });
   scenarios.listAfterDeactivate = await call(manager, "listPartAliases", { partId: "PRT-ALIAS-1" });
   scenarios.deactivateAlready = await call(manager, "deactivatePartAlias", { aliasId: sku.aliasId, expectedVersion: 2, idempotencyKey: "pa-key-d-2" });
-  scenarios.deactivateStale = await call(manager, "deactivatePartAlias", { aliasId: upc.aliasId, expectedVersion: 7, idempotencyKey: "pa-key-d-3" });
   scenarios.reactivateApplied = await call(manager, "reactivatePartAlias", { aliasId: sku.aliasId, expectedVersion: 2, idempotencyKey: "pa-key-r-1" });
   scenarios.listAfterReactivate = await call(manager, "listPartAliases", { partId: "PRT-ALIAS-1" });
   scenarios.listDenied = await call(reader, "listPartAliases", { partId: "PRT-ALIAS-1" });
   scenarios.probeFound = await call(manager, "probePartAlias", { aliasType: "UPC", rawValue: UPC });
+  // STALE, as the screen meets it: the list the employee is looking at (listBothActive) shows the UPC at version 1, but
+  // someone else has since deactivated and reactivated it (now version 3). The screen sends the version it read.
+  await call(manager, "deactivatePartAlias", { aliasId: upc.aliasId, expectedVersion: 1, idempotencyKey: "pa-key-o-1" });
+  await call(manager, "reactivatePartAlias", { aliasId: upc.aliasId, expectedVersion: 2, idempotencyKey: "pa-key-o-2" });
+  scenarios.deactivateStale = await call(manager, "deactivatePartAlias", { aliasId: upc.aliasId, expectedVersion: 1, idempotencyKey: "pa-key-d-3" });
 
   await t.test("the server answers each identifier action as the contract says", () => {
     assert.deepEqual(scenarios.listEmpty.body.result, []);

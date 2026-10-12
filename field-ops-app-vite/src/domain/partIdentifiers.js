@@ -134,8 +134,9 @@ export const IDENTIFIER_OUTCOMES = Object.freeze({
   },
   ALREADY_IN_STATE: {
     kind: "conflict",
-    message: "That identifier is already in that state — someone else may have changed it. Reload the list.",
+    message: "That identifier is already in that state. Reload the list.",
   },
+  PART_NOT_FOUND: { kind: "notFound", message: "This part no longer exists. Reload the page." },
   DENIED: { kind: "denied", message: "You are not authorized to manage part identifiers." },
   NOT_FOUND: { kind: "notFound", message: "That identifier no longer exists. Reload the list." },
   INVALID: { kind: "invalid", message: "That request was rejected — check the value and try again." },

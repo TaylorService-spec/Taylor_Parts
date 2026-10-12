@@ -68,7 +68,7 @@ async function invoke(operation, payload) {
 // (postgresPartAliasWriter.ts), so the rule the screen words is recovered per operation. The DQ-034 hold keeps
 // its own code, which the hook recognizes before anything else.
 const DETAIL_BY_OPERATION = Object.freeze({
-  createPartAlias: Object.freeze({ CONFLICT: "ALIAS_CONFLICT", FORBIDDEN: "DENIED", INVALID_INPUT: "INVALID" }),
+  createPartAlias: Object.freeze({ CONFLICT: "ALIAS_CONFLICT", FORBIDDEN: "DENIED", INVALID_INPUT: "INVALID", NOT_FOUND: "PART_NOT_FOUND" }),
   deactivatePartAlias: Object.freeze({ CONFLICT: "VERSION_CONFLICT", PRECONDITION_FAILED: "ALREADY_IN_STATE", NOT_FOUND: "NOT_FOUND", FORBIDDEN: "DENIED" }),
   reactivatePartAlias: Object.freeze({ CONFLICT: "VERSION_CONFLICT", PRECONDITION_FAILED: "ALREADY_IN_STATE", NOT_FOUND: "NOT_FOUND", FORBIDDEN: "DENIED" }),
   listPartAliases: Object.freeze({ FORBIDDEN: "DENIED" }),
@@ -105,7 +105,7 @@ export function toScreenAlias(row) {
 
 /** A governed alias write answer ({ aliasId, partId, version, status, replayed }) -> the screens' outcome. */
 function toWriteResult(out) {
-  if (!out.result) return out;
+  if (out.errorStatus) return out;
   const r = out.result;
   if (typeof r !== "object" || typeof r.replayed !== "boolean" || !Number.isInteger(r.version)) {
     return { errorStatus: "internal", errorDetail: null };
@@ -127,7 +127,7 @@ function mapCatalogFailure(code) {
 // Anything that is not that governed list is an error, never an empty list.
 export const listPartAliases = async ({ partId }) => {
   const out = await invoke(CALLABLE_NAMES.list, { partId });
-  if (!out.result) return out;
+  if (out.errorStatus) return out;
   if (!Array.isArray(out.result)) return { errorStatus: "internal", errorDetail: null };
   return { result: { partId, aliases: out.result.map(toScreenAlias), truncated: false, limit: null } };
 };

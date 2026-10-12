@@ -6,7 +6,7 @@
 // replaced, and it answers with the bytes the real server produced for the same request
 // (test/fixtures/catalogPartIdentifierContract.json, proven against PostgreSQL by
 // functions/test/catalogPartIdentifierEmployeeContractPostgres.test.mjs). Each write also asserts the request the
-// screen sent matches the one the server was proven against.
+// screen sent matches the one the server was proven against -- every write, refusals included.
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import CONTRACT from "./fixtures/catalogPartIdentifierContract.json";
@@ -39,7 +39,7 @@ net.CONTRACT = CONTRACT;
 afterEach(() => { cleanup(); net.queues = {}; net.sent = []; });
 
 function wire(queues) { net.queues = Object.fromEntries(Object.entries(queues).map(([k, v]) => [k, [...v]])); }
-const renderSection = () => render(<PartIdentifiersSection partId="PRT-ALIAS-1" partNumber="PRT-ALIAS-1" />);
+const renderSection = (partId = "PRT-ALIAS-1") => render(<PartIdentifiersSection partId={partId} partNumber={partId} />);
 const sentFor = (operation) => net.sent.filter((b) => b.operation === operation);
 const rowOf = async (value) => (await screen.findByText(value)).closest("tr");
 
@@ -107,13 +107,15 @@ const noErrorShown = () => {
     renderSection();
     await addIdentifier("UPC", "012345678905");
     await screen.findByText(/already recorded/i);
+    expectSameRequest("createPartAlias", "createReplayed");
   });
 
   it("a barcode owned by another part is reported as already recorded elsewhere, not a generic failure", async () => {
     wire({ listPartAliases: ["listEmpty"], createPartAlias: ["createTaken"] });
-    renderSection();
+    renderSection("PRT-ALIAS-2"); // the server proved this on the OTHER part, which is what makes it "taken"
     await addIdentifier("UPC", "012345678905");
     await screen.findByText(/already recorded\. check the list below/i);
+    expectSameRequest("createPartAlias", "createTaken");
     expect(screen.queryByText(/could not be completed/i)).toBeNull();
   });
 
@@ -122,6 +124,7 @@ const noErrorShown = () => {
     renderSection();
     await addIdentifier("SUPPLIER_SKU", "SKU-DENIED-1");
     await screen.findByText(/not authorized to manage part identifiers/i);
+    expectSameRequest("createPartAlias", "createDenied");
   });
 
   it("deactivating an identifier succeeds and the row now offers Reactivate (unreachable before)", async () => {
@@ -134,18 +137,16 @@ const noErrorShown = () => {
     await waitFor(async () => expect(within(await rowOf("SKU-CONTRACT-1")).getByRole("button", { name: /^reactivate$/i })).toBeTruthy());
   });
 
-  it("deactivating an identifier someone else already deactivated says so", async () => {
-    wire({ listPartAliases: ["listBothActive"], deactivatePartAlias: ["deactivateAlready"] });
-    renderSection();
-    fireEvent.click(within(await rowOf("SKU-CONTRACT-1")).getByRole("button", { name: /^deactivate$/i }));
-    await screen.findByText(/already in that state/i);
-  });
+  // NO_CHANGES (deactivating an identifier already INACTIVE at the version the screen holds) is answered by the server
+  // (fixture scenario deactivateAlready) but no screen can send it: the row of an INACTIVE identifier offers Reactivate,
+  // and a stale ACTIVE row's deactivate is a REPLAY when the version moved by exactly that change. Not rendered here.
 
   it("a stale deactivate says someone else changed the identifier", async () => {
     wire({ listPartAliases: ["listBothActive"], deactivatePartAlias: ["deactivateStale"] });
     renderSection();
     fireEvent.click(within(await rowOf("012345678905")).getByRole("button", { name: /^deactivate$/i }));
     await screen.findByText(/someone else changed this identifier/i);
+    expectSameRequest("deactivatePartAlias", "deactivateStale");
   });
 
   it("reactivating succeeds and the list is re-read", async () => {

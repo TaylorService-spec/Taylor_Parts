@@ -269,23 +269,6 @@
         "message": "the alias is already INACTIVE"
       }
     },
-    "deactivateStale": {
-      "request": {
-        "operation": "deactivatePartAlias",
-        "input": {
-          "aliasId": "UPC__012345678905",
-          "expectedVersion": 7,
-          "idempotencyKey": "pa-key-d-3"
-        }
-      },
-      "status": 409,
-      "body": {
-        "ok": false,
-        "operation": "deactivatePartAlias",
-        "code": "CONFLICT",
-        "message": "the record changed since it was loaded; reload and retry"
-      }
-    },
     "reactivateApplied": {
       "request": {
         "operation": "reactivatePartAlias",
@@ -396,6 +379,23 @@
           "aliasType": "UPC",
           "aliasId": "UPC__012345678905"
         }
+      }
+    },
+    "deactivateStale": {
+      "request": {
+        "operation": "deactivatePartAlias",
+        "input": {
+          "aliasId": "UPC__012345678905",
+          "expectedVersion": 1,
+          "idempotencyKey": "pa-key-d-3"
+        }
+      },
+      "status": 409,
+      "body": {
+        "ok": false,
+        "operation": "deactivatePartAlias",
+        "code": "CONFLICT",
+        "message": "the record changed since it was loaded; reload and retry"
       }
     }
   }
