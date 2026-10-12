@@ -515,6 +515,15 @@ The measurement uses the `/auth/diagnostics/client-ip` route (`functions/src/eos
 | EOS API Firebase verifier | `eosApi/server.ts` `createFirebaseTokenVerifier` | 1 | no Firebase-token callers remain |
 | Harnesses | scripts reading `SANDBOX_CREDENTIALS_FILE` | 5 | harnesses move to EOS persona or login sessions |
 
+**Screen by screen:** `eos-native-identity-firebase-coexistence.md`.
+- Of the reachable routes, **36 are EOS-only ready**, **11 are partial** and **10 still require Firebase**.
+- Shell-level blockers:
+  - EOS navigation authority is enabled only in platform-sandbox;
+  - items without `surfaceAccess` are unreachable;
+  - the App-level capability feed (`useReportCapabilities`) is Firestore plus callable;
+  - several screens still gate on the legacy role string.
+- Native login must not be offered for the Firebase-required experiences: technician field work, the Scan and Warehouse handhelds, the Dispatcher Board, Financials, Reports, Data Import and Warehouse Racking.
+
 **Why an EOS-only session cannot use those surfaces.** Every Firestore read and every callable authorises with `request.auth` / the Firebase ID token. An EOS-only session therefore reaches the EOS-API surfaces only. Replacing Firebase Authentication requires those surfaces to move first, or to run side by side (D-9).
 
 ## 11. A pre-existing harness defect fixed here
