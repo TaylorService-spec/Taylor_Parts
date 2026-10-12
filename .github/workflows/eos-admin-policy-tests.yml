@@ -393,6 +393,15 @@ on:
       - "functions/test/catalogCutoverPostgres.test.mjs"
       - "functions/test/catalogPartSearchPostgres.test.mjs"
       - "functions/test/catalogReadAuthorizationPostgres.test.mjs"
+      # CAT-1: the Part Master employee-workflow contract. The PG suite drives the real transport with the SCREEN's
+      # payload builders and pins the browser fixture, so a change to either side re-proves the pair.
+      - "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs"
+      - "field-ops-app-vite/test/fixtures/catalogPartMasterContract.json"
+      - "field-ops-app-vite/src/domain/partMasterWrite.js"
+      # CAT-2: the Part identifier employee-workflow contract. The PG suite pins the browser fixture the identifier
+      # screen is tested against, so a change to either side re-proves the pair.
+      - "functions/test/catalogPartIdentifierEmployeeContractPostgres.test.mjs"
+      - "field-ops-app-vite/test/fixtures/catalogPartIdentifierContract.json"
       # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside
       # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
       # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.
@@ -1087,6 +1096,15 @@ on:
       - "functions/test/catalogCutoverPostgres.test.mjs"
       - "functions/test/catalogPartSearchPostgres.test.mjs"
       - "functions/test/catalogReadAuthorizationPostgres.test.mjs"
+      # CAT-1: the Part Master employee-workflow contract. The PG suite drives the real transport with the SCREEN's
+      # payload builders and pins the browser fixture, so a change to either side re-proves the pair.
+      - "functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs"
+      - "field-ops-app-vite/test/fixtures/catalogPartMasterContract.json"
+      - "field-ops-app-vite/src/domain/partMasterWrite.js"
+      # CAT-2: the Part identifier employee-workflow contract. The PG suite pins the browser fixture the identifier
+      # screen is tested against, so a change to either side re-proves the pair.
+      - "functions/test/catalogPartIdentifierEmployeeContractPostgres.test.mjs"
+      - "field-ops-app-vite/test/fixtures/catalogPartIdentifierContract.json"
       # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside
       # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
       # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.

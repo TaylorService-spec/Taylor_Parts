@@ -28,11 +28,6 @@ export const CALLABLE_NAMES = Object.freeze({
   reactivate: "reactivatePartAlias",
   list: "listPartAliases",
   probe: "probePartAlias",
-  // Phase G. Gated SERVER-SIDE on `inventory.catalog.alias.read`, a narrower capability than the
-  // five administration callables use -- alias lookup and alias administration have different
-  // audiences. It ships and deploys with them, so it shares this transport and this readiness
-  // constant rather than introducing a second seam.
-  resolveScanned: "resolveScannedPartIdentifier",
   // The scanner's ONE governed Part read (Lookup + Move stock). Gated server-side on
   // inventory.catalog.read; the alias half additionally on inventory.catalog.alias.read.
   lookupScanned: "lookupScannedPart",
@@ -46,14 +41,19 @@ export const NOT_READY_STATUS = "transport-not-ready";
 
 // Private, non-exported. THE GOVERNED RENDER CATALOG TRANSPORT.
 //
-// This used to invoke the Firebase alias callables. They remain exported and deployed -- legacy
-// authority pending retirement -- but nothing in this application calls them any more, and there is
-// NO fallback: a refusal or an unreachable service is returned as a value, never retried against
-// Firestore.
+// This used to invoke the Firebase alias callables, which were removed from the repository in Firebase
+// retirement F3b (#2056). There is NO fallback: a refusal or an unreachable service is returned as a
+// value, never retried against Firestore.
 //
-// The outcome SHAPES are unchanged, deliberately: the callers' state machines (domain/partLookup.js,
-// the identifier screens) already read `{ result }` or `{ errorStatus, errorDetail }`, and changing
-// them in the same move that changes the authority would mix two reviews into one.
+// THIS MODULE IS THE ADAPTER between the Catalog API's answers and the vocabulary the identifier screens
+// render ({ result } | { errorStatus, errorDetail }). It used to relay the Catalog answers VERBATIM on the
+// assumption that their shapes matched the retired callables'. They did not (finding CAT-2,
+// docs/audits/firebase-retirement-equivalence-2026-10-11): listPartAliases answers a bare array whose
+// identifier is `originalValue`, so every Part showed NO identifiers and Deactivate/Reactivate were
+// unreachable; writes answer `replayed: true|false`, not `outcome`; and refusals arrive as Catalog
+// CATEGORIES, which the screens' rule-keyed outcome table never matched. The mapping below is pinned
+// against the real server by functions/test/catalogPartIdentifierEmployeeContractPostgres.test.mjs and
+// test/partIdentifierEmployeeWorkflow.test.jsx.
 async function invoke(operation, payload) {
   if (!PART_IDENTIFIER_TRANSPORT_READY) {
     return { errorStatus: NOT_READY_STATUS, errorDetail: null };
@@ -61,7 +61,56 @@ async function invoke(operation, payload) {
   const { catalogApiClient } = await import("./catalogApiClient.js");
   const res = await catalogApiClient.call(operation, payload);
   if (res.ok) return { result: res.result };
-  return { errorStatus: mapCatalogFailure(res.code), errorDetail: res.reason ?? null };
+  return { errorStatus: mapCatalogFailure(res.code), errorDetail: refusalDetail(operation, res) };
+}
+
+// The Catalog sends the refusal CATEGORY, not the rule; within one operation each category has one meaning
+// (postgresPartAliasWriter.ts), so the rule the screen words is recovered per operation. The DQ-034 hold keeps
+// its own code, which the hook recognizes before anything else.
+const DETAIL_BY_OPERATION = Object.freeze({
+  createPartAlias: Object.freeze({ CONFLICT: "ALIAS_CONFLICT", FORBIDDEN: "DENIED", INVALID_INPUT: "INVALID", NOT_FOUND: "PART_NOT_FOUND" }),
+  deactivatePartAlias: Object.freeze({ CONFLICT: "VERSION_CONFLICT", PRECONDITION_FAILED: "ALREADY_IN_STATE", NOT_FOUND: "NOT_FOUND", FORBIDDEN: "DENIED" }),
+  reactivatePartAlias: Object.freeze({ CONFLICT: "VERSION_CONFLICT", PRECONDITION_FAILED: "ALREADY_IN_STATE", NOT_FOUND: "NOT_FOUND", FORBIDDEN: "DENIED" }),
+  listPartAliases: Object.freeze({ FORBIDDEN: "DENIED" }),
+  probePartAlias: Object.freeze({ FORBIDDEN: "DENIED", INVALID_INPUT: "INVALID" }),
+});
+function refusalDetail(operation, res) {
+  if (res.reason === "CATALOG_MUTATION_HELD") return res.reason;
+  return DETAIL_BY_OPERATION[operation]?.[res.code] ?? res.reason ?? null;
+}
+
+const millis = (iso) => {
+  const t = typeof iso === "string" ? Date.parse(iso) : NaN;
+  return Number.isFinite(t) ? t : null;
+};
+
+/** One governed alias row (CanonicalPartAlias) -> the row the identifier screens render. */
+export function toScreenAlias(row) {
+  return {
+    aliasId: row.aliasId,
+    partId: row.partId,
+    aliasType: row.aliasType,
+    value: row.originalValue,
+    normalizedValue: row.normalizedValue ?? null,
+    status: row.status,
+    source: row.source ?? null,
+    manufacturerId: row.manufacturerId ?? null,
+    effectiveFrom: row.effectiveFrom ?? null,
+    effectiveTo: row.effectiveTo ?? null,
+    version: row.version,
+    createdAtMillis: millis(row.createdAt),
+    updatedAtMillis: millis(row.updatedAt),
+  };
+}
+
+/** A governed alias write answer ({ aliasId, partId, version, status, replayed }) -> the screens' outcome. */
+function toWriteResult(out) {
+  if (out.errorStatus) return out;
+  const r = out.result;
+  if (typeof r !== "object" || typeof r.replayed !== "boolean" || !Number.isInteger(r.version)) {
+    return { errorStatus: "internal", errorDetail: null };
+  }
+  return { result: { ...r, outcome: r.replayed ? "replayed" : "applied" } };
 }
 
 /** The Catalog API's categories, in the status vocabulary the screens already render. */
@@ -74,26 +123,33 @@ function mapCatalogFailure(code) {
   return "internal";
 }
 
-export const listPartAliases = ({ partId }) => invoke(CALLABLE_NAMES.list, { partId });
+// The Catalog answers the bare list (no row cap); the screens read { partId, aliases, truncated, limit }.
+// Anything that is not that governed list is an error, never an empty list.
+export const listPartAliases = async ({ partId }) => {
+  const out = await invoke(CALLABLE_NAMES.list, { partId });
+  if (out.errorStatus) return out;
+  if (!Array.isArray(out.result)) return { errorStatus: "internal", errorDetail: null };
+  return { result: { partId, aliases: out.result.map(toScreenAlias), truncated: false, limit: null } };
+};
 
 // idempotencyKey is carried through VERBATIM and never regenerated here: the caller owns generating
 // it once per user intent and reusing it across a retry of that same intent, which is what makes a
 // double-send safe.
-export const createPartAlias = ({ partId, aliasType, rawValue, manufacturerId, source, idempotencyKey }) =>
-  invoke(CALLABLE_NAMES.create, {
+export const createPartAlias = async ({ partId, aliasType, rawValue, manufacturerId, source, idempotencyKey }) =>
+  toWriteResult(await invoke(CALLABLE_NAMES.create, {
     partId,
     aliasType,
     rawValue,
     idempotencyKey,
     ...(manufacturerId ? { manufacturerId } : {}),
     ...(source ? { source } : {}),
-  });
+  }));
 
-export const deactivatePartAlias = ({ aliasId, expectedVersion, idempotencyKey }) =>
-  invoke(CALLABLE_NAMES.deactivate, { aliasId, expectedVersion, idempotencyKey });
+export const deactivatePartAlias = async ({ aliasId, expectedVersion, idempotencyKey }) =>
+  toWriteResult(await invoke(CALLABLE_NAMES.deactivate, { aliasId, expectedVersion, idempotencyKey }));
 
-export const reactivatePartAlias = ({ aliasId, expectedVersion, idempotencyKey }) =>
-  invoke(CALLABLE_NAMES.reactivate, { aliasId, expectedVersion, idempotencyKey });
+export const reactivatePartAlias = async ({ aliasId, expectedVersion, idempotencyKey }) =>
+  toWriteResult(await invoke(CALLABLE_NAMES.reactivate, { aliasId, expectedVersion, idempotencyKey }));
 
 export const probePartAlias = ({ aliasType, rawValue, manufacturerId }) =>
   invoke(CALLABLE_NAMES.probe, {
@@ -102,27 +158,15 @@ export const probePartAlias = ({ aliasType, rawValue, manufacturerId }) =>
     ...(manufacturerId ? { manufacturerId } : {}),
   });
 
-/**
- * Resolve one scanned or typed identifier to the Part it points to.
- *
- * Returns the server's own vocabulary unchanged — FOUND / INACTIVE / AMBIGUOUS / NOT_FOUND /
- * MALFORMED — or { errorStatus } when denied, unreachable or switched off. It deliberately does NOT
- * return the Part record: reading the Part is separately governed by firestore.rules and the caller
- * performs that read under its own authority.
- */
-export const resolveScannedIdentifier = ({ rawValue, manufacturerId }) =>
-  invoke(CALLABLE_NAMES.resolveScanned, {
-    rawValue,
-    ...(manufacturerId !== undefined ? { manufacturerId } : {}),
-  });
-
+// resolveScannedIdentifier was removed (CAT-2): it named resolveScannedPartIdentifier, an operation EOS never
+// exposed -- the retired callable is SUPERSEDED by lookupScannedPart's alias half (Firebase retirement F3b). It had
+// no caller; had one appeared, the Catalog client would have refused it as UNKNOWN_OPERATION.
 export const partAliasCallableClient = Object.freeze({
   listPartAliases,
   createPartAlias,
   deactivatePartAlias,
   reactivatePartAlias,
   probePartAlias,
-  resolveScannedIdentifier,
 });
 
 /**
