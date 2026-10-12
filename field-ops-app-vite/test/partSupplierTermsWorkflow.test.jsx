@@ -70,6 +70,16 @@ describe("reading a Part's supplier terms", () => {
     expect(screen.getByRole("button", { name: /add supplier terms/i })).toBeTruthy();
   });
 
+  it("a FAILED read says the terms could not be loaded -- never write wording, never an empty list", async () => {
+    const fetchImpl = vi.fn(async () => { throw new TypeError("network down"); });
+    const deps = { callOptions: { baseUrl: "https://eos.test", getIdToken: async () => "employee-token", fetchImpl } };
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/Supplier terms could not be loaded\. Try again\./);
+    expect(alert.textContent).not.toMatch(/change could not be completed/i);
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
   it("without cost visibility, cost & contract cells say RESTRICTED (no value is on the wire) and Add is not offered", async () => {
     const { sent, deps } = wire("listWithheld");
     render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);

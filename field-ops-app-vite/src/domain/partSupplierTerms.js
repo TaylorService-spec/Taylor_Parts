@@ -199,6 +199,8 @@ export function outcomeFromError(err, action) {
     case "NOT_SIGNED_IN":
       return { kind: "unauthenticated", message: "Sign in again to continue." };
     default:
-      return { kind: "failed", message: "The change could not be completed. Try again." };
+      return action === "read"
+        ? { kind: "failed", message: "Supplier terms could not be loaded. Try again." }
+        : { kind: "failed", message: "The change could not be completed. Try again." };
   }
 }
