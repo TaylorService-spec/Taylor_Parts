@@ -56,10 +56,12 @@ export function matchingChanges(changedFiles, globs) {
  * rename reports BOTH the old and the new path (moving a watched file away is a change to it).
  */
 export function changedFiles(base, head, cwd = REPO_ROOT) {
-  const out = execFileSync("git", ["diff", "--name-only", "--no-renames", `${base}...${head}`], {
+  // -z: NUL-separated and never C-quoted, so a non-ASCII or space-bearing path arrives as its real
+  // bytes (the default core.quotePath would hand the matcher "\303\251"-escaped, double-quoted names).
+  const out = execFileSync("git", ["-c", "core.quotePath=false", "diff", "--name-only", "-z", "--no-renames", `${base}...${head}`], {
     cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024,
   });
-  return out.split("\n").map((s) => s.trim()).filter(Boolean);
+  return out.split("\0").filter(Boolean);
 }
 
 function main(argv) {

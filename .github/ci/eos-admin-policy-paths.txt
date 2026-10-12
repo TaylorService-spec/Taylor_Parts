@@ -11,7 +11,9 @@
 #
 # This replaced the two `paths:` trigger filters (pull_request and push) that the workflow used to
 # carry. Their union, byte-for-byte per entry, is what follows; the comments are the ones those filters
-# carried. Register a new suite or subject HERE -- and only here.
+# carried; the sections at the end are additions, each explained there. Register a new suite or
+# subject HERE -- and only here. scripts/adminPolicyCiRelevance.test.mjs (COMPLETENESS) fails if any
+# suite the gated jobs run is not selected by this list.
 
 functions/src/adminPolicy/**
 # OD-T7 (2026-10-01): the truck registry Administration section and its suite (the guard AND its subject).
@@ -753,3 +755,52 @@ field-ops-app-vite/src/modules/administration/**
 scripts/adminPolicyCiRelevance.mjs
 scripts/adminPolicyCiRelevance.test.mjs
 scripts/ciTriggerCoverage.lib.mjs
+
+# COMPLETENESS (2026-10-12, M3 review): suites that test:adminPolicy / test:adminPolicyPostgres RAN but
+# neither former paths filter named -- an edit to one of them alone started no run. Found by the
+# COMPLETENESS test in scripts/adminPolicyCiRelevance.test.mjs, which now keeps this list complete.
+functions/test/adminPolicyDefinitionEditing.test.mjs
+functions/test/adminPolicyNoOpAudit.test.mjs
+functions/test/authorityActivationVehiclePostgres.test.mjs
+functions/test/catalogActivationLedger.test.mjs
+functions/test/catalogAliasCutoverPostgres.test.mjs
+functions/test/catalogLane1Runtime.test.mjs
+functions/test/catalogMutationHold.test.mjs
+functions/test/catalogPartAliasPostgres.test.mjs
+functions/test/catalogRuntimeCensus.test.mjs
+functions/test/commercialAccountabilityPostgres.test.mjs
+functions/test/commercialCatalogCompositionPostgres.test.mjs
+functions/test/commercialOwnershipAuthority.test.mjs
+functions/test/commercialOwnershipPostgres.test.mjs
+functions/test/employeeOperationalScope.test.mjs
+functions/test/employeeOperationalScopePostgres.test.mjs
+functions/test/employeeWorkEligibilityPostgres.test.mjs
+functions/test/eosAccessToken.test.mjs
+functions/test/eosApiBlueprint.test.mjs
+functions/test/eosAuthNoFirebase.test.mjs
+functions/test/eosIdentitySessionPostgres.test.mjs
+functions/test/eosOpsCashApplication.test.mjs
+functions/test/eosOpsCashApplicationPostgres.test.mjs
+functions/test/eosOpsEquipmentCustody.test.mjs
+functions/test/eosOpsEquipmentCustodyPostgres.test.mjs
+functions/test/eosOpsInventoryCommitment.test.mjs
+functions/test/eosOpsInventoryCommitmentPostgres.test.mjs
+functions/test/eosOpsPurchasingPostgres.test.mjs
+functions/test/eosOpsWarehouseBinAuthority.test.mjs
+functions/test/eosOpsWarehouseBinPostgres.test.mjs
+functions/test/inventoryCapabilityGrantMigration.test.mjs
+functions/test/invoiceAuthorityPostgres.test.mjs
+functions/test/invoiceTotalsAuthority.test.mjs
+functions/test/legacyInventoryMovementMapping.test.mjs
+functions/test/legacyInventoryMovementRun.test.mjs
+functions/test/partBalanceTrackingModeAuthority.test.mjs
+functions/test/purchasingMigrationMapping.test.mjs
+functions/test/receiveReorderStockPostgres.test.mjs
+functions/test/reorderMigrationExclusion.test.mjs
+functions/test/reorderScenarioFixtures.test.mjs
+functions/test/reorderScenarioPostgresSeed.test.mjs
+functions/test/reorderSourceFreeze.test.mjs
+functions/test/reorderWarehouseIdentity.test.mjs
+functions/test/snapshotContentFingerprint.test.mjs
+functions/test/truckFleetMigrationSource.test.mjs
+functions/test/truckFleetPostgres.test.mjs

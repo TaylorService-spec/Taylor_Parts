@@ -125,6 +125,10 @@ jobs:
           done
           node scripts/adminPolicyCiRelevance.mjs --base "$BASE" --head "$HEAD" | tee -a "$GITHUB_OUTPUT"
 
+  # KNOWN WINDOW (M3 review, finding 3 -- documented, not engineered away): `!cancelled()` is false for
+  # every job once a run is cancelled, so a MANUAL cancel issued while `changes` is still running leaves
+  # `policy` without a real verdict for that sha (skipped/cancelled rather than run). Treat a cancelled
+  # run as no evidence: re-run the workflow before merging; never merge on the strength of it.
   policy:
     name: Admin policy engine -- authorization, workflow, tenancy, schema, seed
     needs: changes
