@@ -26,9 +26,9 @@ applicable.
 | 10 | `recordWorkOrderLabor` | F4 | Technician records time | `/operations/work-orders recordWorkOrderLabor` | V | P | V | P | V | G | **GAP** (unruled material change) | WOL-2 offline; WOL-3; AUD-2 |
 | 11 | `correctWorkOrderLabor` | F4 | Manager corrects time | same op + `correctsLaborEntryId` (server only) | V | G | V | P | V | G | **GAP** | WOL-1: no UI; AUD-2 |
 | 12 | `getWorkOrderLabor` | F4 | Read a job's time | `/operations/work-orders readWorkOrderLabor` | V | P | V | – | V | V | **GAP** (unruled material change) | WOL-4 read widened; totals-only UI |
-| 13 | `createPart` | F3a | Create Part | `/operations/catalog createPart` | P | P | V | V | P | P | **GAP** | CAT-1: success shown as error |
-| 14 | `updatePart` | F3a | Edit Part | `/operations/catalog updatePart` | P | P | V | V | P | P | **GAP** | CAT-1 |
-| 15 | `changePartStatus` | F3a | Part lifecycle | `/operations/catalog changePartStatus` | P | G | P | V | P | P | **GAP** | CAT-1; CAT-3: no business holder |
+| 13 | `createPart` | F3a | Create Part | `/operations/catalog createPart` | V | P | V | V | V | P | **UNVERIFIED** (REPLACED) | CAT-1 fixed (#2059); live write proof pending |
+| 14 | `updatePart` | F3a | Edit Part | `/operations/catalog updatePart` | V | P | V | V | V | P | **UNVERIFIED** (REPLACED) | CAT-1 fixed (#2059); live write proof pending |
+| 15 | `changePartStatus` | F3a | Part lifecycle | `/operations/catalog changePartStatus` | V | G | P | V | V | P | **GAP** | CAT-3: no business holder (CAT-1 fixed in #2059) |
 | 16 | `createPartAlias` | F3b | Register barcode / identifier | `/operations/catalog createPartAlias` | P | P | V | V | P | P | **UNVERIFIED** (REPLACED) | Error/replay mapping; no executed E2E |
 | 17 | `deactivatePartAlias` | F3b | Retire identifier | `/operations/catalog deactivatePartAlias` | G | G | V | V | P | P | **GAP** | CAT-2: unreachable |
 | 18 | `reactivatePartAlias` | F3b | Restore identifier | `/operations/catalog reactivatePartAlias` | G | G | V | V | P | P | **GAP** | CAT-2: unreachable |
@@ -43,8 +43,8 @@ applicable.
 |---|---|---|
 | REPLACED (verified) | 0 | |
 | SUPERSEDED (verified) | 0 | |
-| UNVERIFIED | 6 | 1, 2, 4, 5, 16, 21 |
-| GAP | 16 | 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 20, 22 |
+| UNVERIFIED | 8 | 1, 2, 4, 5, 13, 14, 16, 21 |
+| GAP | 14 | 3, 6, 7, 8, 9, 10, 11, 12, 15, 17, 18, 19, 20, 22 |
 
 Gate B is not VERIFIED for any operation: no live persona run is recorded in the repository for any
 of them. Every PostgreSQL suite cited in the manifest was executed on 2026-10-11 and passed (10 suites,
