@@ -77,7 +77,7 @@ test("GRANT-IMPACT PREVIEW: never commits, leaves no trace, calls nothing extern
     const members = (await repo.listTenantPrincipalIds(A)).length;
     const perMemberSide = log.length / (members * 2);
     assert.ok(perMemberSide < 40, `${log.length} statements for ${members} members x 2 sides = ${perMemberSide.toFixed(1)} per member-side`);
-    const { rows } = await q(`SELECT count(*)::int n FROM pg_locks WHERE locktype = 'advisory'`);
+    const { rows } = await q(`SELECT count(*)::int n FROM pg_locks WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`);
     assert.equal(rows[0].n, 0, "an advisory lock outlived the preview");
   });
 
@@ -206,7 +206,7 @@ test("GRANT-IMPACT PREVIEW: never commits, leaves no trace, calls nothing extern
       if (once === 1) await sidePool.query(`UPDATE eos_workforce.employees SET employment_status = $1 WHERE id = 'emp-gip-inel'`, [start === "ACTIVE" ? "TERMINATED" : "ACTIVE"]);
     }));
     assert.deepEqual([settles.outcome, once], ["NO_OP", 2], "retried once on a fresh state, then reported");
-    assert.equal((await q(`SELECT count(*)::int n FROM pg_locks WHERE locktype = 'advisory'`)).rows[0].n, 0);
+    assert.equal((await q(`SELECT count(*)::int n FROM pg_locks WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`)).rows[0].n, 0);
   });
 
   await t.test("6b. TIME BUDGET: a slow preview cannot hold the governance lock beyond its budget, and a real commit waits at most that long", async () => {

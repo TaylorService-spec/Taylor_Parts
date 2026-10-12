@@ -875,7 +875,9 @@ export function createAuthorityChangePreview(options: AuthorityChangePreviewOpti
         // A counts-only caller receives only the digests a commit binding needs from it (input + impact, PR 4); the
         // state and before digests summarize every member's authority and are withheld (review finding 5).
         // previewDigest (the ONE value a commit presents) goes to every caller allowed to preview; the commit recomputes
-        // every part under the lock.
+        // every part under the lock. Accepted residual (review re-check): previewDigest hashes the state and before
+        // digests, so previewing the SAME change twice tells a counts-only caller whether anyone's authority moved in
+        // between -- never what moved or whose. The binding needs it; nothing more is derivable from it.
         digests: request.detail
           ? { inputDigest, policyStateDigest: stateBefore, beforeDigest, impactDigest, previewDigest }
           : { inputDigest, impactDigest, previewDigest },

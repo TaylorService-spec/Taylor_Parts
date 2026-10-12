@@ -100,7 +100,7 @@ test("GRANT-IMPACT PREVIEW: protected Owner / Administrator invariants", { skip:
      WHERE a.tenant_id = $1 AND a.principal_id = $2 AND r.key = 'admin' AND a.status = 'active'`, [tenantId, principalId])).rows[0].id;
 
   // ════════ P2 -- the adversarial seam ════════
-  const ownerActor = { tenantId: A, uid: P.a.admin, heldRoleKeys: ["admin"], protectedAdministrator: true };
+  const administratorActor = { tenantId: A, uid: P.a.admin, heldRoleKeys: ["admin"], protectedAdministrator: true };
   const defective = (after) => async (simRepo) => {
     await simRepo.transact({ tenantId: A, uid: "defective-test-command" }, async (tx) => {
       await tx.setAssignmentStatus(P.a.ownerAssignment, "disabled"); // NO guard: this is the defect under test
@@ -108,7 +108,7 @@ test("GRANT-IMPACT PREVIEW: protected Owner / Administrator invariants", { skip:
     });
     if (after) await after(simRepo);
   };
-  const request = (run) => ({ actor: ownerActor, operation: "revokeRole", input: {}, subject: { kind: "PRINCIPAL", principalId: P.a.owner }, detail: true, run });
+  const request = (run) => ({ actor: administratorActor, operation: "revokeRole", input: {}, subject: { kind: "PRINCIPAL", principalId: P.a.owner }, detail: true, run });
 
   await t.test("P2: a DEFECTIVE command disabling the Owner: the preview reports the loss and the Owner is untouched", async () => {
     const hashes = await tableHashes(q);
