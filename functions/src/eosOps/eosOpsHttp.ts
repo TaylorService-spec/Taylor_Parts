@@ -376,6 +376,19 @@ export async function executeOperation(
         },
       };
     };
+    // SUPPLIER TERMS (governed field groups, DECISIONS #230): field-group decisions use only capabilities that are
+    // UNCONDITIONALLY held -- a key granted under a grant condition is withheld until that condition is evaluated, the
+    // same rule the Cycle Count routes apply. The shared Reorder actor above is deliberately left unchanged.
+    const supplierTermsActor = async (): Promise<{ actor: ReorderActor; pool: Pool }> => {
+      const conditions = postgresGrantConditionProvider(deps.pool);
+      const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
+        identityProvider: request.caller.identityProvider,
+        externalSubject: request.caller.externalSubject,
+        requestedTenantId: request.caller.requestedTenantId,
+      }, conditions);
+      const capabilities = await capabilitiesWithoutUnevaluatedConditions(deps.pool, ctx.principalContext, ctx.capabilities, conditions);
+      return { pool: deps.pool, actor: { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: new Set(capabilities) } };
+    };
     const ok = (result: unknown): OperationsApiResult =>
       ({ ok: true, operation: request.operation, result });
 
@@ -546,23 +559,23 @@ export async function executeOperation(
         return ok(await setSupplierStatus({ pool }, actor, request.input ?? {}));
       }
       case "listPartSupplierItems": {
-        const { actor, pool } = await reorderActor();
+        const { actor, pool } = await supplierTermsActor();
         return ok(await listPartSupplierItems({ pool }, actor, request.input ?? {}));
       }
       case "createPartSupplierItem": {
-        const { actor, pool } = await reorderActor();
+        const { actor, pool } = await supplierTermsActor();
         return ok(await createPartSupplierItem({ pool }, actor, request.input ?? {}));
       }
       case "updatePartSupplierItem": {
-        const { actor, pool } = await reorderActor();
+        const { actor, pool } = await supplierTermsActor();
         return ok(await updatePartSupplierItem({ pool }, actor, request.input ?? {}));
       }
       case "setPartSupplierItemStatus": {
-        const { actor, pool } = await reorderActor();
+        const { actor, pool } = await supplierTermsActor();
         return ok(await setPartSupplierItemStatus({ pool }, actor, request.input ?? {}));
       }
       case "setPreferredPartSupplierItem": {
-        const { actor, pool } = await reorderActor();
+        const { actor, pool } = await supplierTermsActor();
         return ok(await setPreferredPartSupplierItem({ pool }, actor, request.input ?? {}));
       }
       case "correctReorderReceipt": {

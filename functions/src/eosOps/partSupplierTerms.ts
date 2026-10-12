@@ -585,7 +585,13 @@ export async function updatePartSupplierItem(deps: { readonly pool: Pool }, acto
     const updated = await repository(() => updateSupplierCatalogItem(c, actor.tenantId, actor.principalId, record!.partId, record!.supplierId,
       expectedVersion, patch as SupplierCatalogItemTermsPatch));
     const item = view(updated, supplier);
-    await audit(c, actor, "partSupplierItem.update", itemId, auditView(before), auditView(item), `part-supplier terms updated: ${[...effective].sort().join(", ")}`);
+    // A field the caller cannot read is applied as STATED, not compared (no equality oracle), so the reason says what was
+    // stated by a blind writer -- it does not assert that the stored value changed (review N3).
+    const blind = effective.filter((k) => !canReadTerm(actor, k));
+    const compared = effective.filter((k) => canReadTerm(actor, k));
+    const reason = [compared.length ? `updated: ${[...compared].sort().join(", ")}` : null,
+      blind.length ? `stated without read access: ${[...blind].sort().join(", ")}` : null].filter(Boolean).join("; ");
+    await audit(c, actor, "partSupplierItem.update", itemId, auditView(before), auditView(item), `part-supplier terms ${reason}`);
     return { outcome: "updated" as const, item: project(actor, item) };
   });
 }
@@ -660,6 +666,8 @@ export async function setPreferredPartSupplierItem(deps: { readonly pool: Pool }
     await audit(c, actor, "partSupplierItem.setPreferred", itemId, { item: auditView(before), clearedItem: auditView(incumbentBefore) },
       { item: auditView(item), clearedItem: auditView(incumbentAfter) },
       incumbentBefore ? `preferred supplier changed from ${incumbentBefore.supplierId} to ${item.supplierId}` : `preferred supplier set to ${item.supplierId}`);
-    return { outcome: "preferred" as const, item: project(actor, item), clearedItemId: incumbentBefore?.itemId ?? null };
+    // Which item WAS preferred is a RELATIONSHIP fact: a caller who cannot read terms does not learn it (review N2).
+    const canRead = actor.capabilities.has(SUPPLIER_TERMS_READ_CAPABILITY);
+    return { outcome: "preferred" as const, item: project(actor, item), clearedItemId: canRead ? incumbentBefore?.itemId ?? null : null };
   });
 }

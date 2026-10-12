@@ -129,7 +129,7 @@ test("part-supplier terms over the governed path", { skip: SKIP, concurrency: 1 
   //   buyer          the PROPOSED Purchasing bundle                    (iv)/(c) everything
   //   costNoCatalog  read + cost.read (no catalog.read)                r1: the cost projection requires BOTH
   //   unionEmployee  Role A (read + edit) AND Role B (catalog.read + cost.read)   (b) the additive multi-Role union
-  //   administrator  read + edit + changeStatus; activatorOnly changeStatus; member catalog.read; outsider no membership;
+  //   administrator  read + edit + changeStatus; activatorOnly changeStatus; editorOnly edit (review N2); member catalog.read; outsider no membership;
   //   legacyCatalog  inventory.catalog.manage + .activate + catalog.read  (f) broad catalog authority: REFUSED here
   //   otherTenant    EVERY key, in tenant t2                           (g)
   const reader = await makeActor("t1", "fb-sup1-reader", [READ]);
@@ -141,6 +141,7 @@ test("part-supplier terms over the governed path", { skip: SKIP, concurrency: 1 
   const unionEmployee = await makeActor("t1", "fb-sup1-union", [[READ, EDIT], [CATALOG_READ, COST_READ]]);
   const administrator = await makeActor("t1", "fb-sup1-admin", [READ, EDIT, STATUS]);
   const activatorOnly = await makeActor("t1", "fb-sup1-activator", [STATUS]);
+  const editorOnly = await makeActor("t1", "fb-sup1-editor-only", [EDIT]);
   const member = await makeActor("t1", "fb-sup1-member", [CATALOG_READ]);
   const legacyCatalog = await makeActor("t1", "fb-sup1-legacy-catalog", [MANAGE, ACTIVATE, CATALOG_READ]);
   const outsider = await makeActor("t1", "fb-sup1-outsider", [], { member: false });
@@ -443,6 +444,13 @@ test("part-supplier terms over the governed path", { skip: SKIP, concurrency: 1 
     // NO_CHANGES is still decided over the fields the writer CAN read.
     refused(await call(blindWriter, "updatePartSupplierItem", { itemId: "P-200__sup-arctic", expectedVersion: v + 4, changes: { leadTimeDays: 3 } }),
       412, "PRECONDITION_FAILED", /already the stored/, "readable NO_CHANGES");
+    // review N3: the audit reason does not claim a blind restatement CHANGED the stored value -- it says it was STATED.
+    const blindRows = (await audits("P-200__sup-arctic")).filter((a) => a.action === "partSupplierItem.update" && a.actor_uid === blindWriter.principalId);
+    assert.deepEqual(blindRows.map((a) => a.reason), [
+      "part-supplier terms stated without read access: cost",
+      "part-supplier terms stated without read access: cost",
+      "part-supplier terms stated without read access: contractEnd, contractStart",
+    ], "a blind write names the fields it STATED, never 'updated'");
   });
 
   await t.test("(iv)/(c) the PROPOSED Purchasing bundle: reads, creates, edits COMMERCIAL, sets preferred and changes status", async () => {
@@ -457,6 +465,25 @@ test("part-supplier terms over the governed path", { skip: SKIP, concurrency: 1 
     const on = ok(await call(buyer, "setPartSupplierItemStatus", { itemId: "P-200__sup-arctic", expectedVersion: v + 3, status: "ACTIVE" }), "status back");
     const pref = ok(await call(buyer, "setPreferredPartSupplierItem", { partId: "P-200", itemId: "P-200__sup-arctic", expectedVersion: on.item.version }), "preferred");
     assert.deepEqual([pref.outcome, pref.item.preferred], ["preferred", true]);
+  });
+
+  await t.test("review N1: a cost.read granted UNDER A CONDITION is withheld on the supplier-terms transport (no COMMERCIAL read)", async () => {
+    const conditioned = await makeActor("t1", "fb-sup1-conditioned", [READ, CATALOG_READ, COST_READ]);
+    await q(`INSERT INTO eos_policy.capability_grant_conditions (id, tenant_id, grant_scope, grantor_key, capability_key, condition, established_by, updated_by)
+             VALUES ('cgc-sup1-n1', 't1', 'ROLE', 'role-fb-sup1-conditioned', $1, $2::jsonb, 'fixture', 'fixture')`,
+      [COST_READ, JSON.stringify({ paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: "PARTS_OPERATIONS" }]] })]);
+    const list = ok(await call(conditioned, "listPartSupplierItems", { partId: "P-100" }), "conditioned list");
+    assert.equal(list.items.length, 3, "the unconditioned record read still answers");
+    for (const item of list.items) assertNoCommercialKeys(item, `conditioned ${item.itemId}`);
+    assert.deepEqual(list.fieldAccess.COMMERCIAL, { read: false, create: false, edit: false });
+  });
+
+  await t.test("review N2: an editor WITHOUT supplierTerms.read is not told which item was preferred before", async () => {
+    ok(await call(buyer, "createPartSupplierItem", { partId: "P-200", supplierId: "sup-delta", supplierSku: "N2-1", cost: "2", currency: "USD", leadTimeDays: 1 }), "second item");
+    const r = ok(await call(editorOnly, "setPreferredPartSupplierItem", { partId: "P-200", itemId: "P-200__sup-delta", expectedVersion: 1 }), "editor prefers");
+    assert.deepEqual([r.outcome, r.clearedItemId], ["preferred", null], "the incumbent exists but is not disclosed");
+    const back = ok(await call(buyer, "setPreferredPartSupplierItem", { partId: "P-200", itemId: "P-200__sup-arctic", expectedVersion: await versionOf("P-200__sup-arctic") }), "reader prefers back");
+    assert.equal(back.clearedItemId, "P-200__sup-delta", "a reader is told");
   });
 
   await t.test("(a) supplierTerms.read ONLY: lists RELATIONSHIP + OPERATIONAL, COMMERCIAL withheld, every write refused", async () => {
@@ -597,7 +624,7 @@ test("part-supplier terms over the governed path", { skip: SKIP, concurrency: 1 
 
   await t.test("every audit row names an EOS Principal, never a Firebase uid", async () => {
     const actors = (await q(`SELECT DISTINCT actor_uid FROM eos_policy.audit_events WHERE target_kind = 'part_supplier_item'`)).rows.map((r) => r.actor_uid);
-    const principals = new Set([manager, costReader, blindWriter, buyer, unionEmployee, administrator, activatorOnly, otherTenant].map((a) => a.principalId));
+    const principals = new Set([manager, costReader, blindWriter, buyer, unionEmployee, administrator, activatorOnly, editorOnly, otherTenant].map((a) => a.principalId));
     for (const a of actors) {
       assert.ok(principals.has(a), `${a} is an EOS principal`);
       assert.doesNotMatch(a, /^fb-/);

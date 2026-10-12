@@ -74,12 +74,13 @@ Each mode (`read`, `create` or `edit`) takes one requirement. A requirement is o
 4. **Write refusal.** A request naming a field of a group the caller may not create or edit is refused (`FIELD_GROUP_FORBIDDEN`) before anything is read.
 5. **No equality oracle.** A caller who cannot read a group never gets an answer decided by that group's stored values:
    - A create whose content-addressed replay would match the stored terms is answered `ITEM_ALREADY_EXISTS`.
-   - A stated value of an unreadable group is applied unconditionally. The version bumps, and the answer is never `NO_CHANGES` or a replay.
+   - A stated value of an unreadable group is applied unconditionally. The version bumps, and the answer is never `NO_CHANGES` or a replay. Because the value was not compared, the audit reason says it was **stated**, not that it changed: for example `part-supplier terms stated without read access: cost` (review N3).
+   - An answer never names another record the caller could not read. For example, setting the preferred supplier returns `clearedItemId: null` to a caller without the record read key (review N2).
    - A blind change to a range must state both ends, so no refusal depends on a stored bound the caller cannot see.
 6. **Minimal echo.** A caller who may write a record but cannot read it gets `{ itemId, status, version }` and nothing else (security review N1). An example is a caller holding `changeStatus` alone.
 7. **Audit-safe sensitive values.** Audit rows hold sensitive values as `{ withheld: true }`, and the audit reason names the changed sensitive fields only. The audit trail stays append-only: the `audit_events_append_only` trigger is not touched, and a test proves that an UPDATE or DELETE is still refused.
 8. **Standing exclusions for sensitive groups.** A sensitive group's keys go in `PROTECTED_ADMINISTRATOR_EXCLUSIONS`. Protected Administrator standing implies every READ, so without the exclusion it would reach the sensitive read. The record read stays implied: operational read is part of standing (#223).
-9. **Scoped or conditional grants are not effective (fail closed).** A key reached only through a scoped assignment or a conditioned grant is not in the flat capability Set (`conditionallyHeld` only). A field group therefore never treats it as held.
+9. **Scoped or conditional grants are not effective (fail closed).** A key reached only through a scoped assignment is not in the flat capability Set (`conditionallyHeld` only). A key granted under a **grant condition** (`eos_policy.capability_grant_conditions`) is removed by `capabilitiesWithoutUnevaluatedConditions` before any field-group decision, the same rule the Cycle Count routes apply. An adopting route resolves its actor that way. The supplier-terms routes use their own actor for this, and leave the shared Reorder actor unchanged (review N1). A field group therefore never treats either kind of key as held.
 10. **No title inference.** No Role key, persona, title or Job Role is read anywhere in the evaluator or in an adopting command. The Owner direction says: do not infer cost access from Owner, Administrator, General Manager, Parts Manager or Warehouse Manager titles. A static test scans the command for those words.
 11. **No revival of `role_field_permission_overrides`.** A group's authority is a capability, and nothing else.
 
@@ -91,7 +92,7 @@ Each mode (`read`, `create` or `edit`) takes one requirement. A requirement is o
 
 ## 4. Accepted disclosure: version-change metadata
 
-Optimistic concurrency bumps the record's `version` on every applied write, including a write that changed only a restricted field. The audit reason also names the restricted fields that changed (for example `part-supplier terms updated: cost, leadTimeDays`).
+Optimistic concurrency bumps the record's `version` on every applied write, including a write that changed only a restricted field. The audit reason also names the restricted fields that were written (for example `part-supplier terms updated: cost, leadTimeDays`, or `stated without read access: cost` for a writer who cannot read them).
 
 As a result, a caller who can read the record but not the restricted group can observe that a restricted field changed: the version moved, or the audit names the field. They **never** observe the field's value.
 
@@ -102,7 +103,7 @@ Per the Owner direction of 2026-10-12, this is **recorded as accepted**. The met
 1. **Register the keys** in a migration: one per record action and one per group mode, on the Object, with clear `display_label`s.
    - Grant nothing in the migration.
    - Write a guarded Down that refuses to reverse while a grant or an Administration decision names one of the keys.
-   - Keep the migration terse. node-pg-migrate echoes every migration file into the PG test harnesses' output buffer.
+   - Keep the migration terse. node-pg-migrate echoes every migration file into the PG test harnesses' output buffer. At this PR the full chain prints 1,047,428 bytes against the 1,048,576-byte (1 MiB) `spawnSync` default, which leaves 1,148 bytes. The canonical fix is Native Identity PR #2066, which raises `maxBuffer` at every harness call site (#2069 was closed as its duplicate). **#2066 must merge before the next migration lands.**
 2. **Define the groups** with `defineFieldGroups`.
    - Include the record doorway.
    - Repeat the record read key in every group's `read`.
@@ -141,6 +142,8 @@ Per the Owner direction of 2026-10-12, this is **recorded as accepted**. The met
 | `inventory.catalog.cost.read` | `readCost` | READ | Read supplier cost & contract terms | **excluded** |
 | `inventory.catalog.cost.create` | `createCost` | CREATE | Set supplier cost & contract terms on new terms | **excluded** |
 | `inventory.catalog.cost.edit` | `editCost` | EDIT | Change supplier cost & contract terms | **excluded** |
+
+`inventory.catalog.cost.read` is effective **only together with** `inventory.supplierTerms.read` and `inventory.catalog.read` (review N5). Granted alone it shows nothing, and the PG suite proves this (r1). Administration shows its label as written above. Whoever grants it should grant the other two as well, as both proposals in 6.1 do.
 
 | Group | Fields | read | create | edit |
 |---|---|---|---|---|
