@@ -1,0 +1,107 @@
+name: Firebase Capability Equivalence Gate
+
+# Firebase retirement is a business-functionality migration, not code deletion. This gate refuses the
+# removal of any export from functions/src/index.ts unless docs/architecture/firebase-capability-
+# equivalence.json carries a retirement-complete record for it: REPLACED or SUPERSEDED with gates A-E
+# proven by live and executable evidence, or a GAP the Owner explicitly accepted in docs/DECISIONS.md.
+# It also re-checks every recorded citation, so a renamed or deleted test makes its record STALE.
+#
+# UNFILTERED ON PURPOSE. The records cite tests, sources and UAT documents all over the repository; a
+# paths filter would let a PR delete or rename the cited proof without this gate ever running. The
+# job is a few seconds of Node with no dependencies.
+#
+# See docs/architecture/firebase-capability-equivalence-gate.md.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  capability-equivalence:
+    name: No business capability disappears with its Firebase implementation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Full history: the previous-commit step must `git show` the index and the manifest as they were at
+      # the PR base sha (pull_request) or the pre-push commit (push to main).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Gate contract tests
+        run: node --test scripts/firebaseCapabilityEquivalenceGuard.test.mjs
+
+      # Same resolution and fail-closed rules as firebase-exit-guard.yml: an empty output means no
+      # previous commit is expected; any sha that IS expected must resolve or the job fails.
+      - name: Determine previous accepted commit
+        id: previous-commit
+        shell: bash
+        run: |
+          set -eu
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          EVENT="${{ github.event_name }}"
+
+          if [ "$EVENT" = "pull_request" ]; then
+            SHA="${{ github.event.pull_request.base.sha }}"
+            if [ -z "$SHA" ] || ! git cat-file -e "${SHA}^{commit}" 2>/dev/null; then
+              echo "::error::Capability equivalence gate: pull_request base sha '$SHA' could not be resolved. Failing closed." >&2
+              exit 1
+            fi
+            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+          elif [ "$EVENT" = "push" ]; then
+            SHA="${{ github.event.before }}"
+            if [ "$SHA" = "$ZERO_SHA" ]; then
+              echo "sha=" >> "$GITHUB_OUTPUT"
+            elif [ -z "$SHA" ] || ! git cat-file -e "${SHA}^{commit}" 2>/dev/null; then
+              echo "::error::Capability equivalence gate: push 'before' sha '$SHA' could not be resolved. Failing closed." >&2
+              exit 1
+            else
+              echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+            fi
+
+          else
+            if PARENT_SHA="$(git rev-parse --verify -q HEAD^)"; then
+              echo "sha=$PARENT_SHA" >> "$GITHUB_OUTPUT"
+            elif git rev-list --max-parents=0 HEAD | grep -qx "$(git rev-parse HEAD)"; then
+              echo "sha=" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::Capability equivalence gate: workflow_dispatch expected parent of HEAD could not be resolved. Failing closed." >&2
+              exit 1
+            fi
+          fi
+
+      # The previous index ALWAYS exists at a resolvable commit, so it is always materialized: the set of
+      # removed exports is never skipped. The previous manifest is optional only because commits before
+      # this gate do not have one.
+      - name: Run the capability equivalence gate
+        shell: bash
+        env:
+          PREVIOUS_SHA: ${{ steps.previous-commit.outputs.sha }}
+        run: |
+          set -eu
+          ARGS=(--report)
+          if [ -n "$PREVIOUS_SHA" ]; then
+            git show "${PREVIOUS_SHA}:functions/src/index.ts" > "$RUNNER_TEMP/previous-index.ts"
+            ARGS+=(--previous-index "$RUNNER_TEMP/previous-index.ts")
+            if git cat-file -e "${PREVIOUS_SHA}:docs/architecture/firebase-capability-equivalence.json" 2>/dev/null; then
+              git show "${PREVIOUS_SHA}:docs/architecture/firebase-capability-equivalence.json" > "$RUNNER_TEMP/previous-manifest.json"
+              ARGS+=(--previous-manifest "$RUNNER_TEMP/previous-manifest.json")
+            fi
+          fi
+          node scripts/firebaseCapabilityEquivalenceGuard.mjs "${ARGS[@]}"
