@@ -338,7 +338,7 @@ test("the last path to a governing Administration capability is never removed", 
   await commands.grantObjectActionToPrincipal(repo, admin, { objectKey: "rolesPermissions", actionKey: "assignRole", principalId: secondId, reason: "governed direct exception (fixture)" });
   const secondActor = { tenantId, uid: secondId, heldRoleKeys: [] };
   // The last admin ASSIGNMENT is refused by the (older) protected-Role guard, which still stands -- for another actor.
-  await assert.rejects(() => commands.revokeRole(repo, secondActor, { assignmentId: boot.assignmentId }), /last active administering assignment/);
+  await assert.rejects(() => commands.revokeRole(repo, secondActor, { assignmentId: boot.assignmentId }), /LAST_ADMINISTERING_ASSIGNMENT: this is the last active administering assignment/);
   await commands.revokeObjectActionFromRole(repo, admin,
     { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", roleKey: "admin", reason: REASON });
   // The protected Administrator still administers by STANDING (DECISIONS #223) -- but the anti-lockout count reads

@@ -723,6 +723,8 @@ on:
       # protected Owner; per-role last-Owner invariant; R1 in anti-lockout (test:adminPolicyPostgres).
       - "functions/test/protectedOwnerInvariantPostgres.test.mjs"
       - "functions/test/support/protectedOwnerFixture.mjs"
+      # OWNER RULING A UNDER THE GOVERNANCE LOCK (finding F-1): the assignRole/grantObjectActionToRole race (test:adminPolicyPostgres).
+      - "functions/test/ownerExclusionLockPostgres.test.mjs"
       # FIRST-OWNER BOOTSTRAP (ruling 2026-09-27, option A): the bootstrap-only establishment of a tenant's first Owner,
       # and the Owner-establishing scripts that now call it (test:adminPolicyPostgres).
       - "functions/test/firstOwnerBootstrapPostgres.test.mjs"
@@ -1299,6 +1301,8 @@ on:
       # protected Owner; per-role last-Owner invariant; R1 in anti-lockout (test:adminPolicyPostgres).
       - "functions/test/protectedOwnerInvariantPostgres.test.mjs"
       - "functions/test/support/protectedOwnerFixture.mjs"
+      # OWNER RULING A UNDER THE GOVERNANCE LOCK (finding F-1): the assignRole/grantObjectActionToRole race (test:adminPolicyPostgres).
+      - "functions/test/ownerExclusionLockPostgres.test.mjs"
       # FIRST-OWNER BOOTSTRAP (ruling 2026-09-27, option A): the bootstrap-only establishment of a tenant's first Owner,
       # and the Owner-establishing scripts that now call it (test:adminPolicyPostgres).
       - "functions/test/firstOwnerBootstrapPostgres.test.mjs"
