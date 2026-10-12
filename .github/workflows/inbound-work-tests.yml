@@ -48,6 +48,8 @@ on:
       - "field-ops-app-vite/test/emailIntakeSourceEos.test.mjs"
       - "field-ops-app-vite/test/selfSchedulingApiClient.test.mjs"
       - "field-ops-app-vite/test/customerSchedulingPage.test.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/CustomerSchedulingLinkPanel.jsx"
+      - "field-ops-app-vite/test/customerSchedulingLinkPanelLifecycle.test.jsx"
       - "field-ops-app-vite/src/modules/service/InboundWorkWorkspace.jsx"
       - "field-ops-app-vite/src/modules/administration/AdminEmailCommunications.jsx"
       - "field-ops-app-vite/src/navigation/navConfig.js"
@@ -80,6 +82,8 @@ on:
       - "field-ops-app-vite/test/emailIntakeSourceEos.test.mjs"
       - "field-ops-app-vite/test/selfSchedulingApiClient.test.mjs"
       - "field-ops-app-vite/test/customerSchedulingPage.test.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/CustomerSchedulingLinkPanel.jsx"
+      - "field-ops-app-vite/test/customerSchedulingLinkPanelLifecycle.test.jsx"
       - "field-ops-app-vite/src/modules/service/InboundWorkWorkspace.jsx"
       - "field-ops-app-vite/src/modules/administration/AdminEmailCommunications.jsx"
       - "field-ops-app-vite/src/navigation/navConfig.js"
@@ -189,6 +193,12 @@ jobs:
 
       - name: Customer scheduling page (jsdom)
         run: npx vitest run test/customerSchedulingPage.test.jsx
+        working-directory: field-ops-app-vite
+
+      # The office-side link panel applies only the CURRENT sessions read: never after unmount (a state update on a
+      # torn-down tree), never a late answer for a previous Work Order over the one shown.
+      - name: Customer scheduling link panel lifecycle (jsdom)
+        run: npx vitest run test/customerSchedulingLinkPanelLifecycle.test.jsx
         working-directory: field-ops-app-vite
 
   # THE FIRESTORE EMULATOR JOB IS RETIRED (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30): the Firebase intake,

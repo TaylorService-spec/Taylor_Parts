@@ -8,7 +8,9 @@
 
 build/
 dist/
-node_modules/
+# No trailing slash: `node_modules/` matches only a DIRECTORY, so a node_modules SYMLINK (a file) slipped past it
+# and was committed (f32bc0a1). `node_modules` matches the directory and the symlink.
+node_modules
 .vscode/
 .firebase/
 
