@@ -34,7 +34,7 @@ test("both Operations lists are closed, every entry is routed, and they name exa
       "listPurchaseOrderSupplierOptions",
       // DECISIONS #196 (2026-10-02): the CRM vendor organizations a new supplier may be created for.
       "listSupplierOrganizationOptions",
-      // SUP-1: one Part's supplier terms + the ACTIVE suppliers without terms for it (inventory.catalog.manage).
+      // SUP-1: one Part's supplier terms + the ACTIVE suppliers without terms for it (inventory.supplierTerms.read).
       "listPartSupplierItems",
       // Inventory / Warehouse completion (2026-10-01): the governed warehouse / location / transfer-order reads the cut-over
       // employee screens need (no quantity: stock stays readInventoryOnHand).

@@ -15,9 +15,13 @@
 // per-Role field overrides (role_field_permission_overrides) are NOT revived -- a group's authority is a capability, so it
 // is granted, revoked and audited exactly as every other capability is.
 //
+// RECORD DOORWAY. A definition may name its RECORD actions (`record`: read / create / edit / changeStatus ... -> one
+// registered key each). recordAccessFor reports them; the command enforces each before any field group is consulted,
+// and a group's own requirement normally repeats the doorway key (no field is readable without the record read).
+//
 // SEMANTICS.
 //   requirement null       "governed by the record's own gate": the command already checked the record-level capability
-//                           (e.g. inventory.catalog.manage) before it got here, so the group adds nothing.
+//                           before it got here, so the group adds nothing.
 //   requirement "k"        the caller must hold k.
 //   requirement ["a","b"]  the caller must hold EVERY listed key (all-of). Used where an Owner ruling composes two
 //                           authorities (r1: the cost projection requires inventory.catalog.read AND .cost.read).
@@ -43,6 +47,8 @@ export interface FieldGroupDefinition {
 
 export interface ObjectFieldGroups {
   readonly objectKey: string;
+  /** The record-level actions (the doorway) and the ONE registered key each needs. Optional. */
+  readonly record?: Readonly<Record<string, string>>;
   readonly groups: readonly FieldGroupDefinition[];
 }
 
@@ -77,6 +83,9 @@ export function defineFieldGroups(def: ObjectFieldGroups): ObjectFieldGroups {
   const seenGroups = new Set<string>();
   const seenFields = new Map<string, string>();
   if (typeof def.objectKey !== "string" || def.objectKey === "") throw new Error("governedFieldGroups: objectKey is required");
+  for (const [action, key] of Object.entries(def.record ?? {})) {
+    if (typeof key !== "string" || key === "") throw new Error(`governedFieldGroups: ${def.objectKey} record action ${action} must name a capability key`);
+  }
   for (const g of def.groups) {
     if (seenGroups.has(g.key)) throw new Error(`governedFieldGroups: ${def.objectKey} declares group ${g.key} twice`);
     seenGroups.add(g.key);
@@ -96,6 +105,7 @@ export function defineFieldGroups(def: ObjectFieldGroups): ObjectFieldGroups {
   }
   return Object.freeze({
     objectKey: def.objectKey,
+    ...(def.record ? { record: Object.freeze({ ...def.record }) } : {}),
     groups: Object.freeze(def.groups.map((g) => Object.freeze({ ...g, fields: Object.freeze([...g.fields]) }))),
   });
 }
@@ -116,6 +126,18 @@ export function fieldAccessFor(def: ObjectFieldGroups, caps: ReadonlySet<string>
     out[g.key] = Object.freeze({ read: holds(caps, g.read), create: holds(caps, g.create), edit: holds(caps, g.edit) });
   }
   return Object.freeze(out);
+}
+
+/** The caller's decision for every RECORD action the definition names (fail closed: an unnamed action is absent). */
+export function recordAccessFor(def: ObjectFieldGroups, caps: ReadonlySet<string>): Readonly<Record<string, boolean>> {
+  const out: Record<string, boolean> = {};
+  for (const [action, key] of Object.entries(def.record ?? {})) out[action] = caps instanceof Set && caps.has(key);
+  return Object.freeze(out);
+}
+
+/** Can the caller READ every group the definition declares? (False means some answer must not depend on stored values.) */
+export function canReadAllGroups(def: ObjectFieldGroups, caps: ReadonlySet<string>): boolean {
+  return def.groups.every((g) => holds(caps, g.read));
 }
 
 /**

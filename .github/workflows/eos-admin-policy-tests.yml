@@ -300,6 +300,8 @@ on:
       - "functions/test/partSupplierTermsPostgres.test.mjs"
       - "functions/test/partSupplierTermsEmployeeContractPostgres.test.mjs"
       - "functions/test/support/partSupplierTermsFixture.mjs"
+      # DECISIONS #230: the Administration Objects matrix for supplierCatalogItem (seven actions, standing, zero grants).
+      - "functions/test/supplierTermsObjectMatrixPostgres.test.mjs"
       # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
       - "functions/test/governedFieldGroups.test.mjs"
       - "field-ops-app-vite/test/fixtures/partSupplierTermsContract.json"
@@ -1016,6 +1018,8 @@ on:
       - "functions/test/partSupplierTermsPostgres.test.mjs"
       - "functions/test/partSupplierTermsEmployeeContractPostgres.test.mjs"
       - "functions/test/support/partSupplierTermsFixture.mjs"
+      # DECISIONS #230: the Administration Objects matrix for supplierCatalogItem (seven actions, standing, zero grants).
+      - "functions/test/supplierTermsObjectMatrixPostgres.test.mjs"
       # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
       - "functions/test/governedFieldGroups.test.mjs"
       - "field-ops-app-vite/test/fixtures/partSupplierTermsContract.json"

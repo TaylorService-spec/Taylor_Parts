@@ -36,16 +36,17 @@ test("the Suppliers & Terms employee workflows answer the contract the section r
   const screen = await import(pathToFileURL(resolve(REPO_ROOT, "field-ops-app-vite/src/domain/partSupplierTerms.js")).href);
   const { makeActor, part, supplier, call } = await partSupplierTermsDatabase(t, { urlBase: URL_BASE, prefix: "sup1_contract", tenants: ["t1"] });
 
-  // The holders the business has -- each a real Role holding registered capabilities (the COMMERCIAL keys are governed
-  // field groups, granted through Administration like every other capability):
-  //   buyer          catalog.read + manage + cost.read / .create / .edit   (procurement: sees and sets cost)
-  //   manager        catalog.read + manage                                  (maintains terms; cost withheld)
-  //   administrator  catalog.read + manage + activate                       (lifecycle; cost withheld)
-  //   reader         catalog.read                                           (no terms at all)
+  // The holders -- each a real Role holding registered capabilities (the narrow supplier-terms record keys and the
+  // COMMERCIAL field-group keys, DECISIONS #230, granted through Administration like every other capability):
+  //   buyer          the PROPOSED Purchasing bundle: supplierTerms.* + catalog.read + cost.*   (sees and sets cost)
+  //   manager        supplierTerms.read / .create / .edit + catalog.read                       (maintains terms; cost withheld)
+  //   administrator  supplierTerms.read / .edit / .changeStatus + catalog.read                 (lifecycle; cost withheld)
+  //   reader         catalog.read                                                              (no terms at all)
+  const TERMS = (...actions) => actions.map((a) => `inventory.supplierTerms.${a}`);
   const COST = ["inventory.catalog.cost.read", "inventory.catalog.cost.create", "inventory.catalog.cost.edit"];
-  const buyer = await makeActor("t1", "fb-buyer", ["inventory.catalog.read", "inventory.catalog.manage", ...COST]);
-  const manager = await makeActor("t1", "fb-parts-manager", ["inventory.catalog.read", "inventory.catalog.manage"]);
-  const administrator = await makeActor("t1", "fb-catalog-admin", ["inventory.catalog.read", "inventory.catalog.manage", "inventory.catalog.activate"]);
+  const buyer = await makeActor("t1", "fb-buyer", [...TERMS("read", "create", "edit", "changeStatus"), "inventory.catalog.read", ...COST]);
+  const manager = await makeActor("t1", "fb-parts-manager", [...TERMS("read", "create", "edit"), "inventory.catalog.read"]);
+  const administrator = await makeActor("t1", "fb-catalog-admin", [...TERMS("read", "edit", "changeStatus"), "inventory.catalog.read"]);
   const reader = await makeActor("t1", "fb-reader", ["inventory.catalog.read"]);
   const principals = [[buyer.principalId, "buyer"], [manager.principalId, "manager"], [administrator.principalId, "administrator"], [reader.principalId, "reader"]];
 
@@ -83,7 +84,7 @@ test("the Suppliers & Terms employee workflows answer the contract the section r
   s.listAfterPreferred = await list(buyer);
   const coldV2 = s.listAfterPreferred.body.result.items.find((i) => i.supplierId === "sup-cold");
   const statusInput = { itemId: coldV2.itemId, expectedVersion: coldV2.version, status: "INACTIVE" };
-  s.statusDenied = await call(buyer, "setPartSupplierItemStatus", statusInput);
+  s.statusDenied = await call(manager, "setPartSupplierItemStatus", statusInput);
   s.listAfterPreferredAdministrator = await list(administrator);
   s.statusApplied = await call(administrator, "setPartSupplierItemStatus", statusInput);
   s.listMixedAdministrator = await list(administrator);
@@ -117,6 +118,10 @@ test("the Suppliers & Terms employee workflows answer the contract the section r
     assert.deepEqual(scenarios.createCold.body.result.outcome, "created");
     assert.deepEqual(scenarios.setPreferredApplied.body.result.outcome, "preferred");
     assert.deepEqual(code(scenarios.statusDenied), [403, "FORBIDDEN"]);
+    // RECORD ACCESS: the screen offers exactly what the server says each holder may do.
+    assert.deepEqual(scenarios.listAfterCreate.body.result.recordAccess, { read: true, create: true, edit: true, changeStatus: true });
+    assert.deepEqual(scenarios.listWithheld.body.result.recordAccess, { read: true, create: true, edit: true, changeStatus: false });
+    assert.deepEqual(scenarios.listMixedAdministrator.body.result.recordAccess, { read: true, create: false, edit: true, changeStatus: true });
     assert.deepEqual([scenarios.statusApplied.body.result.outcome, scenarios.statusApplied.body.result.item.preferred], ["deactivated", false]);
     assert.deepEqual(scenarios.listMixed.body.result.items.map((i) => [i.supplierName, i.status]),
       [["Arctic Parts Supply", "ACTIVE"], ["ColdChain Components", "INACTIVE"]], "INACTIVE terms are listed, not hidden");

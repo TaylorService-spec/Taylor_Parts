@@ -45,16 +45,21 @@ export async function partSupplierTermsDatabase(t, { urlBase, prefix, tenants = 
   };
   const fixture = (tenantId) => ({ tenantId, uid: "uid-fixture-admin" });
 
-  /** A signed-in person: a principal, (optionally) a tenant membership, and a Role holding exactly `keys`. */
+  /**
+   * A signed-in person: a principal, (optionally) a tenant membership, and Roles holding exactly `keys`. `keys` is one
+   * list (one Role) or a list of lists (one Role EACH, all assigned to the person -- the additive multi-Role union).
+   */
   const makeActor = async (tenantId, subject, keys, { member = true } = {}) => {
     const principalId = await repo.transact(fixture(tenantId), async (tx) => {
       const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
       if (member) await tx.createTenantMembership(p.id);
       return p.id;
     });
-    if (keys.length) {
-      const role = await repo.transact(fixture(tenantId), (tx) => tx.createRole({ key: `role-${subject}`, name: subject, description: null, origin: "CUSTOM", protected: false }));
-      for (const key of keys) {
+    const roles = keys.length && Array.isArray(keys[0]) ? keys : keys.length ? [keys] : [];
+    for (const [n, roleKeys] of roles.entries()) {
+      const roleKey = roles.length === 1 ? `role-${subject}` : `role-${subject}-${n + 1}`;
+      const role = await repo.transact(fixture(tenantId), (tx) => tx.createRole({ key: roleKey, name: roleKey, description: null, origin: "CUSTOM", protected: false }));
+      for (const key of roleKeys) {
         const r = await q(`INSERT INTO eos_policy.role_capabilities (id, tenant_id, role_id, capability_id, granted_by, created_by, updated_by)
                            SELECT $1, $2, $3, c.id, 'fixture', 'fixture', 'fixture' FROM eos_policy.capabilities c WHERE c.key = $4`,
           [`rc_${role.id}_${key}`, tenantId, role.id, key]);

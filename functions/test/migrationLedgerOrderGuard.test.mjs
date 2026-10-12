@@ -203,7 +203,7 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 91 -> 92: Governed configuration + sales pricing (2026-10-02, DECISIONS #203): 1764500000000 -- operating-company business time zone + resolver, finance.configuration.manage (granted to NO Role), customer discount, trade-in items, package composition; untouched handoffs follow the active destination.
 // 92 -> 93: 1764510000000 -- Finance Closure (#206): settlements / applications / reconciliation, obligation handoffs, intercompany relief, service-provider authorization, late cost evidence; four settlement capabilities granted to the five Finance-execution Roles.
 // 93 -> 94: 1764520000000 -- Rental (#207): the eos_rental domain, rental Work Orders, the RENTAL billing package source; six rental capabilities granted to their analog Roles.
-// 94 -> 95: 1764530000000 -- SUP-1 governed field groups: inventory.catalog.cost.read / .create / .edit on supplierCatalogItem (the COMMERCIAL field group of Part Supplier Terms), granted to NO Role; Protected Administrator standing excludes all three (Owner decision pending).
+// 94 -> 95: 1764530000000 -- SUP-1 Part Supplier Terms (DECISIONS #230): inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (the COMMERCIAL field group) on supplierCatalogItem, granted to NO Role; Protected Administrator standing excludes the three cost keys (Owner ruled 2026-10-12).
 const RUNNABLE_MIGRATION_COUNT = 95;
 const TRACKED_MIGRATION_COUNT = 96; // the 95 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
@@ -251,7 +251,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764500000000_governed-config-and-sales-pricing",
   "1764510000000_finance-closure",
   "1764520000000_rental",
-  "1764530000000_supplier-catalog-commercial-field-group",
+  "1764530000000_supplier-terms-capabilities",
 ]);
 
 const repoMigrations = () =>

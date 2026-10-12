@@ -22,6 +22,18 @@ export function groupAccess(fieldAccess, group) {
   const g = fieldAccess && typeof fieldAccess === "object" ? fieldAccess[group] : null;
   return { read: g?.read === true, create: g?.create === true, edit: g?.edit === true };
 }
+/**
+ * The server's RECORD-level decision (`recordAccess` on the list answer: read / create / edit / changeStatus, from the
+ * narrow inventory.supplierTerms.* keys), fail closed: an absent answer is "no". The section hides Add / Edit / Set
+ * Preferred / Deactivate from an employee the server says may not do them.
+ */
+export function recordAccessOf(recordAccess) {
+  const r = recordAccess && typeof recordAccess === "object" ? recordAccess : {};
+  return { read: r.read === true, create: r.create === true, edit: r.edit === true, changeStatus: r.changeStatus === true };
+}
+/** Adding terms needs the record's create AND the COMMERCIAL create (cost and currency are mandatory). */
+export const canAddTerms = (fieldAccess, recordAccess) => recordAccessOf(recordAccess).create && groupAccess(fieldAccess, COMMERCIAL_GROUP).create;
+
 /** Did the server withhold this group from this item? */
 export const isWithheld = (item, group) => Array.isArray(item?.withheld) && item.withheld.some((w) => w?.group === group);
 

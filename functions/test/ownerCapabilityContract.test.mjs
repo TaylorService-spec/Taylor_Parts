@@ -352,8 +352,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 115 -> 118: admin.systemConfiguration.manage, sales.discountAuthority.manage, salesAgreement.tradeIn.approve (#204, 1764500000000).
   // 118 -> 122: finance.settlement.record / .apply / .correct, finance.reconciliation.record (#206, 1764510000000).
   // 122 -> 128: the six rental capabilities (#207, 1764520000000).
-  // 128 -> 131: inventory.catalog.cost.read / .create / .edit (SUP-1 COMMERCIAL field group, 1764530000000), granted to NO Role.
-  assert.equal(VOCABULARY.size, 131);
+  // 128 -> 135: inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (SUP-1, 1764530000000), granted to NO Role.
+  assert.equal(VOCABULARY.size, 135);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

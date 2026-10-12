@@ -33,6 +33,12 @@
               "edit": true
             }
           },
+          "recordAccess": {
+            "read": true,
+            "create": true,
+            "edit": true,
+            "changeStatus": true
+          },
           "items": [],
           "supplierOptions": [
             {
@@ -222,6 +228,12 @@
               "edit": true
             }
           },
+          "recordAccess": {
+            "read": true,
+            "create": true,
+            "edit": true,
+            "changeStatus": true
+          },
           "items": [
             {
               "itemId": "PRT-SUP-1__sup-arctic",
@@ -355,6 +367,12 @@
               "create": true,
               "edit": true
             }
+          },
+          "recordAccess": {
+            "read": true,
+            "create": true,
+            "edit": true,
+            "changeStatus": true
           },
           "items": [
             {
@@ -490,6 +508,12 @@
               "edit": true
             }
           },
+          "recordAccess": {
+            "read": true,
+            "create": true,
+            "edit": true,
+            "changeStatus": true
+          },
           "items": [
             {
               "itemId": "PRT-SUP-1__sup-arctic",
@@ -618,6 +642,12 @@
               "edit": true
             }
           },
+          "recordAccess": {
+            "read": true,
+            "create": true,
+            "edit": true,
+            "changeStatus": true
+          },
           "items": [
             {
               "itemId": "PRT-SUP-1__sup-cold",
@@ -687,7 +717,7 @@
         "ok": false,
         "operation": "setPartSupplierItemStatus",
         "code": "FORBIDDEN",
-        "message": "part-supplier terms require inventory.catalog.activate"
+        "message": "part-supplier terms require inventory.supplierTerms.changeStatus"
       }
     },
     "listAfterPreferredAdministrator": {
@@ -707,12 +737,12 @@
           "fieldAccess": {
             "RELATIONSHIP": {
               "read": true,
-              "create": true,
+              "create": false,
               "edit": true
             },
             "OPERATIONAL": {
               "read": true,
-              "create": true,
+              "create": false,
               "edit": true
             },
             "COMMERCIAL": {
@@ -720,6 +750,12 @@
               "create": false,
               "edit": false
             }
+          },
+          "recordAccess": {
+            "read": true,
+            "create": false,
+            "edit": true,
+            "changeStatus": true
           },
           "items": [
             {
@@ -749,6 +785,7 @@
                     "contractEnd"
                   ],
                   "requires": [
+                    "inventory.supplierTerms.read",
                     "inventory.catalog.read",
                     "inventory.catalog.cost.read"
                   ]
@@ -785,6 +822,7 @@
                     "contractEnd"
                   ],
                   "requires": [
+                    "inventory.supplierTerms.read",
                     "inventory.catalog.read",
                     "inventory.catalog.cost.read"
                   ]
@@ -794,8 +832,9 @@
           ],
           "supplierOptions": null,
           "supplierOptionsWithheld": {
-            "reason": "creating supplier terms sets cost & contract terms",
+            "reason": "adding supplier terms needs the add permission and sets cost & contract terms",
             "requires": [
+              "inventory.supplierTerms.create",
               "inventory.catalog.cost.create"
             ]
           }
@@ -844,6 +883,7 @@
                   "contractEnd"
                 ],
                 "requires": [
+                  "inventory.supplierTerms.read",
                   "inventory.catalog.read",
                   "inventory.catalog.cost.read"
                 ]
@@ -870,12 +910,12 @@
           "fieldAccess": {
             "RELATIONSHIP": {
               "read": true,
-              "create": true,
+              "create": false,
               "edit": true
             },
             "OPERATIONAL": {
               "read": true,
-              "create": true,
+              "create": false,
               "edit": true
             },
             "COMMERCIAL": {
@@ -883,6 +923,12 @@
               "create": false,
               "edit": false
             }
+          },
+          "recordAccess": {
+            "read": true,
+            "create": false,
+            "edit": true,
+            "changeStatus": true
           },
           "items": [
             {
@@ -915,6 +961,7 @@
                     "contractEnd"
                   ],
                   "requires": [
+                    "inventory.supplierTerms.read",
                     "inventory.catalog.read",
                     "inventory.catalog.cost.read"
                   ]
@@ -948,6 +995,7 @@
                     "contractEnd"
                   ],
                   "requires": [
+                    "inventory.supplierTerms.read",
                     "inventory.catalog.read",
                     "inventory.catalog.cost.read"
                   ]
@@ -957,8 +1005,9 @@
           ],
           "supplierOptions": null,
           "supplierOptionsWithheld": {
-            "reason": "creating supplier terms sets cost & contract terms",
+            "reason": "adding supplier terms needs the add permission and sets cost & contract terms",
             "requires": [
+              "inventory.supplierTerms.create",
               "inventory.catalog.cost.create"
             ]
           }
@@ -995,6 +1044,12 @@
               "create": true,
               "edit": true
             }
+          },
+          "recordAccess": {
+            "read": true,
+            "create": true,
+            "edit": true,
+            "changeStatus": true
           },
           "items": [
             {
@@ -1082,6 +1137,12 @@
               "edit": false
             }
           },
+          "recordAccess": {
+            "read": true,
+            "create": true,
+            "edit": true,
+            "changeStatus": false
+          },
           "items": [
             {
               "itemId": "PRT-SUP-1__sup-arctic",
@@ -1113,6 +1174,7 @@
                     "contractEnd"
                   ],
                   "requires": [
+                    "inventory.supplierTerms.read",
                     "inventory.catalog.read",
                     "inventory.catalog.cost.read"
                   ]
@@ -1146,6 +1208,7 @@
                     "contractEnd"
                   ],
                   "requires": [
+                    "inventory.supplierTerms.read",
                     "inventory.catalog.read",
                     "inventory.catalog.cost.read"
                   ]
@@ -1155,8 +1218,9 @@
           ],
           "supplierOptions": null,
           "supplierOptionsWithheld": {
-            "reason": "creating supplier terms sets cost & contract terms",
+            "reason": "adding supplier terms needs the add permission and sets cost & contract terms",
             "requires": [
+              "inventory.supplierTerms.create",
               "inventory.catalog.cost.create"
             ]
           }
@@ -1210,6 +1274,7 @@
                   "contractEnd"
                 ],
                 "requires": [
+                  "inventory.supplierTerms.read",
                   "inventory.catalog.read",
                   "inventory.catalog.cost.read"
                 ]
@@ -1250,6 +1315,12 @@
               "edit": false
             }
           },
+          "recordAccess": {
+            "read": true,
+            "create": true,
+            "edit": true,
+            "changeStatus": false
+          },
           "items": [
             {
               "itemId": "PRT-SUP-1__sup-arctic",
@@ -1281,6 +1352,7 @@
                     "contractEnd"
                   ],
                   "requires": [
+                    "inventory.supplierTerms.read",
                     "inventory.catalog.read",
                     "inventory.catalog.cost.read"
                   ]
@@ -1314,6 +1386,7 @@
                     "contractEnd"
                   ],
                   "requires": [
+                    "inventory.supplierTerms.read",
                     "inventory.catalog.read",
                     "inventory.catalog.cost.read"
                   ]
@@ -1323,8 +1396,9 @@
           ],
           "supplierOptions": null,
           "supplierOptionsWithheld": {
-            "reason": "creating supplier terms sets cost & contract terms",
+            "reason": "adding supplier terms needs the add permission and sets cost & contract terms",
             "requires": [
+              "inventory.supplierTerms.create",
               "inventory.catalog.cost.create"
             ]
           }
@@ -1406,7 +1480,7 @@
         "ok": false,
         "operation": "listPartSupplierItems",
         "code": "FORBIDDEN",
-        "message": "part-supplier terms require inventory.catalog.manage"
+        "message": "part-supplier terms require inventory.supplierTerms.read"
       }
     },
     "createDenied": {
@@ -1427,7 +1501,7 @@
         "ok": false,
         "operation": "createPartSupplierItem",
         "code": "FORBIDDEN",
-        "message": "part-supplier terms require inventory.catalog.manage"
+        "message": "part-supplier terms require inventory.supplierTerms.create"
       }
     }
   }

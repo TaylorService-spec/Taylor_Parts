@@ -6020,14 +6020,14 @@
       "key": "supplierCatalogItem",
       "label": "Supplier Catalog Item",
       "labelPlural": "Supplier Catalog Items",
-      "description": "Part Supplier Terms: one supplier's procurement terms for one Part (eos_ops.supplier_catalog_items), maintained through the governed /operations/inventory commands. Cost, currency and the contract window are the COMMERCIAL field group (inventory.catalog.cost.read / .create / .edit). See the file header.",
+      "description": "Part Supplier Terms: one supplier's procurement terms for one Part (eos_ops.supplier_catalog_items), maintained through the governed /operations/inventory commands. Cost, currency and the contract window are the COMMERCIAL field group (inventory.catalog.cost.read / .create / .edit), never reportable. See the file header.",
       "domain": null,
       "source": "REGISTRY_ONLY",
       "supportsDelete": false,
       "capabilitiesByVerb": {
         "C": [],
         "R": [
-          "inventory.catalog.manage"
+          "inventory.supplierTerms.read"
         ],
         "E": [],
         "D": []
@@ -6085,7 +6085,7 @@
           "defaultValue": null,
           "searchable": false,
           "sortable": false,
-          "reportable": true,
+          "reportable": false,
           "sensitivity": "CONFIDENTIAL",
           "referenceTo": null
         },
@@ -6099,7 +6099,7 @@
           "defaultValue": null,
           "searchable": false,
           "sortable": false,
-          "reportable": true,
+          "reportable": false,
           "sensitivity": "CONFIDENTIAL",
           "referenceTo": null
         },
@@ -6183,7 +6183,7 @@
           "defaultValue": null,
           "searchable": false,
           "sortable": false,
-          "reportable": true,
+          "reportable": false,
           "sensitivity": "CONFIDENTIAL",
           "referenceTo": null
         },
@@ -6197,7 +6197,7 @@
           "defaultValue": null,
           "searchable": false,
           "sortable": false,
-          "reportable": true,
+          "reportable": false,
           "sensitivity": "CONFIDENTIAL",
           "referenceTo": null
         },
@@ -6236,7 +6236,7 @@
         {
           "key": "status",
           "label": "Terms Status",
-          "description": "Deactivated, never deleted (inventory.catalog.activate).",
+          "description": "Deactivated, never deleted (inventory.supplierTerms.changeStatus).",
           "dataType": "ENUM",
           "required": false,
           "allowedValues": [

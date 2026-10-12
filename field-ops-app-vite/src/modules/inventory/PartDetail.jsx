@@ -1995,7 +1995,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         {/* ── SUPPLIERS & TERMS · reference tier (remediation SUP-1) ─────────────────────────────
             The procurement terms each supplier offers for this part, and the preferred supplier -- read and maintained
             through the governed PostgreSQL command layer. The section asks the server and renders its answer: a reader
-            without catalog management authority sees a denial, never an empty list. */}
+            without the supplier-terms read permission sees a denial, never an empty list. */}
         <section className="ns-band ns-band--reference">
           <PartSupplierTermsSection partId={resolvedPartId} partNumber={part.internalPartNumber} />
         </section>

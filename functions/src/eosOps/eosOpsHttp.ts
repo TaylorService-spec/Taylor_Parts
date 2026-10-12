@@ -107,7 +107,7 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "listPurchaseOrderSupplierOptions",
   // DECISIONS #196: the CRM vendor organizations a new supplier relationship may be created for, by name.
   "listSupplierOrganizationOptions",
-  // SUP-1: one Part's supplier terms (INACTIVE included) + the ACTIVE suppliers that have none yet -- inventory.catalog.manage.
+  // SUP-1: one Part's supplier terms (INACTIVE included) + the ACTIVE suppliers that have none yet -- inventory.supplierTerms.read.
   "listPartSupplierItems",
   "listInventoryWarehouses",
   "listInventoryLocations",
@@ -152,8 +152,8 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   "updateSupplier",
   "setSupplierStatus",
   // SUP-1: GOVERNED PART-SUPPLIER TERMS (partSupplierTerms.ts) -- the governed writer over eos_ops.supplier_catalog_items that
-  // Firebase retirement F2 left missing. inventory.catalog.manage for create / update / preferred, inventory.catalog.activate
-  // for activate / deactivate: the retired callables' own predicates. Never a delete.
+  // Firebase retirement F2 left missing. inventory.supplierTerms.create / .edit (update, preferred) / .changeStatus -- narrow
+  // record keys, never inventory.catalog.manage / .activate (DECISIONS #230). Never a delete.
   "createPartSupplierItem",
   "updatePartSupplierItem",
   "setPartSupplierItemStatus",

@@ -49,9 +49,9 @@ export const updateSupplierFields = (input, options) => call("updateSupplier", i
 export const setSupplierRelationshipStatus = (input, options) => call("setSupplierStatus", input, options);
 
 // ── GOVERNED PART-SUPPLIER TERMS (remediation SUP-1) -- one Part's supplier terms, read and maintained through the governed
-// command layer (functions/src/eosOps/partSupplierTerms.ts). The server decides authority (inventory.catalog.manage to read,
-// add, edit and set preferred; inventory.catalog.activate to deactivate / reactivate); a refusal throws with its code.
-//   fetchPartSupplierItems(partId)      listPartSupplierItems         { partId, stockingUnit, items (INACTIVE included), supplierOptions }
+// command layer (functions/src/eosOps/partSupplierTerms.ts). The server decides authority (inventory.supplierTerms.read /
+// .create / .edit / .changeStatus + the COMMERCIAL field-group keys); a refusal throws with its code.
+//   fetchPartSupplierItems(partId)      listPartSupplierItems         { partId, stockingUnit, fieldAccess, recordAccess, items, supplierOptions }
 export const fetchPartSupplierItems = (partId, options) => call("listPartSupplierItems", { partId }, options);
 export const createPartSupplierTerms = (input, options) => call("createPartSupplierItem", input, options);
 export const updatePartSupplierTerms = (input, options) => call("updatePartSupplierItem", input, options);

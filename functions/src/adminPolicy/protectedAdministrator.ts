@@ -67,8 +67,9 @@ export const SYSTEM_ADMINISTRATION_OBJECTS: ReadonlySet<string> = new Set([
  *                                Owner field-permission directive (2026-10-11): "Do not infer sensitive access from Owner,
  *                                Administrator, or General Manager titles". .read is a READ and would otherwise be implied;
  *                                .create / .edit are not implied anyway and are listed so the rule cannot drift.
- *                                OWNER DECISION PENDING APPROVAL (SUP-1 governed field groups; the PR stays unmerged until
- *                                the Owner rules on this addition).
+ *                                OWNER RULED 2026-10-12 (DECISIONS #230): "Exclude commercial capabilities from protected
+ *                                Administrator standing." The record key inventory.supplierTerms.read is NOT excluded
+ *                                (operational read, #223); .create / .edit / .changeStatus are not implied (business Object).
  */
 export const PROTECTED_ADMINISTRATOR_EXCLUSIONS: ReadonlySet<string> = new Set([
   "reorder.request.read.queue",

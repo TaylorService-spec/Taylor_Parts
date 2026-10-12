@@ -7976,3 +7976,30 @@ Changing the nine is an Owner decision. Existing grants are retained (O3).
 - The helper ships with mode **OFF**. Activating it, and adopting it in the other domains, are reviewed changes.
 
 **Boundary.** No grant, capability, Role or authority change. Authorization outcomes are unchanged. No Firebase.
+
+## #230 — OWNER: governed field groups are the EOS Core field-permission mechanism (2026-10-12)
+
+(Owner direction of 2026-10-12, on SUP-1 Part Supplier Terms, PR #2064. Mechanism: `docs/architecture/governed-field-groups.md`.)
+
+**Decision (as directed by the Owner).**
+1. **Mechanism.** Governed field groups are the reusable EOS Core field-permission mechanism. `role_field_permission_overrides` and the retired field-override UI are **not** revived.
+2. **Explicit commercial capabilities.** Commercial READ, CREATE and EDIT each use an explicit capability: `inventory.catalog.cost.read`, `.create` and `.edit`.
+3. **Standing exclusion.** Commercial capabilities are excluded from protected Administrator standing (`PROTECTED_ADMINISTRATOR_EXCLUSIONS`).
+4. **No title inference.** Cost access is not inferred from the Owner, Administrator, General Manager, Parts Manager or Warehouse Manager titles.
+5. **Narrow supplier-terms record capability.** Supplier terms get a narrow record capability: `inventory.supplierTerms.read`, `.create`, `.edit` and `.changeStatus` on `supplierCatalogItem`. Broad `inventory.catalog.manage` is not granted merely so that a Purchasing Manager can maintain supplier terms, and supplier terms no longer depend on `inventory.catalog.manage` or `inventory.catalog.activate`.
+6. **Proposed grants.** Grants are **proposed** for Purchasing Manager and Inventory Catalog Administrator (see the doc, §6.1). They are **not executed**. Executing them needs further Owner authorization.
+7. **Objects matrix.** The Administration Objects matrix represents the new capabilities and the field-group actions accurately.
+8. **Audit and disclosure.**
+   - Append-only audit integrity is preserved.
+   - Supplier costs are not exposed through general audit reads, reporting, replay outcomes or response echoes.
+   - The version-change metadata disclosure is documented as accepted: a version bump, or an audit reason naming a changed field, reveals *that* a restricted field changed, never its value.
+
+**Implementation (PR #2064, unmerged).**
+- Migration `1764530000000_supplier-terms-capabilities.sql` registers the seven keys with **zero grants** and a guarded Down.
+- The COMMERCIAL fields are `reportable: false`.
+- The Administrator's standing implies `inventory.supplierTerms.read` only (a READ, #223). Create, edit and changeStatus are not implied.
+
+**Boundary.**
+- No grant, Role or persona change.
+- No nonprod or production data touched.
+- No Firebase.

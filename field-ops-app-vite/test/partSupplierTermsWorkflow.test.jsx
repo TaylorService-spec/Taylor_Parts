@@ -9,7 +9,8 @@
 //
 // GOVERNED FIELD GROUPS: the cost & contract terms (COMMERCIAL) are rendered from the server's `fieldAccess` + `withheld`
 // ONLY. The buyer's answers carry them; the manager's and the administrator's withhold them, and the screen shows the
-// restriction, hides "Add Supplier Terms", disables the COMMERCIAL inputs and never sends a COMMERCIAL key.
+// restriction, hides "Add Supplier Terms", disables the COMMERCIAL inputs and never sends a COMMERCIAL key. RECORD ACCESS
+// (DECISIONS #230): Add / Edit / Set Preferred / Deactivate are offered only when the server's `recordAccess` says so.
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import CONTRACT from "./fixtures/partSupplierTermsContract.json";
@@ -25,7 +26,8 @@ function wire(...names) {
   let next = 0;
   const fetchImpl = vi.fn(async (url, init) => {
     sent.push({ url, body: JSON.parse(init.body), authorization: init.headers.authorization });
-    const scenario = CONTRACT.scenarios[names[next++]];
+    const name = names[next++];
+    const scenario = typeof name === "object" ? name : CONTRACT.scenarios[name];
     if (!scenario) throw new Error(`unexpected request #${next}: ${init.body}`);
     return { ok: scenario.status >= 200 && scenario.status < 300, status: scenario.status, json: async () => scenario.body };
   });
@@ -207,7 +209,7 @@ describe("Preferred supplier and status", () => {
     expect(within(rowOf("ColdChain Components")).getAllByText("Restricted — requires cost visibility")).toHaveLength(2);
   });
 
-  it("a buyer without the activate authority is told they are not authorized, and status controls go away", async () => {
+  it("a status change the server refuses (authority withdrawn after the list was read) is reported, and status controls go away", async () => {
     const { sent, deps } = wire("listAfterPreferred", "statusDenied");
     render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
     fireEvent.click(await screen.findByRole("button", { name: /deactivate terms from coldchain components/i }));
@@ -235,5 +237,53 @@ describe("restricted contract window: both dates or neither", () => {
     const neither = buildTermsChanges({ supplierSku: "SKU-2" }, item, access);
     expect(neither).toEqual({ supplierSku: "SKU-2" });
     expect(blindWindowIncomplete({ contractStart: "", contractEnd: "" }, item)).toBe(false);
+  });
+});
+
+describe("record access: the screen offers only what the server's recordAccess allows", () => {
+  it("a maintainer without changeStatus sees Edit and Set Preferred but no Deactivate / Reactivate", async () => {
+    const { sent, deps } = wire("listWithheld");
+    expect(CONTRACT.scenarios.listWithheld.body.result.recordAccess.changeStatus).toBe(false);
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    await screen.findByRole("table", { name: `Supplier terms for ${PART}` });
+    await expectSent(sent, "listWithheld");
+    expect(screen.queryByRole("button", { name: /(deactivate|reactivate) terms from/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /edit terms from arctic parts supply/i })).toBeTruthy();
+  });
+
+  it("a lifecycle holder without create is told adding needs the add permission", async () => {
+    const { sent, deps } = wire("listMixedAdministrator");
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    await screen.findByRole("table", { name: `Supplier terms for ${PART}` });
+    await expectSent(sent, "listMixedAdministrator");
+    expect(screen.queryByRole("button", { name: /add supplier terms/i })).toBeNull();
+    expect(screen.getByText(/adding supplier terms needs the add-supplier-terms permission/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /reactivate terms from coldchain components/i })).toBeTruthy();
+  });
+
+  it("a read-only holder (supplierTerms.read alone) sees the terms with NO Add, Edit, Set Preferred or status control", async () => {
+    const base = CONTRACT.scenarios.listWithheld;
+    const readOnly = { ...base, body: { ...base.body, result: { ...base.body.result,
+      fieldAccess: { RELATIONSHIP: { read: true, create: false, edit: false }, OPERATIONAL: { read: true, create: false, edit: false },
+        COMMERCIAL: { read: false, create: false, edit: false } },
+      recordAccess: { read: true, create: false, edit: false, changeStatus: false } } } };
+    const { sent, deps } = wire(readOnly);
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    await screen.findByRole("table", { name: `Supplier terms for ${PART}` });
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(within(rowOf("Arctic Parts Supply")).getByText("ARC-100")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /edit terms from/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /preferred/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /(deactivate|reactivate) terms from/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /add supplier terms/i })).toBeNull();
+  });
+
+  it("an answer without recordAccess fails closed: no write control is offered", async () => {
+    const base = CONTRACT.scenarios.listMixed;
+    const { recordAccess: _dropped, ...result } = base.body.result;
+    const { deps } = wire({ ...base, body: { ...base.body, result } });
+    render(<PartSupplierTermsSection partId={PART} partNumber={PART} deps={deps} />);
+    await screen.findByRole("table", { name: `Supplier terms for ${PART}` });
+    expect(screen.queryByRole("button", { name: /edit terms from|preferred|activate terms from|add supplier terms/i })).toBeNull();
   });
 });

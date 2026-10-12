@@ -16,8 +16,9 @@ import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../enti
 // GOVERNED FIELD GROUPS. cost, currency, contractStart and contractEnd are the COMMERCIAL group: sensitivity
 // CONFIDENTIAL, read only with inventory.catalog.read + inventory.catalog.cost.read, set with .cost.create, changed with
 // .cost.edit (functions/src/eosOps/governedFieldGroups.ts evaluates them; the server withholds them from every response a
-// caller cannot read). Everything else is governed by the record gates: inventory.catalog.manage (read / create / edit /
-// preferred) and inventory.catalog.activate (status).
+// caller cannot read), and NOT REPORTABLE (reportable: false -- no report, export or general read carries them). Everything
+// else is governed by the narrow record keys (DECISIONS #230): inventory.supplierTerms.read (the doorway) / .create /
+// .edit (terms, preferred) / .changeStatus (activate / deactivate).
 //
 // IDENTITY. The key is (partId, supplierId) -- a composed fact across two references, never a name; SYSTEM_ONLY, declared
 // explicitly. NO operating-company field: the table carries none, so operating-company isolation is not supported for this
@@ -32,12 +33,12 @@ export const supplierCatalogItemEntity = makeEntityDefinition({
   labelPlural: "Supplier Catalog Items",
   collection: "supplier_catalog_items",
   readVia: "EOS_API",
-  readCapability: "inventory.catalog.manage",
+  readCapability: "inventory.supplierTerms.read",
   identity: makeIdentity({ mode: "SYSTEM_ONLY" }),
   description:
     "Part Supplier Terms: one supplier's procurement terms for one Part (eos_ops.supplier_catalog_items), maintained " +
     "through the governed /operations/inventory commands. Cost, currency and the contract window are the COMMERCIAL " +
-    "field group (inventory.catalog.cost.read / .create / .edit). See the file header.",
+    "field group (inventory.catalog.cost.read / .create / .edit), never reportable. See the file header.",
   fields: [
     makeFieldDefinition({ id: "supplierId", entityId: "supplierCatalogItem", label: "Supplier", type: "REFERENCE", referenceTo: "supplier",
       description: "The supplier offering these terms (eos_ops.suppliers). Half of the record's key." }),
@@ -45,9 +46,9 @@ export const supplierCatalogItemEntity = makeEntityDefinition({
       description: "The canonical Part these terms are for (eos_ops.parts). Half of the record's key." }),
     makeFieldDefinition({ id: "supplierSku", entityId: "supplierCatalogItem", label: "Supplier SKU", type: "STRING",
       description: "The supplier's own part number (max 120)." }),
-    makeFieldDefinition({ id: "cost", entityId: "supplierCatalogItem", label: "Unit Cost", type: "NUMBER", sensitivity: COMMERCIAL,
+    makeFieldDefinition({ id: "cost", entityId: "supplierCatalogItem", label: "Unit Cost", type: "NUMBER", sensitivity: COMMERCIAL, reportable: false, exportable: false,
       description: "Unit cost as a decimal (NUMERIC(19,4)), in `currency`. COMMERCIAL field group: inventory.catalog.read + inventory.catalog.cost.read to see it." }),
-    makeFieldDefinition({ id: "currency", entityId: "supplierCatalogItem", label: "Currency", type: "STRING", sensitivity: COMMERCIAL,
+    makeFieldDefinition({ id: "currency", entityId: "supplierCatalogItem", label: "Currency", type: "STRING", sensitivity: COMMERCIAL, reportable: false, exportable: false,
       description: "ISO 4217 code of the unit cost. COMMERCIAL field group." }),
     makeFieldDefinition({ id: "leadTimeDays", entityId: "supplierCatalogItem", label: "Lead Time (days)", type: "NUMBER",
       description: "Days from order to receipt, 0..3650." }),
@@ -59,9 +60,9 @@ export const supplierCatalogItemEntity = makeEntityDefinition({
       description: "The unit the supplier sells in, in the stocking unit's family; travels with its conversion." }),
     makeFieldDefinition({ id: "conversionToStockingUnit", entityId: "supplierCatalogItem", label: "Conversion to Stocking Unit", type: "STRING",
       description: "{ numerator, denominator }: stocking units per purchase unit (two positive integers in the table)." }),
-    makeFieldDefinition({ id: "contractStart", entityId: "supplierCatalogItem", label: "Contract Start", type: "DATE", sensitivity: COMMERCIAL,
+    makeFieldDefinition({ id: "contractStart", entityId: "supplierCatalogItem", label: "Contract Start", type: "DATE", sensitivity: COMMERCIAL, reportable: false, exportable: false,
       description: "Optional start of the contract window. COMMERCIAL field group." }),
-    makeFieldDefinition({ id: "contractEnd", entityId: "supplierCatalogItem", label: "Contract End", type: "DATE", sensitivity: COMMERCIAL,
+    makeFieldDefinition({ id: "contractEnd", entityId: "supplierCatalogItem", label: "Contract End", type: "DATE", sensitivity: COMMERCIAL, reportable: false, exportable: false,
       description: "Optional end of the contract window (never before its start). COMMERCIAL field group." }),
     makeFieldDefinition({ id: "availability", entityId: "supplierCatalogItem", label: "Availability", type: "ENUM",
       enumValues: ["AVAILABLE", "UNAVAILABLE", "UNKNOWN"], enumLabels: { AVAILABLE: "Available", UNAVAILABLE: "Unavailable", UNKNOWN: "Unknown" },
@@ -70,7 +71,7 @@ export const supplierCatalogItemEntity = makeEntityDefinition({
       description: "THE preferred supplier for the Part (at most one per Part; only ACTIVE terms)." }),
     makeFieldDefinition({ id: "status", entityId: "supplierCatalogItem", label: "Terms Status", type: "ENUM",
       enumValues: ["ACTIVE", "INACTIVE"], enumLabels: { ACTIVE: "Terms Active", INACTIVE: "Terms Inactive" },
-      description: "Deactivated, never deleted (inventory.catalog.activate)." }),
+      description: "Deactivated, never deleted (inventory.supplierTerms.changeStatus)." }),
     makeFieldDefinition({ id: "lastVerifiedAt", entityId: "supplierCatalogItem", label: "Last Verified", type: "TIMESTAMP",
       description: "When the terms were last confirmed with the supplier." }),
   ],

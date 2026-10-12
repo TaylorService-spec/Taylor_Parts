@@ -109,3 +109,22 @@ test("the evaluator is generic: no persona, Role, title or supplier vocabulary, 
     assert.equal(word.test(src), false, `${word} is not in the evaluator's code`);
   }
 });
+
+test("the RECORD doorway: recordAccessFor reports each named record action, fail closed; a malformed one is refused", () => {
+  const withRecord = fg.defineFieldGroups({
+    objectKey: "widget", record: { read: "w.read", edit: "w.edit", changeStatus: "w.status" },
+    groups: [{ key: "BASIC", label: "Basic", fields: ["id"], read: "w.read", create: null, edit: "w.edit", sensitive: false }],
+  });
+  assert.deepEqual(fg.recordAccessFor(withRecord, caps("w.read")), { read: true, edit: false, changeStatus: false });
+  assert.deepEqual(fg.recordAccessFor(withRecord, caps("w.read", "w.status")), { read: true, edit: false, changeStatus: true }, "additive");
+  assert.deepEqual(fg.recordAccessFor(DEF, caps("w.read")), {}, "no record actions declared, none reported");
+  assert.deepEqual(fg.recordAccessFor(withRecord, null), { read: false, edit: false, changeStatus: false }, "no capability set is no access");
+  assert.throws(() => fg.defineFieldGroups({ objectKey: "x", record: { read: "" }, groups: [] }), /record action read/);
+  assert.ok(Object.isFrozen(withRecord.record));
+});
+
+test("canReadAllGroups: true only when EVERY group is readable (the gate for answers decided by stored values)", () => {
+  assert.equal(fg.canReadAllGroups(DEF, caps("w.ops.read", "w.read", "w.money.read")), true);
+  assert.equal(fg.canReadAllGroups(DEF, caps("w.ops.read")), false);
+  assert.equal(fg.canReadAllGroups(DEF, caps("w.read", "w.money.read")), false);
+});

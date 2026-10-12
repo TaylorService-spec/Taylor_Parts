@@ -6,8 +6,8 @@ import {
 } from "../../services/partsOperationsReads.js";
 import {
   AVAILABILITY_LABEL, AVAILABILITY_STATES, COMMERCIAL_GROUP, EMPTY_TERMS_FORM, PURCHASE_UNITS, RESTRICTED_LABEL, buildCreateTermsInput,
-  blindWindowIncomplete, buildTermsChanges, formatContract, formatCost, formatPurchaseUnit, groupAccess, isWithheld, outcomeFromError, outcomeFromResult,
-  termsFormFromItem,
+  blindWindowIncomplete, buildTermsChanges, canAddTerms, formatContract, formatCost, formatPurchaseUnit, groupAccess, isWithheld, outcomeFromError,
+  outcomeFromResult, recordAccessOf, termsFormFromItem,
 } from "../../domain/partSupplierTerms.js";
 
 // PART MASTER > SUPPLIERS & TERMS (remediation SUP-1).
@@ -18,10 +18,11 @@ import {
 // layer on /operations/inventory (functions/src/eosOps/partSupplierTerms.ts); Firebase retirement F2 removed the old
 // writers and nothing replaced them on a screen until this section.
 //
-// THE SERVER DECIDES. Reading and maintaining terms needs inventory.catalog.manage (unit cost is commercially sensitive);
-// deactivating / reactivating needs inventory.catalog.activate. This section invents no capability: it asks, and renders
-// the answer. A FORBIDDEN list hides every control and says why; a FORBIDDEN status change hides the status controls
-// after the server has said no -- never before.
+// THE SERVER DECIDES. Supplier terms are their own governed record (DECISIONS #230): reading needs
+// inventory.supplierTerms.read, adding .create, editing and setting preferred .edit, deactivating / reactivating
+// .changeStatus. The list answer's `recordAccess` states those decisions for the signed-in employee, and the section
+// offers only what it says (a control the server would refuse is not shown). A FORBIDDEN list hides every control and
+// says why; a FORBIDDEN status change still hides the status controls after the server has said no.
 //
 // GOVERNED FIELD GROUPS. Cost, currency and the contract window are the COMMERCIAL group, governed by their own
 // capabilities (inventory.catalog.cost.read / .create / .edit) granted to Security Roles in Administration. The list answer
@@ -137,7 +138,7 @@ function TermsForm({ mode, item, supplierOptions, stockingUnit, fieldAccess, bus
   );
 }
 
-function TermsTable({ items, label, stockingUnit, busy, statusControls, onEdit, onStatus, onPreferred }) {
+function TermsTable({ items, label, stockingUnit, busy, canEdit, statusControls, onEdit, onStatus, onPreferred }) {
   return (
     <div className="fo-table-scroll">
       <table className="fo-table" aria-label={`Supplier terms for ${label}`}>
@@ -178,11 +179,13 @@ function TermsTable({ items, label, stockingUnit, busy, statusControls, onEdit, 
                 <td>{active ? "Terms Active" : <span className="fo-muted">Terms Inactive</span>}</td>
                 <td>
                   <div className="fo-chip-row">
-                    <Button type="button" variant="tertiary" disabled={!!busy} onClick={() => onEdit(item)}
-                      aria-label={`Edit terms from ${item.supplierName}`}>
-                      Edit
-                    </Button>
-                    {active && !item.preferred && (
+                    {canEdit && (
+                      <Button type="button" variant="tertiary" disabled={!!busy} onClick={() => onEdit(item)}
+                        aria-label={`Edit terms from ${item.supplierName}`}>
+                        Edit
+                      </Button>
+                    )}
+                    {canEdit && active && !item.preferred && (
                       <Button type="button" variant="tertiary" disabled={!!busy} onClick={() => onPreferred(item)}
                         aria-label={`Make ${item.supplierName} preferred`}>
                         {busy === `preferred:${item.itemId}` ? "Working…" : "Set Preferred"}
@@ -208,7 +211,7 @@ function TermsTable({ items, label, stockingUnit, busy, statusControls, onEdit, 
 export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
   // TEST SEAM ONLY: the transport options the real client passes to callReorderApi (baseUrl, getIdToken, fetchImpl).
   const callOptions = deps?.callOptions;
-  const [state, setState] = useState({ status: "loading", items: [], supplierOptions: null, fieldAccess: null, stockingUnit: null, message: null });
+  const [state, setState] = useState({ status: "loading", items: [], supplierOptions: null, fieldAccess: null, recordAccess: null, stockingUnit: null, message: null });
   const [outcome, setOutcome] = useState(null);
   const [busy, setBusy] = useState(null);
   const [form, setForm] = useState(null); // null | { mode: "create" } | { mode: "edit", item }
@@ -217,7 +220,7 @@ export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
 
   const load = useCallback(async () => {
     if (!partId) {
-      setState({ status: "ready", items: [], supplierOptions: null, fieldAccess: null, stockingUnit: null, message: null });
+      setState({ status: "ready", items: [], supplierOptions: null, fieldAccess: null, recordAccess: null, stockingUnit: null, message: null });
       return;
     }
     try {
@@ -225,11 +228,11 @@ export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
       setState({
         status: "ready", items: Array.isArray(result?.items) ? result.items : [],
         supplierOptions: Array.isArray(result?.supplierOptions) ? result.supplierOptions : null,
-        fieldAccess: result?.fieldAccess ?? null, stockingUnit: result?.stockingUnit ?? null, message: null,
+        fieldAccess: result?.fieldAccess ?? null, recordAccess: result?.recordAccess ?? null, stockingUnit: result?.stockingUnit ?? null, message: null,
       });
     } catch (err) {
       // A denial is NOT an empty list, and never rendered as one.
-      setState({ status: err?.code === "FORBIDDEN" ? "denied" : "failed", items: [], supplierOptions: null, fieldAccess: null, stockingUnit: null,
+      setState({ status: err?.code === "FORBIDDEN" ? "denied" : "failed", items: [], supplierOptions: null, fieldAccess: null, recordAccess: null, stockingUnit: null,
         message: err?.code === "FORBIDDEN" ? null : outcomeFromError(err, "read").message });
     }
   }, [partId, callOptions]);
@@ -279,8 +282,8 @@ export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
 
       {state.status === "denied" && (
         <p className="fo-warning" role="status">
-          Supplier terms are not shown: reading and maintaining them needs catalog management authority, which is
-          governed in Administration. This is a denial, not an empty list.
+          Supplier terms are not shown: reading them needs the supplier-terms read permission, which is governed in
+          Administration. This is a denial, not an empty list.
         </p>
       )}
 
@@ -301,7 +304,8 @@ export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
               label={label}
               stockingUnit={state.stockingUnit}
               busy={busy}
-              statusControls={statusControls}
+              canEdit={recordAccessOf(state.recordAccess).edit}
+              statusControls={statusControls && recordAccessOf(state.recordAccess).changeStatus}
               onEdit={(item) => { setOutcome(null); setForm({ mode: "edit", item }); }}
               onStatus={changeStatus}
               onPreferred={makePreferred}
@@ -326,7 +330,7 @@ export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
               onSubmit={submitForm}
               onCancel={() => setForm(null)}
             />
-          ) : groupAccess(state.fieldAccess, COMMERCIAL_GROUP).create ? (
+          ) : canAddTerms(state.fieldAccess, state.recordAccess) ? (
             <div className="fo-chip-row">
               <Button type="button" variant="secondary" disabled={!!busy} onClick={() => { setOutcome(null); setForm({ mode: "create" }); }}>
                 Add Supplier Terms
@@ -334,7 +338,9 @@ export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
             </div>
           ) : (
             <p className="fo-muted">
-              Adding supplier terms sets cost & contract terms, which needs the cost permission governed in Administration.
+              {recordAccessOf(state.recordAccess).create
+                ? "Adding supplier terms sets cost & contract terms, which needs the cost permission governed in Administration."
+                : "Adding supplier terms needs the add-supplier-terms permission, governed in Administration."}
             </p>
           )}
         </>

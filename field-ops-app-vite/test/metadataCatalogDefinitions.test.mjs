@@ -33,7 +33,7 @@ test("entity id is \"supplierCatalogItem\", the record is the PostgreSQL supplie
   assert.equal(supplierCatalogItemEntity.id, "supplierCatalogItem");
   assert.equal(supplierCatalogItemEntity.collection, "supplier_catalog_items");
   assert.equal(supplierCatalogItemEntity.readVia, "EOS_API");
-  assert.equal(supplierCatalogItemEntity.readCapability, "inventory.catalog.manage");
+  assert.equal(supplierCatalogItemEntity.readCapability, "inventory.supplierTerms.read");
 });
 
 test("the field list is exactly the table's governed columns", () => {
@@ -48,6 +48,17 @@ test("the field list is exactly the table's governed columns", () => {
 test("the COMMERCIAL field group (cost, currency, contract window) is CONFIDENTIAL; nothing else is classified", () => {
   const classified = supplierCatalogItemEntity.fields.filter((f) => f.sensitivity !== null).map((f) => [f.id, f.sensitivity]);
   assert.deepEqual(classified, [["cost", "CONFIDENTIAL"], ["currency", "CONFIDENTIAL"], ["contractStart", "CONFIDENTIAL"], ["contractEnd", "CONFIDENTIAL"]]);
+});
+
+test("every CONFIDENTIAL field of SupplierCatalogItem is non-reportable and non-exportable (DECISIONS #230)", () => {
+  const confidential = supplierCatalogItemEntity.fields.filter((f) => f.sensitivity === "CONFIDENTIAL");
+  assert.equal(confidential.length, 4);
+  for (const f of confidential) {
+    assert.equal(f.reportable, false, `${f.id} is not reportable`);
+    assert.equal(f.exportable, false, `${f.id} is not exportable`);
+  }
+  // Everything else stays reportable: only the restricted values are kept out of reporting.
+  for (const f of supplierCatalogItemEntity.fields.filter((x) => x.sensitivity !== "CONFIDENTIAL")) assert.equal(f.reportable, true, f.id);
 });
 
 test("identity is SYSTEM_ONLY -- (part, supplier) is a composed key, never a name", () => {
