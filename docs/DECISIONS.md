@@ -8040,3 +8040,61 @@ Changing the nine is an Owner decision. Existing grants are retained (O3).
 **Boundary.**
 - Client only: `field-ops-app-vite/src/access/scanWorkflows.js`.
 - No server, grant, capability, migration, Firebase or production change.
+
+## #232 — OWNER: Financial Policy authority amendment and the PostgreSQL foundation — Finance prepares, Owner / Administrator approve and activate (2026-10-13)
+
+(Owner direction of 2026-10-13: implement the EXISTING CERT-FIN-02 accounting-policy-profile architecture in PostgreSQL. It continues the Owner ruling of 2026-09-03 and its §7 lifecycle (`docs/assessments/cert-fin-02-policy-framework-reconciliation.md`); it is not a redesign. Authority matrix: `docs/financials/financial-policy-foundation-authority.md`.)
+
+**Supersedes.** This decision SUPERSEDES the holder portion of the earlier financial-policy authority ruling, commit `5b2bb0c6` (PR #1778): "`financialPolicy.profile.configure` is held by admin and owner ONLY, by derivation". From this decision:
+- configuration (preparing, editing and submitting a policy) belongs to Finance Manager and Controller, not to admin and owner;
+- admin and owner approve, reject and activate.
+
+The rest of that ruling stands:
+- read authority never implies write;
+- no capability, including admin's and owner's, edits a locked policy;
+- production activation is a separate ruling.
+
+The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sandbox activation and `financialPolicyProfileCommand.ts` are NOT changed (Firebase is retirement-only).
+
+**Decision (as directed by the Owner).**
+1. **Prepare.** Finance Manager and Controller may configure, edit drafts and submit Financial Policies.
+2. **Decide and activate.** Owner and Administrator may approve, reject and activate Financial Policies.
+3. **Separation of duties.** A preparer cannot approve their own submission. As implemented, the principal who approves OR rejects is neither the submitter nor any principal who wrote the draft's content, even when that principal holds the approve capability.
+4. **Independent companies.** Taylor and Ventana maintain independent policies.
+5. **Lock.** Activated policy versions are locked.
+6. **Revision.** Future changes require governed revision and approval: a new version through the same lifecycle. There is no unlock, reopen or force path.
+
+**Implementation (this PR, unmerged).**
+- **Migration `1764560000000_financial-policy-profiles.sql`.** It creates `eos_finance.financial_policy_versions`, keyed by (tenant, operating company) against `eos_policy.tenant_operating_companies`, never CONSOLIDATED. It has a guarded Down.
+- **Lifecycle.** DRAFT -> SUBMITTED -> APPROVED or REJECTED; APPROVED -> ACTIVE; ACTIVE -> SUPERSEDED.
+  - Content is frozen once a version leaves DRAFT. Lifecycle stamps are write-once. Nothing is deleted.
+  - An ACTIVE row admits only its supersession by the activation of a later approved version of the same company, in the same transaction (a deferred check).
+  - REJECTED and SUPERSEDED are final.
+  - At most one ACTIVE and one in-flight version per company (partial unique indexes).
+  - Database triggers and CHECKs enforce all of the above, including separation of duties.
+- **Effective date at ACTIVATION, not approval.** An approval may wait; a date fixed earlier could lapse, leaving an approved version that can neither activate nor be edited. The date may not precede the company's business date (`eos_policy.operating_company_business_date`) nor an earlier activated version's.
+- **Missing policy fails closed.** A company with no ACTIVE version reads `NOT_CONFIGURED`; no default method exists anywhere.
+- **Validation** is the pure domain module `functions/src/finance/financialPolicyProfile.ts`, imported unchanged. LIFO and STANDARD are refused, and `WORK_ORDER_CONSUMPTION` follows `PHYSICAL_CONSUMPTION_ACTIVE`. It is re-checked at submit, approval and activation.
+- **Server.** `functions/src/eosFinance/financialPolicy.ts`, on `/operations/finance`. Every state change writes one `eos_policy.audit_events` row carrying the full version snapshot, from which the history rebuilds. Replayed commands write nothing.
+- **Capabilities.** Four PG-native keys on the new `financialPolicy` Object, with **zero grants**. The Firebase ids are deliberately not reused, to avoid the catalog reconcile granting them to admin.
+
+  | Key | Kind | Operations |
+  |---|---|---|
+  | `finance.policy.read` | READ | read the policy, list versions |
+  | `finance.policy.prepare` | EDIT | save a draft, submit |
+  | `finance.policy.approve` | ADMIN_ACTION | approve, reject |
+  | `finance.policy.activate` | ADMIN_ACTION | activate |
+
+- **The Administrator, by standing (#223).** Protected-Administrator standing implies READ and ADMIN_ACTION kinds. So the Administrator holds `finance.policy.read`, `.approve` and `.activate` **without a grant**, and does NOT hold `.prepare` (EDIT is not implied). No `PROTECTED_ADMINISTRATOR_EXCLUSIONS` entry is needed. This is exactly item 2 for the Administrator. The audit trail marks standing-authorized acts `PROTECTED_ADMINISTRATOR`.
+- **Proposed grants (NOT executed; the Owner authorizes them through Administration).**
+  - `financeManager`: `finance.policy.read`, `finance.policy.prepare`.
+  - `controller`: `finance.policy.read`, `finance.policy.prepare`.
+  - `owner`: `finance.policy.read`, `finance.policy.approve`, `finance.policy.activate`.
+  - `admin`: none (standing).
+  - No Sales, Service, Parts or Warehouse Role, and neither `accountingManager` nor `generalManager`, is proposed anything.
+
+**Boundary.**
+- No grant, Role or persona change.
+- No nonprod or production data touched.
+- No Firebase change.
+- No UI (a later PR).

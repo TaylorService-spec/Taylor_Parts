@@ -207,8 +207,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 95 -> 96: 1764540000000 -- Grant-impact preview (PR 3): the never-commit FENCE, seven deferred constraint triggers that refuse a COMMIT of a transaction marked eos_policy.preview; no capability, no grant, no data.
 // 96 -> 97: 1764550000000 -- EOS native login (docs/architecture/eos-native-identity.md): login accounts, sessions, TOTP
 // factors, recovery codes, tickets, authentication_events; no capability, no grant. APPENDED, an EXPLAINED pending migration.
-const RUNNABLE_MIGRATION_COUNT = 97;
-const TRACKED_MIGRATION_COUNT = 98; // the 97 runnable + the one deferred file
+// 97 -> 98: 1764560000000 -- Financial Policy foundation (DECISIONS #232): eos_finance.financial_policy_versions + finance.policy.read / .prepare / .approve / .activate on financialPolicy; granted to NO Role. APPENDED, an EXPLAINED pending migration.
+const RUNNABLE_MIGRATION_COUNT = 98;
+const TRACKED_MIGRATION_COUNT = 99; // the 98 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -257,6 +258,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764530000000_supplier-terms-capabilities",
   "1764540000000_authority-preview-never-commits",
   "1764550000000_eos-native-login",
+  "1764560000000_financial-policy-profiles",
 ]);
 
 const repoMigrations = () =>

@@ -230,6 +230,26 @@
         "D": []
       },
       "fields": []
+    },
+    {
+      "key": "financialPolicy",
+      "label": "Financial Policy",
+      "labelPlural": "Financial Policies",
+      "description": "An operating company's governed accounting-policy profile (DECISIONS #232, continuing the CERT-FIN-02 ruling of 2026-09-03): inventory cost method, serialized cost method, COGS recognition point and freight / landed-cost treatment, held as versions -- DRAFT, SUBMITTED, APPROVED or REJECTED, ACTIVE (locked), SUPERSEDED. Taylor and Ventana keep independent policies. Prepared by Finance, approved and activated by the Owner or the Administrator; a preparer never approves their own submission.",
+      "domain": "Finance",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [
+          "finance.policy.read"
+        ],
+        "E": [
+          "finance.policy.prepare"
+        ],
+        "D": []
+      },
+      "fields": []
     }
   ]
 }

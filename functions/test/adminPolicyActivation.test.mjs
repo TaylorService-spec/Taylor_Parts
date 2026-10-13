@@ -237,7 +237,8 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   // 43 -> 45: Owner rulings #204 -- `systemConfiguration`, `salesDiscountAuthority`.
   // 45 -> 46: Finance Closure (#206) -- `settlement`.
   // 46 -> 48: Rental (#207) -- `rentalAgreement`, `rentalEquipment`.
-  assert.equal(first.seed.created.objects, 48, "48 canonical objects");
+  // 48 -> 49: Financial Policy foundation (#232) -- `financialPolicy`, named by the four finance.policy.* keys (1764560000000).
+  assert.equal(first.seed.created.objects, 49, "49 canonical objects");
   // 394 -> 395: PR 1881 declared `payment.paymentId`. This is the THIRD independent copy of the
   // field census in the repository (the others are field-ops-app-vite/test/entityRegistry.test.mjs
   // and functions/test/adminPolicySeedCoverage.test.mjs); the lane updated the one it knew about.
@@ -263,7 +264,7 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   assert.equal(second.seed.created.fields, 0);
 
   const objects = await r.listObjects(first.tenant.id);
-  assert.equal(objects.length, 48, "still 48 after the rerun, not 96");
+  assert.equal(objects.length, 49, "still 49 after the rerun, not 98");
 });
 
 test("the seeded configuration version is recorded on the tenant", { skip: SKIP }, async () => {
@@ -1212,7 +1213,7 @@ test("RESTART: every pool and every in-process object is discarded, and the stat
 
     // Configuration survives.
     const objects = await restarted.listObjects(tenant.id);
-    assert.equal(objects.length, 48);
+    assert.equal(objects.length, 49);
 
     const read = await executeAdminOperation({ repo: restarted }, asAdmin("readObjectWithFields", {
       objectKey: "account",
