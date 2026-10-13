@@ -1466,7 +1466,10 @@ jobs:
   policy:
     name: Admin policy engine -- authorization, workflow, tenancy, schema, seed
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 20 -> 35 (2026-10-13): measured, not padded. main itself took 18m10s (run 38325325281, 9ae2d9a9) and EOS
+    # native identity adds its two PostgreSQL suites (~2 min), so 20 cancelled the PostgreSQL step mid-run (run
+    # 38327799193). A cap is a hang detector, and 35 still catches one well inside a full gate's local ~42 min.
+    timeout-minutes: 35
 
     # A REAL POSTGRESQL, not an emulator. The migration, the unique indexes, the foreign keys, the
     # CHECK constraints and transactional rollback are properties of the database itself; something

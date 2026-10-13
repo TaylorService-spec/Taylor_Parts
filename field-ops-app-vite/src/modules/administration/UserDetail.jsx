@@ -24,6 +24,8 @@ import {
   EMPLOYEE_TARGET_TYPE,
 } from "../../domain/employeeProfile.js";
 import UserAccessActions from "./UserAccessActions.jsx";
+import EmployeeLoginAccount from "./EmployeeLoginAccount.jsx";
+import { eosHumanLoginEnabled } from "../../auth/eosLoginClient.js";
 import EmployeeEditPanel from "./EmployeeEditPanel.jsx";
 import EmployeeJobRoleControl from "./EmployeeJobRoleControl.jsx";
 import EmployeeChangeHistorySection from "./EmployeeChangeHistorySection.jsx";
@@ -327,6 +329,15 @@ export default function UserDetail({
             <EmployeeSecurityRoles api={controlPlane} principalId={principalId} employeeName={name} />
           </PrincipalGate>
         </RuledSection>
+        {/* EOS LOGIN (docs/architecture/eos-native-identity.md): this Principal's EOS sign-in -- created, reset, locked,
+            signed out, two-step verification -- through /admin/policy, gated on the server. Shown only when EOS login is on. */}
+        {eosHumanLoginEnabled() ? (
+          <RuledSection title="EOS Sign-in" meta="Password, two-step verification and sessions — governed PostgreSQL">
+            <PrincipalGate linked={linked} principalLink={principalLink}>
+              <EmployeeLoginAccount api={policyCall} principalId={principalId} />
+            </PrincipalGate>
+          </RuledSection>
+        ) : null}
         {/* EFFECTIVE ACCESS: the server evaluator's answer for the linked Principal -- never computed here. It carries
             capability provenance (Role / Direct / Role and Direct) and the record restrictions the evaluator reports. */}
         <RuledSection title="Effective Access" meta="The server evaluator's explanation, with provenance">

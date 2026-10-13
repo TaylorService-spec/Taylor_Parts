@@ -6,7 +6,8 @@
 // can reach does nothing a ROLLBACK cannot undo. This suite pins that reach statically:
 //
 //   1. the VALUE-import closure of the commands + the engine is PINNED (growth is a reviewed edit here);
-//   2. its external imports are exactly node:crypto (randomUUID / sha256) and pg -- the latter ONLY through the pool
+//   2. its external imports are exactly node:crypto (randomUUID / sha256), node:async_hooks (the request-scoped session
+//      tenant binding of EOS native identity, AsyncLocalStorage only) and pg -- the latter ONLY through the pool
 //      factory policyDatabase.ts, which capabilityAuthority reaches for its deployed-pool convenience and which the
 //      preview never calls (it is composed with the shared pool and hands the resolver its transaction client);
 //   3. over the closure: no Firebase, no network, no fetch, no timers, no console, no process.env, no module-level
@@ -43,6 +44,10 @@ const PINNED_CLOSURE = [
   // listPrincipalWorkflowResponsibilities transport serves (the runtime explanation x the active workflow definitions).
   "src/adminPolicy/workflowEngine.ts", "src/adminPolicy/workflowResponsibilities.ts", "src/eosOps/effectiveAccessExplanation.ts",
   "src/eosOps/functionalRoleFacts.ts",
+  // EOS native identity (D-12): principalContext reads the request's session-tenant binding. Side-effect free: an
+  // AsyncLocalStorage of the CURRENT request's scope, keyed to the AUTHENTICATED caller's own identity -- no I/O, no
+  // writes, no timers. The preview never resolves through it (it does not call resolvePrincipalContext).
+  "src/eosAuth/requestTenantBinding.ts",
 ];
 
 /** The ONE file allowed each otherwise-forbidden construct, and why. Nothing else may be added without a reason. */
@@ -88,8 +93,11 @@ test("1. the value-import closure of the nine commands + the preview engine is p
     "the closure changed: re-run the side-effect census (arch/grant-impact-preview.md §1) and update the pin with the reason");
 });
 
-test("2. external imports are exactly node:crypto and pg (pg only through the pool factory)", () => {
+test("2. external imports are exactly node:crypto, node:async_hooks and pg (pg only through the pool factory)", () => {
   assert.deepEqual(Object.fromEntries([...closure.external.entries()].sort()), {
+    // AsyncLocalStorage only (requestTenantBinding.ts, EOS native identity D-12): request-scoped state, nothing a
+    // ROLLBACK would have to undo.
+    "node:async_hooks": ["src/eosAuth/requestTenantBinding.ts"],
     "node:crypto": ["src/adminPolicy/postgresPolicyRepository.ts", "src/eosOps/authorityChangePreview.ts"],
     pg: ["src/adminPolicy/policyDatabase.ts"],
   });

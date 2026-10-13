@@ -55,6 +55,9 @@ import { createPostgresCatalogReferenceAuthority } from "../catalogAuthority/pos
 import { EOS_AUTH_DISABLED, readEosAuthConfig, type EosAuthRuntime } from "../eosAuth/eosAuthConfig";
 import { EosAuthConfigError } from "../eosAuth/eosAccessToken";
 import { createCompositeTokenVerifier, createEosAuthHttpHandler } from "../eosAuth/eosAuthHttp";
+import { EosLoginService, EosSecurityEventGovernance, createLoginAdministration, type LoginServiceDeps } from "../eosAuth/eosLoginService";
+import { createLoginHttpHandler, createRateLimiter } from "../eosAuth/eosLoginHttp";
+import { runWithRequestScope } from "../eosAuth/requestTenantBinding";
 import { createSelfSchedulingHttpHandler } from "../eosOps/selfSchedulingHttp";
 import { SELF_SCHEDULING_ROUTE } from "../eosOps/selfScheduling";
 import { startInboundPollingIfEnabled } from "../eosOps/inboundProviderRuntime";
@@ -203,6 +206,10 @@ export async function startEosApi(
     readonly verifyToken?: TokenVerifier;
     /** Replaces only the Firebase half of the composite verifier (tests: a fake Firebase, no network). */
     readonly firebaseVerifyToken?: TokenVerifier;
+    /** TEST ONLY: login-service overrides (a clock, cheaper scrypt, shorter lifetimes). */
+    readonly loginServiceOverrides?: Partial<Pick<LoginServiceDeps, "now" | "policy" | "passwordHashParameters" | "testHooks">>;
+    /** TEST ONLY: the per-address login budget (every test request comes from one loopback address). */
+    readonly loginRateLimit?: { readonly credentialPerMinute: number; readonly routinePerMinute: number };
   } = {},
 ): Promise<StartedService> {
   const config = options.config ?? readServiceConfig();
@@ -213,12 +220,34 @@ export async function startEosApi(
   // ONE verifier for every domain transport. It says only "this token belongs to (provider, subject)":
   // an EOS-issued token -> ("eos", sub); anything else -> Firebase, unchanged -> ("firebase", uid).
   const eosAuth = config.eosAuth ?? EOS_AUTH_DISABLED;
+  // THE HUMAN FRONT DOOR (docs/architecture/eos-native-identity.md). Composed only under EOS_HUMAN_LOGIN=enabled, which
+  // readEosAuthConfig admits only with a nonprod verifier and signing key. Absent, every /auth/* human path is a 404 and
+  // every human-subject token is refused by the composite verifier.
+  const loginService = eosAuth.humanLogin && eosAuth.verify && eosAuth.issuer && eosAuth.audience
+    ? new EosLoginService({
+      pool, repo, signer: eosAuth.humanLogin.signer, issuer: eosAuth.issuer, audience: eosAuth.audience,
+      environment: config.environment, factorKeyring: eosAuth.humanLogin.factorKeyring,
+      multiTenantSessions: eosAuth.humanLogin.multiTenantSessions, ...(options.loginServiceOverrides ?? {}),
+    })
+    : null;
   const verifyToken = options.verifyToken ?? createCompositeTokenVerifier({
     eos: eosAuth,
     firebase: options.firebaseVerifyToken ?? createFirebaseTokenVerifier(config.identityProvider),
+    humanSessionGate: loginService ? async (subject, sessionId) => {
+      const session = await loginService.checkSession(subject, sessionId, "api");
+      return { tenantId: session.session_tenant_id, onTenantRefusal: () => loginService.recordTenantRefusal(session) };
+    } : null,
   });
-  // The EOS session route. A 404 unless nonprod AND the persona issuer is fully configured.
-  const authHandler = createEosAuthHttpHandler({ repo, auth: eosAuth, environment: config.environment });
+  // The EOS session routes: the nonprod persona route (404 unless configured) and the human front door (404 unless enabled).
+  const authHandler = createEosAuthHttpHandler({
+    repo, auth: eosAuth, environment: config.environment,
+    login: loginService && eosAuth.verify && eosAuth.humanLogin ? createLoginHttpHandler({
+      service: loginService, verify: eosAuth.verify, allowedOrigins: config.allowedOrigins, rateLimit: createRateLimiter(options.loginRateLimit),
+      trustedProxyHops: eosAuth.humanLogin.trustedProxyHops,
+      clientIpHeader: eosAuth.humanLogin.clientIpHeader,
+      cookieSameSite: eosAuth.humanLogin.cookieSameSite,
+    }) : null,
+  });
   const handler = createAdminPolicyHttpHandler({
     repo,
     // The runtime evaluator, over the one shared pool, for the explainEffectiveAccess read.
@@ -250,6 +279,8 @@ export async function startEosApi(
         : isTruckRegistryAdminOperation(operation) ? trucks : isFinanceConfigurationOperation(operation) ? finance
           : isSystemConfigurationOperation(operation) ? system : isSalesDiscountAuthorityOperation(operation) ? discounts : bindings)(operation, actor, input, reason);
     })(),
+    // Administration > Users: login-account security administration (EOS native identity), when the front door is composed.
+    loginAdministration: loginService ? createLoginAdministration(loginService, new EosSecurityEventGovernance(pool, repo)) : undefined,
     verifyToken,
     allowedOrigins: config.allowedOrigins,
     health: async () => {
@@ -337,7 +368,9 @@ export async function startEosApi(
   // Render job scripts/pollInboundMailboxes.mjs.
   const poller = startInboundPollingIfEnabled(pool);
 
-  const server = createServer((req, res) => {
+  // EVERY request runs in its own scope, so a human session's tenant binding (requestTenantBinding.ts, D-12) belongs to
+  // exactly one request and can never leak to another.
+  const server = createServer((req, res) => runWithRequestScope(() => {
     const domain = eosApiDomainFor(req.url);
     if (domain === "selfScheduling") {
       void selfSchedulingHandler(req as never, res as never);
@@ -368,7 +401,7 @@ export async function startEosApi(
       return;
     }
     void handler(req as never, res as never);
-  });
+  }));
 
   await new Promise<void>((resolve) => server.listen(config.port, resolve));
   const address = server.address();

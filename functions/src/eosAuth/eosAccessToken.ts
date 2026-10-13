@@ -36,7 +36,12 @@ const KID_PATTERN = /^(nonprod|production)-[A-Za-z0-9._-]{1,64}$/;
 const BASE64URL_SEGMENT = /^[A-Za-z0-9_-]+$/;
 const ALLOWED_HEADER_KEYS = new Set(["alg", "typ", "kid"]);
 const REQUIRED_CLAIMS = ["iss", "aud", "sub", "iat", "exp", "jti", "env"] as const;
-const ALLOWED_CLAIMS = new Set<string>([...REQUIRED_CLAIMS, "nbf"]);
+/**
+ * `sid` names the EOS login SESSION a human token was minted under (eos-native-identity.md, 3(b)). It is not authority:
+ * it lets the verifier refuse a token whose session was revoked, immediately rather than at `exp`. Persona tokens omit it.
+ */
+const ALLOWED_CLAIMS = new Set<string>([...REQUIRED_CLAIMS, "nbf", "sid"]);
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 /** Claims that would state authority. Their presence refuses the token. */
 export const AUTHORITY_BEARING_CLAIMS = Object.freeze([
   "roles", "role", "capabilities", "permissions", "scope", "scp", "tenantId", "principalId",
@@ -83,6 +88,7 @@ export interface EosTokenClaims {
   readonly nbf?: number;
   readonly jti: string;
   readonly env: EosTokenEnvironment;
+  readonly sid?: string;
 }
 
 // ════════════════════ encoding ════════════════════
@@ -196,6 +202,7 @@ export function signEosAccessToken(signer: EosSigner, claims: EosTokenClaims): s
     if (!ALLOWED_CLAIMS.has(k)) throw new EosAuthConfigError(`claim '${k}' is not part of the EOS token`);
   }
   if (!EOS_SUBJECT_PATTERN.test(claims.sub)) throw new EosAuthConfigError("the subject is malformed");
+  if (claims.sid !== undefined && !SESSION_ID_PATTERN.test(claims.sid)) throw new EosAuthConfigError("the session id is malformed");
   const header = { alg: "EdDSA", typ: "JWT", kid: signer.kid };
   const input = `${jsonSegment(header)}.${jsonSegment(claims)}`;
   const signature = sign(null, Buffer.from(input, "ascii"), signer.privateKey);
@@ -218,6 +225,8 @@ export interface EosVerifierConfig {
 export interface VerifiedEosToken {
   readonly externalSubject: string;
   readonly identityProvider: typeof EOS_IDENTITY_PROVIDER;
+  /** The login session, for human tokens; null for persona tokens. */
+  readonly sessionId: string | null;
   readonly claims: EosTokenClaims;
 }
 
@@ -311,10 +320,14 @@ export function createEosTokenVerifier(config: EosVerifierConfig): (token: strin
     if (!EOS_SUBJECT_PATTERN.test(claims.sub as string)) throw new EosTokenError("SUBJECT_MALFORMED");
     const jti = claims.jti as string;
     if (jti.length < 16 || jti.length > 128) throw new EosTokenError("CLAIM_REFUSED");
+    if (claims.sid !== undefined && (typeof claims.sid !== "string" || !SESSION_ID_PATTERN.test(claims.sid))) {
+      throw new EosTokenError("CLAIM_REFUSED");
+    }
 
     return Object.freeze({
       externalSubject: claims.sub as string,
       identityProvider: EOS_IDENTITY_PROVIDER,
+      sessionId: typeof claims.sid === "string" ? claims.sid : null,
       claims: Object.freeze({ ...(claims as unknown as EosTokenClaims) }),
     });
   };

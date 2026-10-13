@@ -39,6 +39,10 @@
 // to change, and returns what was PERSISTED rather than what was requested. A UI that optimistically
 // showed success would be showing the user their own request back.
 import {
+  LOGIN_ADMINISTRATION_OPERATIONS, LoginRefusal, isLoginAdministrationOperation,
+  type LoginAdministrationHandler, type LoginAdministrationOperation,
+} from "../eosAuth/eosLoginService";
+import {
   createCustomField,
   createRole,
   updateObjectMetadata,
@@ -226,19 +230,26 @@ export type AdminMutationOperation = (typeof ADMIN_MUTATION_OPERATIONS)[number];
 export const ADMIN_PREVIEW_OPERATIONS = Object.freeze(["previewAuthorityChange"] as const);
 export type AdminPreviewOperation = (typeof ADMIN_PREVIEW_OPERATIONS)[number];
 
-export type AdminOperation = AdminReadOperation | AdminMutationOperation | AdminConfigurationOperation | AdminPreviewOperation;
+export type AdminOperation = AdminReadOperation | AdminMutationOperation | AdminConfigurationOperation | AdminPreviewOperation
+  | LoginAdministrationOperation;
 
 const READS = new Set<string>(ADMIN_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(ADMIN_MUTATION_OPERATIONS);
 
 // A THIRD, closed table (configurationOperations.ts): operational configuration gated by its own
 // capability. Its entries are on neither list above, so every pin of those lists is unchanged.
+// A FOURTH, closed table (eosAuth/eosLoginService.ts): login-account security administration -- EOS native identity.
+// Gated inside the service on each operation's own existing key (LOGIN_ADMINISTRATION_OPERATIONS: roleAssignment.write /
+// credentialReset.initiate / userStatus.write; admin.principalAccess.read for the read),
+// and on neither list above, so every pin of those lists is unchanged.
 export const isAdminOperation = (name: unknown): name is AdminOperation =>
   typeof name === "string" && (READS.has(name) || MUTATIONS.has(name) || isAdminConfigurationOperation(name)
-    || (ADMIN_PREVIEW_OPERATIONS as readonly string[]).includes(name));
+    || (ADMIN_PREVIEW_OPERATIONS as readonly string[]).includes(name)
+    || isLoginAdministrationOperation(name));
 
 export const isMutation = (name: AdminOperation): boolean =>
-  MUTATIONS.has(name) || (isAdminConfigurationOperation(name) && ADMIN_CONFIGURATION_OPERATIONS[name].mutation);
+  MUTATIONS.has(name) || (isAdminConfigurationOperation(name) && ADMIN_CONFIGURATION_OPERATIONS[name].mutation)
+  || (isLoginAdministrationOperation(name) && LOGIN_ADMINISTRATION_OPERATIONS[name].mutation);
 
 const WORKFLOW_OPERATIONS = new Set<string>([...WORKFLOW_READ_OPERATIONS, ...WORKFLOW_MUTATION_OPERATIONS]);
 const isWorkflowOperation = (name: AdminOperation): name is AdminOperation & WorkflowOperation => WORKFLOW_OPERATIONS.has(name);
@@ -418,6 +429,8 @@ export interface AdminApiDeps {
    * the shared pool. Absent, every configuration operation refuses; there is no repository fallback.
    */
   readonly configuration?: ConfigurationOperationHandler;
+  /** Login-account security administration (EOS native identity), composed by the server when the front door is. */
+  readonly loginAdministration?: LoginAdministrationHandler;
   /**
    * The grant-impact preview simulator (eosOps/authorityChangePreview.ts), composed by the server over the shared pool.
    * Absent, previewAuthorityChange refuses; there is no repository-only fallback.
@@ -505,6 +518,16 @@ export async function executeAdminOperation<T = unknown>(
     // ════════════════════ OPERATIONAL CONFIGURATION ════════════════════
     // Gated on the operation's OWN capability, resolved by the same effective-access resolver as every
     // other gate -- never a Role name, never the security-administration invariant, never a surface read.
+    // ════════════════════ LOGIN-ACCOUNT ADMINISTRATION ════════════════════
+    // The service gates each operation itself (its own existing key; never self; an Owner's or Administrator's login only
+    // by an Owner; the account's own tenant only). Not composed -> refused, never a repository fallback.
+    if (isLoginAdministrationOperation(operation)) {
+      if (typeof deps.loginAdministration !== "function") {
+        return fail(operation, "NOT_FOUND", "EOS login administration is not enabled on this service");
+      }
+      const data = await deps.loginAdministration(operation, actor, input);
+      return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+    }
     if (isAdminConfigurationOperation(operation)) {
       const required = ADMIN_CONFIGURATION_OPERATIONS[operation].capability;
       const access = await resolvePrincipalEffectiveAccess(repo, actor.tenantId, actor.uid);
@@ -1138,6 +1161,22 @@ async function dispatch(
     case "setSalesDiscountAuthority":
       throw new Error(`${operation} is a configuration operation`);
 
+    // Login-account administration is served above, by the composed login service, before this dispatcher.
+    case "readLoginAccount":
+    case "provisionLoginAccount":
+    case "reissueLoginEnrollment":
+    case "issueLoginReset":
+    case "setLoginAccountStatus":
+    case "unlockLoginAccount":
+    case "revokeLoginSessions":
+    case "resetLoginMfa":
+    case "setLoginMfaRequirement":
+    case "retireLoginAccount":
+    case "readAuthenticationEvents":
+    case "planAuthenticationEventArchive":
+    case "setAuthenticationEventRetention":
+      throw new Error(`${operation} is a login administration operation`);
+
     default: {
       // Exhaustiveness: adding an operation to the list without handling it fails to compile,
       // rather than becoming a runtime "unknown operation" nobody notices until a user hits it.
@@ -1534,6 +1573,12 @@ function classify(err: unknown): AdminApiFailureCode {
       ? "INVALID_INPUT" : "CONFLICT";
   }
   if (err instanceof PolicyValidationError) return "INVALID_INPUT";
+  if (err instanceof LoginRefusal) {
+    if (err.code === "FORBIDDEN" || err.code === "SELF_ADMINISTRATION" || err.code === "PROTECTED_TARGET") return "FORBIDDEN";
+    if (err.code === "NOT_FOUND") return "NOT_FOUND";
+    if (err.code === "CONFLICT") return "CONFLICT";
+    return "INVALID_INPUT";
+  }
   const name = (err as { constructor?: { name?: string } })?.constructor?.name;
   // A store refusal is a conflict with what is already there -- a duplicate key, an immutable
   // published version -- rather than a malformed request.

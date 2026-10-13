@@ -1372,7 +1372,9 @@ async function principalsHolding(repo: PolicyRepository, tenantId: TenantId, rol
     const assignments = await repo.listAssignmentsForPrincipal(tenantId, uid);
     if (assignments.some((a) => a.roleId === roleId && a.status === "active")) uids.add(uid);
   }
-  return [...uids];
+  // SORTED: callers bump every holder's access version in this order, and a fixed (principal id) order is what keeps
+  // two multi-holder writers -- or one and a login code's share-locked authority re-read -- from locking in a cycle.
+  return [...uids].sort();
 }
 
 /**

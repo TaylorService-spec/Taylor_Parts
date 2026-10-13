@@ -273,8 +273,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 93 -> 94: 1764520000000 -- Rental (#207): the eos_rental domain, rental Work Orders, the RENTAL billing package source; six rental capabilities.
 // 94 -> 95: 1764530000000 -- SUP-1 Part Supplier Terms (DECISIONS #230): inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (the COMMERCIAL field group) on supplierCatalogItem, granted to NO Role; Protected Administrator standing excludes the three cost keys (Owner ruled 2026-10-12).
 // 95 -> 96: 1764540000000 -- Grant-impact preview (PR 3): the never-commit fence (seven deferred constraint triggers); no capability, no grant.
-const PINNED_LAST_MIGRATION = "1764540000000_authority-preview-never-commits";
-const PINNED_MIGRATION_COUNT = 96;
+// 96 -> 97: 1764550000000 -- EOS native login: credential, session and MFA tables; no capability, no grant, no Sample Company data.
+const PINNED_LAST_MIGRATION = "1764550000000_eos-native-login";
+const PINNED_MIGRATION_COUNT = 97;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
