@@ -79,8 +79,9 @@ export const CYCLE_COUNT_SUBMIT_CAPABILITY = "inventory.cycleCount.submit";
  *
  * P1-2 (Owner D-SCAN-1 = B, 2026-10-13). These gates used to also require
  * `inventory.location.bin.read`. That id exists only in the Firebase catalog: no PostgreSQL migration
- * or seed registers it and resolveMyCapabilities returns it for nobody, so PUT_AWAY, PICK and
- * MOVE_STOCK were dead for every principal. The intent it carried -- never stow into a bin that was
+ * or seed registers it and resolveMyCapabilities returns it for nobody, so under the EOS gate PUT_AWAY,
+ * PICK and MOVE_STOCK would be dead for every principal (under the retired Firebase feed only the
+ * catalog-wide admin held it). The intent it carried -- never stow into a bin that was
  * not resolved -- is kept by requiring the read the screen actually calls to resolve a bin
  * (BIN_LOOKUP_CAPABILITY_IDS below). The commands re-resolve the bin themselves and refuse
  * NOT_FOUND / WRONG_WAREHOUSE / INACTIVE (functions/src/eosOps/binPlacementOperations.ts).
@@ -261,17 +262,6 @@ export function deriveScanWorkflows(ctx = {}) {
     unavailable.push({ workflow: SCAN_WORKFLOW.PICK, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
   }
 
-  // ── Return intake ───────────────────────────────────────────────────────────────────────────
-  //
-  // Recording that something came back. A SEPARATE authority from everything above it: an operator
-  // who stows and picks all day has no business deciding what re-enters the building, and the
-  // capability model already says so.
-  //
-  // Offered only to a holder of inventory.returns.intake. It confers nothing about DISPOSITION,
-  // which is a different authority that does not exist yet (DECISIONS #118) — so this workflow can
-  // record an arrival and can never put anything back into sellable stock. (Its gate follows Move
-  // stock below.)
-  //
   // ── Move stock (Decision #170) ── relocateStock requires inventory.stock.relocate
   // (stockRelocationOperations.ts); every bin in the move is resolved through bin lookup.
   if (holds(STOCK_RELOCATE_CAPABILITY) && canLookUpBins) {
@@ -280,6 +270,18 @@ export function deriveScanWorkflows(ctx = {}) {
     unavailable.push({ workflow: SCAN_WORKFLOW.MOVE_STOCK, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
   }
 
+  // ── Return intake ───────────────────────────────────────────────────────────────────────────
+  //
+  // Recording that something came back. A SEPARATE authority from everything above it: an operator
+  // who stows and picks all day has no business deciding what re-enters the building, and the
+  // capability model already says so.
+  //
+  // Offered only to a holder of inventory.returns.intake. It confers nothing about DISPOSITION,
+  // which is a different authority that does not exist yet (DECISIONS #118) — so this workflow can
+  // record an arrival and can never put anything back into sellable stock.
+  //
+  // P1-2: inventory.returns.intake has no PostgreSQL registration (its command is the Firebase callable
+  // recordReturnIntake), so under the EOS gate no principal is offered this workflow. Owner ruling pending.
   if (holds(RETURNS_INTAKE_CAPABILITY)) {
     available.push({ workflow: SCAN_WORKFLOW.RETURN_INTAKE });
   } else {
