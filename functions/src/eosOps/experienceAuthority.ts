@@ -51,6 +51,12 @@ import {
   type PrincipalDimensionReader,
 } from "./contextualAuthorization";
 import type { ResolveContextInput } from "../adminPolicy/principalContext";
+import {
+  admittedScopeValues,
+  isAdministrationCapability,
+  SCOPE_EVALUABLE_GRANTS,
+  type ScopedHolding,
+} from "../adminPolicy/assignmentScopeRuntime";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 
 /**
@@ -61,6 +67,18 @@ import type { PolicyReader } from "../adminPolicy/policyRepository";
 export interface SurfaceGrantPath {
   readonly capabilityKey: string;
   readonly predicates?: readonly ContextPredicate[];
+  /**
+   * OPT-IN SCOPED DOOR (P1-1 SALES SURFACES, Owner-approved 2026-10-13). When the FLAT decision refuses with
+   * CAPABILITY_MISSING, this path may still be earned by an UNCONDITIONED, exact-value scoped holding of
+   * `capabilityKey` at `scopeType` -- and only because the governed read BEHIND the door (`consumer`, a gate site
+   * registered in SCOPE_EVALUABLE_GRANTS for that very (scopeType, capabilityKey)) filters its data to the holding's
+   * scope values. The door is tied to the read that narrows the data; it never confers the capability, and the scoped
+   * key NEVER enters the flat capability set (a scoped assignment never behaves as global).
+   *
+   * `surfaceCatalogViolations` refuses it on a container, on a predicated path, on an Administration capability or
+   * surface, and on any (scopeType, capabilityKey, consumer) not registered in SCOPE_EVALUABLE_GRANTS.
+   */
+  readonly scopedConsumer?: { readonly scopeType: "salesChannel"; readonly consumer: string };
 }
 
 export interface ExperienceSurface {
@@ -92,6 +110,10 @@ export interface ExperienceSurface {
 
 const surface = (key: string, label: string, grants: readonly SurfaceGrantPath[]): ExperienceSurface =>
   Object.freeze({ key, label, grants: Object.freeze(grants.map((g) => Object.freeze(g))) });
+
+/** The channel-scoped list read behind a commercial index door (a SCOPE_EVALUABLE_GRANTS consumer). */
+const SALES_CHANNEL_LIST = (consumer: string): NonNullable<SurfaceGrantPath["scopedConsumer"]> =>
+  Object.freeze({ scopeType: "salesChannel" as const, consumer });
 
 /** A surface earned ONLY by reaching one of `children`. No grant path, so nothing opens it directly. */
 const container = (key: string, label: string, children: readonly string[]): ExperienceSurface =>
@@ -139,8 +161,17 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
 
   // ── CRM / Commercial
   surface("crm.accounts", "Customers", [{ capabilityKey: "customer.record.read" }]),
-  surface("commercial.opportunities", "Opportunities", [{ capabilityKey: "opportunity.read" }]),
-  surface("commercial.salesOrders", "Sales Orders", [{ capabilityKey: "salesOrder.read" }]),
+  // P1-1 SALES SURFACES (Owner-approved 2026-10-13): the three commercial index doors are ALSO earned by a
+  // salesChannel-scoped holding of their read, because the list behind each door (commercial.list*) already filters to
+  // the holding's channels in SQL (commercialReadKernel). A RETAIL seller is offered the door and reads RETAIL only.
+  // Nothing else in this catalog opts in: equipment.register, administration.*, financials.* and analysis.workspace
+  // stay flat-only.
+  surface("commercial.opportunities", "Opportunities", [
+    { capabilityKey: "opportunity.read", scopedConsumer: SALES_CHANNEL_LIST("commercial.listOpportunities") },
+  ]),
+  surface("commercial.salesOrders", "Sales Orders", [
+    { capabilityKey: "salesOrder.read", scopedConsumer: SALES_CHANNEL_LIST("commercial.listSalesOrders") },
+  ]),
   // SALES AGREEMENTS -- DECLARED NOW, ON THE READ THAT ALREADY GOVERNED IT, WITH A DOOR BUILT IN THE
   // SAME CHANGE (Owner ruling D, Wave 16 / Lane BQ).
   //
@@ -169,7 +200,9 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   // NO PREDICATE. A Sales Agreement is a commercial record, not field work and not warehouse work:
   // the governed model attaches no Work Eligibility and no Operational Scope to reading one, and
   // inventing one here would be this file deciding policy rather than projecting it.
-  surface("commercial.agreements", "Sales Agreements", [{ capabilityKey: "salesAgreement.read" }]),
+  surface("commercial.agreements", "Sales Agreements", [
+    { capabilityKey: "salesAgreement.read", scopedConsumer: SALES_CHANNEL_LIST("commercial.listSalesAgreements") },
+  ]),
 
   // ── Inventory
   surface("inventory.catalog", "Parts Catalog", [{ capabilityKey: "inventory.catalog.read" }]),
@@ -546,7 +579,17 @@ export async function administrationReachDimension(
  * defect `readMyWorkforceCapabilities` was written to stop, one level up.
  */
 export async function grantedSurfaceKeys(
-  actor: { readonly tenantId: string; readonly principalId: string; readonly capabilities: ReadonlySet<string> },
+  actor: {
+    readonly tenantId: string;
+    readonly principalId: string;
+    readonly capabilities: ReadonlySet<string>;
+    /**
+     * Scope-qualified holdings (resolveOperationalContext's `scopedHeld`). Consulted ONLY for a path that opts in with
+     * `scopedConsumer`, and ONLY after the flat decision refused with CAPABILITY_MISSING. Never merged into
+     * `capabilities`.
+     */
+    readonly scopedHeld?: readonly ScopedHolding[];
+  },
   dimensions: PrincipalDimensions,
   catalog: readonly ExperienceSurface[] = EXPERIENCE_SURFACES,
 ): Promise<readonly string[]> {
@@ -571,6 +614,15 @@ export async function grantedSurfaceKeys(
         administrationReach: true,
       });
       if (decision.allowed) {
+        granted.add(entry.key);
+        break;
+      }
+      // The opt-in scoped door: only on CAPABILITY_MISSING (a flat holder never reaches here; any other refusal is a
+      // predicate's, and a scoped path carries none), and only through an unconditioned exact-value holding.
+      // The predicate check is repeated here (surfaceCatalogViolations also refuses it) so a predicated path can never
+      // open through the scoped branch, which runs before any predicate is evaluated.
+      if (decision.reason === "CAPABILITY_MISSING" && path.scopedConsumer && (path.predicates ?? []).length === 0
+          && admittedScopeValues(actor.scopedHeld, path.capabilityKey, path.scopedConsumer.scopeType).length > 0) {
         granted.add(entry.key);
         break;
       }
@@ -636,7 +688,7 @@ export async function resolveExperienceContext(
   const dimensions: PrincipalDimensions = { employeeId, workEligibility, operationalScopes, administrationReach };
 
   const surfaces = await grantedSurfaceKeys(
-    { tenantId, principalId, capabilities: ctx.capabilities },
+    { tenantId, principalId, capabilities: ctx.capabilities, scopedHeld: ctx.scopedHeld },
     dimensions,
   );
 
@@ -693,6 +745,25 @@ export function surfaceCatalogViolations(
     }
     for (const path of entry.grants) {
       if (!path.capabilityKey.includes(".")) problems.push(`${entry.key}: "${path.capabilityKey}" is not a capability key`);
+      if (path.scopedConsumer) {
+        // THE SCOPED DOOR IS TIED TO THE READ THAT NARROWS THE DATA, and to nothing broader.
+        const { scopeType, consumer } = path.scopedConsumer;
+        if (entry.containerOf) problems.push(`${entry.key}: a container cannot declare a scopedConsumer path`);
+        if ((path.predicates ?? []).length > 0) {
+          problems.push(`${entry.key}: scopedConsumer path ${path.capabilityKey} declares predicates -- a scoped door is decided by the holding alone`);
+        }
+        if (isAdministrationCapability(path.capabilityKey) || entry.key.startsWith("administration.")) {
+          problems.push(`${entry.key}: scopedConsumer on Administration ${path.capabilityKey} -- Administration reads the tenant-wide flat set only`);
+        }
+        // A door opens onto a LIST: the consumer must be the scope-filtered list read, never a detail read or a command.
+        if (!/^[a-z][A-Za-z]*\.list[A-Z]/.test(consumer)) {
+          problems.push(`${entry.key}: scopedConsumer ${consumer} is not a list read -- a scoped door is tied to the list that narrows its data`);
+        }
+        const registered = SCOPE_EVALUABLE_GRANTS.find((g) => g.scopeType === scopeType && g.capabilityKey === path.capabilityKey);
+        if (!registered || !registered.consumers.includes(consumer)) {
+          problems.push(`${entry.key}: scopedConsumer ${scopeType} x ${path.capabilityKey} -> ${consumer} is not a registered SCOPE_EVALUABLE_GRANTS consumer`);
+        }
+      }
       for (const predicate of path.predicates ?? []) {
         if (predicate.kind === "RECORD_ASSIGNMENT") {
           problems.push(`${entry.key}: RECORD_ASSIGNMENT cannot gate a surface -- navigation has no record`);

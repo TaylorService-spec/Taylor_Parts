@@ -9,7 +9,8 @@
 //   entitlements           the SAME request-scoped resolver, conditions from postgresGrantConditionProvider
 //                          -- the source every live transport composes
 //   eligibility / scope    postgresPrincipalDimensionReader -- the reader resolveExperienceContext uses
-//   surfaces               grantedSurfaceKeys over that flat set -- resolveExperienceContext's projection
+//   surfaces               grantedSurfaceKeys over that flat set (+ scopedHeld for the opt-in scoped doors, P1-1)
+//                          -- resolveExperienceContext's projection
 //   employee facts         the linked Employee's CURRENT Functional Roles (eosOps/functionalRoleFacts) -- shown
 //                          as FACTS ONLY. They are read AFTER every capability, surface and action decision above
 //                          and feed none of them: a Functional Role is never a permission source.
@@ -179,7 +180,8 @@ export async function explainEffectiveAccess(
   const administrationReach = await administrationReachDimension(pool, tenantId, principalId);
   const dimensions: PrincipalDimensions = { employeeId, workEligibility, operationalScopes, administrationReach };
   const actorBase = { tenantId, principalId, capabilities: ctx.capabilities };
-  const surfaces = await grantedSurfaceKeys(actorBase, dimensions);
+  // scopedHeld: the SAME opt-in scoped doors resolveExperienceContext offers (P1-1), so surfaces stay equal to the runtime.
+  const surfaces = await grantedSurfaceKeys({ ...actorBase, scopedHeld: ctx.scopedHeld }, dimensions);
   const surfaceSet = new Set(surfaces);
 
   // The direct rows are the SAME rows the runtime resolution read (ctx.directGrants); the records add provenance.
