@@ -4,6 +4,8 @@
 // may withhold NOTHING from anyone who reads it today (Owner ruling; access-removing gating is PR 5b, HELD). This
 // suite proves it on a baseline-equal tenant (the authority baseline's rebuild + the accepted Service delta):
 //
+//   0. (UNKNOWN fail-closed, Owner 2026-10-13) no existing row is UNKNOWN: every fixture kind is registered, and an
+//      INJECTED unregistered kind is withheld from every reader -- Owner and Administrator included (test 7);
 //   1. every Role that holds audit.event.read here also holds inventory.transaction.read, unconditioned -- the
 //      precondition for the only two ENFORCED gates (binPlacement, stockRelocation);
 //   2. for a principal holding EACH of those Roles (and the bootstrap Administrator), the response to every read
@@ -15,12 +17,16 @@
 //   4. the enforced gate does bite for a reader who lacks it (a fixture Role that exists in no catalog) -- values
 //      ABSENT, marker exact, nothing dropped -- so (2) is not vacuous;
 //   5. every capability key a recorded gate names is a registered capability (the data is not fiction);
-//   6. the append-only trigger is untouched.
+//   6. the append-only trigger is untouched;
+//   8. the 16 canonical personas, mirrored as fixture Roles holding exactly each persona's resolved capability set
+//      (support/auditPersonaCapabilityBaseline.v1.json, keys only): every persona that reads audit gets a byte-identical
+//      response for every read shape; every other persona is refused with the identical FORBIDDEN envelope.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
 import { seedProtectedOwner } from "./support/protectedOwnerFixture.mjs";
+import { readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
@@ -56,7 +62,7 @@ test("audit read projection (PR 5a) is access-neutral through the real resolver"
   assert.equal((await q(`SELECT count(*)::int AS n FROM eos_policy.principal_capabilities pc JOIN eos_policy.capabilities c ON c.id = pc.capability_id
       WHERE pc.tenant_id = $1 AND c.key = $2`, [T, AUDIT_READ])).rows[0].n, 0, "no direct audit.event.read grant");
 
-  // ── fixture rows: one per registered kind (+ one unregistered), and rows carrying every content-filter key ──
+  // ── fixture rows: one per registered kind, and rows carrying every content-filter key ──
   const base = Date.parse("2026-10-01T00:00:00.000Z");
   let n = 0;
   const insert = async (kind, action, targetId, before, after, reason = null) => {
@@ -68,7 +74,7 @@ test("audit read projection (PR 5a) is access-neutral through the real resolver"
         new Date(base + n * 1000).toISOString(), reason]);
   };
   const STANDING = { standing: "PROTECTED_ADMINISTRATOR", ruling: "fixture" };
-  for (const kind of [...projection.REGISTERED_AUDIT_KINDS, "zz_unregistered"]) {
+  for (const kind of projection.REGISTERED_AUDIT_KINDS) {
     await insert(kind, `${kind}.fixture`, `${kind}-1`, null, { value: `${kind}-value`, authorizedBy: STANDING }, "fixture reason");
   }
   // The two ENFORCED kinds, in their writers' exact payload shape (binPlacementOperations / stockRelocationOperations).
@@ -118,7 +124,7 @@ test("audit read projection (PR 5a) is access-neutral through the real resolver"
       const roleId = shape.roleKey ? await roleIdOf(shape.roleKey) : null;
       const without = await repo.queryAuditEvents(T, { ...filterOf(shape), roleId, limit: shape.limit });
       const withExclusion = await repo.queryAuditEvents(T, { ...filterOf(shape), roleId, limit: shape.limit,
-        contentFilterExcludedKinds: projection.CONTENT_FILTER_EXCLUDED_KINDS });
+        contentFilterExcludedKinds: projection.CONTENT_FILTER_EXCLUDED_KINDS, contentFilterKinds: projection.CONTENT_FILTER_KINDS });
       assert.equal(JSON.stringify(withExclusion), JSON.stringify(without), JSON.stringify(shape));
     }
     // And it is not vacuous: an enforced-kind row whose payload DID carry a filter key would no longer match by content.
@@ -149,9 +155,11 @@ test("audit read projection (PR 5a) is access-neutral through the real resolver"
     const expected = new Map();
     for (const shape of SHAPES) expected.set(JSON.stringify(shape), JSON.stringify(await preRead(shape)));
     const unfiltered = JSON.parse(expected.get(JSON.stringify({ limit: 500 })));
-    for (const kind of [...ENFORCED, "employee", "part_supplier_item", "zz_unregistered"]) {
+    for (const kind of [...ENFORCED, "employee", "part_supplier_item", "loginAccount"]) {
       assert.ok(unfiltered.some((r) => r.targetKind === kind), `the fixture covers ${kind}`);
     }
+    assert.deepEqual(unfiltered.filter((r) => projection.classifyAuditKind(r.targetKind) === "UNKNOWN").map((r) => r.targetKind), [],
+      "no existing row is UNKNOWN, so fail-closed changes nothing here");
     let compared = 0;
     for (const reader of readers) {
       for (const shape of SHAPES) {
@@ -187,6 +195,87 @@ test("audit read projection (PR 5a) is access-neutral through the real resolver"
       else assert.ok(!("authorizedBy" in row));
     });
     assert.equal(withheld, 5, "the two per-kind rows, the two writer-shaped rows and the oracle probe");
+  });
+
+  await t.test("8. the 16 canonical personas: byte-identical for every audit reader, identical refusal for the rest", async () => {
+    const baseline = JSON.parse(readFileSync(new URL("./support/auditPersonaCapabilityBaseline.v1.json", import.meta.url), "utf8"));
+    const personas = Object.entries(baseline.personas);
+    assert.equal(personas.length, 16);
+    const known = new Set((await q(`SELECT key FROM eos_policy.capabilities`)).rows.map((r) => r.key));
+    const unknownKeys = personas.flatMap(([p, keys]) => keys.filter((k) => !known.has(k)).map((k) => `${p}:${k}`));
+    assert.deepEqual(unknownKeys, [], "a persona capability is not registered in this build");
+    const people = [];
+    for (const [persona, keys] of personas) {
+      const roleKey = `zzPersona_${persona}`;
+      ok(await admin("createRole", { key: roleKey, name: roleKey, reason: "persona mirror" }), `create ${roleKey}`);
+      const roleId = await roleIdOf(roleKey);
+      // EXACTLY the persona's resolved set, as fixture rows (an administrator may not hand out admin.* keys itself).
+      await q(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+               SELECT 'rc_pm_' || md5($1 || $2 || c.id), $1, $2, c.id, 'fixture','fixture','fixture'
+                 FROM eos_policy.capabilities c WHERE c.key = ANY($3)`, [T, roleId, keys]);
+      const subject = `uid-auditproj-persona-${persona}`;
+      const made = await ensureTenantPrincipal(repo, { tenantId: T, externalSubject: subject, actorUid: "operator-auditproj", actorRoleKeys: ["admin"] });
+      const principalId = made.principal?.id ?? made.id ?? made.principalId;
+      await repo.transact({ tenantId: T, uid: "fixture:persona-mirror" }, async (tx) => {
+        const accessVersion = await tx.bumpAccessVersion(principalId);
+        return tx.createAssignment({ principalId, roleId, scopeType: "global", scopeValue: null, status: "active",
+          grantedBy: "fixture:persona-mirror", grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion });
+      });
+      // The fixture is honest: the real resolver resolves EXACTLY the persona's capability set.
+      const access = ok(await admin("getPrincipalEffectiveAccess", { principalId }), `effective ${persona}`);
+      assert.deepEqual(access.effective.map((c) => c.capabilityKey).sort(), [...keys].sort(), `${persona} resolves its census set`);
+      people.push({ persona, subject, readsAudit: keys.includes(AUDIT_READ) });
+    }
+    assert.deepEqual(people.filter((p) => p.readsAudit).map((p) => p.persona).sort(),
+      ["administrator", "financeAccounting", "generalManager", "ownerExecutive", "partsManager", "serviceManager", "warehouseManager"]);
+
+    const expected = new Map();
+    for (const shape of SHAPES) expected.set(JSON.stringify(shape), JSON.stringify(await preRead(shape)));
+    const refusals = new Set();
+    let identical = 0;
+    for (const p of people) {
+      for (const shape of SHAPES) {
+        const res = await read(p.subject, shape);
+        if (p.readsAudit) {
+          const data = ok(res, `${p.persona} ${JSON.stringify(shape)}`);
+          assert.equal(JSON.stringify(data), expected.get(JSON.stringify(shape)), `${p.persona}: ${JSON.stringify(shape)} changed`);
+          identical += 1;
+        } else {
+          assert.equal(res.ok, false, `${p.persona} read the audit trail`);
+          assert.equal(res.code, "FORBIDDEN");
+          assert.equal("data" in res, false);
+          refusals.add(JSON.stringify(res));
+        }
+      }
+    }
+    assert.equal(refusals.size, 1, `one refusal envelope for every non-reader: ${[...refusals]}`);
+    assert.match([...refusals][0], /audit\.event\.read/);
+    t.diagnostic(`16 personas: ${identical} audit responses byte-identical, ${people.filter((p) => !p.readsAudit).length} personas refused identically`);
+  });
+
+  await t.test("7. an INJECTED unregistered kind fails closed for EVERY reader -- Owner and Administrator included", async () => {
+    await insert("zz_unregistered", "zz.fixture", "zz-1", { secret: "before-value" }, { secret: "after-value", principalId: "prn-zz", authorizedBy: STANDING });
+    const raw = await repo.listAuditEvents(T, 500);
+    const at = raw.findIndex((r) => r.targetKind === "zz_unregistered");
+    assert.ok(at >= 0);
+    for (const reader of readers) {
+      const data = ok(await read(reader.subject, { limit: 500 }), reader.role);
+      assert.deepEqual(data.map((r) => r.id), raw.map((r) => r.id), `${reader.role}: nothing dropped`);
+      const row = data[at];
+      assert.ok(!("before" in row) && !("after" in row), `${reader.role}: values ABSENT`);
+      assert.deepEqual(row.valuesWithheld, { reason: "UNREGISTERED_KIND", requires: [] });
+      assert.deepEqual(row.authorizedBy, STANDING);
+      const text = JSON.stringify(data);
+      assert.ok(!text.includes("after-value") && !text.includes("before-value"), reader.role);
+      // Every OTHER row is still exactly the stored row.
+      data.forEach((r, i) => { if (i !== at) assert.equal(JSON.stringify(r), JSON.stringify(raw[i]), `${reader.role}: ${raw[i].targetKind}`); });
+    }
+    // Its content is no filter oracle: a JSON match on its payload finds nothing; the column match (target) still does.
+    const viaContent = ok(await read("uid-auditproj-admin", { principalId: "prn-zz", limit: 500 }), "content filter");
+    assert.equal(viaContent.filter((r) => r.targetId === "zz-1").length, 0);
+    const viaTarget = ok(await read("uid-auditproj-admin", { principalId: "zz-1", limit: 500 }), "target filter");
+    assert.equal(viaTarget.filter((r) => r.targetId === "zz-1").length, 1);
+    assert.ok("valuesWithheld" in viaTarget.find((r) => r.targetId === "zz-1"));
   });
 
   await t.test("5. every capability a recorded gate names is registered", async () => {

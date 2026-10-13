@@ -910,7 +910,9 @@ export class InMemoryPolicyRepository implements PolicyRepository {
   }
   async queryAuditEvents(tenantId: TenantId, filter: AuditEventFilter) {
     const excluded = new Set(filter.contentFilterExcludedKinds ?? []);
+    const allowed = filter.contentFilterKinds ? new Set(filter.contentFilterKinds) : null;
     const field = (e: PolicyAuditEventRecord, key: string, value: string) => !excluded.has(e.targetKind)
+      && (allowed === null || allowed.has(e.targetKind))
       && [e.after, e.before].some((p) => p !== null && typeof p === "object" && (p as Record<string, unknown>)[key] === value);
     const rows = this.mine(this.tables.audit, tenantId).filter((e) => {
       const f = filter;

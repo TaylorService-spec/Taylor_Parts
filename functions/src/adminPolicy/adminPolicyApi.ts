@@ -110,7 +110,7 @@ import type {
 } from "./types";
 import { hasProtectedAdministratorStanding, isImpliedForProtectedAdministrator, protectedAdministratorImpliedKeys } from "./protectedAdministrator";
 import { ADMIN_ROLE_KEY, isDesignatedAdministratorRole } from "./administrationAuthority";
-import { CONTENT_FILTER_EXCLUDED_KINDS, auditRowsNeedReader, projectAuditEvents } from "./auditReadProjection";
+import { CONTENT_FILTER_EXCLUDED_KINDS, CONTENT_FILTER_KINDS, auditRowsNeedProjection, auditRowsNeedReader, projectAuditEvents } from "./auditReadProjection";
 import type { AuditEventReadRow } from "./auditReadProjection";
 import {
   AUTHORITY_CHANGE_GATE,
@@ -671,14 +671,16 @@ async function requireAdminReadAuthority(
 }
 
 /**
- * The audit read projection (PR 5a, access-NEUTRAL): every row passes through the closed per-kind registry. Only an
- * ENFORCED VALUE_GATED kind can depend on the reader, so access is resolved -- ONCE, by the same resolver as the read
+ * The audit read projection (PR 5a, access-NEUTRAL): every row passes through the closed per-kind registry. An UNKNOWN
+ * kind fails closed for every reader. Only an ENFORCED VALUE_GATED kind can depend on the reader, so access is resolved -- ONCE, by the same resolver as the read
  * gate, unconditioned grants only -- only when such a row is present; otherwise the rows are returned as read.
  */
 async function projectAuditHistoryForReader(
   repo: PolicyRepository, actor: AdminActor, rows: readonly PolicyAuditEventRecord[],
 ): Promise<readonly AuditEventReadRow[]> {
-  if (!auditRowsNeedReader(rows)) return rows;
+  if (!auditRowsNeedProjection(rows)) return rows;
+  // UNKNOWN kinds fail closed for every reader and need no resolution; only an ENFORCED gate depends on the reader.
+  if (!auditRowsNeedReader(rows)) return projectAuditEvents(rows, null);
   const access = await resolvePrincipalEffectiveAccess(repo, actor.tenantId, actor.uid);
   const held = new Set(access.effective.map((c) => c.capabilityKey));
   return projectAuditEvents(rows, { holds: (k) => held.has(k) });
@@ -979,7 +981,8 @@ async function dispatch(
         // A Role filter also matches assignment events, which name the Role by id.
         const roleId = filter.roleKey ? (await repo.getRoleByKey(actor.tenantId, filter.roleKey))?.id ?? null : null;
         rows = await repo.queryAuditEvents(actor.tenantId,
-          { ...filter, roleId, limit, contentFilterExcludedKinds: CONTENT_FILTER_EXCLUDED_KINDS });
+          { ...filter, roleId, limit, contentFilterExcludedKinds: CONTENT_FILTER_EXCLUDED_KINDS,
+            contentFilterKinds: CONTENT_FILTER_KINDS });
       }
       return projectAuditHistoryForReader(repo, actor, rows);
     }

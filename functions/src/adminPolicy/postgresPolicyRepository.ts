@@ -768,26 +768,27 @@ export class PostgresPolicyRepository implements PolicyRepository {
          SELECT * FROM ${SCHEMA}.audit_events
           WHERE tenant_id = $1
             AND ($2::text IS NULL OR actor_uid = $2 OR target_id = $2
-                 OR (target_kind <> ALL($13::text[]) AND after @> jsonb_build_object('principalId', $2::text)) OR (target_kind <> ALL($13::text[]) AND before @> jsonb_build_object('principalId', $2::text))
-                 OR (target_kind <> ALL($13::text[]) AND after @> jsonb_build_object('granteeKey', $2::text)) OR (target_kind <> ALL($13::text[]) AND before @> jsonb_build_object('granteeKey', $2::text)))
+                 OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND after @> jsonb_build_object('principalId', $2::text)) OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND before @> jsonb_build_object('principalId', $2::text))
+                 OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND after @> jsonb_build_object('granteeKey', $2::text)) OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND before @> jsonb_build_object('granteeKey', $2::text)))
             AND ($3::text IS NULL OR target_id = $3
-                 OR (target_kind <> ALL($13::text[]) AND after @> jsonb_build_object('employeeId', $3::text)) OR (target_kind <> ALL($13::text[]) AND before @> jsonb_build_object('employeeId', $3::text)))
+                 OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND after @> jsonb_build_object('employeeId', $3::text)) OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND before @> jsonb_build_object('employeeId', $3::text)))
             AND ($4::text IS NULL
-                 OR (target_kind <> ALL($13::text[]) AND after @> jsonb_build_object('granteeKey', $4::text)) OR (target_kind <> ALL($13::text[]) AND before @> jsonb_build_object('granteeKey', $4::text))
-                 OR (target_kind <> ALL($13::text[]) AND after @> jsonb_build_object('roleKey', $4::text)) OR (target_kind <> ALL($13::text[]) AND before @> jsonb_build_object('roleKey', $4::text))
-                 OR ($5::text IS NOT NULL AND ((target_kind <> ALL($13::text[]) AND after @> jsonb_build_object('roleId', $5::text)) OR (target_kind <> ALL($13::text[]) AND before @> jsonb_build_object('roleId', $5::text)))))
-            AND ($6::text IS NULL OR (target_kind <> ALL($13::text[]) AND after @> jsonb_build_object('objectKey', $6::text)) OR (target_kind <> ALL($13::text[]) AND before @> jsonb_build_object('objectKey', $6::text)))
-            AND ($7::text IS NULL OR (target_kind <> ALL($13::text[]) AND after @> jsonb_build_object('capabilityKey', $7::text)) OR (target_kind <> ALL($13::text[]) AND before @> jsonb_build_object('capabilityKey', $7::text)))
-            AND ($8::text IS NULL OR (target_kind <> ALL($13::text[]) AND after @> jsonb_build_object('actionKey', $8::text)) OR (target_kind <> ALL($13::text[]) AND before @> jsonb_build_object('actionKey', $8::text)))
-            AND ($9::text IS NULL OR (target_kind <> ALL($13::text[]) AND after @> jsonb_build_object('workflowKey', $9::text)) OR (target_kind <> ALL($13::text[]) AND before @> jsonb_build_object('workflowKey', $9::text))
-                 OR (target_kind LIKE 'workflow%' AND ((target_kind <> ALL($13::text[]) AND after @> jsonb_build_object('key', $9::text)) OR (target_kind <> ALL($13::text[]) AND before @> jsonb_build_object('key', $9::text)))))
+                 OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND after @> jsonb_build_object('granteeKey', $4::text)) OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND before @> jsonb_build_object('granteeKey', $4::text))
+                 OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND after @> jsonb_build_object('roleKey', $4::text)) OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND before @> jsonb_build_object('roleKey', $4::text))
+                 OR ($5::text IS NOT NULL AND ((target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND after @> jsonb_build_object('roleId', $5::text)) OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND before @> jsonb_build_object('roleId', $5::text)))))
+            AND ($6::text IS NULL OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND after @> jsonb_build_object('objectKey', $6::text)) OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND before @> jsonb_build_object('objectKey', $6::text)))
+            AND ($7::text IS NULL OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND after @> jsonb_build_object('capabilityKey', $7::text)) OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND before @> jsonb_build_object('capabilityKey', $7::text)))
+            AND ($8::text IS NULL OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND after @> jsonb_build_object('actionKey', $8::text)) OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND before @> jsonb_build_object('actionKey', $8::text)))
+            AND ($9::text IS NULL OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND after @> jsonb_build_object('workflowKey', $9::text)) OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND before @> jsonb_build_object('workflowKey', $9::text))
+                 OR (target_kind LIKE 'workflow%' AND ((target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND after @> jsonb_build_object('key', $9::text)) OR (target_kind <> ALL($13::text[]) AND ($14::text[] IS NULL OR target_kind = ANY($14::text[])) AND before @> jsonb_build_object('key', $9::text)))))
             AND ($10::timestamptz IS NULL OR occurred_at >= $10::timestamptz)
             AND ($11::timestamptz IS NULL OR occurred_at <  $11::timestamptz)
           ORDER BY occurred_at DESC, id DESC LIMIT $12
        ) recent ORDER BY occurred_at ASC, id ASC`,
       [tenantId, filter.principalId ?? null, filter.employeeId ?? null, filter.roleKey ?? null, filter.roleId ?? null,
         filter.objectKey ?? null, filter.capabilityKey ?? null, filter.actionKey ?? null, filter.workflowKey ?? null,
-        filter.from ?? null, filter.to ?? null, filter.limit, [...(filter.contentFilterExcludedKinds ?? [])]],
+        filter.from ?? null, filter.to ?? null, filter.limit, [...(filter.contentFilterExcludedKinds ?? [])],
+        filter.contentFilterKinds ? [...filter.contentFilterKinds] : null],
       toAudit,
     );
   }

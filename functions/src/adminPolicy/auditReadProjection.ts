@@ -24,12 +24,14 @@
  *     reader the enforced gate is satisfied, so every response stays byte-identical.
  *   * Every other VALUE_GATED gate is RECORDED_NOT_ENFORCED -- its values pass through unchanged. Enforcing it would
  *     remove access from at least one current audit.event.read role; that is PR 5b, HELD for the Owner.
- *   * An UNKNOWN kind passes through unchanged in 5a (fail-closed withholding is access-removing for historic rows).
- *     The static writer-kind coverage test (auditReadProjectionRegistry.test.mjs) makes an unregistered writer kind a
- *     CI failure instead.
+ *   * An UNKNOWN kind FAILS CLOSED (Owner, 2026-10-13): its values are withheld from EVERY reader, the Owner and the
+ *     Administrator included (`valuesWithheld.reason = "UNREGISTERED_KIND"`, `requires: []`). This is access-neutral
+ *     today because every kind written by code AND every kind present in nonprod data is registered, so no existing
+ *     row is UNKNOWN. The static writer-kind coverage test (auditReadProjectionRegistry.test.mjs) makes an
+ *     unregistered writer kind a CI failure, so a new writer is caught before it degrades to metadata-only.
  *
  * The projector never drops, reorders or adds a row (no existence oracle, no paging drift); it may only replace
- * `before`/`after` of a row whose ENFORCED gate the reader does not hold. A stored `{ withheld: true }` is never
+ * `before`/`after` of an UNKNOWN row, or of a row whose ENFORCED gate the reader does not hold. A stored `{ withheld: true }` is never
  * replaced -- the projector never un-withholds.
  *
  * PURE: no repository, no clock, no Firebase. The caller resolves the reader's effective access ONCE per read.
@@ -46,7 +48,7 @@ export type AuditGateEnforcement = "ENFORCED" | "RECORDED_NOT_ENFORCED";
  *
  * `requires` is the set of capability keys a reader must hold (ALL of them). An EMPTY `requires` with a `decision`
  * means the Object has no read capability today and the gate is an Owner decision (D2) -- `candidate` names the key
- * the design proposes, if any. `actionRequires` adds keys for specific actions (e.g. principal-link events also
+ * the design proposes, if any. `decision: "D5"` marks a proposed gate that is itself still an Owner decision. `actionRequires` adds keys for specific actions (e.g. principal-link events also
  * reveal Principal identity). `fieldGroupsObject` names the Object whose governed field groups additionally apply.
  */
 export interface AuditValueGate {
@@ -54,7 +56,7 @@ export interface AuditValueGate {
   readonly enforcement: AuditGateEnforcement;
   readonly actionRequires?: Readonly<Record<string, readonly string[]>>;
   readonly fieldGroupsObject?: string;
-  readonly decision?: "D2";
+  readonly decision?: "D2" | "D5";
   readonly candidate?: string | null;
 }
 
@@ -96,6 +98,8 @@ export const AUDIT_KIND_REGISTRY: Readonly<Record<string, AuditKindEntry>> = Obj
   workflowVersion: PASS,
   workflowInstance: PASS,
   eosSession: PASS,
+  // EOS native login (#2067): the authentication-event retention policy is governance configuration.
+  securityEventRetention: PASS,
   authorization: PASS,
   jobRole: PASS,
   functionalRole: PASS,
@@ -145,6 +149,9 @@ export const AUDIT_KIND_REGISTRY: Readonly<Record<string, AuditKindEntry>> = Obj
   bin: recorded(["warehouse.record.read"]),
   transferOrder: recorded(["warehouse.transferOrder.read"]),
   serializedAsset: recorded(["inventory.serializedAsset.read"]),
+  // EOS native login (#2067): before/after carry principalId, loginIdentifier and subject -- identity data. Proposed
+  // gate recorded as data only (Owner decision D5 candidate); NOT enforced in 5a.
+  loginAccount: recorded(["admin.principalAccess.read"], { decision: "D5" }),
 
   // ── business records whose Object has no read capability today: the gate is an Owner decision (D2) ──
   inboundMailbox: d2("inboundWork.intake.manage"),
@@ -189,6 +196,15 @@ export const CONTENT_FILTER_EXCLUDED_KINDS: readonly string[] = Object.freeze(
   }),
 );
 
+/**
+ * The ONLY kinds whose JSON payload a content filter may match: the registered kinds minus the ENFORCED ones. An UNKNOWN
+ * kind fails closed for every reader, so a content match on it would be a value oracle too. Every kind present in data
+ * is registered today, so restricting to this list changes no filter result (proved in auditReadProjectionPostgres).
+ */
+export const CONTENT_FILTER_KINDS: readonly string[] = Object.freeze(
+  REGISTERED_AUDIT_KINDS.filter((k) => !CONTENT_FILTER_EXCLUDED_KINDS.includes(k)),
+);
+
 // ════════════════════ wire contract ════════════════════
 
 export type AuditValuesWithheldReason = "RECORD_READ_REQUIRED" | "UNREGISTERED_KIND";
@@ -224,9 +240,14 @@ export function auditRowsNeedReader(rows: readonly PolicyAuditEventRecord[]): bo
   return rows.some((r) => enforcedRequirementsFor(r.targetKind, r.action) !== null);
 }
 
+/** True when the projection could change some row (an UNKNOWN kind, or an ENFORCED gate); false = identity. */
+export function auditRowsNeedProjection(rows: readonly PolicyAuditEventRecord[]): boolean {
+  return rows.some((r) => classifyAuditKind(r.targetKind) === "UNKNOWN" || enforcedRequirementsFor(r.targetKind, r.action) !== null);
+}
+
 /**
  * Project audit rows for one reader. Returns the SAME array (same row objects) when nothing is withheld -- the
- * identity projection every current reader receives. Never drops, reorders or adds a row.
+ * identity projection every current reader receives on every existing row. `reader` null = holds nothing. Never drops, reorders or adds a row.
  */
 export function projectAuditEvents<T extends PolicyAuditEventRecord>(
   rows: readonly T[],
@@ -234,6 +255,12 @@ export function projectAuditEvents<T extends PolicyAuditEventRecord>(
 ): readonly (T | WithheldAuditEventRow)[] {
   let out: (T | WithheldAuditEventRow)[] | null = null;
   rows.forEach((row, i) => {
+    if (classifyAuditKind(row.targetKind) === "UNKNOWN") {
+      // FAIL CLOSED: no reader -- not the Owner, not the Administrator -- sees the values of an unclassified kind.
+      if (out === null) out = rows.slice();
+      out[i] = withhold(row, { reason: "UNREGISTERED_KIND", requires: [] });
+      return;
+    }
     const requires = enforcedRequirementsFor(row.targetKind, row.action);
     if (requires === null) return;
     if (reader !== null && requires.every((k) => reader.holds(k))) return;

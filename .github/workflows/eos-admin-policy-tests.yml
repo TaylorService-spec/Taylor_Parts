@@ -84,6 +84,7 @@ on:
       # directories the static writer-kind coverage guard scans that no other filter here names (the guard's subject).
       - "functions/test/auditReadProjectionRegistry.test.mjs"
       - "functions/test/auditReadProjectionPostgres.test.mjs"
+      - "functions/test/support/auditPersonaCapabilityBaseline.v1.json"
       - "functions/src/eosAuth/**"
       - "functions/src/salesAuthority/**"
       - "functions/scripts/workOrderQuarantineCli.js"
@@ -852,6 +853,7 @@ on:
       # directories the static writer-kind coverage guard scans that no other filter here names (the guard's subject).
       - "functions/test/auditReadProjectionRegistry.test.mjs"
       - "functions/test/auditReadProjectionPostgres.test.mjs"
+      - "functions/test/support/auditPersonaCapabilityBaseline.v1.json"
       - "functions/src/eosAuth/**"
       - "functions/src/salesAuthority/**"
       - "functions/scripts/workOrderQuarantineCli.js"

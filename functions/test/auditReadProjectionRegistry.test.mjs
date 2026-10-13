@@ -48,6 +48,7 @@ const WRITERS = {
   "src/commercialMigration/commercialC5Target.ts": ["commercial_snapshot"],
   "src/crm/crmCutoverCopy.ts": ["crm_cutover"],
   "src/eosAudit/authorizationDenialAudit.ts": ["authorization"],
+  "src/eosAuth/eosLoginService.ts": ["loginAccount", "securityEventRetention"],
   "src/eosAuth/eosSessionIssuer.ts": ["eosSession"],
   "src/eosCommercial/fulfillment/salesOrderFulfillmentAuthority.ts": ["sales_order"],
   "src/eosFinance/billingPackage.ts": ["billing_package"],
@@ -297,7 +298,7 @@ test("every audit writer file is named, and every kind it writes is the kind rec
     if (JSON.stringify(extracted) !== JSON.stringify(declared)) drift.push(`${rel}: writes [${extracted}] but WRITERS says [${declared}]`);
   }
   assert.deepEqual(drift, [], "an audit writer's kinds changed: register the kind, then update WRITERS");
-  assert.ok(writers.length >= 69, `covered ${writers.length} writer files`);
+  assert.ok(writers.length >= 70, `covered ${writers.length} writer files`);
 });
 
 test("the registry is closed over the written kinds: every written kind registered, no registered kind without a writer", () => {
@@ -305,7 +306,7 @@ test("the registry is closed over the written kinds: every written kind register
   const registered = new Set(projection.REGISTERED_AUDIT_KINDS);
   assert.deepEqual([...written].filter((k) => !registered.has(k)).sort(), [], "an audit kind is written but not registered");
   assert.deepEqual([...registered].filter((k) => !written.has(k)).sort(), [], "a registered kind has no writer");
-  assert.equal(registered.size, 66);
+  assert.equal(registered.size, 68);
   for (const k of written) assert.notEqual(projection.classifyAuditKind(k), "UNKNOWN", k);
   assert.equal(projection.classifyAuditKind("zz_unregistered"), "UNKNOWN");
 });
@@ -320,14 +321,21 @@ test("registry shape: each kind is exactly one class; only the verified-neutral 
     if (e.class !== "VALUE_GATED") { assert.equal(e.gate, undefined, kind); continue; }
     assert.ok(Array.isArray(e.gate.requires), kind);
     if (e.gate.decision === "D2") assert.deepEqual(e.gate.requires, [], `${kind}: a D2 gate is undecided`);
+    else if (e.gate.decision === "D5") assert.equal(e.gate.enforcement, "RECORDED_NOT_ENFORCED", `${kind}: a D5 gate is a proposal`);
     else assert.ok(e.gate.requires.length > 0, `${kind}: a gate must name a capability`);
     if (e.gate.enforcement === "ENFORCED") enforced.push(kind);
     else assert.equal(e.gate.enforcement, "RECORDED_NOT_ENFORCED", kind);
   }
-  assert.deepEqual(counts, { PASS_THROUGH: 20, PASS_THROUGH_EVIDENCE: 9, VALUE_GATED: 37 });
+  assert.deepEqual(counts, { PASS_THROUGH: 21, PASS_THROUGH_EVIDENCE: 9, VALUE_GATED: 38 });
   // PR 5a: ONLY the kinds whose gate every audit.event.read role already holds. Anything more is PR 5b (Owner-HELD).
   assert.deepEqual(enforced, ["binPlacement", "stockRelocation"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(projection.AUDIT_KIND_REGISTRY.loginAccount)), { class: "VALUE_GATED",
+    gate: { requires: ["admin.principalAccess.read"], enforcement: "RECORDED_NOT_ENFORCED", decision: "D5" } });
+  assert.equal(projection.AUDIT_KIND_REGISTRY.securityEventRetention.class, "PASS_THROUGH");
   assert.deepEqual([...projection.CONTENT_FILTER_EXCLUDED_KINDS], ["binPlacement", "stockRelocation"]);
+  assert.deepEqual([...projection.CONTENT_FILTER_KINDS].sort(),
+    projection.REGISTERED_AUDIT_KINDS.filter((k) => !["binPlacement", "stockRelocation"].includes(k)).sort(),
+    "content filters match exactly the registered, non-enforced kinds (never an UNKNOWN one)");
   for (const k of enforced) assert.deepEqual([...projection.AUDIT_KIND_REGISTRY[k].gate.requires], ["inventory.transaction.read"]);
 });
 
@@ -336,21 +344,39 @@ const row = (targetKind, extra = {}) => Object.freeze({
   before: null, after: { a: 1, authorizedBy: { standing: "PROTECTED_ADMINISTRATOR" } }, occurredAt: "2026-10-12T00:00:00.000Z", reason: null, ...extra,
 });
 
-test("projector: identity for a holder -- the SAME array, the same row objects, byte-identical", () => {
-  const rows = Object.freeze(projection.REGISTERED_AUDIT_KINDS.concat(["zz_unregistered"]).map((k) => row(k)));
+test("projector: identity for every registered kind -- the SAME array, the same row objects, byte-identical", () => {
+  const rows = Object.freeze(projection.REGISTERED_AUDIT_KINDS.map((k) => row(k)));
   const holder = { holds: (k) => k === "inventory.transaction.read" };
   const out = projection.projectAuditEvents(rows, holder);
   assert.equal(out, rows, "nothing withheld -> the input array itself");
   assert.equal(JSON.stringify(out), JSON.stringify(rows));
-  // A reader holding nothing at all still sees every kind but the two enforced ones unchanged (UNKNOWN included).
+  // A reader holding nothing at all still sees every registered kind but the two enforced ones unchanged.
   const none = projection.projectAuditEvents(rows, { holds: () => false });
   assert.equal(none.length, rows.length);
   none.forEach((r, i) => {
     if (["binPlacement", "stockRelocation"].includes(rows[i].targetKind)) return;
     assert.equal(r, rows[i], rows[i].targetKind);
   });
-  assert.equal(projection.auditRowsNeedReader(rows.filter((r) => !["binPlacement", "stockRelocation"].includes(r.targetKind))), false);
+  const ungated = rows.filter((r) => !["binPlacement", "stockRelocation"].includes(r.targetKind));
+  assert.equal(projection.auditRowsNeedReader(ungated), false);
+  assert.equal(projection.auditRowsNeedProjection(ungated), false, "registered, ungated rows are never projected");
   assert.equal(projection.auditRowsNeedReader([row("stockRelocation")]), true);
+});
+
+test("projector: an UNKNOWN kind FAILS CLOSED for every reader -- Owner and Administrator included", () => {
+  const rows = [row("role"), row("zz_unregistered"), row("employee")];
+  assert.equal(projection.auditRowsNeedProjection(rows), true);
+  assert.equal(projection.auditRowsNeedReader(rows), false, "no reader resolution is needed to fail closed");
+  for (const reader of [null, { holds: () => false }, { holds: () => true }]) {
+    const out = projection.projectAuditEvents(rows, reader);
+    assert.deepEqual(out.map((r) => r.id), rows.map((r) => r.id), "nothing dropped");
+    assert.equal(out[0], rows[0]);
+    assert.equal(out[2], rows[2]);
+    assert.ok(!("before" in out[1]) && !("after" in out[1]), "absent, never null");
+    assert.deepEqual(out[1].valuesWithheld, { reason: "UNREGISTERED_KIND", requires: [] });
+    assert.deepEqual(out[1].authorizedBy, { standing: "PROTECTED_ADMINISTRATOR" }, "standing lifted");
+    for (const k of ["id", "action", "actorUid", "targetKind", "targetId", "occurredAt", "reason", "tenantId"]) assert.equal(out[1][k], rows[1][k]);
+  }
 });
 
 test("projector: a reader lacking an ENFORCED gate -- before/after ABSENT (not null), marker exact, nothing dropped", () => {

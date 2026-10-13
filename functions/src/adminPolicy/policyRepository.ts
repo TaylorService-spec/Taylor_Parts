@@ -117,6 +117,11 @@ export interface AuditEventFilter {
    * (auditReadProjection.CONTENT_FILTER_EXCLUDED_KINDS). Absent/empty = every kind's content is matched, as before.
    */
   readonly contentFilterExcludedKinds?: readonly string[];
+  /**
+   * When present, ONLY these kinds' content is matched by the payload filters (auditReadProjection.CONTENT_FILTER_KINDS:
+   * an unregistered kind's content never matches). Absent = no allowlist, as before.
+   */
+  readonly contentFilterKinds?: readonly string[];
 }
 
 /** A new tenant. The store assigns the id; the caller owns the key. */
