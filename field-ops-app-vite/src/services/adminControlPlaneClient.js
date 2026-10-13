@@ -21,6 +21,33 @@
 // back to a client-side interpretation.
 import { callPolicyApi } from "./adminPolicyApiClient.js";
 
+// readPolicyAuditHistory ROW CONTRACT (server: functions/src/adminPolicy/auditReadProjection.ts, PR 5a).
+// Every current audit reader sees every row's values (proven byte-identical). A withheld row is emitted only for
+// (a) binPlacement / stockRelocation to a reader lacking inventory.transaction.read (no such reader exists today), and
+// (b) an UNREGISTERED target_kind, to EVERY reader incl. Owner/Administrator (none exists today; the writer-kind guard
+// keeps it so). PR 5b (HELD) extends gating to other kinds. A withheld row has NO `before`/`after` keys at all -- absent, never null, because null already means "no prior/next state" -- and
+// carries `valuesWithheld`. A screen must test `"valuesWithheld" in row`, never treat a missing `after` as
+// "no change". `valuesWithheld` is absent (not null) on a visible row.
+/**
+ * @typedef {object} AuditValuesWithheld
+ * @property {"RECORD_READ_REQUIRED" | "UNREGISTERED_KIND"} reason
+ * @property {string[]} requires capability keys the reader would need to see the values
+ */
+/**
+ * @typedef {object} PolicyAuditEventRow
+ * @property {string} id
+ * @property {string} action
+ * @property {string} actorUid
+ * @property {string} targetKind
+ * @property {string} targetId
+ * @property {string} occurredAt
+ * @property {string | null} reason
+ * @property {unknown} [before] present on a visible row (may be null); ABSENT on a withheld row
+ * @property {unknown} [after] present on a visible row (may be null); ABSENT on a withheld row
+ * @property {AuditValuesWithheld} [valuesWithheld] present ONLY on a withheld row
+ * @property {unknown} [authorizedBy] a withheld row's actor standing, lifted from the stored `after`
+ */
+
 // ════════════════════ THE NINE AUTHORITY CHANGES ════════════════════
 //
 // ONE input builder per authority-changing operation. The mutation wrapper and the grant-impact preview both use it, so
