@@ -15,7 +15,7 @@ import {
 import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITY_IDS } from "../src/access/reportAccess.js";
 import { GOVERNED_SURFACE_CAPABILITY_IDS, DASHBOARD_MODULE_CAPABILITY_IDS } from "../src/access/governedSurfaceCapabilities.js";
 import { SHELL_GATED_CAPABILITY_IDS } from "../src/access/shellCapabilityGates.js";
-import { SCAN_WORKFLOW_CAPABILITY_IDS } from "../src/access/scanWorkflows.js";
+import { LEGACY_SHELL_SCAN_REQUEST_IDS } from "../src/access/shellCapabilityGates.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -60,8 +60,10 @@ ok("requests the report ids PLUS the governed surface ids -- a closed, declared 
       ...DASHBOARD_MODULE_CAPABILITY_IDS,
     ],
   );
-  for (const id of SCAN_WORKFLOW_CAPABILITY_IDS) {
-    assert.ok(REPORT_CAPABILITY_REQUEST.includes(id), `scan workflow gates on ${id} but it is not requested`);
+  // P1-2: the Scan workspace's own gates are asked of EOS (access/useInventoryScanCapabilities.js); the shell keeps
+  // asking its pre-P1-2 scan ids verbatim, so its request set is unchanged by the client-only repair.
+  for (const id of LEGACY_SHELL_SCAN_REQUEST_IDS) {
+    assert.ok(REPORT_CAPABILITY_REQUEST.includes(id), `the shell's legacy scan group asks ${id} but it is not requested`);
   }
   assert.deepEqual([...REPORT_DEFINITION_CAPABILITY_IDS].sort(), [
     "report.definition.create", "report.definition.delete", "report.definition.duplicate",

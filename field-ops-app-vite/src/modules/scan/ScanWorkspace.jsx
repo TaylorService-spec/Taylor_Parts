@@ -204,7 +204,7 @@ function ScanWorkspaceBody({ deps }) {
     ? (deps.assignedWorkOrderStatus ?? "ready")
     : liveWorkOrders.error ? "failed" : liveWorkOrders.loading ? "loading" : "ready";
 
-  // The trusted gate comes from the shell, which already resolves it for every governed nav surface.
+  // The trusted gate comes from the mount: the caller's EOS capability set (access/useInventoryScanCapabilities.js, P1-2).
   const workflows = deriveScanWorkflows({
     hasCapability: deps?.hasCapability,
     receivingReady: deps?.receivingReady ?? RECEIVING_TRANSPORT_READY,

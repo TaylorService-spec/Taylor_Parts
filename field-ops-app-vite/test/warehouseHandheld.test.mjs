@@ -63,18 +63,18 @@ describe("who is offered what", () => {
     assert.ok(!home.queues.map((q) => q.key).includes(SCAN_WORKFLOW.PUT_AWAY));
   });
 
-  test("put-away needs BOTH the placement authority and the bin read", () => {
-    const only = composeWarehouseHome({ hasCapability: holding("inventory.placement.record") });
+  test("put-away needs the placement AND relocate authority AND a bin lookup (P1-2)", () => {
+    const only = composeWarehouseHome({ hasCapability: holding("inventory.placement.record", "inventory.stock.relocate") });
     assert.ok(!only.queues.map((q) => q.key).includes(SCAN_WORKFLOW.PUT_AWAY),
       "recording a placement without being able to check the bin is how stock lands on racking that does not exist");
-    const both = composeWarehouseHome({ hasCapability: holding("inventory.placement.record", "inventory.location.bin.read") });
-    assert.ok(both.queues.map((q) => q.key).includes(SCAN_WORKFLOW.PUT_AWAY));
+    const all = composeWarehouseHome({ hasCapability: holding("inventory.placement.record", "inventory.stock.relocate", "warehouse.record.read") });
+    assert.ok(all.queues.map((q) => q.key).includes(SCAN_WORKFLOW.PUT_AWAY));
   });
 
   test("a MULTI-ROLE worker gets the union, in attention order, with no duplicates", () => {
     const home = composeWarehouseHome({
       hasCapability: holding(
-        "inventory.stock.receive", "inventory.placement.record", "inventory.location.bin.read",
+        "inventory.stock.receive", "inventory.placement.record", "inventory.stock.relocate", "warehouse.record.read",
         "inventory.cycleCount.create", "inventory.cycleCount.submit",
       ),
       receivingReady: true,
@@ -115,7 +115,7 @@ describe("counts", () => {
 
   test("an uncountable queue says so in words, and never shows 0", () => {
     const home = composeWarehouseHome({
-      hasCapability: holding("inventory.placement.record", "inventory.location.bin.read"),
+      hasCapability: holding("inventory.placement.record", "inventory.stock.relocate", "inventory.transaction.read"),
     });
     const putAway = home.queues.find((q) => q.key === SCAN_WORKFLOW.PUT_AWAY);
     assert.equal(putAway.count, null);
@@ -134,7 +134,7 @@ describe("counts", () => {
   test("a count offered for an UNCOUNTABLE queue is ignored, not displayed", () => {
     // Defends against a future caller passing a number derived from something it should not have.
     const home = composeWarehouseHome({
-      hasCapability: holding("inventory.placement.record", "inventory.location.bin.read"),
+      hasCapability: holding("inventory.placement.record", "inventory.stock.relocate", "inventory.transaction.read"),
       counts: { [SCAN_WORKFLOW.PUT_AWAY]: 99 },
     });
     assert.equal(home.queues.find((q) => q.key === SCAN_WORKFLOW.PUT_AWAY).count, null);

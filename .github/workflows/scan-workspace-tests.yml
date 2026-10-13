@@ -102,6 +102,17 @@ on:
   pull_request:
     paths:
       - "field-ops-app-vite/src/access/scanWorkflows.js"
+      - "field-ops-app-vite/src/access/useInventoryScanCapabilities.js"
+      - "field-ops-app-vite/src/access/inventoryScanCapabilityAccess.js"
+      - "field-ops-app-vite/src/access/shellCapabilityGates.js"
+      - "field-ops-app-vite/src/services/operationsApiClient.js"
+      - "field-ops-app-vite/test/inventoryScanPersonaWorkflows.test.mjs"
+      - "field-ops-app-vite/test/useInventoryScanCapabilities.test.jsx"
+      - "functions/src/eosOps/stockRelocationOperations.ts"
+      - "functions/src/eosOps/binPlacementOperations.ts"
+      - "functions/src/eosOps/cycleCountOperations.ts"
+      - "functions/src/eosOps/transferOperations.ts"
+      - "functions/src/eosOps/partsReads.ts"
       - "field-ops-app-vite/src/services/partAliasCallableClient.js"
       - "field-ops-app-vite/src/config/partIdentifierReadiness.js"
       - "functions/src/partMaster/partAliasScanResolver.ts"
@@ -163,7 +174,9 @@ on:
       - "field-ops-app-vite/src/shared/ui/StructuredFields.jsx"
       - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
       - "field-ops-app-vite/test/warehouseHandheld.test.mjs"
-      - "field-ops-app-vite/test/warehouseShell.test.jsx test/warehouseOfflineBindings.test.jsx test/warehouseOfflineScreens.test.jsx"
+      - "field-ops-app-vite/test/warehouseShell.test.jsx"
+      - "field-ops-app-vite/test/warehouseOfflineBindings.test.jsx"
+      - "field-ops-app-vite/test/warehouseOfflineScreens.test.jsx"
       # WO-05 -- the warehouse offline runtime sits under these same workflows.
       - "field-ops-app-vite/src/offline/**"
       - "field-ops-app-vite/src/hooks/useOfflineRuntime.js"
@@ -239,7 +252,8 @@ on:
       - "field-ops-app-vite/test/receivingWorkspaceComposition.test.jsx"
       - "field-ops-app-vite/src/modules/inventory/Receiving.jsx"
       - "field-ops-app-vite/src/domain/receivingWorkspaceQueue.js"
-      - "field-ops-app-vite/test/receivingTransport.test.jsx test/warehouseShell.test.jsx"
+      - "field-ops-app-vite/test/receivingTransport.test.jsx"
+      - "field-ops-app-vite/test/warehouseShell.test.jsx"
       - "field-ops-app-vite/test/receivingScanQueue.test.mjs"
       - "field-ops-app-vite/test/serviceNavGroups.test.mjs"
       - ".github/workflows/scan-workspace-tests.yml"
@@ -247,6 +261,17 @@ on:
     branches: [main]
     paths:
       - "field-ops-app-vite/src/access/scanWorkflows.js"
+      - "field-ops-app-vite/src/access/useInventoryScanCapabilities.js"
+      - "field-ops-app-vite/src/access/inventoryScanCapabilityAccess.js"
+      - "field-ops-app-vite/src/access/shellCapabilityGates.js"
+      - "field-ops-app-vite/src/services/operationsApiClient.js"
+      - "field-ops-app-vite/test/inventoryScanPersonaWorkflows.test.mjs"
+      - "field-ops-app-vite/test/useInventoryScanCapabilities.test.jsx"
+      - "functions/src/eosOps/stockRelocationOperations.ts"
+      - "functions/src/eosOps/binPlacementOperations.ts"
+      - "functions/src/eosOps/cycleCountOperations.ts"
+      - "functions/src/eosOps/transferOperations.ts"
+      - "functions/src/eosOps/partsReads.ts"
       - "field-ops-app-vite/src/services/partAliasCallableClient.js"
       - "field-ops-app-vite/src/config/partIdentifierReadiness.js"
       - "functions/src/partMaster/partAliasScanResolver.ts"
@@ -421,7 +446,7 @@ jobs:
 
       # Pure derivation first. It needs no DOM, and if eligibility is wrong nothing downstream matters.
       - name: Scan workflow availability (pure)
-        run: node --test test/scanWorkflows.test.mjs test/technicianInventory.test.mjs test/personaOperability.test.mjs
+        run: node --test test/scanWorkflows.test.mjs test/technicianInventory.test.mjs test/personaOperability.test.mjs test/inventoryScanPersonaWorkflows.test.mjs
         # MISSING, and invisible for as long as the lane never started: without this the step
         # runs from the repository root, where none of these files exist.
         working-directory: field-ops-app-vite
@@ -513,5 +538,5 @@ jobs:
 
       # Named explicitly: an unnamed vitest suite does not run in this repository's CI at all.
       - name: Scan workspace + lookup + multi-scan receiving journey + transport (vitest + jsdom)
-        run: npx vitest run test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/dictatableNote.test.jsx test/submissionQueue.test.jsx test/scanMobileRegression.test.jsx test/putAwayOfflineAdoption.test.jsx test/technicianHandheld.test.jsx test/returnIntakeScan.test.jsx test/mobileTabBar.test.jsx test/partsScannerJobContext.test.jsx test/partsScannerQtyReset.test.jsx test/receivingLocationOptionAdapter.test.jsx test/cycleCountsBlindReview.test.jsx test/operationsTransferOrders.test.jsx test/stockLocationSurfaceRetired.test.jsx test/useTransferOrders.test.jsx test/inventoryEosTransports.test.jsx test/operationsQueriesTransferOrdersPage.test.jsx test/putAwayScan.test.jsx test/moveStockScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx test/receivingWorkspaceComposition.test.jsx test/warehouseSyncQueueHonesty.test.jsx test/transferOrderFormTruckStatus.test.jsx
+        run: npx vitest run test/useInventoryScanCapabilities.test.jsx test/scanWorkspace.test.jsx test/lookupScan.test.jsx test/lookupScanAlias.test.jsx test/transferScan.test.jsx test/cycleCountScan.test.jsx test/scanInput.test.jsx test/dictatableNote.test.jsx test/submissionQueue.test.jsx test/scanMobileRegression.test.jsx test/putAwayOfflineAdoption.test.jsx test/technicianHandheld.test.jsx test/returnIntakeScan.test.jsx test/mobileTabBar.test.jsx test/partsScannerJobContext.test.jsx test/partsScannerQtyReset.test.jsx test/receivingLocationOptionAdapter.test.jsx test/cycleCountsBlindReview.test.jsx test/operationsTransferOrders.test.jsx test/stockLocationSurfaceRetired.test.jsx test/useTransferOrders.test.jsx test/inventoryEosTransports.test.jsx test/operationsQueriesTransferOrdersPage.test.jsx test/putAwayScan.test.jsx test/moveStockScan.test.jsx test/pickScan.test.jsx test/multiScanReceiving.test.jsx test/receivingTransport.test.jsx test/receivingWorkspaceComposition.test.jsx test/warehouseSyncQueueHonesty.test.jsx test/transferOrderFormTruckStatus.test.jsx
         working-directory: field-ops-app-vite

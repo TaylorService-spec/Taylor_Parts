@@ -67,6 +67,7 @@ import { WORK_ORDER_PARTS_PLAN_CAPABILITY_REQUEST } from "../src/access/workOrde
 import { declaredPageCapabilities } from "../src/metadata/pageRuntime.js";
 import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
 import { WORKFORCE_CAPABILITY_REQUEST } from "../src/access/workforceCapabilityAccess.js";
+import { INVENTORY_SCAN_CAPABILITY_REQUEST } from "../src/access/inventoryScanCapabilityAccess.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../src");
@@ -87,6 +88,9 @@ const ALL_REQUEST_SETS = {
   // Workforce census finding #17: asked of the PostgreSQL Workforce transport (readMyWorkforceCapabilities), NOT the
   // Firebase feed. It is still a request set the app sends, so an id in it is asked -- by the authority that decides it.
   WORKFORCE_CAPABILITY_REQUEST,
+  // P1-2 Warehouse Scan: asked of the caller's EOS capability set (resolveMyCapabilities, POST /operations/inventory),
+  // NOT the Firebase feed -- the authority the scan commands and the bin lookup authorize from.
+  INVENTORY_SCAN_CAPABILITY_REQUEST,
 };
 const ASKED = new Set(Object.values(ALL_REQUEST_SETS).flat());
 

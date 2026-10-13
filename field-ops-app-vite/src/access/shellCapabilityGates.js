@@ -55,7 +55,23 @@
 // until you ask.
 import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITY_IDS } from "./reportAccess.js";
 import { GOVERNED_SURFACE_CAPABILITY_IDS, DASHBOARD_MODULE_CAPABILITY_IDS } from "./governedSurfaceCapabilities.js";
-import { SCAN_WORKFLOW_CAPABILITY_IDS } from "./scanWorkflows.js";
+
+/**
+ * The scan ids the shell has always asked the Firebase feed about (the pre-P1-2
+ * SCAN_WORKFLOW_CAPABILITY_IDS, verbatim). Nothing in the Scan workspace consults the shell's answer
+ * for them any more; see SHELL_CAPABILITY_GATES.scanWorkflows.
+ */
+export const LEGACY_SHELL_SCAN_REQUEST_IDS = Object.freeze([
+  "inventory.stock.receive",
+  "inventory.transfer.dispatch",
+  "inventory.transfer.receive",
+  "inventory.cycleCount.create",
+  "inventory.cycleCount.submit",
+  "inventory.placement.record",
+  "inventory.location.bin.read",
+  "inventory.returns.intake",
+  "inventory.stock.relocate",
+]);
 
 /**
  * Administration > Warehouse Racking (`/administration/warehouse-racking`).
@@ -142,9 +158,11 @@ export const SHELL_CAPABILITY_GATES = Object.freeze({
   governedSurfaces: GOVERNED_SURFACE_CAPABILITY_IDS,
   // domain/dashboardComposition.js module gates, via MyDashboard.jsx.
   dashboardModules: DASHBOARD_MODULE_CAPABILITY_IDS,
-  // access/scanWorkflows.js `holds()` gates, via WarehouseShell → ScanWorkspace. Mostly already
-  // covered by the governed-surface sets; `inventory.stock.relocate` was the one that was not.
-  scanWorkflows: SCAN_WORKFLOW_CAPABILITY_IDS,
+  // P1-2 (2026-10-13): the Scan workspace NO LONGER reads this feed -- its gates are answered by the
+  // caller's EOS capability set (access/useInventoryScanCapabilities.js). This group is kept VERBATIM
+  // (the pre-P1-2 scan ids) so the shell's request set is unchanged by a client-only repair; retiring
+  // it is a separate Firebase-retirement step, not this one.
+  scanWorkflows: LEGACY_SHELL_SCAN_REQUEST_IDS,
   // modules/administration/AdminWarehouseRacking.jsx.
   warehouseRacking: Object.freeze(Object.values(WAREHOUSE_RACKING_GATE)),
   // modules/administration/AdminFinancialPolicy.jsx.

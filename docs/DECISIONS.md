@@ -8003,3 +8003,40 @@ Changing the nine is an Owner decision. Existing grants are retained (O3).
 - No grant, Role or persona change.
 - No nonprod or production data touched.
 - No Firebase.
+
+## #231 — OWNER: Return intake is a temporary, documented gap while Warehouse Scan moves to EOS capabilities (D-SCAN-2 Option A, 2026-10-13)
+
+(Owner checkpoint of 2026-10-13 on UAT P1-2 / PR #2083. D-SCAN-1 = B moved all three Scan mounts from the legacy Firebase capability feed to EOS `resolveMyCapabilities`.)
+
+**Decision (as directed by the Owner).**
+1. **Option A.** The Scan workflow "Take a return in" (Return intake) is not offered by EOS until its command moves to EOS.
+   - No Firebase fallback is kept for it.
+   - No capability, grant or migration is created for it.
+2. **Truthful state.** The workflow is listed as unavailable with the reason `NOT_YET_IN_EOS`: "Taking a return in is not yet available in EOS". It is never shown as a missing permission ("not authorized … an administrator can grant it"), because nobody can grant it.
+3. **Authorization unchanged.** The workflow's capability check (`inventory.returns.intake`) and every other warehouse authorization and scope check are unchanged.
+
+**The gap, precisely.**
+- **What becomes unavailable.**
+  - Only the Scan entry point to Return intake: `ReturnIntakeScan`, reached through `ScanWorkspace` from `/service/scan`, the warehouse handheld (its Home "Returns" queue) and the technician shell. It called the Firebase callable `recordReturnIntake` (`functions/src/inventoryReturns/returnCallables.ts`).
+  - The callable writes one Firestore `inventory_returns` record in state `AWAITING_DISPOSITION`. It makes no ledger, balance or serialized-asset change, and records no disposition. Disposition does not exist (#118).
+  - Under the Firebase feed, the key is activated for eos-platform-sandbox (`config/environments.json`). Two kinds of principal could reach it:
+    - the Firebase administrator, who holds the whole catalog;
+    - principals holding the `inventoryReturnsIntakeClerk` Role in the sandbox: the certification-world fixtures `cw-emp-029` and `cw-emp-044` (`docs/governance/certification-grant-manifest.json`) and the warehouse-manager persona fixture (`personaOperability.test.mjs`).
+  - All of them lose the Scan entry point. None of them is real Taylor workforce.
+- **No EOS equivalent exists.**
+  - Rental return (`rentalEquipment.return`) covers rental fleet units only.
+  - Transfers and stock relocation move stock internally.
+  - The PostgreSQL movement type `RETURNED` has no writer.
+- **Operational impact: none blocking.**
+  - Intake has no stock effect, and Firebase data is SAMPLE (Owner ruling, 2026-10-01).
+  - No work order, parts or rental process depends on it.
+  - Its only acceptance check (V-12, scanner sandbox promotion 2026-08-20) was never run.
+- **Not removed.** The callable stays deployed and exported, so the capability-equivalence guard is unaffected. When `recordReturnIntake` is eventually removed, its equivalence record must cite this decision as an accepted GAP.
+
+**Known narrow residue (not changed).** A browser tab that had Return intake open before this change can reopen it from session storage (`eos.scan.activeWorkflow`). `rememberedWorkflow()` checks only that the stored value is a known workflow name, not that the workflow is available.
+- For a principal the Firebase callable still authorizes (above), a submission from such a tab still succeeds and writes the SAMPLE `inventory_returns` record.
+- This existed before #2083 and ends when the callable is retired.
+
+**Boundary.**
+- Client only: `field-ops-app-vite/src/access/scanWorkflows.js`.
+- No server, grant, capability, migration, Firebase or production change.

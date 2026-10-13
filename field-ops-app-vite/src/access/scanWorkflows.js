@@ -3,8 +3,10 @@
 //
 // ============================ AUTHORITY, NOT ROLE NAME ============================
 //
-// Availability derives from the EXISTING effective-access model — the same trusted feed that already
-// gates every other governed surface — plus operational context. It never asks what a role is called.
+// Availability derives from the caller's capabilities plus operational context. It never asks what a
+// role is called. Since P1-2 (2026-10-13) the capabilities are the caller's EOS set
+// (access/useInventoryScanCapabilities.js -> resolveMyCapabilities), the authority every scan command
+// authorizes from -- not the shell's Firebase effective-access feed.
 //
 // The legacy ROLE_NAV_ACCESS map understands only `admin`, `dispatcher` and `technician`, so it
 // cannot express a Parts Associate or a Warehouse Manager at all
@@ -46,6 +48,9 @@ export const UNAVAILABLE_REASON = Object.freeze({
   // telling a technician they have nothing to do because a read failed is the unknown-as-zero defect.
   ASSIGNED_WORK_LOADING: "ASSIGNED_WORK_LOADING",
   ASSIGNED_WORK_UNREADABLE: "ASSIGNED_WORK_UNREADABLE",
+  // The workflow's command has not moved to EOS yet, so NO ONE can be granted it: not a permission
+  // the reader lacks. DECISIONS #231 (Return intake, Owner D-SCAN-2 Option A).
+  NOT_YET_IN_EOS: "NOT_YET_IN_EOS",
 });
 
 export const RECEIVE_CAPABILITY = "inventory.stock.receive";
@@ -73,23 +78,38 @@ export const CYCLE_COUNT_CREATE_CAPABILITY = "inventory.cycleCount.create";
 export const CYCLE_COUNT_SUBMIT_CAPABILITY = "inventory.cycleCount.submit";
 
 /**
- * PUT-AWAY needs BOTH: the authority to record a placement, and the authority to check that the bin
- * scanned is a real, active bin at this warehouse. Without the read the operator could only stow
- * into an unvalidated code, which is how stock gets recorded onto racking that does not exist.
+ * PLACEMENT. Recording where stock was put is its own authority (Decision #170).
+ *
+ * P1-2 (Owner D-SCAN-1 = B, 2026-10-13). These gates used to also require
+ * `inventory.location.bin.read`. That id exists only in the Firebase catalog: no PostgreSQL migration
+ * or seed registers it and resolveMyCapabilities returns it for nobody, so under the EOS gate PUT_AWAY,
+ * PICK and MOVE_STOCK would be dead for every principal (under the retired Firebase feed only the
+ * catalog-wide admin held it). The intent it carried -- never stow into a bin that was
+ * not resolved -- is kept by requiring the read the screen actually calls to resolve a bin
+ * (BIN_LOOKUP_CAPABILITY_IDS below). The commands re-resolve the bin themselves and refuse
+ * NOT_FOUND / WRONG_WAREHOUSE / INACTIVE (functions/src/eosOps/binPlacementOperations.ts).
  *
  * Deliberately NOT `inventory.location.bin.manage`: stowing all day must not confer the authority to
  * create and retire racking.
  */
 export const PLACEMENT_RECORD_CAPABILITY = "inventory.placement.record";
-export const BIN_READ_CAPABILITY = "inventory.location.bin.read";
+
+/**
+ * BIN LOOKUP. `placementClient.resolveBin` -> /operations/inventory listInventoryLocations, which
+ * admits ANY of these two (functions/src/eosOps/partsReads.ts: WAREHOUSE_READ, INVENTORY_ON_HAND_READ;
+ * `requireAnyCapability`). The warehouse scope predicate stays server-side.
+ */
+export const WAREHOUSE_RECORD_READ_CAPABILITY = "warehouse.record.read";
+export const INVENTORY_TRANSACTION_READ_CAPABILITY = "inventory.transaction.read";
+export const BIN_LOOKUP_CAPABILITY_IDS = Object.freeze([WAREHOUSE_RECORD_READ_CAPABILITY, INVENTORY_TRANSACTION_READ_CAPABILITY]);
 // Taking a return in. Its own capability and its own audience: the returns desk is not the shelf.
 // Carries NO disposition authority, because disposition does not exist (DECISIONS #118).
 export const RETURNS_INTAKE_CAPABILITY = "inventory.returns.intake";
 
 /**
  * Moving stock inside a warehouse is its own authority (Decision #170), distinct from placement: a
- * worker who may record where something was stowed may NOT, by that alone, move it. Bin read is also
- * required, because every bin in a move is resolved through the trusted bin read.
+ * worker who may record where something was stowed may NOT, by that alone, move it. Bin lookup
+ * (BIN_LOOKUP_CAPABILITY_IDS) is also required, because every bin in a move is resolved through it.
  *
  * REGISTERED active:false, GRANTED to inventoryStockRelocationOperator (governedBusinessRoles.ts)
  * and ACTIVATED in platform-sandbox (config/environments.json). The line that used to stand here
@@ -121,16 +141,17 @@ export const SCAN_WORKFLOW_CAPABILITY_IDS = Object.freeze([
   CYCLE_COUNT_CREATE_CAPABILITY,
   CYCLE_COUNT_SUBMIT_CAPABILITY,
   PLACEMENT_RECORD_CAPABILITY,
-  BIN_READ_CAPABILITY,
   RETURNS_INTAKE_CAPABILITY,
   STOCK_RELOCATE_CAPABILITY,
+  ...BIN_LOOKUP_CAPABILITY_IDS,
 ]);
 
 /**
  * Derive the available workflows.
  *
- * @param ctx.hasCapability  the trusted fail-closed gate (access/reportCapabilityAccess.js's
- *                           buildHasCapability). Absent or throwing ⇒ denied, never allowed.
+ * @param ctx.hasCapability  the trusted fail-closed gate -- the caller's EOS capabilities
+ *                           (access/useInventoryScanCapabilities.js, resolveMyCapabilities).
+ *                           Absent or throwing ⇒ denied, never allowed.
  * @param ctx.receivingReady the governed client transport readiness constant. FALSE means the
  *                           callables are unreachable in this environment, which is a different fact
  *                           from "you may not" and is reported as such.
@@ -154,6 +175,9 @@ export function deriveScanWorkflows(ctx = {}) {
       return false;
     }
   };
+
+  // ANY of the reads listInventoryLocations admits -- without one, no bin can be resolved.
+  const canLookUpBins = BIN_LOOKUP_CAPABILITY_IDS.some(holds);
 
   const available = [];
   const unavailable = [];
@@ -220,7 +244,10 @@ export function deriveScanWorkflows(ctx = {}) {
   // Put-away also needs a STARTING POINT — which part, at which warehouse. It is launched from a
   // receipt or a lookup rather than started cold, so the workflow is offered on authority alone and
   // the surface itself explains what it needs when it arrives without one.
-  if (holds(PLACEMENT_RECORD_CAPABILITY) && holds(BIN_READ_CAPABILITY)) {
+  //
+  // Put-away runs placementClient.putAwayStock -> relocateStock with recordPlacement:true, which
+  // requires BOTH inventory.stock.relocate AND inventory.placement.record (stockRelocationOperations.ts).
+  if (holds(PLACEMENT_RECORD_CAPABILITY) && holds(STOCK_RELOCATE_CAPABILITY) && canLookUpBins) {
     available.push({ workflow: SCAN_WORKFLOW.PUT_AWAY });
   } else {
     unavailable.push({ workflow: SCAN_WORKFLOW.PUT_AWAY, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
@@ -228,13 +255,22 @@ export function deriveScanWorkflows(ctx = {}) {
 
   // ── Pick and stage (Phase M) ────────────────────────────────────────────────────────────────
   //
-  // The SAME two capabilities put-away needs, because a pick IS a placement: stock moving to a place
-  // inside the warehouse it already belongs to, recorded with the demand it was gathered for.
-  // Picking reserves nothing, so it needs no reservation authority -- there is none to need.
-  if (holds(PLACEMENT_RECORD_CAPABILITY) && holds(BIN_READ_CAPABILITY)) {
+  // A pick IS a placement: stock moving to a place inside the warehouse it already belongs to,
+  // recorded with the demand it was gathered for (recordPutAway -> binPlacementOperations.ts, which
+  // requires inventory.placement.record). Picking reserves nothing, so it needs no reservation
+  // authority -- there is none to need.
+  if (holds(PLACEMENT_RECORD_CAPABILITY) && canLookUpBins) {
     available.push({ workflow: SCAN_WORKFLOW.PICK });
   } else {
     unavailable.push({ workflow: SCAN_WORKFLOW.PICK, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
+  }
+
+  // ── Move stock (Decision #170) ── relocateStock requires inventory.stock.relocate
+  // (stockRelocationOperations.ts); every bin in the move is resolved through bin lookup.
+  if (holds(STOCK_RELOCATE_CAPABILITY) && canLookUpBins) {
+    available.push({ workflow: SCAN_WORKFLOW.MOVE_STOCK });
+  } else {
+    unavailable.push({ workflow: SCAN_WORKFLOW.MOVE_STOCK, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
   }
 
   // ── Return intake ───────────────────────────────────────────────────────────────────────────
@@ -246,16 +282,15 @@ export function deriveScanWorkflows(ctx = {}) {
   // Offered only to a holder of inventory.returns.intake. It confers nothing about DISPOSITION,
   // which is a different authority that does not exist yet (DECISIONS #118) — so this workflow can
   // record an arrival and can never put anything back into sellable stock.
-  if (holds(STOCK_RELOCATE_CAPABILITY) && holds(BIN_READ_CAPABILITY)) {
-    available.push({ workflow: SCAN_WORKFLOW.MOVE_STOCK });
-  } else {
-    unavailable.push({ workflow: SCAN_WORKFLOW.MOVE_STOCK, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
-  }
-
+  //
+  // DECISIONS #231 (Owner D-SCAN-2 Option A): inventory.returns.intake has no PostgreSQL registration and
+  // its command is still the Firebase callable recordReturnIntake, so under the EOS gate no principal holds
+  // it and no administrator could grant it. The refusal therefore says "not yet available in EOS", never
+  // "not authorized". The capability check itself is unchanged.
   if (holds(RETURNS_INTAKE_CAPABILITY)) {
     available.push({ workflow: SCAN_WORKFLOW.RETURN_INTAKE });
   } else {
-    unavailable.push({ workflow: SCAN_WORKFLOW.RETURN_INTAKE, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
+    unavailable.push({ workflow: SCAN_WORKFLOW.RETURN_INTAKE, reason: UNAVAILABLE_REASON.NOT_YET_IN_EOS });
   }
 
   // ── Technician Work Order scanning (existing journey) ───────────────────────────────────────
@@ -354,6 +389,11 @@ const WORKFLOW_UNAVAILABLE_TEXT = Object.freeze({
   [SCAN_WORKFLOW.PICK]: Object.freeze({
     [UNAVAILABLE_REASON.NO_CAPABILITY]: "You are not authorized to pick and stage stock. An administrator can grant it.",
   }),
+  // Names the workflow: the warehouse handheld Home prints this sentence without a label.
+  [SCAN_WORKFLOW.RETURN_INTAKE]: Object.freeze({
+    [UNAVAILABLE_REASON.NOT_YET_IN_EOS]:
+      "Taking a return in is not yet available in EOS. This is not a permission you are missing: no one can be granted it until it moves to EOS.",
+  }),
 });
 
 export const UNAVAILABLE_TEXT = Object.freeze({
@@ -367,6 +407,8 @@ export const UNAVAILABLE_TEXT = Object.freeze({
     "You have no assigned work orders to scan against right now.",
   [UNAVAILABLE_REASON.ASSIGNED_WORK_LOADING]:
     "Your assigned work orders are still loading.",
+  [UNAVAILABLE_REASON.NOT_YET_IN_EOS]:
+    "Not yet available in EOS. This is not a permission you are missing: no one can be granted it until it moves to EOS.",
   [UNAVAILABLE_REASON.ASSIGNED_WORK_UNREADABLE]:
     "Your assigned work orders could not be loaded, so work order scanning is not available right now. This is not the same as having no work.",
 });

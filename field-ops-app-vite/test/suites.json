@@ -990,6 +990,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/inventoryScanPersonaWorkflows.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/scanWorkflows.test.mjs",
       "runner": "node --test"
     },
