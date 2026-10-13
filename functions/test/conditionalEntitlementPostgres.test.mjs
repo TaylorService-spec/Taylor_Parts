@@ -988,8 +988,10 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
     // never-widen trigger, not to redefine it. Exactly ONE migration may CREATE it.
     // Migration 1762992000000 (the direct-exception cell lock, lane DX) names it too -- only to say which trigger's
     // lock the new principal_capabilities trigger shares; it neither creates nor alters it.
+    // Migration 1764540000000 (the grant-impact preview never-commit fence) names it too -- only to attach the deferred
+    // fence trigger; it neither creates nor alters a column, constraint or index of the relation.
     assert.deepEqual(naming, ["1762214400000_capability-grant-conditions.sql", "1762646400000_administration-control-plane.sql",
-      "1762992000000_direct-exception-cell-lock.sql"],
+      "1762992000000_direct-exception-cell-lock.sql", "1764540000000_authority-preview-never-commits.sql"],
       `the relation is named by ${naming.length} migrations on this lineage: ${naming}`);
     const creating = naming.filter((f) => /CREATE TABLE eos_policy\.capability_grant_conditions/.test(readFileSync(resolve(migrationsDir, f), "utf8")));
     assert.deepEqual(creating, ["1762214400000_capability-grant-conditions.sql"], "a second migration defines the relation");

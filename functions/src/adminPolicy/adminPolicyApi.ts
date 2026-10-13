@@ -110,6 +110,13 @@ import type {
 } from "./types";
 import { hasProtectedAdministratorStanding, isImpliedForProtectedAdministrator, protectedAdministratorImpliedKeys } from "./protectedAdministrator";
 import { ADMIN_ROLE_KEY, isDesignatedAdministratorRole } from "./administrationAuthority";
+import {
+  AUTHORITY_CHANGE_GATE,
+  isAuthorityChangeOperation,
+  type AuthorityChangeOperation,
+  type AuthorityChangeSimulator,
+  type AuthorityChangeSubject,
+} from "./authorityChangePreviewPort";
 
 // ════════════════════ the closed operation list ════════════════════
 
@@ -209,7 +216,17 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
 
 export type AdminReadOperation = (typeof ADMIN_READ_OPERATIONS)[number];
 export type AdminMutationOperation = (typeof ADMIN_MUTATION_OPERATIONS)[number];
-export type AdminOperation = AdminReadOperation | AdminMutationOperation | AdminConfigurationOperation | LoginAdministrationOperation;
+/**
+ * A FOURTH closed table: the grant-impact PREVIEW (PR 3, advisory). Read-only -- it writes no audit event and nothing
+ * survives it -- but it is on neither list above, because its gate is not a surface read: it is the PREVIEWED COMMAND's
+ * own capability gate (a principal who could not commit the change learns nothing about it), plus
+ * admin.principalAccess.read for per-principal detail. See authorityChangePreviewPort.ts.
+ */
+export const ADMIN_PREVIEW_OPERATIONS = Object.freeze(["previewAuthorityChange"] as const);
+export type AdminPreviewOperation = (typeof ADMIN_PREVIEW_OPERATIONS)[number];
+
+export type AdminOperation = AdminReadOperation | AdminMutationOperation | AdminConfigurationOperation | AdminPreviewOperation
+  | LoginAdministrationOperation;
 
 const READS = new Set<string>(ADMIN_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(ADMIN_MUTATION_OPERATIONS);
@@ -222,6 +239,7 @@ const MUTATIONS = new Set<string>(ADMIN_MUTATION_OPERATIONS);
 // and on neither list above, so every pin of those lists is unchanged.
 export const isAdminOperation = (name: unknown): name is AdminOperation =>
   typeof name === "string" && (READS.has(name) || MUTATIONS.has(name) || isAdminConfigurationOperation(name)
+    || (ADMIN_PREVIEW_OPERATIONS as readonly string[]).includes(name)
     || isLoginAdministrationOperation(name));
 
 export const isMutation = (name: AdminOperation): boolean =>
@@ -406,6 +424,11 @@ export interface AdminApiDeps {
   readonly configuration?: ConfigurationOperationHandler;
   /** Login-account security administration (EOS native identity), composed by the server when the front door is. */
   readonly loginAdministration?: LoginAdministrationHandler;
+  /**
+   * The grant-impact preview simulator (eosOps/authorityChangePreview.ts), composed by the server over the shared pool.
+   * Absent, previewAuthorityChange refuses; there is no repository-only fallback.
+   */
+  readonly previewAuthorityChange?: AuthorityChangeSimulator;
 }
 
 /**
@@ -498,6 +521,12 @@ export async function executeAdminOperation<T = unknown>(
       const data = await deps.configuration(operation, { tenantId: actor.tenantId, principalId: actor.uid }, input,
         // A stated reason, never the request id alone (as assignRole): requiredReason refuses a missing one.
         optionalString(input.reason) ? reason : null);
+      return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+    }
+    // ════════════════════ THE GRANT-IMPACT PREVIEW (advisory, read-only) ════════════════════
+    // Gated on the PREVIEWED command's own capability, decided before any simulation; detail on principalAccess.read.
+    if (operation === "previewAuthorityChange") {
+      const data = await previewAuthorityChange(deps, actor, input, request.requestId);
       return { ok: true, operation, tenantId: context.tenantId, data: data as T };
     }
     if (!isMutation(operation)) await requireAdminReadAuthority(repo, actor, operation as AdminReadOperation | AdminMutationOperation);
@@ -625,6 +654,89 @@ async function explain(deps: AdminApiDeps, actor: AdminActor, input: Record<stri
     // reported as not found rather than as a server fault.
     if (err instanceof PrincipalContextError) throw new NotFound(`principal has no effective access: ${err.refusal}`);
     throw err;
+  }
+}
+
+/**
+ * previewAuthorityChange {change: {operation, input}} -- ADVISORY, READ-ONLY (PR 3). Nothing here changes how any of the
+ * nine commands commits.
+ *
+ *   gate      the previewed command's OWN capability gate, decided here BEFORE any simulation (FORBIDDEN, no detail)
+ *   detail    admin.principalAccess.read (the getPrincipalEffectiveAccess authority) -> per-principal before/after;
+ *             otherwise counts only. Protected Owners / Administrators are deltas only (the simulator).
+ *   outcome   WOULD_APPLY | NO_OP | WOULD_REFUSE (with the SAME code and message the commit would return) | PREVIEW_BUSY
+ */
+async function previewAuthorityChange(
+  deps: AdminApiDeps,
+  actor: AdminActor,
+  input: Record<string, unknown>,
+  requestId: string | undefined,
+): Promise<unknown> {
+  const change = input.change;
+  if (!change || typeof change !== "object" || Array.isArray(change)) {
+    throw new PolicyValidationError("change is required: { operation, input }");
+  }
+  const operation = (change as Record<string, unknown>).operation;
+  if (!isAuthorityChangeOperation(operation)) {
+    throw new PolicyValidationError(`"${String(operation)}" is not a previewable authority change`);
+  }
+  const rawInput = (change as Record<string, unknown>).input ?? {};
+  if (typeof rawInput !== "object" || rawInput === null || Array.isArray(rawInput)) {
+    throw new PolicyValidationError("change.input must be an object");
+  }
+  const changeInput = rawInput as Record<string, unknown>;
+  // THE GATE, before anything is simulated or read about anybody else.
+  await requireSecurityAdministrationCapability(deps.repo, actor, AUTHORITY_CHANGE_GATE[operation]);
+  if (typeof deps.previewAuthorityChange !== "function") {
+    throw new Error("previewAuthorityChange is not composed on this server");
+  }
+  let detail = true;
+  try {
+    await requireAdminReadAuthority(deps.repo, actor, "getPrincipalEffectiveAccess");
+  } catch (err) {
+    if (!(err instanceof AdminReadDeniedError)) throw err;
+    detail = false;
+  }
+  const reason = withRequestId(changeInput.reason, requestId);
+  const result = await deps.previewAuthorityChange({
+    actor, operation, input: changeInput, subject: authorityChangeSubject(operation, changeInput), detail,
+    run: (simulated) => authorityCommand(simulated, actor, operation, changeInput, reason),
+  });
+  // EXACTLY what the commit would return (classify + messageFor): a raw database error is the commit's opaque INTERNAL,
+  // with no SQLSTATE, constraint name or other detail beyond it.
+  const refusal = result.outcome === "WOULD_REFUSE"
+    ? {
+      code: result.error instanceof AdministrationRefusal ? result.error.code : classify(result.error),
+      category: classify(result.error),
+      message: messageFor(result.error),
+    }
+    : null;
+  return { outcome: result.outcome, refusal, busy: result.busy, ...result.report };
+}
+
+/** Whose holdings the change is about (counting only). Never throws: a malformed input is the command's to refuse. */
+function authorityChangeSubject(operation: AuthorityChangeOperation, input: Record<string, unknown>): AuthorityChangeSubject | null {
+  const text = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
+  switch (operation) {
+    case "assignRole": {
+      const roleId = text(input.roleId); const principalId = text(input.principalId);
+      return roleId && principalId ? { kind: "ROLE_ID", roleId, principalId } : null;
+    }
+    case "revokeRole": {
+      const assignmentId = text(input.assignmentId);
+      return assignmentId ? { kind: "ASSIGNMENT", assignmentId } : null;
+    }
+    case "grantObjectActionToPrincipal":
+    case "revokeObjectActionFromPrincipal": {
+      const principalId = text(input.principalId);
+      return principalId ? { kind: "PRINCIPAL", principalId } : null;
+    }
+    default: {
+      const roleKey = text(input.roleKey);
+      const principalId = text(input.principalId);
+      if (roleKey) return { kind: "ROLE_KEY", roleKey };
+      return principalId ? { kind: "PRINCIPAL", principalId } : null;
+    }
   }
 }
 
@@ -910,78 +1022,18 @@ async function dispatch(
         reason,
       });
 
+    // The nine AUTHORITY-CHANGING commands: one mapping, shared VERBATIM with the grant-impact preview
+    // (previewAuthorityChange), so the preview simulates exactly the input normalization a commit applies.
     case "grantObjectActionToRole":
-      // The reason must be STATED by the administrator; the request id alone is not a reason.
-      return grantObjectActionToRole(repo, actor, {
-        objectKey: requireString(input.objectKey, "objectKey"),
-        actionKey: requireString(input.actionKey, "actionKey"),
-        roleKey: requireString(input.roleKey, "roleKey"),
-        reason: optionalString(input.reason) ? reason : null,
-        condition: input.condition ?? undefined,
-        requiresCondition: input.requiresCondition === true,
-      });
-
     case "revokeObjectActionFromRole":
-      return revokeObjectActionFromRole(repo, actor, {
-        objectKey: requireString(input.objectKey, "objectKey"),
-        actionKey: requireString(input.actionKey, "actionKey"),
-        roleKey: requireString(input.roleKey, "roleKey"),
-        reason: optionalString(input.reason) ? reason : null,
-      });
-
-    case "applyObjectWideRoleAuthority": {
-      const mode = input.mode;
-      if (mode !== "GRANT" && mode !== "REVOKE") throw new PolicyValidationError("mode must be GRANT or REVOKE");
-      const kinds = input.actionKinds;
-      if (kinds !== undefined && kinds !== null && (!Array.isArray(kinds) || !kinds.every((k) => typeof k === "string"))) {
-        throw new PolicyValidationError("actionKinds must be a list of action kinds");
-      }
-      return applyObjectWideRoleAuthority(repo, actor, {
-        objectKey: requireString(input.objectKey, "objectKey"),
-        roleKey: requireString(input.roleKey, "roleKey"),
-        mode, actionKinds: (kinds as string[] | undefined) ?? null,
-        reason: optionalString(input.reason) ? reason : null,
-      });
-    }
-
+    case "applyObjectWideRoleAuthority":
     case "setGrantCondition":
-      // A condition cell is (Role, capability) OR (direct exception, capability): exactly one grantee is named.
-      return setGrantCondition(repo, actor, {
-        objectKey: requireString(input.objectKey, "objectKey"),
-        actionKey: requireString(input.actionKey, "actionKey"),
-        ...conditionGrantee(input),
-        condition: input.condition,
-        reason: optionalString(input.reason) ? reason : null,
-      });
-
     case "retireGrantCondition":
-      return retireGrantCondition(repo, actor, {
-        objectKey: requireString(input.objectKey, "objectKey"),
-        actionKey: requireString(input.actionKey, "actionKey"),
-        ...conditionGrantee(input),
-        reason: optionalString(input.reason) ? reason : null,
-      });
-
     case "grantObjectActionToPrincipal":
-      return grantObjectActionToPrincipal(repo, actor, {
-        objectKey: requireString(input.objectKey, "objectKey"),
-        actionKey: requireString(input.actionKey, "actionKey"),
-        principalId: requireString(input.principalId, "principalId"),
-        reason: optionalString(input.reason) ? reason : null,
-        expiresAt: optionalString(input.expiresAt),
-        condition: input.condition ?? undefined,
-        // Passed through so the COMMAND refuses it by name: a direct exception has no scope model.
-        scopeType: input.scopeType ?? undefined,
-        scopeValue: input.scopeValue ?? undefined,
-      });
-
     case "revokeObjectActionFromPrincipal":
-      return revokeObjectActionFromPrincipal(repo, actor, {
-        objectKey: requireString(input.objectKey, "objectKey"),
-        actionKey: requireString(input.actionKey, "actionKey"),
-        principalId: requireString(input.principalId, "principalId"),
-        reason: optionalString(input.reason) ? reason : null,
-      });
+    case "assignRole":
+    case "revokeRole":
+      return authorityCommand(repo, actor, operation, input, reason);
 
     case "setTenantSalesChannelStatus":
       return setTenantSalesChannelStatus(repo, actor, {
@@ -990,29 +1042,9 @@ async function dispatch(
         reason: optionalString(input.reason) ? reason : null,
       });
 
-    case "assignRole":
-      // MEMBERSHIP, and IDEMPOTENCE, are enforced in the COMMAND -- next to the transaction, so a
-      // caller that bypasses this dispatcher gets the same answer. They were briefly checked here
-      // as well; two spellings of one rule is how the two eventually disagree. Migration 003 makes
-      // the membership half unrepresentable at the database as well.
-      // HUMAN ADMINISTRATION (Pass 10 ruling): the reason must be STATED by the administrator; the request id alone
-      // is not a reason (it stays provenance, appended to a stated one). Decided by the command after its gate.
-      return assignRole(repo, actor, {
-        principalId: requireString(input.principalId, "principalId"),
-        roleId: requireString(input.roleId, "roleId"),
-        scopeType: optionalString(input.scopeType) ?? undefined,
-        scopeValue: optionalString(input.scopeValue),
-        reason: optionalString(input.reason) ? reason : null,
-        requireStatedReason: true,
-      });
-
-    case "revokeRole":
-      // HUMAN ADMINISTRATION (Pass 10 ruling): as assignRole -- a stated reason, never the request id alone.
-      return revokeRole(repo, actor, {
-        assignmentId: requireString(input.assignmentId, "assignmentId"),
-        reason: optionalString(input.reason) ? reason : null,
-        requireStatedReason: true,
-      });
+    case "previewAuthorityChange":
+      // Served above, before the read gate: its gate is the previewed command's own (authorityChangePreviewPort.ts).
+      throw new Error("previewAuthorityChange is not a repository read");
 
     // Workflow operations are dispatched by workflowAdminApi before this switch is reached.
     case "listWorkflows":
@@ -1089,6 +1121,122 @@ async function dispatch(
       // rather than becoming a runtime "unknown operation" nobody notices until a user hits it.
       const never: never = operation;
       throw new Error(`unhandled operation ${String(never)}`);
+    }
+  }
+}
+
+/**
+ * The nine authority-changing commands, mapped from an Administration request exactly as `dispatch` maps them. Moved
+ * here VERBATIM (PR 3) so `dispatch` (the commit path, unchanged in behaviour) and `previewAuthorityChange` (the
+ * simulation) cannot normalize the same request two ways.
+ */
+async function authorityCommand(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  operation: AuthorityChangeOperation,
+  input: Record<string, unknown>,
+  reason: string | null,
+): Promise<unknown> {
+  switch (operation) {
+    case "grantObjectActionToRole":
+      // The reason must be STATED by the administrator; the request id alone is not a reason.
+      return grantObjectActionToRole(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        roleKey: requireString(input.roleKey, "roleKey"),
+        reason: optionalString(input.reason) ? reason : null,
+        condition: input.condition ?? undefined,
+        requiresCondition: input.requiresCondition === true,
+      });
+
+    case "revokeObjectActionFromRole":
+      return revokeObjectActionFromRole(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        roleKey: requireString(input.roleKey, "roleKey"),
+        reason: optionalString(input.reason) ? reason : null,
+      });
+
+    case "applyObjectWideRoleAuthority": {
+      const mode = input.mode;
+      if (mode !== "GRANT" && mode !== "REVOKE") throw new PolicyValidationError("mode must be GRANT or REVOKE");
+      const kinds = input.actionKinds;
+      if (kinds !== undefined && kinds !== null && (!Array.isArray(kinds) || !kinds.every((k) => typeof k === "string"))) {
+        throw new PolicyValidationError("actionKinds must be a list of action kinds");
+      }
+      return applyObjectWideRoleAuthority(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        roleKey: requireString(input.roleKey, "roleKey"),
+        mode, actionKinds: (kinds as string[] | undefined) ?? null,
+        reason: optionalString(input.reason) ? reason : null,
+      });
+    }
+
+    case "setGrantCondition":
+      // A condition cell is (Role, capability) OR (direct exception, capability): exactly one grantee is named.
+      return setGrantCondition(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        ...conditionGrantee(input),
+        condition: input.condition,
+        reason: optionalString(input.reason) ? reason : null,
+      });
+
+    case "retireGrantCondition":
+      return retireGrantCondition(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        ...conditionGrantee(input),
+        reason: optionalString(input.reason) ? reason : null,
+      });
+
+    case "grantObjectActionToPrincipal":
+      return grantObjectActionToPrincipal(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        principalId: requireString(input.principalId, "principalId"),
+        reason: optionalString(input.reason) ? reason : null,
+        expiresAt: optionalString(input.expiresAt),
+        condition: input.condition ?? undefined,
+        // Passed through so the COMMAND refuses it by name: a direct exception has no scope model.
+        scopeType: input.scopeType ?? undefined,
+        scopeValue: input.scopeValue ?? undefined,
+      });
+
+    case "revokeObjectActionFromPrincipal":
+      return revokeObjectActionFromPrincipal(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        principalId: requireString(input.principalId, "principalId"),
+        reason: optionalString(input.reason) ? reason : null,
+      });
+
+    case "assignRole":
+      // MEMBERSHIP, and IDEMPOTENCE, are enforced in the COMMAND -- next to the transaction, so a
+      // caller that bypasses this dispatcher gets the same answer. They were briefly checked here
+      // as well; two spellings of one rule is how the two eventually disagree. Migration 003 makes
+      // the membership half unrepresentable at the database as well.
+      // HUMAN ADMINISTRATION (Pass 10 ruling): the reason must be STATED by the administrator; the request id alone
+      // is not a reason (it stays provenance, appended to a stated one). Decided by the command after its gate.
+      return assignRole(repo, actor, {
+        principalId: requireString(input.principalId, "principalId"),
+        roleId: requireString(input.roleId, "roleId"),
+        scopeType: optionalString(input.scopeType) ?? undefined,
+        scopeValue: optionalString(input.scopeValue),
+        reason: optionalString(input.reason) ? reason : null,
+        requireStatedReason: true,
+      });
+
+    case "revokeRole":
+      // HUMAN ADMINISTRATION (Pass 10 ruling): as assignRole -- a stated reason, never the request id alone.
+      return revokeRole(repo, actor, {
+        assignmentId: requireString(input.assignmentId, "assignmentId"),
+        reason: optionalString(input.reason) ? reason : null,
+        requireStatedReason: true,
+      });
+    default: {
+      const never: never = operation;
+      throw new Error(`unhandled authority change ${String(never)}`);
     }
   }
 }

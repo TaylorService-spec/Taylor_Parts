@@ -101,7 +101,7 @@ export async function resolveDirectEntitlements(
  * a refusal, never as "no conditions exist": reading a missing condition store as "unconditioned"
  * would turn every conditioned grant into an unconditional one in one step.
  */
-export async function postgresGrantConditions(pool: Pool, tenantId: string): Promise<GrantConditionCatalog> {
+export async function postgresGrantConditions(pool: Pick<Pool, "query">, tenantId: string): Promise<GrantConditionCatalog> {
   return grantConditionCatalogFromRows(await grantConditionRows(pool, tenantId));
 }
 
@@ -295,7 +295,7 @@ export async function resolveEntitledOperationalContext(
  * the relation -- and it asserts them where the rows are READ, which is the only place that can see
  * them. It does not catch: an unreadable store fails closed.
  */
-export function postgresGrantConditionProvider(pool: Pool): GrantConditionProvider {
+export function postgresGrantConditionProvider(pool: Pick<Pool, "query">): GrantConditionProvider {
   return async (tenantId: string) => {
     const conditions = await postgresGrantConditions(pool, tenantId);
     assertNoWithheldGrantConditions(conditions);

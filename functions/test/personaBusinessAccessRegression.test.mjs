@@ -302,8 +302,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 92 -> 93: 1764510000000 -- Finance Closure (#206): settlements / applications / reconciliation, obligation handoffs, intercompany relief, service-provider authorization, late cost evidence; four settlement capabilities granted to the five Finance-execution Roles.
   // 93 -> 94: 1764520000000 -- Rental (#207): the eos_rental domain, rental Work Orders, the RENTAL billing package source; six rental capabilities.
   // 94 -> 95: 1764530000000 -- SUP-1 Part Supplier Terms (DECISIONS #230): four inventory.supplierTerms.* + three inventory.catalog.cost.* keys, granted to NO Role (no persona's access moves).
-  // 95 -> 96: 1764540000000 -- EOS native login: credential, session and MFA tables; no capability, no grant.
-  assert.equal(files.length, 96, "the migration chain moved; re-measure before trusting anything below");
+  // 95 -> 96: 1764540000000 -- Grant-impact preview (PR 3): the never-commit fence (seven deferred constraint triggers); no capability, no grant (no persona's access moves).
+  // 96 -> 97: 1764550000000 -- EOS native login: credential, session and MFA tables; no capability, no grant.
+  assert.equal(files.length, 97, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

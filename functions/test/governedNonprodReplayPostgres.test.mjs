@@ -39,9 +39,8 @@ test("the recorded decisions replay the governed nonprod authority exactly: 94 /
 
   const migrations = readdirSync(new URL("../migrations", import.meta.url)).filter((f) => f.endsWith(".sql")).length;
   assert.equal((await q(`SELECT count(*)::int n FROM public.pgmigrations`)).rows[0].n, migrations);
-  // 94 -> 95: 1764530000000 (SUP-1 supplier terms + COMMERCIAL keys, granted to NO Role)
-  // 95 -> 96: 1764540000000 EOS native login -- schema only; no capability, no grant, so 135 / grants do not move.
-  assert.equal(migrations, 96);
+  assert.equal(migrations, 97); // 94 -> 95: 1764530000000 (SUP-1 supplier terms + COMMERCIAL keys, granted to NO Role). 95 -> 96: 1764540000000 (grant-impact preview never-commit fence; triggers only)
+  // 96 -> 97: 1764550000000 EOS native login -- schema only; no capability, no grant, so the counts do not move.
   assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.capabilities`)).rows[0].n, 135); // 128 -> 135: the four inventory.supplierTerms.* + three inventory.catalog.cost.* keys
   // Replaying again adds nothing (idempotent), and the delta files introduce no Role beyond the two they record.
   assert.equal(await apply(d("truckInventoryActivationDelta").truckInventoryActivationOperations()), 542);
