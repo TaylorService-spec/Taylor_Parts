@@ -24,7 +24,10 @@
 --   * SEPARATION OF DUTIES, also enforced here: the principal who approves or rejects is neither the submitter nor anyone who
 --     wrote the draft's content.
 --   * The effective date is stamped at ACTIVATION and may not precede the company's business date
---     (eos_policy.operating_company_business_date) nor the effective date of an earlier activated version.
+--     (eos_policy.operating_company_business_date) nor the effective date of an earlier activated version. LIFECYCLE IS NOT
+--     EFFECTIVITY: an ACTIVE version dated in the future is SCHEDULED, and the version IN FORCE on a business date is the
+--     latest ACTIVE / SUPERSEDED version whose effective_date is on or before it (a SUPERSEDED row keeps its own date).
+--   * TRUNCATE is refused (statement trigger); in DRAFT, content_authors only grows.
 --
 -- VOCABULARIES mirror the pure domain module functions/src/finance/financialPolicyProfile.ts (INVENTORY_COST_METHODS,
 -- SERIALIZED_COST_METHODS, COGS_RECOGNITION_POINT_IDS, FREIGHT_TREATMENTS, LANDED_COST_TREATMENTS). The CHECKs are defence in
@@ -164,6 +167,11 @@ BEGIN
         IF NEW.status NOT IN ('DRAFT', 'SUBMITTED') THEN
             RAISE EXCEPTION 'FINANCIAL_POLICY_TRANSITION_ILLEGAL: DRAFT -> %', NEW.status USING ERRCODE = 'restrict_violation';
         END IF;
+        -- Even in DRAFT, authorship only grows: separation of duties reads content_authors, so dropping a name would let an
+        -- author decide their own version. (prepared_by is covered by the identity check above.)
+        IF NOT (NEW.content_authors @> OLD.content_authors) THEN
+            RAISE EXCEPTION 'FINANCIAL_POLICY_IMMUTABLE: content_authors is append-only' USING ERRCODE = 'restrict_violation';
+        END IF;
         RETURN NEW;
     END IF;
     -- Past DRAFT: the content is frozen.
@@ -216,6 +224,15 @@ END;
 $$ LANGUAGE plpgsql SET search_path = eos_finance, public;
 CREATE TRIGGER financial_policy_version_lock BEFORE UPDATE OR DELETE ON financial_policy_versions
     FOR EACH ROW EXECUTE FUNCTION refuse_financial_policy_version_mutation();
+
+-- Row triggers do not fire on TRUNCATE; a statement trigger does (precedent: audit_events_no_truncate, 1762646400000).
+CREATE OR REPLACE FUNCTION refuse_financial_policy_truncate() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'FINANCIAL_POLICY_IMMUTABLE: % is governed history: TRUNCATE is refused', TG_TABLE_NAME USING ERRCODE = 'restrict_violation';
+END;
+$$ LANGUAGE plpgsql SET search_path = eos_finance, public;
+CREATE TRIGGER financial_policy_versions_no_truncate BEFORE TRUNCATE ON financial_policy_versions
+    FOR EACH STATEMENT EXECUTE FUNCTION refuse_financial_policy_truncate();
 
 -- A supersession commits only together with the activation that caused it.
 CREATE OR REPLACE FUNCTION assert_financial_policy_supersession_completed() RETURNS trigger AS $$
@@ -289,5 +306,6 @@ DELETE FROM capabilities WHERE id IN ('cap_finance_policy_read', 'cap_finance_po
 SET search_path = eos_finance, public;
 DROP TABLE IF EXISTS financial_policy_versions;
 DROP FUNCTION IF EXISTS assert_financial_policy_supersession_completed();
+DROP FUNCTION IF EXISTS refuse_financial_policy_truncate();
 DROP FUNCTION IF EXISTS refuse_financial_policy_version_mutation();
 DROP FUNCTION IF EXISTS assert_financial_policy_version_born_draft();

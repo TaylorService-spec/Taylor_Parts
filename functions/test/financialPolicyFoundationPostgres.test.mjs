@@ -183,12 +183,11 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     for (const company of ["taylor", "ventana"]) {
       const r = ok(await fn(adm, "readFinancialPolicy", { operatingCompanyId: company }), `admin read ${company}`);
       assert.equal(r.state, "NOT_CONFIGURED");
-      assert.equal(r.active, null);
-      assert.equal(r.inFlight, null);
+      assert.deepEqual([r.inForce, r.scheduled, r.inFlight], [null, null, null]);
       assert.equal(JSON.stringify(r).includes("defaultMethod"), false);
       assert.deepEqual(ok(await fn(adm, "listFinancialPolicyVersions", { operatingCompanyId: company })).items, []);
-      const resolved = await fp.resolveActiveFinancialPolicy(pool, TENANT, company);
-      assert.deepEqual({ ...resolved }, { state: "NOT_CONFIGURED", policy: null, version: null }, "the consumer read fails closed");
+      const resolved = await fp.resolveFinancialPolicyInForce(pool, TENANT, company);
+      assert.deepEqual({ ...resolved }, { state: "NOT_CONFIGURED", asOf: await businessDate(company), policy: null, version: null }, "the consumer read fails closed");
     }
     // Before the Owner's grants, nobody but the Administrator's standing reaches the keys.
     refused(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: WA }), 403, "CAPABILITY_REQUIRED");
@@ -280,8 +279,8 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     taylorV1 = act.version;
     assert.deepEqual([taylorV1.status, taylorV1.locked, taylorV1.activatedBy, taylorV1.effectiveDate], ["ACTIVE", true, own.principalId, activeDate]);
     const read = ok(await fn(fm, "readFinancialPolicy", { operatingCompanyId: "taylor" }));
-    assert.deepEqual([read.state, read.active.id, read.inFlight], ["CONFIGURED", taylorV1.id, null]);
-    assert.equal(read.active.policy.cogsRecognitionPointId, "INVOICE_ISSUE");
+    assert.deepEqual([read.state, read.inForce.id, read.scheduled, read.inFlight], ["CONFIGURED", taylorV1.id, null, null], "dated today: in force at once");
+    assert.equal(read.inForce.policy.cogsRecognitionPointId, "INVOICE_ISSUE");
   });
 
   await t.test("SOD: the preparer / submitter never approves or rejects their own version, even holding approve", async () => {
@@ -293,10 +292,20 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     // The database holds the same line even against a direct write.
     await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'APPROVED', approved_by = submitted_by, approved_at = now() WHERE id = $1`,
       [v.id], /financial_policy_approver_independent/, "approver == submitter");
+    // A write that raced past the server's check and hit the CHECK answers SEPARATION_OF_DUTIES (403), never a 500.
+    const raced = await q(`UPDATE eos_finance.financial_policy_versions SET status = 'REJECTED', rejected_by = submitted_by, rejected_at = now(),
+      decision_reason = 'own' WHERE id = $1`, [v.id]).then(() => null, (e) => e);
+    assert.equal(raced?.code, "23514");
+    const mapped = fp.translateDatabaseRefusal(raced);
+    assert.deepEqual([mapped.name, mapped.code, mapped.category], ["FinancialPolicyRefusal", "SEPARATION_OF_DUTIES", "FORBIDDEN"]);
     // A reject needs a reason; an independent Owner rejects it -> final.
     refused(await fn(own, "rejectFinancialPolicy", { operatingCompanyId: "ventana", versionId: v.id }), 400, "REASON_REQUIRED");
     const rej = ok(await fn(own, "rejectFinancialPolicy", { operatingCompanyId: "ventana", versionId: v.id, reason: "Ventana's accounting team chose weighted average" })).version;
     assert.deepEqual([rej.status, rej.rejectedBy], ["REJECTED", own.principalId]);
+    assert.equal(ok(await fn(own, "rejectFinancialPolicy", { operatingCompanyId: "ventana", versionId: v.id,
+      reason: "Ventana's accounting team chose weighted average" })).replayed, true, "an identical reject is a replay");
+    refused(await fn(own, "rejectFinancialPolicy", { operatingCompanyId: "ventana", versionId: v.id, reason: "a different reason" }),
+      409, "FINANCIAL_POLICY_REPLAY_CONFLICT", "a re-sent reject with another reason is not silently dropped");
     refused(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: v.id }), 409, "FINANCIAL_POLICY_NOT_SUBMITTED");
     refused(await fn(dual, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", versionId: v.id, policy: WA }), 409, "FINANCIAL_POLICY_NOT_EDITABLE");
     await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'SUBMITTED' WHERE id = $1`, [v.id], /FINANCIAL_POLICY_TRANSITION_ILLEGAL/, "REJECTED is final");
@@ -322,8 +331,14 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
   await t.test("CO: Taylor and Ventana are independent", async () => {
     const taylor = ok(await fn(own, "readFinancialPolicy", { operatingCompanyId: "taylor" }));
     const ventana = ok(await fn(own, "readFinancialPolicy", { operatingCompanyId: "ventana" }));
-    assert.deepEqual([taylor.active.id, taylor.active.policy.inventoryCostMethod], [taylorV1.id, "WEIGHTED_AVERAGE"]);
-    assert.deepEqual([ventana.active.id, ventana.active.versionNumber], [ventanaV2.id, 2]);
+    assert.deepEqual([taylor.inForce.id, taylor.inForce.policy.inventoryCostMethod], [taylorV1.id, "WEIGHTED_AVERAGE"]);
+    // Ventana's FIRST-EVER activation is dated business date + 3: SCHEDULED, and Ventana is NOT_CONFIGURED until then.
+    assert.deepEqual([ventana.state, ventana.inForce, ventana.scheduled.id, ventana.scheduled.status], ["NOT_CONFIGURED", null, ventanaV2.id, "ACTIVE"]);
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, "ventana")).state, "NOT_CONFIGURED");
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, "ventana", await businessDate("ventana", 2))).state, "NOT_CONFIGURED");
+    const onDate = ok(await fn(own, "readFinancialPolicy", { operatingCompanyId: "ventana", asOfDate: await businessDate("ventana", 3) }));
+    assert.deepEqual([onDate.state, onDate.inForce.id, onDate.inForce.versionNumber, onDate.scheduled], ["CONFIGURED", ventanaV2.id, 2, null]);
+    refused(await fn(own, "readFinancialPolicy", { operatingCompanyId: "ventana", asOfDate: "2030-13-01" }), 400, "DATE_INVALID");
     // A version id is reachable only through its own company.
     refused(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: ventanaV2.id }), 404, "FINANCIAL_POLICY_VERSION_NOT_FOUND");
     refused(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: taylorV1.id, effectiveDate: await businessDate("ventana", 9) }),
@@ -376,7 +391,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const v2 = ok(await fn(ctrl, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: FIFO, reason: "governed revision" })).version;
     assert.equal(v2.versionNumber, 2);
     const mid = ok(await fn(fm, "readFinancialPolicy", { operatingCompanyId: "taylor" }));
-    assert.deepEqual([mid.state, mid.active.id, mid.inFlight.id], ["CONFIGURED", taylorV1.id, v2.id], "the ACTIVE version governs while the revision is in flight");
+    assert.deepEqual([mid.state, mid.inForce.id, mid.inFlight.id], ["CONFIGURED", taylorV1.id, v2.id], "the version in force governs while the revision is in flight");
     ok(await fn(ctrl, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: v2.id }));
     ok(await fn(adm, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: v2.id }));
     refused(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: v2.id, effectiveDate: taylorV1.effectiveDate }),
@@ -392,8 +407,16 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'ACTIVE', superseded_by_version_id = NULL, superseded_at = NULL WHERE id = $1`,
       [taylorV1.id], /FINANCIAL_POLICY_(TRANSITION_ILLEGAL|IMMUTABLE)/, "SUPERSEDED never returns");
     assert.equal(Number((await one(`SELECT count(*) AS n FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = 'taylor' AND status = 'ACTIVE'`, [TENANT])).n), 1);
-    const resolved = await fp.resolveActiveFinancialPolicy(pool, TENANT, "taylor");
-    assert.deepEqual([resolved.state, resolved.policy.inventoryCostMethod], ["ACTIVE", "FIFO"]);
+    // FUTURE-DATED activation (business date + 1): v2 is ACTIVE (locked) and v1 SUPERSEDED, but v1 stays IN FORCE until v2's date.
+    assert.equal(v1After.effectiveDate, taylorV1.effectiveDate, "the SUPERSEDED row keeps its own effective date");
+    const today = await fp.resolveFinancialPolicyInForce(pool, TENANT, "taylor");
+    assert.deepEqual([today.state, today.version.id, today.version.status, today.policy.inventoryCostMethod], ["IN_FORCE", taylorV1.id, "SUPERSEDED", "WEIGHTED_AVERAGE"]);
+    const tomorrow = await fp.resolveFinancialPolicyInForce(pool, TENANT, "taylor", await businessDate("taylor", 1));
+    assert.deepEqual([tomorrow.version.id, tomorrow.policy.inventoryCostMethod], [v2.id, "FIFO"]);
+    const read = ok(await fn(fm, "readFinancialPolicy", { operatingCompanyId: "taylor" }));
+    assert.deepEqual([read.state, read.inForce.id, read.scheduled.id], ["CONFIGURED", taylorV1.id, v2.id]);
+    const later = ok(await fn(fm, "readFinancialPolicy", { operatingCompanyId: "taylor", asOfDate: await businessDate("taylor", 30) }));
+    assert.deepEqual([later.inForce.id, later.scheduled], [v2.id, null]);
   });
 
   await t.test("VAL + SOD: an editor never approves; an activation re-validates -- a recognition gate that closed after approval stops it", async () => {
@@ -410,7 +433,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     await assert.rejects(fp.activateFinancialPolicy(pool, owner, { operatingCompanyId: "taylor", versionId: v.id, effectiveDate: await businessDate("taylor", 5) },
       { recognitionPoints: gated }), (e) => e.code === "RECOGNITION_UNAVAILABLE");
     const still = ok(await fn(fm, "readFinancialPolicy", { operatingCompanyId: "taylor" }));
-    assert.deepEqual([still.inFlight.id, still.inFlight.status, still.active.policy.inventoryCostMethod], [v.id, "APPROVED", "FIFO"]);
+    assert.deepEqual([still.inFlight.id, still.inFlight.status, still.scheduled.policy.inventoryCostMethod], [v.id, "APPROVED", "FIFO"]);
   });
 
   await t.test("REPLAY: re-sent commands change nothing; the history rebuilt from audit_events equals the stored versions", async () => {
@@ -425,13 +448,34 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const id = draft.version.id;
     assert.equal(ok(await fn(ctrl, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", versionId: id, policy: FIFO })).replayed, true,
       "identical content from another preparer is a replay, and does not make them an author");
+    // A re-send that differs only by its note is NOT a replay: refused, never answered replayed with the note dropped.
+    refused(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: FIFO, reason: "a new note" }), 409, "FINANCIAL_POLICY_REPLAY_CONFLICT");
+    refused(await fn(ctrl, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", versionId: id, policy: FIFO, reason: "a new note" }),
+      409, "FINANCIAL_POLICY_REPLAY_CONFLICT");
+    // DATABASE defence in depth on a DRAFT: authorship only grows, the preparer never changes, TRUNCATE is refused.
+    // (Inside a rolled-back transaction: give the draft a second author, then try to drop it.)
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN");
+      await c.query(`UPDATE eos_finance.financial_policy_versions SET content_authors = content_authors || 'second-author'::text WHERE id = $1`, [id]);
+      await assert.rejects(c.query(`UPDATE eos_finance.financial_policy_versions SET content_authors = content_authors[1:1], last_edited_by = prepared_by WHERE id = $1`, [id]),
+        /FINANCIAL_POLICY_IMMUTABLE: content_authors is append-only/, "a DRAFT's authorship never shrinks");
+    } finally {
+      await c.query("ROLLBACK");
+      c.release();
+    }
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET prepared_by = 'someone-else', content_authors = ARRAY['someone-else'], last_edited_by = 'someone-else' WHERE id = $1`,
+      [id], /FINANCIAL_POLICY_IMMUTABLE/, "the preparer never changes, even in DRAFT");
+    await dbRefusal(`TRUNCATE eos_finance.financial_policy_versions`, [], /TRUNCATE is refused/, "TRUNCATE");
     assert.deepEqual(await versions(), stateBefore);
     assert.equal(await auditCount(), auditBefore);
     const sub = ok(await fn(fm, "submitFinancialPolicy", { operatingCompanyId: "ventana", versionId: id }));
     const subAgain = ok(await fn(fm, "submitFinancialPolicy", { operatingCompanyId: "ventana", versionId: id }));
     assert.deepEqual([subAgain.replayed, subAgain.version], [true, sub.version]);
+    refused(await fn(fm, "submitFinancialPolicy", { operatingCompanyId: "ventana", versionId: id, reason: "late note" }), 409, "FINANCIAL_POLICY_REPLAY_CONFLICT");
     const app = ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: id }));
     assert.deepEqual(ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: id })).version, app.version);
+    refused(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: id, reason: "a note after the fact" }), 409, "FINANCIAL_POLICY_REPLAY_CONFLICT");
     refused(await fn(adm, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: id }), 409, "FINANCIAL_POLICY_NOT_SUBMITTED",
       "a second approver is not a replay");
     const date = await businessDate("ventana", 10);
@@ -440,6 +484,8 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const settledAudit = await auditCount();
     const actAgain = ok(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: id, effectiveDate: date }));
     assert.deepEqual([actAgain.replayed, actAgain.version], [true, act.version]);
+    refused(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: id, effectiveDate: date, reason: "other" }),
+      409, "FINANCIAL_POLICY_REPLAY_CONFLICT");
     refused(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: id, effectiveDate: await businessDate("ventana", 11) }),
       409, "FINANCIAL_POLICY_LOCKED", "a different activation of a locked version is not a replay");
     assert.deepEqual(await versions(), settled, "replays leave the state identical");

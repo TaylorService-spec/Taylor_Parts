@@ -7,7 +7,7 @@
 //
 // Served on /operations/finance (the Finance Closure transport) as seven operations, each behind its own PG-native key:
 //
-//   readFinancialPolicy            finance.policy.read      the ACTIVE version + the version in flight, or NOT_CONFIGURED
+//   readFinancialPolicy            finance.policy.read      the version IN FORCE (or NOT_CONFIGURED), any SCHEDULED one, the one in flight
 //   listFinancialPolicyVersions    finance.policy.read      the company's whole version history, newest first
 //   saveFinancialPolicyDraft       finance.policy.prepare   create the company's next DRAFT, or edit the current one
 //   submitFinancialPolicy          finance.policy.prepare   DRAFT -> SUBMITTED (the content freezes)
@@ -20,7 +20,7 @@
 // same refusal:
 //   * COMPANY SCOPE. Every operation names one ACTIVE operating company of the caller's tenant. CONSOLIDATED, an unknown and an
 //     inactive company are refused. Taylor and Ventana hold independent policies; a version id from another company is NOT_FOUND.
-//   * FAIL CLOSED. A company without an ACTIVE version is NOT_CONFIGURED. Nothing here, or in resolveActiveFinancialPolicy,
+//   * FAIL CLOSED. A company with no version IN FORCE is NOT_CONFIGURED. Nothing here, or in resolveFinancialPolicyInForce,
 //     ever substitutes a default method.
 //   * VALIDATION is the pure domain module's (../finance/financialPolicyProfile, imported unchanged): supported methods only
 //     (LIFO / STANDARD_COST / REPLACEMENT_COST do not exist), an AVAILABLE recognition point only (WORK_ORDER_CONSUMPTION
@@ -30,11 +30,14 @@
 //     There is no unlock, reopen or force. A change is a governed REVISION: a new DRAFT through the same lifecycle.
 //   * SEPARATION OF DUTIES. The approver / rejecter is neither the submitter nor any principal who wrote the draft -- even if
 //     that principal also holds finance.policy.approve.
+//   * LIFECYCLE IS NOT EFFECTIVITY. Activating a version locks it and supersedes the prior ACTIVE one at once, but the version
+//     IN FORCE on a business date is the latest ACTIVE / SUPERSEDED one dated on or before it; a future-dated ACTIVE version is
+//     SCHEDULED. Consequence: while a version is scheduled, a correction must be dated after it (no cancel-scheduled path).
 //   * EFFECTIVE DATE is stated at ACTIVATION (not approval): an approval may wait, and a date fixed earlier could lapse into
 //     the past, leaving an approved version that can neither activate nor be edited. At activation it must not precede the
 //     company's business date (eos_policy.operating_company_business_date) nor any earlier activated version's.
-//   * REPLAY. Re-sending a command whose effect is already recorded (same caller, same content) returns the recorded state
-//     with `replayed: true` and writes nothing. Every state change writes ONE eos_policy.audit_events row whose `after` is the
+//   * REPLAY. Re-sending a command whose effect is already recorded (same caller, same content, same reason / note) returns the
+//     recorded state with `replayed: true` and writes nothing; a differing note is FINANCIAL_POLICY_REPLAY_CONFLICT. Every change writes ONE eos_policy.audit_events row whose `after` is the
 //     full version snapshot, so the version history can be rebuilt from the audit trail (rebuildFinancialPolicyVersions).
 //
 // No Firebase. The Firestore-era command (../finance/financialPolicyProfileCommand) is not used, read or extended.
@@ -147,12 +150,13 @@ export function validateFinancialPolicyContent(operatingCompanyId: string, raw: 
 }
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-function calendarDate(v: unknown): string {
+function calendarDate(v: unknown, name = "effectiveDate"): string {
+  const code = name === "effectiveDate" ? "EFFECTIVE_DATE_REQUIRED" : "DATE_INVALID";
   const m = typeof v === "string" ? ISO_DATE.exec(v) : null;
-  if (!m) return refuse("EFFECTIVE_DATE_REQUIRED", "INVALID_INPUT", "effectiveDate is a calendar date (YYYY-MM-DD)");
+  if (!m) return refuse(code, "INVALID_INPUT", `${name} is a calendar date (YYYY-MM-DD)`);
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
   if (d.getUTCFullYear() !== Number(m[1]) || d.getUTCMonth() !== Number(m[2]) - 1 || d.getUTCDate() !== Number(m[3])) {
-    refuse("EFFECTIVE_DATE_REQUIRED", "INVALID_INPUT", `${String(v)} is not a calendar date`);
+    refuse(code, "INVALID_INPUT", `${String(v)} is not a calendar date`);
   }
   return v as string;
 }
@@ -230,8 +234,14 @@ async function tx<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): Promise<T> 
   }
 }
 
-/** The database's own refusals (the lock, the one-in-flight index) answer as governed refusals, never as 500s. */
-function translateDatabaseRefusal(err: unknown): unknown {
+/** The database's own CHECKs, by constraint name, for a write that raced past the server's checks. */
+const CHECK_REFUSALS: Readonly<Record<string, readonly [string, FinancialPolicyRefusalCategory]>> = Object.freeze({
+  financial_policy_approver_independent: ["SEPARATION_OF_DUTIES", "FORBIDDEN"],
+  financial_policy_rejecter_independent: ["SEPARATION_OF_DUTIES", "FORBIDDEN"],
+});
+
+/** The database's own refusals (the lock, the one-in-flight index, the CHECKs) answer as governed refusals, never as 500s. */
+export function translateDatabaseRefusal(err: unknown): unknown {
   const e = err as { code?: string; constraint?: string; message?: string };
   if (e && e.code === "23505" && typeof e.constraint === "string" && e.constraint.startsWith("financial_policy_one_")) {
     return new FinancialPolicyRefusal("FINANCIAL_POLICY_IN_FLIGHT_EXISTS", "CONFLICT",
@@ -240,6 +250,13 @@ function translateDatabaseRefusal(err: unknown): unknown {
   if (e && (e.code === "23001" || e.code === "23514") && typeof e.message === "string") {
     const m = /^(FINANCIAL_POLICY_[A-Z_]+):/.exec(e.message);
     if (m) return new FinancialPolicyRefusal(m[1], "CONFLICT", e.message);
+  }
+  if (e && e.code === "23514" && typeof e.constraint === "string") {
+    const known = CHECK_REFUSALS[e.constraint];
+    if (known) return new FinancialPolicyRefusal(known[0], known[1], `refused by ${e.constraint}`);
+    if (e.constraint.startsWith("financial_policy_")) {
+      return new FinancialPolicyRefusal("FINANCIAL_POLICY_INVALID", "CONFLICT", `refused by ${e.constraint}`);
+    }
   }
   return err;
 }
@@ -280,19 +297,33 @@ const lockedRefusal = (status: string): never => (LOCKED_FINANCIAL_POLICY_STATUS
 
 // ════════════════════ reads ════════════════════
 
+/** The company's business date (its governed time zone), as YYYY-MM-DD. */
+async function businessDateOf(db: Db, tenantId: string, company: string): Promise<string> {
+  const { rows } = await db.query(`SELECT eos_policy.operating_company_business_date($1, $2, now())::text AS d`, [tenantId, company]);
+  return String(rows[0].d);
+}
+
 /**
- * THE consumer read: a company's ACTIVE policy, or NOT_CONFIGURED. Never a default -- a caller that needs a cost method and
- * receives NOT_CONFIGURED must refuse, exactly as an UNKNOWN cost stays unknown.
+ * THE consumer read: the policy IN FORCE for a company on a business date (default: the company's business date today), or
+ * NOT_CONFIGURED. Never a default -- a caller that needs a cost method and receives NOT_CONFIGURED must refuse, exactly as an
+ * UNKNOWN cost stays unknown.
+ *
+ * LIFECYCLE IS NOT EFFECTIVITY. Activation locks a version and supersedes the prior ACTIVE one at once, but a version governs
+ * only from its own effective date. In force = the latest ACTIVE or SUPERSEDED version whose effective_date is on or before
+ * the date (effective dates strictly increase across activations, and a SUPERSEDED row keeps its own). An ACTIVE version
+ * dated after the date is SCHEDULED, not in force.
  */
-export async function resolveActiveFinancialPolicy(db: Db, tenantId: string, operatingCompanyId: string): Promise<
-  { readonly state: "NOT_CONFIGURED"; readonly policy: null; readonly version: null }
-  | { readonly state: "ACTIVE"; readonly policy: FinancialPolicyContent; readonly version: FinancialPolicyVersion }> {
+export async function resolveFinancialPolicyInForce(db: Db, tenantId: string, operatingCompanyId: string, asOfDate?: string): Promise<
+  { readonly state: "NOT_CONFIGURED"; readonly asOf: string; readonly policy: null; readonly version: null }
+  | { readonly state: "IN_FORCE"; readonly asOf: string; readonly policy: FinancialPolicyContent; readonly version: FinancialPolicyVersion }> {
+  const asOf = asOfDate === undefined ? await businessDateOf(db, tenantId, operatingCompanyId) : calendarDate(asOfDate, "asOfDate");
   const { rows } = await db.query(
-    `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE'`,
-    [tenantId, operatingCompanyId]);
-  if (rows.length === 0) return Object.freeze({ state: "NOT_CONFIGURED" as const, policy: null, version: null });
+    `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions
+      WHERE tenant_id = $1 AND operating_company_id = $2 AND status IN ('ACTIVE', 'SUPERSEDED') AND effective_date <= $3::date
+      ORDER BY effective_date DESC LIMIT 1`, [tenantId, operatingCompanyId, asOf]);
+  if (rows.length === 0) return Object.freeze({ state: "NOT_CONFIGURED" as const, asOf, policy: null, version: null });
   const version = versionView(rows[0]);
-  return Object.freeze({ state: "ACTIVE" as const, policy: version.policy, version });
+  return Object.freeze({ state: "IN_FORCE" as const, asOf, policy: version.policy, version });
 }
 
 /** What EOS supports, for the screen. The vocabularies are the domain module's; nothing here is a default. */
@@ -305,18 +336,30 @@ export function supportedFinancialPolicyVocabulary(options: FinancialPolicyOptio
   });
 }
 
+/**
+ * The policy screen's read: `inForce` (the version governing on the business date, or null with state NOT_CONFIGURED),
+ * `scheduled` (the ACTIVE version when it is dated after that date), and the version in flight. `asOfDate` reads another
+ * business date; it defaults to the company's business date today.
+ */
 export async function readFinancialPolicy(pool: Pool, actor: FinancialPolicyActor, input: Record<string, unknown>, options: FinancialPolicyOptions = {}) {
   requireCapability(actor, FINANCIAL_POLICY_READ_CAPABILITY);
-  only(input, ["operatingCompanyId"]);
+  only(input, ["operatingCompanyId", "asOfDate"]);
   const company = await companyOf(pool, actor, input.operatingCompanyId);
-  const active = await resolveActiveFinancialPolicy(pool, actor.tenantId, company);
+  const inForce = await resolveFinancialPolicyInForce(pool, actor.tenantId, company,
+    input.asOfDate === undefined || input.asOfDate === null ? undefined : calendarDate(input.asOfDate, "asOfDate"));
+  const { rows: active } = await pool.query(
+    `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE'`,
+    [actor.tenantId, company]);
+  const scheduled = active[0] && String(active[0].effective_date_text) > inForce.asOf ? versionView(active[0]) : null;
   const { rows } = await pool.query(
     `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions
       WHERE tenant_id = $1 AND operating_company_id = $2 AND status IN ('DRAFT', 'SUBMITTED', 'APPROVED')`, [actor.tenantId, company]);
   return Object.freeze({
     operatingCompanyId: company,
-    state: active.state === "ACTIVE" ? "CONFIGURED" as const : "NOT_CONFIGURED" as const,
-    active: active.version,
+    asOf: inForce.asOf,
+    state: inForce.state === "IN_FORCE" ? "CONFIGURED" as const : "NOT_CONFIGURED" as const,
+    inForce: inForce.version,
+    scheduled,
     inFlight: rows[0] ? versionView(rows[0]) : null,
     supported: supportedFinancialPolicyVocabulary(options),
   });
@@ -335,6 +378,22 @@ export async function listFinancialPolicyVersions(pool: Pool, actor: FinancialPo
 // ════════════════════ commands ════════════════════
 
 type Outcome = Readonly<{ version: FinancialPolicyVersion; replayed: boolean }>;
+
+/**
+ * A replay is the SAME command: same caller, same content, same note. A re-send whose effect is recorded but whose stated
+ * reason / note differs is refused (FINANCIAL_POLICY_REPLAY_CONFLICT), never answered `replayed: true` with the note dropped.
+ */
+async function assertSameReason(c: Db, actor: FinancialPolicyActor, versionId: string, actions: readonly string[], reason: string | null): Promise<void> {
+  const { rows } = await c.query(
+    `SELECT reason FROM eos_policy.audit_events WHERE tenant_id = $1 AND target_kind = $2 AND target_id = $3 AND action = ANY ($4)
+      ORDER BY occurred_at DESC, id DESC LIMIT 1`, [actor.tenantId, FINANCIAL_POLICY_AUDIT_TARGET, versionId, [...actions]]);
+  const recorded = rows[0]?.reason ?? null;
+  if (recorded !== reason) {
+    refuse("FINANCIAL_POLICY_REPLAY_CONFLICT", "CONFLICT",
+      "this command's effect is already recorded with a different reason / note; the recorded one stands and a new note is not added silently");
+  }
+}
+const CONTENT_ACTIONS = Object.freeze(["finance.policy.draft.create", "finance.policy.draft.edit"]);
 const outcome = (row: Record<string, any>, replayed: boolean): Outcome => Object.freeze({ version: versionView(row), replayed });
 
 /**
@@ -357,7 +416,10 @@ export async function saveFinancialPolicyDraft(pool: Pool, actor: FinancialPolic
           WHERE tenant_id = $1 AND operating_company_id = $2 AND status IN ('DRAFT', 'SUBMITTED', 'APPROVED') FOR UPDATE`, [actor.tenantId, company]);
       if (open[0]) {
         const existing = versionView(open[0]);
-        if (existing.status === "DRAFT" && existing.lastEditedBy === actor.principalId && sameContent(existing.policy, content)) return outcome(open[0], true);
+        if (existing.status === "DRAFT" && existing.lastEditedBy === actor.principalId && sameContent(existing.policy, content)) {
+          await assertSameReason(c, actor, existing.id, CONTENT_ACTIONS, reason);
+          return outcome(open[0], true);
+        }
         refuse("FINANCIAL_POLICY_IN_FLIGHT_EXISTS", "CONFLICT",
           `version ${existing.versionNumber} (${existing.status}) is in flight for ${company}; edit, submit or decide that one first`);
       }
@@ -378,7 +440,10 @@ export async function saveFinancialPolicyDraft(pool: Pool, actor: FinancialPolic
     const before = versionView(row);
     if (before.status !== "DRAFT") lockedRefusal(before.status);
     // Identical content is a replay whoever sends it: nothing is written and no one becomes a content author.
-    if (sameContent(before.policy, content)) return outcome(row, true);
+    if (sameContent(before.policy, content)) {
+      await assertSameReason(c, actor, before.id, CONTENT_ACTIONS, reason);
+      return outcome(row, true);
+    }
     const { rows } = await c.query(
       `UPDATE eos_finance.financial_policy_versions
           SET inventory_cost_method = $3, serialized_inventory_cost_method = $4, cogs_recognition_point = $5, freight_treatment = $6,
@@ -402,7 +467,10 @@ export async function submitFinancialPolicy(pool: Pool, actor: FinancialPolicyAc
     const company = await companyOf(c, actor, input.operatingCompanyId);
     const row = await lockedVersion(c, actor, company, input.versionId);
     const before = versionView(row);
-    if (before.status === "SUBMITTED" && before.submittedBy === actor.principalId) return outcome(row, true);
+    if (before.status === "SUBMITTED" && before.submittedBy === actor.principalId) {
+      await assertSameReason(c, actor, before.id, ["finance.policy.submit"], reason);
+      return outcome(row, true);
+    }
     if (before.status !== "DRAFT") lockedRefusal(before.status);
     validateFinancialPolicyContent(company, before.policy, options);
     const { rows } = await c.query(
@@ -430,7 +498,12 @@ export async function approveFinancialPolicy(pool: Pool, actor: FinancialPolicyA
     const company = await companyOf(c, actor, input.operatingCompanyId);
     const row = await lockedVersion(c, actor, company, input.versionId);
     const before = versionView(row);
-    if (before.status === "APPROVED" && before.approvedBy === actor.principalId) return outcome(row, true);
+    if (before.status === "APPROVED" && before.approvedBy === actor.principalId) {
+      if (before.decisionReason !== reason) {
+        refuse("FINANCIAL_POLICY_REPLAY_CONFLICT", "CONFLICT", "this version is already approved by you with a different note; the recorded one stands");
+      }
+      return outcome(row, true);
+    }
     if (before.status !== "SUBMITTED") {
       refuse("FINANCIAL_POLICY_NOT_SUBMITTED", "CONFLICT", `only a SUBMITTED version is approved; this one is ${before.status}`);
     }
@@ -454,7 +527,12 @@ export async function rejectFinancialPolicy(pool: Pool, actor: FinancialPolicyAc
     const company = await companyOf(c, actor, input.operatingCompanyId);
     const row = await lockedVersion(c, actor, company, input.versionId);
     const before = versionView(row);
-    if (before.status === "REJECTED" && before.rejectedBy === actor.principalId && before.decisionReason === reason) return outcome(row, true);
+    if (before.status === "REJECTED" && before.rejectedBy === actor.principalId) {
+      if (before.decisionReason !== reason) {
+        refuse("FINANCIAL_POLICY_REPLAY_CONFLICT", "CONFLICT", "this version is already rejected by you with a different reason; the recorded one stands");
+      }
+      return outcome(row, true);
+    }
     if (before.status !== "SUBMITTED") {
       refuse("FINANCIAL_POLICY_NOT_SUBMITTED", "CONFLICT", `only a SUBMITTED version is rejected; this one is ${before.status}`);
     }
@@ -483,6 +561,7 @@ export async function activateFinancialPolicy(pool: Pool, actor: FinancialPolicy
     const row = await lockedVersion(c, actor, company, input.versionId);
     const before = versionView(row);
     if (before.status === "ACTIVE" && before.activatedBy === actor.principalId && before.effectiveDate === effectiveDate) {
+      await assertSameReason(c, actor, before.id, ["finance.policy.activate"], reason);
       return Object.freeze({ ...outcome(row, true), superseded: null });
     }
     if (before.status !== "APPROVED") {
@@ -490,9 +569,9 @@ export async function activateFinancialPolicy(pool: Pool, actor: FinancialPolicy
       refuse("FINANCIAL_POLICY_NOT_APPROVED", "CONFLICT", `only an APPROVED version is activated; this one is ${before.status}`);
     }
     validateFinancialPolicyContent(company, before.policy, options);
-    const { rows: bd } = await c.query(`SELECT eos_policy.operating_company_business_date($1, $2, now())::text AS d`, [actor.tenantId, company]);
-    if (effectiveDate < String(bd[0].d)) {
-      refuse("EFFECTIVE_DATE_PAST", "INVALID_INPUT", `effectiveDate ${effectiveDate} precedes ${company}'s business date ${String(bd[0].d)}`);
+    const today = await businessDateOf(c, actor.tenantId, company);
+    if (effectiveDate < today) {
+      refuse("EFFECTIVE_DATE_PAST", "INVALID_INPUT", `effectiveDate ${effectiveDate} precedes ${company}'s business date ${today}`);
     }
     const { rows: prior } = await c.query(
       `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE' FOR UPDATE`,

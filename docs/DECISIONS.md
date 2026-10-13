@@ -8071,11 +8071,19 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
   - An ACTIVE row admits only its supersession by the activation of a later approved version of the same company, in the same transaction (a deferred check).
   - REJECTED and SUPERSEDED are final.
   - At most one ACTIVE and one in-flight version per company (partial unique indexes).
-  - Database triggers and CHECKs enforce all of the above, including separation of duties.
+  - Database triggers and CHECKs enforce all of the above, including separation of duties. In addition:
+    - TRUNCATE is refused by a statement trigger;
+    - even in DRAFT, `content_authors` only grows and `prepared_by` never changes.
+  - A CHECK refusal that a racing write reaches answers as a governed refusal (for example `SEPARATION_OF_DUTIES`, 403), never a 500.
 - **Effective date at ACTIVATION, not approval.** An approval may wait; a date fixed earlier could lapse, leaving an approved version that can neither activate nor be edited. The date may not precede the company's business date (`eos_policy.operating_company_business_date`) nor an earlier activated version's.
-- **Missing policy fails closed.** A company with no ACTIVE version reads `NOT_CONFIGURED`; no default method exists anywhere.
+- **Lifecycle is not effectivity.** Activation locks a version and supersedes the prior ACTIVE one at once, but a version governs only from its own effective date.
+  - The version IN FORCE on a business date is the latest ACTIVE or SUPERSEDED version whose effective date is on or before it. A SUPERSEDED row keeps its own effective date.
+  - A future-dated ACTIVE version is reported as SCHEDULED, not in force.
+  - `readFinancialPolicy` returns `inForce` (or `NOT_CONFIGURED`), `scheduled` and the version in flight. It accepts an `asOfDate`.
+- **Missing policy fails closed.** A company with no version in force reads `NOT_CONFIGURED`, including when its first-ever activation is still scheduled. No default method exists anywhere.
 - **Validation** is the pure domain module `functions/src/finance/financialPolicyProfile.ts`, imported unchanged. LIFO and STANDARD are refused, and `WORK_ORDER_CONSUMPTION` follows `PHYSICAL_CONSUMPTION_ACTIVE`. It is re-checked at submit, approval and activation.
-- **Server.** `functions/src/eosFinance/financialPolicy.ts`, on `/operations/finance`. Every state change writes one `eos_policy.audit_events` row carrying the full version snapshot, from which the history rebuilds. Replayed commands write nothing.
+- **Server.** `functions/src/eosFinance/financialPolicy.ts`, on `/operations/finance`. Every state change writes one `eos_policy.audit_events` row carrying the full version snapshot, from which the history rebuilds.
+- **Replay.** An identical re-sent command writes nothing and answers `replayed: true`. A re-send whose effect is recorded but whose reason or note differs is refused with `FINANCIAL_POLICY_REPLAY_CONFLICT` (409), so a note is never silently dropped.
 - **Capabilities.** Four PG-native keys on the new `financialPolicy` Object, with **zero grants**. The Firebase ids are deliberately not reused, to avoid the catalog reconcile granting them to admin.
 
   | Key | Kind | Operations |
@@ -8092,6 +8100,14 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
   - `owner`: `finance.policy.read`, `finance.policy.approve`, `finance.policy.activate`.
   - `admin`: none (standing).
   - No Sales, Service, Parts or Warehouse Role, and neither `accountingManager` nor `generalManager`, is proposed anything.
+
+**Open Owner decisions (recorded, not built).**
+1. **Scheduled corrections.** While a future-dated version is scheduled, a correction must be dated AFTER it: effective dates strictly increase and no cancel-scheduled path exists. Should a governed "cancel scheduled activation" exist?
+2. **Company scope is data-only.** Grants are tenant-wide and the architecture has no operating-company grant condition (`adminPolicyApi.ts`, near line 1507). So a Controller holding `finance.policy.prepare` can prepare for both Taylor and Ventana. Each version still belongs to exactly one company.
+3. **Revision without conversion.** CERT-FIN-02 §1 defines a later change as approval -> effective date -> impact assessment -> conversion -> activation. This foundation builds the approval, effective date and activation. Impact assessment and conversion remain unbuilt, and they must exist before any cost-engine consumer reads a revised policy.
+4. **Activation has no separation of duties.** A principal holding prepare and activate can activate their own version after someone else approves it. #232 requires independence for approval only.
+5. **Other Roles.** Should `accountingManager` prepare? Should `generalManager` read?
+6. **Administrator by standing.** The Administrator's approve and activate come from standing (#223), with no grant. The alternative is an exclusion plus an explicit grant.
 
 **Boundary.**
 - No grant, Role or persona change.

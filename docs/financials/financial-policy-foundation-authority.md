@@ -23,11 +23,17 @@ DRAFT --submit--> SUBMITTED --approve--> APPROVED --activate--> ACTIVE --(later 
 | ACTIVE | no (**locked**) | SUPERSEDED, only through the activation of a later approved version, in the same transaction | At most one per company. |
 | SUPERSEDED | no | none (final) | Preserved intact. |
 
-- **Never deleted.** No row is deleted.
+- **Never deleted.** No row is deleted, and TRUNCATE is refused.
+- **Authorship only grows.** Even in DRAFT, `content_authors` only grows and `prepared_by` never changes.
 - **Write-once stamps.** The prepared, submitted, approved, rejected, activated and superseded stamps are written once.
 - **Enforced twice.** The server enforces every rule, and so do the database's triggers and CHECKs.
 - **Effective date.** It is stated at activation. It may not precede the company's business date, nor the effective date of any earlier activated version.
-- **Fail closed.** A company without an ACTIVE version reads `NOT_CONFIGURED`. No default method exists.
+- **Lifecycle is not effectivity.**
+  - The version IN FORCE on a business date is the latest ACTIVE or SUPERSEDED version dated on or before it. A SUPERSEDED row keeps its own effective date.
+  - A future-dated ACTIVE version is SCHEDULED: the prior version stays in force until that date.
+  - `readFinancialPolicy` returns `inForce`, `scheduled` and `inFlight`, and accepts an `asOfDate`.
+- **Fail closed.** A company with no version in force reads `NOT_CONFIGURED`, including before its first-ever activation's date. No default method exists.
+- **Replay.** An identical re-send answers `replayed: true`. A re-send with a different reason or note is refused with `FINANCIAL_POLICY_REPLAY_CONFLICT`.
 
 ## 2. The new keys
 
@@ -93,6 +99,10 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 ## 6. Open Owner decisions
 
 1. **Execute the proposed grants** in §3, through Administration (nonprod first).
-2. **`accountingManager`.** Should it also prepare, and should `generalManager` read? #232 names neither. The canonical financeAccounting persona's registry entry expects `accountingManager`, while its nonprod fixture holds `controller`.
-3. **Administrator standing.** Is approve / activate by standing the intended mechanism (as implemented), or should it be withheld through `PROTECTED_ADMINISTRATOR_EXCLUSIONS` and granted explicitly?
-4. **The UI.** The Financial Policy screen and the client operation mirror (`financeApiClient.js`) are a later PR.
+2. **Other Roles.** Should `accountingManager` prepare, and should `generalManager` read? #232 names neither. The canonical financeAccounting persona's registry entry expects `accountingManager`, while its nonprod fixture holds `controller`.
+3. **Administrator by standing.** The Administrator's approve and activate come from standing, with no grant. The alternative is to withhold them through `PROTECTED_ADMINISTRATOR_EXCLUSIONS` and grant them explicitly.
+4. **Company scope is data-only.** Grants are tenant-wide and there is no operating-company grant condition (`adminPolicyApi.ts`, near line 1507). So a Controller with prepare can prepare for both Taylor and Ventana.
+5. **Revision without conversion.** CERT-FIN-02 §1 defines a later change as approval -> effective date -> impact assessment -> conversion -> activation. Impact assessment and conversion are unbuilt, and they must exist before any cost-engine consumer reads a revised policy.
+6. **Activation has no separation of duties.** A principal holding prepare and activate can activate their own version once someone else has approved it.
+7. **Scheduled corrections.** While a future-dated version is scheduled, a correction must be dated after it. No cancel-scheduled path exists.
+8. **The UI.** The Financial Policy screen and the client operation mirror (`financeApiClient.js`) are a later PR.
