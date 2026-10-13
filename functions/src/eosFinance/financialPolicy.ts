@@ -20,6 +20,10 @@
 // same refusal:
 //   * COMPANY SCOPE. Every operation names one ACTIVE operating company of the caller's tenant. CONSOLIDATED, an unknown and an
 //     inactive company are refused. Taylor and Ventana hold independent policies; a version id from another company is NOT_FOUND.
+//     COMPANY-SCOPED AUTHORITY (#232 Amendment A): each finance.policy.* key applies only where the caller holds it -- a
+//     GLOBAL assignment (or Administrator standing) reaches every company; an operatingCompany-scoped assignment reaches its
+//     company only (SCOPE_EVALUABLE_GRANTS). The requested company is admitted BEFORE any version lookup; otherwise
+//     OUTSIDE_OPERATING_COMPANY_SCOPE. Conditioned scoped holdings admit nothing. Separation of duties stays per version.
 //   * FAIL CLOSED. A company with no version IN FORCE is NOT_CONFIGURED. Nothing here, or in resolveFinancialPolicyInForce,
 //     ever substitutes a default method.
 //   * VALIDATION is the pure domain module's (../finance/financialPolicyProfile, imported unchanged): supported methods only
@@ -49,6 +53,7 @@ import {
 } from "../finance/financialPolicyProfile";
 import { FinanceFoundationError, resolveOperatingCompany } from "./financeFoundation";
 import { withActorAuthority } from "../eosOps/administrationReach";
+import { admittedScopeValues, type ScopedHolding } from "../adminPolicy/assignmentScopeRuntime";
 
 export const FINANCIAL_POLICY_READ_CAPABILITY = "finance.policy.read";
 export const FINANCIAL_POLICY_PREPARE_CAPABILITY = "finance.policy.prepare";
@@ -86,15 +91,37 @@ const refuse = (code: string, category: FinancialPolicyRefusalCategory, message:
 export interface FinancialPolicyActor {
   readonly tenantId: string;
   readonly principalId: string;
+  /** The flat (GLOBAL) capability set, including Protected Administrator standing. A flat key reaches every company. */
   readonly capabilities: ReadonlySet<string>;
+  /**
+   * Holdings from operatingCompany-SCOPED Security Role assignments (#232 Amendment A), as the transport resolved them
+   * (caller.operational.scopedHeld). A scoped holding reaches only its company; a conditioned one reaches none.
+   */
+  readonly scopedHeld?: readonly ScopedHolding[];
 }
 export interface FinancialPolicyOptions {
   /** The recognition points and their availability. Defaults to the domain module's; injectable so the gate is testable. */
   readonly recognitionPoints?: readonly CogsRecognitionPoint[];
 }
 
-const requireCapability = (actor: FinancialPolicyActor, key: string): void => {
-  if (!actor.capabilities.has(key)) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${key}`);
+/**
+ * COMPANY REACH (#232 Amendment A): where a policy capability applies. The CommercialWriteScope pattern, at operatingCompany
+ * scope: a key in the flat set is held through a GLOBAL assignment (or standing) and reaches every company -- the current EOS
+ * meaning of "All (Global)", pending the Owner's confirmation; otherwise it is held only for the companies its UNCONDITIONED
+ * scoped holdings admit. Holding it nowhere is CAPABILITY_REQUIRED.
+ */
+interface CompanyReach { readonly key: string; readonly global: boolean; readonly companies: readonly string[] }
+const requireCapability = (actor: FinancialPolicyActor, key: string): CompanyReach => {
+  if (actor.capabilities.has(key)) return Object.freeze({ key, global: true, companies: Object.freeze([]) });
+  const companies = admittedScopeValues(actor.scopedHeld, key, "operatingCompany");
+  if (companies.length === 0) return refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${key}`);
+  return Object.freeze({ key, global: false, companies });
+};
+/** Decided on the RESOLVED company, before any version is looked up -- an out-of-scope company's versions never leak. */
+const admitCompany = (reach: CompanyReach, company: string): void => {
+  if (reach.global || reach.companies.includes(company)) return;
+  refuse("OUTSIDE_OPERATING_COMPANY_SCOPE", "FORBIDDEN",
+    `${reach.key} is held only for operating compan${reach.companies.length === 1 ? "y" : "ies"} ${reach.companies.join(", ")}; not for ${company}`);
 };
 const only = (input: Record<string, unknown>, allowed: readonly string[]): void => {
   for (const k of Object.keys(input)) if (!allowed.includes(k)) refuse("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${k}`);
@@ -261,9 +288,11 @@ export function translateDatabaseRefusal(err: unknown): unknown {
   return err;
 }
 
-async function companyOf(db: Db, actor: FinancialPolicyActor, raw: unknown): Promise<string> {
+async function companyOf(db: Db, actor: FinancialPolicyActor, raw: unknown, reach: CompanyReach): Promise<string> {
   try {
-    return await resolveOperatingCompany(db, actor.tenantId, raw);
+    const company = await resolveOperatingCompany(db, actor.tenantId, raw);
+    admitCompany(reach, company);
+    return company;
   } catch (err) {
     if (err instanceof FinanceFoundationError) {
       return refuse(err.code === "CONSOLIDATED_NOT_A_COMPANY" ? err.code : "OPERATING_COMPANY_UNKNOWN", "INVALID_INPUT",
@@ -342,9 +371,9 @@ export function supportedFinancialPolicyVocabulary(options: FinancialPolicyOptio
  * business date; it defaults to the company's business date today.
  */
 export async function readFinancialPolicy(pool: Pool, actor: FinancialPolicyActor, input: Record<string, unknown>, options: FinancialPolicyOptions = {}) {
-  requireCapability(actor, FINANCIAL_POLICY_READ_CAPABILITY);
+  const reach = requireCapability(actor, FINANCIAL_POLICY_READ_CAPABILITY);
   only(input, ["operatingCompanyId", "asOfDate"]);
-  const company = await companyOf(pool, actor, input.operatingCompanyId);
+  const company = await companyOf(pool, actor, input.operatingCompanyId, reach);
   const inForce = await resolveFinancialPolicyInForce(pool, actor.tenantId, company,
     input.asOfDate === undefined || input.asOfDate === null ? undefined : calendarDate(input.asOfDate, "asOfDate"));
   const { rows: active } = await pool.query(
@@ -366,9 +395,9 @@ export async function readFinancialPolicy(pool: Pool, actor: FinancialPolicyActo
 }
 
 export async function listFinancialPolicyVersions(pool: Pool, actor: FinancialPolicyActor, input: Record<string, unknown>) {
-  requireCapability(actor, FINANCIAL_POLICY_READ_CAPABILITY);
+  const reach = requireCapability(actor, FINANCIAL_POLICY_READ_CAPABILITY);
   only(input, ["operatingCompanyId"]);
-  const company = await companyOf(pool, actor, input.operatingCompanyId);
+  const company = await companyOf(pool, actor, input.operatingCompanyId, reach);
   const { rows } = await pool.query(
     `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2 ORDER BY version_number DESC`,
     [actor.tenantId, company]);
@@ -402,11 +431,11 @@ const outcome = (row: Record<string, any>, replayed: boolean): Outcome => Object
  */
 export async function saveFinancialPolicyDraft(pool: Pool, actor: FinancialPolicyActor, input: Record<string, unknown>,
   options: FinancialPolicyOptions = {}): Promise<Outcome> {
-  requireCapability(actor, FINANCIAL_POLICY_PREPARE_CAPABILITY);
+  const reach = requireCapability(actor, FINANCIAL_POLICY_PREPARE_CAPABILITY);
   only(input, ["operatingCompanyId", "versionId", "policy", "reason"]);
   const reason = optionalText(input.reason, "reason");
   return tx(pool, async (c) => {
-    const company = await companyOf(c, actor, input.operatingCompanyId);
+    const company = await companyOf(c, actor, input.operatingCompanyId, reach);
     const content = validateFinancialPolicyContent(company, input.policy, options);
     if (input.versionId === undefined || input.versionId === null) {
       // Serialize creation per company: the version number is the company's next, and the in-flight index has the final word.
@@ -460,11 +489,11 @@ export async function saveFinancialPolicyDraft(pool: Pool, actor: FinancialPolic
 /** DRAFT -> SUBMITTED. The content freezes; it is re-validated first. */
 export async function submitFinancialPolicy(pool: Pool, actor: FinancialPolicyActor, input: Record<string, unknown>,
   options: FinancialPolicyOptions = {}): Promise<Outcome> {
-  requireCapability(actor, FINANCIAL_POLICY_PREPARE_CAPABILITY);
+  const reach = requireCapability(actor, FINANCIAL_POLICY_PREPARE_CAPABILITY);
   only(input, ["operatingCompanyId", "versionId", "reason"]);
   const reason = optionalText(input.reason, "reason");
   return tx(pool, async (c) => {
-    const company = await companyOf(c, actor, input.operatingCompanyId);
+    const company = await companyOf(c, actor, input.operatingCompanyId, reach);
     const row = await lockedVersion(c, actor, company, input.versionId);
     const before = versionView(row);
     if (before.status === "SUBMITTED" && before.submittedBy === actor.principalId) {
@@ -491,11 +520,11 @@ function assertIndependentDecider(actor: FinancialPolicyActor, v: FinancialPolic
 /** SUBMITTED -> APPROVED, by an independent approver. An optional note is kept as the decision reason. */
 export async function approveFinancialPolicy(pool: Pool, actor: FinancialPolicyActor, input: Record<string, unknown>,
   options: FinancialPolicyOptions = {}): Promise<Outcome> {
-  requireCapability(actor, FINANCIAL_POLICY_APPROVE_CAPABILITY);
+  const reach = requireCapability(actor, FINANCIAL_POLICY_APPROVE_CAPABILITY);
   only(input, ["operatingCompanyId", "versionId", "reason"]);
   const reason = optionalText(input.reason, "reason");
   return tx(pool, async (c) => {
-    const company = await companyOf(c, actor, input.operatingCompanyId);
+    const company = await companyOf(c, actor, input.operatingCompanyId, reach);
     const row = await lockedVersion(c, actor, company, input.versionId);
     const before = versionView(row);
     if (before.status === "APPROVED" && before.approvedBy === actor.principalId) {
@@ -519,12 +548,12 @@ export async function approveFinancialPolicy(pool: Pool, actor: FinancialPolicyA
 
 /** SUBMITTED -> REJECTED (final), by an independent decider, with a stated reason. A change is then a new draft. */
 export async function rejectFinancialPolicy(pool: Pool, actor: FinancialPolicyActor, input: Record<string, unknown>): Promise<Outcome> {
-  requireCapability(actor, FINANCIAL_POLICY_APPROVE_CAPABILITY);
+  const reach = requireCapability(actor, FINANCIAL_POLICY_APPROVE_CAPABILITY);
   only(input, ["operatingCompanyId", "versionId", "reason"]);
   if (typeof input.reason !== "string" || input.reason.trim() === "") refuse("REASON_REQUIRED", "INVALID_INPUT", "a rejection states its reason");
   const reason = requiredText(input.reason, "reason", 1000);
   return tx(pool, async (c) => {
-    const company = await companyOf(c, actor, input.operatingCompanyId);
+    const company = await companyOf(c, actor, input.operatingCompanyId, reach);
     const row = await lockedVersion(c, actor, company, input.versionId);
     const before = versionView(row);
     if (before.status === "REJECTED" && before.rejectedBy === actor.principalId) {
@@ -551,12 +580,12 @@ export async function rejectFinancialPolicy(pool: Pool, actor: FinancialPolicyAc
  */
 export async function activateFinancialPolicy(pool: Pool, actor: FinancialPolicyActor, input: Record<string, unknown>,
   options: FinancialPolicyOptions = {}): Promise<Outcome & { readonly superseded: FinancialPolicyVersion | null }> {
-  requireCapability(actor, FINANCIAL_POLICY_ACTIVATE_CAPABILITY);
+  const reach = requireCapability(actor, FINANCIAL_POLICY_ACTIVATE_CAPABILITY);
   only(input, ["operatingCompanyId", "versionId", "effectiveDate", "reason"]);
   const reason = optionalText(input.reason, "reason");
   const effectiveDate = calendarDate(input.effectiveDate);
   return tx(pool, async (c) => {
-    const company = await companyOf(c, actor, input.operatingCompanyId);
+    const company = await companyOf(c, actor, input.operatingCompanyId, reach);
     await c.query(`SELECT pg_advisory_xact_lock(hashtext('eos_finance.financial_policy_versions'), hashtext($1 || '/' || $2))`, [actor.tenantId, company]);
     const row = await lockedVersion(c, actor, company, input.versionId);
     const before = versionView(row);
@@ -632,17 +661,22 @@ export function rebuildFinancialPolicyVersions(events: readonly FinancialPolicyA
 
 // ════════════════════ the /operations/finance adapters ════════════════════
 
-interface Caller { readonly actor: FinancialPolicyActor }
+interface Caller {
+  readonly actor: Omit<FinancialPolicyActor, "scopedHeld">;
+  readonly operational?: { readonly scopedHeld?: readonly ScopedHolding[] };
+}
+/** The flat set AND the operatingCompany-scoped holdings the transport resolved (#232 Amendment A). */
+const actorOf = (caller: Caller): FinancialPolicyActor => ({ ...caller.actor, scopedHeld: caller.operational?.scopedHeld });
 type Op = (deps: { readonly pool: Pool }, caller: Caller, input: Record<string, unknown>) => Promise<unknown>;
 
 export const EOS_FINANCIAL_POLICY_OPERATIONS: Readonly<Record<string, Op>> = Object.freeze({
-  readFinancialPolicy: (deps, caller, input) => readFinancialPolicy(deps.pool, caller.actor, input),
-  listFinancialPolicyVersions: (deps, caller, input) => listFinancialPolicyVersions(deps.pool, caller.actor, input),
-  saveFinancialPolicyDraft: (deps, caller, input) => saveFinancialPolicyDraft(deps.pool, caller.actor, input),
-  submitFinancialPolicy: (deps, caller, input) => submitFinancialPolicy(deps.pool, caller.actor, input),
-  approveFinancialPolicy: (deps, caller, input) => approveFinancialPolicy(deps.pool, caller.actor, input),
-  rejectFinancialPolicy: (deps, caller, input) => rejectFinancialPolicy(deps.pool, caller.actor, input),
-  activateFinancialPolicy: (deps, caller, input) => activateFinancialPolicy(deps.pool, caller.actor, input),
+  readFinancialPolicy: (deps, caller, input) => readFinancialPolicy(deps.pool, actorOf(caller), input),
+  listFinancialPolicyVersions: (deps, caller, input) => listFinancialPolicyVersions(deps.pool, actorOf(caller), input),
+  saveFinancialPolicyDraft: (deps, caller, input) => saveFinancialPolicyDraft(deps.pool, actorOf(caller), input),
+  submitFinancialPolicy: (deps, caller, input) => submitFinancialPolicy(deps.pool, actorOf(caller), input),
+  approveFinancialPolicy: (deps, caller, input) => approveFinancialPolicy(deps.pool, actorOf(caller), input),
+  rejectFinancialPolicy: (deps, caller, input) => rejectFinancialPolicy(deps.pool, actorOf(caller), input),
+  activateFinancialPolicy: (deps, caller, input) => activateFinancialPolicy(deps.pool, actorOf(caller), input),
 });
 
 /** The recognition-point ids the domain knows, re-exported for the client mirror test. */

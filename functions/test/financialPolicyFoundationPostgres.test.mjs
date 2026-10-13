@@ -506,6 +506,121 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     assert.throws(() => fp.rebuildFinancialPolicyVersions(tampered), /FINANCIAL_POLICY_HISTORY_BROKEN/);
   });
 
+  await t.test("SCOPE (#232 Amendment A): finance.policy.* applies only at the companies a principal's assignments reach", async () => {
+    // Free both companies: Taylor's APPROVED in-flight version (the VAL test) is activated, dated after Taylor's scheduled v2.
+    const tInFlight = ok(await fn(own, "readFinancialPolicy", { operatingCompanyId: "taylor" })).inFlight;
+    ok(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: tInFlight.id, effectiveDate: await businessDate("taylor", 5) }));
+    // TEST-TENANT-ONLY Roles that model Option A: policy authority with NO Administration capability, so Administration
+    // admits them at operatingCompany scope. Built and staffed through the governed Administration commands.
+    const roleId = async (key) => (await one(`SELECT id FROM eos_policy.roles WHERE tenant_id = $1 AND key = $2`, [TENANT, key])).id;
+    const defineRole = async (key, actions) => {
+      assert.equal((await admin("createRole", { key, name: key, reason: "local test tenant only (#232 Amendment A)" })).ok, true, key);
+      for (const actionKey of actions) {
+        const r = await admin("grantObjectActionToRole", { roleKey: key, objectKey: "financialPolicy", actionKey, reason: "local test tenant only" });
+        assert.equal(r.ok, true, `${key} ${actionKey} ${JSON.stringify(r).slice(0, 300)}`);
+      }
+    };
+    await defineRole("policyPreparerTest", ["read", "prepare"]);
+    await defineRole("policyDeciderTest", ["approve", "activate"]);
+    const assign = async (who, roleKey, scopeValue) => {
+      const r = await admin("assignRole", { principalId: who.principalId, roleId: await roleId(roleKey), reason: "scope staffing",
+        ...(scopeValue ? { scopeType: "operatingCompany", scopeValue } : {}) });
+      assert.equal(r.ok, true, `${roleKey}@${scopeValue ?? "global"} ${JSON.stringify(r).slice(0, 300)}`);
+    };
+    const pT = await person("uid-fp-sc-t", [], { id: "e-fp-sc-t", name: "Tara Taylor-Controller" });
+    const pV = await person("uid-fp-sc-v", [], { id: "e-fp-sc-v", name: "Vic Ventana-Controller", company: "ventana" });
+    const pB = await person("uid-fp-sc-b", [], { id: "e-fp-sc-b", name: "Bea Both-Companies" });
+    const dT = await person("uid-fp-sc-dt", [], { id: "e-fp-sc-dt", name: "Dee Taylor-Decider" });
+    const mixed = await person("uid-fp-sc-mx", [], { id: "e-fp-sc-mx", name: "Max Mixed" });
+    const gP = await person("uid-fp-sc-g", [], { id: "e-fp-sc-g", name: "Gil Global-Preparer" });
+    await assign(pT, "policyPreparerTest", "taylor");
+    await assign(pV, "policyPreparerTest", "ventana");
+    await assign(pB, "policyPreparerTest", "taylor");
+    await assign(pB, "policyPreparerTest", "ventana");
+    await assign(dT, "policyDeciderTest", "taylor");
+    await assign(mixed, "policyPreparerTest", "taylor");
+    await assign(mixed, "policyDeciderTest", null);
+    await assign(gP, "policyPreparerTest", null);
+    const OUT = "OUTSIDE_OPERATING_COMPANY_SCOPE";
+
+    // BOTH-COMPANY holder: separate, independently versioned policies for each company.
+    const listNumbers = async (company) => ok(await fn(own, "listFinancialPolicyVersions", { operatingCompanyId: company })).items.map((v) => v.versionNumber);
+    const tNext = Math.max(...(await listNumbers("taylor"))) + 1;
+    const vNext = Math.max(...(await listNumbers("ventana"))) + 1;
+    const vT = ok(await fn(pB, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: FIFO }), "both: Taylor").version;
+    const vV = ok(await fn(pB, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }), "both: Ventana").version;
+    assert.deepEqual([vT.operatingCompanyId, vT.versionNumber, vV.operatingCompanyId, vV.versionNumber], ["taylor", tNext, "ventana", vNext]);
+    assert.notEqual(vT.id, vV.id);
+
+    // TAYLOR-ONLY holder: works Taylor; refused Ventana -- the same refusal for a real and a non-existent Ventana id (no leak).
+    assert.equal(ok(await fn(pT, "readFinancialPolicy", { operatingCompanyId: "taylor" })).inFlight.id, vT.id);
+    for (const [op, input] of [
+      ["readFinancialPolicy", { operatingCompanyId: "ventana" }],
+      ["listFinancialPolicyVersions", { operatingCompanyId: "ventana" }],
+      ["saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }],
+      ["saveFinancialPolicyDraft", { operatingCompanyId: "ventana", versionId: vV.id, policy: FIFO }],
+      ["submitFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }],
+      ["submitFinancialPolicy", { operatingCompanyId: "ventana", versionId: "fpv-does-not-exist" }],
+    ]) {
+      const body = refused(await fn(pT, op, input), 403, OUT, `Taylor-only ${op}`);
+      assert.equal(JSON.stringify(body).includes(vV.id), false, "no Ventana version id leaks");
+      assert.equal(body.result, undefined);
+    }
+    ok(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", versionId: vT.id, policy: { ...FIFO, cogsRecognitionPointId: "EQUIPMENT_INSTALL" } }));
+    ok(await fn(pT, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id }), "Taylor-only submits Taylor");
+
+    // VENTANA-ONLY holder: the mirror image.
+    refused(await fn(pV, "readFinancialPolicy", { operatingCompanyId: "taylor" }), 403, OUT);
+    refused(await fn(pV, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id }), 403, OUT);
+    refused(await fn(pV, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: WA }), 403, OUT);
+    ok(await fn(pV, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", versionId: vV.id, policy: { ...WA, cogsRecognitionPointId: "INVOICE_ISSUE" } }));
+    ok(await fn(pV, "submitFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }), "Ventana-only submits Ventana");
+
+    // Company resolution stays first: an unknown or inactive company and CONSOLIDATED are refused for a scoped holder too.
+    refused(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: "saratoga", policy: WA }), 400, "OPERATING_COMPANY_UNKNOWN");
+    refused(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: "dormant", policy: WA }), 400, "OPERATING_COMPANY_UNKNOWN");
+    refused(await fn(pT, "readFinancialPolicy", { operatingCompanyId: "consolidated" }), 400, "CONSOLIDATED_NOT_A_COMPANY");
+    refused(await fn(gP, "saveFinancialPolicyDraft", { operatingCompanyId: "CONSOLIDATED", policy: WA }), 400, "CONSOLIDATED_NOT_A_COMPANY");
+    // A scoped preparer holds nothing it was not granted.
+    refused(await fn(pT, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id }), 403, "CAPABILITY_REQUIRED");
+
+    // SCOPED DECIDER (approve + activate @ Taylor): decides Taylor, refused Ventana.
+    refused(await fn(dT, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }), 403, OUT);
+    refused(await fn(dT, "rejectFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id, reason: "no" }), 403, OUT);
+    ok(await fn(dT, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id }), "scoped approve");
+    const tAct = ok(await fn(dT, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id, effectiveDate: await businessDate("taylor", 6) }));
+    assert.equal(tAct.version.status, "ACTIVE");
+    refused(await fn(dT, "readFinancialPolicy", { operatingCompanyId: "taylor" }), 403, "CAPABILITY_REQUIRED", "the decider Role carries no read");
+
+    // MULTIPLE ROLES: preparer @ Taylor + a GLOBAL decider. Never decides its own Taylor version; decides another's Ventana one.
+    const own2 = ok(await fn(mixed, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: WA })).version;
+    ok(await fn(mixed, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id }));
+    refused(await fn(mixed, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id }), 403, "SEPARATION_OF_DUTIES");
+    refused(await fn(mixed, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }), 403, OUT, "its prepare is Taylor-only");
+    ok(await fn(mixed, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }), "a global approve reaches Ventana");
+    ok(await fn(mixed, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id, effectiveDate: await businessDate("ventana", 11) }));
+    ok(await fn(dT, "rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id, reason: "test tidy-up" }));
+
+    // GLOBAL holder: the current EOS meaning of a global assignment -- every company (pending the Owner's confirmation).
+    for (const company of ["taylor", "ventana"]) {
+      ok(await fn(gP, "readFinancialPolicy", { operatingCompanyId: company }), `global read ${company}`);
+      ok(await fn(gP, "saveFinancialPolicyDraft", { operatingCompanyId: company, policy: FIFO }), `global prepare ${company}`);
+    }
+
+    // CONDITIONED scoped holding: admits nothing (fail closed); an unconditioned holding admits only its own company.
+    const holding = (condition, scopeValue = "taylor") => ({ capabilityKey: "finance.policy.read", scopeType: "operatingCompany", scopeValue,
+      sourceRole: "policyPreparerTest", assignmentId: null, condition });
+    const actor = (scopedHeld) => ({ tenantId: TENANT, principalId: pT.principalId, capabilities: new Set(), scopedHeld });
+    await assert.rejects(fp.readFinancialPolicy(pool, actor([holding({ kind: "RECORD_ASSIGNMENT" })]), { operatingCompanyId: "taylor" }),
+      (e) => e.code === "CAPABILITY_REQUIRED");
+    await assert.rejects(fp.readFinancialPolicy(pool, actor([holding(null)]), { operatingCompanyId: "ventana" }), (e) => e.code === OUT);
+    assert.equal((await fp.readFinancialPolicy(pool, actor([holding(null)]), { operatingCompanyId: "taylor" })).operatingCompanyId, "taylor");
+    // The runtime resolved exactly these holdings for the both-company preparer (the transport's caller.operational.scopedHeld).
+    const explained = await require("../lib/eosOps/effectiveAccessExplanation.js").explainEffectiveAccess(repo, pool, { tenantId: TENANT, principalId: pB.principalId });
+    assert.deepEqual(explained.scopedHeld.map((h) => `${h.capabilityKey}@${h.scopeValue}`).sort(),
+      ["finance.policy.prepare@taylor", "finance.policy.prepare@ventana", "finance.policy.read@taylor", "finance.policy.read@ventana"]);
+  });
+
   await t.test("MIG: with versions recorded, the Down refuses to reverse", async () => {
     assert.throws(() => migrate("down", 1), (e) => /FINANCIAL_POLICY_FOUNDATION: refuses to reverse/.test(String(e.stderr ?? e.message)));
     assert.notEqual((await one(`SELECT to_regclass('eos_finance.financial_policy_versions') AS r`)).r, null);

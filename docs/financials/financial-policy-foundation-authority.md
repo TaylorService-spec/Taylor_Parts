@@ -101,8 +101,50 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 1. **Execute the proposed grants** in §3, through Administration (nonprod first).
 2. **Other Roles.** Should `accountingManager` prepare, and should `generalManager` read? #232 names neither. The canonical financeAccounting persona's registry entry expects `accountingManager`, while its nonprod fixture holds `controller`.
 3. **Administrator by standing.** The Administrator's approve and activate come from standing, with no grant. The alternative is to withhold them through `PROTECTED_ADMINISTRATOR_EXCLUSIONS` and grant them explicitly.
-4. **Company scope is data-only.** Grants are tenant-wide and there is no operating-company grant condition (`adminPolicyApi.ts`, near line 1507). So a Controller with prepare can prepare for both Taylor and Ventana.
+4. ~~**Company scope is data-only.**~~ **RESOLVED by #232 Amendment A** (§7): company scope is enforced on every policy command.
 5. **Revision without conversion.** CERT-FIN-02 §1 defines a later change as approval -> effective date -> impact assessment -> conversion -> activation. Impact assessment and conversion are unbuilt, and they must exist before any cost-engine consumer reads a revised policy.
 6. **Activation has no separation of duties.** A principal holding prepare and activate can activate their own version once someone else has approved it.
 7. **Scheduled corrections.** While a future-dated version is scheduled, a correction must be dated after it. No cancel-scheduled path exists.
 8. **The UI.** The Financial Policy screen and the client operation mirror (`financeApiClient.js`) are a later PR.
+9. **The finance Roles cannot be company-scoped** (`SCOPE_AMBIGUOUS_ADMINISTRATION`). See §7, options A, B and C.
+10. **What a global assignment means.** See §7.
+11. **The financeAccounting persona holds two Roles.** Its Principal (Employee `synthetic-np-emp-finance-controller`) holds TWO global assignments in nonprod:
+    - `accountingManager`, from the Persona Foundation (2026-09-26). It matches `config/sandboxRoleIdentityRegistry.json` `expectedSecurityRoles` and is pinned by `sandboxPersonaBootstrapApply.test.mjs`.
+    - `controller`, from the #2024 workforce seed (`functions/scripts/fixtures/taylorNonprodWorkforce.v1.json`, lines 690–707).
+
+    Both Roles carry the same 25 grants. The Owner should choose one:
+    - update the registry expectation (the Persona Foundation is frozen, so this needs Owner approval); or
+    - revoke one of the two assignments through Administration.
+
+    Nothing was changed here.
+
+## 7. Company-scoped authority (#232 Amendment A)
+
+**Rule.** A `finance.policy.*` key applies only at the operating companies the principal's Security Role assignments reach.
+
+- **A global assignment, or Protected Administrator standing,** reaches every company. This is the current EOS meaning of "All (Global)", pending the Owner's confirmation.
+- **An operatingCompany-scoped assignment** reaches its company only. The four keys are registered in `SCOPE_EVALUABLE_GRANTS`, whose consumers are the seven policy operations.
+- **The company is admitted before any version is read.** Out of scope, the answer is `OUTSIDE_OPERATING_COMPANY_SCOPE` (403), with no version id or state disclosed.
+- **Fail closed.** A conditioned scoped holding admits nothing.
+- **Consolidated.** CONSOLIDATED is refused for every policy command. Consolidated Finance reporting reads are unaffected.
+- **Separation of duties** is unchanged and decided per version. A principal with a scoped preparer Role for Taylor and a global approve still cannot approve its own Taylor version.
+
+| Holder (test-tenant Roles, Option A shape) | Taylor | Ventana |
+|---|---|---|
+| preparer @ Taylor | read, prepare, submit | refused (`OUTSIDE_OPERATING_COMPANY_SCOPE`) |
+| preparer @ Ventana | refused | read, prepare, submit |
+| preparer @ Taylor + preparer @ Ventana | separate, independently versioned policies | same |
+| decider (approve + activate) @ Taylor | approve, activate | refused |
+| global preparer | both | both |
+
+**Which Role carries scoped policy authority is an Owner decision.** `controller`, `accountingManager`, `financeManager` and `owner` carry Administration capabilities (`audit.event.read` / `admin.*`), so Administration refuses them at company scope (`SCOPE_AMBIGUOUS_ADMINISTRATION`). The options:
+
+| Option | What it means | Code needed |
+|---|---|---|
+| **A (recommended)** | A dedicated policy-preparer Role through Administration. | None. |
+| **B** | Remove `audit.event.read` from `controller`. Its other 24 capabilities would go inert at a scope. | |
+| **C** | An EOS-wide change. | Yes. |
+
+**The meaning of a global assignment** is also an Owner decision:
+- (a) all companies, the current behaviour; or
+- (b) a scoped holding is required. This needs an EOS-wide `scopeRequired` extension, with exemptions for the Owner and for Administrator standing.

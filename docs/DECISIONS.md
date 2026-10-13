@@ -8103,7 +8103,7 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 
 **Open Owner decisions (recorded, not built).**
 1. **Scheduled corrections.** While a future-dated version is scheduled, a correction must be dated AFTER it: effective dates strictly increase and no cancel-scheduled path exists. Should a governed "cancel scheduled activation" exist?
-2. **Company scope is data-only.** Grants are tenant-wide and the architecture has no operating-company grant condition (`adminPolicyApi.ts`, near line 1507). So a Controller holding `finance.policy.prepare` can prepare for both Taylor and Ventana. Each version still belongs to exactly one company.
+2. ~~**Company scope is data-only.**~~ **RESOLVED by #232 Amendment A** (below): company scope is now enforced on every policy command through the existing assignment scope.
 3. **Revision without conversion.** CERT-FIN-02 §1 defines a later change as approval -> effective date -> impact assessment -> conversion -> activation. This foundation builds the approval, effective date and activation. Impact assessment and conversion remain unbuilt, and they must exist before any cost-engine consumer reads a revised policy.
 4. **Activation has no separation of duties.** A principal holding prepare and activate can activate their own version after someone else approves it. #232 requires independence for approval only.
 5. **Other Roles.** Should `accountingManager` prepare? Should `generalManager` read?
@@ -8114,3 +8114,45 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 - No nonprod or production data touched.
 - No Firebase change.
 - No UI (a later PR).
+
+## #232 Amendment A — multi-company Controller and company-scoped financial authority (2026-10-13)
+
+(Owner decision of 2026-10-13, amending #232. Resolves #232's open decision "company scope is data-only".)
+
+**Decision (as directed by the Owner).**
+1. One employee identity may hold Controller responsibilities for multiple operating companies.
+2. Employee company assignments determine where role capabilities apply.
+3. Controller permissions are evaluated against the requested operating company.
+   - A Controller assigned to Taylor and Ventana may prepare and submit separate policies for each.
+   - A Controller assigned only to Taylor is refused for Ventana.
+4. Policies, cost histories and activation stay company-specific.
+5. Authorized consolidated financial reporting is permitted; consolidated policy editing is not.
+6. Owner / Administrator approval and activation stay subject to separation of duties.
+7. No role may bypass company scope merely because it has a tenant-wide capability.
+8. Reuse existing EOS structures; NO Financials-only company-access system.
+
+**Implementation (PR #2085, unmerged).**
+- **No new access system.** It reuses the existing Security Role ASSIGNMENT SCOPE: `user_role_assignments` scope type `operatingCompany`, whose governed values are this tenant's ACTIVE `tenant_operating_companies`. The Administration UI already assigns Roles with that scope.
+- **Registry.** `SCOPE_EVALUABLE_GRANTS` (`functions/src/adminPolicy/assignmentScopeRuntime.ts`) registers `finance.policy.read`, `.prepare`, `.approve` and `.activate` at operatingCompany scope. Their consumers are the seven `/operations/finance` policy operations. This is the existing registry used as documented.
+- **Enforcement, server-side on every policy command** (`functions/src/eosFinance/financialPolicy.ts`, the `CommercialWriteScope` pattern):
+  - A key is held through the flat (global) set, or through the companies its UNCONDITIONED scoped holdings admit (`admittedScopeValues`). Otherwise the answer is `CAPABILITY_REQUIRED`.
+  - The requested company is resolved first: ACTIVE, never CONSOLIDATED. It is then admitted against the holding BEFORE any version is read. Otherwise the answer is `OUTSIDE_OPERATING_COMPANY_SCOPE` (403), the same for a real and a non-existent version id, so no other company's versions or state leak.
+  - Conditioned holdings admit nothing (fail closed).
+- **Separation of duties** is unchanged and decided per version.
+- **Consolidated.** Consolidated policy editing (and reading) is refused. Consolidated financial reporting reads (`readFinanceWorkspace` and the other Finance reads) are untouched.
+- **Global assignments.** A GLOBAL assignment, and Protected Administrator standing, reach every company. This is the current EOS meaning of "All (Global)", recorded pending the Owner's confirmation (open item 2).
+
+**Open items (Owner decisions; nothing changed for them).**
+1. **The finance Roles cannot be company-scoped today.** `controller`, `accountingManager`, `financeManager` and `owner` carry `audit.event.read` / `admin.*`, so Administration refuses them at operatingCompany scope (`SCOPE_AMBIGUOUS_ADMINISTRATION`). Options:
+   - **A (recommended):** a dedicated policy-preparer Role (`finance.policy.read` + `.prepare`, no Administration capability), created and scoped through Administration. No code.
+   - **B:** remove `audit.event.read` from `controller`; its 24 other capabilities would go inert at a scope.
+   - **C:** an EOS-wide change to how Administration capabilities interact with scope.
+2. **What a global assignment means.**
+   - (a) All companies: the current EOS meaning, as implemented.
+   - (b) A scoped holding is required: this would need an EOS-wide `scopeRequired` extension, plus exemptions for the Owner and for Administrator standing.
+3. **The financeAccounting persona discrepancy.** Its Principal holds both `accountingManager` and `controller` globally in nonprod. See `docs/financials/financial-policy-foundation-authority.md` §6.
+
+**Boundary.**
+- No Role, capability or grant change anywhere live. Test Roles exist in local test tenants only.
+- No Firebase change.
+- No UI.
