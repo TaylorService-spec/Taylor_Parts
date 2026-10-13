@@ -312,6 +312,8 @@ on:
       - "functions/test/authorityPreviewSafetyPostgres.test.mjs"
       - "functions/test/authorityPreviewProtectedPostgres.test.mjs"
       - "functions/test/authorityPreviewPurity.test.mjs"
+      - "functions/test/authorityPreviewMandatoryCarveOut.test.mjs"
+      - "functions/test/authorityPreviewMandatoryPostgres.test.mjs"
       - "functions/test/support/authorityPreviewFixture.mjs"
       - "functions/test/support/valueImportClosure.mjs"
       # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
@@ -545,6 +547,12 @@ on:
       # LANE DX: Employee > Direct Exceptions (grant / revoke / condition a direct Principal exception).
       - "field-ops-app-vite/src/modules/administration/EmployeeDirectExceptions.jsx"
       - "field-ops-app-vite/test/employeeDirectExceptions.test.jsx"
+      # PR 4: the grant-impact PREVIEW step every Administration authority change takes before Confirm.
+      - "field-ops-app-vite/src/modules/administration/AuthorityImpactPreview.jsx"
+      - "field-ops-app-vite/src/modules/administration/ObjectAuthorityMatrix.jsx"
+      - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
+      - "field-ops-app-vite/test/authorityImpactPreview.test.jsx"
+      - "field-ops-app-vite/test/support/authorityPreviewKit.js"
       - "field-ops-app-vite/src/modules/administration/usePolicyStore.js"
       - "field-ops-app-vite/src/access/objectPermissionMap.js"
       - "field-ops-app-vite/test/administrationPortalNav.test.mjs"
@@ -1055,6 +1063,8 @@ on:
       - "functions/test/authorityPreviewSafetyPostgres.test.mjs"
       - "functions/test/authorityPreviewProtectedPostgres.test.mjs"
       - "functions/test/authorityPreviewPurity.test.mjs"
+      - "functions/test/authorityPreviewMandatoryCarveOut.test.mjs"
+      - "functions/test/authorityPreviewMandatoryPostgres.test.mjs"
       - "functions/test/support/authorityPreviewFixture.mjs"
       - "functions/test/support/valueImportClosure.mjs"
       # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
@@ -1629,6 +1639,13 @@ jobs:
       # reason, re-read on success, refusals verbatim.
       - name: Administration direct exceptions -- client (vitest + jsdom)
         run: npx vitest run test/employeeDirectExceptions.test.jsx
+        working-directory: field-ops-app-vite
+
+      # PR 4: THE GRANT-IMPACT PREVIEW STEP -- Confirm disabled until a fresh WOULD_APPLY preview of exactly the inputs on
+      # screen; NO_OP / WOULD_REFUSE never commit; the commit carries previewDigest; STALE_PREVIEW requires a new preview;
+      # counts-only names nobody; the matrix single-click toggle no longer commits on one click.
+      - name: Administration grant-impact preview step -- client (vitest + jsdom)
+        run: npx vitest run test/authorityImpactPreview.test.jsx
         working-directory: field-ops-app-vite
 
       # LANE SC: Employee > Security Roles assignment SCOPE -- the picker offers only what the server's

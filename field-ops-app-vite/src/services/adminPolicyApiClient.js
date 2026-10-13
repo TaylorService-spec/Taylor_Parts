@@ -164,7 +164,15 @@ export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze([
   "setSalesDiscountAuthority",
 ]);
 
+/**
+ * The grant-impact PREVIEW (server: ADMIN_PREVIEW_OPERATIONS, adminPolicyApi.ts). Read-only -- nothing survives it --
+ * but on neither list above, because the server gates it on the PREVIEWED command's own capability. Mirrored here so
+ * the Administration screens can show an authority change's impact before Confirm; it decides nothing in the browser.
+ */
+export const ADMIN_PREVIEW_OPERATIONS = Object.freeze(["previewAuthorityChange"]);
+
 const ALL_OPERATIONS = new Set([...ADMIN_READ_OPERATIONS, ...ADMIN_MUTATION_OPERATIONS, ...ADMIN_CONFIGURATION_OPERATIONS]);
+for (const name of ADMIN_PREVIEW_OPERATIONS) ALL_OPERATIONS.add(name);
 
 /** Is this a name the server would recognise? */
 export const isAdminOperation = (name) => typeof name === "string" && ALL_OPERATIONS.has(name);
@@ -196,6 +204,9 @@ export const POLICY_API_FAILURES = Object.freeze([
   "INVALID_INPUT",
   "NOT_FOUND",
   "CONFLICT",
+  // PREVIEW_REQUIRED (HTTP 428): an authority change committed without its grant-impact preview while the server's
+  // mandatory-preview control is on. The refusal code itself rides in the message, as every governed refusal does.
+  "PRECONDITION_REQUIRED",
   "INTERNAL",
   "UNREACHABLE",
 ]);

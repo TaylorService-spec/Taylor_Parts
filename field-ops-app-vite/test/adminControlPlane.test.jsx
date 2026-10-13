@@ -23,6 +23,7 @@ import {
   matrixActionRows,
 } from "../src/modules/administration/controlPlaneModel.js";
 import { createAdminControlPlaneClient, refusalText } from "../src/services/adminControlPlaneClient.js";
+import { PREVIEW_DIGEST, previewImpact, wouldApplyPreview } from "./support/authorityPreviewKit.js";
 
 afterEach(cleanup);
 
@@ -93,6 +94,8 @@ function makeApi(over = {}) {
     retireGrantCondition: vi.fn(async () => ({ ok: true, data: { status: "RETIRED" } })),
     explainEffectiveAccess: vi.fn(async () => ({ ok: true, data: EXPLAIN })),
     listSupportedConditionKinds: vi.fn(async () => ({ ok: true, data: CONDITION_VOCABULARY })),
+    // PR 4: every authority change is previewed by the server before Confirm is enabled.
+    previewAuthorityChange: wouldApplyPreview(),
     ...over,
   };
 }
@@ -146,9 +149,15 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     const confirm = within(form).getByRole("button", { name: "Confirm Revoke" });
     expect(confirm.disabled).toBe(true);
     typeReason(form, "Dispatch moves to Field Managers");
+    // A stated reason is not enough: Confirm waits for the server's preview of exactly this change.
+    expect(confirm.disabled).toBe(true);
+    await previewImpact(form);
+    expect(api.previewAuthorityChange).toHaveBeenCalledWith("revokeObjectActionFromRole", {
+      objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "Dispatch moves to Field Managers",
+    });
     await act(async () => { fireEvent.click(confirm); });
     expect(api.revokeObjectActionFromRole).toHaveBeenCalledWith({
-      objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "Dispatch moves to Field Managers",
+      objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "Dispatch moves to Field Managers", previewDigest: PREVIEW_DIGEST,
     });
     await waitFor(() => expect(api.getObjectActionGrantMatrix.mock.calls.length).toBeGreaterThan(1));
   });
@@ -160,9 +169,10 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     const form = screen.getByRole("form", { name: "Grant recordConsumption to a Security Role" });
     fireEvent.change(within(form).getByLabelText("Security Role"), { target: { value: "technician" } });
     typeReason(form, "Technicians record their own parts");
+    await previewImpact(form);
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Grant" })); });
     expect(api.grantObjectActionToRole).toHaveBeenCalledWith({
-      objectKey: "workOrder", actionKey: "recordConsumption", roleKey: "technician", reason: "Technicians record their own parts",
+      objectKey: "workOrder", actionKey: "recordConsumption", roleKey: "technician", reason: "Technicians record their own parts", previewDigest: PREVIEW_DIGEST,
     });
   });
 
@@ -175,11 +185,12 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     // Record kinds come from the SERVER's vocabulary; the single-value relation is filled automatically.
     fireEvent.change(within(form).getByLabelText("Record kind"), { target: { value: "workOrder" } });
     typeReason(form, "Office managers read their assigned work orders");
+    await previewImpact(form);
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Grant" })); });
     expect(api.grantObjectActionToRole).toHaveBeenCalledTimes(1);
     expect(api.grantObjectActionToRole.mock.calls[0][0]).toEqual({
       objectKey: "workOrder", actionKey: "read", roleKey: "officeManager",
-      reason: "Office managers read their assigned work orders", condition: RA_WO,
+      reason: "Office managers read their assigned work orders", condition: RA_WO, previewDigest: PREVIEW_DIGEST,
     });
     expect(api.setGrantCondition).not.toHaveBeenCalled();
   });
@@ -202,10 +213,11 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     fireEvent.change(kind, { target: { value: "WORK_ELIGIBILITY" } });
     fireEvent.change(within(form).getByLabelText("Qualification"), { target: { value: "SERVICE_TECHNICIAN" } });
     typeReason(form, "Only qualified technicians dispatch");
+    await previewImpact(form);
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Set Condition" })); });
     expect(api.setGrantCondition).toHaveBeenCalledWith({
       objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "Only qualified technicians dispatch",
-      condition: { paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: "SERVICE_TECHNICIAN" }]] },
+      condition: { paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: "SERVICE_TECHNICIAN" }]] }, previewDigest: PREVIEW_DIGEST,
     });
   });
 
@@ -226,8 +238,9 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     fireEvent.click(screen.getByRole("button", { name: "Grant read to officeManager" }));
     const grant = screen.getByRole("form", { name: "Grant read for officeManager" });
     typeReason(grant, "plain grant");
+    await previewImpact(grant);
     await act(async () => { fireEvent.click(within(grant).getByRole("button", { name: "Confirm Grant" })); });
-    expect(api.grantObjectActionToRole).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", roleKey: "officeManager", reason: "plain grant" });
+    expect(api.grantObjectActionToRole).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", roleKey: "officeManager", reason: "plain grant", previewDigest: PREVIEW_DIGEST });
   });
 
   it("retiring a condition on a HELD grant shows the server's 409 refusal verbatim", async () => {
@@ -236,8 +249,9 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     fireEvent.click(screen.getByRole("button", { name: "Retire condition on read for technician" }));
     const form = screen.getByRole("form", { name: "Retire condition read for technician" });
     typeReason(form, "Widen technician reads");
+    await previewImpact(form);
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Retire Condition" })); });
-    expect(api.retireGrantCondition).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", roleKey: "technician", reason: "Widen technician reads" });
+    expect(api.retireGrantCondition).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", roleKey: "technician", reason: "Widen technician reads", previewDigest: PREVIEW_DIGEST });
     const shown = document.querySelector('[data-control-plane-refusal="CONFLICT"]');
     expect(shown.textContent).toBe("CONFLICT: CONDITION_RETIREMENT_WOULD_WIDEN: revoke the grant before retiring its condition");
     // Refused means NOT re-read as if it had happened.
@@ -307,8 +321,9 @@ describe("Security Role detail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Revoke read from technician" }));
     const form = screen.getByRole("form", { name: "Revoke read for technician" });
     typeReason(form, "Reads move to the dispatcher");
+    await previewImpact(form);
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm Revoke" })); });
-    expect(api.revokeObjectActionFromRole).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", roleKey: "technician", reason: "Reads move to the dispatcher" });
+    expect(api.revokeObjectActionFromRole).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", roleKey: "technician", reason: "Reads move to the dispatcher", previewDigest: PREVIEW_DIGEST });
     await waitFor(() => expect(api.getSecurityRoleDetail.mock.calls.length).toBeGreaterThan(1));
     expect(api.listRoleCapabilityDecisionHistory.mock.calls.length).toBeGreaterThan(1);
   });
