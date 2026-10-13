@@ -19,6 +19,9 @@ on:
     paths:
       - "functions/src/eosOps/workOrder*.ts"
       - "functions/src/eosOps/contextualAuthorization.ts"
+      # P1-4: the technician job-context parity test compares the Work Order projection with the CRM reads.
+      - "functions/src/eosCrm/accountAuthority.ts"
+      - "functions/src/eosCrm/accountLocationAuthority.ts"
       - "functions/src/eosOps/migration/**"
       - "functions/src/adminPolicy/workOrderLifecycleGrantActivation.ts"
       - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
@@ -52,6 +55,7 @@ on:
       - "functions/test/workOrderAvailabilityPostgres.test.mjs"
       - "functions/test/workOrderLaborPostgres.test.mjs"
       - "functions/test/workOrderFieldContextPostgres.test.mjs"
+      - "functions/test/workOrderTechnicianJobContextPostgres.test.mjs"
       - "functions/test/workOrderAnalyticsPostgres.test.mjs"
       - "functions/test/inboundWorkPostgres.test.mjs"
       - "functions/test/coordinatedVisitPostgresParity.test.mjs"
@@ -88,6 +92,9 @@ on:
     paths:
       - "functions/src/eosOps/workOrder*.ts"
       - "functions/src/eosOps/contextualAuthorization.ts"
+      # P1-4: the technician job-context parity test compares the Work Order projection with the CRM reads.
+      - "functions/src/eosCrm/accountAuthority.ts"
+      - "functions/src/eosCrm/accountLocationAuthority.ts"
       - "functions/src/eosOps/migration/**"
       - "functions/src/adminPolicy/workOrderLifecycleGrantActivation.ts"
       - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
@@ -178,6 +185,7 @@ jobs:
           test/workOrderAvailabilityPostgres.test.mjs
           test/workOrderLaborPostgres.test.mjs
           test/workOrderFieldContextPostgres.test.mjs
+          test/workOrderTechnicianJobContextPostgres.test.mjs
           test/workOrderAnalyticsPostgres.test.mjs
           test/inboundWorkPostgres.test.mjs
           test/coordinatedVisitPostgresParity.test.mjs

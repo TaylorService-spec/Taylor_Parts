@@ -2,8 +2,6 @@ import { useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { useWorkOrder } from "../../hooks/useWorkOrder";
-import { useAccount } from "../../hooks/useAccount";
-import { useLocation as useLocationDoc } from "../../hooks/useLocation";
 import { useEquipmentDoc } from "../../hooks/useEquipment";
 import { useWorkOrderTechnicianDirectory } from "../../hooks/useWorkOrderTechnicianDirectory.js";
 import { useWorkOrderReadinessContext } from "../../hooks/useWorkOrderReadinessContext.js";
@@ -74,11 +72,17 @@ import {
 // separate suggestion panel. Governed intelligence contributes to the existing AttentionBand only
 // when the canonical readiness projection has a substantiated ATTENTION state. UNKNOWN remains quiet.
 //
-// ════════════════════ ROUTE GATE (unchanged) ════════════════════
+// ════════════════════ WHO MOUNTS THIS, AND WHERE THE JOB CONTEXT COMES FROM ════════════════════
 //
-// App.jsx gates this route to admin/dispatcher. That is why useAccount()/useLocation() may be called
-// unconditionally: a technician never mounts this component — their surface is
-// TechnicianWorkOrderDetail. Persona composition, authority untouched (NS-P5).
+// Anyone holding the service.workOrders surface mounts this page (App.jsx, EOS nav source) — the
+// assigned technician included, not only admin/dispatcher. The page therefore issues NO CRM read:
+// customer name, site name and site address come from the governed Work Order read itself
+// (readWorkOrder: customerName, locationName, location), which the server returns only after the
+// entitled per-record decision allows THIS Work Order. Calling CRM getAccount/getAccountLocation here
+// refused every technician (they hold no customer.record.read) and showed "not available to you" for
+// their own job; the projection joins the same eos_crm rows, so office roles see identical values.
+// Deliberately NOT rendered (Owner D-TECH-1/D-TECH-2): site access notes, contacts, telephone — and
+// no link into the customer record. Persona composition, authority untouched (NS-P5).
 export default function WorkOrderDetailPage() {
   const { workOrderId } = useParams();
   const navigate = useNavigate();
@@ -97,8 +101,6 @@ export default function WorkOrderDetailPage() {
   // unit as no longer existing. Wiring drift, fixed in the wiring. The readiness branch above was
   // cut before that fix and still carried the old key; this is the corrected one.
   const { equipment } = useEquipmentDoc(workOrder?.equipmentId ?? null);
-  const { account, error: accountError } = useAccount(workOrder?.customerId ?? null);
-  const { location, error: locationError } = useLocationDoc(workOrder?.locationId ?? null);
   // Keyed by EMPLOYEE id, like the governed Work Order's assignee (not fieldops_technicians).
   const directoryRows = useMemo(() => (workOrder ? [workOrder] : []), [workOrder]);
   const { data: technicians, error: techniciansError } = useWorkOrderTechnicianDirectory(directoryRows);
@@ -179,12 +181,22 @@ export default function WorkOrderDetailPage() {
     );
   }
 
+  // THE JOB CONTEXT, from the Work Order projection only. A null name renders as "reference
+  // unavailable" — never the raw id. The projection's location also carries accessNotes; it is
+  // intentionally not read here (D-TECH-1): only the four address parts reach formatAddress.
+  const customerName = workOrder.customerName || null;
+  const siteName = workOrder.locationName || null;
+  const site = workOrder.siteLocation ?? null;
+  const siteAddress = site
+    ? formatAddress({ street: site.street, city: site.city, state: site.state, zip: site.postalCode })
+    : null;
+
   const resolveWorkOrderReference = (fieldId, id) => {
     if (fieldId === "customerId") {
-      return account?.name ? { state: REFERENCE_STATE.FOUND, label: account.name } : { state: REFERENCE_STATE.NOT_FOUND };
+      return customerName ? { state: REFERENCE_STATE.FOUND, label: customerName } : { state: REFERENCE_STATE.NOT_FOUND };
     }
     if (fieldId === "locationId") {
-      return location?.name ? { state: REFERENCE_STATE.FOUND, label: location.name } : { state: REFERENCE_STATE.NOT_FOUND };
+      return siteName ? { state: REFERENCE_STATE.FOUND, label: siteName } : { state: REFERENCE_STATE.NOT_FOUND };
     }
     if (fieldId === "equipmentId") {
       if (!equipment) return { state: REFERENCE_STATE.NOT_FOUND };
@@ -208,7 +220,6 @@ export default function WorkOrderDetailPage() {
     ? [equipmentDisplayName(equipment), equipmentSummary(equipment)].filter(Boolean).join(" · ")
     : null;
   const window = formatWindow(workOrder.scheduledStart, workOrder.scheduledEnd);
-  const siteAddress = formatAddress(location?.address ?? location ?? null);
 
   // THE KICKER: object type · governed reference. Priority rides here because the concept puts
   // "Work Order · Repair · P2 High" above the title.
@@ -257,8 +268,8 @@ export default function WorkOrderDetailPage() {
         statusTone={header.statusTone}
         statusVariant="sentence"
         facts={[
-          { key: "customer", label: null, value: account?.name ?? (accountError ? "Customer — not available to you" : "Customer — reference unavailable") },
-          { key: "site", label: null, value: location?.name ?? (locationError ? "Site — not available to you" : "Site — reference unavailable") },
+          { key: "customer", label: null, value: customerName ?? "Customer — reference unavailable" },
+          { key: "site", label: null, value: siteName ?? "Site — reference unavailable" },
           { key: "tech", label: "Tech", value: techName ?? (workOrder.scheduledTechId ? "reference unavailable" : "Unassigned") },
           { key: "window", label: "Window", value: window },
           // GAP 8 — the concept puts a first-visit-fix likelihood here. There is no predictor, so
@@ -346,8 +357,6 @@ export default function WorkOrderDetailPage() {
 
       <AttentionBand items={attention} />
 
-      {accountError ? <HonestState state={HONEST_STATE.UNAVAILABLE} detail={accountError} /> : null}
-      {locationError ? <HonestState state={HONEST_STATE.UNAVAILABLE} detail={locationError} /> : null}
       {techniciansError ? (
         <HonestState
           state={HONEST_STATE.UNAVAILABLE}
@@ -505,20 +514,18 @@ export default function WorkOrderDetailPage() {
           </RuledSection>
 
           <RuledSection title="Site">
-            {location?.name ? <p>{location.name}</p> : null}
+            {siteName ? <p>{siteName}</p> : null}
             {/* The address the concept puts under the site name — a technician reads it to get
-                there. Rendered only when the location record actually carries one; formatAddress
-                returns null rather than a partial line, and a blank address line is worse than
-                none. */}
+                there. Rendered only when the Work Order projection actually carries one;
+                formatAddress returns null rather than a partial line, and a blank address line is
+                worse than none. */}
             {siteAddress ? <p className="ns-rail__meta">{siteAddress}</p> : null}
-            {locationError
-              ? <HonestState state={HONEST_STATE.DENIED} subject="The site record" />
-              : !location?.name
-                ? <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="Site — reference unavailable." />
-                : null}
-            {/* GAP 3 — site contact and access notes have no fields on Location. Omitted entirely
-                rather than rendered as an empty label: a blank "Access:" invites someone to
-                believe the site has none. */}
+            {!siteName
+              ? <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="Site — reference unavailable." />
+              : null}
+            {/* Site contact, telephone and access notes are NOT presented here (Owner D-TECH-1,
+                D-TECH-2): the projection carries no contact field, and access notes stay off this
+                page by ruling even though the read returns them. */}
           </RuledSection>
 
           {/* GAP 7 — the concept's dispatcher-context section: the technician's day load, how far

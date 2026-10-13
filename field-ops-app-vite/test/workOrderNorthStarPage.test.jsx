@@ -22,8 +22,6 @@ vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ role: "admin", use
 vi.mock("../src/hooks/useWorkOrder", () => ({
   useWorkOrder: () => ({ workOrder: state.workOrder, loading: state.loading, error: state.error, retry: vi.fn() }),
 }));
-vi.mock("../src/hooks/useAccount", () => ({ useAccount: () => ({ account: state.account, error: state.accountError }) }));
-vi.mock("../src/hooks/useLocation", () => ({ useLocation: () => ({ location: state.location, error: state.locationError }) }));
 vi.mock("../src/hooks/useEquipment", () => ({ useEquipmentDoc: () => ({ equipment: state.equipment, loading: false, error: null }) }));
 // Work Order cutover: the page resolves assignee names against the governed, Employee-keyed directory.
 vi.mock("../src/hooks/useWorkOrderTechnicianDirectory.js", () => ({
@@ -56,7 +54,10 @@ const baseWo = (over = {}) => ({
   type: "SERVICE_CALL",
   priority: 2,
   customerId: "acctdocidaaaaaaaaaaa",
+  // P1-4: the job context is the Work Order projection's own (customerName/locationName), not a CRM read.
+  customerName: "Desert Sun Beverage Co.",
   locationId: "locdocidaaaaaaaaaaaa",
+  locationName: "Broadway Plant",
   equipmentId: "eqdocidaaaaaaaaaaaaa",
   scheduledTechId: "techdocidaaaaaaaaaaa",
   complaint: "Barrel temperature climbing above spec on the PM cycle.",
@@ -73,10 +74,6 @@ beforeEach(() => {
   state.workOrder = baseWo();
   state.loading = false;
   state.error = null;
-  state.account = { name: "Desert Sun Beverage Co." };
-  state.accountError = null;
-  state.location = { name: "Broadway Plant" };
-  state.locationError = null;
   state.equipment = { id: "eq1", name: "Soft Serve Freezer 2", manufacturer: "Taylor", model: "C712", serialNumber: "K1122873" };
   state.technicians = [{ id: "techdocidaaaaaaaaaaa", name: "J. Barela" }];
   state.techniciansError = null;
@@ -250,13 +247,13 @@ describe("honest states survive rendering", () => {
     expect(empty).toMatch(/could not be found/i);
   });
 
-  it("A DENIED SITE READ IS NOT AN EMPTY ONE, and the governed reason is not softened away", () => {
-    state.locationError = "You do not have access to this location.";
-    state.location = null;
+  it("AN UNRESOLVED SITE NAME IS STATED, not blank and never the id (P1-4: no separate CRM site read exists)", () => {
+    state.workOrder = baseWo({ locationName: undefined });
     const { container } = render(<WorkOrderDetailPage />);
-    expect(container.textContent).toContain("You do not have access to this location.");
     const rail = container.querySelector(".ns-rail");
-    expect(within(rail).getByText(/role|available/i)).toBeTruthy();
+    expect(within(rail).getByText(/Site — reference unavailable/)).toBeTruthy();
+    expect(visibleText(container)).not.toMatch(RAW_ID);
+    expect(container.textContent).not.toMatch(/not available to you/i);
   });
 
   it("THE READINESS TABLE AND THE EDITOR ARE DIFFERENT QUESTIONS, asked once each", () => {
@@ -468,8 +465,12 @@ describe("data ownership did not change", () => {
     const src = readFileSync(join(process.cwd(), "src/modules/workOrders/WorkOrderDetailPage.jsx"), "utf8");
     // Comments discuss these hooks by name, so count CODE only.
     const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    for (const hook of ["useWorkOrder(", "useAccount(", "useLocationDoc(", "useEquipmentDoc(", "useWorkOrderTechnicianDirectory("]) {
+    for (const hook of ["useWorkOrder(", "useEquipmentDoc(", "useWorkOrderTechnicianDirectory("]) {
       expect(code.split(hook).length - 1, hook + " must have exactly one call site").toBe(1);
+    }
+    // P1-4: customer/site come from the Work Order projection; this page issues NO CRM read.
+    for (const crmRead of ["useAccount(", "useLocationDoc(", "useLocation(", "getAccount", "getAccountLocation", "callCrmApi"]) {
+      expect(code.split(crmRead).length - 1, crmRead + " must not be called from this page").toBe(0);
     }
     expect(/\.map\([^)]*use[A-Z]/.test(code), "a read inside a map is an N+1").toBe(false);
   });
