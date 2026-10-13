@@ -52,6 +52,7 @@ on:
       - "functions/test/workOrderAvailabilityPostgres.test.mjs"
       - "functions/test/workOrderLaborPostgres.test.mjs"
       - "functions/test/workOrderFieldContextPostgres.test.mjs"
+      - "functions/test/workOrderTechnicianJobContextPostgres.test.mjs"
       - "functions/test/workOrderAnalyticsPostgres.test.mjs"
       - "functions/test/inboundWorkPostgres.test.mjs"
       - "functions/test/coordinatedVisitPostgresParity.test.mjs"
@@ -178,6 +179,7 @@ jobs:
           test/workOrderAvailabilityPostgres.test.mjs
           test/workOrderLaborPostgres.test.mjs
           test/workOrderFieldContextPostgres.test.mjs
+          test/workOrderTechnicianJobContextPostgres.test.mjs
           test/workOrderAnalyticsPostgres.test.mjs
           test/inboundWorkPostgres.test.mjs
           test/coordinatedVisitPostgresParity.test.mjs
