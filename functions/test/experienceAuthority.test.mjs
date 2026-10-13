@@ -689,3 +689,122 @@ test("the legacy source is untouched when no EOS authority is supplied", () => {
   );
   assert.equal(isNavItemVisible(users, "technician", ["fieldMode", "jobs", "technicianDashboard"], legacyContext), false);
 });
+
+// ════════════════════ P1-1 SALES SURFACES: THE OPT-IN SCOPED DOOR ════════════════════
+//
+// Owner-approved 2026-10-13. The three commercial index doors (and ONLY those) may be earned by an UNCONDITIONED,
+// exact-value salesChannel-scoped holding of their read, because the list behind each door (commercial.list*) filters to
+// the holding's channels. A scoped key never enters the flat set, and no other surface opens through scope.
+const { scopedHoldingsFrom, SCOPE_EVALUABLE_GRANTS } = await import("../lib/adminPolicy/assignmentScopeRuntime.js");
+const BASELINE = JSON.parse(readFileSync(path.join(here, "..", "src", "adminPolicy", "seed", "roleCapabilityAuthorityBaseline.json"), "utf8"));
+const SCOPED_DOORS = Object.freeze(["commercial.agreements", "commercial.opportunities", "commercial.salesOrders"]);
+const holding = (capabilityKey, scopeValue = "RETAIL", extra = {}) => Object.freeze({
+  capabilityKey, scopeType: "salesChannel", scopeValue, sourceRole: "salesperson", assignmentId: "asg-1", condition: null, ...extra,
+});
+const scopedActor = (scopedHeld, capabilities = []) => Object.freeze({ ...actorWith(capabilities), scopedHeld });
+const NO_DIMENSIONS = Object.freeze({ employeeId: null, workEligibility: [], operationalScopes: [] });
+/** The catalog exactly as it stood before P1-1: every scopedConsumer stripped, nothing else touched. */
+const FLAT_ONLY_CATALOG = EXPERIENCE_SURFACES.map((s) => ({ ...s, grants: s.grants.map(({ scopedConsumer, ...g }) => g) }));
+
+test("P1-1: exactly the three commercial read paths opt in, each tied to its registered list consumer", () => {
+  const optedIn = EXPERIENCE_SURFACES.flatMap((s) => s.grants.filter((g) => g.scopedConsumer).map((g) => [s.key, g.capabilityKey, g.scopedConsumer.scopeType, g.scopedConsumer.consumer]));
+  assert.deepEqual(optedIn, [
+    ["commercial.opportunities", "opportunity.read", "salesChannel", "commercial.listOpportunities"],
+    ["commercial.salesOrders", "salesOrder.read", "salesChannel", "commercial.listSalesOrders"],
+    ["commercial.agreements", "salesAgreement.read", "salesChannel", "commercial.listSalesAgreements"],
+  ]);
+  for (const [, capabilityKey, scopeType, consumer] of optedIn) {
+    const registered = SCOPE_EVALUABLE_GRANTS.find((g) => g.scopeType === scopeType && g.capabilityKey === capabilityKey);
+    assert.ok(registered?.consumers.includes(consumer), `${capabilityKey} -> ${consumer} is a registered consumer`);
+  }
+});
+
+test("P1-1 (a): a flat-empty actor with an unconditioned salesChannel holding of opportunity.read earns commercial.opportunities ONLY", async () => {
+  assert.deepEqual([...await grantedSurfaceKeys(scopedActor([holding("opportunity.read")]), NO_DIMENSIONS)], ["commercial.opportunities"],
+    "analysis.workspace's opportunity.read path is NOT opted in (D1 deferred)");
+  assert.deepEqual([...await grantedSurfaceKeys(scopedActor([holding("salesOrder.read", "NATIONAL_ACCOUNTS")]), NO_DIMENSIONS)], ["commercial.salesOrders"]);
+  assert.deepEqual([...await grantedSurfaceKeys(scopedActor([holding("salesAgreement.read")]), NO_DIMENSIONS)], ["commercial.agreements"]);
+  const actor = scopedActor(["opportunity.read", "salesOrder.read", "salesAgreement.read"].map((k) => holding(k)));
+  assert.deepEqual([...await grantedSurfaceKeys(actor, NO_DIMENSIONS)], [...SCOPED_DOORS]);
+  assert.equal(actor.capabilities.size, 0, "the projection never writes a scoped key into the flat set");
+});
+
+test("P1-1 (b): a CONDITIONED, malformed, wrong-type or non-evaluable holding opens nothing", async () => {
+  const refusedHoldings = [
+    holding("opportunity.read", "RETAIL", { condition: { kind: "RECORD_ASSIGNMENT" } }),
+    holding("opportunity.read", ""),
+    holding("opportunity.read", " RETAIL"),
+    holding("opportunity.read", "taylor", { scopeType: "operatingCompany" }),
+    holding("salesOrder.read", "RETAIL", { scopeType: "location" }),
+  ];
+  for (const h of refusedHoldings) {
+    assert.deepEqual([...await grantedSurfaceKeys(scopedActor([h]), NO_DIMENSIONS)], [], JSON.stringify(h));
+  }
+  assert.deepEqual([...await grantedSurfaceKeys(scopedActor(undefined), NO_DIMENSIONS)], []);
+});
+
+test("P1-1 (c)(d): scoped holdings NEVER open equipment.register, administration.*, financials.* or analysis.workspace", async () => {
+  const actor = scopedActor([
+    holding("equipment.record.read"),
+    Object.freeze({ ...holding("employee.record.read", "taylor"), scopeType: "operatingCompany" }),
+    holding("finance.payment.read"), holding("finance.invoice.read"),
+    holding("workOrder.record.read"), holding("reportDefinition.read"), holding("audit.event.read"), holding("admin.principalAccess.read"),
+  ]);
+  assert.deepEqual([...await grantedSurfaceKeys(actor, NO_DIMENSIONS)], []);
+  // The REAL composition: salesperson's baseline grants, assigned @salesChannel=RETAIL, through the product's own
+  // scopedHoldingsFrom -- the three commercial doors and nothing else (equipment.record.read is scope-evaluable for the
+  // register READ, but the register DOOR is not opted in: OD-3, a seller reaches equipment through the customer).
+  // equipment.record.read is added explicitly: OD-3 granted it to salesperson after the baseline was measured.
+  const grants = [...BASELINE.grants.filter((g) => g.roleKey === "salesperson"), { roleKey: "salesperson", capabilityKey: "equipment.record.read" }];
+  const { held } = scopedHoldingsFrom([{ assignmentId: "a-r", roleKey: "salesperson", scopeType: "salesChannel", scopeValue: "RETAIL" }], grants, () => null);
+  assert.ok(held.some((h) => h.capabilityKey === "equipment.record.read"), "the fixture really carries a scoped equipment read");
+  const surfaces = [...await grantedSurfaceKeys(scopedActor(held), NO_DIMENSIONS)];
+  assert.deepEqual(surfaces, [...SCOPED_DOORS]);
+});
+
+test("P1-1 (e): the catalog guard refuses a scopedConsumer that is predicated, unregistered, mismatched, on Administration, or on a container", () => {
+  const sc = (consumer) => ({ scopeType: "salesChannel", consumer });
+  const cases = [
+    [{ key: "commercial.x", label: "x", grants: [{ capabilityKey: "opportunity.read", scopedConsumer: sc("commercial.listOpportunities"),
+      predicates: [{ kind: "OPERATIONAL_SCOPE", scopeType: "WAREHOUSE" }] }] }, /declares predicates/],
+    [{ key: "commercial.x", label: "x", grants: [{ capabilityKey: "opportunity.read", scopedConsumer: sc("commercial.listEverything") }] }, /not a registered SCOPE_EVALUABLE_GRANTS consumer/],
+    // A real consumer -- of a DIFFERENT capability. The door must be tied to the read that filters ITS data.
+    [{ key: "commercial.x", label: "x", grants: [{ capabilityKey: "opportunity.read", scopedConsumer: sc("commercial.listSalesOrders") }] }, /not a registered SCOPE_EVALUABLE_GRANTS consumer/],
+    [{ key: "financials.x", label: "x", grants: [{ capabilityKey: "finance.payment.read", scopedConsumer: sc("commercial.listOpportunities") }] }, /not a registered SCOPE_EVALUABLE_GRANTS consumer/],
+    [{ key: "administration.users", label: "x", grants: [{ capabilityKey: "admin.principalAccess.read", scopedConsumer: sc("workforce.listEmployees") }] }, /Administration/],
+    [{ key: "administration.auditLogs", label: "x", grants: [{ capabilityKey: "audit.event.read", scopedConsumer: sc("commercial.listOpportunities") }] }, /Administration/],
+    [{ key: "commercial.box", label: "x", containerOf: ["commercial.opportunities"], grants: [{ capabilityKey: "opportunity.read", scopedConsumer: sc("commercial.listOpportunities") }] }, /container cannot declare a scopedConsumer/],
+  ];
+  const base = EXPERIENCE_SURFACES.filter((s) => s.key === "commercial.opportunities");
+  for (const [entry, pattern] of cases) {
+    const problems = surfaceCatalogViolations(entry.containerOf ? [...base, entry] : [entry]);
+    assert.ok(problems.some((p) => pattern.test(p)), `${entry.key}: ${JSON.stringify(problems)}`);
+  }
+});
+
+test("P1-1 (f): flat-only actors are byte-identical -- every manifest persona, with and without an empty scopedHeld", async () => {
+  // Two independent flat sets per persona: the hand-written PERSONA_CAPABILITIES above, and the persona's REAL Role
+  // composition from the measured authority baseline.
+  const roleFlat = (roles) => new Set(BASELINE.grants.filter((g) => roles.includes(g.roleKey)).map((g) => g.capabilityKey));
+  const snapshot = {};
+  for (const [personaKey, persona] of Object.entries(MANIFEST.personas)) {
+    for (const [label, caps] of [["hand", PERSONA_CAPABILITIES[personaKey] ?? []], ["baseline", [...roleFlat(persona.securityRoles ?? [])]]]) {
+      const dims = dimensionsOf(personaKey);
+      const before = await grantedSurfaceKeys(actorWith(caps), dims, FLAT_ONLY_CATALOG);
+      const after = await grantedSurfaceKeys(actorWith(caps), dims);
+      const afterEmpty = await grantedSurfaceKeys(scopedActor([], caps), dims);
+      assert.equal(JSON.stringify(after), JSON.stringify(before), `${personaKey}/${label}`);
+      assert.equal(JSON.stringify(afterEmpty), JSON.stringify(before), `${personaKey}/${label} (scopedHeld: [])`);
+      if (label === "baseline") snapshot[personaKey] = [...after];
+    }
+  }
+  // A flat holder with scoped holdings too is unchanged -- the flat path decides first.
+  const flatPlusScoped = scopedActor([holding("opportunity.read", "RETAIL")], ["opportunity.read", "salesOrder.read"]);
+  assert.deepEqual([...await grantedSurfaceKeys(flatPlusScoped, NO_DIMENSIONS)],
+    [...await grantedSurfaceKeys(actorWith(["opportunity.read", "salesOrder.read"]), NO_DIMENSIONS, FLAT_ONLY_CATALOG)]);
+  // The pinned baseline-composition shapes: the commercial doors open for exactly the FLAT holders they opened for before.
+  const commercialHolders = Object.entries(snapshot).filter(([, s]) => s.some((k) => SCOPED_DOORS.includes(k))).map(([k]) => k).sort();
+  const flatReaders = Object.entries(MANIFEST.personas).filter(([, p]) => ["opportunity.read", "salesOrder.read", "salesAgreement.read"]
+    .some((k) => roleFlat(p.securityRoles ?? []).has(k))).map(([k]) => k).sort();
+  assert.deepEqual(commercialHolders, flatReaders);
+});

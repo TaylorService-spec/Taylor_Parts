@@ -430,7 +430,7 @@ async function principalAuthority(sc: SnapshotContext, principalId: string): Pro
   const workEligibility = employeeId ? await dims.listWorkEligibility(tenantId, employeeId) : [];
   const operationalScopes = employeeId ? await dims.listOperationalScopes(tenantId, employeeId) : [];
   const administrationReach = await administrationReachDimension(q, tenantId, principalId);
-  const surfaces = await grantedSurfaceKeys({ tenantId, principalId, capabilities: ctx.capabilities },
+  const surfaces = await grantedSurfaceKeys({ tenantId, principalId, capabilities: ctx.capabilities, scopedHeld: ctx.scopedHeld },
     { employeeId, workEligibility, operationalScopes, administrationReach });
   const fields: string[] = [];
   for (const def of fieldGroups) {

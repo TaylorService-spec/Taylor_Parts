@@ -387,4 +387,79 @@ test("National Accounts Sales over the Commercial transport", { skip: SKIP, conc
     refused(await com(owner, "closeOpportunityAsWon", { idempotencyKey: key(), opportunityId: ow.opportunityId }), 403, "CAPABILITY_REQUIRED", "owner won");
     assert.deepEqual((await roleCaps("owner")).filter((k) => ["salesAgreement.accept", "opportunity.createSalesOrder"].includes(k)), [], "the Owner Role holds neither key");
   });
+
+  // ── P1-1 SALES SURFACES (Owner-approved 2026-10-13) ──
+  // A channel-scoped seller is OFFERED the three commercial index doors (Opportunities, Sales Orders, Sales Agreements)
+  // because the list behind each door already filters to the holding's channels. The scoped keys never enter the flat
+  // capability set; runtime, effective-access explanation and the authority-change preview snapshot agree.
+  await t.test("P1-1 SALES SURFACES: salesperson@RETAIL and @NATIONAL_ACCOUNTS earn the three commercial doors, read only their own channel, and stay flat-empty", async () => {
+    const { resolveExperienceContext } = require("../lib/eosOps/experienceAuthority.js");
+    const { resolveOperationalContext } = require("../lib/eosOps/capabilityAuthority.js");
+    const { postgresGrantConditionProvider } = require("../lib/eosOps/entitledActionAuthority.js");
+    const { explainEffectiveAccess } = require("../lib/eosOps/effectiveAccessExplanation.js");
+    const { snapshotTenantAuthority } = require("../lib/eosOps/authorityChangePreview.js");
+    const { commercialSharedContextOperations } = require("../lib/adminPolicy/recordedAdministrationRolesDelta.js");
+    const COMMERCIAL_DOORS = ["commercial.agreements", "commercial.opportunities", "commercial.salesOrders"];
+    const READ_KEYS = ["opportunity.read", "salesAgreement.read", "salesOrder.read"];
+    const input = (who) => ({ externalSubject: who.subject, identityProvider: "firebase" });
+    const surfacesOf = async (who) => (await resolveExperienceContext(repo, pool, input(who))).surfaces;
+    const flatOf = async (who) => (await resolveOperationalContext(repo, pool, input(who), postgresGrantConditionProvider(pool))).capabilities;
+
+    // The nonprod shape: the sellers ALSO hold the flat commercialSharedContext Role (customer.record.*). A principal
+    // holding ONLY that Role is the control: it gets the customer door and none of the three commercial doors.
+    for (const { operation, input: i } of commercialSharedContextOperations()) assert.equal((await admin(operation, i)).ok, true, `${operation} ${JSON.stringify(i)}`);
+    const shared = await person("uid-shared-context-only", ["commercialSharedContext"], { id: "e-shared", name: "Sasha Shared" });
+    for (const who of [retail, national]) assert.equal((await admin("assignRole", { principalId: who.principalId, roleId: await roleId("commercialSharedContext"), reason: "nonprod shape" })).ok, true);
+
+    const snapshot = await snapshotTenantAuthority(pool, repo, TENANT, []);
+    for (const [who, what] of [[retail, "salesperson@RETAIL"], [national, "salesperson@NATIONAL_ACCOUNTS"]]) {
+      const surfaces = await surfacesOf(who);
+      for (const door of COMMERCIAL_DOORS) assert.ok(surfaces.includes(door), `${what} is offered ${door}: ${surfaces}`);
+      assert.ok(surfaces.includes("crm.accounts"), `${what} keeps the customer door`);
+      // Only the three opted-in doors open through scope: never equipment, analysis, financials or Administration.
+      for (const closed of ["equipment.register", "analysis.workspace", "financials.invoices", "financials.payments", "administration.overview", "administration.users"]) {
+        assert.equal(surfaces.includes(closed), false, `${what} must not be offered ${closed}`);
+      }
+      // FLAT CAPABILITIES UNCHANGED: no scoped key entered the flat set.
+      const flat = await flatOf(who);
+      for (const k of READ_KEYS) assert.equal(flat.has(k), false, `${what}: ${k} must stay scope-only`);
+      // EXPLANATION == RUNTIME, and the authority-change preview snapshot agrees.
+      const explained = await explainEffectiveAccess(repo, pool, { tenantId: TENANT, principalId: who.principalId });
+      assert.deepEqual([...explained.surfaces], [...surfaces], `${what}: explanation surfaces == runtime surfaces`);
+      assert.deepEqual([...snapshot.get(who.principalId).surfaces], [...surfaces], `${what}: preview snapshot surfaces == runtime surfaces`);
+    }
+
+    // commercialSharedContext ONLY: the customer door, no commercial door, and every list read is refused.
+    const sharedSurfaces = await surfacesOf(shared);
+    assert.ok(sharedSurfaces.includes("crm.accounts"));
+    for (const door of COMMERCIAL_DOORS) assert.equal(sharedSurfaces.includes(door), false, `shared-context-only must not be offered ${door}`);
+    for (const operation of ["listOpportunities", "listSalesOrders", "listSalesAgreements"]) refused(await com(shared, operation, {}), 403, "CAPABILITY_REQUIRED", `shared ${operation}`);
+    assert.deepEqual([...(await explainEffectiveAccess(repo, pool, { tenantId: TENANT, principalId: shared.principalId })).surfaces], [...sharedSurfaces]);
+    // A flat holder is unchanged: the global manager reaches the doors through the flat path.
+    for (const door of COMMERCIAL_DOORS) assert.ok((await surfacesOf(managerGlobal)).includes(door), `global holder ${door}`);
+
+    // THE DATA BEHIND THE DOOR: each list returns only the caller's own channel; disjoint; together == the global holder.
+    const ids = async (who, operation) => {
+      const page = ok(await com(who, operation, { limit: 200 }), `${operation}`);
+      assert.equal(page.truncated, false);
+      return page.items.map((x) => x.id).sort();
+    };
+    const channelSql = {
+      listOpportunities: `SELECT id, sales_channel::text c FROM eos_commercial.opportunities WHERE tenant_id = $1`,
+      listSalesOrders: `SELECT id, sales_channel::text c FROM eos_commercial.sales_orders WHERE tenant_id = $1`,
+      listSalesAgreements: `SELECT a.id, o.sales_channel::text c FROM eos_commercial.sales_agreements a
+                              JOIN eos_commercial.opportunities o ON o.tenant_id = a.tenant_id AND o.id = a.opportunity_id WHERE a.tenant_id = $1`,
+    };
+    for (const operation of Object.keys(channelSql)) {
+      const channelOf = new Map((await q(channelSql[operation], [TENANT])).rows.map((r) => [r.id, r.c]));
+      const r = await ids(retail, operation);
+      const n = await ids(national, operation);
+      const g = await ids(managerGlobal, operation);
+      assert.ok(r.length > 0 && n.length > 0, `${operation}: both channels have records`);
+      assert.deepEqual([...new Set(r.map((id) => channelOf.get(id)))], ["RETAIL"], `${operation}: retail reads RETAIL only`);
+      assert.deepEqual([...new Set(n.map((id) => channelOf.get(id)))], ["NATIONAL_ACCOUNTS"], `${operation}: national reads NATIONAL_ACCOUNTS only`);
+      assert.equal(r.filter((id) => n.includes(id)).length, 0, `${operation}: disjoint`);
+      assert.deepEqual([...r, ...n].sort(), g, `${operation}: retail ∪ national == the global holder's list`);
+    }
+  });
 });

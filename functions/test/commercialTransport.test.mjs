@@ -423,7 +423,9 @@ test("(21d) the path is earned by the existing salesAgreement.read, and creates 
   assert.match(nav, /"customers\/salesAgreements":\s*\["commercial\.agreements"\]/, "the Sales Agreements destination is opened by something other than commercial.agreements");
   // SERVER: that surface key is granted from salesAgreement.read alone.
   const experience = stripComments(readFileSync(join(SRC, "eosOps", "experienceAuthority.ts"), "utf8"));
-  assert.match(experience, /surface\("commercial\.agreements",\s*"Sales Agreements",\s*\[\{\s*capabilityKey:\s*"salesAgreement\.read"\s*\}\]\)/, "commercial.agreements is earned by something other than salesAgreement.read");
+  // P1-1 SALES SURFACES (Owner-approved 2026-10-13): the ONE path may also be earned by a salesChannel-scoped holding of
+  // that same salesAgreement.read, tied to the very list read that filters to the holding's channels -- still one key.
+  assert.match(experience, /surface\("commercial\.agreements",\s*"Sales Agreements",\s*\[\s*\{\s*capabilityKey:\s*"salesAgreement\.read",\s*scopedConsumer:\s*SALES_CHANNEL_LIST\("commercial\.listSalesAgreements"\)\s*\},?\s*\]\)/, "commercial.agreements is earned by something other than salesAgreement.read");
   // READ: and the governed read the client calls still demands it.
   const projection = readFileSync(join(SRC, "eosCommercial", "reads", "salesAgreementReadProjection.ts"), "utf8");
   const at = projection.indexOf("export function listSalesAgreements");
