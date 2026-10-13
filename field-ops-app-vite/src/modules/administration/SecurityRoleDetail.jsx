@@ -28,6 +28,7 @@ import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 import { formatDateOnly, formatTimestamp } from "../../domain/displayTimestamp.js";
 import AdminDisclosure from "./AdminDisclosure.jsx";
+import { AuthorityChangeDialog, AuthorityImpactPreview, useAuthorityImpactPreview, withPreviewDigest } from "./AuthorityImpactPreview.jsx";
 
 const scopeWords = (h) => {
   const type = !h.scopeType || h.scopeType === "global" ? "All (Global)" : titleCase(h.scopeType);
@@ -105,11 +106,15 @@ function AssignRoleToEmployee({ api, workforce, role, onChanged }) {
   const scopeOptions = (scopes.data?.scopeTypes ?? [])
     .filter((s) => s.supported && s.scopeType !== "global")
     .flatMap((s) => (s.values ?? []).map((v) => ({ value: `${s.scopeType}|${v.value}`, label: `${s.label ?? titleCase(s.scopeType)}: ${v.label ?? (s.scopeType === "operatingCompany" ? operatingCompanyLabel(v.value) : v.value)}` })));
+  const [scopeType, scopeValue] = scope === "global" ? [null, null] : scope.split("|");
+  // The assignment exactly as Assign would send it: previewed by the server first, committed with the preview's digest.
+  const change = { principalId: person?.principalId, roleId: role.roleId ?? role.id, reason, scopeType, scopeValue };
+  const preview = useAuthorityImpactPreview(api, person ? "assignRole" : null, change);
   const submit = async (e) => {
     e.preventDefault();
     if (!person) { setResult({ error: "Choose an employee with an application user." }); return; }
-    const [scopeType, scopeValue] = scope === "global" ? [null, null] : scope.split("|");
-    const res = await api.assignRole({ principalId: person.principalId, roleId: role.roleId ?? role.id, reason, scopeType, scopeValue });
+    if (!preview.canConfirm) { setResult({ error: "Preview the impact of this assignment first." }); return; }
+    const res = preview.settle(await api.assignRole(withPreviewDigest(change, preview)));
     setResult(res.ok ? { ok: `Assigned ${identifierLabel(role.roleKey, role.name)} to ${person.displayName}.` } : { error: `${res.code}: ${res.message}` });
     if (res.ok) { setReason(""); onChanged(); }
   };
@@ -133,7 +138,8 @@ function AssignRoleToEmployee({ api, workforce, role, onChanged }) {
         </select></label>
       <label className="fo-form-field"><span>Reason (Recorded)</span>
         <input className="fo-input" aria-label="Assignment reason" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
-      <Button type="submit" variant="primary">Assign</Button>
+      {person ? <AuthorityImpactPreview preview={preview} disabled={!reason.trim()} /> : null}
+      <Button type="submit" variant="primary" disabled={Boolean(person) && !preview.canConfirm}>Assign</Button>
       {result?.ok && <p className="fo-success" role="status">{result.ok}</p>}
       {result?.error && <p className="fo-warning" role="alert">{result.error}</p>}
     </form>
@@ -150,6 +156,8 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, work
   const assignments = useControlPlaneRead(roleKey ? () => api.readPolicyAuditHistory({ roleKey, limit: 50 }) : null, `role-audit:${roleKey}`);
   const [removeReason, setRemoveReason] = useState("");
   const [removeResult, setRemoveResult] = useState(null);
+  // The holder whose removal awaits the server's preview and an explicit Confirm (it no longer commits on one click).
+  const [removing, setRemoving] = useState(null);
   // Approved Administration IA, Phase 3 (finding R02): the permission task is the first tab; employees and
   // history are their own tabs instead of preceding it. Same reads, same controls.
   const [tab, setTab] = useState("objects");
@@ -162,9 +170,14 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, work
   const role = detail.data;
   const holders = Array.isArray(role.holders) ? role.holders : [];
   const onChanged = () => { detail.reload(); history.reload(); assignments.reload(); };
-  const remove = async (h) => {
+  const remove = (h) => {
     if (removeReason.trim().length < 4) { setRemoveResult({ error: "State the reason for removing this assignment first." }); return; }
-    const res = await api.revokeRole({ assignmentId: h.assignmentId, reason: removeReason.trim() });
+    setRemoveResult(null);
+    setRemoving(h);
+  };
+  const removed = (res) => {
+    const h = removing;
+    setRemoving(null);
     setRemoveResult(res.ok ? { ok: `Removed from ${principalLabel(h)}.` } : { error: `${res.code}: ${res.message}` });
     if (res.ok) onChanged();
   };
@@ -207,6 +220,21 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, work
             <HoldersTable holders={holders} onRemove={remove} technical={technical} />
             </>
           )}
+          {removing ? (
+            <AuthorityChangeDialog
+              api={api}
+              operation="revokeRole"
+              argsFor={(r) => ({ assignmentId: removing.assignmentId, reason: r })}
+              title={`Remove ${identifierLabel(roleKey, role.name)} — ${principalLabel(removing)}`}
+              destructive
+              consequence={`Remove ${identifierLabel(roleKey, role.name)} (${scopeWords(removing)}) from ${principalLabel(removing)}. They lose what this assignment carries unless another Role they hold carries it too.`}
+              confirmLabel="Confirm Removal"
+              initialReason={removeReason.trim()}
+              reasonLabel="Reason for the Removal (Recorded)"
+              onResult={removed}
+              onClose={() => setRemoving(null)}
+            />
+          ) : null}
           <h4>Assign to an Employee</h4>
           <AssignRoleToEmployee api={api} workforce={workforce} role={{ ...role, roleKey }} onChanged={onChanged} />
         </div>

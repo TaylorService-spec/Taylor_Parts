@@ -35,6 +35,8 @@ import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicy
 import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
 import { explainEffectiveAccess } from "../eosOps/effectiveAccessExplanation";
 import { createAuthorityChangePreview } from "../eosOps/authorityChangePreview";
+import { createAuthorityChangeCommit } from "../eosOps/authorityChangeCommit";
+import { adminPreviewMandatoryFrom } from "../adminPolicy/authorityChangeCommitPort";
 import { PART_SUPPLIER_TERMS_FIELD_GROUPS } from "../eosOps/partSupplierTerms";
 import { createWorkflowHolderVisibility } from "../eosAdministration/workflowHolderVisibility";
 import { createMobileLocationScopeBindingAdministration } from "../eosOps/mobileLocationScopeBindingAdministration";
@@ -98,6 +100,11 @@ export interface ServiceConfig {
   readonly identityProvider: string;
   /** EOS-issued authentication. Absent = disabled (Firebase-only, exactly as before). */
   readonly eosAuth?: EosAuthRuntime;
+  /**
+   * ADMIN_PREVIEW_MANDATORY (PR 4): every Administration authority change must present a fresh grant-impact preview.
+   * OFF unless the variable is exactly "true"; absent = OFF (today's behaviour). The Owner turns it on.
+   */
+  readonly adminPreviewMandatory?: boolean;
 }
 
 export class ServiceConfigError extends Error {}
@@ -153,6 +160,7 @@ export function readServiceConfig(env: NodeJS.ProcessEnv = process.env): Service
     allowedOrigins: Object.freeze(allowedOrigins),
     identityProvider: (env.EOS_IDENTITY_PROVIDER ?? "firebase").trim(),
     eosAuth,
+    adminPreviewMandatory: adminPreviewMandatoryFrom(env),
   };
 }
 
@@ -247,6 +255,10 @@ export async function startEosApi(
     // The grant-impact preview (PR 3, advisory): the unchanged authority commands simulated on ONE pooled connection
     // inside BEGIN..ROLLBACK, with the registered governed field-group definitions in the before/after snapshots.
     previewAuthorityChange: createAuthorityChangePreview({ pool, fieldGroups: [PART_SUPPLIER_TERMS_FIELD_GROUPS] }),
+    // The mandatory-preview commit (PR 4): the SAME simulation under the governance lock, ending in COMMIT. Used for a
+    // commit that presents a previewDigest, and for every authority change once ADMIN_PREVIEW_MANDATORY is "true".
+    commitAuthorityChange: createAuthorityChangeCommit({ pool, fieldGroups: [PART_SUPPLIER_TERMS_FIELD_GROUPS] }),
+    previewMandatory: config.adminPreviewMandatory === true,
     // W01 holder lookup: Employee names only where the EXISTING Employee visibility (employee.record.read) admits them.
     workflowHolderVisibility: createWorkflowHolderVisibility(repo, pool),
     // DQ-029: the Administration configuration operations (truck location -> warehouse scope), over the same pool.

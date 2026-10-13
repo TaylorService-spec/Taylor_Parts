@@ -28,6 +28,7 @@ import { adminControlPlaneClient, refusalText } from "../../services/adminContro
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ReadState } from "./ObjectActionSecurity.jsx";
 import { Outcome, ReasonField } from "./GrantControls.jsx";
+import { AuthorityImpactPreview, useAuthorityImpactPreview, withPreviewDigest } from "./AuthorityImpactPreview.jsx";
 import { statedReason } from "./controlPlaneModel.js";
 import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
@@ -91,6 +92,15 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
   const [removing, setRemoving] = useState(null);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  // The ONE pending change (a removal while one is open, else the assignment being composed), exactly as Confirm
+  // would send it: previewed by the server first, committed with the preview's digest.
+  const pendingOperation = removing ? "revokeRole" : roleId ? "assignRole" : null;
+  const pendingChange = removing
+    ? { assignmentId: removing.id, reason: statedReason(reason) }
+    : scopeType === GLOBAL
+      ? { principalId, roleId, reason: statedReason(reason) }
+      : { principalId, roleId, reason: statedReason(reason), scopeType, scopeValue };
+  const preview = useAuthorityImpactPreview(api, pendingOperation, pendingChange);
 
   if (!principalId) {
     return (
@@ -128,11 +138,9 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
 
   const assign = async (event) => {
     event.preventDefault();
-    if (!roleId || !reasonText || busy || !scopeReady) return;
+    if (!roleId || !reasonText || busy || !scopeReady || !preview.canConfirm) return;
     setBusy(true);
-    const outcome = scopeType === GLOBAL
-      ? await api.assignRole({ principalId, roleId, reason: reasonText })
-      : await api.assignRole({ principalId, roleId, reason: reasonText, scopeType, scopeValue });
+    const outcome = preview.settle(await api.assignRole(withPreviewDigest(pendingChange, preview)));
     setBusy(false);
     setResult(outcome);
     if (outcome?.ok) { chooseRole(""); setReason(""); assignments.reload(); }
@@ -140,9 +148,9 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
 
   const revoke = async (event) => {
     event.preventDefault();
-    if (!removing || !reasonText || busy) return;
+    if (!removing || !reasonText || busy || !preview.canConfirm) return;
     setBusy(true);
-    const outcome = await api.revokeRole({ assignmentId: removing.id, reason: reasonText });
+    const outcome = preview.settle(await api.revokeRole(withPreviewDigest(pendingChange, preview)));
     setBusy(false);
     setResult(outcome);
     if (outcome?.ok) { setRemoving(null); setReason(""); assignments.reload(); }
@@ -164,8 +172,9 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
         <form className="fo-cp-form" onSubmit={revoke} aria-label="Remove a Security Role">
           <p>{`Remove ${nameOf(removing)}${removing.scopeValue ? ` (${scopeLabel(removing.scopeType)}: ${valueLabel(removing.scopeType, removing.scopeValue)})` : ""} from ${employeeName}? They lose what that assignment carries unless another Role they hold carries it too.`}</p>
           <ReasonField value={reason} onChange={setReason} />
+          <AuthorityImpactPreview preview={preview} disabled={!reasonText || busy} />
           <div className="fo-btn-row">
-            <Button type="submit" variant="primary" disabled={!reasonText || busy}>Confirm Removal</Button>
+            <Button type="submit" variant="primary" disabled={!reasonText || busy || !preview.canConfirm}>Confirm Removal</Button>
             <Button type="button" variant="secondary" onClick={() => setRemoving(null)}>Cancel</Button>
           </div>
         </form>
@@ -186,7 +195,8 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
             />
           ) : null}
           <ReasonField value={reason} onChange={setReason} />
-          <Button type="submit" variant="primary" disabled={!roleId || !reasonText || busy || !scopeReady}>Assign Security Role</Button>
+          <AuthorityImpactPreview preview={preview} disabled={!roleId || !reasonText || busy || !scopeReady} />
+          <Button type="submit" variant="primary" disabled={!roleId || !reasonText || busy || !scopeReady || !preview.canConfirm}>Assign Security Role</Button>
           <p className="fo-muted">
             Security Roles are additive — a person holds any number and their access is what those Roles
             carry together. The server decides whether you may assign one, and says so if not.

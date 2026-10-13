@@ -69,10 +69,14 @@ async function activateSampleCompanyLogins(pool, options, manifest, authDirector
   const { PostgresPolicyRepository } = require("../../lib/adminPolicy/postgresPolicyRepository.js");
   const { ensureTenantPrincipal } = require("../../lib/adminPolicy/tenantBootstrap.js");
   const { assignRole } = require("../../lib/adminPolicy/policyCommands.js");
+  const { machineAppliedRepository } = require("../../lib/adminPolicy/authorityChangeCommitPort.js");
   const { hasAdministrationAuthority } = require("../../lib/adminPolicy/administrationAuthority.js");
   const links = require("../../lib/employeeIdentity/employeePrincipalLinkRepository.js");
 
   const repo = new PostgresPolicyRepository(pool);
+  // MANDATORY-PREVIEW CARVE-OUT (PR 4, adminPolicy/authorityChangeCommitPort.ts): this runner calls assignRole directly;
+  // every audit row it writes is marked MACHINE_APPLIED with this manifest's digest (pinned: authorityPreviewMandatoryCarveOut).
+  const machineRepo = machineAppliedRepository(repo, { manifestId: "sampleCompanyLoginActivation", ruling: "SAMPLE COMPANY V2 login activation", changes: manifest ?? null });
   const employees = new Map(manifest.employees.map((e) => [e.key, e]));
   const actorUid = options.performedBy;
 
@@ -257,7 +261,7 @@ async function activateSampleCompanyLogins(pool, options, manifest, authDirector
       if (already) summary.roleAssignmentsExisting += 1;
       else {
         summary.roleAssignmentsCreated += 1;
-        if (apply) await assignRole(repo, actor, { principalId: loginPrincipal.id, roleId: role.id, reason: "SAMPLE COMPANY V2: explicit Security Role assignment on the authenticating Principal" });
+        if (apply) await assignRole(machineRepo, actor, { principalId: loginPrincipal.id, roleId: role.id, reason: "SAMPLE COMPANY V2: explicit Security Role assignment on the authenticating Principal" });
       }
     }
 

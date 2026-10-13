@@ -117,6 +117,11 @@ import {
   type AuthorityChangeSimulator,
   type AuthorityChangeSubject,
 } from "./authorityChangePreviewPort";
+import {
+  AuthorityPreviewRefusal,
+  PREVIEW_DIGEST_PATTERN,
+  type AuthorityChangeCommitter,
+} from "./authorityChangeCommitPort";
 
 // ════════════════════ the closed operation list ════════════════════
 
@@ -369,6 +374,8 @@ export type AdminApiFailureCode =
   | "INVALID_INPUT"
   | "NOT_FOUND"
   | "CONFLICT"
+  // MANDATORY PREVIEW (PR 4): an authority change sent without the preview it requires (HTTP 428).
+  | "PRECONDITION_REQUIRED"
   | "INTERNAL";
 
 export interface AdminApiSuccess<T = unknown> {
@@ -429,6 +436,14 @@ export interface AdminApiDeps {
    * Absent, previewAuthorityChange refuses; there is no repository-only fallback.
    */
   readonly previewAuthorityChange?: AuthorityChangeSimulator;
+  /**
+   * MANDATORY PREVIEW (PR 4, authorityChangeCommitPort.ts). The committer runs the nine authority changes as "the
+   * preview, ending in COMMIT" under the governance lock (eosOps/authorityChangeCommit.ts). Used whenever a commit
+   * presents a previewDigest, and for EVERY commit of the nine when `previewMandatory` is true.
+   */
+  readonly commitAuthorityChange?: AuthorityChangeCommitter;
+  /** ADMIN_PREVIEW_MANDATORY (adminPreviewMandatoryFrom). Absent / false: today's behaviour for a commit with no digest. */
+  readonly previewMandatory?: boolean;
 }
 
 /**
@@ -528,6 +543,20 @@ export async function executeAdminOperation<T = unknown>(
     if (operation === "previewAuthorityChange") {
       const data = await previewAuthorityChange(deps, actor, input, request.requestId);
       return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+    }
+    // ════════════════════ THE MANDATORY PREVIEW (PR 4) ════════════════════
+    // Flag ON: every one of the nine commits through the engine. Flag OFF: a supplied previewDigest is IGNORED and
+    // stripped, and dispatch runs the command exactly as before (authorityChangeCommitPort.ts, THE FLAG).
+    if (isAuthorityChangeOperation(operation)) {
+      if (deps.previewMandatory === true) {
+        const data = await commitPreviewedAuthorityChange(deps, actor, operation, input, reason);
+        return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+      }
+      if ("previewDigest" in input) {
+        const { previewDigest: _ignored, ...today } = input;
+        const data = await dispatch(repo, actor, operation, today, reason);
+        return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+      }
     }
     if (!isMutation(operation)) await requireAdminReadAuthority(repo, actor, operation as AdminReadOperation | AdminMutationOperation);
     const data = operation === "explainEffectiveAccess"
@@ -711,7 +740,39 @@ async function previewAuthorityChange(
       message: messageFor(result.error),
     }
     : null;
-  return { outcome: result.outcome, refusal, busy: result.busy, ...result.report };
+  // previewMandatory (PR 4): whether a commit of this change must present digests.previewDigest on THIS server.
+  return { outcome: result.outcome, refusal, busy: result.busy, previewMandatory: deps.previewMandatory === true, ...result.report };
+}
+
+/**
+ * A previewed commit of one of the nine (PR 4). Order: the command's own capability gate (a principal who could not
+ * commit learns nothing, not even that a preview is required) -> PREVIEW_REQUIRED -> PREVIEW_INVALID -> the engine,
+ * which recomputes the preview under the governance lock and answers STALE_PREVIEW, the command's own refusal, or the
+ * command's own result.
+ */
+async function commitPreviewedAuthorityChange(
+  deps: AdminApiDeps,
+  actor: AdminActor,
+  operation: AuthorityChangeOperation,
+  input: Record<string, unknown>,
+  reason: string | null,
+): Promise<unknown> {
+  await requireSecurityAdministrationCapability(deps.repo, actor, AUTHORITY_CHANGE_GATE[operation]);
+  const { previewDigest, ...changeInput } = input;
+  if (previewDigest === undefined || previewDigest === null || previewDigest === "") {
+    throw new AuthorityPreviewRefusal("PREVIEW_REQUIRED",
+      `${operation} changes authority and requires a fresh previewAuthorityChange; send its digests.previewDigest as previewDigest`);
+  }
+  if (typeof previewDigest !== "string" || !PREVIEW_DIGEST_PATTERN.test(previewDigest)) {
+    throw new AuthorityPreviewRefusal("PREVIEW_INVALID", "previewDigest must be the 64-character digests.previewDigest of a previewAuthorityChange");
+  }
+  if (typeof deps.commitAuthorityChange !== "function") {
+    throw new Error("commitAuthorityChange is not composed on this server");
+  }
+  return deps.commitAuthorityChange({
+    actor, operation, input: changeInput, previewDigest,
+    run: (r) => authorityCommand(r, actor, operation, changeInput, reason),
+  });
 }
 
 /** Whose holdings the change is about (counting only). Never throws: a malformed input is the command's to refuse. */
@@ -1488,6 +1549,10 @@ function withRequestId(reason: unknown, requestId: string | undefined): string |
 
 function classify(err: unknown): AdminApiFailureCode {
   if (err instanceof AdministrationDeniedError) return "FORBIDDEN";
+  // MANDATORY PREVIEW (PR 4): the code rides in the message (`STALE_PREVIEW: ...`), like every AdministrationRefusal.
+  if (err instanceof AuthorityPreviewRefusal) {
+    return err.code === "PREVIEW_REQUIRED" ? "PRECONDITION_REQUIRED" : err.code === "PREVIEW_INVALID" ? "INVALID_INPUT" : "CONFLICT";
+  }
   // A missing READ capability is a refusal about authority, exactly like a missing write authority
   // -- never a 404 and never a 500, so a caller cannot tell "you may not" from "it is not there".
   if (err instanceof AdminReadDeniedError) return "FORBIDDEN";
