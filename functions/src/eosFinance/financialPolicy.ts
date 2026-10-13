@@ -32,7 +32,7 @@
 //     approval and activation, so a gate that closes after drafting stops activation.
 //   * THE LOCK. ACTIVE and SUPERSEDED versions are immutable; REJECTED is final; content freezes when a version leaves DRAFT.
 //     There is no unlock, reopen or force. A change is a governed REVISION: a new DRAFT through the same lifecycle.
-//   * SEPARATION OF DUTIES. The approver / rejecter is neither the submitter nor any principal who wrote the draft -- even if
+//   * SEPARATION OF DUTIES. The approver / rejecter / ACTIVATOR is neither the submitter nor any principal who wrote the draft -- even if
 //     that principal also holds finance.policy.approve.
 //   * LIFECYCLE IS NOT EFFECTIVITY. Activating a version locks it and supersedes the prior ACTIVE one at once, but the version
 //     IN FORCE on a business date is the latest ACTIVE / SUPERSEDED one dated on or before it; a future-dated ACTIVE version is
@@ -270,6 +270,7 @@ async function tx<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): Promise<T> 
 const CHECK_REFUSALS: Readonly<Record<string, readonly [string, FinancialPolicyRefusalCategory]>> = Object.freeze({
   financial_policy_approver_independent: ["SEPARATION_OF_DUTIES", "FORBIDDEN"],
   financial_policy_rejecter_independent: ["SEPARATION_OF_DUTIES", "FORBIDDEN"],
+  financial_policy_activator_independent: ["SEPARATION_OF_DUTIES", "FORBIDDEN"],
 });
 
 /** The database's own refusals (the lock, the one-in-flight index, the CHECKs) answer as governed refusals, never as 500s. */
@@ -517,10 +518,11 @@ export async function submitFinancialPolicy(pool: Pool, actor: FinancialPolicyAc
   });
 }
 
+/** Approve, reject AND activate (#232 Phase 1): never by the submitter or anyone who wrote the content. The approver may activate. */
 function assertIndependentDecider(actor: FinancialPolicyActor, v: FinancialPolicyVersion): void {
   if (v.submittedBy === actor.principalId || v.contentAuthors.includes(actor.principalId)) {
     refuse("SEPARATION_OF_DUTIES", "FORBIDDEN",
-      "a financial policy version is approved or rejected by someone other than the principal who prepared or submitted it");
+      "a financial policy version is approved, rejected or activated by someone other than the principal who prepared, edited or submitted it");
   }
 }
 
@@ -604,6 +606,7 @@ export async function activateFinancialPolicy(pool: Pool, actor: FinancialPolicy
       if (before.status === "ACTIVE" || before.status === "SUPERSEDED") lockedRefusal(before.status);
       refuse("FINANCIAL_POLICY_NOT_APPROVED", "CONFLICT", `only an APPROVED version is activated; this one is ${before.status}`);
     }
+    assertIndependentDecider(actor, before);
     validateFinancialPolicyContent(company, before.policy, options);
     const today = await businessDateOf(c, actor.tenantId, company);
     if (effectiveDate < today) {

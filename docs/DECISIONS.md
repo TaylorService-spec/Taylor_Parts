@@ -8094,11 +8094,11 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
   | `finance.policy.activate` | ADMIN_ACTION | activate |
 
 - **The Administrator, by standing (#223).** Protected-Administrator standing implies READ and ADMIN_ACTION kinds. So the Administrator holds `finance.policy.read`, `.approve` and `.activate` **without a grant**, and does NOT hold `.prepare` (EDIT is not implied). No `PROTECTED_ADMINISTRATOR_EXCLUSIONS` entry is needed. This is exactly item 2 for the Administrator. The audit trail marks standing-authorized acts `PROTECTED_ADMINISTRATOR`.
-- **Proposed grants (NOT executed; the Owner authorizes them through Administration).**
-  - `financeManager`: `finance.policy.read`, `finance.policy.prepare`.
-  - `controller`: `finance.policy.read`, `finance.policy.prepare`.
-  - `owner`: `finance.policy.read`, `finance.policy.approve`, `finance.policy.activate`.
-  - `admin`: none (standing).
+- **Proposed grants: SUPERSEDED by #232 Phase 1 (below).** This PR originally proposed:
+  - `financeManager` and `controller`: `finance.policy.read` + `.prepare`;
+  - `owner`: `finance.policy.read` + `.approve` + `.activate`.
+
+  Phase 1 replaces those proposals. The existing finance Roles stay unchanged.
   - No Sales, Service, Parts or Warehouse Role, and neither `accountingManager` nor `generalManager`, is proposed anything.
 
 **Open Owner decisions (recorded, not built).**
@@ -8165,5 +8165,64 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 
 **Boundary.**
 - No Role, capability or grant change anywhere live. Test Roles exist in local test tenants only.
+- No Firebase change.
+- No UI.
+
+## #232 Phase 1 — Financial Policy security corrections (Owner-approved limited implementation, 2026-10-13)
+
+(Owner approval of 2026-10-13 for a **Financial-Policy-only** implementation. It is NOT an EOS-wide company-membership redesign and NOT a generalized role-scoping migration. The EOS-wide mandatory-company-assignment ruling is a separate future programme, not implemented here; for this feature a GLOBAL Role assignment still means all companies.)
+
+**Decision (as approved by the Owner).**
+1. **Roles unchanged.** The existing Controller, Finance Manager and Accounting Manager Roles stay UNCHANGED.
+2. **Preparer Role.** A narrowly scoped **Financial Policy Preparer** Role holds ONLY `finance.policy.read` + `finance.policy.prepare`.
+   - One employee prepares for Taylor, Ventana or both through EXISTING company-scoped Role assignments (Amendment A).
+   - Future companies come through the existing governed registry.
+   - Each company's policy, versions and activation history stay separate.
+3. **Security requirements.**
+   - Company scope is enforced server-side on every operation, and out-of-scope requests are refused (Amendment A).
+   - DIRECT GRANTS CANNOT BYPASS company restrictions.
+   - Whoever prepared, edited or submitted a version cannot approve, reject OR ACTIVATE it.
+   - Owner and Administrator approval / activation authority is preserved, and so are tenant isolation, audit and the protected-Owner invariants.
+   - No implicit permissions and no new grants.
+
+**Implemented (PR #2085).**
+- **Activation separation of duties (Amendment A open item / A6: RESOLVED).** `activateFinancialPolicy` refuses an activator who is the version's preparer, any content author or the submitter (`SEPARATION_OF_DUTIES`, 403).
+  - A database CHECK, `financial_policy_activator_independent`, holds the same line, and its refusal maps to the same governed answer.
+  - The approver may activate.
+- **Approve and activate are reserved to the Owner Role.** They use the existing `RESERVED_CAPABILITY_HOLDERS` allow-list (Owner G7 mechanism), so:
+  - `grantObjectActionToRole` refuses them for every other Role (`SYSTEM_INVARIANT`);
+  - `grantObjectActionToPrincipal` refuses them as direct grants;
+  - a Role keyed `owner` cannot be created as a custom Role.
+- **The Administrator keeps read, approve and activate by STANDING; the reservation does not affect it.**
+  - `protectedAdministratorImpliedKeys` and the runtime capability resolution never consult the reserved list. That is why trade-in approval had to be excluded from standing separately, through `PROTECTED_ADMINISTRATOR_EXCLUSIONS`.
+  - Proven: the Administrator still approves and activates at runtime.
+  - The Administration matrix shows the Administrator's read / approve / activate cells as held with source `PROTECTED_ADMINISTRATOR`, and prepare as not held.
+  - The role-detail view additionally names the reservation ruling (`forbiddenBy`) on the approve / activate cells; this is a display artifact, and authority is unchanged.
+- **Grants.** The Owner Role's approve / activate grants remain PROPOSED. Executing them needs the Owner's authorization through Administration.
+- **Future companies (proven).** A third ACTIVE company in the registry is assignable at Preparer scope and keeps its own isolated policy and history, with no code change.
+
+**NOT implemented: the Preparer Role and the read / prepare reservation (BLOCKED by existing code).**
+- **Seeding is excluded.** A system Role is defined in the governed role catalog (`functions/src/access/governedBusinessRoles.ts`, the Firebase-era catalog the policy seed reads) and seeded into every tenant with its declared capabilities as SYSTEM_DEFAULT grants. That is both Firebase-catalog development and an implicit grant, which the Owner excluded.
+- **Administration creation is refused.** The alternative is to create the Role later through Administration (`createRole`). But once `financialPolicyPreparer` is a reserved holder of read / prepare, `createRole` refuses that key as a custom Role (`policyCommands.ts`, the PR-4a guard that stops a custom Role impersonating a reserved holder).
+- **Consequence.** Reserving read / prepare to the Preparer Role and creating it through Administration are mutually exclusive in the current code, and reserving them without the Role would make the policy unpreparable.
+- **What happens meanwhile.** Read and prepare stay unreserved. A direct principal grant of `finance.policy.read` or `.prepare` therefore remains a tenant-wide path until one of these is authorized:
+  - (A) a narrow exception to the `createRole` guard for this Role key;
+  - (B) the Role defined in the governed catalog, with no permissions declared and its two cells granted through Administration;
+  - (C) a Role-only rule for these keys in `grantObjectActionToPrincipal`.
+
+**Status of earlier open items.**
+- **Amendment A item 1 (which Role carries scoped preparation).** DECIDED: the Financial Policy Preparer Role. Its implementation is blocked as above.
+- **Amendment A item 3 (direct grants).** RESOLVED for approve / activate (reserved). OPEN for read / prepare, as above.
+- **Activation separation of duties.** RESOLVED.
+
+**Remaining open items.**
+1. Correcting a scheduled (future-dated) version.
+2. `accountingManager` prepare and `generalManager` read.
+3. The financeAccounting persona registry discrepancy.
+4. Authorization of the Owner Role's approve / activate grants.
+5. The Preparer Role creation path: (A), (B) or (C) above.
+
+**Boundary.**
+- No Role definition, grant, assignment or persona change anywhere live.
 - No Firebase change.
 - No UI.

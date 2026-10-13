@@ -50,31 +50,32 @@ All four sit on the new `financialPolicy` Object (Finance domain).
 
 **Standing.** No `PROTECTED_ADMINISTRATOR_EXCLUSIONS` entry is needed: each key's action kind alone gives exactly the #232 outcome. The Administrator approves and activates with no grant, and cannot prepare.
 
-## 3. Proposed grants (NOT executed)
+## 3. Who may hold what (#232 Phase 1; supersedes the earlier proposed grants)
 
-The Owner authorizes these separately, through Administration.
+The earlier proposals are SUPERSEDED: read + prepare for `financeManager` / `controller`, and read + approve + activate for `owner`. The existing finance Roles stay unchanged.
 
-| Role | read | prepare | approve | activate | Basis |
+| Holder | read | prepare | approve | activate | How |
 |---|---|---|---|---|---|
-| `financeManager` | proposed | proposed | no | no | #232 item 1 |
-| `controller` | proposed | proposed | no | no | #232 item 1 |
-| `owner` | proposed | no | proposed | proposed | #232 item 2 |
-| `admin` (protected Administrator) | standing | **no** | standing | standing | #232 item 2, through #223 standing; no grant needed |
-| `accountingManager` | no | no | no | no | not named by #232 (open Owner decision) |
-| `generalManager` | no | no | no | no | not named by #232 |
-| salesperson, salesManager, technician, fieldManager, dispatcher, partsManager, partsAssociate, purchasingManager, warehouseManager, warehouseAssociate, every other Role | no | no | no | no | |
+| **Financial Policy Preparer** (new Role, NOT yet created, see §6) | yes | yes | – | – | global, or scoped per operating company (Amendment A) |
+| `owner` | proposed | – | **reserved, proposed grant** | **reserved, proposed grant** | the grant needs Owner authorization through Administration |
+| `admin` (protected Administrator) | standing | **no** | standing | standing | #223 standing; the reservation does not affect it |
+| `controller`, `financeManager`, `accountingManager`, `generalManager` and every other Role | – | – | refused (reserved) | refused (reserved) | unchanged |
 
-**Separation of duties holds whatever is granted.** The approver or rejecter is never the submitter, nor anyone who wrote the draft. This holds even for a principal holding both prepare and approve, for example someone who is both `controller` and `owner`.
+**Reserved list.**
+- **approve / activate** are on `RESERVED_CAPABILITY_HOLDERS`, reserved to `[owner]`. A grant to any other Role, or a direct principal grant, is refused.
+- **read / prepare are NOT yet reserved.** The `createRole` guard would refuse creating the Preparer Role once its key is a reserved holder (§6, decision 13).
+
+**Separation of duties holds whatever is granted.** The approver, rejecter OR ACTIVATOR is never the submitter, nor anyone who wrote the draft. The approver may activate.
 
 ## 4. Canonical personas
 
 The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `functions/scripts/fixtures/taylorNonprodWorkforce.v1.json`.
 
-| Persona | Security Role(s) | After the proposed grants |
+| Persona | Security Role(s) | After Phase 1 (and the Owner grant, once authorized) |
 |---|---|---|
-| ownerExecutive | `owner` | read, approve, activate |
+| ownerExecutive | `owner` | approve, activate (read: proposed) |
 | administrator | `admin` | read, approve, activate (standing) |
-| financeAccounting | `controller` in the nonprod workforce fixture (the registry expects `accountingManager`) | read and prepare through `controller`; nothing through `accountingManager` |
+| financeAccounting | `accountingManager` + `controller` (see §6 item 11) | nothing, until a Preparer Role assignment |
 | generalManager | `generalManager` | nothing |
 | officeManager, serviceManager, dispatcher, serviceTechnician, partsAssociate, partsManager, warehouseAssociate, warehouseManager, retailSales, nationalAccountsSales, reportingAnalyst, generalEmployee | operational Roles | nothing |
 
@@ -131,7 +132,7 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 - **The company is admitted before any version is read.** Out of scope, the answer is `OUTSIDE_OPERATING_COMPANY_SCOPE` (403), with no version id or state disclosed.
 - **Out of scope == missing.** For a scoped-only holder, an unknown company, an inactive company (including a scoped company made inactive) and an ACTIVE out-of-scope company get the same `OUTSIDE_OPERATING_COMPANY_SCOPE`. A flat holder keeps the precise `OPERATING_COMPANY_UNKNOWN`. CONSOLIDATED is always `CONSOLIDATED_NOT_A_COMPANY`.
 - **Administrator standing** reaches every company for read, approve and activate, and never for prepare.
-- **Direct principal grants are NOT yet closed.** A direct principal grant of `finance.policy.*` (`grantObjectActionToPrincipal`) is still a tenant-wide path. The existing `RESERVED_CAPABILITY_HOLDERS` list is a Role allow-list, and adding the keys would refuse the Option A Role. See Owner decision 12.
+- **Direct principal grants.** Approve and activate are reserved to the Owner Role (#232 Phase 1): a direct principal grant of either is refused. Read and prepare are not yet reserved, so a direct grant of them is still a tenant-wide path until decision 13.
 - **Fail closed.** A conditioned scoped holding admits nothing.
 - **Consolidated.** CONSOLIDATED is refused for every policy command. Consolidated Finance reporting reads are unaffected.
 - **Separation of duties** is unchanged and decided per version. A principal with a scoped preparer Role for Taylor and a global approve still cannot approve its own Taylor version.
@@ -155,3 +156,11 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 **The meaning of a global assignment** is also an Owner decision:
 - (a) all companies, the current behaviour; or
 - (b) a scoped holding is required. This needs an EOS-wide `scopeRequired` extension, with exemptions for the Owner and for Administrator standing.
+13. **Preparer Role creation path (#232 Phase 1, BLOCKED).** Reserving read / prepare to `financialPolicyPreparer` makes `createRole` refuse that key, and seeding it would be a Firebase-catalog edit plus an implicit SYSTEM_DEFAULT grant. Options:
+    - (A) a narrow `createRole` exception for this key;
+    - (B) a catalog-defined Role with no declared permissions, its two cells granted through Administration;
+    - (C) a Role-only direct-grant rule for read / prepare.
+14. **Owner grants.** The Owner Role's approve / activate grants (and read, if wanted) need the Owner's authorization through Administration.
+15. **Mandatory company assignment is not part of this feature.** The EOS-wide mandatory-company-assignment ruling is a separate future programme. Here, a GLOBAL Role assignment still means all companies.
+
+**Status.** Activation separation of duties is RESOLVED (#232 Phase 1). Amendment A item 3 (direct grants) is RESOLVED for approve / activate, and OPEN for read / prepare (decision 13).

@@ -21,8 +21,8 @@
 --   * REJECTED and SUPERSEDED are terminal and immutable.
 --   * At most ONE ACTIVE version and at most ONE in-flight (DRAFT / SUBMITTED / APPROVED) version per company (partial unique
 --     indexes). A missing ACTIVE version means NOT CONFIGURED: readers fail closed, no default method exists anywhere.
---   * SEPARATION OF DUTIES, also enforced here: the principal who approves or rejects is neither the submitter nor anyone who
---     wrote the draft's content.
+--   * SEPARATION OF DUTIES, also enforced here: the principal who approves, rejects OR ACTIVATES is neither the submitter nor
+--     anyone who wrote the draft's content (the approver may activate).
 --   * The effective date is stamped at ACTIVATION and may not precede the company's business date
 --     (eos_policy.operating_company_business_date) nor the effective date of an earlier activated version. LIFECYCLE IS NOT
 --     EFFECTIVITY: an ACTIVE version dated in the future is SCHEDULED, and the version IN FORCE on a business date is the
@@ -125,7 +125,10 @@ CREATE TABLE financial_policy_versions (
     CONSTRAINT financial_policy_approver_independent CHECK (
         approved_by IS NULL OR (approved_by <> submitted_by AND NOT (approved_by = ANY (content_authors)))),
     CONSTRAINT financial_policy_rejecter_independent CHECK (
-        rejected_by IS NULL OR (rejected_by <> submitted_by AND NOT (rejected_by = ANY (content_authors))))
+        rejected_by IS NULL OR (rejected_by <> submitted_by AND NOT (rejected_by = ANY (content_authors)))),
+    -- #232 Phase 1: nobody who prepared, edited or submitted a version activates it (the approver may).
+    CONSTRAINT financial_policy_activator_independent CHECK (
+        activated_by IS NULL OR (activated_by <> submitted_by AND NOT (activated_by = ANY (content_authors))))
 );
 
 -- At most one ACTIVE version per company, and at most one version in flight (DRAFT / SUBMITTED / APPROVED).

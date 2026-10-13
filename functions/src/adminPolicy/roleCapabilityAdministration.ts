@@ -101,11 +101,26 @@ const FORBIDDEN = new Map(FORBIDDEN_ROLE_CAPABILITY_PAIRS.map((p) => [cellKey(p.
  *   salesAgreement.tradeIn.approve   Owner G7 (2026-10-09, DECISIONS #226): the trade-in value decision is a BUSINESS
  *                                    approval reserved to the Owner and the General Manager -- never implied by
  *                                    Administrator standing (#223), never held through another Role or a direct grant.
+ *   finance.policy.approve / .activate
+ *                                    Owner, Phase 1 of #232 (2026-10-13): deciding and activating a Financial Policy is
+ *                                    reserved to the Owner Role -- never a direct grant, never another Role. The
+ *                                    Administrator keeps both through STANDING (#223; READ / ADMIN_ACTION are implied):
+ *                                    standing is resolved apart from this list (protectedAdministratorImpliedKeys never
+ *                                    consults it), which is why trade-in approval had to be excluded from standing
+ *                                    separately (PROTECTED_ADMINISTRATOR_EXCLUSIONS) and these keys are not.
  */
-export const RESERVED_CAPABILITY_HOLDERS: ReadonlyMap<string, { readonly roleKeys: readonly string[]; readonly ruling: string }> = new Map([
+export const RESERVED_CAPABILITY_HOLDERS: ReadonlyMap<string, { readonly roleKeys: readonly string[]; readonly ruling: string }> = new Map<string, { readonly roleKeys: readonly string[]; readonly ruling: string }>([
   ["salesAgreement.tradeIn.approve", Object.freeze({
     roleKeys: Object.freeze(["owner", "generalManager"]),
     ruling: "Owner ruling G7 (2026-10-09, DECISIONS #226): trade-in approval is reserved to the Owner and the General Manager",
+  })],
+  ["finance.policy.approve", Object.freeze({
+    roleKeys: Object.freeze(["owner"]),
+    ruling: "Owner, #232 Phase 1 (2026-10-13): Financial Policy approval is reserved to the Owner Role (the Administrator by standing)",
+  })],
+  ["finance.policy.activate", Object.freeze({
+    roleKeys: Object.freeze(["owner"]),
+    ruling: "Owner, #232 Phase 1 (2026-10-13): Financial Policy activation is reserved to the Owner Role (the Administrator by standing)",
   })],
 ]);
 

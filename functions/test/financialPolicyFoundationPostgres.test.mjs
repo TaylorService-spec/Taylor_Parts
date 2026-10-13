@@ -521,7 +521,8 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
       }
     };
     await defineRole("policyPreparerTest", ["read", "prepare"]);
-    await defineRole("policyDeciderTest", ["approve", "activate"]);
+    // approve / activate are RESERVED to the Owner Role (#232 Phase 1): no other Role may be granted them.
+    assert.equal((await admin("createRole", { key: "policyDeciderTest", name: "policyDeciderTest", reason: "local test tenant only" })).ok, true);
     const assign = async (who, roleKey, scopeValue) => {
       const r = await admin("assignRole", { principalId: who.principalId, roleId: await roleId(roleKey), reason: "scope staffing",
         ...(scopeValue ? { scopeType: "operatingCompany", scopeValue } : {}) });
@@ -530,16 +531,13 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const pT = await person("uid-fp-sc-t", [], { id: "e-fp-sc-t", name: "Tara Taylor-Controller" });
     const pV = await person("uid-fp-sc-v", [], { id: "e-fp-sc-v", name: "Vic Ventana-Controller", company: "ventana" });
     const pB = await person("uid-fp-sc-b", [], { id: "e-fp-sc-b", name: "Bea Both-Companies" });
-    const dT = await person("uid-fp-sc-dt", [], { id: "e-fp-sc-dt", name: "Dee Taylor-Decider" });
-    const mixed = await person("uid-fp-sc-mx", [], { id: "e-fp-sc-mx", name: "Max Mixed" });
+    const mixed = await person("uid-fp-sc-mx", ["owner"], { id: "e-fp-sc-mx", name: "Max Mixed" });
     const gP = await person("uid-fp-sc-g", [], { id: "e-fp-sc-g", name: "Gil Global-Preparer" });
     await assign(pT, "policyPreparerTest", "taylor");
     await assign(pV, "policyPreparerTest", "ventana");
     await assign(pB, "policyPreparerTest", "taylor");
     await assign(pB, "policyPreparerTest", "ventana");
-    await assign(dT, "policyDeciderTest", "taylor");
-    await assign(mixed, "policyPreparerTest", "taylor");
-    await assign(mixed, "policyDeciderTest", null);
+    await assign(mixed, "policyPreparerTest", "taylor"); // + the (global, protected) Owner Role
     await assign(gP, "policyPreparerTest", null);
     const OUT = "OUTSIDE_OPERATING_COMPANY_SCOPE";
 
@@ -591,28 +589,84 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     // A scoped preparer holds nothing it was not granted.
     refused(await fn(pT, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id }), 403, "CAPABILITY_REQUIRED");
 
-    // SCOPED DECIDER (approve + activate @ Taylor): decides Taylor, refused Ventana.
-    refused(await fn(dT, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }), 403, OUT);
-    refused(await fn(dT, "rejectFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id, reason: "no" }), 403, OUT);
-    refused(await fn(dT, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id, effectiveDate: await businessDate("ventana", 12) }), 403, OUT);
-    ok(await fn(dT, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id }), "scoped approve");
-    const tAct = ok(await fn(dT, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id, effectiveDate: await businessDate("taylor", 6) }));
+    // The Owner (global, reserved approve / activate) decides each company's own version.
+    ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id }), "Owner approves Taylor");
+    const tAct = ok(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id, effectiveDate: await businessDate("taylor", 6) }));
     assert.equal(tAct.version.status, "ACTIVE");
-    refused(await fn(dT, "readFinancialPolicy", { operatingCompanyId: "taylor" }), 403, "CAPABILITY_REQUIRED", "the decider Role carries no read");
 
-    // MULTIPLE ROLES: preparer @ Taylor + a GLOBAL decider. Never decides its own Taylor version; decides another's Ventana one.
+    // MULTIPLE ROLES: preparer @ Taylor + the Owner Role. Never approves NOR ACTIVATES its own Taylor version; decides another's
+    // Ventana one. The approver may activate.
     const own2 = ok(await fn(mixed, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: WA })).version;
     ok(await fn(mixed, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id }));
     refused(await fn(mixed, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id }), 403, "SEPARATION_OF_DUTIES");
     refused(await fn(mixed, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }), 403, OUT, "its prepare is Taylor-only");
     ok(await fn(mixed, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }), "a global approve reaches Ventana");
-    ok(await fn(mixed, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id, effectiveDate: await businessDate("ventana", 11) }));
-    ok(await fn(dT, "rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id, reason: "test tidy-up" }));
+    ok(await fn(mixed, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id, effectiveDate: await businessDate("ventana", 11) }),
+      "the approver activates (allowed)");
+    ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id }), "an independent Owner approves mixed's version");
+    // ACTIVATION SEPARATION OF DUTIES (#232 Phase 1): the preparer / submitter never activates, even after another approves.
+    refused(await fn(mixed, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id, effectiveDate: await businessDate("taylor", 7) }),
+      403, "SEPARATION_OF_DUTIES");
+    // ...and the database refuses it on a direct write too, mapped to the same governed refusal.
+    const rawSod = await q(`UPDATE eos_finance.financial_policy_versions SET status = 'ACTIVE', activated_by = submitted_by, activated_at = now(),
+      effective_date = eos_policy.operating_company_business_date(tenant_id, operating_company_id, now()) + 7 WHERE id = $1`, [own2.id]).then(() => null, (e) => e);
+    assert.equal(rawSod?.constraint, "financial_policy_activator_independent");
+    assert.equal(fp.translateDatabaseRefusal(rawSod).code, "SEPARATION_OF_DUTIES");
+    ok(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id, effectiveDate: await businessDate("taylor", 7) }),
+      "the approving Owner activates");
+
+    // RESERVED (#232 Phase 1): approve / activate never reach another Role, the Administrator Role's cell, or a principal directly.
+    for (const actionKey of ["approve", "activate"]) {
+      for (const roleKey of ["controller", "financeManager", "accountingManager", "generalManager", "policyDeciderTest", "policyPreparerTest", "admin"]) {
+        const r = await admin("grantObjectActionToRole", { roleKey, objectKey: "financialPolicy", actionKey, reason: "try the reservation" });
+        assert.equal(r.ok, false, `${roleKey} ${actionKey}`);
+        assert.match(r.message, new RegExp(`may never hold finance\\.policy\\.${actionKey}`), `${roleKey} ${actionKey}`);
+      }
+      const d = await admin("grantObjectActionToPrincipal", { objectKey: "financialPolicy", actionKey, principalId: ctrl.principalId, reason: "exception" });
+      assert.equal(d.ok, false);
+      assert.match(d.message, /never a direct grant/);
+    }
+    assert.equal(Number((await one(`SELECT count(*) AS n FROM eos_policy.principal_capabilities pc JOIN eos_policy.capabilities c ON c.id = pc.capability_id
+      WHERE pc.tenant_id = $1 AND c.key LIKE 'finance.policy.%'`, [TENANT])).n), 0, "no direct finance.policy.* row was written");
+    // STANDING IS UNTOUCHED by the reservation: the Administrator's cells stay held through PROTECTED_ADMINISTRATOR (read /
+    // approve / activate), never prepare -- and the Administrator still approves and activates at runtime (the AUTH test above).
+    const matrix = await admin("getObjectActionGrantMatrix", { objectKey: "financialPolicy" });
+    assert.equal(matrix.ok, true);
+    const adminCell = (key) => matrix.data.actions.find((a) => a.capabilityKey === key).roles.find((r) => r.roleKey === "admin") ?? null;
+    for (const key of ["finance.policy.read", "finance.policy.approve", "finance.policy.activate"]) {
+      assert.deepEqual([adminCell(key)?.held, adminCell(key)?.source], [true, "PROTECTED_ADMINISTRATOR"], key);
+    }
+    assert.notEqual(adminCell("finance.policy.prepare")?.held, true, "standing never implies prepare");
+    const ownerCell = (key) => matrix.data.actions.find((a) => a.capabilityKey === key).roles.find((r) => r.roleKey === "owner") ?? null;
+    for (const key of ["finance.policy.approve", "finance.policy.activate"]) assert.deepEqual([ownerCell(key)?.held, ownerCell(key)?.source], [true, "ADMIN_GRANTED"], key);
+    const detail = await admin("getSecurityRoleDetail", { roleKey: "admin" });
+    const row = (key) => detail.data.actions.find((a) => a.capabilityKey === key);
+    t.diagnostic(`admin role detail: ${JSON.stringify(["finance.policy.read", "finance.policy.prepare", "finance.policy.approve", "finance.policy.activate"]
+      .map((k) => ({ k, held: row(k)?.held, source: row(k)?.source, forbiddenBy: row(k)?.forbiddenBy ?? null })))}`);
+    for (const key of ["finance.policy.approve", "finance.policy.activate"]) assert.deepEqual([row(key).held, row(key).source], [true, "PROTECTED_ADMINISTRATOR"], key);
 
     // GLOBAL holder: the current EOS meaning of a global assignment -- every company (pending the Owner's confirmation).
     for (const company of ["taylor", "ventana"]) {
       ok(await fn(gP, "readFinancialPolicy", { operatingCompanyId: company }), `global read ${company}`);
       ok(await fn(gP, "saveFinancialPolicyDraft", { operatingCompanyId: company, policy: FIFO }), `global prepare ${company}`);
+    }
+
+    // FUTURE COMPANIES (#232 Phase 1): a third ACTIVE company in the governed registry is selectable for a scoped Preparer
+    // assignment and keeps its own isolated policy and history -- no code change (the registry row is the fixture pattern).
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
+             VALUES ($1,'southco','ACTIVE','fixture','fixture','fixture')`, [TENANT]);
+    const pS = await person("uid-fp-sc-s", [], { id: "e-fp-sc-s", name: "Sol Southco" });
+    await assign(pS, "policyPreparerTest", "southco");
+    refused(await fn(pS, "readFinancialPolicy", { operatingCompanyId: "taylor" }), 403, OUT);
+    assert.equal(ok(await fn(pS, "readFinancialPolicy", { operatingCompanyId: "southco" })).state, "NOT_CONFIGURED");
+    const vS = ok(await fn(pS, "saveFinancialPolicyDraft", { operatingCompanyId: "southco", policy: WA })).version;
+    assert.deepEqual([vS.operatingCompanyId, vS.versionNumber], ["southco", 1], "its own numbering");
+    ok(await fn(pS, "submitFinancialPolicy", { operatingCompanyId: "southco", versionId: vS.id }));
+    ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "southco", versionId: vS.id }));
+    ok(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "southco", versionId: vS.id, effectiveDate: await businessDate("southco") }));
+    assert.deepEqual(ok(await fn(pS, "listFinancialPolicyVersions", { operatingCompanyId: "southco" })).items.map((v) => [v.id, v.status]), [[vS.id, "ACTIVE"]]);
+    for (const company of ["taylor", "ventana"]) {
+      assert.equal(ok(await fn(own, "listFinancialPolicyVersions", { operatingCompanyId: company })).items.some((v) => v.id === vS.id), false, company);
     }
 
     // A scoped holding for a company that becomes INACTIVE admits nothing (the dormant fixture pattern: the status row).
