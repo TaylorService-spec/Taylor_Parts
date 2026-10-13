@@ -619,7 +619,9 @@ export async function grantedSurfaceKeys(
       }
       // The opt-in scoped door: only on CAPABILITY_MISSING (a flat holder never reaches here; any other refusal is a
       // predicate's, and a scoped path carries none), and only through an unconditioned exact-value holding.
-      if (decision.reason === "CAPABILITY_MISSING" && path.scopedConsumer
+      // The predicate check is repeated here (surfaceCatalogViolations also refuses it) so a predicated path can never
+      // open through the scoped branch, which runs before any predicate is evaluated.
+      if (decision.reason === "CAPABILITY_MISSING" && path.scopedConsumer && (path.predicates ?? []).length === 0
           && admittedScopeValues(actor.scopedHeld, path.capabilityKey, path.scopedConsumer.scopeType).length > 0) {
         granted.add(entry.key);
         break;
@@ -752,6 +754,10 @@ export function surfaceCatalogViolations(
         }
         if (isAdministrationCapability(path.capabilityKey) || entry.key.startsWith("administration.")) {
           problems.push(`${entry.key}: scopedConsumer on Administration ${path.capabilityKey} -- Administration reads the tenant-wide flat set only`);
+        }
+        // A door opens onto a LIST: the consumer must be the scope-filtered list read, never a detail read or a command.
+        if (!/^[a-z][A-Za-z]*\.list[A-Z]/.test(consumer)) {
+          problems.push(`${entry.key}: scopedConsumer ${consumer} is not a list read -- a scoped door is tied to the list that narrows its data`);
         }
         const registered = SCOPE_EVALUABLE_GRANTS.find((g) => g.scopeType === scopeType && g.capabilityKey === path.capabilityKey);
         if (!registered || !registered.consumers.includes(consumer)) {

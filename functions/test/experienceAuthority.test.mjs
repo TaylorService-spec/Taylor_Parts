@@ -773,6 +773,9 @@ test("P1-1 (e): the catalog guard refuses a scopedConsumer that is predicated, u
     [{ key: "financials.x", label: "x", grants: [{ capabilityKey: "finance.payment.read", scopedConsumer: sc("commercial.listOpportunities") }] }, /not a registered SCOPE_EVALUABLE_GRANTS consumer/],
     [{ key: "administration.users", label: "x", grants: [{ capabilityKey: "admin.principalAccess.read", scopedConsumer: sc("workforce.listEmployees") }] }, /Administration/],
     [{ key: "administration.auditLogs", label: "x", grants: [{ capabilityKey: "audit.event.read", scopedConsumer: sc("commercial.listOpportunities") }] }, /Administration/],
+    // Registered consumers that are NOT the list read: a command and a detail read.
+    [{ key: "commercial.x", label: "x", grants: [{ capabilityKey: "opportunity.write", scopedConsumer: sc("commercial.createOpportunity") }] }, /is not a list read/],
+    [{ key: "commercial.x", label: "x", grants: [{ capabilityKey: "opportunity.read", scopedConsumer: sc("commercial.getOpportunityDetail") }] }, /is not a list read/],
     [{ key: "commercial.box", label: "x", containerOf: ["commercial.opportunities"], grants: [{ capabilityKey: "opportunity.read", scopedConsumer: sc("commercial.listOpportunities") }] }, /container cannot declare a scopedConsumer/],
   ];
   const base = EXPERIENCE_SURFACES.filter((s) => s.key === "commercial.opportunities");
@@ -780,6 +783,17 @@ test("P1-1 (e): the catalog guard refuses a scopedConsumer that is predicated, u
     const problems = surfaceCatalogViolations(entry.containerOf ? [...base, entry] : [entry]);
     assert.ok(problems.some((p) => pattern.test(p)), `${entry.key}: ${JSON.stringify(problems)}`);
   }
+});
+
+test("P1-1 (e2): at runtime a predicated scopedConsumer path never opens through the scoped branch", async () => {
+  // The catalog guard refuses this shape; this proves grantedSurfaceKeys does not depend on that guard having run.
+  const predicated = [{ key: "commercial.x", label: "x", grants: [{ capabilityKey: "opportunity.read",
+    scopedConsumer: { scopeType: "salesChannel", consumer: "commercial.listOpportunities" },
+    predicates: [{ kind: "OPERATIONAL_SCOPE", scopeType: "WAREHOUSE" }] }] }];
+  const held = [holding("opportunity.read")];
+  assert.deepEqual([...await grantedSurfaceKeys(scopedActor(held), NO_DIMENSIONS, predicated)], []);
+  const unpredicated = [{ ...predicated[0], grants: [{ ...predicated[0].grants[0], predicates: undefined }] }];
+  assert.deepEqual([...await grantedSurfaceKeys(scopedActor(held), NO_DIMENSIONS, unpredicated)], ["commercial.x"], "control: the same holding opens the unpredicated path");
 });
 
 test("P1-1 (f): flat-only actors are byte-identical -- every manifest persona, with and without an empty scopedHeld", async () => {
