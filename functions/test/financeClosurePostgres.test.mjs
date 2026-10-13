@@ -35,7 +35,7 @@ const soCommands = require("../lib/eosCommercial/commands/salesOrderCommandServi
 const authority = require("../lib/eosOps/reorderAssignmentAuthority.js");
 const closure = require("../lib/adminPolicy/purchasingFinanceClosureDelta.js");
 const partsDelta = require("../lib/adminPolicy/partsPurchasingReceivingDelta.js");
-const { capabilitiesForRoleKeys } = require("../lib/eosOps/capabilityAuthority.js");
+const { capabilitiesForRoleKeys, protectedAdministratorKeys } = require("../lib/eosOps/capabilityAuthority.js");
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -382,6 +382,69 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.equal(after.status, "ESTABLISHED");
     assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.obligations WHERE tenant_id=$1 AND source_record_id=$2`, [TENANT, after.id]), 2);
     assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoffs WHERE tenant_id=$1 AND correlation_id=$2`, [TENANT, after.id]), 2);
+  });
+
+  await t.test("MUST-2: intercompany-relief rows withhold partId + quantity without inventory.catalog.cost.read; counts, money and every other read identical", async () => {
+    const COST = "inventory.catalog.cost.read";
+    const WITHHELD = [{ group: "RELIEF_INVENTORY", fields: ["partId", "quantity"], requires: [COST] }];
+    await grant("financeManager", COST); // local test tenant only: financeManager is held by no other person in this suite
+    const ctrlCost = await person("uid-ctrl-cost", ["controller", "financeManager"], { id: "e-ctrl-cost", name: "Quinn Cost-Reader" });
+    // (a) premise: the controller holds the Finance read and NOT the cost read; the cost reader holds both.
+    const ctrlKeys = new Set(await capabilitiesForRoleKeys(pool, TENANT, ["controller"]));
+    assert.deepEqual([ctrlKeys.has("finance.payment.read"), ctrlKeys.has(COST)], [true, false], "controller: Finance read without the cost read");
+    const costKeys = new Set(await capabilitiesForRoleKeys(pool, TENANT, ["controller", "financeManager"]));
+    assert.deepEqual([costKeys.has("finance.payment.read"), costKeys.has(COST)], [true, true], "cost reader: both");
+    // (c) premise: the Administrator holds the PROTECTED admin Role and NO grant of the cost read (standing excludes it, #230).
+    assert.equal((await one(`SELECT protected FROM eos_policy.roles WHERE tenant_id=$1 AND key='admin'`, [TENANT])).protected, true, "admin is the protected Administrator Role");
+    assert.equal(new Set(await capabilitiesForRoleKeys(pool, TENANT, ["admin"])).has(COST), false, "no explicit cost-read grant reaches the Administrator");
+    const standing = new Set(await protectedAdministratorKeys(pool, TENANT, ["admin"]));
+    assert.deepEqual([standing.size > 0, standing.has(COST)], [true, false], "standing implies READ keys but never the cost read (PROTECTED_ADMINISTRATOR_EXCLUSIONS)");
+
+    for (const scope of ["ventana", "consolidated", "taylor"]) {
+      const plain = ok(await fn(ctrl, "readFinanceWorkspace", { operatingCompanyId: scope }), `ctrl ${scope}`);
+      const costed = ok(await fn(ctrlCost, "readFinanceWorkspace", { operatingCompanyId: scope }), `cost ${scope}`);
+      const adminWs = ok(await fn(sysAdmin, "readFinanceWorkspace", { operatingCompanyId: scope }), `admin ${scope}`);
+      if (scope !== "taylor") {
+        assert.ok(plain.intercompanyReliefPending.length >= 1, `${scope}: the unrelieved P-IC2 line is pending relief`);
+        // (b) the cost reader sees the part and the quantity.
+        const p2 = costed.intercompanyReliefPending.find((r) => r.partId === "P-IC2");
+        assert.ok(p2, `${scope}: the cost reader sees P-IC2 ${JSON.stringify(costed.intercompanyReliefPending)}`);
+        assert.deepEqual([p2.quantity, p2.sellerOperatingCompanyId, p2.buyerOperatingCompanyId, p2.receivingLineId, p2.withheld], [1, "ventana", "taylor", "L1", []]);
+      }
+      // (a) + (c) without the cost read: ids kept, partId + quantity ABSENT (not null), the withheld group named -- never a value.
+      for (const [who, ws] of [["controller", plain], ["protected Administrator", adminWs]]) {
+        assert.equal(ws.intercompanyReliefPending.length, costed.intercompanyReliefPending.length, `${who} ${scope}: same rows`);
+        ws.intercompanyReliefPending.forEach((row, i) => {
+          const full = costed.intercompanyReliefPending[i];
+          assert.deepEqual(Object.keys(row), ["intercompanyTransactionId", "sellerOperatingCompanyId", "buyerOperatingCompanyId", "receivingLineId", "withheld"], `${who} ${scope}`);
+          assert.equal(Object.hasOwn(row, "partId") || Object.hasOwn(row, "quantity"), false, `${who} ${scope}: absent, never null`);
+          assert.deepEqual(row.withheld, WITHHELD, `${who} ${scope}: withheld names the group and key`);
+          assert.doesNotMatch(JSON.stringify(row), /P-IC/, `${who} ${scope}: no part value anywhere in the row`);
+          const { partId: _p, quantity: _q, withheld: _w, ...ids } = full;
+          const { withheld: _w2, ...shown } = row;
+          assert.deepEqual(shown, ids, `${who} ${scope}: the ids are kept exactly`);
+        });
+        // (d) every other field of the response is deep-equal; counts and money identical.
+        const { intercompanyReliefPending: _a, ...restW } = ws;
+        const { intercompanyReliefPending: _b, ...restC } = costed;
+        assert.deepEqual(restW, restC, `${who} ${scope}: every other workspace section is identical`);
+        assert.deepEqual(ws.exceptionCounts, costed.exceptionCounts, `${who} ${scope}: counts identical`);
+        assert.equal(ws.exceptionCounts.intercompanyReliefPending, costed.intercompanyReliefPending.length, `${who} ${scope}: the count is the row count`);
+      }
+      assert.deepEqual(adminWs, plain, `${scope}: the Administrator sees exactly what a Finance reader without the cost read sees`);
+    }
+    // (e) the obligation and settlement reads are unaffected.
+    for (const scope of ["taylor", "ventana", "consolidated"]) {
+      const lists = [];
+      for (const who of [ctrl, ctrlCost, sysAdmin]) {
+        lists.push([ok(await fn(who, "listObligations", { operatingCompanyId: scope })), ok(await fn(who, "listSettlements", { operatingCompanyId: scope }))]);
+      }
+      assert.deepEqual(lists[0], lists[1], `${scope}: obligations + settlements identical with and without the cost read`);
+      assert.deepEqual(lists[0], lists[2], `${scope}: obligations + settlements identical for the Administrator`);
+    }
+    const detail = await Promise.all([ctrl, ctrlCost, sysAdmin].map(async (who) => ok(await fn(who, "readObligation", { obligationId: ic.buyer_obligation_id }))));
+    assert.deepEqual(detail[0], detail[1]);
+    assert.deepEqual(detail[0], detail[2]);
   });
 
   await t.test("F2: Taylor Service performs a Ventana sale's service only under the seller's authorization; the seller stays the seller", async () => {

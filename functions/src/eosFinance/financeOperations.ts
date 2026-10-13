@@ -29,6 +29,7 @@ import {
 } from "./settlement";
 import { supplyReceiptCostEvidence } from "../eosOps/costEvidenceSupplyCommand";
 import { relieveIntercompanySaleInventory } from "../eosOps/intercompanyInventoryRelief";
+import { defineFieldGroups, projectForCaller } from "../eosOps/governedFieldGroups";
 import type { WorkOrderCaller, WorkOrderOperationDeps } from "../eosOps/workOrderOperationTypes";
 import { EOS_FINANCIAL_POLICY_OPERATIONS } from "./financialPolicy";
 import { decideFinanceScope, financeCompanyReach, financeReachesCompany } from "./financeCompanyAccess";
@@ -40,6 +41,31 @@ export const SETTLEMENT_RECORD_CAPABILITY = "finance.settlement.record";
 export const SETTLEMENT_APPLY_CAPABILITY = "finance.settlement.apply";
 export const SETTLEMENT_CORRECT_CAPABILITY = "finance.settlement.correct";
 export const RECONCILIATION_RECORD_CAPABILITY = "finance.reconciliation.record";
+/** The existing cost-read authority (inventory.catalog.cost.read, DECISIONS #230; excluded from Protected Administrator standing). */
+export const COST_READ_CAPABILITY = "inventory.catalog.cost.read";
+
+/**
+ * THE INTERCOMPANY-RELIEF ROW of the workspace (Owner ruling MUST-2), through the generic governed field-group evaluator
+ * (eosOps/governedFieldGroups.ts) -- the same projectForCaller the Part Supplier Terms COMMERCIAL group uses:
+ *   RELIEF_REFERENCE  the transaction, the two companies and the receiving line   governed by the workspace's own gate
+ *                                                                                 (finance.payment.read, checked first)
+ *   RELIEF_INVENTORY  the part and the quantity awaiting relief                   inventory.catalog.cost.read
+ * Without the cost read, partId and quantity are ABSENT (never null -- a null would itself be a value) and the row's
+ * `withheld` names the group, its fields and the key it requires; never a value. The capability Set is the resolved one,
+ * so Protected Administrator standing never supplies the cost read (PROTECTED_ADMINISTRATOR_EXCLUSIONS, #230). The
+ * projection is read-only: nothing writes through it, so create / edit restate the read requirement.
+ * exceptionCounts.intercompanyReliefPending counts rows and is the same for every caller.
+ */
+export const INTERCOMPANY_RELIEF_PENDING_FIELD_GROUPS = defineFieldGroups({
+  objectKey: "payment",
+  record: { read: FINANCE_VIEW_CAPABILITY },
+  groups: [
+    { key: "RELIEF_REFERENCE", label: "Intercompany relief reference", sensitive: false, read: null, create: null, edit: null,
+      fields: ["intercompanyTransactionId", "sellerOperatingCompanyId", "buyerOperatingCompanyId", "receivingLineId"] },
+    { key: "RELIEF_INVENTORY", label: "Part and quantity awaiting relief", sensitive: true,
+      read: COST_READ_CAPABILITY, create: COST_READ_CAPABILITY, edit: COST_READ_CAPABILITY, fields: ["partId", "quantity"] },
+  ],
+});
 
 export class FinanceOperationError extends Error {
   constructor(readonly code: string, readonly category: "INVALID_INPUT" | "NOT_FOUND" | "PRECONDITION_FAILED" | "CONFLICT" | "FORBIDDEN", message: string) {
@@ -194,7 +220,8 @@ async function readFinanceWorkspace(deps: WorkOrderOperationDeps, caller: WorkOr
       currency: String(r.currency), status: r.outcome ?? "UNRECONCILED", externalAmountMinor: r.external_amount_minor === null ? null : String(r.external_amount_minor), reason: r.reason ?? null })),
     missingCostEvidence: missing.map((x) => ({ exceptionId: String(x.id), operatingCompanyId: String(x.operating_company_id), receivingId: String(x.receiving_id),
       receivingLineId: String(x.receiving_line_id), purchaseOrderId: String(x.purchase_order_id), partId: String(x.part_id), receivedQuantity: Number(x.received_quantity) })),
-    intercompanyReliefPending: relief.map((r) => ({ intercompanyTransactionId: String(r.id), sellerOperatingCompanyId: String(r.seller_operating_company_id),
+    intercompanyReliefPending: relief.map((r) => projectForCaller(INTERCOMPANY_RELIEF_PENDING_FIELD_GROUPS, caller.actor.capabilities, {
+      intercompanyTransactionId: String(r.id), sellerOperatingCompanyId: String(r.seller_operating_company_id),
       buyerOperatingCompanyId: String(r.buyer_operating_company_id), receivingLineId: String(r.line_id), partId: String(r.part_id), quantity: Number(r.received_quantity) })),
   });
 }
