@@ -117,11 +117,16 @@ const requireCapability = (actor: FinancialPolicyActor, key: string): CompanyRea
   if (companies.length === 0) return refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${key}`);
   return Object.freeze({ key, global: false, companies });
 };
-/** Decided on the RESOLVED company, before any version is looked up -- an out-of-scope company's versions never leak. */
+/**
+ * Decided on the RESOLVED company, before any version is looked up -- an out-of-scope company's versions never leak. For a
+ * caller holding the key only at scope, OUT OF SCOPE == MISSING (the platform rule): an unknown, inactive or ACTIVE-but-
+ * unadmitted company all get this same refusal, so a scoped holder cannot probe which companies exist.
+ */
+const outsideScope = (reach: CompanyReach, raw: unknown): never => refuse("OUTSIDE_OPERATING_COMPANY_SCOPE", "FORBIDDEN",
+  `${reach.key} is not held for operating company ${JSON.stringify(typeof raw === "string" ? raw : null)}`);
 const admitCompany = (reach: CompanyReach, company: string): void => {
   if (reach.global || reach.companies.includes(company)) return;
-  refuse("OUTSIDE_OPERATING_COMPANY_SCOPE", "FORBIDDEN",
-    `${reach.key} is held only for operating compan${reach.companies.length === 1 ? "y" : "ies"} ${reach.companies.join(", ")}; not for ${company}`);
+  outsideScope(reach, company);
 };
 const only = (input: Record<string, unknown>, allowed: readonly string[]): void => {
   for (const k of Object.keys(input)) if (!allowed.includes(k)) refuse("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${k}`);
@@ -295,6 +300,8 @@ async function companyOf(db: Db, actor: FinancialPolicyActor, raw: unknown, reac
     return company;
   } catch (err) {
     if (err instanceof FinanceFoundationError) {
+      // CONSOLIDATED is refused for everyone, with its own code. Otherwise only a FLAT holder learns the company is unknown.
+      if (err.code !== "CONSOLIDATED_NOT_A_COMPANY" && !reach.global) return outsideScope(reach, raw);
       return refuse(err.code === "CONSOLIDATED_NOT_A_COMPANY" ? err.code : "OPERATING_COMPANY_UNKNOWN", "INVALID_INPUT",
         "operatingCompanyId names one ACTIVE operating company of this tenant (never CONSOLIDATED)");
     }

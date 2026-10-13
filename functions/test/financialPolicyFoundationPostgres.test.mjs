@@ -576,9 +576,16 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     ok(await fn(pV, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", versionId: vV.id, policy: { ...WA, cogsRecognitionPointId: "INVOICE_ISSUE" } }));
     ok(await fn(pV, "submitFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }), "Ventana-only submits Ventana");
 
-    // Company resolution stays first: an unknown or inactive company and CONSOLIDATED are refused for a scoped holder too.
-    refused(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: "saratoga", policy: WA }), 400, "OPERATING_COMPANY_UNKNOWN");
-    refused(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: "dormant", policy: WA }), 400, "OPERATING_COMPANY_UNKNOWN");
+    // OUT OF SCOPE == MISSING for a scoped-only holder: an unknown, an inactive and an ACTIVE out-of-scope company get the
+    // SAME refusal; a flat holder keeps the precise OPERATING_COMPANY_UNKNOWN; CONSOLIDATED is refused for everyone.
+    const sameAs = refused(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }), 403, OUT);
+    for (const company of ["saratoga", "dormant", undefined]) {
+      const body = refused(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: company, policy: WA }), 403, OUT, `scoped: ${company}`);
+      assert.deepEqual(Object.keys(body).sort(), Object.keys(sameAs).sort());
+    }
+    refused(await fn(pT, "readFinancialPolicy", { operatingCompanyId: "saratoga" }), 403, OUT);
+    refused(await fn(gP, "saveFinancialPolicyDraft", { operatingCompanyId: "saratoga", policy: WA }), 400, "OPERATING_COMPANY_UNKNOWN", "flat: precise");
+    refused(await fn(gP, "readFinancialPolicy", { operatingCompanyId: "dormant" }), 400, "OPERATING_COMPANY_UNKNOWN", "flat: precise");
     refused(await fn(pT, "readFinancialPolicy", { operatingCompanyId: "consolidated" }), 400, "CONSOLIDATED_NOT_A_COMPANY");
     refused(await fn(gP, "saveFinancialPolicyDraft", { operatingCompanyId: "CONSOLIDATED", policy: WA }), 400, "CONSOLIDATED_NOT_A_COMPANY");
     // A scoped preparer holds nothing it was not granted.
@@ -587,6 +594,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     // SCOPED DECIDER (approve + activate @ Taylor): decides Taylor, refused Ventana.
     refused(await fn(dT, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }), 403, OUT);
     refused(await fn(dT, "rejectFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id, reason: "no" }), 403, OUT);
+    refused(await fn(dT, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id, effectiveDate: await businessDate("ventana", 12) }), 403, OUT);
     ok(await fn(dT, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id }), "scoped approve");
     const tAct = ok(await fn(dT, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: vT.id, effectiveDate: await businessDate("taylor", 6) }));
     assert.equal(tAct.version.status, "ACTIVE");
@@ -606,6 +614,16 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
       ok(await fn(gP, "readFinancialPolicy", { operatingCompanyId: company }), `global read ${company}`);
       ok(await fn(gP, "saveFinancialPolicyDraft", { operatingCompanyId: company, policy: FIFO }), `global prepare ${company}`);
     }
+
+    // A scoped holding for a company that becomes INACTIVE admits nothing (the dormant fixture pattern: the status row).
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
+             VALUES ($1,'northco','ACTIVE','fixture','fixture','fixture')`, [TENANT]);
+    const pN = await person("uid-fp-sc-n", [], { id: "e-fp-sc-n", name: "Nia Northco" });
+    await assign(pN, "policyPreparerTest", "northco");
+    ok(await fn(pN, "saveFinancialPolicyDraft", { operatingCompanyId: "northco", policy: WA }), "northco while ACTIVE");
+    await q(`UPDATE eos_policy.tenant_operating_companies SET status = 'INACTIVE' WHERE tenant_id = $1 AND operating_company_id = 'northco'`, [TENANT]);
+    refused(await fn(pN, "readFinancialPolicy", { operatingCompanyId: "northco" }), 403, OUT, "inactive company");
+    refused(await fn(pN, "saveFinancialPolicyDraft", { operatingCompanyId: "northco", policy: FIFO }), 403, OUT, "inactive company");
 
     // CONDITIONED scoped holding: admits nothing (fail closed); an unconditioned holding admits only its own company.
     const holding = (condition, scopeValue = "taylor") => ({ capabilityKey: "finance.policy.read", scopeType: "operatingCompany", scopeValue,

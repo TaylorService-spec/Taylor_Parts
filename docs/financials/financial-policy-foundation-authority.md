@@ -117,6 +117,10 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
     - revoke one of the two assignments through Administration.
 
     Nothing was changed here.
+12. **Close the direct-grant path** (#232 Amendment A, open item 3). Options:
+    - (i) reserve the keys to named Roles (`RESERVED_CAPABILITY_HOLDERS`; every new Role is a code change, and it forbids any unnamed Role, including the Option A Role, unless that Role is named);
+    - (ii) a new Role-only rule in `grantObjectActionToPrincipal`;
+    - (iii) an operating procedure only.
 
 ## 7. Company-scoped authority (#232 Amendment A)
 
@@ -125,6 +129,9 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 - **A global assignment, or Protected Administrator standing,** reaches every company. This is the current EOS meaning of "All (Global)", pending the Owner's confirmation.
 - **An operatingCompany-scoped assignment** reaches its company only. The four keys are registered in `SCOPE_EVALUABLE_GRANTS`, whose consumers are the seven policy operations.
 - **The company is admitted before any version is read.** Out of scope, the answer is `OUTSIDE_OPERATING_COMPANY_SCOPE` (403), with no version id or state disclosed.
+- **Out of scope == missing.** For a scoped-only holder, an unknown company, an inactive company (including a scoped company made inactive) and an ACTIVE out-of-scope company get the same `OUTSIDE_OPERATING_COMPANY_SCOPE`. A flat holder keeps the precise `OPERATING_COMPANY_UNKNOWN`. CONSOLIDATED is always `CONSOLIDATED_NOT_A_COMPANY`.
+- **Administrator standing** reaches every company for read, approve and activate, and never for prepare.
+- **Direct principal grants are NOT yet closed.** A direct principal grant of `finance.policy.*` (`grantObjectActionToPrincipal`) is still a tenant-wide path. The existing `RESERVED_CAPABILITY_HOLDERS` list is a Role allow-list, and adding the keys would refuse the Option A Role. See Owner decision 12.
 - **Fail closed.** A conditioned scoped holding admits nothing.
 - **Consolidated.** CONSOLIDATED is refused for every policy command. Consolidated Finance reporting reads are unaffected.
 - **Separation of duties** is unchanged and decided per version. A principal with a scoped preparer Role for Taylor and a global approve still cannot approve its own Taylor version.

@@ -8137,10 +8137,12 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 - **Enforcement, server-side on every policy command** (`functions/src/eosFinance/financialPolicy.ts`, the `CommercialWriteScope` pattern):
   - A key is held through the flat (global) set, or through the companies its UNCONDITIONED scoped holdings admit (`admittedScopeValues`). Otherwise the answer is `CAPABILITY_REQUIRED`.
   - The requested company is resolved first: ACTIVE, never CONSOLIDATED. It is then admitted against the holding BEFORE any version is read. Otherwise the answer is `OUTSIDE_OPERATING_COMPANY_SCOPE` (403), the same for a real and a non-existent version id, so no other company's versions or state leak.
+  - **Out of scope == missing.** For a caller holding the key only at scope, an unknown company, an inactive company (including a scoped company later made inactive) and an ACTIVE out-of-scope company all get the SAME `OUTSIDE_OPERATING_COMPANY_SCOPE` (403), so a scoped holder cannot probe which companies exist. A flat holder keeps the precise `OPERATING_COMPANY_UNKNOWN` (400). CONSOLIDATED is refused for everyone with `CONSOLIDATED_NOT_A_COMPANY`.
   - Conditioned holdings admit nothing (fail closed).
 - **Separation of duties** is unchanged and decided per version.
 - **Consolidated.** Consolidated policy editing (and reading) is refused. Consolidated financial reporting reads (`readFinanceWorkspace` and the other Finance reads) are untouched.
 - **Global assignments.** A GLOBAL assignment, and Protected Administrator standing, reach every company. This is the current EOS meaning of "All (Global)", recorded pending the Owner's confirmation (open item 2).
+- **Administrator standing** reaches every company for `finance.policy.read`, `.approve` and `.activate`, and never for `.prepare` (EDIT is not implied). Open item 2(b)'s "exemption for Administrator standing" means exactly this reach.
 
 **Open items (Owner decisions; nothing changed for them).**
 1. **The finance Roles cannot be company-scoped today.** `controller`, `accountingManager`, `financeManager` and `owner` carry `audit.event.read` / `admin.*`, so Administration refuses them at operatingCompany scope (`SCOPE_AMBIGUOUS_ADMINISTRATION`). Options:
@@ -8150,7 +8152,16 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 2. **What a global assignment means.**
    - (a) All companies: the current EOS meaning, as implemented.
    - (b) A scoped holding is required: this would need an EOS-wide `scopeRequired` extension, plus exemptions for the Owner and for Administrator standing.
-3. **The financeAccounting persona discrepancy.** Its Principal holds both `accountingManager` and `controller` globally in nonprod. See `docs/financials/financial-policy-foundation-authority.md` §6.
+3. **Direct principal grants remain a tenant-wide path (NOT closed; blocked on a decision).** `grantObjectActionToPrincipal` refuses any scope on a direct grant, and an unconditioned direct exception lands in the flat set. So Administration can still give one principal `finance.policy.*` for every company.
+   - The review asked to add the four keys to the existing `RESERVED_CAPABILITY_HOLDERS` list. That list is a Role ALLOW-list: `forbiddenPair` makes every unlisted Role a SYSTEM_INVARIANT, so `grantObjectActionToRole` would refuse the Option A dedicated Role, and the matrix would mark the Administrator's standing cells as forbidden.
+   - Doing that would contradict this amendment's recommended path, so it was not done.
+   - Options:
+     - (i) Reserve to named Roles. The Owner names the Role keys (for example `financeManager`, `controller`, `owner` and the Option A Role); each new Role then needs a code change.
+     - (ii) A Role-only rule ("no direct grant, any Role"). This needs a small new list in `grantObjectActionToPrincipal`, which is a new mechanism and needs Owner approval.
+     - (iii) An Administration operating procedure: no direct grants of `finance.policy.*`.
+   
+   Until it is decided, the only intended tenant-wide paths are a GLOBAL Role assignment and Administrator standing.
+4. **The financeAccounting persona discrepancy.** Its Principal holds both `accountingManager` and `controller` globally in nonprod. See `docs/financials/financial-policy-foundation-authority.md` §6.
 
 **Boundary.**
 - No Role, capability or grant change anywhere live. Test Roles exist in local test tenants only.
