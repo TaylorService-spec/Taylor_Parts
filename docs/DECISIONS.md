@@ -8019,7 +8019,10 @@ Changing the nine is an Owner decision. Existing grants are retained (O3).
 - **What becomes unavailable.**
   - Only the Scan entry point to Return intake: `ReturnIntakeScan`, reached through `ScanWorkspace` from `/service/scan`, the warehouse handheld (its Home "Returns" queue) and the technician shell. It called the Firebase callable `recordReturnIntake` (`functions/src/inventoryReturns/returnCallables.ts`).
   - The callable writes one Firestore `inventory_returns` record in state `AWAITING_DISPOSITION`. It makes no ledger, balance or serialized-asset change, and records no disposition. Disposition does not exist (#118).
-  - Under the Firebase feed it was reachable in practice only by the Firebase administrator, who holds the whole catalog. The `inventoryReturnsIntakeClerk` Role carries the key but is inactive.
+  - Under the Firebase feed, the key is activated for eos-platform-sandbox (`config/environments.json`). Two kinds of principal could reach it:
+    - the Firebase administrator, who holds the whole catalog;
+    - principals holding the `inventoryReturnsIntakeClerk` Role in the sandbox: the certification-world fixtures `cw-emp-029` and `cw-emp-044` (`docs/governance/certification-grant-manifest.json`) and the warehouse-manager persona fixture (`personaOperability.test.mjs`).
+  - All of them lose the Scan entry point. None of them is real Taylor workforce.
 - **No EOS equivalent exists.**
   - Rental return (`rentalEquipment.return`) covers rental fleet units only.
   - Transfers and stock relocation move stock internally.
@@ -8030,7 +8033,9 @@ Changing the nine is an Owner decision. Existing grants are retained (O3).
   - Its only acceptance check (V-12, scanner sandbox promotion 2026-08-20) was never run.
 - **Not removed.** The callable stays deployed and exported, so the capability-equivalence guard is unaffected. When `recordReturnIntake` is eventually removed, its equivalence record must cite this decision as an accepted GAP.
 
-**Known narrow residue (not changed).** A browser tab that had Return intake open before this change can reopen it from session storage (`eos.scan.activeWorkflow`). This existed before #2083.
+**Known narrow residue (not changed).** A browser tab that had Return intake open before this change can reopen it from session storage (`eos.scan.activeWorkflow`). `rememberedWorkflow()` checks only that the stored value is a known workflow name, not that the workflow is available.
+- For a principal the Firebase callable still authorizes (above), a submission from such a tab still succeeds and writes the SAMPLE `inventory_returns` record.
+- This existed before #2083 and ends when the callable is retired.
 
 **Boundary.**
 - Client only: `field-ops-app-vite/src/access/scanWorkflows.js`.
