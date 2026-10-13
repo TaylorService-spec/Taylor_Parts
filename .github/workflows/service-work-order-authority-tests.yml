@@ -19,6 +19,9 @@ on:
     paths:
       - "functions/src/eosOps/workOrder*.ts"
       - "functions/src/eosOps/contextualAuthorization.ts"
+      # P1-4: the technician job-context parity test compares the Work Order projection with the CRM reads.
+      - "functions/src/eosCrm/accountAuthority.ts"
+      - "functions/src/eosCrm/accountLocationAuthority.ts"
       - "functions/src/eosOps/migration/**"
       - "functions/src/adminPolicy/workOrderLifecycleGrantActivation.ts"
       - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
@@ -89,6 +92,9 @@ on:
     paths:
       - "functions/src/eosOps/workOrder*.ts"
       - "functions/src/eosOps/contextualAuthorization.ts"
+      # P1-4: the technician job-context parity test compares the Work Order projection with the CRM reads.
+      - "functions/src/eosCrm/accountAuthority.ts"
+      - "functions/src/eosCrm/accountLocationAuthority.ts"
       - "functions/src/eosOps/migration/**"
       - "functions/src/adminPolicy/workOrderLifecycleGrantActivation.ts"
       - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
