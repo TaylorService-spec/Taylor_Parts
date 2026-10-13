@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import {
   BIN_LOOKUP_CAPABILITY_IDS, CYCLE_COUNT_CREATE_CAPABILITY, CYCLE_COUNT_SUBMIT_CAPABILITY, PLACEMENT_RECORD_CAPABILITY,
   RECEIVE_CAPABILITY, RETURNS_INTAKE_CAPABILITY, SCAN_WORKFLOW, SCAN_WORKFLOW_CAPABILITY_IDS, STOCK_RELOCATE_CAPABILITY,
-  TRANSFER_DISPATCH_CAPABILITY, TRANSFER_RECEIVE_CAPABILITY, UNAVAILABLE_REASON, deriveScanWorkflows,
+  TRANSFER_DISPATCH_CAPABILITY, TRANSFER_RECEIVE_CAPABILITY, UNAVAILABLE_REASON, deriveScanWorkflows, unavailableText,
 } from "../src/access/scanWorkflows.js";
 import { INVENTORY_SCAN_CAPABILITY_REQUEST, inventoryScanCapabilitiesFrom } from "../src/access/inventoryScanCapabilityAccess.js";
 
@@ -98,7 +98,21 @@ for (const [persona, held] of Object.entries(PERSONA_SCAN_CAPABILITIES)) {
 test("warehouseAssociate: the floor job, but receiving is refused as NO_CAPABILITY (not NOT_READY) and no return intake", () => {
   const r = workflowsFor(PERSONA_SCAN_CAPABILITIES.warehouseAssociate);
   assert.equal(reasonOf(r, SUPPLIER_RECEIVING), UNAVAILABLE_REASON.NO_CAPABILITY);
-  assert.equal(reasonOf(r, RETURN_INTAKE), UNAVAILABLE_REASON.NO_CAPABILITY);
+  assert.equal(reasonOf(r, RETURN_INTAKE), UNAVAILABLE_REASON.NOT_YET_IN_EOS);
+});
+
+test("DECISIONS #231: Return intake is offered to no persona and is refused as NOT YET IN EOS, never as a missing permission", () => {
+  for (const [persona, caps] of Object.entries(PERSONA_SCAN_CAPABILITIES)) {
+    const r = workflowsFor(caps);
+    assert.ok(!r.available.some((w) => (w.workflow ?? w) === RETURN_INTAKE), `${persona}: Return intake must not be offered`);
+    assert.equal(reasonOf(r, RETURN_INTAKE), UNAVAILABLE_REASON.NOT_YET_IN_EOS, persona);
+    const text = unavailableText(RETURN_INTAKE, reasonOf(r, RETURN_INTAKE));
+    assert.match(text, /not yet available in EOS/);
+    assert.match(text, /return/i, "the sentence names the workflow -- the handheld Home prints it without a label");
+    assert.doesNotMatch(text, /not authorized|administrator can grant/i, persona);
+  }
+  // Every OTHER workflow keeps its permission wording: the new reason is Return intake's alone.
+  assert.match(unavailableText(PUT_AWAY, UNAVAILABLE_REASON.NO_CAPABILITY), /not authorized/);
 });
 
 test("receivers (administrator, dispatcher, partsAssociate) see receiving as NOT_READY, never offered, while the transport is off", () => {
