@@ -55,7 +55,9 @@ test("1. a well-formed EOS token is accepted by the nonprod verifier and yields 
   const v = nonprodVerifier()(tok.signEosAccessToken(signer, claims()));
   assert.equal(v.externalSubject, "nonprod-persona.dispatcher");
   assert.equal(v.identityProvider, "eos");
-  assert.deepEqual(Object.keys(v).sort(), ["claims", "externalSubject", "identityProvider"]);
+  // `sessionId` (EOS native login, 2026-10-11): the login session a HUMAN token names; null for a persona token. Not authority.
+  assert.deepEqual(Object.keys(v).sort(), ["claims", "externalSubject", "identityProvider", "sessionId"]);
+  assert.equal(v.sessionId, null);
   assert.deepEqual(Object.keys(v.claims).sort(), ["aud", "env", "exp", "iat", "iss", "jti", "sub"]);
 });
 

@@ -6,6 +6,7 @@ import WorkforceRoster from "../src/modules/administration/WorkforceRoster.jsx";
 import ObjectAuthorityMatrix, { objectAuthorityGrid, bulkPlan } from "../src/modules/administration/ObjectAuthorityMatrix.jsx";
 import EmployeeExperiencePreview from "../src/modules/administration/EmployeeExperiencePreview.jsx";
 import WorkflowWork from "../src/modules/workspace/WorkflowWork.jsx";
+import { PREVIEW_DIGEST, previewImpact, wouldApplyPreview } from "./support/authorityPreviewKit.js";
 
 const ROSTER = { total: 2, truncated: false, securityRolesWithheld: null,
   facets: { jobRoles: [{ id: "service-technician", label: "Service Technician", count: 1 }, { id: "retail-sales", label: "Retail Sales", count: 1 }],
@@ -65,7 +66,7 @@ describe("ObjectAuthorityMatrix", () => {
     expect(g.rows.find((r) => r.key === "salesperson").cells.map((c) => c.held)).toEqual([true, false]);
     expect(g.rows.find((r) => r.key === "technician").cells[1].locked).toBe(true);
   });
-  it("a checkbox click sends the governed grant with the stated reason and RE-READS; no reason, no request", async () => {
+  it("a checkbox click opens a confirmation; the governed grant is sent only after the server's preview and Confirm, and RE-READS", async () => {
     let held = false;
     const api = {
       listObjectsWithActions: vi.fn(async () => ({ ok: true, data: [{ key: "account", label: "Accounts", actions: MATRIX.actions }] })),
@@ -73,6 +74,7 @@ describe("ObjectAuthorityMatrix", () => {
       listRoles: vi.fn(async () => ({ ok: true, data: ROLES })),
       grantObjectActionToRole: vi.fn(async () => { held = true; return { ok: true, data: {} }; }),
       revokeObjectActionFromRole: vi.fn(async () => ({ ok: true, data: null })),
+      previewAuthorityChange: wouldApplyPreview(),
     };
     render(<ObjectAuthorityMatrix api={api} initialObjectKey="account" />);
     // READ-ONLY until the explicit governed editing interaction (UI corrections matrix redesign).
@@ -84,7 +86,15 @@ describe("ObjectAuthorityMatrix", () => {
     expect(api.grantObjectActionToRole).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Reason for Changes (Recorded in the Audit Trail)"), { target: { value: "technicians read customers" } });
     fireEvent.click(box);
-    await waitFor(() => expect(api.grantObjectActionToRole).toHaveBeenCalledWith({ objectKey: "account", actionKey: "read", roleKey: "technician", reason: "technicians read customers" }));
+    // PR 4: ONE click no longer commits. It opens the cell's confirmation, carrying the matrix reason.
+    const dialog = await screen.findByRole("dialog");
+    expect(api.grantObjectActionToRole).not.toHaveBeenCalled();
+    const confirm = within(dialog).getByRole("button", { name: "Confirm Grant" });
+    expect(confirm.disabled).toBe(true);
+    await previewImpact(dialog);
+    expect(api.previewAuthorityChange).toHaveBeenCalledWith("grantObjectActionToRole", { objectKey: "account", actionKey: "read", roleKey: "technician", reason: "technicians read customers" });
+    await act(async () => { fireEvent.click(confirm); });
+    await waitFor(() => expect(api.grantObjectActionToRole).toHaveBeenCalledWith({ objectKey: "account", actionKey: "read", roleKey: "technician", reason: "technicians read customers", previewDigest: PREVIEW_DIGEST }));
     await waitFor(() => expect(screen.getByLabelText("Technician — View Customers (customer.record.read)").checked).toBe(true));
     expect(api.getObjectActionGrantMatrix.mock.calls.length).toBeGreaterThanOrEqual(2);
     // A platform-invariant cell is NOT a control at all, even in Edit mode: it is stated as Not Available.
@@ -106,6 +116,7 @@ const bigApi = (over = {}) => ({
   getObjectActionGrantMatrix: vi.fn(async () => ({ ok: true, data: BIG })),
   listRoles: vi.fn(async () => ({ ok: true, data: BIG_ROLES })),
   grantObjectActionToRole: vi.fn(), revokeObjectActionFromRole: vi.fn(),
+  previewAuthorityChange: wouldApplyPreview({ operation: "applyObjectWideRoleAuthority" }),
   applyObjectWideRoleAuthority: vi.fn(async ({ mode }) => ({ ok: true, data: { actions: [
     { actionKey: "dispatch", outcome: mode === "GRANT" ? "GRANTED" : "NOT_HELD", refusal: null },
     { actionKey: "create", outcome: mode === "GRANT" ? "ALREADY_HELD" : "REVOKED", refusal: null },
@@ -197,7 +208,10 @@ describe("Objects → Permissions matrix (redesign)", () => {
     expect(api.applyObjectWideRoleAuthority).not.toHaveBeenCalled(); // no reason, no request
     fireEvent.change(within(dialog).getByLabelText(/Reason/), { target: { value: "GM no longer edits work orders" } });
     await act(async () => { fireEvent.click(confirm); });
-    await waitFor(() => expect(api.applyObjectWideRoleAuthority).toHaveBeenCalledWith({ objectKey: "workOrder", roleKey: "generalManager", mode: "REVOKE", reason: "GM no longer edits work orders" }));
+    expect(api.applyObjectWideRoleAuthority).not.toHaveBeenCalled(); // no preview, no request
+    await previewImpact(dialog);
+    await act(async () => { fireEvent.click(confirm); });
+    await waitFor(() => expect(api.applyObjectWideRoleAuthority).toHaveBeenCalledWith({ objectKey: "workOrder", roleKey: "generalManager", mode: "REVOKE", reason: "GM no longer edits work orders", previewDigest: PREVIEW_DIGEST }));
     expect(await screen.findByText(/Revoked listed actions for General Manager:/)).toBeTruthy();
     expect(screen.getByText(/Issue Scheduling Link: SYSTEM_INVARIANT: never grantable/)).toBeTruthy();
     expect(api.getObjectActionGrantMatrix.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -211,6 +225,7 @@ describe("Objects → Permissions matrix (redesign)", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Grant All Listed Actions…" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText(/Reason/), { target: { value: "try it" } });
+    await previewImpact(dialog);
     await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Grant 1" })); });
     expect(await screen.findByText(/admin\.securityPolicy\.write/)).toBeTruthy();
     // Still in Edit mode: the cell is the server's state after the re-read -- unchanged, unchecked.

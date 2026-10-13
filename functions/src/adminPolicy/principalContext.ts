@@ -38,6 +38,7 @@ import type { ScopedAssignment } from "./assignmentScopeRuntime";
 import type { PolicyReader } from "./policyRepository";
 import { employeeAccessIneligibility } from "./employmentAccessEligibility";
 import type { PrincipalRecord, TenantId, TenantRecord } from "./types";
+import { sessionTenantBindingFor } from "../eosAuth/requestTenantBinding";
 
 /** The identity provider in use. Recorded per principal so replacing it is a data change. */
 export const FIREBASE_IDENTITY_PROVIDER = "firebase";
@@ -119,7 +120,22 @@ export async function resolvePrincipalContext(
 
   const principal = await resolvePrincipalByVerifiedIdentity(reader, identityProvider, subject);
   if (!principal) throw new PrincipalContextError("UNKNOWN_PRINCIPAL");
-  return contextForPrincipal(reader, principal, input.requestedTenantId ?? null);
+  // SESSION-TENANT BINDING (Owner ruling D-12; eosAuth/requestTenantBinding.ts). A human EOS login session belongs to
+  // exactly one tenant: a stated tenant must BE that tenant, and an unstated one IS that tenant. Every other identity
+  // is unbound and resolves exactly as before.
+  const binding = sessionTenantBindingFor(identityProvider, subject);
+  let requested = input.requestedTenantId ?? null;
+  if (binding) {
+    const stated = typeof requested === "string" ? requested.trim() : "";
+    if (stated.length > 0 && stated !== binding.tenantId) {
+      if (binding.onRefusal) {
+        try { await binding.onRefusal(stated); } catch { /* recording failed; the refusal stands */ }
+      }
+      throw new PrincipalContextError("TENANT_NOT_A_MEMBERSHIP", "TENANT_NOT_SESSION_TENANT: this session belongs to another tenant; switch tenant to act there");
+    }
+    requested = binding.tenantId;
+  }
+  return contextForPrincipal(reader, principal, requested);
 }
 
 /** The EOS-issued identity provider (docs/architecture/eos-identity-session-foundation.md). */

@@ -136,7 +136,9 @@ export class AdministrationRefusal extends PolicyValidationError {
     // Protected Owner (Controller ruling 2026-09-27): ordinary role administration never appoints or removes
     // the protected Owner, and never leaves a tenant with zero active protected Owners.
     | "PROTECTED_OWNER_MEMBERSHIP"
-    | "LAST_PROTECTED_OWNER", message: string) {
+    | "LAST_PROTECTED_OWNER"
+    // revokeRole: the last active administering (protected Role) assignment in the tenant (finding F-2).
+    | "LAST_ADMINISTERING_ASSIGNMENT", message: string) {
     super(`${code}: ${message}`);
   }
 }
@@ -924,7 +926,8 @@ export async function assignRole(
   if (isDesignatedAdministratorRole(role)) await refuseProtectedRoleConflict(repo, actor.tenantId, principalId);
   // (c) OWNER GOVERNANCE AT THE PRINCIPAL: an owner holder may not reach an excluded capability by
   // any Role (ruling A).
-  // Checked for a scoped assignment too (lane SC): stricter, never wider.
+  // Checked for a scoped assignment too (lane SC): stricter, never wider. This early check is a fast
+  // refusal only; the AUTHORITATIVE decision is re-made UNDER THE GOVERNANCE LOCK below (finding F-1).
   await refuseOwnerPrincipalViolation(repo, actor.tenantId, principalId, [role.key], []);
 
   const held = await repo.listAssignmentsForPrincipal(actor.tenantId, principalId);
@@ -945,6 +948,10 @@ export async function assignRole(
     const staffing = await authorizeSecurityPolicyStaffing(repo, actor, role, principalId, scopeType, "assign", { fresh: true });
     // Owner and Administrator stay distinct, re-decided under the lock (a concurrent Owner appointment has committed or waits).
     if (isDesignatedAdministratorRole(role)) await refuseProtectedRoleConflict(repo, actor.tenantId, principalId);
+    // OWNER RULING A re-decided under the lock, against the STORE (finding F-1): a concurrent grant of an excluded
+    // capability to this Role (grantObjectActionToRole takes the same lock) has committed or waits for us, so the
+    // Owner can never reach an excluded key through an assignment that passed the early check against an older state.
+    await refuseOwnerPrincipalViolation(repo, actor.tenantId, principalId, [role.key], []);
     // Re-check the idempotence under the governance lock: a concurrent identical assignment that
     // committed first is returned, never duplicated.
     const now = (await repo.listAssignmentsForPrincipal(actor.tenantId, principalId))
@@ -1332,9 +1339,9 @@ export async function revokeRole(
       }
       if (roles.some((r) => r.protected && r.id === current.roleId)
           && (await tx.protectedRoleAssignmentCount(assignmentId)) === 0) {
-        throw new PolicyValidationError(
-          "this is the last active administering assignment -- revoking it would leave the tenant unadministrable",
-        );
+        // A stable code (finding F-2), the message unchanged.
+        throw new AdministrationRefusal("LAST_ADMINISTERING_ASSIGNMENT",
+          "this is the last active administering assignment -- revoking it would leave the tenant unadministrable");
       }
       await refuseIfLastAdministrationPath(tx, { assignmentId });
     }
@@ -1365,7 +1372,9 @@ async function principalsHolding(repo: PolicyRepository, tenantId: TenantId, rol
     const assignments = await repo.listAssignmentsForPrincipal(tenantId, uid);
     if (assignments.some((a) => a.roleId === roleId && a.status === "active")) uids.add(uid);
   }
-  return [...uids];
+  // SORTED: callers bump every holder's access version in this order, and a fixed (principal id) order is what keeps
+  // two multi-holder writers -- or one and a login code's share-locked authority re-read -- from locking in a cycle.
+  return [...uids].sort();
 }
 
 /**
@@ -1595,6 +1604,20 @@ async function refuseOwnerPrincipalViolation(
   }
 }
 
+/**
+ * OWNER GOVERNANCE for a Role grant (ruling A): refuse if granting `capabilityKey` to this Role would let any
+ * principal holding it AND the owner Role reach an excluded capability. Called before the transaction (a fast
+ * refusal) and again under the governance lock (authoritative, finding F-1).
+ */
+async function refuseOwnerHoldersOfRoleViolation(
+  repo: PolicyRepository, tenantId: string, roleId: string, capabilityKey: string,
+): Promise<void> {
+  if (!OWNER_EXCLUDED_CAPABILITIES.includes(capabilityKey)) return;
+  for (const principalId of await principalsHoldingRole(repo, tenantId, roleId)) {
+    await refuseOwnerPrincipalViolation(repo, tenantId, principalId, [], [capabilityKey]);
+  }
+}
+
 /** Principals holding this Role through an ACTIVE assignment. */
 /** ACTIVE non-global assignments of this Role, across the tenant's principals. */
 async function scopedHoldersOfRole(repo: PolicyRepository, tenantId: string, roleId: string): Promise<number> {
@@ -1701,11 +1724,8 @@ export async function grantObjectActionToRole(
     throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not grant a capability to a Role it holds (${role.key})`);
   }
   // OWNER GOVERNANCE AT THE PRINCIPAL: no holder of this Role who also holds owner may gain an excluded key.
-  if (OWNER_EXCLUDED_CAPABILITIES.includes(capability.key)) {
-    for (const principalId of await principalsHoldingRole(repo, actor.tenantId, role.id)) {
-      await refuseOwnerPrincipalViolation(repo, actor.tenantId, principalId, [], [capability.key]);
-    }
-  }
+  // A fast refusal only; the AUTHORITATIVE decision is re-made under the governance lock below (finding F-1).
+  await refuseOwnerHoldersOfRoleViolation(repo, actor.tenantId, role.id, capability.key);
   const condition = input.condition === undefined || input.condition === null ? null : input.condition;
   if (condition !== null) {
     validateRoleCondition(role.key, capability.key, condition);
@@ -1716,6 +1736,9 @@ export async function grantObjectActionToRole(
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     await tx.beginAdministrationCommand();
     await tx.lockGrantCell(role.key, capability.key);
+    // OWNER RULING A re-decided under the governance lock, against the STORE (finding F-1): a concurrent assignment
+    // of this Role to an Owner holder (assignRole takes the same lock) has committed or waits for us.
+    await refuseOwnerHoldersOfRoleViolation(repo, actor.tenantId, role.id, capability.key);
     // NO ADMINISTRATION AUTHORITY FOR A SCOPED ROLE (Pass 9 S2), under the governance lock: every Administration
     // gate is tenant-wide, so granting one of its keys to a Role that has an ACTIVE scoped holder would silently
     // turn "Role @ Company X" into tenant-wide Administration. Refused; assignRole refuses the reverse order.

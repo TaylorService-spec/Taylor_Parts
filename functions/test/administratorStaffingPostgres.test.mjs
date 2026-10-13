@@ -312,7 +312,8 @@ test("Owner ruling R1: Owner staffs the designated Administrator Role for anothe
     const before = await auditCount(T.b);
     const r = await call("owner-b", "revokeRole", { assignmentId: mine.id, reason: "remove the last" });
     assert.equal(r.ok, false, JSON.stringify(r));
-    assert.match(r.message, /last active administering assignment|WOULD_REMOVE_LAST_ADMINISTRATION_PATH/);
+    assert.match(r.message, /LAST_ADMINISTERING_ASSIGNMENT: this is the last active administering assignment|WOULD_REMOVE_LAST_ADMINISTRATION_PATH/);
+    assert.equal(r.code, "CONFLICT", "a refusal about the state the change would produce, like its sibling last-* refusals");
     assert.equal(await auditCount(T.b), before);
     assert.notEqual(await activeAssignment(T.b, adminB1, "admin"), null);
   });

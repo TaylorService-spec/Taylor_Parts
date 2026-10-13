@@ -118,11 +118,15 @@ const Manufacturers = lazy(() => import("./modules/inventory/Manufacturers"));
 const TruckInventory = lazy(() => import("./modules/inventory/TruckInventory"));
 import { useTruckRegistrySource } from "./hooks/useTruckRegistrySource";
 const PartDetail = lazy(() => import("./modules/inventory/PartDetail"));
+const AccountSecurity = lazy(() => import("./modules/account/AccountSecurity"));
 const WarehouseManagerHome = lazy(() => import("./modules/inventoryRole/WarehouseManagerHome"));
 const PartsManagerHome = lazy(() => import("./modules/inventoryRole/PartsManagerHome"));
 const PartsAssociateHome = lazy(() => import("./modules/inventoryRole/PartsAssociateHome"));
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
+// EOS native login (docs/architecture/eos-native-identity.md): the human front door, when the build enables it.
+import EosLogin from "./auth/EosLogin";
+import { eosHumanLoginEnabled } from "./auth/eosLoginClient.js";
 import { InventoryProvider } from "./demo/InventoryContext";
 import { IS_DEMO } from "./config/env";
 import { ROLE_NAV_ACCESS, ROLES } from "./domain/constants";
@@ -988,6 +992,8 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
           belongs to every signed-in person regardless of role. It renders only the session the shell
           already holds and grants nothing; every fact it cannot know is stated as unavailable. */}
       <Route path="/my-profile" element={<MyEmployeeProfile />} />
+      {/* EOS native login self-service: password, two-step verification, sessions. Only an EOS login session has one. */}
+      {eosHumanLoginEnabled() ? <Route path="/account/security" element={<AccountSecurity />} /> : null}
 
       {NAV_DOMAINS.filter((d) => !d.future).map((domain) => (
         // Administration pages render inside the `.fo-admin` style scope (ADMIN-UI-003); no other domain gets an element.
@@ -1377,7 +1383,7 @@ export default function App() {
     );
   }
 
-  if (!user) return <Login />;
+  if (!user) return eosHumanLoginEnabled() ? <EosLogin /> : <Login />;
 
   // Governed access is not known YET. Rendering the route table now would emit the route set for a
   // principal whose capabilities have not resolved, and the router's catch-all would immediately

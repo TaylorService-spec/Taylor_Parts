@@ -32,6 +32,13 @@
 // never queries `role_capabilities` itself.
 import type { Pool } from "pg";
 export type { Pool } from "pg";
+/**
+ * What every reader in this file actually uses: `query`, and nothing else. TYPE-ONLY widening (grant-impact preview,
+ * PR 3): the deployed composition still passes the shared Pool; the Administration preview passes its ONE checked-out
+ * transaction client, so every read observes the simulated (uncommitted, rolled-back) change. No reader here ever
+ * called `connect()`, so no behaviour moves.
+ */
+export type PolicyQueryable = Pick<Pool, "query">;
 import { getPolicyDatabasePool } from "../adminPolicy/policyDatabase";
 import { resolvePrincipalContext, resolvePrincipalContextById } from "../adminPolicy/principalContext";
 import type { PrincipalContext, ResolveContextInput } from "../adminPolicy/principalContext";
@@ -165,7 +172,7 @@ export interface ResolvedOperationalContext {
  * successful "no conditions found".
  */
 function requestScopedEntitlementResolver(
-  pool: Pool,
+  pool: PolicyQueryable,
   tenantId: string,
   heldRoleKeys: readonly string[],
   direct: readonly PrincipalCapabilityGrantRow[],
@@ -231,7 +238,7 @@ export interface OperationalCapabilityResolution {
  * unreadable grant or condition store throws: "could not read" is never "holds nothing extra" nor "unconditioned".
  */
 export async function resolveOperationalCapabilities(
-  pool: Pool,
+  pool: PolicyQueryable,
   tenantId: string,
   principalId: string,
   heldRoleKeys: readonly string[],
@@ -289,7 +296,7 @@ export async function resolveOperationalCapabilities(
  */
 export async function resolveOperationalContext(
   reader: PolicyReader,
-  pool: Pool,
+  pool: PolicyQueryable,
   input: ResolveContextInput,
   conditions: GrantConditionProvider = SHIPPED_GRANT_CONDITION_PROVIDER,
 ): Promise<ResolvedOperationalContext> {
@@ -310,7 +317,7 @@ export async function resolveOperationalContext(
  */
 export async function resolveOperationalContextForPrincipal(
   reader: PolicyReader,
-  pool: Pool,
+  pool: PolicyQueryable,
   principalId: string,
   requestedTenantId: string | null,
   conditions: GrantConditionProvider,
@@ -324,7 +331,7 @@ export async function resolveOperationalContextForPrincipal(
 
 /** Principal context -> capabilities + the request-scoped entitlement resolver. Shared by both entry points. */
 async function operationalContextFor(
-  pool: Pool,
+  pool: PolicyQueryable,
   principalContext: PrincipalContext,
   conditions: GrantConditionProvider,
 ): Promise<ResolvedOperationalContext> {
@@ -379,7 +386,7 @@ async function operationalContextFor(
  * An unreadable condition store throws: "could not read the conditions" is never "there are none".
  */
 export async function capabilitiesWithoutUnevaluatedConditions(
-  pool: Pool,
+  pool: PolicyQueryable,
   principalContext: PrincipalContext,
   capabilities: ReadonlySet<string>,
   conditions: GrantConditionProvider,
@@ -405,7 +412,7 @@ export async function capabilitiesWithoutUnevaluatedConditions(
  * unreadable store throws -- "could not read" is never "has standing".
  */
 export async function protectedAdministratorKeys(
-  pool: Pool,
+  pool: PolicyQueryable,
   tenantId: string,
   heldRoleKeys: readonly string[],
 ): Promise<ReadonlySet<string>> {
@@ -444,7 +451,7 @@ function withProtectedAdministratorEntitlements(resolver: EntitlementResolver, i
  * the Administration API about which Roles are held.
  */
 export async function capabilitiesForRoleKeys(
-  pool: Pool,
+  pool: PolicyQueryable,
   tenantId: string,
   roleKeys: readonly string[],
 ): Promise<ReadonlySet<string>> {
@@ -468,7 +475,7 @@ export async function capabilitiesForRoleKeys(
  * direct exceptions costs a request nothing extra; each row says which source it came from.
  */
 async function grantedCapabilityKeys(
-  pool: Pool,
+  pool: PolicyQueryable,
   tenantId: string,
   roleKeys: readonly string[],
   principalId: string,
@@ -508,7 +515,7 @@ export function operationalCapabilityPool(): Pool {
  * `pg` import to answer "is this capability key known" -- exactly the same "no SQL beyond this
  * file" rule the module header already states for `role_capabilities`.
  */
-export async function listCapabilityKeys(pool: Pool): Promise<ReadonlySet<string>> {
+export async function listCapabilityKeys(pool: PolicyQueryable): Promise<ReadonlySet<string>> {
   const { rows } = await pool.query<{ key: string }>(`SELECT key FROM ${SCHEMA}.capabilities`);
   return new Set(rows.map((r) => r.key));
 }
@@ -536,7 +543,7 @@ export interface RoleCapabilityGrantRow {
  * Role. Same table, same tenant guard, same resolution by Role key; only the projection differs.
  */
 export async function roleCapabilityGrants(
-  pool: Pool,
+  pool: PolicyQueryable,
   tenantId: string,
   roleKeys: readonly string[],
 ): Promise<readonly RoleCapabilityGrantRow[]> {
@@ -570,7 +577,7 @@ export interface PrincipalCapabilityGrantRow {
  * Role question alone, which the baseline and the Role-only equality proofs pin.
  */
 export async function principalCapabilityGrants(
-  pool: Pool,
+  pool: PolicyQueryable,
   tenantId: string,
   principalId: string,
 ): Promise<readonly PrincipalCapabilityGrantRow[]> {
@@ -615,7 +622,7 @@ export interface GrantConditionRelationRow {
  * lifted, and it leaves the row readable as history.
  */
 export async function grantConditionRows(
-  pool: Pool,
+  pool: PolicyQueryable,
   tenantId: string,
 ): Promise<readonly GrantConditionRelationRow[]> {
   const { rows } = await pool.query<{ grant_scope: "ROLE" | "PRINCIPAL"; grantor_key: string; capability_key: string; condition: unknown }>(
@@ -680,7 +687,10 @@ export async function describeGrantConditionRelation(
        FROM pg_constraint con
        JOIN pg_class rel ON rel.oid = con.conrelid
        JOIN pg_namespace ns ON ns.oid = rel.relnamespace
-      WHERE ns.nspname = $1 AND rel.relname = $2`, [schema, table]);
+      WHERE ns.nspname = $1 AND rel.relname = $2
+        -- The grant-impact preview's never-commit FENCE (migration 1764540000000) is a constraint trigger, not part of
+        -- the relation's shape. Excluded by name AND kind; any OTHER constraint trigger is still reported as drift.
+        AND NOT (con.contype = 't' AND con.conname = 'preview_never_commits')`, [schema, table]);
   const indexes = await pool.query<{ indexname: string; indexdef: string }>(
     `SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = $1 AND tablename = $2 ORDER BY indexname`,
     [schema, table]);

@@ -14,6 +14,7 @@ import { titleCasePhrase } from "../../shared/display/displayLabels.js";
 import { useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { refusalText } from "../../services/adminControlPlaneClient.js";
+import { AuthorityImpactPreview, useAuthorityImpactPreview, withPreviewDigest } from "./AuthorityImpactPreview.jsx";
 import {
   buildCondition,
   describeCondition,
@@ -125,6 +126,17 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, capabili
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const spec = vocabulary?.kinds?.find((k) => k.kind === condition.kind) ?? null;
+  const built = condition.kind ? buildCondition(spec, condition) : null;
+  const reasonText = statedReason(reason);
+  // The change exactly as Confirm would send it -- previewed first (AuthorityImpactPreview), committed with its digest.
+  const base = { objectKey, actionKey, roleKey, reason: reasonText };
+  const operation = { grant: "grantObjectActionToRole", revoke: "revokeObjectActionFromRole",
+    setCondition: "setGrantCondition", retireCondition: "retireGrantCondition" }[mode] ?? null;
+  const change = mode === "grant" ? { ...base, ...(built ? { condition: built } : {}) }
+    : mode === "setCondition" ? { ...base, condition: built } : base;
+  const preview = useAuthorityImpactPreview(api, operation, change);
+
   if (isSystemInvariant(cell)) {
     return <span className="fo-cp-tag fo-cp-tag--invariant" data-grant-cell="SYSTEM_INVARIANT">Not grantable — system invariant</span>;
   }
@@ -132,9 +144,6 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, capabili
   const held = cell?.held === true;
   const active = cellCondition(cell);
   const open = (next) => { setMode(next); setReason(""); setCondition({ kind: NO_CONDITION }); setResult(null); };
-  const spec = vocabulary?.kinds?.find((k) => k.kind === condition.kind) ?? null;
-  const built = condition.kind ? buildCondition(spec, condition) : null;
-  const reasonText = statedReason(reason);
   const ready = Boolean(reasonText) && (mode === "setCondition" ? Boolean(built) : mode === "grant" ? (!condition.kind || Boolean(built)) : true);
   // An active condition can still be replaced or retired; only a NEW condition with nothing applicable is refused up front.
   const noConditionApplies = !active && vocabulary?.status === "ready" && Array.isArray(vocabulary.kinds)
@@ -142,14 +151,9 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, capabili
 
   const submit = async (event) => {
     event.preventDefault();
-    if (!ready || busy) return;
+    if (!ready || busy || !preview.canConfirm) return;
     setBusy(true);
-    const base = { objectKey, actionKey, roleKey, reason: reasonText };
-    let outcome;
-    if (mode === "grant") outcome = await api.grantObjectActionToRole({ ...base, ...(built ? { condition: built } : {}) });
-    else if (mode === "revoke") outcome = await api.revokeObjectActionFromRole(base);
-    else if (mode === "setCondition") outcome = await api.setGrantCondition({ ...base, condition: built });
-    else outcome = await api.retireGrantCondition(base);
+    const outcome = preview.settle(await api[operation](withPreviewDigest(change, preview)));
     setBusy(false);
     setResult(outcome);
     if (outcome?.ok) { setMode(null); onChanged?.(); }
@@ -194,8 +198,9 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, capabili
             </p>
           ) : null}
           <ReasonField value={reason} onChange={setReason} />
+          <AuthorityImpactPreview preview={preview} disabled={!ready || busy} />
           <div className="fo-btn-row">
-            <Button type="submit" variant="primary" disabled={!ready || busy}>{`Confirm ${titleCasePhrase(verb ?? "")}`}</Button>
+            <Button type="submit" variant="primary" disabled={!ready || busy || !preview.canConfirm}>{`Confirm ${titleCasePhrase(verb ?? "")}`}</Button>
             <Button type="button" variant="secondary" onClick={() => setMode(null)}>Cancel</Button>
           </div>
         </form>

@@ -445,7 +445,6 @@
       "file": "test/ledgerRowIntegrity.test.mjs",
       "runner": "node --test"
     },
-    
     {
       "file": "test/locationSubscription.test.mjs",
       "runner": "node"
@@ -1244,6 +1243,10 @@
     },
     {
       "file": "test/adminUiScope.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/eosLoginClient.test.mjs",
       "runner": "node --test"
     }
   ]

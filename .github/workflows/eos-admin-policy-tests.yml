@@ -313,6 +313,16 @@ on:
       - "functions/test/support/partSupplierTermsFixture.mjs"
       # DECISIONS #230: the Administration Objects matrix for supplierCatalogItem (seven actions, standing, zero grants).
       - "functions/test/supplierTermsObjectMatrixPostgres.test.mjs"
+      # Grant-impact preview (PR 3, advisory): equivalence + refusals, never-commit safety + catalog purity, and the static
+      # import-closure purity guard (with its closure helper and the shared fixture).
+      - "functions/test/authorityPreviewEquivalencePostgres.test.mjs"
+      - "functions/test/authorityPreviewSafetyPostgres.test.mjs"
+      - "functions/test/authorityPreviewProtectedPostgres.test.mjs"
+      - "functions/test/authorityPreviewPurity.test.mjs"
+      - "functions/test/authorityPreviewMandatoryCarveOut.test.mjs"
+      - "functions/test/authorityPreviewMandatoryPostgres.test.mjs"
+      - "functions/test/support/authorityPreviewFixture.mjs"
+      - "functions/test/support/valueImportClosure.mjs"
       # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
       - "functions/test/governedFieldGroups.test.mjs"
       # Field permissions PR 1 (tests only). The Supplier Terms field-group GOLDEN (256 capability sets, digest-pinned;
@@ -544,6 +554,12 @@ on:
       # LANE DX: Employee > Direct Exceptions (grant / revoke / condition a direct Principal exception).
       - "field-ops-app-vite/src/modules/administration/EmployeeDirectExceptions.jsx"
       - "field-ops-app-vite/test/employeeDirectExceptions.test.jsx"
+      # PR 4: the grant-impact PREVIEW step every Administration authority change takes before Confirm.
+      - "field-ops-app-vite/src/modules/administration/AuthorityImpactPreview.jsx"
+      - "field-ops-app-vite/src/modules/administration/ObjectAuthorityMatrix.jsx"
+      - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
+      - "field-ops-app-vite/test/authorityImpactPreview.test.jsx"
+      - "field-ops-app-vite/test/support/authorityPreviewKit.js"
       - "field-ops-app-vite/src/modules/administration/usePolicyStore.js"
       - "field-ops-app-vite/src/access/objectPermissionMap.js"
       - "field-ops-app-vite/test/administrationPortalNav.test.mjs"
@@ -730,6 +746,8 @@ on:
       # protected Owner; per-role last-Owner invariant; R1 in anti-lockout (test:adminPolicyPostgres).
       - "functions/test/protectedOwnerInvariantPostgres.test.mjs"
       - "functions/test/support/protectedOwnerFixture.mjs"
+      # OWNER RULING A UNDER THE GOVERNANCE LOCK (finding F-1): the assignRole/grantObjectActionToRole race (test:adminPolicyPostgres).
+      - "functions/test/ownerExclusionLockPostgres.test.mjs"
       # FIRST-OWNER BOOTSTRAP (ruling 2026-09-27, option A): the bootstrap-only establishment of a tenant's first Owner,
       # and the Owner-establishing scripts that now call it (test:adminPolicyPostgres).
       - "functions/test/firstOwnerBootstrapPostgres.test.mjs"
@@ -1053,6 +1071,16 @@ on:
       - "functions/test/support/partSupplierTermsFixture.mjs"
       # DECISIONS #230: the Administration Objects matrix for supplierCatalogItem (seven actions, standing, zero grants).
       - "functions/test/supplierTermsObjectMatrixPostgres.test.mjs"
+      # Grant-impact preview (PR 3, advisory): equivalence + refusals, never-commit safety + catalog purity, and the static
+      # import-closure purity guard (with its closure helper and the shared fixture).
+      - "functions/test/authorityPreviewEquivalencePostgres.test.mjs"
+      - "functions/test/authorityPreviewSafetyPostgres.test.mjs"
+      - "functions/test/authorityPreviewProtectedPostgres.test.mjs"
+      - "functions/test/authorityPreviewPurity.test.mjs"
+      - "functions/test/authorityPreviewMandatoryCarveOut.test.mjs"
+      - "functions/test/authorityPreviewMandatoryPostgres.test.mjs"
+      - "functions/test/support/authorityPreviewFixture.mjs"
+      - "functions/test/support/valueImportClosure.mjs"
       # Governed field groups: the generic Object-level field-permission evaluator (no DB) the terms command uses.
       - "functions/test/governedFieldGroups.test.mjs"
       # Field permissions PR 1 (tests only). The Supplier Terms field-group GOLDEN (256 capability sets, digest-pinned;
@@ -1313,6 +1341,8 @@ on:
       # protected Owner; per-role last-Owner invariant; R1 in anti-lockout (test:adminPolicyPostgres).
       - "functions/test/protectedOwnerInvariantPostgres.test.mjs"
       - "functions/test/support/protectedOwnerFixture.mjs"
+      # OWNER RULING A UNDER THE GOVERNANCE LOCK (finding F-1): the assignRole/grantObjectActionToRole race (test:adminPolicyPostgres).
+      - "functions/test/ownerExclusionLockPostgres.test.mjs"
       # FIRST-OWNER BOOTSTRAP (ruling 2026-09-27, option A): the bootstrap-only establishment of a tenant's first Owner,
       # and the Owner-establishing scripts that now call it (test:adminPolicyPostgres).
       - "functions/test/firstOwnerBootstrapPostgres.test.mjs"
@@ -1450,7 +1480,10 @@ jobs:
   policy:
     name: Admin policy engine -- authorization, workflow, tenancy, schema, seed
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 20 -> 35 (2026-10-13): measured, not padded. main itself took 18m10s (run 38325325281, 9ae2d9a9) and EOS
+    # native identity adds its two PostgreSQL suites (~2 min), so 20 cancelled the PostgreSQL step mid-run (run
+    # 38327799193). A cap is a hang detector, and 35 still catches one well inside a full gate's local ~42 min.
+    timeout-minutes: 35
 
     # A REAL POSTGRESQL, not an emulator. The migration, the unique indexes, the foreign keys, the
     # CHECK constraints and transactional rollback are properties of the database itself; something
@@ -1623,6 +1656,13 @@ jobs:
       # reason, re-read on success, refusals verbatim.
       - name: Administration direct exceptions -- client (vitest + jsdom)
         run: npx vitest run test/employeeDirectExceptions.test.jsx
+        working-directory: field-ops-app-vite
+
+      # PR 4: THE GRANT-IMPACT PREVIEW STEP -- Confirm disabled until a fresh WOULD_APPLY preview of exactly the inputs on
+      # screen; NO_OP / WOULD_REFUSE never commit; the commit carries previewDigest; STALE_PREVIEW requires a new preview;
+      # counts-only names nobody; the matrix single-click toggle no longer commits on one click.
+      - name: Administration grant-impact preview step -- client (vitest + jsdom)
+        run: npx vitest run test/authorityImpactPreview.test.jsx
         working-directory: field-ops-app-vite
 
       # LANE SC: Employee > Security Roles assignment SCOPE -- the picker offers only what the server's

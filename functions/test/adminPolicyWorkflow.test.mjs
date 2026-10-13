@@ -487,7 +487,7 @@ test("the LAST administering assignment cannot be revoked", async () => {
 
   await assert.rejects(
     () => revokeRole(repo, adminActor(), { assignmentId: only.id }),
-    /last active administering assignment/,
+    /LAST_ADMINISTERING_ASSIGNMENT: this is the last active administering assignment/,
   );
 });
 
