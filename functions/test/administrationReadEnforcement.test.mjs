@@ -238,7 +238,8 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 92 -> 93: 1764510000000 -- Finance Closure (#206): settlements / applications / reconciliation, obligation handoffs, intercompany relief, service-provider authorization, late cost evidence; four settlement capabilities granted to the five Finance-execution Roles.
   // 93 -> 94: 1764520000000 -- Rental (#207): the eos_rental domain (fleet, agreements + versioned terms, assignments, inspections, charges, events), rental Work Orders, the RENTAL billing package source; six rental capabilities granted to their analog Roles.
   // 94 -> 95: 1764530000000 -- SUP-1 Part Supplier Terms (DECISIONS #230): inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (the COMMERCIAL field group) on supplierCatalogItem, granted to NO Role; Protected Administrator standing excludes the three cost keys (Owner ruled 2026-10-12).
-  assert.equal(migrations.length, 95, "a migration was added or removed by the read enforcement");
+  // 95 -> 96: 1764540000000 -- Grant-impact preview (PR 3): the never-commit fence (seven deferred constraint triggers); it registers no capability and no READ key.
+  assert.equal(migrations.length, 96, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

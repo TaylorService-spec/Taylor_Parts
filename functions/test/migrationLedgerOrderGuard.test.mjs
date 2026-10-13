@@ -204,8 +204,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 92 -> 93: 1764510000000 -- Finance Closure (#206): settlements / applications / reconciliation, obligation handoffs, intercompany relief, service-provider authorization, late cost evidence; four settlement capabilities granted to the five Finance-execution Roles.
 // 93 -> 94: 1764520000000 -- Rental (#207): the eos_rental domain, rental Work Orders, the RENTAL billing package source; six rental capabilities granted to their analog Roles.
 // 94 -> 95: 1764530000000 -- SUP-1 Part Supplier Terms (DECISIONS #230): inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (the COMMERCIAL field group) on supplierCatalogItem, granted to NO Role; Protected Administrator standing excludes the three cost keys (Owner ruled 2026-10-12).
-const RUNNABLE_MIGRATION_COUNT = 95;
-const TRACKED_MIGRATION_COUNT = 96; // the 95 runnable + the one deferred file
+// 95 -> 96: 1764540000000 -- Grant-impact preview (PR 3): the never-commit FENCE, seven deferred constraint triggers that refuse a COMMIT of a transaction marked eos_policy.preview; no capability, no grant, no data.
+const RUNNABLE_MIGRATION_COUNT = 96;
+const TRACKED_MIGRATION_COUNT = 97; // the 96 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -252,6 +253,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764510000000_finance-closure",
   "1764520000000_rental",
   "1764530000000_supplier-terms-capabilities",
+  "1764540000000_authority-preview-never-commits",
 ]);
 
 const repoMigrations = () =>
