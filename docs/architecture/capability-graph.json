@@ -3229,7 +3229,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/trustedWriterCommands.ts",
-          "functions/src/adminPolicy/administrationSurfaceAuthority.ts"
+          "functions/src/adminPolicy/administrationSurfaceAuthority.ts",
+          "functions/src/eosAuth/eosLoginService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -3238,7 +3239,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3261,7 +3262,8 @@
           "functions/src/access/trustedWriterCommands.ts",
           "functions/src/adminPolicy/administrationAuthority.ts",
           "functions/src/adminPolicy/administrationSurfaceAuthority.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
+          "functions/src/eosAuth/eosLoginService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -3269,7 +3271,7 @@
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3292,13 +3294,13 @@
           "functions/src/access/trustedWriterCommands.ts",
           "functions/src/adminPolicy/administrationSurfaceAuthority.ts",
           "functions/src/eosAdministration/workforceRoster.ts",
+          "functions/src/eosAuth/eosLoginService.ts",
           "functions/src/eosExperience/myWork.ts",
           "functions/src/eosExperience/previewAsUser.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
           "functions/src/eosWorkforce/reads/employeeChangeHistoryRead.ts",
-          "functions/src/eosWorkforce/reads/employeePrincipalLinkRead.ts",
-          "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts"
+          "functions/src/eosWorkforce/reads/employeePrincipalLinkRead.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -3307,7 +3309,7 @@
           "field-ops-app-vite/src/access/workforceCapabilityAccess.js",
           "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
-        "serverReferenceCount": 12,
+        "serverReferenceCount": 13,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3561,7 +3563,8 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/administrationSurfaceAuthority.ts"
+          "functions/src/adminPolicy/administrationSurfaceAuthority.ts",
+          "functions/src/eosAuth/eosLoginService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
@@ -3569,7 +3572,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/domain/adminPasswordReset.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },

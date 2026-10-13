@@ -804,3 +804,40 @@ functions/test/reorderWarehouseIdentity.test.mjs
 functions/test/snapshotContentFingerprint.test.mjs
 functions/test/truckFleetMigrationSource.test.mjs
 functions/test/truckFleetPostgres.test.mjs
+
+# Carried from main's former paths blocks at the sync with 9564f0fc (#2075, #2074, #2076, #2077), with
+# the comments those PRs wrote for them.
+# Grant-impact preview (PR 3, advisory): equivalence + refusals, never-commit safety + catalog purity, and the static
+# import-closure purity guard (with its closure helper and the shared fixture).
+functions/test/authorityPreviewEquivalencePostgres.test.mjs
+functions/test/authorityPreviewSafetyPostgres.test.mjs
+functions/test/authorityPreviewProtectedPostgres.test.mjs
+functions/test/authorityPreviewPurity.test.mjs
+functions/test/authorityPreviewMandatoryCarveOut.test.mjs
+functions/test/authorityPreviewMandatoryPostgres.test.mjs
+functions/test/support/authorityPreviewFixture.mjs
+functions/test/support/valueImportClosure.mjs
+# Field permissions PR 1 (tests only). The Supplier Terms field-group GOLDEN (256 capability sets, digest-pinned;
+# test:adminPolicy) and the REMOVAL-MATRIX gate: who holds each key a proposed removal names, from the repository's
+# authority baseline, recorded *Delta.ts modules + protected Administrator standing (offline, test:adminPolicy), with its metadata and Role
+# holders proved on a rebuilt database (test:adminPolicyPostgres). The guards AND their generators/pins.
+functions/test/supplierTermsFieldGroupsGolden.test.mjs
+functions/test/support/supplierTermsFieldGroupsGolden.mjs
+functions/test/fixtures/supplierTermsFieldGroups.golden.json
+functions/test/removalMatrixGate.test.mjs
+functions/test/removalMatrixMetadataPostgres.test.mjs
+functions/test/support/removalMatrix.mjs
+functions/test/fixtures/removalMatrix.pinned.json
+# PR 4: the grant-impact PREVIEW step every Administration authority change takes before Confirm.
+field-ops-app-vite/src/modules/administration/AuthorityImpactPreview.jsx
+field-ops-app-vite/src/modules/administration/ObjectAuthorityMatrix.jsx
+field-ops-app-vite/test/authorityImpactPreview.test.jsx
+field-ops-app-vite/test/support/authorityPreviewKit.js
+# OWNER RULING A UNDER THE GOVERNANCE LOCK (finding F-1): the assignRole/grantObjectActionToRole race (test:adminPolicyPostgres).
+functions/test/ownerExclusionLockPostgres.test.mjs
+
+# COMPLETENESS at the 9564f0fc sync: #2067 (EOS native login) registered these in test:adminPolicy /
+# test:adminPolicyPostgres without naming them in either former paths filter.
+functions/test/eosNativeLoginPostgres.test.mjs
+functions/test/eosNativeLoginTenancyPostgres.test.mjs
+functions/test/eosNativeLoginUnit.test.mjs

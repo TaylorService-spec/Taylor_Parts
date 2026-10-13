@@ -311,6 +311,7 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
   const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
   const { ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
   const { assignRole } = require("../lib/adminPolicy/policyCommands.js");
+  const { machineAppliedRepository } = require("../lib/adminPolicy/authorityChangeCommitPort.js");
   const { hasAdministrationAuthority } = require("../lib/adminPolicy/administrationAuthority.js");
   const { establishLink } = require("../lib/employeeIdentity/employeePrincipalLinkRepository.js");
   const { createPostgresEmployeeAuthority } = require("../lib/employeeIdentity/postgresEmployeeAuthority.js");
@@ -326,6 +327,9 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
     accountablePersons: { persisted: 0, existing: 0, blocked: 0 } };
   const count = (bucket, created) => (created ? (summary[bucket].created += 1) : (summary[bucket].existing += 1));
   const repo = new PostgresPolicyRepository(pool);
+  // MANDATORY-PREVIEW CARVE-OUT (PR 4, adminPolicy/authorityChangeCommitPort.ts): this runner calls assignRole directly;
+  // every audit row it writes is marked MACHINE_APPLIED with this manifest's digest (pinned: authorityPreviewMandatoryCarveOut).
+  const machineRepo = machineAppliedRepository(repo, { manifestId: "seedSyntheticNonprodWorkforce", ruling: "synthetic nonprod workforce seed (2026-09-14 rulings)", changes: manifest });
   const employeeId = (key) => employees.get(key).id;
 
   // ---- tenant and the real administrator whose authority the governed commands run under
@@ -398,7 +402,7 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
       const role = roleByKey.get(key);
       if (!role) refuse("ROLE_NOT_DEFINED", `Security Role ${key} is not defined in this tenant; the seed never creates Roles`);
       const already = held.some((a) => a.status === "active" && a.roleId === role.id && (a.scopeType ?? "global") === "global");
-      await assignRole(repo, actor, {
+      await assignRole(machineRepo, actor, {
         principalId: principal.id, roleId: role.id,
         reason: stepReason(DIMENSION_ROLE, key, p.roleReasons[key]),
       });

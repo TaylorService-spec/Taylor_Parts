@@ -20,11 +20,16 @@
 // governed commands (no wildcard exists, nothing unrestricted is created, and an action added to the Object later is NOT
 // included). It always opens a confirmation that names exactly which capabilities will change -- computed from the grants just
 // re-read -- and, after the server answers, states each action's outcome. No Firebase, no client-side authority.
+//
+// PREVIEW BEFORE CONFIRM (PR 4). No authority change commits from ONE click or a bare confirm any more: a cell click opens
+// a confirmation (reason, carried from the matrix's reason field and editable) and the bulk dialog asks for its reason;
+// both then require the SERVER's grant-impact preview (AuthorityImpactPreview) before Confirm is enabled, and commit with
+// the preview's digest.
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../shared/ui/primitives";
 import { Field, FormError } from "../../shared/ui/form";
-import ConfirmDialog from "../../shared/ui/ConfirmDialog.jsx";
+import { AuthorityChangeDialog } from "./AuthorityImpactPreview.jsx";
 import { adminControlPlaneClient, refusalText } from "../../services/adminControlPlaneClient.js";
 import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
@@ -146,28 +151,29 @@ export default function ObjectAuthorityMatrix({ api = adminControlPlaneClient, i
   const grid = useMemo(() => (matrix.data && roles.data ? objectAuthorityGrid(matrix.data, roles.data) : null), [matrix.data, roles.data]);
   const [editing, setEditing] = useState(false);
   const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(null);
+  // A change is in flight exactly while its confirmation is open (the dialog owns the commit and its submitting state).
   const [outcome, setOutcome] = useState(null);
   const [onlyHolders, setOnlyHolders] = useState(false);
   const [bulk, setBulk] = useState(null); // { role, mode, plan }
+  const [single, setSingle] = useState(null); // { role, action, held } -- the cell change awaiting preview + confirm
   const objectLabel = matrix.data?.label ?? objects.find((o) => o.key === chosen)?.label ?? titleCase(chosen ?? "");
 
   const needReason = () => { if (reason.trim().length < 4) { setOutcome({ error: "State the reason for this change first — it is recorded in the audit trail." }); return true; } return false; };
-  const toggle = async (role, action, held) => {
+  // ONE click no longer commits: it opens the cell's confirmation, where the server's preview must precede Confirm.
+  const toggle = (role, action, held) => {
     if (needReason()) return;
-    setBusy(`${role.key}:${action.actionKey}`);
-    const req = { objectKey: chosen, actionKey: action.actionKey, roleKey: role.key, reason: reason.trim() };
-    const res = held ? await api.revokeObjectActionFromRole(req) : await api.grantObjectActionToRole(req);
-    setBusy(null);
+    setOutcome(null);
+    setSingle({ role, action, held });
+  };
+  const singleDone = (res) => {
+    const { role, action, held } = single;
+    setSingle(null);
     setOutcome(res.ok ? { ok: `${held ? "Revoked" : "Granted"} ${action.label} ${held ? "from" : "to"} ${role.name}.` } : { error: refusalText(res) });
     matrix.reload();
   };
   const openBulk = (role, mode) => { setOutcome(null); setBulk({ role, mode, plan: bulkPlan(grid, role.key, mode) }); };
-  const applyBulk = async (bulkReason) => {
+  const bulkDone = (res) => {
     const { role, mode } = bulk;
-    setBusy(`${role.key}:*`);
-    const res = await api.applyObjectWideRoleAuthority({ objectKey: chosen, roleKey: role.key, mode, reason: bulkReason });
-    setBusy(null);
     setBulk(null);
     if (!res.ok) setOutcome({ error: refusalText(res) });
     else {
@@ -281,7 +287,7 @@ export default function ObjectAuthorityMatrix({ api = adminControlPlaneClient, i
                     return (
                       <td key={a.actionKey} data-cell={`${r.key}:${a.actionKey}`} data-held={c.held ? "true" : "false"} data-state={c.locked ? "UNAVAILABLE" : c.held ? "GRANTED" : "NOT_GRANTED"}>
                         {editing && !c.locked ? (
-                          <input type="checkbox" className="fo-objmatrix__check" checked={c.held} disabled={busy !== null}
+                          <input type="checkbox" className="fo-objmatrix__check" checked={c.held} disabled={single !== null || bulk !== null}
                             aria-label={name} title={c.condition ? `Conditioned: ${JSON.stringify(c.condition.condition ?? c.condition)}` : c.source ?? ""}
                             onChange={() => toggle(r, a, c.held)} />
                         ) : (
@@ -295,7 +301,7 @@ export default function ObjectAuthorityMatrix({ api = adminControlPlaneClient, i
                   })}
                   {editing ? (
                     <td className="fo-objmatrix__actions">
-                      <RoleActionsMenu role={r} disabled={busy !== null} canRevoke={r.cells.some((c) => c.held && !c.locked)} onChoose={(mode) => openBulk(r, mode)} />
+                      <RoleActionsMenu role={r} disabled={single !== null || bulk !== null} canRevoke={r.cells.some((c) => c.held && !c.locked)} onChoose={(mode) => openBulk(r, mode)} />
                     </td>
                   ) : null}
                 </tr>
@@ -317,8 +323,27 @@ export default function ObjectAuthorityMatrix({ api = adminControlPlaneClient, i
           </dl>
         </details>
       ) : null}
+      {single ? (
+        <AuthorityChangeDialog
+          api={api}
+          operation={single.held ? "revokeObjectActionFromRole" : "grantObjectActionToRole"}
+          argsFor={(r) => ({ objectKey: chosen, actionKey: single.action.actionKey, roleKey: single.role.key, reason: r })}
+          title={`${single.held ? "Revoke" : "Grant"} ${single.action.label} — ${single.role.name}`}
+          destructive={single.held}
+          consequence={`${single.held ? "Revoke" : "Grant"} ${single.action.label} (${single.action.capabilityKey}) ${single.held ? "from" : "to"} ${single.role.name}.`}
+          confirmLabel={single.held ? "Confirm Revoke" : "Confirm Grant"}
+          initialReason={reason.trim()}
+          reasonLabel="Reason for Change (Recorded in the Audit Trail)"
+          onResult={singleDone}
+          onClose={() => setSingle(null)}
+        />
+      ) : null}
       {bulk ? (
-        <ConfirmDialog
+        <AuthorityChangeDialog
+          api={api}
+          operation="applyObjectWideRoleAuthority"
+          argsFor={(r) => ({ objectKey: chosen, roleKey: bulk.role.key, mode: bulk.mode, reason: r })}
+          noChange={bulk.plan.change.length === 0}
           title={`${bulk.mode === "GRANT" ? "Grant" : "Revoke"} All Listed Actions — ${bulk.role.name}`}
           destructive={bulk.mode === "REVOKE"}
           consequence={bulk.plan.change.length === 0
@@ -335,10 +360,8 @@ export default function ObjectAuthorityMatrix({ api = adminControlPlaneClient, i
             </span>
           )}
           confirmLabel={bulk.mode === "GRANT" ? `Grant ${bulk.plan.change.length}` : `Revoke ${bulk.plan.change.length}`}
-          cancelLabel="Cancel"
-          requireReason
           reasonLabel="Reason (Recorded in the Audit Trail)"
-          onConfirm={async (bulkReason) => { if (bulk.plan.change.length === 0) { setBulk(null); return; } await applyBulk(bulkReason); }}
+          onResult={bulkDone}
           onClose={() => setBulk(null)}
         />
       ) : null}

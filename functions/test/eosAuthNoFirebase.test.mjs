@@ -48,7 +48,9 @@ test("15. no module on the EOS identity path imports a Firebase, Google or JWT p
 test("15. the EOS verifier/issuer modules use only node: built-ins and each other (no new dependency)", () => {
   for (const file of EOS_AUTH_SRC) {
     for (const s of specifiersOf(read(file))) {
-      assert.ok(s.startsWith("node:") || s.startsWith("./") || s.startsWith("../adminPolicy/"), `${file}: unexpected dependency '${s}'`);
+      // `pg`: the EOS native login service (2026-10-11) reads and writes its tables over the EXISTING pool -- the
+      // package every PostgreSQL module already uses, not a new dependency.
+      assert.ok(s.startsWith("node:") || s.startsWith("./") || s.startsWith("../adminPolicy/") || s === "pg", `${file}: unexpected dependency '${s}'`);
     }
   }
   const pkg = JSON.parse(read("functions/package.json"));

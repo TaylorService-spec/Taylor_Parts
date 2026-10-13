@@ -28,6 +28,7 @@ import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ConditionFields, GrantCellControls, GrantCellFacts, Outcome, ReasonField } from "./GrantControls.jsx";
 import { buildCondition, matrixActionRows, statedReason } from "./controlPlaneModel.js";
 import { useConditionVocabulary } from "./useConditionVocabulary.js";
+import { AuthorityImpactPreview, useAuthorityImpactPreview, withPreviewDigest } from "./AuthorityImpactPreview.jsx";
 import { titleCase } from "../../shared/display/displayLabels.js";
 
 export function ReadState({ read, what }) {
@@ -170,14 +171,14 @@ export function GrantToRoleForm({ api, objectKey, actionKey, capabilityKey, role
   const spec = vocabulary?.kinds?.find((k) => k.kind === condition.kind) ?? null;
   const built = condition.kind ? buildCondition(spec, condition) : null;
   const ready = Boolean(roleKey) && Boolean(statedReason(reason)) && (!condition.kind || Boolean(built));
+  const change = { objectKey, actionKey, roleKey, reason: statedReason(reason), ...(built ? { condition: built } : {}) };
+  const preview = useAuthorityImpactPreview(api, open ? "grantObjectActionToRole" : null, change);
 
   const submit = async (event) => {
     event.preventDefault();
-    if (!ready || busy) return;
+    if (!ready || busy || !preview.canConfirm) return;
     setBusy(true);
-    const outcome = await api.grantObjectActionToRole({
-      objectKey, actionKey, roleKey, reason: statedReason(reason), ...(built ? { condition: built } : {}),
-    });
+    const outcome = preview.settle(await api.grantObjectActionToRole(withPreviewDigest(change, preview)));
     setBusy(false);
     setResult(outcome);
     if (outcome?.ok) { setOpen(false); setRoleKey(""); setReason(""); setCondition({ kind: "" }); onChanged?.(); }
@@ -200,7 +201,8 @@ export function GrantToRoleForm({ api, objectKey, actionKey, capabilityKey, role
           </label>
           <ConditionFields value={condition} onChange={setCondition} vocabulary={vocabulary} capabilityKey={capabilityKey} allowNone idPrefix={`new-${actionKey}`} />
           <ReasonField value={reason} onChange={setReason} />
-          <Button type="submit" variant="primary" disabled={!ready || busy}>Confirm Grant</Button>
+          <AuthorityImpactPreview preview={preview} disabled={!ready || busy} />
+          <Button type="submit" variant="primary" disabled={!ready || busy || !preview.canConfirm}>Confirm Grant</Button>
         </form>
       ) : null}
       <Outcome result={result} success="Granted by the server; re-reading." />

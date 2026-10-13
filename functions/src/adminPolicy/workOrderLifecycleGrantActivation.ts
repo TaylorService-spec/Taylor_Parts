@@ -49,6 +49,7 @@
 // in this repository.
 import { requireSecurityAdministrationCapability } from "./administrationCapabilityGate";
 import { grantObjectActionToRole, type AdminActor } from "./policyCommands";
+import { machineAppliedRepository, type MachineAuthorityManifest } from "./authorityChangeCommitPort";
 import type { PolicyRepository } from "./policyRepository";
 import type { RoleCapabilityRecord } from "./types";
 
@@ -77,6 +78,16 @@ export const WORK_ORDER_LIFECYCLE_ACTIVATION_GRANTS: readonly LifecycleActivatio
   Object.freeze({ objectKey: WORK_ORDER_OBJECT_KEY, actionKey: "cancel", roleKey: "dispatcher" }),
   Object.freeze({ objectKey: WORK_ORDER_OBJECT_KEY, actionKey: "complete", roleKey: "technician" }),
 ]);
+
+/**
+ * MANDATORY-PREVIEW CARVE-OUT (PR 4, authorityChangeCommitPort.ts): this runner calls the command directly, so every
+ * audit row it writes is marked MACHINE_APPLIED with this manifest's digest. Previewing it is a listed follow-up.
+ */
+export const WORK_ORDER_LIFECYCLE_ACTIVATION_MANIFEST: MachineAuthorityManifest = Object.freeze({
+  manifestId: "workOrderLifecycleGrantActivation",
+  ruling: "Owner ruling B (Work Order lifecycle grants, NONPROD)",
+  changes: WORK_ORDER_LIFECYCLE_ACTIVATION_GRANTS,
+});
 
 /** ADMIN_REVOKED: an administrator revoked the pair through Administration; the activation yields. */
 export type ActivationRowStatus = "PROPOSED" | "APPLIED" | "ALREADY_GRANTED" | "ADMIN_REVOKED";
@@ -172,7 +183,7 @@ export async function activateWorkOrderLifecycleGrants(
     // THE GOVERNED COMMAND, not a repository write: it re-checks the admin-only authority, re-resolves
     // (objectKey, actionKey) against the canonical metadata, proves the Object is registered in THIS
     // tenant, and appends the audit event inside the same transaction as the grant.
-    const written: RoleCapabilityRecord = await grantObjectActionToRole(repo, actor, {
+    const written: RoleCapabilityRecord = await grantObjectActionToRole(machineAppliedRepository(repo, WORK_ORDER_LIFECYCLE_ACTIVATION_MANIFEST), actor, {
       objectKey: grant.objectKey,
       actionKey: grant.actionKey,
       roleKey: grant.roleKey,

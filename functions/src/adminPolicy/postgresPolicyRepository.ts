@@ -429,8 +429,11 @@ export class PostgresPolicyRepository implements PolicyRepository {
   /**
    * @param pool a SHARED, long-lived pool. See policyDatabase.ts -- one per process, never per
    *             request. This adapter never constructs one, so it cannot accidentally make a second.
+   *             TYPE-ONLY widening (grant-impact preview, PR 3): only `query` and `connect` are ever used, so the
+   *             Administration preview can hand the adapter its single-connection simulation (authorityChangePreview.ts),
+   *             where every read and every `transact` lands on ONE rolled-back transaction. Deployed callers pass the Pool.
    */
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pick<Pool, "query" | "connect">) {}
 
   async transact<T>(actor: PolicyActor, fn: (tx: PolicyTransaction) => Promise<T>): Promise<T> {
     if (!actor?.tenantId) throw new PolicyStoreError("a tenant is required");
@@ -842,7 +845,7 @@ export class PostgresPolicyRepository implements PolicyRepository {
 
 // ════════════════════ the transaction ════════════════════
 
-function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransaction {
+export function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransaction {
   const tenantId = actor.tenantId;
   const q = client as unknown as Queryable;
 

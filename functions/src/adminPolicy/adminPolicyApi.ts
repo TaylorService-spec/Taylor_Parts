@@ -39,6 +39,10 @@
 // to change, and returns what was PERSISTED rather than what was requested. A UI that optimistically
 // showed success would be showing the user their own request back.
 import {
+  LOGIN_ADMINISTRATION_OPERATIONS, LoginRefusal, isLoginAdministrationOperation,
+  type LoginAdministrationHandler, type LoginAdministrationOperation,
+} from "../eosAuth/eosLoginService";
+import {
   createCustomField,
   createRole,
   updateObjectMetadata,
@@ -106,6 +110,18 @@ import type {
 } from "./types";
 import { hasProtectedAdministratorStanding, isImpliedForProtectedAdministrator, protectedAdministratorImpliedKeys } from "./protectedAdministrator";
 import { ADMIN_ROLE_KEY, isDesignatedAdministratorRole } from "./administrationAuthority";
+import {
+  AUTHORITY_CHANGE_GATE,
+  isAuthorityChangeOperation,
+  type AuthorityChangeOperation,
+  type AuthorityChangeSimulator,
+  type AuthorityChangeSubject,
+} from "./authorityChangePreviewPort";
+import {
+  AuthorityPreviewRefusal,
+  PREVIEW_DIGEST_PATTERN,
+  type AuthorityChangeCommitter,
+} from "./authorityChangeCommitPort";
 
 // ════════════════════ the closed operation list ════════════════════
 
@@ -205,18 +221,35 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
 
 export type AdminReadOperation = (typeof ADMIN_READ_OPERATIONS)[number];
 export type AdminMutationOperation = (typeof ADMIN_MUTATION_OPERATIONS)[number];
-export type AdminOperation = AdminReadOperation | AdminMutationOperation | AdminConfigurationOperation;
+/**
+ * A FOURTH closed table: the grant-impact PREVIEW (PR 3, advisory). Read-only -- it writes no audit event and nothing
+ * survives it -- but it is on neither list above, because its gate is not a surface read: it is the PREVIEWED COMMAND's
+ * own capability gate (a principal who could not commit the change learns nothing about it), plus
+ * admin.principalAccess.read for per-principal detail. See authorityChangePreviewPort.ts.
+ */
+export const ADMIN_PREVIEW_OPERATIONS = Object.freeze(["previewAuthorityChange"] as const);
+export type AdminPreviewOperation = (typeof ADMIN_PREVIEW_OPERATIONS)[number];
+
+export type AdminOperation = AdminReadOperation | AdminMutationOperation | AdminConfigurationOperation | AdminPreviewOperation
+  | LoginAdministrationOperation;
 
 const READS = new Set<string>(ADMIN_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(ADMIN_MUTATION_OPERATIONS);
 
 // A THIRD, closed table (configurationOperations.ts): operational configuration gated by its own
 // capability. Its entries are on neither list above, so every pin of those lists is unchanged.
+// A FOURTH, closed table (eosAuth/eosLoginService.ts): login-account security administration -- EOS native identity.
+// Gated inside the service on each operation's own existing key (LOGIN_ADMINISTRATION_OPERATIONS: roleAssignment.write /
+// credentialReset.initiate / userStatus.write; admin.principalAccess.read for the read),
+// and on neither list above, so every pin of those lists is unchanged.
 export const isAdminOperation = (name: unknown): name is AdminOperation =>
-  typeof name === "string" && (READS.has(name) || MUTATIONS.has(name) || isAdminConfigurationOperation(name));
+  typeof name === "string" && (READS.has(name) || MUTATIONS.has(name) || isAdminConfigurationOperation(name)
+    || (ADMIN_PREVIEW_OPERATIONS as readonly string[]).includes(name)
+    || isLoginAdministrationOperation(name));
 
 export const isMutation = (name: AdminOperation): boolean =>
-  MUTATIONS.has(name) || (isAdminConfigurationOperation(name) && ADMIN_CONFIGURATION_OPERATIONS[name].mutation);
+  MUTATIONS.has(name) || (isAdminConfigurationOperation(name) && ADMIN_CONFIGURATION_OPERATIONS[name].mutation)
+  || (isLoginAdministrationOperation(name) && LOGIN_ADMINISTRATION_OPERATIONS[name].mutation);
 
 const WORKFLOW_OPERATIONS = new Set<string>([...WORKFLOW_READ_OPERATIONS, ...WORKFLOW_MUTATION_OPERATIONS]);
 const isWorkflowOperation = (name: AdminOperation): name is AdminOperation & WorkflowOperation => WORKFLOW_OPERATIONS.has(name);
@@ -341,6 +374,8 @@ export type AdminApiFailureCode =
   | "INVALID_INPUT"
   | "NOT_FOUND"
   | "CONFLICT"
+  // MANDATORY PREVIEW (PR 4): an authority change sent without the preview it requires (HTTP 428).
+  | "PRECONDITION_REQUIRED"
   | "INTERNAL";
 
 export interface AdminApiSuccess<T = unknown> {
@@ -394,6 +429,21 @@ export interface AdminApiDeps {
    * the shared pool. Absent, every configuration operation refuses; there is no repository fallback.
    */
   readonly configuration?: ConfigurationOperationHandler;
+  /** Login-account security administration (EOS native identity), composed by the server when the front door is. */
+  readonly loginAdministration?: LoginAdministrationHandler;
+  /**
+   * The grant-impact preview simulator (eosOps/authorityChangePreview.ts), composed by the server over the shared pool.
+   * Absent, previewAuthorityChange refuses; there is no repository-only fallback.
+   */
+  readonly previewAuthorityChange?: AuthorityChangeSimulator;
+  /**
+   * MANDATORY PREVIEW (PR 4, authorityChangeCommitPort.ts). The committer runs the nine authority changes as "the
+   * preview, ending in COMMIT" under the governance lock (eosOps/authorityChangeCommit.ts). Used whenever a commit
+   * presents a previewDigest, and for EVERY commit of the nine when `previewMandatory` is true.
+   */
+  readonly commitAuthorityChange?: AuthorityChangeCommitter;
+  /** ADMIN_PREVIEW_MANDATORY (adminPreviewMandatoryFrom). Absent / false: today's behaviour for a commit with no digest. */
+  readonly previewMandatory?: boolean;
 }
 
 /**
@@ -468,6 +518,16 @@ export async function executeAdminOperation<T = unknown>(
     // ════════════════════ OPERATIONAL CONFIGURATION ════════════════════
     // Gated on the operation's OWN capability, resolved by the same effective-access resolver as every
     // other gate -- never a Role name, never the security-administration invariant, never a surface read.
+    // ════════════════════ LOGIN-ACCOUNT ADMINISTRATION ════════════════════
+    // The service gates each operation itself (its own existing key; never self; an Owner's or Administrator's login only
+    // by an Owner; the account's own tenant only). Not composed -> refused, never a repository fallback.
+    if (isLoginAdministrationOperation(operation)) {
+      if (typeof deps.loginAdministration !== "function") {
+        return fail(operation, "NOT_FOUND", "EOS login administration is not enabled on this service");
+      }
+      const data = await deps.loginAdministration(operation, actor, input);
+      return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+    }
     if (isAdminConfigurationOperation(operation)) {
       const required = ADMIN_CONFIGURATION_OPERATIONS[operation].capability;
       const access = await resolvePrincipalEffectiveAccess(repo, actor.tenantId, actor.uid);
@@ -477,6 +537,26 @@ export async function executeAdminOperation<T = unknown>(
         // A stated reason, never the request id alone (as assignRole): requiredReason refuses a missing one.
         optionalString(input.reason) ? reason : null);
       return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+    }
+    // ════════════════════ THE GRANT-IMPACT PREVIEW (advisory, read-only) ════════════════════
+    // Gated on the PREVIEWED command's own capability, decided before any simulation; detail on principalAccess.read.
+    if (operation === "previewAuthorityChange") {
+      const data = await previewAuthorityChange(deps, actor, input, request.requestId);
+      return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+    }
+    // ════════════════════ THE MANDATORY PREVIEW (PR 4) ════════════════════
+    // Flag ON: every one of the nine commits through the engine. Flag OFF: a supplied previewDigest is IGNORED and
+    // stripped, and dispatch runs the command exactly as before (authorityChangeCommitPort.ts, THE FLAG).
+    if (isAuthorityChangeOperation(operation)) {
+      if (deps.previewMandatory === true) {
+        const data = await commitPreviewedAuthorityChange(deps, actor, operation, input, reason);
+        return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+      }
+      if ("previewDigest" in input) {
+        const { previewDigest: _ignored, ...today } = input;
+        const data = await dispatch(repo, actor, operation, today, reason);
+        return { ok: true, operation, tenantId: context.tenantId, data: data as T };
+      }
     }
     if (!isMutation(operation)) await requireAdminReadAuthority(repo, actor, operation as AdminReadOperation | AdminMutationOperation);
     const data = operation === "explainEffectiveAccess"
@@ -603,6 +683,121 @@ async function explain(deps: AdminApiDeps, actor: AdminActor, input: Record<stri
     // reported as not found rather than as a server fault.
     if (err instanceof PrincipalContextError) throw new NotFound(`principal has no effective access: ${err.refusal}`);
     throw err;
+  }
+}
+
+/**
+ * previewAuthorityChange {change: {operation, input}} -- ADVISORY, READ-ONLY (PR 3). Nothing here changes how any of the
+ * nine commands commits.
+ *
+ *   gate      the previewed command's OWN capability gate, decided here BEFORE any simulation (FORBIDDEN, no detail)
+ *   detail    admin.principalAccess.read (the getPrincipalEffectiveAccess authority) -> per-principal before/after;
+ *             otherwise counts only. Protected Owners / Administrators are deltas only (the simulator).
+ *   outcome   WOULD_APPLY | NO_OP | WOULD_REFUSE (with the SAME code and message the commit would return) | PREVIEW_BUSY
+ */
+async function previewAuthorityChange(
+  deps: AdminApiDeps,
+  actor: AdminActor,
+  input: Record<string, unknown>,
+  requestId: string | undefined,
+): Promise<unknown> {
+  const change = input.change;
+  if (!change || typeof change !== "object" || Array.isArray(change)) {
+    throw new PolicyValidationError("change is required: { operation, input }");
+  }
+  const operation = (change as Record<string, unknown>).operation;
+  if (!isAuthorityChangeOperation(operation)) {
+    throw new PolicyValidationError(`"${String(operation)}" is not a previewable authority change`);
+  }
+  const rawInput = (change as Record<string, unknown>).input ?? {};
+  if (typeof rawInput !== "object" || rawInput === null || Array.isArray(rawInput)) {
+    throw new PolicyValidationError("change.input must be an object");
+  }
+  const changeInput = rawInput as Record<string, unknown>;
+  // THE GATE, before anything is simulated or read about anybody else.
+  await requireSecurityAdministrationCapability(deps.repo, actor, AUTHORITY_CHANGE_GATE[operation]);
+  if (typeof deps.previewAuthorityChange !== "function") {
+    throw new Error("previewAuthorityChange is not composed on this server");
+  }
+  let detail = true;
+  try {
+    await requireAdminReadAuthority(deps.repo, actor, "getPrincipalEffectiveAccess");
+  } catch (err) {
+    if (!(err instanceof AdminReadDeniedError)) throw err;
+    detail = false;
+  }
+  const reason = withRequestId(changeInput.reason, requestId);
+  const result = await deps.previewAuthorityChange({
+    actor, operation, input: changeInput, subject: authorityChangeSubject(operation, changeInput), detail,
+    run: (simulated) => authorityCommand(simulated, actor, operation, changeInput, reason),
+  });
+  // EXACTLY what the commit would return (classify + messageFor): a raw database error is the commit's opaque INTERNAL,
+  // with no SQLSTATE, constraint name or other detail beyond it.
+  const refusal = result.outcome === "WOULD_REFUSE"
+    ? {
+      code: result.error instanceof AdministrationRefusal ? result.error.code : classify(result.error),
+      category: classify(result.error),
+      message: messageFor(result.error),
+    }
+    : null;
+  // previewMandatory (PR 4): whether a commit of this change must present digests.previewDigest on THIS server.
+  return { outcome: result.outcome, refusal, busy: result.busy, previewMandatory: deps.previewMandatory === true, ...result.report };
+}
+
+/**
+ * A previewed commit of one of the nine (PR 4). Order: the command's own capability gate (a principal who could not
+ * commit learns nothing, not even that a preview is required) -> PREVIEW_REQUIRED -> PREVIEW_INVALID -> the engine,
+ * which recomputes the preview under the governance lock and answers STALE_PREVIEW, the command's own refusal, or the
+ * command's own result.
+ */
+async function commitPreviewedAuthorityChange(
+  deps: AdminApiDeps,
+  actor: AdminActor,
+  operation: AuthorityChangeOperation,
+  input: Record<string, unknown>,
+  reason: string | null,
+): Promise<unknown> {
+  await requireSecurityAdministrationCapability(deps.repo, actor, AUTHORITY_CHANGE_GATE[operation]);
+  const { previewDigest, ...changeInput } = input;
+  if (previewDigest === undefined || previewDigest === null || previewDigest === "") {
+    throw new AuthorityPreviewRefusal("PREVIEW_REQUIRED",
+      `${operation} changes authority and requires a fresh previewAuthorityChange; send its digests.previewDigest as previewDigest`);
+  }
+  if (typeof previewDigest !== "string" || !PREVIEW_DIGEST_PATTERN.test(previewDigest)) {
+    throw new AuthorityPreviewRefusal("PREVIEW_INVALID", "previewDigest must be the 64-character digests.previewDigest of a previewAuthorityChange");
+  }
+  if (typeof deps.commitAuthorityChange !== "function") {
+    throw new Error("commitAuthorityChange is not composed on this server");
+  }
+  return deps.commitAuthorityChange({
+    actor, operation, input: changeInput, previewDigest,
+    run: (r) => authorityCommand(r, actor, operation, changeInput, reason),
+  });
+}
+
+/** Whose holdings the change is about (counting only). Never throws: a malformed input is the command's to refuse. */
+function authorityChangeSubject(operation: AuthorityChangeOperation, input: Record<string, unknown>): AuthorityChangeSubject | null {
+  const text = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
+  switch (operation) {
+    case "assignRole": {
+      const roleId = text(input.roleId); const principalId = text(input.principalId);
+      return roleId && principalId ? { kind: "ROLE_ID", roleId, principalId } : null;
+    }
+    case "revokeRole": {
+      const assignmentId = text(input.assignmentId);
+      return assignmentId ? { kind: "ASSIGNMENT", assignmentId } : null;
+    }
+    case "grantObjectActionToPrincipal":
+    case "revokeObjectActionFromPrincipal": {
+      const principalId = text(input.principalId);
+      return principalId ? { kind: "PRINCIPAL", principalId } : null;
+    }
+    default: {
+      const roleKey = text(input.roleKey);
+      const principalId = text(input.principalId);
+      if (roleKey) return { kind: "ROLE_KEY", roleKey };
+      return principalId ? { kind: "PRINCIPAL", principalId } : null;
+    }
   }
 }
 
@@ -888,6 +1083,122 @@ async function dispatch(
         reason,
       });
 
+    // The nine AUTHORITY-CHANGING commands: one mapping, shared VERBATIM with the grant-impact preview
+    // (previewAuthorityChange), so the preview simulates exactly the input normalization a commit applies.
+    case "grantObjectActionToRole":
+    case "revokeObjectActionFromRole":
+    case "applyObjectWideRoleAuthority":
+    case "setGrantCondition":
+    case "retireGrantCondition":
+    case "grantObjectActionToPrincipal":
+    case "revokeObjectActionFromPrincipal":
+    case "assignRole":
+    case "revokeRole":
+      return authorityCommand(repo, actor, operation, input, reason);
+
+    case "setTenantSalesChannelStatus":
+      return setTenantSalesChannelStatus(repo, actor, {
+        salesChannel: requireString(input.salesChannel, "salesChannel"),
+        status: requireString(input.status, "status"),
+        reason: optionalString(input.reason) ? reason : null,
+      });
+
+    case "previewAuthorityChange":
+      // Served above, before the read gate: its gate is the previewed command's own (authorityChangePreviewPort.ts).
+      throw new Error("previewAuthorityChange is not a repository read");
+
+    // Workflow operations are dispatched by workflowAdminApi before this switch is reached.
+    case "listWorkflows":
+    case "readWorkflowVersion":
+    case "validateWorkflowVersion":
+    case "listWorkflowInstances":
+    case "readWorkflowHistory":
+    case "listPrincipalWorkflowResponsibilities":
+    case "readMyWorkflowAdministration":
+    case "listWorkflowActionRoleHolders":
+    case "createWorkflowDraft":
+    case "createWorkflowVersion":
+    case "updateWorkflowDefinition":
+    case "setWorkflowRoleBinding":
+    case "publishWorkflowVersion":
+    case "activateWorkflowVersion":
+    case "retireWorkflowVersion":
+    case "startWorkflowInstance":
+    case "adoptRecordsIntoWorkflowVersion":
+    case "migrateWorkflowInstances":
+      throw new Error(`${operation} is a workflow operation`);
+
+    // Operational configuration is served above, on its own capability, before this dispatcher.
+    case "listMobileLocationScopeBindings":
+    case "readMobileLocationScopeBinding":
+    case "setMobileLocationScopeBinding":
+    case "removeMobileLocationScopeBinding":
+    case "listWarehouses":
+    case "listWarehouseBins":
+    case "createWarehouse":
+    case "updateWarehouse":
+    case "setWarehouseStatus":
+    case "createBin":
+    case "relabelBin":
+    case "setBinStatus":
+    case "listTrucks":
+    case "readTruck":
+    case "listMobileLocations":
+    case "createMobileLocation":
+    case "createTruck":
+    case "linkTruck":
+    case "relinkTruck":
+    case "unlinkTruck":
+    case "changeTruckStatus":
+    case "listAccountingDestinations":
+    case "configureAccountingDestination":
+    case "setAccountingDestinationStatus":
+    case "listCounterpartyPaymentTerms":
+    case "setCounterpartyPaymentTerms":
+    case "listSystemConfiguration":
+    case "setSystemConfigurationSetting":
+    case "listSalesDiscountAuthorities":
+    case "setSalesDiscountAuthority":
+      throw new Error(`${operation} is a configuration operation`);
+
+    // Login-account administration is served above, by the composed login service, before this dispatcher.
+    case "readLoginAccount":
+    case "provisionLoginAccount":
+    case "reissueLoginEnrollment":
+    case "issueLoginReset":
+    case "setLoginAccountStatus":
+    case "unlockLoginAccount":
+    case "revokeLoginSessions":
+    case "resetLoginMfa":
+    case "setLoginMfaRequirement":
+    case "retireLoginAccount":
+    case "readAuthenticationEvents":
+    case "planAuthenticationEventArchive":
+    case "setAuthenticationEventRetention":
+      throw new Error(`${operation} is a login administration operation`);
+
+    default: {
+      // Exhaustiveness: adding an operation to the list without handling it fails to compile,
+      // rather than becoming a runtime "unknown operation" nobody notices until a user hits it.
+      const never: never = operation;
+      throw new Error(`unhandled operation ${String(never)}`);
+    }
+  }
+}
+
+/**
+ * The nine authority-changing commands, mapped from an Administration request exactly as `dispatch` maps them. Moved
+ * here VERBATIM (PR 3) so `dispatch` (the commit path, unchanged in behaviour) and `previewAuthorityChange` (the
+ * simulation) cannot normalize the same request two ways.
+ */
+async function authorityCommand(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  operation: AuthorityChangeOperation,
+  input: Record<string, unknown>,
+  reason: string | null,
+): Promise<unknown> {
+  switch (operation) {
     case "grantObjectActionToRole":
       // The reason must be STATED by the administrator; the request id alone is not a reason.
       return grantObjectActionToRole(repo, actor, {
@@ -961,13 +1272,6 @@ async function dispatch(
         reason: optionalString(input.reason) ? reason : null,
       });
 
-    case "setTenantSalesChannelStatus":
-      return setTenantSalesChannelStatus(repo, actor, {
-        salesChannel: requireString(input.salesChannel, "salesChannel"),
-        status: requireString(input.status, "status"),
-        reason: optionalString(input.reason) ? reason : null,
-      });
-
     case "assignRole":
       // MEMBERSHIP, and IDEMPOTENCE, are enforced in the COMMAND -- next to the transaction, so a
       // caller that bypasses this dispatcher gets the same answer. They were briefly checked here
@@ -991,66 +1295,9 @@ async function dispatch(
         reason: optionalString(input.reason) ? reason : null,
         requireStatedReason: true,
       });
-
-    // Workflow operations are dispatched by workflowAdminApi before this switch is reached.
-    case "listWorkflows":
-    case "readWorkflowVersion":
-    case "validateWorkflowVersion":
-    case "listWorkflowInstances":
-    case "readWorkflowHistory":
-    case "listPrincipalWorkflowResponsibilities":
-    case "readMyWorkflowAdministration":
-    case "listWorkflowActionRoleHolders":
-    case "createWorkflowDraft":
-    case "createWorkflowVersion":
-    case "updateWorkflowDefinition":
-    case "setWorkflowRoleBinding":
-    case "publishWorkflowVersion":
-    case "activateWorkflowVersion":
-    case "retireWorkflowVersion":
-    case "startWorkflowInstance":
-    case "adoptRecordsIntoWorkflowVersion":
-    case "migrateWorkflowInstances":
-      throw new Error(`${operation} is a workflow operation`);
-
-    // Operational configuration is served above, on its own capability, before this dispatcher.
-    case "listMobileLocationScopeBindings":
-    case "readMobileLocationScopeBinding":
-    case "setMobileLocationScopeBinding":
-    case "removeMobileLocationScopeBinding":
-    case "listWarehouses":
-    case "listWarehouseBins":
-    case "createWarehouse":
-    case "updateWarehouse":
-    case "setWarehouseStatus":
-    case "createBin":
-    case "relabelBin":
-    case "setBinStatus":
-    case "listTrucks":
-    case "readTruck":
-    case "listMobileLocations":
-    case "createMobileLocation":
-    case "createTruck":
-    case "linkTruck":
-    case "relinkTruck":
-    case "unlinkTruck":
-    case "changeTruckStatus":
-    case "listAccountingDestinations":
-    case "configureAccountingDestination":
-    case "setAccountingDestinationStatus":
-    case "listCounterpartyPaymentTerms":
-    case "setCounterpartyPaymentTerms":
-    case "listSystemConfiguration":
-    case "setSystemConfigurationSetting":
-    case "listSalesDiscountAuthorities":
-    case "setSalesDiscountAuthority":
-      throw new Error(`${operation} is a configuration operation`);
-
     default: {
-      // Exhaustiveness: adding an operation to the list without handling it fails to compile,
-      // rather than becoming a runtime "unknown operation" nobody notices until a user hits it.
       const never: never = operation;
-      throw new Error(`unhandled operation ${String(never)}`);
+      throw new Error(`unhandled authority change ${String(never)}`);
     }
   }
 }
@@ -1302,6 +1549,10 @@ function withRequestId(reason: unknown, requestId: string | undefined): string |
 
 function classify(err: unknown): AdminApiFailureCode {
   if (err instanceof AdministrationDeniedError) return "FORBIDDEN";
+  // MANDATORY PREVIEW (PR 4): the code rides in the message (`STALE_PREVIEW: ...`), like every AdministrationRefusal.
+  if (err instanceof AuthorityPreviewRefusal) {
+    return err.code === "PREVIEW_REQUIRED" ? "PRECONDITION_REQUIRED" : err.code === "PREVIEW_INVALID" ? "INVALID_INPUT" : "CONFLICT";
+  }
   // A missing READ capability is a refusal about authority, exactly like a missing write authority
   // -- never a 404 and never a 500, so a caller cannot tell "you may not" from "it is not there".
   if (err instanceof AdminReadDeniedError) return "FORBIDDEN";
@@ -1322,6 +1573,12 @@ function classify(err: unknown): AdminApiFailureCode {
       ? "INVALID_INPUT" : "CONFLICT";
   }
   if (err instanceof PolicyValidationError) return "INVALID_INPUT";
+  if (err instanceof LoginRefusal) {
+    if (err.code === "FORBIDDEN" || err.code === "SELF_ADMINISTRATION" || err.code === "PROTECTED_TARGET") return "FORBIDDEN";
+    if (err.code === "NOT_FOUND") return "NOT_FOUND";
+    if (err.code === "CONFLICT") return "CONFLICT";
+    return "INVALID_INPUT";
+  }
   const name = (err as { constructor?: { name?: string } })?.constructor?.name;
   // A store refusal is a conflict with what is already there -- a duplicate key, an immutable
   // published version -- rather than a malformed request.
