@@ -24,7 +24,7 @@ afterEach(cleanup);
 const holding = (...ids) => (id) => ids.includes(id);
 const RECEIVER = holding("inventory.stock.receive");
 const EVERYTHING = holding(
-  "inventory.stock.receive", "inventory.placement.record", "inventory.location.bin.read",
+  "inventory.stock.receive", "inventory.placement.record", "inventory.stock.relocate", "warehouse.record.read",
   "inventory.cycleCount.create", "inventory.cycleCount.submit",
   "inventory.transfer.dispatch", "inventory.transfer.receive", "inventory.returns.intake",
 );

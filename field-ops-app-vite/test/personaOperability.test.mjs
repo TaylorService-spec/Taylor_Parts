@@ -16,6 +16,14 @@
 // role-based. Everything else is capability-derived, which is what lets a Parts Associate reach a
 // warehouse workflow at all.
 //
+// ============================ P1-2 (2026-10-13): NO LONGER THE SCAN AUTHORITY ============================
+//
+// The Scan workspace now answers from the caller's EOS capability set (resolveMyCapabilities), not from
+// the Firebase role model transcribed below. The per-persona Scan list against the EOS baseline is
+// test/inventoryScanPersonaWorkflows.test.mjs. This file still proves the DERIVATION's invariants over a
+// role-shaped input; where a cell depended on the retired `inventory.location.bin.read` gate it now
+// says so instead of asserting a floor job this transcription can no longer grant.
+//
 // ============================ THE HEADLINE ============================
 //
 // Every warehouse and parts persona currently reaches NOTHING but lookup. Not because the workflows
@@ -112,6 +120,9 @@ const COMPATIBILITY_CAPABILITIES = Object.freeze({
     "inventory.stock.receive", "inventory.transfer.dispatch", "inventory.transfer.receive",
     "inventory.cycleCount.create", "inventory.cycleCount.submit",
     "inventory.placement.record", "inventory.location.bin.read",
+    // P1-2: bin lookup (warehouse.record.read OR inventory.transaction.read) replaced bin.read as the
+    // Put away / Pick / Move stock read; admin holds both (compatibilityRoles.ts, and in PostgreSQL).
+    "warehouse.record.read", "inventory.transaction.read",
     // RETURN_INTAKE joined SCAN_WORKFLOW when recordReturnIntake became a deployed, granted
     // authority. Admin holds inventory.returns.intake in the governed catalog, so the compatibility
     // transcription must say so too -- otherwise this file describes a narrower admin than exists.
@@ -204,8 +215,10 @@ test("THE HEADLINE: every warehouse and parts persona can now do the floor job",
   for (const persona of ["partsAssociate", "partsManager", "warehouseAssociate", "warehouseManager"]) {
     const m = operability(persona, { receivingReady: true });
     assert.equal(m[SCAN_WORKFLOW.LOOKUP], VISIBLE, `${persona} should reach lookup`);
-    assert.equal(m[SCAN_WORKFLOW.PUT_AWAY], VISIBLE, `${persona} should be able to stow`);
-    assert.equal(m[SCAN_WORKFLOW.PICK], VISIBLE, `${persona} should be able to pick`);
+    // P1-2: Put away / Pick are no longer asserted here -- they need a bin lookup read (and Put away
+    // also inventory.stock.relocate), which the Firebase Roles transcribed above do not carry. What
+    // each persona is offered is now proven against the EOS baseline in
+    // test/inventoryScanPersonaWorkflows.test.mjs.
     // RECEIVING STAYS DENIED FOR ALL FOUR. Accepting stock is the separately deferred decision, and
     // no Role added by the promotion confers it.
     assert.equal(m[SCAN_WORKFLOW.SUPPLIER_RECEIVING], DENIED, `${persona} must NOT gain receiving`);
@@ -265,16 +278,19 @@ test("NO persona reaches a workflow whose capability it does not hold", () => {
     [SCAN_WORKFLOW.SUPPLIER_RECEIVING]: ["inventory.stock.receive"],
     [SCAN_WORKFLOW.TRANSFER]: ["inventory.transfer.dispatch", "inventory.transfer.receive"],
     [SCAN_WORKFLOW.CYCLE_COUNT]: ["inventory.cycleCount.create", "inventory.cycleCount.submit"],
-    [SCAN_WORKFLOW.PUT_AWAY]: ["inventory.placement.record", "inventory.location.bin.read"],
-    [SCAN_WORKFLOW.PICK]: ["inventory.placement.record", "inventory.location.bin.read"],
+    [SCAN_WORKFLOW.PUT_AWAY]: ["inventory.placement.record", "inventory.stock.relocate"],
+    [SCAN_WORKFLOW.PICK]: ["inventory.placement.record"],
+    [SCAN_WORKFLOW.MOVE_STOCK]: ["inventory.stock.relocate"],
   };
+  const BIN_LOOKUP = ["warehouse.record.read", "inventory.transaction.read"];
   for (const [persona, held] of Object.entries(PERSONA_CAPABILITIES)) {
     const m = operability(persona, { receivingReady: true });
     for (const [workflow, required] of Object.entries(CAPABILITY_FOR)) {
       if (m[workflow] !== VISIBLE) continue;
+      const needsBinLookup = [SCAN_WORKFLOW.PUT_AWAY, SCAN_WORKFLOW.PICK, SCAN_WORKFLOW.MOVE_STOCK].includes(workflow);
       const satisfied = workflow === SCAN_WORKFLOW.TRANSFER
         ? required.some((c) => held.includes(c))   // either end of a transfer is useful work
-        : required.every((c) => held.includes(c));
+        : required.every((c) => held.includes(c)) && (!needsBinLookup || BIN_LOOKUP.some((c) => held.includes(c)));
       assert.ok(satisfied, `${persona} reached ${workflow} without holding ${required.join(" + ")}`);
     }
   }

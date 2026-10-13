@@ -62,6 +62,7 @@ import { governedOpportunitySource } from "./access/opportunitySource.js";
 // Pass 11 Retail Sales: the Commercial screens are OFFERED controls from PostgreSQL (the authority that authorizes them),
 // not from the Firebase effective-access feed.
 import { useCommercialCapabilities } from "./hooks/useCommercialCapabilities.js";
+import { useInventoryScanCapabilities } from "./access/useInventoryScanCapabilities.js";
 import { OPPORTUNITY_WRITE_CAPABILITY } from "./access/opportunityCapabilityAccess.js";
 import { opportunityWriteReadiness } from "./access/opportunityWriteReadiness.js";
 const EquipmentWorkspace = lazy(() => import("./modules/equipment/EquipmentWorkspace"));
@@ -573,25 +574,22 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // desktop user is not demoted to a phone shell, and a phone user does not gain or lose a single
   // permission by rotating the device.
   if (domain.key === "service" && item.key === "technicianWorkspace") {
-    return <TechnicianWorkspaceSurface operationalContext={operationalContext} role={role} />;
+    return <TechnicianWorkspaceSurface role={role} />;
   }
   // THE WAREHOUSE / PARTS HANDHELD, composed for the device it is opened on -- the same rule the
   // technician workspace follows, for the same reason. Both branches reach the SAME governed
   // workflows and resolve capability identically on the server.
   if (domain.key === "inventory" && item.key === "warehouseWorkspace") {
-    return <WarehouseWorkspaceSurface operationalContext={operationalContext} role={role} />;
+    return <WarehouseWorkspaceSurface role={role} />;
   }
   // THE SHARED SCAN WORKSPACE (Phase E). Composes the two scanning journeys that exist -- the Phase D
   // supplier receiving journey and the existing technician PartsScanner -- and derives which of them
-  // to offer from the TRUSTED effective-access feed already threaded through operationalContext,
-  // never from a role name. FieldMode still composes PartsScanner itself, so the technician journey
-  // is not moved, only additionally reachable.
+  // to offer from the caller's EOS capabilities (P1-2: access/useInventoryScanCapabilities.js, the
+  // authority the scan commands authorize from), never from a role name and never from the shell's
+  // Firebase feed. FieldMode still composes PartsScanner itself, so the technician journey is not
+  // moved, only additionally reachable.
   if (domain.key === "service" && item.key === "scan") {
-    return (
-      <ScanWorkspace
-        deps={{ hasCapability: operationalContext?.hasCapability, role }}
-      />
-    );
+    return <ScanWorkspaceSurface role={role} />;
   }
   // Sprint 2.1.1 -- Inventory Domain Foundation. "Parts" now renders
   // the real Inventory workspace; the legacy demo Inventory.jsx it
@@ -914,11 +912,29 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
  * shell genuinely UNMOUNTS at desktop widths: a hidden-but-mounted shell would still hold an offline
  * runtime, still sit in the tab order, and still run its effects.
  */
-function TechnicianWorkspaceSurface({ operationalContext, role }) {
+function TechnicianWorkspaceSurface({ role }) {
   // Truck Inventory activation (2026-10-01, Package G): the phone Scan tab gets the same trusted capability gate and role
   // the desktop scanner has, so a Technician's truck workflows (receive into the truck, look up a Part) are offered.
-  const scanDeps = { hasCapability: operationalContext?.hasCapability, role };
+  // P1-2: that gate is the caller's EOS capability set, not the shell's Firebase feed.
+  const { hasCapability } = useScanCapabilityGate();
+  const scanDeps = { hasCapability, role };
   return useIsPhone() ? <TechnicianShell deps={{ scan: scanDeps }} /> : <FieldMode />;
+}
+
+/**
+ * P1-2 WAREHOUSE SCAN. The ONE capability source every Scan mount uses: the caller's own EOS capability set
+ * (resolveMyCapabilities, kept to the scan keys), fail closed. Never operationalContext.hasCapability -- that is the
+ * shell's Firebase feed, a different authority from the one the scan commands and the bin lookup authorize from.
+ */
+function useScanCapabilityGate() {
+  const { user } = useAuth();
+  return useInventoryScanCapabilities(user);
+}
+
+/** /service/scan. A component only because renderSubnavItem cannot call hooks. */
+function ScanWorkspaceSurface({ role }) {
+  const { hasCapability } = useScanCapabilityGate();
+  return <ScanWorkspace deps={{ hasCapability, role }} />;
 }
 
 /**
@@ -928,8 +944,9 @@ function TechnicianWorkspaceSurface({ operationalContext, role }) {
  * existing desktop entry point for these workflows, and inventing a second one here would be a
  * surface nobody asked for competing with the one people already use.
  */
-function WarehouseWorkspaceSurface({ operationalContext, role }) {
-  const deps = { hasCapability: operationalContext?.hasCapability, role };
+function WarehouseWorkspaceSurface({ role }) {
+  const { hasCapability } = useScanCapabilityGate();
+  const deps = { hasCapability, role };
   return useIsPhone() ? <WarehouseShell deps={deps} /> : <ScanWorkspace deps={deps} />;
 }
 

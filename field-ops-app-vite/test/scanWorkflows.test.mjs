@@ -7,7 +7,7 @@ import {
   deriveScanWorkflows, SCAN_WORKFLOW, UNAVAILABLE_REASON, RECEIVE_CAPABILITY,
   TRANSFER_DISPATCH_CAPABILITY, TRANSFER_RECEIVE_CAPABILITY,
   CYCLE_COUNT_CREATE_CAPABILITY, CYCLE_COUNT_SUBMIT_CAPABILITY,
-  PLACEMENT_RECORD_CAPABILITY, BIN_READ_CAPABILITY,
+  PLACEMENT_RECORD_CAPABILITY, STOCK_RELOCATE_CAPABILITY, WAREHOUSE_RECORD_READ_CAPABILITY,
   SCAN_WORKFLOW_LABEL, SCAN_WORKFLOW_DESCRIPTION, UNAVAILABLE_TEXT, unavailableText,
 } from "../src/access/scanWorkflows.js";
 
@@ -344,15 +344,16 @@ test("counting, transferring and receiving are three separate authorities", () =
 
 // ─────────────────────────────────────────── put-away (Phase L)
 
-test("put-away needs BOTH the placement authority and the bin CHECK", () => {
+test("put-away needs the placement AND relocate authority AND the bin CHECK (P1-2)", () => {
   // Without the read an operator could only stow into an unvalidated code, which is how stock gets
-  // recorded onto racking that does not exist.
-  for (const held of [[PLACEMENT_RECORD_CAPABILITY], [BIN_READ_CAPABILITY]]) {
-    const r = deriveScanWorkflows({ hasCapability: gate(...held) });
-    assert.equal(has(r, SCAN_WORKFLOW.PUT_AWAY), false, `${held.join()} alone must not offer put-away`);
+  // recorded onto racking that does not exist. Without relocate the command (relocateStock,
+  // recordPlacement:true) refuses.
+  const all = [PLACEMENT_RECORD_CAPABILITY, STOCK_RELOCATE_CAPABILITY, WAREHOUSE_RECORD_READ_CAPABILITY];
+  for (const missing of all) {
+    const r = deriveScanWorkflows({ hasCapability: gate(...all.filter((c) => c !== missing)) });
+    assert.equal(has(r, SCAN_WORKFLOW.PUT_AWAY), false, `put-away without ${missing} must not be offered`);
   }
-  const both = deriveScanWorkflows({ hasCapability: gate(PLACEMENT_RECORD_CAPABILITY, BIN_READ_CAPABILITY) });
-  assert.equal(has(both, SCAN_WORKFLOW.PUT_AWAY), true);
+  assert.equal(has(deriveScanWorkflows({ hasCapability: gate(...all) }), SCAN_WORKFLOW.PUT_AWAY), true);
 });
 
 test("stowing all day does NOT confer the authority to retire racking", () => {
