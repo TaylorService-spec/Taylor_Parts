@@ -50,6 +50,7 @@ A later full-history scan of the stash ancestry also matched `functions/authpr4/
 3. The KEEP and UNCERTAIN branches below are backed up. For each one, decide whether to open a PR, keep it as an archive, or delete it locally. The largest groups: `customer1/*` lane outputs (2026-09-04), `ext/*` and `int/a-correctness-register` (2026-09-13), `claude/bin-p6-*` (2026-09-10), `crm/client-cutover-postgres` (2026-09-16), `atlas/employee-v41-input`.
 4. The excluded artifacts exist only on this disk: credentials files, production detection tarballs, `Taylor-Migration-Evidence/`, `Users/`, `.certification/` and `.operator-access-intents/`. Decide where they will be kept outside git before any cleanup.
 5. `Claude Design Docs/` (16 MB of design-handoff zips and frames) is included in the main-checkout backup. Decide whether it belongs in the repo or in external storage.
+6. Confirm whether `executionModeToken` in `functions/authpr4/production-authorization.json` (on main since PR #460) is a credential. If it is, rotating it is a separate decision, because it is already in main history.
 
 ## Stashes, working trees and folders
 
