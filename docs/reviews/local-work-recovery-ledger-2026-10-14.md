@@ -41,6 +41,8 @@ Known limits: rule 2 ignores branch-only deletions. It can also call a branch SU
 
 A content scan ran over every blob in every pushed commit not already on a remote. It looked for private keys, `"private_key"`, AWS/GitHub/OpenAI/Slack/Google key shapes, quoted password/secret/token assignments and credentialed Postgres URLs. Every hit was reviewed and none is a secret: test fixtures in `ai/secure-private-keystone-ingress` (`cf-access-client-secret-test...`) and `claude/bin-p6-multiscan` (`bin_dest0001`), the scan-pattern list in the `int/a-correctness-register` docs, and the public Firebase web `apiKey` (already on main) in `pr189-live-verify.mjs`.
 
+A later full-history scan of the stash ancestry also matched `functions/authpr4/production-authorization.json` (`executionModeToken: "emt-…"`). That value has been in `origin/main` since PR #460 (70c398955, 2026-07-27), so these backups add no new exposure. A case-insensitive `akIA…` match in root `index.html` is also already on main and is not an AWS key.
+
 ## Owner decisions needed
 
 1. **The 148 "stale/prunable" worktree registrations are live WSL worktrees** in `~/.local/share/eos-worktrees` (Ubuntu-24.04). Git on Windows marks them prunable only because it can't resolve `/home/...` paths. **Running `git worktree prune` (or a `git gc` that prunes worktrees) from Windows would detach all of them.** Decide whether to keep them (then run maintenance only from WSL) or retire them.
