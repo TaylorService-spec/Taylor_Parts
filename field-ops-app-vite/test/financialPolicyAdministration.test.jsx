@@ -424,6 +424,7 @@ describe("Administration > Financial Policy -- withdraw and cancel approval (#23
     mount(api);
     await waitFor(() => expect(action("cancelScheduled")).toBeTruthy());
     expect(document.querySelectorAll('[data-action="cancelScheduled"]').length).toBe(1); // only the scheduled one, never the one in effect
+    expect(screen.getByRole("region", { name: "Cancel This Scheduled Version (Version 2)" })).toBeTruthy(); // one panel per version, named by it
     expect(action("cancel")).toBeNull(); // nothing is in progress
     fireEvent.click(button("cancelScheduled"));
     const confirm = await screen.findByRole("group", { name: /Confirm: Cancel This Scheduled Version/ });

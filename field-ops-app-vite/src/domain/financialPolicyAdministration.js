@@ -116,7 +116,7 @@ export const REFUSAL_WORDS = Object.freeze({
   FINANCIAL_POLICY_INVALID: "The database refused this change as inconsistent with the policy rules.",
   EFFECTIVE_DATE_REQUIRED: "Enter the effective date as a calendar date.",
   EFFECTIVE_DATE_PAST: "The effective date cannot be before the company's business date.",
-  EFFECTIVE_DATE_NOT_AFTER_PRIOR: "The effective date must be after the current active version's effective date.",
+  EFFECTIVE_DATE_NOT_AFTER_PRIOR: "The effective date must be after the effective date of every version already activated.",
   REASON_REQUIRED: "A reason is required.",
   METHOD_UNSUPPORTED: "That costing method is not supported.",
   RECOGNITION_UNSUPPORTED: "That COGS recognition event is not supported.",

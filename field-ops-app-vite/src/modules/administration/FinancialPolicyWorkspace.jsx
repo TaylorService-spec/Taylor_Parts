@@ -220,7 +220,8 @@ function ClosePanel({ version, kind, busy, onClose }) {
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState("");
   return (
-    <section className="fo-panel" aria-label={words.title} data-version={version.versionNumber}>
+    <section className="fo-panel" aria-label={kind === "cancelScheduled" ? `${words.title} (Version ${version.versionNumber})` : words.title}
+      data-version={version.versionNumber}>
       <SectionHeader title={words.title} description={words.description} />
       {!confirming ? (
         <ActionButton name={kind} answer={answer} busy={busy} variant="destructive" onClick={() => setConfirming(true)}>
@@ -448,7 +449,6 @@ export default function FinancialPolicyWorkspace({ financeApi = callFinanceApi }
           ) : null}
           {/* Scheduled versions -- not yet in effect -- stay cancellable until they take effect (the server's yourActions decides). */}
           {(company.list?.items ?? []).filter((v) => (v.status === "ACTIVE" || v.status === "SUPERSEDED") && v.yourActions?.cancel?.allowed)
-            .concat(read.scheduled && !(company.list?.items ?? []).some((v) => v.id === read.scheduled.id) ? [read.scheduled] : [])
             .map((v) => (
               <ClosePanel key={`${v.id}:${v.status}`} version={v} kind="cancelScheduled" busy={busy}
                 onClose={({ versionId, reason }) => run(CLOSING.cancelScheduled.operation, { versionId, reason }, CLOSING.cancelScheduled.done)} />

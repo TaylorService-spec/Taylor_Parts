@@ -15,7 +15,8 @@
 --                                           request-time reservation), never by the submitter or a content author
 --     ACTIVE / SUPERSEDED ----> CANCELLED   the same, ONLY while the version is SCHEDULED: activated with an effective date
 --                                           still AFTER the company's business date, i.e. never yet in force (Owner ruling
---                                           2026-10-14: "remains cancellable until activation actually occurs"). A version
+--                                           2026-10-14: "remains cancellable until activation actually occurs", read on
+--                                           the wall clock at the write, clock_timestamp()). A version
 --                                           IN FORCE (effective date on or before the business date) is never cancelled:
 --                                           FINANCIAL_POLICY_LOCKED. The version it superseded at activation keeps
 --                                           governing -- in force is resolved by date, and CANCELLED is never in force.
@@ -172,7 +173,8 @@ BEGIN
     END IF;
     IF OLD.status IN ('ACTIVE', 'SUPERSEDED') AND NEW.status = 'CANCELLED' THEN
         -- Only a SCHEDULED version: its effective date still after the company's business date NOW. Once in force, locked.
-        v_business_date := eos_policy.operating_company_business_date(OLD.tenant_id, OLD.operating_company_id, now());
+        -- clock_timestamp(), not now(): a cancellation that waited on a lock across midnight must see the new business date.
+        v_business_date := eos_policy.operating_company_business_date(OLD.tenant_id, OLD.operating_company_id, clock_timestamp());
         IF NOT (OLD.effective_date > v_business_date) THEN
             RAISE EXCEPTION 'FINANCIAL_POLICY_LOCKED: a % version in force since % is never cancelled (business date %); a change is a revision',
                 OLD.status, OLD.effective_date, v_business_date USING ERRCODE = 'restrict_violation';

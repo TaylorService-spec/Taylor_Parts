@@ -1343,6 +1343,11 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 45))).version.id, v5.id, "the cancelled version never takes effect");
     assert.equal(Number((await one(`SELECT count(*) AS n FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2
       AND status = 'ACTIVE'`, [TENANT, E])).n), 0, "no version is ACTIVE");
+    // THE POINT OF CANCELLING: a corrected version may now take effect EARLIER than the cancelled one's date (review gap a).
+    const vFix = await approvedVersion();
+    await activate(own, vFix, 35);
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 36))).version.id, vFix, "the correction governs from +35");
+    ok(await C(own, vFix, "test cleanup: back to v5"));
 
     // A scheduled version that a LATER activation already SUPERSEDED is still cancellable until its own date arrives.
     const vS2 = await approvedVersion();
@@ -1350,13 +1355,24 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const vS3 = await approvedVersion();
     await activate(own, vS3, 60);
     assert.equal((await stored(vS2)).status, "SUPERSEDED");
-    assert.deepEqual((await listAs(own)).items.find((v) => v.id === vS2).yourActions.cancel, yes);
+    assert.deepEqual((await readAs(own)).scheduled.id, vS2, "scheduled = the NEXT version to take effect");
+    // Cancel the ACTIVE (+60) one first: no ACTIVE row remains, yet vS2 (SUPERSEDED, +50) still takes effect (review gap b).
+    ok(await C(own, vS3, "not this year"));
+    const noActive = await readAs(own);
+    assert.deepEqual([noActive.inForce.id, noActive.scheduled?.id, noActive.scheduled?.status, noActive.scheduled?.yourActions.cancel],
+      [v5.id, vS2, "SUPERSEDED", yes], "the screen still shows the scheduled SUPERSEDED version and offers its cancellation");
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 55))).version.id, vS2);
+    // The next activation must follow EVERY earlier activated version, ACTIVE or SUPERSEDED -- the server says so first (review finding 2).
+    const vS4 = await approvedVersion();
+    refused(await fn(own, "activateFinancialPolicy", { operatingCompanyId: E, versionId: vS4, effectiveDate: await businessDate(E, 45) }),
+      400, "EFFECTIVE_DATE_NOT_AFTER_PRIOR", "dated before the still-scheduled SUPERSEDED version");
+    ok(await C(own, vS4, "test cleanup"));
     const cS2 = ok(await C(adm, vS2, "superseded before it took effect")).version;
     assert.deepEqual([cS2.status, cS2.supersededByVersionId, cS2.effectiveDate], ["CANCELLED", vS3, await businessDate(E, 50)], "its supersession stamps are kept");
-    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 55))).version.id, v5.id);
-    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 65))).version.id, vS3);
-    ok(await C(own, vS3, "not this year"));
-    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 65))).version.id, v5.id, "nothing scheduled remains");
+    for (const offset of [55, 65]) {
+      assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, offset))).version.id, v5.id, `nothing scheduled remains (+${offset})`);
+    }
+    assert.equal((await readAs(own)).scheduled, null);
     // The database alone: a CANCELLED scheduled version is final like any other.
     for (const [sql, what] of [
       [`UPDATE eos_finance.financial_policy_versions SET status = 'ACTIVE', cancelled_by = NULL, cancelled_at = NULL, cancellation_reason = NULL WHERE id = $1`, "reactivate"],

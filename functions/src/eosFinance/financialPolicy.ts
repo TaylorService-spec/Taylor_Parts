@@ -396,9 +396,14 @@ const lockedRefusal = (status: string): never => (LOCKED_FINANCIAL_POLICY_STATUS
 
 // ════════════════════ reads ════════════════════
 
-/** The company's business date (its governed time zone), as YYYY-MM-DD. */
-async function businessDateOf(db: Db, tenantId: string, company: string): Promise<string> {
-  const { rows } = await db.query(`SELECT eos_policy.operating_company_business_date($1, $2, now())::text AS d`, [tenantId, company]);
+/**
+ * The company's business date (its governed time zone), as YYYY-MM-DD. `wallClock` reads the clock at THIS statement
+ * (clock_timestamp()) rather than the transaction start (now()): a cancellation that waited on the company lock across
+ * midnight must see the new date, so it never cancels a version that has just taken effect.
+ */
+async function businessDateOf(db: Db, tenantId: string, company: string, wallClock = false): Promise<string> {
+  const { rows } = await db.query(
+    `SELECT eos_policy.operating_company_business_date($1, $2, ${wallClock ? "clock_timestamp()" : "now()"})::text AS d`, [tenantId, company]);
   return String(rows[0].d);
 }
 
@@ -557,10 +562,13 @@ export async function readFinancialPolicy(pool: Pool, actor: FinancialPolicyActo
   const company = await companyOf(pool, actor, input.operatingCompanyId, reach);
   const inForce = await resolveFinancialPolicyInForce(pool, actor.tenantId, company,
     input.asOfDate === undefined || input.asOfDate === null ? undefined : calendarDate(input.asOfDate, "asOfDate"));
-  const { rows: active } = await pool.query(
-    `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE'`,
-    [actor.tenantId, company]);
-  const scheduled = active[0] && String(active[0].effective_date_text) > inForce.asOf ? versionView(active[0]) : null;
+  // SCHEDULED: the NEXT activated version to take effect after the as-of date -- ACTIVE, or already SUPERSEDED by a later
+  // activation (once a scheduled ACTIVE version is cancelled, an earlier scheduled one may be SUPERSEDED with no ACTIVE row).
+  const { rows: upcoming } = await pool.query(
+    `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2
+      AND status IN ('ACTIVE', 'SUPERSEDED') AND effective_date > $3::date ORDER BY effective_date LIMIT 1`,
+    [actor.tenantId, company, inForce.asOf]);
+  const scheduled = upcoming[0] ? versionView(upcoming[0]) : null;
   const { rows } = await pool.query(
     `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions
       WHERE tenant_id = $1 AND operating_company_id = $2 AND status IN ('DRAFT', 'SUBMITTED', 'APPROVED')`, [actor.tenantId, company]);
@@ -849,16 +857,20 @@ export async function activateFinancialPolicy(pool: Pool, actor: FinancialPolicy
     if (effectiveDate < today) {
       refuse("EFFECTIVE_DATE_PAST", "INVALID_INPUT", `effectiveDate ${effectiveDate} precedes ${company}'s business date ${today}`);
     }
+    // After EVERY earlier activated version (ACTIVE or SUPERSEDED; a CANCELLED one never took effect) -- the trigger's rule.
+    const { rows: latest } = await c.query(
+      `SELECT max(effective_date)::text AS d FROM eos_finance.financial_policy_versions
+        WHERE tenant_id = $1 AND operating_company_id = $2 AND status IN ('ACTIVE', 'SUPERSEDED')`, [actor.tenantId, company]);
+    if (latest[0]?.d && effectiveDate <= String(latest[0].d)) {
+      refuse("EFFECTIVE_DATE_NOT_AFTER_PRIOR", "INVALID_INPUT",
+        `effectiveDate ${effectiveDate} must follow the latest activated version's effective date ${latest[0].d}`);
+    }
     const { rows: prior } = await c.query(
       `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE' FOR UPDATE`,
       [actor.tenantId, company]);
     let superseded: FinancialPolicyVersion | null = null;
     if (prior[0]) {
       const priorView = versionView(prior[0]);
-      if (priorView.effectiveDate !== null && effectiveDate <= priorView.effectiveDate) {
-        refuse("EFFECTIVE_DATE_NOT_AFTER_PRIOR", "INVALID_INPUT",
-          `effectiveDate ${effectiveDate} must follow the current active version's effective date ${priorView.effectiveDate}`);
-      }
       const { rows: sup } = await c.query(
         `UPDATE eos_finance.financial_policy_versions SET status = 'SUPERSEDED', superseded_by_version_id = $3, superseded_at = now(), updated_at = now()
           WHERE tenant_id = $1 AND id = $2 RETURNING ${COLUMNS}`, [actor.tenantId, priorView.id, before.id]);
@@ -944,8 +956,8 @@ export async function cancelFinancialPolicy(pool: Pool, actor: FinancialPolicyAc
       }
       return outcome(row, true);
     }
-    // Decided on the company's business date read INSIDE the lock; the trigger re-checks it against now() at write time.
-    const state = cancelState(before, await businessDateOf(c, actor.tenantId, company));
+    // Decided on the company's business date read INSIDE the lock, on the wall clock; the trigger re-checks it the same way.
+    const state = cancelState(before, await businessDateOf(c, actor.tenantId, company, true));
     if (state === "FINANCIAL_POLICY_LOCKED") lockedRefusal(before.status);
     if (state !== null) {
       refuse(state, "CONFLICT", `only an APPROVED version, or one scheduled to take effect later, is cancelled; this one is ${before.status}`);
