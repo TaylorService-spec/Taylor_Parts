@@ -86,7 +86,7 @@ function VersionCard({ title, version, people }) {
         {version.approvedBy ? <> · approved by {actorWords(version.approvedBy, people)} on {when(version.approvedAt)}</> : null}
         {version.activatedBy ? <> · activated by {actorWords(version.activatedBy, people)} on {when(version.activatedAt)}</> : null}
         {version.withdrawnBy ? <> · withdrawn by {actorWords(version.withdrawnBy, people)} on {when(version.withdrawnAt)}</> : null}
-        {version.cancelledBy ? <> · approval cancelled by {actorWords(version.cancelledBy, people)} on {when(version.cancelledAt)}</> : null}
+        {version.cancelledBy ? <> · {version.activatedBy ? "cancelled before taking effect" : "approval cancelled"} by {actorWords(version.cancelledBy, people)} on {when(version.cancelledAt)}</> : null}
       </p>
       {version.locked ? <p className="fo-wizard-hint">{LOCKED_MESSAGE}</p> : null}
     </div>
@@ -195,27 +195,32 @@ function ActivationPanel({ version, asOf, busy, onActivate }) {
 }
 
 /**
- * WITHDRAW (a DRAFT / SUBMITTED version, by its own preparer) or CANCEL APPROVAL (an APPROVED version, by the Owner or the
- * Administrator) -- #232 Phase 3. Availability is the server's `yourActions`; the act always passes through a confirmation
- * that states its consequence and requires a reason. The server decides again.
+ * WITHDRAW (a DRAFT / SUBMITTED version, by its own preparer), CANCEL APPROVAL (an APPROVED version, by the Owner or the
+ * Administrator) or CANCEL A SCHEDULED VERSION (activated with a future effective date, not yet in effect; Owner ruling
+ * 2026-10-14) -- #232 Phase 3. Availability is the server's `yourActions`; the act always passes through a confirmation
+ * that states its consequence and requires a reason. The server decides again. Rendered with key = version id + status,
+ * so a different version or a new status starts a fresh, unconfirmed panel.
  */
 const CLOSING = Object.freeze({
-  withdraw: { operation: "withdrawFinancialPolicy", button: "Withdraw", confirm: "Withdraw Version", done: "Withdrawn",
+  withdraw: { operation: "withdrawFinancialPolicy", action: "withdraw", reasonId: () => "fp-withdraw-reason", button: "Withdraw", confirm: "Withdraw Version", done: "Withdrawn",
     title: "Withdraw This Version", description: "Withdrawing takes the version out of progress so a new draft can be prepared.",
     consequence: (n) => `This withdraws Version ${n}. It stays in the history and is final.` },
-  cancel: { operation: "cancelFinancialPolicy", button: "Cancel Approval", confirm: "Cancel Approval", done: "Approval cancelled",
+  cancel: { operation: "cancelFinancialPolicy", action: "cancel", reasonId: () => "fp-cancel-reason", button: "Cancel Approval", confirm: "Cancel Approval", done: "Approval cancelled",
     title: "Cancel This Approval", description: "Cancelling the approval means this version will never be activated; a new draft can then be prepared.",
     consequence: (n) => `This cancels the approval of Version ${n}. It stays in the history, is final and will never be activated.` },
+  cancelScheduled: { operation: "cancelFinancialPolicy", action: "cancel", reasonId: (n) => `fp-cancel-scheduled-${n}-reason`,
+    button: "Cancel Scheduled Version", confirm: "Cancel Scheduled Version", done: "Scheduled version cancelled",
+    title: "Cancel This Scheduled Version", description: "This version is scheduled but not yet in effect. Cancelling it means it never takes effect; the policy in effect on each date stays as it would be without it.",
+    consequence: (n) => `This cancels Version ${n} before it takes effect. It stays in the history, is final and will never be in effect.` },
 });
 
 function ClosePanel({ version, kind, busy, onClose }) {
   const words = CLOSING[kind];
-  const answer = version.yourActions?.[kind];
+  const answer = version.yourActions?.[words.action];
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState("");
-  useEffect(() => { setConfirming(false); setReason(""); }, [version.id, version.status]);
   return (
-    <section className="fo-panel" aria-label={words.title}>
+    <section className="fo-panel" aria-label={words.title} data-version={version.versionNumber}>
       <SectionHeader title={words.title} description={words.description} />
       {!confirming ? (
         <ActionButton name={kind} answer={answer} busy={busy} variant="destructive" onClick={() => setConfirming(true)}>
@@ -224,7 +229,7 @@ function ClosePanel({ version, kind, busy, onClose }) {
       ) : (
         <div role="group" aria-label={`Confirm: ${words.title}`} data-confirm={kind}>
           <p><strong>{words.consequence(version.versionNumber)}</strong></p>
-          <Field id={`fp-${kind}-reason`} label="Reason (Required, Kept in the Audit Trail)">
+          <Field id={words.reasonId(version.versionNumber)} label="Reason (Required, Kept in the Audit Trail)">
             <input className="fo-input" value={reason} disabled={busy} onChange={(e) => setReason(e.target.value)} />
           </Field>
           <div className="fo-form-actions">
@@ -265,7 +270,7 @@ function VersionHistory({ items, people }) {
                     {v.decisionReason ? <><br />&ldquo;{v.decisionReason}&rdquo;</> : null}</> : <span className="fo-muted">—</span>}</td>
                   <td>{v.activatedBy ? <>{actorWords(v.activatedBy, people)}<br /><span className="fo-muted">{when(v.activatedAt)}</span></> : <span className="fo-muted">—</span>}</td>
                   <td className="fo-tabular-nums">{v.effectiveDate ?? <span className="fo-muted">—</span>}{v.supersededAt ? <><br /><span className="fo-muted">superseded {when(v.supersededAt)}</span></> : null}</td>
-                  <td>{closedBy ? <>{v.withdrawnBy ? "Withdrawn" : "Approval cancelled"} by {actorWords(closedBy, people)}<br /><span className="fo-muted">{when(closedAt)}</span>
+                  <td>{closedBy ? <>{v.withdrawnBy ? "Withdrawn" : v.activatedBy ? "Cancelled before taking effect" : "Approval cancelled"} by {actorWords(closedBy, people)}<br /><span className="fo-muted">{when(closedAt)}</span>
                     {closedReason ? <><br />&ldquo;{closedReason}&rdquo;</> : null}</> : <span className="fo-muted">—</span>}</td>
                 </tr>
               );
@@ -435,12 +440,19 @@ export default function FinancialPolicyWorkspace({ financeApi = callFinanceApi }
               onActivate={({ versionId, effectiveDate, note: n }) => run("activateFinancialPolicy", { versionId, effectiveDate, ...note(n) }, "Activated")} />
           ) : null}
           {inFlight && (inFlight.status === "DRAFT" || inFlight.status === "SUBMITTED" || inFlight.status === "APPROVED") ? (
-            <ClosePanel version={inFlight} kind={inFlight.status === "APPROVED" ? "cancel" : "withdraw"} busy={busy}
+            <ClosePanel key={`${inFlight.id}:${inFlight.status}`} version={inFlight} kind={inFlight.status === "APPROVED" ? "cancel" : "withdraw"} busy={busy}
               onClose={({ versionId, reason }) => {
                 const kind = inFlight.status === "APPROVED" ? "cancel" : "withdraw";
                 return run(CLOSING[kind].operation, { versionId, reason }, CLOSING[kind].done);
               }} />
           ) : null}
+          {/* Scheduled versions -- not yet in effect -- stay cancellable until they take effect (the server's yourActions decides). */}
+          {(company.list?.items ?? []).filter((v) => (v.status === "ACTIVE" || v.status === "SUPERSEDED") && v.yourActions?.cancel?.allowed)
+            .concat(read.scheduled && !(company.list?.items ?? []).some((v) => v.id === read.scheduled.id) ? [read.scheduled] : [])
+            .map((v) => (
+              <ClosePanel key={`${v.id}:${v.status}`} version={v} kind="cancelScheduled" busy={busy}
+                onClose={({ versionId, reason }) => run(CLOSING.cancelScheduled.operation, { versionId, reason }, CLOSING.cancelScheduled.done)} />
+            ))}
 
           <VersionHistory items={company.list?.items ?? []} people={people} />
           <AuditTrail events={company.list?.auditTrail ?? []} people={people} />

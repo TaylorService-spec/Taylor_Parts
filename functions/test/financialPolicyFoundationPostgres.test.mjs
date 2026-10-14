@@ -1290,17 +1290,83 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     assert.deepEqual([fp.translateDatabaseRefusal(lateActivate).code, fp.translateDatabaseRefusal(lateActivate).category],
       ["FINANCIAL_POLICY_TRANSITION_ILLEGAL", "CONFLICT"], "a governed refusal, never a 500");
     assert.equal((await stored(vC)).status, "CANCELLED");
-    // Activation (with its supersession) commits first: the queued cancellation re-reads ACTIVE and the trigger refuses it.
+    // Activation (with its supersession) commits first, dated in the FUTURE (it must follow v5's date): the queued cancellation
+    // re-reads ACTIVE -- but a SCHEDULED one (Owner ruling 2026-10-14), so it is admitted after the lock and the version never
+    // takes effect. v5, superseded at activation, keeps governing: in force is resolved by date and CANCELLED never is.
     const vD = await approvedVersion();
+    const dateD = await businessDate(E, 31);
     const lateCancel = await rawRace([
       [`UPDATE eos_finance.financial_policy_versions SET status = 'SUPERSEDED', superseded_by_version_id = $2, superseded_at = now() WHERE id = $1`, [v5.id, vD]],
-      [activateSql, [vD, own.principalId, await businessDate(E, 31)]],
+      [activateSql, [vD, own.principalId, dateD]],
     ], [cancelSql, [vD, adm.principalId]]);
-    assert.match(String(lateCancel?.message), /FINANCIAL_POLICY_TRANSITION_ILLEGAL: ACTIVE -> CANCELLED/);
-    assert.deepEqual([(await stored(vD)).status, (await stored(vD)).cancelledBy, (await stored(v5.id)).status], ["ACTIVE", null, "SUPERSEDED"]);
-    // A SUPERSEDED version is never withdrawn or cancelled either.
+    assert.equal(lateCancel, null, String(lateCancel?.message));
+    const sD = await stored(vD);
+    assert.deepEqual([sD.status, sD.activatedBy, sD.effectiveDate, sD.cancelledBy, (await stored(v5.id)).status],
+      ["CANCELLED", own.principalId, dateD, adm.principalId, "SUPERSEDED"], "the activation stamps are kept on the cancelled scheduled version");
+    for (const offset of [0, 31, 400]) {
+      assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, offset))).version?.id, v5.id, `v5 still governs at +${offset}`);
+    }
+    // A version IN FORCE is never withdrawn or cancelled -- at the API and, independently, in the database.
     refused(await C(own, v5.id, "undo"), 409, "FINANCIAL_POLICY_LOCKED");
     refused(await W(dual, v5.id, "undo"), 409, "FINANCIAL_POLICY_LOCKED");
+    await dbRefusal(cancelSql, [v5.id, adm.principalId], /FINANCIAL_POLICY_LOCKED: a SUPERSEDED version in force since/, "an in-force SUPERSEDED version is never cancelled");
+
+    // ── SCHEDULED -> CANCELLED through the API (Owner ruling 2026-10-14): cancellable until it actually takes effect ──
+    const activate = async (who, id, offset) => ok(await fn(who, "activateFinancialPolicy", { operatingCompanyId: E, versionId: id,
+      effectiveDate: await businessDate(E, offset) }), `${who.subject} activates +${offset}`);
+    const vS1 = await approvedVersion();
+    await activate(own, vS1, 40);
+    const sched = await readAs(own);
+    assert.deepEqual([sched.inForce.id, sched.scheduled.id, sched.inFlight, sched.scheduled.yourActions.cancel, sched.inForce.yourActions.cancel],
+      [v5.id, vS1, null, yes, no("FINANCIAL_POLICY_LOCKED")], "the scheduled version is offered for cancellation; the one in force is not");
+    assert.deepEqual((await readAs(adm)).scheduled.yourActions.cancel, yes, "the Administrator by standing");
+    assert.deepEqual((await readAs(pE)).scheduled.yourActions.cancel, no("CAPABILITY_REQUIRED"), "a preparer never cancels");
+    // Offers are decided on TODAY's business date even when the screen reads a later as-of date (where vS1 would be in force).
+    const later = ok(await fn(own, "readFinancialPolicy", { operatingCompanyId: E, asOfDate: await businessDate(E, 45) }));
+    assert.deepEqual([later.inForce.id, later.inForce.yourActions.cancel], [vS1, yes]);
+    refused(await W(pE, vS1, "pull it back"), 409, "FINANCIAL_POLICY_LOCKED", "a preparer never withdraws an activated version");
+    refused(await C(own, vS1), 400, "REASON_REQUIRED");
+    refused(await C(pE, vS1, "x"), 403, "CAPABILITY_REQUIRED");
+    const auditS = await auditCount();
+    const cS1 = ok(await C(own, vS1, "wrong month"), "the approver (and activator) cancels the scheduled version").version;
+    assert.deepEqual([cS1.status, cS1.approvedBy, cS1.activatedBy, cS1.effectiveDate, cS1.cancelledBy, cS1.cancellationReason, cS1.supersededByVersionId],
+      ["CANCELLED", own.principalId, own.principalId, await businessDate(E, 40), own.principalId, "wrong month", null]);
+    assert.equal(await auditCount(), auditS + 1, "one audit row");
+    const evS = await one(`SELECT actor_uid, reason, before, after FROM eos_policy.audit_events WHERE tenant_id = $1 AND target_id = $2
+      AND action = 'finance.policy.cancel'`, [TENANT, vS1]);
+    assert.deepEqual([evS.actor_uid, evS.reason, evS.before.status, evS.after.status], [own.principalId, "wrong month", "ACTIVE", "CANCELLED"]);
+    assert.equal(ok(await C(own, vS1, "wrong month")).replayed, true);
+    refused(await C(own, vS1, "other"), 409, "FINANCIAL_POLICY_REPLAY_CONFLICT");
+    const afterS1 = await readAs(own);
+    assert.deepEqual([afterS1.inForce.id, afterS1.scheduled, afterS1.yourAuthority.createDraft.allowed], [v5.id, null, false],
+      "v5 still governs; nothing is scheduled (the Owner holds no prepare)");
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 45))).version.id, v5.id, "the cancelled version never takes effect");
+    assert.equal(Number((await one(`SELECT count(*) AS n FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2
+      AND status = 'ACTIVE'`, [TENANT, E])).n), 0, "no version is ACTIVE");
+
+    // A scheduled version that a LATER activation already SUPERSEDED is still cancellable until its own date arrives.
+    const vS2 = await approvedVersion();
+    await activate(own, vS2, 50);
+    const vS3 = await approvedVersion();
+    await activate(own, vS3, 60);
+    assert.equal((await stored(vS2)).status, "SUPERSEDED");
+    assert.deepEqual((await listAs(own)).items.find((v) => v.id === vS2).yourActions.cancel, yes);
+    const cS2 = ok(await C(adm, vS2, "superseded before it took effect")).version;
+    assert.deepEqual([cS2.status, cS2.supersededByVersionId, cS2.effectiveDate], ["CANCELLED", vS3, await businessDate(E, 50)], "its supersession stamps are kept");
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 55))).version.id, v5.id);
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 65))).version.id, vS3);
+    ok(await C(own, vS3, "not this year"));
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 65))).version.id, v5.id, "nothing scheduled remains");
+    // The database alone: a CANCELLED scheduled version is final like any other.
+    for (const [sql, what] of [
+      [`UPDATE eos_finance.financial_policy_versions SET status = 'ACTIVE', cancelled_by = NULL, cancelled_at = NULL, cancellation_reason = NULL WHERE id = $1`, "reactivate"],
+      [`UPDATE eos_finance.financial_policy_versions SET effective_date = effective_date + 1 WHERE id = $1`, "re-date"],
+    ]) await dbRefusal(sql, [vS1], /FINANCIAL_POLICY_(IMMUTABLE|TRANSITION_ILLEGAL)/, `CANCELLED is final: ${what}`);
+    // A scheduled version's history still rebuilds from the audit trail alone.
+    const events2 = (await q(`SELECT action, target_id, before, after FROM eos_policy.audit_events WHERE tenant_id = $1 AND target_kind = $2
+      ORDER BY occurred_at, id`, [TENANT, fp.FINANCIAL_POLICY_AUDIT_TARGET])).rows.map((e) => ({ action: e.action, targetId: e.target_id, before: e.before, after: e.after }));
+    const rebuilt2 = fp.rebuildFinancialPolicyVersions(events2);
+    for (const id of [vS1, vS2, vS3]) assert.deepEqual(rebuilt2.get(id), JSON.parse(JSON.stringify(await stored(id))), `${id} rebuilt`);
   });
 
   await t.test("MIG: with versions recorded, each Down refuses to reverse", async () => {

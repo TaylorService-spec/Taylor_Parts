@@ -5,6 +5,8 @@
 //     DRAFT --submit--> SUBMITTED --approve--> APPROVED --activate--> ACTIVE --(a later version activates)--> SUPERSEDED
 //       |                  |  \--reject---> REJECTED      |
 //       +----withdraw------+--> WITHDRAWN                 +--cancel--> CANCELLED          (#232 Phase 3, migration 1764570000000)
+//                                                         ACTIVE / SUPERSEDED dated after the business date (SCHEDULED, never
+//                                                         yet in force) --cancel--> CANCELLED (Owner ruling 2026-10-14)
 //
 // Served on /operations/finance (the Finance Closure transport) as nine operations, each behind an existing PG-native key,
 // plus one read-only authority read for the Administration screen (#232 Phase 2):
@@ -20,8 +22,10 @@
 //                                                           version becomes SUPERSEDED in the same transaction, intact
 //   withdrawFinancialPolicy        finance.policy.prepare   DRAFT | SUBMITTED -> WITHDRAWN, by the version's OWN preparer (a content
 //                                                           author or its submitter), with a reason (#232 Phase 3)
-//   cancelFinancialPolicy          finance.policy.approve   APPROVED -> CANCELLED, by the Owner Role / Administrator (the approve
-//                                                           reservation), never by its submitter or an author, with a reason
+//   cancelFinancialPolicy          finance.policy.approve   APPROVED -> CANCELLED, or a SCHEDULED version (activated with a future
+//                                                           effective date, not yet in force) -> CANCELLED, by the Owner Role /
+//                                                           Administrator (the approve reservation), never by its submitter or an
+//                                                           author, with a reason
 //
 // RULES, each enforced here AND by the database (migration 1764560000000), so a crafted request and a direct write meet the
 // same refusal:
@@ -41,14 +45,17 @@
 //     when a version leaves DRAFT. There is no unlock, reopen or force. A change is a governed REVISION: a new DRAFT through
 //     the same lifecycle. WITHDRAWN / CANCELLED (#232 Phase 3) keep the version and its history and release the company's
 //     single in-flight slot, so an abandoned draft or an approval that must not be activated never strands the company.
-//     An ACTIVE / SUPERSEDED version is never withdrawn or cancelled.
+//     A SCHEDULED version (ACTIVE / SUPERSEDED, effective date still after the company's business date) stays cancellable
+//     until it actually takes effect (Owner ruling 2026-10-14); once IN FORCE (effective date on or before the business
+//     date) a version is never withdrawn or cancelled.
 //   * CONCURRENCY. Activation and cancellation take the same per-company advisory lock and the version's row lock, then
 //     re-read its status; the database admits ACTIVE and CANCELLED only from APPROVED. Whichever commits first wins.
 //   * SEPARATION OF DUTIES. The approver / rejecter / ACTIVATOR is neither the submitter nor any principal who wrote the draft -- even if
 //     that principal also holds finance.policy.approve.
 //   * LIFECYCLE IS NOT EFFECTIVITY. Activating a version locks it and supersedes the prior ACTIVE one at once, but the version
 //     IN FORCE on a business date is the latest ACTIVE / SUPERSEDED one dated on or before it; a future-dated ACTIVE version is
-//     SCHEDULED. Consequence: while a version is scheduled, a correction must be dated after it (no cancel-scheduled path).
+//     SCHEDULED. A scheduled version may be CANCELLED until its date arrives; the version it superseded at activation
+//     keeps governing (in force is resolved by date, and a CANCELLED version is never in force).
 //   * EFFECTIVE DATE is stated at ACTIVATION (not approval): an approval may wait, and a date fixed earlier could lapse into
 //     the past, leaving an approved version that can neither activate nor be edited. At activation it must not precede the
 //     company's business date (eos_policy.operating_company_business_date) nor any earlier activated version's.
@@ -476,7 +483,7 @@ export type FinancialPolicyVersionAction = (typeof FINANCIAL_POLICY_VERSION_ACTI
  * cancellation of a non-APPROVED: _NOT_CANCELLABLE or _LOCKED); separation of duties is independentDeciderRefusal and
  * ownership is ownVersionRefusal -- the commands' rules.
  */
-export function versionActionsFor(principalId: string, authority: CompanyAuthority, v: FinancialPolicyVersion):
+export function versionActionsFor(principalId: string, authority: CompanyAuthority, v: FinancialPolicyVersion, businessDate: string):
   Readonly<Record<FinancialPolicyVersionAction, FinancialPolicyActionAnswer>> {
   const locked = (LOCKED_FINANCIAL_POLICY_STATUSES as readonly string[]).includes(v.status);
   const lifecycle = (want: FinancialPolicyStatus, notCode: string): string | null =>
@@ -502,11 +509,11 @@ export function versionActionsFor(principalId: string, authority: CompanyAuthori
     reject: decide(authority.approve, v.status === "SUBMITTED" ? null : "FINANCIAL_POLICY_NOT_SUBMITTED", true),
     activate: decide(authority.activate, lifecycle("APPROVED", "FINANCIAL_POLICY_NOT_APPROVED"), true),
     withdraw: decide(authority.withdraw, withdrawState(v.status), false, true),
-    cancel: decide(authority.cancel, cancelState(v.status), true),
+    cancel: decide(authority.cancel, cancelState(v, businessDate), true),
   });
 }
-const withYourActions = (principalId: string, authority: CompanyAuthority, v: FinancialPolicyVersion | null) =>
-  v === null ? null : Object.freeze({ ...v, yourActions: versionActionsFor(principalId, authority, v) });
+const withYourActions = (principalId: string, authority: CompanyAuthority, businessDate: string, v: FinancialPolicyVersion | null) =>
+  v === null ? null : Object.freeze({ ...v, yourActions: versionActionsFor(principalId, authority, v, businessDate) });
 
 /** Display names of the actors on records the caller already reads -- Principals of the caller's tenant only, nothing else. */
 async function actorNames(db: Db, tenantId: string, ids: readonly (string | null)[]): Promise<Readonly<Record<string, string | null>>> {
@@ -560,6 +567,8 @@ export async function readFinancialPolicy(pool: Pool, actor: FinancialPolicyActo
   const inFlight = rows[0] ? versionView(rows[0]) : null;
   // What this caller may do here, as the commands would decide it (advice for the screen; the commands still decide).
   const authority = (await companyAuthorityOf(pool, actor))(company);
+  // Offers are decided on the company's business date TODAY, whatever as-of date the screen reads.
+  const today = input.asOfDate === undefined || input.asOfDate === null ? inForce.asOf : await businessDateOf(pool, actor.tenantId, company);
   const createDraft = !authority.prepare.allowed ? authority.prepare
     : inFlight !== null ? blocked("FINANCIAL_POLICY_IN_FLIGHT_EXISTS") : ALLOWED;
   const shown = [inForce.version, scheduled, inFlight].filter((v): v is FinancialPolicyVersion => v !== null);
@@ -567,9 +576,9 @@ export async function readFinancialPolicy(pool: Pool, actor: FinancialPolicyActo
     operatingCompanyId: company,
     asOf: inForce.asOf,
     state: inForce.state === "IN_FORCE" ? "CONFIGURED" as const : "NOT_CONFIGURED" as const,
-    inForce: withYourActions(actor.principalId, authority, inForce.version),
-    scheduled: withYourActions(actor.principalId, authority, scheduled),
-    inFlight: withYourActions(actor.principalId, authority, inFlight),
+    inForce: withYourActions(actor.principalId, authority, today, inForce.version),
+    scheduled: withYourActions(actor.principalId, authority, today, scheduled),
+    inFlight: withYourActions(actor.principalId, authority, today, inFlight),
     supported: supportedFinancialPolicyVocabulary(options),
     yourAuthority: Object.freeze({ principalId: actor.principalId, actions: authority, createDraft }),
     actorNames: await actorNames(pool, actor.tenantId, shown.flatMap(versionActorIds)),
@@ -585,6 +594,7 @@ export async function listFinancialPolicyVersions(pool: Pool, actor: FinancialPo
     [actor.tenantId, company]);
   const versions = rows.map(versionView);
   const authority = (await companyAuthorityOf(pool, actor))(company);
+  const today = await businessDateOf(pool, actor.tenantId, company);
   // THE AUDIT TRAIL of these versions (the eos_policy.audit_events rows every change writes), newest first: who, what,
   // when, and the stated reason / note. The full before / after snapshots stay in the audit store.
   const { rows: events } = versions.length === 0 ? { rows: [] as Record<string, any>[] } : await pool.query(
@@ -598,7 +608,7 @@ export async function listFinancialPolicyVersions(pool: Pool, actor: FinancialPo
   }));
   return Object.freeze({
     operatingCompanyId: company,
-    items: versions.map((v) => withYourActions(actor.principalId, authority, v)),
+    items: versions.map((v) => withYourActions(actor.principalId, authority, today, v)),
     auditTrail: Object.freeze(auditTrail),
     actorNames: await actorNames(pool, actor.tenantId, [...versions.flatMap(versionActorIds), ...auditTrail.map((e) => e.actorPrincipalId)]),
   });
@@ -729,10 +739,18 @@ export function withdrawState(status: FinancialPolicyStatus): string | null {
   if ((WITHDRAWABLE_FINANCIAL_POLICY_STATUSES as readonly string[]).includes(status)) return null;
   return (LOCKED_FINANCIAL_POLICY_STATUSES as readonly string[]).includes(status) ? "FINANCIAL_POLICY_LOCKED" : "FINANCIAL_POLICY_NOT_WITHDRAWABLE";
 }
-/** The lifecycle half of a cancellation: APPROVED only; ACTIVE / SUPERSEDED are LOCKED (never cancelled); else not cancellable. */
-export function cancelState(status: FinancialPolicyStatus): string | null {
-  if (status === "APPROVED") return null;
-  return (LOCKED_FINANCIAL_POLICY_STATUSES as readonly string[]).includes(status) ? "FINANCIAL_POLICY_LOCKED" : "FINANCIAL_POLICY_NOT_CANCELLABLE";
+/**
+ * The lifecycle half of a cancellation (Owner ruling 2026-10-14): an APPROVED version, or a SCHEDULED one -- ACTIVE /
+ * SUPERSEDED with its effective date still after the company's business date, i.e. activated but never yet in force. A
+ * version in force (effective date on or before the business date) is LOCKED; anything else is not cancellable.
+ * `businessDate` is always the company's business date TODAY, never a caller-chosen as-of date.
+ */
+export function cancelState(v: Pick<FinancialPolicyVersion, "status" | "effectiveDate">, businessDate: string): string | null {
+  if (v.status === "APPROVED") return null;
+  if ((LOCKED_FINANCIAL_POLICY_STATUSES as readonly string[]).includes(v.status)) {
+    return v.effectiveDate !== null && v.effectiveDate > businessDate ? null : "FINANCIAL_POLICY_LOCKED";
+  }
+  return "FINANCIAL_POLICY_NOT_CANCELLABLE";
 }
 function assertIndependentDecider(actor: FinancialPolicyActor, v: FinancialPolicyVersion): void {
   if (independentDeciderRefusal(actor.principalId, v) !== null) {
@@ -901,8 +919,11 @@ export async function withdrawFinancialPolicy(pool: Pool, actor: FinancialPolicy
 
 /**
  * APPROVED -> CANCELLED (#232 Phase 3), by the Owner Role or the Administrator, with a stated reason: an approval that must
- * not be activated stops holding the company's in-flight slot. The version, its approval (and note) and its audit trail are
- * kept. An ACTIVE or SUPERSEDED version is never cancelled (FINANCIAL_POLICY_LOCKED): a change to it is a revision.
+ * not be activated stops holding the company's in-flight slot. A SCHEDULED version (activated with a future effective date,
+ * ACTIVE or already SUPERSEDED by a later one) is cancellable the same way until its date arrives (Owner ruling 2026-10-14):
+ * it then never takes effect, and whatever version governs on each date is resolved without it. The version, its approval
+ * (and note), any activation stamps and its audit trail are kept. A version IN FORCE is never cancelled
+ * (FINANCIAL_POLICY_LOCKED): a change to it is a revision.
  * Order: finance.policy.approve -> its request-time reservation (Owner Role / Administrator standing) -> company admission
  * -> the per-company lock + the version's row lock (the SAME locks activation takes, so the two serialize) -> replay ->
  * lifecycle (FINANCIAL_POLICY_NOT_CANCELLABLE) -> separation of duties (never the submitter or an author; the approver may).
@@ -923,10 +944,11 @@ export async function cancelFinancialPolicy(pool: Pool, actor: FinancialPolicyAc
       }
       return outcome(row, true);
     }
-    const state = cancelState(before.status);
+    // Decided on the company's business date read INSIDE the lock; the trigger re-checks it against now() at write time.
+    const state = cancelState(before, await businessDateOf(c, actor.tenantId, company));
     if (state === "FINANCIAL_POLICY_LOCKED") lockedRefusal(before.status);
     if (state !== null) {
-      refuse(state, "CONFLICT", `only an APPROVED version that is not yet activated is cancelled; this one is ${before.status}`);
+      refuse(state, "CONFLICT", `only an APPROVED version, or one scheduled to take effect later, is cancelled; this one is ${before.status}`);
     }
     if (independentDeciderRefusal(actor.principalId, before) !== null) {
       refuse("SEPARATION_OF_DUTIES", "FORBIDDEN",

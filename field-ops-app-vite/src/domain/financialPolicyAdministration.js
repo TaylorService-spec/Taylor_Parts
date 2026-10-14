@@ -92,7 +92,7 @@ export const STATUS_WORDS = Object.freeze({
 export const statusWords = (status) => STATUS_WORDS[status] ?? { label: status ?? "Unknown", tone: "unknown" };
 
 export const LOCKED_MESSAGE =
-  "An active or superseded version is locked and is never edited. A change is a new draft, submitted, approved and activated.";
+  "An activated version is locked and is never edited. A change is a new draft, submitted, approved and activated. A version scheduled but not yet in effect can still be cancelled.";
 
 /**
  * Words for every refusal code the server can give -- a `reason` on an action the server says is unavailable, or the
@@ -111,7 +111,7 @@ export const REFUSAL_WORDS = Object.freeze({
   FINANCIAL_POLICY_NOT_SUBMITTED: "Only a version submitted for approval can be approved or rejected.",
   FINANCIAL_POLICY_NOT_APPROVED: "Only an approved version can be activated.",
   FINANCIAL_POLICY_NOT_WITHDRAWABLE: "Only a draft or a version submitted for approval can be withdrawn. A withdrawn, rejected or cancelled version is final.",
-  FINANCIAL_POLICY_NOT_CANCELLABLE: "Only an approved version that has not been activated can have its approval cancelled.",
+  FINANCIAL_POLICY_NOT_CANCELLABLE: "Only an approved version, or one scheduled but not yet in effect, can be cancelled.",
   FINANCIAL_POLICY_VERSION_NOT_FOUND: "That version no longer exists for this company. Refresh and try again.",
   FINANCIAL_POLICY_INVALID: "The database refused this change as inconsistent with the policy rules.",
   EFFECTIVE_DATE_REQUIRED: "Enter the effective date as a calendar date.",

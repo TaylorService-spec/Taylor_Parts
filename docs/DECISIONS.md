@@ -8290,8 +8290,8 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 
 - **In order.** A transition writes only its own stamps; every other lifecycle stamp keeps its prior value, so a direct write cannot forge, say, a submission stamp on DRAFT → WITHDRAWN (independent-review finding, PR #2088).
 
-**Readings that are Owner decisions (implemented as stated, pending confirmation).**
-- **"Their own" version** is read as: ANY content author (the creator or any editor) or the submitter may withdraw it.
-- **The approver may cancel their own approval** (as the approver may activate); only the submitter and content authors are excluded.
-
-**Open.** A SCHEDULED (future-dated ACTIVE) version is still not cancellable (Phase 1 open item 1).
+**Owner rulings (2026-10-14, Financial Policy Closure) — applied.**
+- **Withdrawal.** A policy author may withdraw their own DRAFT or SUBMITTED version while they retain the required company authorization: any content author (the creator or any editor) or the submitter, holding `finance.policy.prepare` at that company.
+- **Cancellation.** An authorized approver may cancel an APPROVED version, **including their own approval**, with a mandatory reason and an audit event. Only the submitter and content authors are excluded.
+- **Scheduled versions stay cancellable until activation actually occurs.** A version activated with a future effective date (ACTIVE, or already SUPERSEDED by a later activation) is SCHEDULED until that date; until then it may be cancelled exactly like an APPROVED one (`ACTIVE | SUPERSEDED -> CANCELLED`, server `cancelState` and the trigger, both on the company's business date). Its activation and supersession stamps are kept. The version it superseded at activation keeps governing: in force is resolved by date, and CANCELLED is never in force. This closes Phase 1 open item 1 (§6 item 7 of the authority document).
+- **A version in force is never cancelled** (`FINANCIAL_POLICY_LOCKED`, server and trigger). Cancellation releases the in-progress slot; immutable history, separation of duties and the concurrency protections are unchanged.

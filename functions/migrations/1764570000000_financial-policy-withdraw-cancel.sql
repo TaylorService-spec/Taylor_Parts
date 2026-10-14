@@ -13,11 +13,19 @@
 --     SUBMITTED --withdraw--> WITHDRAWN     (server gate: finance.policy.prepare, company-scoped)
 --     APPROVED ---cancel----> CANCELLED     by the Owner Role or the Administrator (server gate: finance.policy.approve with its
 --                                           request-time reservation), never by the submitter or a content author
+--     ACTIVE / SUPERSEDED ----> CANCELLED   the same, ONLY while the version is SCHEDULED: activated with an effective date
+--                                           still AFTER the company's business date, i.e. never yet in force (Owner ruling
+--                                           2026-10-14: "remains cancellable until activation actually occurs"). A version
+--                                           IN FORCE (effective date on or before the business date) is never cancelled:
+--                                           FINANCIAL_POLICY_LOCKED. The version it superseded at activation keeps
+--                                           governing -- in force is resolved by date, and CANCELLED is never in force.
 --
---   * Both are FINAL and immutable, like REJECTED. Nothing leaves them; ACTIVE / SUPERSEDED / REJECTED never enter them.
+--   * Both are FINAL and immutable, like REJECTED. Nothing leaves them; REJECTED never enters them, and ACTIVE / SUPERSEDED
+--     enter CANCELLED only while scheduled (above).
 --   * Both RELEASE the company's in-flight slot: the in-flight index covers DRAFT / SUBMITTED / APPROVED only, so the new
 --     statuses fall outside it with no index change. Neither is ever IN FORCE (in force = ACTIVE / SUPERSEDED by date).
---   * Both KEEP the version: content, every earlier stamp (submitted, approved, the approval note) and the audit trail are
+--   * Both KEEP the version: content, every earlier stamp (submitted, approved, the approval note, and for a cancelled
+--     scheduled version its activation and supersession stamps) and the audit trail are
 --     untouched; the content freeze applies to DRAFT -> WITHDRAWN as well.
 --   * Each records WHO, WHEN and WHY in its own write-once stamps. The reason gets a DEDICATED column rather than
 --     decision_reason: on an APPROVED version decision_reason already holds the approval note and is write-once with the
@@ -79,9 +87,11 @@ ALTER TABLE financial_policy_versions ADD CONSTRAINT financial_policy_version_st
         -- Withdrawn from DRAFT (never submitted) or from SUBMITTED (submitted, never decided).
         WHEN 'WITHDRAWN' THEN withdrawn_by IS NOT NULL AND approved_by IS NULL AND rejected_by IS NULL AND decision_reason IS NULL
                           AND activated_by IS NULL AND superseded_by_version_id IS NULL AND cancelled_by IS NULL
-        -- Cancelled from APPROVED: submitted and approved (the approval note kept), never activated.
+        -- Cancelled from APPROVED (never activated), or from a SCHEDULED ACTIVE / SUPERSEDED version (its activation and any
+        -- supersession stamps kept): submitted and approved (the approval note kept) in every case.
         WHEN 'CANCELLED' THEN submitted_by IS NOT NULL AND approved_by IS NOT NULL AND cancelled_by IS NOT NULL
-                          AND rejected_by IS NULL AND activated_by IS NULL AND superseded_by_version_id IS NULL AND withdrawn_by IS NULL
+                          AND rejected_by IS NULL AND withdrawn_by IS NULL
+                          AND (superseded_by_version_id IS NULL OR activated_by IS NOT NULL)
     END);
 
 -- SEPARATION OF DUTIES: an APPROVED version is cancelled by neither its submitter nor anyone who wrote its content.
@@ -126,11 +136,13 @@ BEGIN
         RAISE EXCEPTION 'FINANCIAL_POLICY_IMMUTABLE: the content of a % financial policy version is frozen; a change is a new version', OLD.status
             USING ERRCODE = 'restrict_violation';
     END IF;
-    -- Forward-only edges. REJECTED, SUPERSEDED, WITHDRAWN and CANCELLED have none; ACTIVE only its supersession.
+    -- Forward-only edges. REJECTED, WITHDRAWN and CANCELLED have none; ACTIVE its supersession; ACTIVE / SUPERSEDED their
+    -- cancellation while still SCHEDULED (checked below).
     IF NOT ((OLD.status = 'DRAFT' AND NEW.status = 'WITHDRAWN')
             OR (OLD.status = 'SUBMITTED' AND NEW.status IN ('APPROVED', 'REJECTED', 'WITHDRAWN'))
             OR (OLD.status = 'APPROVED' AND NEW.status IN ('ACTIVE', 'CANCELLED'))
-            OR (OLD.status = 'ACTIVE' AND NEW.status = 'SUPERSEDED')) THEN
+            OR (OLD.status = 'ACTIVE' AND NEW.status IN ('SUPERSEDED', 'CANCELLED'))
+            OR (OLD.status = 'SUPERSEDED' AND NEW.status = 'CANCELLED')) THEN
         RAISE EXCEPTION 'FINANCIAL_POLICY_TRANSITION_ILLEGAL: % -> % (a % version is %)', OLD.status, NEW.status, OLD.status,
             CASE WHEN OLD.status IN ('ACTIVE', 'SUPERSEDED') THEN 'locked'
                  WHEN OLD.status IN ('REJECTED', 'WITHDRAWN', 'CANCELLED') THEN 'final' ELSE 'not editable' END
@@ -158,7 +170,15 @@ BEGIN
         RAISE EXCEPTION 'FINANCIAL_POLICY_IMMUTABLE: the % -> % transition writes only its own lifecycle stamps', OLD.status, NEW.status
             USING ERRCODE = 'restrict_violation';
     END IF;
-    IF OLD.status = 'ACTIVE' THEN
+    IF OLD.status IN ('ACTIVE', 'SUPERSEDED') AND NEW.status = 'CANCELLED' THEN
+        -- Only a SCHEDULED version: its effective date still after the company's business date NOW. Once in force, locked.
+        v_business_date := eos_policy.operating_company_business_date(OLD.tenant_id, OLD.operating_company_id, now());
+        IF NOT (OLD.effective_date > v_business_date) THEN
+            RAISE EXCEPTION 'FINANCIAL_POLICY_LOCKED: a % version in force since % is never cancelled (business date %); a change is a revision',
+                OLD.status, OLD.effective_date, v_business_date USING ERRCODE = 'restrict_violation';
+        END IF;
+    END IF;
+    IF OLD.status = 'ACTIVE' AND NEW.status = 'SUPERSEDED' THEN
         -- The locked version: only its supersession by a later, APPROVED version of the same company.
         SELECT * INTO v_superseding FROM financial_policy_versions WHERE tenant_id = NEW.tenant_id AND id = NEW.superseded_by_version_id;
         IF v_superseding.id IS NULL OR v_superseding.operating_company_id <> OLD.operating_company_id

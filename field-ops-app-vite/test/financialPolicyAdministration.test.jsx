@@ -404,6 +404,39 @@ describe("Administration > Financial Policy -- withdraw and cancel approval (#23
     await screen.findByText("Approval cancelled.");
   });
 
+  it("a SCHEDULED version (activated, not yet in effect) is cancellable before it takes effect; one in effect offers no cancel (Owner ruling 2026-10-14)", async () => {
+    let cancelled = false;
+    const inEffect = version({ id: "fpv-1", versionNumber: 1, status: "SUPERSEDED", locked: true, submittedBy: ME, approvedBy: OWNER, activatedBy: OWNER,
+      activatedAt: "2026-10-01T17:00:00.000Z", effectiveDate: "2026-10-01", supersededByVersionId: "fpv-2", supersededAt: "2026-10-13T17:00:00.000Z",
+      yourActions: { ...closed, cancel: no("FINANCIAL_POLICY_LOCKED") } });
+    const scheduled = version({ id: "fpv-2", versionNumber: 2, status: "ACTIVE", locked: true, submittedBy: ME, approvedBy: OWNER, activatedBy: OWNER,
+      activatedAt: "2026-10-13T17:00:00.000Z", effectiveDate: "2026-11-01", yourActions: { ...closed, cancel: yes } });
+    const cancelledV = { ...scheduled, status: "CANCELLED", cancelledBy: OWNER, cancelledAt: "2026-10-13T18:00:00.000Z", cancellationReason: "wrong month",
+      yourActions: { ...closed, cancel: no("FINANCIAL_POLICY_NOT_CANCELLABLE") } };
+    const api = vi.fn(async (op, input) => {
+      if (op === "readMyFinancialPolicyAuthority") return { ok: true, result: OWNER_AUTHORITY };
+      if (op === "readFinancialPolicy") return { ok: true, result: readOf({ state: "CONFIGURED", inForce: inEffect, scheduled: cancelled ? null : scheduled }) };
+      if (op === "listFinancialPolicyVersions") return { ok: true, result: { operatingCompanyId: input.operatingCompanyId, actorNames: { [OWNER]: "Olive Owner" },
+        items: [cancelled ? cancelledV : scheduled, inEffect], auditTrail: [] } };
+      if (op === "cancelFinancialPolicy") { cancelled = true; return { ok: true, result: { version: cancelledV, replayed: false } }; }
+      return { ok: false, code: "UNEXPECTED", message: op };
+    });
+    mount(api);
+    await waitFor(() => expect(action("cancelScheduled")).toBeTruthy());
+    expect(document.querySelectorAll('[data-action="cancelScheduled"]').length).toBe(1); // only the scheduled one, never the one in effect
+    expect(action("cancel")).toBeNull(); // nothing is in progress
+    fireEvent.click(button("cancelScheduled"));
+    const confirm = await screen.findByRole("group", { name: /Confirm: Cancel This Scheduled Version/ });
+    expect(confirm.textContent).toMatch(/This cancels Version 2 before it takes effect\. It stays in the history, is final and will never be in effect\./);
+    expect(button("confirm-cancelScheduled").disabled).toBe(true);
+    fireEvent.change(within(confirm).getByLabelText(/^Reason/), { target: { value: "wrong month" } });
+    fireEvent.click(button("confirm-cancelScheduled"));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("cancelFinancialPolicy", { operatingCompanyId: "taylor", versionId: "fpv-2", reason: "wrong month" }));
+    await screen.findByText("Scheduled version cancelled.");
+    await waitFor(() => expect(action("cancelScheduled")).toBeNull());
+    expect(screen.getByRole("table", { name: "Financial policy versions" }).textContent).toMatch(/Cancelled before taking effect by You/);
+  });
+
   it("cancel is disabled with the server's reason for a preparer, and a refused cancellation is shown verbatim", async () => {
     const approved = version({ status: "APPROVED", yourActions: { ...closed, cancel: no("CAPABILITY_REQUIRED") } });
     mount(serverWith({ reads: { taylor: readOf({ inFlight: approved }) } }));
@@ -448,7 +481,7 @@ describe("Administration > Financial Policy -- withdraw and cancel approval (#23
 
   it("maps the Phase 3 refusals to words", () => {
     for (const [code, words] of [["NOT_YOUR_VERSION", /can withdraw it/], ["FINANCIAL_POLICY_NOT_WITHDRAWABLE", /draft or a version submitted/],
-      ["FINANCIAL_POLICY_NOT_CANCELLABLE", /not been activated/], ["REASON_REQUIRED", /reason is required/]]) {
+      ["FINANCIAL_POLICY_NOT_CANCELLABLE", /scheduled but not yet in effect/], ["REASON_REQUIRED", /reason is required/]]) {
       expect(describeFailure({ ok: false, reason: code }).words).toMatch(words);
     }
   });
