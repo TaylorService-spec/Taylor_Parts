@@ -97,6 +97,8 @@ CREATE TABLE financial_policy_versions (
         CHECK (cogs_recognition_point IN ('SALES_ORDER_FULFILLMENT', 'INVOICE_ISSUE', 'EQUIPMENT_INSTALL', 'WORK_ORDER_CONSUMPTION')),
     CONSTRAINT financial_policy_freight_treatment_supported CHECK (freight_treatment IN ('EXCLUDED')),
     CONSTRAINT financial_policy_landed_cost_treatment_supported CHECK (landed_cost_treatment IN ('EXCLUDED')),
+    -- No NULL author: `x = ANY (arr)` is NULL when arr holds a NULL, which would blind the three independence CHECKs.
+    CONSTRAINT financial_policy_content_authors_no_null CHECK (array_position(content_authors, NULL) IS NULL),
     CONSTRAINT financial_policy_content_authors_present
         CHECK (cardinality(content_authors) >= 1 AND prepared_by = content_authors[1] AND last_edited_by = ANY (content_authors)),
     -- Each status carries exactly the stamps it has earned.

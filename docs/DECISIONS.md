@@ -8198,20 +8198,25 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
   - Proven: the Administrator still approves and activates at runtime.
   - The Administration matrix shows the Administrator's read / approve / activate cells as held with source `PROTECTED_ADMINISTRATOR`, and prepare as not held.
   - The role-detail view additionally names the reservation ruling (`forbiddenBy`) on the approve / activate cells; this is a display artifact, and authority is unchanged.
+- **Runtime reservation.** `approveFinancialPolicy`, `rejectFinancialPolicy` and `activateFinancialPolicy` also check the reservation at request time, through the existing `requireReservedHolder` (as trade-in approval does). A role-capability row that bypassed the write path does not authorize.
+  - UNLIKE trade-in (excluded from standing), Protected Administrator standing also passes, because #232 gives the Administrator approve / activate by standing.
+  - The refusal is `RESERVED_CAPABILITY` (403).
+- **NULL-safe independence.** The CHECK `financial_policy_content_authors_no_null` (`array_position(content_authors, NULL) IS NULL`) stops a NULL author from blinding the three independence CHECKs.
 - **Grants.** The Owner Role's approve / activate grants remain PROPOSED. Executing them needs the Owner's authorization through Administration.
 - **Future companies (proven).** A third ACTIVE company in the registry is assignable at Preparer scope and keeps its own isolated policy and history, with no code change.
 
-**NOT implemented: the Preparer Role and the read / prepare reservation (BLOCKED by existing code).**
-- **Seeding is excluded.** A system Role is defined in the governed role catalog (`functions/src/access/governedBusinessRoles.ts`, the Firebase-era catalog the policy seed reads) and seeded into every tenant with its declared capabilities as SYSTEM_DEFAULT grants. That is both Firebase-catalog development and an implicit grant, which the Owner excluded.
-- **Administration creation is refused.** The alternative is to create the Role later through Administration (`createRole`). But once `financialPolicyPreparer` is a reserved holder of read / prepare, `createRole` refuses that key as a custom Role (`policyCommands.ts`, the PR-4a guard that stops a custom Role impersonating a reserved holder).
-- **Consequence.** Reserving read / prepare to the Preparer Role and creating it through Administration are mutually exclusive in the current code, and reserving them without the Role would make the policy unpreparable.
-- **What happens meanwhile.** Read and prepare stay unreserved. A direct principal grant of `finance.policy.read` or `.prepare` therefore remains a tenant-wide path until one of these is authorized:
-  - (A) a narrow exception to the `createRole` guard for this Role key;
-  - (B) the Role defined in the governed catalog, with no permissions declared and its two cells granted through Administration;
-  - (C) a Role-only rule for these keys in `grantObjectActionToPrincipal`.
+**The Preparer Role, and what remains open.**
+- **Creating the Role needs no code.** Creating the Financial Policy Preparer Role needs only an Owner-authorized Administration action: a custom Role (`createRole`) granted exactly `finance.policy.read` + `.prepare` (`grantObjectActionToRole`), assigned globally or per company. The test tenant does exactly this (`financialPolicyPreparer`, alongside the unchanged finance Roles).
+- **What is blocked** is closing DIRECT principal grants of read / prepare.
+  - Reserving them through `RESERVED_CAPABILITY_HOLDERS` would make `createRole` refuse that Role key (the PR-4a guard against a custom Role impersonating a reserved holder).
+  - No other existing mechanism refuses direct grants.
+  - Until one of the options below is authorized, a direct principal grant of `finance.policy.read` / `.prepare` remains a tenant-wide path:
+    - (A) a narrow `createRole` exception for this one Role key, then reserve read / prepare to it;
+    - (C) a Role-only rule for read / prepare in `grantObjectActionToPrincipal`;
+    - (B) a catalog edit: define the Role in the governed role catalog (`functions/src/access/governedBusinessRoles.ts`, the Firebase-era catalog the seed reads). This is Firebase-catalog development and a seed default, so it is listed for completeness only.
 
 **Status of earlier open items.**
-- **Amendment A item 1 (which Role carries scoped preparation).** DECIDED: the Financial Policy Preparer Role. Its implementation is blocked as above.
+- **Amendment A item 1 (which Role carries scoped preparation).** DECIDED: the Financial Policy Preparer Role, created through Administration on the Owner's authorization; no code is needed.
 - **Amendment A item 3 (direct grants).** RESOLVED for approve / activate (reserved). OPEN for read / prepare, as above.
 - **Activation separation of duties.** RESOLVED.
 
@@ -8220,7 +8225,8 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 2. `accountingManager` prepare and `generalManager` read.
 3. The financeAccounting persona registry discrepancy.
 4. Authorization of the Owner Role's approve / activate grants.
-5. The Preparer Role creation path: (A), (B) or (C) above.
+5. Authorize creating the Preparer Role through Administration.
+6. Close direct grants of read / prepare: (A) or (C) above.
 
 **Boundary.**
 - No Role definition, grant, assignment or persona change anywhere live.

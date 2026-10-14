@@ -164,13 +164,19 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const r = await admin("grantObjectActionToRole", { roleKey, objectKey: c.object_key, actionKey: c.action_key, reason: "local test tenant only (#232 proposed grant)" });
     assert.equal(r.ok, true, `${roleKey} ${key} ${JSON.stringify(r).slice(0, 300)}`);
   };
-  const fm = await person("uid-fp-fm", ["financeManager"], { id: "e-fp-fm", name: "Frances Finance" });
-  const ctrl = await person("uid-fp-ctrl", ["controller"], { id: "e-fp-ctrl", name: "Sage Controller" });
+  // #232 Phase 1: the finance Roles stay UNCHANGED; preparers hold a CUSTOM Financial Policy Preparer Role (created here,
+  // in the test tenant only, with no capability until the grants below), assigned alongside their finance Role.
+  assert.equal((await admin("createRole", { key: "financialPolicyPreparer", name: "Financial Policy Preparer",
+    reason: "local test tenant only (#232 Phase 1: a custom Role with exactly read + prepare)" })).ok, true);
+  const fm = await person("uid-fp-fm", ["financeManager", "financialPolicyPreparer"], { id: "e-fp-fm", name: "Frances Finance" });
+  const ctrl = await person("uid-fp-ctrl", ["controller", "financialPolicyPreparer"], { id: "e-fp-ctrl", name: "Sage Controller" });
   const own = await person("uid-fp-owner", ["owner"], { id: "e-fp-owner", name: "Olive Owner" });
   const adm = await person("uid-fp-admin", ["admin"], { id: "e-fp-admin", name: "Rowan Administrator" });
-  const dual = await person("uid-fp-dual", ["controller", "owner"], { id: "e-fp-dual", name: "Dana Dual" });
+  const dual = await person("uid-fp-dual", ["controller", "financialPolicyPreparer", "owner"], { id: "e-fp-dual", name: "Dana Dual" });
   const acct = await person("uid-fp-acct", ["accountingManager"], { id: "e-fp-acct", name: "Avery Accounting" });
   const gm = await person("uid-fp-gm", ["generalManager"], { id: "e-fp-gm", name: "Glen General" });
+  const ctrlOnly = await person("uid-fp-ctrl-only", ["controller"], { id: "e-fp-ctrl-only", name: "Cal Controller" });
+  const fmOnly = await person("uid-fp-fm-only", ["financeManager"], { id: "e-fp-fm-only", name: "Fay Finance" });
   const outsiders = {
     salesperson: await person("uid-fp-sales", ["salesperson"], { id: "e-fp-sales", name: "Riley Retail" }),
     technician: await person("uid-fp-tech", ["technician"], { id: "e-fp-tech", name: "Finley Tech", technician: true }),
@@ -196,8 +202,9 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
       "standing never implies prepare (EDIT)");
   });
 
-  // The PROPOSED #232 grants, executed here in the test tenant only.
-  for (const role of ["financeManager", "controller"]) for (const key of ["finance.policy.read", "finance.policy.prepare"]) await grant(role, key);
+  // The #232 Phase 1 shape, executed here in the test tenant only: the Preparer Role gets read + prepare; the Owner Role its
+  // reserved approve / activate (+ read). controller / financeManager / accountingManager get NOTHING.
+  for (const key of ["finance.policy.read", "finance.policy.prepare"]) await grant("financialPolicyPreparer", key);
   for (const key of ["finance.policy.read", "finance.policy.approve", "finance.policy.activate"]) await grant("owner", key);
 
   await t.test("AUTH: unauthorized roles are refused every lifecycle action (CAPABILITY_REQUIRED), including accountingManager and generalManager", async () => {
@@ -207,7 +214,8 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
       ["approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: "x" }], ["rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: "x", reason: "r" }],
       ["activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: "x", effectiveDate: "2099-01-01" }],
     ];
-    for (const [name, who] of [...Object.entries(outsiders), ["accountingManager", acct], ["generalManager", gm]]) {
+    for (const [name, who] of [...Object.entries(outsiders), ["accountingManager", acct], ["generalManager", gm],
+      ["controller (unchanged Role)", ctrlOnly], ["financeManager (unchanged Role)", fmOnly]]) {
       for (const [op, input] of ops) refused(await fn(who, op, input), 403, "CAPABILITY_REQUIRED", `${name} ${op}`);
     }
     // Preparers cannot decide; approvers cannot prepare.
@@ -218,8 +226,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const leaked = (await q(`SELECT r.key, c.key AS cap FROM eos_policy.role_capabilities rc JOIN eos_policy.roles r ON r.id = rc.role_id
       JOIN eos_policy.capabilities c ON c.id = rc.capability_id WHERE rc.tenant_id = $1 AND c.object_key = 'financialPolicy' ORDER BY 1, 2`, [TENANT])).rows;
     assert.deepEqual(leaked.map((x) => `${x.key}/${x.cap}`), [
-      "controller/finance.policy.prepare", "controller/finance.policy.read", "financeManager/finance.policy.prepare", "financeManager/finance.policy.read",
-      "owner/finance.policy.activate", "owner/finance.policy.approve", "owner/finance.policy.read"]);
+      "financialPolicyPreparer/finance.policy.prepare", "financialPolicyPreparer/finance.policy.read", "owner/finance.policy.activate", "owner/finance.policy.approve", "owner/finance.policy.read"]);
   });
 
   await t.test("VAL + CO: refusals through the transport; company scope", async () => {
@@ -644,6 +651,27 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     t.diagnostic(`admin role detail: ${JSON.stringify(["finance.policy.read", "finance.policy.prepare", "finance.policy.approve", "finance.policy.activate"]
       .map((k) => ({ k, held: row(k)?.held, source: row(k)?.source, forbiddenBy: row(k)?.forbiddenBy ?? null })))}`);
     for (const key of ["finance.policy.approve", "finance.policy.activate"]) assert.deepEqual([row(key).held, row(key).source], [true, "PROTECTED_ADMINISTRATOR"], key);
+
+    // RUNTIME RESERVATION: a row that bypassed the write path (raw SQL, as an old or rogue grant would be) does not authorize.
+    // Only the Owner Role or Administrator standing exercises approve / activate.
+    await q(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+             SELECT 'rc-fp-rogue-' || c.action_key, $1, r.id, c.id, 'rogue', 'rogue', 'rogue' FROM eos_policy.roles r, eos_policy.capabilities c
+              WHERE r.tenant_id = $1 AND r.key = 'accountingManager' AND c.key IN ('finance.policy.approve', 'finance.policy.activate')`, [TENANT]);
+    const rogueDraft = ok(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: FIFO })).version;
+    ok(await fn(pT, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id }));
+    refused(await fn(acct, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id }), 403, "RESERVED_CAPABILITY", "a bypassed row");
+    refused(await fn(acct, "rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id, reason: "rogue" }), 403, "RESERVED_CAPABILITY");
+    ok(await fn(adm, "rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id, reason: "standing still decides" }));
+    refused(await fn(acct, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id, effectiveDate: await businessDate("taylor", 40) }),
+      403, "RESERVED_CAPABILITY");
+    await q(`DELETE FROM eos_policy.role_capabilities WHERE tenant_id = $1 AND id LIKE 'rc-fp-rogue-%'`, [TENANT]);
+
+    // NULL-SAFE independence: content_authors may never hold a NULL element (it would blind every independence CHECK).
+    const nullDraft = ok(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: WA })).version;
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET content_authors = content_authors || NULL::text WHERE id = $1`, [nullDraft.id],
+      /financial_policy_content_authors_no_null/, "a NULL author");
+    ok(await fn(pT, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: nullDraft.id }));
+    ok(await fn(adm, "rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: nullDraft.id, reason: "test tidy-up" }));
 
     // GLOBAL holder: the current EOS meaning of a global assignment -- every company (pending the Owner's confirmation).
     for (const company of ["taylor", "ventana"]) {

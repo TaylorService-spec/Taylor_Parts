@@ -54,6 +54,9 @@ import {
 import { FinanceFoundationError, resolveOperatingCompany } from "./financeFoundation";
 import { withActorAuthority } from "../eosOps/administrationReach";
 import { admittedScopeValues, type ScopedHolding } from "../adminPolicy/assignmentScopeRuntime";
+import { RESERVED_CAPABILITY_HOLDERS } from "../adminPolicy/roleCapabilityAdministration";
+import { principalHasProtectedAdministratorStanding } from "../eosOps/administrationReach";
+import { CommercialCommandError, requireReservedHolder } from "../eosCommercial/commands/commercialCommandKernel";
 
 export const FINANCIAL_POLICY_READ_CAPABILITY = "finance.policy.read";
 export const FINANCIAL_POLICY_PREPARE_CAPABILITY = "finance.policy.prepare";
@@ -117,6 +120,24 @@ const requireCapability = (actor: FinancialPolicyActor, key: string): CompanyRea
   if (companies.length === 0) return refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${key}`);
   return Object.freeze({ key, global: false, companies });
 };
+/**
+ * THE RUNTIME HALF OF THE RESERVATION (#232 Phase 1). finance.policy.approve / .activate are reserved to the Owner Role, and
+ * the write path refuses every other grant -- but a row that bypassed it must not authorize either. So, like trade-in
+ * approval, the key is exercised only through a qualifying global assignment of a reserved Role (the existing
+ * requireReservedHolder). UNLIKE trade-in, Protected Administrator standing ALSO exercises it: trade-in is excluded from
+ * standing (PROTECTED_ADMINISTRATOR_EXCLUSIONS), while #232 gives the Administrator approve / activate by standing.
+ */
+async function requireReservedAuthority(db: Db, actor: FinancialPolicyActor, key: string): Promise<void> {
+  if (!RESERVED_CAPABILITY_HOLDERS.has(key)) return;
+  if (await principalHasProtectedAdministratorStanding(db, actor.tenantId, actor.principalId)) return;
+  try {
+    await requireReservedHolder(db, actor.tenantId, actor.principalId, key);
+  } catch (err) {
+    if (err instanceof CommercialCommandError) refuse(err.code, "FORBIDDEN", err.message);
+    throw err;
+  }
+}
+
 /**
  * Decided on the RESOLVED company, before any version is looked up -- an out-of-scope company's versions never leak. For a
  * caller holding the key only at scope, OUT OF SCOPE == MISSING (the platform rule): an unknown, inactive or ACTIVE-but-
@@ -533,6 +554,7 @@ export async function approveFinancialPolicy(pool: Pool, actor: FinancialPolicyA
   only(input, ["operatingCompanyId", "versionId", "reason"]);
   const reason = optionalText(input.reason, "reason");
   return tx(pool, async (c) => {
+    await requireReservedAuthority(c, actor, FINANCIAL_POLICY_APPROVE_CAPABILITY);
     const company = await companyOf(c, actor, input.operatingCompanyId, reach);
     const row = await lockedVersion(c, actor, company, input.versionId);
     const before = versionView(row);
@@ -562,6 +584,7 @@ export async function rejectFinancialPolicy(pool: Pool, actor: FinancialPolicyAc
   if (typeof input.reason !== "string" || input.reason.trim() === "") refuse("REASON_REQUIRED", "INVALID_INPUT", "a rejection states its reason");
   const reason = requiredText(input.reason, "reason", 1000);
   return tx(pool, async (c) => {
+    await requireReservedAuthority(c, actor, FINANCIAL_POLICY_APPROVE_CAPABILITY);
     const company = await companyOf(c, actor, input.operatingCompanyId, reach);
     const row = await lockedVersion(c, actor, company, input.versionId);
     const before = versionView(row);
@@ -594,6 +617,7 @@ export async function activateFinancialPolicy(pool: Pool, actor: FinancialPolicy
   const reason = optionalText(input.reason, "reason");
   const effectiveDate = calendarDate(input.effectiveDate);
   return tx(pool, async (c) => {
+    await requireReservedAuthority(c, actor, FINANCIAL_POLICY_ACTIVATE_CAPABILITY);
     const company = await companyOf(c, actor, input.operatingCompanyId, reach);
     await c.query(`SELECT pg_advisory_xact_lock(hashtext('eos_finance.financial_policy_versions'), hashtext($1 || '/' || $2))`, [actor.tenantId, company]);
     const row = await lockedVersion(c, actor, company, input.versionId);

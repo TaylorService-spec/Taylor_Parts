@@ -56,14 +56,15 @@ The earlier proposals are SUPERSEDED: read + prepare for `financeManager` / `con
 
 | Holder | read | prepare | approve | activate | How |
 |---|---|---|---|---|---|
-| **Financial Policy Preparer** (new Role, NOT yet created, see §6) | yes | yes | – | – | global, or scoped per operating company (Amendment A) |
+| **Financial Policy Preparer** (custom Role; created through Administration on Owner authorization, no code) | yes | yes | – | – | global, or scoped per operating company (Amendment A) |
 | `owner` | proposed | – | **reserved, proposed grant** | **reserved, proposed grant** | the grant needs Owner authorization through Administration |
 | `admin` (protected Administrator) | standing | **no** | standing | standing | #223 standing; the reservation does not affect it |
 | `controller`, `financeManager`, `accountingManager`, `generalManager` and every other Role | – | – | refused (reserved) | refused (reserved) | unchanged |
 
 **Reserved list.**
 - **approve / activate** are on `RESERVED_CAPABILITY_HOLDERS`, reserved to `[owner]`. A grant to any other Role, or a direct principal grant, is refused.
-- **read / prepare are NOT yet reserved.** The `createRole` guard would refuse creating the Preparer Role once its key is a reserved holder (§6, decision 13).
+- **approve / activate at runtime.** They are checked against the reservation at request time too (`requireReservedHolder`, plus Administrator standing), so a bypassed role-capability row does not authorize.
+- **read / prepare are NOT reserved.** Reserving them would make `createRole` refuse the Preparer Role's key, so direct principal grants of read / prepare stay open (§6, decision 13).
 
 **Separation of duties holds whatever is granted.** The approver, rejecter OR ACTIVATOR is never the submitter, nor anyone who wrote the draft. The approver may activate.
 
@@ -156,10 +157,10 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 **The meaning of a global assignment** is also an Owner decision:
 - (a) all companies, the current behaviour; or
 - (b) a scoped holding is required. This needs an EOS-wide `scopeRequired` extension, with exemptions for the Owner and for Administrator standing.
-13. **Preparer Role creation path (#232 Phase 1, BLOCKED).** Reserving read / prepare to `financialPolicyPreparer` makes `createRole` refuse that key, and seeding it would be a Firebase-catalog edit plus an implicit SYSTEM_DEFAULT grant. Options:
-    - (A) a narrow `createRole` exception for this key;
-    - (B) a catalog-defined Role with no declared permissions, its two cells granted through Administration;
-    - (C) a Role-only direct-grant rule for read / prepare.
+13. **Close direct grants of read / prepare.** Creating the Preparer Role itself needs only an Owner-authorized Administration action (a custom Role with exactly read + prepare), with no code. What is open is closing DIRECT principal grants of read / prepare: reserving them would make `createRole` refuse that Role key, and no other existing mechanism refuses direct grants. Options:
+    - (A) a narrow `createRole` exception for this key, then reserve read / prepare to it;
+    - (C) a Role-only rule for read / prepare in `grantObjectActionToPrincipal`;
+    - (B) a catalog edit (governed role catalog plus a seed default), which is Firebase-catalog development; listed for completeness only.
 14. **Owner grants.** The Owner Role's approve / activate grants (and read, if wanted) need the Owner's authorization through Administration.
 15. **Mandatory company assignment is not part of this feature.** The EOS-wide mandatory-company-assignment ruling is a separate future programme. Here, a GLOBAL Role assignment still means all companies.
 
