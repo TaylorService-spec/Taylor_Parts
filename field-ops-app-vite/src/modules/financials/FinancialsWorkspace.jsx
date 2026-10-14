@@ -9,6 +9,7 @@
 // It decides nothing. Every figure is the server's (finance.payment.read); every action is a governed command the server
 // authorizes on its own capability (record / apply / reconcile) and refuses otherwise -- the refusal is rendered as its answer.
 // Missing data is never zero: a section with no rows says so; an amount the server did not give is not computed here.
+// Corrections (reverse an application, void a settlement) live in SettlementCorrections, on the same governed commands.
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader, SectionHeader, Button, StatusIndicator } from "../../shared/ui/primitives";
 import { Field, FormError } from "../../shared/ui/form";
@@ -17,6 +18,7 @@ import { formatMinorUnits } from "../../domain/money.js";
 import { operatingCompanyLabel, statusLabel } from "../../shared/display/displayLabels.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import SettlementCorrections from "./SettlementCorrections.jsx";
 
 // Company choices are the SERVER's (readMyFinanceCompanyAccess): only the companies this person is explicitly assigned to,
 // and the Consolidated reporting view only when they are assigned to every company (Financials Workspace P0 correction).
@@ -244,6 +246,8 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
               </table>
             )}
           </section>
+
+          <SettlementCorrections callApi={callApi} company={company} access={access} refreshToken={ws} onCorrected={load} />
 
           <section className="fo-panel" aria-label="Accounting handoffs">
             <SectionHeader title="Accounting Handoffs" description={ws.accountingHandoffs.length === 0 ? "Nothing waiting for accounting." : "Each company's records waiting for, or refused by, its own accounting destination."} />

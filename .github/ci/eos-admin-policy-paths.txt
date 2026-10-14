@@ -25,6 +25,7 @@ field-ops-app-vite/test/truckRegistryAdministration.test.jsx
 field-ops-app-vite/test/financeConfigurationAdministration.test.jsx
 field-ops-app-vite/test/systemSalesConfigurationAdministration.test.jsx
 field-ops-app-vite/test/financeWorkspace.test.jsx
+field-ops-app-vite/test/settlementCorrections.test.jsx
 field-ops-app-vite/test/financialPolicyAdministration.test.jsx
 field-ops-app-vite/src/modules/administration/AdminFinancialPolicy.jsx
 field-ops-app-vite/src/modules/administration/FinancialPolicyWorkspace.jsx
@@ -42,6 +43,7 @@ field-ops-app-vite/src/services/workspaceApiClient.js
 field-ops-app-vite/src/modules/rental/**
 field-ops-app-vite/src/services/rentalApiClient.js
 field-ops-app-vite/src/modules/financials/FinancialsWorkspace.jsx
+field-ops-app-vite/src/modules/financials/SettlementCorrections.jsx
 field-ops-app-vite/src/services/financeApiClient.js
 functions/test/adminPolicyAuthorization.test.mjs
 functions/test/adminPolicyWorkflow.test.mjs

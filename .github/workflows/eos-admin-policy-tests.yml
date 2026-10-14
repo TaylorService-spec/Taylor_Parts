@@ -261,8 +261,9 @@ jobs:
         working-directory: field-ops-app-vite
 
       # Finance Closure (#206): the Finance workspace -- the server's figures and refusals; Consolidated records nothing.
-      - name: Finance workspace (vitest + jsdom)
-        run: npx vitest run test/financeWorkspace.test.jsx
+      # + Settlement Corrections (2026-10-14): reverse / void through the governed commands, offered only where `correct` is held.
+      - name: Finance workspace + settlement corrections (vitest + jsdom)
+        run: npx vitest run test/financeWorkspace.test.jsx test/settlementCorrections.test.jsx
         working-directory: field-ops-app-vite
 
       # Financial Policy Administration UI (#232 Phase 2): companies and actions are the server's answer; each command's input;
