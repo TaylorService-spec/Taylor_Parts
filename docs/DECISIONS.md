@@ -8198,7 +8198,7 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
   - Proven: the Administrator still approves and activates at runtime.
   - The Administration matrix shows the Administrator's read / approve / activate cells as held with source `PROTECTED_ADMINISTRATOR`, and prepare as not held.
   - The role-detail view additionally names the reservation ruling (`forbiddenBy`) on the approve / activate cells; this is a display artifact, and authority is unchanged.
-- **Runtime reservation.** `approveFinancialPolicy`, `rejectFinancialPolicy` and `activateFinancialPolicy` also check the reservation at request time, through the existing `requireReservedHolder` (as trade-in approval does). A role-capability row that bypassed the write path does not authorize.
+- **Runtime reservation.** `approveFinancialPolicy`, `rejectFinancialPolicy` and `activateFinancialPolicy` also check the reservation at request time, through the same primitives as trade-in approval's `requireReservedHolder` (`qualifyingGlobalRoles` + `reservedCapabilityAdmits`; the Commercial command kernel itself may only be reached from the Commercial transport). A role-capability row that bypassed the write path does not authorize.
   - UNLIKE trade-in (excluded from standing), Protected Administrator standing also passes, because #232 gives the Administrator approve / activate by standing.
   - The refusal is `RESERVED_CAPABILITY` (403).
 - **NULL-safe independence.** The CHECK `financial_policy_content_authors_no_null` (`array_position(content_authors, NULL) IS NULL`) stops a NULL author from blinding the three independence CHECKs.

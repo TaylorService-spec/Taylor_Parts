@@ -54,9 +54,8 @@ import {
 import { FinanceFoundationError, resolveOperatingCompany } from "./financeFoundation";
 import { withActorAuthority } from "../eosOps/administrationReach";
 import { admittedScopeValues, type ScopedHolding } from "../adminPolicy/assignmentScopeRuntime";
-import { RESERVED_CAPABILITY_HOLDERS } from "../adminPolicy/roleCapabilityAdministration";
-import { principalHasProtectedAdministratorStanding } from "../eosOps/administrationReach";
-import { CommercialCommandError, requireReservedHolder } from "../eosCommercial/commands/commercialCommandKernel";
+import { RESERVED_CAPABILITY_HOLDERS, reservedCapabilityAdmits } from "../adminPolicy/roleCapabilityAdministration";
+import { principalHasProtectedAdministratorStanding, qualifyingGlobalRoles } from "../eosOps/administrationReach";
 
 export const FINANCIAL_POLICY_READ_CAPABILITY = "finance.policy.read";
 export const FINANCIAL_POLICY_PREPARE_CAPABILITY = "finance.policy.prepare";
@@ -123,18 +122,19 @@ const requireCapability = (actor: FinancialPolicyActor, key: string): CompanyRea
 /**
  * THE RUNTIME HALF OF THE RESERVATION (#232 Phase 1). finance.policy.approve / .activate are reserved to the Owner Role, and
  * the write path refuses every other grant -- but a row that bypassed it must not authorize either. So, like trade-in
- * approval, the key is exercised only through a qualifying global assignment of a reserved Role (the existing
- * requireReservedHolder). UNLIKE trade-in, Protected Administrator standing ALSO exercises it: trade-in is excluded from
- * standing (PROTECTED_ADMINISTRATOR_EXCLUSIONS), while #232 gives the Administrator approve / activate by standing.
+ * approval, the key is exercised only through a qualifying global assignment of a reserved Role: the SAME two primitives
+ * trade-in's requireReservedHolder is built from (qualifyingGlobalRoles + reservedCapabilityAdmits) -- the Commercial
+ * command kernel itself is reachable only from the Commercial transport (commercialCommandLayer guard), so it is not
+ * imported. UNLIKE trade-in, Protected Administrator standing ALSO exercises it: trade-in is excluded from standing
+ * (PROTECTED_ADMINISTRATOR_EXCLUSIONS), while #232 gives the Administrator approve / activate by standing.
  */
 async function requireReservedAuthority(db: Db, actor: FinancialPolicyActor, key: string): Promise<void> {
-  if (!RESERVED_CAPABILITY_HOLDERS.has(key)) return;
+  const reserved = RESERVED_CAPABILITY_HOLDERS.get(key);
+  if (!reserved) return;
   if (await principalHasProtectedAdministratorStanding(db, actor.tenantId, actor.principalId)) return;
-  try {
-    await requireReservedHolder(db, actor.tenantId, actor.principalId, key);
-  } catch (err) {
-    if (err instanceof CommercialCommandError) refuse(err.code, "FORBIDDEN", err.message);
-    throw err;
+  const held = await qualifyingGlobalRoles(db, actor.tenantId, actor.principalId, reserved.roleKeys);
+  if (!reservedCapabilityAdmits(key, held.map((r) => r.key))) {
+    refuse("RESERVED_CAPABILITY", "FORBIDDEN", `${key} is exercised only through the ${reserved.roleKeys.join(" or ")} Role (${reserved.ruling})`);
   }
 }
 

@@ -63,7 +63,7 @@ The earlier proposals are SUPERSEDED: read + prepare for `financeManager` / `con
 
 **Reserved list.**
 - **approve / activate** are on `RESERVED_CAPABILITY_HOLDERS`, reserved to `[owner]`. A grant to any other Role, or a direct principal grant, is refused.
-- **approve / activate at runtime.** They are checked against the reservation at request time too (`requireReservedHolder`, plus Administrator standing), so a bypassed role-capability row does not authorize.
+- **approve / activate at runtime.** They are checked against the reservation at request time too (the `requireReservedHolder` primitives `qualifyingGlobalRoles` + `reservedCapabilityAdmits`, plus Administrator standing), so a bypassed role-capability row does not authorize.
 - **read / prepare are NOT reserved.** Reserving them would make `createRole` refuse the Preparer Role's key, so direct principal grants of read / prepare stay open (§6, decision 13).
 
 **Separation of duties holds whatever is granted.** The approver, rejecter OR ACTIVATOR is never the submitter, nor anyone who wrote the draft. The approver may activate.
