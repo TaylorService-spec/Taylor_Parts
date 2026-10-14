@@ -8264,3 +8264,49 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 - The grant matrix's `DIRECT_EXCEPTION enforced: true` display (below).
 
 **Display (not changed).** The Administration grant matrix still lists a stored prohibited direct row as a `DIRECT_EXCEPTION` with `enforced: true`; only the runtime, the explanation and the effective-access read treat it as conferring nothing. Correcting that display is a later UI decision.
+
+### #232 Phase 3 — withdraw / cancel lifecycle (2026-10-14)
+
+(Owner requirement, from the Phase 3 nonprod finding: an APPROVED version held the company's single in-flight slot until activation, so approving without activating stranded the company, and an abandoned DRAFT or SUBMITTED version could not be removed from flight.)
+
+**Decision (as required by the Owner).**
+1. Authorized preparers may **withdraw their own** DRAFT or SUBMITTED versions, within their existing company scope.
+2. The Owner and the Administrator may **cancel** an APPROVED version that is not yet activated.
+3. Withdrawal and cancellation **preserve** the version, its decision history and its audit trail, and **release** the company's in-progress slot.
+4. An ACTIVE, SUPERSEDED (already activated) version is **never** withdrawn or cancelled through this mechanism.
+5. Separation of duties, company-scoped authorization and database-enforced race safety are preserved.
+
+**Implemented (local; migration `1764570000000_financial-policy-withdraw-cancel.sql`).**
+- **Two FINAL statuses.** `DRAFT | SUBMITTED -> WITHDRAWN` and `APPROVED -> CANCELLED`. Nothing leaves them, and ACTIVE / SUPERSEDED / REJECTED never enter them (transition trigger). Neither is ever in force (in force = ACTIVE / SUPERSEDED by date), and both fall outside the one-in-flight index, so the slot frees with no index change.
+- **Stamps.** Write-once `withdrawn_by / withdrawn_at / withdrawal_reason` and `cancelled_by / cancelled_at / cancellation_reason`, held by the stamps-match-status CHECK. The reason has its own column, not `decision_reason`: on an APPROVED version that column already holds the approval note and is write-once with the approval.
+- **No new capability, no grant.** `withdrawFinancialPolicy` reuses `finance.policy.prepare` (company-scoped, role-assignment-only); `cancelFinancialPolicy` reuses `finance.policy.approve` with its request-time Owner reservation (Administrator standing passes). Cancelling an approval is a decision act, so approve, not activate, governs it.
+- **Ownership and independence, server and database.** The withdrawer must be a content author (the creator is the first) or the submitter: `NOT_YOUR_VERSION` (403), CHECK `financial_policy_withdrawer_owns_version`. The canceller must be neither the submitter nor a content author: `SEPARATION_OF_DUTIES` (403), CHECK `financial_policy_canceller_independent`. The approver may cancel their own approval.
+- **Lifecycle refusals.** `FINANCIAL_POLICY_NOT_WITHDRAWABLE` / `FINANCIAL_POLICY_NOT_CANCELLABLE` (409); an ACTIVE or SUPERSEDED version answers `FINANCIAL_POLICY_LOCKED`. A reason is required (`REASON_REQUIRED`).
+- **Concurrency.** Activation and cancellation take the same per-company advisory lock and the version's row lock, then re-read the status. Independently, the trigger admits ACTIVE and CANCELLED only from APPROVED, so whichever commits first wins and the other is a governed 409, never a 500.
+- **Replay and audit.** An identical re-send answers `replayed: true`; a different reason is `FINANCIAL_POLICY_REPLAY_CONFLICT`. Each act writes one `finance.policy.withdraw` / `finance.policy.cancel` audit row with the full snapshot. `rebuildFinancialPolicyVersions` treats the new fields as null on snapshots written before the migration.
+- **Screen.** Administration → Financial Policy offers Withdraw on the in-progress DRAFT / SUBMITTED version and Cancel Approval on an APPROVED one, each through a confirmation with a required reason; availability is the server's `yourActions` (`withdraw`, `cancel`), also listed per company by `readMyFinancialPolicyAuthority`.
+
+**Not changed.** Roles, grants, assignments, capabilities, nonprod, production, Firebase, the training guide.
+
+- **In order.** A transition writes only its own stamps; every other lifecycle stamp keeps its prior value, so a direct write cannot forge, say, a submission stamp on DRAFT → WITHDRAWN (independent-review finding, PR #2088).
+
+**Owner rulings (2026-10-14, Financial Policy Closure) — applied.**
+- **Withdrawal.** A policy author may withdraw their own DRAFT or SUBMITTED version while they retain the required company authorization: any content author (the creator or any editor) or the submitter, holding `finance.policy.prepare` at that company.
+- **Cancellation.** An authorized approver may cancel an APPROVED version, **including their own approval**, with a mandatory reason and an audit event. Only the submitter and content authors are excluded.
+- **Scheduled versions stay cancellable until activation actually occurs.** A version activated with a future effective date (ACTIVE, or already SUPERSEDED by a later activation) is SCHEDULED until that date; until then it may be cancelled exactly like an APPROVED one (`ACTIVE | SUPERSEDED -> CANCELLED`, server `cancelState` and the trigger, both on the company's business date). Its activation and supersession stamps are kept. The version it superseded at activation keeps governing: in force is resolved by date, and CANCELLED is never in force. This closes Phase 1 open item 1 (§6 item 7 of the authority document).
+- **A version in force is never cancelled** (`FINANCIAL_POLICY_LOCKED`, server and trigger). Cancellation releases the in-progress slot; immutable history, separation of duties and the concurrency protections are unchanged.
+
+### #232 company-access correction — company assignment is mandatory for Financial Policy (2026-10-14)
+
+(Owner authorization 2026-10-14, applying the Owner ruling of 2026-10-13: business access requires BOTH a role capability AND an explicit operating-company assignment. Supersedes #232 Amendment A's "a GLOBAL assignment (or Administrator standing) reaches every company".)
+
+**Rule (`functions/src/eosFinance/financialPolicy.ts`, `capabilityReach`).** A `finance.policy.*` action applies at operating company C only when the principal (1) holds the action's capability — flat (a global Role, e.g. the Owner Role; or standing) or through an unconditioned operatingCompany-scoped holding — and (2) has an explicit, active operatingCompany-scoped assignment for C: a C-scoped holding of that key, or, for a key held flat, a C-scoped holding of `finance.policy.read`. Lifecycle state, separation of duties, the Owner reservation on approve / activate and the audit behaviour are unchanged.
+- A global holding or Administrator standing **alone reaches no company**. There is no implicit "all companies".
+- The company assignment supplies **reach only, never a key**: a read-only assignment cannot become approval or activation, which stay reserved to the Owner Role / standing.
+- An unknown or inactive company now answers `OUTSIDE_OPERATING_COMPANY_SCOPE` for every caller (formerly `OPERATING_COMPANY_UNKNOWN` for flat holders), so no caller learns whether an unassigned company exists.
+
+**Administration shape (nonprod R1–R4, no code).** A custom Role `financialPolicyReviewer` holding exactly `finance.policy.read`, assigned to the Owner persona at `operatingCompany:taylor` and `operatingCompany:ventana`. No Administrator assignment: the Administrator loses Financial Policy business access. Finance Controller (Preparer @ Taylor) and Bai (Preparer @ Taylor + Ventana) are unchanged; their Preparer assignments are their company assignments.
+
+**Order.** R1–R4 are applied before this code deploys; deployed first, the Owner would lose Financial Policy access until assigned (fail closed).
+
+**Not changed.** The `finance.policy` navigation surface (earned by a flat or scoped read; the door confers nothing and the company selector lists only assigned companies), any other module, the EOS-wide company-membership model.

@@ -88,6 +88,9 @@ A role guide may link to shared workflow modules when reuse is truthful, but an 
   (canonical Administration guide: Security Roles on the Employee record, Object Security, Effective Access,
   Direct Exceptions, Functional Roles, workflows, the protected Owner). Supersedes
   `docs/user-guide/administration/see-what-a-role-can-do.md` and `see-who-can-do-what.md`.
+- **Financial Policy Preparer / Owner / Administrator** — [Financial Policy](financial-policy-administration.md)
+  (Administration › Financial Policy: per-company drafts, approval, activation, version history; separate duties;
+  company-scoped preparers). Represents `59c68b0c`.
 
 ## Day-1 Customer 1 gate
 

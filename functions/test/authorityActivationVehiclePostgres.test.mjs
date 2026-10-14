@@ -220,7 +220,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // EOS native login (2026-10-11): login accounts, sessions, MFA, recovery, authentication events; no capability, no grant.
     "1764550000000_eos-native-login.sql",
     // Financial Policy foundation (#232): financial_policy_versions + finance.policy.read / .prepare / .approve / .activate; 4 capabilities, 0 grants.
-    "1764560000000_financial-policy-profiles.sql"],
+    "1764560000000_financial-policy-profiles.sql",
+    // Financial Policy withdraw / cancel (#232 Phase 3): WITHDRAWN / CANCELLED statuses and stamps; no capability, no grant.
+    "1764570000000_financial-policy-withdraw-cancel.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -450,7 +452,9 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // #206 Finance Closure: -4 capabilities and -20 grants when peeled.
     // #207 Rental: -6 capabilities and -30 grants when peeled.
     // SUP-1 supplier terms (1764530000000): -7 capabilities (4 record + 3 COMMERCIAL), no grant (it registers and grants nothing).
-    // Financial Policy foundation (1764560000000): -4 capabilities, no grant -- peeled first. EOS native login (1764550000000): schema only, next.
+    // Financial Policy withdraw / cancel (1764570000000): schema only -- peeled first. Financial Policy foundation (1764560000000): -4 capabilities, no grant -- next. EOS native login (1764550000000): schema only, after.
+    assert.deepEqual(await counts(), { caps: 139, grants: 481, mine: 26 });
+    runMigrate(url, "down", 1); // Financial Policy withdraw / cancel (1764570000000): schema only, nothing moves; its down refuses only while a WITHDRAWN / CANCELLED version exists
     assert.deepEqual(await counts(), { caps: 139, grants: 481, mine: 26 });
     runMigrate(url, "down", 1); // Financial Policy foundation (-4 capabilities, 0 grants; its down refuses while a version or a grant exists)
     assert.deepEqual(await counts(), { caps: 135, grants: 481, mine: 26 });
@@ -575,7 +579,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the Financial Policy foundation (1764560000000) first -- 4 capabilities, no grant
+    runMigrate(url, "down", 1); // peel the Financial Policy withdraw / cancel (1764570000000) first -- schema only
+    runMigrate(url, "down", 1); // then the Financial Policy foundation (1764560000000) -- 4 capabilities, no grant
     runMigrate(url, "down", 1); // then EOS native login (1764550000000) -- schema only
     runMigrate(url, "down", 1); // then the grant-impact preview fence (1764540000000) -- triggers only
     runMigrate(url, "down", 1); // then the SUP-1 supplier terms keys (1764530000000)

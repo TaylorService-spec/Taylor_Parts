@@ -262,7 +262,7 @@ describe("Administration > Financial Policy -- each command carries the right in
     fireEvent.click(button("activate"));
     const alert = await screen.findByRole("alert");
     expect(alert.dataset.refusal).toBe("SEPARATION_OF_DUTIES");
-    expect(alert.textContent).toMatch(/someone else must approve, reject or activate it/);
+    expect(alert.textContent).toMatch(/someone else must approve, reject, activate or cancel it/);
     expect(alert.textContent).toMatch(/by someone other than the principal who prepared/);
     expect(screen.queryByText(/Activated\./)).toBeNull();
   });
@@ -318,7 +318,173 @@ describe("Administration > Financial Policy -- history, audit and the Finance Co
   it("the client API mirror carries every Financial Policy operation", () => {
     expect(FINANCE_READ_OPERATIONS).toEqual(expect.arrayContaining(["readMyFinancialPolicyAuthority", "readFinancialPolicy", "listFinancialPolicyVersions"]));
     expect(FINANCE_COMMAND_OPERATIONS).toEqual(expect.arrayContaining(["saveFinancialPolicyDraft", "submitFinancialPolicy", "approveFinancialPolicy",
-      "rejectFinancialPolicy", "activateFinancialPolicy"]));
+      "rejectFinancialPolicy", "activateFinancialPolicy", "withdrawFinancialPolicy", "cancelFinancialPolicy"]));
+  });
+});
+
+describe("Administration > Financial Policy -- withdraw and cancel approval (#232 Phase 3)", () => {
+  const closed = { edit: no("FINANCIAL_POLICY_NOT_EDITABLE"), submit: no("FINANCIAL_POLICY_NOT_EDITABLE"), approve: no("FINANCIAL_POLICY_NOT_SUBMITTED"),
+    reject: no("FINANCIAL_POLICY_NOT_SUBMITTED"), activate: no("FINANCIAL_POLICY_NOT_APPROVED"), withdraw: no("FINANCIAL_POLICY_NOT_WITHDRAWABLE"),
+    cancel: no("CAPABILITY_REQUIRED") };
+
+  it("the preparer withdraws their draft through a confirmation with a required reason; Create Draft then becomes available", async () => {
+    let withdrawn = false;
+    const draftV = version({ yourActions: { ...version().yourActions, withdraw: yes, cancel: no("CAPABILITY_REQUIRED") } });
+    const withdrawnV = version({ status: "WITHDRAWN", withdrawnBy: ME, withdrawnAt: "2026-10-13T16:00:00.000Z", withdrawalReason: "wrong method", yourActions: closed });
+    const api = vi.fn(async (op, input) => {
+      if (op === "readMyFinancialPolicyAuthority") return { ok: true, result: PREPARER_AUTHORITY };
+      if (op === "readFinancialPolicy") return { ok: true, result: withdrawn ? readOf() : readOf({ inFlight: draftV,
+        yourAuthority: { ...readOf().yourAuthority, createDraft: no("FINANCIAL_POLICY_IN_FLIGHT_EXISTS") } }) };
+      if (op === "listFinancialPolicyVersions") return { ok: true, result: { operatingCompanyId: input.operatingCompanyId, actorNames: {},
+        items: [withdrawn ? withdrawnV : draftV], auditTrail: withdrawn ? [{ id: "a9", action: "finance.policy.withdraw", versionId: "fpv-1", versionNumber: 1,
+          actorPrincipalId: ME, occurredAt: "2026-10-13T16:00:00.000Z", reason: "wrong method" }] : [] } };
+      if (op === "withdrawFinancialPolicy") { withdrawn = true; return { ok: true, result: { version: withdrawnV, replayed: false } }; }
+      return { ok: false, code: "UNEXPECTED", message: op };
+    });
+    mount(api);
+    await waitFor(() => expect(action("withdraw")).toBeTruthy());
+    expect(action("save").dataset.allowed).toBe("true"); // the draft's own edit
+    expect(button("withdraw").disabled).toBe(false);
+    fireEvent.click(button("withdraw"));
+    const confirm = await screen.findByRole("group", { name: /Confirm: Withdraw This Version/ });
+    expect(confirm.textContent).toMatch(/This withdraws Version 1\. It stays in the history and is final\./);
+    expect(document.body.textContent).not.toMatch(/unlock|reopen/i); // the confirmation offers no way back
+    expect(button("confirm-withdraw").disabled).toBe(true); // a reason is required
+    fireEvent.change(within(confirm).getByLabelText(/^Reason/), { target: { value: "   " } });
+    expect(button("confirm-withdraw").disabled).toBe(true);
+    fireEvent.change(within(confirm).getByLabelText(/^Reason/), { target: { value: " wrong method " } });
+    expect(button("confirm-withdraw").disabled).toBe(false);
+    expect(api).not.toHaveBeenCalledWith("withdrawFinancialPolicy", expect.anything());
+    fireEvent.click(button("confirm-withdraw"));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("withdrawFinancialPolicy", { operatingCompanyId: "taylor", versionId: "fpv-1", reason: "wrong method" }));
+    await screen.findByText("Withdrawn.");
+    await waitFor(() => expect(screen.getByRole("region", { name: "Policy summary" }).textContent).toMatch(/No version is in progress\./));
+    // The slot is free: the editor offers Create Draft, allowed by the server's createDraft answer.
+    await waitFor(() => expect(button("save").textContent).toBe("Create Draft"));
+    expect(action("save").dataset.allowed).toBe("true");
+    expect(action("withdraw")).toBeNull();
+    const history = screen.getByRole("table", { name: "Financial policy versions" });
+    expect(history.textContent).toMatch(/Withdrawn by You/);
+    expect(history.textContent).toMatch(/wrong method/);
+    expect(screen.getByRole("table", { name: "Financial policy audit trail" }).textContent).toMatch(/Withdrawn/);
+  });
+
+  it("withdraw stays visible but disabled, with the server's reason, for a preparer who did not author the version", async () => {
+    const submitted = version({ status: "SUBMITTED", submittedBy: "prn-other", preparedBy: "prn-other", contentAuthors: ["prn-other"],
+      yourActions: { ...closed, withdraw: no("NOT_YOUR_VERSION") } });
+    const api = serverWith({ reads: { taylor: readOf({ inFlight: submitted }) } });
+    mount(api);
+    await waitFor(() => expect(action("withdraw")).toBeTruthy());
+    expect(button("withdraw").disabled).toBe(true);
+    expect(action("withdraw").querySelector("[data-unavailable-reason]").dataset.unavailableReason).toBe("NOT_YOUR_VERSION");
+    expect(action("withdraw").textContent).toMatch(/Only someone who prepared, edited or submitted this version can withdraw it/);
+    expect(action("cancel")).toBeNull(); // a SUBMITTED version has no approval to cancel
+  });
+
+  it("the Owner cancels an approval (confirmation, reason, the right op); Keep It sends nothing", async () => {
+    const approved = version({ status: "APPROVED", submittedBy: ME, approvedBy: OWNER, approvedAt: "2026-10-13T17:00:00.000Z",
+      yourActions: { ...closed, activate: yes, withdraw: no("FINANCIAL_POLICY_NOT_WITHDRAWABLE"), cancel: yes } });
+    const api = serverWith({ authority: OWNER_AUTHORITY, reads: { taylor: readOf({ inFlight: approved }) } });
+    mount(api);
+    await waitFor(() => expect(action("cancel")).toBeTruthy());
+    expect(action("withdraw")).toBeNull(); // an approved version is never withdrawn by a preparer
+    fireEvent.click(button("cancel"));
+    let confirm = await screen.findByRole("group", { name: /Confirm: Cancel This Approval/ });
+    expect(confirm.textContent).toMatch(/This cancels the approval of Version 1\. It stays in the history, is final and will never be activated\./);
+    expect(document.body.textContent).not.toMatch(/unlock|reopen/i);
+    fireEvent.click(within(confirm).getByRole("button", { name: "Keep It" }));
+    expect(screen.queryByRole("group", { name: /Confirm:/ })).toBeNull();
+    fireEvent.click(button("cancel"));
+    confirm = await screen.findByRole("group", { name: /Confirm: Cancel This Approval/ });
+    expect(button("confirm-cancel").disabled).toBe(true);
+    fireEvent.change(within(confirm).getByLabelText(/^Reason/), { target: { value: "approved the wrong point" } });
+    fireEvent.click(button("confirm-cancel"));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("cancelFinancialPolicy", { operatingCompanyId: "taylor", versionId: "fpv-1", reason: "approved the wrong point" }));
+    expect(api).not.toHaveBeenCalledWith("withdrawFinancialPolicy", expect.anything());
+    await screen.findByText("Approval cancelled.");
+  });
+
+  it("a SCHEDULED version (activated, not yet in effect) is cancellable before it takes effect; one in effect offers no cancel (Owner ruling 2026-10-14)", async () => {
+    let cancelled = false;
+    const inEffect = version({ id: "fpv-1", versionNumber: 1, status: "SUPERSEDED", locked: true, submittedBy: ME, approvedBy: OWNER, activatedBy: OWNER,
+      activatedAt: "2026-10-01T17:00:00.000Z", effectiveDate: "2026-10-01", supersededByVersionId: "fpv-2", supersededAt: "2026-10-13T17:00:00.000Z",
+      yourActions: { ...closed, cancel: no("FINANCIAL_POLICY_LOCKED") } });
+    const scheduled = version({ id: "fpv-2", versionNumber: 2, status: "ACTIVE", locked: true, submittedBy: ME, approvedBy: OWNER, activatedBy: OWNER,
+      activatedAt: "2026-10-13T17:00:00.000Z", effectiveDate: "2026-11-01", yourActions: { ...closed, cancel: yes } });
+    const cancelledV = { ...scheduled, status: "CANCELLED", cancelledBy: OWNER, cancelledAt: "2026-10-13T18:00:00.000Z", cancellationReason: "wrong month",
+      yourActions: { ...closed, cancel: no("FINANCIAL_POLICY_NOT_CANCELLABLE") } };
+    const api = vi.fn(async (op, input) => {
+      if (op === "readMyFinancialPolicyAuthority") return { ok: true, result: OWNER_AUTHORITY };
+      if (op === "readFinancialPolicy") return { ok: true, result: readOf({ state: "CONFIGURED", inForce: inEffect, scheduled: cancelled ? null : scheduled }) };
+      if (op === "listFinancialPolicyVersions") return { ok: true, result: { operatingCompanyId: input.operatingCompanyId, actorNames: { [OWNER]: "Olive Owner" },
+        items: [cancelled ? cancelledV : scheduled, inEffect], auditTrail: [] } };
+      if (op === "cancelFinancialPolicy") { cancelled = true; return { ok: true, result: { version: cancelledV, replayed: false } }; }
+      return { ok: false, code: "UNEXPECTED", message: op };
+    });
+    mount(api);
+    await waitFor(() => expect(action("cancelScheduled")).toBeTruthy());
+    expect(document.querySelectorAll('[data-action="cancelScheduled"]').length).toBe(1); // only the scheduled one, never the one in effect
+    expect(screen.getByRole("region", { name: "Cancel This Scheduled Version (Version 2)" })).toBeTruthy(); // one panel per version, named by it
+    expect(action("cancel")).toBeNull(); // nothing is in progress
+    fireEvent.click(button("cancelScheduled"));
+    const confirm = await screen.findByRole("group", { name: /Confirm: Cancel This Scheduled Version/ });
+    expect(confirm.textContent).toMatch(/This cancels Version 2 before it takes effect\. It stays in the history, is final and will never be in effect\./);
+    expect(button("confirm-cancelScheduled").disabled).toBe(true);
+    fireEvent.change(within(confirm).getByLabelText(/^Reason/), { target: { value: "wrong month" } });
+    fireEvent.click(button("confirm-cancelScheduled"));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("cancelFinancialPolicy", { operatingCompanyId: "taylor", versionId: "fpv-2", reason: "wrong month" }));
+    await screen.findByText("Scheduled version cancelled.");
+    await waitFor(() => expect(action("cancelScheduled")).toBeNull());
+    expect(screen.getByRole("table", { name: "Financial policy versions" }).textContent).toMatch(/Cancelled before taking effect by You/);
+  });
+
+  it("cancel is disabled with the server's reason for a preparer, and a refused cancellation is shown verbatim", async () => {
+    const approved = version({ status: "APPROVED", yourActions: { ...closed, cancel: no("CAPABILITY_REQUIRED") } });
+    mount(serverWith({ reads: { taylor: readOf({ inFlight: approved }) } }));
+    await waitFor(() => expect(action("cancel")).toBeTruthy());
+    expect(button("cancel").disabled).toBe(true);
+    expect(action("cancel").textContent).toMatch(/Your Security Roles do not include/);
+    cleanup();
+    const ownerView = version({ status: "APPROVED", yourActions: { ...closed, cancel: yes } });
+    const api = serverWith({ authority: OWNER_AUTHORITY, reads: { taylor: readOf({ inFlight: ownerView }) }, commands: {
+      cancelFinancialPolicy: { ok: false, code: "FORBIDDEN", reason: "SEPARATION_OF_DUTIES", status: 403,
+        message: "an approved financial policy version is cancelled by someone other than the principal who prepared, edited or submitted it" },
+    } });
+    mount(api);
+    await waitFor(() => expect(action("cancel")).toBeTruthy());
+    fireEvent.click(button("cancel"));
+    const confirm = await screen.findByRole("group", { name: /Confirm: Cancel This Approval/ });
+    fireEvent.change(within(confirm).getByLabelText(/^Reason/), { target: { value: "stale" } });
+    fireEvent.click(button("confirm-cancel"));
+    const alert = await screen.findByRole("alert");
+    expect(alert.dataset.refusal).toBe("SEPARATION_OF_DUTIES");
+    expect(alert.textContent).toMatch(/is cancelled by someone other than the principal/);
+    expect(screen.queryByText(/Approval cancelled\./)).toBeNull();
+  });
+
+  it("the history and audit trail render cancelled approvals with the canceller and the reason; the summary lists the new actions", async () => {
+    const cancelled = version({ status: "CANCELLED", submittedBy: ME, approvedBy: OWNER, approvedAt: "2026-10-13T17:00:00.000Z", decisionReason: "ok",
+      cancelledBy: OWNER, cancelledAt: "2026-10-13T18:00:00.000Z", cancellationReason: "approved the wrong point", yourActions: closed });
+    const authority = { ...OWNER_AUTHORITY, companies: OWNER_AUTHORITY.companies.map((c) => ({ ...c, actions: { ...c.actions, withdraw: no("CAPABILITY_REQUIRED"), cancel: yes } })) };
+    mount(serverWith({ authority, lists: { taylor: { operatingCompanyId: "taylor", items: [cancelled], actorNames: { [OWNER]: "Olive Owner" }, auditTrail: [
+      { id: "a3", action: "finance.policy.cancel", versionId: "fpv-1", versionNumber: 1, actorPrincipalId: OWNER, occurredAt: "2026-10-13T18:00:00.000Z", reason: "approved the wrong point" },
+    ] } } }));
+    const history = await screen.findByRole("table", { name: "Financial policy versions" });
+    expect(history.textContent).toMatch(/Approval Cancelled/);
+    expect(history.textContent).toMatch(/Approved by/);
+    expect(history.textContent).toMatch(/Approval cancelled by You/);
+    expect(history.textContent).toMatch(/approved the wrong point/);
+    expect(screen.getByRole("table", { name: "Financial policy audit trail" }).textContent).toMatch(/Approval cancelled/);
+    expect(document.querySelector('[data-company-action="cancel"]').dataset.allowed).toBe("true");
+    expect(document.querySelector('[data-company-action="withdraw"]').dataset.allowed).toBe("false");
+    expect(screen.getByRole("region", { name: "Policy summary" }).textContent).toMatch(/No version is in progress\./);
+  });
+
+  it("maps the Phase 3 refusals to words", () => {
+    for (const [code, words] of [["NOT_YOUR_VERSION", /can withdraw it/], ["FINANCIAL_POLICY_NOT_WITHDRAWABLE", /draft or a version submitted/],
+      ["FINANCIAL_POLICY_NOT_CANCELLABLE", /scheduled but not yet in effect/], ["REASON_REQUIRED", /reason is required/]]) {
+      expect(describeFailure({ ok: false, reason: code }).words).toMatch(words);
+    }
   });
 });
 

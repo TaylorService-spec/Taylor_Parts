@@ -94,7 +94,9 @@ export interface ScopeEvaluableGrant {
  *                                               tenant_operating_companies (ACTIVE; never CONSOLIDATED). Each policy
  *                                               command admits the resolved company against the holding BEFORE any
  *                                               version is read (eosFinance/financialPolicy.ts, the CommercialWriteScope
- *                                               pattern at operatingCompany scope); a global holding reaches every company.
+ *                                               pattern at operatingCompany scope). Company assignment is mandatory
+ *                                               (2026-10-14): a global holding reaches NO company without an explicit
+ *                                               operatingCompany-scoped assignment there (financialPolicy.ts capabilityReach).
  *   salesChannel x opportunity.read / salesAgreement.read / salesOrder.read
  *                                            -- the record's STORED sales channel, read in the Commercial read's own
  *                                               snapshot (an Agreement's is its source Opportunity's, joined in the
@@ -128,12 +130,14 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
   Object.freeze({
     scopeType: "operatingCompany" as const,
     capabilityKey: "finance.policy.prepare",
-    consumers: Object.freeze(["operations.saveFinancialPolicyDraft", "operations.submitFinancialPolicy"]),
+    // #232 Phase 3: withdrawFinancialPolicy reuses prepare, decided against the requested company like the others.
+    consumers: Object.freeze(["operations.saveFinancialPolicyDraft", "operations.submitFinancialPolicy", "operations.withdrawFinancialPolicy"]),
   }),
   Object.freeze({
     scopeType: "operatingCompany" as const,
     capabilityKey: "finance.policy.approve",
-    consumers: Object.freeze(["operations.approveFinancialPolicy", "operations.rejectFinancialPolicy"]),
+    // #232 Phase 3: cancelFinancialPolicy (APPROVED -> CANCELLED) reuses approve.
+    consumers: Object.freeze(["operations.approveFinancialPolicy", "operations.rejectFinancialPolicy", "operations.cancelFinancialPolicy"]),
   }),
   Object.freeze({
     scopeType: "operatingCompany" as const,
