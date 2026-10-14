@@ -347,7 +347,8 @@ describe("Administration > Financial Policy -- withdraw and cancel approval (#23
     expect(button("withdraw").disabled).toBe(false);
     fireEvent.click(button("withdraw"));
     const confirm = await screen.findByRole("group", { name: /Confirm: Withdraw This Version/ });
-    expect(confirm.textContent).toMatch(/This withdraws Version 1\. It stays in the history and cannot be reopened\./);
+    expect(confirm.textContent).toMatch(/This withdraws Version 1\. It stays in the history and is final\./);
+    expect(document.body.textContent).not.toMatch(/unlock|reopen/i); // the confirmation offers no way back
     expect(button("confirm-withdraw").disabled).toBe(true); // a reason is required
     fireEvent.change(within(confirm).getByLabelText(/^Reason/), { target: { value: "   " } });
     expect(button("confirm-withdraw").disabled).toBe(true);
@@ -389,7 +390,8 @@ describe("Administration > Financial Policy -- withdraw and cancel approval (#23
     expect(action("withdraw")).toBeNull(); // an approved version is never withdrawn by a preparer
     fireEvent.click(button("cancel"));
     let confirm = await screen.findByRole("group", { name: /Confirm: Cancel This Approval/ });
-    expect(confirm.textContent).toMatch(/This cancels the approval of Version 1\. It stays in the history and cannot be reopened or activated\./);
+    expect(confirm.textContent).toMatch(/This cancels the approval of Version 1\. It stays in the history, is final and will never be activated\./);
+    expect(document.body.textContent).not.toMatch(/unlock|reopen/i);
     fireEvent.click(within(confirm).getByRole("button", { name: "Keep It" }));
     expect(screen.queryByRole("group", { name: /Confirm:/ })).toBeNull();
     fireEvent.click(button("cancel"));

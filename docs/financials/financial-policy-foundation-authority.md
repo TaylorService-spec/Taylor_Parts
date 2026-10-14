@@ -201,4 +201,6 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 - **Concurrency.** Activation and cancellation take the same per-company advisory lock and the version's row lock and re-read the status; the trigger admits ACTIVE and CANCELLED only from APPROVED. Whichever commits first wins; the other answers 409 (`FINANCIAL_POLICY_LOCKED` or `FINANCIAL_POLICY_NOT_APPROVED`). Proven in both orders, through the server and through raw SQL.
 - **Authority reads.** `yourActions` gains `withdraw` and `cancel`; `readMyFinancialPolicyAuthority` lists both per company. They are computed from the commands' own helpers (`withdrawState`, `cancelState`, `ownVersionRefusal`, `independentDeciderRefusal`).
 - **Down.** The migration's Down refuses while any WITHDRAWN or CANCELLED version exists.
+- **In order.** The trigger lets a transition write only its own stamps; every other lifecycle stamp keeps its prior value (no forged submission stamp on a withdrawal, no forged approval or withdrawal stamp on a cancellation).
+- **Owner decisions (current reading, pending confirmation).** "Their own" means any content author (the creator or any editor) or the submitter may withdraw. The approver may cancel their own approval.
 - **Still open.** A SCHEDULED (future-dated ACTIVE) version cannot be cancelled (§6 item 7).

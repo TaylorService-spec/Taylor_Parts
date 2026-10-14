@@ -91,19 +91,6 @@ export const STATUS_WORDS = Object.freeze({
 });
 export const statusWords = (status) => STATUS_WORDS[status] ?? { label: status ?? "Unknown", tone: "unknown" };
 
-/**
- * WITHDRAW / CANCEL APPROVAL (#232 Phase 3): the operation each act sends, and the words of its confirmation. The
- * consequence is stated before the act: the version stays in the history and is final.
- */
-export const CLOSING = Object.freeze({
-  withdraw: Object.freeze({ operation: "withdrawFinancialPolicy", button: "Withdraw", confirm: "Withdraw Version", done: "Withdrawn",
-    title: "Withdraw This Version", description: "Withdrawing takes the version out of progress so a new draft can be prepared.",
-    consequence: (n) => `This withdraws Version ${n}. It stays in the history and cannot be reopened.` }),
-  cancel: Object.freeze({ operation: "cancelFinancialPolicy", button: "Cancel Approval", confirm: "Cancel Approval", done: "Approval cancelled",
-    title: "Cancel This Approval", description: "Cancelling the approval means this version will never be activated; a new draft can then be prepared.",
-    consequence: (n) => `This cancels the approval of Version ${n}. It stays in the history and cannot be reopened or activated.` }),
-});
-
 export const LOCKED_MESSAGE =
   "An active or superseded version is locked and is never edited. A change is a new draft, submitted, approved and activated.";
 

@@ -959,6 +959,27 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     refused(await fn(wPrep, "listFinancialPolicyVersions", { operatingCompanyId: "taylor" }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
   });
 
+  await t.test("MIG: with versions recorded (none withdrawn / cancelled), the Phase 3 Down reverses and the foundation Down refuses", async () => {
+    const closing = await one(`SELECT count(*) AS n, (SELECT count(*) FROM eos_finance.financial_policy_versions) AS total
+      FROM eos_finance.financial_policy_versions WHERE status IN ('WITHDRAWN', 'CANCELLED')`);
+    assert.equal(Number(closing.n), 0, "this proof runs before any version is withdrawn or cancelled");
+    assert.ok(Number(closing.total) > 0, "versions exist");
+    const capCount = async () => Number((await one(`SELECT count(*) AS n FROM eos_policy.capabilities`)).n);
+    const caps = await capCount();
+    migrate("down", 1); // the Phase 3 migration: no WITHDRAWN / CANCELLED row, so its Down proceeds
+    try {
+      assert.equal((await one(`SELECT count(*) AS n FROM information_schema.columns WHERE table_schema = 'eos_finance'
+        AND table_name = 'financial_policy_versions' AND column_name IN ('withdrawn_by', 'cancelled_by')`)).n, "0");
+      assert.throws(() => migrate("down", 1), (e) => /FINANCIAL_POLICY_FOUNDATION: refuses to reverse/.test(String(e.stderr ?? e.message)));
+      assert.notEqual((await one(`SELECT to_regclass('eos_finance.financial_policy_versions') AS r`)).r, null);
+      assert.equal(await capCount(), caps, "the refused foundation Down removed nothing");
+    } finally {
+      migrate("up", 1);
+    }
+    assert.equal((await one(`SELECT count(*) AS n FROM information_schema.columns WHERE table_schema = 'eos_finance'
+      AND table_name = 'financial_policy_versions' AND column_name IN ('withdrawn_by', 'cancelled_by')`)).n, "2");
+  });
+
   await t.test("PHASE 3: withdraw (own DRAFT / SUBMITTED) and cancel (APPROVED, Owner / Administrator) keep history and release the slot", async () => {
     const roleId = async (key) => (await one(`SELECT id FROM eos_policy.roles WHERE tenant_id = $1 AND key = $2`, [TENANT, key])).id;
     const assign = async (who, roleKey, scopeValue) => {
@@ -1014,6 +1035,14 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
       withdrawal_reason = 'x', inventory_cost_method = 'FIFO' WHERE id = $1`, [v1.id], /FINANCIAL_POLICY_IMMUTABLE/, "a withdrawal never changes the content");
     await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'CANCELLED', cancelled_by = 'q', cancelled_at = now(), cancellation_reason = 'x'
       WHERE id = $1`, [v1.id], /FINANCIAL_POLICY_TRANSITION_ILLEGAL/, "DRAFT is never CANCELLED");
+    // IN ORDER: a withdrawal cannot forge a submission stamp to pass "their own" through submitted_by (review finding).
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'WITHDRAWN', submitted_by = 'forger', submitted_at = now(),
+      withdrawn_by = 'forger', withdrawn_at = now(), withdrawal_reason = 'r' WHERE id = $1`, [v1.id],
+      /FINANCIAL_POLICY_IMMUTABLE: the DRAFT -> WITHDRAWN transition writes only its own lifecycle stamps/, "a forged submission stamp");
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'WITHDRAWN', withdrawn_by = prepared_by, withdrawn_at = now(),
+      withdrawal_reason = 'r', cancelled_by = 'x', cancelled_at = now(), cancellation_reason = 'r' WHERE id = $1`, [v1.id],
+      /FINANCIAL_POLICY_IMMUTABLE: the DRAFT -> WITHDRAWN transition writes only its own/, "a forged cancellation stamp");
+    assert.equal((await stored(v1.id)).status, "DRAFT");
     const auditBefore = await auditCount();
     const w1 = ok(await W(fm, v1.id, "abandoned: wrong costing method"), "fm withdraws its draft");
     assert.equal(w1.replayed, false);
@@ -1054,6 +1083,9 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     assert.equal(v2.versionNumber, 2, "a new draft after the withdrawal: the slot was released; numbering continues");
     await submit(fm, v2.id);
     assert.deepEqual((await readAs(fm)).inFlight.yourActions.withdraw, yes, "the submitter withdraws");
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'WITHDRAWN', withdrawn_by = submitted_by, withdrawn_at = now(),
+      withdrawal_reason = 'r', approved_by = 'forger', approved_at = now() WHERE id = $1`, [v2.id],
+      /FINANCIAL_POLICY_IMMUTABLE: the SUBMITTED -> WITHDRAWN transition writes only its own/, "a forged approval stamp on withdrawal");
     assert.deepEqual((await readAs(ctrl)).inFlight.yourActions.withdraw, no("NOT_YOUR_VERSION"));
     refused(await W(ctrl, v2.id, "not mine"), 403, "NOT_YOUR_VERSION");
     const w2 = ok(await W(fm, v2.id, "submitted too early")).version;
@@ -1074,6 +1106,9 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     refused(await C(pE, v3.id, "x"), 403, "CAPABILITY_REQUIRED", "a preparer cannot cancel an approval");
     refused(await C(fm, v3.id, "x"), 403, "CAPABILITY_REQUIRED");
     refused(await C(own, v3.id), 400, "REASON_REQUIRED");
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'CANCELLED', cancelled_by = $2, cancelled_at = now(),
+      cancellation_reason = 'r', withdrawn_by = $2, withdrawn_at = now(), withdrawal_reason = 'r' WHERE id = $1`, [v3.id, adm.principalId],
+      /FINANCIAL_POLICY_IMMUTABLE: the APPROVED -> CANCELLED transition writes only its own/, "a forged withdrawal stamp on cancellation");
     const c3 = ok(await C(own, v3.id, "approved the wrong recognition point"), "owner cancels");
     assert.deepEqual([c3.version.status, c3.version.approvedBy, c3.version.decisionReason, c3.version.cancelledBy, c3.version.cancellationReason],
       ["CANCELLED", own.principalId, "approved in review", own.principalId, "approved the wrong recognition point"]);

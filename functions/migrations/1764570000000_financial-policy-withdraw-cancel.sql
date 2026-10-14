@@ -23,6 +23,7 @@
 --     decision_reason: on an APPROVED version decision_reason already holds the approval note and is write-once with the
 --     approved stamps, so a cancellation must not overwrite it, and the stamps CHECK keeps decision_reason NULL on DRAFT /
 --     SUBMITTED. Separate columns keep every recorded fact.
+--   * IN ORDER: every transition writes only its own stamps; every other lifecycle stamp keeps its prior value (trigger).
 --   * SEPARATION OF DUTIES, in the database: the canceller is neither the submitter nor any content author (as for the
 --     approver / rejecter / activator; the approver may cancel their own approval). The withdrawer IS the version's own
 --     preparer: a content author (content_authors[1] is the creator) or the submitter.
@@ -142,6 +143,20 @@ BEGIN
        OR (OLD.withdrawn_by IS NOT NULL AND (NEW.withdrawn_by, NEW.withdrawn_at, NEW.withdrawal_reason) IS DISTINCT FROM (OLD.withdrawn_by, OLD.withdrawn_at, OLD.withdrawal_reason))
        OR (OLD.cancelled_by IS NOT NULL AND (NEW.cancelled_by, NEW.cancelled_at, NEW.cancellation_reason) IS DISTINCT FROM (OLD.cancelled_by, OLD.cancelled_at, OLD.cancellation_reason)) THEN
         RAISE EXCEPTION 'FINANCIAL_POLICY_IMMUTABLE: lifecycle stamps are written once' USING ERRCODE = 'restrict_violation';
+    END IF;
+    -- IN ORDER: a transition writes ONLY its own stamps. Every other lifecycle stamp keeps its prior value (NULL stays NULL),
+    -- so no edge can forge an earlier or later stamp -- e.g. a submission stamp on DRAFT -> WITHDRAWN, which would otherwise
+    -- satisfy the withdrawer CHECK through submitted_by.
+    IF (NEW.status <> 'SUBMITTED' AND (NEW.submitted_by, NEW.submitted_at) IS DISTINCT FROM (OLD.submitted_by, OLD.submitted_at))
+       OR (NEW.status <> 'APPROVED' AND (NEW.approved_by, NEW.approved_at) IS DISTINCT FROM (OLD.approved_by, OLD.approved_at))
+       OR (NEW.status <> 'REJECTED' AND (NEW.rejected_by, NEW.rejected_at) IS DISTINCT FROM (OLD.rejected_by, OLD.rejected_at))
+       OR (NEW.status NOT IN ('APPROVED', 'REJECTED') AND NEW.decision_reason IS DISTINCT FROM OLD.decision_reason)
+       OR (NEW.status <> 'ACTIVE' AND (NEW.activated_by, NEW.activated_at, NEW.effective_date) IS DISTINCT FROM (OLD.activated_by, OLD.activated_at, OLD.effective_date))
+       OR (NEW.status <> 'SUPERSEDED' AND (NEW.superseded_by_version_id, NEW.superseded_at) IS DISTINCT FROM (OLD.superseded_by_version_id, OLD.superseded_at))
+       OR (NEW.status <> 'WITHDRAWN' AND (NEW.withdrawn_by, NEW.withdrawn_at, NEW.withdrawal_reason) IS DISTINCT FROM (OLD.withdrawn_by, OLD.withdrawn_at, OLD.withdrawal_reason))
+       OR (NEW.status <> 'CANCELLED' AND (NEW.cancelled_by, NEW.cancelled_at, NEW.cancellation_reason) IS DISTINCT FROM (OLD.cancelled_by, OLD.cancelled_at, OLD.cancellation_reason)) THEN
+        RAISE EXCEPTION 'FINANCIAL_POLICY_IMMUTABLE: the % -> % transition writes only its own lifecycle stamps', OLD.status, NEW.status
+            USING ERRCODE = 'restrict_violation';
     END IF;
     IF OLD.status = 'ACTIVE' THEN
         -- The locked version: only its supersession by a later, APPROVED version of the same company.

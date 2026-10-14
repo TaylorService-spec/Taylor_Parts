@@ -8288,4 +8288,10 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 
 **Not changed.** Roles, grants, assignments, capabilities, nonprod, production, Firebase, the training guide.
 
+- **In order.** A transition writes only its own stamps; every other lifecycle stamp keeps its prior value, so a direct write cannot forge, say, a submission stamp on DRAFT → WITHDRAWN (independent-review finding, PR #2088).
+
+**Readings that are Owner decisions (implemented as stated, pending confirmation).**
+- **"Their own" version** is read as: ANY content author (the creator or any editor) or the submitter may withdraw it.
+- **The approver may cancel their own approval** (as the approver may activate); only the submitter and content authors are excluded.
+
 **Open.** A SCHEDULED (future-dated ACTIVE) version is still not cancellable (Phase 1 open item 1).
