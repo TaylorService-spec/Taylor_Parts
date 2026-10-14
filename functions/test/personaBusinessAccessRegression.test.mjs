@@ -186,7 +186,9 @@ test("the experience surface catalog satisfies its own invariants", () => {
   // 32 -> 33: `purchasing.suppliers` (Parts / Purchasing / Receiving, 2026-10-01), earned by supplier.record.read.
   // 33 -> 34: `rental.workspace` (Rental, #207), earned by rental.agreement.read.
   // 34 -> 35: `analysis.workspace` (Analysis & Reporting, #208), earned by any read a measure is decided on, or reportDefinition.read.
-  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 35);
+  // 35 -> 36: `finance.policy` (Financial Policy Administration UI, #232 Phase 2), earned by finance.policy.read flat or at
+  // operatingCompany scope.
+  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 36);
   assert.equal(EXPERIENCE_SURFACE_KEYS.includes("commercial.agreements"), true);
 });
 
@@ -1211,8 +1213,12 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // the baseline.
     // `purchasing.suppliers` joins it BY DESIGN (Parts / Purchasing / Receiving, 2026-10-01): supplier.record.read is
     // registered ungranted, and its holders are the LIVE Administration delta (partsPurchasingReceivingDelta.ts).
+    // `finance.policy` joins it BY DESIGN (Financial Policy Phase 2, DECISIONS #232): finance.policy.* are registered with no
+    // baseline grant; the owner Role's read/approve/activate and the custom financialPolicyPreparer Role are LIVE
+    // Administration decisions (nonprod 2026-10-14), never the baseline. Protected-Administrator standing is not a baseline
+    // Role grant either.
     assert.deepEqual(EXPERIENCE_SURFACE_KEYS.filter((k) => !granted.has(k)).sort(),
-      ["administration.emailCommunications", "purchasing.suppliers", "service.inboundWork", "warehouse.picking"]);
+      ["administration.emailCommunications", "finance.policy", "purchasing.suppliers", "service.inboundWork", "warehouse.picking"]);
 
     // ── THE EOS NAVIGATION SOURCE HAS NO FIREBASE FALLBACK ──
     // When the EOS authority is answering, the LEGACY path must not run at all. Measured through the

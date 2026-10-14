@@ -78,7 +78,7 @@ export interface SurfaceGrantPath {
    * `surfaceCatalogViolations` refuses it on a container, on a predicated path, on an Administration capability or
    * surface, and on any (scopeType, capabilityKey, consumer) not registered in SCOPE_EVALUABLE_GRANTS.
    */
-  readonly scopedConsumer?: { readonly scopeType: "salesChannel"; readonly consumer: string };
+  readonly scopedConsumer?: { readonly scopeType: "salesChannel" | "operatingCompany"; readonly consumer: string };
 }
 
 export interface ExperienceSurface {
@@ -114,6 +114,10 @@ const surface = (key: string, label: string, grants: readonly SurfaceGrantPath[]
 /** The channel-scoped list read behind a commercial index door (a SCOPE_EVALUABLE_GRANTS consumer). */
 const SALES_CHANNEL_LIST = (consumer: string): NonNullable<SurfaceGrantPath["scopedConsumer"]> =>
   Object.freeze({ scopeType: "salesChannel" as const, consumer });
+
+/** The operating-company-scoped list read behind a company-scoped business door (#232 Phase 2: Financial Policy). */
+const OPERATING_COMPANY_LIST = (consumer: string): NonNullable<SurfaceGrantPath["scopedConsumer"]> =>
+  Object.freeze({ scopeType: "operatingCompany" as const, consumer });
 
 /** A surface earned ONLY by reaching one of `children`. No grant path, so nothing opens it directly. */
 const container = (key: string, label: string, children: readonly string[]): ExperienceSurface =>
@@ -164,8 +168,8 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   // P1-1 SALES SURFACES (Owner-approved 2026-10-13): the three commercial index doors are ALSO earned by a
   // salesChannel-scoped holding of their read, because the list behind each door (commercial.list*) already filters to
   // the holding's channels in SQL (commercialReadKernel). A RETAIL seller is offered the door and reads RETAIL only.
-  // Nothing else in this catalog opts in: equipment.register, administration.*, financials.* and analysis.workspace
-  // stay flat-only.
+  // Nothing else in this catalog opts in except finance.policy (operatingCompany, #232 Phase 2): equipment.register,
+  // administration.*, financials.* and analysis.workspace stay flat-only.
   surface("commercial.opportunities", "Opportunities", [
     { capabilityKey: "opportunity.read", scopedConsumer: SALES_CHANNEL_LIST("commercial.listOpportunities") },
   ]),
@@ -280,6 +284,19 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   // ── Financials
   surface("financials.invoices", "Invoices", [{ capabilityKey: "finance.invoice.read" }]),
   surface("financials.payments", "Payments", [{ capabilityKey: "finance.payment.read" }]),
+  // FINANCIAL POLICY (DECISIONS #232 Phase 2). The door to Administration > Financial Policy -- rendered under the
+  // Administration nav (Company Setup), but deliberately NOT an `administration.*` surface: finance.policy.* are BUSINESS
+  // capabilities (an operating company's accounting policy, prepared by its accounting people), not Administration
+  // capabilities -- isAdministrationCapability() is false for every one of them, and #232 Amendment A makes them
+  // company-scoped. The `administration.` prefix rule (no scoped door) exists because Administration reads the tenant-wide
+  // flat set; this page reads only what the finance.policy.* commands decide per company, so it does not.
+  // Earned by finance.policy.read FLAT (the Owner Role; Administrator standing) or by an UNCONDITIONED operatingCompany-
+  // scoped holding of it (a company-scoped Preparer) -- tied to listFinancialPolicyVersions, the list read that decides
+  // every requested company against that holding (OUTSIDE_OPERATING_COMPANY_SCOPE otherwise). The door confers nothing:
+  // each read and command re-decides on its own key, and the selector lists only companies the read reaches.
+  surface("finance.policy", "Financial Policy", [
+    { capabilityKey: "finance.policy.read", scopedConsumer: OPERATING_COMPANY_LIST("operations.listFinancialPolicyVersions") },
+  ]),
 
   // ── Administration
   surface("administration.users", "Users & Employees", [

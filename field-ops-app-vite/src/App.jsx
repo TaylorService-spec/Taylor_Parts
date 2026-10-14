@@ -710,9 +710,9 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
     return <AdminWarehouseRacking hasCapability={operationalContext?.hasCapability} />;
   }
   // Administration > Company Setup > Financial Policy -- the ONE place a company's accounting policy
-  // is configured. Financials links here and never edits. Both capabilities are registered
-  // active:false and granted to no Role, so the screen renders its honest ungated state today; the
-  // backend command enforces the lock regardless of what this screen renders.
+  // is prepared, approved and activated (#232 Phase 2). Financials links here and never edits. NO
+  // `hasCapability` PROP: the screen reads the governed PostgreSQL operations on /operations/finance,
+  // which decide its companies and actions server-side; the shell's Firebase feed is not consulted.
   // Administration > Data Import -- the native file import surface. Both capabilities are gated by
   // the SAME previewer the nav uses, so the screen and the destination agree: an environment where
   // import is inactive shows no tab, and a principal who reaches the URL directly gets the screen's
@@ -721,7 +721,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
     return <AdminDataImport hasCapability={operationalContext?.hasCapability} />;
   }
   if (domain.key === "administration" && item.key === "financialPolicy") {
-    return <AdminFinancialPolicy hasCapability={operationalContext?.hasCapability} />;
+    return <AdminFinancialPolicy />;
   }
   // Owner rulings #204: System Configuration (company time zone, language) and Sales Configuration (Employee Sales
   // Authority). Server-gated through /admin/policy; each screen renders the server's refusal itself.

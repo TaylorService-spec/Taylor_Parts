@@ -706,12 +706,14 @@ const NO_DIMENSIONS = Object.freeze({ employeeId: null, workEligibility: [], ope
 /** The catalog exactly as it stood before P1-1: every scopedConsumer stripped, nothing else touched. */
 const FLAT_ONLY_CATALOG = EXPERIENCE_SURFACES.map((s) => ({ ...s, grants: s.grants.map(({ scopedConsumer, ...g }) => g) }));
 
-test("P1-1: exactly the three commercial read paths opt in, each tied to its registered list consumer", () => {
+test("P1-1 + #232 Phase 2: exactly the three commercial read paths and the Financial Policy read opt in, each tied to its registered list consumer", () => {
   const optedIn = EXPERIENCE_SURFACES.flatMap((s) => s.grants.filter((g) => g.scopedConsumer).map((g) => [s.key, g.capabilityKey, g.scopedConsumer.scopeType, g.scopedConsumer.consumer]));
   assert.deepEqual(optedIn, [
     ["commercial.opportunities", "opportunity.read", "salesChannel", "commercial.listOpportunities"],
     ["commercial.salesOrders", "salesOrder.read", "salesChannel", "commercial.listSalesOrders"],
     ["commercial.agreements", "salesAgreement.read", "salesChannel", "commercial.listSalesAgreements"],
+    // #232 Phase 2: a business surface (NOT administration.*), on the operatingCompany-filtered version list.
+    ["finance.policy", "finance.policy.read", "operatingCompany", "operations.listFinancialPolicyVersions"],
   ]);
   for (const [, capabilityKey, scopeType, consumer] of optedIn) {
     const registered = SCOPE_EVALUABLE_GRANTS.find((g) => g.scopeType === scopeType && g.capabilityKey === capabilityKey);
@@ -794,6 +796,52 @@ test("P1-1 (e2): at runtime a predicated scopedConsumer path never opens through
   assert.deepEqual([...await grantedSurfaceKeys(scopedActor(held), NO_DIMENSIONS, predicated)], []);
   const unpredicated = [{ ...predicated[0], grants: [{ ...predicated[0].grants[0], predicates: undefined }] }];
   assert.deepEqual([...await grantedSurfaceKeys(scopedActor(held), NO_DIMENSIONS, unpredicated)], ["commercial.x"], "control: the same holding opens the unpredicated path");
+});
+
+// ════════ #232 PHASE 2: the Financial Policy door (finance.policy), flat OR operatingCompany-scoped ════════
+const companyHolding = (capabilityKey, scopeValue = "taylor", extra = {}) => Object.freeze({
+  capabilityKey, scopeType: "operatingCompany", scopeValue, sourceRole: "financialPolicyPreparer", assignmentId: "asg-fp", condition: null, ...extra,
+});
+
+test("#232 Phase 2: finance.policy opens for a flat holder (Owner / standing) and for a company-scoped Preparer -- and for nobody else", async () => {
+  // Owner Role / Administrator standing: finance.policy.read in the FLAT set.
+  assert.ok((await grantedSurfaceKeys(actorWith(["finance.policy.read"]), NO_DIMENSIONS)).includes("finance.policy"));
+  // A Taylor-only, a Ventana-only and a both-company Preparer: the scoped holding opens the SAME door, and only it.
+  for (const held of [[companyHolding("finance.policy.read")], [companyHolding("finance.policy.read", "ventana")],
+    [companyHolding("finance.policy.read"), companyHolding("finance.policy.read", "ventana"), companyHolding("finance.policy.prepare")]]) {
+    const actor = scopedActor(held);
+    assert.deepEqual([...await grantedSurfaceKeys(actor, NO_DIMENSIONS)], ["finance.policy"], JSON.stringify(held));
+    assert.equal(actor.capabilities.size, 0, "the scoped key never enters the flat set");
+  }
+  // Unauthorized: nothing held, prepare-only, a CONDITIONED holding, a salesChannel-typed one, an empty value.
+  for (const held of [[], [companyHolding("finance.policy.prepare")], [companyHolding("finance.policy.read", "taylor", { condition: { kind: "RECORD_ASSIGNMENT" } })],
+    [companyHolding("finance.policy.read", "RETAIL", { scopeType: "salesChannel" })], [companyHolding("finance.policy.read", "")]]) {
+    assert.equal((await grantedSurfaceKeys(scopedActor(held), NO_DIMENSIONS)).includes("finance.policy"), false, JSON.stringify(held));
+  }
+  // The scoped Preparer earns NO Administration surface: the door is a business surface, not administration.*.
+  const surfaces = await grantedSurfaceKeys(scopedActor([companyHolding("finance.policy.read"), companyHolding("finance.policy.prepare")]), NO_DIMENSIONS);
+  assert.equal(surfaces.some((k) => k.startsWith("administration.")), false);
+  // The flat key earns only this door too (no Administration container is derived from it).
+  assert.deepEqual([...await grantedSurfaceKeys(actorWith(["finance.policy.read", "finance.policy.approve", "finance.policy.activate"]), NO_DIMENSIONS)], ["finance.policy"]);
+});
+
+test("#232 Phase 2: the guard keeps refusing a scoped door on Administration -- operatingCompany included -- and an unregistered consumer", () => {
+  const oc = (consumer) => ({ scopeType: "operatingCompany", consumer });
+  const cases = [
+    [{ key: "administration.x", label: "x", grants: [{ capabilityKey: "finance.policy.read", scopedConsumer: oc("operations.listFinancialPolicyVersions") }] }, /Administration/],
+    [{ key: "workforce.x", label: "x", grants: [{ capabilityKey: "admin.principalAccess.read", scopedConsumer: oc("workforce.listEmployees") }] }, /Administration/],
+    [{ key: "finance.x", label: "x", grants: [{ capabilityKey: "finance.policy.read", scopedConsumer: oc("operations.listEverything") }] }, /not a registered SCOPE_EVALUABLE_GRANTS consumer/],
+    // A registered consumer of a DIFFERENT key (prepare's commands) is not this read's list.
+    [{ key: "finance.x", label: "x", grants: [{ capabilityKey: "finance.policy.read", scopedConsumer: oc("operations.saveFinancialPolicyDraft") }] }, /is not a list read/],
+    [{ key: "finance.x", label: "x", grants: [{ capabilityKey: "finance.policy.prepare", scopedConsumer: oc("operations.listFinancialPolicyVersions") }] }, /not a registered SCOPE_EVALUABLE_GRANTS consumer/],
+    // salesChannel x finance.policy.read is not a registered pairing.
+    [{ key: "finance.x", label: "x", grants: [{ capabilityKey: "finance.policy.read", scopedConsumer: { scopeType: "salesChannel", consumer: "operations.listFinancialPolicyVersions" } }] }, /not a registered SCOPE_EVALUABLE_GRANTS consumer/],
+  ];
+  for (const [entry, pattern] of cases) {
+    const problems = surfaceCatalogViolations([entry]);
+    assert.ok(problems.some((p) => pattern.test(p)), `${entry.key}: ${JSON.stringify(problems)}`);
+  }
+  assert.deepEqual(surfaceCatalogViolations(), [], "the real catalog is clean");
 });
 
 test("P1-1 (f): flat-only actors are byte-identical -- every manifest persona, with and without an empty scopedHeld", async () => {

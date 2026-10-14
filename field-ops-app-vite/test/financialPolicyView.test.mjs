@@ -253,22 +253,29 @@ ok("the Admin page is the only nav entry for financial policy", () => {
 // raw source would fail on its own documentation. What must not exist is a rendered control.
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
+const WORKSPACE = readFileSync(new URL("../src/modules/administration/FinancialPolicyWorkspace.jsx", import.meta.url), "utf8");
+
 ok("the Admin page renders no unlock control of any kind", () => {
-  const code = stripComments(ADMIN_PAGE);
-  for (const forbidden of [/unlock/i, /reopen/i, /\bforce\b/i, /override/i]) {
-    assert.equal(forbidden.test(code), false, `the rendered page must contain no ${forbidden} affordance`);
+  // #232 Phase 2: the page now prepares, submits, approves, rejects and activates -- through the governed PostgreSQL
+  // commands only. What must still never exist is a control that reverses a decision or bypasses the lock.
+  for (const [name, src] of [["page", ADMIN_PAGE], ["workspace", WORKSPACE]]) {
+    const code = stripComments(src);
+    for (const forbidden of [/unlock/i, /reopen/i, /\bforce\b/i, /override/i]) {
+      assert.equal(forbidden.test(code), false, `the ${name} must contain no ${forbidden} affordance`);
+    }
   }
-  // No interactive control at all on this screen today: it is a read surface until the configure
-  // capability is granted and a write path is wired behind it.
-  for (const control of ["<button", "onClick", "onSubmit"]) {
-    assert.equal(code.includes(control), false, `the page must not render ${control} while it is read-only`);
+  // The page itself is composition: the controls live in the workspace, and the page holds no capability check.
+  for (const control of ["<button", "onClick", "onSubmit", "hasCapability", "FINANCIAL_POLICY_GATE"]) {
+    assert.equal(stripComments(ADMIN_PAGE).includes(control), false, `the page must not carry ${control}`);
   }
-  // And the governed message must survive, in the rendered output rather than only in a comment.
-  assert.match(code, /lockedMessage/);
+  // Every command goes through the governed Finance API, and the lock message is rendered, not only commented.
+  assert.match(WORKSPACE, /callFinanceApi/);
+  assert.match(stripComments(WORKSPACE), /LOCKED_MESSAGE/);
+  assert.equal(/firebase|firestore/i.test(stripComments(WORKSPACE)), false, "no Firebase on the policy workspace");
 });
 
 ok("no customer is named anywhere in the policy surfaces", () => {
-  for (const [name, src] of [["view model", ADMIN_PAGE], ["Financials", FINANCIALS_GOVERNANCE]]) {
+  for (const [name, src] of [["view model", ADMIN_PAGE], ["workspace", WORKSPACE], ["Financials", FINANCIALS_GOVERNANCE]]) {
     // Financials legitimately lists the operating companies elsewhere; the ACCOUNTING POLICY section
     // must not bind a method to one.
     const section =

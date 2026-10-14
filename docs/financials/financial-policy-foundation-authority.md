@@ -166,3 +166,17 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 15. **Mandatory company assignment is not part of this feature.** The EOS-wide mandatory-company-assignment ruling is a separate future programme. Here, a GLOBAL Role assignment still means all companies.
 
 **Status.** Activation separation of duties is RESOLVED (#232 Phase 1). Amendment A item 3 (direct grants) is RESOLVED for approve / activate, and OPEN for read / prepare (decision 13).
+
+## Phase 2: Administration UI (local, 2026-10-13)
+
+- **Page:** Administration → Financial Policy (`/administration/financial-policy`). `AdminFinancialPolicy.jsx` composes `FinancialPolicyWorkspace.jsx` and leaves Finance Configuration (#203) unchanged. The page no longer reads the Firebase-era `financialPolicy.profile.*` feed.
+- **Server-derived authority:** `readMyFinancialPolicyAuthority` on `/operations/finance` is gated on `finance.policy.read`, held either globally or at operatingCompany scope. It lists only the ACTIVE companies that the caller's read covers. For each company it returns read/prepare/approve/activate as allowed, or as the refusal code that the command itself would return. `readFinancialPolicy` and `listFinancialPolicyVersions` also return:
+  - per-version `yourActions`;
+  - `yourAuthority.createDraft`;
+  - the version audit trail;
+  - actor display names.
+
+  All of these are computed from the commands' own primitives (`capabilityReach`, `reservedAuthorityHeld`, `reachesCompany`, `independentDeciderRefusal`). The commands still decide every request.
+- **Navigation:** the page's surface is `finance.policy`, a business surface rather than an `administration.*` one. It is earned by `finance.policy.read` held globally, or by an unconditioned operatingCompany holding tied to `operations.listFinancialPolicyVersions`. The Administration scoped-door guard is unchanged. The legacy placeholder row stays, so the row changes kind instead of being added: the cutover ceiling goes from 21 to 22, the ungoverned ceiling from 41 to 40, and the total stays at 62.
+- **Grant matrix:** a stored direct grant of a ROLE_ASSIGNMENT_ONLY key (`finance.policy.read` / `.prepare`) is listed with `enforced: false`, `notEffectiveReason: "ROLE_ASSIGNMENT_ONLY"` and `forbiddenBy` (the ruling). The UI renders it as "Not effective — role assignment only" and does not count it as a holder. A stored direct row of a RESERVED key (for example `finance.policy.approve` or `salesAgreement.tradeIn.approve`) is deliberately NOT marked: only ROLE_ASSIGNMENT_ONLY keys are filtered out of the capability set (`capabilityAuthority.ts`), so a reserved direct row does enter it, and the reservation is decided separately at runtime (`requireReservedAuthority` / `requireReservedHolder`). Its matrix cell stays `enforced: true`, consistent with the Employee effective-access view.
+- **Legacy shell gate (Firebase-retirement candidate):** `FINANCIAL_POLICY_GATE` in `field-ops-app-vite/src/access/shellCapabilityGates.js` still adds `financialPolicy.profile.read` / `.configure` to the legacy Firebase shell capability request set. Nothing reads those answers any more (the page reads `/operations/finance`). The entry was kept in this change so the shell request set is unchanged; remove it in a Firebase-retirement step together with its request-set pins.

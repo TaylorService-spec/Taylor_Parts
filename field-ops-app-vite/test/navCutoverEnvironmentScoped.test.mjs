@@ -385,14 +385,14 @@ test("SANDBOX: an unresolved EOS authority grants nothing and does NOT fall thro
 
 // 2026-10-01: 20 + 42 became 21 + 41 when the EXISTING `purchasing/suppliers` row earned purchasing.suppliers. The total
 // did not move; only the row's kind did (navConfig's ceiling note).
-test("RATCHET: the register partitions into 21 + 41 = 62, derived from NAV_SURFACE_ACCESS", () => {
+test("RATCHET: the register partitions into 22 + 40 = 62, derived from NAV_SURFACE_ACCESS", () => {
   assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
-  assert.equal(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.length, 21);
-  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.length, 41);
+  assert.equal(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.length, 22);
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.length, 40);
   assert.equal(NAV_GOVERNED_PLACEHOLDER_DESTINATIONS.length, 0);
   assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 62);
-  assert.equal(NAV_CUTOVER_PLACEHOLDER_CEILING, 21);
-  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_CEILING, 41);
+  assert.equal(NAV_CUTOVER_PLACEHOLDER_CEILING, 22);
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_CEILING, 40);
 
   // The partition is a partition: disjoint, exhaustive, and computed from the criterion rather than
   // from two hand-maintained lists.
@@ -423,7 +423,7 @@ test("RATCHET: a 63rd legacy row is refused, and so is a reintroduced governed r
     register: [...register, "reporting/aBrandNewUngovernedDoor"],
   });
   assert.ok(ungovernedGrowth.some((p) => p.includes("above the shrink-only ceiling of 62")));
-  assert.ok(ungovernedGrowth.some((p) => p.includes("NO governed surface, above the shrink-only ceiling of 41")));
+  assert.ok(ungovernedGrowth.some((p) => p.includes("NO governed surface, above the shrink-only ceiling of 40")));
 
   // (b) A 63rd row on a destination that ALREADY holds a governed surface -- the exact shape of
   // "put the rows back" going one row too far. Sales Agreements is the live example: it earned its
@@ -432,7 +432,7 @@ test("RATCHET: a 63rd legacy row is refused, and so is a reintroduced governed r
     register: [...register, "customers/salesAgreements"],
   });
   assert.ok(governedGrowth.some((p) => p.includes("above the shrink-only ceiling of 62")));
-  assert.ok(governedGrowth.some((p) => p.includes("ALREADY holds a governed surface, above the shrink-only ceiling of 21")));
+  assert.ok(governedGrowth.some((p) => p.includes("ALREADY holds a governed surface, above the shrink-only ceiling of 22")));
 
   // (c) THE COUNT-PRESERVING SWAP, which a single total ceiling cannot see. Drop an ungoverned row,
   // add a governed one: still 62, still refused, because the partition ceilings move independently.
@@ -504,8 +504,10 @@ test("TRANSITION: purchasing/suppliers is the ONE row that changed kind, and not
   assert.ok(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("purchasing/suppliers"));
   assert.ok(destinations().some(([key]) => key === "purchasing/suppliers"), "an existing destination, not a new one");
 
-  // attributable: exactly one row crossed, and it is the Supplier one.
-  const crossed = NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.filter((d) => !CUTOVER_BEFORE_SUPPLIER_TRANSITION.includes(d));
+  // attributable: exactly one row crossed IN THAT TRANSITION, and it is the Supplier one. (The 2026-10-13 Financial Policy
+  // transition below is pinned on its own.)
+  const crossed = NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.filter((d) => !CUTOVER_BEFORE_SUPPLIER_TRANSITION.includes(d)
+    && d !== "administration/financialPolicy");
   assert.deepEqual(crossed, ["purchasing/suppliers"]);
   assert.deepEqual(CUTOVER_BEFORE_SUPPLIER_TRANSITION.filter((d) => !NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.includes(d)), []);
   assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.includes("purchasing/suppliers"), false);
@@ -526,6 +528,35 @@ test("TRANSITION: purchasing/suppliers is the ONE row that changed kind, and not
   const item = destinations().find(([key]) => key === "purchasing/suppliers")[1];
   assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority([]))), false, "visible without the surface");
   assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority(["purchasing.suppliers"]))), true, "the surface opens it");
+});
+
+// #232 PHASE 2 (2026-10-13): `administration/financialPolicy` moved UNGOVERNED -> CUTOVER because the destination earned
+// the `finance.policy` surface. The same shape as the Supplier transition: a kind change, not growth.
+test("TRANSITION: administration/financialPolicy changed kind (#232 Phase 2), and nothing was added", () => {
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
+  assert.ok(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("administration/financialPolicy"), "the legacy row stays for flag-false environments");
+  assert.ok(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.includes("administration/financialPolicy"));
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.includes("administration/financialPolicy"), false);
+  const crossed = NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.filter((d) => !CUTOVER_BEFORE_SUPPLIER_TRANSITION.includes(d));
+  assert.deepEqual(crossed.sort(), ["administration/financialPolicy", "purchasing/suppliers"], "exactly two rows ever crossed");
+  assert.deepEqual(NAV_SURFACE_ACCESS["administration/financialPolicy"], ["finance.policy"]);
+  const server = readFileSync(join(repoRoot, "functions/src/eosOps/experienceAuthority.ts"), "utf8");
+  assert.match(server, /surface\("finance\.policy", "Financial Policy", \[\s*\{ capabilityKey: "finance\.policy\.read", scopedConsumer: OPERATING_COMPANY_LIST\("operations\.listFinancialPolicyVersions"\) \},\s*\]\)/);
+  const item = itemAt("administration/financialPolicy");
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority([]))), false, "visible without the surface");
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority(["finance.policy"]))), true, "the surface opens it");
+  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN, "owner"]) {
+    assert.equal(isNavItemVisible(item, role, keysFor(role), eosContext(eosAuthority([]))), false, `role literal ${role} opened it under the EOS source`);
+  }
+  // Another Administration surface never opens it, and it never opens another Administration destination.
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority(["administration.objects", "administration.users"]))), false);
+  for (const other of ["administration/users", "administration/objects", "administration/permissions", "administration/overview"]) {
+    assert.equal(isNavItemVisible(itemAt(other), null, [], eosContext(eosAuthority(["finance.policy"]))), false, `${other} opened on finance.policy`);
+  }
+  // A company-scoped Preparer (whose ONLY surface is finance.policy) sees Administration > Financial Policy and nothing else.
+  const preparer = eosContext(eosAuthority(["finance.policy"]));
+  assert.deepEqual(destinations().filter(([, it]) => isNavItemVisible(it, null, [], preparer)).map(([key]) => key),
+    ["dashboard/my", "administration/financialPolicy"], "My Dashboard is every principal's; beyond it, only Financial Policy");
 });
 
 // ADMINISTRATION > PERMISSIONS (Owner decision 2026-10-08, DECISIONS #212): the governed source opens it on

@@ -122,7 +122,8 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
   Object.freeze({
     scopeType: "operatingCompany" as const,
     capabilityKey: "finance.policy.read",
-    consumers: Object.freeze(["operations.readFinancialPolicy", "operations.listFinancialPolicyVersions"]),
+    // #232 Phase 2: readMyFinancialPolicyAuthority lists only the companies the holding admits (the Administration screen's selector).
+    consumers: Object.freeze(["operations.readFinancialPolicy", "operations.listFinancialPolicyVersions", "operations.readMyFinancialPolicyAuthority"]),
   }),
   Object.freeze({
     scopeType: "operatingCompany" as const,

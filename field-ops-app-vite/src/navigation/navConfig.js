@@ -819,6 +819,11 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "administration/dataImport": ["administration.dataImport"],
   "administration/emailCommunications": ["administration.emailCommunications"],
   "administration/auditLogs": ["administration.auditLogs"],
+  // FINANCIAL POLICY (#232 Phase 2). Rendered under Administration, earned by a BUSINESS surface: `finance.policy` is
+  // earned by finance.policy.read flat (Owner Role, Administrator standing) or at operatingCompany scope (a company-scoped
+  // Preparer), so a Preparer is offered this door -- and, holding no administration.* surface, nothing else in
+  // Administration. The page itself lists only the companies the server says the caller reaches.
+  "administration/financialPolicy": ["finance.policy"],
   // The governed-configuration half, mapped once the reads that govern them made them earnable
   // (Owner ruling, Wave 9 / Lane AH). These rows are read ONLY on the EOS branch of
   // `isNavItemVisible`, so while EOS_NAVIGATION_AUTHORITY_READY is false -- which is every deployed
@@ -874,7 +879,6 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   "administration/integrations": "No integrations domain exists.",
   "administration/duplicateRules": "No capability governs duplicate-rule administration.",
   "administration/warehouseRacking": "Gated today by the Firebase capability feed; inventory.location.bin.* is not in eos_policy.capabilities.",
-  "administration/financialPolicy": "Gated today by the Firebase capability feed; no registered financial-policy capability.",
   "administration/systemConfiguration": "Server-gated through /admin/policy on admin.systemConfiguration.manage; no EOS experience surface declares it yet.",
   "administration/salesConfiguration": "Server-gated through /admin/policy on sales.discountAuthority.manage; no EOS experience surface declares it yet.",
   "administration/vehicles": "Hidden placeholder, no backend.",
@@ -1184,7 +1188,7 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   "administration/companySettings",
   "administration/duplicateRules",
   "administration/warehouseRacking",
-  "administration/financialPolicy",
+  "administration/financialPolicy", // (CUTOVER, #232 Phase 2) finance.policy -- changed kind, not added; see the ceiling note
   "administration/integrations",
   "administration/auditLogs", // (CUTOVER) administration.auditLogs
 ]);
@@ -1320,9 +1324,17 @@ export function effectivePlaceholderRegister(operationalContext) {
 // now a CUTOVER row. The register stays 62 (production's legacy destination set is unchanged, per Lane BR); the
 // ungoverned ceiling FALLS 42 -> 41; the cutover ceiling moves 20 -> 21 because the row that crossed over is not new
 // -- a 63rd row is still refused whichever kind it is. Recorded for Controller confirmation in the package return.
+//
+// ════════ 2026-10-13 -- A SECOND ROW CHANGED KIND; NO ROW WAS ADDED (FINANCIAL POLICY, #232 PHASE 2) ════════
+//
+// `administration/financialPolicy` was an UNGOVERNED row (gated by the Firebase feed on financialPolicy.profile.*, which no
+// PostgreSQL capability backed). finance.policy.read is registered (#232) and the destination now earns `finance.policy`, so
+// the SAME row is a CUTOVER row -- the `purchasing/suppliers` precedent exactly. The register stays 62 (Lane BR: the legacy
+// source's destination set is not cut from under a flag-false environment); ungoverned 41 -> 40; cutover 21 -> 22, because
+// the row that crossed over is not new. Recorded for Owner / Controller confirmation in the package report.
 export const NAV_LEGACY_PLACEHOLDER_CEILING = 62;
-export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 41;
-export const NAV_CUTOVER_PLACEHOLDER_CEILING = 21;
+export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 40;
+export const NAV_CUTOVER_PLACEHOLDER_CEILING = 22;
 
 // The derived-surface mirror now lives ABOVE the container table, because the container table is
 // COMPUTED FROM IT. See "THE CLIENT MIRROR OF THE SERVER CATALOG'S CONTAINERS" earlier in this file.

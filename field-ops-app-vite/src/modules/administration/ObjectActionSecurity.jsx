@@ -26,7 +26,7 @@ import { adminControlPlaneClient, refusalText } from "../../services/adminContro
 import { ObjectSecurityActionList } from "./ObjectSecurityActionList.jsx";
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ConditionFields, GrantCellControls, GrantCellFacts, Outcome, ReasonField } from "./GrantControls.jsx";
-import { buildCondition, matrixActionRows, statedReason } from "./controlPlaneModel.js";
+import { buildCondition, ineffectiveDirectGrantWords, isIneffectiveDirectGrant, matrixActionRows, statedReason } from "./controlPlaneModel.js";
 import { useConditionVocabulary } from "./useConditionVocabulary.js";
 import { AuthorityImpactPreview, useAuthorityImpactPreview, withPreviewDigest } from "./AuthorityImpactPreview.jsx";
 import { titleCase } from "../../shared/display/displayLabels.js";
@@ -141,12 +141,20 @@ function ActionGrantees({ api, objectKey, action, vocabulary, roles, onChanged, 
             </tr>
           ))}
           {action.principals.map((p) => (
-            <tr key={p.principalId} data-direct-exception={p.principalId}>
+            <tr key={p.principalId} data-direct-exception={p.principalId} data-enforced={isIneffectiveDirectGrant(p) ? "false" : "true"}>
               <td>Person (direct exception){technical ? <span className="fo-muted"> · <code>{p.principalId}</code></span> : null}</td>
-              <td>
-                <span className="fo-cp-tag fo-cp-tag--direct">DIRECT EXCEPTION</span>{" "}
-                <span className="fo-muted">Honoured only on the Workforce path; the main operational gates resolve from Roles.</span>
-              </td>
+              {isIneffectiveDirectGrant(p) ? (
+                // A PROHIBITED direct grant (#232 Phase 2): stored, listed, and NOT effective authority.
+                <td>
+                  <span className="fo-cp-tag fo-cp-tag--denied">{ineffectiveDirectGrantWords(p)}</span>{" "}
+                  <span className="fo-muted">This stored direct grant confers nothing{p.forbiddenBy ? ` (${p.forbiddenBy})` : ""}.</span>
+                </td>
+              ) : (
+                <td>
+                  <span className="fo-cp-tag fo-cp-tag--direct">DIRECT EXCEPTION</span>{" "}
+                  <span className="fo-muted">Honoured only on the Workforce path; the main operational gates resolve from Roles.</span>
+                </td>
+              )}
               <td className="fo-muted">Administered on the Principal, not here.</td>
             </tr>
           ))}
