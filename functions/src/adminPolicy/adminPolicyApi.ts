@@ -63,7 +63,7 @@ import {
   listSupportedAssignmentScopes,
   setTenantSalesChannelStatus,
 } from "./policyCommands";
-import { CONDITIONABLE_GRANTS, CONDITION_OPERATIONAL_SCOPE_TYPES, forbiddenPair } from "./roleCapabilityAdministration";
+import { CONDITIONABLE_GRANTS, CONDITION_OPERATIONAL_SCOPE_TYPES, forbiddenPair, isRoleAssignmentOnlyCapability } from "./roleCapabilityAdministration";
 import type { AuditEventFilter } from "./policyRepository";
 import {
   ADMIN_CONFIGURATION_OPERATIONS,
@@ -620,7 +620,9 @@ async function resolvePrincipalEffectiveAccess(
   // The SAME rule for a direct exception (lane DX): a direct grant narrowed by an ACTIVE PRINCIPAL-cell condition is
   // not flat here either -- the runtime resolution places it in conditionallyHeld, and this gate must agree.
   const conditionedDirect = new Set(conditions.filter((c) => c.grantScope === "PRINCIPAL").map((c) => `${c.grantorKey}|${c.capabilityKey}`));
-  const flatDirect = directGrants.filter((g) => !conditionedDirect.has(`${g.principalId}|${capabilityKeyOf.get(g.capabilityId)}`));
+  // ROLE-ASSIGNMENT-ONLY keys (#232 Option C) never come from a direct exception -- the runtime resolution drops them too.
+  const flatDirect = directGrants.filter((g) => !conditionedDirect.has(`${g.principalId}|${capabilityKeyOf.get(g.capabilityId)}`)
+    && !isRoleAssignmentOnlyCapability(capabilityKeyOf.get(g.capabilityId) ?? ""));
   const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
   // PROTECTED ADMINISTRATOR standing (DECISIONS #223), from the SAME qualifying global Roles: the implied system
   // authority, reported with its own provenance.

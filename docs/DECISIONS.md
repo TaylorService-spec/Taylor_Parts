@@ -8232,3 +8232,29 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 - No Role definition, grant, assignment or persona change anywhere live.
 - No Firebase change.
 - No UI.
+
+### #232 Phase 1 — Option C: read / prepare are role-assignment-only (Owner-authorized, 2026-10-13)
+
+(Owner authorization: a narrow restriction that admits only Role assignments for `finance.policy.read` and `finance.policy.prepare`. Direct principal grants are refused through governed Administration, INCLUDING at request time when a prohibited grant already exists. Role grants and the custom Financial Policy Preparer Role are preserved; no unrelated capability is affected.)
+
+**Implementation (PR #2085).**
+- **The list.** `ROLE_ASSIGNMENT_ONLY_CAPABILITIES` (`functions/src/adminPolicy/roleCapabilityAdministration.ts`, beside `RESERVED_CAPABILITY_HOLDERS`) contains exactly `finance.policy.read` and `finance.policy.prepare`, each with its ruling. A test pins the list.
+  - Unlike the reserved list, it names NO Role. Any Role may hold the keys, and `createRole` is unaffected.
+- **Grant time.** `grantObjectActionToPrincipal` refuses these keys with `ROLE_ASSIGNMENT_ONLY` (a CONFLICT, the same family as the reserved `SYSTEM_INVARIANT` refusal). No row is written.
+  - The grant-impact preview runs the same command, so it reports `WOULD_REFUSE` / `ROLE_ASSIGNMENT_ONLY`, never `WOULD_APPLY`.
+- **Request time.** The hook is the resolver, so every gate, the explanation and the preview agree:
+  - `resolveOperationalCapabilities`, the one resolution behind every runtime gate and `explainEffectiveAccess`, drops a direct exception for these keys, so a pre-existing row confers nothing flat or per-record, and never widens a company-scoped Role holding;
+  - the Administration effective-access read (`resolvePrincipalEffectiveAccess`) drops it too.
+  - The explanation therefore shows the key as not conferred (`directGrant: null`, result `DENIED`).
+  - A Role assignment, global or company-scoped, still authorizes. So does Administrator standing, for read only.
+- **Drift.** `verifyTenantAuthority` reports a stored prohibited direct row as `FORBIDDEN_PRINCIPAL_HOLDING`. This is a one-line, list-driven extension of the reserved-key census. Nothing is revoked automatically.
+- **Preserved.**
+  - Role grants of read / prepare, and creating a custom Preparer Role through Administration (tested).
+  - Company-scope enforcement.
+  - Separation of duties on approve, reject and activate.
+  - The Owner reservation of approve / activate.
+  - Administrator standing.
+
+**Status.** Direct grants of read / prepare (Phase 1 open item 6, "B1") are RESOLVED. Open item 5 (authorize creating the Preparer Role through Administration) remains.
+
+**Display (not changed).** The Administration grant matrix still lists a stored prohibited direct row as a `DIRECT_EXCEPTION` with `enforced: true`; only the runtime, the explanation and the effective-access read treat it as conferring nothing. Correcting that display is a later UI decision.

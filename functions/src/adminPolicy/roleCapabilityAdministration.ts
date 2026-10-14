@@ -124,6 +124,22 @@ export const RESERVED_CAPABILITY_HOLDERS: ReadonlyMap<string, { readonly roleKey
   })],
 ]);
 
+/**
+ * ROLE-ASSIGNMENT-ONLY CAPABILITIES (#232 Phase 1, Option C; Owner 2026-10-13): held ONLY through a Security Role assignment
+ * (global or operatingCompany-scoped), never through a DIRECT principal exception. Narrow by design -- exactly the two
+ * Financial Policy preparation keys, so a direct grant cannot bypass company scope (a direct exception has no scope model).
+ * Unlike RESERVED_CAPABILITY_HOLDERS this names NO Role: any Role may hold them (the custom Financial Policy Preparer Role is
+ * created and granted through Administration), and createRole is unaffected.
+ *   grant time    grantObjectActionToPrincipal refuses (ROLE_ASSIGNMENT_ONLY); the grant-impact preview reproduces it.
+ *   request time  resolveOperationalCapabilities and the Administration effective-access read drop a direct exception for
+ *                 these keys, so a pre-existing row confers nothing; the drift census reports it.
+ */
+export const ROLE_ASSIGNMENT_ONLY_CAPABILITIES: ReadonlyMap<string, { readonly ruling: string }> = new Map<string, { readonly ruling: string }>([
+  ["finance.policy.read", Object.freeze({ ruling: "Owner, #232 Option C (2026-10-13): Financial Policy read is held only through a Role assignment" })],
+  ["finance.policy.prepare", Object.freeze({ ruling: "Owner, #232 Option C (2026-10-13): Financial Policy preparation is held only through a Role assignment" })],
+]);
+export const isRoleAssignmentOnlyCapability = (key: string): boolean => ROLE_ASSIGNMENT_ONLY_CAPABILITIES.has(key);
+
 /** The invariant a (Role, capability) pair violates, or null when it may be held. */
 export function forbiddenPair(roleKey: string, capabilityKey: string): ForbiddenRoleCapabilityPair | null {
   const pair = FORBIDDEN.get(cellKey(roleKey, capabilityKey));
@@ -407,7 +423,7 @@ export function verifyTenantAuthority(input: {
     // A reserved capability is NEVER a direct grant (refused on write), so every stored one is reported -- a reserved
     // Role holder's included (G7 census first; nothing revoked).
     for (const capabilityKey of principal.directCapabilityKeys) {
-      if (RESERVED_CAPABILITY_HOLDERS.has(capabilityKey)) forbiddenPrincipalHoldings.push({ principalId: principal.principalId, capabilityKey });
+      if (RESERVED_CAPABILITY_HOLDERS.has(capabilityKey) || ROLE_ASSIGNMENT_ONLY_CAPABILITIES.has(capabilityKey)) forbiddenPrincipalHoldings.push({ principalId: principal.principalId, capabilityKey });
     }
   }
   const drift = [

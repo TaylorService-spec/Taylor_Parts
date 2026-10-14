@@ -721,6 +721,72 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
       ["finance.policy.prepare@taylor", "finance.policy.prepare@ventana", "finance.policy.read@taylor", "finance.policy.read@ventana"]);
   });
 
+  await t.test("OPTION C (#232): finance.policy.read / .prepare are held only through a Role assignment -- refused as direct grants, inert as direct rows", async () => {
+    const rca = require("../lib/adminPolicy/roleCapabilityAdministration.js");
+    // PIN: exactly the two keys, nothing else.
+    assert.deepEqual([...rca.ROLE_ASSIGNMENT_ONLY_CAPABILITIES.keys()].sort(), ["finance.policy.prepare", "finance.policy.read"]);
+    const directRows = async (principalId) => Number((await one(`SELECT count(*) AS n FROM eos_policy.principal_capabilities pc
+      JOIN eos_policy.capabilities c ON c.id = pc.capability_id WHERE pc.tenant_id = $1 AND pc.principal_id = $2 AND c.key LIKE 'finance.policy.%'`,
+      [TENANT, principalId])).n);
+    const roleId = async (key) => (await one(`SELECT id FROM eos_policy.roles WHERE tenant_id = $1 AND key = $2`, [TENANT, key])).id;
+
+    // GRANT TIME: refused, nothing written.
+    for (const actionKey of ["read", "prepare"]) {
+      const r = await admin("grantObjectActionToPrincipal", { objectKey: "financialPolicy", actionKey, principalId: acct.principalId, reason: "exception" });
+      assert.equal(r.ok, false, actionKey);
+      assert.match(r.message, /ROLE_ASSIGNMENT_ONLY: finance\.policy\.(read|prepare) is held only through a Security Role assignment/);
+    }
+    assert.equal(await directRows(acct.principalId), 0, "no row written");
+    // The grant-impact PREVIEW reproduces the refusal (the same command, simulated) -- it never reports WOULD_APPLY.
+    const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
+    const { createAuthorityChangePreview } = require("../lib/eosOps/authorityChangePreview.js");
+    const preview = await executeAdminOperation({ repo, previewAuthorityChange: createAuthorityChangePreview({ pool }) },
+      { caller: { externalSubject: "uid-finpol-admin", identityProvider: "firebase" }, operation: "previewAuthorityChange", requestId: "r-optc-preview",
+        input: { change: { operation: "grantObjectActionToPrincipal",
+          input: { objectKey: "financialPolicy", actionKey: "prepare", principalId: acct.principalId, reason: "exception" } } } });
+    assert.equal(preview.ok, true, JSON.stringify(preview).slice(0, 400));
+    assert.deepEqual([preview.data.outcome, preview.data.refusal?.code], ["WOULD_REFUSE", "ROLE_ASSIGNMENT_ONLY"]);
+    // ROLE GRANTS are preserved: a custom Preparer Role is still created and granted read + prepare through Administration.
+    assert.equal((await admin("createRole", { key: "optionCPreparer", name: "Option C Preparer", reason: "local test tenant only" })).ok, true);
+    for (const actionKey of ["read", "prepare"]) {
+      assert.equal((await admin("grantObjectActionToRole", { roleKey: "optionCPreparer", objectKey: "financialPolicy", actionKey, reason: "local" })).ok, true);
+    }
+
+    // REQUEST TIME: a pre-existing prohibited direct row (raw SQL) confers nothing.
+    const rawRow = async (who, key) => q(`INSERT INTO eos_policy.principal_capabilities (id, tenant_id, principal_id, capability_id, granted_by, created_by, updated_by, exception_reason)
+      SELECT $1, $2, $3, c.id, 'rogue', 'rogue', 'rogue', 'pre-existing prohibited exception' FROM eos_policy.capabilities c WHERE c.key = $4`,
+      [`pc-optc-${who.principalId}-${key}`, TENANT, who.principalId, key]);
+    const rawOnly = await person("uid-fp-optc-raw", [], { id: "e-fp-optc-raw", name: "Rae Raw" });
+    for (const key of ["finance.policy.read", "finance.policy.prepare"]) await rawRow(rawOnly, key);
+    assert.equal(await directRows(rawOnly.principalId), 2);
+    refused(await fn(rawOnly, "readFinancialPolicy", { operatingCompanyId: "taylor" }), 403, "CAPABILITY_REQUIRED");
+    refused(await fn(rawOnly, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }), 403, "CAPABILITY_REQUIRED");
+    const explained = await require("../lib/eosOps/effectiveAccessExplanation.js").explainEffectiveAccess(repo, pool, { tenantId: TENANT, principalId: rawOnly.principalId });
+    assert.equal(explained.capabilities.some((k) => k.startsWith("finance.policy.")), false, "the explanation agrees: nothing conferred");
+    const readRow = explained.actions.find((a) => a.capabilityKey === "finance.policy.read");
+    assert.deepEqual([readRow.result, readRow.directGrant], ["DENIED", null]);
+    const eff = await admin("getPrincipalEffectiveAccess", { principalId: rawOnly.principalId });
+    assert.equal(eff.ok, true);
+    assert.equal(JSON.stringify(eff.data.effective).includes("finance.policy."), false, "the Administration effective-access read agrees");
+    // ...and a direct row never WIDENS a company-scoped Role holding: Taylor-scoped stays Taylor-only.
+    const rawScoped = await person("uid-fp-optc-scoped", [], { id: "e-fp-optc-scoped", name: "Sid Scoped" });
+    assert.equal((await admin("assignRole", { principalId: rawScoped.principalId, roleId: await roleId("optionCPreparer"), reason: "scope staffing",
+      scopeType: "operatingCompany", scopeValue: "taylor" })).ok, true);
+    for (const key of ["finance.policy.read", "finance.policy.prepare"]) await rawRow(rawScoped, key);
+    ok(await fn(rawScoped, "readFinancialPolicy", { operatingCompanyId: "taylor" }), "in scope through the Role");
+    refused(await fn(rawScoped, "readFinancialPolicy", { operatingCompanyId: "ventana" }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
+    refused(await fn(rawScoped, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
+    // Standing is untouched: the Administrator still reads (never prepares).
+    ok(await fn(adm, "readFinancialPolicy", { operatingCompanyId: "ventana" }));
+    refused(await fn(adm, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }), 403, "CAPABILITY_REQUIRED");
+    // DRIFT: the verifier reports every stored prohibited direct row (list-driven, as for reserved keys).
+    const report = rca.verifyTenantAuthority({ systemDefault: [], live: [], decisions: [],
+      principals: [{ principalId: rawOnly.principalId, roleKeys: [], directCapabilityKeys: ["finance.policy.read", "finance.policy.prepare", "customer.record.read"] }] });
+    assert.deepEqual(report.drift.filter((d) => d.kind === "FORBIDDEN_PRINCIPAL_HOLDING").map((d) => d.capabilityKey).sort(),
+      ["finance.policy.prepare", "finance.policy.read"], "an unrelated direct grant is not flagged");
+    await q(`DELETE FROM eos_policy.principal_capabilities WHERE tenant_id = $1 AND id LIKE 'pc-optc-%'`, [TENANT]);
+  });
+
   await t.test("MIG: with versions recorded, the Down refuses to reverse", async () => {
     assert.throws(() => migrate("down", 1), (e) => /FINANCIAL_POLICY_FOUNDATION: refuses to reverse/.test(String(e.stderr ?? e.message)));
     assert.notEqual((await one(`SELECT to_regclass('eos_finance.financial_policy_versions') AS r`)).r, null);

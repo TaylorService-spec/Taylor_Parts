@@ -55,6 +55,7 @@ import {
   forbiddenPair,
   ownerPrincipalViolations,
   RESERVED_CAPABILITY_HOLDERS,
+  ROLE_ASSIGNMENT_ONLY_CAPABILITIES,
 } from "./roleCapabilityAdministration";
 import { loadPrincipalPolicy } from "./effectiveObjectAccess";
 import { PolicyStoreError } from "./policyRepository";
@@ -133,6 +134,8 @@ export class AdministrationRefusal extends PolicyValidationError {
     | "SALES_CHANNEL_STORE_UNAVAILABLE"
     // Direct exceptions (lane DX): principal_capabilities has no scope model.
     | "DIRECT_GRANT_SCOPE_UNSUPPORTED"
+    // #232 Option C: a role-assignment-only capability is never a direct exception.
+    | "ROLE_ASSIGNMENT_ONLY"
     // Protected Owner (Controller ruling 2026-09-27): ordinary role administration never appoints or removes
     // the protected Owner, and never leaves a tenant with zero active protected Owners.
     | "PROTECTED_OWNER_MEMBERSHIP"
@@ -2011,6 +2014,12 @@ export async function grantObjectActionToPrincipal(
   // A RESERVED capability (Owner G7) is held only through its reserved Roles -- never as a direct exception.
   const reserved = RESERVED_CAPABILITY_HOLDERS.get(capability.key);
   if (reserved) throw new AdministrationRefusal("SYSTEM_INVARIANT", `${capability.key} is never a direct grant (${reserved.ruling})`);
+  // A ROLE-ASSIGNMENT-ONLY capability (#232 Option C) is held only through a Security Role assignment.
+  const roleOnly = ROLE_ASSIGNMENT_ONLY_CAPABILITIES.get(capability.key);
+  if (roleOnly) {
+    throw new AdministrationRefusal("ROLE_ASSIGNMENT_ONLY",
+      `${capability.key} is held only through a Security Role assignment, never a direct grant (${roleOnly.ruling})`);
+  }
   await requireDirectGrantee(repo, actor, principalId, "grant a capability to");
   const condition = input.condition === undefined || input.condition === null ? null : input.condition;
   if (condition !== null) {
