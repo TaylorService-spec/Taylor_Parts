@@ -31,9 +31,10 @@
 // same refusal:
 //   * COMPANY SCOPE. Every operation names one ACTIVE operating company of the caller's tenant. CONSOLIDATED, an unknown and an
 //     inactive company are refused. Taylor and Ventana hold independent policies; a version id from another company is NOT_FOUND.
-//     COMPANY-SCOPED AUTHORITY (#232 Amendment A): each finance.policy.* key applies only where the caller holds it -- a
-//     GLOBAL assignment (or Administrator standing) reaches every company; an operatingCompany-scoped assignment reaches its
-//     company only (SCOPE_EVALUABLE_GRANTS). The requested company is admitted BEFORE any version lookup; otherwise
+//     COMPANY ASSIGNMENT IS MANDATORY (Owner ruling 2026-10-13; correction authorized 2026-10-14): a finance.policy.* key
+//     applies at a company only with an explicit operatingCompany-scoped assignment there (capabilityReach). A GLOBAL
+//     holding or Administrator standing reaches NO company by itself (this supersedes #232 Amendment A, under which they
+//     reached every company). An operatingCompany-scoped assignment reaches its company only (SCOPE_EVALUABLE_GRANTS). The requested company is admitted BEFORE any version lookup; otherwise
 //     OUTSIDE_OPERATING_COMPANY_SCOPE. Conditioned scoped holdings admit nothing. Separation of duties stays per version.
 //   * FAIL CLOSED. A company with no version IN FORCE is NOT_CONFIGURED. Nothing here, or in resolveFinancialPolicyInForce,
 //     ever substitutes a default method.
@@ -129,21 +130,32 @@ export interface FinancialPolicyOptions {
 }
 
 /**
- * COMPANY REACH (#232 Amendment A): where a policy capability applies. The CommercialWriteScope pattern, at operatingCompany
- * scope: a key in the flat set is held through a GLOBAL assignment (or standing) and reaches every company -- the current EOS
- * meaning of "All (Global)", pending the Owner's confirmation; otherwise it is held only for the companies its UNCONDITIONED
- * scoped holdings admit. Holding it nowhere is CAPABILITY_REQUIRED.
+ * COMPANY REACH -- capability AND explicit company assignment (Owner ruling 2026-10-13; Financial Policy company-access
+ * correction, Owner-authorized 2026-10-14). A finance.policy.* key applies at operating company C only when BOTH hold:
+ *   1. the CAPABILITY: the key is held flat (a global Role assignment, e.g. the Owner Role; or standing) or through an
+ *      UNCONDITIONED operatingCompany-scoped holding; and
+ *   2. an EXPLICIT, ACTIVE operatingCompany-scoped assignment for C: an unconditioned C-scoped holding of THAT key, or --
+ *      for a key held flat -- of FINANCIAL_POLICY_COMPANY_ASSIGNMENT_KEY (finance.policy.read: the Financial Policy
+ *      Reviewer or Preparer Role assigned at C).
+ * A flat holding, a global Role or Administrator standing therefore reaches NO company by itself; there is no implicit
+ * "all companies". The company assignment supplies company reach ONLY and never a key the principal does not otherwise
+ * hold: a read-only assignment cannot become approval or activation, which stay reserved to the Owner Role / standing
+ * (requireReservedAuthority). Holding the key nowhere is CAPABILITY_REQUIRED; holding it without an assignment at the
+ * requested company is OUTSIDE_OPERATING_COMPANY_SCOPE.
  */
-interface CompanyReach { readonly key: string; readonly global: boolean; readonly companies: readonly string[] }
+export const FINANCIAL_POLICY_COMPANY_ASSIGNMENT_KEY = FINANCIAL_POLICY_READ_CAPABILITY;
+interface CompanyReach { readonly key: string; readonly companies: readonly string[] }
 /** Where `key` applies for this actor, or null when it is held nowhere. THE one reach decision: commands and reads share it. */
 const capabilityReach = (actor: FinancialPolicyActor, key: string): CompanyReach | null => {
-  if (actor.capabilities.has(key)) return Object.freeze({ key, global: true, companies: Object.freeze([]) });
-  const companies = admittedScopeValues(actor.scopedHeld, key, "operatingCompany");
-  return companies.length === 0 ? null : Object.freeze({ key, global: false, companies });
+  const scoped = admittedScopeValues(actor.scopedHeld, key, "operatingCompany");
+  const flat = actor.capabilities.has(key);
+  if (!flat && scoped.length === 0) return null;
+  const assigned = flat ? admittedScopeValues(actor.scopedHeld, FINANCIAL_POLICY_COMPANY_ASSIGNMENT_KEY, "operatingCompany") : [];
+  return Object.freeze({ key, companies: Object.freeze([...new Set([...scoped, ...assigned])].sort()) });
 };
 const requireCapability = (actor: FinancialPolicyActor, key: string): CompanyReach =>
   capabilityReach(actor, key) ?? refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${key}`);
-const reachesCompany = (reach: CompanyReach, company: string): boolean => reach.global || reach.companies.includes(company);
+const reachesCompany = (reach: CompanyReach, company: string): boolean => reach.companies.includes(company);
 /**
  * THE RUNTIME HALF OF THE RESERVATION (#232 Phase 1). finance.policy.approve / .activate are reserved to the Owner Role, and
  * the write path refuses every other grant -- but a row that bypassed it must not authorize either. So, like trade-in
@@ -363,10 +375,10 @@ async function companyOf(db: Db, actor: FinancialPolicyActor, raw: unknown, reac
     return company;
   } catch (err) {
     if (err instanceof FinanceFoundationError) {
-      // CONSOLIDATED is refused for everyone, with its own code. Otherwise only a FLAT holder learns the company is unknown.
-      if (err.code !== "CONSOLIDATED_NOT_A_COMPANY" && !reach.global) return outsideScope(reach, raw);
-      return refuse(err.code === "CONSOLIDATED_NOT_A_COMPANY" ? err.code : "OPERATING_COMPANY_UNKNOWN", "INVALID_INPUT",
-        "operatingCompanyId names one ACTIVE operating company of this tenant (never CONSOLIDATED)");
+      // CONSOLIDATED is refused for everyone, with its own code. Otherwise OUT OF SCOPE == UNKNOWN for every caller: no
+      // holder reaches a company it is not assigned to, so none learns whether an unassigned company exists.
+      if (err.code !== "CONSOLIDATED_NOT_A_COMPANY") return outsideScope(reach, raw);
+      return refuse(err.code, "INVALID_INPUT", "operatingCompanyId names one ACTIVE operating company of this tenant (never CONSOLIDATED)");
     }
     throw err;
   }
