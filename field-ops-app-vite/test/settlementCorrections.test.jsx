@@ -193,3 +193,71 @@ describe("Settlement corrections", () => {
     expect(screen.queryByText(/No settlements recorded/)).toBeNull();
   });
 });
+
+// THE WORKSPACE INTEGRATION: a correction reloads the workspace (balances, unapplied, reconciliation) and, through it, re-reads
+// the settlement list exactly once; a reload that returns after a company switch never paints the old company.
+import FinancialsWorkspace from "../src/modules/financials/FinancialsWorkspace.jsx";
+
+describe("Settlement corrections inside the Finance workspace", () => {
+  const ws = (company) => ({
+    scope: { operatingCompanyId: company, projection: "OPERATING_COMPANY", companies: [company] },
+    exceptionCounts: { overdueObligations: 0, partiallyPaidObligations: 0, unappliedSettlements: 0, accountingHandoffExceptions: 0, reconciliationMismatches: 0,
+      unreconciledSettlements: 0, missingCostEvidence: 0, intercompanyReliefPending: 0 },
+    receivables: { count: 0, outstandingByCurrency: {}, items: [] }, fundingReceivables: { count: 0, outstandingByCurrency: {}, items: [] },
+    payables: { count: 0, outstandingByCurrency: {}, items: [] }, intercompanyReceivables: { count: 0, outstandingByCurrency: {}, items: [] },
+    intercompanyPayables: { count: 0, outstandingByCurrency: {}, items: [] }, overdue: [], partiallyPaid: [], unappliedSettlements: [], accountingHandoffs: [],
+    reconciliation: [], missingCostEvidence: [], intercompanyReliefPending: [], marker: `WS-${company}`,
+  });
+  const accessResult = { ok: true, result: { principalId: "p", consolidated: true, companies: ["taylor", "ventana"].map((c) => ({ operatingCompanyId: c, name: c,
+    actions: { view: true, record: true, apply: true, correct: true, reconcile: true } })) } };
+
+  it("a reversal reloads the workspace and re-reads the list once", async () => {
+    const api = vi.fn(async (op, input) => {
+      if (op === "readMyFinanceCompanyAccess") return accessResult;
+      if (op === "readFinanceWorkspace") return { ok: true, result: ws(input.operatingCompanyId) };
+      if (op === "listSettlements") return { ok: true, result: { items: [settlement()] } };
+      if (op === "reverseSettlementApplication") return { ok: true, result: { outcome: "reversed" } };
+      return { ok: false, code: "UNEXPECTED", message: op };
+    });
+    render(<FinancialsWorkspace callApi={api} />);
+    await openCorrections();
+    const count = (op) => api.mock.calls.filter(([o]) => o === op).length;
+    const [wsBefore, listBefore] = [count("readFinanceWorkspace"), count("listSettlements")];
+    startReverse();
+    confirmWith(/Confirm: Reverse/, "wrong receivable", "Reverse Application");
+    await waitFor(() => expect(count("readFinanceWorkspace")).toBe(wsBefore + 1));
+    await waitFor(() => expect(count("listSettlements")).toBe(listBefore + 1));
+  });
+
+  it("a workspace reload that returns after a company switch is dropped", async () => {
+    let releaseTaylor = null;
+    let taylorReads = 0;
+    const api = vi.fn(async (op, input) => {
+      if (op === "readMyFinanceCompanyAccess") return accessResult;
+      if (op === "readFinanceWorkspace") {
+        if (input.operatingCompanyId === "taylor" && ++taylorReads === 2) {
+          await new Promise((r) => { releaseTaylor = r; });
+          // The late Taylor answer carries a row that must never be painted under Ventana.
+          return { ok: true, result: { ...ws("taylor"), unappliedSettlements: [{ id: "stl-stale", operatingCompanyId: "taylor", kind: "CUSTOMER_PAYMENT", currency: "USD",
+            amountMinor: "100", unappliedMinor: "100", businessDate: "2026-10-14", sourceReference: "STALE-TAYLOR" }] } };
+        }
+        return { ok: true, result: ws(input.operatingCompanyId) };
+      }
+      if (op === "listSettlements") return { ok: true, result: { items: [settlement({ operatingCompanyId: input.operatingCompanyId })] } };
+      if (op === "reverseSettlementApplication") return { ok: true, result: { outcome: "reversed" } };
+      return { ok: false, code: "UNEXPECTED", message: op };
+    });
+    render(<FinancialsWorkspace callApi={api} />);
+    await openCorrections();
+    startReverse();
+    confirmWith(/Confirm: Reverse/, "x", "Reverse Application");
+    await waitFor(() => expect(releaseTaylor).not.toBeNull()); // the post-correction Taylor reload is in flight
+    fireEvent.change(screen.getByLabelText("Company"), { target: { value: "ventana" } });
+    await waitFor(() => expect(api).toHaveBeenCalledWith("readFinanceWorkspace", { operatingCompanyId: "ventana" }));
+    await act(async () => { releaseTaylor(); });
+    await waitFor(() => expect(screen.getByLabelText("Company").value).toBe("ventana"));
+    expect(screen.queryByText("Application reversed.")).toBeNull(); // not announced under Ventana
+    expect(screen.queryByText("STALE-TAYLOR")).toBeNull(); // the late Taylor workspace was dropped
+    expect(api.mock.calls.filter(([op, i]) => op === "listSettlements" && i.operatingCompanyId === "ventana").length).toBeGreaterThanOrEqual(1);
+  });
+});

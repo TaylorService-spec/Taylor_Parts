@@ -81,10 +81,15 @@ export default function SettlementCorrections({ callApi, company, access, refres
   useEffect(() => { setOpen(null); setConfirming(null); setNotice(null); setFailure(null); setRows(null); }, [company]);
   useEffect(() => { load(); }, [load, refreshToken]);
 
+  // The company the person is looking at NOW: an answer that comes back after a switch is not announced under another company.
+  const currentCompany = useRef(company);
+  currentCompany.current = company;
   const run = async (operation, input, done) => {
+    const startedFor = company;
     setBusy(true); setNotice(null);
     const res = await callApi(operation, input);
     setBusy(false);
+    if (currentCompany.current !== startedFor) return;
     if (!res.ok) { setNotice({ tone: "danger", text: refusalText(res) }); return; }
     const replayed = res.result?.outcome === "replayed";
     setNotice({ tone: "positive", text: replayed ? `${done.already} Nothing changed.` : done.text });
