@@ -440,6 +440,41 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.deepEqual([second.status, second.body.code], [409, "SETTLEMENT_ALREADY_REPLACED"], "a VOID settlement is replaced once");
   });
 
+  // SETTLEMENT CORRECTION UI (Owner direction 2026-10-14): the screen reuses listSettlements + reverseSettlementApplication +
+  // voidSettlement. What it relies on: the list carries each application and its status; a re-sent correction is a replay that
+  // writes nothing; only finance.settlement.correct holders correct.
+  await t.test("CORR-UI: the list the screen reads; duplicate reverse / void replay and write nothing; without finance.settlement.correct, no correction", async () => {
+    const { out } = await directPackage({ price: 3300 });
+    const rec = await receivableOf(out.packageId);
+    const s = await record(ctrl, { operatingCompanyId: "taylor", counterparty: customer("acct-cust"), kind: "CUSTOMER_PAYMENT", amountMinor: 3300, sourceReference: "CHK-UI-1" });
+    const a = (await apply(ctrl, s.id, [{ obligationId: rec, amountMinor: 3300 }])).applications[0].applicationId;
+    const listed = ok(await fn(ctrl, "listSettlements", { operatingCompanyId: "taylor" })).items.find((x) => x.id === s.id);
+    assert.deepEqual([listed.status, listed.appliedMinor, listed.unappliedMinor, listed.applications.map((x) => [x.id, x.obligationId, x.amountMinor, x.status])],
+      ["RECORDED", "3300", "0", [[a, rec, "3300", "APPLIED"]]], "the screen's row: status, balances and each application");
+    const factCount = async () => Number((await one(`SELECT count(*) n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND obligation_id=$2`, [TENANT, rec])).n);
+    // No finance.settlement.correct: refused before anything is read or written.
+    for (const who of [salesP, techP, sysAdmin]) {
+      refused(await fn(who, "reverseSettlementApplication", { applicationId: a, reason: "x", idempotencyKey: key("no") }), 403, "CAPABILITY_REQUIRED");
+      refused(await fn(who, "voidSettlement", { settlementId: s.id, reason: "x" }), 403, "CAPABILITY_REQUIRED");
+    }
+    const before = await factCount();
+    const k = key("ui-rv");
+    const first = ok(await fn(ctrl, "reverseSettlementApplication", { applicationId: a, reason: "applied to the wrong receivable", idempotencyKey: k }));
+    assert.equal(first.outcome, "reversed");
+    assert.equal(await factCount(), before + 1, "one reversal fact");
+    // A double submit (same key) and a second attempt (new key) are replays: no second reversal fact.
+    assert.equal(ok(await fn(ctrl, "reverseSettlementApplication", { applicationId: a, reason: "applied to the wrong receivable", idempotencyKey: k })).outcome, "replayed");
+    assert.equal(ok(await fn(acctMgr, "reverseSettlementApplication", { applicationId: a, reason: "again", idempotencyKey: key("ui-rv2") })).outcome, "replayed");
+    assert.equal(await factCount(), before + 1, "replays write nothing");
+    const after = ok(await fn(ctrl, "readSettlement", { settlementId: s.id }));
+    assert.deepEqual([after.unappliedMinor, after.applications[0].status, after.applications[0].reversalReason], ["3300", "REVERSED", "applied to the wrong receivable"],
+      "the original application stays in history, marked reversed, with its reason");
+    assert.equal(ok(await fn(ctrl, "voidSettlement", { settlementId: s.id, reason: "check returned" })).outcome, "voided");
+    assert.equal(ok(await fn(ctrl, "voidSettlement", { settlementId: s.id, reason: "check returned" })).outcome, "replayed");
+    const voided = ok(await fn(ctrl, "readSettlement", { settlementId: s.id }));
+    assert.deepEqual([voided.status, voided.voidReason, voided.reconciliationStatus], ["VOID", "check returned", "NOT_APPLICABLE"]);
+  });
+
   await t.test("RECON: RECONCILED when the external amount agrees, MISMATCH otherwise (with a reason); VOID is not reconciled", async () => {
     const s = await record(ctrl, { operatingCompanyId: "taylor", counterparty: customer("acct-cust"), kind: "CUSTOMER_PAYMENT", amountMinor: 700 });
     const ok1 = ok(await fn(acctMgr, "reconcileSettlement", { settlementId: s.id, externalReference: "QB-PMT-1", externalAmountMinor: 700, idempotencyKey: key("rc") }));
