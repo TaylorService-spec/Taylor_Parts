@@ -1123,8 +1123,10 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   "purchasing/quotes",
   "purchasing/receipts", // (CUTOVER) receiving.checkIn
   "purchasing/demandPlanning",
-  // financials/overview LEFT this register (Financials Workspace P0 correction): it now earns `financials.payments`, so its
-  // door comes from the surface, never from a placeholder role literal (the register is shrink-only).
+  // (CUTOVER) financials.payments -- Financials Workspace P0 correction (2026-10-14). The Overview now earns a surface on the
+  // EOS source, but STAYS here so the LEGACY source (production) is byte-identical: removing it would change production
+  // navigation. That makes it the 23rd cutover row; NAV_CUTOVER_PLACEHOLDER_CEILING 22 -> 23 is an OWNER RULING (PR #2091).
+  "financials/overview",
   "financials/billingQueue",
   "financials/invoices", // (CUTOVER) financials.invoices
   "financials/accountsReceivable",
@@ -1337,9 +1339,16 @@ export function effectivePlaceholderRegister(operationalContext) {
 // the SAME row is a CUTOVER row -- the `purchasing/suppliers` precedent exactly. The register stays 62 (Lane BR: the legacy
 // source's destination set is not cut from under a flag-false environment); ungoverned 41 -> 40; cutover 21 -> 22, because
 // the row that crossed over is not new. Recorded for Owner / Controller confirmation in the package report.
+//
+// ════════ 2026-10-14 -- A THIRD ROW CHANGED KIND; NO ROW WAS ADDED (FINANCIALS WORKSPACE P0 CORRECTION, PR #2091) ════════
+//
+// `financials/overview` hosts the PostgreSQL Finance workspace and now earns `financials.payments` (its own read's surface).
+// The SAME row becomes a CUTOVER row -- the `purchasing/suppliers` and `administration/financialPolicy` precedent. The register
+// stays 62 (production's legacy destination set is unchanged); ungoverned 40 -> 39; cutover 22 -> 23, because the row that
+// crossed over is not new. Recorded for Owner confirmation in the PR #2091 report.
 export const NAV_LEGACY_PLACEHOLDER_CEILING = 62;
-export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 40;
-export const NAV_CUTOVER_PLACEHOLDER_CEILING = 22;
+export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 39;
+export const NAV_CUTOVER_PLACEHOLDER_CEILING = 23;
 
 // The derived-surface mirror now lives ABOVE the container table, because the container table is
 // COMPUTED FROM IT. See "THE CLIENT MIRROR OF THE SERVER CATALOG'S CONTAINERS" earlier in this file.

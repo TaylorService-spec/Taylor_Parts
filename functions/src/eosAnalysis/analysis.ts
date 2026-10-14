@@ -105,7 +105,9 @@ function resolvePeriod(scope: Scope, periodType: unknown, comparison: unknown, a
 type Access = { allowed: false; reason: string } | { allowed: true; channels: readonly string[] | null };
 
 function measureAccess(actor: AnalysisActor, m: MeasureDefinition, areaChannel: string | null): Access {
-  const flat = m.readCapabilities.some((k) => actor.capabilities.has(k));
+  // A finance.* key also counts when held only through a company-scoped assignment (a scoped holding IS the key and the
+  // company assignment at once); WHERE it applies is decided per company by financeCompanyRefusal.
+  const flat = m.readCapabilities.some((k) => actor.capabilities.has(k) || (k.startsWith("finance.") && financeCompanyReach(actor, k) !== null));
   if (m.channelScopedBy) {
     const scoped = flat ? null : admittedScopeValues(actor.scopedHeld as never, m.channelScopedBy, "salesChannel");
     if (!flat && (scoped === null || scoped.length === 0)) {

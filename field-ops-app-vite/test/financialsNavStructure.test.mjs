@@ -128,15 +128,16 @@ test("no Financials item declares a newly invented capabilityAccess (or any othe
 // under the LEGACY source all twenty-one answer exactly as they did on main. The other nineteen are
 // Frame-0 information architecture with no authority behind them -- FIN-001/FIN-004 own that
 // capability model -- and no flag will ever change their answer.
-const GOVERNED_FINANCIALS = Object.freeze(["invoices", "payments"]);
+// 2026-10-14 (PR #2091): the Overview, which hosts the PostgreSQL Finance workspace, earned financials.payments.
+const GOVERNED_FINANCIALS = Object.freeze(["overview", "invoices", "payments"]);
 
 test("Financials visibility follows existing conservative nav semantics — admin/dispatcher yes, technician no", () => {
   for (const role of PLACEHOLDER_DEFAULT_ROLES) {
     assert.equal(isDomainVisible(financials, role, ROLE_NAV_ACCESS[role]), true, `${role} must see Financials`);
     for (const item of financials.subnav) {
       assert.equal(isNavItemVisible(item, role, ROLE_NAV_ACCESS[role]), true, `${role} must see ${item.key}`);
-      // The cutover asymmetry, recorded rather than acted on: exactly two of these have somewhere to
-      // go when this environment flips the flag.
+      // The cutover asymmetry, recorded rather than acted on: these have somewhere to
+      // go when this environment flips the flag (three since the Financials Workspace P0 correction).
       assert.equal(Boolean(item.surfaceAccess), GOVERNED_FINANCIALS.includes(item.key),
         `${item.key}'s governed-surface mapping moved -- that changes which partition its row is in`);
     }

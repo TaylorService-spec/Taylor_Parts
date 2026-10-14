@@ -299,6 +299,12 @@ test("analysis over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
       const w = ok(await ws(ctrlNone, { area: "finance", operatingCompanyId: c }));
       assert.equal(w.measures.filter((m) => m.id.startsWith("finance.") && m.status === "COMPUTED").length, 0, `unassigned: ${c}`);
     }
+    // A company-scoped holding ALONE (no global finance Role) is the key and the assignment at once: Taylor computes, Ventana
+    // is refused (review finding 2).
+    const scopedOnly = await person("uid-fin-scoped", [], { id: "e-fin-scoped", name: "Sol Scoped-Viewer" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [scopedOnly], ["taylor"]);
+    assert.deepEqual([recv(ok(await ws(scopedOnly, { area: "finance", operatingCompanyId: "taylor" }))).status,
+      recv(ok(await ws(scopedOnly, { area: "finance", operatingCompanyId: "ventana" }))).status], ["COMPUTED", "REFUSED"]);
     // A non-finance measure is not governed by the Financials assignment (unchanged by this correction).
     const service = measureIn(ok(await ws(ctrlNone, { area: "executive", operatingCompanyId: "ventana" })), "service.workOrders.completed");
     assert.notEqual(service.reason ?? "", "requires a Financials company assignment for every company in scope");
