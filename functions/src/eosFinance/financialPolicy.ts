@@ -3,9 +3,10 @@
 // Each operating company's governed accounting-policy profile, in PostgreSQL, as VERSIONS with an approval lifecycle:
 //
 //     DRAFT --submit--> SUBMITTED --approve--> APPROVED --activate--> ACTIVE --(a later version activates)--> SUPERSEDED
-//                                  \--reject---> REJECTED
+//       |                  |  \--reject---> REJECTED      |
+//       +----withdraw------+--> WITHDRAWN                 +--cancel--> CANCELLED          (#232 Phase 3, migration 1764570000000)
 //
-// Served on /operations/finance (the Finance Closure transport) as seven operations, each behind its own PG-native key,
+// Served on /operations/finance (the Finance Closure transport) as nine operations, each behind an existing PG-native key,
 // plus one read-only authority read for the Administration screen (#232 Phase 2):
 //
 //   readMyFinancialPolicyAuthority finance.policy.read      the companies the caller reaches, and what it may do in each (and why not)
@@ -17,6 +18,10 @@
 //   rejectFinancialPolicy          finance.policy.approve   SUBMITTED -> REJECTED   (a reason; never by a preparer or the submitter)
 //   activateFinancialPolicy        finance.policy.activate  APPROVED -> ACTIVE on a stated effective date; the prior ACTIVE
 //                                                           version becomes SUPERSEDED in the same transaction, intact
+//   withdrawFinancialPolicy        finance.policy.prepare   DRAFT | SUBMITTED -> WITHDRAWN, by the version's OWN preparer (a content
+//                                                           author or its submitter), with a reason (#232 Phase 3)
+//   cancelFinancialPolicy          finance.policy.approve   APPROVED -> CANCELLED, by the Owner Role / Administrator (the approve
+//                                                           reservation), never by its submitter or an author, with a reason
 //
 // RULES, each enforced here AND by the database (migration 1764560000000), so a crafted request and a direct write meet the
 // same refusal:
@@ -32,8 +37,13 @@
 //     (LIFO / STANDARD_COST / REPLACEMENT_COST do not exist), an AVAILABLE recognition point only (WORK_ORDER_CONSUMPTION
 //     follows PHYSICAL_CONSUMPTION_ACTIVE), EXCLUDED freight / landed cost only, no unknown field. Re-checked at submit,
 //     approval and activation, so a gate that closes after drafting stops activation.
-//   * THE LOCK. ACTIVE and SUPERSEDED versions are immutable; REJECTED is final; content freezes when a version leaves DRAFT.
-//     There is no unlock, reopen or force. A change is a governed REVISION: a new DRAFT through the same lifecycle.
+//   * THE LOCK. ACTIVE and SUPERSEDED versions are immutable; REJECTED, WITHDRAWN and CANCELLED are final; content freezes
+//     when a version leaves DRAFT. There is no unlock, reopen or force. A change is a governed REVISION: a new DRAFT through
+//     the same lifecycle. WITHDRAWN / CANCELLED (#232 Phase 3) keep the version and its history and release the company's
+//     single in-flight slot, so an abandoned draft or an approval that must not be activated never strands the company.
+//     An ACTIVE / SUPERSEDED version is never withdrawn or cancelled.
+//   * CONCURRENCY. Activation and cancellation take the same per-company advisory lock and the version's row lock, then
+//     re-read its status; the database admits ACTIVE and CANCELLED only from APPROVED. Whichever commits first wins.
 //   * SEPARATION OF DUTIES. The approver / rejecter / ACTIVATOR is neither the submitter nor any principal who wrote the draft -- even if
 //     that principal also holds finance.policy.approve.
 //   * LIFECYCLE IS NOT EFFECTIVITY. Activating a version locks it and supersedes the prior ACTIVE one at once, but the version
@@ -68,10 +78,12 @@ export const FINANCIAL_POLICY_CAPABILITIES = Object.freeze([
   FINANCIAL_POLICY_READ_CAPABILITY, FINANCIAL_POLICY_PREPARE_CAPABILITY, FINANCIAL_POLICY_APPROVE_CAPABILITY, FINANCIAL_POLICY_ACTIVATE_CAPABILITY,
 ] as const);
 
-export const FINANCIAL_POLICY_STATUSES = Object.freeze(["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "ACTIVE", "SUPERSEDED"] as const);
+export const FINANCIAL_POLICY_STATUSES = Object.freeze(["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "ACTIVE", "SUPERSEDED", "WITHDRAWN", "CANCELLED"] as const);
 export type FinancialPolicyStatus = (typeof FINANCIAL_POLICY_STATUSES)[number];
 /** Statuses that are LOCKED: no ordinary path changes them (ACTIVE admits only its supersession by a later activation). */
 export const LOCKED_FINANCIAL_POLICY_STATUSES: readonly FinancialPolicyStatus[] = Object.freeze(["ACTIVE", "SUPERSEDED"]);
+/** The statuses a preparer may WITHDRAW from (#232 Phase 3). */
+export const WITHDRAWABLE_FINANCIAL_POLICY_STATUSES: readonly FinancialPolicyStatus[] = Object.freeze(["DRAFT", "SUBMITTED"]);
 
 /** The audit trail's target kind for a version. */
 export const FINANCIAL_POLICY_AUDIT_TARGET = "financial_policy_version";
@@ -249,6 +261,12 @@ export interface FinancialPolicyVersion {
   readonly effectiveDate: string | null;
   readonly supersededByVersionId: string | null;
   readonly supersededAt: string | null;
+  readonly withdrawnBy: string | null;
+  readonly withdrawnAt: string | null;
+  readonly withdrawalReason: string | null;
+  readonly cancelledBy: string | null;
+  readonly cancelledAt: string | null;
+  readonly cancellationReason: string | null;
 }
 
 const iso = (v: unknown): string | null => (v === null || v === undefined ? null : new Date(v as string).toISOString());
@@ -271,6 +289,8 @@ export function versionView(r: Record<string, any>): FinancialPolicyVersion {
     rejectedBy: r.rejected_by ?? null, rejectedAt: iso(r.rejected_at), decisionReason: r.decision_reason ?? null,
     activatedBy: r.activated_by ?? null, activatedAt: iso(r.activated_at), effectiveDate: r.effective_date_text ?? null,
     supersededByVersionId: r.superseded_by_version_id ?? null, supersededAt: iso(r.superseded_at),
+    withdrawnBy: r.withdrawn_by ?? null, withdrawnAt: iso(r.withdrawn_at), withdrawalReason: r.withdrawal_reason ?? null,
+    cancelledBy: r.cancelled_by ?? null, cancelledAt: iso(r.cancelled_at), cancellationReason: r.cancellation_reason ?? null,
   });
 }
 
@@ -280,6 +300,9 @@ const sameContent = (a: FinancialPolicyContent, b: FinancialPolicyContent): bool
 // ════════════════════ plumbing ════════════════════
 
 type Db = Pick<PoolClient, "query">;
+
+/** The per-company transaction lock: draft creation, withdrawal, activation and cancellation serialize on it. */
+const LOCK_COMPANY = `SELECT pg_advisory_xact_lock(hashtext('eos_finance.financial_policy_versions'), hashtext($1 || '/' || $2))`;
 
 async function tx<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): Promise<T> {
   const c = await pool.connect();
@@ -301,6 +324,8 @@ const CHECK_REFUSALS: Readonly<Record<string, readonly [string, FinancialPolicyR
   financial_policy_approver_independent: ["SEPARATION_OF_DUTIES", "FORBIDDEN"],
   financial_policy_rejecter_independent: ["SEPARATION_OF_DUTIES", "FORBIDDEN"],
   financial_policy_activator_independent: ["SEPARATION_OF_DUTIES", "FORBIDDEN"],
+  financial_policy_canceller_independent: ["SEPARATION_OF_DUTIES", "FORBIDDEN"],
+  financial_policy_withdrawer_owns_version: ["NOT_YOUR_VERSION", "FORBIDDEN"],
 });
 
 /** The database's own refusals (the lock, the one-in-flight index, the CHECKs) answer as governed refusals, never as 500s. */
@@ -411,7 +436,7 @@ export function supportedFinancialPolicyVocabulary(options: FinancialPolicyOptio
 // lifecycle state, separation of duties), so `allowed: false` carries the code the command would answer. It is advice for
 // rendering only: every command still decides again, inside its transaction, and a stale screen meets the refusal.
 
-export const FINANCIAL_POLICY_COMPANY_ACTIONS = Object.freeze(["read", "prepare", "approve", "activate"] as const);
+export const FINANCIAL_POLICY_COMPANY_ACTIONS = Object.freeze(["read", "prepare", "approve", "activate", "withdraw", "cancel"] as const);
 export type FinancialPolicyCompanyAction = (typeof FINANCIAL_POLICY_COMPANY_ACTIONS)[number];
 export interface FinancialPolicyActionAnswer { readonly allowed: boolean; readonly reason: string | null }
 type CompanyAuthority = Readonly<Record<FinancialPolicyCompanyAction, FinancialPolicyActionAnswer>>;
@@ -419,6 +444,8 @@ type CompanyAuthority = Readonly<Record<FinancialPolicyCompanyAction, FinancialP
 const CAPABILITY_OF: Readonly<Record<FinancialPolicyCompanyAction, string>> = Object.freeze({
   read: FINANCIAL_POLICY_READ_CAPABILITY, prepare: FINANCIAL_POLICY_PREPARE_CAPABILITY,
   approve: FINANCIAL_POLICY_APPROVE_CAPABILITY, activate: FINANCIAL_POLICY_ACTIVATE_CAPABILITY,
+  // #232 Phase 3: no new key. Withdrawing one's own version is a preparer act; cancelling an approval is a decision act.
+  withdraw: FINANCIAL_POLICY_PREPARE_CAPABILITY, cancel: FINANCIAL_POLICY_APPROVE_CAPABILITY,
 });
 const ALLOWED: FinancialPolicyActionAnswer = Object.freeze({ allowed: true, reason: null });
 const blocked = (reason: string): FinancialPolicyActionAnswer => Object.freeze({ allowed: false, reason });
@@ -439,25 +466,31 @@ async function companyAuthorityOf(db: Db, actor: FinancialPolicyActor): Promise<
   })) as Record<FinancialPolicyCompanyAction, FinancialPolicyActionAnswer>);
 }
 
-export const FINANCIAL_POLICY_VERSION_ACTIONS = Object.freeze(["edit", "submit", "approve", "reject", "activate"] as const);
+export const FINANCIAL_POLICY_VERSION_ACTIONS = Object.freeze(["edit", "submit", "approve", "reject", "activate", "withdraw", "cancel"] as const);
 export type FinancialPolicyVersionAction = (typeof FINANCIAL_POLICY_VERSION_ACTIONS)[number];
 
 /**
  * What THIS caller may do to ONE version, and why not. The lifecycle codes are the commands' own (an edit / submit of a
  * non-DRAFT: FINANCIAL_POLICY_NOT_EDITABLE or _LOCKED; a decision on a non-SUBMITTED: _NOT_SUBMITTED; an activation of a
- * non-APPROVED: _NOT_APPROVED or _LOCKED); separation of duties is independentDeciderRefusal -- the commands' rule.
+ * non-APPROVED: _NOT_APPROVED or _LOCKED; a withdrawal of a non-DRAFT / SUBMITTED: _NOT_WITHDRAWABLE or _LOCKED; a
+ * cancellation of a non-APPROVED: _NOT_CANCELLABLE or _LOCKED); separation of duties is independentDeciderRefusal and
+ * ownership is ownVersionRefusal -- the commands' rules.
  */
 export function versionActionsFor(principalId: string, authority: CompanyAuthority, v: FinancialPolicyVersion):
   Readonly<Record<FinancialPolicyVersionAction, FinancialPolicyActionAnswer>> {
   const locked = (LOCKED_FINANCIAL_POLICY_STATUSES as readonly string[]).includes(v.status);
   const lifecycle = (want: FinancialPolicyStatus, notCode: string): string | null =>
     v.status === want ? null : locked ? "FINANCIAL_POLICY_LOCKED" : notCode;
-  const decide = (company: FinancialPolicyActionAnswer, state: string | null, independent: boolean): FinancialPolicyActionAnswer => {
+  const decide = (company: FinancialPolicyActionAnswer, state: string | null, independent: boolean, own = false): FinancialPolicyActionAnswer => {
     if (!company.allowed) return company;
     if (state !== null) return blocked(state);
     if (independent) {
       const sod = independentDeciderRefusal(principalId, v);
       if (sod !== null) return blocked(sod);
+    }
+    if (own) {
+      const mine = ownVersionRefusal(principalId, v);
+      if (mine !== null) return blocked(mine);
     }
     return ALLOWED;
   };
@@ -468,6 +501,8 @@ export function versionActionsFor(principalId: string, authority: CompanyAuthori
     approve: decide(authority.approve, v.status === "SUBMITTED" ? null : "FINANCIAL_POLICY_NOT_SUBMITTED", true),
     reject: decide(authority.approve, v.status === "SUBMITTED" ? null : "FINANCIAL_POLICY_NOT_SUBMITTED", true),
     activate: decide(authority.activate, lifecycle("APPROVED", "FINANCIAL_POLICY_NOT_APPROVED"), true),
+    withdraw: decide(authority.withdraw, withdrawState(v.status), false, true),
+    cancel: decide(authority.cancel, cancelState(v.status), true),
   });
 }
 const withYourActions = (principalId: string, authority: CompanyAuthority, v: FinancialPolicyVersion | null) =>
@@ -484,7 +519,7 @@ async function actorNames(db: Db, tenantId: string, ids: readonly (string | null
   return Object.freeze(Object.fromEntries(rows.map((r) => [String(r.id), r.display_name ?? null])));
 }
 const versionActorIds = (v: FinancialPolicyVersion): (string | null)[] =>
-  [v.preparedBy, ...v.contentAuthors, v.lastEditedBy, v.submittedBy, v.approvedBy, v.rejectedBy, v.activatedBy];
+  [v.preparedBy, ...v.contentAuthors, v.lastEditedBy, v.submittedBy, v.approvedBy, v.rejectedBy, v.activatedBy, v.withdrawnBy, v.cancelledBy];
 
 /**
  * readMyFinancialPolicyAuthority -- the companies this caller reaches for Financial Policy, and what it may do in each.
@@ -604,7 +639,7 @@ export async function saveFinancialPolicyDraft(pool: Pool, actor: FinancialPolic
     const content = validateFinancialPolicyContent(company, input.policy, options);
     if (input.versionId === undefined || input.versionId === null) {
       // Serialize creation per company: the version number is the company's next, and the in-flight index has the final word.
-      await c.query(`SELECT pg_advisory_xact_lock(hashtext('eos_finance.financial_policy_versions'), hashtext($1 || '/' || $2))`, [actor.tenantId, company]);
+      await c.query(LOCK_COMPANY, [actor.tenantId, company]);
       const { rows: open } = await c.query(
         `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions
           WHERE tenant_id = $1 AND operating_company_id = $2 AND status IN ('DRAFT', 'SUBMITTED', 'APPROVED') FOR UPDATE`, [actor.tenantId, company]);
@@ -681,6 +716,23 @@ export async function submitFinancialPolicy(pool: Pool, actor: FinancialPolicyAc
  */
 export function independentDeciderRefusal(principalId: string, v: Pick<FinancialPolicyVersion, "submittedBy" | "contentAuthors">): "SEPARATION_OF_DUTIES" | null {
   return v.submittedBy === principalId || v.contentAuthors.includes(principalId) ? "SEPARATION_OF_DUTIES" : null;
+}
+/**
+ * #232 Phase 3: a preparer withdraws only their OWN version -- one they created or edited (a content author; the creator is
+ * content_authors[1]) or submitted. The database CHECK financial_policy_withdrawer_owns_version holds the same line.
+ */
+export function ownVersionRefusal(principalId: string, v: Pick<FinancialPolicyVersion, "submittedBy" | "contentAuthors">): "NOT_YOUR_VERSION" | null {
+  return v.submittedBy === principalId || v.contentAuthors.includes(principalId) ? null : "NOT_YOUR_VERSION";
+}
+/** The lifecycle half of a withdrawal: DRAFT / SUBMITTED only; ACTIVE / SUPERSEDED are LOCKED; anything else is final. */
+export function withdrawState(status: FinancialPolicyStatus): string | null {
+  if ((WITHDRAWABLE_FINANCIAL_POLICY_STATUSES as readonly string[]).includes(status)) return null;
+  return (LOCKED_FINANCIAL_POLICY_STATUSES as readonly string[]).includes(status) ? "FINANCIAL_POLICY_LOCKED" : "FINANCIAL_POLICY_NOT_WITHDRAWABLE";
+}
+/** The lifecycle half of a cancellation: APPROVED only; ACTIVE / SUPERSEDED are LOCKED (never cancelled); else not cancellable. */
+export function cancelState(status: FinancialPolicyStatus): string | null {
+  if (status === "APPROVED") return null;
+  return (LOCKED_FINANCIAL_POLICY_STATUSES as readonly string[]).includes(status) ? "FINANCIAL_POLICY_LOCKED" : "FINANCIAL_POLICY_NOT_CANCELLABLE";
 }
 function assertIndependentDecider(actor: FinancialPolicyActor, v: FinancialPolicyVersion): void {
   if (independentDeciderRefusal(actor.principalId, v) !== null) {
@@ -761,7 +813,8 @@ export async function activateFinancialPolicy(pool: Pool, actor: FinancialPolicy
   return tx(pool, async (c) => {
     await requireReservedAuthority(c, actor, FINANCIAL_POLICY_ACTIVATE_CAPABILITY);
     const company = await companyOf(c, actor, input.operatingCompanyId, reach);
-    await c.query(`SELECT pg_advisory_xact_lock(hashtext('eos_finance.financial_policy_versions'), hashtext($1 || '/' || $2))`, [actor.tenantId, company]);
+    // The SAME per-company lock and row lock cancelFinancialPolicy takes: an activation and a cancellation serialize.
+    await c.query(LOCK_COMPANY, [actor.tenantId, company]);
     const row = await lockedVersion(c, actor, company, input.versionId);
     const before = versionView(row);
     if (before.status === "ACTIVE" && before.activatedBy === actor.principalId && before.effectiveDate === effectiveDate) {
@@ -802,6 +855,91 @@ export async function activateFinancialPolicy(pool: Pool, actor: FinancialPolicy
   });
 }
 
+/** A withdrawal / cancellation states why: required, like a rejection's reason. */
+function closingReason(raw: unknown, what: string): string {
+  if (typeof raw !== "string" || raw.trim() === "") refuse("REASON_REQUIRED", "INVALID_INPUT", `a ${what} states its reason`);
+  return requiredText(raw, "reason", 1000);
+}
+
+/**
+ * DRAFT | SUBMITTED -> WITHDRAWN (#232 Phase 3), by the version's OWN preparer, with a stated reason. The version, its
+ * content, its stamps and its audit trail are kept; the company's in-flight slot is released, so a new draft may follow.
+ * Order: finance.policy.prepare (flat or company-scoped) -> company admission (before any lookup) -> the version, locked ->
+ * replay -> lifecycle (FINANCIAL_POLICY_NOT_WITHDRAWABLE; ACTIVE / SUPERSEDED: FINANCIAL_POLICY_LOCKED) -> ownership
+ * (NOT_YOUR_VERSION). The database re-checks the edge and the ownership.
+ */
+export async function withdrawFinancialPolicy(pool: Pool, actor: FinancialPolicyActor, input: Record<string, unknown>): Promise<Outcome> {
+  const reach = requireCapability(actor, FINANCIAL_POLICY_PREPARE_CAPABILITY);
+  only(input, ["operatingCompanyId", "versionId", "reason"]);
+  const reason = closingReason(input.reason, "withdrawal");
+  return tx(pool, async (c) => {
+    const company = await companyOf(c, actor, input.operatingCompanyId, reach);
+    await c.query(LOCK_COMPANY, [actor.tenantId, company]);
+    const row = await lockedVersion(c, actor, company, input.versionId);
+    const before = versionView(row);
+    if (before.status === "WITHDRAWN" && before.withdrawnBy === actor.principalId) {
+      if (before.withdrawalReason !== reason) {
+        refuse("FINANCIAL_POLICY_REPLAY_CONFLICT", "CONFLICT", "this version is already withdrawn by you with a different reason; the recorded one stands");
+      }
+      return outcome(row, true);
+    }
+    const state = withdrawState(before.status);
+    if (state === "FINANCIAL_POLICY_LOCKED") lockedRefusal(before.status);
+    if (state !== null) {
+      refuse(state, "CONFLICT", `only a DRAFT or SUBMITTED version is withdrawn; this one is ${before.status} (a final version is never reopened)`);
+    }
+    if (ownVersionRefusal(actor.principalId, before) !== null) {
+      refuse("NOT_YOUR_VERSION", "FORBIDDEN", "a financial policy version is withdrawn only by a principal who prepared, edited or submitted it");
+    }
+    const { rows } = await c.query(
+      `UPDATE eos_finance.financial_policy_versions SET status = 'WITHDRAWN', withdrawn_by = $3, withdrawn_at = now(), withdrawal_reason = $4, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 RETURNING ${COLUMNS}`, [actor.tenantId, before.id, actor.principalId, reason]);
+    await audit(c, actor, "finance.policy.withdraw", before, versionView(rows[0]), reason);
+    return outcome(rows[0], false);
+  });
+}
+
+/**
+ * APPROVED -> CANCELLED (#232 Phase 3), by the Owner Role or the Administrator, with a stated reason: an approval that must
+ * not be activated stops holding the company's in-flight slot. The version, its approval (and note) and its audit trail are
+ * kept. An ACTIVE or SUPERSEDED version is never cancelled (FINANCIAL_POLICY_LOCKED): a change to it is a revision.
+ * Order: finance.policy.approve -> its request-time reservation (Owner Role / Administrator standing) -> company admission
+ * -> the per-company lock + the version's row lock (the SAME locks activation takes, so the two serialize) -> replay ->
+ * lifecycle (FINANCIAL_POLICY_NOT_CANCELLABLE) -> separation of duties (never the submitter or an author; the approver may).
+ */
+export async function cancelFinancialPolicy(pool: Pool, actor: FinancialPolicyActor, input: Record<string, unknown>): Promise<Outcome> {
+  const reach = requireCapability(actor, FINANCIAL_POLICY_APPROVE_CAPABILITY);
+  only(input, ["operatingCompanyId", "versionId", "reason"]);
+  const reason = closingReason(input.reason, "cancellation");
+  return tx(pool, async (c) => {
+    await requireReservedAuthority(c, actor, FINANCIAL_POLICY_APPROVE_CAPABILITY);
+    const company = await companyOf(c, actor, input.operatingCompanyId, reach);
+    await c.query(LOCK_COMPANY, [actor.tenantId, company]);
+    const row = await lockedVersion(c, actor, company, input.versionId);
+    const before = versionView(row);
+    if (before.status === "CANCELLED" && before.cancelledBy === actor.principalId) {
+      if (before.cancellationReason !== reason) {
+        refuse("FINANCIAL_POLICY_REPLAY_CONFLICT", "CONFLICT", "this version is already cancelled by you with a different reason; the recorded one stands");
+      }
+      return outcome(row, true);
+    }
+    const state = cancelState(before.status);
+    if (state === "FINANCIAL_POLICY_LOCKED") lockedRefusal(before.status);
+    if (state !== null) {
+      refuse(state, "CONFLICT", `only an APPROVED version that is not yet activated is cancelled; this one is ${before.status}`);
+    }
+    if (independentDeciderRefusal(actor.principalId, before) !== null) {
+      refuse("SEPARATION_OF_DUTIES", "FORBIDDEN",
+        "an approved financial policy version is cancelled by someone other than the principal who prepared, edited or submitted it");
+    }
+    const { rows } = await c.query(
+      `UPDATE eos_finance.financial_policy_versions SET status = 'CANCELLED', cancelled_by = $3, cancelled_at = now(), cancellation_reason = $4, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 RETURNING ${COLUMNS}`, [actor.tenantId, before.id, actor.principalId, reason]);
+    await audit(c, actor, "finance.policy.cancel", before, versionView(rows[0]), reason);
+    return outcome(rows[0], false);
+  });
+}
+
 // ════════════════════ history ════════════════════
 
 export interface FinancialPolicyAuditEvent {
@@ -811,12 +949,21 @@ export interface FinancialPolicyAuditEvent {
   readonly after: unknown;
 }
 
+/**
+ * The withdraw / cancel stamps (#232 Phase 3) are absent from snapshots written before migration 1764570000000; there they
+ * were null by construction. A snapshot is normalized to carry them, so a version whose history spans the migration still
+ * rebuilds -- and compared key-order-independently.
+ */
+const PHASE3_STAMPS = Object.freeze(["withdrawnBy", "withdrawnAt", "withdrawalReason", "cancelledBy", "cancelledAt", "cancellationReason"]);
 const withoutAuthority = (v: unknown): unknown => {
   if (v === null || typeof v !== "object" || Array.isArray(v)) return v;
   const { authorizedBy: _a, ...rest } = v as Record<string, unknown>;
   void _a;
+  for (const k of PHASE3_STAMPS) if (!(k in rest)) rest[k] = null;
   return rest;
 };
+const canonical = (v: unknown): string => JSON.stringify(v, (_k, x) => (x !== null && typeof x === "object" && !Array.isArray(x)
+  ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, (x as Record<string, unknown>)[k]])) : x));
 
 /**
  * Rebuild every version's state from its audit trail alone (events in recorded order). Each event's `before` must equal the
@@ -827,7 +974,7 @@ export function rebuildFinancialPolicyVersions(events: readonly FinancialPolicyA
   for (const e of events) {
     const prior = state.has(e.targetId) ? state.get(e.targetId) : null;
     const before = withoutAuthority(e.before ?? null);
-    if (JSON.stringify(before) !== JSON.stringify(prior)) {
+    if (canonical(before) !== canonical(prior)) {
       throw new Error(`FINANCIAL_POLICY_HISTORY_BROKEN: ${e.action} on ${e.targetId} does not continue the recorded state`);
     }
     state.set(e.targetId, withoutAuthority(e.after));
@@ -854,6 +1001,8 @@ export const EOS_FINANCIAL_POLICY_OPERATIONS: Readonly<Record<string, Op>> = Obj
   approveFinancialPolicy: (deps, caller, input) => approveFinancialPolicy(deps.pool, actorOf(caller), input),
   rejectFinancialPolicy: (deps, caller, input) => rejectFinancialPolicy(deps.pool, actorOf(caller), input),
   activateFinancialPolicy: (deps, caller, input) => activateFinancialPolicy(deps.pool, actorOf(caller), input),
+  withdrawFinancialPolicy: (deps, caller, input) => withdrawFinancialPolicy(deps.pool, actorOf(caller), input),
+  cancelFinancialPolicy: (deps, caller, input) => cancelFinancialPolicy(deps.pool, actorOf(caller), input),
 });
 
 /** The recognition-point ids the domain knows, re-exported for the client mirror test. */

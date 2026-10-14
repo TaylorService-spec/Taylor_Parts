@@ -307,7 +307,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 95 -> 96: 1764540000000 -- Grant-impact preview (PR 3): the never-commit fence (seven deferred constraint triggers); no capability, no grant (no persona's access moves).
   // 96 -> 97: 1764550000000 -- EOS native login: credential, session and MFA tables; no capability, no grant.
   // 97 -> 98: 1764560000000 -- Financial Policy foundation (#232): four finance.policy.* keys, granted to NO Role.
-  assert.equal(files.length, 98, "the migration chain moved; re-measure before trusting anything below");
+  // 98 -> 99: 1764570000000 -- Financial Policy withdraw / cancel (#232 Phase 3): schema only; no capability, no grant.
+  assert.equal(files.length, 99, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

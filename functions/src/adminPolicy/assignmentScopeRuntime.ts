@@ -128,12 +128,14 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
   Object.freeze({
     scopeType: "operatingCompany" as const,
     capabilityKey: "finance.policy.prepare",
-    consumers: Object.freeze(["operations.saveFinancialPolicyDraft", "operations.submitFinancialPolicy"]),
+    // #232 Phase 3: withdrawFinancialPolicy reuses prepare, decided against the requested company like the others.
+    consumers: Object.freeze(["operations.saveFinancialPolicyDraft", "operations.submitFinancialPolicy", "operations.withdrawFinancialPolicy"]),
   }),
   Object.freeze({
     scopeType: "operatingCompany" as const,
     capabilityKey: "finance.policy.approve",
-    consumers: Object.freeze(["operations.approveFinancialPolicy", "operations.rejectFinancialPolicy"]),
+    // #232 Phase 3: cancelFinancialPolicy (APPROVED -> CANCELLED) reuses approve.
+    consumers: Object.freeze(["operations.approveFinancialPolicy", "operations.rejectFinancialPolicy", "operations.cancelFinancialPolicy"]),
   }),
   Object.freeze({
     scopeType: "operatingCompany" as const,

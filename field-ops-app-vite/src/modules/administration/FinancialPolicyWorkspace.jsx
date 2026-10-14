@@ -1,7 +1,7 @@
 // FINANCIAL POLICY WORKSPACE (DECISIONS #232 Phase 2) -- Administration > Company Setup > Financial Policy.
 //
 // One operating company at a time: its policy in effect, the version scheduled or in flight, the draft editor, the
-// approval decision, activation, the version history and the audit trail. Every read and command is the governed
+// approval decision, activation, withdrawal / approval cancellation (#232 Phase 3), the version history and the audit trail. Every read and command is the governed
 // PostgreSQL Financial Policy operation on /operations/finance; this screen decides NOTHING:
 //   * the company list is readMyFinancialPolicyAuthority -- only companies the server says this principal reaches;
 //   * every action's availability is the server's `yourActions` / `yourAuthority` answer, computed from the same rules the
@@ -14,11 +14,12 @@ import { Button, SectionHeader, StatusIndicator } from "../../shared/ui/primitiv
 import { Field, FormError } from "../../shared/ui/form";
 import { callFinanceApi } from "../../services/financeApiClient.js";
 import {
-  POLICY_FIELDS, FIELD_LABELS, LOCKED_MESSAGE, actorWords, auditActionWords, choiceLabel, describeFailure, draftProblems,
+  CLOSING, POLICY_FIELDS, FIELD_LABELS, LOCKED_MESSAGE, actorWords, auditActionWords, choiceLabel, describeFailure, draftProblems,
   fieldOptions, isCalendarDate, refusalWords, samePolicy, startingPolicy, statusWords, when,
 } from "../../domain/financialPolicyAdministration.js";
 
-const ACTION_WORDS = Object.freeze({ read: "View policy", prepare: "Prepare drafts", approve: "Approve or reject", activate: "Activate" });
+const ACTION_WORDS = Object.freeze({ read: "View policy", prepare: "Prepare drafts", approve: "Approve or reject", activate: "Activate",
+  withdraw: "Withdraw your own versions", cancel: "Cancel approvals" });
 
 /** A refusal: friendly words, then the server's code and message verbatim. */
 function Refusal({ failure }) {
@@ -84,6 +85,8 @@ function VersionCard({ title, version, people }) {
         {version.submittedBy ? <> · submitted by {actorWords(version.submittedBy, people)} on {when(version.submittedAt)}</> : null}
         {version.approvedBy ? <> · approved by {actorWords(version.approvedBy, people)} on {when(version.approvedAt)}</> : null}
         {version.activatedBy ? <> · activated by {actorWords(version.activatedBy, people)} on {when(version.activatedAt)}</> : null}
+        {version.withdrawnBy ? <> · withdrawn by {actorWords(version.withdrawnBy, people)} on {when(version.withdrawnAt)}</> : null}
+        {version.cancelledBy ? <> · approval cancelled by {actorWords(version.cancelledBy, people)} on {when(version.cancelledAt)}</> : null}
       </p>
       {version.locked ? <p className="fo-wizard-hint">{LOCKED_MESSAGE}</p> : null}
     </div>
@@ -191,17 +194,57 @@ function ActivationPanel({ version, asOf, busy, onActivate }) {
   );
 }
 
+/**
+ * WITHDRAW (a DRAFT / SUBMITTED version, by its own preparer) or CANCEL APPROVAL (an APPROVED version, by the Owner or the
+ * Administrator) -- #232 Phase 3. Availability is the server's `yourActions`; the act always passes through a confirmation
+ * that states its consequence and requires a reason. The server decides again.
+ */
+function ClosePanel({ version, kind, busy, onClose }) {
+  const words = CLOSING[kind];
+  const answer = version.yourActions?.[kind];
+  const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState("");
+  useEffect(() => { setConfirming(false); setReason(""); }, [version.id, version.status]);
+  return (
+    <section className="fo-panel" aria-label={words.title}>
+      <SectionHeader title={words.title} description={words.description} />
+      {!confirming ? (
+        <ActionButton name={kind} answer={answer} busy={busy} variant="destructive" onClick={() => setConfirming(true)}>
+          {words.button}
+        </ActionButton>
+      ) : (
+        <div role="group" aria-label={`Confirm: ${words.title}`} data-confirm={kind}>
+          <p><strong>{words.consequence(version.versionNumber)}</strong></p>
+          <Field id={`fp-${kind}-reason`} label="Reason (Required, Kept in the Audit Trail)">
+            <input className="fo-input" value={reason} disabled={busy} onChange={(e) => setReason(e.target.value)} />
+          </Field>
+          <div className="fo-form-actions">
+            <ActionButton name={`confirm-${kind}`} answer={answer} busy={busy} extraDisabled={reason.trim() === ""} variant="destructive"
+              onClick={() => onClose({ versionId: version.id, reason: reason.trim() })}>
+              {words.confirm}
+            </ActionButton>
+            <Button variant="secondary" disabled={busy} onClick={() => { setConfirming(false); setReason(""); }}>Keep It</Button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function VersionHistory({ items, people }) {
   return (
     <section className="fo-panel" aria-label="Version history">
       <SectionHeader title="Version History" description="Every version of this company's policy, newest first. Versions are never deleted." />
       {items.length === 0 ? <p className="fo-muted">No versions yet.</p> : (
         <table className="fo-table" aria-label="Financial policy versions">
-          <thead><tr><th>Version</th><th>Status</th><th>Policy</th><th>Prepared</th><th>Submitted</th><th>Decision</th><th>Activated</th><th>Effective</th></tr></thead>
+          <thead><tr><th>Version</th><th>Status</th><th>Policy</th><th>Prepared</th><th>Submitted</th><th>Decision</th><th>Activated</th><th>Effective</th><th>Withdrawn or Cancelled</th></tr></thead>
           <tbody>
             {items.map((v) => {
               const decidedBy = v.approvedBy ?? v.rejectedBy;
               const decidedAt = v.approvedAt ?? v.rejectedAt;
+              const closedBy = v.withdrawnBy ?? v.cancelledBy ?? null;
+              const closedAt = v.withdrawnAt ?? v.cancelledAt ?? null;
+              const closedReason = v.withdrawalReason ?? v.cancellationReason ?? null;
               return (
                 <tr key={v.id} data-version-row={v.versionNumber}>
                   <td className="fo-tabular-nums">{v.versionNumber}</td>
@@ -213,6 +256,8 @@ function VersionHistory({ items, people }) {
                     {v.decisionReason ? <><br />&ldquo;{v.decisionReason}&rdquo;</> : null}</> : <span className="fo-muted">—</span>}</td>
                   <td>{v.activatedBy ? <>{actorWords(v.activatedBy, people)}<br /><span className="fo-muted">{when(v.activatedAt)}</span></> : <span className="fo-muted">—</span>}</td>
                   <td className="fo-tabular-nums">{v.effectiveDate ?? <span className="fo-muted">—</span>}{v.supersededAt ? <><br /><span className="fo-muted">superseded {when(v.supersededAt)}</span></> : null}</td>
+                  <td>{closedBy ? <>{v.withdrawnBy ? "Withdrawn" : "Approval cancelled"} by {actorWords(closedBy, people)}<br /><span className="fo-muted">{when(closedAt)}</span>
+                    {closedReason ? <><br />&ldquo;{closedReason}&rdquo;</> : null}</> : <span className="fo-muted">—</span>}</td>
                 </tr>
               );
             })}
@@ -379,6 +424,13 @@ export default function FinancialPolicyWorkspace({ financeApi = callFinanceApi }
           {inFlight?.status === "APPROVED" ? (
             <ActivationPanel version={inFlight} asOf={read.asOf} busy={busy}
               onActivate={({ versionId, effectiveDate, note: n }) => run("activateFinancialPolicy", { versionId, effectiveDate, ...note(n) }, "Activated")} />
+          ) : null}
+          {inFlight && (inFlight.status === "DRAFT" || inFlight.status === "SUBMITTED" || inFlight.status === "APPROVED") ? (
+            <ClosePanel version={inFlight} kind={inFlight.status === "APPROVED" ? "cancel" : "withdraw"} busy={busy}
+              onClose={({ versionId, reason }) => {
+                const kind = inFlight.status === "APPROVED" ? "cancel" : "withdraw";
+                return run(CLOSING[kind].operation, { versionId, reason }, CLOSING[kind].done);
+              }} />
           ) : null}
 
           <VersionHistory items={company.list?.items ?? []} people={people} />

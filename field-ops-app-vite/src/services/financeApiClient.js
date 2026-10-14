@@ -17,7 +17,8 @@ export const FINANCE_READ_OPERATIONS = Object.freeze(["readFinanceWorkspace", "l
   "readMyFinancialPolicyAuthority", "readFinancialPolicy", "listFinancialPolicyVersions"]);
 export const FINANCE_COMMAND_OPERATIONS = Object.freeze(["recordSettlement", "applySettlement", "reverseSettlementApplication", "voidSettlement",
   "reconcileSettlement", "supplyReceiptCostEvidence", "relieveIntercompanySaleInventory",
-  "saveFinancialPolicyDraft", "submitFinancialPolicy", "approveFinancialPolicy", "rejectFinancialPolicy", "activateFinancialPolicy"]);
+  "saveFinancialPolicyDraft", "submitFinancialPolicy", "approveFinancialPolicy", "rejectFinancialPolicy", "activateFinancialPolicy",
+  "withdrawFinancialPolicy", "cancelFinancialPolicy"]);
 const OPERATIONS = new Set([...FINANCE_READ_OPERATIONS, ...FINANCE_COMMAND_OPERATIONS]);
 export const isFinanceOperation = (name) => typeof name === "string" && OPERATIONS.has(name);
 

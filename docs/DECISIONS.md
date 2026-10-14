@@ -8264,3 +8264,28 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 - The grant matrix's `DIRECT_EXCEPTION enforced: true` display (below).
 
 **Display (not changed).** The Administration grant matrix still lists a stored prohibited direct row as a `DIRECT_EXCEPTION` with `enforced: true`; only the runtime, the explanation and the effective-access read treat it as conferring nothing. Correcting that display is a later UI decision.
+
+### #232 Phase 3 — withdraw / cancel lifecycle (2026-10-14)
+
+(Owner requirement, from the Phase 3 nonprod finding: an APPROVED version held the company's single in-flight slot until activation, so approving without activating stranded the company, and an abandoned DRAFT or SUBMITTED version could not be removed from flight.)
+
+**Decision (as required by the Owner).**
+1. Authorized preparers may **withdraw their own** DRAFT or SUBMITTED versions, within their existing company scope.
+2. The Owner and the Administrator may **cancel** an APPROVED version that is not yet activated.
+3. Withdrawal and cancellation **preserve** the version, its decision history and its audit trail, and **release** the company's in-progress slot.
+4. An ACTIVE, SUPERSEDED (already activated) version is **never** withdrawn or cancelled through this mechanism.
+5. Separation of duties, company-scoped authorization and database-enforced race safety are preserved.
+
+**Implemented (local; migration `1764570000000_financial-policy-withdraw-cancel.sql`).**
+- **Two FINAL statuses.** `DRAFT | SUBMITTED -> WITHDRAWN` and `APPROVED -> CANCELLED`. Nothing leaves them, and ACTIVE / SUPERSEDED / REJECTED never enter them (transition trigger). Neither is ever in force (in force = ACTIVE / SUPERSEDED by date), and both fall outside the one-in-flight index, so the slot frees with no index change.
+- **Stamps.** Write-once `withdrawn_by / withdrawn_at / withdrawal_reason` and `cancelled_by / cancelled_at / cancellation_reason`, held by the stamps-match-status CHECK. The reason has its own column, not `decision_reason`: on an APPROVED version that column already holds the approval note and is write-once with the approval.
+- **No new capability, no grant.** `withdrawFinancialPolicy` reuses `finance.policy.prepare` (company-scoped, role-assignment-only); `cancelFinancialPolicy` reuses `finance.policy.approve` with its request-time Owner reservation (Administrator standing passes). Cancelling an approval is a decision act, so approve, not activate, governs it.
+- **Ownership and independence, server and database.** The withdrawer must be a content author (the creator is the first) or the submitter: `NOT_YOUR_VERSION` (403), CHECK `financial_policy_withdrawer_owns_version`. The canceller must be neither the submitter nor a content author: `SEPARATION_OF_DUTIES` (403), CHECK `financial_policy_canceller_independent`. The approver may cancel their own approval.
+- **Lifecycle refusals.** `FINANCIAL_POLICY_NOT_WITHDRAWABLE` / `FINANCIAL_POLICY_NOT_CANCELLABLE` (409); an ACTIVE or SUPERSEDED version answers `FINANCIAL_POLICY_LOCKED`. A reason is required (`REASON_REQUIRED`).
+- **Concurrency.** Activation and cancellation take the same per-company advisory lock and the version's row lock, then re-read the status. Independently, the trigger admits ACTIVE and CANCELLED only from APPROVED, so whichever commits first wins and the other is a governed 409, never a 500.
+- **Replay and audit.** An identical re-send answers `replayed: true`; a different reason is `FINANCIAL_POLICY_REPLAY_CONFLICT`. Each act writes one `finance.policy.withdraw` / `finance.policy.cancel` audit row with the full snapshot. `rebuildFinancialPolicyVersions` treats the new fields as null on snapshots written before the migration.
+- **Screen.** Administration → Financial Policy offers Withdraw on the in-progress DRAFT / SUBMITTED version and Cancel Approval on an APPROVED one, each through a confirmation with a required reason; availability is the server's `yourActions` (`withdraw`, `cancel`), also listed per company by `readMyFinancialPolicyAuthority`.
+
+**Not changed.** Roles, grants, assignments, capabilities, nonprod, production, Firebase, the training guide.
+
+**Open.** A SCHEDULED (future-dated ACTIVE) version is still not cancellable (Phase 1 open item 1).
