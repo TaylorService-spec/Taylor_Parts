@@ -197,17 +197,16 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     dispatcher: await person("uid-fp-disp", ["dispatcher"], { id: "e-fp-disp", name: "Emerson Dispatch" }),
   };
 
-  await t.test("NC: before any grant or version, Taylor and Ventana read NOT_CONFIGURED with no default (Administrator by standing)", async () => {
+  await t.test("NC: before any grant, assignment or version, Taylor and Ventana are NOT_CONFIGURED with no default; standing alone reaches no company", async () => {
     for (const company of ["taylor", "ventana"]) {
-      const r = ok(await fn(adm, "readFinancialPolicy", { operatingCompanyId: company }), `admin read ${company}`);
-      assert.equal(r.state, "NOT_CONFIGURED");
-      assert.deepEqual([r.inForce, r.scheduled, r.inFlight], [null, null, null]);
-      assert.equal(JSON.stringify(r).includes("defaultMethod"), false);
-      assert.deepEqual(ok(await fn(adm, "listFinancialPolicyVersions", { operatingCompanyId: company })).items, []);
       const resolved = await fp.resolveFinancialPolicyInForce(pool, TENANT, company);
       assert.deepEqual({ ...resolved }, { state: "NOT_CONFIGURED", asOf: await businessDate(company), policy: null, version: null }, "the consumer read fails closed");
+      // The Administrator's standing holds finance.policy.read FLAT, but with no company assignment it reaches no company.
+      refused(await fn(adm, "readFinancialPolicy", { operatingCompanyId: company }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE", `standing alone: ${company}`);
+      refused(await fn(adm, "listFinancialPolicyVersions", { operatingCompanyId: company }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
     }
-    // Before the Owner's grants, nobody but the Administrator's standing reaches the keys.
+    assert.deepEqual(ok(await fn(adm, "readMyFinancialPolicyAuthority", {})).companies, [], "standing alone lists no company");
+    // Before the Owner's grants, nobody but the Administrator's standing holds the keys.
     refused(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: WA }), 403, "CAPABILITY_REQUIRED");
     refused(await fn(own, "readFinancialPolicy", { operatingCompanyId: "taylor" }), 403, "CAPABILITY_REQUIRED");
     refused(await fn(adm, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: WA }), 403, "CAPABILITY_REQUIRED",
@@ -218,6 +217,23 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
   // reserved approve / activate (+ read). controller / financeManager / accountingManager get NOTHING.
   for (const key of ["finance.policy.read", "finance.policy.prepare"]) await grant("financialPolicyPreparer", key);
   for (const key of ["finance.policy.read", "finance.policy.approve", "finance.policy.activate"]) await grant("owner", key);
+
+  // COMPANY ASSIGNMENT IS MANDATORY (Owner ruling 2026-10-13; correction 2026-10-14). A global holding (the Owner Role, a
+  // GLOBAL Preparer assignment) or Administrator standing reaches no company by itself. The R1-R4 shape, in the test tenant:
+  // a Financial Policy Reviewer Role holding EXACTLY finance.policy.read, assigned per operating company. Every global holder
+  // this suite exercises gets Taylor + Ventana; ownBare / admBare stay unassigned to prove the refusal.
+  const roleIdOf = async (key) => (await one(`SELECT id FROM eos_policy.roles WHERE tenant_id = $1 AND key = $2`, [TENANT, key])).id;
+  const assignAt = async (who, roleKey, company) => {
+    const r = await admin("assignRole", { principalId: who.principalId, roleId: await roleIdOf(roleKey), reason: "local test tenant only (company assignment)",
+      scopeType: "operatingCompany", scopeValue: company });
+    assert.equal(r.ok, true, `${roleKey}@${company} ${JSON.stringify(r).slice(0, 300)}`);
+  };
+  assert.equal((await admin("createRole", { key: "financialPolicyReviewer", name: "Financial Policy Reviewer",
+    reason: "local test tenant only (R1: company assignment for Financial Policy)" })).ok, true);
+  await grant("financialPolicyReviewer", "finance.policy.read");
+  for (const who of [own, adm, dual, fm, ctrl]) for (const company of ["taylor", "ventana"]) await assignAt(who, "financialPolicyReviewer", company);
+  const ownBare = await person("uid-fp-owner-bare", ["owner"], { id: "e-fp-owner-bare", name: "Uma Unassigned-Owner" });
+  const admBare = await person("uid-fp-admin-bare", ["admin"], { id: "e-fp-admin-bare", name: "Ari Unassigned-Administrator" });
 
   await t.test("AUTH: unauthorized roles are refused every lifecycle action (CAPABILITY_REQUIRED), including accountingManager and generalManager", async () => {
     const ops = [
@@ -239,7 +255,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const leaked = (await q(`SELECT r.key, c.key AS cap FROM eos_policy.role_capabilities rc JOIN eos_policy.roles r ON r.id = rc.role_id
       JOIN eos_policy.capabilities c ON c.id = rc.capability_id WHERE rc.tenant_id = $1 AND c.object_key = 'financialPolicy' ORDER BY 1, 2`, [TENANT])).rows;
     assert.deepEqual(leaked.map((x) => `${x.key}/${x.cap}`), [
-      "financialPolicyPreparer/finance.policy.prepare", "financialPolicyPreparer/finance.policy.read", "owner/finance.policy.activate", "owner/finance.policy.approve", "owner/finance.policy.read"]);
+      "financialPolicyPreparer/finance.policy.prepare", "financialPolicyPreparer/finance.policy.read", "financialPolicyReviewer/finance.policy.read", "owner/finance.policy.activate", "owner/finance.policy.approve", "owner/finance.policy.read"]);
   });
 
   await t.test("VAL + CO: refusals through the transport; company scope", async () => {
@@ -249,12 +265,13 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     refused(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: { ...WA, freightTreatment: "CAPITALIZED" } }), 400, "TREATMENT_UNSUPPORTED");
     refused(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: WA, status: "ACTIVE" }), 400, "FIELD_NOT_ACCEPTED");
     refused(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: "consolidated", policy: WA }), 400, "CONSOLIDATED_NOT_A_COMPANY");
-    refused(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: "saratoga", policy: WA }), 400, "OPERATING_COMPANY_UNKNOWN");
-    refused(await fn(fm, "saveFinancialPolicyDraft", { policy: WA }), 400, "OPERATING_COMPANY_UNKNOWN");
+    // OUT OF SCOPE == UNKNOWN for EVERY caller now: no holder reaches a company it is not assigned to (no existence probe).
+    refused(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: "saratoga", policy: WA }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
+    refused(await fn(fm, "saveFinancialPolicyDraft", { policy: WA }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
     await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
              VALUES ($1,'dormant','INACTIVE','fixture','fixture','fixture')`, [TENANT]);
-    refused(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: "dormant", policy: WA }), 400, "OPERATING_COMPANY_UNKNOWN", "an inactive company");
-    refused(await fn(fm, "readFinancialPolicy", { operatingCompanyId: "dormant" }), 400, "OPERATING_COMPANY_UNKNOWN");
+    refused(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: "dormant", policy: WA }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE", "an inactive company");
+    refused(await fn(fm, "readFinancialPolicy", { operatingCompanyId: "dormant" }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
     assert.equal(await auditCount(), 0, "no refusal wrote anything");
     // The database refuses an unsupported method even on a direct write.
     await dbRefusal(`INSERT INTO eos_finance.financial_policy_versions (id, tenant_id, operating_company_id, version_number, status, inventory_cost_method,
@@ -449,7 +466,8 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     refused(await fn(dual, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: v.id }), 403, "SEPARATION_OF_DUTIES", "an editor never approves");
     ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: v.id }));
     const gated = domain.COGS_RECOGNITION_POINTS.map((p) => p.id === "WORK_ORDER_CONSUMPTION" ? { ...p, available: false, blockedReason: "physical consumption is not active" } : p);
-    const owner = { tenantId: TENANT, principalId: own.principalId, capabilities: new Set(["finance.policy.activate"]) };
+    const owner = { tenantId: TENANT, principalId: own.principalId, capabilities: new Set(["finance.policy.activate"]),
+      scopedHeld: [{ capabilityKey: "finance.policy.read", scopeType: "operatingCompany", scopeValue: "taylor", sourceRole: "financialPolicyReviewer", assignmentId: null, condition: null }] };
     await assert.rejects(fp.activateFinancialPolicy(pool, owner, { operatingCompanyId: "taylor", versionId: v.id, effectiveDate: await businessDate("taylor", 5) },
       { recognitionPoints: gated }), (e) => e.code === "RECOGNITION_UNAVAILABLE");
     const still = ok(await fn(fm, "readFinancialPolicy", { operatingCompanyId: "taylor" }));
@@ -526,7 +544,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     assert.throws(() => fp.rebuildFinancialPolicyVersions(tampered), /FINANCIAL_POLICY_HISTORY_BROKEN/);
   });
 
-  await t.test("SCOPE (#232 Amendment A): finance.policy.* applies only at the companies a principal's assignments reach", async () => {
+  await t.test("SCOPE (#232 Amendment A + company assignment mandatory): finance.policy.* applies only at the companies a principal's assignments reach", async () => {
     // Free both companies: Taylor's APPROVED in-flight version (the VAL test) is activated, dated after Taylor's scheduled v2.
     const tInFlight = ok(await fn(own, "readFinancialPolicy", { operatingCompanyId: "taylor" })).inFlight;
     ok(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: tInFlight.id, effectiveDate: await businessDate("taylor", 5) }));
@@ -595,15 +613,16 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     ok(await fn(pV, "submitFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }), "Ventana-only submits Ventana");
 
     // OUT OF SCOPE == MISSING for a scoped-only holder: an unknown, an inactive and an ACTIVE out-of-scope company get the
-    // SAME refusal; a flat holder keeps the precise OPERATING_COMPANY_UNKNOWN; CONSOLIDATED is refused for everyone.
+    // SAME refusal -- now for a FLAT holder too (no holder reaches an unassigned company, so none learns which exist);
+    // CONSOLIDATED is refused for everyone.
     const sameAs = refused(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }), 403, OUT);
     for (const company of ["saratoga", "dormant", undefined]) {
       const body = refused(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: company, policy: WA }), 403, OUT, `scoped: ${company}`);
       assert.deepEqual(Object.keys(body).sort(), Object.keys(sameAs).sort());
     }
     refused(await fn(pT, "readFinancialPolicy", { operatingCompanyId: "saratoga" }), 403, OUT);
-    refused(await fn(gP, "saveFinancialPolicyDraft", { operatingCompanyId: "saratoga", policy: WA }), 400, "OPERATING_COMPANY_UNKNOWN", "flat: precise");
-    refused(await fn(gP, "readFinancialPolicy", { operatingCompanyId: "dormant" }), 400, "OPERATING_COMPANY_UNKNOWN", "flat: precise");
+    refused(await fn(gP, "saveFinancialPolicyDraft", { operatingCompanyId: "saratoga", policy: WA }), 403, OUT, "flat: same as out of scope");
+    refused(await fn(gP, "readFinancialPolicy", { operatingCompanyId: "dormant" }), 403, OUT, "flat: same as out of scope");
     refused(await fn(pT, "readFinancialPolicy", { operatingCompanyId: "consolidated" }), 400, "CONSOLIDATED_NOT_A_COMPANY");
     refused(await fn(gP, "saveFinancialPolicyDraft", { operatingCompanyId: "CONSOLIDATED", policy: WA }), 400, "CONSOLIDATED_NOT_A_COMPANY");
     // A scoped preparer holds nothing it was not granted.
@@ -620,7 +639,11 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     ok(await fn(mixed, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id }));
     refused(await fn(mixed, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id }), 403, "SEPARATION_OF_DUTIES");
     refused(await fn(mixed, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }), 403, OUT, "its prepare is Taylor-only");
-    ok(await fn(mixed, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }), "a global approve reaches Ventana");
+    // COMPANY ASSIGNMENT IS MANDATORY: mixed's global Owner Role does not reach Ventana -- its only assignment is Taylor.
+    refused(await fn(mixed, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }), 403, OUT, "a global approve without a Ventana assignment");
+    await assignAt(mixed, "financialPolicyReviewer", "ventana");
+    ok(await fn(mixed, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id }), "approve + a Ventana assignment reaches Ventana");
+    refused(await fn(mixed, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }), 403, OUT, "the Reviewer assignment confers reach, never prepare");
     ok(await fn(mixed, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: vV.id, effectiveDate: await businessDate("ventana", 11) }),
       "the approver activates (allowed)");
     ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id }), "an independent Owner approves mixed's version");
@@ -673,6 +696,16 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const rogueDraft = ok(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: FIFO })).version;
     ok(await fn(pT, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id }));
     refused(await fn(acct, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id }), 403, "RESERVED_CAPABILITY", "a bypassed row");
+    // ...and a company assignment never turns that row into authority: rogue approve / activate + Reviewer@Taylor is still
+    // RESERVED_CAPABILITY (the reservation is independent of company reach -- the Owner's "read must not become approval").
+    const acctR = await person("uid-fp-acct-rev", ["accountingManager"], { id: "e-fp-acct-rev", name: "Rae Accounting-Reviewer" });
+    await assignAt(acctR, "financialPolicyReviewer", "taylor");
+    refused(await fn(acctR, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id }), 403, "RESERVED_CAPABILITY", "rogue row + Reviewer@Taylor");
+    refused(await fn(acctR, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id, effectiveDate: await businessDate("taylor", 40) }),
+      403, "RESERVED_CAPABILITY");
+    assert.deepEqual(ok(await fn(acctR, "readMyFinancialPolicyAuthority", {})).companies.map((c) => [c.operatingCompanyId, c.actions.read.allowed,
+      c.actions.approve.reason, c.actions.activate.reason, c.actions.prepare.reason]),
+    [["taylor", true, "RESERVED_CAPABILITY", "RESERVED_CAPABILITY", "CAPABILITY_REQUIRED"]], "Reviewer@Taylor = read at Taylor only");
     refused(await fn(acct, "rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id, reason: "rogue" }), 403, "RESERVED_CAPABILITY");
     ok(await fn(adm, "rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id, reason: "standing still decides" }));
     refused(await fn(acct, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id, effectiveDate: await businessDate("taylor", 40) }),
@@ -686,8 +719,14 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     ok(await fn(pT, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: nullDraft.id }));
     ok(await fn(adm, "rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: nullDraft.id, reason: "test tidy-up" }));
 
-    // GLOBAL holder: the current EOS meaning of a global assignment -- every company (pending the Owner's confirmation).
+    // GLOBAL holder: a global assignment reaches NO company until the principal is explicitly assigned to it.
     for (const company of ["taylor", "ventana"]) {
+      refused(await fn(gP, "readFinancialPolicy", { operatingCompanyId: company }), 403, OUT, `global read without an assignment: ${company}`);
+      refused(await fn(gP, "saveFinancialPolicyDraft", { operatingCompanyId: company, policy: FIFO }), 403, OUT, `global prepare without an assignment: ${company}`);
+    }
+    assert.deepEqual(ok(await fn(gP, "readMyFinancialPolicyAuthority", {})).companies, [], "a global holding alone lists no company");
+    for (const company of ["taylor", "ventana"]) {
+      await assignAt(gP, "financialPolicyReviewer", company);
       ok(await fn(gP, "readFinancialPolicy", { operatingCompanyId: company }), `global read ${company}`);
       ok(await fn(gP, "saveFinancialPolicyDraft", { operatingCompanyId: company, policy: FIFO }), `global prepare ${company}`);
     }
@@ -703,6 +742,9 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const vS = ok(await fn(pS, "saveFinancialPolicyDraft", { operatingCompanyId: "southco", policy: WA })).version;
     assert.deepEqual([vS.operatingCompanyId, vS.versionNumber], ["southco", 1], "its own numbering");
     ok(await fn(pS, "submitFinancialPolicy", { operatingCompanyId: "southco", versionId: vS.id }));
+    refused(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "southco", versionId: vS.id }), 403, OUT,
+      "a new company is never reached implicitly, not even by the Owner Role");
+    await assignAt(own, "financialPolicyReviewer", "southco");
     ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "southco", versionId: vS.id }));
     ok(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "southco", versionId: vS.id, effectiveDate: await businessDate("southco") }));
     assert.deepEqual(ok(await fn(pS, "listFinancialPolicyVersions", { operatingCompanyId: "southco" })).items.map((v) => [v.id, v.status]), [[vS.id, "ACTIVE"]]);
@@ -879,20 +921,26 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const aB = await authority(both);
     assert.deepEqual(ids(aB), ["taylor", "ventana"]);
     for (const company of ["taylor", "ventana"]) assert.deepEqual(actions(aB, company).prepare, yes);
-    // OWNER (global Role grants) and ADMINISTRATOR (standing): every ACTIVE company; decide, never prepare. CONSOLIDATED never listed.
+    // OWNER (global Role grants) and ADMINISTRATOR (standing): EXACTLY the companies they are assigned to -- never every ACTIVE
+    // company; decide, never prepare. Unassigned, they list nothing. CONSOLIDATED never listed.
+    for (const who of [ownBare, admBare]) assert.deepEqual(ids(await authority(who)), [], `${who.subject}: no assignment, no company`);
+    refused(await fn(ownBare, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: "x" }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
+    refused(await fn(admBare, "cancelFinancialPolicy", { operatingCompanyId: "ventana", versionId: "x", reason: "x" }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
+    assert.deepEqual(ids(await authority(own)), ["southco", "taylor", "ventana"], "the Owner: its assignments only (westco unassigned)");
+    assert.deepEqual(ids(await authority(adm)), ["taylor", "ventana"]);
+    for (const who of [own, adm]) await assignAt(who, "financialPolicyReviewer", "westco");
     for (const who of [own, adm]) {
       const a = await authority(who);
-      assert.deepEqual(ids(a), activeCompanies);
       assert.equal(ids(a).some((c) => c.toLowerCase() === "consolidated"), false);
-      for (const company of activeCompanies) {
+      for (const company of ids(a)) {
         assert.deepEqual(actions(a, company), { read: yes, prepare: no("CAPABILITY_REQUIRED"), approve: yes, activate: yes,
           withdraw: no("CAPABILITY_REQUIRED"), cancel: yes }, `${who.subject} ${company}`);
       }
     }
-    // MIXED (Owner Role + Preparer @westco): decides everywhere, prepares at Westco only -- out of scope elsewhere.
+    // MIXED (Owner Role + Preparer @westco): its Westco assignment is its ONLY company -- the Owner Role reaches no other.
     const aDW = await authority(dualW);
+    assert.deepEqual(ids(aDW), ["westco"]);
     assert.deepEqual(actions(aDW, "westco"), { read: yes, prepare: yes, approve: yes, activate: yes, withdraw: yes, cancel: yes });
-    assert.deepEqual(actions(aDW, "taylor").prepare, no("OUTSIDE_OPERATING_COMPANY_SCOPE"));
     // UNAUTHORIZED: refused, never answered empty.
     for (const who of [outsiders.salesperson, outsiders.technician, acct, gm, ctrlOnly]) {
       refused(await fn(who, "readMyFinancialPolicyAuthority", {}), 403, "CAPABILITY_REQUIRED", who.subject);
@@ -993,6 +1041,8 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const pTay = await person("uid-fp-p3-t", [], { id: "e-fp-p3-t", name: "Toni Taylor-Preparer" });
     await assign(pE, "policyPreparerTest", "eastco");
     await assign(pTay, "policyPreparerTest", "taylor");
+    // Company assignment is mandatory: the global holders this block exercises are assigned to Eastco explicitly.
+    for (const who of [fm, ctrl, own, adm, dual]) await assignAt(who, "financialPolicyReviewer", "eastco");
     const E = "eastco";
     const yes = { allowed: true, reason: null };
     const no = (reason) => ({ allowed: false, reason });

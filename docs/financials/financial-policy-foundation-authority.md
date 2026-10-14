@@ -113,7 +113,7 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 7. ~~**Scheduled corrections.**~~ **RESOLVED by the Owner ruling of 2026-10-14** (§8): a scheduled version stays cancellable until it takes effect.
 8. **The UI.** The Financial Policy screen and the client operation mirror (`financeApiClient.js`) are a later PR.
 9. **The finance Roles cannot be company-scoped** (`SCOPE_AMBIGUOUS_ADMINISTRATION`). See §7, options A, B and C.
-10. **What a global assignment means.** See §7.
+10. ~~**What a global assignment means.**~~ **RESOLVED 2026-10-14** (§7a): a global holding reaches no company without an explicit company assignment.
 11. **The financeAccounting persona holds two Roles.** Its Principal (Employee `synthetic-np-emp-finance-controller`) holds TWO global assignments in nonprod:
     - `accountingManager`, from the Persona Foundation (2026-09-26). It matches `config/sandboxRoleIdentityRegistry.json` `expectedSecurityRoles` and is pinned by `sandboxPersonaBootstrapApply.test.mjs`.
     - `controller`, from the #2024 workforce seed (`functions/scripts/fixtures/taylorNonprodWorkforce.v1.json`, lines 690–707).
@@ -184,6 +184,10 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 - **Navigation:** the page's surface is `finance.policy`, a business surface rather than an `administration.*` one. It is earned by `finance.policy.read` held globally, or by an unconditioned operatingCompany holding tied to `operations.listFinancialPolicyVersions`. The Administration scoped-door guard is unchanged. The legacy placeholder row stays, so the row changes kind instead of being added: the cutover ceiling goes from 21 to 22, the ungoverned ceiling from 41 to 40, and the total stays at 62.
 - **Grant matrix:** a stored direct grant of a ROLE_ASSIGNMENT_ONLY key (`finance.policy.read` / `.prepare`) is listed with `enforced: false`, `notEffectiveReason: "ROLE_ASSIGNMENT_ONLY"` and `forbiddenBy` (the ruling). The UI renders it as "Not effective — role assignment only" and does not count it as a holder. A stored direct row of a RESERVED key (for example `finance.policy.approve` or `salesAgreement.tradeIn.approve`) is deliberately NOT marked: only ROLE_ASSIGNMENT_ONLY keys are filtered out of the capability set (`capabilityAuthority.ts`), so a reserved direct row does enter it, and the reservation is decided separately at runtime (`requireReservedAuthority` / `requireReservedHolder`). Its matrix cell stays `enforced: true`, consistent with the Employee effective-access view.
 - **Legacy shell gate (Firebase-retirement candidate):** `FINANCIAL_POLICY_GATE` in `field-ops-app-vite/src/access/shellCapabilityGates.js` still adds `financialPolicy.profile.read` / `.configure` to the legacy Firebase shell capability request set. Nothing reads those answers any more (the page reads `/operations/finance`). The entry was kept in this change so the shell request set is unchanged; remove it in a Firebase-retirement step together with its request-set pins.
+
+## 7a. Company assignment is mandatory (2026-10-14)
+
+Supersedes §7's "a global assignment (or Administrator standing) reaches every company". A `finance.policy.*` action applies at company C only with the capability AND an explicit operatingCompany-scoped assignment for C (a C-scoped holding of the key, or, for a key held flat, of `finance.policy.read`). A global Role or standing alone reaches nothing. The assignment confers reach, never a key. Nonprod shape: the `financialPolicyReviewer` Role (exactly `finance.policy.read`) assigned to the Owner at Taylor and at Ventana; no Administrator assignment. DECISIONS #232 (company-access correction).
 
 ## 8. Phase 3: withdraw and cancel (local, 2026-10-14)
 

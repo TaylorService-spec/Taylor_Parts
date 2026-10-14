@@ -8295,3 +8295,18 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 - **Cancellation.** An authorized approver may cancel an APPROVED version, **including their own approval**, with a mandatory reason and an audit event. Only the submitter and content authors are excluded.
 - **Scheduled versions stay cancellable until activation actually occurs.** A version activated with a future effective date (ACTIVE, or already SUPERSEDED by a later activation) is SCHEDULED until that date; until then it may be cancelled exactly like an APPROVED one (`ACTIVE | SUPERSEDED -> CANCELLED`, server `cancelState` and the trigger, both on the company's business date). Its activation and supersession stamps are kept. The version it superseded at activation keeps governing: in force is resolved by date, and CANCELLED is never in force. This closes Phase 1 open item 1 (§6 item 7 of the authority document).
 - **A version in force is never cancelled** (`FINANCIAL_POLICY_LOCKED`, server and trigger). Cancellation releases the in-progress slot; immutable history, separation of duties and the concurrency protections are unchanged.
+
+### #232 company-access correction — company assignment is mandatory for Financial Policy (2026-10-14)
+
+(Owner authorization 2026-10-14, applying the Owner ruling of 2026-10-13: business access requires BOTH a role capability AND an explicit operating-company assignment. Supersedes #232 Amendment A's "a GLOBAL assignment (or Administrator standing) reaches every company".)
+
+**Rule (`functions/src/eosFinance/financialPolicy.ts`, `capabilityReach`).** A `finance.policy.*` action applies at operating company C only when the principal (1) holds the action's capability — flat (a global Role, e.g. the Owner Role; or standing) or through an unconditioned operatingCompany-scoped holding — and (2) has an explicit, active operatingCompany-scoped assignment for C: a C-scoped holding of that key, or, for a key held flat, a C-scoped holding of `finance.policy.read`. Lifecycle state, separation of duties, the Owner reservation on approve / activate and the audit behaviour are unchanged.
+- A global holding or Administrator standing **alone reaches no company**. There is no implicit "all companies".
+- The company assignment supplies **reach only, never a key**: a read-only assignment cannot become approval or activation, which stay reserved to the Owner Role / standing.
+- An unknown or inactive company now answers `OUTSIDE_OPERATING_COMPANY_SCOPE` for every caller (formerly `OPERATING_COMPANY_UNKNOWN` for flat holders), so no caller learns whether an unassigned company exists.
+
+**Administration shape (nonprod R1–R4, no code).** A custom Role `financialPolicyReviewer` holding exactly `finance.policy.read`, assigned to the Owner persona at `operatingCompany:taylor` and `operatingCompany:ventana`. No Administrator assignment: the Administrator loses Financial Policy business access. Finance Controller (Preparer @ Taylor) and Bai (Preparer @ Taylor + Ventana) are unchanged; their Preparer assignments are their company assignments.
+
+**Order.** R1–R4 are applied before this code deploys; deployed first, the Owner would lose Financial Policy access until assigned (fail closed).
+
+**Not changed.** The `finance.policy` navigation surface (earned by a flat or scoped read; the door confers nothing and the company selector lists only assigned companies), any other module, the EOS-wide company-membership model.
