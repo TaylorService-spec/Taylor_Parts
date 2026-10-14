@@ -27,9 +27,9 @@ A Role with no company assignment reaches **no** company. EOS never assumes "all
 
 | You are | Company assignment | You can |
 |---|---|---|
-| **Financial Policy Preparer** | Assigned per company (for example Taylor only, or Taylor and Ventana) | View the policy; prepare, edit, submit and withdraw your own drafts, in your assigned companies |
+| **Financial Policy Preparer** | Assigned per company (for example Taylor only, or Taylor and Ventana) | View the policy; prepare, edit and submit drafts, and withdraw versions you prepared, edited or submitted, in your assigned companies. Any Preparer of the company can edit a draft, and editing makes them one of its authors |
 | **Owner** | **Financial Policy Reviewer**, assigned per company | View the policy; approve, reject, activate, and cancel approvals or scheduled versions, in your assigned companies |
-| **Taylor EOS Administrator** | None by default | **Nothing on this page.** Administering EOS does not give access to a company's accounting policy |
+| **Taylor EOS Administrator** | None by default | **Nothing in the Financial Policy workspace.** The menu item appears, but opens on *"No active operating company is within your Financial Policy access."* Administering EOS does not give access to a company's accounting policy. (Finance Configuration, further down the page, keeps its own access.) |
 | Anyone else | — | Nothing. The page is not in your navigation, and opening it directly shows *"Financial Policy isn't available to your role"*. |
 
 - **Separate duties.** Preparing and deciding are deliberately separate. The Owner cannot prepare drafts. A preparer
@@ -62,14 +62,16 @@ A Role with no company assignment reaches **no** company. EOS never assumes "all
      with the reason.
    - **Inbound Freight** and **Other Landed Costs:** *Excluded from inventory cost*.
 2. Optionally write a **Note**. It is kept in the audit trail.
-3. Select **Create Draft**. The version appears as *In Progress: Draft*.
+3. Select **Create Draft**. The version appears under **In Progress: Version N** with the status *Draft*, and the editor
+   heading becomes **Draft: Version N**.
 4. To change it, adjust the fields and select **Save Draft**. Every save is recorded.
 
 A new draft starts from the policy in effect, if there is one. Saving a draft changes nothing about how EOS works.
 
 ### 3. Submit for approval (Preparer)
 
-1. When the draft is complete, select **Submit for Approval**.
+1. When the draft is complete, select **Submit for Approval**. It stays disabled while you have unsaved changes
+   (*"Save your changes before submitting."*). A Note you have written is sent with the submission.
 2. The version becomes *Submitted for Approval*. Its content is now frozen and nobody can edit it.
 
 ### 4. Approve or reject (Owner)
@@ -82,11 +84,17 @@ A new draft starts from the policy in effect, if there is one. Saving a draft ch
 ### 5. Activate (Owner)
 
 1. For an approved version, choose the **Effective Date**. It cannot be earlier than the company's business date
-   shown on the page.
-2. Select **Activate**.
+   shown on the page, and it must be **later than the effective date of every version already activated**, scheduled
+   ones included. So you cannot activate a second version for the same date, or schedule one earlier than an existing
+   scheduled version without cancelling that one first.
+2. Optionally add an **Activation Note**, then select **Activate**.
    - If the date is today, the policy is **In Effect**.
    - If the date is in the future, it is **Scheduled** and takes effect on that date.
 3. The previous policy stays in effect until the new one's effective date.
+
+> **Read the card title, not the status badge.** As soon as a future-dated version is activated, the version in
+> effect is marked *Superseded* even though it still governs until the new date; the scheduled version shows
+> *Active Version*. The **In Effect** and **Scheduled** card titles always tell you which is which.
 
 > **Activation has a lasting effect: once a version is in effect it is locked.** Activation in production needs a
 > separate Owner decision.
@@ -124,7 +132,8 @@ still be cancelled.
 1. Choose the company. Under **Cancel This Scheduled Version** (one panel per scheduled version), select **Cancel Scheduled Version**.
 2. Enter a **Reason** (required), then confirm.
 3. The version is cancelled and will **never** take effect. The policy in effect stays exactly as it would have
-   been without it. The history shows it as *Cancelled before taking effect*, with its activation details kept.
+   been without it. In the history its status reads *Approval Cancelled*, and the **Withdrawn or Cancelled** column
+   reads *Cancelled before taking effect*; its activation details are kept.
 
 Once a version's effective date has arrived, it is **in effect** and can no longer be cancelled. A change is then a
 new draft, submitted, approved and activated.
@@ -150,8 +159,9 @@ new draft, submitted, approved and activated.
 | **Prepares drafts** | No | No |
 | **Administers access** (Roles, assignments, grants) | Through the Owner Role | Yes. This is the Administrator's job |
 
-The Administrator manages **who** has access; the Owner and the preparers exercise it. Giving the Administrator
-Financial Policy business authority would itself need an explicit company assignment, decided by the Owner.
+The Administrator manages **who** has access; the Owner and the preparers exercise it. A company assignment for the
+Administrator would switch on Owner-level decisions in that company (see *Administrator notes*), so it is an Owner
+decision.
 
 ## What EOS does automatically
 
@@ -161,8 +171,8 @@ Financial Policy business authority would itself need an explicit company assign
   there is no "all companies" policy or access.
 - **Hides companies you are not assigned to.** An unassigned company and a company that does not exist get the same
   answer, so nobody can find out which companies exist.
-- **Locks versions in effect.** A version in effect, or one it replaced, can never be edited or cancelled. A change is
-  always a new draft that goes through the same steps.
+- **Locks versions once their effective date arrives.** A version that is or was in effect can never be edited or
+  cancelled. A change is always a new draft that goes through the same steps.
 - **Enforces separate duties.** Whoever prepared, edited or submitted a version cannot approve, reject, activate or
   cancel that same version, even if they also hold the Owner Role.
 - **Keeps one version in progress per company.** Withdrawing or cancelling frees the company for a new draft.
@@ -183,10 +193,13 @@ These are the messages you may see, and what they mean.
 | *Only someone who prepared, edited or submitted this version can withdraw it* | It is not your version | Ask its preparer, or the Owner if it is approved |
 | *Only a draft or a version submitted for approval can be withdrawn…* | The version is approved, final or in effect | The Owner can cancel an approved version |
 | *Only an approved version, or one scheduled but not yet in effect, can be cancelled* | Nothing to cancel | — |
-| *An activated version is locked and is never edited…* | The version is in effect | Prepare a new draft |
+| *An activated version is locked and is never edited…* | The version has been activated (in effect, scheduled or superseded) | Prepare a new draft; a scheduled version can still be cancelled by the Owner |
+| *The effective date cannot be before the company's business date* | The date is in the past | Choose today or later |
+| *The effective date must be after the current active version's effective date* (or *after the effective date of every version already activated*) | Another activated version has the same or a later date | Choose a later date, or cancel the scheduled version first |
 | *A reason is required* | Withdrawing and cancelling always need a reason | Enter a reason |
-| A version is already in progress | Each company can have only one version in progress | Finish it, or withdraw / cancel it |
-| A replay conflict | The same request was re-sent with a different note | Refresh the page and try again |
+| *This company already has a version in progress. Edit, submit or decide that one first.* | Each company can have only one version in progress | Finish it, or withdraw / cancel it |
+| *This action is already recorded with a different note or reason. The recorded one stands.* | The action was already done (with a different note) | Nothing; the recorded action stands. Refresh to see it |
+| *Only the Owner Role, or the Administrator, approves and activates financial policy.* | Your Roles hold an approval key that only the Owner Role (or Administrator standing) can exercise | Ask the Owner |
 
 ### Known limitations
 
@@ -205,7 +218,8 @@ These are current, deliberate limitations. Plan around them.
 3. Ask a Taylor EOS Administrator to check your access:
    - go to **Administration › Employees & Users**, open the employee, and look at their Security Roles and company
      scopes;
-   - or use **Effective Access**, which shows Financial Policy as *SCOPED[company]*.
+   - or use **Effective Access**, which shows Financial Policy as *Scoped*, with the Role and its company listed under
+     the scoped assignments.
 4. If it still looks wrong, contact Verenward support.
 
 Do not ask anyone to change the database or grant the capability directly to a person. Direct grants of Financial
@@ -221,10 +235,14 @@ Policy access are refused by design.
 - **The Owner's company access.** The Owner Role gives the Owner the authority to decide; the **Financial Policy
   Reviewer** Role (view only), assigned with Company scope, says *in which companies*. Today the Owner is assigned to
   Taylor and Ventana. Assigning the Owner to a new company is a separate, deliberate step.
-- **The Reviewer Role grants only viewing.** It never adds approval, activation, cancellation or preparation; those
-  come only from the Owner Role or the Preparer Role.
-- **The Administrator has no Financial Policy business access** unless explicitly assigned to a company, which is an
-  Owner decision.
+- **The Reviewer Role grants only viewing — except for the Administrator.** For anyone else it adds no approval,
+  activation, cancellation or preparation: approval, activation and cancellation come only from the Owner Role, and
+  preparation only from the Preparer Role.
+- **Never assign the Administrator to a company here without an explicit Owner decision.** Administrator standing
+  already carries Financial Policy approval, activation and cancellation; it is the missing company assignment that
+  keeps them switched off. Any Financial Policy company assignment for the Administrator (Reviewer or Preparer)
+  therefore hands over **Owner-level decisions** in that company. EOS does not stop this assignment; it is a
+  governance rule, so treat it as an Owner decision.
 - **Use the preview.** Review the grant-impact preview before every change.
 - **Direct grants are refused.** Financial Policy *view* and *prepare* cannot be granted directly to a person; EOS
   refuses it. Any such grant left over from before is shown as *Not effective — role assignment only* and confers
