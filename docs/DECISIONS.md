@@ -8242,9 +8242,10 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
   - Unlike the reserved list, it names NO Role. Any Role may hold the keys, and `createRole` is unaffected.
 - **Grant time.** `grantObjectActionToPrincipal` refuses these keys with `ROLE_ASSIGNMENT_ONLY` (a CONFLICT, the same family as the reserved `SYSTEM_INVARIANT` refusal). No row is written.
   - The grant-impact preview runs the same command, so it reports `WOULD_REFUSE` / `ROLE_ASSIGNMENT_ONLY`, never `WOULD_APPLY`.
-- **Request time.** The hook is the resolver, so every gate, the explanation and the preview agree:
+- **Request time.** The hook is the resolver, so every OPERATIONAL gate, the explanation and the preview agree:
   - `resolveOperationalCapabilities`, the one resolution behind every runtime gate and `explainEffectiveAccess`, drops a direct exception for these keys, so a pre-existing row confers nothing flat or per-record, and never widens a company-scoped Role holding;
-  - the Administration effective-access read (`resolvePrincipalEffectiveAccess`) drops it too.
+  - the Administration effective-access read (`resolvePrincipalEffectiveAccess`) drops it too;
+  - the Workforce command kernel's direct-grant resolver (`withDirectCapabilityGrants`, `employeeAdministrationAuthority.ts`) drops it too.
   - The explanation therefore shows the key as not conferred (`directGrant: null`, result `DENIED`).
   - A Role assignment, global or company-scoped, still authorizes. So does Administrator standing, for read only.
 - **Drift.** `verifyTenantAuthority` reports a stored prohibited direct row as `FORBIDDEN_PRINCIPAL_HOLDING`. This is a one-line, list-driven extension of the reserved-key census. Nothing is revoked automatically.
@@ -8256,5 +8257,10 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
   - Administrator standing.
 
 **Status.** Direct grants of read / prepare (Phase 1 open item 6, "B1") are RESOLVED. Open item 5 (authorize creating the Preparer Role through Administration) remains.
+
+**Raw readers left UNFILTERED by design.** These are display-only or latent, and confer nothing:
+- `capabilityKeysFor` (`administrationCapabilityGate.ts`). It gates Administration keys only, and is the source of the preview's `latent` / `adminKeys`.
+- The `directGrants` echo in `resolvePrincipalEffectiveAccess`, which lists the stored rows.
+- The grant matrix's `DIRECT_EXCEPTION enforced: true` display (below).
 
 **Display (not changed).** The Administration grant matrix still lists a stored prohibited direct row as a `DIRECT_EXCEPTION` with `enforced: true`; only the runtime, the explanation and the effective-access read treat it as conferring nothing. Correcting that display is a later UI decision.

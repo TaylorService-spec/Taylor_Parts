@@ -736,6 +736,11 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
       assert.equal(r.ok, false, actionKey);
       assert.match(r.message, /ROLE_ASSIGNMENT_ONLY: finance\.policy\.(read|prepare) is held only through a Security Role assignment/);
     }
+    // A CONDITIONED direct grant is refused the same way (refused before any condition is considered).
+    const conditioned = await admin("grantObjectActionToPrincipal", { objectKey: "financialPolicy", actionKey: "prepare", principalId: acct.principalId,
+      reason: "exception", condition: { kind: "RECORD_ASSIGNMENT", recordKind: "workOrder" } });
+    assert.equal(conditioned.ok, false);
+    assert.match(conditioned.message, /ROLE_ASSIGNMENT_ONLY/);
     assert.equal(await directRows(acct.principalId), 0, "no row written");
     // The grant-impact PREVIEW reproduces the refusal (the same command, simulated) -- it never reports WOULD_APPLY.
     const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
@@ -768,6 +773,20 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const eff = await admin("getPrincipalEffectiveAccess", { principalId: rawOnly.principalId });
     assert.equal(eff.ok, true);
     assert.equal(JSON.stringify(eff.data.effective).includes("finance.policy."), false, "the Administration effective-access read agrees");
+    // NARROWNESS: a legitimate direct grant of an UNRELATED capability still confers at runtime, in BOTH resolvers.
+    assert.equal((await admin("grantObjectActionToPrincipal", { objectKey: "account", actionKey: "read", principalId: rawOnly.principalId,
+      reason: "unrelated governed exception" })).ok, true);
+    const { resolveOperationalCapabilities } = require("../lib/eosOps/capabilityAuthority.js");
+    const { postgresGrantConditionProvider } = require("../lib/eosOps/entitledActionAuthority.js");
+    const flat = (await resolveOperationalCapabilities(pool, TENANT, rawOnly.principalId, [], postgresGrantConditionProvider(pool))).capabilities;
+    assert.deepEqual([flat.has("customer.record.read"), flat.has("finance.policy.read"), flat.has("finance.policy.prepare")], [true, false, false]);
+    // The Workforce command kernel's second resolver (withDirectCapabilityGrants) applies the same list.
+    const { withDirectCapabilityGrants } = require("../lib/eosWorkforce/commands/employeeAdministrationAuthority.js");
+    const bare = { tenantId: TENANT, principalId: rawOnly.principalId, capabilities: new Set(), entitlements: async () => Object.freeze([]) };
+    assert.equal((await withDirectCapabilityGrants(pool, bare, "finance.policy.prepare")).capabilities.has("finance.policy.prepare"), false);
+    const widened = await withDirectCapabilityGrants(pool, bare, "customer.record.read");
+    assert.deepEqual([widened.capabilities.has("customer.record.read"), widened.capabilities.has("finance.policy.read")], [true, false]);
+    assert.equal((await widened.entitlements()).some((e) => e.capabilityKey.startsWith("finance.policy.")), false);
     // ...and a direct row never WIDENS a company-scoped Role holding: Taylor-scoped stays Taylor-only.
     const rawScoped = await person("uid-fp-optc-scoped", [], { id: "e-fp-optc-scoped", name: "Sid Scoped" });
     assert.equal((await admin("assignRole", { principalId: rawScoped.principalId, roleId: await roleId("optionCPreparer"), reason: "scope staffing",

@@ -135,6 +135,9 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 - **Administrator standing** reaches every company for read, approve and activate, and never for prepare.
 - **Direct principal grants are not a path.** Approve and activate are reserved to the Owner Role (#232 Phase 1). Read and prepare are role-assignment-only (#232 Option C): a direct grant is refused, and a pre-existing direct row is ignored by the resolver, so it never widens a company-scoped holding.
 - **So the only tenant-wide paths are** a GLOBAL Role assignment and Administrator standing (read / approve / activate).
+- **Resolvers that honour the list.** Three resolvers apply the role-assignment-only filter: `resolveOperationalCapabilities`, `resolvePrincipalEffectiveAccess`, and the Workforce `withDirectCapabilityGrants`.
+- **Raw readers that stay unfiltered by design.** These are display-only or latent and confer nothing: the Administration gate's `capabilityKeysFor` (Administration keys only; the preview's `latent` / `adminKeys`), the `directGrants` echo, and the grant matrix's `DIRECT_EXCEPTION` display.
+- **Latent risk.** `entitledActionAuthority.authorizeEntitledResolvedAction` re-reads raw direct entitlements. It has test-only callers today, so it confers nothing. It MUST apply the same filter if it is ever wired to a transport.
 - **Fail closed.** A conditioned scoped holding admits nothing.
 - **Consolidated.** CONSOLIDATED is refused for every policy command. Consolidated Finance reporting reads are unaffected.
 - **Separation of duties** is unchanged and decided per version. A principal with a scoped preparer Role for Taylor and a global approve still cannot approve its own Taylor version.

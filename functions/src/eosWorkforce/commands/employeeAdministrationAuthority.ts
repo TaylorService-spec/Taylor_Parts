@@ -55,6 +55,7 @@ import type { Pool } from "pg";
 import { PostgresPolicyRepository } from "../../adminPolicy/postgresPolicyRepository";
 import { employeeAccessIneligibility } from "../../adminPolicy/employmentAccessEligibility";
 import { resolveOperationalCapabilities } from "../../eosOps/capabilityAuthority";
+import { isRoleAssignmentOnlyCapability } from "../../adminPolicy/roleCapabilityAdministration";
 import { postgresGrantConditionProvider, resolveDirectEntitlements } from "../../eosOps/entitledActionAuthority";
 import {
   hasResolvedEntitlements, type EntitlementResolver, type EntitlementSet,
@@ -132,6 +133,9 @@ export async function withDirectCapabilityGrants(
     throw new EmployeeCommandError("DIRECT_GRANT_AUTHORITY_UNAVAILABLE", "FAILED",
       "the direct capability grants of the administering Principal could not be read");
   }
+  // ROLE-ASSIGNMENT-ONLY keys (#232 Option C) are never conferred by a direct exception -- the same list filter the
+  // operational resolver (resolveOperationalCapabilities) applies, so this second resolver cannot reintroduce them.
+  direct = Object.freeze(direct.filter((e) => !isRoleAssignmentOnlyCapability(e.capabilityKey)));
   if (direct.length === 0) return actor;
   const unconditioned = direct.filter((e) => e.condition === null).map((e) => e.capabilityKey);
   const capabilities: ReadonlySet<string> = new Set([...actor.capabilities, ...unconditioned]);
