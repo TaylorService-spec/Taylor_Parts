@@ -808,6 +808,14 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
       assert.deepEqual([cell.source, cell.enforced, cell.notEffectiveReason, cell.forbiddenBy], ["DIRECT_EXCEPTION", false, "ROLE_ASSIGNMENT_ONLY",
         rca.ROLE_ASSIGNMENT_ONLY_CAPABILITIES.get(key).ruling], key);
     }
+    // A RESERVED key's stored direct row keeps its ordinary representation: it does enter the flat set (only
+    // ROLE_ASSIGNMENT_ONLY keys are filtered), and the reservation is decided separately at runtime.
+    await rawRow(rawOnly, "finance.policy.approve");
+    const reservedMatrix = await admin("getObjectActionGrantMatrix", { objectKey: "financialPolicy" });
+    const reservedCell = reservedMatrix.data.actions.find((a) => a.capabilityKey === "finance.policy.approve").principals
+      .find((p) => p.principalId === rawOnly.principalId);
+    assert.deepEqual([reservedCell.source, reservedCell.enforced, reservedCell.notEffectiveReason, reservedCell.forbiddenBy],
+      ["DIRECT_EXCEPTION", true, null, null], "a reserved-key direct row is not re-labelled not-effective");
     const accountMatrix = await admin("getObjectActionGrantMatrix", { objectKey: "account" });
     const legit = accountMatrix.data.actions.find((a) => a.actionKey === "read").principals.find((p) => p.principalId === rawOnly.principalId);
     assert.deepEqual([legit.enforced, legit.notEffectiveReason, legit.forbiddenBy], [true, null, null], "a legitimate direct exception stays effective");

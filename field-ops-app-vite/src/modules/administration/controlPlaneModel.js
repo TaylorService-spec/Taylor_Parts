@@ -151,8 +151,7 @@ export function statedReason(text) {
 export const isIneffectiveDirectGrant = (cell) => Boolean(cell) && cell.enforced === false;
 
 /** The words for an ineffective direct grant: why it confers nothing, from the server's own reason. */
-export function ineffectiveDirectGrantWords(cell) {
-  if (cell?.notEffectiveReason === "RESERVED_CAPABILITY") return "Not effective — reserved to a specific Role";
+export function ineffectiveDirectGrantWords() {
   return "Not effective — role assignment only";
 }
 
@@ -167,8 +166,8 @@ export function matrixActionRows(matrix) {
     const roles = Array.isArray(a.roles) ? a.roles : [];
     const principals = Array.isArray(a.principals) ? a.principals : [];
     const held = roles.filter((r) => r.held === true);
-    // A direct exception the server marks `enforced: false` (a PROHIBITED direct grant -- ROLE_ASSIGNMENT_ONLY or a
-    // RESERVED key, #232 Phase 2) confers nothing: it is listed as a fact, never counted as a holder.
+    // A direct exception the server marks `enforced: false` (a PROHIBITED direct grant -- ROLE_ASSIGNMENT_ONLY,
+    // #232 Option C) confers nothing: it is listed as a fact, never counted as a holder.
     const effective = principals.filter((p) => !isIneffectiveDirectGrant(p));
     return {
       actionKey: a.actionKey,

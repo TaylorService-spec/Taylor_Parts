@@ -113,6 +113,59 @@ describe("Administration > Financial Policy -- the companies and the actions are
   });
 });
 
+describe("Administration > Financial Policy -- a late answer never lands under another company", () => {
+  it("switching company mid-load drops Taylor's late response; the selector is disabled while a command runs", async () => {
+    let releaseTaylor;
+    const taylorGate = new Promise((r) => { releaseTaylor = r; });
+    const taylorActive = version({ id: "fpv-taylor", status: "ACTIVE", locked: true, effectiveDate: "2026-01-01",
+      policy: { ...WA, inventoryCostMethod: "FIFO" }, yourActions: version().yourActions });
+    const ventanaRead = readOf({ operatingCompanyId: "ventana", yourAuthority: { principalId: OWNER, actions: OWNER_AUTHORITY.companies[1].actions, createDraft: no("CAPABILITY_REQUIRED") } });
+    let releaseCommand;
+    const api = vi.fn(async (op, input) => {
+      if (op === "readMyFinancialPolicyAuthority") return { ok: true, result: OWNER_AUTHORITY };
+      if (op === "readFinancialPolicy" && input.operatingCompanyId === "taylor") {
+        await taylorGate;
+        return { ok: true, result: readOf({ state: "CONFIGURED", inForce: taylorActive }) };
+      }
+      if (op === "readFinancialPolicy") return { ok: true, result: ventanaRead };
+      if (op === "listFinancialPolicyVersions") {
+        if (input.operatingCompanyId === "taylor") await taylorGate;
+        return { ok: true, result: { operatingCompanyId: input.operatingCompanyId, auditTrail: [], actorNames: {},
+          items: input.operatingCompanyId === "taylor" ? [taylorActive] : [] } };
+      }
+      return new Promise((r) => { releaseCommand = () => r({ ok: true, result: { version: version(), replayed: false } }); });
+    });
+    mount(api);
+    const select = await screen.findByLabelText("Operating Company", { selector: "#fp-company" });
+    await waitFor(() => expect(api).toHaveBeenCalledWith("readFinancialPolicy", { operatingCompanyId: "taylor" }));
+    fireEvent.change(select, { target: { value: "ventana" } });
+    await screen.findByText(/Not configured: no policy is in effect/);
+    releaseTaylor(); // Taylor's answer arrives late, after the switch
+    await new Promise((r) => setTimeout(r, 20));
+    const ws = document.querySelector("[data-financial-policy-workspace]");
+    expect(ws.querySelector('[data-version="fpv-taylor"]')).toBeNull();
+    expect(ws.querySelector('[data-version-row]')).toBeNull();
+    expect(screen.getByRole("region", { name: "Policy summary" }).textContent).toMatch(/Not configured/);
+
+    // A command in flight: the selector cannot move until it answers.
+    const approved = version({ status: "APPROVED", yourActions: { ...version().yourActions, activate: yes } });
+    api.mockClear();
+    cleanup();
+    const api2 = vi.fn(async (op, input) => {
+      if (op === "readMyFinancialPolicyAuthority") return { ok: true, result: OWNER_AUTHORITY };
+      if (op === "readFinancialPolicy") return { ok: true, result: readOf({ operatingCompanyId: input.operatingCompanyId, inFlight: approved }) };
+      if (op === "listFinancialPolicyVersions") return { ok: true, result: { operatingCompanyId: input.operatingCompanyId, items: [], auditTrail: [], actorNames: {} } };
+      return new Promise((r) => { releaseCommand = () => r({ ok: true, result: { version: approved, replayed: false } }); });
+    });
+    mount(api2);
+    await waitFor(() => expect(action("activate")).toBeTruthy());
+    fireEvent.click(button("activate"));
+    await waitFor(() => expect(document.querySelector("#fp-company").disabled).toBe(true));
+    releaseCommand();
+    await waitFor(() => expect(document.querySelector("#fp-company").disabled).toBe(false));
+  });
+});
+
 describe("Administration > Financial Policy -- each command carries the right input", () => {
   it("creates a draft from the editor's choices (no method is defaulted), with the stated note", async () => {
     const api = serverWith();
@@ -287,6 +340,12 @@ describe("Financials > Settings & Governance -- the accounting policy rows are t
     // The only buttons are the read-only annotation tips: nothing edits, saves or decides.
     expect([...section().querySelectorAll("button")].some((b) => /save|edit|approve|activate|submit/i.test(b.textContent))).toBe(false);
     expect(screen.getByText("View Financial Policy →").getAttribute("href")).toBe("/administration/financial-policy");
+  });
+
+  it("an authority read listing ZERO companies says so explicitly -- not an empty section", async () => {
+    mountGov(serverWith({ authority: { principalId: ME, companies: [] } }));
+    await waitFor(() => expect(section().textContent).toMatch(/No operating company is covered by your Financial Policy access/));
+    expect(section().textContent).not.toMatch(/Not Configured/);
   });
 
   it("a viewer without finance.policy.read is told so -- never shown a fabricated Not configured", async () => {

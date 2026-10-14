@@ -9,7 +9,7 @@
 //     action stays VISIBLE, disabled, with the server's reason in words;
 //   * a refused command is shown as the server answered it: friendly words AND the server's own code and message.
 // The server re-decides every command inside its transaction, so a stale tab meets the same refusal.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, SectionHeader, StatusIndicator } from "../../shared/ui/primitives";
 import { Field, FormError } from "../../shared/ui/form";
 import { callFinanceApi } from "../../services/financeApiClient.js";
@@ -266,30 +266,38 @@ export default function FinancialPolicyWorkspace({ financeApi = callFinanceApi }
     return () => { live = false; };
   }, [financeApi]);
 
+  // THE CURRENT SELECTION, read by every async continuation: a response that arrives after the selection moved (or that
+  // names another company) is dropped, so one company's policy is never drawn under another's name.
+  const selection = useRef("");
   const loadCompany = useCallback(async (id) => {
+    selection.current = id;
     if (!id) return;
-    setCompany((c) => ({ ...c, loading: true, failure: null }));
+    setCompany({ loading: true, failure: null, read: null, list: null });
     const [read, list] = await Promise.all([
       financeApi("readFinancialPolicy", { operatingCompanyId: id }),
       financeApi("listFinancialPolicyVersions", { operatingCompanyId: id }),
     ]);
+    if (selection.current !== id) return; // stale: the selection moved while this was in flight
     if (!read.ok || !list.ok) {
       setCompany({ loading: false, failure: describeFailure(read.ok ? list : read), read: null, list: null });
       return;
     }
+    if (read.result?.operatingCompanyId !== id || list.result?.operatingCompanyId !== id) return; // not this company's answer
     setCompany({ loading: false, failure: null, read: read.result, list: list.result });
   }, [financeApi]);
 
   useEffect(() => { setOutcome(null); loadCompany(companyId); }, [companyId, loadCompany]);
 
   const run = async (operation, input, success) => {
+    const target = companyId;
     setBusy(true);
     setOutcome(null);
-    const res = await financeApi(operation, { operatingCompanyId: companyId, ...input });
+    const res = await financeApi(operation, { operatingCompanyId: target, ...input });
     setBusy(false);
+    if (selection.current !== target) return; // the selector is disabled while busy; this is belt and braces
     if (!res.ok) { setOutcome({ ok: false, failure: describeFailure(res) }); return; }
     setOutcome({ ok: true, text: res.result?.replayed ? `${success} (already recorded; nothing changed).` : `${success}.` });
-    await loadCompany(companyId);
+    await loadCompany(target);
   };
   const note = (text) => (typeof text === "string" && text.trim() !== "" ? { reason: text.trim() } : {});
 
@@ -321,7 +329,7 @@ export default function FinancialPolicyWorkspace({ financeApi = callFinanceApi }
     <div data-financial-policy-workspace>
       <section className="fo-panel" aria-label="Operating company">
         <Field id="fp-company" label="Operating Company" hint="Only the companies your Financial Policy access covers are listed.">
-          <select className="fo-input" value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+          <select className="fo-input" value={companyId} disabled={busy} onChange={(e) => setCompanyId(e.target.value)}>
             {companies.map((c) => <option key={c.operatingCompanyId} value={c.operatingCompanyId}>{c.name}</option>)}
           </select>
         </Field>

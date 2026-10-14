@@ -63,7 +63,7 @@ import {
   listSupportedAssignmentScopes,
   setTenantSalesChannelStatus,
 } from "./policyCommands";
-import { CONDITIONABLE_GRANTS, CONDITION_OPERATIONAL_SCOPE_TYPES, forbiddenPair, isRoleAssignmentOnlyCapability, RESERVED_CAPABILITY_HOLDERS, ROLE_ASSIGNMENT_ONLY_CAPABILITIES } from "./roleCapabilityAdministration";
+import { CONDITIONABLE_GRANTS, CONDITION_OPERATIONAL_SCOPE_TYPES, forbiddenPair, isRoleAssignmentOnlyCapability, ROLE_ASSIGNMENT_ONLY_CAPABILITIES } from "./roleCapabilityAdministration";
 import type { AuditEventFilter } from "./policyRepository";
 import {
   ADMIN_CONFIGURATION_OPERATIONS,
@@ -1438,21 +1438,18 @@ async function objectActionGrantMatrix(repo: PolicyRepository, tenantId: string,
     // A direct Principal grant is a governed EXCEPTION and is labelled so. Since lane DX every runtime gate
     // honours it through the one capability resolution (resolveOperationalCapabilities), narrowed by its
     // PRINCIPAL-cell condition when one is ACTIVE. Expired exceptions are not listed: they confer nothing.
-    // EXCEPT a PROHIBITED direct grant, which confers NOTHING and is never shown as effective authority:
-    //   ROLE_ASSIGNMENT_ONLY (#232 Option C)  both capability resolvers skip the row;
-    //   RESERVED_CAPABILITY                   the runtime half of the reservation (requireReservedAuthority / trade-in's
-    //                                         requireReservedHolder) admits only a qualifying global reserved Role.
-    // Such a row -- written before the ruling, or around the write path -- is still LISTED (it exists, and the drift census
-    // reports it), but as `enforced: false` with the ruling that makes it inert.
+    // EXCEPT a PROHIBITED direct grant of a ROLE_ASSIGNMENT_ONLY key (#232 Option C): both capability resolvers skip the
+    // row (capabilityAuthority's direct-grant filter), so it confers NOTHING. Such a row -- written before the ruling, or
+    // around the write path -- is still LISTED (it exists, and the drift census reports it), but as `enforced: false` with
+    // the ruling that makes it inert. A RESERVED key's direct row is NOT marked: it does enter the flat set, and the
+    // reservation is decided separately at runtime, so it keeps its ordinary representation.
     principals: principalGrants.filter((g) => g.capabilityId === c.id)
       .map((g) => {
         const condition = conditions.find((x) => x.grantScope === "PRINCIPAL" && x.grantorKey === g.principalId
           && x.capabilityKey === c.key && x.status === "ACTIVE") ?? null;
         const prohibition = isRoleAssignmentOnlyCapability(c.key)
           ? { reason: "ROLE_ASSIGNMENT_ONLY" as const, ruling: ROLE_ASSIGNMENT_ONLY_CAPABILITIES.get(c.key)?.ruling ?? null }
-          : RESERVED_CAPABILITY_HOLDERS.has(c.key)
-            ? { reason: "RESERVED_CAPABILITY" as const, ruling: RESERVED_CAPABILITY_HOLDERS.get(c.key)?.ruling ?? null }
-            : null;
+          : null;
         return {
           principalId: g.principalId, source: "DIRECT_EXCEPTION" as const, grantedBy: g.grantedBy,
           grantedAt: g.grantedAt, exceptionReason: g.exceptionReason ?? null, expiresAt: g.expiresAt ?? null,

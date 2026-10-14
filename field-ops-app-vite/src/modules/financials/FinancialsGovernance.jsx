@@ -101,6 +101,10 @@ function PolicyInForceRows({ summary }) {
       : code === "NOT_CONFIGURED" ? "Not available in this environment" : "Could not be read";
     return <Row label="Policy In Effect" words={words} tip="This summary shows only what the server answers for you. A refused or unavailable read is never shown as Not configured." />;
   }
+  if (summary.companies.length === 0) {
+    return <Row label="Policy In Effect" words="No operating company is covered by your Financial Policy access"
+      tip="The server answered and listed no company you may read. That is not the same as a policy that is not configured." />;
+  }
   return summary.companies.map((c) => {
     if (!c.read) return <Row key={c.id} label={`${c.name}`} words="Could not be read" />;
     if (c.read.state !== "CONFIGURED" || !c.read.inForce) {
