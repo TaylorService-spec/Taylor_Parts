@@ -144,6 +144,17 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
     capabilityKey: "finance.policy.activate",
     consumers: Object.freeze(["operations.activateFinancialPolicy"]),
   }),
+  // Financials Workspace P0 correction (2026-10-14): the Finance view key at a company IS the explicit Financials company
+  // assignment (eosFinance/financeCompanyAccess.ts). Every Finance read and settlement command, and every Analysis finance
+  // measure, is decided against it; a flat-held finance key reaches only the companies it admits.
+  Object.freeze({
+    scopeType: "operatingCompany" as const,
+    capabilityKey: "finance.payment.read",
+    consumers: Object.freeze(["operations.readFinanceWorkspace", "operations.listObligations", "operations.readObligation", "operations.listSettlements",
+      "operations.readSettlement", "operations.readMyFinanceCompanyAccess", "operations.recordSettlement", "operations.applySettlement",
+      "operations.reverseSettlementApplication", "operations.voidSettlement", "operations.reconcileSettlement",
+      "analysis.readAnalysisWorkspace", "analysis.readMeasureAnalysis"]),
+  }),
   Object.freeze({
     scopeType: "salesChannel" as const,
     capabilityKey: "opportunity.read",

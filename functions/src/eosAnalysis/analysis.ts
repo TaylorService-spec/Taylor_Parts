@@ -17,6 +17,7 @@ import { resolveSharedReportingCalendar } from "../reportingPeriod/reportingCale
 import { MEASURES, measureById, type MeasureDefinition, type MeasureRow, type MeasureScope } from "./measures";
 import { scopedWarehouseIds } from "../eosOps/partsReads";
 import { queueReachKeys } from "../eosOps/reorderLifecycleCommands";
+import { financeCompanyReach } from "../eosFinance/financeCompanyAccess";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -119,6 +120,18 @@ function measureAccess(actor: AnalysisActor, m: MeasureDefinition, areaChannel: 
 }
 
 /**
+ * FINANCIALS COMPANY ASSIGNMENT (Financials Workspace P0 correction, 2026-10-14): a measure read only through finance.* keys
+ * is readable over a scope only when the caller is explicitly assigned to EVERY company in it (eosFinance/
+ * financeCompanyAccess.ts -- the same rule the Finance reads apply). Consolidated therefore needs every company. Returns the
+ * refusal reason, or null.
+ */
+function financeCompanyRefusal(actor: AnalysisActor, m: MeasureDefinition, scope: Scope): string | null {
+  if (m.readCapabilities.length === 0 || !m.readCapabilities.every((k) => k.startsWith("finance."))) return null;
+  const reach = new Set(m.readCapabilities.flatMap((k) => financeCompanyReach(actor, k) ?? []));
+  return scope.companyIds.every((c) => reach.has(c)) ? null : "requires a Financials company assignment for every company in scope";
+}
+
+/**
  * The measure's source rows for one window, narrowed by EXACTLY the reach its records' own reads apply. Returns null with the
  * reason when the caller's Operational Scope reaches nothing in this scope (the aggregate would otherwise exceed the reads).
  */
@@ -218,6 +231,8 @@ async function computeMeasure(db: Queryable, actor: AnalysisActor, m: MeasureDef
   if (m.availability !== "AVAILABLE") return Object.freeze({ ...base, status: m.availability, reason: m.absenceReason ?? "not available" });
   const access = measureAccess(actor, m, areaChannel);
   if (!access.allowed) return Object.freeze({ ...base, status: "REFUSED" as const, reason: access.reason });
+  const companyRefusal = financeCompanyRefusal(actor, m, scope);
+  if (companyRefusal !== null) return Object.freeze({ ...base, status: "REFUSED" as const, reason: companyRefusal });
   const isPeriod = m.timeBasis === "PERIOD";
   const got = await rowsFor(db, actor, m, scope, access.channels, isPeriod ? period.start : null, isPeriod ? period.endExclusive : null, ROW_LIMIT);
   if ("refused" in got) return Object.freeze({ ...base, status: "REFUSED" as const, reason: got.refused });
@@ -284,6 +299,7 @@ async function exceptionsFor(db: Queryable, actor: AnalysisActor, scope: Scope, 
     const m = measureById(rule.measureId)!;
     const access = measureAccess(actor, m, null);
     if (!access.allowed) continue;   // an exception is never visible without the read of its records
+    if (financeCompanyRefusal(actor, m, scope) !== null) continue;   // ...nor outside the caller's Financials companies
     const got = await rowsFor(db, actor, m, scope, access.channels, m.timeBasis === "PERIOD" ? new Date(0) : null, m.timeBasis === "PERIOD" ? period.endExclusive : null, 200);
     if ("refused" in got) continue;
     const rows = got.rows

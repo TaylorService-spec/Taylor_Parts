@@ -20,6 +20,7 @@ import { createRequire } from "node:module";
 import { serviceBaselineTenant, HOUR } from "./support/serviceBaselineTenant.mjs";
 import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
 import { deterministicAccountingAdapter, TEST_ADAPTER_KEY } from "./support/deterministicAccountingAdapter.mjs";
+import { assignFinanceCompanies } from "./support/financeCompanyAccess.mjs";
 
 const require = createRequire(import.meta.url);
 const fin = require("../lib/eosFinance/financeFoundation.js");
@@ -76,6 +77,8 @@ test("rental over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   const ctrl = await person("uid-ctrl", ["controller"], { id: "e-ctrl", name: "Sage Controller" });
   const salesP = await person("uid-sales", ["salesperson"], { id: "e-sales", name: "Riley Retail" });
   const sysAdmin = await person("uid-sysadmin", ["admin"], { id: "e-sysadmin", name: "Rowan Administrator" });
+  // Company assignment is mandatory for Finance (Financials Workspace P0 correction): the settling Controller is assigned.
+  await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrl]);
 
   // ── masters ──
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-r',$1,'Harbor Grill','ACTIVE','f','f'), ('acct-o',$1,'Other Diner','ACTIVE','f','f')`, [TENANT]);

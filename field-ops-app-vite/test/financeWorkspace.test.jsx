@@ -17,9 +17,15 @@ const WS = (projection = "OPERATING_COMPANY") => ({
   missingCostEvidence: [], intercompanyReliefPending: [],
 });
 
+const ACCESS = (companies = ["taylor", "ventana"], consolidated = true) => ({ ok: true, result: { principalId: "p", consolidated,
+  companies: companies.map((c) => ({ operatingCompanyId: c, name: c === "taylor" ? "Taylor Freezer of Arizona" : "Ventana",
+    actions: { view: true, record: true, apply: true, correct: true, reconcile: true } })) } });
+/** A server stand-in: the access read answers `access`; everything else `rest(op, input)`. */
+const server = (rest, access = ACCESS()) => vi.fn(async (op, input) => (op === "readMyFinanceCompanyAccess" ? access : rest(op, input)));
+
 describe("FinancialsWorkspace", () => {
   it("shows the server's exceptions in words; applies a settlement as integer minor units", async () => {
-    const callApi = vi.fn(async (op) => (op === "readFinanceWorkspace" ? { ok: true, result: WS() } : { ok: true, result: {} }));
+    const callApi = server((op) => (op === "readFinanceWorkspace" ? { ok: true, result: WS() } : { ok: true, result: {} }));
     const { container } = render(<FinancialsWorkspace callApi={callApi} />);
     await screen.findByText("Harbor Grill");
     expect(container.textContent).toMatch(/Partially Paid · overdue/);
@@ -31,7 +37,7 @@ describe("FinancialsWorkspace", () => {
   });
 
   it("Consolidated is a reporting view: no settlement can be recorded in it", async () => {
-    const callApi = vi.fn(async () => ({ ok: true, result: WS("CONSOLIDATED_REPORTING_PROJECTION") }));
+    const callApi = server(() => ({ ok: true, result: WS("CONSOLIDATED_REPORTING_PROJECTION") }));
     render(<FinancialsWorkspace callApi={callApi} />);
     fireEvent.change(await screen.findByLabelText("Company"), { target: { value: "consolidated" } });
     await screen.findByText(/Nothing is recorded in it/);
@@ -39,8 +45,39 @@ describe("FinancialsWorkspace", () => {
   });
 
   it("renders the server's refusal; parses money without floats", async () => {
-    render(<FinancialsWorkspace callApi={vi.fn(async () => ({ ok: false, code: "FORBIDDEN" }))} />);
+    render(<FinancialsWorkspace callApi={server(() => ({ ok: false, code: "FORBIDDEN" }))} />);
     await screen.findByText(/finance.payment.read/);
     expect([toMinorUnits("12.5"), toMinorUnits("0.07"), toMinorUnits("1.005"), toMinorUnits("-1")]).toEqual([1250, 7, null, null]);
+  });
+
+  // COMPANY ASSIGNMENT (Financials Workspace P0 correction): the selector is the server's, never a client list.
+  it("offers only the companies the server says the person is assigned to; Consolidated only when assigned to every company", async () => {
+    const callApi = server(() => ({ ok: true, result: WS() }), ACCESS(["taylor"], false));
+    render(<FinancialsWorkspace callApi={callApi} />);
+    const select = await screen.findByLabelText("Company");
+    await waitFor(() => expect([...select.options].map((o) => o.value)).toEqual(["taylor"]));
+    expect(screen.queryByRole("option", { name: /Ventana|Consolidated/ })).toBeNull();
+    await waitFor(() => expect(callApi).toHaveBeenCalledWith("readFinanceWorkspace", { operatingCompanyId: "taylor" }));
+    expect(callApi).not.toHaveBeenCalledWith("readFinanceWorkspace", expect.objectContaining({ operatingCompanyId: "ventana" }));
+    expect(callApi).not.toHaveBeenCalledWith("readFinanceWorkspace", expect.objectContaining({ operatingCompanyId: "consolidated" }));
+  });
+
+  it("someone assigned to both companies is offered both and the Consolidated reporting view", async () => {
+    render(<FinancialsWorkspace callApi={server(() => ({ ok: true, result: WS() }))} />);
+    const select = await screen.findByLabelText("Company");
+    await waitFor(() => expect([...select.options].map((o) => o.value)).toEqual(["taylor", "ventana", "consolidated"]));
+  });
+
+  it("with no company assignment: no selector, no workspace read, and says why", async () => {
+    const callApi = server(() => ({ ok: true, result: WS() }), ACCESS([], false));
+    render(<FinancialsWorkspace callApi={callApi} />);
+    await screen.findByText(/No operating company is within your Financials access/);
+    expect(screen.queryByLabelText("Company")).toBeNull();
+    expect(callApi).not.toHaveBeenCalledWith("readFinanceWorkspace", expect.anything());
+  });
+
+  it("an out-of-scope refusal is shown in words", async () => {
+    render(<FinancialsWorkspace callApi={server(() => ({ ok: false, code: "FORBIDDEN", reason: "OUTSIDE_OPERATING_COMPANY_SCOPE" }))} />);
+    await screen.findByText(/does not cover this operating company/);
   });
 });

@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { serviceBaselineTenant, HOUR } from "./support/serviceBaselineTenant.mjs";
 import { deterministicAccountingAdapter, TEST_ADAPTER_KEY } from "./support/deterministicAccountingAdapter.mjs";
+import { assignFinanceCompanies } from "./support/financeCompanyAccess.mjs";
 
 const require = createRequire(import.meta.url);
 const fin = require("../lib/eosFinance/financeFoundation.js");
@@ -147,6 +148,9 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   const company = (operatingCompanyId) => ({ kind: "INTERNAL_OPERATING_COMPANY", operatingCompanyId });
   const record = async (who, input) => ok(await fn(who, "recordSettlement", { currency: "USD", sourceReference: `REF-${++sk}`, idempotencyKey: key("stl"), ...input }), "record").settlement;
   const apply = async (who, settlementId, applications) => ok(await fn(who, "applySettlement", { settlementId, applications, idempotencyKey: key("app") }), "apply");
+  // COMPANY ASSIGNMENT IS MANDATORY (Financials Workspace P0 correction): the Finance principals this suite exercises are
+  // explicitly assigned to Taylor and Ventana. The SCOPE test below proves what happens without (or with partial) assignment.
+  await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrl, acctMgr, sysAdmin]);
 
   // ── commercial helpers (direct + financed packages) ──
   for (const ch of ["RETAIL"]) await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1,$2,'ACTIVE','f','f','f') ON CONFLICT DO NOTHING`, [TENANT, ch]);
@@ -489,5 +493,84 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.deepEqual([detail.kind, detail.status, detail.applications.length >= 2, detail.facts.some((f) => f.factClass === "OBLIGATION")], ["RECEIVABLE", "SETTLED", true, true]);
     assert.equal(ok(await fn(ctrl, "readObligation", { obligationId: payable })).accountingHandoffs[0].payloadKind, "VENDOR_PAYABLE");
     void financed; void ic;
+  });
+
+  // ── COMPANY ASSIGNMENT IS MANDATORY (Owner ruling 2026-10-13; Financials Workspace P0 correction 2026-10-14) ──
+  await t.test("SCOPE: Finance reads and settlement commands need the key AND an explicit company assignment; Consolidated needs every company", async () => {
+    const OUT = "OUTSIDE_OPERATING_COMPANY_SCOPE";
+    // Records of each company, read from the store (this suite created both).
+    const ventanaSettlement = (await one(`SELECT id FROM eos_finance.settlements WHERE tenant_id=$1 AND operating_company_id='ventana' AND status='RECORDED' ORDER BY recorded_at LIMIT 1`, [TENANT])).id;
+    const ventanaApplication = (await one(`SELECT a.id FROM eos_finance.settlement_applications a JOIN eos_finance.settlements s ON s.tenant_id=a.tenant_id AND s.id=a.settlement_id
+      WHERE a.tenant_id=$1 AND s.operating_company_id='ventana' AND a.status='APPLIED' LIMIT 1`, [TENANT]))?.id;
+    const ventanaObligation = (await one(`SELECT id FROM eos_finance.obligations WHERE tenant_id=$1 AND operating_company_id='ventana' LIMIT 1`, [TENANT])).id;
+    const taylorSettlement = (await one(`SELECT s.id FROM eos_finance.settlements s JOIN eos_finance.settlement_balances b ON b.tenant_id=s.tenant_id AND b.settlement_id=s.id
+      WHERE s.tenant_id=$1 AND s.operating_company_id='taylor' AND s.status='RECORDED' AND b.unapplied_minor > 0 ORDER BY s.recorded_at LIMIT 1`, [TENANT])).id;
+    const taylorObligation = (await one(`SELECT id FROM eos_finance.obligations WHERE tenant_id=$1 AND operating_company_id='taylor' LIMIT 1`, [TENANT])).id;
+    const snapshot = async () => (await q(`SELECT (SELECT count(*) FROM eos_finance.settlements WHERE tenant_id=$1) s,
+      (SELECT count(*) FROM eos_finance.settlement_applications WHERE tenant_id=$1) a, (SELECT count(*) FROM eos_finance.settlement_reconciliations WHERE tenant_id=$1) r`, [TENANT])).rows[0];
+
+    // (1) A global finance Role with NO company assignment reaches nothing -- not even with the Owner's or Controller's keys.
+    const ctrlNone = await person("uid-ctrl-none", ["controller"], { id: "e-ctrl-none", name: "Nell Unassigned-Controller" });
+    const adminNone = await person("uid-admin-none", ["admin"], { id: "e-admin-none", name: "Ari Unassigned-Administrator" });
+    for (const who of [ctrlNone, adminNone]) {
+      assert.deepEqual(ok(await fn(who, "readMyFinanceCompanyAccess", {})).companies, [], "no assignment, no company");
+      for (const c of ["taylor", "ventana", "consolidated", undefined]) {
+        refused(await fn(who, "readFinanceWorkspace", c === undefined ? {} : { operatingCompanyId: c }), 403, OUT, `unassigned: ${c}`);
+      }
+      refused(await fn(who, "listObligations", { operatingCompanyId: "taylor" }), 403, OUT);
+      refused(await fn(who, "listSettlements", { operatingCompanyId: "taylor" }), 403, OUT);
+      refused(await fn(who, "readObligation", { obligationId: taylorObligation }), 404, "OBLIGATION_NOT_FOUND");
+      refused(await fn(who, "readSettlement", { settlementId: taylorSettlement }), 404, "SETTLEMENT_NOT_FOUND");
+    }
+    const before = await snapshot();
+    refused(await fn(ctrlNone, "recordSettlement", { operatingCompanyId: "taylor", counterparty: customer("acct-cust"), kind: "CUSTOMER_PAYMENT", amountMinor: 5,
+      currency: "USD", sourceReference: "x", idempotencyKey: key("sc0") }), 403, OUT);
+    refused(await fn(ctrlNone, "applySettlement", { settlementId: taylorSettlement, applications: [{ obligationId: taylorObligation, amountMinor: 1 }], idempotencyKey: key("sc1") }), 404, "SETTLEMENT_NOT_FOUND");
+
+    // (2) Assigned to TAYLOR only: Taylor works; Ventana, Consolidated and an unknown company are refused identically; Ventana
+    // records answer exactly like missing ones; no write lands.
+    const ctrlT = await person("uid-ctrl-t", ["controller"], { id: "e-ctrl-t", name: "Tia Taylor-Controller" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrlT], ["taylor"]);
+    const access = ok(await fn(ctrlT, "readMyFinanceCompanyAccess", {}));
+    assert.deepEqual([access.consolidated, access.companies.map((c) => [c.operatingCompanyId, c.actions])],
+      [false, [["taylor", { view: true, record: true, apply: true, correct: true, reconcile: true }]]]);
+    assert.equal(ok(await fn(ctrlT, "readFinanceWorkspace", { operatingCompanyId: "taylor" })).scope.companies.join(), "taylor");
+    const outside = refused(await fn(ctrlT, "readFinanceWorkspace", { operatingCompanyId: "ventana" }), 403, OUT);
+    for (const c of ["consolidated", "saratoga", "no-such-company"]) {
+      const body = refused(await fn(ctrlT, "readFinanceWorkspace", { operatingCompanyId: c }), 403, OUT, `Taylor-only: ${c}`);
+      assert.deepEqual(Object.keys(body).sort(), Object.keys(outside).sort(), "the same refusal shape: existence is not revealed");
+    }
+    refused(await fn(ctrlT, "listObligations", { operatingCompanyId: "ventana" }), 403, OUT);
+    refused(await fn(ctrlT, "listSettlements", { operatingCompanyId: "consolidated" }), 403, OUT);
+    refused(await fn(ctrlT, "readObligation", { obligationId: ventanaObligation }), 404, "OBLIGATION_NOT_FOUND");
+    refused(await fn(ctrlT, "readObligation", { obligationId: "obl-does-not-exist" }), 404, "OBLIGATION_NOT_FOUND");
+    refused(await fn(ctrlT, "readSettlement", { settlementId: ventanaSettlement }), 404, "SETTLEMENT_NOT_FOUND");
+    assert.equal(ok(await fn(ctrlT, "readObligation", { obligationId: taylorObligation })).operatingCompanyId, "taylor");
+    refused(await fn(ctrlT, "recordSettlement", { operatingCompanyId: "ventana", counterparty: customer("acct-cust"), kind: "CUSTOMER_PAYMENT", amountMinor: 5,
+      currency: "USD", sourceReference: "x", idempotencyKey: key("sc2") }), 403, OUT);
+    refused(await fn(ctrlT, "applySettlement", { settlementId: ventanaSettlement, applications: [{ obligationId: ventanaObligation, amountMinor: 1 }], idempotencyKey: key("sc3") }), 404, "SETTLEMENT_NOT_FOUND");
+    refused(await fn(ctrlT, "applySettlement", { settlementId: taylorSettlement, applications: [{ obligationId: ventanaObligation, amountMinor: 1 }], idempotencyKey: key("sc4") }), 404, "OBLIGATION_NOT_FOUND",
+      "a Taylor settlement cannot reach a Ventana obligation");
+    refused(await fn(ctrlT, "voidSettlement", { settlementId: ventanaSettlement, reason: "x" }), 404, "SETTLEMENT_NOT_FOUND");
+    refused(await fn(ctrlT, "reconcileSettlement", { settlementId: ventanaSettlement, externalReference: "x", externalAmountMinor: 1, idempotencyKey: key("sc5") }), 404, "SETTLEMENT_NOT_FOUND");
+    if (ventanaApplication) refused(await fn(ctrlT, "reverseSettlementApplication", { applicationId: ventanaApplication, reason: "x", idempotencyKey: key("sc6") }), 404, "APPLICATION_NOT_FOUND");
+    assert.deepEqual(await snapshot(), before, "no refused command wrote anything");
+    // ...and inside its company the same principal still works: a Taylor settlement is recorded.
+    const mine = await record(ctrlT, { operatingCompanyId: "taylor", counterparty: customer("acct-cust"), kind: "CUSTOMER_PAYMENT", amountMinor: 700 });
+    assert.equal(mine.operatingCompanyId, "taylor");
+
+    // (3) A company assignment is REACH, never a key: assigned to both companies with no settlement key, nothing can be recorded.
+    const viewer = await person("uid-fin-viewer", [], { id: "e-fin-viewer", name: "Vic Viewer" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [viewer]);
+    const va = ok(await fn(viewer, "readMyFinanceCompanyAccess", {}));
+    assert.deepEqual([va.consolidated, va.companies.map((c) => [c.operatingCompanyId, c.actions.record, c.actions.apply])], [true, [["taylor", false, false], ["ventana", false, false]]]);
+    assert.deepEqual(ok(await fn(viewer, "readFinanceWorkspace", { operatingCompanyId: "consolidated" })).scope.companies, ["taylor", "ventana"]);
+    refused(await fn(viewer, "recordSettlement", { operatingCompanyId: "taylor", counterparty: customer("acct-cust"), kind: "CUSTOMER_PAYMENT", amountMinor: 5,
+      currency: "USD", sourceReference: "x", idempotencyKey: key("sc7") }), 403, "CAPABILITY_REQUIRED");
+
+    // (4) Assigned to BOTH companies: Consolidated is the sum of the two, owning nothing.
+    const both = ok(await fn(ctrl, "readMyFinanceCompanyAccess", {}));
+    assert.deepEqual([both.consolidated, both.companies.map((c) => c.operatingCompanyId)], [true, ["taylor", "ventana"]]);
+    refused(await fn(techP, "readMyFinanceCompanyAccess", {}), 403, "CAPABILITY_REQUIRED");
   });
 });

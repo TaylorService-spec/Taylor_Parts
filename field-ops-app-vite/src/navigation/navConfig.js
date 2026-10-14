@@ -812,6 +812,10 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "purchasing/receipts": ["receiving.checkIn"],
   "purchasing/suppliers": ["purchasing.suppliers"],
   // Financials
+  // Financials Workspace P0 correction (2026-10-14): the Overview hosts the PostgreSQL Finance workspace, whose every read
+  // is finance.payment.read -- the very key that earns `financials.payments`. The door confers nothing: the workspace lists
+  // only the companies the person is explicitly assigned to, and the server re-decides every read and command.
+  "financials/overview": ["financials.payments"],
   "financials/invoices": ["financials.invoices"],
   "financials/payments": ["financials.payments"],
   // Administration
@@ -892,7 +896,7 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   "dashboard/notifications": "Hidden placeholder; the bell is the live surface.",
   "reporting/builder": "Report Builder is already governed by the Firebase capability feed over report-definition ids that eos_policy.capabilities does not declare.",
   "reporting/savedReports": "See reporting/builder.",
-  "financials/*": "Every Financials destination OTHER than Invoices and Payments is Frame-0 information architecture with no authority behind it; FIN-001/FIN-004 own the capability model.",
+  "financials/*": "Every Financials destination OTHER than the Overview (the Finance workspace), Invoices and Payments is Frame-0 information architecture with no authority behind it; FIN-001/FIN-004 own the capability model.",
   "reporting/*": "The eight domain report destinations are navHidden placeholders, and Report Builder / Saved Reports are governed by the Firebase capability feed over report-definition ids that eos_policy.capabilities does not declare.",
 });
 
@@ -1119,7 +1123,8 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   "purchasing/quotes",
   "purchasing/receipts", // (CUTOVER) receiving.checkIn
   "purchasing/demandPlanning",
-  "financials/overview",
+  // financials/overview LEFT this register (Financials Workspace P0 correction): it now earns `financials.payments`, so its
+  // door comes from the surface, never from a placeholder role literal (the register is shrink-only).
   "financials/billingQueue",
   "financials/invoices", // (CUTOVER) financials.invoices
   "financials/accountsReceivable",
