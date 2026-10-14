@@ -150,14 +150,14 @@ export async function seedAuthenticatedSession(page, origin, session) {
 // governed accounts provisioned through provisionEmployeeAccess.js. This maps each local driver key
 // to its closest governed sandbox equivalent, and says so rather than pretending they are identical.
 //
-//   technicianMultiRole  -> technician       (a technician holding operational roles)
+//   technicianMultiRole  -> serviceTechnician (a technician holding operational roles)
 //   ineligibleDispatcher -> dispatcher       (dispatcher security role)
 //   eligiblePartsManager -> partsManager     (the parts-floor management persona)
 //
 // A key with no mapping is passed through unchanged, so a caller may name a sandbox persona directly.
 export const LOCAL_TO_SANDBOX_PERSONA = Object.freeze({
-  admin: "admin",
-  technicianMultiRole: "technician",
+  admin: "administrator",
+  technicianMultiRole: "serviceTechnician",
   ineligibleDispatcher: "dispatcher",
   eligiblePartsManager: "partsManager",
 });

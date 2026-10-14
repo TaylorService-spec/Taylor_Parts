@@ -595,6 +595,17 @@ test("PRINCIPALS: the credential file is --credential-file, else SANDBOX_CREDENT
   assert.throws(() => resolveActivationCredentialFile([], {}, "/w", exists), /^Error: CREDENTIAL_SOURCE_NOT_CONFIGURED|CREDENTIAL_SOURCE_NOT_CONFIGURED/);
 });
 
+test("PRINCIPALS: --activate-logins refuses a credential file outside the gitignore rule, before checking it exists", () => {
+  let probed = 0;
+  const exists = () => { probed += 1; return true; };
+  for (const argv of [["--credential-file", "/c/creds.json"], ["--credential-file=/c/sandbox-credentials.json"]]) {
+    assert.throws(() => resolveActivationCredentialFile(argv, {}, "/w", exists), /REFUSING: the credential file must end with 'credentials\.local\.json'/);
+  }
+  assert.throws(() => resolveActivationCredentialFile([], { SANDBOX_CREDENTIALS_FILE: "/c/creds.txt" }, "/w", exists), /must end with 'credentials\.local\.json'/);
+  assert.equal(probed, 0, "a misnamed file is refused before the filesystem is consulted");
+  assert.equal(resolveActivationCredentialFile(["--credential-file=/c/sandbox-credentials.local.json"], {}, "/w", exists), "/c/sandbox-credentials.local.json");
+});
+
 test("PRINCIPALS: no candidate-path guessing remains in provisionPrincipals.mjs", () => {
   const src = readFileSync(L("functions/scripts/certificationWorld/provisionPrincipals.mjs").replace(/^file:\/\//, ""), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");

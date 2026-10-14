@@ -128,6 +128,9 @@ export function resolveActivationCredentialFile(argv, env = process.env, cwd = p
     throw new Error("CREDENTIAL_SOURCE_NOT_CONFIGURED: --activate-logins writes credentials and needs the credential file named -- "
       + "--credential-file <file>, or set SANDBOX_CREDENTIALS_FILE to the canonical credential file. Nothing was written.");
   }
+  if (!/credentials\.local\.json$/.test(filePath)) {
+    throw new Error("REFUSING: the credential file must end with 'credentials.local.json' so it matches the gitignore rule. Nothing was written.");
+  }
   if (!exists(filePath)) {
     throw new Error(`CREDENTIAL_ACCESS_FAILED: the named credential file does not exist (${filePath}). Refusing to create one from nothing.`);
   }

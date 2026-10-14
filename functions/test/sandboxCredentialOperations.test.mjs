@@ -512,16 +512,62 @@ test("CREDENTIAL DESTINATION: --out, else SANDBOX_CREDENTIALS_FILE, else CREDENT
     "/mine/sandbox-credentials.local.json", "an explicit --out wins");
   assert.equal(resolve({ out: "rel.credentials.local.json" }, {}), "/work/functions/rel.credentials.local.json", "relative to the working directory");
   assert.throws(() => resolve({ out: "/x/creds.json" }, {}), /REFUSING: the credential file must end with 'credentials\.local\.json'/);
+  assert.throws(() => resolve({ out: "  " }, { SANDBOX_CREDENTIALS_FILE: "/canon/sandbox-credentials.local.json" }),
+    /CREDENTIAL_SOURCE_NOT_CONFIGURED/, "a blank --out never falls back to the canonical file");
   // The parser the CLI uses: --out with no value is "true", which names nothing.
   assert.deepEqual(activator.parseArgs(["--out", "--activate-missing"]), { out: "true", "activate-missing": "true" });
+});
+
+test("CREDENTIAL DESTINATION: --out=<file> is the same flag as --out <file>, never silently dropped", () => {
+  assert.deepEqual(activator.parseArgs(["--out=/mine/sandbox-credentials.local.json", "--activate-missing"]),
+    { out: "/mine/sandbox-credentials.local.json", "activate-missing": "true" });
+  assert.deepEqual(activator.parseArgs(["--projectId=eos-platform-sandbox", "--rotate"]), { projectId: "eos-platform-sandbox", rotate: "true" });
+  assert.deepEqual(activator.parseArgs(["--out="]), { out: "" });
+  const args = activator.parseArgs(["--out=/mine/sandbox-credentials.local.json"]);
+  assert.equal(activator.resolveCredentialDestination(args, { SANDBOX_CREDENTIALS_FILE: "/canon/sandbox-credentials.local.json" }, "/w"),
+    "/mine/sandbox-credentials.local.json", "the = form wins over the configured file exactly as the spaced form does");
+  assert.throws(() => activator.resolveCredentialDestination(activator.parseArgs(["--out="]),
+    { SANDBOX_CREDENTIALS_FILE: "/canon/sandbox-credentials.local.json" }, "/w"), /CREDENTIAL_SOURCE_NOT_CONFIGURED/);
+});
+
+test("CREDENTIAL DESTINATION: --rotate needs an explicit NEW --out -- never the configured canonical file, never an existing file", () => {
+  const canon = "/canon/sandbox-credentials.local.json";
+  const rotate = (args, env, exists = () => false) => activator.resolveCredentialDestination(args, env, "/w", { mode: "rotate", exists });
+  assert.throws(() => rotate({}, { SANDBOX_CREDENTIALS_FILE: canon }), /CREDENTIAL_SOURCE_NOT_CONFIGURED: --rotate .* never defaults/,
+    "rotation never falls back to the canonical file");
+  assert.throws(() => rotate({ out: canon }, { SANDBOX_CREDENTIALS_FILE: canon }), /REFUSING: --rotate would replace the canonical/);
+  assert.throws(() => rotate({ out: "../canon/sandbox-credentials.local.json" }, { SANDBOX_CREDENTIALS_FILE: "/canon/sandbox-credentials.local.json" }, () => false),
+    /REFUSING: --rotate would replace the canonical/, "compared after resolution, so a relative spelling cannot slip past");
+  assert.throws(() => rotate({ out: "/old/sandbox-credentials.local.json" }, {}, () => true), /REFUSING: --rotate would overwrite an existing/);
+  assert.equal(rotate({ out: "/new/rotated.credentials.local.json" }, { SANDBOX_CREDENTIALS_FILE: canon }), "/new/rotated.credentials.local.json");
+  assert.throws(() => rotate({ out: "/new/rotated.json" }, {}), /must end with 'credentials\.local\.json'/);
+  assert.throws(() => activator.resolveCredentialDestination({}, {}, "/w", { mode: "replace" }), /unknown mode/);
+  // Merge mode (--activate-missing) still accepts the configured canonical file: merging only adds entries.
+  assert.equal(activator.resolveCredentialDestination({}, { SANDBOX_CREDENTIALS_FILE: canon }, "/w", { mode: "merge", exists: () => true }), canon);
+});
+
+test("CREDENTIAL DESTINATION: a real existing file refuses rotation and is left byte-for-byte unchanged", () => {
+  const dir = mkdtempSync(join(tmpdir(), "activator-rotate-"));
+  try {
+    const target = join(dir, "sandbox-credentials.local.json");
+    writeFileSync(target, "{}\n");
+    const before = readFileSync(target, "utf8");
+    const mtime = statSync(target).mtimeMs;
+    assert.throws(() => activator.resolveCredentialDestination({ out: target }, {}, dir, { mode: "rotate" }), /would overwrite an existing/);
+    assert.equal(readFileSync(target, "utf8"), before);
+    assert.equal(statSync(target).mtimeMs, mtime);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("CREDENTIAL DESTINATION: the CLI resolves its destination BEFORE any Firebase call and keeps no repository-root default", () => {
   const src = readFileSync(require.resolve("../scripts/activateSandboxPersonas.js"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
   assert.doesNotMatch(src, /"\.\.\/\.\.\/sandbox-credentials\.local\.json"/, "the silent repository-root destination is gone");
   const main = src.slice(src.indexOf("async function main()"));
-  assert.ok(main.indexOf("resolveCredentialDestination(args)") > 0 && main.indexOf("resolveCredentialDestination(args)") < main.indexOf("initializeApp("),
-    "an unconfigured destination refuses before Firebase is touched");
+  const at = main.indexOf("resolveCredentialDestination(args, process.env, process.cwd(), { mode: rotate ? \"rotate\" : \"merge\" })");
+  assert.ok(at > 0 && at < main.indexOf("initializeApp("), "an unconfigured destination refuses before Firebase is touched");
+  assert.match(main, /if \(rotate \|\| activateMissing\) \{\s*try \{ outPath = resolveCredentialDestination/,
+    "only the two writing modes need a destination; the read-only listing does not");
+  assert.match(main, /writeFileSync\(outPath, [^;]*\{ flag: "wx" \}\)/, "the rotation write can never replace an existing file");
 });
 
 test("CREDENTIAL DESTINATION: resolving never creates or touches a credential file", () => {
@@ -543,8 +589,10 @@ test("UAT SCRIPTS name the 16 accepted personas by CANONICAL ROLE KEY -- never a
   const offenders = [];
   // The persona position in every sign-in helper shape the UAT scripts use: the first argument of signInPersona /
   // loadSandboxPersona / signIn / idTokenFor, and the SECOND argument of the seeders' call(name, persona, ...).
-  const shapes = [/\b(signInPersona|loadSandboxPersona|signIn|idTokenFor)\(\s*["'`]([^"'`]+)["'`]/g,
-    /\b(call)\(\s*["'`][^"'`]+["'`]\s*,\s*["'`]([^"'`]+)["'`]/g];
+  // callAs(persona, ...) is the sandbox scenario runners' helper; `persona = process.argv[2] ?? "<key>"` is a CLI default.
+  const shapes = [/\b(signInPersona|loadSandboxPersona|signIn|idTokenFor|callAs)\(\s*["'`]([^"'`]+)["'`]/g,
+    /\b(call)\(\s*["'`][^"'`]+["'`]\s*,\s*["'`]([^"'`]+)["'`]/g,
+    /\b(persona)\s*=\s*process\.argv\[\d+\]\s*\?\?\s*["'`]([^"'`]+)["'`]/g];
   for (const f of files) {
     const text = readFileSync(join(repo, f), "utf8");
     for (const shape of shapes) for (const m of text.matchAll(shape)) if (!canonical.has(m[2])) offenders.push(`${f}: ${m[1]}("${m[2]}")`);
@@ -553,4 +601,10 @@ test("UAT SCRIPTS name the 16 accepted personas by CANONICAL ROLE KEY -- never a
   // The one actor constant in the certification world is canonical too.
   const grants = readFileSync(join(repo, "functions/scripts/certificationWorld/applyRoleGrants.mjs"), "utf8");
   assert.match(grants, /const ACTOR_PERSONA = "ownerExecutive";/);
+  // The local-driver -> sandbox persona map hands its values straight to signInPersona: every value is canonical.
+  const { LOCAL_TO_SANDBOX_PERSONA, LOCAL_TO_EOS_PERSONA } = await import(
+    join(repo, "field-ops-app-vite/.claude/skills/run-field-ops-app-vite/deployedSession.mjs"));
+  for (const [map, name] of [[LOCAL_TO_SANDBOX_PERSONA, "LOCAL_TO_SANDBOX_PERSONA"], [LOCAL_TO_EOS_PERSONA, "LOCAL_TO_EOS_PERSONA"]]) {
+    for (const [k, v] of Object.entries(map)) assert.ok(canonical.has(v), `${name}.${k} -> "${v}" is not a canonical role key`);
+  }
 });

@@ -45,8 +45,10 @@
  *   node scripts/activateSandboxPersonas.js --projectId eos-platform-sandbox \
  *     --out "$SANDBOX_CREDENTIALS_FILE"
  *
- *   The destination is never implicit: --out, or SANDBOX_CREDENTIALS_FILE when --out is omitted;
- *   neither refuses with CREDENTIAL_SOURCE_NOT_CONFIGURED (no repository-root default).
+ *   The destination is never implicit: --activate-missing merges into --out, or SANDBOX_CREDENTIALS_FILE
+ *   when --out is omitted; --rotate needs an explicit --out naming a NEW file (never the canonical one).
+ *   Neither refuses with CREDENTIAL_SOURCE_NOT_CONFIGURED (no repository-root default). The default
+ *   (no mode flag) only lists personas and needs no destination.
  *
  *   # give newly provisioned accounts a password without disturbing the rest:
  *   node scripts/activateSandboxPersonas.js --projectId eos-platform-sandbox \
@@ -64,6 +66,13 @@ function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i].startsWith("--")) {
+      // `--key=value` and `--key value` are the same flag: an unparsed `--out=<file>` used to be read
+      // as a flag named "out=<file>", leaving --out unset and the destination silently defaulted.
+      const eq = argv[i].indexOf("=");
+      if (eq > 2) {
+        out[argv[i].slice(2, eq)] = argv[i].slice(eq + 1);
+        continue;
+      }
       const k = argv[i].slice(2);
       out[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : "true";
     }
@@ -162,15 +171,40 @@ async function activateMissingSandboxPasswords({ auth, personas, outPath, emailA
 
 /**
  * WHERE CREDENTIALS ARE WRITTEN -- never implicit (UAT credential single-source correction, Owner-approved 2026-10-14).
- * The destination is `--out <file>` when given, otherwise the configured `SANDBOX_CREDENTIALS_FILE` (the one canonical
- * credential source scripts/sandboxCredentials.mjs reads). Neither: CREDENTIAL_SOURCE_NOT_CONFIGURED -- there is NO default
- * path any more; this tool used to fall back to the repository root and silently start a divergent credential copy there.
- * The file must still end in `credentials.local.json` (the gitignore rule). Returns an absolute path; touches no file.
+ *
+ * mode "merge" (--activate-missing): `--out <file>` when given, otherwise the configured `SANDBOX_CREDENTIALS_FILE` (the
+ * one canonical credential source scripts/sandboxCredentials.mjs reads). Merging only adds entries, so the canonical file
+ * is a valid destination.
+ *
+ * mode "rotate" (--rotate): REPLACES the whole file, so it never falls back to anything. It needs an explicit --out, and
+ * refuses a destination that is the configured canonical file or that already exists -- a rotation writes a NEW file and
+ * the operator decides, by hand, what to do with the old one.
+ *
+ * Neither source: CREDENTIAL_SOURCE_NOT_CONFIGURED -- there is NO default path any more; this tool used to fall back to the
+ * repository root and silently start a divergent credential copy there. The file must still end in
+ * `credentials.local.json` (the gitignore rule). Returns an absolute path; touches no file.
  */
-function resolveCredentialDestination(args, env = process.env, cwd = process.cwd()) {
-  const explicit = typeof args.out === "string" && args.out !== "true" && args.out.trim() !== "" ? path.resolve(cwd, args.out.trim()) : null;
+function resolveCredentialDestination(args, env = process.env, cwd = process.cwd(), { mode = "merge", exists = fs.existsSync } = {}) {
+  if (mode !== "merge" && mode !== "rotate") throw new Error(`resolveCredentialDestination: unknown mode '${mode}'.`);
+  if (args.out === "true" || (typeof args.out === "string" && args.out.trim() === "")) {
+    throw new Error("CREDENTIAL_SOURCE_NOT_CONFIGURED: --out needs a file path. Nothing was written.");
+  }
+  const explicit = typeof args.out === "string" ? path.resolve(cwd, args.out.trim()) : null;
   const configured = typeof env.SANDBOX_CREDENTIALS_FILE === "string" && env.SANDBOX_CREDENTIALS_FILE.trim() !== ""
     ? path.resolve(cwd, env.SANDBOX_CREDENTIALS_FILE.trim()) : null;
+  if (mode === "rotate") {
+    if (!explicit) {
+      throw new Error("CREDENTIAL_SOURCE_NOT_CONFIGURED: --rotate replaces a whole credential file and needs --out <new file>; "
+        + "it never defaults to SANDBOX_CREDENTIALS_FILE. Nothing was written.");
+    }
+    if (configured && explicit === configured) {
+      throw new Error("REFUSING: --rotate would replace the canonical credential file (SANDBOX_CREDENTIALS_FILE). "
+        + "Write the rotation to a new file. Nothing was written.");
+    }
+    if (exists(explicit)) {
+      throw new Error(`REFUSING: --rotate would overwrite an existing credential file (${explicit}). Name a new file. Nothing was written.`);
+    }
+  }
   const outPath = explicit ?? configured;
   if (!outPath) {
     throw new Error("CREDENTIAL_SOURCE_NOT_CONFIGURED: name the credential file -- --out <file>, or set SANDBOX_CREDENTIALS_FILE "
@@ -195,10 +229,13 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  // Resolved BEFORE any Firebase call: a missing destination refuses with nothing touched.
-  let outPath;
-  try { outPath = resolveCredentialDestination(args); }
-  catch (err) { console.error(err.message); process.exitCode = 1; return; }
+  // Resolved BEFORE any Firebase call, and only by the two modes that write: a missing or unsafe
+  // destination refuses with nothing touched. The read-only default needs no destination at all.
+  let outPath = null;
+  if (rotate || activateMissing) {
+    try { outPath = resolveCredentialDestination(args, process.env, process.cwd(), { mode: rotate ? "rotate" : "merge" }); }
+    catch (err) { console.error(err.message); process.exitCode = 1; return; }
+  }
 
   initializeApp({ credential: applicationDefault(), projectId: args.projectId });
   const auth = getAuth();
@@ -252,7 +289,8 @@ async function main() {
     await auth.updateUser(u.uid, { password, emailVerified: true });
     creds[u.email] = password;
   }
-  fs.writeFileSync(outPath, `${JSON.stringify(creds, null, 2)}\n`);
+  // "wx": the destination was checked to be new above; never replace a file that appeared since.
+  fs.writeFileSync(outPath, `${JSON.stringify(creds, null, 2)}\n`, { flag: "wx" });
   console.log(`ROTATED ${Object.keys(creds).length} sandbox persona passwords in '${env.id}'.`);
   console.log(`Credentials written to: ${outPath}`);
   console.log("Every previously saved copy is now invalid -- the Owner's included, and any running mission's.");
