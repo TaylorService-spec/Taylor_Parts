@@ -1213,8 +1213,12 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // the baseline.
     // `purchasing.suppliers` joins it BY DESIGN (Parts / Purchasing / Receiving, 2026-10-01): supplier.record.read is
     // registered ungranted, and its holders are the LIVE Administration delta (partsPurchasingReceivingDelta.ts).
+    // `finance.policy` joins it BY DESIGN (Financial Policy Phase 2, DECISIONS #232): finance.policy.* are registered with no
+    // baseline grant; the owner Role's read/approve/activate and the custom financialPolicyPreparer Role are LIVE
+    // Administration decisions (nonprod 2026-10-14), never the baseline. Protected-Administrator standing is not a baseline
+    // Role grant either.
     assert.deepEqual(EXPERIENCE_SURFACE_KEYS.filter((k) => !granted.has(k)).sort(),
-      ["administration.emailCommunications", "purchasing.suppliers", "service.inboundWork", "warehouse.picking"]);
+      ["administration.emailCommunications", "finance.policy", "purchasing.suppliers", "service.inboundWork", "warehouse.picking"]);
 
     // ── THE EOS NAVIGATION SOURCE HAS NO FIREBASE FALLBACK ──
     // When the EOS authority is answering, the LEGACY path must not run at all. Measured through the
