@@ -12,6 +12,7 @@
     "test": "node test/serviceActivityView.test.mjs && node test/financialSummaryView.test.mjs"
   },
   "dependencies": {
+    "@zxing/browser": "^0.2.1",
     "firebase": "^12.15.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

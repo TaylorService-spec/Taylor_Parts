@@ -4,6 +4,7 @@ import Jobs from "./modules/jobs/Jobs";
 import Technicians from "./modules/technicians/Technicians";
 import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
+import PartsScanner from "./modules/mobile/PartsScanner";
 import Inventory from "./modules/inventory/Inventory";
 import Operations from "./modules/operations/Operations";
 import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
@@ -23,6 +24,7 @@ import { IS_DEMO } from "./config/env";
 import { ROLE_NAV_ACCESS } from "./domain/constants";
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
+import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/navConfig";
 
 // Sprint 2.0.1 -- Navigation Foundation (Release 2.0, Platform
@@ -96,6 +98,9 @@ function renderSubnavItem(domain, item, role) {
   if (domain.key === "service" && item.key === "workOrders") {
     return <WorkOrdersList />;
   }
+  if (domain.key === "service" && item.key === "technicianWorkspace") {
+    return <PartsScanner />;
+  }
   // Sprint 2.1.1 -- Inventory Domain Foundation. "Parts" now renders
   // the real Inventory workspace; the legacy demo Inventory.jsx it
   // used to render (via legacyKey "inventory") is left in place,
@@ -106,6 +111,9 @@ function renderSubnavItem(domain, item, role) {
   // untouched.
   if (domain.key === "inventory" && item.key === "parts") {
     return <PartsList />;
+  }
+  if (domain.key === "administration" && item.key === "integrations") {
+    return <IntegrationsFaq />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];

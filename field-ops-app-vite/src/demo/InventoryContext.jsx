@@ -16,6 +16,15 @@ export function InventoryProvider({ children }) {
   const [warehouseStock, setWarehouseStock] = useState(DEMO_MODE ? SEED_WAREHOUSE_STOCK : {});
   const [truckStock, setTruckStock] = useState(DEMO_MODE ? SEED_TRUCK_STOCK : {});
   const [usedPartsByJob, setUsedPartsByJob] = useState({});
+  const [purchaseOrderDraft, setPurchaseOrderDraft] = useState([]);
+  const [scanActivity, setScanActivity] = useState([]);
+
+  const logActivity = useCallback((type, partId, quantity, destination) => {
+    setScanActivity((prev) => [
+      { id: `${Date.now()}-${Math.random()}`, type, partId, quantity, destination, at: new Date().toISOString() },
+      ...prev,
+    ].slice(0, 12));
+  }, []);
 
   // Warehouse -> Truck. Visual/local state only -- decrements warehouse,
   // increments truck. Clamped at 0 so a transfer can never go negative.
@@ -28,7 +37,29 @@ export function InventoryProvider({ children }) {
       ...prev,
       [partId]: (prev[partId] ?? 0) + quantity,
     }));
-  }, []);
+    logActivity("Transfer", partId, quantity, "Truck 14");
+  }, [logActivity]);
+
+  const receivePart = useCallback((partId, quantity) => {
+    setWarehouseStock((prev) => ({ ...prev, [partId]: (prev[partId] ?? 0) + quantity }));
+    logActivity("Received", partId, quantity, "Main warehouse");
+  }, [logActivity]);
+
+  const setCount = useCallback((partId, quantity, location = "warehouse") => {
+    const setter = location === "truck" ? setTruckStock : setWarehouseStock;
+    setter((prev) => ({ ...prev, [partId]: Math.max(0, quantity) }));
+    logActivity("Cycle count", partId, quantity, location === "truck" ? "Truck 14" : "Main warehouse");
+  }, [logActivity]);
+
+  const addToPurchaseOrder = useCallback((partId, quantity) => {
+    setPurchaseOrderDraft((prev) => {
+      const match = prev.find((line) => line.partId === partId);
+      return match
+        ? prev.map((line) => line.partId === partId ? { ...line, quantity: line.quantity + quantity } : line)
+        : [...prev, { partId, quantity }];
+    });
+    logActivity("PO draft", partId, quantity, "Purchase order");
+  }, [logActivity]);
 
   // Records a part as used on a job: decrements truck stock and appends
   // to that job's used-parts list (read by FieldMode's Complete Job
@@ -49,14 +80,20 @@ export function InventoryProvider({ children }) {
       const existing = prev[jobId] ?? [];
       return { ...prev, [jobId]: [...existing, { partId, quantity }] };
     });
-  }, []);
+    logActivity("Work order", partId, quantity, jobId);
+  }, [logActivity]);
 
   const value = {
     parts: SEED_PARTS,
     warehouseStock,
     truckStock,
     usedPartsByJob,
+    purchaseOrderDraft,
+    scanActivity,
     transferPart,
+    receivePart,
+    setCount,
+    addToPurchaseOrder,
     consumePart,
   };
 

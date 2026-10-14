@@ -11,9 +11,9 @@
 export const LOW_STOCK_THRESHOLD = 5;
 
 export const SEED_PARTS = [
-  { id: "Compressor", name: "Compressor", unit: "ea" },
-  { id: "Capacitor", name: "Capacitor", unit: "ea" },
-  { id: "Filter Drier", name: "Filter Drier", unit: "ea" },
+  { id: "Compressor", name: "Scroll Compressor", sku: "CMP-048-230", barcode: "850047120011", category: "Cooling", unit: "ea" },
+  { id: "Capacitor", name: "Dual Run Capacitor 45/5", sku: "CAP-455-440", barcode: "850047120028", category: "Electrical", unit: "ea" },
+  { id: "Filter Drier", name: "Liquid Line Filter Drier", sku: "FDR-163S", barcode: "850047120035", category: "Refrigeration", unit: "ea" },
 ];
 
 export const SEED_WAREHOUSE_STOCK = {

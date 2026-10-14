@@ -11,6 +11,7 @@ import WorkOrderQueue from "./WorkOrderQueue";
 import WorkOrderPreview from "./WorkOrderPreview";
 import TechnicianBoard from "./TechnicianBoard";
 import DispatcherActivityFeed from "./DispatcherActivityFeed";
+import ScheduleBoard from "./ScheduleBoard";
 
 // Epic 2 Phase 2C -- Dispatcher Operations Board. A new, additional
 // screen -- does NOT replace or modify ControlTower.jsx, Dispatch.jsx,
@@ -80,7 +81,7 @@ export default function DispatcherBoard() {
   // bookkeeping -- if the selected WO still exists, it's still
   // selected; if it was removed/filtered out, selection just clears
   // (falls back to null, WorkOrderPreview shows its empty state).
-  const selectedWorkOrder = filteredWorkOrders.find((wo) => wo.id === selectedId) ?? null;
+  const selectedWorkOrder = workOrders.find((wo) => wo.id === selectedId) ?? null;
 
   useEffect(() => {
     if (selectedId && !workOrders.some((wo) => wo.id === selectedId)) {
@@ -89,8 +90,8 @@ export default function DispatcherBoard() {
   }, [workOrders, selectedId]);
 
   const recommendationsByWorkOrderId = useMemo(
-    () => recommendTechniciansBatch(filteredWorkOrders, technicians, workOrders),
-    [filteredWorkOrders, technicians, workOrders]
+    () => recommendTechniciansBatch(workOrders, technicians, workOrders),
+    [technicians, workOrders]
   );
 
   async function handleDispatchDrop(workOrder, technicianId) {
@@ -138,10 +139,22 @@ export default function DispatcherBoard() {
   }
 
   const loading = workOrdersLoading || techniciansLoading;
+  const readyForWork = filteredWorkOrders.filter((wo) => wo.status !== "SCHEDULED");
 
   return (
-    <div className="fo-panel">
-      <h2>Dispatcher Board</h2>
+    <div className="fo-panel disp-workspace">
+      <header className="disp-workspace-header">
+        <div>
+          <p className="disp-eyebrow">Service operations</p>
+          <h2>Scheduler & dispatch</h2>
+          <p>Plan technician capacity, then dispatch only when work is ready.</p>
+        </div>
+        <div className="disp-status-legend" aria-label="Work order status legend">
+          <span><i className="disp-legend-scheduled" />Scheduled</span>
+          <span><i className="disp-legend-active" />In progress</span>
+          <span><i className="disp-legend-complete" />Complete</span>
+        </div>
+      </header>
 
       <div className="disp-board-toolbar">
         <input
@@ -178,36 +191,20 @@ export default function DispatcherBoard() {
       ) : filteredWorkOrders.length === 0 ? (
         <p className="fo-muted">No work orders match "{searchInput}" / the selected status filter. Try clearing the search or choosing "All statuses".</p>
       ) : (
-        <div
-          className="disp-board-layout"
-          ref={queueRef}
-          onKeyDown={handleQueueKeyDown}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => e.preventDefault()}
-        >
-          <WorkOrderQueue
-            workOrders={filteredWorkOrders}
-            recommendationsByWorkOrderId={recommendationsByWorkOrderId}
-            technicians={technicians}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
-          <WorkOrderPreview
-            workOrder={selectedWorkOrder}
-            technicians={technicians}
-            recommendations={selectedWorkOrder ? recommendationsByWorkOrderId.get(selectedWorkOrder.id) ?? [] : []}
-            onDispatchToTechnician={handleDispatchDrop}
-            isDispatching={isDispatching}
-          />
-          <TechnicianBoard
-            technicians={technicians}
-            selectedWorkOrder={selectedWorkOrder}
-            recommendations={selectedWorkOrder ? recommendationsByWorkOrderId.get(selectedWorkOrder.id) ?? [] : []}
-            allWorkOrders={workOrders}
-            onDropTechnician={handleDispatchDrop}
-            isDispatching={isDispatching}
-          />
-        </div>
+        <>
+          <ScheduleBoard technicians={technicians} workOrders={workOrders} onSelect={setSelectedId} />
+          <section className="disp-ready-section" aria-labelledby="ready-heading">
+            <div className="disp-section-heading">
+              <div><p className="disp-eyebrow">Dispatch queue</p><h3 id="ready-heading">Ready for work</h3></div>
+              <p>Scheduled work stays in the schedule above.</p>
+            </div>
+            <div className="disp-board-layout" ref={queueRef} onKeyDown={handleQueueKeyDown} onDragOver={(e) => e.preventDefault()} onDrop={(e) => e.preventDefault()}>
+              <WorkOrderQueue workOrders={readyForWork} recommendationsByWorkOrderId={recommendationsByWorkOrderId} technicians={technicians} selectedId={selectedId} onSelect={setSelectedId} />
+              <WorkOrderPreview workOrder={selectedWorkOrder} technicians={technicians} recommendations={selectedWorkOrder ? recommendationsByWorkOrderId.get(selectedWorkOrder.id) ?? [] : []} onDispatchToTechnician={handleDispatchDrop} isDispatching={isDispatching} />
+              <TechnicianBoard technicians={technicians} selectedWorkOrder={selectedWorkOrder} recommendations={selectedWorkOrder ? recommendationsByWorkOrderId.get(selectedWorkOrder.id) ?? [] : []} allWorkOrders={workOrders} onDropTechnician={handleDispatchDrop} isDispatching={isDispatching} />
+            </div>
+          </section>
+        </>
       )}
     </div>
   );

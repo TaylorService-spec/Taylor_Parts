@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left; }
+    td.ls { padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px; }
+    span.fc { display: block; font: 600 9.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-top: 3px; }
+    span.inact { font-size: 12.5px; color: #6B7A74; font-style: italic; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #6B7A74; border-radius: 50%; color: #4A5B55; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; z-index: 40; box-shadow: 0 6px 20px rgba(16,43,36,0.35); font-weight: 400; }
+    .hlp:hover .tip { display: block; }
+    .seg { display: inline-flex; outline: 1px solid #C3BCAB; font: 600 12px Inter, sans-serif; }
+    .seg span { padding: 6px 12px; color: #4A5B55; }
+    .seg span.on { background: #102B24; color: #fff; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div id="1a" style="width: 1500px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a</span>Financials Overview — 1440 · /financials · management scorecard, not a card wall</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Every figure carries its fact class · absent authority stays absent</span>
+    </div>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; display: flex;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Dashboard</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">Equipment</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Service</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Inventory</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #fff;">▾ Financials<span class="hlp" style="border-color:#6B7A74;">i<span class="tip">Nav taxonomy for the 20 Financials routes is a PRODUCT QUESTION (FIN-PQ-001): this rail shows the operational cluster; management/administration pages likely group under Reporting and Governance rather than 20 flat entries. Nothing here asserts a final IA.</span></span></div>
+        <div style="margin: 2px 12px; padding: 6px 10px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Overview</div>
+        <div style="padding: 5px 16px 5px 34px;">Billing Queue</div>
+        <div style="padding: 5px 16px 5px 34px;">Invoices</div>
+        <div style="padding: 5px 16px 5px 34px;">Accounts Receivable</div>
+        <div style="padding: 5px 16px 5px 34px;">Payments</div>
+        <div style="padding: 5px 16px 5px 34px;">Credits &amp; Adjustments</div>
+        <div style="padding: 5px 16px 5px 34px;">Reports</div>
+        <div style="padding: 5px 16px 5px 34px;">Governance</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 40px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Financials → Overview</span>
+          <span style="font-size: 11.5px; color: #6B7A74;">Read-checked 6:04 AM · <a href="#r">Refresh</a></span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; padding: 18px 0 8px;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 32px; font-weight: 700; margin: 0 0 4px;">Financials</h1>
+            <div style="font-size: 13px; color: #4A5B55;">Operational financial subledger. Not the general ledger — external accounting authority not yet selected.<span class="hlp">i<span class="tip">Custody sentence — permanent contract copy. EOS composes governed operational financial events; statutory accounting, chart of accounts and close belong to a future external authority. Every figure below carries its fact class so OPERATIONAL_ACTUAL is never mistaken for ACCOUNTING_RECONCILED_ACTUAL.</span></span></div>
+          </div>
+          <span style="font-size: 12.5px; color: #4A5B55;">Scope: <strong>Operating company</strong> · you see Taylor + Ventana<span class="hlp">i<span class="tip">Governed visibility scopes (SELF / TEAM / BUSINESS_UNIT / OPERATING_COMPANY / CONSOLIDATED) decide which figures render at all. This frame draws the CONSOLIDATED-permitted view; a SELF-scoped user lands on Employee Performance, not here. Restriction follows the number — hiding here alone is never authority.</span></span></span>
+        </header>
+        <div style="display: flex; gap: 18px; align-items: center; padding: 8px 0 18px; border-bottom: 1px solid #C3BCAB;">
+          <span class="seg"><span class="on">Consolidated</span><span>Taylor</span><span>Ventana</span></span>
+          <span class="seg"><span class="on">All units</span><span>Service</span><span>Equipment Sales</span><span>Parts</span><span>Installation</span></span>
+          <span style="font-size: 12.5px; color: #4A5B55;">Period <strong style="color: #102B24;">Month · August 2026</strong> ▾</span>
+          <span class="hlp">i<span class="tip">The shared Financials filter grammar: Company (Consolidated / Taylor / Ventana), Business Unit, Period (Month / Quarter / YTD / Year / Custom). Identical wording and order on all 20 pages. Company is a governed dimension — never inferred from location, warehouse, manufacturer, route or free text.</span></span>
+        </div>
+        <section style="padding: 22px 0 6px;">
+          <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 0;">
+            <div style="border-right: 1px solid #D9D3C6; padding-right: 18px;"><div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Booked</div><div style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin-top: 2px;">$412,800</div><span class="fc">Operational actual</span><div style="font-size: 12px; margin-top: 4px;"><a href="#so">28 sales orders →</a></div></div>
+            <div style="border-right: 1px solid #D9D3C6; padding: 0 18px;"><div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Billable now</div><div style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin-top: 2px;">$74,200</div><span class="fc">Operational actual</span><div style="font-size: 12px; margin-top: 4px;"><a href="#bq">Billing queue →</a></div></div>
+            <div style="border-right: 1px solid #D9D3C6; padding: 0 18px;"><div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Billed</div><div style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin-top: 2px;">$288,150</div><span class="fc">Operational actual</span><div style="font-size: 12px; margin-top: 4px;"><a href="#inv">41 invoices →</a></div></div>
+            <div style="border-right: 1px solid #D9D3C6; padding: 0 18px;"><div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Collected</div><div style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin-top: 2px;">$231,900</div><span class="fc">Operational actual</span><div style="font-size: 12px; margin-top: 4px;"><a href="#pay">Payments →</a></div></div>
+            <div style="border-right: 1px solid #D9D3C6; padding: 0 18px;"><div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">A/R outstanding</div><div style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin-top: 2px;">$56,250</div><span class="fc">Operational actual</span><div style="font-size: 12px; margin-top: 4px;"><a href="#ar">Aging →</a></div></div>
+            <div style="padding-left: 18px;"><div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Unbilled</div><div style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin-top: 2px;">$124,650</div><span class="fc">Derived · booked − billed</span><div style="font-size: 12px; margin-top: 4px;"><span style="color:#6B7A74;">$74,200 eligible today</span></div></div>
+          </div>
+          <div style="font-size: 12px; color: #6B7A74; margin-top: 10px;">Lifecycle scorecard<span class="hlp">i<span class="tip">One ribbon carries the six lifecycle facts in lifecycle order — BOOKED, BILLABLE, BILLED, COLLECTED, A/R, UNBILLED stay distinct words on every page. Unbilled is the one derived figure and says so in a visible derivation label. Each figure drills to the page that owns it. No card farm: six figures, one rule of type.</span></span></div>
+        </section>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 40px; margin-top: 20px;">
+          <div>
+            <h3 class="rh">Performance against plan — August 2026</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead><tr><th class="ls">Business unit</th><th class="ls" style="text-align:right;">Actual</th><th class="ls" style="text-align:right;">Goal</th><th class="ls" style="text-align:right;">Attainment</th><th class="ls">Basis</th></tr></thead>
+              <tbody>
+                <tr><td class="ls"><strong>Equipment Sales</strong></td><td class="ls" style="text-align:right;">$208,400</td><td class="ls" style="text-align:right;">$225,000</td><td class="ls" style="text-align:right; font-weight:600;">93%</td><td class="ls" style="color:#4A5B55;">Booked</td></tr>
+                <tr><td class="ls"><strong>Service</strong></td><td class="ls" style="text-align:right;">$121,300</td><td class="ls" style="text-align:right;">$110,000</td><td class="ls" style="text-align:right; font-weight:600; color:#237A45;">110%</td><td class="ls" style="color:#4A5B55;">Billed</td></tr>
+                <tr><td class="ls"><strong>Parts</strong></td><td class="ls" style="text-align:right;">$64,900</td><td class="ls" style="text-align:right;">$70,000</td><td class="ls" style="text-align:right; font-weight:600;">93%</td><td class="ls" style="color:#4A5B55;">Billed</td></tr>
+                <tr><td class="ls"><strong>Installation</strong></td><td class="ls" style="text-align:right;">$18,200</td><td class="ls" style="text-align:right; color:#6B7A74;"><span class="inact">No goal set</span></td><td class="ls" style="text-align:right; color:#6B7A74;">—</td><td class="ls" style="color:#6B7A74;">—</td></tr>
+              </tbody>
+            </table>
+            <div style="font-size: 12px; margin-top: 8px;"><a href="#stg">Sales to Goal →</a> · <a href="#gm">Goal management →</a><span class="hlp">i<span class="tip">Every goal row states its measurement basis (BOOKED / BILLED / COLLECTED / REVENUE / GROSS_MARGIN) in its own column — unlike bases are never summed or compared silently, so this table has no total row. A unit without a goal reports the absence in words, not a fake 0% bar.</span></span></div>
+            <section style="margin-top: 26px;">
+              <h3 class="rh">Cost &amp; margin</h3>
+              <div style="background: #FCFAF6; border: 1px solid #D9D3C6; padding: 14px 16px; font-size: 13px; max-width: 560px;">
+                <strong>Cost and gross-margin authority is not yet established.</strong>
+                <div style="color: #4A5B55; margin-top: 4px; line-height: 1.6;">EOS does not yet govern cost actuals (FIN-006). Cost to Budget and Gross Margin open as designed pages with the same truthful state.</div>
+                <div style="font-size: 12.5px; margin-top: 6px;"><a href="#ctb">Cost to Budget →</a> · <a href="#pf">Profitability →</a></div>
+              </div>
+            </section>
+          </div>
+          <aside>
+            <h3 class="rh">Exceptions</h3>
+            <div style="font-size: 13px; line-height: 1.7;">
+              <div style="display:flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #D9D3C6;"><a href="#b1">Billing blocked</a><span style="color:#B23B3B; font-weight:600;">6 items · $31,450</span></div>
+              <div style="display:flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #D9D3C6;"><a href="#b2">Unapplied payments</a><span style="color:#8A6D28; font-weight:600;">2 · $4,180</span></div>
+              <div style="display:flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #D9D3C6;"><a href="#b3">Invoices 60+ days</a><span style="color:#B23B3B; font-weight:600;">3 · $12,900</span></div>
+              <div style="display:flex; justify-content: space-between; padding: 7px 0;"><span style="color:#4A5B55;">Reconciliation exceptions</span><span class="inact">No accounting authority</span></div>
+            </div>
+            <div style="font-size: 12px; color: #6B7A74; margin-top: 8px;">Attention before totals<span class="hlp">i<span class="tip">The exception rail is the management entry point: each line is a governed read with a drilldown, never a computed guess. Reconciliation reports its own missing authority (FIN-010) rather than a zero — a zero would claim a reconciliation read that does not exist.</span></span></div>
+            <section style="margin-top: 24px;">
+              <h3 class="rh">Forecast</h3>
+              <div style="font-size: 13px; line-height: 1.7;"><strong>$438,000</strong> September outlook<span class="fc" style="display:inline; margin-left:8px;">Forecast · as of Aug 28</span><br><a href="#fc" style="font-size:12.5px;">Forecasting →</a></div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </div>
+    <div style="font-size: 12px; color: #4A5B55; margin: 8px 0 0;">Composition notes<span class="hlp">i<span class="tip">One page identity, one H1, scorecard → plan table → exception rail. Fact classes are typographic law here: OPERATIONAL_ACTUAL, FORECAST, GOAL each appear labelled; ACCOUNTING_RECONCILED_ACTUAL appears nowhere because no accounting authority exists. All specimen figures are Certification World fixtures — the shape of the read, not live claims.</span></span></div>
+  </div>
+
+  <div id="1a-mobile" style="width: 420px;">
+    <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a-m</span>Overview 375 — recomposed, not shrunk</span>
+    <div id="f1am" style="width: 375px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px;">
+      <div style="background: #102B24; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px;">Verenward</span>
+        <span style="font-size: 12px; color: #B9C1BE;">☰</span>
+      </div>
+      <div style="padding: 16px;">
+        <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Financials → Overview</div>
+        <h1 style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700; margin: 6px 0 2px;">Financials</h1>
+        <div style="font-size: 12px; color: #4A5B55; line-height: 1.5;">Operational subledger — not the general ledger.</div>
+        <div style="display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap;">
+          <span class="seg" style="font-size: 11.5px;"><span class="on" style="padding: 5px 10px;">Consolidated</span><span style="padding: 5px 10px;">Taylor</span><span style="padding: 5px 10px;">Ventana</span></span>
+          <span style="font-size: 12px; color: #4A5B55; padding: 5px 0;">Aug 2026 ▾</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 2px solid #102B24;">
+          <div style="padding: 12px 12px 12px 0; border-bottom: 1px solid #D9D3C6; border-right: 1px solid #D9D3C6;"><div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Booked</div><div style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700;">$412,800</div><span class="fc">Operational actual</span></div>
+          <div style="padding: 12px 0 12px 12px; border-bottom: 1px solid #D9D3C6;"><div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Billable now</div><div style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700;">$74,200</div><span class="fc">Operational actual</span></div>
+          <div style="padding: 12px 12px 12px 0; border-bottom: 1px solid #D9D3C6; border-right: 1px solid #D9D3C6;"><div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Billed</div><div style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700;">$288,150</div><span class="fc">Operational actual</span></div>
+          <div style="padding: 12px 0 12px 12px; border-bottom: 1px solid #D9D3C6;"><div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Collected</div><div style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700;">$231,900</div><span class="fc">Operational actual</span></div>
+          <div style="padding: 12px 12px 12px 0; border-bottom: 1px solid #D9D3C6; border-right: 1px solid #D9D3C6;"><div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">A/R</div><div style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700;">$56,250</div><span class="fc">Operational actual</span></div>
+          <div style="padding: 12px 0 12px 12px; border-bottom: 1px solid #D9D3C6;"><div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Unbilled</div><div style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700;">$124,650</div><span class="fc">Derived · booked − billed</span></div>
+        </div>
+        <section style="margin-top: 16px;">
+          <h3 class="rh">Exceptions</h3>
+          <div style="font-size: 13px; line-height: 1.7;">
+            <div style="display:flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #D9D3C6;"><a href="#m1">Billing blocked</a><span style="color:#B23B3B; font-weight:600;">6 · $31,450</span></div>
+            <div style="display:flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #D9D3C6;"><a href="#m2">Unapplied payments</a><span style="color:#8A6D28; font-weight:600;">2 · $4,180</span></div>
+            <div style="display:flex; justify-content: space-between; padding: 6px 0;"><a href="#m3">Invoices 60+ days</a><span style="color:#B23B3B; font-weight:600;">3 · $12,900</span></div>
+          </div>
+        </section>
+        <section style="margin-top: 16px; padding-bottom: 8px;">
+          <h3 class="rh">Against plan</h3>
+          <div style="font-size: 13px; line-height: 1.9;">
+            <div style="display:flex; justify-content: space-between;"><span>Equipment Sales <span style="color:#6B7A74; font-size:11.5px;">Booked</span></span><strong>93%</strong></div>
+            <div style="display:flex; justify-content: space-between;"><span>Service <span style="color:#6B7A74; font-size:11.5px;">Billed</span></span><strong style="color:#237A45;">110%</strong></div>
+            <div style="display:flex; justify-content: space-between;"><span>Parts <span style="color:#6B7A74; font-size:11.5px;">Billed</span></span><strong>93%</strong></div>
+            <div style="display:flex; justify-content: space-between;"><span>Installation</span><span class="inact">No goal set</span></div>
+          </div>
+        </section>
+      </div>
+    </div>
+    <div style="font-size: 12px; color: #4A5B55; margin: 8px 0 0;">Mobile notes<span class="hlp">i<span class="tip">375 recomposes: scorecard becomes a 2×3 grid with the same six lifecycle words and fact-class labels; exceptions outrank the plan table because attention is the mobile job. Cost/margin band is omitted, not summarized — its absence state lives on its own pages.</span></span></div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>
