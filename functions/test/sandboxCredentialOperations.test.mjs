@@ -496,3 +496,61 @@ test("the dry run's disposition counts are 6 / 10 / 0", () => {
   assert.equal(result.counts.createAuthAccount, 0);
   assert.match(bootstrap.formatPlan(result), /RESET_EXISTING_SANDBOX_PASSWORD : 10/);
 });
+
+// ═════ UAT CREDENTIAL SINGLE SOURCE (Owner-approved S1–S4, 2026-10-14) ═════
+// activateSandboxPersonas no longer has an implicit destination; every UAT script names a persona by its canonical role key.
+// No test here writes, reads or prints a real credential: the files are throwaway temp files holding no password.
+const activator = require("../scripts/activateSandboxPersonas.js");
+
+test("CREDENTIAL DESTINATION: --out, else SANDBOX_CREDENTIALS_FILE, else CREDENTIAL_SOURCE_NOT_CONFIGURED -- never the repository root", () => {
+  const resolve = (args, env) => activator.resolveCredentialDestination(args, env, "/work/functions");
+  assert.throws(() => resolve({}, {}), /^Error: CREDENTIAL_SOURCE_NOT_CONFIGURED|CREDENTIAL_SOURCE_NOT_CONFIGURED/);
+  assert.throws(() => resolve({ out: "true" }, {}), /CREDENTIAL_SOURCE_NOT_CONFIGURED/, "a bare --out names nothing");
+  assert.throws(() => resolve({}, { SANDBOX_CREDENTIALS_FILE: "   " }), /CREDENTIAL_SOURCE_NOT_CONFIGURED/, "a blank variable names nothing");
+  assert.equal(resolve({}, { SANDBOX_CREDENTIALS_FILE: "/canon/sandbox-credentials.local.json" }), "/canon/sandbox-credentials.local.json");
+  assert.equal(resolve({ out: "/mine/sandbox-credentials.local.json" }, { SANDBOX_CREDENTIALS_FILE: "/canon/sandbox-credentials.local.json" }),
+    "/mine/sandbox-credentials.local.json", "an explicit --out wins");
+  assert.equal(resolve({ out: "rel.credentials.local.json" }, {}), "/work/functions/rel.credentials.local.json", "relative to the working directory");
+  assert.throws(() => resolve({ out: "/x/creds.json" }, {}), /REFUSING: the credential file must end with 'credentials\.local\.json'/);
+  // The parser the CLI uses: --out with no value is "true", which names nothing.
+  assert.deepEqual(activator.parseArgs(["--out", "--activate-missing"]), { out: "true", "activate-missing": "true" });
+});
+
+test("CREDENTIAL DESTINATION: the CLI resolves its destination BEFORE any Firebase call and keeps no repository-root default", () => {
+  const src = readFileSync(require.resolve("../scripts/activateSandboxPersonas.js"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  assert.doesNotMatch(src, /"\.\.\/\.\.\/sandbox-credentials\.local\.json"/, "the silent repository-root destination is gone");
+  const main = src.slice(src.indexOf("async function main()"));
+  assert.ok(main.indexOf("resolveCredentialDestination(args)") > 0 && main.indexOf("resolveCredentialDestination(args)") < main.indexOf("initializeApp("),
+    "an unconfigured destination refuses before Firebase is touched");
+});
+
+test("CREDENTIAL DESTINATION: resolving never creates or touches a credential file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "activator-dest-"));
+  try {
+    const target = join(dir, "sandbox-credentials.local.json");
+    assert.equal(activator.resolveCredentialDestination({}, { SANDBOX_CREDENTIALS_FILE: target }, dir), target);
+    assert.equal(existsSync(target), false, "resolution wrote nothing");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("UAT SCRIPTS name the 16 accepted personas by CANONICAL ROLE KEY -- never a legacy alias, never an email", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const repo = join(import.meta.dirname, "..", "..");
+  const canonical = new Set(REGISTRY.roles.map((r) => r.key));
+  assert.equal(canonical.size, 16);
+  const files = execFileSync("git", ["ls-files", "scripts", "functions/scripts", "functions/_e2e.mjs", "field-ops-app-vite/scripts",
+    "field-ops-app-vite/.claude/skills"], { cwd: repo, encoding: "utf8" }).split("\n").filter((f) => /\.(mjs|js|cjs)$/.test(f) && !/\.test\./.test(f));
+  const offenders = [];
+  // The persona position in every sign-in helper shape the UAT scripts use: the first argument of signInPersona /
+  // loadSandboxPersona / signIn / idTokenFor, and the SECOND argument of the seeders' call(name, persona, ...).
+  const shapes = [/\b(signInPersona|loadSandboxPersona|signIn|idTokenFor)\(\s*["'`]([^"'`]+)["'`]/g,
+    /\b(call)\(\s*["'`][^"'`]+["'`]\s*,\s*["'`]([^"'`]+)["'`]/g];
+  for (const f of files) {
+    const text = readFileSync(join(repo, f), "utf8");
+    for (const shape of shapes) for (const m of text.matchAll(shape)) if (!canonical.has(m[2])) offenders.push(`${f}: ${m[1]}("${m[2]}")`);
+  }
+  assert.deepEqual(offenders, [], "every literal persona a UAT script signs in as is a canonical role key");
+  // The one actor constant in the certification world is canonical too.
+  const grants = readFileSync(join(repo, "functions/scripts/certificationWorld/applyRoleGrants.mjs"), "utf8");
+  assert.match(grants, /const ACTOR_PERSONA = "ownerExecutive";/);
+});

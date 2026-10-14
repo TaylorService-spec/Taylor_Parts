@@ -13,7 +13,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync, statSync } from "node:fs";
+import os from "node:os";
 import { pathToFileURL } from "node:url";
 
 const REPO = path.resolve(import.meta.dirname, "../..");
@@ -445,11 +446,19 @@ test("CLI: the governed flags are RECOGNISED by the parser, not rejected as unkn
 // the installer's tests do: the shared gate can be perfect and this file can still not be calling
 // it, which is precisely what was true before.
 // =================================================================================================
-const { authorizeProvisioning } = await import(L("functions/scripts/certificationWorld/provisionPrincipals.mjs"));
+const { authorizeProvisioning, resolveActivationCredentialFile } = await import(L("functions/scripts/certificationWorld/provisionPrincipals.mjs"));
 
+// SANDBOX_CREDENTIALS_FILE is cleared unless a test sets it: an operator's shell value must never decide a test.
 const prov = (args, env = {}) =>
-  withEnv({ FIRESTORE_EMULATOR_HOST: undefined, GOOGLE_CLOUD_PROJECT: undefined, GCLOUD_PROJECT: undefined, ...env },
+  withEnv({ FIRESTORE_EMULATOR_HOST: undefined, GOOGLE_CLOUD_PROJECT: undefined, GCLOUD_PROJECT: undefined, SANDBOX_CREDENTIALS_FILE: undefined, ...env },
     () => authorizeProvisioning(args));
+// A throwaway, EMPTY credential file in the OS temp dir: never a real credential, never the operator's file.
+const tempCredentialFile = () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "prov-cred-"));
+  const file = path.join(dir, "sandbox-credentials.local.json");
+  writeFileSync(file, "{}\n", "utf8");
+  return { dir, file };
+};
 const provRefused = (args, env = {}) => {
   try { prov(args, env); return null; } catch (err) { return err; }
 };
@@ -541,10 +550,56 @@ test("PRINCIPALS: --activate-logins never produces an authorized live run on its
 });
 
 test("PRINCIPALS: --activate-logins does not change a properly authorized run's target decision", () => {
-  const r = prov(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG, "--activate-logins"]);
-  assert.equal(r.target.projectId, CERTIFICATION_PROJECT);
-  assert.equal(r.apply, true);
-  assert.equal(r.activate, true, "the flag is still reported; it is simply not what authorized the run");
+  const { dir, file } = tempCredentialFile();
+  try {
+    const r = prov(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG, "--activate-logins", "--credential-file", file]);
+    assert.equal(r.target.projectId, CERTIFICATION_PROJECT);
+    assert.equal(r.apply, true);
+    assert.equal(r.activate, true, "the flag is still reported; it is simply not what authorized the run");
+    assert.equal(r.credentialFile, file);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// -- THE CREDENTIAL FILE IS NAMED, NEVER GUESSED (UAT credential single-source correction, 2026-10-14) --------------
+
+test("PRINCIPALS: --activate-logins with no credential source configured is refused BEFORE anything is created", () => {
+  for (const args of [
+    ["--projectId", CERTIFICATION_PROJECT, "--activate-logins"],
+    ["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG, "--activate-logins"],
+    ["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG, "--activate-logins", "--credential-file"],
+  ]) {
+    const err = provRefused(args);
+    assert.ok(err, args.join(" "));
+    assert.match(err.message, /^CREDENTIAL_SOURCE_NOT_CONFIGURED/, args.join(" "));
+  }
+  // Without --activate-logins nothing about credentials is asked, so the ordinary runs are unchanged.
+  assert.equal(prov(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG]).credentialFile, null);
+});
+
+test("PRINCIPALS: the credential file is --credential-file, else SANDBOX_CREDENTIALS_FILE; it must exist and is never created", () => {
+  const { dir, file } = tempCredentialFile();
+  try {
+    const live = ["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG, "--activate-logins"];
+    assert.equal(prov(live, { SANDBOX_CREDENTIALS_FILE: file }).credentialFile, file, "the configured canonical source");
+    assert.equal(prov([...live, `--credential-file=${file}`], { SANDBOX_CREDENTIALS_FILE: "/elsewhere/sandbox-credentials.local.json" }).credentialFile, file,
+      "an explicit file wins over the configured one");
+    const missing = path.join(dir, "absent", "sandbox-credentials.local.json");
+    const err = provRefused([...live, "--credential-file", missing]);
+    assert.match(err.message, /^CREDENTIAL_ACCESS_FAILED/);
+    assert.throws(() => statSync(missing), "a missing file is refused, never created");
+    assert.equal(readFileSync(file, "utf8"), "{}\n", "resolving a destination writes nothing");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+  // The pure resolver, with an injected existence probe.
+  const exists = (p) => p === "/c/sandbox-credentials.local.json";
+  assert.equal(resolveActivationCredentialFile(["--credential-file", "/c/sandbox-credentials.local.json"], {}, "/w", exists), "/c/sandbox-credentials.local.json");
+  assert.throws(() => resolveActivationCredentialFile([], {}, "/w", exists), /^Error: CREDENTIAL_SOURCE_NOT_CONFIGURED|CREDENTIAL_SOURCE_NOT_CONFIGURED/);
+});
+
+test("PRINCIPALS: no candidate-path guessing remains in provisionPrincipals.mjs", () => {
+  const src = readFileSync(L("functions/scripts/certificationWorld/provisionPrincipals.mjs").replace(/^file:\/\//, ""), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  assert.doesNotMatch(src, /candidatePaths/, "the WSL-stub guess is gone from code");
+  assert.match(src, /activateLogins\(auth, rows, credentialFile\)/, "activation writes only the resolved, named file");
 });
 
 // -- PRODUCTION, UNKNOWN, AMBIENT, NO TARGET -----------------------------------------------------

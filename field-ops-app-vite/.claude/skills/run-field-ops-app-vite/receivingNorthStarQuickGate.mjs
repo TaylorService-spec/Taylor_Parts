@@ -55,7 +55,7 @@ async function main() {
       `deployed='${version.commit}' expected='${EXPECTED_SHA}'`);
   }
 
-  const session = await signInPersona("admin");
+  const session = await signInPersona("administrator");
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 

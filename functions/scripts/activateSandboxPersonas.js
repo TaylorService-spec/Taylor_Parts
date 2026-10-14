@@ -43,7 +43,10 @@
  * Usage:
  *   cd functions
  *   node scripts/activateSandboxPersonas.js --projectId eos-platform-sandbox \
- *     --out ../.sandbox-credentials.local.json
+ *     --out "$SANDBOX_CREDENTIALS_FILE"
+ *
+ *   The destination is never implicit: --out, or SANDBOX_CREDENTIALS_FILE when --out is omitted;
+ *   neither refuses with CREDENTIAL_SOURCE_NOT_CONFIGURED (no repository-root default).
  *
  *   # give newly provisioned accounts a password without disturbing the rest:
  *   node scripts/activateSandboxPersonas.js --projectId eos-platform-sandbox \
@@ -157,6 +160,28 @@ async function activateMissingSandboxPasswords({ auth, personas, outPath, emailA
   return { scope: allowlist ? "ALLOWLIST" : "EVERY_SANDBOX_PERSONA", considered: considered.length, activated, unchanged, missing };
 }
 
+/**
+ * WHERE CREDENTIALS ARE WRITTEN -- never implicit (UAT credential single-source correction, Owner-approved 2026-10-14).
+ * The destination is `--out <file>` when given, otherwise the configured `SANDBOX_CREDENTIALS_FILE` (the one canonical
+ * credential source scripts/sandboxCredentials.mjs reads). Neither: CREDENTIAL_SOURCE_NOT_CONFIGURED -- there is NO default
+ * path any more; this tool used to fall back to the repository root and silently start a divergent credential copy there.
+ * The file must still end in `credentials.local.json` (the gitignore rule). Returns an absolute path; touches no file.
+ */
+function resolveCredentialDestination(args, env = process.env, cwd = process.cwd()) {
+  const explicit = typeof args.out === "string" && args.out !== "true" && args.out.trim() !== "" ? path.resolve(cwd, args.out.trim()) : null;
+  const configured = typeof env.SANDBOX_CREDENTIALS_FILE === "string" && env.SANDBOX_CREDENTIALS_FILE.trim() !== ""
+    ? path.resolve(cwd, env.SANDBOX_CREDENTIALS_FILE.trim()) : null;
+  const outPath = explicit ?? configured;
+  if (!outPath) {
+    throw new Error("CREDENTIAL_SOURCE_NOT_CONFIGURED: name the credential file -- --out <file>, or set SANDBOX_CREDENTIALS_FILE "
+      + "to the canonical credential file. Nothing was written.");
+  }
+  if (!/credentials\.local\.json$/.test(outPath)) {
+    throw new Error("REFUSING: the credential file must end with 'credentials.local.json' so it matches the gitignore rule. Nothing was written.");
+  }
+  return outPath;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   let env;
@@ -170,14 +195,10 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  const outPath = args.out && args.out !== "true"
-    ? path.resolve(process.cwd(), args.out)
-    : path.resolve(__dirname, "../../sandbox-credentials.local.json");
-  if (!/credentials\.local\.json$/.test(outPath)) {
-    console.error("REFUSING: --out must end with 'credentials.local.json' so it matches the gitignore rule.");
-    process.exitCode = 1;
-    return;
-  }
+  // Resolved BEFORE any Firebase call: a missing destination refuses with nothing touched.
+  let outPath;
+  try { outPath = resolveCredentialDestination(args); }
+  catch (err) { console.error(err.message); process.exitCode = 1; return; }
 
   initializeApp({ credential: applicationDefault(), projectId: args.projectId });
   const auth = getAuth();
@@ -238,7 +259,7 @@ async function main() {
   console.log("This file is gitignored and must never be committed or shared outside the sandbox.");
 }
 
-module.exports = { activateMissingSandboxPasswords, generateSandboxPassword, assertNonProductionTarget, SANDBOX_EMAIL_SUFFIX };
+module.exports = { activateMissingSandboxPasswords, generateSandboxPassword, assertNonProductionTarget, resolveCredentialDestination, parseArgs, SANDBOX_EMAIL_SUFFIX };
 
 // STANDALONE CLI BEHAVIOUR IS UNCHANGED, and only runs when this file is the entry point -- so the Sample
 // Company can require() the activation function without the CLI executing.
