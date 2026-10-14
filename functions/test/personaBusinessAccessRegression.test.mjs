@@ -186,7 +186,9 @@ test("the experience surface catalog satisfies its own invariants", () => {
   // 32 -> 33: `purchasing.suppliers` (Parts / Purchasing / Receiving, 2026-10-01), earned by supplier.record.read.
   // 33 -> 34: `rental.workspace` (Rental, #207), earned by rental.agreement.read.
   // 34 -> 35: `analysis.workspace` (Analysis & Reporting, #208), earned by any read a measure is decided on, or reportDefinition.read.
-  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 35);
+  // 35 -> 36: `finance.policy` (Financial Policy Administration UI, #232 Phase 2), earned by finance.policy.read flat or at
+  // operatingCompany scope.
+  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 36);
   assert.equal(EXPERIENCE_SURFACE_KEYS.includes("commercial.agreements"), true);
 });
 

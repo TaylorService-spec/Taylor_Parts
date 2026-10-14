@@ -9,7 +9,8 @@
 //   reconcile   finance.reconciliation.record
 //   cost        inventory.receipt.correct + WAREHOUSE scope (late cost evidence -- costEvidenceSupplyCommand.ts)
 //   relief      inventory.transfer.dispatch + WAREHOUSE scope (intercompany inventory relief -- intercompanyInventoryRelief.ts)
-//   policy      finance.policy.read / .prepare / .approve / .activate -- the Financial Policy lifecycle (financialPolicy.ts, #232)
+//   policy      finance.policy.read / .prepare / .approve / .activate -- the Financial Policy lifecycle (financialPolicy.ts, #232),
+//               plus readMyFinancialPolicyAuthority (finance.policy.read): the caller's own reach, for the Administration screen
 // Configuration stays finance.configuration.manage on /admin/policy. A Sales or Technician principal holds none of the
 // transaction keys, so it cannot manufacture a settlement fact.
 //

@@ -209,6 +209,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
 
   await t.test("AUTH: unauthorized roles are refused every lifecycle action (CAPABILITY_REQUIRED), including accountingManager and generalManager", async () => {
     const ops = [
+      ["readMyFinancialPolicyAuthority", {}],
       ["readFinancialPolicy", { operatingCompanyId: "taylor" }], ["listFinancialPolicyVersions", { operatingCompanyId: "taylor" }],
       ["saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: WA }], ["submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: "x" }],
       ["approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: "x" }], ["rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: "x", reason: "r" }],
@@ -798,12 +799,141 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     // Standing is untouched: the Administrator still reads (never prepares).
     ok(await fn(adm, "readFinancialPolicy", { operatingCompanyId: "ventana" }));
     refused(await fn(adm, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: WA }), 403, "CAPABILITY_REQUIRED");
+    // THE GRANT MATRIX (#232 Phase 2, item 9): a stored prohibited direct row is LISTED but never shown as effective --
+    // enforced: false, with the ruling that makes it inert. The unrelated legitimate exception stays enforced.
+    const fpMatrix = await admin("getObjectActionGrantMatrix", { objectKey: "financialPolicy" });
+    assert.equal(fpMatrix.ok, true);
+    for (const key of ["finance.policy.read", "finance.policy.prepare"]) {
+      const cell = fpMatrix.data.actions.find((a) => a.capabilityKey === key).principals.find((p) => p.principalId === rawOnly.principalId);
+      assert.deepEqual([cell.source, cell.enforced, cell.notEffectiveReason, cell.forbiddenBy], ["DIRECT_EXCEPTION", false, "ROLE_ASSIGNMENT_ONLY",
+        rca.ROLE_ASSIGNMENT_ONLY_CAPABILITIES.get(key).ruling], key);
+    }
+    const accountMatrix = await admin("getObjectActionGrantMatrix", { objectKey: "account" });
+    const legit = accountMatrix.data.actions.find((a) => a.actionKey === "read").principals.find((p) => p.principalId === rawOnly.principalId);
+    assert.deepEqual([legit.enforced, legit.notEffectiveReason, legit.forbiddenBy], [true, null, null], "a legitimate direct exception stays effective");
     // DRIFT: the verifier reports every stored prohibited direct row (list-driven, as for reserved keys).
     const report = rca.verifyTenantAuthority({ systemDefault: [], live: [], decisions: [],
       principals: [{ principalId: rawOnly.principalId, roleKeys: [], directCapabilityKeys: ["finance.policy.read", "finance.policy.prepare", "customer.record.read"] }] });
     assert.deepEqual(report.drift.filter((d) => d.kind === "FORBIDDEN_PRINCIPAL_HOLDING").map((d) => d.capabilityKey).sort(),
       ["finance.policy.prepare", "finance.policy.read"], "an unrelated direct grant is not flagged");
     await q(`DELETE FROM eos_policy.principal_capabilities WHERE tenant_id = $1 AND id LIKE 'pc-optc-%'`, [TENANT]);
+  });
+
+  await t.test("PHASE 2 (Administration UI): readMyFinancialPolicyAuthority and per-version yourActions are the commands' own answers", async () => {
+    const roleId = async (key) => (await one(`SELECT id FROM eos_policy.roles WHERE tenant_id = $1 AND key = $2`, [TENANT, key])).id;
+    const assign = async (who, roleKey, scopeValue) => {
+      const r = await admin("assignRole", { principalId: who.principalId, roleId: await roleId(roleKey), reason: "phase 2 staffing",
+        ...(scopeValue ? { scopeType: "operatingCompany", scopeValue } : {}) });
+      assert.equal(r.ok, true, `${roleKey}@${scopeValue ?? "global"} ${JSON.stringify(r).slice(0, 300)}`);
+    };
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
+             VALUES ($1,'westco','ACTIVE','fixture','fixture','fixture')`, [TENANT]);
+    const tOnly = await person("uid-fp-p2-t", [], { id: "e-fp-p2-t", name: "Tess Taylor-Preparer" });
+    const vOnly = await person("uid-fp-p2-v", [], { id: "e-fp-p2-v", name: "Val Ventana-Preparer", company: "ventana" });
+    const both = await person("uid-fp-p2-b", [], { id: "e-fp-p2-b", name: "Bo Both-Preparer" });
+    const wPrep = await person("uid-fp-p2-w", [], { id: "e-fp-p2-w", name: "Wren Westco-Preparer" });
+    const dualW = await person("uid-fp-p2-dw", ["owner"], { id: "e-fp-p2-dw", name: "Dee Owner-and-Westco-Preparer" });
+    await assign(tOnly, "policyPreparerTest", "taylor");
+    await assign(vOnly, "policyPreparerTest", "ventana");
+    await assign(both, "policyPreparerTest", "taylor");
+    await assign(both, "policyPreparerTest", "ventana");
+    await assign(wPrep, "policyPreparerTest", "westco");
+    await assign(dualW, "policyPreparerTest", "westco");
+    const authority = async (who) => ok(await fn(who, "readMyFinancialPolicyAuthority", {}), "authority");
+    const ids = (a) => a.companies.map((c) => c.operatingCompanyId);
+    const actions = (a, company) => a.companies.find((c) => c.operatingCompanyId === company).actions;
+    const yes = { allowed: true, reason: null };
+    const no = (reason) => ({ allowed: false, reason });
+    const activeCompanies = (await q(`SELECT operating_company_id AS id FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND status = 'ACTIVE'
+      ORDER BY 1`, [TENANT])).rows.map((r) => r.id);
+    assert.ok(activeCompanies.includes("westco") && !activeCompanies.includes("northco") && !activeCompanies.includes("dormant"));
+
+    // SCOPED PREPARERS: exactly their companies; an out-of-scope company is never named.
+    const aT = await authority(tOnly);
+    assert.deepEqual([aT.principalId, ids(aT)], [tOnly.principalId, ["taylor"]]);
+    assert.equal(aT.companies[0].name, "Taylor Freezer of Arizona", "the governed display name");
+    assert.deepEqual(actions(aT, "taylor"), { read: yes, prepare: yes, approve: no("CAPABILITY_REQUIRED"), activate: no("CAPABILITY_REQUIRED") });
+    assert.equal(JSON.stringify(aT).includes("ventana"), false, "no out-of-scope company leaks");
+    assert.deepEqual(ids(await authority(vOnly)), ["ventana"]);
+    const aB = await authority(both);
+    assert.deepEqual(ids(aB), ["taylor", "ventana"]);
+    for (const company of ["taylor", "ventana"]) assert.deepEqual(actions(aB, company).prepare, yes);
+    // OWNER (global Role grants) and ADMINISTRATOR (standing): every ACTIVE company; decide, never prepare. CONSOLIDATED never listed.
+    for (const who of [own, adm]) {
+      const a = await authority(who);
+      assert.deepEqual(ids(a), activeCompanies);
+      assert.equal(ids(a).some((c) => c.toLowerCase() === "consolidated"), false);
+      for (const company of activeCompanies) {
+        assert.deepEqual(actions(a, company), { read: yes, prepare: no("CAPABILITY_REQUIRED"), approve: yes, activate: yes }, `${who.subject} ${company}`);
+      }
+    }
+    // MIXED (Owner Role + Preparer @westco): decides everywhere, prepares at Westco only -- out of scope elsewhere.
+    const aDW = await authority(dualW);
+    assert.deepEqual(actions(aDW, "westco"), { read: yes, prepare: yes, approve: yes, activate: yes });
+    assert.deepEqual(actions(aDW, "taylor").prepare, no("OUTSIDE_OPERATING_COMPANY_SCOPE"));
+    // UNAUTHORIZED: refused, never answered empty.
+    for (const who of [outsiders.salesperson, outsiders.technician, acct, gm, ctrlOnly]) {
+      refused(await fn(who, "readMyFinancialPolicyAuthority", {}), 403, "CAPABILITY_REQUIRED", who.subject);
+    }
+    refused(await fn(tOnly, "readMyFinancialPolicyAuthority", { operatingCompanyId: "taylor" }), 400, "FIELD_NOT_ACCEPTED");
+    // A RAW (pre-existing, prohibited) direct finance.policy.read row reaches nothing here either.
+    const raw = await person("uid-fp-p2-raw", [], { id: "e-fp-p2-raw", name: "Ray Raw-Row" });
+    await q(`INSERT INTO eos_policy.principal_capabilities (id, tenant_id, principal_id, capability_id, granted_by, created_by, updated_by, exception_reason)
+      SELECT 'pc-p2-raw', $1, $2, c.id, 'rogue', 'rogue', 'rogue', 'pre-existing prohibited exception' FROM eos_policy.capabilities c WHERE c.key = 'finance.policy.read'`,
+    [TENANT, raw.principalId]);
+    refused(await fn(raw, "readMyFinancialPolicyAuthority", {}), 403, "CAPABILITY_REQUIRED");
+    await q(`DELETE FROM eos_policy.principal_capabilities WHERE tenant_id = $1 AND id = 'pc-p2-raw'`, [TENANT]);
+
+    // PER-VERSION SEPARATION OF DUTIES, as the commands decide it -- and each "allowed: false" is the refusal the command gives.
+    const readAs = async (who) => ok(await fn(who, "readFinancialPolicy", { operatingCompanyId: "westco" }));
+    refused(await fn(tOnly, "readFinancialPolicy", { operatingCompanyId: "westco" }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
+    const empty = await readAs(wPrep);
+    assert.deepEqual([empty.state, empty.yourAuthority.principalId, empty.yourAuthority.createDraft], ["NOT_CONFIGURED", wPrep.principalId, yes]);
+    assert.deepEqual((await readAs(own)).yourAuthority.createDraft, no("CAPABILITY_REQUIRED"), "the Owner never prepares");
+    const v1 = ok(await fn(dualW, "saveFinancialPolicyDraft", { operatingCompanyId: "westco", policy: WA, reason: "initial" })).version;
+    ok(await fn(wPrep, "saveFinancialPolicyDraft", { operatingCompanyId: "westco", versionId: v1.id, policy: FIFO }), "a second author");
+    const asPrep = (await readAs(wPrep));
+    assert.deepEqual(asPrep.yourAuthority.createDraft, no("FINANCIAL_POLICY_IN_FLIGHT_EXISTS"));
+    refused(await fn(wPrep, "saveFinancialPolicyDraft", { operatingCompanyId: "westco", policy: WA }), 409, "FINANCIAL_POLICY_IN_FLIGHT_EXISTS");
+    assert.deepEqual(asPrep.inFlight.yourActions, { edit: yes, submit: yes, approve: no("CAPABILITY_REQUIRED"), reject: no("CAPABILITY_REQUIRED"),
+      activate: no("CAPABILITY_REQUIRED") });
+    assert.deepEqual((await readAs(own)).inFlight.yourActions, { edit: no("CAPABILITY_REQUIRED"), submit: no("CAPABILITY_REQUIRED"),
+      approve: no("FINANCIAL_POLICY_NOT_SUBMITTED"), reject: no("FINANCIAL_POLICY_NOT_SUBMITTED"), activate: no("FINANCIAL_POLICY_NOT_APPROVED") });
+    refused(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "westco", versionId: v1.id }), 409, "FINANCIAL_POLICY_NOT_SUBMITTED");
+    ok(await fn(dualW, "submitFinancialPolicy", { operatingCompanyId: "westco", versionId: v1.id }));
+    // The preparer / submitter who ALSO holds the Owner Role: approve / reject blocked by separation of duties.
+    const asDual = (await readAs(dualW)).inFlight.yourActions;
+    assert.deepEqual([asDual.approve, asDual.reject, asDual.edit], [no("SEPARATION_OF_DUTIES"), no("SEPARATION_OF_DUTIES"), no("FINANCIAL_POLICY_NOT_EDITABLE")]);
+    refused(await fn(dualW, "approveFinancialPolicy", { operatingCompanyId: "westco", versionId: v1.id }), 403, "SEPARATION_OF_DUTIES");
+    refused(await fn(wPrep, "submitFinancialPolicy", { operatingCompanyId: "westco", versionId: v1.id }), 409, "FINANCIAL_POLICY_NOT_EDITABLE");
+    // Another decider (the independent Owner, the Administrator by standing) may.
+    for (const who of [own, adm]) {
+      const y = (await readAs(who)).inFlight.yourActions;
+      assert.deepEqual([y.approve, y.reject, y.activate], [yes, yes, no("FINANCIAL_POLICY_NOT_APPROVED")], who.subject);
+    }
+    ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "westco", versionId: v1.id, reason: "reviewed with accounting" }));
+    assert.deepEqual((await readAs(dualW)).inFlight.yourActions.activate, no("SEPARATION_OF_DUTIES"), "the preparer never activates");
+    refused(await fn(dualW, "activateFinancialPolicy", { operatingCompanyId: "westco", versionId: v1.id, effectiveDate: await businessDate("westco") }),
+      403, "SEPARATION_OF_DUTIES");
+    assert.deepEqual((await readAs(own)).inFlight.yourActions.activate, yes, "the approver may activate");
+    ok(await fn(own, "activateFinancialPolicy", { operatingCompanyId: "westco", versionId: v1.id, effectiveDate: await businessDate("westco"), reason: "go-live" }));
+
+    // THE HISTORY the screen renders: versions with yourActions, the audit trail (who / what / when / reason), actor names.
+    const listed = ok(await fn(wPrep, "listFinancialPolicyVersions", { operatingCompanyId: "westco" }));
+    assert.deepEqual(listed.items.map((v) => [v.versionNumber, v.status, v.yourActions.edit]), [[1, "ACTIVE", no("FINANCIAL_POLICY_LOCKED")]]);
+    assert.deepEqual(listed.auditTrail.map((e) => [e.action, e.actorPrincipalId, e.reason, e.versionNumber]), [
+      ["finance.policy.activate", own.principalId, "go-live", 1],
+      ["finance.policy.approve", own.principalId, "reviewed with accounting", 1],
+      ["finance.policy.submit", dualW.principalId, null, 1],
+      ["finance.policy.draft.edit", wPrep.principalId, null, 1],
+      ["finance.policy.draft.create", dualW.principalId, "initial", 1],
+    ]);
+    assert.deepEqual(Object.keys(listed.actorNames).sort(), [dualW.principalId, own.principalId, wPrep.principalId].sort(), "names only for the actors shown");
+    const inForce = await readAs(wPrep);
+    assert.deepEqual([inForce.state, inForce.inForce.id, inForce.inForce.yourActions.activate, inForce.yourAuthority.createDraft],
+      ["CONFIGURED", v1.id, no("CAPABILITY_REQUIRED"), yes]);
+    // Another company's history never appears.
+    refused(await fn(wPrep, "listFinancialPolicyVersions", { operatingCompanyId: "taylor" }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
   });
 
   await t.test("MIG: with versions recorded, the Down refuses to reverse", async () => {

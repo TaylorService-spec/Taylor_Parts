@@ -5,8 +5,10 @@
 //     DRAFT --submit--> SUBMITTED --approve--> APPROVED --activate--> ACTIVE --(a later version activates)--> SUPERSEDED
 //                                  \--reject---> REJECTED
 //
-// Served on /operations/finance (the Finance Closure transport) as seven operations, each behind its own PG-native key:
+// Served on /operations/finance (the Finance Closure transport) as seven operations, each behind its own PG-native key,
+// plus one read-only authority read for the Administration screen (#232 Phase 2):
 //
+//   readMyFinancialPolicyAuthority finance.policy.read      the companies the caller reaches, and what it may do in each (and why not)
 //   readFinancialPolicy            finance.policy.read      the version IN FORCE (or NOT_CONFIGURED), any SCHEDULED one, the one in flight
 //   listFinancialPolicyVersions    finance.policy.read      the company's whole version history, newest first
 //   saveFinancialPolicyDraft       finance.policy.prepare   create the company's next DRAFT, or edit the current one
@@ -56,6 +58,7 @@ import { withActorAuthority } from "../eosOps/administrationReach";
 import { admittedScopeValues, type ScopedHolding } from "../adminPolicy/assignmentScopeRuntime";
 import { RESERVED_CAPABILITY_HOLDERS, reservedCapabilityAdmits } from "../adminPolicy/roleCapabilityAdministration";
 import { principalHasProtectedAdministratorStanding, qualifyingGlobalRoles } from "../eosOps/administrationReach";
+import { operatingCompanyDisplayName } from "../ownership/operatingCompanyAuthority";
 
 export const FINANCIAL_POLICY_READ_CAPABILITY = "finance.policy.read";
 export const FINANCIAL_POLICY_PREPARE_CAPABILITY = "finance.policy.prepare";
@@ -113,12 +116,15 @@ export interface FinancialPolicyOptions {
  * scoped holdings admit. Holding it nowhere is CAPABILITY_REQUIRED.
  */
 interface CompanyReach { readonly key: string; readonly global: boolean; readonly companies: readonly string[] }
-const requireCapability = (actor: FinancialPolicyActor, key: string): CompanyReach => {
+/** Where `key` applies for this actor, or null when it is held nowhere. THE one reach decision: commands and reads share it. */
+const capabilityReach = (actor: FinancialPolicyActor, key: string): CompanyReach | null => {
   if (actor.capabilities.has(key)) return Object.freeze({ key, global: true, companies: Object.freeze([]) });
   const companies = admittedScopeValues(actor.scopedHeld, key, "operatingCompany");
-  if (companies.length === 0) return refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${key}`);
-  return Object.freeze({ key, global: false, companies });
+  return companies.length === 0 ? null : Object.freeze({ key, global: false, companies });
 };
+const requireCapability = (actor: FinancialPolicyActor, key: string): CompanyReach =>
+  capabilityReach(actor, key) ?? refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${key}`);
+const reachesCompany = (reach: CompanyReach, company: string): boolean => reach.global || reach.companies.includes(company);
 /**
  * THE RUNTIME HALF OF THE RESERVATION (#232 Phase 1). finance.policy.approve / .activate are reserved to the Owner Role, and
  * the write path refuses every other grant -- but a row that bypassed it must not authorize either. So, like trade-in
@@ -128,14 +134,17 @@ const requireCapability = (actor: FinancialPolicyActor, key: string): CompanyRea
  * imported. UNLIKE trade-in, Protected Administrator standing ALSO exercises it: trade-in is excluded from standing
  * (PROTECTED_ADMINISTRATOR_EXCLUSIONS), while #232 gives the Administrator approve / activate by standing.
  */
-async function requireReservedAuthority(db: Db, actor: FinancialPolicyActor, key: string): Promise<void> {
+async function reservedAuthorityHeld(db: Db, actor: FinancialPolicyActor, key: string): Promise<boolean> {
   const reserved = RESERVED_CAPABILITY_HOLDERS.get(key);
-  if (!reserved) return;
-  if (await principalHasProtectedAdministratorStanding(db, actor.tenantId, actor.principalId)) return;
+  if (!reserved) return true;
+  if (await principalHasProtectedAdministratorStanding(db, actor.tenantId, actor.principalId)) return true;
   const held = await qualifyingGlobalRoles(db, actor.tenantId, actor.principalId, reserved.roleKeys);
-  if (!reservedCapabilityAdmits(key, held.map((r) => r.key))) {
-    refuse("RESERVED_CAPABILITY", "FORBIDDEN", `${key} is exercised only through the ${reserved.roleKeys.join(" or ")} Role (${reserved.ruling})`);
-  }
+  return reservedCapabilityAdmits(key, held.map((r) => r.key));
+}
+async function requireReservedAuthority(db: Db, actor: FinancialPolicyActor, key: string): Promise<void> {
+  if (await reservedAuthorityHeld(db, actor, key)) return;
+  const reserved = RESERVED_CAPABILITY_HOLDERS.get(key);
+  refuse("RESERVED_CAPABILITY", "FORBIDDEN", `${key} is exercised only through the ${reserved?.roleKeys.join(" or ")} Role (${reserved?.ruling})`);
 }
 
 /**
@@ -146,7 +155,7 @@ async function requireReservedAuthority(db: Db, actor: FinancialPolicyActor, key
 const outsideScope = (reach: CompanyReach, raw: unknown): never => refuse("OUTSIDE_OPERATING_COMPANY_SCOPE", "FORBIDDEN",
   `${reach.key} is not held for operating company ${JSON.stringify(typeof raw === "string" ? raw : null)}`);
 const admitCompany = (reach: CompanyReach, company: string): void => {
-  if (reach.global || reach.companies.includes(company)) return;
+  if (reachesCompany(reach, company)) return;
   outsideScope(reach, company);
 };
 const only = (input: Record<string, unknown>, allowed: readonly string[]): void => {
@@ -394,6 +403,107 @@ export function supportedFinancialPolicyVocabulary(options: FinancialPolicyOptio
   });
 }
 
+// ════════════════════ the caller's authority, as the server decides it ════════════════════
+//
+// THE SCREEN NEVER GUESSES (#232 Phase 2, Administration UI). Each answer below is computed from the SAME primitives the
+// commands refuse with -- capabilityReach (flat set or operatingCompany-scoped holding), reachesCompany,
+// reservedAuthorityHeld, independentDeciderRefusal -- in the commands' own order (capability, reservation, company,
+// lifecycle state, separation of duties), so `allowed: false` carries the code the command would answer. It is advice for
+// rendering only: every command still decides again, inside its transaction, and a stale screen meets the refusal.
+
+export const FINANCIAL_POLICY_COMPANY_ACTIONS = Object.freeze(["read", "prepare", "approve", "activate"] as const);
+export type FinancialPolicyCompanyAction = (typeof FINANCIAL_POLICY_COMPANY_ACTIONS)[number];
+export interface FinancialPolicyActionAnswer { readonly allowed: boolean; readonly reason: string | null }
+type CompanyAuthority = Readonly<Record<FinancialPolicyCompanyAction, FinancialPolicyActionAnswer>>;
+
+const CAPABILITY_OF: Readonly<Record<FinancialPolicyCompanyAction, string>> = Object.freeze({
+  read: FINANCIAL_POLICY_READ_CAPABILITY, prepare: FINANCIAL_POLICY_PREPARE_CAPABILITY,
+  approve: FINANCIAL_POLICY_APPROVE_CAPABILITY, activate: FINANCIAL_POLICY_ACTIVATE_CAPABILITY,
+});
+const ALLOWED: FinancialPolicyActionAnswer = Object.freeze({ allowed: true, reason: null });
+const blocked = (reason: string): FinancialPolicyActionAnswer => Object.freeze({ allowed: false, reason });
+
+/** Resolve the caller's reach + reservation for every policy key ONCE; answer per company from it. */
+async function companyAuthorityOf(db: Db, actor: FinancialPolicyActor): Promise<(company: string) => CompanyAuthority> {
+  const decided = new Map<FinancialPolicyCompanyAction, { reach: CompanyReach | null; reserved: boolean }>();
+  for (const action of FINANCIAL_POLICY_COMPANY_ACTIONS) {
+    const reach = capabilityReach(actor, CAPABILITY_OF[action]);
+    decided.set(action, { reach, reserved: reach === null ? false : await reservedAuthorityHeld(db, actor, CAPABILITY_OF[action]) });
+  }
+  return (company) => Object.freeze(Object.fromEntries(FINANCIAL_POLICY_COMPANY_ACTIONS.map((action) => {
+    const { reach, reserved } = decided.get(action)!;
+    if (reach === null) return [action, blocked("CAPABILITY_REQUIRED")];
+    if (!reserved) return [action, blocked("RESERVED_CAPABILITY")];
+    if (!reachesCompany(reach, company)) return [action, blocked("OUTSIDE_OPERATING_COMPANY_SCOPE")];
+    return [action, ALLOWED];
+  })) as Record<FinancialPolicyCompanyAction, FinancialPolicyActionAnswer>);
+}
+
+export const FINANCIAL_POLICY_VERSION_ACTIONS = Object.freeze(["edit", "submit", "approve", "reject", "activate"] as const);
+export type FinancialPolicyVersionAction = (typeof FINANCIAL_POLICY_VERSION_ACTIONS)[number];
+
+/**
+ * What THIS caller may do to ONE version, and why not. The lifecycle codes are the commands' own (an edit / submit of a
+ * non-DRAFT: FINANCIAL_POLICY_NOT_EDITABLE or _LOCKED; a decision on a non-SUBMITTED: _NOT_SUBMITTED; an activation of a
+ * non-APPROVED: _NOT_APPROVED or _LOCKED); separation of duties is independentDeciderRefusal -- the commands' rule.
+ */
+export function versionActionsFor(principalId: string, authority: CompanyAuthority, v: FinancialPolicyVersion):
+  Readonly<Record<FinancialPolicyVersionAction, FinancialPolicyActionAnswer>> {
+  const locked = (LOCKED_FINANCIAL_POLICY_STATUSES as readonly string[]).includes(v.status);
+  const lifecycle = (want: FinancialPolicyStatus, notCode: string): string | null =>
+    v.status === want ? null : locked ? "FINANCIAL_POLICY_LOCKED" : notCode;
+  const decide = (company: FinancialPolicyActionAnswer, state: string | null, independent: boolean): FinancialPolicyActionAnswer => {
+    if (!company.allowed) return company;
+    if (state !== null) return blocked(state);
+    if (independent) {
+      const sod = independentDeciderRefusal(principalId, v);
+      if (sod !== null) return blocked(sod);
+    }
+    return ALLOWED;
+  };
+  const draftState = lifecycle("DRAFT", "FINANCIAL_POLICY_NOT_EDITABLE");
+  return Object.freeze({
+    edit: decide(authority.prepare, draftState, false),
+    submit: decide(authority.prepare, draftState, false),
+    approve: decide(authority.approve, v.status === "SUBMITTED" ? null : "FINANCIAL_POLICY_NOT_SUBMITTED", true),
+    reject: decide(authority.approve, v.status === "SUBMITTED" ? null : "FINANCIAL_POLICY_NOT_SUBMITTED", true),
+    activate: decide(authority.activate, lifecycle("APPROVED", "FINANCIAL_POLICY_NOT_APPROVED"), true),
+  });
+}
+const withYourActions = (principalId: string, authority: CompanyAuthority, v: FinancialPolicyVersion | null) =>
+  v === null ? null : Object.freeze({ ...v, yourActions: versionActionsFor(principalId, authority, v) });
+
+/** Display names of the actors on records the caller already reads -- Principals of the caller's tenant only, nothing else. */
+async function actorNames(db: Db, tenantId: string, ids: readonly (string | null)[]): Promise<Readonly<Record<string, string | null>>> {
+  const wanted = [...new Set(ids.filter((x): x is string => typeof x === "string" && x !== ""))];
+  if (wanted.length === 0) return Object.freeze({});
+  const { rows } = await db.query(
+    `SELECT p.id, p.display_name FROM eos_policy.principals p
+       JOIN eos_policy.tenant_memberships m ON m.principal_id = p.id AND m.tenant_id = $1 AND m.status = 'active'
+      WHERE p.id = ANY($2::text[])`, [tenantId, wanted]);
+  return Object.freeze(Object.fromEntries(rows.map((r) => [String(r.id), r.display_name ?? null])));
+}
+const versionActorIds = (v: FinancialPolicyVersion): (string | null)[] =>
+  [v.preparedBy, ...v.contentAuthors, v.lastEditedBy, v.submittedBy, v.approvedBy, v.rejectedBy, v.activatedBy];
+
+/**
+ * readMyFinancialPolicyAuthority -- the companies this caller reaches for Financial Policy, and what it may do in each.
+ * Gate: finance.policy.read held flat or at any operatingCompany scope (else CAPABILITY_REQUIRED). A company is LISTED only
+ * where the read reaches it: an out-of-scope company is never named (out of scope == unknown). CONSOLIDATED is a
+ * projection, not a company, and never appears. Read-only; grants nothing.
+ */
+export async function readMyFinancialPolicyAuthority(pool: Pool, actor: FinancialPolicyActor, input: Record<string, unknown>) {
+  const read = requireCapability(actor, FINANCIAL_POLICY_READ_CAPABILITY);
+  only(input, []);
+  const { rows } = await pool.query(
+    `SELECT operating_company_id FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY operating_company_id`,
+    [actor.tenantId]);
+  const authorityFor = await companyAuthorityOf(pool, actor);
+  const companies = rows.map((r) => String(r.operating_company_id)).filter((company) => reachesCompany(read, company))
+    .map((company) => Object.freeze({ operatingCompanyId: company, name: operatingCompanyDisplayName(company) ?? company, actions: authorityFor(company) }));
+  return Object.freeze({ principalId: actor.principalId, companies: Object.freeze(companies) });
+}
+
 /**
  * The policy screen's read: `inForce` (the version governing on the business date, or null with state NOT_CONFIGURED),
  * `scheduled` (the ACTIVE version when it is dated after that date), and the version in flight. `asOfDate` reads another
@@ -412,14 +522,22 @@ export async function readFinancialPolicy(pool: Pool, actor: FinancialPolicyActo
   const { rows } = await pool.query(
     `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions
       WHERE tenant_id = $1 AND operating_company_id = $2 AND status IN ('DRAFT', 'SUBMITTED', 'APPROVED')`, [actor.tenantId, company]);
+  const inFlight = rows[0] ? versionView(rows[0]) : null;
+  // What this caller may do here, as the commands would decide it (advice for the screen; the commands still decide).
+  const authority = (await companyAuthorityOf(pool, actor))(company);
+  const createDraft = !authority.prepare.allowed ? authority.prepare
+    : inFlight !== null ? blocked("FINANCIAL_POLICY_IN_FLIGHT_EXISTS") : ALLOWED;
+  const shown = [inForce.version, scheduled, inFlight].filter((v): v is FinancialPolicyVersion => v !== null);
   return Object.freeze({
     operatingCompanyId: company,
     asOf: inForce.asOf,
     state: inForce.state === "IN_FORCE" ? "CONFIGURED" as const : "NOT_CONFIGURED" as const,
-    inForce: inForce.version,
-    scheduled,
-    inFlight: rows[0] ? versionView(rows[0]) : null,
+    inForce: withYourActions(actor.principalId, authority, inForce.version),
+    scheduled: withYourActions(actor.principalId, authority, scheduled),
+    inFlight: withYourActions(actor.principalId, authority, inFlight),
     supported: supportedFinancialPolicyVocabulary(options),
+    yourAuthority: Object.freeze({ principalId: actor.principalId, actions: authority, createDraft }),
+    actorNames: await actorNames(pool, actor.tenantId, shown.flatMap(versionActorIds)),
   });
 }
 
@@ -430,7 +548,25 @@ export async function listFinancialPolicyVersions(pool: Pool, actor: FinancialPo
   const { rows } = await pool.query(
     `SELECT ${COLUMNS} FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2 ORDER BY version_number DESC`,
     [actor.tenantId, company]);
-  return Object.freeze({ operatingCompanyId: company, items: rows.map(versionView) });
+  const versions = rows.map(versionView);
+  const authority = (await companyAuthorityOf(pool, actor))(company);
+  // THE AUDIT TRAIL of these versions (the eos_policy.audit_events rows every change writes), newest first: who, what,
+  // when, and the stated reason / note. The full before / after snapshots stay in the audit store.
+  const { rows: events } = versions.length === 0 ? { rows: [] as Record<string, any>[] } : await pool.query(
+    `SELECT id, action, target_id, actor_uid, occurred_at, reason FROM eos_policy.audit_events
+      WHERE tenant_id = $1 AND target_kind = $2 AND target_id = ANY($3::text[]) ORDER BY occurred_at DESC, id DESC`,
+    [actor.tenantId, FINANCIAL_POLICY_AUDIT_TARGET, versions.map((v) => v.id)]);
+  const number = new Map(versions.map((v) => [v.id, v.versionNumber]));
+  const auditTrail = events.map((e) => Object.freeze({
+    id: String(e.id), action: String(e.action), versionId: String(e.target_id), versionNumber: number.get(String(e.target_id)) ?? null,
+    actorPrincipalId: String(e.actor_uid), occurredAt: iso(e.occurred_at) as string, reason: e.reason ?? null,
+  }));
+  return Object.freeze({
+    operatingCompanyId: company,
+    items: versions.map((v) => withYourActions(actor.principalId, authority, v)),
+    auditTrail: Object.freeze(auditTrail),
+    actorNames: await actorNames(pool, actor.tenantId, [...versions.flatMap(versionActorIds), ...auditTrail.map((e) => e.actorPrincipalId)]),
+  });
 }
 
 // ════════════════════ commands ════════════════════
@@ -539,9 +675,15 @@ export async function submitFinancialPolicy(pool: Pool, actor: FinancialPolicyAc
   });
 }
 
-/** Approve, reject AND activate (#232 Phase 1): never by the submitter or anyone who wrote the content. The approver may activate. */
+/**
+ * Approve, reject AND activate (#232 Phase 1): never by the submitter or anyone who wrote the content. The approver may
+ * activate. The pure answer is shared with the authority reads (yourActions), so an offer and a refusal cannot disagree.
+ */
+export function independentDeciderRefusal(principalId: string, v: Pick<FinancialPolicyVersion, "submittedBy" | "contentAuthors">): "SEPARATION_OF_DUTIES" | null {
+  return v.submittedBy === principalId || v.contentAuthors.includes(principalId) ? "SEPARATION_OF_DUTIES" : null;
+}
 function assertIndependentDecider(actor: FinancialPolicyActor, v: FinancialPolicyVersion): void {
-  if (v.submittedBy === actor.principalId || v.contentAuthors.includes(actor.principalId)) {
+  if (independentDeciderRefusal(actor.principalId, v) !== null) {
     refuse("SEPARATION_OF_DUTIES", "FORBIDDEN",
       "a financial policy version is approved, rejected or activated by someone other than the principal who prepared, edited or submitted it");
   }
@@ -704,6 +846,7 @@ const actorOf = (caller: Caller): FinancialPolicyActor => ({ ...caller.actor, sc
 type Op = (deps: { readonly pool: Pool }, caller: Caller, input: Record<string, unknown>) => Promise<unknown>;
 
 export const EOS_FINANCIAL_POLICY_OPERATIONS: Readonly<Record<string, Op>> = Object.freeze({
+  readMyFinancialPolicyAuthority: (deps, caller, input) => readMyFinancialPolicyAuthority(deps.pool, actorOf(caller), input),
   readFinancialPolicy: (deps, caller, input) => readFinancialPolicy(deps.pool, actorOf(caller), input),
   listFinancialPolicyVersions: (deps, caller, input) => listFinancialPolicyVersions(deps.pool, actorOf(caller), input),
   saveFinancialPolicyDraft: (deps, caller, input) => saveFinancialPolicyDraft(deps.pool, actorOf(caller), input),
