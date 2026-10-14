@@ -116,7 +116,7 @@ const refuse = (code: string, category: FinancialPolicyRefusalCategory, message:
 export interface FinancialPolicyActor {
   readonly tenantId: string;
   readonly principalId: string;
-  /** The flat (GLOBAL) capability set, including Protected Administrator standing. A flat key reaches every company. */
+  /** The flat (GLOBAL) capability set, including Protected Administrator standing. A flat key reaches NO company by itself (capabilityReach). */
   readonly capabilities: ReadonlySet<string>;
   /**
    * Holdings from operatingCompany-SCOPED Security Role assignments (#232 Amendment A), as the transport resolved them
@@ -179,9 +179,9 @@ async function requireReservedAuthority(db: Db, actor: FinancialPolicyActor, key
 }
 
 /**
- * Decided on the RESOLVED company, before any version is looked up -- an out-of-scope company's versions never leak. For a
- * caller holding the key only at scope, OUT OF SCOPE == MISSING (the platform rule): an unknown, inactive or ACTIVE-but-
- * unadmitted company all get this same refusal, so a scoped holder cannot probe which companies exist.
+ * Decided on the RESOLVED company, before any version is looked up -- an out-of-scope company's versions never leak. For
+ * EVERY caller (company assignment is mandatory), OUT OF SCOPE == MISSING (the platform rule): an unknown, inactive or
+ * ACTIVE-but-unassigned company all get this same refusal, so no holder can probe which companies exist.
  */
 const outsideScope = (reach: CompanyReach, raw: unknown): never => refuse("OUTSIDE_OPERATING_COMPANY_SCOPE", "FORBIDDEN",
   `${reach.key} is not held for operating company ${JSON.stringify(typeof raw === "string" ? raw : null)}`);

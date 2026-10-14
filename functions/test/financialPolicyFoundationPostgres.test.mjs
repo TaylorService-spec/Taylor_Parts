@@ -696,6 +696,16 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const rogueDraft = ok(await fn(pT, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", policy: FIFO })).version;
     ok(await fn(pT, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id }));
     refused(await fn(acct, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id }), 403, "RESERVED_CAPABILITY", "a bypassed row");
+    // ...and a company assignment never turns that row into authority: rogue approve / activate + Reviewer@Taylor is still
+    // RESERVED_CAPABILITY (the reservation is independent of company reach -- the Owner's "read must not become approval").
+    const acctR = await person("uid-fp-acct-rev", ["accountingManager"], { id: "e-fp-acct-rev", name: "Rae Accounting-Reviewer" });
+    await assignAt(acctR, "financialPolicyReviewer", "taylor");
+    refused(await fn(acctR, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id }), 403, "RESERVED_CAPABILITY", "rogue row + Reviewer@Taylor");
+    refused(await fn(acctR, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id, effectiveDate: await businessDate("taylor", 40) }),
+      403, "RESERVED_CAPABILITY");
+    assert.deepEqual(ok(await fn(acctR, "readMyFinancialPolicyAuthority", {})).companies.map((c) => [c.operatingCompanyId, c.actions.read.allowed,
+      c.actions.approve.reason, c.actions.activate.reason, c.actions.prepare.reason]),
+    [["taylor", true, "RESERVED_CAPABILITY", "RESERVED_CAPABILITY", "CAPABILITY_REQUIRED"]], "Reviewer@Taylor = read at Taylor only");
     refused(await fn(acct, "rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id, reason: "rogue" }), 403, "RESERVED_CAPABILITY");
     ok(await fn(adm, "rejectFinancialPolicy", { operatingCompanyId: "taylor", versionId: rogueDraft.id, reason: "standing still decides" }));
     refused(await fn(acct, "activateFinancialPolicy", { operatingCompanyId: "taylor", versionId: own2.id, effectiveDate: await businessDate("taylor", 40) }),
