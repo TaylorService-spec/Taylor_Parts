@@ -67,7 +67,10 @@ export function objectAuthorityGrid(matrix, roles) {
   };
   return {
     actions: actions.map((a) => ({ actionKey: a.actionKey, actionKind: a.actionKind, label: a.displayLabel ?? titleCase(a.actionKey), short: shortLabel(a),
-      capabilityKey: a.capabilityKey, kindWords: KIND_WORDS[a.actionKind] ?? titleCase(a.actionKind), directExceptions: (a.principals ?? []).length })),
+      capabilityKey: a.capabilityKey, kindWords: KIND_WORDS[a.actionKind] ?? titleCase(a.actionKind),
+      // Only EFFECTIVE direct exceptions count as holders; a prohibited stored one (enforced: false, #232 Phase 2) is reported apart.
+      directExceptions: (a.principals ?? []).filter((p) => p.enforced !== false).length,
+      ineffectiveDirectExceptions: (a.principals ?? []).filter((p) => p.enforced === false).length })),
     rows: roleList.map((r) => ({ ...r, cells: actions.map((a) => cell(r.key, a)) })),
   };
 }
@@ -317,7 +320,7 @@ export default function ObjectAuthorityMatrix({ api = adminControlPlaneClient, i
             {grid.actions.map((a) => (
               <div key={a.actionKey} className="fo-objmatrix__coldef">
                 <dt>{a.short}</dt>
-                <dd>{a.label} · {a.kindWords} · <code>{a.capabilityKey}</code>{a.directExceptions > 0 ? ` · also held by ${a.directExceptions} person${a.directExceptions === 1 ? "" : "s"} as a direct exception` : ""}</dd>
+                <dd>{a.label} · {a.kindWords} · <code>{a.capabilityKey}</code>{a.directExceptions > 0 ? ` · also held by ${a.directExceptions} person${a.directExceptions === 1 ? "" : "s"} as a direct exception` : ""}{a.ineffectiveDirectExceptions > 0 ? ` · ${a.ineffectiveDirectExceptions} stored direct grant${a.ineffectiveDirectExceptions === 1 ? "" : "s"} not effective (a prohibited direct grant confers nothing)` : ""}</dd>
               </div>
             ))}
           </dl>

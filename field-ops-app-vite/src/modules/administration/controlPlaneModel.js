@@ -147,6 +147,15 @@ export function statedReason(text) {
 
 // ════════════════════ OBJECT VIEW (getObjectActionGrantMatrix) ════════════════════
 
+/** True for a direct-exception cell the server says confers NOTHING (enforced: false). */
+export const isIneffectiveDirectGrant = (cell) => Boolean(cell) && cell.enforced === false;
+
+/** The words for an ineffective direct grant: why it confers nothing, from the server's own reason. */
+export function ineffectiveDirectGrantWords(cell) {
+  if (cell?.notEffectiveReason === "RESERVED_CAPABILITY") return "Not effective — reserved to a specific Role";
+  return "Not effective — role assignment only";
+}
+
 /**
  * The matrix's actions as ObjectSecurityActionList rows, keeping the server's cells beside them.
  * `roleKeys` are the HELD Role cells only; a revoked or invariant cell is a fact, not a holder.
@@ -158,6 +167,9 @@ export function matrixActionRows(matrix) {
     const roles = Array.isArray(a.roles) ? a.roles : [];
     const principals = Array.isArray(a.principals) ? a.principals : [];
     const held = roles.filter((r) => r.held === true);
+    // A direct exception the server marks `enforced: false` (a PROHIBITED direct grant -- ROLE_ASSIGNMENT_ONLY or a
+    // RESERVED key, #232 Phase 2) confers nothing: it is listed as a fact, never counted as a holder.
+    const effective = principals.filter((p) => !isIneffectiveDirectGrant(p));
     return {
       actionKey: a.actionKey,
       actionKind: a.actionKind ?? null,
@@ -165,8 +177,9 @@ export function matrixActionRows(matrix) {
       capabilityKey: a.capabilityKey ?? null,
       sourceLabel: a.actionKind ?? null,
       roleKeys: held.map((r) => r.roleKey),
-      principalIds: principals.map((p) => p.principalId),
-      granted: held.length + principals.length > 0,
+      principalIds: effective.map((p) => p.principalId),
+      ineffectivePrincipalIds: principals.filter(isIneffectiveDirectGrant).map((p) => p.principalId),
+      granted: held.length + effective.length > 0,
       roles,
       principals,
     };

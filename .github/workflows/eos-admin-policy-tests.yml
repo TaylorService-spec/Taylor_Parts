@@ -265,6 +265,12 @@ jobs:
         run: npx vitest run test/financeWorkspace.test.jsx
         working-directory: field-ops-app-vite
 
+      # Financial Policy Administration UI (#232 Phase 2): companies and actions are the server's answer; each command's input;
+      # refusals verbatim; Finance Configuration intact; Financials summary; a prohibited direct grant is never effective.
+      - name: Financial Policy Administration (vitest + jsdom)
+        run: npx vitest run test/financialPolicyAdministration.test.jsx
+        working-directory: field-ops-app-vite
+
       # Rental (#207): the Rental workspace -- the server's fleet, agreements and refusals; tax is never assumed.
       - name: Rental workspace (vitest + jsdom)
         run: npx vitest run test/rentalWorkspace.test.jsx

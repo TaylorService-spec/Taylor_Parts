@@ -53,6 +53,9 @@ export const EXPERIENCE_SURFACE_KEYS = Object.freeze([
   "crm.accounts",
   "equipment.register",
   "field.myWorkOrders",
+  // Financial Policy (#232 Phase 2): the Administration > Financial Policy door. Earned server-side by finance.policy.read
+  // flat or by an operatingCompany-scoped holding of it -- a business surface, deliberately not `administration.*`.
+  "finance.policy",
   "financials.invoices",
   "financials.payments",
   "inventory.balances",

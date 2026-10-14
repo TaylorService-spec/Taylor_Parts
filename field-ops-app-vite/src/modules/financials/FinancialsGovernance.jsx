@@ -9,7 +9,10 @@
 // BUILT_DORMANT / AUTHORITY NOT IMPLEMENTED / FUTURE INTEGRATION — and the chip states
 // come from the reconciliation truth table, not from optimism. No calendar/fiscal
 // configuration is implied; common practice is not authority (FIN-PQ-20a).
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { callFinanceApi } from "../../services/financeApiClient.js";
+import { choiceLabel, describeFailure } from "../../domain/financialPolicyAdministration.js";
 import {
   FinancialsPageFrame,
   FinAnnotation,
@@ -59,7 +62,59 @@ const UNIT_WORDS = BUSINESS_UNIT_FILTER_OPTIONS.filter((u) => u.key !== "all")
   .map((u) => u.label)
   .join(" · ");
 
-export default function FinancialsGovernance() {
+/**
+ * THE POLICY IN FORCE, AS THE SERVER SAYS IT (#232 Phase 2). Read-only: readMyFinancialPolicyAuthority names the
+ * companies this viewer's finance.policy.read reaches (none -> the read is refused and the section says so, never "Not
+ * configured"), then readFinancialPolicy per company answers CONFIGURED or NOT_CONFIGURED. Nothing here edits.
+ */
+function useFinancialPolicySummary(financeApi) {
+  const [state, setState] = useState({ status: "LOADING", companies: [], failure: null });
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const auth = await financeApi("readMyFinancialPolicyAuthority", {});
+      if (!live) return;
+      if (!auth.ok) { setState({ status: "UNAVAILABLE", companies: [], failure: describeFailure(auth) }); return; }
+      const companies = await Promise.all((auth.result?.companies ?? []).map(async (c) => {
+        const res = await financeApi("readFinancialPolicy", { operatingCompanyId: c.operatingCompanyId });
+        return { id: c.operatingCompanyId, name: c.name, read: res.ok ? res.result : null, failure: res.ok ? null : describeFailure(res) };
+      }));
+      if (live) setState({ status: "READY", companies, failure: null });
+    })();
+    return () => { live = false; };
+  }, [financeApi]);
+  return state;
+}
+
+const policyWords = (policy) => [
+  choiceLabel("inventoryCostMethod", policy.inventoryCostMethod),
+  `serialized: ${choiceLabel("serializedInventoryCostMethod", policy.serializedInventoryCostMethod)}`,
+  `COGS at ${choiceLabel("cogsRecognitionPointId", policy.cogsRecognitionPointId)}`,
+].join(" · ");
+
+function PolicyInForceRows({ summary }) {
+  if (summary.status === "LOADING") return <Row label="Policy In Effect" words="Loading…" />;
+  if (summary.status === "UNAVAILABLE") {
+    const code = summary.failure?.code;
+    const words = code === "CAPABILITY_REQUIRED" || code === "FORBIDDEN"
+      ? "Visible to holders of Financial Policy access"
+      : code === "NOT_CONFIGURED" ? "Not available in this environment" : "Could not be read";
+    return <Row label="Policy In Effect" words={words} tip="This summary shows only what the server answers for you. A refused or unavailable read is never shown as Not configured." />;
+  }
+  return summary.companies.map((c) => {
+    if (!c.read) return <Row key={c.id} label={`${c.name}`} words="Could not be read" />;
+    if (c.read.state !== "CONFIGURED" || !c.read.inForce) {
+      return <Row key={c.id} label={`${c.name}`} state="Not configured" words={c.read.scheduled ? `Scheduled from ${c.read.scheduled.effectiveDate}` : "No policy in effect"}
+        tip="EOS applies no costing method until a policy is approved and activated, and never assumes one." />;
+    }
+    const v = c.read.inForce;
+    return <Row key={c.id} label={`${c.name}`} state="Configured" words={`${policyWords(v.policy)} · version ${v.versionNumber}, effective ${v.effectiveDate}`}
+      tip={c.read.scheduled ? `Version ${c.read.scheduled.versionNumber} is scheduled from ${c.read.scheduled.effectiveDate}.` : null} />;
+  });
+}
+
+export default function FinancialsGovernance({ financeApi = callFinanceApi }) {
+  const policySummary = useFinancialPolicySummary(financeApi);
   return (
     <FinancialsPageFrame
       title="Financial Settings & Governance"
@@ -86,36 +141,19 @@ export default function FinancialsGovernance() {
           </section>
 
           {/* ACCOUNTING POLICY — READ-ONLY, DELIBERATELY. Financials is not a second configuration
-              authority: a company's accounting method is chosen once with its accounting team during
-              deployment and locked at financial activation, so the ONE editing surface is
-              Administration → Financial Policy and this section only links there. Two places to
-              change an accounting method is two places for them to disagree.
+              authority: a company's accounting policy is prepared, approved and activated in ONE place,
+              Administration → Financial Policy, and this section only summarizes it and links there. Two
+              places to change an accounting method is two places for them to disagree.
 
-              The rows read "Not configured" because no company profile exists yet and the read
-              capability is registered active:false — an honest state, not a default policy. EOS
-              never implies a costing method nobody chose. */}
+              The rows are the SERVER's answer per company the viewer may read (#232 Phase 2): Configured
+              with the policy in force, or Not configured only when the server says NOT_CONFIGURED. A viewer
+              without Financial Policy access sees that said, never a fabricated "Not configured". EOS never
+              implies a costing method nobody chose. */}
           <section className="ns-section" aria-label="Accounting policy">
             <div className="ns-section__head">
               <h2 className="ns-section__title">Accounting Policy</h2>
             </div>
-            <Row
-              label="Inventory Costing"
-              state="Not configured"
-              words="Chosen at deployment"
-              tip="Weighted average or FIFO. Selected with the accounting team during deployment; EOS applies no method until one is configured and never assumes one."
-            />
-            <Row
-              label="Serialized Equipment"
-              state="Not configured"
-              words="Chosen at deployment"
-              tip="Specific identification, or pooled with the part's other stock. A serialized unit's own acquisition cost is derivable from its receipt lineage."
-            />
-            <Row
-              label="COGS Recognition"
-              state="Not configured"
-              words="Chosen at deployment"
-              tip="The governed event at which cost becomes COGS. Physical movement — transfer, put-away, staging, receipt, cycle count — is never one. Work-order consumption is unavailable until consumption removes physical stock."
-            />
+            <PolicyInForceRows summary={policySummary} />
             <Row
               label="Unknown Cost"
               state="Configured"
