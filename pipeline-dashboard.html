@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sales Pipeline Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --ink: #1b1f24; --muted: #667085; --line: #e4e7ec;
+    --accent: #2563eb; --won: #16a34a; --lost: #dc2626; --chip: #eef2ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --card: #181b21; --ink: #e6e8eb; --muted: #98a2b3; --line: #2a2f37;
+            --accent: #60a5fa; --won: #4ade80; --lost: #f87171; --chip: #1e2533; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 14px; margin: 0 0 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 20px; }
+  select { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 999px;
+          padding: 4px 12px; cursor: pointer; font: inherit; }
+  .chip[aria-pressed="true"] { background: var(--chip); color: var(--accent); border-color: var(--accent); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .kpi .v { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .l { color: var(--muted); font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .chartbox { position: relative; height: 280px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; cursor: pointer; user-select: none; }
+  td.n, th.n { text-align: right; }
+  .scroll { overflow-x: auto; }
+  .bar { height: 6px; background: var(--accent); border-radius: 3px; opacity: .7; }
+  .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--chip); }
+  .won { color: var(--won); } .lost { color: var(--lost); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sales Pipeline Dashboard</h1>
+  <p class="sub">FY26 Q4 · sample data · weighted = amount × stage probability</p>
+
+  <div class="filters">
+    <label>Owner <select id="owner"></select></label>
+    <div class="chips" id="stages" role="group" aria-label="Deal stage filter"></div>
+  </div>
+
+  <section class="kpis" id="kpis"></section>
+
+  <div class="grid">
+    <section class="card"><h2>Stage breakdown</h2><div class="chartbox"><canvas id="stageChart"></canvas></div></section>
+    <section class="card"><h2>Weighted forecast by close month</h2><div class="chartbox"><canvas id="fcChart"></canvas></div></section>
+  </div>
+
+  <section class="card" style="margin-bottom:16px">
+    <h2>Rep leaderboard</h2>
+    <div class="scroll"><table id="board"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Deals (<span id="dealCount"></span>)</h2>
+    <div class="scroll"><table id="deals"></table></div>
+  </section>
+</main>
+
+<script>
+const STAGES = [
+  ["Prospecting", 0.10], ["Qualification", 0.25], ["Proposal", 0.50],
+  ["Negotiation", 0.75], ["Closed Won", 1], ["Closed Lost", 0]
+];
+const PROB = Object.fromEntries(STAGES);
+const OPEN = s => s !== "Closed Won" && s !== "Closed Lost";
+
+// [account, owner, stage, amount, closeDate]
+const DEALS = [
+  ["Northwind Logistics","Maya Chen","Negotiation",184000,"2026-10-28"],
+  ["Apex Fabrication","Maya Chen","Closed Won",96500,"2026-10-03"],
+  ["Cobalt Health Systems","Maya Chen","Proposal",142000,"2026-11-14"],
+  ["Ridgeway Foods","Maya Chen","Qualification",58000,"2026-12-05"],
+  ["Lumen Retail Group","Maya Chen","Closed Lost",77000,"2026-10-09"],
+  ["Harbor Freight Partners","Maya Chen","Prospecting",210000,"2027-01-20"],
+  ["Sterling Aerospace","Jordan Ellis","Closed Won",248000,"2026-10-07"],
+  ["Pinecrest Utilities","Jordan Ellis","Negotiation",132000,"2026-11-03"],
+  ["Quantum Payroll","Jordan Ellis","Proposal",67000,"2026-11-21"],
+  ["Bayview Medical","Jordan Ellis","Closed Lost",118000,"2026-09-29"],
+  ["Ironclad Security","Jordan Ellis","Qualification",89000,"2026-12-12"],
+  ["Granite Builders","Jordan Ellis","Prospecting",45000,"2027-01-15"],
+  ["Summit Analytics","Priya Raman","Closed Won",74000,"2026-10-01"],
+  ["Evergreen Schools","Priya Raman","Closed Won",52000,"2026-10-10"],
+  ["Vertex Telecom","Priya Raman","Negotiation",265000,"2026-11-18"],
+  ["Orchid Hospitality","Priya Raman","Proposal",98000,"2026-12-02"],
+  ["Falcon Freight","Priya Raman","Qualification",123000,"2026-12-19"],
+  ["Blue Mesa Energy","Priya Raman","Prospecting",176000,"2027-02-06"],
+  ["Keystone Insurance","Priya Raman","Closed Lost",61000,"2026-10-05"],
+  ["Marlow & Pike LLP","Diego Santos","Proposal",54000,"2026-10-30"],
+  ["Redwood Credit Union","Diego Santos","Negotiation",88000,"2026-10-24"],
+  ["Atlas Robotics","Diego Santos","Qualification",156000,"2026-11-27"],
+  ["Sunrise Dental Group","Diego Santos","Prospecting",38000,"2026-12-15"],
+  ["Copperline Mining","Diego Santos","Closed Lost",142000,"2026-10-02"],
+  ["Nimbus Software","Diego Santos","Closed Won",43000,"2026-10-08"],
+  ["Westfield Auto","Sam Whitaker","Negotiation",112000,"2026-11-09"],
+  ["Crescent Pharma","Sam Whitaker","Proposal",198000,"2026-12-10"],
+  ["Tidewater Ports","Sam Whitaker","Qualification",71000,"2026-11-30"],
+  ["Oakridge Senior Living","Sam Whitaker","Prospecting",64000,"2027-01-08"],
+  ["Polaris Data","Sam Whitaker","Closed Won",129000,"2026-10-06"],
+  ["Meridian Bank","Sam Whitaker","Closed Lost",205000,"2026-10-11"],
+  ["Lakeside Brewing","Sam Whitaker","Proposal",27000,"2026-10-31"],
+].map(([account, owner, stage, amount, close]) => ({ account, owner, stage, amount, close }));
+
+const OWNERS = [...new Set(DEALS.map(d => d.owner))].sort();
+const usd = n => n >= 1e6 ? "$" + (n / 1e6).toFixed(2) + "M" : "$" + Math.round(n / 1e3) + "K";
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+// --- filter state ---
+const state = { owner: "All", stages: new Set(STAGES.map(s => s[0])), sort: ["amount", -1] };
+
+const ownerSel = document.getElementById("owner");
+ownerSel.innerHTML = ["All", ...OWNERS].map(o => `<option>${o}</option>`).join("");
+ownerSel.onchange = () => { state.owner = ownerSel.value; render(); };
+
+const chips = document.getElementById("stages");
+chips.innerHTML = STAGES.map(([s]) => `<button class="chip" aria-pressed="true" data-s="${s}">${s}</button>`).join("");
+chips.onclick = e => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  const on = b.getAttribute("aria-pressed") !== "true";
+  b.setAttribute("aria-pressed", on);
+  on ? state.stages.add(b.dataset.s) : state.stages.delete(b.dataset.s);
+  render();
+};
+
+const filtered = () => DEALS.filter(d =>
+  (state.owner === "All" || d.owner === state.owner) && state.stages.has(d.stage));
+
+// --- charts ---
+Chart.defaults.font.family = "system-ui, sans-serif";
+Chart.defaults.color = css("--muted");
+Chart.defaults.borderColor = css("--line");
+const money = { ticks: { callback: v => usd(v) } };
+
+const stageChart = new Chart(document.getElementById("stageChart"), {
+  type: "bar",
+  data: { labels: STAGES.map(s => s[0]), datasets: [
+    { label: "Amount", data: [], backgroundColor: css("--accent"), borderRadius: 4, yAxisID: "y" },
+    { label: "Deals", data: [], type: "line", borderColor: css("--won"), backgroundColor: css("--won"), yAxisID: "y1", tension: .3 }
+  ]},
+  options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label === "Amount" ? "Amount: " + usd(c.raw) : "Deals: " + c.raw } } },
+    scales: { y: money, y1: { position: "right", grid: { drawOnChartArea: false }, ticks: { precision: 0 } } } }
+});
+
+const fcChart = new Chart(document.getElementById("fcChart"), {
+  type: "bar",
+  data: { labels: [], datasets: [
+    { label: "Closed won", data: [], backgroundColor: css("--won"), borderRadius: 4 },
+    { label: "Weighted open", data: [], backgroundColor: css("--accent"), borderRadius: 4 },
+    { label: "Unweighted open", data: [], type: "line", borderColor: css("--muted"), borderDash: [4, 4], pointRadius: 3 }
+  ]},
+  options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ": " + usd(c.raw) } } },
+    scales: { x: { stacked: true }, y: { ...money, stacked: true } } }
+});
+
+// --- render ---
+function render() {
+  const ds = filtered();
+  const open = ds.filter(d => OPEN(d.stage));
+  const won = ds.filter(d => d.stage === "Closed Won");
+  const lost = ds.filter(d => d.stage === "Closed Lost");
+  const sum = (a, f = d => d.amount) => a.reduce((t, d) => t + f(d), 0);
+  const weighted = sum(open, d => d.amount * PROB[d.stage]);
+  const winRate = won.length + lost.length ? won.length / (won.length + lost.length) : null;
+
+  document.getElementById("kpis").innerHTML = [
+    ["Open pipeline", usd(sum(open)), open.length + " open deals"],
+    ["Weighted forecast", usd(weighted), "open deals × probability"],
+    ["Closed won", usd(sum(won)), won.length + " deals"],
+    ["Commit (won + weighted)", usd(sum(won) + weighted), "projected bookings"],
+    ["Win rate", winRate == null ? "—" : Math.round(winRate * 100) + "%", `${won.length}W / ${lost.length}L`],
+    ["Avg deal size", ds.length ? usd(sum(ds) / ds.length) : "—", ds.length + " deals in view"],
+  ].map(([l, v, s]) => `<div class="card kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="l">${s}</div></div>`).join("");
+
+  // stage breakdown
+  stageChart.data.datasets[0].data = STAGES.map(([s]) => sum(ds.filter(d => d.stage === s)));
+  stageChart.data.datasets[1].data = STAGES.map(([s]) => ds.filter(d => d.stage === s).length);
+  stageChart.update();
+
+  // forecast by close month
+  const months = [...new Set(ds.filter(d => d.stage !== "Closed Lost").map(d => d.close.slice(0, 7)))].sort();
+  const inM = (m, a) => a.filter(d => d.close.startsWith(m));
+  fcChart.data.labels = months.map(m => new Date(m + "-15").toLocaleString("en-US", { month: "short", year: "2-digit" }));
+  fcChart.data.datasets[0].data = months.map(m => sum(inM(m, won)));
+  fcChart.data.datasets[1].data = months.map(m => sum(inM(m, open), d => d.amount * PROB[d.stage]));
+  fcChart.data.datasets[2].data = months.map(m => sum(inM(m, open)));
+  fcChart.update();
+
+  // leaderboard (owner filter narrows it; stage filter applies)
+  const reps = OWNERS.filter(o => state.owner === "All" || o === state.owner).map(o => {
+    const r = ds.filter(d => d.owner === o);
+    const rw = r.filter(d => d.stage === "Closed Won"), rl = r.filter(d => d.stage === "Closed Lost");
+    const ro = r.filter(d => OPEN(d.stage));
+    const w = sum(ro, d => d.amount * PROB[d.stage]);
+    return { o, won: sum(rw), wonN: rw.length, pipe: sum(ro), w, commit: sum(rw) + w,
+             rate: rw.length + rl.length ? rw.length / (rw.length + rl.length) : null };
+  }).sort((a, b) => b.commit - a.commit);
+  const top = Math.max(1, ...reps.map(r => r.commit));
+  document.getElementById("board").innerHTML =
+    `<tr><th>#</th><th>Rep</th><th class="n">Won</th><th class="n">Open pipeline</th><th class="n">Weighted</th><th class="n">Commit</th><th style="width:22%"></th><th class="n">Win rate</th></tr>` +
+    reps.map((r, i) => `<tr><td>${i + 1}</td><td>${r.o}</td><td class="n won">${usd(r.won)} <span class="l">(${r.wonN})</span></td>
+      <td class="n">${usd(r.pipe)}</td><td class="n">${usd(r.w)}</td><td class="n"><b>${usd(r.commit)}</b></td>
+      <td><div class="bar" style="width:${(r.commit / top) * 100}%"></div></td>
+      <td class="n">${r.rate == null ? "—" : Math.round(r.rate * 100) + "%"}</td></tr>`).join("");
+
+  // deal table (click headers to sort)
+  const [k, dir] = state.sort;
+  const rows = [...ds].map(d => ({ ...d, weighted: d.amount * PROB[d.stage] }))
+    .sort((a, b) => (a[k] > b[k] ? 1 : a[k] < b[k] ? -1 : 0) * dir);
+  const cols = [["account", "Account"], ["owner", "Owner"], ["stage", "Stage"], ["amount", "Amount", 1], ["weighted", "Weighted", 1], ["close", "Close date"]];
+  document.getElementById("dealCount").textContent = rows.length;
+  document.getElementById("deals").innerHTML =
+    "<tr>" + cols.map(([c, l, n]) => `<th data-k="${c}" class="${n ? "n" : ""}">${l}${c === k ? (dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("") + "</tr>" +
+    rows.map(d => `<tr><td>${d.account}</td><td>${d.owner}</td>
+      <td><span class="tag ${d.stage === "Closed Won" ? "won" : d.stage === "Closed Lost" ? "lost" : ""}">${d.stage}</span></td>
+      <td class="n">${usd(d.amount)}</td><td class="n">${usd(d.weighted)}</td><td>${d.close}</td></tr>`).join("");
+}
+
+document.getElementById("deals").onclick = e => {
+  const k = e.target.closest("th")?.dataset.k; if (!k) return;
+  state.sort = [k, state.sort[0] === k ? -state.sort[1] : (k === "amount" || k === "weighted" ? -1 : 1)];
+  render();
+};
+
+render();
+</script>
+</body>
+</html>
