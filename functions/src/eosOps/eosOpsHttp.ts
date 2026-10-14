@@ -728,6 +728,8 @@ const WORK_ORDER_ERROR_NAMES: ReadonlySet<string> = new Set([
   "WorkOrderEquipmentInstallError", "EquipmentOperationError",
   // Finance Closure (#206): the /operations/finance table's governed refusal classes.
   "FinanceOperationError", "FinanceFoundationError", "CostEvidenceSupplyError", "IntercompanyReliefError",
+  // Financial Policy (#232): the policy lifecycle's governed refusal class, on the same /operations/finance table.
+  "FinancialPolicyRefusal",
   // Rental (#207): the /operations/rental table's governed refusal class.
   "RentalError",
   // Analysis (#208): the read-only /operations/analysis table's governed refusal class.

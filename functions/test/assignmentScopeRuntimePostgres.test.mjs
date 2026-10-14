@@ -178,7 +178,8 @@ test("Security Role assignment scope: governed runtime, fail closed, never globa
     assert.deepEqual(byType.operatingCompany.values.map((v) => v.value), ["taylor", "ventana"], "ACTIVE, this tenant only");
     assert.deepEqual([byType.operatingCompany.supported, byType.operatingCompany.label, byType.operatingCompany.contextKey],
       [true, "Company", "operatingCompanyId"]);
-    assert.deepEqual(byType.operatingCompany.capabilities.map((c) => c.capabilityKey), ["employee.record.read"]);
+    assert.deepEqual(byType.operatingCompany.capabilities.map((c) => c.capabilityKey),
+      ["employee.record.read", "finance.policy.read", "finance.policy.prepare", "finance.policy.approve", "finance.policy.activate"]); // + #232 Amendment A
     for (const type of ["businessUnit", "location", "domain", "tenant", "ownAssignment"]) {
       assert.equal(byType[type].supported, false, type);
       assert.ok(byType[type].reason, `${type} is listed WITH its reason`);

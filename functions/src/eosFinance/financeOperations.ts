@@ -9,6 +9,7 @@
 //   reconcile   finance.reconciliation.record
 //   cost        inventory.receipt.correct + WAREHOUSE scope (late cost evidence -- costEvidenceSupplyCommand.ts)
 //   relief      inventory.transfer.dispatch + WAREHOUSE scope (intercompany inventory relief -- intercompanyInventoryRelief.ts)
+//   policy      finance.policy.read / .prepare / .approve / .activate -- the Financial Policy lifecycle (financialPolicy.ts, #232)
 // Configuration stays finance.configuration.manage on /admin/policy. A Sales or Technician principal holds none of the
 // transaction keys, so it cannot manufacture a settlement fact.
 //
@@ -23,6 +24,7 @@ import {
 import { supplyReceiptCostEvidence } from "../eosOps/costEvidenceSupplyCommand";
 import { relieveIntercompanySaleInventory } from "../eosOps/intercompanyInventoryRelief";
 import type { WorkOrderCaller, WorkOrderOperationDeps } from "../eosOps/workOrderOperationTypes";
+import { EOS_FINANCIAL_POLICY_OPERATIONS } from "./financialPolicy";
 
 export const FINANCE_ROUTE = "/operations/finance";
 export const FINANCE_VIEW_CAPABILITY = "finance.payment.read";
@@ -244,6 +246,8 @@ export const EOS_FINANCE_OPERATIONS: Readonly<Record<string, Op>> = Object.freez
   },
   supplyReceiptCostEvidence: async (deps, caller, input) => supplyReceiptCostEvidence({ pool: deps.pool }, caller.actor, input),
   relieveIntercompanySaleInventory: async (deps, caller, input) => relieveIntercompanySaleInventory({ pool: deps.pool }, caller.actor, input),
+  // Financial Policy (DECISIONS #232): each operation checks its own finance.policy.* key.
+  ...EOS_FINANCIAL_POLICY_OPERATIONS,
 });
 export const FINANCE_OPERATIONS = Object.freeze(Object.keys(EOS_FINANCE_OPERATIONS));
 export const isFinanceOperation = (name: unknown): name is string => typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_FINANCE_OPERATIONS, name);

@@ -8040,3 +8040,227 @@ Changing the nine is an Owner decision. Existing grants are retained (O3).
 **Boundary.**
 - Client only: `field-ops-app-vite/src/access/scanWorkflows.js`.
 - No server, grant, capability, migration, Firebase or production change.
+
+## #232 — OWNER: Financial Policy authority amendment and the PostgreSQL foundation — Finance prepares, Owner / Administrator approve and activate (2026-10-13)
+
+(Owner direction of 2026-10-13: implement the EXISTING CERT-FIN-02 accounting-policy-profile architecture in PostgreSQL. It continues the Owner ruling of 2026-09-03 and its §7 lifecycle (`docs/assessments/cert-fin-02-policy-framework-reconciliation.md`); it is not a redesign. Authority matrix: `docs/financials/financial-policy-foundation-authority.md`.)
+
+**Supersedes.** This decision SUPERSEDES the holder portion of the earlier financial-policy authority ruling, commit `5b2bb0c6` (PR #1778): "`financialPolicy.profile.configure` is held by admin and owner ONLY, by derivation". From this decision:
+- configuration (preparing, editing and submitting a policy) belongs to Finance Manager and Controller, not to admin and owner;
+- admin and owner approve, reject and activate.
+
+The rest of that ruling stands:
+- read authority never implies write;
+- no capability, including admin's and owner's, edits a locked policy;
+- production activation is a separate ruling.
+
+The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sandbox activation and `financialPolicyProfileCommand.ts` are NOT changed (Firebase is retirement-only).
+
+**Decision (as directed by the Owner).**
+1. **Prepare.** Finance Manager and Controller may configure, edit drafts and submit Financial Policies.
+2. **Decide and activate.** Owner and Administrator may approve, reject and activate Financial Policies.
+3. **Separation of duties.** A preparer cannot approve their own submission. As implemented, the principal who approves OR rejects is neither the submitter nor any principal who wrote the draft's content, even when that principal holds the approve capability.
+4. **Independent companies.** Taylor and Ventana maintain independent policies.
+5. **Lock.** Activated policy versions are locked.
+6. **Revision.** Future changes require governed revision and approval: a new version through the same lifecycle. There is no unlock, reopen or force path.
+
+**Implementation (this PR, unmerged).**
+- **Migration `1764560000000_financial-policy-profiles.sql`.** It creates `eos_finance.financial_policy_versions`, keyed by (tenant, operating company) against `eos_policy.tenant_operating_companies`, never CONSOLIDATED. It has a guarded Down.
+- **Lifecycle.** DRAFT -> SUBMITTED -> APPROVED or REJECTED; APPROVED -> ACTIVE; ACTIVE -> SUPERSEDED.
+  - Content is frozen once a version leaves DRAFT. Lifecycle stamps are write-once. Nothing is deleted.
+  - An ACTIVE row admits only its supersession by the activation of a later approved version of the same company, in the same transaction (a deferred check).
+  - REJECTED and SUPERSEDED are final.
+  - At most one ACTIVE and one in-flight version per company (partial unique indexes).
+  - Database triggers and CHECKs enforce all of the above, including separation of duties. In addition:
+    - TRUNCATE is refused by a statement trigger;
+    - even in DRAFT, `content_authors` only grows and `prepared_by` never changes.
+  - A CHECK refusal that a racing write reaches answers as a governed refusal (for example `SEPARATION_OF_DUTIES`, 403), never a 500.
+- **Effective date at ACTIVATION, not approval.** An approval may wait; a date fixed earlier could lapse, leaving an approved version that can neither activate nor be edited. The date may not precede the company's business date (`eos_policy.operating_company_business_date`) nor an earlier activated version's.
+- **Lifecycle is not effectivity.** Activation locks a version and supersedes the prior ACTIVE one at once, but a version governs only from its own effective date.
+  - The version IN FORCE on a business date is the latest ACTIVE or SUPERSEDED version whose effective date is on or before it. A SUPERSEDED row keeps its own effective date.
+  - A future-dated ACTIVE version is reported as SCHEDULED, not in force.
+  - `readFinancialPolicy` returns `inForce` (or `NOT_CONFIGURED`), `scheduled` and the version in flight. It accepts an `asOfDate`.
+- **Missing policy fails closed.** A company with no version in force reads `NOT_CONFIGURED`, including when its first-ever activation is still scheduled. No default method exists anywhere.
+- **Validation** is the pure domain module `functions/src/finance/financialPolicyProfile.ts`, imported unchanged. LIFO and STANDARD are refused, and `WORK_ORDER_CONSUMPTION` follows `PHYSICAL_CONSUMPTION_ACTIVE`. It is re-checked at submit, approval and activation.
+- **Server.** `functions/src/eosFinance/financialPolicy.ts`, on `/operations/finance`. Every state change writes one `eos_policy.audit_events` row carrying the full version snapshot, from which the history rebuilds.
+- **Replay.** An identical re-sent command writes nothing and answers `replayed: true`. A re-send whose effect is recorded but whose reason or note differs is refused with `FINANCIAL_POLICY_REPLAY_CONFLICT` (409), so a note is never silently dropped.
+- **Capabilities.** Four PG-native keys on the new `financialPolicy` Object, with **zero grants**. The Firebase ids are deliberately not reused, to avoid the catalog reconcile granting them to admin.
+
+  | Key | Kind | Operations |
+  |---|---|---|
+  | `finance.policy.read` | READ | read the policy, list versions |
+  | `finance.policy.prepare` | EDIT | save a draft, submit |
+  | `finance.policy.approve` | ADMIN_ACTION | approve, reject |
+  | `finance.policy.activate` | ADMIN_ACTION | activate |
+
+- **The Administrator, by standing (#223).** Protected-Administrator standing implies READ and ADMIN_ACTION kinds. So the Administrator holds `finance.policy.read`, `.approve` and `.activate` **without a grant**, and does NOT hold `.prepare` (EDIT is not implied). No `PROTECTED_ADMINISTRATOR_EXCLUSIONS` entry is needed. This is exactly item 2 for the Administrator. The audit trail marks standing-authorized acts `PROTECTED_ADMINISTRATOR`.
+- **Proposed grants: SUPERSEDED by #232 Phase 1 (below).** This PR originally proposed:
+  - `financeManager` and `controller`: `finance.policy.read` + `.prepare`;
+  - `owner`: `finance.policy.read` + `.approve` + `.activate`.
+
+  Phase 1 replaces those proposals. The existing finance Roles stay unchanged.
+  - No Sales, Service, Parts or Warehouse Role, and neither `accountingManager` nor `generalManager`, is proposed anything.
+
+**Open Owner decisions (recorded, not built).**
+1. **Scheduled corrections.** While a future-dated version is scheduled, a correction must be dated AFTER it: effective dates strictly increase and no cancel-scheduled path exists. Should a governed "cancel scheduled activation" exist?
+2. ~~**Company scope is data-only.**~~ **RESOLVED by #232 Amendment A** (below): company scope is now enforced on every policy command through the existing assignment scope.
+3. **Revision without conversion.** CERT-FIN-02 §1 defines a later change as approval -> effective date -> impact assessment -> conversion -> activation. This foundation builds the approval, effective date and activation. Impact assessment and conversion remain unbuilt, and they must exist before any cost-engine consumer reads a revised policy.
+4. **Activation has no separation of duties.** A principal holding prepare and activate can activate their own version after someone else approves it. #232 requires independence for approval only.
+5. **Other Roles.** Should `accountingManager` prepare? Should `generalManager` read?
+6. **Administrator by standing.** The Administrator's approve and activate come from standing (#223), with no grant. The alternative is an exclusion plus an explicit grant.
+
+**Boundary.**
+- No grant, Role or persona change.
+- No nonprod or production data touched.
+- No Firebase change.
+- No UI (a later PR).
+
+## #232 Amendment A — multi-company Controller and company-scoped financial authority (2026-10-13)
+
+(Owner decision of 2026-10-13, amending #232. Resolves #232's open decision "company scope is data-only".)
+
+**Decision (as directed by the Owner).**
+1. One employee identity may hold Controller responsibilities for multiple operating companies.
+2. Employee company assignments determine where role capabilities apply.
+3. Controller permissions are evaluated against the requested operating company.
+   - A Controller assigned to Taylor and Ventana may prepare and submit separate policies for each.
+   - A Controller assigned only to Taylor is refused for Ventana.
+4. Policies, cost histories and activation stay company-specific.
+5. Authorized consolidated financial reporting is permitted; consolidated policy editing is not.
+6. Owner / Administrator approval and activation stay subject to separation of duties.
+7. No role may bypass company scope merely because it has a tenant-wide capability.
+8. Reuse existing EOS structures; NO Financials-only company-access system.
+
+**Implementation (PR #2085, unmerged).**
+- **No new access system.** It reuses the existing Security Role ASSIGNMENT SCOPE: `user_role_assignments` scope type `operatingCompany`, whose governed values are this tenant's ACTIVE `tenant_operating_companies`. The Administration UI already assigns Roles with that scope.
+- **Registry.** `SCOPE_EVALUABLE_GRANTS` (`functions/src/adminPolicy/assignmentScopeRuntime.ts`) registers `finance.policy.read`, `.prepare`, `.approve` and `.activate` at operatingCompany scope. Their consumers are the seven `/operations/finance` policy operations. This is the existing registry used as documented.
+- **Enforcement, server-side on every policy command** (`functions/src/eosFinance/financialPolicy.ts`, the `CommercialWriteScope` pattern):
+  - A key is held through the flat (global) set, or through the companies its UNCONDITIONED scoped holdings admit (`admittedScopeValues`). Otherwise the answer is `CAPABILITY_REQUIRED`.
+  - The requested company is resolved first: ACTIVE, never CONSOLIDATED. It is then admitted against the holding BEFORE any version is read. Otherwise the answer is `OUTSIDE_OPERATING_COMPANY_SCOPE` (403), the same for a real and a non-existent version id, so no other company's versions or state leak.
+  - **Out of scope == missing.** For a caller holding the key only at scope, an unknown company, an inactive company (including a scoped company later made inactive) and an ACTIVE out-of-scope company all get the SAME `OUTSIDE_OPERATING_COMPANY_SCOPE` (403), so a scoped holder cannot probe which companies exist. A flat holder keeps the precise `OPERATING_COMPANY_UNKNOWN` (400). CONSOLIDATED is refused for everyone with `CONSOLIDATED_NOT_A_COMPANY`.
+  - Conditioned holdings admit nothing (fail closed).
+- **Separation of duties** is unchanged and decided per version.
+- **Consolidated.** Consolidated policy editing (and reading) is refused. Consolidated financial reporting reads (`readFinanceWorkspace` and the other Finance reads) are untouched.
+- **Global assignments.** A GLOBAL assignment, and Protected Administrator standing, reach every company. This is the current EOS meaning of "All (Global)", recorded pending the Owner's confirmation (open item 2).
+- **Administrator standing** reaches every company for `finance.policy.read`, `.approve` and `.activate`, and never for `.prepare` (EDIT is not implied). Open item 2(b)'s "exemption for Administrator standing" means exactly this reach.
+
+**Open items (Owner decisions; nothing changed for them).**
+1. **The finance Roles cannot be company-scoped today.** `controller`, `accountingManager`, `financeManager` and `owner` carry `audit.event.read` / `admin.*`, so Administration refuses them at operatingCompany scope (`SCOPE_AMBIGUOUS_ADMINISTRATION`). Options:
+   - **A (recommended):** a dedicated policy-preparer Role (`finance.policy.read` + `.prepare`, no Administration capability), created and scoped through Administration. No code.
+   - **B:** remove `audit.event.read` from `controller`; its 24 other capabilities would go inert at a scope.
+   - **C:** an EOS-wide change to how Administration capabilities interact with scope.
+2. **What a global assignment means.**
+   - (a) All companies: the current EOS meaning, as implemented.
+   - (b) A scoped holding is required: this would need an EOS-wide `scopeRequired` extension, plus exemptions for the Owner and for Administrator standing.
+3. **Direct principal grants remain a tenant-wide path (NOT closed; blocked on a decision).** `grantObjectActionToPrincipal` refuses any scope on a direct grant, and an unconditioned direct exception lands in the flat set. So Administration can still give one principal `finance.policy.*` for every company.
+   - The review asked to add the four keys to the existing `RESERVED_CAPABILITY_HOLDERS` list. That list is a Role ALLOW-list: `forbiddenPair` makes every unlisted Role a SYSTEM_INVARIANT, so `grantObjectActionToRole` would refuse the Option A dedicated Role, and the matrix would mark the Administrator's standing cells as forbidden.
+   - Doing that would contradict this amendment's recommended path, so it was not done.
+   - Options:
+     - (i) Reserve to named Roles. The Owner names the Role keys (for example `financeManager`, `controller`, `owner` and the Option A Role); each new Role then needs a code change.
+     - (ii) A Role-only rule ("no direct grant, any Role"). This needs a small new list in `grantObjectActionToPrincipal`, which is a new mechanism and needs Owner approval.
+     - (iii) An Administration operating procedure: no direct grants of `finance.policy.*`.
+   
+   Until it is decided, the only intended tenant-wide paths are a GLOBAL Role assignment and Administrator standing.
+4. **The financeAccounting persona discrepancy.** Its Principal holds both `accountingManager` and `controller` globally in nonprod. See `docs/financials/financial-policy-foundation-authority.md` §6.
+
+**Boundary.**
+- No Role, capability or grant change anywhere live. Test Roles exist in local test tenants only.
+- No Firebase change.
+- No UI.
+
+## #232 Phase 1 — Financial Policy security corrections (Owner-approved limited implementation, 2026-10-13)
+
+(Owner approval of 2026-10-13 for a **Financial-Policy-only** implementation. It is NOT an EOS-wide company-membership redesign and NOT a generalized role-scoping migration. The EOS-wide mandatory-company-assignment ruling is a separate future programme, not implemented here; for this feature a GLOBAL Role assignment still means all companies.)
+
+**Decision (as approved by the Owner).**
+1. **Roles unchanged.** The existing Controller, Finance Manager and Accounting Manager Roles stay UNCHANGED.
+2. **Preparer Role.** A narrowly scoped **Financial Policy Preparer** Role holds ONLY `finance.policy.read` + `finance.policy.prepare`.
+   - One employee prepares for Taylor, Ventana or both through EXISTING company-scoped Role assignments (Amendment A).
+   - Future companies come through the existing governed registry.
+   - Each company's policy, versions and activation history stay separate.
+3. **Security requirements.**
+   - Company scope is enforced server-side on every operation, and out-of-scope requests are refused (Amendment A).
+   - DIRECT GRANTS CANNOT BYPASS company restrictions.
+   - Whoever prepared, edited or submitted a version cannot approve, reject OR ACTIVATE it.
+   - Owner and Administrator approval / activation authority is preserved, and so are tenant isolation, audit and the protected-Owner invariants.
+   - No implicit permissions and no new grants.
+
+**Implemented (PR #2085).**
+- **Activation separation of duties (Amendment A open item / A6: RESOLVED).** `activateFinancialPolicy` refuses an activator who is the version's preparer, any content author or the submitter (`SEPARATION_OF_DUTIES`, 403).
+  - A database CHECK, `financial_policy_activator_independent`, holds the same line, and its refusal maps to the same governed answer.
+  - The approver may activate.
+- **Approve and activate are reserved to the Owner Role.** They use the existing `RESERVED_CAPABILITY_HOLDERS` allow-list (Owner G7 mechanism), so:
+  - `grantObjectActionToRole` refuses them for every other Role (`SYSTEM_INVARIANT`);
+  - `grantObjectActionToPrincipal` refuses them as direct grants;
+  - a Role keyed `owner` cannot be created as a custom Role.
+- **The Administrator keeps read, approve and activate by STANDING; the reservation does not affect it.**
+  - `protectedAdministratorImpliedKeys` and the runtime capability resolution never consult the reserved list. That is why trade-in approval had to be excluded from standing separately, through `PROTECTED_ADMINISTRATOR_EXCLUSIONS`.
+  - Proven: the Administrator still approves and activates at runtime.
+  - The Administration matrix shows the Administrator's read / approve / activate cells as held with source `PROTECTED_ADMINISTRATOR`, and prepare as not held.
+  - The role-detail view additionally names the reservation ruling (`forbiddenBy`) on the approve / activate cells; this is a display artifact, and authority is unchanged.
+- **Runtime reservation.** `approveFinancialPolicy`, `rejectFinancialPolicy` and `activateFinancialPolicy` also check the reservation at request time, through the same primitives as trade-in approval's `requireReservedHolder` (`qualifyingGlobalRoles` + `reservedCapabilityAdmits`; the Commercial command kernel itself may only be reached from the Commercial transport). A role-capability row that bypassed the write path does not authorize.
+  - UNLIKE trade-in (excluded from standing), Protected Administrator standing also passes, because #232 gives the Administrator approve / activate by standing.
+  - The refusal is `RESERVED_CAPABILITY` (403).
+- **NULL-safe independence.** The CHECK `financial_policy_content_authors_no_null` (`array_position(content_authors, NULL) IS NULL`) stops a NULL author from blinding the three independence CHECKs.
+- **Grants.** The Owner Role's approve / activate grants remain PROPOSED. Executing them needs the Owner's authorization through Administration.
+- **Future companies (proven).** A third ACTIVE company in the registry is assignable at Preparer scope and keeps its own isolated policy and history, with no code change.
+
+**The Preparer Role, and what remains open.**
+- **Creating the Role needs no code.** Creating the Financial Policy Preparer Role needs only an Owner-authorized Administration action: a custom Role (`createRole`) granted exactly `finance.policy.read` + `.prepare` (`grantObjectActionToRole`), assigned globally or per company. The test tenant does exactly this (`financialPolicyPreparer`, alongside the unchanged finance Roles).
+- **What is blocked** is closing DIRECT principal grants of read / prepare.
+  - Reserving them through `RESERVED_CAPABILITY_HOLDERS` would make `createRole` refuse that Role key (the PR-4a guard against a custom Role impersonating a reserved holder).
+  - No other existing mechanism refuses direct grants.
+  - Until one of the options below is authorized, a direct principal grant of `finance.policy.read` / `.prepare` remains a tenant-wide path:
+    - (A) a narrow `createRole` exception for this one Role key, then reserve read / prepare to it;
+    - (C) a Role-only rule for read / prepare in `grantObjectActionToPrincipal`;
+    - (B) a catalog edit: define the Role in the governed role catalog (`functions/src/access/governedBusinessRoles.ts`, the Firebase-era catalog the seed reads). This is Firebase-catalog development and a seed default, so it is listed for completeness only.
+
+**Status of earlier open items.**
+- **Amendment A item 1 (which Role carries scoped preparation).** DECIDED: the Financial Policy Preparer Role, created through Administration on the Owner's authorization; no code is needed.
+- **Amendment A item 3 (direct grants).** RESOLVED for approve / activate (reserved). OPEN for read / prepare, as above.
+- **Activation separation of duties.** RESOLVED.
+
+**Remaining open items.**
+1. Correcting a scheduled (future-dated) version.
+2. `accountingManager` prepare and `generalManager` read.
+3. The financeAccounting persona registry discrepancy.
+4. Authorization of the Owner Role's approve / activate grants.
+5. Authorize creating the Preparer Role through Administration.
+6. Close direct grants of read / prepare: (A) or (C) above.
+
+**Boundary.**
+- No Role definition, grant, assignment or persona change anywhere live.
+- No Firebase change.
+- No UI.
+
+### #232 Phase 1 — Option C: read / prepare are role-assignment-only (Owner-authorized, 2026-10-13)
+
+(Owner authorization: a narrow restriction that admits only Role assignments for `finance.policy.read` and `finance.policy.prepare`. Direct principal grants are refused through governed Administration, INCLUDING at request time when a prohibited grant already exists. Role grants and the custom Financial Policy Preparer Role are preserved; no unrelated capability is affected.)
+
+**Implementation (PR #2085).**
+- **The list.** `ROLE_ASSIGNMENT_ONLY_CAPABILITIES` (`functions/src/adminPolicy/roleCapabilityAdministration.ts`, beside `RESERVED_CAPABILITY_HOLDERS`) contains exactly `finance.policy.read` and `finance.policy.prepare`, each with its ruling. A test pins the list.
+  - Unlike the reserved list, it names NO Role. Any Role may hold the keys, and `createRole` is unaffected.
+- **Grant time.** `grantObjectActionToPrincipal` refuses these keys with `ROLE_ASSIGNMENT_ONLY` (a CONFLICT, the same family as the reserved `SYSTEM_INVARIANT` refusal). No row is written.
+  - The grant-impact preview runs the same command, so it reports `WOULD_REFUSE` / `ROLE_ASSIGNMENT_ONLY`, never `WOULD_APPLY`.
+- **Request time.** The hook is the resolver, so every OPERATIONAL gate, the explanation and the preview agree:
+  - `resolveOperationalCapabilities`, the one resolution behind every runtime gate and `explainEffectiveAccess`, drops a direct exception for these keys, so a pre-existing row confers nothing flat or per-record, and never widens a company-scoped Role holding;
+  - the Administration effective-access read (`resolvePrincipalEffectiveAccess`) drops it too;
+  - the Workforce command kernel's direct-grant resolver (`withDirectCapabilityGrants`, `employeeAdministrationAuthority.ts`) drops it too.
+  - The explanation therefore shows the key as not conferred (`directGrant: null`, result `DENIED`).
+  - A Role assignment, global or company-scoped, still authorizes. So does Administrator standing, for read only.
+- **Drift.** `verifyTenantAuthority` reports a stored prohibited direct row as `FORBIDDEN_PRINCIPAL_HOLDING`. This is a one-line, list-driven extension of the reserved-key census. Nothing is revoked automatically.
+- **Preserved.**
+  - Role grants of read / prepare, and creating a custom Preparer Role through Administration (tested).
+  - Company-scope enforcement.
+  - Separation of duties on approve, reject and activate.
+  - The Owner reservation of approve / activate.
+  - Administrator standing.
+
+**Status.** Direct grants of read / prepare (Phase 1 open item 6, "B1") are RESOLVED. Open item 5 (authorize creating the Preparer Role through Administration) remains.
+
+**Raw readers left UNFILTERED by design.** These are display-only or latent, and confer nothing:
+- `capabilityKeysFor` (`administrationCapabilityGate.ts`). It gates Administration keys only, and is the source of the preview's `latent` / `adminKeys`.
+- The `directGrants` echo in `resolvePrincipalEffectiveAccess`, which lists the stored rows.
+- The grant matrix's `DIRECT_EXCEPTION enforced: true` display (below).
+
+**Display (not changed).** The Administration grant matrix still lists a stored prohibited direct row as a `DIRECT_EXCEPTION` with `enforced: true`; only the runtime, the explanation and the effective-access read treat it as conferring nothing. Correcting that display is a later UI decision.

@@ -66,7 +66,9 @@ const CONSTANT_COLLECTIONS = Object.freeze({
   "src/adminPolicy/protectedAdministrator.ts": ["IMPLIED_ACTION_KINDS", "SYSTEM_ADMINISTRATION_OBJECTS", "PROTECTED_ADMINISTRATOR_EXCLUSIONS",
     "PROTECTED_ADMINISTRATOR_MANAGEMENT_CAPABILITIES"],
   "src/adminPolicy/roleCapabilityAdministration.ts": ["FORBIDDEN", "RESERVED_CAPABILITY_HOLDERS", "ADMINISTRATION_GRANT_ONLY_CAPABILITIES",
-    "CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT"],
+    "CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT",
+    // #232 Option C: the two role-assignment-only Financial Policy keys -- a constant lookup table, never mutated.
+    "ROLE_ASSIGNMENT_ONLY_CAPABILITIES"],
   "src/eosOps/administrationReach.ts": ["ADMINISTRATION_REACH_SCOPE_TYPES", "ADMINISTRATION_REACH_CAPABILITIES", "ADMINISTRATOR_EXECUTION_CAPABILITIES"],
   "src/eosOps/contextualAuthorization.ts": ["GOVERNED_QUALIFICATION_CODES"],
   // The method names the per-snapshot memoizing reader answers once; the CACHE itself lives in the snapshot, not here.

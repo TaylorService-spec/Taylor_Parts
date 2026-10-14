@@ -244,6 +244,7 @@ functions/test/financeFinancedSalePostgres.test.mjs
 functions/test/financeIntercompanyPostgres.test.mjs
 functions/test/governedConfigSalesPricingPostgres.test.mjs
 functions/test/financeClosurePostgres.test.mjs
+functions/test/financialPolicyFoundationPostgres.test.mjs
 functions/test/rentalPostgres.test.mjs
 functions/test/analysisPostgres.test.mjs
 functions/test/myWorkPostgres.test.mjs
@@ -844,3 +845,8 @@ functions/test/eosNativeLoginUnit.test.mjs
 # SUBJECT at the M3 re-review: EOS native login source (#2067). Its suites run only in this lane's npm scripts and no
 # other workflow watches the directory, so a source-only change must trigger the gate.
 functions/src/eosAuth/**
+# SUBJECT of financialPolicyFoundationPostgres (DECISIONS #232): the PG Financial Policy module validates through the pure
+# CERT-FIN-02 domain module, whose WORK_ORDER_CONSUMPTION availability reads the physical consumption gate. Neither lives
+# under a watched directory, so a change to either must trigger the gate.
+functions/src/finance/financialPolicyProfile.ts
+functions/src/workOrderConsumption/consumptionActivation.ts

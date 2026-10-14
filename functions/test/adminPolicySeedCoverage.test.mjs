@@ -113,9 +113,10 @@ test("the reconciliation adds up: 28 entities and 400 fields, all seeded", () =>
   // 43 -> 45, objectsFromCapabilityAuthority 9 -> 11: Owner rulings #204 -- `systemConfiguration` and `salesDiscountAuthority`, named by admin.systemConfiguration.manage / sales.discountAuthority.manage.
   // 45 -> 46, objectsFromCapabilityAuthority 11 -> 12: Finance Closure (#206) -- `settlement`, named by the four settlement capabilities.
   // 46 -> 48, objectsFromCapabilityAuthority 12 -> 14: Rental (#207) -- `rentalAgreement` and `rentalEquipment`, named by the six rental capabilities.
-  assert.equal(ledger.seeded.objects, 48);
+  // 48 -> 49, objectsFromCapabilityAuthority 14 -> 15: Financial Policy foundation (#232) -- `financialPolicy`, named by the four finance.policy.* capabilities (migration 1764560000000).
+  assert.equal(ledger.seeded.objects, 49);
   assert.equal(ledger.seeded.objectsWithoutAnEntity, 6);
-  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 14);
+  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 15);
   assert.equal(
     ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity + ledger.seeded.objectsFromCapabilityAuthority,
     ledger.seeded.objects,

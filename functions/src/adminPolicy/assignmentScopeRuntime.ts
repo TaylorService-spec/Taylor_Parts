@@ -88,6 +88,13 @@ export interface ScopeEvaluableGrant {
  *
  *   operatingCompany x employee.record.read  -- the Employee's governed eos_workforce.employees.operating_company_id,
  *                                               read inside the read's own snapshot.
+ *   operatingCompany x finance.policy.read / .prepare / .approve / .activate
+ *                                            -- #232 Amendment A (Owner 2026-10-13): a Financial Policy belongs to ONE
+ *                                               operating company, named by the command and resolved against
+ *                                               tenant_operating_companies (ACTIVE; never CONSOLIDATED). Each policy
+ *                                               command admits the resolved company against the holding BEFORE any
+ *                                               version is read (eosFinance/financialPolicy.ts, the CommercialWriteScope
+ *                                               pattern at operatingCompany scope); a global holding reaches every company.
  *   salesChannel x opportunity.read / salesAgreement.read / salesOrder.read
  *                                            -- the record's STORED sales channel, read in the Commercial read's own
  *                                               snapshot (an Agreement's is its source Opportunity's, joined in the
@@ -110,6 +117,27 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
     scopeType: "operatingCompany" as const,
     capabilityKey: "employee.record.read",
     consumers: Object.freeze(["workforce.readEmployee", "workforce.listEmployees", "workforce.listManagedEmployees", "workforce.listWorkforceRoster", "experience.searchEos"]),
+  }),
+  // #232 Amendment A: the Financial Policy commands (/operations/finance), each decided against the requested company.
+  Object.freeze({
+    scopeType: "operatingCompany" as const,
+    capabilityKey: "finance.policy.read",
+    consumers: Object.freeze(["operations.readFinancialPolicy", "operations.listFinancialPolicyVersions"]),
+  }),
+  Object.freeze({
+    scopeType: "operatingCompany" as const,
+    capabilityKey: "finance.policy.prepare",
+    consumers: Object.freeze(["operations.saveFinancialPolicyDraft", "operations.submitFinancialPolicy"]),
+  }),
+  Object.freeze({
+    scopeType: "operatingCompany" as const,
+    capabilityKey: "finance.policy.approve",
+    consumers: Object.freeze(["operations.approveFinancialPolicy", "operations.rejectFinancialPolicy"]),
+  }),
+  Object.freeze({
+    scopeType: "operatingCompany" as const,
+    capabilityKey: "finance.policy.activate",
+    consumers: Object.freeze(["operations.activateFinancialPolicy"]),
   }),
   Object.freeze({
     scopeType: "salesChannel" as const,

@@ -60,6 +60,7 @@ import {
 } from "./conditionalEntitlement";
 import { ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY } from "../adminPolicy/administrationAuthority";
 import { protectedAdministratorImpliedKeys } from "../adminPolicy/protectedAdministrator";
+import { isRoleAssignmentOnlyCapability } from "../adminPolicy/roleCapabilityAdministration";
 import {
   GRANT_CONDITION_RELATION_NAME,
   GRANT_CONDITION_RELATION_SHAPE,
@@ -252,9 +253,13 @@ export async function resolveOperationalCapabilities(
     Promise.resolve(conditions(tenantId)),
     protectedAdministratorKeys(pool, tenantId, heldRoleKeys),
   ]);
-  const direct: readonly PrincipalCapabilityGrantRow[] = Object.freeze(granted.direct.map((capabilityKey) =>
+  // ROLE-ASSIGNMENT-ONLY keys (#232 Option C) are never conferred by a direct exception: a row that predates the grant-time
+  // refusal (or bypassed it) is dropped HERE, the one resolution every gate and the explanation share -- so it confers
+  // nothing flat, nothing per-record, and never widens a company-scoped Role holding.
+  const directKeys = granted.direct.filter((k) => !isRoleAssignmentOnlyCapability(k));
+  const direct: readonly PrincipalCapabilityGrantRow[] = Object.freeze(directKeys.map((capabilityKey) =>
     Object.freeze({ principalId, capabilityKey })));
-  const held = new Set<string>([...granted.viaRoles, ...granted.direct]);
+  const held = new Set<string>([...granted.viaRoles, ...directKeys]);
   // A CONDITIONED-ONLY CAPABILITY IS NEVER IN THE FLAT SET (Pass 8 D1, PLATFORM_SAFETY) -- for a direct grant
   // exactly as for a Role grant. The provenance read happens only when a condition names one of this
   // Principal's grantors (a held Role, or the Principal itself), so an unconditioned tenant pays nothing extra.

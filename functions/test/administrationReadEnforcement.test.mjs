@@ -242,7 +242,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 96 -> 97: 1764550000000 -- EOS native login (docs/architecture/eos-native-identity.md): login accounts, sessions,
   // TOTP factors, recovery codes, one-time tickets and the append-only authentication_events log. No capability, no
   // grant, no READ key: its Administration operations reuse admin.roleAssignment.write / admin.principalAccess.read.
-  assert.equal(migrations.length, 97, "a migration was added or removed by the read enforcement");
+  // 97 -> 98: 1764560000000 -- Financial Policy foundation (DECISIONS #232): eos_finance.financial_policy_versions + finance.policy.read /
+  // .prepare / .approve / .activate on financialPolicy, granted to NO Role. The read gate requires none of them.
+  assert.equal(migrations.length, 98, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

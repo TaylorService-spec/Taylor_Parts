@@ -27,6 +27,9 @@ test("the runtime decides operatingCompany and salesChannel; businessUnit and lo
   // Lane GA: sales channel scopes the three Commercial READ keys only -- no write key is evaluable at a channel.
   assert.deepEqual(scope.SCOPE_EVALUABLE_GRANTS.map((g) => [g.scopeType, g.capabilityKey]), [
     ["operatingCompany", "employee.record.read"],
+    // #232 Amendment A: the Financial Policy commands, each decided against the requested operating company.
+    ["operatingCompany", "finance.policy.read"], ["operatingCompany", "finance.policy.prepare"],
+    ["operatingCompany", "finance.policy.approve"], ["operatingCompany", "finance.policy.activate"],
     ["salesChannel", "opportunity.read"], ["salesChannel", "salesAgreement.read"], ["salesChannel", "salesOrder.read"],
     // DQ-020: the Commercial writes, decided against the governing channel of the record each command writes.
     ["salesChannel", "opportunity.write"], ["salesChannel", "opportunity.createSalesOrder"], ["salesChannel", "salesAgreement.create"],
