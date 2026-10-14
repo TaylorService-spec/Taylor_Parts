@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Cloud Agent environment — local PostgreSQL + EOS API + Vite (no Firebase)
+- Agent/session:       Cursor Cloud · Role: builder
+- Branch / worktree:   `cursor/cloud-agent-pg-vite-env-f264` · `/workspace`
+- Base commit:         `59c68b0cc3d43d544a738e84e8c2563c0328c8a1`
+- Owned paths:         `.cursor/`
+- Shared paths req'd:  `AGENTS.md` (Cursor Cloud section) · this registry
+- Dependencies:        none
+- Expected outcome:    Cloud Agents install and boot a working non-Firebase sandbox (Postgres, EOS API `/health`, Vite)
+- Protected boundaries:no production credentials, no Firebase, no deploy
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          Workflow Assignments / Workflow Builder separation (Owner approved 2026-10-08)
 - Agent/session:       Codex · Role: builder
 - Branch / worktree:   `fix/admin-workflow-assignments` · `/workspace/scratch/f00b6258444d/Taylor_Parts`
