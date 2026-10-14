@@ -93,13 +93,13 @@ function VersionCard({ title, version, people }) {
   );
 }
 
+/** Rendered with key = company + in-flight version + status + last edit, so a reload that changes them starts a fresh editor. */
 function DraftEditor({ read, busy, onSave, onSubmit }) {
   const inFlight = read.inFlight;
   const editing = inFlight?.status === "DRAFT" ? inFlight : null;
   const saveAnswer = editing ? editing.yourActions?.edit : read.yourAuthority?.createDraft;
   const [policy, setPolicy] = useState(() => startingPolicy(read));
   const [note, setNote] = useState("");
-  useEffect(() => { setPolicy(startingPolicy(read)); setNote(""); }, [read]);
   const problems = draftProblems(policy, read.supported);
   const unsaved = editing ? !samePolicy(policy, editing.policy) : true;
   const canEdit = saveAnswer?.allowed === true;
@@ -427,7 +427,8 @@ export default function FinancialPolicyWorkspace({ financeApi = callFinanceApi }
           </section>
 
           {showEditor ? (
-            <DraftEditor read={read} busy={busy}
+            <DraftEditor key={`${read.operatingCompanyId}:${read.inFlight?.id ?? "new"}:${read.inFlight?.status ?? ""}:${read.inFlight?.lastEditedAt ?? ""}`}
+              read={read} busy={busy}
               onSave={({ versionId, policy, note: n }) => run("saveFinancialPolicyDraft", { ...(versionId ? { versionId } : {}), policy, ...note(n) }, "Draft saved")}
               onSubmit={({ versionId, note: n }) => run("submitFinancialPolicy", { versionId, ...note(n) }, "Submitted for approval")} />
           ) : null}
