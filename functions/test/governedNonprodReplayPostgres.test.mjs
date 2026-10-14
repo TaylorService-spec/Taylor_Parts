@@ -39,7 +39,7 @@ test("the recorded decisions replay the governed nonprod authority exactly: 94 /
 
   const migrations = readdirSync(new URL("../migrations", import.meta.url)).filter((f) => f.endsWith(".sql")).length;
   assert.equal((await q(`SELECT count(*)::int n FROM public.pgmigrations`)).rows[0].n, migrations);
-  assert.equal(migrations, 98); // 94 -> 95: 1764530000000 (SUP-1 supplier terms + COMMERCIAL keys, granted to NO Role). 95 -> 96: 1764540000000 (grant-impact preview never-commit fence; triggers only)
+  assert.equal(migrations, 99); // 98 -> 99: 1764570000000 Financial Policy withdraw / cancel (#232 Phase 3) -- schema only, no capability, no grant. // 94 -> 95: 1764530000000 (SUP-1 supplier terms + COMMERCIAL keys, granted to NO Role). 95 -> 96: 1764540000000 (grant-impact preview never-commit fence; triggers only)
   // 96 -> 97: 1764550000000 EOS native login -- schema only; no capability, no grant, so the counts do not move.
   // 97 -> 98: 1764560000000 Financial Policy foundation -- four finance.policy.* keys, granted to NO Role, so the grant counts do not move.
   assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.capabilities`)).rows[0].n, 139); // 128 -> 135: the four inventory.supplierTerms.* + three inventory.catalog.cost.* keys; 135 -> 139: the four finance.policy.* keys

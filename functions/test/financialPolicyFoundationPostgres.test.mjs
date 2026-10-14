@@ -12,6 +12,9 @@
 //   VAL    the domain validator's rules: LIFO / STANDARD refused; unknown fields refused; the WORK_ORDER_CONSUMPTION gate.
 //   NC     a company without an ACTIVE version reads NOT_CONFIGURED; no default method anywhere.
 //   REPLAY re-sent commands change nothing; the history rebuilt from audit_events equals the stored versions.
+//   PHASE 3 (migration 1764570000000) withdraw (DRAFT / SUBMITTED -> WITHDRAWN, own preparer) and cancel (APPROVED -> CANCELLED,
+//          Owner / Administrator): history kept, slot released, separation of duties, scope, reservation, replay, rebuild,
+//          and activation / cancellation races serialized in both orders.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -38,6 +41,7 @@ const SRC = join(FUNCTIONS_DIR, "src");
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 const KEYS = ["finance.policy.read", "finance.policy.prepare", "finance.policy.approve", "finance.policy.activate"];
 const MIGRATION = "1764560000000_financial-policy-profiles";
+const PHASE3_MIGRATION = "1764570000000_financial-policy-withdraw-cancel";
 
 const WA = Object.freeze({ inventoryCostMethod: "WEIGHTED_AVERAGE", serializedInventoryCostMethod: "SPECIFIC_IDENTIFICATION",
   cogsRecognitionPointId: "SALES_ORDER_FULFILLMENT", freightTreatment: "EXCLUDED", landedCostTreatment: "EXCLUDED" });
@@ -139,12 +143,20 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const directBefore = await directSnapshot();
     const capCount = async () => Number((await one(`SELECT count(*) AS n FROM eos_policy.capabilities`)).n);
     const capsUp = await capCount();
+    const columns = async () => (await q(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'eos_finance'
+      AND table_name = 'financial_policy_versions' AND column_name IN ('withdrawn_by', 'cancelled_by') ORDER BY 1`)).rows.map((r) => r.column_name);
+    assert.deepEqual(await columns(), ["cancelled_by", "withdrawn_by"]);
+    // The newest migration (#232 Phase 3, withdraw / cancel) is peeled first: schema only, no capability, reversible while empty.
+    migrate("down", 1);
+    assert.equal(await capCount(), capsUp, "the withdraw / cancel migration registers no capability");
+    assert.deepEqual(await columns(), []);
     migrate("down", 1);
     assert.equal(await capCount(), capsUp - 4, "Down removes exactly the four keys");
     assert.equal((await one(`SELECT to_regclass('eos_finance.financial_policy_versions') AS r`)).r, null);
     assert.deepEqual(await grantSnapshot(), grantsBefore, "the migration's presence moves no existing grant");
-    migrate("up", 1);
+    migrate("up", 2);
     assert.equal(await capCount(), capsUp);
+    assert.deepEqual(await columns(), ["cancelled_by", "withdrawn_by"]);
     assert.deepEqual(await grantSnapshot(), grantsBefore, "re-applied: every existing Role grant is exactly as before");
     assert.deepEqual(await directSnapshot(), directBefore);
     // The existing Finance read, pinned as the baseline measures it: the migration moves none of its holders.
@@ -860,7 +872,8 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const aT = await authority(tOnly);
     assert.deepEqual([aT.principalId, ids(aT)], [tOnly.principalId, ["taylor"]]);
     assert.equal(aT.companies[0].name, "Taylor Freezer of Arizona", "the governed display name");
-    assert.deepEqual(actions(aT, "taylor"), { read: yes, prepare: yes, approve: no("CAPABILITY_REQUIRED"), activate: no("CAPABILITY_REQUIRED") });
+    assert.deepEqual(actions(aT, "taylor"), { read: yes, prepare: yes, approve: no("CAPABILITY_REQUIRED"), activate: no("CAPABILITY_REQUIRED"),
+      withdraw: yes, cancel: no("CAPABILITY_REQUIRED") });
     assert.equal(JSON.stringify(aT).includes("ventana"), false, "no out-of-scope company leaks");
     assert.deepEqual(ids(await authority(vOnly)), ["ventana"]);
     const aB = await authority(both);
@@ -872,12 +885,13 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
       assert.deepEqual(ids(a), activeCompanies);
       assert.equal(ids(a).some((c) => c.toLowerCase() === "consolidated"), false);
       for (const company of activeCompanies) {
-        assert.deepEqual(actions(a, company), { read: yes, prepare: no("CAPABILITY_REQUIRED"), approve: yes, activate: yes }, `${who.subject} ${company}`);
+        assert.deepEqual(actions(a, company), { read: yes, prepare: no("CAPABILITY_REQUIRED"), approve: yes, activate: yes,
+          withdraw: no("CAPABILITY_REQUIRED"), cancel: yes }, `${who.subject} ${company}`);
       }
     }
     // MIXED (Owner Role + Preparer @westco): decides everywhere, prepares at Westco only -- out of scope elsewhere.
     const aDW = await authority(dualW);
-    assert.deepEqual(actions(aDW, "westco"), { read: yes, prepare: yes, approve: yes, activate: yes });
+    assert.deepEqual(actions(aDW, "westco"), { read: yes, prepare: yes, approve: yes, activate: yes, withdraw: yes, cancel: yes });
     assert.deepEqual(actions(aDW, "taylor").prepare, no("OUTSIDE_OPERATING_COMPANY_SCOPE"));
     // UNAUTHORIZED: refused, never answered empty.
     for (const who of [outsiders.salesperson, outsiders.technician, acct, gm, ctrlOnly]) {
@@ -904,9 +918,10 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     assert.deepEqual(asPrep.yourAuthority.createDraft, no("FINANCIAL_POLICY_IN_FLIGHT_EXISTS"));
     refused(await fn(wPrep, "saveFinancialPolicyDraft", { operatingCompanyId: "westco", policy: WA }), 409, "FINANCIAL_POLICY_IN_FLIGHT_EXISTS");
     assert.deepEqual(asPrep.inFlight.yourActions, { edit: yes, submit: yes, approve: no("CAPABILITY_REQUIRED"), reject: no("CAPABILITY_REQUIRED"),
-      activate: no("CAPABILITY_REQUIRED") });
+      activate: no("CAPABILITY_REQUIRED"), withdraw: yes, cancel: no("CAPABILITY_REQUIRED") });
     assert.deepEqual((await readAs(own)).inFlight.yourActions, { edit: no("CAPABILITY_REQUIRED"), submit: no("CAPABILITY_REQUIRED"),
-      approve: no("FINANCIAL_POLICY_NOT_SUBMITTED"), reject: no("FINANCIAL_POLICY_NOT_SUBMITTED"), activate: no("FINANCIAL_POLICY_NOT_APPROVED") });
+      approve: no("FINANCIAL_POLICY_NOT_SUBMITTED"), reject: no("FINANCIAL_POLICY_NOT_SUBMITTED"), activate: no("FINANCIAL_POLICY_NOT_APPROVED"),
+      withdraw: no("CAPABILITY_REQUIRED"), cancel: no("FINANCIAL_POLICY_NOT_CANCELLABLE") });
     refused(await fn(own, "approveFinancialPolicy", { operatingCompanyId: "westco", versionId: v1.id }), 409, "FINANCIAL_POLICY_NOT_SUBMITTED");
     ok(await fn(dualW, "submitFinancialPolicy", { operatingCompanyId: "westco", versionId: v1.id }));
     // The preparer / submitter who ALSO holds the Owner Role: approve / reject blocked by separation of duties.
@@ -944,8 +959,440 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     refused(await fn(wPrep, "listFinancialPolicyVersions", { operatingCompanyId: "taylor" }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
   });
 
-  await t.test("MIG: with versions recorded, the Down refuses to reverse", async () => {
-    assert.throws(() => migrate("down", 1), (e) => /FINANCIAL_POLICY_FOUNDATION: refuses to reverse/.test(String(e.stderr ?? e.message)));
+  await t.test("MIG: with versions recorded (none withdrawn / cancelled), the Phase 3 Down reverses and the foundation Down refuses", async () => {
+    const closing = await one(`SELECT count(*) AS n, (SELECT count(*) FROM eos_finance.financial_policy_versions) AS total
+      FROM eos_finance.financial_policy_versions WHERE status IN ('WITHDRAWN', 'CANCELLED')`);
+    assert.equal(Number(closing.n), 0, "this proof runs before any version is withdrawn or cancelled");
+    assert.ok(Number(closing.total) > 0, "versions exist");
+    const capCount = async () => Number((await one(`SELECT count(*) AS n FROM eos_policy.capabilities`)).n);
+    const caps = await capCount();
+    migrate("down", 1); // the Phase 3 migration: no WITHDRAWN / CANCELLED row, so its Down proceeds
+    try {
+      assert.equal((await one(`SELECT count(*) AS n FROM information_schema.columns WHERE table_schema = 'eos_finance'
+        AND table_name = 'financial_policy_versions' AND column_name IN ('withdrawn_by', 'cancelled_by')`)).n, "0");
+      assert.throws(() => migrate("down", 1), (e) => /FINANCIAL_POLICY_FOUNDATION: refuses to reverse/.test(String(e.stderr ?? e.message)));
+      assert.notEqual((await one(`SELECT to_regclass('eos_finance.financial_policy_versions') AS r`)).r, null);
+      assert.equal(await capCount(), caps, "the refused foundation Down removed nothing");
+    } finally {
+      migrate("up", 1);
+    }
+    assert.equal((await one(`SELECT count(*) AS n FROM information_schema.columns WHERE table_schema = 'eos_finance'
+      AND table_name = 'financial_policy_versions' AND column_name IN ('withdrawn_by', 'cancelled_by')`)).n, "2");
+  });
+
+  await t.test("PHASE 3: withdraw (own DRAFT / SUBMITTED) and cancel (APPROVED, Owner / Administrator) keep history and release the slot", async () => {
+    const roleId = async (key) => (await one(`SELECT id FROM eos_policy.roles WHERE tenant_id = $1 AND key = $2`, [TENANT, key])).id;
+    const assign = async (who, roleKey, scopeValue) => {
+      const r = await admin("assignRole", { principalId: who.principalId, roleId: await roleId(roleKey), reason: "phase 3 staffing",
+        ...(scopeValue ? { scopeType: "operatingCompany", scopeValue } : {}) });
+      assert.equal(r.ok, true, `${roleKey}@${scopeValue ?? "global"} ${JSON.stringify(r).slice(0, 300)}`);
+    };
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
+             VALUES ($1,'eastco','ACTIVE','fixture','fixture','fixture')`, [TENANT]);
+    const pE = await person("uid-fp-p3-e", [], { id: "e-fp-p3-e", name: "Eli Eastco-Preparer" });
+    const pTay = await person("uid-fp-p3-t", [], { id: "e-fp-p3-t", name: "Toni Taylor-Preparer" });
+    await assign(pE, "policyPreparerTest", "eastco");
+    await assign(pTay, "policyPreparerTest", "taylor");
+    const E = "eastco";
+    const yes = { allowed: true, reason: null };
+    const no = (reason) => ({ allowed: false, reason });
+    const readAs = async (who) => ok(await fn(who, "readFinancialPolicy", { operatingCompanyId: E }), `${who.subject} read`);
+    const listAs = async (who) => ok(await fn(who, "listFinancialPolicyVersions", { operatingCompanyId: E }), `${who.subject} list`);
+    const W = (who, versionId, reason, company = E) => fn(who, "withdrawFinancialPolicy", { operatingCompanyId: company, versionId, ...(reason === undefined ? {} : { reason }) });
+    const C = (who, versionId, reason, company = E) => fn(who, "cancelFinancialPolicy", { operatingCompanyId: company, versionId, ...(reason === undefined ? {} : { reason }) });
+    const draft = async (who, policy = WA) => ok(await fn(who, "saveFinancialPolicyDraft", { operatingCompanyId: E, policy }), `${who.subject} draft`).version;
+    const submit = async (who, id) => ok(await fn(who, "submitFinancialPolicy", { operatingCompanyId: E, versionId: id }), `${who.subject} submit`).version;
+    const stored = async (id) => fp.versionView(await one(`SELECT *, effective_date::text AS effective_date_text FROM eos_finance.financial_policy_versions WHERE id = $1`, [id]));
+    const keep = ({ status, locked, withdrawnBy, withdrawnAt, withdrawalReason, cancelledBy, cancelledAt, cancellationReason, yourActions, ...rest }) => rest;
+
+    // ── DRAFT -> WITHDRAWN, by its preparer ──
+    const v1 = await draft(fm);
+    assert.equal(v1.versionNumber, 1);
+    const asFm = (await readAs(fm)).inFlight.yourActions;
+    assert.deepEqual([asFm.withdraw, asFm.cancel], [yes, no("CAPABILITY_REQUIRED")]);
+    assert.deepEqual((await readAs(ctrl)).inFlight.yourActions.withdraw, no("NOT_YOUR_VERSION"), "another preparer, not an author");
+    assert.deepEqual((await readAs(own)).inFlight.yourActions.withdraw, no("CAPABILITY_REQUIRED"));
+    assert.deepEqual((await readAs(own)).inFlight.yourActions.cancel, no("FINANCIAL_POLICY_NOT_CANCELLABLE"));
+    refused(await W(ctrl, v1.id, "not mine"), 403, "NOT_YOUR_VERSION", "another preparer cannot withdraw");
+    refused(await W(own, v1.id, "owner"), 403, "CAPABILITY_REQUIRED", "the Owner never withdraws (no prepare)");
+    refused(await W(adm, v1.id, "admin"), 403, "CAPABILITY_REQUIRED", "standing never implies prepare");
+    refused(await C(own, v1.id, "not approved"), 409, "FINANCIAL_POLICY_NOT_CANCELLABLE");
+    refused(await W(fm, v1.id), 400, "REASON_REQUIRED");
+    refused(await W(fm, v1.id, "   "), 400, "REASON_REQUIRED");
+    refused(await fn(fm, "withdrawFinancialPolicy", { operatingCompanyId: E, versionId: v1.id, reason: "x", status: "WITHDRAWN" }), 400, "FIELD_NOT_ACCEPTED");
+    // OUT OF SCOPE == UNKNOWN for a scoped preparer: a real and a non-existent Eastco id get the same refusal, nothing leaks.
+    for (const id of [v1.id, "fpv-does-not-exist"]) {
+      const body = refused(await W(pTay, id, "scope"), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
+      assert.equal(JSON.stringify(body).includes(v1.id), false);
+    }
+    refused(await W(fm, v1.id, "consolidated", "consolidated"), 400, "CONSOLIDATED_NOT_A_COMPANY");
+    // The database holds "their own" against a direct write, mapped to the same governed refusal.
+    const notOwn = await q(`UPDATE eos_finance.financial_policy_versions SET status = 'WITHDRAWN', withdrawn_by = 'a-stranger', withdrawn_at = now(),
+      withdrawal_reason = 'x' WHERE id = $1`, [v1.id]).then(() => null, (e) => e);
+    assert.equal(notOwn?.constraint, "financial_policy_withdrawer_owns_version");
+    assert.equal(fp.translateDatabaseRefusal(notOwn).code, "NOT_YOUR_VERSION");
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'WITHDRAWN', withdrawn_by = prepared_by, withdrawn_at = now(),
+      withdrawal_reason = 'x', inventory_cost_method = 'FIFO' WHERE id = $1`, [v1.id], /FINANCIAL_POLICY_IMMUTABLE/, "a withdrawal never changes the content");
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'CANCELLED', cancelled_by = 'q', cancelled_at = now(), cancellation_reason = 'x'
+      WHERE id = $1`, [v1.id], /FINANCIAL_POLICY_TRANSITION_ILLEGAL/, "DRAFT is never CANCELLED");
+    // IN ORDER: a withdrawal cannot forge a submission stamp to pass "their own" through submitted_by (review finding).
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'WITHDRAWN', submitted_by = 'forger', submitted_at = now(),
+      withdrawn_by = 'forger', withdrawn_at = now(), withdrawal_reason = 'r' WHERE id = $1`, [v1.id],
+      /FINANCIAL_POLICY_IMMUTABLE: the DRAFT -> WITHDRAWN transition writes only its own lifecycle stamps/, "a forged submission stamp");
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'WITHDRAWN', withdrawn_by = prepared_by, withdrawn_at = now(),
+      withdrawal_reason = 'r', cancelled_by = 'x', cancelled_at = now(), cancellation_reason = 'r' WHERE id = $1`, [v1.id],
+      /FINANCIAL_POLICY_IMMUTABLE: the DRAFT -> WITHDRAWN transition writes only its own/, "a forged cancellation stamp");
+    assert.equal((await stored(v1.id)).status, "DRAFT");
+    const auditBefore = await auditCount();
+    const w1 = ok(await W(fm, v1.id, "abandoned: wrong costing method"), "fm withdraws its draft");
+    assert.equal(w1.replayed, false);
+    assert.deepEqual([w1.version.status, w1.version.withdrawnBy, w1.version.withdrawalReason, w1.version.locked], ["WITHDRAWN", fm.principalId,
+      "abandoned: wrong costing method", false]);
+    assert.deepEqual(keep(w1.version), keep(v1), "every recorded fact of the draft is kept");
+    assert.equal(await auditCount(), auditBefore + 1, "one audit row");
+    const ev = await one(`SELECT action, actor_uid, reason, before, after FROM eos_policy.audit_events WHERE tenant_id = $1 AND target_id = $2
+      AND action = 'finance.policy.withdraw'`, [TENANT, v1.id]);
+    assert.deepEqual([ev.actor_uid, ev.reason, ev.before.status, ev.after.status, ev.after.withdrawnBy], [fm.principalId,
+      "abandoned: wrong costing method", "DRAFT", "WITHDRAWN", fm.principalId], "the full snapshot is audited");
+    // Replay: identical -> replayed, nothing written; a different reason -> 409.
+    const again = ok(await W(fm, v1.id, "abandoned: wrong costing method"));
+    assert.deepEqual([again.replayed, again.version], [true, w1.version]);
+    refused(await W(fm, v1.id, "another reason"), 409, "FINANCIAL_POLICY_REPLAY_CONFLICT");
+    assert.equal(await auditCount(), auditBefore + 1, "replays write nothing");
+    // THE SLOT IS RELEASED, and nothing else re-opens the withdrawn version.
+    const freed = await readAs(fm);
+    assert.deepEqual([freed.state, freed.inFlight, freed.yourAuthority.createDraft], ["NOT_CONFIGURED", null, yes]);
+    const v1Listed = (await listAs(fm)).items.find((v) => v.id === v1.id);
+    assert.deepEqual([v1Listed.status, v1Listed.yourActions.withdraw, v1Listed.yourActions.edit, v1Listed.yourActions.cancel],
+      ["WITHDRAWN", no("FINANCIAL_POLICY_NOT_WITHDRAWABLE"), no("FINANCIAL_POLICY_NOT_EDITABLE"), no("CAPABILITY_REQUIRED")]);
+    refused(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: E, versionId: v1.id, policy: FIFO }), 409, "FINANCIAL_POLICY_NOT_EDITABLE");
+    refused(await fn(fm, "submitFinancialPolicy", { operatingCompanyId: E, versionId: v1.id }), 409, "FINANCIAL_POLICY_NOT_EDITABLE");
+    refused(await fn(own, "approveFinancialPolicy", { operatingCompanyId: E, versionId: v1.id }), 409, "FINANCIAL_POLICY_NOT_SUBMITTED");
+    refused(await fn(own, "activateFinancialPolicy", { operatingCompanyId: E, versionId: v1.id, effectiveDate: await businessDate(E) }), 409, "FINANCIAL_POLICY_NOT_APPROVED");
+    refused(await C(own, v1.id, "x"), 409, "FINANCIAL_POLICY_NOT_CANCELLABLE");
+    refused(await W(ctrl, v1.id, "x"), 409, "FINANCIAL_POLICY_NOT_WITHDRAWABLE", "lifecycle is decided before ownership");
+    for (const [sql, what] of [
+      [`UPDATE eos_finance.financial_policy_versions SET status = 'DRAFT', withdrawn_by = NULL, withdrawn_at = NULL, withdrawal_reason = NULL WHERE id = $1`, "reopen"],
+      [`UPDATE eos_finance.financial_policy_versions SET withdrawal_reason = 'rewritten' WHERE id = $1`, "rewrite the reason"],
+      [`UPDATE eos_finance.financial_policy_versions SET updated_at = now() WHERE id = $1`, "a no-op touch"],
+      [`DELETE FROM eos_finance.financial_policy_versions WHERE id = $1`, "delete"],
+    ]) await dbRefusal(sql, [v1.id], /FINANCIAL_POLICY_(IMMUTABLE|TRANSITION_ILLEGAL)/, `WITHDRAWN is final: ${what}`);
+
+    // ── SUBMITTED -> WITHDRAWN, by the SUBMITTER (who neither created nor edited it) ──
+    const v2 = await draft(pE, FIFO);
+    assert.equal(v2.versionNumber, 2, "a new draft after the withdrawal: the slot was released; numbering continues");
+    await submit(fm, v2.id);
+    assert.deepEqual((await readAs(fm)).inFlight.yourActions.withdraw, yes, "the submitter withdraws");
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'WITHDRAWN', withdrawn_by = submitted_by, withdrawn_at = now(),
+      withdrawal_reason = 'r', approved_by = 'forger', approved_at = now() WHERE id = $1`, [v2.id],
+      /FINANCIAL_POLICY_IMMUTABLE: the SUBMITTED -> WITHDRAWN transition writes only its own/, "a forged approval stamp on withdrawal");
+    assert.deepEqual((await readAs(ctrl)).inFlight.yourActions.withdraw, no("NOT_YOUR_VERSION"));
+    refused(await W(ctrl, v2.id, "not mine"), 403, "NOT_YOUR_VERSION");
+    const w2 = ok(await W(fm, v2.id, "submitted too early")).version;
+    assert.deepEqual([w2.status, w2.submittedBy, w2.withdrawnBy, w2.preparedBy], ["WITHDRAWN", fm.principalId, fm.principalId, pE.principalId]);
+
+    // ── APPROVED -> CANCELLED, by the Owner. The approval (and its note) is kept. ──
+    const v3 = await draft(pE);
+    await submit(pE, v3.id);
+    ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: E, versionId: v3.id, reason: "approved in review" }));
+    const stranded = await readAs(pE);
+    assert.deepEqual([stranded.inFlight.status, stranded.yourAuthority.createDraft], ["APPROVED", no("FINANCIAL_POLICY_IN_FLIGHT_EXISTS")],
+      "an approval holds the slot until it is activated or cancelled");
+    assert.deepEqual([stranded.inFlight.yourActions.withdraw, stranded.inFlight.yourActions.cancel],
+      [no("FINANCIAL_POLICY_NOT_WITHDRAWABLE"), no("CAPABILITY_REQUIRED")]);
+    assert.deepEqual((await readAs(own)).inFlight.yourActions.cancel, yes);
+    assert.deepEqual((await readAs(adm)).inFlight.yourActions.cancel, yes);
+    refused(await W(pE, v3.id, "too late"), 409, "FINANCIAL_POLICY_NOT_WITHDRAWABLE", "a preparer cannot pull back an APPROVED version");
+    refused(await C(pE, v3.id, "x"), 403, "CAPABILITY_REQUIRED", "a preparer cannot cancel an approval");
+    refused(await C(fm, v3.id, "x"), 403, "CAPABILITY_REQUIRED");
+    refused(await C(own, v3.id), 400, "REASON_REQUIRED");
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'CANCELLED', cancelled_by = $2, cancelled_at = now(),
+      cancellation_reason = 'r', withdrawn_by = $2, withdrawn_at = now(), withdrawal_reason = 'r' WHERE id = $1`, [v3.id, adm.principalId],
+      /FINANCIAL_POLICY_IMMUTABLE: the APPROVED -> CANCELLED transition writes only its own/, "a forged withdrawal stamp on cancellation");
+    const c3 = ok(await C(own, v3.id, "approved the wrong recognition point"), "owner cancels");
+    assert.deepEqual([c3.version.status, c3.version.approvedBy, c3.version.decisionReason, c3.version.cancelledBy, c3.version.cancellationReason],
+      ["CANCELLED", own.principalId, "approved in review", own.principalId, "approved the wrong recognition point"]);
+    const v3Before = (await listAs(own)).items.find((v) => v.id === v3.id);
+    assert.deepEqual(keep(v3Before), keep({ ...c3.version }), "the listed version is the recorded one");
+    assert.equal(ok(await C(own, v3.id, "approved the wrong recognition point")).replayed, true);
+    refused(await C(own, v3.id, "a different reason"), 409, "FINANCIAL_POLICY_REPLAY_CONFLICT");
+    refused(await C(adm, v3.id, "again"), 409, "FINANCIAL_POLICY_NOT_CANCELLABLE", "a second canceller is not a replay");
+    refused(await fn(own, "activateFinancialPolicy", { operatingCompanyId: E, versionId: v3.id, effectiveDate: await businessDate(E) }), 409, "FINANCIAL_POLICY_NOT_APPROVED");
+    assert.deepEqual((await readAs(pE)).yourAuthority.createDraft, yes, "the cancellation released the slot");
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 400))).state, "NOT_CONFIGURED",
+      "WITHDRAWN / CANCELLED are never in force");
+
+    // ── APPROVED -> CANCELLED by the Administrator's STANDING; the approver may cancel their own approval ──
+    const v4 = await draft(pE);
+    await submit(pE, v4.id);
+    ok(await fn(adm, "approveFinancialPolicy", { operatingCompanyId: E, versionId: v4.id }));
+    assert.equal(ok(await C(adm, v4.id, "withdrawn by the Administrator")).version.status, "CANCELLED");
+    const admEv = await one(`SELECT after FROM eos_policy.audit_events WHERE tenant_id = $1 AND target_id = $2 AND action = 'finance.policy.cancel'`, [TENANT, v4.id]);
+    assert.equal(admEv.after.authorizedBy?.standing, "PROTECTED_ADMINISTRATOR", "the standing-authorized cancellation is marked");
+
+    // ── SEPARATION OF DUTIES: a multi-role principal (Preparer + Owner) never cancels a version it authored ──
+    const v5 = await draft(dual);
+    await submit(dual, v5.id);
+    ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: E, versionId: v5.id }));
+    assert.deepEqual((await readAs(dual)).inFlight.yourActions.cancel, no("SEPARATION_OF_DUTIES"));
+    refused(await C(dual, v5.id, "my own"), 403, "SEPARATION_OF_DUTIES");
+    const rawSod = await q(`UPDATE eos_finance.financial_policy_versions SET status = 'CANCELLED', cancelled_by = submitted_by, cancelled_at = now(),
+      cancellation_reason = 'own' WHERE id = $1`, [v5.id]).then(() => null, (e) => e);
+    assert.equal(rawSod?.constraint, "financial_policy_canceller_independent");
+    assert.equal(fp.translateDatabaseRefusal(rawSod).code, "SEPARATION_OF_DUTIES");
+    // RESERVED: a raw role grant of approve to a non-owner Role does not authorize a cancellation.
+    await q(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+             SELECT 'rc-fp-p3-rogue', $1, r.id, c.id, 'rogue', 'rogue', 'rogue' FROM eos_policy.roles r, eos_policy.capabilities c
+              WHERE r.tenant_id = $1 AND r.key = 'accountingManager' AND c.key = 'finance.policy.approve'`, [TENANT]);
+    refused(await C(acct, v5.id, "rogue"), 403, "RESERVED_CAPABILITY");
+    const rogueAuthority = ok(await fn(adm, "readMyFinancialPolicyAuthority", {}));
+    assert.ok(rogueAuthority.companies.length > 0);
+    await q(`DELETE FROM eos_policy.role_capabilities WHERE tenant_id = $1 AND id = 'rc-fp-p3-rogue'`, [TENANT]);
+
+    // ── CONCURRENCY: activation and cancellation of the same APPROVED version, on separate connections, in both orders. ──
+    // A blocker holds the per-company lock both commands take; the first command queues behind it, then the second; the
+    // blocker commits and they run in queue order. Exactly one succeeds; the other is a governed 409, never a 500.
+    const advisoryWaiters = async () => Number((await one(`SELECT count(*) AS n FROM pg_locks l JOIN pg_database d ON d.oid = l.database
+      WHERE l.locktype = 'advisory' AND NOT l.granted AND d.datname = current_database()`)).n);
+    const untilWaiters = async (n) => {
+      for (let i = 0; i < 1000; i += 1) {
+        if (await advisoryWaiters() >= n) return;
+        await new Promise((r) => setImmediate(r));
+      }
+      assert.fail(`never saw ${n} waiter(s) on the company lock`);
+    };
+    const race = async (first, second) => {
+      const blocker = await pool.connect();
+      try {
+        await blocker.query("BEGIN");
+        await blocker.query(`SELECT pg_advisory_xact_lock(hashtext('eos_finance.financial_policy_versions'), hashtext($1 || '/' || $2))`, [TENANT, E]);
+        const p1 = first();
+        await untilWaiters(1);
+        const p2 = second();
+        await untilWaiters(2);
+        await blocker.query("COMMIT");
+        return await Promise.all([p1, p2]);
+      } finally {
+        await blocker.query("ROLLBACK").catch(() => undefined);
+        blocker.release();
+      }
+    };
+    // ORDER A: activation first. v5 is APPROVED (by own); own activates, the Administrator cancels.
+    const dateA = await businessDate(E);
+    const [actA, canA] = await race(
+      () => fn(own, "activateFinancialPolicy", { operatingCompanyId: E, versionId: v5.id, effectiveDate: dateA }),
+      () => C(adm, v5.id, "race: cancel after activation"));
+    assert.equal(actA.status, 200, JSON.stringify(actA.body).slice(0, 300));
+    refused(canA, 409, "FINANCIAL_POLICY_LOCKED", "the cancellation re-read ACTIVE after the lock");
+    const finalA = await stored(v5.id);
+    assert.deepEqual([finalA.status, finalA.cancelledBy, finalA.effectiveDate], ["ACTIVE", null, dateA]);
+    // ORDER B: cancellation first. v6 is APPROVED; the Administrator cancels, own then tries to activate.
+    const v6 = await draft(pE, FIFO);
+    await submit(pE, v6.id);
+    ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: E, versionId: v6.id }));
+    const dateB = await businessDate(E, 1); // after the ACTIVE version's date, so only the lifecycle can refuse it
+    const [canB, actB] = await race(
+      () => C(adm, v6.id, "race: cancel before activation"),
+      () => fn(own, "activateFinancialPolicy", { operatingCompanyId: E, versionId: v6.id, effectiveDate: dateB }));
+    assert.equal(canB.status, 200, JSON.stringify(canB.body).slice(0, 300));
+    refused(actB, 409, "FINANCIAL_POLICY_NOT_APPROVED", "the activation re-read CANCELLED after the lock");
+    const finalB = await stored(v6.id);
+    assert.deepEqual([finalB.status, finalB.activatedBy, finalB.effectiveDate], ["CANCELLED", null, null]);
+    assert.equal((await stored(v5.id)).status, "ACTIVE", "nothing superseded the ACTIVE version");
+    assert.equal(Number((await one(`SELECT count(*) AS n FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2
+      AND status = 'ACTIVE'`, [TENANT, E])).n), 1);
+
+    // ── An ACTIVE / REJECTED version is never withdrawn or cancelled ──
+    refused(await C(own, v5.id, "undo"), 409, "FINANCIAL_POLICY_LOCKED");
+    refused(await W(dual, v5.id, "undo"), 409, "FINANCIAL_POLICY_LOCKED", "even its own preparer");
+    assert.deepEqual([(await readAs(own)).inForce.yourActions.cancel, (await readAs(dual)).inForce.yourActions.withdraw],
+      [no("FINANCIAL_POLICY_LOCKED"), no("FINANCIAL_POLICY_LOCKED")]);
+    const vR = await draft(pE);
+    await submit(pE, vR.id);
+    ok(await fn(own, "rejectFinancialPolicy", { operatingCompanyId: E, versionId: vR.id, reason: "no" }));
+    refused(await W(pE, vR.id, "x"), 409, "FINANCIAL_POLICY_NOT_WITHDRAWABLE");
+    refused(await C(own, vR.id, "x"), 409, "FINANCIAL_POLICY_NOT_CANCELLABLE");
+    await dbRefusal(`UPDATE eos_finance.financial_policy_versions SET status = 'WITHDRAWN', withdrawn_by = prepared_by, withdrawn_at = now(),
+      withdrawal_reason = 'x', rejected_by = NULL, rejected_at = NULL, decision_reason = NULL WHERE id = $1`, [vR.id], /FINANCIAL_POLICY_(TRANSITION_ILLEGAL|IMMUTABLE)/,
+      "REJECTED is final");
+
+    // ── THE HISTORY: the audit trail lists every withdrawal / cancellation with its reason; the versions rebuild from it ──
+    const listed = await listAs(own);
+    assert.deepEqual(listed.items.map((v) => [v.versionNumber, v.status]), [[7, "REJECTED"], [6, "CANCELLED"], [5, "ACTIVE"], [4, "CANCELLED"],
+      [3, "CANCELLED"], [2, "WITHDRAWN"], [1, "WITHDRAWN"]]);
+    const closing = listed.auditTrail.filter((e) => ["finance.policy.withdraw", "finance.policy.cancel"].includes(e.action))
+      .map((e) => [e.action, e.versionNumber, e.actorPrincipalId, e.reason]).reverse();
+    assert.deepEqual(closing, [
+      ["finance.policy.withdraw", 1, fm.principalId, "abandoned: wrong costing method"],
+      ["finance.policy.withdraw", 2, fm.principalId, "submitted too early"],
+      ["finance.policy.cancel", 3, own.principalId, "approved the wrong recognition point"],
+      ["finance.policy.cancel", 4, adm.principalId, "withdrawn by the Administrator"],
+      ["finance.policy.cancel", 6, adm.principalId, "race: cancel before activation"],
+    ]);
+    for (const who of [fm, own, adm]) assert.ok(who.principalId in listed.actorNames, `${who.subject} named`);
+    const events = (await q(`SELECT action, target_id, before, after FROM eos_policy.audit_events WHERE tenant_id = $1 AND target_kind = $2
+      ORDER BY occurred_at, id`, [TENANT, fp.FINANCIAL_POLICY_AUDIT_TARGET])).rows.map((e) => ({ action: e.action, targetId: e.target_id, before: e.before, after: e.after }));
+    const rebuilt = fp.rebuildFinancialPolicyVersions(events);
+    const all = (await q(`SELECT *, effective_date::text AS effective_date_text FROM eos_finance.financial_policy_versions WHERE tenant_id = $1`, [TENANT])).rows.map(fp.versionView);
+    assert.equal(rebuilt.size, all.length);
+    for (const v of all) assert.deepEqual(rebuilt.get(v.id), JSON.parse(JSON.stringify(v)), `${v.operatingCompanyId} v${v.versionNumber} (${v.status}) rebuilt`);
+    // A history written BEFORE this migration (snapshots without the withdraw / cancel fields) still rebuilds.
+    const legacy = events.map((e) => {
+      const strip = (snap) => {
+        if (!snap) return snap;
+        const { withdrawnBy, withdrawnAt, withdrawalReason, cancelledBy, cancelledAt, cancellationReason, ...rest } = snap;
+        return withdrawnBy === null && cancelledBy === null ? rest : snap;
+      };
+      return { ...e, before: strip(e.before), after: strip(e.after) };
+    });
+    assert.ok(legacy.some((e) => e.after && !("withdrawnBy" in e.after)), "the legacy-shaped chain really lacks the fields");
+    const rebuiltLegacy = fp.rebuildFinancialPolicyVersions(legacy);
+    for (const v of all) assert.deepEqual(rebuiltLegacy.get(v.id), JSON.parse(JSON.stringify(v)), `legacy-shaped ${v.id}`);
+    assert.throws(() => fp.rebuildFinancialPolicyVersions([...events, { action: "finance.policy.cancel", targetId: v2.id,
+      before: { ...w2, status: "SUBMITTED" }, after: { ...w2, status: "CANCELLED" } }]), /FINANCIAL_POLICY_HISTORY_BROKEN/, "a forged closing event does not rebuild");
+
+    // ── THE DATABASE ALONE serializes the race (no server lock): two raw transactions on one APPROVED row, both orders ──
+    const rawRace = async (firstStatements, second) => {
+      const a = await pool.connect();
+      const b = await pool.connect();
+      try {
+        await a.query("BEGIN");
+        for (const [sql, args] of firstStatements) await a.query(sql, args);
+        const pending = b.query(second[0], second[1]).then(() => null, (e) => e);
+        let waited = false;
+        for (let i = 0; i < 1000 && !waited; i += 1) {
+          // A row-lock wait is a transactionid lock (no database column): read the waiting backend instead.
+          waited = Number((await one(`SELECT count(*) AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`)).n) > 0;
+          if (!waited) await new Promise((r) => setImmediate(r));
+        }
+        assert.ok(waited, "the second transaction queued on the row lock");
+        await a.query("COMMIT");
+        return await pending;
+      } finally {
+        await a.query("ROLLBACK").catch(() => undefined);
+        a.release();
+        b.release();
+      }
+    };
+    const approvedVersion = async () => {
+      const v = await draft(pE);
+      await submit(pE, v.id);
+      ok(await fn(own, "approveFinancialPolicy", { operatingCompanyId: E, versionId: v.id }));
+      return v.id;
+    };
+    const cancelSql = `UPDATE eos_finance.financial_policy_versions SET status = 'CANCELLED', cancelled_by = $2, cancelled_at = now(),
+      cancellation_reason = 'raw race' WHERE id = $1`;
+    const activateSql = `UPDATE eos_finance.financial_policy_versions SET status = 'ACTIVE', activated_by = $2, activated_at = now(), effective_date = $3::date WHERE id = $1`;
+    // Cancellation commits first: the queued activation re-reads CANCELLED and the trigger refuses it.
+    const vC = await approvedVersion();
+    const lateActivate = await rawRace([[cancelSql, [vC, adm.principalId]]], [activateSql, [vC, own.principalId, await businessDate(E, 30)]]);
+    assert.match(String(lateActivate?.message), /FINANCIAL_POLICY_TRANSITION_ILLEGAL: CANCELLED -> ACTIVE/);
+    assert.deepEqual([fp.translateDatabaseRefusal(lateActivate).code, fp.translateDatabaseRefusal(lateActivate).category],
+      ["FINANCIAL_POLICY_TRANSITION_ILLEGAL", "CONFLICT"], "a governed refusal, never a 500");
+    assert.equal((await stored(vC)).status, "CANCELLED");
+    // Activation (with its supersession) commits first, dated in the FUTURE (it must follow v5's date): the queued cancellation
+    // re-reads ACTIVE -- but a SCHEDULED one (Owner ruling 2026-10-14), so it is admitted after the lock and the version never
+    // takes effect. v5, superseded at activation, keeps governing: in force is resolved by date and CANCELLED never is.
+    const vD = await approvedVersion();
+    const dateD = await businessDate(E, 31);
+    const lateCancel = await rawRace([
+      [`UPDATE eos_finance.financial_policy_versions SET status = 'SUPERSEDED', superseded_by_version_id = $2, superseded_at = now() WHERE id = $1`, [v5.id, vD]],
+      [activateSql, [vD, own.principalId, dateD]],
+    ], [cancelSql, [vD, adm.principalId]]);
+    assert.equal(lateCancel, null, String(lateCancel?.message));
+    const sD = await stored(vD);
+    assert.deepEqual([sD.status, sD.activatedBy, sD.effectiveDate, sD.cancelledBy, (await stored(v5.id)).status],
+      ["CANCELLED", own.principalId, dateD, adm.principalId, "SUPERSEDED"], "the activation stamps are kept on the cancelled scheduled version");
+    for (const offset of [0, 31, 400]) {
+      assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, offset))).version?.id, v5.id, `v5 still governs at +${offset}`);
+    }
+    // A version IN FORCE is never withdrawn or cancelled -- at the API and, independently, in the database.
+    refused(await C(own, v5.id, "undo"), 409, "FINANCIAL_POLICY_LOCKED");
+    refused(await W(dual, v5.id, "undo"), 409, "FINANCIAL_POLICY_LOCKED");
+    await dbRefusal(cancelSql, [v5.id, adm.principalId], /FINANCIAL_POLICY_LOCKED: a SUPERSEDED version in force since/, "an in-force SUPERSEDED version is never cancelled");
+
+    // ── SCHEDULED -> CANCELLED through the API (Owner ruling 2026-10-14): cancellable until it actually takes effect ──
+    const activate = async (who, id, offset) => ok(await fn(who, "activateFinancialPolicy", { operatingCompanyId: E, versionId: id,
+      effectiveDate: await businessDate(E, offset) }), `${who.subject} activates +${offset}`);
+    const vS1 = await approvedVersion();
+    await activate(own, vS1, 40);
+    const sched = await readAs(own);
+    assert.deepEqual([sched.inForce.id, sched.scheduled.id, sched.inFlight, sched.scheduled.yourActions.cancel, sched.inForce.yourActions.cancel],
+      [v5.id, vS1, null, yes, no("FINANCIAL_POLICY_LOCKED")], "the scheduled version is offered for cancellation; the one in force is not");
+    assert.deepEqual((await readAs(adm)).scheduled.yourActions.cancel, yes, "the Administrator by standing");
+    assert.deepEqual((await readAs(pE)).scheduled.yourActions.cancel, no("CAPABILITY_REQUIRED"), "a preparer never cancels");
+    // Offers are decided on TODAY's business date even when the screen reads a later as-of date (where vS1 would be in force).
+    const later = ok(await fn(own, "readFinancialPolicy", { operatingCompanyId: E, asOfDate: await businessDate(E, 45) }));
+    assert.deepEqual([later.inForce.id, later.inForce.yourActions.cancel], [vS1, yes]);
+    refused(await W(pE, vS1, "pull it back"), 409, "FINANCIAL_POLICY_LOCKED", "a preparer never withdraws an activated version");
+    refused(await C(own, vS1), 400, "REASON_REQUIRED");
+    refused(await C(pE, vS1, "x"), 403, "CAPABILITY_REQUIRED");
+    const auditS = await auditCount();
+    const cS1 = ok(await C(own, vS1, "wrong month"), "the approver (and activator) cancels the scheduled version").version;
+    assert.deepEqual([cS1.status, cS1.approvedBy, cS1.activatedBy, cS1.effectiveDate, cS1.cancelledBy, cS1.cancellationReason, cS1.supersededByVersionId],
+      ["CANCELLED", own.principalId, own.principalId, await businessDate(E, 40), own.principalId, "wrong month", null]);
+    assert.equal(await auditCount(), auditS + 1, "one audit row");
+    const evS = await one(`SELECT actor_uid, reason, before, after FROM eos_policy.audit_events WHERE tenant_id = $1 AND target_id = $2
+      AND action = 'finance.policy.cancel'`, [TENANT, vS1]);
+    assert.deepEqual([evS.actor_uid, evS.reason, evS.before.status, evS.after.status], [own.principalId, "wrong month", "ACTIVE", "CANCELLED"]);
+    assert.equal(ok(await C(own, vS1, "wrong month")).replayed, true);
+    refused(await C(own, vS1, "other"), 409, "FINANCIAL_POLICY_REPLAY_CONFLICT");
+    const afterS1 = await readAs(own);
+    assert.deepEqual([afterS1.inForce.id, afterS1.scheduled, afterS1.yourAuthority.createDraft.allowed], [v5.id, null, false],
+      "v5 still governs; nothing is scheduled (the Owner holds no prepare)");
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 45))).version.id, v5.id, "the cancelled version never takes effect");
+    assert.equal(Number((await one(`SELECT count(*) AS n FROM eos_finance.financial_policy_versions WHERE tenant_id = $1 AND operating_company_id = $2
+      AND status = 'ACTIVE'`, [TENANT, E])).n), 0, "no version is ACTIVE");
+    // THE POINT OF CANCELLING: a corrected version may now take effect EARLIER than the cancelled one's date (review gap a).
+    const vFix = await approvedVersion();
+    await activate(own, vFix, 35);
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 36))).version.id, vFix, "the correction governs from +35");
+    ok(await C(own, vFix, "test cleanup: back to v5"));
+
+    // A scheduled version that a LATER activation already SUPERSEDED is still cancellable until its own date arrives.
+    const vS2 = await approvedVersion();
+    await activate(own, vS2, 50);
+    const vS3 = await approvedVersion();
+    await activate(own, vS3, 60);
+    assert.equal((await stored(vS2)).status, "SUPERSEDED");
+    assert.deepEqual((await readAs(own)).scheduled.id, vS2, "scheduled = the NEXT version to take effect");
+    // Cancel the ACTIVE (+60) one first: no ACTIVE row remains, yet vS2 (SUPERSEDED, +50) still takes effect (review gap b).
+    ok(await C(own, vS3, "not this year"));
+    const noActive = await readAs(own);
+    assert.deepEqual([noActive.inForce.id, noActive.scheduled?.id, noActive.scheduled?.status, noActive.scheduled?.yourActions.cancel],
+      [v5.id, vS2, "SUPERSEDED", yes], "the screen still shows the scheduled SUPERSEDED version and offers its cancellation");
+    assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, 55))).version.id, vS2);
+    // The next activation must follow EVERY earlier activated version, ACTIVE or SUPERSEDED -- the server says so first (review finding 2).
+    const vS4 = await approvedVersion();
+    refused(await fn(own, "activateFinancialPolicy", { operatingCompanyId: E, versionId: vS4, effectiveDate: await businessDate(E, 45) }),
+      400, "EFFECTIVE_DATE_NOT_AFTER_PRIOR", "dated before the still-scheduled SUPERSEDED version");
+    ok(await C(own, vS4, "test cleanup"));
+    const cS2 = ok(await C(adm, vS2, "superseded before it took effect")).version;
+    assert.deepEqual([cS2.status, cS2.supersededByVersionId, cS2.effectiveDate], ["CANCELLED", vS3, await businessDate(E, 50)], "its supersession stamps are kept");
+    for (const offset of [55, 65]) {
+      assert.equal((await fp.resolveFinancialPolicyInForce(pool, TENANT, E, await businessDate(E, offset))).version.id, v5.id, `nothing scheduled remains (+${offset})`);
+    }
+    assert.equal((await readAs(own)).scheduled, null);
+    // The database alone: a CANCELLED scheduled version is final like any other.
+    for (const [sql, what] of [
+      [`UPDATE eos_finance.financial_policy_versions SET status = 'ACTIVE', cancelled_by = NULL, cancelled_at = NULL, cancellation_reason = NULL WHERE id = $1`, "reactivate"],
+      [`UPDATE eos_finance.financial_policy_versions SET effective_date = effective_date + 1 WHERE id = $1`, "re-date"],
+    ]) await dbRefusal(sql, [vS1], /FINANCIAL_POLICY_(IMMUTABLE|TRANSITION_ILLEGAL)/, `CANCELLED is final: ${what}`);
+    // A scheduled version's history still rebuilds from the audit trail alone.
+    const events2 = (await q(`SELECT action, target_id, before, after FROM eos_policy.audit_events WHERE tenant_id = $1 AND target_kind = $2
+      ORDER BY occurred_at, id`, [TENANT, fp.FINANCIAL_POLICY_AUDIT_TARGET])).rows.map((e) => ({ action: e.action, targetId: e.target_id, before: e.before, after: e.after }));
+    const rebuilt2 = fp.rebuildFinancialPolicyVersions(events2);
+    for (const id of [vS1, vS2, vS3]) assert.deepEqual(rebuilt2.get(id), JSON.parse(JSON.stringify(await stored(id))), `${id} rebuilt`);
+  });
+
+  await t.test("MIG: with versions recorded, each Down refuses to reverse", async () => {
+    // The newest (#232 Phase 3) refuses while a WITHDRAWN or CANCELLED version exists: the old CHECKs could not hold them.
+    assert.throws(() => migrate("down", 1), (e) => /FINANCIAL_POLICY_WITHDRAW_CANCEL: refuses to reverse/.test(String(e.stderr ?? e.message)));
+    const cols = await one(`SELECT count(*) AS n FROM information_schema.columns WHERE table_schema = 'eos_finance' AND table_name = 'financial_policy_versions'
+      AND column_name IN ('withdrawn_by', 'cancelled_by')`);
+    assert.equal(Number(cols.n), 2, "nothing was reversed");
     assert.notEqual((await one(`SELECT to_regclass('eos_finance.financial_policy_versions') AS r`)).r, null);
+    assert.equal(readFileSync(join(FUNCTIONS_DIR, "migrations", `${PHASE3_MIGRATION}.sql`), "utf8").split("-- Down Migration")[0]
+      .replace(/--.*$/gm, "").match(/INSERT INTO|role_capabilities|principal_capabilities/), null, "the Phase 3 Up grants and registers nothing");
   });
 });

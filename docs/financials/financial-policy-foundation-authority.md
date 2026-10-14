@@ -1,7 +1,7 @@
 # Financial Policy foundation: authority impact
 
 **Decision:** DECISIONS #232 (Owner, 2026-10-13). It continues the CERT-FIN-02 policy-profile ruling of 2026-09-03 ([reconciliation](../assessments/cert-fin-02-policy-framework-reconciliation.md), §7 lifecycle).
-**Migration:** `functions/migrations/1764560000000_financial-policy-profiles.sql`.
+**Migration:** `functions/migrations/1764560000000_financial-policy-profiles.sql`; withdraw / cancel (Phase 3, §8): `1764570000000_financial-policy-withdraw-cancel.sql`.
 **Server:** `functions/src/eosFinance/financialPolicy.ts`, served on `/operations/finance`.
 **Proof:** `functions/test/financialPolicyFoundationPostgres.test.mjs`.
 
@@ -11,17 +11,21 @@
 
 ```
 DRAFT --submit--> SUBMITTED --approve--> APPROVED --activate--> ACTIVE --(later version activates)--> SUPERSEDED
-                             \--reject---> REJECTED
+  |                  |  \--reject---> REJECTED      |
+  +----withdraw------+--> WITHDRAWN                 +--cancel--> CANCELLED        (Phase 3, §8)
+                        ACTIVE / SUPERSEDED while SCHEDULED (not yet in force) --cancel--> CANCELLED   (Owner ruling 2026-10-14)
 ```
 
 | State | Editable content | Next states | Notes |
 |---|---|---|---|
-| DRAFT | yes | SUBMITTED | At most one version in flight (DRAFT, SUBMITTED or APPROVED) per company. |
-| SUBMITTED | no (frozen) | APPROVED, REJECTED | |
-| APPROVED | no | ACTIVE | |
+| DRAFT | yes | SUBMITTED, WITHDRAWN | At most one version in flight (DRAFT, SUBMITTED or APPROVED) per company. |
+| SUBMITTED | no (frozen) | APPROVED, REJECTED, WITHDRAWN | |
+| APPROVED | no | ACTIVE, CANCELLED | |
 | REJECTED | no | none (final) | A change is a new DRAFT. |
-| ACTIVE | no (**locked**) | SUPERSEDED, only through the activation of a later approved version, in the same transaction | At most one per company. |
-| SUPERSEDED | no | none (final) | Preserved intact. |
+| ACTIVE | no (**locked**) | SUPERSEDED, only through the activation of a later approved version, in the same transaction; CANCELLED while still scheduled (§8) | At most one per company. |
+| SUPERSEDED | no | CANCELLED while still scheduled (§8); otherwise none (final) | Preserved intact. |
+| WITHDRAWN | no | none (final) | Phase 3. Releases the in-flight slot; never in force. |
+| CANCELLED | no | none (final) | Phase 3. Keeps its approval (and, if it was scheduled, its activation stamps); releases the slot; never in force. |
 
 - **Never deleted.** No row is deleted, and TRUNCATE is refused.
 - **Authorship only grows.** Even in DRAFT, `content_authors` only grows and `prepared_by` never changes.
@@ -106,7 +110,7 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 4. ~~**Company scope is data-only.**~~ **RESOLVED by #232 Amendment A** (§7): company scope is enforced on every policy command.
 5. **Revision without conversion.** CERT-FIN-02 §1 defines a later change as approval -> effective date -> impact assessment -> conversion -> activation. Impact assessment and conversion are unbuilt, and they must exist before any cost-engine consumer reads a revised policy.
 6. **Activation has no separation of duties.** A principal holding prepare and activate can activate their own version once someone else has approved it.
-7. **Scheduled corrections.** While a future-dated version is scheduled, a correction must be dated after it. No cancel-scheduled path exists.
+7. ~~**Scheduled corrections.**~~ **RESOLVED by the Owner ruling of 2026-10-14** (§8): a scheduled version stays cancellable until it takes effect.
 8. **The UI.** The Financial Policy screen and the client operation mirror (`financeApiClient.js`) are a later PR.
 9. **The finance Roles cannot be company-scoped** (`SCOPE_AMBIGUOUS_ADMINISTRATION`). See §7, options A, B and C.
 10. **What a global assignment means.** See §7.
@@ -180,3 +184,25 @@ The persona roles come from `config/sandboxRoleIdentityRegistry.json` and `funct
 - **Navigation:** the page's surface is `finance.policy`, a business surface rather than an `administration.*` one. It is earned by `finance.policy.read` held globally, or by an unconditioned operatingCompany holding tied to `operations.listFinancialPolicyVersions`. The Administration scoped-door guard is unchanged. The legacy placeholder row stays, so the row changes kind instead of being added: the cutover ceiling goes from 21 to 22, the ungoverned ceiling from 41 to 40, and the total stays at 62.
 - **Grant matrix:** a stored direct grant of a ROLE_ASSIGNMENT_ONLY key (`finance.policy.read` / `.prepare`) is listed with `enforced: false`, `notEffectiveReason: "ROLE_ASSIGNMENT_ONLY"` and `forbiddenBy` (the ruling). The UI renders it as "Not effective — role assignment only" and does not count it as a holder. A stored direct row of a RESERVED key (for example `finance.policy.approve` or `salesAgreement.tradeIn.approve`) is deliberately NOT marked: only ROLE_ASSIGNMENT_ONLY keys are filtered out of the capability set (`capabilityAuthority.ts`), so a reserved direct row does enter it, and the reservation is decided separately at runtime (`requireReservedAuthority` / `requireReservedHolder`). Its matrix cell stays `enforced: true`, consistent with the Employee effective-access view.
 - **Legacy shell gate (Firebase-retirement candidate):** `FINANCIAL_POLICY_GATE` in `field-ops-app-vite/src/access/shellCapabilityGates.js` still adds `financialPolicy.profile.read` / `.configure` to the legacy Firebase shell capability request set. Nothing reads those answers any more (the page reads `/operations/finance`). The entry was kept in this change so the shell request set is unchanged; remove it in a Firebase-retirement step together with its request-set pins.
+
+## 8. Phase 3: withdraw and cancel (local, 2026-10-14)
+
+**Why.** An APPROVED version held the company's single in-flight slot until it was activated, and nothing removed an abandoned DRAFT or SUBMITTED version, so a company could be stranded with no way to start a new draft.
+
+| Command | Key (no new key) | From | To | Who | Refusals |
+|---|---|---|---|---|---|
+| `withdrawFinancialPolicy` {operatingCompanyId, versionId, reason} | `finance.policy.prepare` (global or company-scoped) | DRAFT, SUBMITTED | WITHDRAWN | the version's own preparer: a content author (the creator is the first) or the submitter | `CAPABILITY_REQUIRED`, `OUTSIDE_OPERATING_COMPANY_SCOPE` (before any lookup), `FINANCIAL_POLICY_NOT_WITHDRAWABLE`, `FINANCIAL_POLICY_LOCKED` (ACTIVE / SUPERSEDED), `NOT_YOUR_VERSION`, `REASON_REQUIRED` |
+| `cancelFinancialPolicy` {operatingCompanyId, versionId, reason} | `finance.policy.approve` + its request-time reservation (Owner Role, or Administrator standing) | APPROVED; or ACTIVE / SUPERSEDED while SCHEDULED (effective date after the company's business date) | CANCELLED | anyone holding it who is neither the submitter nor a content author (the approver may) | `CAPABILITY_REQUIRED`, `RESERVED_CAPABILITY`, `OUTSIDE_OPERATING_COMPANY_SCOPE`, `FINANCIAL_POLICY_NOT_CANCELLABLE`, `FINANCIAL_POLICY_LOCKED` (a version in force), `SEPARATION_OF_DUTIES`, `REASON_REQUIRED` |
+
+- **Why approve governs cancel.** Cancelling an approval reverses a decision; activation is a separate act. Both keys are reserved to the same holders today, so the choice moves no one's authority.
+- **History kept.** The content, every earlier stamp (including the approval and its note) and the audit trail are untouched. Each act writes one audit row (`finance.policy.withdraw` / `finance.policy.cancel`) with the full snapshot and the reason, and has its own write-once by / at / reason stamps.
+- **Slot released.** The in-flight index covers DRAFT / SUBMITTED / APPROVED only, so a new draft may follow at once; version numbering continues.
+- **Never in force.** In force is ACTIVE / SUPERSEDED by date; Financials governance reads only the server's in-force answer.
+- **Scheduled versions (Owner ruling 2026-10-14).** A version activated with a future effective date is SCHEDULED until that date, whether still ACTIVE or already SUPERSEDED by a later activation, and stays cancellable until it actually takes effect. Both the server (`cancelState`, on the company's business date read inside the lock) and the trigger (on `operating_company_business_date(now())`) refuse a version in force with `FINANCIAL_POLICY_LOCKED`. The cancelled version keeps its activation and supersession stamps; the version it superseded keeps governing, because in force is resolved by date and CANCELLED is never in force. Offers (`yourActions.cancel`) are decided on today's business date even when the screen reads another `asOfDate`.
+- **Database enforcement.** The transition trigger allows exactly DRAFT→WITHDRAWN, SUBMITTED→WITHDRAWN, APPROVED→CANCELLED and, while scheduled, ACTIVE / SUPERSEDED→CANCELLED; nothing out of REJECTED, WITHDRAWN or CANCELLED; and nothing else out of ACTIVE (except supersession) or SUPERSEDED. The CHECKs `financial_policy_withdrawer_owns_version` and `financial_policy_canceller_independent` hold ownership and independence against a direct write; the server maps them to `NOT_YOUR_VERSION` and `SEPARATION_OF_DUTIES`.
+- **Concurrency.** Activation and cancellation take the same per-company advisory lock and the version's row lock and re-read the status; the trigger admits ACTIVE and CANCELLED only from APPROVED. Whichever commits first wins; the other answers 409 (`FINANCIAL_POLICY_LOCKED` or `FINANCIAL_POLICY_NOT_APPROVED`). Proven in both orders, through the server and through raw SQL.
+- **Authority reads.** `yourActions` gains `withdraw` and `cancel`; `readMyFinancialPolicyAuthority` lists both per company. They are computed from the commands' own helpers (`withdrawState`, `cancelState`, `ownVersionRefusal`, `independentDeciderRefusal`).
+- **Down.** The migration's Down refuses while any WITHDRAWN or CANCELLED version exists.
+- **In order.** The trigger lets a transition write only its own stamps; every other lifecycle stamp keeps its prior value (no forged submission stamp on a withdrawal, no forged approval or withdrawal stamp on a cancellation).
+- **Owner rulings (2026-10-14).** A policy author (any content author, or the submitter) withdraws their own DRAFT / SUBMITTED version while they retain company authorization. An authorized approver may cancel an APPROVED version, including their own approval. A scheduled version stays cancellable until it takes effect; a version in force never is.
+- **Still open.** Nothing in this lifecycle (§6 item 7 resolved).
