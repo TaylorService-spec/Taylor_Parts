@@ -12,7 +12,7 @@
 // server's company access says `correct` is held for the settlement's company (readMyFinanceCompanyAccess), and the server
 // decides each command again. Each confirmation states the financial consequence and requires a reason; a REVERSE keeps one
 // idempotency key per confirmation, so a double submit is a replay, never a second reversal.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SectionHeader, Button, StatusIndicator } from "../../shared/ui/primitives";
 import { Field } from "../../shared/ui/form";
 import { formatMinorUnits } from "../../domain/money.js";
@@ -46,7 +46,7 @@ function ConfirmCorrection({ id, title, consequence, confirmLabel, busy, onConfi
       <p><strong>{title}</strong></p>
       <p>{consequence}</p>
       <Field label="Reason (Required, Kept in the Financial History)">
-        <input className="fo-input" aria-label={`Reason for ${title}`} value={reason} disabled={busy} onChange={(e) => setReason(e.target.value)} />
+        <input className="fo-input" aria-label={`Reason for ${title}`} value={reason} maxLength={500} disabled={busy} onChange={(e) => setReason(e.target.value)} />
       </Field>
       <div className="fo-form-actions">
         <Button variant="destructive" disabled={busy || reason.trim() === ""} onClick={() => onConfirm(reason.trim())}>{confirmLabel}</Button>
@@ -66,14 +66,20 @@ export default function SettlementCorrections({ callApi, company, access, refres
 
   const correctable = (companyId) => access?.companies?.some((c) => c.operatingCompanyId === companyId && c.actions?.correct === true) === true;
 
+  // Only the LATEST request may draw: a slow answer for a company the person has since left is dropped.
+  const sequence = useRef(0);
   const load = useCallback(async () => {
     if (!company) return;
+    const mine = ++sequence.current;
     const res = await callApi("listSettlements", { operatingCompanyId: company });
+    if (mine !== sequence.current) return;
     if (!res.ok) { setRows(null); setFailure(refusalText(res)); return; }
     setFailure(null);
     setRows(res.result?.items ?? []);
   }, [callApi, company]);
-  useEffect(() => { setOpen(null); setConfirming(null); load(); }, [load, refreshToken]);
+  // A different company starts clean; a workspace refresh re-reads the list without closing what the person is typing.
+  useEffect(() => { setOpen(null); setConfirming(null); setNotice(null); setFailure(null); setRows(null); }, [company]);
+  useEffect(() => { load(); }, [load, refreshToken]);
 
   const run = async (operation, input, done) => {
     setBusy(true); setNotice(null);
@@ -83,8 +89,9 @@ export default function SettlementCorrections({ callApi, company, access, refres
     const replayed = res.result?.outcome === "replayed";
     setNotice({ tone: "positive", text: replayed ? `${done.already} Nothing changed.` : done.text });
     setConfirming(null);
-    await load();
-    if (!replayed) await onCorrected?.();
+    // Always refresh: even a replay means someone else corrected it, so the workspace's balances may be out of date. The
+    // workspace reload re-reads this list too (refreshToken); without a workspace, re-read it here.
+    if (onCorrected) await onCorrected(); else await load();
   };
 
   if (!company) return null;
@@ -105,7 +112,9 @@ export default function SettlementCorrections({ callApi, company, access, refres
               return (
                 <tr key={s.id} data-settlement={s.id}>
                   <td>{operatingCompanyLabel(s.operatingCompanyId) || "—"}</td><td>{s.businessDate}</td><td>{statusLabel(s.kind, SETTLEMENT_WORDS)}</td>
-                  <td>{s.sourceReference}</td><td>{money(s.amountMinor, s.currency)}</td><td>{money(s.appliedMinor, s.currency)}</td><td>{money(s.unappliedMinor, s.currency)}</td>
+                  <td>{s.sourceReference}</td><td>{money(s.amountMinor, s.currency)}</td>
+                  {/* A VOID settlement no longer counts as money received or paid: no applied / unapplied amount is shown for it. */}
+                  <td>{s.status === "VOID" ? "—" : money(s.appliedMinor, s.currency)}</td><td>{s.status === "VOID" ? "—" : money(s.unappliedMinor, s.currency)}</td>
                   <td>{statusLabel(s.status, SETTLEMENT_STATUS_WORDS)}{s.voidReason ? ` — ${s.voidReason}` : ""}</td>
                   <td>{statusLabel(s.reconciliationStatus, RECONCILIATION_WORDS)}</td>
                   <td>
@@ -113,7 +122,9 @@ export default function SettlementCorrections({ callApi, company, access, refres
                       : s.status === "VOID" ? <span className="fo-muted">Void — final</span>
                         : (
                           <>
-                            <Button size="sm" variant="secondary" disabled={busy} aria-expanded={open === s.id} onClick={() => { setOpen(open === s.id ? null : s.id); setConfirming(null); }}>
+                            <Button size="sm" variant="secondary" disabled={busy} aria-expanded={open === s.id}
+                              aria-label={`${open === s.id ? "Close corrections for" : "Correct"} ${s.sourceReference} (${operatingCompanyLabel(s.operatingCompanyId) || s.operatingCompanyId}, ${s.businessDate})`}
+                              onClick={() => { setOpen(open === s.id ? null : s.id); setConfirming(null); }}>
                               {open === s.id ? "Close" : `Correct ${s.sourceReference}`}
                             </Button>
                             {open === s.id && (
@@ -133,7 +144,8 @@ export default function SettlementCorrections({ callApi, company, access, refres
                                             { text: "Application reversed.", already: "This application was already reversed." })}
                                           onCancel={() => setConfirming(null)} />
                                       ) : (
-                                        <Button size="sm" variant="destructive" disabled={busy} onClick={() => setConfirming({ kind: "reverse", id: a.id, key: freshKey() })}>
+                                        <Button size="sm" variant="destructive" disabled={busy} aria-label={`Reverse ${money(a.amountMinor, s.currency)} applied to ${a.obligationId}`}
+                                          onClick={() => setConfirming({ kind: "reverse", id: a.id, key: freshKey() })}>
                                           Reverse {money(a.amountMinor, s.currency)}
                                         </Button>
                                       ))}
@@ -151,7 +163,8 @@ export default function SettlementCorrections({ callApi, company, access, refres
                                     <Button size="sm" variant="destructive" disabled={busy || live.length > 0} onClick={() => setConfirming({ kind: "void", id: s.id })}>
                                       Void Settlement
                                     </Button>
-                                    {live.length > 0 && <span className="fo-wizard-hint"> Reverse its {live.length === 1 ? "application" : `${live.length} applications`} first.</span>}
+                                    {live.length > 0 && <span className="fo-wizard-hint"> Reverse its {live.length === 1 ? "application" : `${live.length} applications`} first.
+                                      {s.kind === "PROVIDER_FUNDING" ? " Provider funding that has completed (FUNDED) cannot be reversed in EOS; it is corrected with the financing provider." : ""}</span>}
                                   </>
                                 )}
                               </div>

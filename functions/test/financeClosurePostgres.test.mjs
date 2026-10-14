@@ -443,7 +443,7 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   // SETTLEMENT CORRECTION UI (Owner direction 2026-10-14): the screen reuses listSettlements + reverseSettlementApplication +
   // voidSettlement. What it relies on: the list carries each application and its status; a re-sent correction is a replay that
   // writes nothing; only finance.settlement.correct holders correct.
-  await t.test("CORR-UI: the list the screen reads; duplicate reverse / void replay and write nothing; no key, no correction", async () => {
+  await t.test("CORR-UI: the list the screen reads; duplicate reverse / void replay and write nothing; without finance.settlement.correct, no correction", async () => {
     const { out } = await directPackage({ price: 3300 });
     const rec = await receivableOf(out.packageId);
     const s = await record(ctrl, { operatingCompanyId: "taylor", counterparty: customer("acct-cust"), kind: "CUSTOMER_PAYMENT", amountMinor: 3300, sourceReference: "CHK-UI-1" });
