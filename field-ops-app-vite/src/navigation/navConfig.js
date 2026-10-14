@@ -812,6 +812,10 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "purchasing/receipts": ["receiving.checkIn"],
   "purchasing/suppliers": ["purchasing.suppliers"],
   // Financials
+  // Financials Workspace P0 correction (2026-10-14): the Overview hosts the PostgreSQL Finance workspace, whose every read
+  // is finance.payment.read -- the very key that earns `financials.payments`. The door confers nothing: the workspace lists
+  // only the companies the person is explicitly assigned to, and the server re-decides every read and command.
+  "financials/overview": ["financials.payments"],
   "financials/invoices": ["financials.invoices"],
   "financials/payments": ["financials.payments"],
   // Administration
@@ -892,7 +896,7 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   "dashboard/notifications": "Hidden placeholder; the bell is the live surface.",
   "reporting/builder": "Report Builder is already governed by the Firebase capability feed over report-definition ids that eos_policy.capabilities does not declare.",
   "reporting/savedReports": "See reporting/builder.",
-  "financials/*": "Every Financials destination OTHER than Invoices and Payments is Frame-0 information architecture with no authority behind it; FIN-001/FIN-004 own the capability model.",
+  "financials/*": "Every Financials destination OTHER than the Overview (the Finance workspace), Invoices and Payments is Frame-0 information architecture with no authority behind it; FIN-001/FIN-004 own the capability model.",
   "reporting/*": "The eight domain report destinations are navHidden placeholders, and Report Builder / Saved Reports are governed by the Firebase capability feed over report-definition ids that eos_policy.capabilities does not declare.",
 });
 
@@ -1119,6 +1123,9 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   "purchasing/quotes",
   "purchasing/receipts", // (CUTOVER) receiving.checkIn
   "purchasing/demandPlanning",
+  // (CUTOVER) financials.payments -- Financials Workspace P0 correction (2026-10-14). The Overview now earns a surface on the
+  // EOS source, but STAYS here so the LEGACY source (production) is byte-identical: removing it would change production
+  // navigation. That makes it the 23rd cutover row; NAV_CUTOVER_PLACEHOLDER_CEILING 22 -> 23 is an OWNER RULING (PR #2091).
   "financials/overview",
   "financials/billingQueue",
   "financials/invoices", // (CUTOVER) financials.invoices
@@ -1332,9 +1339,16 @@ export function effectivePlaceholderRegister(operationalContext) {
 // the SAME row is a CUTOVER row -- the `purchasing/suppliers` precedent exactly. The register stays 62 (Lane BR: the legacy
 // source's destination set is not cut from under a flag-false environment); ungoverned 41 -> 40; cutover 21 -> 22, because
 // the row that crossed over is not new. Recorded for Owner / Controller confirmation in the package report.
+//
+// ════════ 2026-10-14 -- A THIRD ROW CHANGED KIND; NO ROW WAS ADDED (FINANCIALS WORKSPACE P0 CORRECTION, PR #2091) ════════
+//
+// `financials/overview` hosts the PostgreSQL Finance workspace and now earns `financials.payments` (its own read's surface).
+// The SAME row becomes a CUTOVER row -- the `purchasing/suppliers` and `administration/financialPolicy` precedent. The register
+// stays 62 (production's legacy destination set is unchanged); ungoverned 40 -> 39; cutover 22 -> 23, because the row that
+// crossed over is not new. Recorded for Owner confirmation in the PR #2091 report.
 export const NAV_LEGACY_PLACEHOLDER_CEILING = 62;
-export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 40;
-export const NAV_CUTOVER_PLACEHOLDER_CEILING = 22;
+export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 39;
+export const NAV_CUTOVER_PLACEHOLDER_CEILING = 23;
 
 // The derived-surface mirror now lives ABOVE the container table, because the container table is
 // COMPUTED FROM IT. See "THE CLIENT MIRROR OF THE SERVER CATALOG'S CONTAINERS" earlier in this file.

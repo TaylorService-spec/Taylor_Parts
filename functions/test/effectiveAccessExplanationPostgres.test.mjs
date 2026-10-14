@@ -215,7 +215,9 @@ test("explainEffectiveAccess is the runtime's answer, for every persona", { skip
     assert.equal(tech.securityRoleKeys.includes("warehouseManager"), false, "a scoped assignment grants nothing unscoped");
     assert.equal(tech.securityRoleKeys.includes("generalManager"), false, "a supported scope is still not a global Role");
     assert.deepEqual(tech.assignments.scoped.map((a) => [a.roleKey, a.scopeType, a.scopeValue, a.capabilities]),
-      [["generalManager", "operatingCompany", COMPANY, ["employee.record.read"]]]);
+      // + finance.payment.read since the Financials Workspace P0 correction registered it at operatingCompany scope: a Role
+      // assigned at a company now also carries its Finance view key there (the Financials company assignment).
+      [["generalManager", "operatingCompany", COMPANY, ["employee.record.read", "finance.payment.read"]]]);
     assert.ok(tech.assignments.scoped[0].inertCapabilities.includes("salesAgreement.accept"), "the rest of the Role is inert at a scope");
     const employeeRead = tech.actions.find((a) => a.capabilityKey === "employee.record.read");
     assert.deepEqual([employeeRead.result, employeeRead.reasonCode, employeeRead.scopedSources.map((x) => [x.roleKey, x.scopeValue, x.result])],
