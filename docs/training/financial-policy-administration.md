@@ -195,7 +195,7 @@ These are the messages you may see, and what they mean.
 | *Only an approved version, or one scheduled but not yet in effect, can be cancelled* | Nothing to cancel | — |
 | *An activated version is locked and is never edited…* | The version has been activated (in effect, scheduled or superseded) | Prepare a new draft; a scheduled version can still be cancelled by the Owner |
 | *The effective date cannot be before the company's business date* | The date is in the past | Choose today or later |
-| *The effective date must be after the current active version's effective date* (or *after the effective date of every version already activated*) | Another activated version has the same or a later date | Choose a later date, or cancel the scheduled version first |
+| *The effective date must be after the effective date of every version already activated.* | Another activated version has the same or a later date | Choose a later date, or cancel the scheduled version first |
 | *A reason is required* | Withdrawing and cancelling always need a reason | Enter a reason |
 | *This company already has a version in progress. Edit, submit or decide that one first.* | Each company can have only one version in progress | Finish it, or withdraw / cancel it |
 | *This action is already recorded with a different note or reason. The recorded one stands.* | The action was already done (with a different note) | Nothing; the recorded action stands. Refresh to see it |
